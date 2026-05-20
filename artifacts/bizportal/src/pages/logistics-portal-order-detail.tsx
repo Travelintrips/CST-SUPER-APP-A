@@ -143,14 +143,6 @@ export default function LogisticsPortalOrderDetailPage() {
     }
   }
 
-  // Auto-refresh tracker when RFQ tab is visible
-  useEffect(() => {
-    if (rfqs.length === 0) return;
-    void fetchTrackerData();
-    const interval = setInterval(() => void fetchTrackerData(true), 30_000);
-    return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orderId, rfqs.length]);
   const [resendingVendorIds, setResendingVendorIds] = useState<Set<number>>(new Set());
   const [resendResults, setResendResults] = useState<Record<number, "ok" | "fail">>({});
 
@@ -207,6 +199,16 @@ export default function LogisticsPortalOrderDetailPage() {
 
   const { data: order, isLoading } = useGetLogisticOrder(orderId);
   const { data: rfqs = [] } = useListLogisticOrderRfqs(orderId);
+
+  // Auto-refresh tracker when RFQ tab is visible
+  useEffect(() => {
+    if (rfqs.length === 0) return;
+    void fetchTrackerData();
+    const interval = setInterval(() => void fetchTrackerData(true), 30_000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderId, rfqs.length]);
+
   const { data: comparison, refetch: refetchQuotes } = useListLogisticOrderQuotes(orderId);
   const quotes = comparison?.quotes ?? [];
   const cheapest = comparison?.cheapest;
