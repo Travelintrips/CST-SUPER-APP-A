@@ -587,6 +587,15 @@ logisticRfqRouter.get("/vendor-form", rfqRateLimit, async (req: Request, res: Re
     ? Number(matchingItem.priceBase)
     : (catalogItems[0] ? Number(catalogItems[0].priceBase) : null);
 
+  // Track that this vendor opened the form
+  const currentOpened = Array.isArray(rfq.openedVendorIds) ? (rfq.openedVendorIds as number[]) : [];
+  if (!currentOpened.includes(vendorId)) {
+    await db.update(logisticOrderRfqsTable)
+      .set({ openedVendorIds: [...currentOpened, vendorId] })
+      .where(eq(logisticOrderRfqsTable.id, rfq.id))
+      .catch(() => { /* non-critical */ });
+  }
+
   return res.json({
     rfqNumber: rfq.rfqNumber,
     rfqStatus: rfq.status,
@@ -1216,7 +1225,7 @@ logisticRfqRouter.get("/approve-form/:orderNumber", async (req: Request, res: Re
   });
 });
 
-// GET /api/logistic/orders/:id/vendor-form-links — return form URLs + status per vendor for latest RFQ (staff only)
+// GET /api/logistic/orders/:id/vendor-form-links — return form URLs + tracker status per vendor for latest RFQ (staff only)
 logisticRfqRouter.get("/:id/vendor-form-links", async (req: Request, res: Response) => {
   if (!(await requireClerkUser(req, res))) return;
   const orderId = parseInt(String(req.params.id), 10);
@@ -1231,12 +1240,25 @@ logisticRfqRouter.get("/:id/vendor-form-links", async (req: Request, res: Respon
   if (!rfq) return res.status(404).json({ message: "RFQ belum dibuat untuk order ini" });
 
   const rfqVendorIds = Array.isArray(rfq.vendorIds) ? (rfq.vendorIds as number[]) : [];
+  const openedVendorIds = new Set(Array.isArray(rfq.openedVendorIds) ? (rfq.openedVendorIds as number[]) : []);
 
   const submittedQuotes = await db.select({
     vendorId: logisticOrderQuotesTable.vendorId,
+    vendorPrice: logisticOrderQuotesTable.vendorPrice,
+    estimatedDays: logisticOrderQuotesTable.estimatedDays,
+    estimatedPickup: logisticOrderQuotesTable.estimatedPickup,
+    estimatedDelivery: logisticOrderQuotesTable.estimatedDelivery,
+    vendorNotes: logisticOrderQuotesTable.vendorNotes,
+    createdAt: logisticOrderQuotesTable.createdAt,
+    replySource: logisticOrderQuotesTable.replySource,
+    quoteStatus: logisticOrderQuotesTable.quoteStatus,
   }).from(logisticOrderQuotesTable)
     .where(eq(logisticOrderQuotesTable.orderId, orderId));
-  const submittedVendorIds = new Set(submittedQuotes.map((q) => q.vendorId).filter(Boolean));
+
+  const quoteByVendor = new Map<number, typeof submittedQuotes[0]>();
+  for (const q of submittedQuotes) {
+    if (q.vendorId != null) quoteByVendor.set(q.vendorId, q);
+  }
 
   const vendors = rfqVendorIds.length > 0
     ? await db.select().from(suppliersTable).where(inArray(suppliersTable.id, rfqVendorIds))
@@ -1244,14 +1266,28 @@ logisticRfqRouter.get("/:id/vendor-form-links", async (req: Request, res: Respon
 
   const token = order.publicRfqToken ?? "";
 
-  const result = vendors.map((v) => ({
-    vendorId: v.id,
-    vendorName: v.name,
-    phone: v.phone ?? null,
-    hasPhone: !!v.phone,
-    hasSubmitted: submittedVendorIds.has(v.id),
-    formUrl: token ? getVendorFormUrl(rfq.rfqNumber, v.id, token) : null,
-  }));
+  const result = vendors.map((v) => {
+    const quote = quoteByVendor.get(v.id);
+    return {
+      vendorId: v.id,
+      vendorName: v.name,
+      phone: v.phone ?? null,
+      hasPhone: !!v.phone,
+      hasOpened: openedVendorIds.has(v.id),
+      hasSubmitted: !!quote,
+      formUrl: token ? getVendorFormUrl(rfq.rfqNumber, v.id, token) : null,
+      quote: quote ? {
+        vendorPrice: Number(quote.vendorPrice),
+        estimatedDays: quote.estimatedDays ?? null,
+        estimatedPickup: quote.estimatedPickup ?? null,
+        estimatedDelivery: quote.estimatedDelivery ?? null,
+        vendorNotes: quote.vendorNotes ?? null,
+        submittedAt: quote.createdAt?.toISOString() ?? null,
+        replySource: quote.replySource,
+        quoteStatus: quote.quoteStatus,
+      } : null,
+    };
+  });
 
   return res.json({ rfqNumber: rfq.rfqNumber, orderId, vendors: result });
 });
@@ -1325,33 +1361,6 @@ logisticRfqRouter.post("/:id/resend-rfq", async (req: Request, res: Response) =>
   return res.json({ ok: true, rfqNumber: rfqs.rfqNumber, sentCount, results });
 });
 
-// GET /api/logistic/orders/:id/vendor-form-links — returns per-vendor form links for manual sharing (staff only)
-logisticRfqRouter.get("/:id/vendor-form-links", async (req: Request, res: Response) => {
-  if (!(await requireClerkUser(req, res))) return;
-  const orderId = parseInt(String(req.params.id), 10);
-  if (isNaN(orderId)) return res.status(400).json({ message: "ID tidak valid" });
-
-  const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
-  if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
-
-  const [rfq] = await db.select().from(logisticOrderRfqsTable).where(eq(logisticOrderRfqsTable.orderId, orderId));
-  if (!rfq) return res.json({ rfqNumber: null, links: [] });
-
-  const rfqVendorIds = Array.isArray(rfq.vendorIds) ? (rfq.vendorIds as number[]) : [];
-  if (rfqVendorIds.length === 0) return res.json({ rfqNumber: rfq.rfqNumber, links: [] });
-
-  const vendors = await db.select().from(suppliersTable).where(inArray(suppliersTable.id, rfqVendorIds));
-  const orderToken = order.publicRfqToken ?? "";
-
-  const links = vendors.map((v) => ({
-    vendorId: v.id,
-    vendorName: v.name,
-    vendorPhone: v.phone ?? null,
-    formUrl: getVendorFormUrl(rfq.rfqNumber, v.id, orderToken),
-  }));
-
-  return res.json({ rfqNumber: rfq.rfqNumber, links });
-});
 
 // POST /api/logistic/orders/:id/approve — admin approves + send quotation to customer (staff only)
 logisticRfqRouter.post("/:id/approve", async (req: Request, res: Response) => {

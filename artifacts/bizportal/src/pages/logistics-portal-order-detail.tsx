@@ -35,7 +35,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
 import {
   ArrowLeft, PackageOpen, Send, Plus, CheckCircle, Edit, Star, Zap, TrendingDown,
-  RefreshCw, MessageCircle, Trash2, ListChecks, Link, Link2, Copy, ExternalLink, Loader2,
+  RefreshCw, MessageCircle, Trash2, ListChecks, Link, Link2, Copy, ExternalLink, Loader2, Eye,
 } from "lucide-react";
 
 const idr = (n: number | null | undefined) =>
@@ -98,18 +98,59 @@ export default function LogisticsPortalOrderDetailPage() {
   const [selectedVendors, setSelectedVendors] = useState<number[]>([]);
   const [rfqNotes, setRfqNotes] = useState("");
 
-  // ── Lihat Link Form dialog ─────────────────────────────────────────────────
-  interface VendorFormLink {
+  // ── Vendor Tracker & Lihat Link Form dialog ────────────────────────────────
+  interface VendorTrackerEntry {
     vendorId: number;
     vendorName: string;
     phone: string | null;
     hasPhone: boolean;
+    hasOpened: boolean;
     hasSubmitted: boolean;
     formUrl: string | null;
+    quote: {
+      vendorPrice: number;
+      estimatedDays: number | null;
+      estimatedPickup: string | null;
+      estimatedDelivery: string | null;
+      vendorNotes: string | null;
+      submittedAt: string | null;
+      replySource: string;
+      quoteStatus: string;
+    } | null;
   }
+  // Keep old interface alias for compat with dialog
+  type VendorFormLink = VendorTrackerEntry;
   const [linkFormDialog, setLinkFormDialog] = useState(false);
-  const [linkFormData, setLinkFormData] = useState<{ rfqNumber: string; vendors: VendorFormLink[] } | null>(null);
+  const [linkFormData, setLinkFormData] = useState<{ rfqNumber: string; vendors: VendorTrackerEntry[] } | null>(null);
   const [linkFormLoading, setLinkFormLoading] = useState(false);
+
+  // Inline tracker (auto-refresh)
+  const [trackerData, setTrackerData] = useState<{ rfqNumber: string; vendors: VendorTrackerEntry[] } | null>(null);
+  const [trackerLoading, setTrackerLoading] = useState(false);
+  const [trackerLastUpdated, setTrackerLastUpdated] = useState<Date | null>(null);
+
+  async function fetchTrackerData(silent = false) {
+    if (!silent) setTrackerLoading(true);
+    try {
+      const res = await fetch(`/api/logistic/orders/${orderId}/vendor-form-links`, { credentials: "include" });
+      if (res.ok) {
+        const data = await res.json() as { rfqNumber: string; vendors: VendorTrackerEntry[] };
+        setTrackerData(data);
+        setTrackerLastUpdated(new Date());
+      }
+    } catch { /* silent */ } finally {
+      setTrackerLoading(false);
+    }
+  }
+
+  // Auto-refresh tracker when RFQ tab is visible
+  useEffect(() => {
+    if (rfqs.length === 0) return;
+    void fetchTrackerData();
+    const interval = setInterval(() => void fetchTrackerData(true), 30_000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderId, rfqs.length]);
   const [resendingVendorIds, setResendingVendorIds] = useState<Set<number>>(new Set());
   const [resendResults, setResendResults] = useState<Record<number, "ok" | "fail">>({});
 
@@ -139,8 +180,7 @@ export default function LogisticsPortalOrderDetailPage() {
   const [sendingReply, setSendingReply] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // Lihat Link Form state
-  interface VendorFormLink { vendorId: number; vendorName: string; vendorPhone: string | null; formUrl: string }
+  // Lihat Link Form state (legacy dialog kept for copy-link usage)
   const [linkDialog, setLinkDialog] = useState(false);
   const [vendorFormLinks, setVendorFormLinks] = useState<VendorFormLink[]>([]);
   const [linksLoading, setLinksLoading] = useState(false);
@@ -148,9 +188,14 @@ export default function LogisticsPortalOrderDetailPage() {
   function openLinkDialog() {
     setLinkDialog(true);
     setLinksLoading(true);
-    fetch(`/api/logistic/orders/${orderId}/vendor-form-links`)
+    fetch(`/api/logistic/orders/${orderId}/vendor-form-links`, { credentials: "include" })
       .then((r) => r.json())
-      .then((d) => { setVendorFormLinks(d.links ?? []); setLinksLoading(false); })
+      .then((d) => {
+        // New response format: { vendors: [...] } instead of { links: [...] }
+        const vendors = (d.vendors ?? d.links ?? []) as VendorFormLink[];
+        setVendorFormLinks(vendors);
+        setLinksLoading(false);
+      })
       .catch(() => setLinksLoading(false));
   }
 
@@ -647,33 +692,154 @@ export default function LogisticsPortalOrderDetailPage() {
 
           {/* ── Tab 2: RFQ & Quotes ── */}
           <TabsContent value="rfq" className="space-y-4 mt-4">
-            {/* RFQ List */}
+            {/* Vendor Response Tracker */}
             {rfqs.length > 0 && (
               <Card>
-                <CardHeader className="pb-2 flex flex-row items-center justify-between">
-                  <CardTitle className="text-sm">History RFQ</CardTitle>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-7 gap-1.5 text-xs"
-                    onClick={openLinkFormDialog}
-                  >
-                    <Link className="h-3.5 w-3.5" /> Lihat Link Form
-                  </Button>
+                <CardHeader className="pb-2 flex flex-row items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      Vendor Response Tracker
+                      {trackerData && (
+                        <span className="text-xs font-normal text-muted-foreground">
+                          — {trackerData.rfqNumber}
+                        </span>
+                      )}
+                    </CardTitle>
+                    {trackerLastUpdated && (
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        Diperbarui {trackerLastUpdated.toLocaleTimeString("id-ID")} · auto-refresh 30s
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 gap-1.5 text-xs"
+                      onClick={() => void fetchTrackerData()}
+                      disabled={trackerLoading}
+                    >
+                      <RefreshCw className={`h-3.5 w-3.5 ${trackerLoading ? "animate-spin" : ""}`} />
+                      Refresh
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 gap-1.5 text-xs"
+                      onClick={openLinkFormDialog}
+                    >
+                      <Link className="h-3.5 w-3.5" /> Link Form
+                    </Button>
+                  </div>
                 </CardHeader>
-                <CardContent className="space-y-2">
-                  {rfqs.map((rfq) => (
-                    <div key={rfq.id} className="flex items-center gap-3 text-sm rounded-lg border px-3 py-2 bg-muted/30">
-                      <MessageCircle className="h-4 w-4 text-blue-500 shrink-0" />
-                      <span className="font-mono font-medium">{rfq.rfqNumber}</span>
-                      <span className="text-muted-foreground">
-                        {(rfq.vendorIds ?? []).length} vendor · {rfq.status}
-                      </span>
-                      <span className="ml-auto text-xs text-muted-foreground">
-                        {new Date(rfq.createdAt).toLocaleString("id-ID")}
-                      </span>
+                <CardContent className="p-0">
+                  {trackerLoading && !trackerData ? (
+                    <div className="flex items-center justify-center py-8 gap-2 text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span className="text-sm">Memuat data vendor...</span>
                     </div>
-                  ))}
+                  ) : !trackerData || trackerData.vendors.length === 0 ? (
+                    <div className="py-8 text-center text-sm text-muted-foreground">
+                      Tidak ada vendor di RFQ ini.
+                    </div>
+                  ) : (
+                    <div className="divide-y">
+                      {trackerData.vendors.map((v) => {
+                        const statusColor = v.hasSubmitted
+                          ? "bg-green-50 border-l-4 border-l-green-500"
+                          : v.hasOpened
+                          ? "bg-yellow-50 border-l-4 border-l-yellow-400"
+                          : "bg-background border-l-4 border-l-gray-200";
+
+                        const statusBadge = v.hasSubmitted ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                            <CheckCircle className="h-3 w-3" /> Sudah Submit
+                          </span>
+                        ) : v.hasOpened ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">
+                            <Eye className="h-3 w-3" /> Sudah Buka Form
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
+                            <MessageCircle className="h-3 w-3" /> Belum Respons
+                          </span>
+                        );
+
+                        const isResending = resendingVendorIds.has(v.vendorId);
+                        const resendResult = resendResults[v.vendorId];
+
+                        return (
+                          <div key={v.vendorId} className={`px-4 py-3 ${statusColor}`}>
+                            <div className="flex items-start gap-3 flex-wrap">
+                              <div className="flex-1 min-w-0 space-y-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-medium text-sm">{v.vendorName}</span>
+                                  {statusBadge}
+                                  {!v.hasPhone && (
+                                    <span className="text-xs text-orange-500 border border-orange-200 rounded-full px-2 py-0.5">No WA</span>
+                                  )}
+                                </div>
+                                {v.phone && (
+                                  <p className="text-xs text-muted-foreground">{v.phone}</p>
+                                )}
+                                {v.quote && (
+                                  <div className="mt-1.5 grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-0.5 text-xs">
+                                    <div>
+                                      <span className="text-muted-foreground">Harga Vendor: </span>
+                                      <span className="font-semibold text-green-700">
+                                        {new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(v.quote.vendorPrice)}
+                                      </span>
+                                    </div>
+                                    {v.quote.estimatedDays != null && (
+                                      <div>
+                                        <span className="text-muted-foreground">ETA: </span>
+                                        <span className="font-medium">{v.quote.estimatedDays} hari</span>
+                                      </div>
+                                    )}
+                                    {v.quote.estimatedPickup && (
+                                      <div>
+                                        <span className="text-muted-foreground">Pickup: </span>
+                                        <span>{v.quote.estimatedPickup}</span>
+                                      </div>
+                                    )}
+                                    {v.quote.submittedAt && (
+                                      <div>
+                                        <span className="text-muted-foreground">Submit: </span>
+                                        <span>{new Date(v.quote.submittedAt).toLocaleString("id-ID", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+                                      </div>
+                                    )}
+                                    {v.quote.vendorNotes && (
+                                      <div className="col-span-2 sm:col-span-4">
+                                        <span className="text-muted-foreground">Catatan: </span>
+                                        <span className="italic">{v.quote.vendorNotes}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                              {!v.hasSubmitted && (
+                                <Button
+                                  size="sm"
+                                  variant={resendResult === "ok" ? "default" : resendResult === "fail" ? "destructive" : "outline"}
+                                  className={`h-7 gap-1.5 text-xs shrink-0 ${resendResult === "ok" ? "bg-green-600 hover:bg-green-700" : ""}`}
+                                  disabled={isResending || !v.hasPhone}
+                                  title={!v.hasPhone ? "Tidak ada nomor WA" : "Kirim ulang WA dengan link form"}
+                                  onClick={() => handleResendVendorWa(v.vendorId)}
+                                >
+                                  {isResending
+                                    ? <Loader2 className="h-3 w-3 animate-spin" />
+                                    : resendResult === "ok"
+                                    ? <CheckCircle className="h-3 w-3" />
+                                    : <MessageCircle className="h-3 w-3" />}
+                                  {isResending ? "Mengirim..." : resendResult === "ok" ? "Terkirim!" : resendResult === "fail" ? "Coba Lagi" : "Kirim Ulang WA"}
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )}

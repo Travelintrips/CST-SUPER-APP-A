@@ -94,6 +94,7 @@ export const logisticOrderRfqsTable = pgTable("logistic_order_rfqs", {
   orderId: integer("order_id").notNull().references(() => logisticOrdersTable.id, { onDelete: "cascade" }),
   rfqNumber: text("rfq_number").notNull().unique(),
   vendorIds: integer("vendor_ids").array().notNull().default([]),
+  openedVendorIds: integer("opened_vendor_ids").array().notNull().default([]),
   notes: text("notes"),
   status: text("status").notNull().default("open"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
