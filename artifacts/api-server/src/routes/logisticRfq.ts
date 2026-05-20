@@ -1299,6 +1299,34 @@ logisticRfqRouter.post("/:id/resend-rfq", async (req: Request, res: Response) =>
   return res.json({ ok: true, rfqNumber: rfqs.rfqNumber, sentCount, results });
 });
 
+// GET /api/logistic/orders/:id/vendor-form-links — returns per-vendor form links for manual sharing (staff only)
+logisticRfqRouter.get("/:id/vendor-form-links", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const orderId = parseInt(String(req.params.id), 10);
+  if (isNaN(orderId)) return res.status(400).json({ message: "ID tidak valid" });
+
+  const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
+  if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+  const [rfq] = await db.select().from(logisticOrderRfqsTable).where(eq(logisticOrderRfqsTable.orderId, orderId));
+  if (!rfq) return res.json({ rfqNumber: null, links: [] });
+
+  const rfqVendorIds = Array.isArray(rfq.vendorIds) ? (rfq.vendorIds as number[]) : [];
+  if (rfqVendorIds.length === 0) return res.json({ rfqNumber: rfq.rfqNumber, links: [] });
+
+  const vendors = await db.select().from(suppliersTable).where(inArray(suppliersTable.id, rfqVendorIds));
+  const orderToken = order.publicRfqToken ?? "";
+
+  const links = vendors.map((v) => ({
+    vendorId: v.id,
+    vendorName: v.name,
+    vendorPhone: v.phone ?? null,
+    formUrl: getVendorFormUrl(rfq.rfqNumber, v.id, orderToken),
+  }));
+
+  return res.json({ rfqNumber: rfq.rfqNumber, links });
+});
+
 // POST /api/logistic/orders/:id/approve — admin approves + send quotation to customer (staff only)
 logisticRfqRouter.post("/:id/approve", async (req: Request, res: Response) => {
   if (!(await requireClerkUser(req, res))) return;
