@@ -26,6 +26,19 @@ import {
   TrendingUp,
   Wallet,
 } from "lucide-react";
+import {
+  ComposedChart,
+  Bar,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  ReferenceLine,
+  Cell,
+} from "recharts";
 
 function fmt(n: number) {
   return new Intl.NumberFormat("id-ID", {
@@ -223,6 +236,62 @@ export default function HoldingCashflowReportPage() {
 
   const cashflowColor = (n: number) => n >= 0 ? "text-emerald-400" : "text-rose-400";
 
+  // Data untuk chart
+  const chartData = consolidatedMonths.map((m) => {
+    const mIdx = Number(m.month.slice(5)) - 1;
+    const label = (MONTH_LABELS[mIdx] ?? m.month.slice(5)) + "\n" + m.month.slice(2, 4);
+    return {
+      name: label,
+      opNet: m.opNet,
+      invNet: m.invNet,
+      finNet: m.finNet,
+      cashChange: m.cashChange,
+    };
+  });
+
+  // Kumulatif kas (line chart)
+  let cumulative = 0;
+  const trendData = consolidatedMonths.map((m) => {
+    cumulative += m.cashChange;
+    const mIdx = Number(m.month.slice(5)) - 1;
+    return {
+      name: (MONTH_LABELS[mIdx] ?? m.month.slice(5)) + "\n" + m.month.slice(2, 4),
+      operasi: m.opNet,
+      investasi: m.invNet,
+      pendanaan: m.finNet,
+      kasKumulatif: cumulative,
+    };
+  });
+
+  function fmtAxis(n: number) {
+    const abs = Math.abs(n);
+    const sign = n < 0 ? "-" : "";
+    if (abs >= 1_000_000_000) return `${sign}${(abs / 1_000_000_000).toFixed(1)}M`;
+    if (abs >= 1_000_000) return `${sign}${(abs / 1_000_000).toFixed(0)}jt`;
+    if (abs >= 1_000) return `${sign}${(abs / 1_000).toFixed(0)}rb`;
+    return String(Math.round(n));
+  }
+
+  const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: { name: string; value: number; color: string }[]; label?: string }) => {
+    if (!active || !payload || payload.length === 0) return null;
+    return (
+      <div className="rounded-lg border border-border bg-popover/95 backdrop-blur-sm p-3 shadow-xl text-xs min-w-[180px]">
+        <p className="font-semibold text-foreground mb-2 whitespace-pre-line">{label}</p>
+        {payload.map((p) => (
+          <div key={p.name} className="flex items-center justify-between gap-4 py-0.5">
+            <span className="flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full inline-block shrink-0" style={{ backgroundColor: p.color }} />
+              <span className="text-muted-foreground">{p.name}</span>
+            </span>
+            <span className={`font-mono font-semibold ${p.value >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+              {fmt(p.value)}
+            </span>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <AppShell>
       <style>{`@media print { .no-print { display: none !important; } body { background: white; color: black; } }`}</style>
@@ -331,6 +400,121 @@ export default function HoldingCashflowReportPage() {
                 {c.companyCode} — {c.companyName}
               </span>
             ))}
+          </div>
+        )}
+
+        {/* Charts */}
+        {!isLoading && trendData.length > 0 && (
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+
+            {/* Chart 1: Grouped Bar — Operasi / Investasi / Pendanaan */}
+            <Card className="border-border">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold">Tren Arus Kas per Kategori</CardTitle>
+                <p className="text-xs text-muted-foreground">Net Operasi · Investasi · Pendanaan per bulan (konsolidasi)</p>
+              </CardHeader>
+              <CardContent className="pt-0 pb-4">
+                <ResponsiveContainer width="100%" height={260}>
+                  <ComposedChart data={trendData} barCategoryGap="25%" barGap={2} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
+                    <XAxis
+                      dataKey="name"
+                      tick={{ fill: "#9ca3af", fontSize: 10 }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <YAxis
+                      tickFormatter={fmtAxis}
+                      tick={{ fill: "#9ca3af", fontSize: 10 }}
+                      axisLine={false}
+                      tickLine={false}
+                      width={48}
+                    />
+                    <ReferenceLine y={0} stroke="rgba(255,255,255,0.15)" strokeDasharray="4 2" />
+                    <Tooltip content={<CustomTooltip />} cursor={{ fill: "rgba(255,255,255,0.04)" }} />
+                    <Legend
+                      wrapperStyle={{ fontSize: 11, paddingTop: 8 }}
+                      formatter={(v) => <span style={{ color: "#9ca3af" }}>{v}</span>}
+                    />
+                    <Bar dataKey="operasi" name="Net Operasi" radius={[3, 3, 0, 0]} maxBarSize={18}>
+                      {trendData.map((entry, i) => (
+                        <Cell key={i} fill={entry.operasi >= 0 ? "#34d399" : "#f87171"} fillOpacity={0.85} />
+                      ))}
+                    </Bar>
+                    <Bar dataKey="investasi" name="Net Investasi" fill="#38bdf8" fillOpacity={0.75} radius={[3, 3, 0, 0]} maxBarSize={18}>
+                      {trendData.map((entry, i) => (
+                        <Cell key={i} fill={entry.investasi >= 0 ? "#38bdf8" : "#fb923c"} fillOpacity={0.75} />
+                      ))}
+                    </Bar>
+                    <Bar dataKey="pendanaan" name="Net Pendanaan" fill="#c084fc" fillOpacity={0.75} radius={[3, 3, 0, 0]} maxBarSize={18}>
+                      {trendData.map((entry, i) => (
+                        <Cell key={i} fill={entry.pendanaan >= 0 ? "#c084fc" : "#f472b6"} fillOpacity={0.75} />
+                      ))}
+                    </Bar>
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
+            {/* Chart 2: ComposedChart — Bar cashChange + Line kumulatif */}
+            <Card className="border-border">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold">Perubahan & Akumulasi Kas Bersih</CardTitle>
+                <p className="text-xs text-muted-foreground">Batang = Δ kas tiap bulan · Garis = Akumulasi saldo kas</p>
+              </CardHeader>
+              <CardContent className="pt-0 pb-4">
+                <ResponsiveContainer width="100%" height={260}>
+                  <ComposedChart data={trendData} barCategoryGap="30%" margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
+                    <XAxis
+                      dataKey="name"
+                      tick={{ fill: "#9ca3af", fontSize: 10 }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <YAxis
+                      yAxisId="left"
+                      tickFormatter={fmtAxis}
+                      tick={{ fill: "#9ca3af", fontSize: 10 }}
+                      axisLine={false}
+                      tickLine={false}
+                      width={48}
+                    />
+                    <YAxis
+                      yAxisId="right"
+                      orientation="right"
+                      tickFormatter={fmtAxis}
+                      tick={{ fill: "#9ca3af", fontSize: 10 }}
+                      axisLine={false}
+                      tickLine={false}
+                      width={48}
+                    />
+                    <ReferenceLine yAxisId="left" y={0} stroke="rgba(255,255,255,0.15)" strokeDasharray="4 2" />
+                    <Tooltip content={<CustomTooltip />} cursor={{ fill: "rgba(255,255,255,0.04)" }} />
+                    <Legend
+                      wrapperStyle={{ fontSize: 11, paddingTop: 8 }}
+                      formatter={(v) => <span style={{ color: "#9ca3af" }}>{v}</span>}
+                    />
+                    <Bar yAxisId="left" dataKey="operasi" name="Δ Kas Operasi" radius={[3, 3, 0, 0]} maxBarSize={24}>
+                      {trendData.map((entry, i) => (
+                        <Cell key={i} fill={entry.operasi >= 0 ? "#34d399" : "#f87171"} fillOpacity={0.8} />
+                      ))}
+                    </Bar>
+                    <Line
+                      yAxisId="right"
+                      type="monotone"
+                      dataKey="kasKumulatif"
+                      name="Akumulasi Kas"
+                      stroke="#facc15"
+                      strokeWidth={2}
+                      dot={{ fill: "#facc15", r: 3, strokeWidth: 0 }}
+                      activeDot={{ r: 5, fill: "#facc15" }}
+                    />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
           </div>
         )}
 
