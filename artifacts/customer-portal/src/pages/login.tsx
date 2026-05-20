@@ -5,7 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { supabase } from "@/lib/supabase";
 
-import { fetchAndStoreProfile, setDevToken, setPortalProfile, setAuthToken } from "@/lib/auth";
+import { fetchAndStoreProfile, setDevToken, setPortalProfile, setAuthToken, getAuthToken } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -61,11 +61,26 @@ export default function Login() {
     defaultValues: { email: "", password: "" },
   });
 
-  function redirectAfterLogin(role: string) {
+  async function redirectAfterLogin(role: string, token?: string) {
     const rt = new URLSearchParams(window.location.search).get("returnTo");
     if (rt) { setLocation(rt); return; }
-    if (role === "admin") setLocation("/admin");
-    else if (role === "vendor") setLocation("/vendor-dashboard");
+    if (role === "admin") { setLocation("/admin"); return; }
+
+    const authToken = token || getAuthToken();
+    if (authToken) {
+      try {
+        const res = await fetch(`${BASE}/api/portal/onboarding/status`, {
+          headers: { Authorization: `Bearer ${authToken}` },
+        });
+        if (res.ok) {
+          const d = await res.json() as { status: string };
+          if (d.status === "incomplete") { setLocation("/onboarding"); return; }
+          if (d.status === "pending" || d.status === "rejected") { setLocation("/pending-approval"); return; }
+        }
+      } catch { /* fallback */ }
+    }
+
+    if (role === "vendor") setLocation("/vendor-dashboard");
     else setLocation("/dashboard");
   }
 
