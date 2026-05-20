@@ -25,3 +25,23 @@ export function resolveCompanyId(req: Request): number {
   const n = raw ? parseInt(String(raw), 10) : NaN;
   return Number.isNaN(n) ? (user?.companyId ?? 1) : n;
 }
+
+/**
+ * Like resolveCompanyId, but admin (or unassigned user) can request
+ * cross-company aggregation by passing `?company=all` / `?companyId=all`.
+ * Returns "all" to signal the caller to skip the company filter.
+ */
+export function resolveCompanyScope(req: Request): number | "all" {
+  const user = req.user;
+  if (user?.companyId != null && user.role !== "admin") {
+    return user.companyId;
+  }
+  const raw = (
+    req.query["companyId"] ??
+    req.query["company"] ??
+    (req.body as Record<string, unknown> | undefined)?.["companyId"]
+  ) as string | undefined;
+  if (raw && String(raw).toLowerCase() === "all") return "all";
+  const n = raw ? parseInt(String(raw), 10) : NaN;
+  return Number.isNaN(n) ? (user?.companyId ?? 1) : n;
+}

@@ -24,6 +24,10 @@ args = "POS"
 task = "workflow.run"
 args = "Sport Center"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "BizPortal"
+
 [[workflows.workflow]]
 name = "POS"
 author = "agent"
@@ -46,6 +50,18 @@ outputType = "console"
 task = "shell.exec"
 args = "cd artifacts/sport-center && PORT=3002 BASE_PATH=/sport-center/ pnpm exec vite --config vite.config.ts --host 0.0.0.0"
 waitForPort = 3002
+
+[[workflows.workflow]]
+name = "BizPortal"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "bash start-all.sh"
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"

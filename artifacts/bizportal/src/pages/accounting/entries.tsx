@@ -166,14 +166,14 @@ export default function EntriesPage() {
   const prefetchHover = usePrefetchOnHover();
   const { toast } = useToast();
   const { t } = useLanguage();
-  const { activeCompanyId } = useCompany();
+  const { activeCompanyId, isConsolidated } = useCompany();
   const [filter, setFilter] = useState<{ journalId?: number; from?: string; to?: string }>({});
   const params = useMemo(() => ({
     ...(filter.journalId ? { journalId: filter.journalId } : {}),
     ...(filter.from ? { from: new Date(filter.from).toISOString() } : {}),
     ...(filter.to ? { to: new Date(filter.to + "T23:59:59").toISOString() } : {}),
-    company: activeCompanyId,
-  }), [filter, activeCompanyId]);
+    company: (isConsolidated ? "all" : activeCompanyId) as unknown as number,
+  }), [filter, activeCompanyId, isConsolidated]);
   const { data: entries } = useListAccountingEntries(params, { query: { queryKey: getListAccountingEntriesQueryKey(params) } });
   const { data: journals } = useListJournals();
   const { data: accounts } = useListAccounts();

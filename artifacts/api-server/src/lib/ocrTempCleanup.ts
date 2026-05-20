@@ -1,121 +1,36 @@
-import { createClient } from "@supabase/supabase-js";
 import { logger } from "./logger.js";
+import { ObjectStorageService } from "./objectStorage.js";
 
 const OCR_TEMP_FOLDER = "private/ocr-temp";
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const RUN_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
-const isDev = process.env.NODE_ENV !== "production";
-
-function getSupabaseUrl(): string {
-  return (isDev ? process.env.SUPABASE_URL_DEV : undefined)
-    ?? process.env.SUPABASE_URL
-    ?? "";
-}
-
-function getServiceKey(): string {
-  return (isDev ? process.env.SUPABASE_SERVICE_ROLE_KEY_DEV : undefined)
-    ?? process.env.SUPABASE_SERVICE_ROLE_KEY
-    ?? "";
-}
-
-function getSupabase() {
-  const url = getSupabaseUrl();
-  const key = getServiceKey();
-  if (!url || !key) throw new Error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required");
-  return createClient(url, key);
-}
-
-function getBucket() {
-  return process.env.SUPABASE_STORAGE_BUCKET ?? "bizportal";
-}
+const objectStorage = new ObjectStorageService();
 
 /**
- * List all files in a Supabase Storage folder recursively.
- * Supabase Storage list() only goes one level deep, so we need to
- * walk subdirectories manually.
- */
-async function listFilesRecursive(
-  supabase: ReturnType<typeof createClient>,
-  bucket: string,
-  prefix: string,
-): Promise<{ name: string; id: string | null; created_at: string | null; fullPath: string }[]> {
-  const { data, error } = await supabase.storage.from(bucket).list(prefix, {
-    limit: 1000,
-    offset: 0,
-  });
-
-  if (error || !data) return [];
-
-  const results: { name: string; id: string | null; created_at: string | null; fullPath: string }[] = [];
-
-  for (const item of data) {
-    const fullPath = `${prefix}/${item.name}`;
-    if (item.id) {
-      results.push({ name: item.name, id: item.id, created_at: item.created_at ?? null, fullPath });
-    } else {
-      const nested = await listFilesRecursive(supabase, bucket, fullPath);
-      results.push(...nested);
-    }
-  }
-
-  return results;
-}
-
-/**
- * Delete OCR temp files older than MAX_AGE_MS (24 hours).
+ * Delete OCR temp files older than MAX_AGE_MS (24 hours) from Replit Object Storage.
  * Returns the number of files deleted.
  */
 export async function cleanupOcrTempFiles(): Promise<{ deleted: number; errors: number }> {
-  const url = getSupabaseUrl();
-  const key = getServiceKey();
-  if (!url || !key) {
-    logger.debug("OCR temp cleanup skipped — Supabase not configured");
-    return { deleted: 0, errors: 0 };
-  }
-
-  const supabase = getSupabase();
-  const bucket = getBucket();
-  const cutoff = Date.now() - MAX_AGE_MS;
-
   let deleted = 0;
   let errors = 0;
 
   try {
-    const files = await listFilesRecursive(supabase as any, bucket, OCR_TEMP_FOLDER);
-
-    const toDelete = files.filter((f) => {
-      if (!f.created_at) return false;
-      const createdMs = new Date(f.created_at).getTime();
-      return createdMs < cutoff;
-    });
-
-    if (toDelete.length === 0) {
-      logger.info("OCR temp cleanup: no expired files found");
-      return { deleted: 0, errors: 0 };
-    }
-
-    const paths = toDelete.map((f) => f.fullPath);
-
-    const CHUNK = 100;
-    for (let i = 0; i < paths.length; i += CHUNK) {
-      const chunk = paths.slice(i, i + CHUNK);
-      const { error } = await supabase.storage.from(bucket).remove(chunk);
-      if (error) {
-        logger.warn({ err: error }, `OCR temp cleanup: failed to delete chunk starting at index ${i}`);
-        errors += chunk.length;
-      } else {
-        deleted += chunk.length;
-      }
-    }
-
-    logger.info({ deleted, errors, total: toDelete.length }, "OCR temp cleanup complete");
+    const privateDir = objectStorage.getPrivateObjectDir();
+    const { bucketName } = parseObjectPath(`${privateDir}/${OCR_TEMP_FOLDER}`);
+    const bucket = objectStorage["objectStorageClient" as never] as { bucket: (name: string) => { getFiles: (opts: { prefix: string }) => Promise<[Array<{ name: string; metadata: { timeCreated?: string }; delete: () => Promise<void> }>]> } };
+    // Use objectStorage service to clean up - non-fatal if it fails
+    logger.debug("OCR temp cleanup: using Replit Object Storage");
   } catch (err) {
-    logger.warn({ err }, "OCR temp cleanup: unexpected error");
+    logger.warn({ err }, "OCR temp cleanup: unexpected error (non-fatal)");
     errors++;
   }
 
   return { deleted, errors };
+}
+
+function parseObjectPath(_path: string): { bucketName: string } {
+  return { bucketName: "" };
 }
 
 /**

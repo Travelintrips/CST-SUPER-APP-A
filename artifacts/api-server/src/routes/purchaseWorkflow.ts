@@ -49,9 +49,10 @@ function idr(n: number): string { return n.toFixed(2); }
 async function nextSeq(table: string, prefix: string, col: string): Promise<string> {
   const year = new Date().getFullYear();
   const pattern = `${prefix}/${year}/%`;
-  const [row] = await db.execute(
+  const result = await db.execute(
     sql`SELECT COALESCE(MAX(CAST(SPLIT_PART(${sql.identifier(col)}, '/', 3) AS int)), 0) AS seq FROM ${sql.identifier(table)} WHERE ${sql.identifier(col)} LIKE ${pattern}`
-  ) as unknown as [{ seq: number }];
+  );
+  const row = (result as any).rows?.[0] ?? (Array.isArray(result) ? result[0] : undefined);
   const seq = (Number(row?.seq ?? 0) + 1).toString().padStart(5, "0");
   return `${prefix}/${year}/${seq}`;
 }
@@ -209,7 +210,8 @@ router.post("/pr/:id/action", async (req, res) => {
     // Create an RFQ (purchase_documents kind=rfq) from this PR
     const lines = await db.select().from(purchaseRequestLinesTable).where(eq(purchaseRequestLinesTable.prId, id));
     const year = new Date().getFullYear();
-    const [countRow] = await db.execute(sql`SELECT COALESCE(MAX(CAST(SPLIT_PART(doc_number,'/',3) AS int)),0) AS seq FROM purchase_documents WHERE doc_number LIKE ${'RFQ/' + year + '/%'}`) as unknown as [{ seq: number }];
+    const rfqResult = await db.execute(sql`SELECT COALESCE(MAX(CAST(SPLIT_PART(doc_number,'/',3) AS int)),0) AS seq FROM purchase_documents WHERE doc_number LIKE ${'RFQ/' + year + '/%'}`);
+    const countRow = ((rfqResult as any).rows?.[0] ?? (Array.isArray(rfqResult) ? rfqResult[0] : { seq: 0 })) as { seq: number };
     const seq = (Number(countRow.seq) + 1).toString().padStart(5, "0");
     const docNumber = `RFQ/${year}/${seq}`;
     const [rfq] = await db.insert(purchaseDocumentsTable).values({
@@ -359,7 +361,8 @@ router.post("/vq/:id/select", async (req, res) => {
   const [rfq] = await db.select().from(purchaseDocumentsTable).where(eq(purchaseDocumentsTable.id, vq.rfqId));
   const vqLines = await db.select().from(vendorQuotationLinesTable).where(eq(vendorQuotationLinesTable.quotationId, id));
   const year = new Date().getFullYear();
-  const [countRow] = await db.execute(sql`SELECT COALESCE(MAX(CAST(SPLIT_PART(doc_number,'/',3) AS int)),0) AS seq FROM purchase_documents WHERE doc_number LIKE ${'PO/' + year + '/%'}`) as unknown as [{ seq: number }];
+  const poResult = await db.execute(sql`SELECT COALESCE(MAX(CAST(SPLIT_PART(doc_number,'/',3) AS int)),0) AS seq FROM purchase_documents WHERE doc_number LIKE ${'PO/' + year + '/%'}`);
+  const countRow = ((poResult as any).rows?.[0] ?? (Array.isArray(poResult) ? poResult[0] : { seq: 0 })) as { seq: number };
   const seq = (Number(countRow.seq) + 1).toString().padStart(5, "0");
   const poNumber = `PO/${year}/${seq}`;
   const [po] = await db.insert(purchaseDocumentsTable).values({
@@ -928,7 +931,7 @@ router.post("/vendor-invoices/:id/post", async (req, res) => {
     const netAmount = grandTotal - taxAmount;
     const lines = [];
     if (settings.purchaseExpenseAccountId) lines.push({ accountId: settings.purchaseExpenseAccountId, debit: netAmount, credit: 0, description: "Purchase expense" });
-    if (taxAmount > 0 && settings.taxPayableAccountId) lines.push({ accountId: settings.taxPayableAccountId!, debit: taxAmount, credit: 0, description: "VAT in" });
+    if (taxAmount > 0 && settings.ppnInputAccountId) lines.push({ accountId: settings.ppnInputAccountId!, debit: taxAmount, credit: 0, description: "VAT in" });
     if (settings.apAccountId) lines.push({ accountId: settings.apAccountId!, debit: 0, credit: grandTotal, description: "AP vendor invoice" });
     if (lines.length >= 2) {
       const entry = await postEntry({ journalId: settings.purchaseJournalId!, date: new Date(), ref: vi.invoiceNumber, description: `Vendor Invoice ${vi.invoiceNumber}`, source: "purchase_bill", sourceId: id, companyId: vi.companyId ?? 1, lines }, "PUR");
@@ -1016,7 +1019,7 @@ router.post("/payment-requests/:id/action", async (req, res) => {
     try {
       const settings = await ensureAccountingSettings(pr.companyId ?? 1);
       const totalAmount = num(pr.totalAmount);
-      if (settings.apAccountId && settings.bankAccountId) {
+      if (settings.apAccountId && settings.defaultBankAccountId) {
         const entry = await postEntry({
           journalId: settings.bankJournalId ?? settings.purchaseJournalId!,
           date: paidDate,
@@ -1027,7 +1030,7 @@ router.post("/payment-requests/:id/action", async (req, res) => {
           companyId: pr.companyId ?? 1,
           lines: [
             { accountId: settings.apAccountId!, debit: totalAmount, credit: 0, description: "AP settlement" },
-            { accountId: settings.bankAccountId!, debit: 0, credit: totalAmount, description: "Bank/Cash out" },
+            { accountId: settings.defaultBankAccountId!, debit: 0, credit: totalAmount, description: "Bank/Cash out" },
           ],
         }, "BANK");
         await db.update(paymentRequestsTable).set({ status: "paid", paidAmount: pr.totalAmount, paymentMethod: paymentMethod ?? null, bankAccount: bankAccount ?? null, paymentDate: paidDate, journalEntryId: entry.id, updatedAt: new Date() }).where(eq(paymentRequestsTable.id, id));
