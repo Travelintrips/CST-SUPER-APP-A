@@ -310,6 +310,20 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "portalOrders", href: "/logistics/portal-orders", icon: ClipboardList },
       ],
     },
+    // ── HOLDING ────────────────────────────────────────────────────────
+    {
+      type: "group",
+      titleKey: "Holding",
+      basePath: "/holding",
+      icon: Building2,
+      roles: ["admin", "owner"],
+      children: [
+        { titleKey: "Overview Perusahaan", href: "/holding", icon: LayoutDashboard },
+        { titleKey: "Dashboard Holding", href: "/holding/dashboard", icon: BarChart2 },
+        { titleKey: "Laporan L/R Holding", href: "/holding/pl-report", icon: TrendingUp },
+      ],
+    },
+
     { type: "flat", titleKey: "trading", href: "/trading", icon: Package, roles: ["admin", "owner", "trading"] },
     { type: "flat", titleKey: "Katalog Terpadu", href: "/katalog-terpadu", icon: Layers, roles: ["admin", "owner"] },
     {
