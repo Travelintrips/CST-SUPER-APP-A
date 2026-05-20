@@ -7,6 +7,10 @@ import { db } from "@workspace/db";
 import {
   posCashiersTable, posProductsTable, posOrdersTable,
   posOrderItemsTable, posStockItemsTable, posStockAdjustmentsTable,
+  posBranchesTable, posSettingsTable, posQrOrdersTable,
+} from "@workspace/db";
+import { eq, desc, and, gte, lte, sql, inArray } from "drizzle-orm";
+import { registerPosKasirConnection, unregisterPosKasirConnection, broadcastToPosKasirBranch } from "../lib/sseManager.js";
   posBranchesTable, posSettingsTable, notificationLogsTable,
 } from "@workspace/db";
 import { eq, desc, and, gte, lte, sql, inArray } from "drizzle-orm";
@@ -1206,6 +1210,133 @@ router.get("/settings", async (_req, res) => {
   const settings: Record<string, string> = {};
   for (const r of rows) settings[r.key] = r.value;
   return res.json(settings);
+});
+
+// ── SSE: real-time notifikasi untuk kasir ─────────────────────────────────────
+
+// GET /api/pos-kasir/events?token=<kasir_token>
+router.get("/events", async (req, res) => {
+  const { token } = req.query;
+  if (!token || typeof token !== "string") return res.status(401).json({ message: "Token diperlukan" });
+  const payload = parseCashierToken(token);
+  if (!payload) return res.status(401).json({ message: "Token tidak valid" });
+  const [cashier] = await db.select().from(posCashiersTable).where(eq(posCashiersTable.id, payload.id));
+  if (!cashier || cashier.status !== "approved") return res.status(403).json({ message: "Akun tidak valid" });
+  const branchId = cashier.branchId;
+  if (!branchId) return res.status(400).json({ message: "Kasir belum memiliki cabang" });
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+  res.write(`event: connected\ndata: ${JSON.stringify({ branchId })}\n\n`);
+
+  registerPosKasirConnection(branchId, res);
+
+  const heartbeat = setInterval(() => {
+    try { res.write(":ping\n\n"); } catch { clearInterval(heartbeat); }
+  }, 25000);
+
+  req.on("close", () => {
+    clearInterval(heartbeat);
+    unregisterPosKasirConnection(branchId, res);
+  });
+});
+
+// ── QR Orders ─────────────────────────────────────────────────────────────────
+
+interface QrOrderItem { productId: number; productName: string; qty: number; price: string; }
+
+// POST /api/pos-kasir/qr-orders  — publik, dikirim dari halaman menu meja
+router.post("/qr-orders", async (req, res) => {
+  const { branchId, tableNumber, customerName, items, note } = (req.body ?? {}) as {
+    branchId?: unknown; tableNumber?: unknown; customerName?: unknown;
+    items?: unknown; note?: unknown;
+  };
+  if (!branchId || !Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ message: "branchId dan items wajib diisi" });
+  }
+  const [branch] = await db.select().from(posBranchesTable).where(eq(posBranchesTable.id, Number(branchId)));
+  if (!branch || !branch.isActive) return res.status(404).json({ message: "Cabang tidak ditemukan" });
+
+  const productIds = (items as { productId: unknown }[]).map((i) => Number(i.productId));
+  const posProds = (await db.execute(sql`
+    SELECT id, name, price FROM pos_products
+    WHERE id = ANY(${productIds}::int[]) AND company_id = ${branch.companyId} AND is_active = TRUE
+  `)).rows as Array<{ id: number; name: string; price: string }>;
+  const prodMap = new Map(posProds.map((p) => [p.id, p]));
+
+  const enrichedItems: QrOrderItem[] = (items as { productId: unknown; qty: unknown }[]).map((i) => {
+    const p = prodMap.get(Number(i.productId));
+    if (!p) throw new Error(`Produk ${String(i.productId)} tidak ditemukan`);
+    return { productId: p.id, productName: p.name, qty: Math.max(1, Number(i.qty) || 1), price: p.price };
+  });
+
+  const [order] = await db.insert(posQrOrdersTable).values({
+    branchId: Number(branchId),
+    companyId: branch.companyId,
+    tableNumber: tableNumber ? String(tableNumber) : null,
+    customerName: customerName ? String(customerName).trim().slice(0, 80) : null,
+    items: JSON.stringify(enrichedItems),
+    note: note ? String(note).trim().slice(0, 300) : null,
+    status: "pending",
+  }).returning();
+
+  const payload = {
+    id: order!.id, branchId: order!.branchId,
+    tableNumber: order!.tableNumber, customerName: order!.customerName,
+    items: enrichedItems, note: order!.note,
+    status: order!.status, createdAt: order!.createdAt,
+  };
+  broadcastToPosKasirBranch(Number(branchId), "new_qr_order", payload);
+  return res.status(201).json({ message: "Pesanan berhasil dikirim", id: order!.id });
+});
+
+// GET /api/pos-kasir/qr-orders/pending  — kasir auth
+router.get("/qr-orders/pending", async (req, res) => {
+  const cashier = await requireCashierAuth(req, res);
+  if (!cashier) return;
+  if (!cashier.branchId) return res.json([]);
+  const rows = await db.select().from(posQrOrdersTable)
+    .where(and(eq(posQrOrdersTable.branchId, cashier.branchId), eq(posQrOrdersTable.status, "pending")))
+    .orderBy(desc(posQrOrdersTable.createdAt));
+  return res.json(rows.map((r) => ({
+    id: r.id, branchId: r.branchId,
+    tableNumber: r.tableNumber, customerName: r.customerName,
+    items: JSON.parse(r.items) as QrOrderItem[],
+    note: r.note, status: r.status, createdAt: r.createdAt,
+  })));
+});
+
+// PATCH /api/pos-kasir/qr-orders/:id/accept  — kasir auth
+router.patch("/qr-orders/:id/accept", async (req, res) => {
+  const cashier = await requireCashierAuth(req, res);
+  if (!cashier) return;
+  const id = Number(req.params.id);
+  const [qrOrder] = await db.select().from(posQrOrdersTable).where(eq(posQrOrdersTable.id, id));
+  if (!qrOrder) return res.status(404).json({ message: "Pesanan tidak ditemukan" });
+  if (qrOrder.branchId !== cashier.branchId) return res.status(403).json({ message: "Bukan pesanan cabang Anda" });
+  if (qrOrder.status !== "pending") return res.status(400).json({ message: "Pesanan sudah diproses" });
+  await db.update(posQrOrdersTable)
+    .set({ status: "accepted", reviewedById: cashier.id, reviewedAt: new Date() })
+    .where(eq(posQrOrdersTable.id, id));
+  return res.json({ message: "Pesanan diterima" });
+});
+
+// PATCH /api/pos-kasir/qr-orders/:id/reject  — kasir auth
+router.patch("/qr-orders/:id/reject", async (req, res) => {
+  const cashier = await requireCashierAuth(req, res);
+  if (!cashier) return;
+  const id = Number(req.params.id);
+  const [qrOrder] = await db.select().from(posQrOrdersTable).where(eq(posQrOrdersTable.id, id));
+  if (!qrOrder) return res.status(404).json({ message: "Pesanan tidak ditemukan" });
+  if (qrOrder.branchId !== cashier.branchId) return res.status(403).json({ message: "Bukan pesanan cabang Anda" });
+  if (qrOrder.status !== "pending") return res.status(400).json({ message: "Pesanan sudah diproses" });
+  await db.update(posQrOrdersTable)
+    .set({ status: "rejected", reviewedById: cashier.id, reviewedAt: new Date() })
+    .where(eq(posQrOrdersTable.id, id));
+  return res.json({ message: "Pesanan ditolak" });
 });
 
 // PATCH /api/pos-kasir/admin/settings  — admin only

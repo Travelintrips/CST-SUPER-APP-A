@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { Bell, Package, Ship, ShoppingBag, CheckCheck, Trash2, FileText, RefreshCw, Container, Layers } from "lucide-react";
+import { Bell, Package, Ship, ShoppingBag, CheckCheck, Trash2, FileText, RefreshCw, Container, Layers, BellOff, BellRing } from "lucide-react";
 import { toast } from "sonner";
 import {
   Popover,
@@ -83,6 +83,15 @@ function notifDescription(n: OrderNotification): string {
 
 export function NotificationBell() {
   const { notifications, dbUnreadTotal, markAllRead, clearAll, setOnNewOrder } = useOrderNotificationsContext();
+  const {
+    notifications,
+    unreadCount,
+    markAllRead,
+    clearAll,
+    setOnNewOrder,
+    notifPermission,
+    requestNotifPermission,
+  } = useOrderNotificationsContext();
   const initialized = useRef(false);
 
   if (!initialized.current) {
@@ -99,6 +108,19 @@ export function NotificationBell() {
         },
       });
     });
+  }
+
+  async function handleEnableNotif() {
+    const result = await requestNotifPermission();
+    if (result === "granted") {
+      toast.success("Notifikasi browser aktif", {
+        description: "Anda akan menerima notifikasi meski sedang di tab lain.",
+      });
+    } else if (result === "denied") {
+      toast.error("Notifikasi diblokir", {
+        description: "Aktifkan notifikasi dari pengaturan browser Anda.",
+      });
+    }
   }
 
   return (
@@ -127,6 +149,32 @@ export function NotificationBell() {
             </button>
           )}
         </div>
+
+        {/* Banner aktifkan notifikasi browser */}
+        {notifPermission === "default" && (
+          <div className="flex items-center gap-3 border-b border-border bg-amber-50 dark:bg-amber-950/30 px-4 py-2.5">
+            <BellRing size={15} className="text-amber-500 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-medium text-amber-800 dark:text-amber-300">Aktifkan notifikasi suara</p>
+              <p className="text-[11px] text-amber-700 dark:text-amber-400">Muncul meski di tab lain</p>
+            </div>
+            <button
+              onClick={handleEnableNotif}
+              className="shrink-0 rounded-md bg-amber-500 hover:bg-amber-600 px-2.5 py-1 text-[11px] font-semibold text-white transition-colors"
+            >
+              Aktifkan
+            </button>
+          </div>
+        )}
+
+        {notifPermission === "denied" && (
+          <div className="flex items-center gap-2 border-b border-border bg-red-50 dark:bg-red-950/20 px-4 py-2">
+            <BellOff size={13} className="text-red-400 shrink-0" />
+            <p className="text-[11px] text-red-600 dark:text-red-400">
+              Notifikasi diblokir browser. Ubah di pengaturan situs.
+            </p>
+          </div>
+        )}
 
         {notifications.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-10 text-muted-foreground">

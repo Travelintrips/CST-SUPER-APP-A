@@ -11,6 +11,8 @@ interface OrderNotificationsContextValue {
   clearAll: () => void;
   setOnNewOrder: (fn: (n: OrderNotification) => void) => void;
   lastFreightEventAt: number | null;
+  notifPermission: NotificationPermission;
+  requestNotifPermission: () => Promise<NotificationPermission>;
 }
 
 const OrderNotificationsContext = createContext<OrderNotificationsContextValue | null>(null);
