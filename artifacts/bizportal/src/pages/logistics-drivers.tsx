@@ -1,5 +1,6 @@
 import { AppShell } from "@/components/layout/AppShell";
 import { useState, useEffect, useRef } from "react";
+import { useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -102,6 +103,7 @@ export default function LogisticsDriversPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { t } = useLanguage();
+  const { isAuthenticated } = useSupabaseAuth();
 
   const [showDialog, setShowDialog] = useState(false);
   const [editDriver, setEditDriver] = useState<Driver | null>(null);
@@ -114,6 +116,7 @@ export default function LogisticsDriversPage() {
 
   // SSE real-time subscription untuk update status driver
   useEffect(() => {
+    if (!isAuthenticated) return;
     let es: EventSource | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let active = true;
@@ -209,7 +212,7 @@ export default function LogisticsDriversPage() {
       es?.close();
       sseRef.current = null;
     };
-  }, [queryClient, toast]);
+  }, [isAuthenticated, queryClient, toast]);
 
   // Track deviated driver IDs from geofence events for map highlighting
   useEffect(() => {

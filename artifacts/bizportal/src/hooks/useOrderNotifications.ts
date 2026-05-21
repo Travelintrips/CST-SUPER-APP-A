@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
 
 function playNotificationChime() {
   try {
@@ -126,6 +127,7 @@ function dbRowToNotif(row: Record<string, unknown>): OrderNotification {
 }
 
 export function useOrderNotifications() {
+  const { isAuthenticated } = useSupabaseAuth();
   const [notifications, setNotifications] = useState<OrderNotification[]>([]);
   const [connected, setConnected] = useState(false);
   const [lastFreightEventAt, setLastFreightEventAt] = useState<number | null>(null);
@@ -250,6 +252,7 @@ export function useOrderNotifications() {
   }
 
   useEffect(() => {
+    if (!isAuthenticated) return;
     let retryTimer: ReturnType<typeof setTimeout>;
     let mounted = true;
 
@@ -470,9 +473,8 @@ export function useOrderNotifications() {
       esRef.current?.close();
       esRef.current = null;
     };
-  }, []);
+  }, [isAuthenticated]);
 
-  return { notifications, unreadCount, dbUnreadTotal, connected, markAllRead, markSingleRead, clearAll, setOnNewOrder, lastFreightEventAt };
   return {
     notifications,
     unreadCount,
