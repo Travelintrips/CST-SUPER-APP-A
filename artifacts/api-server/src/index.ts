@@ -1,8 +1,5 @@
 import app from "./app";
 import { logger } from "./lib/logger";
-import { spawn } from "child_process";
-import { fileURLToPath } from "url";
-import path from "path";
 import { seedAccountingDefaults } from "./lib/accountingSeed";
 import { seedLogisticsServiceItems } from "./lib/seedLogisticsItems";
 import { seedCatalogProducts } from "./lib/seedCatalogProducts";
@@ -40,14 +37,6 @@ import { runEnterpriseMigration } from "./lib/enterpriseMigration";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 
-// Dev-only: spawn proxy5000 so port-5000 webview stays alive
-if (process.env["NODE_ENV"] !== "production") {
-  const __filename = fileURLToPath(import.meta.url);
-  const proxyScript = path.resolve(path.dirname(__filename), "../../..", "scripts/proxy5000.mjs");
-  const proxy = spawn("node", [proxyScript], { stdio: "inherit", detached: false });
-  proxy.on("error", (err) => logger.error({ err }, "proxy5000 spawn failed"));
-  proxy.on("exit", (code) => logger.warn({ code }, "proxy5000 exited"));
-}
 
 const rawPort = process.env["PORT"] ?? process.env["API_PORT"] ?? "5000";
 

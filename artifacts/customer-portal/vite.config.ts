@@ -103,6 +103,7 @@ export default defineConfig({
     hmr: {
       clientPort: 443,
       protocol: "wss",
+      host: process.env.REPLIT_DEV_DOMAIN ?? "localhost",
     },
     proxy: {
       "/api": {

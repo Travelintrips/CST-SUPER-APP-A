@@ -18,82 +18,67 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "POS"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Sport Center"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "BizPortal"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
 args = "API Server"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
 args = "Customer Portal"
 
-[[workflows.workflow]]
-name = "POS"
-author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "console"
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Biz Portal"
 
 [[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "bash start-pos-kasir.sh"
-
-[[workflows.workflow]]
-name = "Sport Center"
-author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "console"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd artifacts/sport-center && PORT=3002 BASE_PATH=/sport-center/ pnpm exec vite --config vite.config.ts --host 0.0.0.0"
-waitForPort = 3002
-
-[[workflows.workflow]]
-name = "BizPortal"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd artifacts/bizportal && PORT=3000 BASE_PATH=/bizportal/ node_modules/.bin/vite --config vite.config.ts --host 0.0.0.0"
-waitForPort = 3000
-
-[workflows.workflow.metadata]
-outputType = "console"
+task = "workflow.run"
+args = "Start application"
 
 [[workflows.workflow]]
 name = "API Server"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd artifacts/api-server && PORT=8080 NODE_ENV=development node --enable-source-maps ./dist/index.mjs"
-waitForPort = 8080
-
 [workflows.workflow.metadata]
 outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "fuser -k 8080/tcp 2>/dev/null; sleep 1; cd artifacts/api-server && PORT=8080 NODE_ENV=development node --enable-source-maps ./dist/index.mjs"
+waitForPort = 8080
 
 [[workflows.workflow]]
 name = "Customer Portal"
 author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "cd artifacts/customer-portal && PORT=3001 BASE_PATH=/ pnpm exec vite --config vite.config.ts --host 0.0.0.0"
 waitForPort = 3001
 
+[[workflows.workflow]]
+name = "Biz Portal"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/bizportal && PORT=3000 BASE_PATH=/bizportal/ pnpm exec vite --config vite.config.ts --host 0.0.0.0"
+waitForPort = 3000
+
 [workflows.workflow.metadata]
 outputType = "console"
+
+[[workflows.workflow]]
+name = "Start application"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "node scripts/proxy5000.mjs"
+waitForPort = 5000
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
@@ -139,14 +124,25 @@ defaultBucketID = "replit-objstore-e357cc66-19c3-4d73-9ca9-3069d78355d1"
 
 [[ports]]
 localPort = 3000
-externalPort = 9000
+externalPort = 3000
 
 [[ports]]
+<<<<<<< HEAD
+=======
+localPort = 3001
+externalPort = 3001
+
+[[ports]]
+>>>>>>> 6b7728dad851e379a61edb28227b22719c9b246b
 localPort = 5000
 externalPort = 80
 
 [[ports]]
+<<<<<<< HEAD
 localPort = 8081
+=======
+localPort = 8080
+>>>>>>> 6b7728dad851e379a61edb28227b22719c9b246b
 externalPort = 8008
 
 [[ports]]

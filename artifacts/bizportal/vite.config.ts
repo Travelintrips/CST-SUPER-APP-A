@@ -95,6 +95,7 @@ if (h.indexOf('access_token') !== -1 || h.indexOf('error=') !== -1 ||
     hmr: {
       clientPort: 443,
       protocol: "wss",
+      host: process.env.REPLIT_DEV_DOMAIN ?? "localhost",
     },
     watch: {
       ignored: [
