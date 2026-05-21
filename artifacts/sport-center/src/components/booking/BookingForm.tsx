@@ -13,6 +13,8 @@ import type { Booking } from "@/types";
 
 interface BookingFormProps {
   preselectedFacilityId?: string;
+  preselectedDate?: string;
+  preselectedStartTime?: string;
 }
 
 function ConfirmationPage({ booking, onReset }: { booking: Booking; onReset: () => void }) {
@@ -154,7 +156,7 @@ function ConfirmationPage({ booking, onReset }: { booking: Booking; onReset: () 
   );
 }
 
-export default function BookingForm({ preselectedFacilityId }: BookingFormProps) {
+export default function BookingForm({ preselectedFacilityId, preselectedDate, preselectedStartTime }: BookingFormProps) {
   const { addBooking } = useBookings();
   const { services, loading: servicesLoading } = useServices();
   const [success, setSuccess] = useState<Booking | null>(null);
@@ -166,8 +168,8 @@ export default function BookingForm({ preselectedFacilityId }: BookingFormProps)
     customerName: "",
     customerPhone: "",
     customerEmail: "",
-    date: "",
-    startTime: "",
+    date: preselectedDate ?? "",
+    startTime: preselectedStartTime ?? "",
     endTime: "",
     notes: "",
   });

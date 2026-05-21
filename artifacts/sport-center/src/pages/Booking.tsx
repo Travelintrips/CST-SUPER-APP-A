@@ -11,6 +11,8 @@ const steps = [
 export default function Booking() {
   const [searchParams] = useSearchParams();
   const facilityId = searchParams.get("facility") ?? undefined;
+  const preselectedDate = searchParams.get("date") ?? undefined;
+  const preselectedStart = searchParams.get("start") ?? undefined;
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -48,7 +50,11 @@ export default function Booking() {
             </ul>
           </div>
         </div>
-        <BookingForm preselectedFacilityId={facilityId} />
+        <BookingForm
+          preselectedFacilityId={facilityId}
+          preselectedDate={preselectedDate}
+          preselectedStartTime={preselectedStart}
+        />
       </div>
     </div>
   );

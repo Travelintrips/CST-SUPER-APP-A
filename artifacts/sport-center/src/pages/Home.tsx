@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { Trophy, Zap, Users, Shield, Clock, Star, ChevronRight, ArrowRight } from "lucide-react";
 import FacilityCard from "@/components/ui/FacilityCard";
+import MiniBookingForm from "@/components/booking/MiniBookingForm";
 import { facilities, testimonials } from "@/data/dummyData";
 
 const features = [
@@ -51,6 +52,7 @@ const features = [
 export default function Home() {
   return (
     <div>
+      {/* Hero */}
       <section className="relative min-h-[90vh] flex items-center justify-center overflow-hidden">
         <div
           className="absolute inset-0 bg-cover bg-center"
@@ -60,7 +62,7 @@ export default function Home() {
           }}
         />
         <div className="absolute inset-0 bg-gradient-to-br from-blue-900/85 via-slate-900/75 to-emerald-900/60" />
-        <div className="relative z-10 text-center px-4 max-w-4xl mx-auto">
+        <div className="relative z-10 w-full px-4 max-w-4xl mx-auto text-center">
           <span className="inline-block bg-white/15 backdrop-blur-sm text-white text-sm font-semibold px-4 py-1.5 rounded-full mb-6 border border-white/20">
             🏅 Sport Center Terbaik di Area SHIA
           </span>
@@ -70,25 +72,11 @@ export default function Home() {
               Bandara Soekarno Hatta
             </span>
           </h1>
-          <p className="text-lg sm:text-xl text-white/80 mb-10 max-w-2xl mx-auto leading-relaxed">
+          <p className="text-lg sm:text-xl text-white/80 mb-6 max-w-2xl mx-auto leading-relaxed">
             Tempat terbaik untuk olahraga, komunitas, dan gaya hidup sehat — tepat di jantung kawasan bandara internasional.
           </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link
-              to="/booking"
-              className="bg-gradient-to-r from-blue-600 to-emerald-500 text-white px-8 py-4 rounded-full font-bold text-lg hover:shadow-2xl hover:scale-105 transition-all duration-200 flex items-center justify-center gap-2"
-            >
-              Booking Sekarang
-              <ArrowRight className="w-5 h-5" />
-            </Link>
-            <a
-              href="#facilities"
-              className="bg-white/15 backdrop-blur-sm border border-white/30 text-white px-8 py-4 rounded-full font-bold text-lg hover:bg-white/25 transition-all duration-200"
-            >
-              Lihat Fasilitas
-            </a>
-          </div>
-          <div className="flex items-center justify-center gap-8 mt-12 text-white/70 text-sm">
+
+          <div className="flex items-center justify-center gap-8 mb-8 text-white/70 text-sm">
             <div className="text-center">
               <p className="text-3xl font-black text-white">6+</p>
               <p>Jenis Fasilitas</p>
@@ -104,9 +92,17 @@ export default function Home() {
               <p>Rating Rata-rata</p>
             </div>
           </div>
+
+          {/* Mini Booking Form */}
+          <MiniBookingForm />
+
+          <p className="text-white/50 text-xs mt-3">
+            Pilih fasilitas, tanggal & jam — lalu lanjutkan isi data untuk konfirmasi booking
+          </p>
         </div>
       </section>
 
+      {/* Features */}
       <section className="py-20 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
@@ -135,6 +131,7 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Facilities */}
       <section id="facilities" className="py-20 bg-slate-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-10 gap-4">
@@ -159,7 +156,70 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Alur Pemesanan */}
       <section className="py-20 bg-white">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-12">
+            <span className="text-blue-600 font-semibold text-sm uppercase tracking-wider">Cara Pesan</span>
+            <h2 className="text-3xl sm:text-4xl font-black text-slate-800 mt-2 mb-3">
+              Alur Pemesanan & Pembayaran
+            </h2>
+            <p className="text-slate-500 max-w-lg mx-auto text-sm">
+              Hanya 4 langkah mudah dari booking hingga lapangan siap digunakan.
+            </p>
+          </div>
+          <div className="relative">
+            {/* Connector line */}
+            <div className="hidden sm:block absolute top-10 left-[12.5%] right-[12.5%] h-0.5 bg-gradient-to-r from-blue-200 via-emerald-200 to-blue-200" />
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-8 relative">
+              {[
+                {
+                  step: "1",
+                  icon: "📋",
+                  title: "Isi Form Booking",
+                  desc: "Pilih fasilitas, tanggal, jam, dan lengkapi data diri Anda.",
+                  color: "bg-blue-600",
+                },
+                {
+                  step: "2",
+                  icon: "✅",
+                  title: "Kode Booking",
+                  desc: "Sistem mengecek ketersediaan & memberikan kode booking unik.",
+                  color: "bg-indigo-600",
+                },
+                {
+                  step: "3",
+                  icon: "💳",
+                  title: "Transfer Pembayaran",
+                  desc: "Bayar ke rekening BCA/Mandiri/GoPay, lalu kirim bukti ke WhatsApp.",
+                  color: "bg-emerald-600",
+                },
+                {
+                  step: "4",
+                  icon: "🏃",
+                  title: "Booking Dikonfirmasi",
+                  desc: "Admin konfirmasi & notifikasi dikirim ke email dan WhatsApp Anda.",
+                  color: "bg-orange-500",
+                },
+              ].map((item) => (
+                <div key={item.step} className="flex flex-col items-center text-center">
+                  <div className={`w-20 h-20 ${item.color} rounded-2xl flex items-center justify-center text-3xl mb-4 shadow-lg relative z-10`}>
+                    {item.icon}
+                  </div>
+                  <div className={`text-xs font-bold text-white ${item.color} px-2.5 py-0.5 rounded-full mb-2`}>
+                    Langkah {item.step}
+                  </div>
+                  <h3 className="font-bold text-slate-800 text-sm mb-1">{item.title}</h3>
+                  <p className="text-slate-500 text-xs leading-relaxed">{item.desc}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Testimonials */}
+      <section className="py-20 bg-slate-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
             <span className="text-blue-600 font-semibold text-sm uppercase tracking-wider">Testimoni</span>
@@ -169,7 +229,7 @@ export default function Home() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {testimonials.map((t) => (
-              <div key={t.id} className="bg-slate-50 rounded-xl p-6 hover:shadow-md transition-all duration-200">
+              <div key={t.id} className="bg-white rounded-xl p-6 hover:shadow-md transition-all duration-200">
                 <div className="flex gap-1 mb-4">
                   {Array.from({ length: 5 }).map((_, i) => (
                     <Star
@@ -192,6 +252,7 @@ export default function Home() {
         </div>
       </section>
 
+      {/* CTA */}
       <section className="py-20 bg-gradient-to-r from-blue-600 to-emerald-500">
         <div className="max-w-3xl mx-auto px-4 text-center">
           <h2 className="text-3xl sm:text-4xl font-black text-white mb-4">
