@@ -47,16 +47,33 @@ function makeLossNumber(): string {
   return `LSS/${y}${m}${d}/${ms}`;
 }
 
+// ── helpers user context ─────────────────────────────────────────────────────
+
+function getReqCompanyId(req: Request): number | null {
+  const user = req.user as { companyId?: number | null } | undefined;
+  return user?.companyId ?? null;
+}
+
+function isReqAdmin(req: Request): boolean {
+  const user = req.user as { role?: string | null } | undefined;
+  return user?.role === "admin";
+}
+
 // ── CABANG ───────────────────────────────────────────────────────────────────
-// TODO Step 2 (Audit K5/R2): Tabel pos_branches belum punya kolom company_id.
-// Saat ini semua query di bawah tidak memfilter by company_id, sehingga user dari
-// perusahaan berbeda bisa melihat/mengubah data cabang POS perusahaan lain.
-// Rencana perbaikan: tambah kolom company_id (nullable) di pos_branches via migration,
-// lalu tambah WHERE company_id = req.user.companyId di semua query CRUD di bawah.
+// P3 (Audit K5/R2): company_id filter diterapkan di semua route branches.
+// Non-admin hanya melihat/mengubah cabang milik companyId mereka sendiri.
+// Data lama dengan company_id = NULL tetap terlihat (backward compat) tapi
+// insert baru selalu menyertakan company_id.
 
 router.get("/branches", async (req: Request, res: Response) => {
   const businessUnit = req.query.businessUnit as string | undefined;
+  const companyId = getReqCompanyId(req);
+  const admin = isReqAdmin(req);
+
   let query = sql`SELECT * FROM pos_branches WHERE 1=1`;
+  if (!admin && companyId !== null) {
+    query = sql`${query} AND (company_id = ${companyId} OR company_id IS NULL)`;
+  }
   if (businessUnit && businessUnit !== "all") {
     if (businessUnit === "none") {
       query = sql`${query} AND (business_unit IS NULL OR business_unit = '')`;
@@ -72,9 +89,10 @@ router.get("/branches", async (req: Request, res: Response) => {
 router.post("/branches", async (req: Request, res: Response) => {
   const { name, address, phone, isActive, businessUnit } = req.body as { name: string; address?: string; phone?: string; isActive?: boolean; businessUnit?: string };
   if (!name) { res.status(400).json({ message: "name wajib diisi" }); return; }
+  const companyId = getReqCompanyId(req);
   const result = await db.execute(sql`
-    INSERT INTO pos_branches (name, address, phone, is_active, business_unit)
-    VALUES (${name}, ${address ?? null}, ${phone ?? null}, ${isActive ?? true}, ${businessUnit ?? null})
+    INSERT INTO pos_branches (name, address, phone, is_active, business_unit, company_id)
+    VALUES (${name}, ${address ?? null}, ${phone ?? null}, ${isActive ?? true}, ${businessUnit ?? null}, ${companyId})
     RETURNING *
   `);
   res.json(result.rows[0]);
@@ -83,6 +101,13 @@ router.post("/branches", async (req: Request, res: Response) => {
 router.put("/branches/:id", async (req: Request, res: Response) => {
   const id = Number(req.params.id);
   const { name, address, phone, isActive, businessUnit } = req.body as { name?: string; address?: string; phone?: string; isActive?: boolean; businessUnit?: string | null };
+  const companyId = getReqCompanyId(req);
+  const admin = isReqAdmin(req);
+  // Pastikan non-admin hanya mengubah cabang miliknya
+  if (!admin && companyId !== null) {
+    const check = await db.execute(sql`SELECT id FROM pos_branches WHERE id = ${id} AND (company_id = ${companyId} OR company_id IS NULL)`);
+    if (check.rows.length === 0) { res.status(403).json({ message: "Akses ditolak: cabang bukan milik perusahaan Anda" }); return; }
+  }
   await db.execute(sql`
     UPDATE pos_branches
     SET name = COALESCE(${name ?? null}, name),
@@ -98,6 +123,12 @@ router.put("/branches/:id", async (req: Request, res: Response) => {
 
 router.delete("/branches/:id", async (req: Request, res: Response) => {
   const id = Number(req.params.id);
+  const companyId = getReqCompanyId(req);
+  const admin = isReqAdmin(req);
+  if (!admin && companyId !== null) {
+    const check = await db.execute(sql`SELECT id FROM pos_branches WHERE id = ${id} AND (company_id = ${companyId} OR company_id IS NULL)`);
+    if (check.rows.length === 0) { res.status(403).json({ message: "Akses ditolak: cabang bukan milik perusahaan Anda" }); return; }
+  }
   await db.execute(sql`DELETE FROM pos_branches WHERE id = ${id}`);
   res.json({ ok: true });
 });
@@ -107,12 +138,18 @@ router.delete("/branches/:id", async (req: Request, res: Response) => {
 router.get("/warehouses", async (req: Request, res: Response) => {
   const branchId = req.query.branchId ? Number(req.query.branchId) : null;
   const businessUnit = req.query.businessUnit as string | undefined;
+  const companyId = getReqCompanyId(req);
+  const admin = isReqAdmin(req);
+
   let query = sql`
     SELECT w.*, b.name as branch_name, b.business_unit
     FROM pos_warehouses w
     JOIN pos_branches b ON b.id = w.branch_id
     WHERE 1=1
   `;
+  if (!admin && companyId !== null) {
+    query = sql`${query} AND (b.company_id = ${companyId} OR b.company_id IS NULL)`;
+  }
   if (branchId) query = sql`${query} AND w.branch_id = ${branchId}`;
   if (businessUnit && businessUnit !== "all") {
     if (businessUnit === "none") {
@@ -279,6 +316,8 @@ router.get("/inventory-stocks", async (req: Request, res: Response) => {
   const branchId = req.query.branchId ? Number(req.query.branchId) : null;
   const warehouseId = req.query.warehouseId ? Number(req.query.warehouseId) : null;
   const businessUnit = req.query.businessUnit as string | undefined;
+  const companyId = getReqCompanyId(req);
+  const admin = isReqAdmin(req);
 
   let query = sql`
     SELECT s.*,
@@ -294,6 +333,9 @@ router.get("/inventory-stocks", async (req: Request, res: Response) => {
     WHERE 1=1
   `;
 
+  if (!admin && companyId !== null) {
+    query = sql`${query} AND (b.company_id = ${companyId} OR b.company_id IS NULL)`;
+  }
   if (branchId) query = sql`${query} AND s.branch_id = ${branchId}`;
   if (warehouseId) query = sql`${query} AND s.warehouse_id = ${warehouseId}`;
   if (businessUnit && businessUnit !== "all") {

@@ -6,6 +6,7 @@ import { getAdminWa } from "../lib/adminWa.js";
 import { logger } from "../lib/logger.js";
 import { processWaForAiIntake, processWaMediaForAiIntake, buildAiReplyWa, getAiIntakeSettings } from "../lib/aiOrderIntake.js";
 import { getPreferredDomain } from "../lib/domain.js";
+import { normalizePhone } from "../lib/phoneUtils.js";
 
 const router = Router();
 
@@ -23,13 +24,6 @@ function isDuplicate(key: string): boolean {
   if (dedupCache.has(key)) return true;
   dedupCache.set(key, now);
   return false;
-}
-
-function normalizePhone(raw: string): string {
-  let digits = raw.replace(/[^\d]/g, "");
-  if (digits.startsWith("62")) return digits;
-  if (digits.startsWith("0")) return "62" + digits.slice(1);
-  return "62" + digits;
 }
 
 function calcSellingPrice(vendorPrice: number, markupType: string, markupPct: number, fixedPrice: number | null): number {

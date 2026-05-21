@@ -1,6 +1,6 @@
 import { Router } from "express";
 import multer from "multer";
-import OpenAI from "openai";
+import { getOpenAI } from "../lib/openaiClient.js";
 import { db, correspondencesTable, correspondenceAttachmentsTable, customersTable, suppliersTable } from "@workspace/db";
 import { eq, desc, ilike, or, and, count, inArray } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage.js";
@@ -15,19 +15,6 @@ router.use(async (req, res, next) => {
   next();
 });
 
-let openai: OpenAI | null = null;
-function getOpenAI(): OpenAI {
-  if (!openai) {
-    if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY && !process.env.OPENAI_API_KEY) {
-      throw new Error("OpenAI API key not configured. Please add OPENAI_API_KEY to environment variables.");
-    }
-    openai = new OpenAI({
-      apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY,
-      baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-    });
-  }
-  return openai;
-}
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 

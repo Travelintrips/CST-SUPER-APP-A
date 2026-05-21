@@ -1,6 +1,6 @@
 import { Router } from "express";
 import multer from "multer";
-import OpenAI from "openai";
+import { getOpenAI } from "../lib/openaiClient.js";
 import { createRequire } from "node:module";
 import { logger } from "../lib/logger";
 import { db, aiAgentSettingsTable } from "@workspace/db";
@@ -13,19 +13,6 @@ type PdfParseFn = (buffer: Buffer) => Promise<{ text: string; numpages: number }
 // root; importing the inner module path skips that and works in CJS+ESM.
 const pdfParse = require_("pdf-parse/lib/pdf-parse.js") as PdfParseFn;
 
-let _openai: OpenAI | null = null;
-function getOpenAI(): OpenAI {
-  if (!_openai) {
-    if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY && !process.env.OPENAI_API_KEY) {
-      throw new Error("OpenAI API key not configured.");
-    }
-    _openai = new OpenAI({
-      apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY,
-      baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-    });
-  }
-  return _openai;
-}
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
