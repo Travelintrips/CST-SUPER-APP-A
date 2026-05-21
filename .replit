@@ -28,10 +28,6 @@ args = "Sport Center"
 task = "workflow.run"
 args = "BizPortal"
 
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "artifacts/sport-center: web"
-
 [[workflows.workflow]]
 name = "POS"
 author = "agent"
@@ -67,34 +63,6 @@ waitForPort = 3000
 [workflows.workflow.metadata]
 outputType = "console"
 
-<<<<<<< HEAD
-[[workflows.workflow]]
-name = "Start application"
-author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "webview"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "node scripts/proxy5000.mjs"
-waitForPort = 5000
-
-[[workflows.workflow]]
-name = "artifacts/sport-center: web"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "pnpm --filter @workspace/sport-center run dev"
-waitForPort = 8082
-
-[workflows.workflow.metadata]
-outputType = "console"
-isCanvasWorkflow = true
-
-=======
->>>>>>> 3bbd85fa396af2d31889d44383923911d124102a
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
 expertMode = true
@@ -131,7 +99,6 @@ defaultBucketID = "replit-objstore-e357cc66-19c3-4d73-9ca9-3069d78355d1"
 
 [[ports]]
 localPort = 3000
-<<<<<<< HEAD
 externalPort = 9000
 
 [[ports]]
@@ -139,14 +106,16 @@ localPort = 5000
 externalPort = 80
 
 [[ports]]
-localPort = 8081
-=======
-externalPort = 3000
+localPort = 3002
+externalPort = 80
 
 [[ports]]
 localPort = 8080
->>>>>>> 3bbd85fa396af2d31889d44383923911d124102a
 externalPort = 8008
+
+[[ports]]
+localPort = 8081
+externalPort = 9000
 
 [[ports]]
 localPort = 8082
