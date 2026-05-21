@@ -84,7 +84,7 @@ outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "fuser -k 8080/tcp 2>/dev/null; sleep 0.3; cd artifacts/api-server && PORT=8080 NODE_ENV=development node --enable-source-maps ./dist/index.mjs"
+args = "fuser -k 8080/tcp 2>/dev/null; sleep 0.3; cd artifacts/api-server && node build.mjs && PORT=8080 NODE_ENV=development node --enable-source-maps ./dist/index.mjs"
 waitForPort = 8080
 
 [[workflows.workflow]]
@@ -164,10 +164,6 @@ externalPort = 3002
 [[ports]]
 localPort = 8080
 externalPort = 8080
-
-[[ports]]
-localPort = 8083
-externalPort = 3001
 
 [[ports]]
 localPort = 8084
