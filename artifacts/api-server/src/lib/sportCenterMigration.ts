@@ -36,5 +36,13 @@ export async function runSportCenterMigration(): Promise<void> {
       ON sport_center_bookings (date)
   `);
 
-  logger.info("Sport Center migration: selesai (sport_center_bookings table ready)");
+  // Add payment proof columns if not exist
+  await db.execute(sql`
+    ALTER TABLE sport_center_bookings
+      ADD COLUMN IF NOT EXISTS payment_proof_url  TEXT,
+      ADD COLUMN IF NOT EXISTS payment_proof_at   TIMESTAMP,
+      ADD COLUMN IF NOT EXISTS payment_status     TEXT NOT NULL DEFAULT 'unpaid'
+  `);
+
+  logger.info("Sport Center migration: selesai (sport_center_bookings table ready + payment proof columns)");
 }

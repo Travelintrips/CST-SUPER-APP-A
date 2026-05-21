@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   CheckCircle, AlertCircle, Calendar, Clock, User,
   Phone, Mail, FileText, Printer, RotateCcw, Home,
   CreditCard, Building2, Smartphone, Loader2,
+  Upload, ImageIcon, X, CheckCircle2,
 } from "lucide-react";
 import { timeOptions } from "@/data/dummyData";
 import { useBookings } from "@/hooks/useBookings";
@@ -17,6 +18,163 @@ interface BookingFormProps {
   preselectedStartTime?: string;
 }
 
+// ── Upload Bukti Transfer ──────────────────────────────────────────────────
+function PaymentProofUpload({ booking }: { booking: Booking }) {
+  const [file, setFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadedUrl, setUploadedUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [dragOver, setDragOver] = useState(false);
+
+  function handleFile(f: File) {
+    if (!f.type.startsWith("image/")) {
+      setError("Hanya file gambar yang diizinkan (JPG, PNG, HEIC, dll.)");
+      return;
+    }
+    if (f.size > 5 * 1024 * 1024) {
+      setError("Ukuran file maksimal 5 MB");
+      return;
+    }
+    setError(null);
+    setFile(f);
+    const reader = new FileReader();
+    reader.onload = (e) => setPreview(e.target?.result as string);
+    reader.readAsDataURL(f);
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDragOver(false);
+    const f = e.dataTransfer.files[0];
+    if (f) handleFile(f);
+  }
+
+  async function handleUpload() {
+    if (!file) return;
+    setUploading(true);
+    setError(null);
+    try {
+      const formData = new FormData();
+      formData.append("proof", file);
+      const res = await fetch(`/api/sport-center/payment-proof/${booking.bookingCode}`, {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json() as { success?: boolean; proofUrl?: string; message?: string };
+      if (!res.ok) throw new Error(data.message ?? "Gagal upload");
+      setUploadedUrl(data.proofUrl ?? "");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal mengupload. Coba lagi.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  // Sudah berhasil upload
+  if (uploadedUrl) {
+    return (
+      <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-5">
+        <div className="flex items-start gap-3">
+          <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="font-bold text-emerald-800 text-sm">Bukti pembayaran berhasil dikirim!</p>
+            <p className="text-emerald-700 text-xs mt-1">
+              Admin akan memverifikasi dalam 1×24 jam kerja. Konfirmasi akan dikirim ke{" "}
+              <strong>{booking.customerEmail}</strong>.
+            </p>
+          </div>
+        </div>
+        {preview && (
+          <img
+            src={preview}
+            alt="Bukti transfer"
+            className="mt-3 w-full max-h-48 object-contain rounded-lg border border-emerald-200"
+          />
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {/* Drop zone */}
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => inputRef.current?.click()}
+        onKeyDown={(e) => e.key === "Enter" && inputRef.current?.click()}
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={handleDrop}
+        className={`relative border-2 border-dashed rounded-xl p-5 text-center cursor-pointer transition-all duration-200 ${
+          dragOver
+            ? "border-blue-500 bg-blue-50"
+            : file
+            ? "border-emerald-400 bg-emerald-50"
+            : "border-amber-300 bg-amber-50/60 hover:border-amber-400 hover:bg-amber-50"
+        }`}
+      >
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
+        />
+        {file && preview ? (
+          <div className="space-y-2">
+            <img
+              src={preview}
+              alt="Preview"
+              className="mx-auto max-h-40 max-w-full rounded-lg object-contain border border-emerald-200"
+            />
+            <p className="text-xs text-emerald-700 font-medium">{file.name}</p>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setFile(null); setPreview(null); }}
+              className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-red-500 transition-colors"
+            >
+              <X className="w-3 h-3" /> Ganti foto
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center mx-auto">
+              <ImageIcon className="w-6 h-6 text-amber-600" />
+            </div>
+            <p className="text-sm font-semibold text-amber-800">
+              Klik atau seret foto bukti transfer di sini
+            </p>
+            <p className="text-xs text-amber-600">JPG, PNG, HEIC · Maks. 5 MB</p>
+          </div>
+        )}
+      </div>
+
+      {error && (
+        <p className="text-red-600 text-xs flex items-center gap-1.5">
+          <AlertCircle className="w-3.5 h-3.5 shrink-0" /> {error}
+        </p>
+      )}
+
+      <button
+        type="button"
+        onClick={handleUpload}
+        disabled={!file || uploading}
+        className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-emerald-500 text-white py-3 rounded-xl font-bold text-sm hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        {uploading ? (
+          <><Loader2 className="w-4 h-4 animate-spin" /> Mengupload...</>
+        ) : (
+          <><Upload className="w-4 h-4" /> Upload Bukti Transfer</>
+        )}
+      </button>
+    </div>
+  );
+}
+
+// ── Halaman Konfirmasi ─────────────────────────────────────────────────────
 function ConfirmationPage({ booking, onReset }: { booking: Booking; onReset: () => void }) {
   const navigate = useNavigate();
 
@@ -36,6 +194,7 @@ function ConfirmationPage({ booking, onReset }: { booking: Booking; onReset: () 
         id="booking-summary"
         className="bg-white rounded-2xl shadow-md overflow-hidden print:shadow-none"
       >
+        {/* Kode booking */}
         <div className="bg-gradient-to-r from-blue-600 to-emerald-500 px-6 py-5 text-center text-white">
           <p className="text-sm font-medium opacity-80 mb-1">Kode Booking</p>
           <p className="text-4xl font-black tracking-widest">{booking.bookingCode}</p>
@@ -44,6 +203,7 @@ function ConfirmationPage({ booking, onReset }: { booking: Booking; onReset: () 
           </p>
         </div>
 
+        {/* Ringkasan */}
         <div className="p-6 space-y-4">
           <h3 className="font-bold text-slate-700 text-sm uppercase tracking-wider">Ringkasan Booking</h3>
           <div className="divide-y divide-slate-100">
@@ -74,12 +234,15 @@ function ConfirmationPage({ booking, onReset }: { booking: Booking; onReset: () 
           </div>
         </div>
 
-        <div className="bg-amber-50 border-t border-amber-100 px-6 py-5">
-          <h3 className="font-bold text-amber-800 text-sm mb-3 flex items-center gap-2">
+        {/* Instruksi pembayaran + Upload */}
+        <div className="bg-amber-50 border-t border-amber-100 px-6 py-5 space-y-5">
+          <h3 className="font-bold text-amber-800 text-sm flex items-center gap-2">
             <CreditCard className="w-4 h-4" />
             Instruksi Pembayaran
           </h3>
-          <div className="space-y-3 text-sm text-amber-800">
+
+          {/* Langkah 1: Transfer */}
+          <div className="space-y-2 text-sm text-amber-800">
             <div className="flex gap-3">
               <div className="w-6 h-6 bg-amber-200 rounded-full flex items-center justify-center shrink-0 font-bold text-xs text-amber-900">1</div>
               <p>Lakukan pembayaran sebesar <strong>{formatCurrency(booking.totalPrice)}</strong> ke salah satu rekening berikut:</p>
@@ -107,10 +270,15 @@ function ConfirmationPage({ booking, onReset }: { booking: Booking; onReset: () 
                 </div>
               </div>
             </div>
-            <div className="flex gap-3">
-              <div className="w-6 h-6 bg-amber-200 rounded-full flex items-center justify-center shrink-0 font-bold text-xs text-amber-900">2</div>
+          </div>
+
+          {/* Langkah 2: Upload bukti */}
+          <div className="space-y-3 text-sm text-amber-800">
+            <div className="flex gap-3 items-start">
+              <div className="w-6 h-6 bg-amber-200 rounded-full flex items-center justify-center shrink-0 font-bold text-xs text-amber-900 mt-0.5">2</div>
               <p>
-                Kirim bukti transfer beserta <strong>Kode Booking ({booking.bookingCode})</strong> ke WhatsApp:{" "}
+                Upload bukti transfer di bawah ini <span className="font-bold">(lebih cepat dari WA)</span>, atau kirim
+                manual ke WhatsApp{" "}
                 <a
                   href={`https://wa.me/622155501234?text=Bukti%20pembayaran%20booking%20${booking.bookingCode}`}
                   target="_blank"
@@ -118,17 +286,24 @@ function ConfirmationPage({ booking, onReset }: { booking: Booking; onReset: () 
                   className="underline font-bold"
                 >
                   +62 21 5550 1234
-                </a>
+                </a>{" "}
+                dengan menyertakan kode booking <strong>{booking.bookingCode}</strong>.
               </p>
             </div>
-            <div className="flex gap-3">
-              <div className="w-6 h-6 bg-amber-200 rounded-full flex items-center justify-center shrink-0 font-bold text-xs text-amber-900">3</div>
-              <p>Konfirmasi booking akan dikirimkan ke <strong>{booking.customerEmail}</strong> dalam 1×24 jam kerja.</p>
+            <div className="ml-9">
+              <PaymentProofUpload booking={booking} />
             </div>
+          </div>
+
+          {/* Langkah 3: Konfirmasi */}
+          <div className="flex gap-3 text-sm text-amber-800">
+            <div className="w-6 h-6 bg-amber-200 rounded-full flex items-center justify-center shrink-0 font-bold text-xs text-amber-900">3</div>
+            <p>Konfirmasi booking akan dikirimkan ke <strong>{booking.customerEmail}</strong> dalam 1×24 jam kerja.</p>
           </div>
         </div>
       </div>
 
+      {/* Aksi */}
       <div className="flex flex-col sm:flex-row gap-3 print:hidden">
         <button
           onClick={() => window.print()}
@@ -156,6 +331,7 @@ function ConfirmationPage({ booking, onReset }: { booking: Booking; onReset: () 
   );
 }
 
+// ── Form Booking Utama ─────────────────────────────────────────────────────
 export default function BookingForm({ preselectedFacilityId, preselectedDate, preselectedStartTime }: BookingFormProps) {
   const { addBooking } = useBookings();
   const { services, loading: servicesLoading } = useServices();
@@ -250,8 +426,8 @@ export default function BookingForm({ preselectedFacilityId, preselectedDate, pr
       customerName: "",
       customerPhone: "",
       customerEmail: "",
-      date: "",
-      startTime: "",
+      date: preselectedDate ?? "",
+      startTime: preselectedStartTime ?? "",
       endTime: "",
       notes: "",
     });
@@ -275,6 +451,7 @@ export default function BookingForm({ preselectedFacilityId, preselectedDate, pr
         </div>
       )}
 
+      {/* Pilih Fasilitas */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
         <h2 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
           <span className="w-6 h-6 bg-blue-600 text-white rounded-full text-xs font-bold flex items-center justify-center">1</span>
@@ -321,6 +498,7 @@ export default function BookingForm({ preselectedFacilityId, preselectedDate, pr
         )}
       </div>
 
+      {/* Waktu Booking */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
         <h2 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
           <span className="w-6 h-6 bg-blue-600 text-white rounded-full text-xs font-bold flex items-center justify-center">2</span>
@@ -390,6 +568,7 @@ export default function BookingForm({ preselectedFacilityId, preselectedDate, pr
         )}
       </div>
 
+      {/* Data Pemesan */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 space-y-4">
         <h2 className="font-bold text-slate-800 flex items-center gap-2">
           <span className="w-6 h-6 bg-blue-600 text-white rounded-full text-xs font-bold flex items-center justify-center">3</span>

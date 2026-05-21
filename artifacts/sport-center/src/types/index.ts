@@ -39,6 +39,9 @@ export interface Booking {
   status: "pending" | "confirmed" | "completed" | "cancelled";
   createdAt: string;
   notes?: string;
+  paymentProofUrl?: string | null;
+  paymentProofAt?: string | null;
+  paymentStatus?: "unpaid" | "proof_uploaded" | "verified";
 }
 
 export interface Testimonial {

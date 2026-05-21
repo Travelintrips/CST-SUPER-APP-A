@@ -1,15 +1,36 @@
 import { Router, type Request, type Response } from "express";
+import { randomUUID } from "crypto";
+import multer from "multer";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa, getAdminGroupWa } from "../lib/adminWa.js";
 import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
 import { saveAndBroadcast } from "../lib/notificationStore.js";
+import { ObjectStorageService } from "../lib/objectStorage.js";
 
 export const sportCenterRouter = Router();
-
 export const sportCenterPublicRouter = Router();
 
+const objectStorage = new ObjectStorageService();
+
+// Multer: maks 5 MB, image only
+const proofUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (!file.mimetype.startsWith("image/")) {
+      cb(new Error("Hanya file gambar yang diizinkan (JPG, PNG, HEIC, dll.)"));
+      return;
+    }
+    cb(null, true);
+  },
+});
+
+// Simple per-booking-code rate limit: max 5 uploads per code
+const proofUploadCount = new Map<string, number>();
+
+// ── Public: daftar layanan ──────────────────────────────────────────────────
 sportCenterPublicRouter.get("/services", async (_req: Request, res: Response) => {
   const result = await db.execute(sql`
     SELECT id, code, name, category, description, price_per_hour, capacity, unit,
@@ -37,6 +58,128 @@ sportCenterPublicRouter.get("/services", async (_req: Request, res: Response) =>
   })));
 });
 
+// ── Public: upload bukti pembayaran ────────────────────────────────────────
+sportCenterPublicRouter.post(
+  "/payment-proof/:bookingCode",
+  (req: Request, res: Response, next) => {
+    proofUpload.single("proof")(req, res, (err) => {
+      if (err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE") {
+        res.status(400).json({ message: "Ukuran file maksimal 5 MB" });
+        return;
+      }
+      if (err) {
+        res.status(400).json({ message: err.message ?? "File tidak valid" });
+        return;
+      }
+      next();
+    });
+  },
+  async (req: Request, res: Response) => {
+    const { bookingCode } = req.params as { bookingCode: string };
+
+    if (!req.file) {
+      res.status(400).json({ message: "Tidak ada file yang diupload" });
+      return;
+    }
+
+    // Rate limit per booking code
+    const uploadCount = proofUploadCount.get(bookingCode) ?? 0;
+    if (uploadCount >= 5) {
+      res.status(429).json({ message: "Terlalu banyak percobaan upload. Hubungi admin." });
+      return;
+    }
+    proofUploadCount.set(bookingCode, uploadCount + 1);
+
+    // Cari booking
+    const bResult = await db.execute(sql`
+      SELECT * FROM sport_center_bookings WHERE booking_code = ${bookingCode} LIMIT 1
+    `);
+    if (bResult.rows.length === 0) {
+      res.status(404).json({ message: "Kode booking tidak ditemukan" });
+      return;
+    }
+    const row = bResult.rows[0] as BookingRow & {
+      payment_proof_url: string | null;
+      payment_proof_at: Date | null;
+      payment_status: string;
+    };
+
+    if (row.status === "cancelled") {
+      res.status(400).json({ message: "Booking ini sudah dibatalkan" });
+      return;
+    }
+
+    // Upload ke object storage (public folder)
+    const objectId = randomUUID();
+    const storagePath = `public/sport-center-payments/${objectId}`;
+    await objectStorage.uploadFile(req.file.buffer, storagePath, req.file.mimetype);
+    const proofUrl = objectStorage.getPublicUrl(storagePath);
+
+    // Update booking
+    await db.execute(sql`
+      UPDATE sport_center_bookings
+      SET payment_proof_url = ${proofUrl},
+          payment_proof_at  = NOW(),
+          payment_status    = 'proof_uploaded'
+      WHERE booking_code = ${bookingCode}
+    `);
+
+    res.json({ success: true, proofUrl });
+
+    // Notifikasi WA ke admin — fire-and-forget
+    const price = Number(row.total_price).toLocaleString("id-ID", {
+      style: "currency", currency: "IDR", maximumFractionDigits: 0,
+    });
+    const waMsg =
+      `💳 *Bukti Transfer Masuk — Sport Center SHIA*\n\n` +
+      `📋 *Kode*      : ${row.booking_code}\n` +
+      `👤 *Pelanggan* : ${row.customer_name}\n` +
+      `📱 *HP*        : ${row.customer_phone}\n` +
+      `🏃 *Fasilitas* : ${row.facility_name}\n` +
+      `📅 *Tanggal*   : ${row.date} ${row.start_time}–${row.end_time}\n` +
+      `💰 *Total*     : ${price}\n\n` +
+      `⚡ Pelanggan sudah upload bukti transfer. Silakan verifikasi di BizPortal › Sport Center › Booking.`;
+
+    Promise.all([
+      getAdminWa().then((wa) => wa ? sendWhatsApp(wa, waMsg) : Promise.resolve()),
+      getAdminGroupWa().then((gwa) => gwa ? sendWhatsApp(gwa, waMsg) : Promise.resolve()),
+    ]).catch(() => {});
+
+    // SSE broadcast ke BizPortal
+    saveAndBroadcast("sport_payment_proof", {
+      type: "sport_payment_proof",
+      orderId: row.id,
+      orderNumber: row.booking_code,
+      customerName: row.customer_name,
+      facilityName: row.facility_name,
+      grandTotal: row.total_price,
+    }).catch(() => {});
+
+    // Email notifikasi ke admin
+    if (isSmtpConfigured()) {
+      const adminEmail = process.env.ADMIN_EMAIL ?? "";
+      if (adminEmail) {
+        sendMail({
+          to: adminEmail,
+          subject: `[Sport Center] Bukti Transfer — ${row.booking_code}`,
+          html: `<h2>Bukti Transfer Diterima — Sport Center SHIA</h2>
+<table style="border-collapse:collapse;font-family:sans-serif;font-size:14px">
+  <tr><td style="padding:4px 12px;color:#666">Kode</td><td style="padding:4px 12px"><b>${row.booking_code}</b></td></tr>
+  <tr><td style="padding:4px 12px;color:#666">Pelanggan</td><td style="padding:4px 12px">${row.customer_name}</td></tr>
+  <tr><td style="padding:4px 12px;color:#666">Fasilitas</td><td style="padding:4px 12px">${row.facility_name}</td></tr>
+  <tr><td style="padding:4px 12px;color:#666">Tanggal</td><td style="padding:4px 12px">${row.date} ${row.start_time}–${row.end_time}</td></tr>
+  <tr><td style="padding:4px 12px;color:#666">Total</td><td style="padding:4px 12px"><b>${price}</b></td></tr>
+</table>
+<p style="margin-top:16px"><a href="${proofUrl}" style="background:#2563EB;color:white;padding:8px 20px;border-radius:6px;text-decoration:none;font-weight:bold">Lihat Bukti Transfer</a></p>
+<p style="color:#888;margin-top:12px">Segera verifikasi di BizPortal › Sport Center › Booking.</p>`,
+          text: `Bukti Transfer Diterima\nKode: ${row.booking_code}\nPelanggan: ${row.customer_name}\nTotal: ${price}\nBukti: ${proofUrl}`,
+        }).catch(() => {});
+      }
+    }
+  },
+);
+
+// ── Helpers ────────────────────────────────────────────────────────────────
 function buildAdminBookingMessage(b: {
   bookingCode: string;
   customerName: string;
@@ -85,7 +228,11 @@ interface BookingRow {
   created_at: Date;
 }
 
-function toBooking(row: BookingRow) {
+function toBooking(row: BookingRow & {
+  payment_proof_url?: string | null;
+  payment_proof_at?: Date | null;
+  payment_status?: string;
+}) {
   return {
     id: row.id,
     bookingCode: row.booking_code,
@@ -102,9 +249,15 @@ function toBooking(row: BookingRow) {
     notes: row.notes ?? "",
     status: row.status as "pending" | "confirmed" | "completed" | "cancelled",
     createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
+    paymentProofUrl: row.payment_proof_url ?? null,
+    paymentProofAt: row.payment_proof_at
+      ? (row.payment_proof_at instanceof Date ? row.payment_proof_at.toISOString() : String(row.payment_proof_at))
+      : null,
+    paymentStatus: row.payment_status ?? "unpaid",
   };
 }
 
+// ── Cek ketersediaan slot ──────────────────────────────────────────────────
 sportCenterRouter.get("/check", async (req: Request, res: Response) => {
   const { facilityId, date, startTime, endTime } = req.query as Record<string, string>;
   if (!facilityId || !date || !startTime || !endTime) {
@@ -123,27 +276,19 @@ sportCenterRouter.get("/check", async (req: Request, res: Response) => {
   res.json({ conflict: result.rows.length > 0 });
 });
 
+// ── Daftar semua booking (admin) ───────────────────────────────────────────
 sportCenterRouter.get("/", async (_req: Request, res: Response) => {
   const result = await db.execute(sql`
     SELECT * FROM sport_center_bookings ORDER BY created_at DESC
   `);
-  res.json((result.rows as BookingRow[]).map(toBooking));
+  res.json((result.rows as (BookingRow & { payment_proof_url?: string | null; payment_proof_at?: Date | null; payment_status?: string })[]).map(toBooking));
 });
 
+// ── Buat booking baru ──────────────────────────────────────────────────────
 sportCenterRouter.post("/", async (req: Request, res: Response) => {
   const {
-    bookingCode,
-    facilityId,
-    facilityName,
-    customerName,
-    customerPhone,
-    customerEmail,
-    date,
-    startTime,
-    endTime,
-    totalHours,
-    totalPrice,
-    notes,
+    bookingCode, facilityId, facilityName, customerName, customerPhone,
+    customerEmail, date, startTime, endTime, totalHours, totalPrice, notes,
   } = req.body;
 
   if (
@@ -164,7 +309,6 @@ sportCenterRouter.post("/", async (req: Request, res: Response) => {
       AND end_time > ${startTime}
     LIMIT 1
   `);
-
   if (conflicts.rows.length > 0) {
     res.status(409).json({ message: "Slot waktu sudah dibooking. Pilih waktu atau fasilitas lain." });
     return;
@@ -184,7 +328,7 @@ sportCenterRouter.post("/", async (req: Request, res: Response) => {
   const booking = toBooking(result.rows[0] as BookingRow);
   res.status(201).json(booking);
 
-  // Simpan ke DB + broadcast SSE realtime ke admin
+  // SSE realtime ke admin
   saveAndBroadcast("new_sport_booking", {
     type: "sport_booking",
     orderId: booking.id,
@@ -198,7 +342,7 @@ sportCenterRouter.post("/", async (req: Request, res: Response) => {
     grandTotal: booking.totalPrice,
   }).catch(() => {});
 
-  // Notifikasi WA ke admin & grup — fire-and-forget
+  // WA ke admin & grup
   const msg = buildAdminBookingMessage({
     bookingCode: booking.bookingCode,
     customerName: booking.customerName,
@@ -211,14 +355,12 @@ sportCenterRouter.post("/", async (req: Request, res: Response) => {
     totalPrice: booking.totalPrice,
     notes: booking.notes || null,
   });
-
-  const adminWaMsg = msg;
   Promise.all([
-    getAdminWa().then((wa) => wa ? sendWhatsApp(wa, adminWaMsg) : Promise.resolve()),
-    getAdminGroupWa().then((gwa) => gwa ? sendWhatsApp(gwa, adminWaMsg) : Promise.resolve()),
+    getAdminWa().then((wa) => wa ? sendWhatsApp(wa, msg) : Promise.resolve()),
+    getAdminGroupWa().then((gwa) => gwa ? sendWhatsApp(gwa, msg) : Promise.resolve()),
   ]).catch(() => {});
 
-  // Email notifikasi ke admin
+  // Email ke admin
   if (isSmtpConfigured()) {
     const adminEmail = process.env.ADMIN_EMAIL ?? "";
     if (adminEmail) {
@@ -247,6 +389,7 @@ sportCenterRouter.post("/", async (req: Request, res: Response) => {
   }
 });
 
+// ── Update status booking (admin) ──────────────────────────────────────────
 sportCenterRouter.put("/:id/status", async (req: Request, res: Response) => {
   const id = parseInt(req.params.id);
   const { status } = req.body as { status: string };
@@ -262,9 +405,10 @@ sportCenterRouter.put("/:id/status", async (req: Request, res: Response) => {
     res.status(404).json({ message: "Booking tidak ditemukan" });
     return;
   }
-  res.json(toBooking(result.rows[0] as BookingRow));
+  res.json(toBooking(result.rows[0] as BookingRow & { payment_proof_url?: string | null; payment_proof_at?: Date | null; payment_status?: string }));
 });
 
+// ── Hapus booking (admin) ──────────────────────────────────────────────────
 sportCenterRouter.delete("/:id", async (req: Request, res: Response) => {
   const id = parseInt(req.params.id);
   await db.execute(sql`DELETE FROM sport_center_bookings WHERE id = ${id}`);
