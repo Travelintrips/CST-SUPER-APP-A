@@ -487,10 +487,41 @@ logisticOrdersRouter.get("/", async (req: Request, res: Response) => {
     }
   }
 
+  // Attach latest RFQ info (including freight_shipment_id via raw SQL)
+  const rfqMap = new Map<number, {
+    rfqId: number; rfqNumber: string; rfqStatus: string;
+    freightShipmentId: number | null; freightShipmentNumber: string | null;
+  }>();
+  if (orderIds.length > 0) {
+    const rfqRows = await db.execute(sql`
+      SELECT DISTINCT ON (r.order_id)
+        r.order_id AS "orderId",
+        r.id AS "rfqId",
+        r.rfq_number AS "rfqNumber",
+        r.status AS "rfqStatus",
+        r.freight_shipment_id AS "freightShipmentId",
+        fs.shipment_number AS "freightShipmentNumber"
+      FROM logistic_order_rfqs r
+      LEFT JOIN freight_shipments fs ON fs.id = r.freight_shipment_id
+      WHERE r.order_id = ANY(${sql.raw(`ARRAY[${orderIds.join(",")}]::int[]`)})
+      ORDER BY r.order_id, r.created_at DESC
+    `);
+    for (const row of rfqRows as any[]) {
+      rfqMap.set(Number(row.orderId), {
+        rfqId: Number(row.rfqId),
+        rfqNumber: row.rfqNumber as string,
+        rfqStatus: row.rfqStatus as string,
+        freightShipmentId: row.freightShipmentId ? Number(row.freightShipmentId) : null,
+        freightShipmentNumber: (row.freightShipmentNumber as string) ?? null,
+      });
+    }
+  }
+
   return res.json(rows.map((row) => ({
     ...toOrder(row),
     linkedSalesDocId: linkedDocMap.get(row.id)?.id ?? null,
     linkedSalesDocNumber: linkedDocMap.get(row.id)?.docNumber ?? null,
+    latestRfq: rfqMap.get(row.id) ?? null,
   })));
 });
 
