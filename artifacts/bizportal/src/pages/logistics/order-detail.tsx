@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { Link } from "wouter";
 import GpsTrackingPanel from "@/components/logistics/GpsTrackingPanel";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 const idr = (n: number | string | null | undefined) =>
   n == null ? "—" : `Rp ${Math.round(Number(n)).toLocaleString("id-ID")}`;
@@ -663,7 +664,9 @@ export default function LogisticOrderDetailPage() {
       </div>
 
       {/* GPS Tracking Panel — full width below main grid */}
-      <GpsTrackingPanel orderId={orderId} orderNumber={order.orderNumber} />
+      <ErrorBoundary label="GPS Tracking">
+        <GpsTrackingPanel orderId={orderId} orderNumber={order.orderNumber} />
+      </ErrorBoundary>
     </AppShell>
   );
 }

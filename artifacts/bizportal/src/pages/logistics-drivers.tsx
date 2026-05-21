@@ -1,5 +1,5 @@
 import { AppShell } from "@/components/layout/AppShell";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -16,8 +16,10 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { Plus, Pencil, UserX, Truck, Phone, Mail, MapPin, ChevronDown, ChevronUp, Activity, ClipboardList } from "lucide-react";
+import React from "react";
 import DriverMap from "@/components/logistics/DriverMap";
 import GeofenceAlertPanel from "@/components/logistics/GeofenceAlertPanel";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 interface Driver {
   id: number;
@@ -250,12 +252,14 @@ export default function LogisticsDriversPage() {
     staleTime: 10_000,
   });
 
-  const activeJobByDriver = allJobs.reduce<Record<number, ActiveJob>>((acc, job) => {
-    if (job.status !== "COMPLETED" && job.status !== "CANCELLED") {
-      if (!acc[job.driverId]) acc[job.driverId] = job;
-    }
-    return acc;
-  }, {});
+  const activeJobByDriver = useMemo(() =>
+    allJobs.reduce<Record<number, ActiveJob>>((acc, job) => {
+      if (job.status !== "COMPLETED" && job.status !== "CANCELLED") {
+        if (!acc[job.driverId]) acc[job.driverId] = job;
+      }
+      return acc;
+    }, {}),
+  [allJobs]);
 
   const { data: expandedDetail } = useQuery<DriverDetail>({
     queryKey: ["driver-detail", expandedId],
@@ -429,16 +433,20 @@ export default function LogisticsDriversPage() {
           </Card>
         </div>
 
-        <GeofenceAlertPanel
-          onAlertCountChange={setGeofenceAlertCount}
-        />
+        <ErrorBoundary label="Geofence Alert">
+          <GeofenceAlertPanel
+            onAlertCountChange={setGeofenceAlertCount}
+          />
+        </ErrorBoundary>
 
-        <DriverMap
-          drivers={drivers}
-          activeJobByDriver={activeJobByDriver}
-          sseConnected={sseConnected}
-          geofenceAlertDriverIds={deviatedDriverIds}
-        />
+        <ErrorBoundary label="Peta Driver">
+          <DriverMap
+            drivers={drivers}
+            activeJobByDriver={activeJobByDriver}
+            sseConnected={sseConnected}
+            geofenceAlertDriverIds={deviatedDriverIds}
+          />
+        </ErrorBoundary>
 
         <Card>
           <CardHeader className="pb-3">
@@ -476,9 +484,8 @@ export default function LogisticsDriversPage() {
                       </TableRow>
                     )
                     : drivers.map((driver) => (
-                      <>
+                      <React.Fragment key={driver.id}>
                         <TableRow
-                          key={driver.id}
                           className="cursor-pointer hover:bg-muted/30"
                           onClick={() => setExpandedId(expandedId === driver.id ? null : driver.id)}
                         >
@@ -599,7 +606,7 @@ export default function LogisticsDriversPage() {
                             </TableCell>
                           </TableRow>
                         )}
-                      </>
+                      </React.Fragment>
                     ))}
               </TableBody>
             </Table>

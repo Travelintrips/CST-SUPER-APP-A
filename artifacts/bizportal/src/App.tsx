@@ -8,6 +8,7 @@ import { LanguageProvider } from "@/contexts/LanguageContext";
 import { CompanyProvider } from "@/contexts/CompanyContext";
 import { useGetCurrentUser, getGetCurrentUserQueryKey } from "@workspace/api-client-react";
 import { AppRoutes } from "@/routes";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { OrderNotificationsProvider } from "@/contexts/OrderNotificationsContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import NotFound from "@/pages/not-found";
@@ -503,19 +504,21 @@ function Router() {
 
 export default function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <SupabaseAuthProvider>
-        <LanguageProvider>
-          <CompanyProvider>
-          <OrderNotificationsProvider>
-            <TooltipProvider>
-              <Router />
-              <Toaster />
-            </TooltipProvider>
-          </OrderNotificationsProvider>
-          </CompanyProvider>
-        </LanguageProvider>
-      </SupabaseAuthProvider>
-    </QueryClientProvider>
+    <ErrorBoundary label="App">
+      <QueryClientProvider client={queryClient}>
+        <SupabaseAuthProvider>
+          <LanguageProvider>
+            <CompanyProvider>
+            <OrderNotificationsProvider>
+              <TooltipProvider>
+                <Router />
+                <Toaster />
+              </TooltipProvider>
+            </OrderNotificationsProvider>
+            </CompanyProvider>
+          </LanguageProvider>
+        </SupabaseAuthProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
