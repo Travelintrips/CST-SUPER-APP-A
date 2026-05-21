@@ -32,6 +32,10 @@ args = "Biz Portal"
 task = "workflow.run"
 args = "Start application"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "artifacts/sport-center: web"
+
 [[workflows.workflow]]
 name = "API Server"
 author = "agent"
@@ -79,6 +83,19 @@ outputType = "webview"
 task = "shell.exec"
 args = "node scripts/proxy5000.mjs"
 waitForPort = 5000
+
+[[workflows.workflow]]
+name = "artifacts/sport-center: web"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pnpm --filter @workspace/sport-center run dev"
+waitForPort = 8082
+
+[workflows.workflow.metadata]
+outputType = "console"
+isCanvasWorkflow = true
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
