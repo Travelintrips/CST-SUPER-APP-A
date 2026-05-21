@@ -533,6 +533,30 @@ adminRouter.get("/geofence-alerts", (_req, res) => {
   res.json(getActiveAlerts());
 });
 
+// POST /api/drivers/geofence-alerts/:id/resolve — manual dispatcher resolve
+adminRouter.post("/geofence-alerts/:id/resolve", (req, res) => {
+  const raw = req.params.id; // format "driverId:jobId"
+  const [driverIdStr, jobIdStr] = raw.split(":");
+  const driverId = Number(driverIdStr);
+  const jobId = Number(jobIdStr);
+  if (!driverId || !jobId) {
+    res.status(400).json({ error: "Invalid alert id" });
+    return;
+  }
+  const resolved = resolveAlert(driverId, jobId);
+  if (!resolved) {
+    res.status(404).json({ error: "Alert not found or already resolved" });
+    return;
+  }
+  broadcastToAdmins("geofence_resolved", {
+    id: resolved.id,
+    driverId,
+    driverName: resolved.driverName,
+    jobNumber: resolved.jobNumber,
+  });
+  res.json({ ok: true, resolved });
+});
+
 // GET /api/drivers/performance?from=&to=&driverId=
 adminRouter.get("/performance", async (req, res) => {
   const fromRaw = req.query.from as string | undefined;

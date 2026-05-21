@@ -1,4 +1,5 @@
-import { AlertTriangle, CheckCircle2, X, MapPin } from "lucide-react";
+import { AlertTriangle, CheckCircle2, X, MapPin, CheckCheck, Loader2 } from "lucide-react";
+import { useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useOrderNotificationsContext } from "@/contexts/OrderNotificationsContext";
@@ -18,9 +19,22 @@ interface ResolvedNotice {
   at: string;
 }
 
+async function resolveAlertApi(id: string) {
+  const res = await fetch(`/api/drivers/geofence-alerts/${encodeURIComponent(id)}/resolve`, {
+    method: "POST",
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error("resolve failed");
+  return res.json();
+}
+
 export default function GeofenceAlertBanner() {
   const { geofenceAlerts, dismissGeofenceResolved, resolvedGeofenceNotices } =
     useOrderNotificationsContext();
+
+  const resolveMutation = useMutation({
+    mutationFn: (id: string) => resolveAlertApi(id),
+  });
 
   if (geofenceAlerts.length === 0 && resolvedGeofenceNotices.length === 0) return null;
 
@@ -64,15 +78,31 @@ export default function GeofenceAlertBanner() {
               </div>
             )}
           </div>
-          <Link href="/logistics/drivers">
+          <div className="flex items-center gap-1.5 shrink-0">
             <Button
-              variant="ghost"
+              variant="outline"
               size="sm"
-              className="h-7 px-2.5 text-xs text-destructive hover:bg-destructive/10 shrink-0"
+              className="h-7 gap-1 text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50 hover:border-emerald-400"
+              disabled={resolveMutation.isPending}
+              onClick={() => resolveMutation.mutate(alert.id)}
             >
-              Lihat
+              {resolveMutation.isPending && resolveMutation.variables === alert.id ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : (
+                <CheckCheck className="w-3 h-3" />
+              )}
+              Selesai
             </Button>
-          </Link>
+            <Link href="/logistics/drivers">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2.5 text-xs text-destructive hover:bg-destructive/10"
+              >
+                Lihat
+              </Button>
+            </Link>
+          </div>
         </div>
       ))}
 
