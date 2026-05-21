@@ -1,0 +1,22 @@
+js.stripe.com/v3/controller-with-preconnect-204a2ad63f39277926888d924b18695f.html#__shared_params__[version]=acacia&__shared_params__[light_experiment_assignments]=%7B%22token%22%3A%22f10dbc26-a888-4bc3-9577-fdd0f066a67c%22%2C%22assignments%22%3A%7B%22habanero_aa_v1%22%3A%22treatment%22%7D%7D&apiKey=pk_live_515YpNsJAmnYVOvfnsBqRdATWS6SzbNAslOz1z2tujdKuvRMDAwWMeFXp6dJL1YKRrQjB0WAp0UDGwlFYL7hxw7Fc00QkfxBFsL&apiVersion=2025-01-27.acacia&stripeJsId=f10dbc26-a888-4bc3-9577-fdd0f066a67c&stripeObjId=sobj-67c52bb6-d37e-4333-b8a9-54dd9ebe7677&firstStripeInstanceCreatedLatency=35&controllerCount=1&isCheckout=false&stripeJsLoadTime=1779362034679&manualBrowserDeprecationRollout=false&mids[guid]=NA&mids[muid]=830b77b5-9994-4b37-85cc-4f11a7392538863366&mids[sid]=1e799896-5c50-427a-b714-8b126e063424f9c2f5&referrer=https%3A%2F%2Freplit.com%2F%40travelincars01%2FCST-SUPER-APP&controllerId=__privateStripeController0351:1 Access to fetch at 'https://r.stripe.com/b' from origin 'https://js.stripe.com' has been blocked by CORS policy: Permission was denied for this request to access the `local` address space.Understand this error
+shared-c751913d4ed7a0d027a45a4b6b62b06e.js:1  POST https://r.stripe.com/b net::ERR_FAILED
+(anonymous) @ shared-c751913d4ed7a0d027a45a4b6b62b06e.js:1
+e @ shared-c751913d4ed7a0d027a45a4b6b62b06e.js:1
+p @ shared-c751913d4ed7a0d027a45a4b6b62b06e.js:1
+value @ shared-c751913d4ed7a0d027a45a4b6b62b06e.js:1
+value @ shared-c751913d4ed7a0d027a45a4b6b62b06e.js:1
+value @ shared-c751913d4ed7a0d027a45a4b6b62b06e.js:1
+value @ shared-c751913d4ed7a0d027a45a4b6b62b06e.js:1
+value @ shared-c751913d4ed7a0d027a45a4b6b62b06e.js:1
+(anonymous) @ shared-c751913d4ed7a0d027a45a4b6b62b06e.js:1
+setTimeout
+value @ shared-c751913d4ed7a0d027a45a4b6b62b06e.js:1
+value @ shared-c751913d4ed7a0d027a45a4b6b62b06e.js:1
+value @ shared-c751913d4ed7a0d027a45a4b6b62b06e.js:1
+(anonymous) @ shared-c751913d4ed7a0d027a45a4b6b62b06e.js:1
+value @ shared-c751913d4ed7a0d027a45a4b6b62b06e.js:1
+value @ shared-c751913d4ed7a0d027a45a4b6b62b06e.js:1
+log @ controller-with-preconnect-86e8f0ad5f797aff885b6621a491e7f1.js:1
+le @ controller-with-preconnect-86e8f0ad5f797aff885b6621a491e7f1.js:1
+(anonymous) @ controller-with-preconnect-86e8f0ad5f797aff885b6621a491e7f1.js:1Understand this error
+events:1  GET https://6610c579-f240-4dc5-9750-452df8df4e58-00-15rfumdup3fh0.sisko.replit.dev:3000/api/drivers/events net::ERR_ABORTED 401 (Unauthorized)
