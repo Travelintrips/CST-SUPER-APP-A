@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { toast } from "sonner";
 import { useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
 
 function playNotificationChime() {
@@ -53,6 +54,28 @@ function showBrowserNotification(notification: OrderNotification) {
   } catch {
     // Notification API not available in this context
   }
+}
+
+export interface GeofenceAlertItem {
+  id: string;
+  driverId: number;
+  driverName: string;
+  jobId: number;
+  jobNumber: string;
+  deviationKm: number;
+  thresholdKm: number;
+  lat: number;
+  lng: number;
+  pickupAddress: string | null;
+  deliveryAddress: string | null;
+  triggeredAt: string;
+}
+
+export interface GeofenceResolvedNotice {
+  id: string;
+  driverName: string;
+  jobNumber: string;
+  at: string;
 }
 
 export interface OrderNotification {
@@ -135,11 +158,29 @@ export function useOrderNotifications() {
   const [notifPermission, setNotifPermission] = useState<NotificationPermission>(
     typeof Notification !== "undefined" ? Notification.permission : "denied"
   );
+  const [geofenceAlertMap, setGeofenceAlertMap] = useState<Map<string, GeofenceAlertItem>>(new Map());
+  const [resolvedGeofenceNotices, setResolvedGeofenceNotices] = useState<GeofenceResolvedNotice[]>([]);
+  const geofenceAlertMapRef = useRef<Map<string, GeofenceAlertItem>>(new Map());
   const esRef = useRef<EventSource | null>(null);
   const onNewOrderRef = useRef<((n: OrderNotification) => void) | null>(null);
   const initializedRef = useRef(false);
 
   const unreadCount = notifications.filter((n) => n.readAt === null).length;
+
+  // Fetch active geofence alerts on mount
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    fetch("/api/drivers/geofence-alerts", { credentials: "include" })
+      .then((r) => r.ok ? r.json() as Promise<GeofenceAlertItem[]> : [])
+      .then((alerts) => {
+        if (!alerts.length) return;
+        const map = new Map<string, GeofenceAlertItem>();
+        for (const a of alerts) map.set(a.id, a);
+        geofenceAlertMapRef.current = map;
+        setGeofenceAlertMap(new Map(map));
+      })
+      .catch(() => {});
+  }, [isAuthenticated]);
 
   // Fetch persisted notifications from DB on mount
   useEffect(() => {
@@ -230,6 +271,10 @@ export function useOrderNotifications() {
 
   const setOnNewOrder = useCallback((fn: (n: OrderNotification) => void) => {
     onNewOrderRef.current = fn;
+  }, []);
+
+  const dismissGeofenceResolved = useCallback((id: string) => {
+    setResolvedGeofenceNotices((prev) => prev.filter((r) => r.id !== id));
   }, []);
 
   const requestNotifPermission = useCallback(async () => {
@@ -458,6 +503,49 @@ export function useOrderNotifications() {
         } catch { }
       });
 
+      es.addEventListener("geofence_alert", (e: MessageEvent) => {
+        if (!mounted) return;
+        try {
+          const data = JSON.parse(e.data) as GeofenceAlertItem;
+          const isNew = !geofenceAlertMapRef.current.has(data.id);
+          geofenceAlertMapRef.current = new Map(geofenceAlertMapRef.current).set(data.id, data);
+          setGeofenceAlertMap(new Map(geofenceAlertMapRef.current));
+          window.dispatchEvent(new CustomEvent("geofence_alert", { detail: data }));
+          if (isNew) {
+            toast.warning(`⚠️ Geofence Alert: ${data.driverName}`, {
+              description: `Menyimpang ${data.deviationKm.toFixed(1)} km dari rute · Job #${data.jobNumber}`,
+              duration: 10_000,
+              action: { label: "Lihat", onClick: () => { window.location.href = "/bizportal/logistics/drivers"; } },
+            });
+          }
+        } catch { }
+      });
+
+      es.addEventListener("geofence_alert_update", (e: MessageEvent) => {
+        if (!mounted) return;
+        try {
+          const data = JSON.parse(e.data) as GeofenceAlertItem;
+          geofenceAlertMapRef.current = new Map(geofenceAlertMapRef.current).set(data.id, data);
+          setGeofenceAlertMap(new Map(geofenceAlertMapRef.current));
+          window.dispatchEvent(new CustomEvent("geofence_alert_update", { detail: data }));
+        } catch { }
+      });
+
+      es.addEventListener("geofence_resolved", (e: MessageEvent) => {
+        if (!mounted) return;
+        try {
+          const data = JSON.parse(e.data) as { id: string; driverName: string; jobNumber: string };
+          geofenceAlertMapRef.current.delete(data.id);
+          geofenceAlertMapRef.current = new Map(geofenceAlertMapRef.current);
+          setGeofenceAlertMap(new Map(geofenceAlertMapRef.current));
+          setResolvedGeofenceNotices((prev) => [
+            { id: data.id, driverName: data.driverName, jobNumber: data.jobNumber, at: new Date().toISOString() },
+            ...prev.slice(0, 4),
+          ]);
+          window.dispatchEvent(new CustomEvent("geofence_resolved", { detail: data }));
+        } catch { }
+      });
+
       es.onerror = () => {
         if (!mounted) return;
         setConnected(false);
@@ -477,6 +565,10 @@ export function useOrderNotifications() {
     };
   }, [isAuthenticated]);
 
+  const geofenceAlerts = [...geofenceAlertMap.values()].sort(
+    (a, b) => b.triggeredAt.localeCompare(a.triggeredAt)
+  );
+
   return {
     notifications,
     unreadCount,
@@ -489,5 +581,8 @@ export function useOrderNotifications() {
     lastFreightEventAt,
     notifPermission,
     requestNotifPermission,
+    geofenceAlerts,
+    resolvedGeofenceNotices,
+    dismissGeofenceResolved,
   };
 }
