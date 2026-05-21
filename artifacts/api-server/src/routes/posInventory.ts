@@ -48,6 +48,11 @@ function makeLossNumber(): string {
 }
 
 // ── CABANG ───────────────────────────────────────────────────────────────────
+// TODO Step 2 (Audit K5/R2): Tabel pos_branches belum punya kolom company_id.
+// Saat ini semua query di bawah tidak memfilter by company_id, sehingga user dari
+// perusahaan berbeda bisa melihat/mengubah data cabang POS perusahaan lain.
+// Rencana perbaikan: tambah kolom company_id (nullable) di pos_branches via migration,
+// lalu tambah WHERE company_id = req.user.companyId di semua query CRUD di bawah.
 
 router.get("/branches", async (req: Request, res: Response) => {
   const businessUnit = req.query.businessUnit as string | undefined;

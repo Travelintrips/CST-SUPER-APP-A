@@ -633,11 +633,25 @@ router.patch("/orders/:id/pay", async (req, res) => {
       `)).rows as Array<{ product_id: number; avg_cost: string }>;
       const costByProductId = new Map(costRows.map((r) => [r.product_id, Number(r.avg_cost)]));
 
-      const cogsItems = itemsWithLinked.map((i) => {
+      const allCogsItems = itemsWithLinked.map((i) => {
         const linkedId = prodMeta.get(i.productId)!.linked_product_id!;
         const costPrice = costByProductId.get(linkedId) ?? 0;
         return { name: i.productName, qty: i.qty, costPrice };
-      }).filter((x) => x.costPrice > 0);
+      });
+
+      const cogsItems = allCogsItems.filter((x) => x.costPrice > 0);
+
+      // Audit: warn jika ada item yang dilewati karena cost_price = 0 di wh_stock.
+      // Akibatnya: jurnal HPP tidak diposting → P&L tidak akurat (laba terlihat lebih besar).
+      // Solusi: isi cost_price di wh_stock saat menerima barang dari Purchase.
+      const skippedItems = allCogsItems.filter((x) => x.costPrice <= 0);
+      if (skippedItems.length > 0) {
+        console.warn(
+          `[pos-cogs] PERINGATAN: ${skippedItems.length} item dilewati karena cost_price = 0 ` +
+          `di wh_stock (order #${order.orderNumber}): ${skippedItems.map((x) => x.name).join(", ")}. ` +
+          `Jurnal HPP tidak akan diposting untuk item ini.`
+        );
+      }
 
       if (cogsItems.length > 0) {
         await postPosCogs({
