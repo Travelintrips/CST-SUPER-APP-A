@@ -107,15 +107,15 @@ export default defineConfig({
     },
     proxy: {
       "/api": {
-        target: "http://localhost:18444",
+        target: "http://localhost:8080",
         changeOrigin: true,
       },
       "/q": {
-        target: "http://localhost:18444",
+        target: "http://localhost:8080",
         changeOrigin: true,
       },
       "/pos-images": {
-        target: "http://localhost:18444",
+        target: "http://localhost:8080",
         changeOrigin: true,
       },
       // BizPortal dev server — proxied so /bizportal/* works via main entry port
