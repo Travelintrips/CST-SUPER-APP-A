@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { Bell, Package, Ship, ShoppingBag, CheckCheck, Trash2, FileText, RefreshCw, Container, Layers, BellOff, BellRing } from "lucide-react";
+import { Bell, Package, Ship, ShoppingBag, CheckCheck, Trash2, FileText, RefreshCw, Container, Layers, BellOff, BellRing, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import {
   Popover,
@@ -91,6 +91,7 @@ export function NotificationBell() {
     setOnNewOrder,
     notifPermission,
     requestNotifPermission,
+    geofenceAlerts,
   } = useOrderNotificationsContext();
   const initialized = useRef(false);
 
@@ -126,11 +127,23 @@ export function NotificationBell() {
   return (
     <Popover onOpenChange={(open) => { if (open && dbUnreadTotal > 0) markAllRead(); }}>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon" className="relative h-9 w-9" aria-label="Notifikasi">
-          <Bell size={18} />
+        <Button
+          variant="ghost"
+          size="icon"
+          className="relative h-9 w-9"
+          aria-label="Notifikasi"
+        >
+          <Bell size={18} className={geofenceAlerts.length > 0 ? "text-destructive" : ""} />
+          {/* Order notification badge — top-right */}
           {dbUnreadTotal > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white leading-none">
+            <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-blue-500 text-[10px] font-bold text-white leading-none">
               {dbUnreadTotal > 99 ? "99+" : dbUnreadTotal}
+            </span>
+          )}
+          {/* Geofence alert badge — bottom-right, pulsing red */}
+          {geofenceAlerts.length > 0 && (
+            <span className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-destructive animate-pulse">
+              <AlertTriangle size={9} className="text-white" />
             </span>
           )}
         </Button>
@@ -173,6 +186,37 @@ export function NotificationBell() {
             <p className="text-[11px] text-red-600 dark:text-red-400">
               Notifikasi diblokir browser. Ubah di pengaturan situs.
             </p>
+          </div>
+        )}
+
+        {/* ── Geofence Alert Section ── */}
+        {geofenceAlerts.length > 0 && (
+          <div className="border-b border-border">
+            <div className="flex items-center gap-2 bg-destructive/5 px-4 py-2 border-b border-destructive/10">
+              <AlertTriangle size={13} className="text-destructive shrink-0 animate-pulse" />
+              <span className="text-xs font-semibold text-destructive flex-1">Geofence Alert Aktif</span>
+              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 text-[10px] font-bold text-white animate-pulse">
+                {geofenceAlerts.length}
+              </span>
+            </div>
+            {geofenceAlerts.map((alert) => (
+              <a
+                key={alert.id}
+                href="/bizportal/logistics/drivers"
+                className="flex gap-2.5 px-4 py-2.5 hover:bg-destructive/5 transition-colors border-b border-destructive/10 last:border-0 cursor-pointer"
+              >
+                <AlertTriangle size={13} className="text-destructive shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-semibold text-destructive truncate">{alert.driverName}</span>
+                    <span className="text-[10px] text-muted-foreground shrink-0">{timeAgo(alert.triggeredAt)}</span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground truncate">
+                    #{alert.jobNumber} · Menyimpang {alert.deviationKm.toFixed(1)} km dari rute
+                  </p>
+                </div>
+              </a>
+            ))}
           </div>
         )}
 
