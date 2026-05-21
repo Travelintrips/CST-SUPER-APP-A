@@ -1,0 +1,71 @@
+Error while parsing the 'sandbox' attribute: 'allow-downloads-without-user-activation' is an invalid sandbox flag.Understand this error
+6Unrecognized feature: 'ambient-light-sensor'.Understand this warning
+6Unrecognized feature: 'battery'.Understand this warning
+6Unrecognized feature: 'execution-while-not-rendered'.Understand this warning
+6Unrecognized feature: 'execution-while-out-of-viewport'.Understand this warning
+6Unrecognized feature: 'layout-animations'.Understand this warning
+6Unrecognized feature: 'legacy-image-formats'.Understand this warning
+6Unrecognized feature: 'navigation-override'.Understand this warning
+6Unrecognized feature: 'oversized-images'.Understand this warning
+6Unrecognized feature: 'publickey-credentials'.Understand this warning
+6Unrecognized feature: 'speaker-selection'.Understand this warning
+6Unrecognized feature: 'unoptimized-images'.Understand this warning
+6Unrecognized feature: 'unsized-media'.Understand this warning
+6Allow attribute will take precedence over 'allowfullscreen'.Understand this warning
+6Allow attribute will take precedence over 'allowpaymentrequest'.Understand this warning
+5Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('<URL>') does not match the recipient window's origin ('<URL>').Understand this warning
+injected.js:214  GET https://6610c579-f240-4dc5-9750-452df8df4e58-00-15rfumdup3fh0.sisko.replit.dev:3000/api/notifications?limit=50&read=all 401 (Unauthorized)
+apply @ injected.js:214
+(anonymous) @ useOrderNotifications.ts:148
+react-stack-bottom-frame @ react-dom_client.js?v=76747358:17478
+runWithFiberInDEV @ react-dom_client.js?v=76747358:1485
+commitHookEffectListMount @ react-dom_client.js?v=76747358:8460
+commitHookPassiveMountEffects @ react-dom_client.js?v=76747358:8518
+commitPassiveMountOnFiber @ react-dom_client.js?v=76747358:9887
+recursivelyTraversePassiveMountEffects @ react-dom_client.js?v=76747358:9868
+commitPassiveMountOnFiber @ react-dom_client.js?v=76747358:9984
+recursivelyTraversePassiveMountEffects @ react-dom_client.js?v=76747358:9868
+commitPassiveMountOnFiber @ react-dom_client.js?v=76747358:9881
+recursivelyTraversePassiveMountEffects @ react-dom_client.js?v=76747358:9868
+commitPassiveMountOnFiber @ react-dom_client.js?v=76747358:9984
+recursivelyTraversePassiveMountEffects @ react-dom_client.js?v=76747358:9868
+commitPassiveMountOnFiber @ react-dom_client.js?v=76747358:9881
+recursivelyTraversePassiveMountEffects @ react-dom_client.js?v=76747358:9868
+commitPassiveMountOnFiber @ react-dom_client.js?v=76747358:9984
+recursivelyTraversePassiveMountEffects @ react-dom_client.js?v=76747358:9868
+commitPassiveMountOnFiber @ react-dom_client.js?v=76747358:9881
+recursivelyTraversePassiveMountEffects @ react-dom_client.js?v=76747358:9868
+commitPassiveMountOnFiber @ react-dom_client.js?v=76747358:9984
+recursivelyTraversePassiveMountEffects @ react-dom_client.js?v=76747358:9868
+commitPassiveMountOnFiber @ react-dom_client.js?v=76747358:9881
+recursivelyTraversePassiveMountEffects @ react-dom_client.js?v=76747358:9868
+commitPassiveMountOnFiber @ react-dom_client.js?v=76747358:9881
+recursivelyTraversePassiveMountEffects @ react-dom_client.js?v=76747358:9868
+commitPassiveMountOnFiber @ react-dom_client.js?v=76747358:9899
+flushPassiveEffects @ react-dom_client.js?v=76747358:11302
+flushPendingEffects @ react-dom_client.js?v=76747358:11276
+performSyncWorkOnRoot @ react-dom_client.js?v=76747358:11632
+flushSyncWorkAcrossRoots_impl @ react-dom_client.js?v=76747358:11536
+flushSpawnedWork @ react-dom_client.js?v=76747358:11254
+commitRoot @ react-dom_client.js?v=76747358:11081
+commitRootWhenReady @ react-dom_client.js?v=76747358:10512
+performWorkOnRoot @ react-dom_client.js?v=76747358:10457
+performWorkOnRootViaSchedulerTask @ react-dom_client.js?v=76747358:11623
+performWorkUntilDeadline @ react-dom_client.js?v=76747358:36
+<OrderNotificationsProvider>
+exports.jsxDEV @ react_jsx-dev-runtime.js?v=76747358:250
+App @ App.tsx:510
+react-stack-bottom-frame @ react-dom_client.js?v=76747358:17424
+renderWithHooks @ react-dom_client.js?v=76747358:4206
+updateFunctionComponent @ react-dom_client.js?v=76747358:6619
+beginWork @ react-dom_client.js?v=76747358:7654
+runWithFiberInDEV @ react-dom_client.js?v=76747358:1485
+performUnitOfWork @ react-dom_client.js?v=76747358:10868
+workLoopSync @ react-dom_client.js?v=76747358:10728
+renderRootSync @ react-dom_client.js?v=76747358:10711
+performWorkOnRoot @ react-dom_client.js?v=76747358:10330
+performWorkOnRootViaSchedulerTask @ react-dom_client.js?v=76747358:11623
+performWorkUntilDeadline @ react-dom_client.js?v=76747358:36
+<App>
+exports.jsxDEV @ react_jsx-dev-runtime.js?v=76747358:250
+(anonymous) @ main.tsx:9Understand this error

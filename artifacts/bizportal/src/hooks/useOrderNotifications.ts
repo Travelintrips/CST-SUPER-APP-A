@@ -143,6 +143,7 @@ export function useOrderNotifications() {
 
   // Fetch persisted notifications from DB on mount
   useEffect(() => {
+    if (!isAuthenticated) return;
     if (initializedRef.current) return;
     initializedRef.current = true;
     fetch("/api/notifications?limit=50&read=all", { credentials: "include" })
@@ -159,10 +160,11 @@ export function useOrderNotifications() {
         }
       })
       .catch(() => {});
-  }, []);
+  }, [isAuthenticated]);
 
   // Polling setiap 60 detik — sync unread count dari DB
   useEffect(() => {
+    if (!isAuthenticated) return;
     const poll = async () => {
       try {
         const r = await fetch("/api/notifications/unread-count", { credentials: "include" });
@@ -192,7 +194,7 @@ export function useOrderNotifications() {
 
     const timer = setInterval(poll, POLL_INTERVAL_MS);
     return () => clearInterval(timer);
-  }, []);
+  }, [isAuthenticated]);
 
   const markAllRead = useCallback(() => {
     setNotifications((prev) =>
