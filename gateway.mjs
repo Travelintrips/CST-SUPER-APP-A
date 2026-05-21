@@ -10,14 +10,25 @@
  *   /sport-center/* → Sport Center    :3002
  *   /*              → Customer Portal :3001
  *
- * WebSocket upgrades are also proxied (needed for Vite HMR when accessed
- * through this gateway port).
+ * Retry behaviour:
+ *   When an upstream is not yet ready (ECONNREFUSED / ECONNRESET / ETIMEDOUT),
+ *   the gateway retries with exponential backoff instead of returning 502 immediately.
+ *   - Retries: up to MAX_ATTEMPTS (default 8)
+ *   - Backoff:  200 ms × 2^attempt + jitter, capped at BACKOFF_CAP_MS (2 s)
+ *   - Total max wait: ~15 s before giving up with a 503 "Starting…" page
+ *
+ * WebSocket upgrades are also proxied (needed for Vite HMR).
  */
 
 import http from "node:http";
-import net from "node:net";
+import net  from "node:net";
 
-const PORT = Number(process.env.PORT ?? 5000);
+const PORT          = Number(process.env.PORT ?? 5000);
+const MAX_ATTEMPTS  = Number(process.env.GW_MAX_ATTEMPTS  ?? 8);
+const BACKOFF_CAP   = Number(process.env.GW_BACKOFF_CAP   ?? 2000);
+const BASE_DELAY    = Number(process.env.GW_BASE_DELAY    ?? 200);
+
+const RETRYABLE_CODES = new Set(["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENOTFOUND"]);
 
 const ROUTES = [
   { prefix: "/api",          upstream: { host: "localhost", port: 8080 } },
@@ -26,7 +37,14 @@ const ROUTES = [
   { prefix: "/bizportal",    upstream: { host: "localhost", port: 3000 } },
   { prefix: "/sport-center", upstream: { host: "localhost", port: 3002 } },
 ];
-const DEFAULT_UPSTREAM = { host: "localhost", port: 3001 }; // Customer Portal
+const DEFAULT_UPSTREAM = { host: "localhost", port: 3001 };
+
+const SERVICE_NAMES = {
+  8080: "API Server",
+  3000: "BizPortal",
+  3001: "Customer Portal",
+  3002: "Sport Center",
+};
 
 function resolve(url) {
   for (const route of ROUTES) {
@@ -37,62 +55,168 @@ function resolve(url) {
   return DEFAULT_UPSTREAM;
 }
 
-// ── HTTP ──────────────────────────────────────────────────────────────────────
+function delay(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+function backoffMs(attempt) {
+  const exp  = BASE_DELAY * Math.pow(2, attempt);
+  const jitter = Math.random() * BASE_DELAY;
+  return Math.min(exp + jitter, BACKOFF_CAP);
+}
+
+function startingPage(port, attempt) {
+  const name = SERVICE_NAMES[port] ?? `upstream :${port}`;
+  return `<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="refresh" content="3">
+  <title>Menunggu ${name}…</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{display:flex;align-items:center;justify-content:center;min-height:100vh;
+         font-family:system-ui,sans-serif;background:#0f172a;color:#e2e8f0}
+    .card{text-align:center;padding:2.5rem 3rem;background:#1e293b;
+          border-radius:1rem;border:1px solid #334155;max-width:420px}
+    .spinner{width:48px;height:48px;border:4px solid #334155;
+             border-top-color:#38bdf8;border-radius:50%;margin:0 auto 1.5rem;
+             animation:spin 0.9s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    h1{font-size:1.125rem;font-weight:600;color:#f8fafc;margin-bottom:.5rem}
+    p{font-size:.875rem;color:#94a3b8;line-height:1.6}
+    .attempt{margin-top:1rem;font-size:.75rem;color:#475569}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="spinner"></div>
+    <h1>${name} sedang starting…</h1>
+    <p>Gateway menunggu upstream siap.<br>Halaman akan refresh otomatis.</p>
+    <div class="attempt">Percobaan ${attempt} / ${MAX_ATTEMPTS} — port ${port}</div>
+  </div>
+</body>
+</html>`;
+}
+
+// ── HTTP proxy with retry ─────────────────────────────────────────────────────
+
+function proxyAttempt(req, upstream, body) {
+  return new Promise((resolve, reject) => {
+    const options = {
+      hostname: upstream.host,
+      port:     upstream.port,
+      path:     req.url,
+      method:   req.method,
+      headers: {
+        ...req.headers,
+        host: `${upstream.host}:${upstream.port}`,
+      },
+    };
+
+    const proxy = http.request(options, resolve);
+    proxy.on("error", reject);
+    if (body?.length) proxy.write(body);
+    proxy.end();
+  });
+}
+
 const server = http.createServer((req, res) => {
   const upstream = resolve(req.url ?? "/");
 
-  const options = {
-    hostname: upstream.host,
-    port:     upstream.port,
-    path:     req.url,
-    method:   req.method,
-    headers: {
-      ...req.headers,
-      host: `${upstream.host}:${upstream.port}`,
-    },
-  };
+  const chunks = [];
+  req.on("data", c => chunks.push(c));
+  req.on("end", async () => {
+    const body = Buffer.concat(chunks);
 
-  const proxy = http.request(options, (proxyRes) => {
-    res.writeHead(proxyRes.statusCode ?? 502, proxyRes.headers);
-    proxyRes.pipe(res, { end: true });
-  });
+    let lastErr;
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      try {
+        const proxyRes = await proxyAttempt(req, upstream, body);
+        res.writeHead(proxyRes.statusCode ?? 502, proxyRes.headers);
+        proxyRes.pipe(res, { end: true });
+        return;
+      } catch (err) {
+        lastErr = err;
+        if (!RETRYABLE_CODES.has(err.code)) break;
 
-  proxy.on("error", (err) => {
-    const msg = `Gateway: upstream ${upstream.host}:${upstream.port} unavailable — ${err.message}`;
-    console.error(msg);
+        const wait = backoffMs(attempt);
+        if (attempt === 0) {
+          console.warn(`[gw] ${upstream.port} not ready (${err.code}), retrying… (${req.method} ${req.url})`);
+        }
+        await delay(wait);
+      }
+    }
+
+    const port = upstream.port;
+    const isApi = req.url?.startsWith("/api");
+    console.error(`[gw] upstream :${port} unreachable after ${MAX_ATTEMPTS} attempts — ${lastErr?.message}`);
+
     if (!res.headersSent) {
-      res.writeHead(502, { "content-type": "text/plain" });
-      res.end(msg);
+      if (isApi) {
+        res.writeHead(503, {
+          "content-type": "application/json",
+          "retry-after":  "5",
+        });
+        res.end(JSON.stringify({
+          error: "upstream_not_ready",
+          message: `${SERVICE_NAMES[port] ?? `upstream :${port}`} belum siap, coba lagi beberapa saat.`,
+          port,
+        }));
+      } else {
+        res.writeHead(503, { "content-type": "text/html; charset=utf-8" });
+        res.end(startingPage(port, MAX_ATTEMPTS));
+      }
     }
   });
-
-  req.pipe(proxy, { end: true });
 });
 
-// ── WebSocket upgrade (Vite HMR) ──────────────────────────────────────────────
-server.on("upgrade", (req, socket, head) => {
+// ── WebSocket upgrade with retry ──────────────────────────────────────────────
+
+function wsConnect(upstream, attempt = 0) {
+  return new Promise((resolve, reject) => {
+    const sock = net.connect(upstream.port, upstream.host);
+    sock.once("connect", () => resolve(sock));
+    sock.once("error", reject);
+  });
+}
+
+server.on("upgrade", async (req, socket, head) => {
   const upstream = resolve(req.url ?? "/");
 
-  const tunnel = net.connect(upstream.port, upstream.host, () => {
-    tunnel.write(
-      `${req.method} ${req.url} HTTP/1.1\r\n` +
-      Object.entries(req.headers)
-        .map(([k, v]) => `${k}: ${v}`)
-        .join("\r\n") +
-      "\r\n\r\n"
-    );
-    if (head?.length) tunnel.write(head);
-  });
+  let tunnel;
+  let lastErr;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    try {
+      tunnel = await wsConnect(upstream, attempt);
+      break;
+    } catch (err) {
+      lastErr = err;
+      if (!RETRYABLE_CODES.has(err.code)) break;
+      await delay(backoffMs(attempt));
+    }
+  }
 
-  tunnel.on("error", (err) => {
-    console.error(`Gateway WS: tunnel error — ${err.message}`);
+  if (!tunnel) {
+    console.error(`[gw] WS: upstream :${upstream.port} unreachable — ${lastErr?.message}`);
     socket.destroy();
-  });
+    return;
+  }
 
+  tunnel.write(
+    `${req.method} ${req.url} HTTP/1.1\r\n` +
+    Object.entries(req.headers).map(([k, v]) => `${k}: ${v}`).join("\r\n") +
+    "\r\n\r\n"
+  );
+  if (head?.length) tunnel.write(head);
+
+  tunnel.on("error", (err) => { console.error(`[gw] WS tunnel error — ${err.message}`); socket.destroy(); });
   socket.on("error", () => tunnel.destroy());
   tunnel.pipe(socket, { end: true });
   socket.pipe(tunnel, { end: true });
 });
+
+// ── Start ─────────────────────────────────────────────────────────────────────
 
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`Gateway listening on port ${PORT}`);
@@ -100,4 +224,5 @@ server.listen(PORT, "0.0.0.0", () => {
   console.log(`  /bizportal/*    → :3000 (BizPortal)`);
   console.log(`  /sport-center/* → :3002 (Sport Center)`);
   console.log(`  /*              → :3001 (Customer Portal)`);
+  console.log(`  retry: up to ${MAX_ATTEMPTS} attempts, ${BASE_DELAY}ms base backoff (cap ${BACKOFF_CAP}ms)`);
 });
