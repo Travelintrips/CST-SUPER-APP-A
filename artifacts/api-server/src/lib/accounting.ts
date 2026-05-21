@@ -406,12 +406,12 @@ export async function postPosTransaction(args: {
   companyId?: number | null;
 }): Promise<void> {
   try {
-    const settings = await ensureAccountingSettings();
+    const settings = await ensureAccountingSettings(args.companyId ?? undefined);
     if (!settings.salesIncomeAccountId) {
       logger.warn({ transactionId: args.transactionId }, "Skipping POS post: salesIncomeAccountId missing");
       return;
     }
-    const isCash = args.paymentMethod === "cash" || args.paymentMethod === "qris";
+    const isCash = args.paymentMethod === "cash" || args.paymentMethod === "qris" || args.paymentMethod === "tunai";
     const debitAccountId = isCash
       ? (settings.defaultCashAccountId ?? settings.defaultBankAccountId)
       : settings.defaultBankAccountId;
@@ -582,28 +582,53 @@ export async function postStockReceived(args: {
   }
 }
 
-/** Auto-post when a payment becomes paid. */
+/** Auto-post when a payment becomes paid.
+ *
+ * @param args.paymentMethod - Opsional. "cash" | "tunai" | "qris" → posting ke akun Kas (CSH journal).
+ *   Selain itu atau tidak diisi → posting ke akun Bank (BNK journal). Backward compatible.
+ */
 export async function postPaymentReceived(args: {
   paymentId: number;
   refKind: "sales" | "purchase";
   refDocNumber: string;
   amount: number;
+  paymentMethod?: string;
 }): Promise<void> {
   try {
     const settings = await ensureAccountingSettings();
-    if (!settings.bankJournalId || !settings.defaultBankAccountId) {
-      logger.warn({ paymentId: args.paymentId }, "Skipping auto-post payment: bank settings missing");
+
+    // Tentukan apakah tunai/QRIS (kas) atau non-tunai (bank transfer)
+    const isCash =
+      args.paymentMethod === "cash" ||
+      args.paymentMethod === "tunai" ||
+      args.paymentMethod === "qris";
+
+    const targetAccountId = isCash
+      ? (settings.defaultCashAccountId ?? settings.defaultBankAccountId)
+      : settings.defaultBankAccountId;
+    const targetJournalId = isCash
+      ? (settings.cashJournalId ?? settings.bankJournalId)
+      : settings.bankJournalId;
+    const journalCode = isCash ? "CSH" : "BNK";
+
+    if (!targetJournalId || !targetAccountId) {
+      logger.warn(
+        { paymentId: args.paymentId, isCash },
+        "Skipping auto-post payment: bank/cash account or journal settings missing",
+      );
       return;
     }
+
     const amt = round2(args.amount);
     let lines: PostingLine[];
     let source: "sales_payment" | "purchase_payment";
+
     if (args.refKind === "sales") {
       if (!settings.arAccountId) return;
       source = "sales_payment";
       lines = [
         {
-          accountId: settings.defaultBankAccountId,
+          accountId: targetAccountId,
           debit: amt,
           credit: 0,
           description: `Penerimaan ${args.refDocNumber}`,
@@ -626,16 +651,17 @@ export async function postPaymentReceived(args: {
           description: `Pelunasan hutang ${args.refDocNumber}`,
         },
         {
-          accountId: settings.defaultBankAccountId,
+          accountId: targetAccountId,
           debit: 0,
           credit: amt,
           description: `Pembayaran ${args.refDocNumber}`,
         },
       ];
     }
+
     await postEntry(
       {
-        journalId: settings.bankJournalId,
+        journalId: targetJournalId,
         date: new Date(),
         ref: args.refDocNumber,
         description: `Pembayaran ${args.refDocNumber}`,
@@ -643,7 +669,7 @@ export async function postPaymentReceived(args: {
         sourceId: args.paymentId,
         lines,
       },
-      "BNK",
+      journalCode,
     );
   } catch (err) {
     logger.error({ err, paymentId: args.paymentId }, "Auto-post payment failed");

@@ -579,10 +579,6 @@ export interface SalesDocument {
   aiGenerated?: boolean;
   aiSourceWaPhone?: string | null;
   aiSourceCorrespondenceId?: number | null;
-  invoiceNumber?: string | null;
-  invoiceDate?: string | null;
-  dueDate?: string | null;
-  cancelledAt?: string | null;
 }
 
 export type SalesDocumentDetail = SalesDocument & {
@@ -726,10 +722,6 @@ export interface PurchaseDocument {
   amountPaid: number;
   createdAt: string;
   updatedAt: string;
-  billNumber?: string | null;
-  billDate?: string | null;
-  dueDate?: string | null;
-  cancelledAt?: string | null;
 }
 
 export type PurchaseDocumentDetail = PurchaseDocument & {
@@ -902,56 +894,8 @@ export const AccountType = {
   expense: "expense",
 } as const;
 
-export interface Company {
-  id: number;
-  name: string;
-  code: string;
-  isHolding: boolean;
-  parentCompanyId?: number | null;
-  address?: string | null;
-  npwp?: string | null;
-  logoUrl?: string | null;
-  isActive: boolean;
-  createdAt: string;
-}
-
-export interface CreateCompanyBody {
-  name: string;
-  code: string;
-  isHolding?: boolean;
-  parentCompanyId?: number | null;
-  address?: string | null;
-  npwp?: string | null;
-  logoUrl?: string | null;
-  isActive?: boolean;
-}
-
-export interface UpdateCompanyBody {
-  name?: string;
-  code?: string;
-  isHolding?: boolean;
-  parentCompanyId?: number | null;
-  address?: string | null;
-  npwp?: string | null;
-  logoUrl?: string | null;
-  isActive?: boolean;
-}
-
-export interface ListAccountsParams {
-  companyId?: number;
-}
-
-export interface ListJournalsParams {
-  companyId?: number;
-}
-
-export interface ListTaxesParams {
-  companyId?: number;
-}
-
 export interface Account {
   id: number;
-  companyId: number;
   code: string;
   name: string;
   type: AccountType;
@@ -1011,7 +955,6 @@ export const AccountingJournalType = {
 
 export interface AccountingJournal {
   id: number;
-  companyId: number;
   code: string;
   name: string;
   type: AccountingJournalType;
@@ -1120,7 +1063,6 @@ export type AccountingEntryStatus =
 export const AccountingEntryStatus = {
   draft: "draft",
   posted: "posted",
-  cancelled: "cancelled",
 } as const;
 
 export type AccountingEntrySource =
@@ -1136,7 +1078,6 @@ export const AccountingEntrySource = {
   ecommerce_order: "ecommerce_order",
   stock_received: "stock_received",
   manual_payment: "manual_payment",
-  reversal: "reversal",
 } as const;
 
 export interface AccountingEntry {
@@ -1230,7 +1171,6 @@ export interface AccountingPayment {
   sourceDocId?: number | null;
   createdById?: string | null;
   createdAt: string;
-  paymentNumber?: string | null;
 }
 
 export type AccountingPaymentDetail = AccountingPayment & {
@@ -2240,9 +2180,6 @@ export interface LogisticOrder {
   approvedVendorName?: string | null;
   finalSellingPrice?: number | null;
   quotationSentAt?: string | null;
-  linkedSalesDocId?: number | null;
-  linkedSalesDocNumber?: string | null;
-  optionsToken?: string | null;
   createdAt: string;
 }
 
@@ -2899,7 +2836,6 @@ export type ListExpensesParams = {
   search?: string;
   from?: string;
   to?: string;
-  company?: number;
 };
 
 export type GetExpenseSummaryParams = {

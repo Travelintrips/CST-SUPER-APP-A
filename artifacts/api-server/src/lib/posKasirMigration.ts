@@ -639,5 +639,12 @@ export async function runPosKasirMigration(): Promise<void> {
     )
   `);
 
-  logger.info("POS Access Control migration: selesai (pos_roles, user_branch_access, new columns)");
+  // P6 (Audit Step 2): Tambah kolom erp_branch_id pada pos_branches
+  // untuk menghubungkan cabang POS ke cabang ERP utama (akuntansi/reporting).
+  await db.execute(sql`
+    ALTER TABLE pos_branches
+    ADD COLUMN IF NOT EXISTS erp_branch_id INTEGER
+  `);
+
+  logger.info("POS Access Control migration: selesai (pos_roles, user_branch_access, new columns, erp_branch_id)");
 }

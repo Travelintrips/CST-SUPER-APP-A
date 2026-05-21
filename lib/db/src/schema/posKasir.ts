@@ -17,6 +17,7 @@ export const posBranchesTable = pgTable("pos_branches", {
   isActive: boolean("is_active").notNull().default(true),
   businessUnit: text("business_unit"),
   defaultWarehouseId: integer("default_warehouse_id"),
+  erpBranchId: integer("erp_branch_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (t) => [
   index("pos_branches_company_idx").on(t.companyId),

@@ -1,5 +1,5 @@
 import express, { Router, Request, Response } from "express";
-import OpenAI from "openai";
+import { getOpenAI } from "../lib/openaiClient.js";
 import { db } from "@workspace/db";
 import {
   aiChatSessionsTable,
@@ -28,19 +28,6 @@ const uploadMemory = multer({
   limits: { fileSize: 10 * 1024 * 1024 },
 });
 
-let _openai: OpenAI | null = null;
-function getOpenAI(): OpenAI {
-  if (!_openai) {
-    if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY && !process.env.OPENAI_API_KEY) {
-      throw new Error("OpenAI API key not configured.");
-    }
-    _openai = new OpenAI({
-      apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY,
-      baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-    });
-  }
-  return _openai;
-}
 
 export const aiAgentRouter = Router();
 

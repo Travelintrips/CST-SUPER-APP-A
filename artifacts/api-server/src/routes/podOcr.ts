@@ -1,6 +1,6 @@
 import { Router } from "express";
 import multer from "multer";
-import OpenAI from "openai";
+import { getOpenAI } from "../lib/openaiClient.js";
 import { db, podOcrResultsTable, logisticOrdersTable, driverJobsTable } from "@workspace/db";
 import { eq, or } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin.js";
@@ -10,13 +10,6 @@ import { logger } from "../lib/logger.js";
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 const objectStorage = new ObjectStorageService();
-
-function getOpenAI() {
-  return new OpenAI({
-    apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY ?? process.env.OPENAI_API_KEY ?? "",
-    baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-  });
-}
 
 // POST /api/pod-ocr/scan — upload POD image and run OCR
 // This endpoint is public so drivers can also submit POD without login

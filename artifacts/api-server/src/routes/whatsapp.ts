@@ -4,15 +4,9 @@ import { desc, eq } from "drizzle-orm";
 import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa } from "../lib/adminWa.js";
 import { logger } from "../lib/logger.js";
+import { normalizePhone } from "../lib/phoneUtils.js";
 
 export const whatsappRouter = Router();
-
-function normalizePhone(raw: string): string {
-  let digits = raw.replace(/[^\d]/g, "");
-  if (digits.startsWith("62")) return digits;
-  if (digits.startsWith("0")) return "62" + digits.slice(1);
-  return "62" + digits;
-}
 
 function calcFinalPrice(vendorPrice: number, markupType: string, markupValue: number): number {
   if (markupType === "percentage") {

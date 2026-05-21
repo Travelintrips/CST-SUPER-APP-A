@@ -4,9 +4,13 @@ import usersRouter from "./users";
 import dashboardRouter from "./dashboard";
 import ecommerceRouter from "./ecommerce";
 import tradingRouter from "./trading";
-import logisticsRouter from "./logistics";
+// logistics.ts (LAMA) dinonaktifkan — pakai freight.ts (BARU) yang memakai tabel freight_shipments.
+// Jika diaktifkan kembali, akan terjadi route shadowing di /api/logistics/shipments → tabel lama.
+// import logisticsRouter from "./logistics";
 import freightRouter from "./freight";
-import posRouter from "./pos";
+// pos.ts (LAMA) dinonaktifkan — pakai posKasir.ts (BARU) sebagai satu-satunya handler POS.
+// Jika diaktifkan kembali, traffic POS bisa masuk ke tabel berbeda yang tidak terhubung ke sistem kasir.
+// import posRouter from "./pos";
 import salesRouter from "./sales";
 import purchaseRouter from "./purchase";
 import reportsRouter from "./reports";
@@ -70,9 +74,11 @@ router.use("/users", usersRouter);
 router.use("/dashboard", dashboardRouter);
 router.use("/ecommerce", ecommerceRouter);
 router.use("/trading", tradingRouter);
-router.use("/logistics", logisticsRouter);
+// logistics.ts (LAMA) dinonaktifkan — lihat komentar import di atas.
+// router.use("/logistics", logisticsRouter);
 router.use("/logistics", freightRouter);
-router.use("/pos", posRouter);
+// pos.ts (LAMA) dinonaktifkan — lihat komentar import di atas.
+// router.use("/pos", posRouter);
 router.use("/sales", salesRouter);
 router.use("/purchase", purchaseRouter);
 router.use("/reports", reportsRouter);
@@ -83,6 +89,10 @@ router.use("/email-correspondences", emailCorrespondencesRouter);
 router.use("/scan-document", scanDocumentRouter);
 router.use("/expenses", expensesRouter);
 router.use("/portal", portalRouter);
+// PERHATIAN: logisticRfqRouter dan logisticOrdersRouter keduanya di-mount di /logistic/orders.
+// Express akan mencoba logisticRfqRouter dulu; jika tidak ada handler yang cocok, baru logisticOrdersRouter.
+// Risiko: jika keduanya mendefinisikan path yang sama (misal GET /), hanya yang pertama yang merespons.
+// TODO Step 2: pisahkan sub-path agar tidak ada ambiguitas (misal /logistic/rfq vs /logistic/orders).
 router.use("/logistic/orders", logisticRfqRouter);
 router.use("/logistic/orders", logisticOrdersRouter);
 router.use("/logistic", logisticRfqV2Router);
@@ -102,6 +112,10 @@ router.use("/pos-inventory", posInventoryRouter);
 router.use("/warehouse", warehouseRouter);
 router.use("/inventory", inventoryMainRouter);
 router.use("/inventory/receive", inventoryReceiveRouter);
+// CATATAN: inventoryStockRouter di-mount dua kali di path berbeda (by design).
+// /inventory/stock      → akses data stok per produk
+// /inventory/warehouses → akses data warehouse mapping
+// Jika ada state di router-level, pastikan tidak ada efek samping ganda.
 router.use("/inventory/stock", inventoryStockRouter);
 router.use("/inventory/warehouses", inventoryStockRouter);
 router.use("/custom-roles", customRolesRouter);

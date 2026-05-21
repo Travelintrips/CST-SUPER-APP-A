@@ -17,6 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import { useLanguage } from "@/contexts/LanguageContext";
+import GeofenceAlertBanner from "@/components/logistics/GeofenceAlertBanner";
 
 interface ResponseTimeEntry {
   timestamp: string;
@@ -441,6 +442,9 @@ export default function DashboardPage() {
             )}
           </div>
         </div>
+
+        {/* ── Geofence Alert Banner ── */}
+        <GeofenceAlertBanner />
 
         {/* ── KPI Hero Section ── */}
         {(() => {

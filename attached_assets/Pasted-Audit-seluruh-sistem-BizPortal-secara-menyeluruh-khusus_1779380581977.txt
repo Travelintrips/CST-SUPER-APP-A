@@ -1,0 +1,63 @@
+Audit seluruh sistem BizPortal secara menyeluruh, khususnya modul Sales, Purchase, Expense, Accounting, Inventory/Warehouse, POS, dan semua integrasi terkait.
+
+Tujuan audit:
+1. Cek apakah alur Sales → Invoice → Payment → Accounting sudah benar.
+2. Cek apakah alur Purchase → Vendor Bill → Payment → Accounting sudah benar.
+3. Cek apakah Expense masuk ke jurnal/accounting dengan benar.
+4. Cek apakah POS/penjualan otomatis mengurangi stok gudang/cabang.
+5. Cek apakah Purchase otomatis menambah stok gudang yang benar.
+6. Cek apakah retur, barang rusak, barang hilang, transfer gudang, dan penyesuaian stok sudah tercatat dengan benar.
+7. Cek apakah semua transaksi masuk ke jurnal akuntansi dan tidak double posting.
+8. Cek apakah multi company, branch/cabang, department/division, warehouse, dan user role sudah konsisten.
+9. Cek apakah ada konflik logic, duplikasi tabel, duplikasi fungsi, duplikasi API route, duplikasi state, duplikasi komponen, atau naming yang membingungkan.
+10. Cek apakah ada fitur lama yang bentrok dengan fitur baru.
+
+Tolong lakukan audit dalam mode aman:
+- Jangan langsung hapus kode.
+- Jangan langsung ubah database schema besar-besaran.
+- Jangan merusak fitur yang sudah berjalan.
+- Jangan membuat modul baru jika modul serupa sudah ada.
+- Jika menemukan konflik atau duplikasi, tampilkan dulu daftar temuannya.
+- Jelaskan file mana yang bermasalah, fungsi mana yang bentrok, dan dampaknya ke sistem.
+- Setelah itu buatkan rencana perbaikan bertahap.
+
+Output yang saya mau:
+1. Ringkasan kondisi sistem saat ini.
+2. Daftar konflik/duplikasi yang ditemukan.
+3. Daftar alur transaksi yang sudah benar.
+4. Daftar alur transaksi yang belum terhubung.
+5. Daftar risiko accounting/jurnal/stok.
+6. Rekomendasi perbaikan prioritas tinggi, sedang, rendah.
+7. Rencana implementasi per step agar tidak conflict.
+
+Fokus audit:
+- Sales order
+- Invoice
+- Payment received
+- Purchase order
+- Vendor bill
+- Payment to vendor
+- Expense
+- Chart of accounts
+- Journal entries
+- General ledger
+- Inventory
+- Warehouse pusat
+- Warehouse cabang
+- Stock movement
+- Stock adjustment
+- Stock transfer
+- Retur barang
+- Barang rusak
+- Barang hilang
+- POS sales
+- Product master
+- Recipe/BOM jika ada produk racikan
+- Multi company
+- Branch
+- Department
+- Division
+- User role/access control
+
+Setelah audit selesai, jangan langsung refactor besar.
+Buat dulu laporan audit lengkap dan minta saya konfirmasi sebelum mulai perbaikan.

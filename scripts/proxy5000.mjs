@@ -6,43 +6,8 @@ try { execSync("fuser -k 5000/tcp 2>/dev/null", { stdio: "ignore" }); } catch {}
 await new Promise(r => setTimeout(r, 500));
 
 const API_PORT = 8080;
-const BIZPORTAL_PORT = 18442;
+const BIZPORTAL_PORT = 3000;
 const CUSTOMER_PORTAL_PORT = 3001;
-
-function proxyRequest(req, res, port) {
-  const options = {
-    hostname: "localhost",
-    port,
-    path: req.url,
-    method: req.method,
-    headers: req.headers,
-  };
-  const proxy = http.request(options, (proxyRes) => {
-    res.writeHead(proxyRes.statusCode, proxyRes.headers);
-    proxyRes.pipe(res, { end: true });
-  });
-  proxy.on("error", (err) => {
-    res.writeHead(502);
-    res.end("Bad Gateway: " + err.message);
-  });
-  req.pipe(proxy, { end: true });
-}
-
-function proxyWebSocket(req, socket, head, port) {
-  const target = net.createConnection(port, "localhost", () => {
-    const headers = Object.entries(req.headers)
-      .map(([k, v]) => `${k}: ${v}`)
-      .join("\r\n");
-    target.write(
-      `${req.method} ${req.url} HTTP/1.1\r\n${headers}\r\n\r\n`
-    );
-    if (head && head.length) target.write(head);
-    target.pipe(socket);
-    socket.pipe(target);
-  });
-  target.on("error", () => { try { socket.destroy(); } catch {} });
-  socket.on("error", () => { try { target.destroy(); } catch {} });
-}
 
 function getTargetPort(url, headers) {
   if (
@@ -52,11 +17,61 @@ function getTargetPort(url, headers) {
     url.startsWith("/auth/")
   ) return API_PORT;
   if (url.startsWith("/bizportal") || url.startsWith("/bizportal/")) return BIZPORTAL_PORT;
-  // Route Vite HMR WebSocket (/?token=) to the right portal based on Referer header
+  if (url.startsWith("/__customer_portal_hmr")) return CUSTOMER_PORTAL_PORT;
   if (headers && headers.referer) {
     if (headers.referer.includes("/bizportal")) return BIZPORTAL_PORT;
   }
   return CUSTOMER_PORTAL_PORT;
+}
+
+function proxyRequest(req, res, port) {
+  const options = {
+    hostname: "localhost",
+    port,
+    path: req.url,
+    method: req.method,
+    headers: { ...req.headers, host: `localhost:${port}` },
+  };
+  const proxy = http.request(options, (proxyRes) => {
+    res.writeHead(proxyRes.statusCode, proxyRes.headers);
+    proxyRes.pipe(res, { end: true });
+  });
+  proxy.on("error", (err) => {
+    if (!res.headersSent) res.writeHead(502);
+    res.end("Bad Gateway: " + err.message);
+  });
+  req.pipe(proxy, { end: true });
+}
+
+// Proper WebSocket proxy using http.request upgrade event
+function proxyWebSocket(req, socket, head, port) {
+  const options = {
+    hostname: "localhost",
+    port,
+    path: req.url,
+    method: req.method,
+    headers: { ...req.headers, host: `localhost:${port}` },
+  };
+
+  const proxyReq = http.request(options);
+
+  proxyReq.on("upgrade", (proxyRes, proxySocket, proxyHead) => {
+    const statusLine = `HTTP/1.1 ${proxyRes.statusCode} ${proxyRes.statusMessage}`;
+    const headerLines = Object.entries(proxyRes.headers)
+      .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : v}`)
+      .join("\r\n");
+    socket.write(`${statusLine}\r\n${headerLines}\r\n\r\n`);
+    if (proxyHead && proxyHead.length) socket.write(proxyHead);
+    proxySocket.pipe(socket);
+    socket.pipe(proxySocket);
+    proxySocket.on("error", () => { try { socket.destroy(); } catch {} });
+    socket.on("error", () => { try { proxySocket.destroy(); } catch {} });
+  });
+
+  proxyReq.on("error", () => { try { socket.destroy(); } catch {} });
+
+  if (head && head.length) proxyReq.write(head);
+  proxyReq.end();
 }
 
 const server = http.createServer((req, res) => {
@@ -70,6 +85,6 @@ server.on("upgrade", (req, socket, head) => {
 server.listen(5000, "0.0.0.0", () => {
   console.log("Proxy listening on :5000");
   console.log(`  /bizportal/* -> :${BIZPORTAL_PORT}`);
-  console.log(`  /api/* -> :${API_PORT}`);
-  console.log(`  /* -> :${CUSTOMER_PORTAL_PORT}`);
+  console.log(`  /api/*       -> :${API_PORT}`);
+  console.log(`  /*           -> :${CUSTOMER_PORTAL_PORT}`);
 });
