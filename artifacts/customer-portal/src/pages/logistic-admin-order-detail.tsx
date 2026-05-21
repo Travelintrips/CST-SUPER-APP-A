@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useLocation, useParams } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -8,12 +9,23 @@ import { useGetLogisticOrder, useUpdateLogisticOrderStatus, getGetLogisticOrderQ
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { STATUS_OPTIONS, STATUS_COLORS, OrderStatus } from "@/lib/services-data";
 import { ArrowLeft, Package, Ship, User, MapPin, Calendar, FileText } from "lucide-react";
+import { supabase } from "@/lib/supabase";
+import { fetchAndStoreProfile } from "@/lib/auth";
 
 export default function AdminOrderDetail() {
   const params = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const id = parseInt(params.id || "0");
+
+  useEffect(() => {
+    if (!supabase) { setLocation("/login"); return; }
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!session) { setLocation("/login"); return; }
+      const profile = await fetchAndStoreProfile();
+      if (!profile || profile.role !== "admin") { setLocation("/dashboard"); return; }
+    });
+  }, [setLocation]);
 
   const { data: order, isLoading, refetch } = useGetLogisticOrder(id, {
     query: { enabled: !!id, queryKey: getGetLogisticOrderQueryKey(id) },

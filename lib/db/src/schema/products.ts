@@ -1,6 +1,8 @@
-import { pgTable, serial, text, numeric, integer, timestamp, boolean, primaryKey } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, numeric, integer, timestamp, boolean, primaryKey, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { uomTable } from "./uom";
+import { companiesTable } from "./companies";
 
 export const productCategoriesTable = pgTable("product_categories", {
   id: serial("id").primaryKey(),
@@ -14,9 +16,11 @@ export type ProductCategory = typeof productCategoriesTable.$inferSelect;
 
 export const productsTable = pgTable("products", {
   id: serial("id").primaryKey(),
+  companyId: integer("company_id").references(() => companiesTable.id, { onDelete: "set null" }),
   name: text("name").notNull(),
   sku: text("sku").notNull().unique(),
   price: numeric("price", { precision: 12, scale: 2 }).notNull(),
+  costPrice: numeric("cost_price", { precision: 12, scale: 2 }).default("0"),
   stock: integer("stock").notNull().default(0),
   description: text("description"),
   imageUrl: text("image_url"),
@@ -26,10 +30,13 @@ export const productsTable = pgTable("products", {
   itemType: text("item_type").notNull().default("barang"),
   unit: text("unit").notNull().default("pcs"),
   unitOptions: text("unit_options").notNull().default("[]"),
+  baseUomId: integer("base_uom_id").references(() => uomTable.id, { onDelete: "set null" }),
   subcategory: text("subcategory"),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (t) => [
+  index("products_company_idx").on(t.companyId),
+]);
 
 export const insertProductSchema = createInsertSchema(productsTable).omit({ id: true, createdAt: true });
 export type InsertProduct = z.infer<typeof insertProductSchema>;

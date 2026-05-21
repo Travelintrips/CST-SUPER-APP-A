@@ -74,19 +74,18 @@ function DocUploader({
   async function handleFile(file: File) {
     onChange({ name: file.name, objectPath: "", uploading: true });
     try {
-      const tokenRes = await fetch("/api/portal/order-upload-url", {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch("/api/portal/order-upload", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-        body: JSON.stringify({ contentType: file.type || "application/pdf" }),
+        headers: { ...getAuthHeaders() },
+        body: form,
       });
-      if (!tokenRes.ok) throw new Error("Gagal mendapatkan URL upload");
-      const { uploadURL, objectPath } = await tokenRes.json() as { uploadURL: string; objectPath: string };
-      const putRes = await fetch(uploadURL, {
-        method: "PUT",
-        body: file,
-        headers: { "Content-Type": file.type || "application/pdf" },
-      });
-      if (!putRes.ok) throw new Error("Upload gagal");
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { message?: string };
+        throw new Error(body.message ?? "Upload gagal");
+      }
+      const { objectPath } = await res.json() as { objectPath: string };
       onChange({ name: file.name, objectPath, uploading: false });
     } catch (err) {
       onChange({ name: file.name, objectPath: "", uploading: false, error: String(err) });
@@ -451,21 +450,43 @@ export default function FreightForwarding() {
   ];
 
   return (
-    <div className="min-h-screen" style={{ background: "linear-gradient(160deg,#F0F4F9 0%,#F8FAFC 100%)" }}>
-      {/* Navbar */}
-      <nav className="border-b border-slate-200/80 sticky top-0 z-50" style={{ background: "rgba(255,255,255,0.97)", backdropFilter: "blur(10px)" }}>
-        <div className="max-w-3xl mx-auto px-4 h-14 flex items-center gap-3">
+    <div className="min-h-screen" style={{ background: "linear-gradient(160deg,#F4F8FD 0%,#EEF4FA 100%)" }}>
+      {/* Navbar — premium dark */}
+      <nav
+        className="sticky top-0 z-50"
+        style={{
+          background: "linear-gradient(135deg, #0A2444 0%, #0B3D6B 45%, #0D5FA0 100%)",
+          borderBottom: "1px solid rgba(255,255,255,0.10)",
+          boxShadow: "0 2px 20px rgba(10,36,68,0.28), 0 1px 4px rgba(10,36,68,0.18)",
+        }}
+      >
+        {/* Accent line — blue */}
+        <div className="h-[2.5px] w-full" style={{ background: "linear-gradient(90deg, #3B82F6 0%, #60A5FA 40%, rgba(96,165,250,0.3) 80%, transparent 100%)" }} />
+        <div className="max-w-3xl mx-auto px-4 h-[52px] flex items-center gap-3">
           <button
             onClick={() => { if (step === 1) setLocation("/jasa"); else setStep((s) => (s - 1) as typeof step); }}
-            className="flex items-center gap-2 text-sm font-semibold text-slate-700 hover:text-[#0B5CAD] transition-colors"
+            className="flex items-center gap-1.5 text-sm font-medium transition-all duration-150 rounded-lg px-2.5 py-1.5"
+            style={{
+              color: "rgba(255,255,255,0.72)",
+              background: "rgba(255,255,255,0.06)",
+              border: "1px solid rgba(255,255,255,0.10)",
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = "rgba(255,255,255,0.96)"; (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.12)"; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "rgba(255,255,255,0.72)"; (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.06)"; }}
           >
             <ArrowLeft className="w-4 h-4" />
             {step === 1 ? "Kembali ke Layanan" : "Kembali"}
           </button>
           <div className="flex-1" />
-          <Badge variant="outline" className="text-xs gap-1.5 border-slate-200 text-slate-600">
-            <img src={`${import.meta.env.BASE_URL}images/logo.png`} alt="" className="h-3 w-auto object-contain" /> Freight Forwarding
-          </Badge>
+          <div className="flex items-center gap-2">
+            <div
+              className="flex items-center justify-center w-7 h-7 rounded-md"
+              style={{ background: "rgba(59,130,246,0.22)", border: "1px solid rgba(96,165,250,0.38)" }}
+            >
+              <Ship className="w-3.5 h-3.5" style={{ color: "#93C5FD" }} />
+            </div>
+            <span className="text-[13px] font-semibold" style={{ color: "rgba(255,255,255,0.92)" }}>Freight Forwarding</span>
+          </div>
         </div>
       </nav>
 

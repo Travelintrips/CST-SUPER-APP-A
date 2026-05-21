@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Search, ArrowRight, ChevronRight, Calculator,
+  Search, ArrowRight, ChevronRight, Calculator, ArrowLeft,
 } from "lucide-react";
 import { useListPortalServices } from "@workspace/api-client-react";
 import { resolveImageUrl } from "@/lib/utils";
@@ -91,7 +91,7 @@ export default function Jasa() {
         className="relative overflow-hidden"
         style={{
           background: "linear-gradient(135deg, #0B3D6B 0%, #0D6EBF 55%, #1E9FE8 100%)",
-          padding: "clamp(52px, 8vw, 88px) 0 clamp(40px, 6vw, 68px)",
+          padding: "clamp(24px, 3.5vw, 36px) 0 clamp(18px, 2.5vw, 26px)",
         }}
       >
         {/* Dot pattern */}
@@ -163,18 +163,45 @@ export default function Jasa() {
         `}</style>
 
         <div className="max-w-6xl mx-auto px-4 md:px-8" style={{ position: "relative", zIndex: 2 }}>
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+          {/* Back button */}
+          <button
+            onClick={() => window.history.length > 1 ? window.history.back() : setLocation("/")}
+            className="inline-flex items-center gap-1.5 mb-3 text-[12px] font-semibold rounded-lg px-3 py-1.5 select-none"
+            style={{
+              color: "rgba(255,255,255,0.85)",
+              background: "rgba(255,255,255,0.10)",
+              border: "1.5px solid rgba(255,255,255,0.20)",
+              transition: "all 0.16s ease",
+            }}
+            onMouseEnter={e => {
+              const el = e.currentTarget as HTMLElement;
+              el.style.background = "rgba(255,255,255,0.18)";
+              el.style.color = "white";
+              el.style.transform = "translateY(-1px)";
+            }}
+            onMouseLeave={e => {
+              const el = e.currentTarget as HTMLElement;
+              el.style.background = "rgba(255,255,255,0.10)";
+              el.style.color = "rgba(255,255,255,0.85)";
+              el.style.transform = "translateY(0)";
+            }}
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Kembali
+          </button>
+
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
               <p
-                className="font-semibold uppercase tracking-widest mb-3"
-                style={{ fontSize: "10.5px", letterSpacing: "0.18em", color: "rgba(255,255,255,0.78)" }}
+                className="font-semibold uppercase tracking-widest mb-1.5"
+                style={{ fontSize: "10px", letterSpacing: "0.18em", color: "rgba(255,255,255,0.72)" }}
               >
                 {t("jasa.catalogLabel")}
               </p>
               <h1
                 className="font-display text-white"
                 style={{
-                  fontSize: "clamp(26px, 3.8vw, 50px)",
+                  fontSize: "clamp(20px, 2.8vw, 34px)",
                   fontWeight: 800,
                   lineHeight: 1.08,
                   letterSpacing: "-0.01em",
@@ -184,15 +211,15 @@ export default function Jasa() {
                 {t("jasa.title")}
               </h1>
               <p
-                className="mt-3 hidden md:block"
-                style={{ fontSize: "14px", color: "rgba(255,255,255,0.68)", maxWidth: "380px", lineHeight: 1.6 }}
+                className="mt-1.5 hidden md:block"
+                style={{ fontSize: "13px", color: "rgba(255,255,255,0.62)", maxWidth: "340px", lineHeight: 1.55 }}
               >
                 Temukan layanan logistik terpercaya sesuai kebutuhan bisnis Anda
               </p>
             </div>
 
             {/* Search */}
-            <div className="relative w-full md:w-80 shrink-0">
+            <div className="relative w-full md:w-72 shrink-0">
               <Search
                 className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none"
                 style={{ width: "15px", height: "15px", color: "rgba(255,255,255,0.80)" }}
@@ -234,16 +261,50 @@ export default function Jasa() {
       {/* ── Page Body ──────────────────────────────────────────────── */}
       <div className="max-w-6xl mx-auto px-4 md:px-8 mt-7">
 
-        {/* Category filter chips */}
+        {/* Category filter chips — premium */}
+        <style>{`
+          .cat-chip {
+            transition: all 0.20s cubic-bezier(0.4,0,0.2,1);
+            position: relative;
+            overflow: hidden;
+          }
+          .cat-chip::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: inherit;
+            background: linear-gradient(135deg, rgba(255,255,255,0.18) 0%, transparent 60%);
+            pointer-events: none;
+          }
+          .cat-chip:not(.active):hover {
+            background: linear-gradient(135deg, #EEF4FF 0%, #F5F8FF 100%) !important;
+            border-color: rgba(11,92,173,0.35) !important;
+            color: #0B5CAD !important;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 14px rgba(11,92,173,0.12), 0 1px 4px rgba(11,92,173,0.06) !important;
+          }
+          .cat-chip.active {
+            background: linear-gradient(135deg, #0B5CAD 0%, #1A73D4 100%) !important;
+            border-color: #0B5CAD !important;
+            color: white !important;
+            box-shadow: 0 4px 16px rgba(11,92,173,0.30), 0 1px 4px rgba(11,92,173,0.15), inset 0 1px 0 rgba(255,255,255,0.18) !important;
+            transform: translateY(-1px);
+          }
+          .cat-chip.active:hover { box-shadow: 0 6px 22px rgba(11,92,173,0.38), 0 2px 6px rgba(11,92,173,0.18), inset 0 1px 0 rgba(255,255,255,0.18) !important; }
+        `}</style>
         <div className="flex flex-wrap gap-2 mb-7">
           <button
             key="__all__"
             onClick={() => setActiveCategory("__all__")}
-            className={`px-4 py-1.5 rounded-full text-[13px] font-medium transition-all border ${
-              activeCategory === "__all__"
-                ? "bg-[#0B5CAD] text-white border-[#0B5CAD] shadow-md shadow-blue-200"
-                : "bg-white text-slate-500 border-slate-200 hover:border-[#0B5CAD]/40 hover:text-slate-700 hover:shadow-sm"
-            }`}
+            className={`cat-chip px-4 py-2 rounded-full text-[13px] font-semibold border ${activeCategory === "__all__" ? "active" : ""}`}
+            style={{
+              background: activeCategory === "__all__" ? undefined : "rgba(255,255,255,0.95)",
+              borderColor: activeCategory === "__all__" ? undefined : "rgba(203,213,225,0.8)",
+              color: activeCategory === "__all__" ? undefined : "#64748B",
+              backdropFilter: "blur(8px)",
+              WebkitBackdropFilter: "blur(8px)",
+              boxShadow: activeCategory === "__all__" ? undefined : "0 1px 3px rgba(0,0,0,0.05), inset 0 1px 0 rgba(255,255,255,0.9)",
+            }}
           >
             {t("jasa.all")}
           </button>
@@ -251,11 +312,15 @@ export default function Jasa() {
             <button
               key={cat}
               onClick={() => setActiveCategory(cat)}
-              className={`px-4 py-1.5 rounded-full text-[13px] font-medium transition-all border ${
-                activeCategory === cat
-                  ? "bg-[#0B5CAD] text-white border-[#0B5CAD] shadow-md shadow-blue-200"
-                  : "bg-white text-slate-500 border-slate-200 hover:border-[#0B5CAD]/40 hover:text-slate-700 hover:shadow-sm"
-              }`}
+              className={`cat-chip px-4 py-2 rounded-full text-[13px] font-semibold border ${activeCategory === cat ? "active" : ""}`}
+              style={{
+                background: activeCategory === cat ? undefined : "rgba(255,255,255,0.95)",
+                borderColor: activeCategory === cat ? undefined : "rgba(203,213,225,0.8)",
+                color: activeCategory === cat ? undefined : "#64748B",
+                backdropFilter: "blur(8px)",
+                WebkitBackdropFilter: "blur(8px)",
+                boxShadow: activeCategory === cat ? undefined : "0 1px 3px rgba(0,0,0,0.05), inset 0 1px 0 rgba(255,255,255,0.9)",
+              }}
             >
               {translateCategory(cat, locale)}
             </button>

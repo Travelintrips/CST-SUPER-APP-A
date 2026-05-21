@@ -2,6 +2,7 @@ import { supabase } from "./supabase";
 
 export const TOKEN_KEY = "portal_token";
 const PROFILE_KEY = "portal_profile";
+const DEV_TOKEN_KEY = "portal_dev_token";
 
 interface PortalProfile {
   customerId: number;
@@ -24,22 +25,39 @@ function getSupabaseSessionSync(): { access_token: string } | null {
   }
 }
 
+export function getDevToken(): string | null {
+  try { return localStorage.getItem(DEV_TOKEN_KEY); } catch { return null; }
+}
+
+export function setDevToken(token: string): void {
+  localStorage.setItem(DEV_TOKEN_KEY, token);
+}
+
 export function getAuthToken(): string | null {
+  const ours = localStorage.getItem(TOKEN_KEY);
+  if (ours) return ours;
+  const dev = getDevToken();
+  if (dev) return dev;
   return getSupabaseSessionSync()?.access_token ?? null;
 }
 
 export async function getAuthTokenAsync(): Promise<string | null> {
+  const ours = localStorage.getItem(TOKEN_KEY);
+  if (ours) return ours;
   if (!supabase) return null;
   const { data: { session } } = await supabase.auth.getSession();
   return session?.access_token ?? null;
 }
 
-export function setAuthToken(_token: string): void {
+export function setAuthToken(token: string): void {
+  localStorage.setItem(TOKEN_KEY, token);
 }
 
 export function removeAuthToken(): void {
+  localStorage.removeItem(TOKEN_KEY);
   if (supabase) supabase.auth.signOut();
   localStorage.removeItem(PROFILE_KEY);
+  localStorage.removeItem(DEV_TOKEN_KEY);
 }
 
 export function getAuthHeaders(): { Authorization?: string } {

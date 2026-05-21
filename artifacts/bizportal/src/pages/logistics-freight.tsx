@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
+import { useOrderNotificationsContext } from "@/contexts/OrderNotificationsContext";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -17,8 +18,10 @@ import {
   useDeleteFreightShipment,
   getListFreightShipmentsQueryKey,
   useListSalesDocuments,
+  getGetFreightShipmentQueryOptions,
   type FreightShipment,
 } from "@workspace/api-client-react";
+import { usePrefetchOnHover } from "@/hooks/use-prefetch-on-hover";
 
 const STATUS_LABELS: Record<string, string> = {
   draft: "Draft",
@@ -180,12 +183,15 @@ function parseParamsFromSearch(search: string) {
 
 export default function LogisticsFreightPage() {
   const queryClient = useQueryClient();
+  const prefetchHover = usePrefetchOnHover();
   const { toast } = useToast();
   const { t } = useLanguage();
   const [location, navigate] = useLocation();
   const [refreshInterval, setRefreshInterval] = useState<FreightRefreshValue>(getInitialRefreshInterval);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
+  const [autoRefreshFlash, setAutoRefreshFlash] = useState(false);
   const wasFetchingRef = useRef(false);
+  const { lastFreightEventAt } = useOrderNotificationsContext();
 
   const handleRefreshIntervalChange = (value: string) => {
     const next = value as FreightRefreshValue;
@@ -206,6 +212,15 @@ export default function LogisticsFreightPage() {
     }
     wasFetchingRef.current = isFetching;
   }, [isFetching]);
+
+  useEffect(() => {
+    if (!lastFreightEventAt) return;
+    refetch();
+    setLastRefreshed(new Date());
+    setAutoRefreshFlash(true);
+    const t = setTimeout(() => setAutoRefreshFlash(false), 2500);
+    return () => clearTimeout(t);
+  }, [lastFreightEventAt]);
 
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
 
@@ -459,6 +474,15 @@ export default function LogisticsFreightPage() {
                 </span>
               </>
             )}
+            {autoRefreshFlash && (
+              <>
+                <span className="text-muted-foreground/40">·</span>
+                <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-medium animate-pulse">
+                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500 animate-ping" />
+                  Diperbarui otomatis
+                </span>
+              </>
+            )}
           </p>
         )}
 
@@ -702,6 +726,7 @@ export default function LogisticsFreightPage() {
                 data-testid={`card-shipment-${s.id}`}
                 className="cursor-pointer hover:bg-muted/40 transition-colors"
                 onClick={() => navigate(`/logistics/freight/${s.id}`)}
+                {...prefetchHover(getGetFreightShipmentQueryOptions(s.id))}
               >
                 <CardContent className="p-4 space-y-2">
                   {/* Header: shipment number + status */}

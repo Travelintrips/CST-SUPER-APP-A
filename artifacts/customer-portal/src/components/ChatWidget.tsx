@@ -1238,8 +1238,19 @@ export function ChatWidget() {
       try {
         const fd = new FormData();
         fd.append("file", file);
+        if (sessionToken) fd.append("sessionToken", sessionToken);
         const upRes = await fetch("/api/ai-agent/upload", { method: "POST", body: fd });
-        if (!upRes.ok) throw new Error(`HTTP ${upRes.status}`);
+        if (!upRes.ok) {
+          let serverMsg = "";
+          try { serverMsg = ((await upRes.json()) as { message?: string }).message ?? ""; } catch { /* ignore */ }
+          if (upRes.status === 401) {
+            throw new Error(serverMsg || "Kirim pesan ke AI terlebih dahulu sebelum mengunggah file.");
+          }
+          if (upRes.status === 429) {
+            throw new Error(serverMsg || "Batas upload tercapai. Coba lagi nanti.");
+          }
+          throw new Error(serverMsg || `HTTP ${upRes.status}`);
+        }
         const data = (await upRes.json()) as {
           text: string;
           type: string;
@@ -1251,17 +1262,21 @@ export function ChatWidget() {
           `[Pengguna mengirim ${label}: ${data.filename}]\n\nAnalisis AI:\n${data.text}` +
           (text ? `\n\nPesan dari pengguna: ${text}` : "");
         await _executeStream(aiCtx);
-      } catch {
+      } catch (uploadErr: unknown) {
         setUploadingFile(false);
         streamBufferRef.current = "";
         setStreamingContent(null);
         playSound("error");
+        const uploadErrMsg =
+          uploadErr instanceof Error && uploadErr.message
+            ? uploadErr.message
+            : "Maaf, gagal memproses file. Periksa koneksi dan coba lagi.";
         setMessages((prev) => [
           ...prev,
           {
             id: (Date.now() + 5).toString(),
             role: "assistant",
-            content: "Maaf, gagal memproses file. Periksa koneksi dan coba lagi.",
+            content: uploadErrMsg,
             createdAt: new Date().toISOString(),
           },
         ]);

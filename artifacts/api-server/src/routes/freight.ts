@@ -1,8 +1,20 @@
 import { Router } from "express";
-import { db, freightShipmentsTable, freightRfqsTable, freightQuotesTable, freightAttachmentsTable, shipmentStagesTable, salesDocumentsTable, purchaseDocumentsTable, expensesTable, freightCustomsDocsTable } from "@workspace/db";
-import { eq, desc, inArray, sum, and } from "drizzle-orm";
+import { db, freightShipmentsTable, freightRfqsTable, freightQuotesTable, freightAttachmentsTable, shipmentStagesTable, salesDocumentsTable, purchaseDocumentsTable, expensesTable, freightCustomsDocsTable, freightShipmentAuditLogsTable } from "@workspace/db";
+import { eq, desc, inArray, sum, and, sql } from "drizzle-orm";
+import { requireClerkUser } from "../lib/requireAdmin.js";
+import { saveAndBroadcast } from "../lib/notificationStore.js";
+
+function resolveUserDisplay(user: { id: string; firstName?: string | null; lastName?: string | null; email?: string | null }): { name: string; id: string } {
+  const name = [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || user.email || user.id;
+  return { name, id: user.id };
+}
 
 const router = Router();
+
+router.use(async (req, res, next) => {
+  if (!(await requireClerkUser(req, res))) return;
+  next();
+});
 
 function nextNumber(prefix: string) {
   const now = new Date();
@@ -95,6 +107,30 @@ router.get("/freight-shipments/:id", async (req, res) => {
         .orderBy(desc(freightQuotesTable.createdAt))
     : [];
   const stages = await db.select().from(shipmentStagesTable).where(eq(shipmentStagesTable.shipmentId, id));
+
+  // Look up the logistic RFQ that spawned this freight shipment (if any).
+  // freight_shipment_id was added via a manual migration, not in the Drizzle schema,
+  // so we use raw SQL for this join.
+  const linkedRfqRows = await db.execute(sql`
+    SELECT r.id, r.rfq_number AS "rfqNumber", r.status AS "rfqStatus",
+           r.order_id AS "orderId", o.order_number AS "orderNumber"
+    FROM logistic_order_rfqs r
+    LEFT JOIN logistic_orders o ON o.id = r.order_id
+    WHERE r.freight_shipment_id = ${id}
+    LIMIT 1
+  `);
+
+  const linkedLogisticRfqRow = (linkedRfqRows as any[])[0] ?? null;
+  const linkedLogisticRfq = linkedLogisticRfqRow
+    ? {
+        id: linkedLogisticRfqRow.id as number,
+        rfqNumber: linkedLogisticRfqRow.rfqNumber as string,
+        rfqStatus: linkedLogisticRfqRow.rfqStatus as string,
+        orderId: linkedLogisticRfqRow.orderId as number,
+        orderNumber: (linkedLogisticRfqRow.orderNumber as string) ?? null,
+      }
+    : null;
+
   return res.json({
     ...serializeShipment(shipment),
     rfqs: rfqs.map((r) => ({
@@ -102,6 +138,7 @@ router.get("/freight-shipments/:id", async (req, res) => {
       quotes: quotes.filter((q) => q.rfqId === r.id).map(serializeQuote),
     })),
     stages: stages.map(serializeStage),
+    linkedLogisticRfq,
   });
 });
 
@@ -144,6 +181,18 @@ router.post("/freight-shipments", async (req, res) => {
     salesDocId: salesDocId ? Number(salesDocId) : null,
     purchaseDocId: purchaseDocId ? Number(purchaseDocId) : null,
   }).returning();
+  saveAndBroadcast("freight_shipment_created", {
+    type: "freight_new",
+    orderId: shipment!.id,
+    orderNumber: shipment!.shipmentNumber,
+    customerName: shipment!.shipperName,
+    companyName: shipment!.consigneeName ?? null,
+    origin: shipment!.origin,
+    destination: shipment!.destination,
+    commodity: shipment!.commodity,
+    transportMode: shipment!.transportMode,
+    createdAt: shipment!.createdAt.toISOString(),
+  }).catch(() => {});
   return res.status(201).json(serializeShipment(shipment!));
 });
 
@@ -198,7 +247,41 @@ router.put("/freight-shipments/:id", async (req, res) => {
     patch.purchaseDocId = purchaseDocId ? Number(purchaseDocId) : null;
   }
   const [updated] = await db.update(freightShipmentsTable).set(patch).where(eq(freightShipmentsTable.id, id)).returning();
+  if (status !== undefined && status !== existing.status) {
+    const actor = req.user ? resolveUserDisplay(req.user as { id: string; firstName?: string | null; lastName?: string | null; email?: string | null }) : { name: "System", id: "system" };
+    await db.insert(freightShipmentAuditLogsTable).values({
+      shipmentId: updated!.id,
+      shipmentNumber: updated!.shipmentNumber,
+      fromStatus: existing.status,
+      toStatus: updated!.status,
+      changedBy: actor.name,
+      changedById: actor.id,
+    });
+    saveAndBroadcast("freight_shipment_status", {
+      type: "freight_status",
+      orderId: updated!.id,
+      orderNumber: updated!.shipmentNumber,
+      customerName: updated!.shipperName,
+      companyName: updated!.consigneeName ?? null,
+      origin: updated!.origin,
+      destination: updated!.destination,
+      status: updated!.status,
+      updatedAt: new Date().toISOString(),
+    }).catch(() => {});
+  }
   return res.json(serializeShipment(updated!));
+});
+
+// GET /api/logistics/freight-shipments/:id/audit-log
+router.get("/freight-shipments/:id/audit-log", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ message: "Invalid id" });
+  const logs = await db
+    .select()
+    .from(freightShipmentAuditLogsTable)
+    .where(eq(freightShipmentAuditLogsTable.shipmentId, id))
+    .orderBy(desc(freightShipmentAuditLogsTable.createdAt));
+  return res.json(logs.map((l) => ({ ...l, createdAt: l.createdAt.toISOString() })));
 });
 
 // DELETE /api/logistics/freight-shipments/:id
@@ -252,6 +335,21 @@ router.post("/freight-shipments/:shipmentId/stages", async (req, res) => {
         notes: notes ?? null,
       })
       .returning();
+  }
+  if (status !== undefined && status !== (existing?.status)) {
+    const [parentShipment] = await db.select({ shipmentNumber: freightShipmentsTable.shipmentNumber, shipperName: freightShipmentsTable.shipperName, consigneeName: freightShipmentsTable.consigneeName })
+      .from(freightShipmentsTable).where(eq(freightShipmentsTable.id, shipmentId)).limit(1);
+    saveAndBroadcast("freight_stage_update", {
+      type: "freight_stage",
+      orderId: shipmentId,
+      orderNumber: parentShipment?.shipmentNumber ?? `#${shipmentId}`,
+      customerName: parentShipment?.shipperName ?? "—",
+      companyName: parentShipment?.consigneeName ?? null,
+      stageType: stage!.stageType,
+      stageStatus: stage!.status,
+      vendorName: stage!.vendorName ?? null,
+      updatedAt: new Date().toISOString(),
+    }).catch(() => {});
   }
   return res.json(serializeStage(stage!));
 });

@@ -1,6 +1,6 @@
-// [TRUCKING-FIX] Halaman konfirmasi vendor: YES/NO untuk trucking order
+// [TRUCKING-FIX] Halaman konfirmasi vendor: YES/NO + editable price untuk trucking order
 import { useState, useEffect } from "react";
-import { CheckCircle2, AlertCircle, Loader2, Truck, MapPin, Package, DollarSign } from "lucide-react";
+import { CheckCircle2, AlertCircle, Loader2, Truck, MapPin, Package, DollarSign, Pencil, X } from "lucide-react";
 
 const BULAN = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
 function formatTanggal(iso: string | null): string {
@@ -17,6 +17,10 @@ function fmt(n: number) {
   return `Rp ${Math.round(n).toLocaleString("id-ID")}`;
 }
 
+function parseRupiah(raw: string): number {
+  return Number(raw.replace(/[^0-9]/g, ""));
+}
+
 interface VendorConfirmData {
   orderId: number;
   orderNumber: string;
@@ -29,7 +33,7 @@ interface VendorConfirmData {
   truckType: string | null;
   basePrice: number;
   vendorName: string;
-  confirmStatus: string; // pending / vendor_confirmed / vendor_rejected
+  confirmStatus: string;
 }
 
 export default function VendorConfirmPage() {
@@ -42,6 +46,11 @@ export default function VendorConfirmPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState<"vendor_confirmed" | "vendor_rejected" | null>(null);
+  const [confirmedPrice, setConfirmedPrice] = useState<number>(0);
+
+  // Price editing state
+  const [editingPrice, setEditingPrice] = useState(false);
+  const [priceInput, setPriceInput] = useState("");
 
   useEffect(() => {
     if (!orderId || !token) {
@@ -54,6 +63,7 @@ export default function VendorConfirmPage() {
       .then((d) => {
         if (d.message) { setError(d.message); return; }
         setData(d as VendorConfirmData);
+        setPriceInput(String(Math.round((d as VendorConfirmData).basePrice)));
         if (d.confirmStatus === "vendor_confirmed") setDone("vendor_confirmed");
         else if (d.confirmStatus === "vendor_rejected") setDone("vendor_rejected");
       })
@@ -61,17 +71,32 @@ export default function VendorConfirmPage() {
       .finally(() => setLoading(false));
   }, [orderId, token]);
 
+  function handlePriceChange(val: string) {
+    // Hanya angka
+    const digits = val.replace(/[^0-9]/g, "");
+    setPriceInput(digits);
+  }
+
+  function currentPrice(): number {
+    const parsed = parseRupiah(priceInput);
+    return parsed > 0 ? parsed : (data?.basePrice ?? 0);
+  }
+
   async function handleAction(action: "accept" | "reject") {
     if (!orderId || !token || submitting) return;
     setSubmitting(true);
+    const price = currentPrice();
     try {
+      const body: Record<string, unknown> = { orderId: Number(orderId), token, action };
+      if (action === "accept") body.vendorPrice = price;
       const res = await fetch(apiUrl("/api/logistic/orders/vendor-confirm"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId: Number(orderId), token, action }),
+        body: JSON.stringify(body),
       });
       const json = await res.json() as { message?: string };
       if (!res.ok) { alert(json.message ?? "Terjadi kesalahan"); return; }
+      setConfirmedPrice(price);
       setDone(action === "accept" ? "vendor_confirmed" : "vendor_rejected");
     } catch {
       alert("Gagal mengirim konfirmasi. Periksa koneksi internet Anda.");
@@ -118,7 +143,7 @@ export default function VendorConfirmPage() {
             Tim CST Logistics akan segera menindaklanjuti.
           </p>
           <div className="bg-green-50 rounded-xl p-4 text-green-800 font-semibold">
-            {fmt(data.basePrice)}
+            {fmt(confirmedPrice || data.basePrice)}
           </div>
         </div>
       </div>
@@ -141,6 +166,9 @@ export default function VendorConfirmPage() {
       </div>
     );
   }
+
+  const displayPrice = currentPrice();
+  const priceChanged = displayPrice !== data.basePrice;
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-6">
@@ -199,14 +227,63 @@ export default function VendorConfirmPage() {
           </div>
         </div>
 
-        {/* Harga Dasar */}
-        <div className="bg-orange-500 rounded-2xl p-5 text-white text-center shadow-md">
-          <div className="flex items-center justify-center gap-2 mb-1">
+        {/* Harga Dasar — editable */}
+        <div className="bg-orange-500 rounded-2xl p-5 text-white shadow-md">
+          <div className="flex items-center justify-center gap-2 mb-2">
             <DollarSign className="h-4 w-4 opacity-80" />
-            <p className="text-sm opacity-80">Harga Dasar</p>
+            <p className="text-sm opacity-80">Harga Penawaran Anda</p>
           </div>
-          <p className="text-3xl font-bold">{fmt(data.basePrice)}</p>
-          <p className="text-xs opacity-70 mt-1">Konfirmasi kesediaan Anda untuk melayani order ini</p>
+
+          {editingPrice ? (
+            <div className="flex items-center gap-2 justify-center mt-1">
+              <span className="text-xl font-bold opacity-90">Rp</span>
+              <input
+                type="number"
+                inputMode="numeric"
+                min={1}
+                value={priceInput}
+                onChange={(e) => handlePriceChange(e.target.value)}
+                className="w-40 text-center text-2xl font-bold bg-white/20 border-b-2 border-white rounded-lg px-3 py-1 placeholder-white/60 outline-none focus:bg-white/30 text-white"
+                placeholder="0"
+                autoFocus
+              />
+              <button
+                onClick={() => setEditingPrice(false)}
+                className="ml-1 p-1 rounded-full bg-white/20 hover:bg-white/30 transition"
+                title="Selesai edit"
+              >
+                <CheckCircle2 className="h-5 w-5" />
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center justify-center gap-3">
+              <p className="text-3xl font-bold">{fmt(displayPrice)}</p>
+              <button
+                onClick={() => setEditingPrice(true)}
+                className="p-1.5 rounded-full bg-white/20 hover:bg-white/30 transition"
+                title="Ubah harga"
+              >
+                <Pencil className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+
+          {priceChanged && !editingPrice && (
+            <div className="mt-2 flex items-center justify-center gap-2">
+              <p className="text-xs opacity-70 line-through">{fmt(data.basePrice)}</p>
+              <span className="text-xs bg-white/20 rounded-full px-2 py-0.5 font-medium">Harga diubah</span>
+              <button
+                onClick={() => { setPriceInput(String(Math.round(data.basePrice))); }}
+                className="text-xs opacity-70 hover:opacity-100 underline"
+              >
+                reset
+              </button>
+            </div>
+          )}
+
+          {!priceChanged && !editingPrice && (
+            <p className="text-xs opacity-70 mt-1 text-center">Ketuk ✏️ untuk mengubah harga</p>
+          )}
         </div>
 
         {/* Action Buttons */}
@@ -216,12 +293,15 @@ export default function VendorConfirmPage() {
           </p>
           <button
             onClick={() => handleAction("accept")}
-            disabled={submitting}
+            disabled={submitting || editingPrice}
             className="w-full flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 active:scale-95 text-white font-bold rounded-xl py-4 text-base transition-all disabled:opacity-60"
           >
             {submitting ? <Loader2 className="h-5 w-5 animate-spin" /> : <CheckCircle2 className="h-5 w-5" />}
-            ✅ TERIMA JADWAL &amp; HARGA
+            ✅ TERIMA{priceChanged ? ` (${fmt(displayPrice)})` : " JADWAL & HARGA"}
           </button>
+          {editingPrice && (
+            <p className="text-xs text-center text-amber-600">Selesaikan edit harga terlebih dahulu ✓</p>
+          )}
           <button
             onClick={() => handleAction("reject")}
             disabled={submitting}

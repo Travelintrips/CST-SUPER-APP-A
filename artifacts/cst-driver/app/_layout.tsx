@@ -15,6 +15,8 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AuthProvider } from "@/context/AuthContext";
 import { JobsProvider } from "@/context/JobsContext";
+import { NewJobBanner } from "@/components/NewJobBanner";
+import { requestNotificationPermission } from "@/services/notifications";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -45,6 +47,10 @@ export default function RootLayout() {
     }
   }, [fontsLoaded, fontError]);
 
+  useEffect(() => {
+    requestNotificationPermission();
+  }, []);
+
   if (!fontsLoaded && !fontError) {
     SplashScreen.hideAsync();
     return null;
@@ -58,6 +64,7 @@ export default function RootLayout() {
             <AuthProvider>
               <JobsProvider>
                 <RootLayoutNav />
+                <NewJobBanner />
               </JobsProvider>
             </AuthProvider>
           </GestureHandlerRootView>

@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Start application: keepalive process.
-# Tutti i servizi sono gestiti dai rispettivi workflow artifact:
-#   - artifacts/api-server: API Server      (porta 8080)
-#   - artifacts/bizportal: web              (porta 18442)
-#   - artifacts/customer-portal: web        (porta 23434)
-#   - artifacts/logistic-order: web         (porta 19368)
-#   - artifacts/cst-driver: expo            (porta 21170)
+set -e
 
-echo "BizPortal CST Logistics — tutti i servizi gestiti dai workflow artifact."
-sleep infinity
+# Kill any stale process on API port before starting
+fuser -k 18444/tcp 2>/dev/null || true
+
+echo "==> Building API Server..."
+cd /home/runner/workspace/artifacts/api-server
+node ./build.mjs
+
+echo "==> Starting API Server on port 18444..."
+PORT=18444 NODE_ENV=development node --enable-source-maps ./dist/index.mjs

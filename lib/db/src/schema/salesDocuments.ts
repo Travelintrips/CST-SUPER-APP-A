@@ -3,6 +3,9 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { customersTable } from "./customers";
 import { productsTable } from "./products";
+import { logisticOrdersTable } from "./logisticOrders";
+import { companiesTable } from "./companies";
+import { uomTable } from "./uom";
 
 export const salesDocKindEnum = pgEnum("sales_doc_kind", ["quote", "order"]);
 export const salesDocStatusEnum = pgEnum("sales_doc_status", [
@@ -63,6 +66,9 @@ export const salesDocumentsTable = pgTable("sales_documents", {
   aiGenerated: boolean("ai_generated").notNull().default(false),
   aiSourceCorrespondenceId: integer("ai_source_correspondence_id"),
   aiSourceWaPhone: text("ai_source_wa_phone"),
+  logisticOrderId: integer("logistic_order_id").references(() => logisticOrdersTable.id, { onDelete: "set null" }),
+  companyId: integer("company_id").references(() => companiesTable.id, { onDelete: "set null" }),
+  warehouseId: integer("warehouse_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -76,6 +82,8 @@ export const salesDocumentLinesTable = pgTable("sales_document_lines", {
   name: text("name").notNull(),
   description: text("description"),
   quantity: numeric("quantity", { precision: 12, scale: 2 }).notNull().default("1"),
+  salesUomId: integer("sales_uom_id").references(() => uomTable.id, { onDelete: "set null" }),
+  baseQty: numeric("base_qty", { precision: 12, scale: 4 }),
   unitPrice: numeric("unit_price", { precision: 14, scale: 2 }).notNull().default("0"),
   subtotal: numeric("subtotal", { precision: 14, scale: 2 }).notNull().default("0"),
 });

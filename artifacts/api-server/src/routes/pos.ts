@@ -3,8 +3,14 @@ import { db, transactionsTable } from "@workspace/db";
 import { sql, eq } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { postPosTransaction } from "../lib/accounting.js";
+import { requireRole } from "../lib/requireAdmin.js";
 
 const router = Router();
+
+router.use(async (req, res, next) => {
+  if (!(await requireRole(req, res, ["admin", "pos", "pos-kasir", "pos-inventory"]))) return;
+  next();
+});
 const objectStorageService = new ObjectStorageService();
 
 function safeNormalizeDoc(value: unknown): string | null {

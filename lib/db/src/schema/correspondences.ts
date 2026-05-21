@@ -1,6 +1,7 @@
-import { pgTable, serial, text, integer, timestamp, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, timestamp, pgEnum, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { companiesTable } from "./companies";
 
 export const correspondenceKindEnum = pgEnum("correspondence_kind", [
   "email",
@@ -16,6 +17,7 @@ export const correspondenceDirectionEnum = pgEnum("correspondence_direction", [
 
 export const correspondencesTable = pgTable("correspondences", {
   id: serial("id").primaryKey(),
+  companyId: integer("company_id").references(() => companiesTable.id, { onDelete: "set null" }),
   kind: correspondenceKindEnum("kind").notNull().default("email"),
   direction: correspondenceDirectionEnum("direction").notNull().default("inbound"),
   subject: text("subject").notNull(),
@@ -38,7 +40,9 @@ export const correspondencesTable = pgTable("correspondences", {
   correspondedAt: timestamp("corresponded_at").notNull().defaultNow(),
   createdById: text("created_by_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (t) => [
+  index("correspondences_company_idx").on(t.companyId),
+]);
 
 export const insertCorrespondenceSchema = createInsertSchema(correspondencesTable).omit({
   id: true,

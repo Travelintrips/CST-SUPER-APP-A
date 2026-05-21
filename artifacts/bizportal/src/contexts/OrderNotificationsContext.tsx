@@ -4,10 +4,15 @@ import { useOrderNotifications, type OrderNotification } from "@/hooks/useOrderN
 interface OrderNotificationsContextValue {
   notifications: OrderNotification[];
   unreadCount: number;
+  dbUnreadTotal: number;
   connected: boolean;
   markAllRead: () => void;
+  markSingleRead: (dbId: number) => void;
   clearAll: () => void;
   setOnNewOrder: (fn: (n: OrderNotification) => void) => void;
+  lastFreightEventAt: number | null;
+  notifPermission: NotificationPermission;
+  requestNotifPermission: () => Promise<NotificationPermission>;
 }
 
 const OrderNotificationsContext = createContext<OrderNotificationsContextValue | null>(null);

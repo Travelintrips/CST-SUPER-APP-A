@@ -36,7 +36,7 @@ const SOURCE_LABELS: Record<string, string> = {
 };
 
 export default function JournalItemsPage() {
-  const { activeCompanyId } = useCompany();
+  const { activeCompanyId, isConsolidated } = useCompany();
   const [filter, setFilter] = useState<{
     journalId?: number;
     accountId?: number;
@@ -49,8 +49,8 @@ export default function JournalItemsPage() {
     ...(filter.accountId ? { accountId: filter.accountId } : {}),
     ...(filter.from ? { from: new Date(filter.from).toISOString() } : {}),
     ...(filter.to ? { to: new Date(filter.to + "T23:59:59").toISOString() } : {}),
-    company: activeCompanyId,
-  }), [filter, activeCompanyId]);
+    company: (isConsolidated ? "all" : activeCompanyId) as unknown as number,
+  }), [filter, activeCompanyId, isConsolidated]);
 
   const { data: lines, isLoading } = useListAccountingEntryLines(params, {
     query: { queryKey: getListAccountingEntryLinesQueryKey(params) },

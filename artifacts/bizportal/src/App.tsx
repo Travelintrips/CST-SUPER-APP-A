@@ -5,15 +5,17 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SupabaseAuthProvider, useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
 import { LanguageProvider } from "@/contexts/LanguageContext";
-import { CompanyProvider, useCompany } from "@/contexts/CompanyContext";
-import { useGetCurrentUser, getGetCurrentUserQueryKey, setCompanyGetter } from "@workspace/api-client-react";
+import { CompanyProvider } from "@/contexts/CompanyContext";
+import { useGetCurrentUser, getGetCurrentUserQueryKey } from "@workspace/api-client-react";
 import { AppRoutes } from "@/routes";
 import { OrderNotificationsProvider } from "@/contexts/OrderNotificationsContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import NotFound from "@/pages/not-found";
+import ApprovalsPage from "@/pages/approvals/index";
 import DashboardPage from "@/pages/dashboard";
 import EcommercePage from "@/pages/ecommerce";
 import TradingPage from "@/pages/trading";
+import KatalogTerpaduPage from "@/pages/katalog-terpadu";
 import LogisticsPage from "@/pages/logistics";
 import LogisticsFreightPage from "@/pages/logistics-freight";
 import LogisticsFreightEditorPage from "@/pages/logistics-freight-editor";
@@ -23,13 +25,16 @@ import LogisticsPortalOrdersPage from "@/pages/logistics-portal-orders";
 import LogisticsPortalOrderDetailPage from "@/pages/logistics-portal-order-detail";
 import LogisticsDriversPage from "@/pages/logistics-drivers";
 import LogisticsDriverPerformancePage from "@/pages/logistics-driver-performance";
+import LogisticsQuoteRequestsPage from "@/pages/logistics-quote-requests";
 import LogisticsVendorsPage from "@/pages/logistics-vendors";
 import PosPage from "@/pages/pos";
 import SettingsPage from "@/pages/settings";
+import NavCompanyConfigPage from "@/pages/settings/nav-company-config";
 import AiChatbotSettingsPage from "@/pages/ai-chatbot-settings";
 import AiChatbotKnowledgePage from "@/pages/ai-chatbot-knowledge";
 import AiScanSettingsPage from "@/pages/ai-scan-settings";
 import UsersPage from "@/pages/users";
+import MediaManagerPage from "@/pages/media-manager";
 import WelcomePage from "@/pages/welcome";
 import SalesDashboardPage from "@/pages/sales/dashboard";
 import SalesDocumentsListPage from "@/pages/sales/documents-list";
@@ -40,6 +45,7 @@ import SalesInvoicesPage from "@/pages/sales/invoices";
 import SalesItemsPage from "@/pages/sales/items";
 import PurchaseDashboardPage from "@/pages/purchase/dashboard";
 import PurchaseDocumentsListPage from "@/pages/purchase/documents-list";
+import POOrdersPage from "@/pages/purchase/po-orders";
 import PurchaseDocumentEditorPage from "@/pages/purchase/rfq-editor";
 import VendorsPage from "@/pages/purchase/vendors";
 import VendorDetailPage from "@/pages/purchase/vendor-detail";
@@ -48,6 +54,8 @@ import ReportsSalesPage from "@/pages/reports/sales";
 import ReportsPurchasePage from "@/pages/reports/purchase";
 import ReportsArAgingPage from "@/pages/reports/ar-aging";
 import ReportsApAgingPage from "@/pages/reports/ap-aging";
+import ReportsMainPage from "@/pages/reports/main";
+import AuditLogPage from "@/pages/reports/audit-log";
 import AccountingAccountsPage from "@/pages/accounting/accounts";
 import AccountingJournalsPage from "@/pages/accounting/journals";
 import AccountingTaxesPage from "@/pages/accounting/taxes";
@@ -68,22 +76,80 @@ import ExpenseEditorPage from "@/pages/expense/editor";
 import ExpenseCategoriesPage from "@/pages/expense/categories";
 import ExpenseReportsPage from "@/pages/expense/reports";
 import PortalProductOrdersPage from "@/pages/portal-product-orders";
+import PortalOnboardingApprovalsPage from "@/pages/portal-onboarding-approvals";
+import PortalCustomersPage from "@/pages/portal-customers";
 import LogisticsQuotationReplyPage from "@/pages/logistics-quotation-reply";
 import LogisticsVendorQuotePage from "@/pages/logistics-vendor-quote";
+import LogisticsRfqComparisonPage from "@/pages/logistics-rfq-comparison"; // [NEW-RFQ-FLOW]
+import LogisticsRfqListPage from "@/pages/logistics-rfq-list"; // [NEW-RFQ-FLOW]
+import LogisticsRfqDetailPage from "@/pages/logistics-rfq-detail"; // [NEW-RFQ-FLOW]
+import LogisticOrderDetailPage from "@/pages/logistics/order-detail";
 import HoldingPage from "@/pages/HoldingPage";
 import HoldingDashboardPage from "@/pages/accounting/holding-dashboard";
+import HoldingPLReportPage from "@/pages/accounting/holding-pl-report";
+import HoldingCashflowReportPage from "@/pages/accounting/holding-cashflow-report";
+import OrgManagementPage from "@/pages/OrgManagementPage";
+import PosKasirAdminPage from "@/pages/pos-kasir-admin";
+import PurchaseReceivePage from "@/pages/purchase/receive";
+import ThaiTeaPurchasePage from "@/pages/purchase/thai-tea";
+import ThaiTeaDashboardPage from "@/pages/thai-tea/dashboard";
+import ThaiTeaRecipesPage from "@/pages/thai-tea/recipes";
+import ThaiTeaStockPage from "@/pages/thai-tea/stock";
+import ThaiTeaBranchesPage from "@/pages/thai-tea/branches";
+import ThaiTeaProductionPage from "@/pages/thai-tea/production";
+import ThaiTeaReportsPage from "@/pages/thai-tea/reports";
+import PosInventoryDashboardPage from "@/pages/pos-inventory-dashboard";
+import PosInventoryItemsPage from "@/pages/pos-inventory-items";
+import PosInventoryStocksPage from "@/pages/pos-inventory-stocks";
+import PosStockLossesPage from "@/pages/pos-stock-losses";
+import PosStockMutationsPage from "@/pages/pos-stock-mutations";
+import PosStockOpnamePage from "@/pages/pos-stock-opname";
+import PosStockReturnsPage from "@/pages/pos-stock-returns";
+import PosStockTransfersPage from "@/pages/pos-stock-transfers";
+import PosBranchesPage from "@/pages/pos-branches";
+import PosWarehousesPage from "@/pages/pos-warehouses";
+import PosRacksPage from "@/pages/pos-racks";
+import PosRecipesPage from "@/pages/pos-recipes";
+import ProductItemsPage from "@/pages/products/items";
+import ProductRecipesPage from "@/pages/products/recipes";
+import PosQrGeneratorPage from "@/pages/pos-qr-generator";
+import PosQrScannerPage from "@/pages/pos-qr-scanner";
+import SettingsRolesPage from "@/pages/settings-roles";
+import SettingsApprovalRulesPage from "@/pages/settings-approval-rules";
+import PurchaseRequestListPage from "@/pages/purchase/pr-list";
+import PurchaseRequestEditorPage from "@/pages/purchase/pr-editor";
+import GoodsReceiptListPage from "@/pages/purchase/gr-list";
+import GoodsReceiptEditorPage from "@/pages/purchase/gr-editor";
+import QcListPage from "@/pages/purchase/qc-list";
+import QcEditorPage from "@/pages/purchase/qc-editor";
+import { VendorInvoicesListPage, VendorInvoiceEditorPage } from "@/pages/purchase/vendor-invoices";
+import { PaymentRequestsListPage, PaymentRequestEditorPage } from "@/pages/purchase/payment-requests";
+import { PurchaseReturnsListPage, PurchaseReturnEditorPage } from "@/pages/purchase/purchase-returns";
+import { LandedCostsListPage, LandedCostEditorPage } from "@/pages/purchase/landed-costs";
+import VendorComparisonPage from "@/pages/purchase/vendor-comparison";
+import SportCenterDashboard from "@/pages/sport-center/index";
+import SportCenterBookingsPage from "@/pages/sport-center/bookings";
+import SportCenterServicesPage from "@/pages/sport-center/services";
+import SportCenterPurchaseRequestsPage from "@/pages/sport-center/purchase-requests";
+import InventoryValuationPage from "@/pages/reports/inventory-valuation";
+import SportCenterSchedulePage from "@/pages/sport-center-schedule";
+import SportCenterReportPage from "@/pages/sport-center-report";
+import NotificationsPage from "@/pages/notifications";
+import VendorFormsPage from "@/pages/purchase/vendor-forms";
+import AnalyticsDashboardPage from "@/pages/analytics-dashboard";
+import VendorPerformancePage from "@/pages/logistics/vendor-performance";
+import InternalTasksPage from "@/pages/logistics/internal-tasks";
 
-function CompanyApiSync() {
-  const { activeCompanyId } = useCompany();
-  React.useEffect(() => {
-    setCompanyGetter(() => activeCompanyId);
-    queryClient.invalidateQueries();
-    return () => { setCompanyGetter(null); };
-  }, [activeCompanyId]);
-  return null;
-}
-
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 2 * 60 * 1000,
+      gcTime: 10 * 60 * 1000,
+      retry: 1,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 const ROLE_CACHE_KEY = "biz_user_role_v1";
@@ -130,29 +196,6 @@ const IS_DEV = import.meta.env.DEV;
 function LoginScreen() {
   const { signInWithGoogle } = useSupabaseAuth();
   const [devEmail, setDevEmail] = React.useState("elmiraratuabadi@gmail.com");
-  const [devError, setDevError] = React.useState("");
-  const [devLoading, setDevLoading] = React.useState(false);
-
-  async function handleDevLogin(e: React.FormEvent) {
-    e.preventDefault();
-    setDevError("");
-    setDevLoading(true);
-    try {
-      const res = await fetch("/api/dev-login", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: devEmail }),
-      });
-      const data = (await res.json()) as { ok?: boolean; error?: string };
-      if (!res.ok || !data.ok) setDevError(data.error || "Login gagal");
-      else window.location.reload();
-    } catch {
-      setDevError("Tidak bisa terhubung ke server");
-    } finally {
-      setDevLoading(false);
-    }
-  }
 
   return (
     <div className="flex h-screen flex-col items-center justify-center gap-6 bg-slate-950 text-white">
@@ -197,22 +240,25 @@ function LoginScreen() {
               <span className="text-xs text-amber-400 font-mono">DEV ONLY</span>
               <div className="flex-1 h-px bg-slate-700" />
             </div>
-            <form onSubmit={handleDevLogin} className="flex flex-col gap-2">
+            <form
+              method="post"
+              action={`/api/dev-login?redirect=/bizportal/`}
+              className="flex flex-col gap-2"
+            >
               <input
                 type="email"
+                name="email"
                 placeholder="Email (dev bypass)"
                 value={devEmail}
                 onChange={(e) => setDevEmail(e.target.value)}
                 required
                 className="rounded-lg bg-slate-800 border border-amber-600/40 px-4 py-2.5 text-sm text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500"
               />
-              {devError && <p className="text-xs text-red-400">{devError}</p>}
               <button
                 type="submit"
-                disabled={devLoading}
-                className="rounded-lg bg-amber-600 px-6 py-2.5 text-sm font-medium text-white shadow hover:bg-amber-500 active:scale-95 transition-all disabled:opacity-60"
+                className="rounded-lg bg-amber-600 px-6 py-2.5 text-sm font-medium text-white shadow hover:bg-amber-500 active:scale-95 transition-all"
               >
-                {devLoading ? "Masuk..." : "Dev Login (tanpa Google)"}
+                Dev Login (tanpa Google)
               </button>
             </form>
           </>
@@ -252,49 +298,97 @@ function Router() {
         <Route path="/" component={AuthRouteGuard} />
         <Route path="/welcome" component={() => <ProtectedRoute component={WelcomePage} />} />
         <Route path="/dashboard" component={() => <ProtectedRoute component={DashboardPage} />} />
+        <Route path="/approvals" component={() => <ProtectedRoute component={ApprovalsPage} />} />
         <Route path="/ecommerce" component={() => <ProtectedRoute component={EcommercePage} />} />
         <Route path="/trading" component={() => <ProtectedRoute component={TradingPage} />} />
+        <Route path="/katalog-terpadu" component={() => <ProtectedRoute component={KatalogTerpaduPage} />} />
         <Route path="/pos" component={() => <ProtectedRoute component={PosPage} />} />
         {/* Logistics */}
         <Route path="/logistics" component={() => <ProtectedRoute component={LogisticsPage} />} />
         <Route path="/logistics/freight" component={() => <ProtectedRoute component={LogisticsFreightPage} />} />
         <Route path="/logistics/freight/new" component={() => <ProtectedRoute component={LogisticsFreightEditorPage} />} />
-        <Route path="/logistics/freight/:id" component={() => <ProtectedRoute component={LogisticsFreightDetailPage} />} />
         <Route path="/logistics/freight/:id/edit" component={() => <ProtectedRoute component={LogisticsFreightEditorPage} />} />
         <Route path="/logistics/freight/:id/bl" component={() => <ProtectedRoute component={LogisticsFreightBLPage} />} />
+        <Route path="/logistics/freight/:id" component={() => <ProtectedRoute component={LogisticsFreightDetailPage} />} />
         <Route path="/logistics/portal-orders" component={() => <ProtectedRoute component={LogisticsPortalOrdersPage} />} />
+        <Route path="/portal/customers" component={() => <ProtectedRoute component={PortalCustomersPage} />} />
         <Route path="/logistics/portal-orders/:id" component={() => <ProtectedRoute component={LogisticsPortalOrderDetailPage} />} />
         <Route path="/logistics/drivers" component={() => <ProtectedRoute component={LogisticsDriversPage} />} />
+        <Route path="/logistics/drivers/:id/performance" component={() => <ProtectedRoute component={LogisticsDriverPerformancePage} />} />
         <Route path="/logistics/driver-performance" component={() => <ProtectedRoute component={LogisticsDriverPerformancePage} />} />
+        <Route path="/logistics/quote-requests" component={() => <ProtectedRoute component={LogisticsQuoteRequestsPage} />} />
         <Route path="/logistics/vendors" component={() => <ProtectedRoute component={LogisticsVendorsPage} />} />
-        <Route path="/logistics/quotation-reply" component={() => <ProtectedRoute component={LogisticsQuotationReplyPage} />} />
-        <Route path="/logistics/vendor-quote/:id" component={() => <ProtectedRoute component={LogisticsVendorQuotePage} />} />
+        <Route path="/logistics/quotation-reply/:token" component={LogisticsQuotationReplyPage} />
+        <Route path="/logistics/vendor-quote/:token" component={LogisticsVendorQuotePage} />
+        <Route path="/logistics/rfq" component={() => <ProtectedRoute component={LogisticsRfqListPage} />} />
+        <Route path="/logistics/rfq/:rfqId/detail" component={() => <ProtectedRoute component={LogisticsRfqDetailPage} />} />
+        <Route path="/logistics/rfq/:rfqId/comparison" component={() => <ProtectedRoute component={LogisticsRfqComparisonPage} />} />
+        <Route path="/logistics/orders/:orderId" component={() => <ProtectedRoute component={LogisticOrderDetailPage} />} />
         <Route path="/portal-product-orders" component={() => <ProtectedRoute component={PortalProductOrdersPage} />} />
+        <Route path="/portal/onboarding-approvals" component={() => <ProtectedRoute component={PortalOnboardingApprovalsPage} />} />
         {/* Sales */}
         <Route path="/sales" component={() => <ProtectedRoute component={SalesDashboardPage} />} />
         <Route path="/sales/documents" component={() => <ProtectedRoute component={SalesDocumentsListPage} />} />
         <Route path="/sales/documents/new" component={() => <ProtectedRoute component={SalesDocumentEditorPage} />} />
+        <Route path="/sales/documents/:id/edit" component={() => <ProtectedRoute component={SalesDocumentEditorPage} />} />
         <Route path="/sales/documents/:id" component={() => <ProtectedRoute component={SalesDocumentEditorPage} />} />
+        <Route path="/sales/quotations" component={() => <ProtectedRoute component={SalesDocumentsListPage} />} />
+        <Route path="/sales/quotations/new" component={() => <ProtectedRoute component={SalesDocumentEditorPage} />} />
+        <Route path="/sales/quotations/:id/edit" component={() => <ProtectedRoute component={SalesDocumentEditorPage} />} />
+        <Route path="/sales/quotations/:id" component={() => <ProtectedRoute component={SalesDocumentEditorPage} />} />
         <Route path="/sales/orders" component={() => <ProtectedRoute component={() => <SalesDocumentsListPage kind="order" />} />} />
-        <Route path="/sales/orders/new" component={() => <ProtectedRoute component={SalesDocumentEditorPage} />} />
-        <Route path="/sales/orders/:id" component={() => <ProtectedRoute component={SalesDocumentEditorPage} />} />
+        <Route path="/sales/orders/new" component={() => <ProtectedRoute component={() => <SalesDocumentEditorPage kind="order" />} />} />
+        <Route path="/sales/orders/:id" component={() => <ProtectedRoute component={() => <SalesDocumentEditorPage kind="order" />} />} />
         <Route path="/sales/ai-drafts" component={() => <ProtectedRoute component={AiDraftsPage} />} />
         <Route path="/sales/customers" component={() => <ProtectedRoute component={CustomersPage} />} />
         <Route path="/sales/invoices" component={() => <ProtectedRoute component={SalesInvoicesPage} />} />
         <Route path="/sales/items" component={() => <ProtectedRoute component={SalesItemsPage} />} />
         {/* Purchase */}
         <Route path="/purchase" component={() => <ProtectedRoute component={PurchaseDashboardPage} />} />
-        <Route path="/purchase/documents" component={() => <ProtectedRoute component={PurchaseDocumentsListPage} />} />
+        <Route path="/purchase/documents" component={() => <ProtectedRoute component={() => <PurchaseDocumentsListPage kind="order" />} />} />
         <Route path="/purchase/documents/new" component={() => <ProtectedRoute component={PurchaseDocumentEditorPage} />} />
+        <Route path="/purchase/documents/:id/edit" component={() => <ProtectedRoute component={PurchaseDocumentEditorPage} />} />
         <Route path="/purchase/documents/:id" component={() => <ProtectedRoute component={PurchaseDocumentEditorPage} />} />
+        <Route path="/purchase/rfq" component={() => <ProtectedRoute component={() => <PurchaseDocumentsListPage kind="rfq" />} />} />
+        <Route path="/purchase/rfq/new" component={() => <ProtectedRoute component={PurchaseDocumentEditorPage} />} />
+        <Route path="/purchase/rfq/:id" component={() => <ProtectedRoute component={PurchaseDocumentEditorPage} />} />
+        <Route path="/purchase/orders" component={() => <ProtectedRoute component={POOrdersPage} />} />
+        <Route path="/purchase/orders/:id" component={() => <ProtectedRoute component={PurchaseDocumentEditorPage} />} />
         <Route path="/purchase/vendors" component={() => <ProtectedRoute component={VendorsPage} />} />
         <Route path="/purchase/vendors/:id" component={() => <ProtectedRoute component={VendorDetailPage} />} />
+        <Route path="/purchase/vendor-forms" component={() => <ProtectedRoute component={VendorFormsPage} />} />
         <Route path="/purchase/bills" component={() => <ProtectedRoute component={PurchaseBillsPage} />} />
+        {/* Purchase Workflow */}
+        <Route path="/purchase/pr" component={() => <ProtectedRoute component={PurchaseRequestListPage} />} />
+        <Route path="/purchase/pr/new" component={() => <ProtectedRoute component={PurchaseRequestEditorPage} />} />
+        <Route path="/purchase/pr/:id" component={() => <ProtectedRoute component={PurchaseRequestEditorPage} />} />
+        <Route path="/purchase/gr" component={() => <ProtectedRoute component={GoodsReceiptListPage} />} />
+        <Route path="/purchase/gr/new" component={() => <ProtectedRoute component={GoodsReceiptEditorPage} />} />
+        <Route path="/purchase/gr/:id" component={() => <ProtectedRoute component={GoodsReceiptEditorPage} />} />
+        <Route path="/purchase/qc" component={() => <ProtectedRoute component={QcListPage} />} />
+        <Route path="/purchase/qc/new" component={() => <ProtectedRoute component={QcEditorPage} />} />
+        <Route path="/purchase/qc/:id" component={() => <ProtectedRoute component={QcEditorPage} />} />
+        <Route path="/purchase/vendor-invoices" component={() => <ProtectedRoute component={VendorInvoicesListPage} />} />
+        <Route path="/purchase/vendor-invoices/new" component={() => <ProtectedRoute component={VendorInvoiceEditorPage} />} />
+        <Route path="/purchase/vendor-invoices/:id" component={() => <ProtectedRoute component={VendorInvoiceEditorPage} />} />
+        <Route path="/purchase/payment-requests" component={() => <ProtectedRoute component={PaymentRequestsListPage} />} />
+        <Route path="/purchase/payment-requests/new" component={() => <ProtectedRoute component={PaymentRequestEditorPage} />} />
+        <Route path="/purchase/payment-requests/:id" component={() => <ProtectedRoute component={PaymentRequestEditorPage} />} />
+        <Route path="/purchase/returns" component={() => <ProtectedRoute component={PurchaseReturnsListPage} />} />
+        <Route path="/purchase/returns/new" component={() => <ProtectedRoute component={PurchaseReturnEditorPage} />} />
+        <Route path="/purchase/returns/:id" component={() => <ProtectedRoute component={PurchaseReturnEditorPage} />} />
+        <Route path="/purchase/landed-costs" component={() => <ProtectedRoute component={LandedCostsListPage} />} />
+        <Route path="/purchase/landed-costs/new" component={() => <ProtectedRoute component={LandedCostEditorPage} />} />
+        <Route path="/purchase/landed-costs/:id" component={() => <ProtectedRoute component={LandedCostEditorPage} />} />
+        <Route path="/purchase/rfq/:rfqId/compare" component={() => <ProtectedRoute component={VendorComparisonPage} />} />
         {/* Reports */}
         <Route path="/reports/sales" component={() => <ProtectedRoute component={ReportsSalesPage} />} />
         <Route path="/reports/purchase" component={() => <ProtectedRoute component={ReportsPurchasePage} />} />
         <Route path="/reports/ar-aging" component={() => <ProtectedRoute component={ReportsArAgingPage} />} />
         <Route path="/reports/ap-aging" component={() => <ProtectedRoute component={ReportsApAgingPage} />} />
+        <Route path="/reports/operasional" component={() => <ProtectedRoute component={ReportsMainPage} />} />
+        <Route path="/reports/audit-log" component={() => <ProtectedRoute component={AuditLogPage} />} />
+        <Route path="/reports/inventory-valuation" component={() => <ProtectedRoute component={InventoryValuationPage} />} />
         {/* Accounting */}
         <Route path="/accounting/accounts" component={() => <ProtectedRoute component={AccountingAccountsPage} />} />
         <Route path="/accounting/journals" component={() => <ProtectedRoute component={AccountingJournalsPage} />} />
@@ -310,23 +404,96 @@ function Router() {
         <Route path="/accounting/reports/profit-loss" component={() => <ProtectedRoute component={AccountingProfitLossPage} />} />
         <Route path="/accounting/reports/balance-sheet" component={() => <ProtectedRoute component={AccountingBalanceSheetPage} />} />
         {/* Expenses */}
-        <Route path="/expenses" component={() => <ProtectedRoute component={ExpenseListPage} />} />
-        <Route path="/expenses/new" component={() => <ProtectedRoute component={ExpenseEditorPage} />} />
-        <Route path="/expenses/:id" component={() => <ProtectedRoute component={ExpenseEditorPage} />} />
-        <Route path="/expenses/categories" component={() => <ProtectedRoute component={ExpenseCategoriesPage} />} />
-        <Route path="/expenses/reports" component={() => <ProtectedRoute component={ExpenseReportsPage} />} />
+        <Route path="/expense" component={() => <ProtectedRoute component={ExpenseListPage} />} />
+        <Route path="/expense/new" component={() => <ProtectedRoute component={ExpenseEditorPage} />} />
+        <Route path="/expense/categories" component={() => <ProtectedRoute component={ExpenseCategoriesPage} />} />
+        <Route path="/expense/reports" component={() => <ProtectedRoute component={ExpenseReportsPage} />} />
+        <Route path="/expense/:id/edit" component={() => <ProtectedRoute component={ExpenseEditorPage} />} />
         {/* Correspondence & Email */}
         <Route path="/correspondences" component={() => <ProtectedRoute component={CorrespondencesPage} />} />
         <Route path="/email-inbox" component={() => <ProtectedRoute component={EmailInboxPage} />} />
         {/* Settings & Users */}
         <Route path="/settings" component={() => <ProtectedRoute component={SettingsPage} />} />
+        <Route path="/settings/nav-company-config" component={() => <ProtectedRoute component={NavCompanyConfigPage} />} />
         <Route path="/settings/ai-chatbot" component={() => <ProtectedRoute component={AiChatbotSettingsPage} />} />
         <Route path="/settings/ai-chatbot/knowledge" component={() => <ProtectedRoute component={AiChatbotKnowledgePage} />} />
         <Route path="/settings/ai-scan" component={() => <ProtectedRoute component={AiScanSettingsPage} />} />
+        <Route path="/settings/roles" component={() => <ProtectedRoute component={SettingsRolesPage} />} />
+        <Route path="/settings/approval-rules" component={() => <ProtectedRoute component={SettingsApprovalRulesPage} />} />
         <Route path="/users" component={() => <ProtectedRoute component={UsersPage} />} />
+        <Route path="/media" component={() => <ProtectedRoute component={MediaManagerPage} />} />
         {/* Holding */}
         <Route path="/holding/dashboard" component={() => <ProtectedRoute component={HoldingDashboardPage} />} />
+        <Route path="/holding/pl-report" component={() => <ProtectedRoute component={HoldingPLReportPage} />} />
+        <Route path="/holding/cashflow-report" component={() => <ProtectedRoute component={HoldingCashflowReportPage} />} />
         <Route path="/holding" component={() => <ProtectedRoute component={HoldingPage} />} />
+        <Route path="/org" component={() => <ProtectedRoute component={OrgManagementPage} />} />
+        {/* POS Kasir Thai Tea */}
+        <Route path="/pos-kasir" component={() => <ProtectedRoute component={PosKasirAdminPage} />} />
+        {/* Purchase Receive */}
+        <Route path="/purchase/receive" component={() => <ProtectedRoute component={PurchaseReceivePage} />} />
+        {/* Thai Tea Purchase */}
+        <Route path="/purchase/thai-tea" component={() => <ProtectedRoute component={ThaiTeaPurchasePage} />} />
+        {/* Thai Tea CST */}
+        <Route path="/thai-tea/dashboard" component={() => <ProtectedRoute component={ThaiTeaDashboardPage} />} />
+        <Route path="/thai-tea/recipes" component={() => <ProtectedRoute component={ThaiTeaRecipesPage} />} />
+        <Route path="/thai-tea/stock" component={() => <ProtectedRoute component={ThaiTeaStockPage} />} />
+        <Route path="/thai-tea/branches" component={() => <ProtectedRoute component={ThaiTeaBranchesPage} />} />
+        <Route path="/thai-tea/production" component={() => <ProtectedRoute component={ThaiTeaProductionPage} />} />
+        <Route path="/thai-tea/reports" component={() => <ProtectedRoute component={ThaiTeaReportsPage} />} />
+        {/* Products & BOM */}
+        <Route path="/products/items" component={() => <ProtectedRoute component={ProductItemsPage} />} />
+        <Route path="/products/recipes" component={() => <ProtectedRoute component={ProductRecipesPage} />} />
+        {/* POS Inventory */}
+        <Route path="/pos-inventory/dashboard" component={() => <ProtectedRoute component={PosInventoryDashboardPage} />} />
+        <Route path="/pos-inventory/branches" component={() => <ProtectedRoute component={PosBranchesPage} />} />
+        <Route path="/pos-inventory/warehouses" component={() => <ProtectedRoute component={PosWarehousesPage} />} />
+        <Route path="/pos-inventory/racks" component={() => <ProtectedRoute component={PosRacksPage} />} />
+        <Route path="/pos-inventory/items" component={() => <ProtectedRoute component={PosInventoryItemsPage} />} />
+        <Route path="/pos-inventory/stocks" component={() => <ProtectedRoute component={PosInventoryStocksPage} />} />
+        <Route path="/pos-inventory/recipes" component={() => <ProtectedRoute component={PosRecipesPage} />} />
+        <Route path="/pos-inventory/losses" component={() => <ProtectedRoute component={PosStockLossesPage} />} />
+        <Route path="/pos-inventory/mutations" component={() => <ProtectedRoute component={PosStockMutationsPage} />} />
+        <Route path="/pos-inventory/opname" component={() => <ProtectedRoute component={PosStockOpnamePage} />} />
+        <Route path="/pos-inventory/returns" component={() => <ProtectedRoute component={PosStockReturnsPage} />} />
+        <Route path="/pos-inventory/transfers" component={() => <ProtectedRoute component={PosStockTransfersPage} />} />
+        <Route path="/pos-inventory/qr-generator" component={() => <ProtectedRoute component={PosQrGeneratorPage} />} />
+        <Route path="/pos-inventory/qr-scanner" component={() => <ProtectedRoute component={PosQrScannerPage} />} />
+        {/* Sport Center */}
+        <Route path="/sport-center" component={() => <ProtectedRoute component={SportCenterDashboard} />} />
+        <Route path="/sport-center/bookings" component={() => <ProtectedRoute component={SportCenterBookingsPage} />} />
+        <Route path="/sport-center/schedule" component={() => <ProtectedRoute component={SportCenterSchedulePage} />} />
+        <Route path="/sport-center/services" component={() => <ProtectedRoute component={SportCenterServicesPage} />} />
+        <Route path="/sport-center/purchase-requests" component={() => <ProtectedRoute component={SportCenterPurchaseRequestsPage} />} />
+        <Route path="/sport-center/reports" component={() => <ProtectedRoute component={SportCenterReportPage} />} />
+        <Route path="/notifications" component={() => <ProtectedRoute component={NotificationsPage} />} />
+        {/* Analytics & Performance */}
+        <Route path="/analytics" component={() => <ProtectedRoute component={AnalyticsDashboardPage} />} />
+        <Route path="/logistics/vendor-performance" component={() => <ProtectedRoute component={VendorPerformancePage} />} />
+        <Route path="/logistics/internal-tasks" component={() => <ProtectedRoute component={InternalTasksPage} />} />
+        {/* Legacy /expenses/* → /expense/* */}
+        <Route path="/expenses" component={() => <Redirect to="/expense" />} />
+        <Route path="/expenses/new" component={() => <Redirect to="/expense/new" />} />
+        <Route path="/expenses/categories" component={() => <Redirect to="/expense/categories" />} />
+        <Route path="/expenses/reports" component={() => <Redirect to="/expense/reports" />} />
+        <Route path="/expenses/:id" component={({ params }: { params: { id: string } }) => <Redirect to={`/expense/${params.id}/edit`} />} />
+        {/* Legacy /warehouse/* → /pos-inventory/* */}
+        <Route path="/warehouse/stock" component={() => <Redirect to="/pos-inventory/stocks" />} />
+        <Route path="/warehouse/movements" component={() => <Redirect to="/pos-inventory/mutations" />} />
+        <Route path="/warehouse/transfers" component={() => <Redirect to="/pos-inventory/transfers" />} />
+        <Route path="/warehouse/damage" component={() => <Redirect to="/pos-inventory/losses" />} />
+        <Route path="/warehouse/returns" component={() => <Redirect to="/pos-inventory/returns" />} />
+        <Route path="/warehouse/recipes" component={() => <Redirect to="/pos-inventory/recipes" />} />
+        <Route path="/warehouse/opname" component={() => <Redirect to="/pos-inventory/opname" />} />
+        {/* Legacy /inventory/* → /pos-inventory/* */}
+        <Route path="/inventory/warehouses" component={() => <Redirect to="/pos-inventory/warehouses" />} />
+        <Route path="/inventory/racks" component={() => <Redirect to="/pos-inventory/racks" />} />
+        <Route path="/inventory/stock" component={() => <Redirect to="/pos-inventory/stocks" />} />
+        <Route path="/inventory/transfers" component={() => <Redirect to="/pos-inventory/transfers" />} />
+        <Route path="/inventory/returns" component={() => <Redirect to="/pos-inventory/returns" />} />
+        <Route path="/inventory/damage" component={() => <Redirect to="/pos-inventory/losses" />} />
+        <Route path="/inventory/opname" component={() => <Redirect to="/pos-inventory/opname" />} />
+        <Route path="/inventory/movements" component={() => <Redirect to="/pos-inventory/mutations" />} />
         <Route component={NotFound} />
       </Switch>
       <AppRoutes rootGuard={AuthRouteGuard} />
@@ -340,7 +507,6 @@ export default function App() {
       <SupabaseAuthProvider>
         <LanguageProvider>
           <CompanyProvider>
-          <CompanyApiSync />
           <OrderNotificationsProvider>
             <TooltipProvider>
               <Router />

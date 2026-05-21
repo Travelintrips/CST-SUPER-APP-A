@@ -1,17 +1,24 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import { requireAdmin } from "../lib/requireAdmin.js";
+import { resolveCompanyId } from "../lib/resolveCompany.js";
 import { streamInvoicePdf, buildInvoicePdfBuffer } from "../lib/pdfInvoice.js";
 import { postPurchaseBill } from "../lib/accounting.js";
 import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
 import { ensureAccountingSettings } from "../lib/accountingSeed.js";
+import { postStockIn } from "../lib/inventoryStock.js";
 import {
   db,
   suppliersTable,
   purchaseDocumentsTable,
   purchaseDocumentLinesTable,
   accountingTaxesTable,
+  goodsReceiptsTable,
+  vendorInvoicesTable,
+  accountingEntriesTable,
+  accountingEntryLinesTable,
+  chartOfAccountsTable,
 } from "@workspace/db";
-import { eq, sql, desc, and, type SQL } from "drizzle-orm";
+import { eq, sql, desc, and, or, inArray, type SQL } from "drizzle-orm";
 
 async function computeTax(subtotal: number, taxRateId: number | null | undefined): Promise<{ taxAmount: number; grandTotal: number }> {
   if (!taxRateId) return { taxAmount: 0, grandTotal: subtotal };
@@ -78,8 +85,12 @@ async function nextDocNumber(kind: PurchaseKind): Promise<string> {
   return `${prefix}/${year}/${seq}`;
 }
 
-router.get("/summary", async (_req, res) => {
-  const docs = await db.select().from(purchaseDocumentsTable);
+
+
+router.get("/summary", async (req, res) => {
+  const companyId = resolveCompanyId(req);
+  const docs = await db.select().from(purchaseDocumentsTable)
+    .where(eq(purchaseDocumentsTable.companyId, companyId));
   const rfqCount = docs.filter((d) => d.kind === "rfq").length;
   const ordersCount = docs.filter((d) => d.kind === "order").length;
   const toBillCount = docs.filter((d) => d.kind === "order" && d.billStatus === "to_bill").length;
@@ -105,23 +116,21 @@ router.get("/summary", async (_req, res) => {
 });
 
 router.get("/documents", async (req, res) => {
+  const companyId = resolveCompanyId(req);
   const kind = req.query["kind"] as PurchaseKind | undefined;
   const billStatus = req.query["billStatus"] as PurchaseBillStatus | undefined;
   const paymentStatus = req.query["paymentStatus"] as "unpaid" | "partial" | "paid" | undefined;
-  const conds: SQL[] = [];
+  const conds: SQL[] = [eq(purchaseDocumentsTable.companyId, companyId)];
   if (kind === "rfq" || kind === "order") conds.push(eq(purchaseDocumentsTable.kind, kind));
   if (billStatus === "none" || billStatus === "to_bill" || billStatus === "billed")
     conds.push(eq(purchaseDocumentsTable.billStatus, billStatus));
   if (paymentStatus === "unpaid" || paymentStatus === "partial" || paymentStatus === "paid")
     conds.push(eq(purchaseDocumentsTable.paymentStatus, paymentStatus));
-  const where = conds.length === 0 ? undefined : conds.length === 1 ? conds[0] : and(...conds);
-  const rows = where
-    ? await db
-        .select()
-        .from(purchaseDocumentsTable)
-        .where(where)
-        .orderBy(desc(purchaseDocumentsTable.createdAt))
-    : await db.select().from(purchaseDocumentsTable).orderBy(desc(purchaseDocumentsTable.createdAt));
+  const rows = await db
+    .select()
+    .from(purchaseDocumentsTable)
+    .where(and(...conds))
+    .orderBy(desc(purchaseDocumentsTable.createdAt));
   return res.json(rows.map(serializeDoc));
 });
 
@@ -148,7 +157,8 @@ router.get("/documents/:id", async (req, res) => {
 });
 
 router.post("/documents", async (req, res) => {
-  const { kind, supplierId, supplierName, supplierAddress, expectedDate, notes, lines, taxRateId } = req.body ?? {};
+  const companyId = resolveCompanyId(req);
+  const { kind, supplierId, supplierName, supplierAddress, expectedDate, notes, lines, taxRateId, warehouseId } = req.body ?? {};
   if (typeof supplierName !== "string" || !supplierName.trim())
     return res.status(400).json({ message: "supplierName required" });
   if (!Array.isArray(lines) || lines.length === 0)
@@ -171,9 +181,11 @@ router.post("/documents", async (req, res) => {
   const [doc] = await db
     .insert(purchaseDocumentsTable)
     .values({
+      companyId,
       docNumber,
       kind: docKind,
       status: "draft",
+      warehouseId: warehouseId ? Number(warehouseId) : null,
       supplierId: supplierId ?? null,
       supplierName,
       supplierAddress: supplierAddress ?? null,
@@ -208,11 +220,12 @@ router.put("/documents/:id", async (req, res) => {
   const existing = await loadDocWithLines(id);
   if (!existing) return res.status(404).json({ message: "Document not found" });
 
-  const { supplierId, supplierName, supplierAddress, expectedDate, notes, lines, kind, taxRateId } = req.body ?? {};
+  const { supplierId, supplierName, supplierAddress, expectedDate, notes, lines, kind, taxRateId, warehouseId } = req.body ?? {};
   const patch: Record<string, unknown> = { updatedAt: new Date() };
   if (typeof supplierName === "string") patch["supplierName"] = supplierName;
   if (supplierAddress !== undefined) patch["supplierAddress"] = supplierAddress ?? null;
   if (supplierId !== undefined) patch["supplierId"] = supplierId;
+  if (warehouseId !== undefined) patch["warehouseId"] = warehouseId ? Number(warehouseId) : null;
   if (expectedDate !== undefined) patch["expectedDate"] = expectedDate ? new Date(expectedDate) : null;
   if (notes !== undefined) patch["notes"] = notes;
   if (kind === "rfq" || kind === "order") patch["kind"] = kind;
@@ -299,6 +312,12 @@ router.post("/documents/:id/action", async (req, res) => {
       patch["receiveStatus"] = "received" satisfies PurchaseReceiveStatus;
       if (doc.billStatus === "billed") patch["status"] = "done" satisfies PurchaseStatus;
       break;
+    case "receive_to_warehouse": {
+      // Mark received + post stock movements to wh_stock
+      patch["receiveStatus"] = "received" satisfies PurchaseReceiveStatus;
+      if (doc.billStatus === "billed") patch["status"] = "done" satisfies PurchaseStatus;
+      break;
+    }
     case "mark_billed": {
       // Auto-numbering: BILL/YYYY/NNNN
       const billYear = new Date().getFullYear();
@@ -332,17 +351,100 @@ router.post("/documents/:id/action", async (req, res) => {
 
   await db.update(purchaseDocumentsTable).set(patch).where(eq(purchaseDocumentsTable.id, id));
 
+  // T004: When PO is received, post stock-in movements to wh_stock AND inventory_stock (fire-and-forget)
+  if ((action === "mark_received" || action === "receive_to_warehouse") && doc.receiveStatus !== "received") {
+    void (async () => {
+      try {
+        const lines = await db.select().from(purchaseDocumentLinesTable).where(eq(purchaseDocumentLinesTable.documentId, id));
+        const productLines = lines.filter((l) => l.productId != null);
+        if (productLines.length === 0) return;
+        // POS warehouse (wh_stock)
+        const docWarehouseId = (doc as any).warehouseId ?? null;
+        let posWhId: number | undefined = docWarehouseId ? Number(docWarehouseId) : undefined;
+        if (!posWhId) {
+          const [defaultWh] = await db.execute(sql`SELECT id FROM warehouses WHERE is_active = TRUE ORDER BY id LIMIT 1`);
+          const wh = (defaultWh as any)?.rows?.[0] ?? (defaultWh as any);
+          posWhId = wh?.id;
+        }
+        // ERP warehouse (inventory_stock)
+        const erpWhRow = (await db.execute(sql`SELECT id FROM warehouses WHERE is_active = TRUE ORDER BY id LIMIT 1`)).rows[0] as { id: number } | undefined;
+        const erpWhId: number | undefined = erpWhRow?.id;
+
+        for (const line of productLines) {
+          const qty = Number(line.quantity);
+          const costPrice = Number(line.unitCost);
+
+          // ── wh_stock (POS/legacy) ──────────────────────────────────────────
+          if (posWhId) {
+            const docCompanyId = (doc as any).companyId ?? null;
+            const cur = await db.execute(sql`
+              SELECT qty::float FROM wh_stock WHERE product_id = ${line.productId} AND warehouse_id = ${posWhId} AND rack_id IS NULL
+            `);
+            const qtyBefore = Number((cur.rows[0] as any)?.qty ?? 0);
+            const qtyAfter = qtyBefore + qty;
+            await db.execute(sql`
+              INSERT INTO wh_stock (company_id, product_id, warehouse_id, rack_id, qty, cost_price, updated_at)
+              VALUES (${docCompanyId}, ${line.productId}, ${posWhId}, NULL, ${qtyAfter}, ${costPrice}, NOW())
+              ON CONFLICT ON CONSTRAINT wh_stock_product_warehouse_rack_idx
+              DO UPDATE SET company_id = COALESCE(wh_stock.company_id, ${docCompanyId}), qty = ${qtyAfter}, cost_price = ${costPrice}, updated_at = NOW()
+            `);
+            await db.execute(sql`
+              INSERT INTO wh_movements (company_id, product_id, warehouse_id, rack_id, type, qty, qty_before, qty_after, cost_price, ref_type, ref_id, note)
+              VALUES (${docCompanyId}, ${line.productId}, ${posWhId}, NULL, 'po_receipt', ${qty}, ${qtyBefore}, ${qtyAfter}, ${costPrice},
+                      'purchase_order', ${id}, ${`PO Diterima: ${doc.docNumber}`})
+            `);
+          }
+
+          // ── inventory_stock (ERP — enables SO pre-flight check) ───────────
+          if (erpWhId) {
+            await postStockIn({
+              productId: line.productId!,
+              warehouseId: erpWhId,
+              qty,
+              unitCost: costPrice,
+              movementType: "PO_RECEIPT",
+              referenceType: "PURCHASE_ORDER",
+              referenceId: id,
+              notes: `PO Diterima: ${doc.docNumber}`,
+            }).catch((e) => console.error("[inventory] postStockIn PO error:", e));
+          }
+        }
+      } catch (e) {
+        console.error("[wh] mark_received stock-in error:", e);
+      }
+    })();
+  }
+
   if (action === "mark_billed" && doc.billStatus !== "billed") {
-    const net = Number(doc.totalAmount);
     const taxAmount = Number(doc.taxAmount ?? 0);
-    void postPurchaseBill({
-      purchaseDocId: doc.id,
-      docNumber: doc.docNumber,
-      supplierName: doc.supplierName,
-      netAmount: net,
-      taxAmount,
-      taxAccountId: null,
-    });
+    // Fetch lines to split inventory vs service/expense debit
+    void (async () => {
+      try {
+        const billLines = await db
+          .select({
+            productId: purchaseDocumentLinesTable.productId,
+            unitCost: purchaseDocumentLinesTable.unitCost,
+            quantity: purchaseDocumentLinesTable.quantity,
+          })
+          .from(purchaseDocumentLinesTable)
+          .where(eq(purchaseDocumentLinesTable.documentId, id));
+        await postPurchaseBill({
+          purchaseDocId: doc.id,
+          docNumber: doc.docNumber,
+          supplierName: doc.supplierName,
+          docLines: billLines.map((l) => ({
+            productId: l.productId,
+            unitCost: Number(l.unitCost),
+            quantity: Number(l.quantity),
+          })),
+          taxAmount,
+          taxAccountId: null,
+          companyId: doc.companyId ?? null,
+        });
+      } catch (e) {
+        console.error("[accounting] postPurchaseBill error:", e);
+      }
+    })();
   }
 
   const detail = await loadDocWithLines(id);
@@ -465,6 +567,112 @@ router.post("/documents/:id/email", async (req, res): Promise<void> => {
   });
 
   res.json({ message: "Email berhasil dikirim", to, filename });
+});
+
+router.get("/po-detail/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+
+  const doc = await loadDocWithLines(id);
+  if (!doc) return res.status(404).json({ message: "Not found" });
+
+  const grs = await db.select().from(goodsReceiptsTable)
+    .where(eq(goodsReceiptsTable.poId, id))
+    .orderBy(desc(goodsReceiptsTable.createdAt));
+
+  const vis = await db.select().from(vendorInvoicesTable)
+    .where(eq(vendorInvoicesTable.poId, id))
+    .orderBy(desc(vendorInvoicesTable.createdAt));
+
+  const grIds = grs.map((g) => g.id);
+  const viIds = vis.map((v) => v.id);
+
+  let journalEntries: object[] = [];
+  const entryConds: ReturnType<typeof and>[] = [];
+  if (viIds.length > 0) {
+    entryConds.push(and(
+      sql`${accountingEntriesTable.source} = 'purchase_bill'`,
+      inArray(accountingEntriesTable.sourceId, viIds),
+    )!);
+  }
+  entryConds.push(and(
+    sql`${accountingEntriesTable.source} = 'purchase_bill'`,
+    eq(accountingEntriesTable.sourceId, id),
+  )!);
+  if (grIds.length > 0) {
+    entryConds.push(and(
+      sql`${accountingEntriesTable.source} = 'grn_receipt'`,
+      inArray(accountingEntriesTable.sourceId, grIds),
+    )!);
+  }
+
+  const entries = await db.select().from(accountingEntriesTable)
+    .where(or(...entryConds))
+    .orderBy(desc(accountingEntriesTable.createdAt));
+
+  if (entries.length > 0) {
+    const entryIds = entries.map((e) => e.id);
+    const lines = await db.select({
+      id: accountingEntryLinesTable.id,
+      entryId: accountingEntryLinesTable.entryId,
+      description: accountingEntryLinesTable.description,
+      debit: accountingEntryLinesTable.debit,
+      credit: accountingEntryLinesTable.credit,
+      accountId: accountingEntryLinesTable.accountId,
+      accountCode: chartOfAccountsTable.code,
+      accountName: chartOfAccountsTable.name,
+    }).from(accountingEntryLinesTable)
+      .leftJoin(chartOfAccountsTable, eq(accountingEntryLinesTable.accountId, chartOfAccountsTable.id))
+      .where(inArray(accountingEntryLinesTable.entryId, entryIds));
+
+    journalEntries = entries.map((e) => ({
+      id: e.id,
+      entryNumber: e.entryNumber,
+      date: e.date ? String(e.date) : null,
+      description: e.description,
+      status: e.status,
+      source: e.source,
+      sourceId: e.sourceId,
+      totalDebit: Number(e.totalDebit ?? 0),
+      totalCredit: Number(e.totalCredit ?? 0),
+      createdAt: e.createdAt?.toISOString(),
+      lines: lines
+        .filter((l) => l.entryId === e.id)
+        .map((l) => ({
+          id: l.id,
+          entryId: l.entryId,
+          description: l.description,
+          debit: Number(l.debit ?? 0),
+          credit: Number(l.credit ?? 0),
+          accountId: l.accountId,
+          accountCode: l.accountCode,
+          accountName: l.accountName,
+        })),
+    }));
+  }
+
+  return res.json({
+    ...doc,
+    goodsReceipts: grs.map((g) => ({
+      ...g,
+      receivedAt: g.receivedAt instanceof Date ? g.receivedAt.toISOString() : (g.receivedAt ?? null),
+      createdAt: g.createdAt.toISOString(),
+      updatedAt: g.updatedAt.toISOString(),
+    })),
+    vendorInvoices: vis.map((v) => ({
+      ...v,
+      grandTotal: Number(v.grandTotal),
+      totalAmount: Number(v.totalAmount),
+      taxAmount: Number(v.taxAmount ?? 0),
+      amountPaid: Number(v.amountPaid ?? 0),
+      invoiceDate: v.invoiceDate instanceof Date ? v.invoiceDate.toISOString() : (v.invoiceDate ?? null),
+      dueDate: v.dueDate instanceof Date ? v.dueDate.toISOString() : (v.dueDate ?? null),
+      cancelledAt: v.cancelledAt instanceof Date ? v.cancelledAt.toISOString() : (v.cancelledAt ?? null),
+      createdAt: v.createdAt.toISOString(),
+      updatedAt: v.updatedAt.toISOString(),
+    })),
+    journalEntries,
+  });
 });
 
 export default router;

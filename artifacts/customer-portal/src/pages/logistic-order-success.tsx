@@ -99,30 +99,44 @@ export default function OrderSuccessPage() {
                   <Badge variant="outline" className="text-xs mr-2">{item.category}</Badge>
                   <span className="text-sm font-medium text-foreground">{item.serviceName}</span>
                 </div>
-                <span className="text-sm font-bold text-accent flex-shrink-0">{formatCurrency(item.subtotal)}</span>
+                {item.subtotal > 0
+                  ? <span className="text-sm font-bold text-accent flex-shrink-0">{formatCurrency(item.subtotal)}</span>
+                  : item.calculatorType === "trucking"
+                    ? <span className="text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded px-2 py-0.5 flex-shrink-0">Harga menyusul</span>
+                    : <span className="text-xs font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-0.5 flex-shrink-0">Harga nego</span>
+                }
               </div>
             ))}
           </div>
           <Separator className="my-3" />
-          <div className="space-y-1.5">
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">
-                {order.items.length === 1 ? order.items[0].serviceName : "Subtotal"}
-              </span>
-              <span>{formatCurrency(order.subtotal)}</span>
+          {order.grandTotal > 0 ? (
+            <>
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">
+                    {order.items.length === 1 ? order.items[0].serviceName : "Subtotal"}
+                  </span>
+                  <span>{formatCurrency(order.subtotal)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">PPN {order.subtotal > 0 && Math.round(order.tax / order.subtotal * 1000) === 11 ? "1,1%" : "11%"}</span>
+                  <span>{formatCurrency(order.tax)}</span>
+                </div>
+                <div className="flex justify-between font-bold">
+                  <span>Total Estimasi</span>
+                  <span className="text-accent">{formatCurrency(order.grandTotal)}</span>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground italic mt-3">
+                Ini adalah estimasi harga. Penawaran final akan dikonfirmasi oleh tim kami.
+              </p>
+            </>
+          ) : (
+            <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-xs text-blue-700 space-y-0.5">
+              <p className="font-semibold">Harga Akan Diberikan oleh Vendor</p>
+              <p>Vendor akan membalas pesanan Anda dengan penawaran harga. Tim kami akan segera menghubungi Anda.</p>
             </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">PPN {order.subtotal > 0 && Math.round(order.tax / order.subtotal * 1000) === 11 ? "1,1%" : "11%"}</span>
-              <span>{formatCurrency(order.tax)}</span>
-            </div>
-            <div className="flex justify-between font-bold">
-              <span>Total Estimasi</span>
-              <span className="text-accent">{formatCurrency(order.grandTotal)}</span>
-            </div>
-          </div>
-          <p className="text-xs text-muted-foreground italic mt-3">
-            Ini adalah estimasi harga. Penawaran final akan dikonfirmasi oleh tim kami.
-          </p>
+          )}
         </div>
 
         {/* Actions */}

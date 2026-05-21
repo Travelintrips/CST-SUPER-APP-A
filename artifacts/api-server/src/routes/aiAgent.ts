@@ -1,4 +1,4 @@
-import { Router, Request, Response } from "express";
+import express, { Router, Request, Response } from "express";
 import OpenAI from "openai";
 import { db } from "@workspace/db";
 import {
@@ -121,12 +121,10 @@ const TOOLS: OpenAI.Chat.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "get_order_status",
-      description: "Cek status order logistik pelanggan. Otomatis mencari berdasarkan sesi chat ini. Jika pelanggan menyebut nomor WhatsApp lain, gunakan parameter phone.",
+      description: "Cek status order logistik pelanggan. Mencari berdasarkan sesi chat ini saja.",
       parameters: {
         type: "object",
-        properties: {
-          phone: { type: "string", description: "Nomor WhatsApp pelanggan (opsional, untuk mencari order dari nomor lain)" },
-        },
+        properties: {},
         required: [],
       },
     },
@@ -255,6 +253,78 @@ function generateSessionToken(): string {
   return randomBytes(20).toString("hex");
 }
 
+// ── Rate-limit stores (in-memory, reset on server restart) ────────────────────
+// These are a cost-throttle layer on top of session validation: even though
+// session tokens are freely obtainable via the public chat endpoint, limits
+// per IP and per session make bulk wallet-drain attacks economically impractical.
+
+interface RateEntry { count: number; resetAt: number }
+
+// Upload limits
+const UPLOAD_IP_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const UPLOAD_IP_LIMIT = 20; // max uploads per IP per hour
+const UPLOAD_SESSION_LIMIT = 10; // max uploads per session lifetime
+const uploadIpRateMap = new Map<string, RateEntry>();
+const uploadSessionCountMap = new Map<string, number>();
+
+// Chat limits — prevents sustained OpenAI quota drain from anonymous callers
+const CHAT_IP_WINDOW_MS = 10 * 60 * 1000; // 10-minute rolling window
+const CHAT_IP_LIMIT = 30; // max 30 chat requests per IP per window
+const chatIpRateMap = new Map<string, RateEntry>();
+
+// Order limits — prevents notification spam (WhatsApp/email) from anonymous callers
+const ORDER_IP_WINDOW_MS = 60 * 60 * 1000; // 1-hour rolling window
+const ORDER_IP_LIMIT = 5; // max 5 orders per IP per hour
+const orderIpRateMap = new Map<string, RateEntry>();
+
+/**
+ * Generic IP-based rate-limit check.
+ * Returns null when allowed (and increments the counter), or an error string to
+ * return as HTTP 429.
+ */
+function checkIpRateLimit(
+  ip: string,
+  map: Map<string, RateEntry>,
+  windowMs: number,
+  limit: number,
+  retryLabel: string,
+): string | null {
+  const now = Date.now();
+  let entry = map.get(ip);
+  if (!entry || now > entry.resetAt) {
+    entry = { count: 0, resetAt: now + windowMs };
+  }
+  if (entry.count >= limit) {
+    return `Terlalu banyak permintaan dari jaringan ini. Coba lagi dalam ${retryLabel}.`;
+  }
+  entry.count += 1;
+  map.set(ip, entry);
+  return null;
+}
+
+/**
+ * Enforces per-IP and per-session upload rate limits.
+ * Returns null when the request is allowed, or an error message string when
+ * it should be rejected with HTTP 429.
+ * Side-effect: increments both counters when the request is allowed.
+ */
+function checkUploadRateLimit(ip: string, sessionToken: string): string | null {
+  // Per-session lifetime check runs first so that a session that has hit its
+  // personal cap does not consume shared IP quota on every rejected attempt.
+  const sessionCount = uploadSessionCountMap.get(sessionToken) ?? 0;
+  if (sessionCount >= UPLOAD_SESSION_LIMIT) {
+    return "Batas upload untuk sesi percakapan ini telah tercapai. Mulai sesi baru untuk melanjutkan.";
+  }
+
+  // Per-IP window check
+  const ipError = checkIpRateLimit(ip, uploadIpRateMap, UPLOAD_IP_WINDOW_MS, UPLOAD_IP_LIMIT, "1 jam");
+  if (ipError) return "Terlalu banyak upload dari jaringan ini. Coba lagi dalam 1 jam.";
+
+  // Both checks passed — commit the session increment
+  uploadSessionCountMap.set(sessionToken, sessionCount + 1);
+  return null;
+}
+
 async function handleToolCall(
   toolName: string,
   args: Record<string, unknown>,
@@ -276,14 +346,9 @@ async function handleToolCall(
 
   if (toolName === "get_order_status") {
     try {
-      const { phone } = args as { phone?: string };
-
-      // Build OR condition: match by current session token, or by phone if provided
-      const conditions = [eq(logisticOrdersTable.aiSessionToken, sessionToken)];
-      if (phone && phone.trim()) {
-        conditions.push(eq(logisticOrdersTable.phone, phone.trim()));
-      }
-
+      // Only look up orders belonging to the current chat session.
+      // Accepting an arbitrary phone number here would allow any anonymous user
+      // to enumerate another customer's order history by phone number.
       const orders = await db
         .select({
           id: logisticOrdersTable.id,
@@ -297,13 +362,13 @@ async function handleToolCall(
           createdAt: logisticOrdersTable.createdAt,
         })
         .from(logisticOrdersTable)
-        .where(or(...conditions))
+        .where(eq(logisticOrdersTable.aiSessionToken, sessionToken))
         .orderBy(asc(logisticOrdersTable.createdAt));
 
       if (orders.length === 0) {
         return JSON.stringify({
           found: false,
-          message: "Tidak ada order yang ditemukan untuk sesi ini. Jika Anda memiliki nomor WhatsApp yang terdaftar, silakan sebutkan.",
+          message: "Tidak ada order yang ditemukan untuk sesi chat ini. Pastikan order dibuat melalui sesi yang sama.",
         });
       }
 
@@ -741,6 +806,12 @@ async function streamAiChat(
 
 // ── POST /api/ai-agent/quick-order  (direct form submission, no AI round-trip) ─
 aiAgentRouter.post("/quick-order", async (req: Request, res: Response) => {
+  const clientIp = req.ip ?? "unknown";
+  const rateLimitError = checkIpRateLimit(clientIp, orderIpRateMap, ORDER_IP_WINDOW_MS, ORDER_IP_LIMIT, "1 jam");
+  if (rateLimitError) {
+    return res.status(429).json({ error: rateLimitError });
+  }
+
   const {
     sessionToken: incomingToken,
     customerName, phone, email, companyName, shipmentType,
@@ -847,6 +918,12 @@ aiAgentRouter.post("/quick-order", async (req: Request, res: Response) => {
 
 // ── POST /api/ai-agent/quick-product-order  (direct product form submission) ──
 aiAgentRouter.post("/quick-product-order", async (req: Request, res: Response) => {
+  const clientIp = req.ip ?? "unknown";
+  const rateLimitError = checkIpRateLimit(clientIp, orderIpRateMap, ORDER_IP_WINDOW_MS, ORDER_IP_LIMIT, "1 jam");
+  if (rateLimitError) {
+    return res.status(429).json({ error: rateLimitError });
+  }
+
   const {
     sessionToken: incomingToken,
     customerName, phone, email,
@@ -915,7 +992,18 @@ aiAgentRouter.post("/quick-product-order", async (req: Request, res: Response) =
 });
 
 // ── POST /api/ai-agent/chat  (SSE streaming) ──────────────────────────────────
+// Note: the global express.json({ limit: "20mb" }) in app.ts already parses the
+// body before this handler runs, so a route-level body-size limit has no effect.
+// Token-cost abuse is instead constrained by the per-IP rate limit below and the
+// hard 4000-character message cap enforced inside the handler.
 aiAgentRouter.post("/chat", async (req: Request, res: Response) => {
+  const clientIp = req.ip ?? "unknown";
+  const rateLimitError = checkIpRateLimit(clientIp, chatIpRateMap, CHAT_IP_WINDOW_MS, CHAT_IP_LIMIT, "10 menit");
+  if (rateLimitError) {
+    res.status(429).json({ message: rateLimitError });
+    return;
+  }
+
   const { sessionToken: incomingToken, message } = req.body as {
     sessionToken?: string;
     message?: string;
@@ -923,6 +1011,12 @@ aiAgentRouter.post("/chat", async (req: Request, res: Response) => {
 
   if (!message || typeof message !== "string" || !message.trim()) {
     res.status(400).json({ message: "Pesan tidak boleh kosong" });
+    return;
+  }
+
+  // Enforce a hard cap on message length to limit token usage per request
+  if (message.length > 4000) {
+    res.status(400).json({ message: "Pesan terlalu panjang (maksimal 4000 karakter)." });
     return;
   }
 
@@ -987,23 +1081,24 @@ aiAgentRouter.get("/session/:token", async (req: Request, res: Response) => {
   const sinceDate = sinceParam ? new Date(sinceParam) : null;
   const validSince = sinceDate && !isNaN(sinceDate.getTime()) ? sinceDate : null;
 
+  // This endpoint is public (token is the sole credential).
+  // Only return admin-authored messages so that user messages (which may
+  // contain OCR'd document text) and assistant messages are not exposed to
+  // anyone who happens to possess the token.  The ChatWidget only polls this
+  // endpoint to display incoming admin replies — it never needs user/assistant
+  // history from here.
+  const adminOnly = eq(aiChatMessagesTable.role, "admin");
   const messages = await db
     .select()
     .from(aiChatMessagesTable)
     .where(
       validSince
-        ? and(eq(aiChatMessagesTable.sessionId, session.id), gt(aiChatMessagesTable.createdAt, validSince))
-        : eq(aiChatMessagesTable.sessionId, session.id)
+        ? and(eq(aiChatMessagesTable.sessionId, session.id), gt(aiChatMessagesTable.createdAt, validSince), adminOnly)
+        : and(eq(aiChatMessagesTable.sessionId, session.id), adminOnly)
     )
     .orderBy(asc(aiChatMessagesTable.createdAt));
 
   return res.json({
-    session: {
-      id: session.id,
-      sessionToken: session.sessionToken,
-      logisticOrderId: session.logisticOrderId,
-      createdAt: session.createdAt.toISOString(),
-    },
     messages: messages.map((m) => ({
       id: m.id,
       role: m.role,
@@ -1369,11 +1464,61 @@ aiAgentRouter.put("/settings", async (req: Request, res: Response) => {
 });
 
 // ── POST /api/ai-agent/upload ─────────────────────────────────────────────────
-// Public: accepts image or PDF, runs OCR/vision, returns extracted text for chat context
+// Requires a valid AI chat sessionToken (issued by /api/ai-agent/stream).
+// Without this gate any unauthenticated caller could drain paid OpenAI quota by
+// submitting large files in a loop. The sessionToken is the same public credential
+// already used for chat history polling — it is not a secret, but it proves the
+// caller has previously interacted with the chat widget and obtained a real session.
 aiAgentRouter.post(
   "/upload",
   uploadMemory.single("file"),
   async (req: Request, res: Response): Promise<void> => {
+    // Validate session token before touching the file or calling OpenAI.
+    const rawToken =
+      typeof req.body?.sessionToken === "string" ? req.body.sessionToken.trim() : "";
+    if (!rawToken) {
+      res.status(401).json({ message: "sessionToken diperlukan untuk mengunggah file." });
+      return;
+    }
+    const [session] = await db
+      .select({ id: aiChatSessionsTable.id })
+      .from(aiChatSessionsTable)
+      .where(eq(aiChatSessionsTable.sessionToken, rawToken));
+    if (!session) {
+      res.status(401).json({ message: "Session tidak valid atau sudah kadaluarsa." });
+      return;
+    }
+
+    // Require the session to have at least one real user message.
+    // This proves the caller already used the chat widget (spending AI chat quota)
+    // and is not simply minting fresh tokens in bulk to drive upload abuse.
+    const [msgCheck] = await db
+      .select({ id: aiChatMessagesTable.id })
+      .from(aiChatMessagesTable)
+      .where(
+        and(
+          eq(aiChatMessagesTable.sessionId, session.id),
+          eq(aiChatMessagesTable.role, "user"),
+        ),
+      )
+      .limit(1);
+    if (!msgCheck) {
+      res.status(403).json({
+        message: "Kirim pesan ke AI terlebih dahulu sebelum mengunggah file.",
+      });
+      return;
+    }
+
+    // Per-IP and per-session upload rate limits — checked after session validation.
+    // req.ip is reliably set by Express because app.set("trust proxy", 1) is
+    // configured in app.ts, preventing X-Forwarded-For header spoofing.
+    const clientIp = req.ip ?? req.socket.remoteAddress ?? "unknown";
+    const rateLimitError = checkUploadRateLimit(clientIp, rawToken);
+    if (rateLimitError) {
+      res.status(429).json({ message: rateLimitError });
+      return;
+    }
+
     const file = req.file;
     if (!file) {
       res.status(400).json({ message: "Tidak ada file yang diupload." });

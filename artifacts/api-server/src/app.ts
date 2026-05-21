@@ -1,5 +1,6 @@
 import path from "path";
 import fs from "fs";
+import { fileURLToPath } from "url";
 import type { IncomingMessage, ServerResponse } from "http";
 import express, { type Express, type Request, type Response, type NextFunction } from "express";
 import cors from "cors";
@@ -8,11 +9,18 @@ import { pinoHttp } from "pino-http";
 import router from "./routes";
 import authRouter from "./routes/auth";
 import companiesRouter from "./routes/companies";
+import { shortLinkRedirectRouter } from "./routes/shortLinkRedirect";
 import { authMiddleware } from "./middlewares/authMiddleware";
+import { bearerRateLimiter } from "./middlewares/bearerRateLimiter";
 import { logger } from "./lib/logger";
 import { recordResponseTime } from "./lib/responseTimeLog";
 
 const app: Express = express();
+
+// Trust a single upstream reverse proxy (Replit's edge / nginx).
+// This makes req.ip reflect the real client IP from X-Forwarded-For instead
+// of the proxy's internal address, which is required for IP-based rate limiting.
+app.set("trust proxy", 1);
 
 app.use((req, res, next) => {
   const startNs = process.hrtime.bigint();
@@ -48,10 +56,52 @@ app.use(
   }),
 );
 
-app.use(cors({ credentials: true, origin: true }));
+// ── Strict CORS origin allowlist ─────────────────────────────────────────────
+// `origin: true` (the previous value) reflects any caller origin, which –
+// combined with `credentials: true` and `SameSite=None` session cookies –
+// allows arbitrary third-party sites to make authenticated requests on behalf
+// of a logged-in user and read the response (cross-origin data exfiltration).
+// Only explicitly listed origins may use credentialed cross-origin requests.
+const CORS_ALLOWED_ORIGINS: Set<string> = new Set(
+  [
+    // Production custom domains
+    "https://bizportal.cstlogistic.co.id",
+    "https://cstlogistic.co.id",
+    "https://www.cstlogistic.co.id",
+    // Explicitly configured app base URL (deployed Replit or custom domain)
+    process.env["APP_URL"] ? process.env["APP_URL"].replace(/\/$/, "") : null,
+    // Replit dev domain — only in the non-deployed development environment
+    process.env["REPLIT_DEV_DOMAIN"] && !process.env["REPLIT_DEPLOYMENT"]
+      ? `https://${process.env["REPLIT_DEV_DOMAIN"]}`
+      : null,
+  ].filter((o): o is string => typeof o === "string" && o.length > 0),
+);
+
+app.use(
+  cors({
+    credentials: true,
+    origin: (incomingOrigin, callback) => {
+      // No Origin header → same-origin or non-browser request; allow without
+      // echoing a wildcard so credentials still flow correctly.
+      if (!incomingOrigin) return callback(null, false);
+      if (CORS_ALLOWED_ORIGINS.has(incomingOrigin)) {
+        return callback(null, incomingOrigin);
+      }
+      // Reject unlisted origins — do not echo them back.
+      logger.warn({ origin: incomingOrigin }, "CORS: rejected unlisted origin");
+      return callback(null, false);
+    },
+  }),
+);
 app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ extended: true, limit: "20mb" }));
 app.use(cookieParser());
+
+// Rate-limit bearer-token requests before any auth processing.
+// Applies only to requests carrying "Authorization: Bearer ..." headers
+// (portal/mobile Supabase tokens). Internal BizPortal session-cookie
+// requests carry no Authorization header and are not affected.
+app.use(bearerRateLimiter);
 
 // Replit Auth middleware — populates req.user and req.isAuthenticated()
 app.use(authMiddleware);
@@ -59,14 +109,28 @@ app.use(authMiddleware);
 // Auth routes (login/callback/logout/mobile-auth) — mounted under /api
 app.use("/api", authRouter);
 
+// ─── Base directory resolved from this file's location ───────────────────────
+// process.cwd() varies based on where node is invoked from; using import.meta.url
+// gives us a stable path relative to this source file regardless of cwd.
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+// In prod (compiled dist): artifacts/api-server/dist → artifacts/ needs ../..
+const ARTIFACTS_DIR = path.resolve(__dirname, "../..");
+
+// ─── POS Images Static Serving ───────────────────────────────────────────────
+// Gambar produk POS kasir disimpan di folder ini dan diakses secara publik.
+const POS_IMAGES_DIR = path.resolve(ARTIFACTS_DIR, "api-server/public/pos-images");
+if (!fs.existsSync(POS_IMAGES_DIR)) fs.mkdirSync(POS_IMAGES_DIR, { recursive: true });
+app.use("/pos-images", express.static(POS_IMAGES_DIR, { maxAge: "7d" }));
+
 // ─── Customer Portal Static Serving ──────────────────────────────────────────
 // Customer portal is built with base="/" so assets are at /assets/...
 // Serves at root "/" so confirm links (https://domain/confirm/:token) work.
 // Must come BEFORE /api routes for static assets, but SPA fallback is AFTER.
 
 const CUSTOMER_PORTAL_DIST = path.resolve(
-  process.cwd(),
-  "../customer-portal/dist/public",
+  ARTIFACTS_DIR,
+  "customer-portal/dist/public",
 );
 
 if (fs.existsSync(CUSTOMER_PORTAL_DIST)) {
@@ -82,8 +146,8 @@ if (fs.existsSync(CUSTOMER_PORTAL_DIST)) {
 //   3. bizportal.cstlogistic.co.id/ works (custom domain root — served below)
 
 const BIZPORTAL_DIST = path.resolve(
-  process.cwd(),
-  "../bizportal/dist/public",
+  ARTIFACTS_DIR,
+  "bizportal/dist/public",
 );
 
 // Serve static assets at /bizportal/* (strips /bizportal prefix internally)
@@ -124,6 +188,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   }
 });
 
+app.use(shortLinkRedirectRouter);
 app.use("/api/companies", companiesRouter);
 app.use("/api", router);
 
@@ -131,7 +196,7 @@ app.use("/api", router);
 // For any non-API, non-BizPortal path (e.g. /confirm/:token, /, /services, etc.)
 // serve the customer portal index.html so client-side routing works.
 if (fs.existsSync(CUSTOMER_PORTAL_DIST)) {
-  const PORTAL_SKIP = ["/api/", "/bizportal", "/login", "/logout", "/callback", "/auth", "/mobile-auth"];
+  const PORTAL_SKIP = ["/api/", "/bizportal", "/login", "/logout", "/callback", "/auth", "/mobile-auth", "/q/"];
   app.use((req: Request, res: Response, next: NextFunction) => {
     if (PORTAL_SKIP.some((p) => req.path === p || req.path.startsWith(p + "/") || req.path.startsWith(p))) {
       return next();

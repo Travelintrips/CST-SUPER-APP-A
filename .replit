@@ -18,6 +18,7 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
+<<<<<<< HEAD
 args = "Start application"
 
 [[workflows.workflow]]
@@ -28,10 +29,71 @@ author = "agent"
 task = "shell.exec"
 args = "bash start.sh"
 waitForPort = 5000
+=======
+args = "POS"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Sport Center"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "BizPortal"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start application"
+
+[[workflows.workflow]]
+name = "POS"
+author = "agent"
+>>>>>>> 6b0a10697bf9e097fc4267f666b23f87c23847bc
 
 [workflows.workflow.metadata]
-outputType = "webview"
+outputType = "console"
 
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "bash start-pos-kasir.sh"
+
+<<<<<<< HEAD
+=======
+[[workflows.workflow]]
+name = "Sport Center"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/sport-center && PORT=3002 BASE_PATH=/sport-center/ pnpm exec vite --config vite.config.ts --host 0.0.0.0"
+waitForPort = 3002
+
+[[workflows.workflow]]
+name = "BizPortal"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/bizportal && PORT=3000 BASE_PATH=/bizportal/ node_modules/.bin/vite --config vite.config.ts --host 0.0.0.0"
+waitForPort = 3000
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow]]
+name = "Start application"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "bash start-all.sh"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+>>>>>>> 6b0a10697bf9e097fc4267f666b23f87c23847bc
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
 expertMode = true
@@ -39,7 +101,7 @@ integrations = ["google-drive:1.0.0", "javascript_openai_ai_integrations:2.0.0"]
 
 [postMerge]
 path = "scripts/post-merge.sh"
-timeoutMs = 20000
+timeoutMs = 120000
 
 [userenv]
 
@@ -52,29 +114,38 @@ ADMIN_EMAIL = "admcst001@gmail.com"
 SUPABASE_PG_URL = "postgresql://postgres.nzdweipzckfszczzqtuw:%24%23Admin12345%40%24@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres"
 VITE_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im56ZHdlaXB6Y2tmc3pjenpxdHV3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0MDI4NDQsImV4cCI6MjA5Mzk3ODg0NH0.p9k3-qyRjPuXsHLizUrSRMyS-0yJAatUyjQU9NIIu1U"
 VITE_SUPABASE_URL = "https://nzdweipzckfszczzqtuw.supabase.co"
-EXPO_TOKEN = "IevWo60wnJ1OaG9XRQwsYH_9ss83ChbNLc4cr3iX"
+CASHIER_TOKEN_SECRET = "239a1a73ea517bf5430a357fb7a39aa0deef38cecaf4d8135310a7cf3f2e11a19466d603c1dfd5bc0c735e92d58b135d"
+PUBLIC_OBJECT_SEARCH_PATHS = "/replit-objstore-e357cc66-19c3-4d73-9ca9-3069d78355d1/public"
+PRIVATE_OBJECT_DIR = "/replit-objstore-e357cc66-19c3-4d73-9ca9-3069d78355d1/private"
 
 [userenv.development]
 ADMIN_EMAIL_DOMAINS = "example.com"
 
 [nix]
 channel = "stable-25_05"
-packages = ["freetype", "lcms2", "libimagequant", "libjpeg", "libtiff", "libwebp", "libxcrypt", "openjpeg", "tcl", "tk", "zlib"]
+packages = ["freetype", "lcms2", "libimagequant", "libjpeg", "libtiff", "libwebp", "libxcrypt", "nano", "openjpeg", "tcl", "tk", "zlib"]
 
 [objectStorage]
 defaultBucketID = "replit-objstore-e357cc66-19c3-4d73-9ca9-3069d78355d1"
+
+[[ports]]
+localPort = 3000
+externalPort = 9000
 
 [[ports]]
 localPort = 5000
 externalPort = 80
 
 [[ports]]
+<<<<<<< HEAD
 localPort = 8080
 externalPort = 8080
 
 [[ports]]
+=======
+>>>>>>> 6b0a10697bf9e097fc4267f666b23f87c23847bc
 localPort = 8081
-externalPort = 9000
+externalPort = 8008
 
 [[ports]]
 localPort = 8082
@@ -103,6 +174,10 @@ externalPort = 3000
 [[ports]]
 localPort = 18443
 externalPort = 6800
+
+[[ports]]
+localPort = 18444
+externalPort = 8080
 
 [[ports]]
 localPort = 19368

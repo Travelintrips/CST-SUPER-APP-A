@@ -5,16 +5,21 @@ import {
   useUpdateLogisticOrderStatus,
   useUpdateLogisticOrderType,
   useCreateSalesDocument,
+  useCreateLogisticOrderRfq,
   getListLogisticOrdersQueryKey,
+  getGetLogisticOrderQueryOptions,
   useGetLogisticOrder,
 } from "@workspace/api-client-react";
 import type { LogisticOrder } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
+import { usePrefetchOnHover } from "@/hooks/use-prefetch-on-hover";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   Dialog,
@@ -26,9 +31,20 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { PackageOpen, Search, RefreshCw, FilePlus, X, Eye, Zap } from "lucide-react";
+import { PackageOpen, Search, RefreshCw, FilePlus, X, Eye, Zap, Send, ExternalLink, Ship } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Link } from "wouter";
 import { useOrderNotificationsContext } from "@/contexts/OrderNotificationsContext";
+import { useCompany } from "@/contexts/CompanyContext";
+
+interface VendorRow {
+  id: number;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  serviceType: string | null;
+  isActive: boolean;
+}
 
 function Highlight({ text, query }: { text: string; query: string }) {
   if (!query.trim()) return <>{text}</>;
@@ -71,6 +87,69 @@ const STATUS_COLORS: Record<string, string> = {
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
 
+const RFQ_STATUS_LABELS: Record<string, string> = {
+  admin_review: "Review",
+  rfq_sent: "Terkirim",
+  vendor_selected: "Vendor Dipilih",
+  customer_quoted: "Quoted",
+  customer_approved: "Disetujui",
+  customer_rejected: "Ditolak",
+  customer_revision_requested: "Revisi",
+  closed: "Ditutup",
+};
+
+const RFQ_STATUS_COLORS: Record<string, string> = {
+  admin_review:                "bg-slate-100 text-slate-600 border-slate-200",
+  rfq_sent:                    "bg-blue-100 text-blue-700 border-blue-200",
+  vendor_selected:             "bg-violet-100 text-violet-700 border-violet-200",
+  customer_quoted:             "bg-amber-100 text-amber-700 border-amber-200",
+  customer_approved:           "bg-emerald-100 text-emerald-800 border-emerald-200",
+  customer_rejected:           "bg-red-100 text-red-700 border-red-200",
+  customer_revision_requested: "bg-orange-100 text-orange-700 border-orange-200",
+  closed:                      "bg-gray-100 text-gray-600 border-gray-200",
+};
+
+type LatestRfq = {
+  rfqId: number; rfqNumber: string; rfqStatus: string;
+  freightShipmentId: number | null; freightShipmentNumber: string | null;
+} | null;
+
+function RfqStatusCell({ latestRfq, onCreateRfq }: { latestRfq: LatestRfq; onCreateRfq: () => void }) {
+  if (!latestRfq) {
+    return (
+      <Button
+        size="sm"
+        variant="outline"
+        className="h-6 text-[10px] px-1.5 py-0 gap-1 text-muted-foreground border-dashed hover:border-solid hover:text-foreground"
+        onClick={onCreateRfq}
+      >
+        <Send className="h-2.5 w-2.5 shrink-0" />
+        Buat RFQ
+      </Button>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-1 min-w-0">
+      <Link href={`/logistics/rfq/${latestRfq.rfqId}/comparison`}>
+        <Badge
+          className={`${RFQ_STATUS_COLORS[latestRfq.rfqStatus] ?? "bg-slate-100 text-slate-600"} border text-[10px] font-medium px-1.5 py-0.5 cursor-pointer hover:opacity-80 whitespace-nowrap`}
+          title={latestRfq.rfqNumber}
+        >
+          {RFQ_STATUS_LABELS[latestRfq.rfqStatus] ?? latestRfq.rfqStatus}
+        </Badge>
+      </Link>
+      {latestRfq.freightShipmentId && (
+        <Link href={`/logistics/freight/${latestRfq.freightShipmentId}`}>
+          <span className="inline-flex items-center gap-0.5 text-[10px] text-teal-600 hover:underline font-mono">
+            <Ship className="h-2.5 w-2.5 shrink-0" />
+            {latestRfq.freightShipmentNumber ?? `#${latestRfq.freightShipmentId}`}
+          </span>
+        </Link>
+      )}
+    </div>
+  );
+}
+
 const BULAN_ID = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agt","Sep","Okt","Nov","Des"];
 function formatTanggal(iso: string) {
   const d = new Date(iso);
@@ -84,6 +163,7 @@ function formatTanggal(iso: string) {
 
 export default function LogisticsPortalOrdersPage() {
   const queryClient = useQueryClient();
+  const prefetchHover = usePrefetchOnHover();
   const { toast } = useToast();
   const { t } = useLanguage();
   const [, navigate] = useLocation();
@@ -99,6 +179,12 @@ export default function LogisticsPortalOrdersPage() {
   const [newOrderCount, setNewOrderCount] = useState(0);
   const [lastAutoRefresh, setLastAutoRefresh] = useState<Date | null>(null);
   const bannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // RFQ dialog state
+  const [rfqTargetOrder, setRfqTargetOrder] = useState<LogisticOrder | null>(null);
+  const [rfqSelectedVendors, setRfqSelectedVendors] = useState<number[]>([]);
+  const [rfqNotes, setRfqNotes] = useState("");
+  const [rfqShipmentType, setRfqShipmentType] = useState("");
 
   const { setOnNewOrder } = useOrderNotificationsContext();
 
@@ -137,14 +223,58 @@ export default function LogisticsPortalOrdersPage() {
     return Array.isArray(urls) ? (urls as string[]) : [];
   })();
 
+  const { activeCompanyId } = useCompany();
   const { data: orders = [], isLoading, refetch } = useListLogisticOrders(
-    statusFilter !== "all" ? { status: statusFilter } : undefined,
-    { query: { queryKey: [...getListLogisticOrdersQueryKey(), statusFilter] } },
+    { ...(statusFilter !== "all" ? { status: statusFilter } : {}), company: activeCompanyId },
+    { query: { queryKey: [...getListLogisticOrdersQueryKey(), statusFilter, activeCompanyId] } },
   );
 
   const updateStatus = useUpdateLogisticOrderStatus();
   const updateType = useUpdateLogisticOrderType();
   const createSalesDoc = useCreateSalesDocument();
+  const createRfq = useCreateLogisticOrderRfq();
+
+  const { data: vendors = [] } = useQuery<VendorRow[]>({
+    queryKey: ["logistic-vendors"],
+    queryFn: async () => {
+      const res = await fetch("/api/logistic/orders/vendors");
+      if (!res.ok) throw new Error("Failed");
+      return res.json() as Promise<VendorRow[]>;
+    },
+  });
+  const activeVendors = vendors.filter((v) => v.isActive !== false);
+
+  function openRfqDialog(o: LogisticOrder) {
+    setRfqTargetOrder(o);
+    setRfqSelectedVendors([]);
+    setRfqNotes("");
+    setRfqShipmentType(o.shipmentType ?? "");
+  }
+
+  function handleSendRfq() {
+    if (!rfqTargetOrder || rfqSelectedVendors.length === 0) return;
+    createRfq.mutate(
+      {
+        id: rfqTargetOrder.id,
+        data: {
+          vendorIds: rfqSelectedVendors,
+          notes: rfqNotes || undefined,
+          shipmentType: rfqShipmentType || undefined,
+        } as Parameters<typeof createRfq.mutate>[0]["data"],
+      },
+      {
+        onSuccess: () => {
+          toast({ title: "RFQ berhasil dikirim ke vendor" });
+          setRfqTargetOrder(null);
+          queryClient.invalidateQueries({ queryKey: getListLogisticOrdersQueryKey() });
+        },
+        onError: (err: unknown) => {
+          const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+          toast({ title: msg ?? "Gagal mengirim RFQ", variant: "destructive" });
+        },
+      },
+    );
+  }
 
   function handleStatusChange(id: number, status: string) {
     setUpdatingId(id);
@@ -204,15 +334,25 @@ export default function LogisticsPortalOrdersPage() {
               unitPrice: o.grandTotal,
             },
           ],
-        },
+          logisticOrderId: o.id,
+        } as Parameters<typeof createSalesDoc.mutate>[0]["data"],
       },
       {
         onSuccess: (doc) => {
           toast({ title: t.common.success, description: doc.docNumber });
           setSoDialog(null);
+          queryClient.invalidateQueries({ queryKey: getListLogisticOrdersQueryKey() });
           navigate("/sales/orders");
         },
-        onError: () => toast({ title: t.common.error, variant: "destructive" }),
+        onError: (err: unknown) => {
+          const msg = (err as { response?: { data?: { message?: string; existingDocNumber?: string } } })?.response?.data;
+          if (msg?.existingDocNumber) {
+            toast({ title: "SO sudah ada", description: `Sales Order ${msg.existingDocNumber} sudah pernah dibuat untuk order ini.`, variant: "destructive" });
+            setSoDialog(null);
+          } else {
+            toast({ title: t.common.error, variant: "destructive" });
+          }
+        },
       },
     );
   }
@@ -336,19 +476,20 @@ export default function LogisticsPortalOrdersPage() {
                   <TableHead className="text-right">Total</TableHead>
                   <TableHead>Tanggal</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>RFQ</TableHead>
                   <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                       Memuat...
                     </TableCell>
                   </TableRow>
                 ) : filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                       Tidak ada pesanan
                     </TableCell>
                   </TableRow>
@@ -357,6 +498,7 @@ export default function LogisticsPortalOrdersPage() {
                     key={o.id}
                     className="cursor-pointer hover:bg-muted/40 transition-colors"
                     onClick={() => setDetailDialog(o)}
+                    {...prefetchHover(getGetLogisticOrderQueryOptions(o.id))}
                   >
                     <TableCell onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-1.5 flex-wrap">
@@ -435,6 +577,13 @@ export default function LogisticsPortalOrdersPage() {
                         </Select>
                       </div>
                     </TableCell>
+                    {/* RFQ status column */}
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <RfqStatusCell
+                        latestRfq={(o as any).latestRfq ?? null}
+                        onCreateRfq={() => openRfqDialog(o)}
+                      />
+                    </TableCell>
                     <TableCell onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-1">
                         <Button
@@ -445,6 +594,17 @@ export default function LogisticsPortalOrdersPage() {
                           title="Detail & RFQ"
                         >
                           Detail / RFQ
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="gap-1.5 text-xs h-7 whitespace-nowrap text-blue-600 border-blue-200 hover:bg-blue-50"
+                          onClick={() => openRfqDialog(o)}
+                          disabled={o.status === "Cancelled" || o.status === "Completed"}
+                          title="Kirim RFQ ke Vendor"
+                        >
+                          <Send className="h-3 w-3" />
+                          Kirim RFQ
                         </Button>
                         <Button
                           size="sm"
@@ -697,14 +857,25 @@ export default function LogisticsPortalOrdersPage() {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setSoDialog(null)}>Batal</Button>
-            <Button
-              onClick={handleCreateSalesOrder}
-              disabled={createSalesDoc.isPending}
-              className="gap-2"
-            >
-              <FilePlus className="h-4 w-4" />
-              {createSalesDoc.isPending ? "Membuat..." : "Buat Sales Order"}
-            </Button>
+            {soDialog?.linkedSalesDocId ? (
+              <Button
+                variant="secondary"
+                className="gap-2"
+                onClick={() => { setSoDialog(null); navigate("/sales/orders"); }}
+              >
+                <ExternalLink className="h-4 w-4" />
+                Lihat SO: {soDialog.linkedSalesDocNumber}
+              </Button>
+            ) : (
+              <Button
+                onClick={handleCreateSalesOrder}
+                disabled={createSalesDoc.isPending}
+                className="gap-2"
+              >
+                <FilePlus className="h-4 w-4" />
+                {createSalesDoc.isPending ? "Membuat..." : "Buat Sales Order"}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -717,6 +888,103 @@ export default function LogisticsPortalOrdersPage() {
           </DialogContent>
         </Dialog>
       )}
+
+      {/* RFQ Dialog */}
+      <Dialog open={!!rfqTargetOrder} onOpenChange={(open) => { if (!open) setRfqTargetOrder(null); }}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Send className="h-5 w-5" /> Kirim RFQ ke Vendor
+            </DialogTitle>
+            {rfqTargetOrder && (
+              <DialogDescription>
+                {rfqTargetOrder.orderNumber} · {rfqTargetOrder.customerName}
+              </DialogDescription>
+            )}
+          </DialogHeader>
+          {rfqTargetOrder && (
+            <div className="space-y-4 py-2">
+              <div className="rounded-lg border bg-muted/40 px-4 py-3 text-sm space-y-1">
+                <div className="font-medium font-mono">{rfqTargetOrder.orderNumber}</div>
+                <div className="text-muted-foreground">{rfqTargetOrder.shipmentType} · {rfqTargetOrder.origin} → {rfqTargetOrder.destination}</div>
+              </div>
+
+              <div>
+                <Label className="text-sm font-medium mb-1 block">Tipe Pengiriman</Label>
+                <Select value={rfqShipmentType} onValueChange={setRfqShipmentType}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder="Pilih tipe..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {!!rfqShipmentType && !SHIPMENT_TYPE_OPTIONS.includes(rfqShipmentType) && (
+                      <SelectItem value={rfqShipmentType} className="text-xs">{rfqShipmentType}</SelectItem>
+                    )}
+                    {SHIPMENT_TYPE_OPTIONS.map((s) => (
+                      <SelectItem key={s} value={s} className="text-xs">{s}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label className="text-sm font-medium mb-2 block">
+                  Pilih Vendor ({rfqSelectedVendors.length} dipilih)
+                </Label>
+                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                  {activeVendors.length === 0 && (
+                    <p className="text-sm text-muted-foreground">Tidak ada vendor aktif.</p>
+                  )}
+                  {activeVendors.map((v) => (
+                    <label
+                      key={v.id}
+                      className="flex items-center gap-3 rounded-lg border px-3 py-2 cursor-pointer hover:bg-muted/50 transition-colors"
+                    >
+                      <Checkbox
+                        checked={rfqSelectedVendors.includes(v.id)}
+                        onCheckedChange={(checked) => {
+                          setRfqSelectedVendors((prev) =>
+                            checked ? [...prev, v.id] : prev.filter((x) => x !== v.id)
+                          );
+                        }}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-sm">{v.name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {v.phone ?? "Tidak ada nomor WA"} · {v.serviceType ?? "Semua tipe"}
+                        </div>
+                      </div>
+                      {!v.phone && (
+                        <Badge variant="outline" className="text-xs text-orange-600 border-orange-200 shrink-0">No WA</Badge>
+                      )}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-sm">Catatan Tambahan (opsional)</Label>
+                <Input
+                  className="mt-1"
+                  placeholder="Catatan untuk vendor..."
+                  value={rfqNotes}
+                  onChange={(e) => setRfqNotes(e.target.value)}
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRfqTargetOrder(null)}>Batal</Button>
+            <Button
+              onClick={handleSendRfq}
+              disabled={createRfq.isPending || rfqSelectedVendors.length === 0}
+              className="gap-2"
+            >
+              <Send className="h-4 w-4" />
+              {createRfq.isPending ? "Mengirim..." : `Kirim ke ${rfqSelectedVendors.length} Vendor`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }

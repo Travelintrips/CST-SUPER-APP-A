@@ -35,7 +35,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
 import {
   ArrowLeft, PackageOpen, Send, Plus, CheckCircle, Edit, Star, Zap, TrendingDown,
-  RefreshCw, MessageCircle, Trash2, ListChecks,
+  RefreshCw, MessageCircle, Trash2, ListChecks, Link, Link2, Copy, ExternalLink, Loader2, Eye,
+  Clock, Truck, Package, DollarSign, Activity,
 } from "lucide-react";
 
 const idr = (n: number | null | undefined) =>
@@ -98,6 +99,54 @@ export default function LogisticsPortalOrderDetailPage() {
   const [selectedVendors, setSelectedVendors] = useState<number[]>([]);
   const [rfqNotes, setRfqNotes] = useState("");
 
+  // ── Vendor Tracker & Lihat Link Form dialog ────────────────────────────────
+  interface VendorTrackerEntry {
+    vendorId: number;
+    vendorName: string;
+    phone: string | null;
+    hasPhone: boolean;
+    hasOpened: boolean;
+    hasSubmitted: boolean;
+    formUrl: string | null;
+    quote: {
+      vendorPrice: number;
+      estimatedDays: number | null;
+      estimatedPickup: string | null;
+      estimatedDelivery: string | null;
+      vendorNotes: string | null;
+      submittedAt: string | null;
+      replySource: string;
+      quoteStatus: string;
+    } | null;
+  }
+  // Keep old interface alias for compat with dialog
+  type VendorFormLink = VendorTrackerEntry;
+  const [linkFormDialog, setLinkFormDialog] = useState(false);
+  const [linkFormData, setLinkFormData] = useState<{ rfqNumber: string; vendors: VendorTrackerEntry[] } | null>(null);
+  const [linkFormLoading, setLinkFormLoading] = useState(false);
+
+  // Inline tracker (auto-refresh)
+  const [trackerData, setTrackerData] = useState<{ rfqNumber: string; vendors: VendorTrackerEntry[] } | null>(null);
+  const [trackerLoading, setTrackerLoading] = useState(false);
+  const [trackerLastUpdated, setTrackerLastUpdated] = useState<Date | null>(null);
+
+  async function fetchTrackerData(silent = false) {
+    if (!silent) setTrackerLoading(true);
+    try {
+      const res = await fetch(`/api/logistic/orders/${orderId}/vendor-form-links`, { credentials: "include" });
+      if (res.ok) {
+        const data = await res.json() as { rfqNumber: string; vendors: VendorTrackerEntry[] };
+        setTrackerData(data);
+        setTrackerLastUpdated(new Date());
+      }
+    } catch { /* silent */ } finally {
+      setTrackerLoading(false);
+    }
+  }
+
+  const [resendingVendorIds, setResendingVendorIds] = useState<Set<number>>(new Set());
+  const [resendResults, setResendResults] = useState<Record<number, "ok" | "fail">>({});
+
   const [quoteDialog, setQuoteDialog] = useState<{ open: boolean; rfqId: number; vendorId?: number } | null>(null);
   const [quoteForm, setQuoteForm] = useState({
     vendorId: "", vendorPrice: "", estimatedPickup: "", estimatedDelivery: "",
@@ -124,8 +173,80 @@ export default function LogisticsPortalOrderDetailPage() {
   const [sendingReply, setSendingReply] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
+  // Lihat Link Form state (legacy dialog kept for copy-link usage)
+  const [linkDialog, setLinkDialog] = useState(false);
+  const [vendorFormLinks, setVendorFormLinks] = useState<VendorFormLink[]>([]);
+  const [linksLoading, setLinksLoading] = useState(false);
+
+  // ── Operational/Payment Status ──────────────────────────────────────────
+  interface OpStatus { operationalStatus: string | null; paymentStatus: string }
+  const { data: opStatus, refetch: refetchOpStatus } = useQuery<OpStatus>({
+    queryKey: ["op-status", orderId],
+    queryFn: async () => {
+      const res = await fetch(`/api/logistic/orders/${orderId}/operational-status`, { credentials: "include" });
+      if (!res.ok) throw new Error("Gagal memuat status");
+      return res.json() as Promise<OpStatus>;
+    },
+  });
+  const [opStatusLoading, setOpStatusLoading] = useState(false);
+
+  async function updateOpStatus(field: "operationalStatus" | "paymentStatus", value: string) {
+    setOpStatusLoading(true);
+    try {
+      const res = await fetch(`/api/logistic/orders/${orderId}/operational-status`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ [field]: value }),
+      });
+      if (!res.ok) throw new Error("Gagal update");
+      await refetchOpStatus();
+      toast({ title: "Status diperbarui" });
+    } catch {
+      toast({ title: "Gagal update status", variant: "destructive" });
+    } finally {
+      setOpStatusLoading(false);
+    }
+  }
+
+  // [NEW-RFQ-FLOW] Blast V2 dialog state
+  const [blastV2Dialog, setBlastV2Dialog] = useState(false);
+  const [blastV2VendorIds, setBlastV2VendorIds] = useState<number[]>([]);
+  const [blastV2Hours, setBlastV2Hours] = useState("48");
+  const [blastingV2, setBlastingV2] = useState(false);
+
+  function openLinkDialog() {
+    setLinkDialog(true);
+    setLinksLoading(true);
+    fetch(`/api/logistic/orders/${orderId}/vendor-form-links`, { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => {
+        // New response format: { vendors: [...] } instead of { links: [...] }
+        const vendors = (d.vendors ?? d.links ?? []) as VendorFormLink[];
+        setVendorFormLinks(vendors);
+        setLinksLoading(false);
+      })
+      .catch(() => setLinksLoading(false));
+  }
+
+  function copyLink(url: string, name: string) {
+    navigator.clipboard.writeText(url).then(() => {
+      toast({ title: `Link ${name} disalin`, description: url.slice(0, 60) + "…" });
+    });
+  }
+
   const { data: order, isLoading } = useGetLogisticOrder(orderId);
   const { data: rfqs = [] } = useListLogisticOrderRfqs(orderId);
+
+  // Auto-refresh tracker when RFQ tab is visible
+  useEffect(() => {
+    if (rfqs.length === 0) return;
+    void fetchTrackerData();
+    const interval = setInterval(() => void fetchTrackerData(true), 30_000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderId, rfqs.length]);
+
   const { data: comparison, refetch: refetchQuotes } = useListLogisticOrderQuotes(orderId);
   const quotes = comparison?.quotes ?? [];
   const cheapest = comparison?.cheapest;
@@ -384,6 +505,45 @@ export default function LogisticsPortalOrderDetailPage() {
     return vp + (vp * mp / 100);
   }
 
+  async function openLinkFormDialog() {
+    setLinkFormDialog(true);
+    setLinkFormLoading(true);
+    setResendResults({});
+    try {
+      const res = await fetch(`/api/logistic/orders/${orderId}/vendor-form-links`, { credentials: "include" });
+      if (!res.ok) throw new Error((await res.json() as { message?: string }).message ?? "Gagal memuat link form");
+      setLinkFormData(await res.json() as { rfqNumber: string; vendors: VendorFormLink[] });
+    } catch (e: unknown) {
+      toast({ title: "Gagal memuat link form", description: e instanceof Error ? e.message : "Coba lagi", variant: "destructive" });
+      setLinkFormDialog(false);
+    } finally {
+      setLinkFormLoading(false);
+    }
+  }
+
+  async function handleResendVendorWa(vendorId: number) {
+    setResendingVendorIds((prev) => new Set(prev).add(vendorId));
+    setResendResults((prev) => { const n = { ...prev }; delete n[vendorId]; return n; });
+    try {
+      const res = await fetch(`/api/logistic/orders/${orderId}/resend-rfq`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ vendorIds: [vendorId] }),
+      });
+      const data = await res.json() as { ok?: boolean; sentCount?: number; message?: string };
+      if (!res.ok) throw new Error(data.message ?? "Gagal mengirim ulang");
+      setResendResults((prev) => ({ ...prev, [vendorId]: (data.sentCount ?? 0) > 0 ? "ok" : "fail" }));
+      if ((data.sentCount ?? 0) > 0) toast({ title: "WA berhasil dikirim ulang" });
+      else toast({ title: "Tidak ada WA terkirim", description: "Vendor mungkin tidak memiliki nomor WA", variant: "destructive" });
+    } catch (e: unknown) {
+      setResendResults((prev) => ({ ...prev, [vendorId]: "fail" }));
+      toast({ title: "Gagal kirim ulang", description: e instanceof Error ? e.message : "Coba lagi", variant: "destructive" });
+    } finally {
+      setResendingVendorIds((prev) => { const n = new Set(prev); n.delete(vendorId); return n; });
+    }
+  }
+
   // Filter vendors: active + serviceType compatible with order shipment type
   // Vendors with null/empty serviceType ("Semua tipe") always appear
   const activeVendors = vendors.filter((v) => {
@@ -443,12 +603,42 @@ export default function LogisticsPortalOrderDetailPage() {
               {order.customerName} · {order.companyName} · {order.email} · {order.phone}
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             {order.status === "New Order" || order.status === "Under Review" ? (
               <Button size="sm" className="gap-2" onClick={() => setRfqDialog(true)}>
                 <Send className="h-4 w-4" /> Kirim RFQ ke Vendor
               </Button>
             ) : null}
+            {rfqs.length > 0 && (
+              <Button size="sm" variant="outline" className="gap-2" onClick={openLinkDialog}>
+                <Link2 className="h-4 w-4" /> Lihat Link Form
+              </Button>
+            )}
+            {latestRfq && (
+              <Button size="sm" variant="outline" className="gap-2 border-blue-300 text-blue-700 hover:bg-blue-50"
+                onClick={() => navigate(`/logistics/rfq/${latestRfq.id}/comparison`)}>
+                <ListChecks className="h-4 w-4" /> Comparison
+              </Button>
+            )}
+            {order.status === "Confirmed" && (
+              <Button
+                size="sm"
+                className="gap-2 bg-green-600 hover:bg-green-700 text-white"
+                onClick={() => {
+                  const params = new URLSearchParams({
+                    kind: "order",
+                    fromPortal: order.orderNumber,
+                    customer: order.customerName,
+                    origin: order.origin,
+                    destination: order.destination,
+                    ...(order.finalSellingPrice != null ? { price: String(order.finalSellingPrice) } : {}),
+                  });
+                  navigate(`/sales/quotations/new?${params.toString()}`);
+                }}
+              >
+                <Plus className="h-4 w-4" /> Buat Sales Order
+              </Button>
+            )}
           </div>
         </div>
 
@@ -471,6 +661,10 @@ export default function LogisticsPortalOrderDetailPage() {
                   {vendorOffers.length}
                 </span>
               )}
+            </TabsTrigger>
+            <TabsTrigger value="status" className="gap-1.5">
+              <Activity className="h-3.5 w-3.5" />
+              Status
             </TabsTrigger>
             {isAiOrder && (
               <TabsTrigger value="chat-ai" className="gap-1.5">
@@ -548,25 +742,176 @@ export default function LogisticsPortalOrderDetailPage() {
 
           {/* ── Tab 2: RFQ & Quotes ── */}
           <TabsContent value="rfq" className="space-y-4 mt-4">
-            {/* RFQ List */}
+
+            {/* [NEW-RFQ-FLOW] Comparison & Blast banner */}
+            <div className="flex flex-wrap items-center gap-2 p-3 bg-blue-50 border border-blue-100 rounded-lg">
+              <ListChecks className="h-4 w-4 text-blue-600 shrink-0" />
+              <span className="text-sm text-blue-800 font-medium flex-1">
+                {latestRfq ? `RFQ ${(latestRfq as any).rfqNumber ?? `#${latestRfq.id}`}` : "Kirim RFQ ke vendor via sistem baru"}
+              </span>
+              <div className="flex gap-2">
+                {latestRfq && (
+                  <Button size="sm" variant="outline" className="h-7 text-xs gap-1 border-blue-300 text-blue-700 hover:bg-blue-100"
+                    onClick={() => navigate(`/logistics/rfq/${latestRfq.id}/comparison`)}>
+                    <Eye className="h-3 w-3" /> Lihat Comparison
+                  </Button>
+                )}
+                <Button size="sm" className="h-7 text-xs gap-1 bg-blue-600 hover:bg-blue-700 text-white"
+                  onClick={() => { setBlastV2VendorIds([]); setBlastV2Dialog(true); }}
+                  disabled={!latestRfq}>
+                  <Send className="h-3 w-3" /> Blast Vendor V2
+                </Button>
+              </div>
+            </div>
+
+            {/* Vendor Response Tracker */}
             {rfqs.length > 0 && (
               <Card>
-                <CardHeader className="pb-2 flex flex-row items-center justify-between">
-                  <CardTitle className="text-sm">History RFQ</CardTitle>
+                <CardHeader className="pb-2 flex flex-row items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      Vendor Response Tracker
+                      {trackerData && (
+                        <span className="text-xs font-normal text-muted-foreground">
+                          — {trackerData.rfqNumber}
+                        </span>
+                      )}
+                    </CardTitle>
+                    {trackerLastUpdated && (
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        Diperbarui {trackerLastUpdated.toLocaleTimeString("id-ID")} · auto-refresh 30s
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 gap-1.5 text-xs"
+                      onClick={() => void fetchTrackerData()}
+                      disabled={trackerLoading}
+                    >
+                      <RefreshCw className={`h-3.5 w-3.5 ${trackerLoading ? "animate-spin" : ""}`} />
+                      Refresh
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 gap-1.5 text-xs"
+                      onClick={openLinkFormDialog}
+                    >
+                      <Link className="h-3.5 w-3.5" /> Link Form
+                    </Button>
+                  </div>
                 </CardHeader>
-                <CardContent className="space-y-2">
-                  {rfqs.map((rfq) => (
-                    <div key={rfq.id} className="flex items-center gap-3 text-sm rounded-lg border px-3 py-2 bg-muted/30">
-                      <MessageCircle className="h-4 w-4 text-blue-500 shrink-0" />
-                      <span className="font-mono font-medium">{rfq.rfqNumber}</span>
-                      <span className="text-muted-foreground">
-                        {(rfq.vendorIds ?? []).length} vendor · {rfq.status}
-                      </span>
-                      <span className="ml-auto text-xs text-muted-foreground">
-                        {new Date(rfq.createdAt).toLocaleString("id-ID")}
-                      </span>
+                <CardContent className="p-0">
+                  {trackerLoading && !trackerData ? (
+                    <div className="flex items-center justify-center py-8 gap-2 text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span className="text-sm">Memuat data vendor...</span>
                     </div>
-                  ))}
+                  ) : !trackerData || trackerData.vendors.length === 0 ? (
+                    <div className="py-8 text-center text-sm text-muted-foreground">
+                      Tidak ada vendor di RFQ ini.
+                    </div>
+                  ) : (
+                    <div className="divide-y">
+                      {trackerData.vendors.map((v) => {
+                        const statusColor = v.hasSubmitted
+                          ? "bg-green-50 border-l-4 border-l-green-500"
+                          : v.hasOpened
+                          ? "bg-yellow-50 border-l-4 border-l-yellow-400"
+                          : "bg-background border-l-4 border-l-gray-200";
+
+                        const statusBadge = v.hasSubmitted ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                            <CheckCircle className="h-3 w-3" /> Sudah Submit
+                          </span>
+                        ) : v.hasOpened ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">
+                            <Eye className="h-3 w-3" /> Sudah Buka Form
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
+                            <MessageCircle className="h-3 w-3" /> Belum Respons
+                          </span>
+                        );
+
+                        const isResending = resendingVendorIds.has(v.vendorId);
+                        const resendResult = resendResults[v.vendorId];
+
+                        return (
+                          <div key={v.vendorId} className={`px-4 py-3 ${statusColor}`}>
+                            <div className="flex items-start gap-3 flex-wrap">
+                              <div className="flex-1 min-w-0 space-y-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-medium text-sm">{v.vendorName}</span>
+                                  {statusBadge}
+                                  {!v.hasPhone && (
+                                    <span className="text-xs text-orange-500 border border-orange-200 rounded-full px-2 py-0.5">No WA</span>
+                                  )}
+                                </div>
+                                {v.phone && (
+                                  <p className="text-xs text-muted-foreground">{v.phone}</p>
+                                )}
+                                {v.quote && (
+                                  <div className="mt-1.5 grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-0.5 text-xs">
+                                    <div>
+                                      <span className="text-muted-foreground">Harga Vendor: </span>
+                                      <span className="font-semibold text-green-700">
+                                        {new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(v.quote.vendorPrice)}
+                                      </span>
+                                    </div>
+                                    {v.quote.estimatedDays != null && (
+                                      <div>
+                                        <span className="text-muted-foreground">ETA: </span>
+                                        <span className="font-medium">{v.quote.estimatedDays} hari</span>
+                                      </div>
+                                    )}
+                                    {v.quote.estimatedPickup && (
+                                      <div>
+                                        <span className="text-muted-foreground">Pickup: </span>
+                                        <span>{v.quote.estimatedPickup}</span>
+                                      </div>
+                                    )}
+                                    {v.quote.submittedAt && (
+                                      <div>
+                                        <span className="text-muted-foreground">Submit: </span>
+                                        <span>{new Date(v.quote.submittedAt).toLocaleString("id-ID", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+                                      </div>
+                                    )}
+                                    {v.quote.vendorNotes && (
+                                      <div className="col-span-2 sm:col-span-4">
+                                        <span className="text-muted-foreground">Catatan: </span>
+                                        <span className="italic">{v.quote.vendorNotes}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                              {!v.hasSubmitted && (
+                                <Button
+                                  size="sm"
+                                  variant={resendResult === "ok" ? "default" : resendResult === "fail" ? "destructive" : "outline"}
+                                  className={`h-7 gap-1.5 text-xs shrink-0 ${resendResult === "ok" ? "bg-green-600 hover:bg-green-700" : ""}`}
+                                  disabled={isResending || !v.hasPhone}
+                                  title={!v.hasPhone ? "Tidak ada nomor WA" : "Kirim ulang WA dengan link form"}
+                                  onClick={() => handleResendVendorWa(v.vendorId)}
+                                >
+                                  {isResending
+                                    ? <Loader2 className="h-3 w-3 animate-spin" />
+                                    : resendResult === "ok"
+                                    ? <CheckCircle className="h-3 w-3" />
+                                    : <MessageCircle className="h-3 w-3" />}
+                                  {isResending ? "Mengirim..." : resendResult === "ok" ? "Terkirim!" : resendResult === "fail" ? "Coba Lagi" : "Kirim Ulang WA"}
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )}
@@ -797,20 +1142,208 @@ export default function LogisticsPortalOrderDetailPage() {
               </CardContent>
             </Card>
 
-            {(order as Record<string, unknown>).optionsToken && (
+            {order.optionsToken && (
               <Card className="border-blue-200 bg-blue-50/50">
                 <CardContent className="p-4 text-sm space-y-1">
                   <p className="font-medium text-blue-800">Link opsi sudah dikirim ke customer:</p>
                   <a
-                    href={`/choose-option/${(order as Record<string, unknown>).optionsToken as string}`}
+                    href={`/choose-option/${order.optionsToken}`}
                     target="_blank" rel="noopener noreferrer"
                     className="text-blue-600 underline text-xs break-all"
                   >
-                    /choose-option/{(order as Record<string, unknown>).optionsToken as string}
+                    /choose-option/{order.optionsToken}
                   </a>
                 </CardContent>
               </Card>
             )}
+          </TabsContent>
+
+          {/* ── Tab Status: Timeline + Operational/Payment ── */}
+          <TabsContent value="status" className="space-y-4 mt-4">
+            {/* Order Status Timeline */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Activity className="h-4 w-4 text-indigo-600" />
+                  Timeline Status Order
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {(() => {
+                  const ORDER_STEPS = [
+                    { key: "New Order",        label: "Order Masuk",         icon: <Package className="h-4 w-4" /> },
+                    { key: "Under Review",     label: "Sedang Review",       icon: <Clock className="h-4 w-4" /> },
+                    { key: "Quotation Sent",   label: "Quotation Terkirim",  icon: <Send className="h-4 w-4" /> },
+                    { key: "Confirmed",        label: "Dikonfirmasi",        icon: <CheckCircle className="h-4 w-4" /> },
+                    { key: "In Progress",      label: "Dalam Proses",        icon: <Truck className="h-4 w-4" /> },
+                    { key: "Completed",        label: "Selesai",             icon: <Star className="h-4 w-4" /> },
+                  ];
+                  const STATUS_ORDER = ORDER_STEPS.map(s => s.key);
+                  const currentIdx = STATUS_ORDER.indexOf(order.status ?? "");
+                  const isCancelled = order.status === "Cancelled";
+                  return (
+                    <div className="relative">
+                      {/* Connector line */}
+                      <div className="absolute top-5 left-5 right-5 h-0.5 bg-gray-200 z-0" style={{ marginLeft: "24px", marginRight: "24px" }} />
+                      <div className="flex justify-between relative z-10">
+                        {ORDER_STEPS.map((step, i) => {
+                          const done = !isCancelled && currentIdx >= i;
+                          const active = !isCancelled && currentIdx === i;
+                          return (
+                            <div key={step.key} className="flex flex-col items-center gap-1.5 flex-1">
+                              <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all
+                                ${isCancelled ? "bg-gray-100 border-gray-200 text-gray-400" :
+                                  done ? (active ? "bg-indigo-600 border-indigo-600 text-white shadow-md shadow-indigo-200 scale-110" : "bg-green-500 border-green-500 text-white") :
+                                  "bg-white border-gray-200 text-gray-400"}`}>
+                                {step.icon}
+                              </div>
+                              <span className={`text-[10px] text-center font-medium leading-tight max-w-[60px] ${
+                                active ? "text-indigo-700" : done ? "text-green-700" : "text-gray-400"
+                              }`}>{step.label}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {isCancelled && (
+                        <div className="mt-4 flex items-center gap-2 text-red-600 text-sm font-medium">
+                          <span className="w-2 h-2 rounded-full bg-red-500 inline-block" />
+                          Order dibatalkan
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </CardContent>
+            </Card>
+
+            {/* Operational + Payment Status */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Truck className="h-4 w-4 text-orange-500" />
+                    Status Operasional
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {[
+                    { value: "pending",     label: "Menunggu Penjemputan", color: "bg-gray-100 text-gray-700",   dot: "bg-gray-400" },
+                    { value: "picking_up",  label: "Sedang Dijemput",      color: "bg-yellow-100 text-yellow-700", dot: "bg-yellow-500" },
+                    { value: "in_transit",  label: "Dalam Pengiriman",     color: "bg-blue-100 text-blue-700",   dot: "bg-blue-500" },
+                    { value: "delivered",   label: "Terkirim",             color: "bg-green-100 text-green-700",  dot: "bg-green-500" },
+                    { value: "cancelled",   label: "Dibatalkan",           color: "bg-red-100 text-red-700",     dot: "bg-red-500" },
+                  ].map(opt => {
+                    const isActive = (opStatus?.operationalStatus ?? "pending") === opt.value;
+                    return (
+                      <button
+                        key={opt.value}
+                        disabled={opStatusLoading}
+                        onClick={() => updateOpStatus("operationalStatus", opt.value)}
+                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border-2 text-sm font-medium transition-all text-left
+                          ${isActive ? `${opt.color} border-current` : "border-transparent hover:bg-gray-50"}`}
+                      >
+                        <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${isActive ? opt.dot : "bg-gray-300"}`} />
+                        {opt.label}
+                        {isActive && <CheckCircle className="h-3.5 w-3.5 ml-auto" />}
+                      </button>
+                    );
+                  })}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <DollarSign className="h-4 w-4 text-green-600" />
+                    Status Pembayaran
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {[
+                    { value: "unpaid",  label: "Belum Dibayar", color: "bg-red-100 text-red-700",    dot: "bg-red-500" },
+                    { value: "partial", label: "Sebagian",      color: "bg-yellow-100 text-yellow-700", dot: "bg-yellow-500" },
+                    { value: "paid",    label: "Lunas",         color: "bg-green-100 text-green-700", dot: "bg-green-500" },
+                  ].map(opt => {
+                    const isActive = (opStatus?.paymentStatus ?? "unpaid") === opt.value;
+                    return (
+                      <button
+                        key={opt.value}
+                        disabled={opStatusLoading}
+                        onClick={() => updateOpStatus("paymentStatus", opt.value)}
+                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border-2 text-sm font-medium transition-all text-left
+                          ${isActive ? `${opt.color} border-current` : "border-transparent hover:bg-gray-50"}`}
+                      >
+                        <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${isActive ? opt.dot : "bg-gray-300"}`} />
+                        {opt.label}
+                        {isActive && <CheckCircle className="h-3.5 w-3.5 ml-auto" />}
+                      </button>
+                    );
+                  })}
+
+                  {/* Summary */}
+                  <div className="mt-3 pt-3 border-t space-y-1">
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>Nilai Order</span>
+                      <span className="font-medium text-foreground">{idr(order.grandTotal)}</span>
+                    </div>
+                    {order.finalSellingPrice != null && (
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>Harga Jual Final</span>
+                        <span className="font-semibold text-green-700">{idr(order.finalSellingPrice)}</span>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Status Summary Card */}
+            <Card className="bg-gradient-to-r from-slate-50 to-indigo-50 border-indigo-100">
+              <CardContent className="p-4 flex flex-wrap gap-6">
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Status Order</p>
+                  <Badge className={`${STATUS_COLORS[order.status] ?? "bg-gray-100 text-gray-800"} border text-xs`}>
+                    {order.status}
+                  </Badge>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Status Operasional</p>
+                  <Badge className={`text-xs ${
+                    opStatus?.operationalStatus === "delivered" ? "bg-green-100 text-green-700 border-green-200 border" :
+                    opStatus?.operationalStatus === "in_transit" ? "bg-blue-100 text-blue-700 border-blue-200 border" :
+                    opStatus?.operationalStatus === "picking_up" ? "bg-yellow-100 text-yellow-700 border-yellow-200 border" :
+                    opStatus?.operationalStatus === "cancelled" ? "bg-red-100 text-red-700 border-red-200 border" :
+                    "bg-gray-100 text-gray-700 border-gray-200 border"
+                  }`}>
+                    {opStatus?.operationalStatus === "delivered" ? "Terkirim" :
+                     opStatus?.operationalStatus === "in_transit" ? "Dalam Pengiriman" :
+                     opStatus?.operationalStatus === "picking_up" ? "Sedang Dijemput" :
+                     opStatus?.operationalStatus === "cancelled" ? "Dibatalkan" : "Menunggu"}
+                  </Badge>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Pembayaran</p>
+                  <Badge className={`text-xs ${
+                    opStatus?.paymentStatus === "paid" ? "bg-green-100 text-green-700 border-green-200 border" :
+                    opStatus?.paymentStatus === "partial" ? "bg-yellow-100 text-yellow-700 border-yellow-200 border" :
+                    "bg-red-100 text-red-700 border-red-200 border"
+                  }`}>
+                    {opStatus?.paymentStatus === "paid" ? "Lunas" :
+                     opStatus?.paymentStatus === "partial" ? "Sebagian" : "Belum Dibayar"}
+                  </Badge>
+                </div>
+                {order.approvedAt && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Dikonfirmasi</p>
+                    <span className="text-xs font-medium">{new Date(order.approvedAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}</span>
+                  </div>
+                )}
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Order Dibuat</p>
+                  <span className="text-xs font-medium">{new Date(order.createdAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}</span>
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {/* ── Tab 4: Chat AI ── */}
@@ -1275,6 +1808,199 @@ export default function LogisticsPortalOrderDetailPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setOfferDialog(false)}>Batal</Button>
             <Button onClick={() => void handleCreateOffer()}>Simpan Opsi</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialog: Lihat Link Form Vendor ── */}
+      <Dialog open={linkFormDialog} onOpenChange={(open) => { if (!open) { setLinkFormDialog(false); setLinkFormData(null); setResendResults({}); } }}>
+        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Link className="h-5 w-5 text-blue-500" />
+              Link Form Vendor
+              {linkFormData && (
+                <span className="text-sm font-normal text-muted-foreground ml-1">— {linkFormData.rfqNumber}</span>
+              )}
+            </DialogTitle>
+          </DialogHeader>
+
+          {linkFormLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              <span className="ml-2 text-sm text-muted-foreground">Memuat data vendor...</span>
+            </div>
+          ) : linkFormData ? (
+            <div className="overflow-y-auto flex-1 space-y-2 pr-1">
+              {linkFormData.vendors.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8">Tidak ada vendor di RFQ ini.</p>
+              ) : (
+                linkFormData.vendors.map((v) => {
+                  const isResending = resendingVendorIds.has(v.vendorId);
+                  const result = resendResults[v.vendorId];
+                  return (
+                    <div
+                      key={v.vendorId}
+                      className={`rounded-lg border px-4 py-3 space-y-2 ${v.hasSubmitted ? "bg-green-50 border-green-200" : "bg-background"}`}
+                    >
+                      {/* Vendor header row */}
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-medium text-sm">{v.vendorName}</span>
+                            {v.hasSubmitted ? (
+                              <Badge className="bg-green-100 text-green-700 border-green-200 text-xs gap-1">
+                                <CheckCircle className="h-3 w-3" /> Sudah Submit
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-xs text-orange-600 border-orange-300">
+                                Belum Submit
+                              </Badge>
+                            )}
+                            {!v.hasPhone && (
+                              <Badge variant="outline" className="text-xs text-muted-foreground">No WA</Badge>
+                            )}
+                          </div>
+                          {v.phone && (
+                            <p className="text-xs text-muted-foreground mt-0.5">{v.phone}</p>
+                          )}
+                        </div>
+
+                        {/* Resend WA button */}
+                        <Button
+                          size="sm"
+                          variant={result === "ok" ? "default" : result === "fail" ? "destructive" : "outline"}
+                          className={`h-7 gap-1.5 text-xs shrink-0 ${result === "ok" ? "bg-green-600 hover:bg-green-700" : ""}`}
+                          disabled={isResending || !v.hasPhone}
+                          onClick={() => handleResendVendorWa(v.vendorId)}
+                          title={!v.hasPhone ? "Vendor tidak memiliki nomor WhatsApp" : "Kirim ulang WA dengan link form"}
+                        >
+                          {isResending
+                            ? <Loader2 className="h-3 w-3 animate-spin" />
+                            : result === "ok"
+                            ? <CheckCircle className="h-3 w-3" />
+                            : <MessageCircle className="h-3 w-3" />}
+                          {isResending ? "Mengirim..." : result === "ok" ? "Terkirim!" : result === "fail" ? "Coba Lagi" : "Kirim Ulang WA"}
+                        </Button>
+                      </div>
+
+                      {/* Form URL row */}
+                      {v.formUrl ? (
+                        <div className="flex items-center gap-2 bg-muted/50 rounded-md px-3 py-1.5">
+                          <span className="text-xs font-mono text-muted-foreground truncate flex-1 min-w-0">
+                            {v.formUrl}
+                          </span>
+                          <button
+                            className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+                            title="Salin link"
+                            onClick={() => {
+                              void navigator.clipboard.writeText(v.formUrl!);
+                              toast({ title: "Link disalin", description: v.vendorName });
+                            }}
+                          >
+                            <Copy className="h-3.5 w-3.5" />
+                          </button>
+                          <a
+                            href={v.formUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="shrink-0 text-muted-foreground hover:text-blue-600 transition-colors"
+                            title="Buka form"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" />
+                          </a>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">Link tidak tersedia (token RFQ belum di-set).</p>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          ) : null}
+          <DialogFooter className="pt-2 shrink-0">
+            <Button variant="outline" onClick={() => { setLinkFormDialog(false); setLinkFormData(null); setResendResults({}); }}>Tutup</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* [NEW-RFQ-FLOW] Blast V2 Dialog */}
+      <Dialog open={blastV2Dialog} onOpenChange={(o) => !o && setBlastV2Dialog(false)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Send className="h-4 w-4 text-blue-600" /> Blast ke Vendor (New Flow)
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-muted-foreground">
+              Pilih vendor dan kirim link form penawaran personal ke masing-masing vendor via WhatsApp.
+            </p>
+            <div>
+              <Label className="text-xs font-semibold mb-2 block">Pilih Vendor</Label>
+              <div className="max-h-48 overflow-y-auto border rounded-lg divide-y">
+                {activeVendors.length === 0 ? (
+                  <p className="text-sm text-muted-foreground p-3">Tidak ada vendor aktif</p>
+                ) : activeVendors.map((v) => (
+                  <label key={v.id} className="flex items-center gap-3 p-2.5 hover:bg-muted/30 cursor-pointer">
+                    <Checkbox
+                      checked={blastV2VendorIds.includes(v.id)}
+                      onCheckedChange={(checked) => {
+                        setBlastV2VendorIds(prev =>
+                          checked ? [...prev, v.id] : prev.filter(id => id !== v.id)
+                        );
+                      }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{v.name}</p>
+                      <p className="text-xs text-muted-foreground">{v.serviceType ?? "—"} {v.phone ? `· ${v.phone}` : "· ⚠️ No WA"}</p>
+                    </div>
+                  </label>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">{blastV2VendorIds.length} vendor dipilih</p>
+            </div>
+            <div>
+              <Label className="text-xs font-semibold">Batas Waktu Respon (jam)</Label>
+              <Input
+                type="number"
+                value={blastV2Hours}
+                onChange={(e) => setBlastV2Hours(e.target.value)}
+                className="mt-1 h-8 text-sm w-28"
+                min={1}
+                max={168}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBlastV2Dialog(false)}>Batal</Button>
+            <Button
+              disabled={blastV2VendorIds.length === 0 || blastingV2 || !latestRfq}
+              onClick={async () => {
+                if (!latestRfq) return;
+                setBlastingV2(true);
+                try {
+                  const res = await fetch(`/api/logistic/rfq/${latestRfq.id}/blast`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({ vendorIds: blastV2VendorIds, deadlineHours: Number(blastV2Hours) }),
+                  });
+                  const d = await res.json() as { ok: boolean; sentCount: number; rfqNumber: string; comparisonUrl?: string; message?: string };
+                  if (!res.ok) throw new Error(d.message ?? "Gagal blast");
+                  toast({ title: `Blast berhasil ke ${d.sentCount} vendor`, description: `RFQ: ${d.rfqNumber}` });
+                  setBlastV2Dialog(false);
+                  navigate(`/logistics/rfq/${latestRfq.id}/comparison`);
+                } catch (e) {
+                  toast({ title: "Gagal blast", description: (e as Error).message, variant: "destructive" });
+                } finally {
+                  setBlastingV2(false);
+                }
+              }}
+            >
+              {blastingV2 ? <><Loader2 className="h-4 w-4 animate-spin mr-1" /> Mengirim...</> : <><Send className="h-4 w-4 mr-1" /> Blast</>}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -9,8 +9,7 @@ function apiUrl(path: string) {
 
 interface OrderInfo {
   orderNumber: string;
-  companyName: string;
-  customerName: string;
+
   origin: string;
   destination: string;
   commodity: string | null;
@@ -21,19 +20,9 @@ interface OrderInfo {
   shipmentType: string;
   vendorBasePrice: number | null;
   vendorNameFromDb: string | null;
-  existingResponse: VendorResponseData | null;
+  alreadySubmitted: boolean;
 }
 
-interface VendorResponseData {
-  status: string;
-  driverName?: string | null;
-  driverPhone?: string | null;
-  plateNumber?: string | null;
-  vehicleType?: string | null;
-  estimatedPickupTime?: string | null;
-  notes?: string | null;
-  vendorName?: string | null;
-}
 
 const MONTHS_ID = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agt","Sep","Okt","Nov","Des"];
 function formatDateID(dateStr: string | null): string {
@@ -84,9 +73,11 @@ function InputField({
 export default function VendorResponsePage() {
   const params = useParams<{ orderNumber: string }>();
   const orderNumber = params.orderNumber ?? "";
-  const vendorIdParam = typeof window !== "undefined"
-    ? new URLSearchParams(window.location.search).get("v") ?? ""
-    : "";
+  const searchParams = typeof window !== "undefined"
+    ? new URLSearchParams(window.location.search)
+    : new URLSearchParams();
+  const vendorIdParam = searchParams.get("v") ?? "";
+  const vrToken = searchParams.get("t") ?? "";
 
   const [order, setOrder] = useState<OrderInfo | null>(null);
   const [loading, setLoading] = useState(true);
@@ -99,6 +90,7 @@ export default function VendorResponsePage() {
   const [driverPhone, setDriverPhone] = useState("");
   const [plateNumber, setPlateNumber] = useState("");
   const [vehicleType, setVehicleType] = useState("");
+  const [quotedPrice, setQuotedPrice] = useState("");
   const [notes, setNotes] = useState("");
 
   const [photo, setPhoto] = useState<File | null>(null);
@@ -107,7 +99,6 @@ export default function VendorResponsePage() {
 
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  const [existingResponse, setExistingResponse] = useState<VendorResponseData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [networkError, setNetworkError] = useState<string | null>(null);
 
@@ -132,18 +123,20 @@ export default function VendorResponsePage() {
       externalSignal.addEventListener("abort", () => localController.abort(), { once: true });
     }
 
-    const qs = vendorIdParam ? `?v=${encodeURIComponent(vendorIdParam)}` : "";
+    const qsParts: string[] = [];
+    if (vrToken) qsParts.push(`t=${encodeURIComponent(vrToken)}`);
+    if (vendorIdParam) qsParts.push(`v=${encodeURIComponent(vendorIdParam)}`);
+    const qs = qsParts.length > 0 ? `?${qsParts.join("&")}` : "";
     fetch(apiUrl(`/api/vendor-response/${orderNumber}${qs}`), { signal })
       .then(async (r) => {
         clearTimeout(timeoutId);
         setNetworkError(null);
-        if (r.status === 404) { setNotFound(true); return; }
+        if (r.status === 403 || r.status === 404) { setNotFound(true); return; }
         const data: OrderInfo = await r.json();
         setOrder(data);
         if (data.vehicleType) setVehicleType(data.vehicleType);
         if (data.vendorNameFromDb) setVendorName(data.vendorNameFromDb);
-        if (data.existingResponse) {
-          setExistingResponse(data.existingResponse);
+        if (data.alreadySubmitted) {
           setSubmitted(true);
         }
       })
@@ -183,7 +176,8 @@ export default function VendorResponsePage() {
       if (photo) {
         const formData = new FormData();
         formData.append("photo", photo);
-        const photoRes = await fetch(apiUrl(`/api/vendor-response/${orderNumber}/photo`), {
+        const photoTokenQs = vrToken ? `?t=${encodeURIComponent(vrToken)}` : "";
+        const photoRes = await fetch(apiUrl(`/api/vendor-response/${orderNumber}/photo${photoTokenQs}`), {
           method: "POST",
           body: formData,
         });
@@ -201,11 +195,14 @@ export default function VendorResponsePage() {
         driverPhone: driverPhone.trim() || null,
         plateNumber: plateNumber.trim() || null,
         vehicleType: vehicleType.trim() || null,
+        quotedPrice: quotedPrice ? parseFloat(quotedPrice) : null,
         notes: notes.trim() || null,
         unitPhotoUrl,
+        token: vrToken || undefined,
       };
 
-      const res = await fetch(apiUrl(`/api/vendor-response/${orderNumber}`), {
+      const postTokenQs = vrToken ? `?t=${encodeURIComponent(vrToken)}` : "";
+      const res = await fetch(apiUrl(`/api/vendor-response/${orderNumber}${postTokenQs}`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -218,7 +215,6 @@ export default function VendorResponsePage() {
       }
 
       setSubmitted(true);
-      setExistingResponse(body as VendorResponseData);
     } catch {
       setError("Koneksi gagal. Periksa internet Anda dan coba lagi.");
     } finally {
@@ -273,8 +269,8 @@ export default function VendorResponsePage() {
     );
   }
 
-  if (submitted && existingResponse) {
-    const isReady = existingResponse.status === "READY";
+  if (submitted) {
+    const isReady = status === "READY";
     return (
       <div className="min-h-screen bg-slate-950 flex flex-col">
         <header className="bg-gradient-to-r from-slate-900 to-slate-800 border-b border-slate-700 px-4 py-4">
@@ -290,16 +286,24 @@ export default function VendorResponsePage() {
         </header>
 
         <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-6">
-          <div className={`w-20 h-20 rounded-full flex items-center justify-center ${isReady ? "bg-green-500/20" : "bg-red-500/20"}`}>
-            {isReady
-              ? <CheckCircle2 className="w-10 h-10 text-green-400" />
-              : <XCircle className="w-10 h-10 text-red-400" />
+          <div className={`w-20 h-20 rounded-full flex items-center justify-center ${status ? (isReady ? "bg-green-500/20" : "bg-red-500/20") : "bg-blue-500/20"}`}>
+            {status
+              ? (isReady
+                  ? <CheckCircle2 className="w-10 h-10 text-green-400" />
+                  : <XCircle className="w-10 h-10 text-red-400" />)
+              : <CheckCircle2 className="w-10 h-10 text-blue-400" />
             }
           </div>
 
           <div className="space-y-2">
-            <h2 className="text-white text-2xl font-bold">Response Terkirim!</h2>
-            <p className="text-slate-400 text-sm">Response Anda untuk order berikut telah berhasil dikirim ke admin CST Logistics.</p>
+            <h2 className="text-white text-2xl font-bold">
+              {status ? "Response Terkirim!" : "Sudah Direspon"}
+            </h2>
+            <p className="text-slate-400 text-sm">
+              {status
+                ? "Response Anda untuk order berikut telah berhasil dikirim ke admin CST Logistics."
+                : "Response untuk order ini telah dikirimkan sebelumnya."}
+            </p>
           </div>
 
           <div className="bg-slate-800/60 border border-slate-700 rounded-2xl p-5 w-full max-w-sm text-left space-y-3">
@@ -309,28 +313,36 @@ export default function VendorResponsePage() {
                 <span className="text-slate-400 text-sm">No. Order</span>
                 <span className="text-white text-sm font-mono font-bold">{orderNumber}</span>
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-400 text-sm">Status</span>
-                <span className={`text-sm font-bold px-3 py-0.5 rounded-full ${isReady ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}`}>
-                  {isReady ? "✅ READY" : "❌ NOT READY"}
-                </span>
-              </div>
-              {existingResponse.driverName && (
+              {status && (
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400 text-sm">Status</span>
+                  <span className={`text-sm font-bold px-3 py-0.5 rounded-full ${isReady ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}`}>
+                    {isReady ? "✅ READY" : "❌ NOT READY"}
+                  </span>
+                </div>
+              )}
+              {quotedPrice && (
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400 text-sm">Harga Penawaran</span>
+                  <span className="text-emerald-400 text-sm font-bold">Rp {parseFloat(quotedPrice).toLocaleString("id-ID")}</span>
+                </div>
+              )}
+              {driverName && (
                 <div className="flex items-center justify-between">
                   <span className="text-slate-400 text-sm">Driver</span>
-                  <span className="text-white text-sm font-semibold">{existingResponse.driverName}</span>
+                  <span className="text-white text-sm font-semibold">{driverName}</span>
                 </div>
               )}
-              {existingResponse.plateNumber && (
+              {plateNumber && (
                 <div className="flex items-center justify-between">
                   <span className="text-slate-400 text-sm">Plat Nomor</span>
-                  <span className="text-white text-sm font-mono font-bold">{existingResponse.plateNumber}</span>
+                  <span className="text-white text-sm font-mono font-bold">{plateNumber}</span>
                 </div>
               )}
-              {existingResponse.estimatedPickupTime && (
+              {estimatedPickupTime && (
                 <div className="flex items-center justify-between">
                   <span className="text-slate-400 text-sm">Est. Pickup</span>
-                  <span className="text-white text-sm font-semibold">{existingResponse.estimatedPickupTime}</span>
+                  <span className="text-white text-sm font-semibold">{estimatedPickupTime}</span>
                 </div>
               )}
             </div>
@@ -371,7 +383,6 @@ export default function VendorResponsePage() {
             <span className="text-blue-300 text-xs font-bold uppercase tracking-wider">Detail Order</span>
           </div>
           <div className="px-4 py-2">
-            <InfoRow icon={<User className="w-4 h-4" />} label="Customer" value={order?.companyName || order?.customerName || "-"} />
             <InfoRow icon={<MapPin className="w-4 h-4" />} label="Rute" value={`${order?.origin ?? "-"} → ${order?.destination ?? "-"}`} />
             {order?.commodity && (
               <InfoRow icon={<Package className="w-4 h-4" />} label="Kategori Barang" value={order.commodity} />
@@ -490,6 +501,23 @@ export default function VendorResponsePage() {
                       placeholder="Contoh: B 1234 XYZ"
                       required
                     />
+                    <div className="space-y-1.5">
+                      <label className="flex items-center gap-2 text-xs font-semibold text-slate-400 uppercase tracking-wide">
+                        <span className="text-blue-400">💰</span>
+                        Harga Penawaran
+                      </label>
+                      <div className="relative">
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-medium">Rp</span>
+                        <input
+                          type="number"
+                          value={quotedPrice}
+                          onChange={(e) => setQuotedPrice(e.target.value)}
+                          placeholder="0"
+                          min="0"
+                          className="w-full bg-slate-800 border border-slate-600 rounded-xl pl-10 pr-4 py-3 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors"
+                        />
+                      </div>
+                    </div>
                     <InputField
                       label="Jenis Kendaraan"
                       icon={<Truck className="w-3.5 h-3.5" />}

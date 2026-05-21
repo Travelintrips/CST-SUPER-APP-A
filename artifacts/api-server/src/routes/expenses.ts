@@ -1,4 +1,5 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
+import { resolveCompanyId } from "../lib/resolveCompany.js";
 import { eq, desc, and, gte, lte, like, or, sql, count } from "drizzle-orm";
 import {
   db,
@@ -15,7 +16,10 @@ import { postEntry } from "../lib/accounting.js";
 import { ensureAccountingSettings } from "../lib/accountingSeed.js";
 
 const router = Router();
-router.use(requireAdmin);
+router.use(async (req, res, next) => {
+  if (!(await requireAdmin(req, res))) return;
+  next();
+});
 
 // ===================== Serialize helpers =====================
 
@@ -49,6 +53,19 @@ async function nextExpenseNumber(): Promise<string> {
 }
 
 // ===================== Expense Categories =====================
+
+router.get("/categories/check-code", async (req, res) => {
+  const code = String(req.query.code ?? "").trim().toUpperCase();
+  const excludeId = req.query.excludeId ? Number(req.query.excludeId) : null;
+  if (!code) return res.json({ taken: false });
+  const result = await db.execute(sql`
+    SELECT id FROM expense_categories
+    WHERE UPPER(code) = ${code}
+    ${excludeId && !Number.isNaN(excludeId) ? sql`AND id != ${excludeId}` : sql``}
+    LIMIT 1
+  `);
+  return res.json({ taken: result.rows.length > 0 });
+});
 
 router.get("/categories", async (_req, res) => {
   const rows = await db
@@ -241,14 +258,8 @@ router.get("/summary", async (req, res) => {
 
 // ===================== Expenses CRUD =====================
 
-function getExpenseCompanyId(req: { query: Record<string, unknown> }): number {
-  const raw = req.query["company"];
-  const id = Number(raw);
-  return !raw || Number.isNaN(id) || id <= 0 ? 1 : id;
-}
-
-router.get("/", async (req, res) => {
-  const companyId = getExpenseCompanyId(req);
+router.get("/", async (req: Request, res) => {
+  const companyId = resolveCompanyId(req);
   const conditions: ReturnType<typeof eq>[] = [eq(expensesTable.companyId, companyId)];
   const { status, categoryId, expenseType, salesDocId, shipmentId, search, from, to } = req.query as Record<string, string>;
 
@@ -320,7 +331,7 @@ router.post("/", async (req, res) => {
   }
   const total = Math.round((subtotal + taxAmountN) * 100) / 100;
 
-  const companyIdForInsert = getExpenseCompanyId(req);
+  const companyIdForInsert = resolveCompanyId(req as Request);
   const expenseNumber = await nextExpenseNumber();
 
   const [created] = await db

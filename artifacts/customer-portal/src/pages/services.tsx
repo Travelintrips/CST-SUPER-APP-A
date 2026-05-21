@@ -8,11 +8,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Search, ShoppingCart, Truck, ChevronRight, X, Container } from "lucide-react";
+import { Search, ShoppingCart, Truck, ChevronRight, X, Container, ArrowLeft } from "lucide-react";
+import { useLocation } from "wouter";
 import { resolveImageUrl } from "@/lib/utils";
 import { getServiceFallbackImage } from "@/lib/categoryImages";
 import { useState } from "react";
-import { useCart } from "@/lib/cart";
 import { useLanguage } from "@/i18n/LanguageContext";
 import { translateServiceName, translateCategory } from "@/i18n/serviceData";
 
@@ -61,8 +61,8 @@ function ServiceImage({ service, className = "" }: { service: Service; className
 export default function Services() {
   const [searchQuery, setSearchQuery] = useState("");
   const [truckingOpen, setTruckingOpen] = useState(false);
-  const { addItem, items } = useCart();
   const { t, locale } = useLanguage();
+  const [, setLocation] = useLocation();
 
   const { data: servicesData, isLoading } = useListPortalServices({
     query: { queryKey: ["listPortalServices"] }
@@ -93,10 +93,6 @@ export default function Services() {
 
   const showGroupedCard = filteredGrouped.length > 0 || searchQuery === "";
 
-  function isInCart(id: number) {
-    return items.some((i) => i.productId === id);
-  }
-
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
       {/* Hero header */}
@@ -104,7 +100,7 @@ export default function Services() {
         className="relative overflow-hidden"
         style={{
           background: "linear-gradient(135deg, #0B4F8A 0%, #0F8FD8 50%, #38BDF8 100%)",
-          padding: "clamp(56px, 8vw, 96px) 0 clamp(40px, 6vw, 72px)",
+          padding: "clamp(24px, 3.5vw, 36px) 0 clamp(18px, 2.5vw, 26px)",
         }}
       >
         <div
@@ -186,29 +182,56 @@ export default function Services() {
         `}</style>
 
         <div className="container px-4 md:px-6" style={{ maxWidth: "760px", position: "relative", zIndex: 2 }}>
+          {/* Back button */}
+          <button
+            onClick={() => window.history.length > 1 ? window.history.back() : setLocation("/")}
+            className="inline-flex items-center gap-1.5 mb-3 text-[12px] font-semibold rounded-lg px-3 py-1.5 select-none"
+            style={{
+              color: "rgba(255,255,255,0.85)",
+              background: "rgba(255,255,255,0.10)",
+              border: "1.5px solid rgba(255,255,255,0.20)",
+              transition: "all 0.16s ease",
+            }}
+            onMouseEnter={e => {
+              const el = e.currentTarget as HTMLElement;
+              el.style.background = "rgba(255,255,255,0.18)";
+              el.style.color = "white";
+              el.style.transform = "translateY(-1px)";
+            }}
+            onMouseLeave={e => {
+              const el = e.currentTarget as HTMLElement;
+              el.style.background = "rgba(255,255,255,0.10)";
+              el.style.color = "rgba(255,255,255,0.85)";
+              el.style.transform = "translateY(0)";
+            }}
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Kembali
+          </button>
+
           <p
-            className="font-semibold uppercase mb-3"
-            style={{ fontSize: "12px", letterSpacing: "0.14em", color: "rgba(255,255,255,0.85)" }}
+            className="font-semibold uppercase mb-1.5"
+            style={{ fontSize: "10px", letterSpacing: "0.14em", color: "rgba(255,255,255,0.78)" }}
           >
             {t("services.catalogLabel")}
           </p>
           <h1
-            className="font-display mb-4 text-white"
-            style={{ fontSize: "clamp(36px, 5vw, 64px)", fontWeight: 800, lineHeight: 1.08, letterSpacing: "-0.02em", textShadow: "0 6px 20px rgba(0,0,0,0.25)" }}
+            className="font-display mb-2 text-white"
+            style={{ fontSize: "clamp(20px, 2.8vw, 34px)", fontWeight: 800, lineHeight: 1.08, letterSpacing: "-0.02em", textShadow: "0 4px 16px rgba(0,0,0,0.22)" }}
           >
             {t("services.title")}
           </h1>
           <p
-            className="mb-8"
-            style={{ fontSize: "clamp(16px, 2vw, 22px)", color: "rgba(255,255,255,0.90)", maxWidth: "620px", lineHeight: 1.6 }}
+            className="mb-4"
+            style={{ fontSize: "clamp(13px, 1.4vw, 15px)", color: "rgba(255,255,255,0.80)", maxWidth: "480px", lineHeight: 1.55 }}
           >
             {t("services.description")}
           </p>
 
-          <div className="relative" style={{ maxWidth: "520px" }}>
+          <div className="relative" style={{ maxWidth: "420px" }}>
             <Search
-              className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none"
-              style={{ width: "18px", height: "18px", color: "rgba(255,255,255,0.85)" }}
+              className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none"
+              style={{ width: "15px", height: "15px", color: "rgba(255,255,255,0.80)" }}
             />
             <input
               id="services-hero-search"
@@ -218,15 +241,15 @@ export default function Services() {
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full focus:outline-none"
               style={{
-                paddingLeft: "44px", paddingRight: "16px", paddingTop: "14px", paddingBottom: "14px",
-                background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.35)",
+                paddingLeft: "40px", paddingRight: "14px", paddingTop: "10px", paddingBottom: "10px",
+                background: "rgba(255,255,255,0.13)", border: "1px solid rgba(255,255,255,0.30)",
                 backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)",
-                borderRadius: "14px", fontSize: "15px", color: "white", boxShadow: "0 10px 30px rgba(0,0,0,0.20)",
+                borderRadius: "12px", fontSize: "13.5px", color: "white", boxShadow: "0 8px 24px rgba(0,0,0,0.18)",
               }}
-              onFocus={(e) => { e.currentTarget.style.boxShadow = "0 0 0 2px rgba(255,255,255,0.45), 0 10px 30px rgba(0,0,0,0.20)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.65)"; }}
-              onBlur={(e) => { e.currentTarget.style.boxShadow = "0 10px 30px rgba(0,0,0,0.20)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.35)"; }}
+              onFocus={(e) => { e.currentTarget.style.boxShadow = "0 0 0 2px rgba(255,255,255,0.40), 0 8px 24px rgba(0,0,0,0.18)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.55)"; }}
+              onBlur={(e) => { e.currentTarget.style.boxShadow = "0 8px 24px rgba(0,0,0,0.18)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.30)"; }}
             />
-            <style>{`#services-hero-search::placeholder { color: rgba(255,255,255,0.75); }`}</style>
+            <style>{`#services-hero-search::placeholder { color: rgba(255,255,255,0.60); }`}</style>
           </div>
         </div>
       </div>
@@ -349,18 +372,10 @@ export default function Services() {
                   </div>
                   <Button
                     className="w-full gap-2"
-                    variant={isInCart(service.id) ? "outline" : "default"}
-                    onClick={() =>
-                      addItem({
-                        productId: service.id,
-                        name: stripJasa(service.name),
-                        unitPrice: service.price,
-                        itemType: "jasa",
-                      })
-                    }
+                    onClick={() => setLocation(`/jasa/${service.id}`)}
                   >
                     <ShoppingCart className="h-4 w-4" />
-                    {isInCart(service.id) ? t("services.inCart") : t("services.addToCart")}
+                    {t("services.addToCart")}
                   </Button>
                 </CardContent>
               </Card>
@@ -432,19 +447,10 @@ export default function Services() {
                     <Button
                       size="sm"
                       className="gap-1.5 shrink-0"
-                      variant={isInCart(service.id) ? "outline" : "default"}
-                      onClick={() => {
-                        addItem({
-                          productId: service.id,
-                          name: stripJasa(service.name),
-                          unitPrice: service.price,
-                          itemType: "jasa",
-                        });
-                        setTruckingOpen(false);
-                      }}
+                      onClick={() => { setTruckingOpen(false); setLocation(`/jasa/${service.id}`); }}
                     >
                       <ShoppingCart className="h-3.5 w-3.5" />
-                      {isInCart(service.id) ? t("services.inCart") : t("services.addToCart")}
+                      {t("services.addToCart")}
                     </Button>
                   </div>
                 </div>

@@ -5,12 +5,11 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
-import { CartProvider } from "@/lib/cart";
-import { CartDrawer } from "@/components/CartDrawer";
 import { EditModeProvider } from "@/contexts/EditModeContext";
 import { AdminToolbar } from "@/components/AdminToolbar";
 import { WhatsAppButton } from "@/components/WhatsAppButton";
 import { BackToTopButton } from "@/components/BackToTopButton";
+import { CartDrawer } from "@/components/CartDrawer";
 import { ScrollToTop } from "@/components/ScrollToTop";
 import { LanguageProvider } from "@/i18n/LanguageContext";
 import { ChatWidget } from "@/components/ChatWidget";
@@ -43,11 +42,22 @@ import Calculator from "@/pages/calculator";
 import ResetPassword from "@/pages/reset-password";
 import ProductOrder from "@/pages/product-order";
 import VendorResponsePage from "@/pages/vendor-response";
+import VendorProductApprovalPage from "@/pages/vendor-product-approval";
 import ApprovePage from "@/pages/approve";
 import ConfirmPage from "@/pages/confirm";
 import VendorQuoteFormPage from "@/pages/vendor-quote-form";
 import VendorConfirmPage from "@/pages/vendor-confirm"; // [TRUCKING-FIX]
+import VendorFormPage from "@/pages/vendor-form"; // [NEW-RFQ-FLOW]
 import ChooseOptionPage from "@/pages/choose-option"; // [MULTI-MODE]
+import KasirLoginPage from "@/pages/kasir-login";
+import KasirPage from "@/pages/kasir";
+import MenuBoardPage from "@/pages/menu-board";
+import OnboardingPage from "@/pages/onboarding";
+import PendingApprovalPage from "@/pages/pending-approval";
+import VendorMiniFormPage from "@/pages/vendor-mini-form";
+import CustomerQuotePage from "@/pages/customer-quote";
+import OrderTaskPage from "@/pages/order-task";
+import CustomerOrderPage from "@/pages/customer-order";
 
 const queryClient = new QueryClient();
 
@@ -56,9 +66,21 @@ if (typeof window !== "undefined" && window.location.hostname === "bizportal.cst
   window.location.replace("https://cstlogistic.co.id/bizportal/");
 }
 
+// Jika berjalan dalam mode POS Kasir, paksa semua path non-kasir ke /kasir/login
+if (typeof window !== "undefined" && import.meta.env.VITE_POS_MODE === "true") {
+  const path = window.location.pathname;
+  const isKasirPath =
+    path.startsWith("/kasir") ||
+    path.startsWith("/menu-board") ||
+    path.startsWith("/api/");
+  if (!isKasirPath) {
+    window.location.replace("/kasir/login");
+  }
+}
+
 
 const LOGISTIC_ROUTES = ["/book", "/logistic-order-success", "/logistic-admin", "/order-produk"];
-const NO_SHELL_PREFIXES = ["/jasa/", "/services/", "/vendor-response", "/approve", "/confirm", "/vendor-quote", "/vendor-confirm", "/choose-option"]; // [TRUCKING-FIX] [MULTI-MODE]
+const NO_SHELL_PREFIXES = ["/jasa/", "/services/", "/vendor-response", "/vendor-product-approval", "/approve", "/confirm", "/vendor-quote", "/vendor-confirm", "/vendor-form", "/choose-option", "/kasir", "/menu-board", "/onboarding", "/pending-approval", "/customer-quote", "/order-task", "/customer-order"]; // [TRUCKING-FIX] [MULTI-MODE] [NEW-RFQ-FLOW] [QUOTE-FLOW]
 
 const BASE_PREFIX = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -66,9 +88,27 @@ function currentPortalPath() {
   return window.location.pathname.replace(BASE_PREFIX, "") || "/";
 }
 
-function redirectByRole(role: string, setLocation: (path: string) => void) {
-  if (role === "admin") setLocation("/admin");
-  else if (role === "vendor") setLocation("/vendor-dashboard");
+async function checkOnboardingAndRedirect(
+  role: string,
+  token: string,
+  setLocation: (path: string) => void,
+) {
+  // Admin never needs onboarding
+  if (role === "admin") { setLocation("/admin"); return; }
+
+  try {
+    const res = await fetch("/api/portal/onboarding/status", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) {
+      const d = await res.json() as { status: string; accountType?: string };
+      if (d.status === "incomplete") { setLocation("/onboarding"); return; }
+      if (d.status === "pending" || d.status === "rejected") { setLocation("/pending-approval"); return; }
+    }
+  } catch { /* network error — fall through to normal redirect */ }
+
+  // Profile complete & active
+  if (role === "vendor") setLocation("/vendor-dashboard");
   else setLocation("/dashboard");
 }
 
@@ -83,7 +123,7 @@ function OAuthRedirectHandler() {
       const path = currentPortalPath();
       if (path !== "/" && path !== "/login") return;
       const profile = await fetchAndStoreProfile();
-      if (profile) redirectByRole(profile.role, setLocation);
+      if (profile) await checkOnboardingAndRedirect(profile.role, session.access_token, setLocation);
     });
 
     // Also listen for new sign-in events (handles fresh OAuth flow)
@@ -92,7 +132,7 @@ function OAuthRedirectHandler() {
         const path = currentPortalPath();
         if (path !== "/" && path !== "/login") return;
         const profile = await fetchAndStoreProfile();
-        if (profile) redirectByRole(profile.role, setLocation);
+        if (profile) await checkOnboardingAndRedirect(profile.role, session.access_token, setLocation);
       }
     });
     return () => subscription.unsubscribe();
@@ -132,11 +172,22 @@ function AppShell() {
       <Route path="/reset-password" component={ResetPassword} />
       <Route path="/order-produk" component={ProductOrder} />
       <Route path="/vendor-response/:orderNumber" component={VendorResponsePage} />
+      <Route path="/vendor-product-approval/:orderNumber" component={VendorProductApprovalPage} />
       <Route path="/vendor-quote" component={VendorQuoteFormPage} />
       <Route path="/vendor-confirm" component={VendorConfirmPage} />    {/* [TRUCKING-FIX] */}
+      <Route path="/vendor-form/:token" component={VendorFormPage} />   {/* [NEW-RFQ-FLOW] */}
       <Route path="/choose-option/:token" component={ChooseOptionPage} />   {/* [MULTI-MODE] */}
+      <Route path="/kasir/login" component={KasirLoginPage} />
+      <Route path="/kasir" component={KasirPage} />
+      <Route path="/menu-board" component={MenuBoardPage} />
+      <Route path="/onboarding" component={OnboardingPage} />
+      <Route path="/pending-approval" component={PendingApprovalPage} />
+      <Route path="/vendor-form/:token" component={VendorMiniFormPage} />
       <Route path="/approve/:orderNumber" component={ApprovePage} />
       <Route path="/confirm/:token" component={ConfirmPage} />
+      <Route path="/customer-quote/:token" component={CustomerQuotePage} />
+      <Route path="/order-task/:token" component={OrderTaskPage} />
+      <Route path="/customer-order/:token" component={CustomerOrderPage} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -150,12 +201,12 @@ function AppShell() {
       <Navbar />
       <main className="flex-1">{routes}</main>
       <Footer />
-      <CartDrawer />
       <AdminToolbar />
       <WhatsAppButton />
       <BackToTopButton />
       <ChatWidget />
       <ScrollToTop />
+      <CartDrawer />
     </div>
   );
 }
@@ -165,14 +216,12 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <LanguageProvider>
-          <CartProvider>
-            <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
               <EditModeProvider>
                 <OAuthRedirectHandler />
                 <AppShell />
               </EditModeProvider>
             </WouterRouter>
-          </CartProvider>
           <Toaster />
         </LanguageProvider>
       </TooltipProvider>

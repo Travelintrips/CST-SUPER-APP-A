@@ -20,21 +20,64 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import {
-  useListTaxes, useCreateTax, useUpdateTax, useListAccounts,
-  getListTaxesQueryKey, type AccountingTax,
-} from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { type AccountingTax } from "@workspace/api-client-react";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
+import { useCompany } from "@/contexts/CompanyContext";
 import { Check, ChevronsUpDown, Pencil, Plus, Receipt } from "lucide-react";
 
 export default function TaxesPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const { t } = useLanguage();
-  const { data: taxes } = useListTaxes();
-  const { data: accounts } = useListAccounts();
-  const createMut = useCreateTax();
-  const updateMut = useUpdateTax();
+  const { activeCompanyId } = useCompany();
+
+  const taxesQK = ["taxes", activeCompanyId] as const;
+  const { data: taxes } = useQuery<AccountingTax[]>({
+    queryKey: taxesQK,
+    queryFn: async ({ signal }) => {
+      const res = await fetch(`/api/accounting/taxes?company=${activeCompanyId}`, {
+        credentials: "include", signal,
+      });
+      if (!res.ok) throw new Error("Gagal memuat pajak");
+      return res.json();
+    },
+  });
+
+  const accountsQK = ["accounts", activeCompanyId] as const;
+  const { data: accounts } = useQuery<{ id: number; code: string; name: string; type: string }[]>({
+    queryKey: accountsQK,
+    queryFn: async ({ signal }) => {
+      const res = await fetch(`/api/accounting/accounts?company=${activeCompanyId}`, {
+        credentials: "include", signal,
+      });
+      if (!res.ok) throw new Error("Gagal memuat akun");
+      return res.json();
+    },
+  });
+
+  const createMut = useMutation({
+    mutationFn: async (data: typeof form) => {
+      const res = await fetch(`/api/accounting/taxes?company=${activeCompanyId}`, {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+  });
+
+  const updateMut = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: typeof form }) => {
+      const res = await fetch(`/api/accounting/taxes/${id}?company=${activeCompanyId}`, {
+        method: "PATCH", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+  });
 
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<AccountingTax | null>(null);
@@ -45,9 +88,9 @@ export default function TaxesPage() {
 
   const reset = () => { setEditing(null); setForm({ name: "", rate: 0, kind: "sale", accountId: 0, isActive: true }); };
 
-  const startEdit = (t: AccountingTax) => {
-    setEditing(t);
-    setForm({ name: t.name, rate: t.rate, kind: t.kind, accountId: t.accountId, isActive: t.isActive });
+  const startEdit = (tax: AccountingTax) => {
+    setEditing(tax);
+    setForm({ name: tax.name, rate: tax.rate, kind: tax.kind, accountId: tax.accountId, isActive: tax.isActive });
     setOpen(true);
   };
 
@@ -60,10 +103,10 @@ export default function TaxesPage() {
         await updateMut.mutateAsync({ id: editing.id, data: form });
         toast({ title: t.common.success });
       } else {
-        await createMut.mutateAsync({ data: form });
+        await createMut.mutateAsync(form);
         toast({ title: t.common.success });
       }
-      qc.invalidateQueries({ queryKey: getListTaxesQueryKey() });
+      qc.invalidateQueries({ queryKey: taxesQK });
       reset(); setOpen(false);
     } catch (e: any) {
       toast({ title: t.common.error, description: e?.message ?? String(e), variant: "destructive" });
@@ -165,14 +208,14 @@ export default function TaxesPage() {
             <TableBody>
               {(taxes ?? []).length === 0 ? (
                 <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">Tidak ada pajak</TableCell></TableRow>
-              ) : taxes!.map((t) => (
-                <TableRow key={t.id} data-testid={`row-tax-${t.id}`}>
-                  <TableCell>{t.name}</TableCell>
-                  <TableCell>{t.rate}%</TableCell>
-                  <TableCell><Badge variant="outline">{t.kind === "sale" ? "PPN Keluaran" : t.kind === "purchase" ? "PPN Masukan" : "PPh"}</Badge></TableCell>
-                  <TableCell className="text-xs">{accLabel(t.accountId)}</TableCell>
-                  <TableCell>{t.isActive ? <Badge>Aktif</Badge> : <Badge variant="secondary">Non-aktif</Badge>}</TableCell>
-                  <TableCell className="text-right"><Button size="icon" variant="ghost" onClick={() => startEdit(t)} data-testid={`button-edit-${t.id}`}><Pencil className="h-4 w-4" /></Button></TableCell>
+              ) : taxes!.map((tax) => (
+                <TableRow key={tax.id} data-testid={`row-tax-${tax.id}`}>
+                  <TableCell>{tax.name}</TableCell>
+                  <TableCell>{tax.rate}%</TableCell>
+                  <TableCell><Badge variant="outline">{tax.kind === "sale" ? "PPN Keluaran" : tax.kind === "purchase" ? "PPN Masukan" : "PPh"}</Badge></TableCell>
+                  <TableCell className="text-xs">{accLabel(tax.accountId)}</TableCell>
+                  <TableCell>{tax.isActive ? <Badge>Aktif</Badge> : <Badge variant="secondary">Non-aktif</Badge>}</TableCell>
+                  <TableCell className="text-right"><Button size="icon" variant="ghost" onClick={() => startEdit(tax)} data-testid={`button-edit-${tax.id}`}><Pencil className="h-4 w-4" /></Button></TableCell>
                 </TableRow>
               ))}
             </TableBody>

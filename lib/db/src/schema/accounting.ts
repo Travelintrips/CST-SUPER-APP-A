@@ -10,10 +10,12 @@ import {
   jsonb,
   date,
   uniqueIndex,
+  index,
 } from "drizzle-orm/pg-core";
 import { sql as drizzleSql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { companiesTable } from "./companies";
 
 export const accountTypeEnum = pgEnum("account_type", [
   "asset",
@@ -49,6 +51,13 @@ export const accountingEntrySourceEnum = pgEnum("accounting_entry_source", [
   "stock_received",
   "manual_payment",
   "reversal",
+  "cogs_delivery",
+  "purchase_return",
+  "sales_return",
+  "opname_adjust",
+  "damage_adjust",
+  "grn_receipt",
+  "sport_center_booking",
 ]);
 
 export const accountingPaymentTypeEnum = pgEnum("accounting_payment_type", [
@@ -63,19 +72,21 @@ export const accountingPaymentStatusEnum = pgEnum("accounting_payment_status", [
 
 export const chartOfAccountsTable = pgTable("chart_of_accounts", {
   id: serial("id").primaryKey(),
-  code: text("code").notNull().unique(),
+  companyId: integer("company_id"),
+  code: text("code").notNull(),
   name: text("name").notNull(),
   type: accountTypeEnum("type").notNull(),
   parentId: integer("parent_id"),
-  companyId: integer("company_id"),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (t) => ({
+  companyCodeUniq: uniqueIndex("coa_company_code_uniq").on(t.companyId, t.code),
+}));
 
 export const accountingJournalsTable = pgTable("accounting_journals", {
   id: serial("id").primaryKey(),
   companyId: integer("company_id"),
-  code: text("code").notNull().unique(),
+  code: text("code").notNull(),
   name: text("name").notNull(),
   type: journalTypeEnum("type").notNull(),
   defaultDebitAccountId: integer("default_debit_account_id").references(
@@ -88,10 +99,13 @@ export const accountingJournalsTable = pgTable("accounting_journals", {
   ),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (t) => ({
+  companyCodeUniq: uniqueIndex("journals_company_code_uniq").on(t.companyId, t.code),
+}));
 
 export const accountingTaxesTable = pgTable("accounting_taxes", {
   id: serial("id").primaryKey(),
+  companyId: integer("company_id").notNull().references(() => companiesTable.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   rate: numeric("rate", { precision: 6, scale: 3 }).notNull(),
   kind: taxKindEnum("kind").notNull(),
@@ -123,6 +137,9 @@ export const accountingEntriesTable = pgTable("accounting_entries", {
   uniqAutoSource: uniqueIndex("accounting_entries_source_uniq")
     .on(t.source, t.sourceId)
     .where(drizzleSql`${t.source} <> 'manual' AND ${t.sourceId} IS NOT NULL`),
+  companyIdx: index("accounting_entries_company_idx").on(t.companyId),
+  journalIdx: index("accounting_entries_journal_idx").on(t.journalId),
+  dateIdx: index("accounting_entries_date_idx").on(t.date),
 }));
 
 export const accountingEntryLinesTable = pgTable("accounting_entry_lines", {
@@ -136,7 +153,10 @@ export const accountingEntryLinesTable = pgTable("accounting_entry_lines", {
   description: text("description"),
   debit: numeric("debit", { precision: 14, scale: 2 }).notNull().default("0"),
   credit: numeric("credit", { precision: 14, scale: 2 }).notNull().default("0"),
-});
+}, (t) => ({
+  entryIdx: index("entry_lines_entry_idx").on(t.entryId),
+  accountIdx: index("entry_lines_account_idx").on(t.accountId),
+}));
 
 export const accountingSettingsTable = pgTable("accounting_settings", {
   id: serial("id").primaryKey(),
@@ -203,6 +223,10 @@ export const accountingSettingsTable = pgTable("accounting_settings", {
     () => chartOfAccountsTable.id,
     { onDelete: "set null" },
   ),
+  grirAccountId: integer("grir_account_id").references(
+    () => chartOfAccountsTable.id,
+    { onDelete: "set null" },
+  ),
   companyName: text("company_name"),
   companyAddress: text("company_address"),
   companyNpwp: text("company_npwp"),
@@ -236,8 +260,16 @@ export const accountingPaymentsTable = pgTable("accounting_payments", {
   voidReason: text("void_reason"),
   createdById: text("created_by_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (t) => ({
+  companyIdx: index("accounting_payments_company_idx").on(t.companyId),
+  journalIdx: index("accounting_payments_journal_idx").on(t.journalId),
+  dateIdx: index("accounting_payments_date_idx").on(t.date),
+}));
 
+export const insertCompanySchema = createInsertSchema(companiesTable).omit({
+  id: true,
+  createdAt: true,
+});
 export const insertAccountSchema = createInsertSchema(chartOfAccountsTable).omit({
   id: true,
   createdAt: true,
@@ -262,6 +294,7 @@ export const insertEntryLineSchema = createInsertSchema(accountingEntryLinesTabl
   entryId: true,
 });
 
+export type Company = typeof companiesTable.$inferSelect;
 export type Account = typeof chartOfAccountsTable.$inferSelect;
 export type AccountingJournal = typeof accountingJournalsTable.$inferSelect;
 export type AccountingTax = typeof accountingTaxesTable.$inferSelect;
@@ -269,6 +302,7 @@ export type AccountingEntry = typeof accountingEntriesTable.$inferSelect;
 export type AccountingEntryLine = typeof accountingEntryLinesTable.$inferSelect;
 export type AccountingSettings = typeof accountingSettingsTable.$inferSelect;
 export type AccountingPayment = typeof accountingPaymentsTable.$inferSelect;
+export type InsertCompany = z.infer<typeof insertCompanySchema>;
 export type InsertAccount = z.infer<typeof insertAccountSchema>;
 export type InsertJournal = z.infer<typeof insertJournalSchema>;
 export type InsertTax = z.infer<typeof insertTaxSchema>;

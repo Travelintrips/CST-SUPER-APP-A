@@ -33,6 +33,14 @@
       "fast-xml-builder@<=1.1.6": "1.1.9",
       "fast-uri@<=3.1.0": "3.1.2"
     },
+    "packageExtensions": {
+      "react-native-worklets@*": {
+        "exports": {
+          ".": "./lib/module/index",
+          "./plugin": "./plugin/index.js"
+        }
+      }
+    },
     "ignoredBuiltDependencies": [
       "esbuild"
     ]
@@ -40,6 +48,8 @@
   "dependencies": {
     "@replit/connectors-sdk": "^0.4.0",
     "@types/pg": "^8.18.0",
-    "pg": "^8.20.0"
+    "express-rate-limit": "^8.5.2",
+    "pg": "^8.20.0",
+    "react-image-crop": "^11.0.10"
   }
 }

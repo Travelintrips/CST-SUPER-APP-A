@@ -13,12 +13,16 @@ import {
 import { eq, sql, desc, and, count, inArray, or, ilike, type SQL } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { streamInvoicePdf, buildInvoicePdfBuffer } from "../lib/pdfInvoice.js";
-import { postSalesInvoice } from "../lib/accounting.js";
+import { postSalesInvoice, postSalesCogs, postSalesCogsReturn } from "../lib/accounting.js";
 import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
 import { ensureAccountingSettings } from "../lib/accountingSeed.js";
 import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa } from "../lib/adminWa.js";
+import { saveAndBroadcast } from "../lib/notificationStore.js";
 import { getVendorFilterMode } from "../lib/aiOrderIntake.js";
+import { StockShortageError, postStockOut, postStockIn } from "../lib/inventoryStock.js";
+import { resolveCompanyId } from "../lib/resolveCompany.js";
+import { convertQty } from "../lib/uomEngine.js";
 
 async function computeTax(subtotal: number, taxRateId: number | null | undefined): Promise<{ taxAmount: number; grandTotal: number }> {
   if (!taxRateId) return { taxAmount: 0, grandTotal: subtotal };
@@ -45,6 +49,22 @@ interface LineInput {
   description?: string | null;
   quantity: number;
   unitPrice: number;
+  salesUomId?: number | null;
+}
+
+/** Compute base_qty by converting quantity from salesUomId → product's base_uom_id. */
+async function resolveBaseQty(line: LineInput): Promise<number | null> {
+  if (!line.salesUomId || !line.productId) return null;
+  try {
+    const prodRow = (await db.execute(sql`
+      SELECT base_uom_id FROM products WHERE id = ${line.productId} LIMIT 1
+    `)).rows[0] as { base_uom_id: number | null } | undefined;
+    const baseUomId = prodRow?.base_uom_id ?? null;
+    if (!baseUomId || baseUomId === line.salesUomId) return Number(line.quantity);
+    return await convertQty(Number(line.quantity), line.salesUomId, baseUomId);
+  } catch {
+    return null;
+  }
 }
 
 function serializeCustomer(c: typeof customersTable.$inferSelect) {
@@ -70,6 +90,7 @@ function serializeLine(l: typeof salesDocumentLinesTable.$inferSelect) {
   return {
     ...l,
     quantity: Number(l.quantity),
+    baseQty: l.baseQty != null ? Number(l.baseQty) : null,
     unitPrice: Number(l.unitPrice),
     subtotal: Number(l.subtotal),
   };
@@ -90,9 +111,10 @@ async function nextDocNumber(kind: SalesDocKind, offset = 0): Promise<string> {
 }
 
 // GET /api/sales/summary
-router.get("/summary", async (_req, res) => {
-  const docs = await db.select().from(salesDocumentsTable);
-  const customers = await db.select().from(customersTable);
+router.get("/summary", async (req, res) => {
+  const companyId = resolveCompanyId(req);
+  const docs = await db.select().from(salesDocumentsTable).where(eq(salesDocumentsTable.companyId, companyId));
+  const customers = await db.select().from(customersTable).where(eq(customersTable.companyId, companyId));
   const quotationsCount = docs.filter((d) => d.kind === "quote").length;
   const ordersCount = docs.filter((d) => d.kind === "order").length;
   const toInvoiceCount = docs.filter(
@@ -121,19 +143,23 @@ router.get("/summary", async (_req, res) => {
 });
 
 // CUSTOMERS
-router.get("/customers", async (_req, res) => {
-  const rows = await db.select().from(customersTable).orderBy(customersTable.name);
+router.get("/customers", async (req, res) => {
+  const companyId = resolveCompanyId(req);
+  const rows = await db.select().from(customersTable)
+    .where(eq(customersTable.companyId, companyId))
+    .orderBy(customersTable.name);
   return res.json(rows.map(serializeCustomer));
 });
 
 router.post("/customers", async (req, res) => {
+  const companyId = resolveCompanyId(req);
   const { name, email, phone, taxId, address, notes, defaultSalesTaxId } = req.body ?? {};
   if (typeof name !== "string" || !name.trim()) {
     return res.status(400).json({ message: "name required" });
   }
   const [created] = await db
     .insert(customersTable)
-    .values({ name, email, phone, taxId, address, notes, defaultSalesTaxId: defaultSalesTaxId ?? null })
+    .values({ companyId, name, email, phone, taxId, address, notes, defaultSalesTaxId: defaultSalesTaxId ?? null })
     .returning();
   return res.status(201).json(serializeCustomer(created));
 });
@@ -172,12 +198,13 @@ router.delete("/customers/:id", async (req, res) => {
 
 // DOCUMENTS
 router.get("/documents", async (req, res) => {
+  const companyId = resolveCompanyId(req);
   const kind = req.query["kind"] as SalesDocKind | undefined;
   const invoiceStatus = req.query["invoiceStatus"] as SalesInvoiceStatus | undefined;
   const paymentStatus = req.query["paymentStatus"] as "unpaid" | "partial" | "paid" | undefined;
   const statusFilter = req.query["status"] as string | undefined;
   const search = typeof req.query["search"] === "string" ? req.query["search"].trim() : undefined;
-  const conds: SQL[] = [];
+  const conds: SQL[] = [eq(salesDocumentsTable.companyId, companyId)];
   if (kind === "quote" || kind === "order") conds.push(eq(salesDocumentsTable.kind, kind));
   if (["draft", "sent", "confirmed", "done", "cancelled"].includes(statusFilter ?? ""))
     conds.push(eq(salesDocumentsTable.status, statusFilter as "draft" | "sent" | "confirmed" | "done" | "cancelled"));
@@ -191,10 +218,8 @@ router.get("/documents", async (req, res) => {
       ilike(salesDocumentsTable.customerName, `%${search}%`),
     )!);
   }
-  const where = conds.length === 0 ? undefined : conds.length === 1 ? conds[0] : and(...conds);
-  const rows = where
-    ? await db.select().from(salesDocumentsTable).where(where).orderBy(desc(salesDocumentsTable.createdAt))
-    : await db.select().from(salesDocumentsTable).orderBy(desc(salesDocumentsTable.createdAt));
+  const where = conds.length === 1 ? conds[0] : and(...conds);
+  const rows = await db.select().from(salesDocumentsTable).where(where).orderBy(desc(salesDocumentsTable.createdAt));
 
   const customerIds = [...new Set(rows.map((r) => r.customerId).filter((id): id is number => id != null))];
   const customerMap = new Map<number, string | null>();
@@ -231,12 +256,32 @@ router.get("/documents/:id", async (req, res) => {
 });
 
 router.post("/documents", async (req, res) => {
+  const companyId = resolveCompanyId(req);
   const { kind, customerId, customerName, validUntil, expectedDate, notes, lines, taxRateId,
-    origin, destination, transportMode, etd, eta } = req.body ?? {};
+    origin, destination, transportMode, etd, eta, logisticOrderId } = req.body ?? {};
   if (typeof customerName !== "string" || !customerName.trim())
     return res.status(400).json({ message: "customerName required" });
   if (!Array.isArray(lines) || lines.length === 0)
     return res.status(400).json({ message: "At least one line required" });
+
+  // Idempotency: prevent duplicate SO for same logistic order
+  if (logisticOrderId != null) {
+    const logOrderId = Number(logisticOrderId);
+    if (!Number.isNaN(logOrderId)) {
+      const [existing] = await db
+        .select({ id: salesDocumentsTable.id, docNumber: salesDocumentsTable.docNumber })
+        .from(salesDocumentsTable)
+        .where(eq(salesDocumentsTable.logisticOrderId, logOrderId))
+        .limit(1);
+      if (existing) {
+        return res.status(409).json({
+          message: "Sales Order sudah pernah dibuat untuk logistic order ini",
+          existingId: existing.id,
+          existingDocNumber: existing.docNumber,
+        });
+      }
+    }
+  }
 
   const docKind: SalesDocKind = kind === "order" ? "order" : "quote";
   const total = (lines as LineInput[]).reduce(
@@ -253,6 +298,7 @@ router.post("/documents", async (req, res) => {
       const [inserted] = await db
         .insert(salesDocumentsTable)
         .values({
+          companyId,
           docNumber,
           kind: docKind,
           status: "draft",
@@ -270,6 +316,7 @@ router.post("/documents", async (req, res) => {
           transportMode: transportMode ?? null,
           etd: etd ?? null,
           eta: eta ?? null,
+          logisticOrderId: (logisticOrderId != null && !Number.isNaN(Number(logisticOrderId))) ? Number(logisticOrderId) : null,
         })
         .returning();
       doc = inserted;
@@ -282,17 +329,20 @@ router.post("/documents", async (req, res) => {
   }
   if (!doc) throw new Error("Failed to create sales document after retries");
 
-  await db.insert(salesDocumentLinesTable).values(
-    (lines as LineInput[]).map((l) => ({
-      documentId: doc.id,
+  const lineValues = await Promise.all(
+    (lines as LineInput[]).map(async (l) => ({
+      documentId: doc!.id,
       productId: l.productId ?? null,
       name: l.name,
       description: l.description ?? null,
       quantity: String(l.quantity),
       unitPrice: String(l.unitPrice),
       subtotal: String(Number(l.quantity) * Number(l.unitPrice)),
-    })),
+      salesUomId: l.salesUomId ?? null,
+      baseQty: await resolveBaseQty(l).then((v) => (v != null ? String(v) : null)),
+    }))
   );
+  await db.insert(salesDocumentLinesTable).values(lineValues);
 
   const detail = await loadDocWithLines(doc.id);
 
@@ -347,8 +397,8 @@ router.put("/documents/:id", async (req, res) => {
     patch["grandTotal"] = String(grandTotal);
     await db.delete(salesDocumentLinesTable).where(eq(salesDocumentLinesTable.documentId, id));
     if (lines.length > 0) {
-      await db.insert(salesDocumentLinesTable).values(
-        (lines as LineInput[]).map((l) => ({
+      const putLineValues = await Promise.all(
+        (lines as LineInput[]).map(async (l) => ({
           documentId: id,
           productId: l.productId ?? null,
           name: l.name,
@@ -356,8 +406,11 @@ router.put("/documents/:id", async (req, res) => {
           quantity: String(l.quantity),
           unitPrice: String(l.unitPrice),
           subtotal: String(Number(l.quantity) * Number(l.unitPrice)),
-        })),
+          salesUomId: l.salesUomId ?? null,
+          baseQty: await resolveBaseQty(l).then((v) => (v != null ? String(v) : null)),
+        }))
       );
+      await db.insert(salesDocumentLinesTable).values(putLineValues);
     }
   } else if (taxRateId !== undefined) {
     const total = Number(existing.totalAmount);
@@ -442,7 +495,157 @@ router.post("/documents/:id/action", async (req, res) => {
       return res.status(400).json({ message: "Invalid action" });
   }
 
+  // T005: Pre-flight stock check BEFORE updating delivery status (pakai wh_stock — single source of truth)
+  if (action === "mark_delivered" && doc.deliveryStatus !== "delivered") {
+    const lines = await db.select().from(salesDocumentLinesTable).where(eq(salesDocumentLinesTable.documentId, id));
+    const productLines = lines.filter((l) => l.productId != null);
+
+    if (productLines.length > 0) {
+      // Gunakan gudang ERP pertama yang aktif (sistem gudang tunggal)
+      const posWh = (await db.execute(sql`
+        SELECT id FROM warehouses WHERE is_active = TRUE ORDER BY id LIMIT 1
+      `)).rows[0] as { id: number } | undefined;
+
+      if (posWh) {
+        const shortages: Array<{ productId: number; name: string; requested: number; available: number }> = [];
+        for (const line of productLines) {
+          const qty = line.baseQty != null ? Number(line.baseQty) : Number(line.quantity);
+          const stockRow = (await db.execute(sql`
+            SELECT COALESCE(qty::float, 0) AS qty
+            FROM wh_stock
+            WHERE product_id = ${line.productId} AND warehouse_id = ${posWh.id}
+            ORDER BY id LIMIT 1
+          `)).rows[0] as { qty: number } | undefined;
+          const available = Number(stockRow?.qty ?? 0);
+          if (available < qty) {
+            shortages.push({ productId: line.productId!, name: line.name, requested: qty, available });
+          }
+        }
+        if (shortages.length > 0) {
+          const detail = shortages
+            .map((s) => `${s.name}: tersedia ${s.available}, diminta ${s.requested}`)
+            .join("; ");
+          return res.status(422).json({
+            message: `Stok tidak cukup untuk pengiriman: ${detail}`,
+            shortages,
+          });
+        }
+      }
+    }
+  }
+
   await db.update(salesDocumentsTable).set(patch).where(eq(salesDocumentsTable.id, id));
+
+  // T005: When SO is delivered, deduct stock (awaited — pre-flight already passed)
+  if (action === "mark_delivered" && doc.deliveryStatus !== "delivered") {
+    try {
+      const lines = await db.select().from(salesDocumentLinesTable).where(eq(salesDocumentLinesTable.documentId, id));
+      const productLines = lines.filter((l) => l.productId != null);
+      if (productLines.length === 0) {
+        // nothing to deduct, fall through
+      } else {
+        // ── wh_stock deduction (gudang ERP — sistem tunggal) ─────────────────
+        const [defaultWh] = await db.execute(sql`SELECT id FROM warehouses WHERE is_active = TRUE ORDER BY id LIMIT 1`);
+        const wh = (defaultWh as any)?.rows?.[0] ?? (defaultWh as any);
+        const legacyWhId: number | undefined = wh?.id;
+        const cogsLines: Array<{ name: string; qty: number; costPrice: number }> = [];
+        if (legacyWhId) {
+          for (const line of productLines) {
+            const qty = Number(line.quantity);
+            const cur = await db.execute(sql`
+              SELECT qty::float, COALESCE(cost_price::float, 0) AS cost_price
+              FROM wh_stock WHERE product_id = ${line.productId} AND warehouse_id = ${legacyWhId} AND rack_id IS NULL
+            `);
+            const qtyBefore = Number((cur.rows[0] as any)?.qty ?? 0);
+            const costPrice = Number((cur.rows[0] as any)?.cost_price ?? 0);
+            const qtyAfter = Math.max(0, qtyBefore - qty);
+            cogsLines.push({ name: line.name, qty, costPrice });
+            await db.execute(sql`
+              INSERT INTO wh_stock (product_id, warehouse_id, rack_id, qty, updated_at)
+              VALUES (${line.productId}, ${legacyWhId}, NULL, ${qtyAfter}, NOW())
+              ON CONFLICT ON CONSTRAINT wh_stock_product_warehouse_rack_idx
+              DO UPDATE SET qty = ${qtyAfter}, updated_at = NOW()
+            `);
+            await db.execute(sql`
+              INSERT INTO wh_movements (product_id, warehouse_id, rack_id, type, qty, qty_before, qty_after, ref_type, ref_id, note)
+              VALUES (${line.productId}, ${legacyWhId}, NULL, 'so_delivery', ${qty}, ${qtyBefore}, ${qtyAfter},
+                      'sales_order', ${id}, ${`SO Terkirim: ${doc.docNumber}`})
+            `);
+          }
+        }
+
+        // ── COGS journal entry (DR HPP / CR Persediaan) ──────────────────────
+        if (cogsLines.length > 0) {
+          void postSalesCogs({
+            salesDocId: id,
+            docNumber: doc.docNumber,
+            lines: cogsLines,
+            companyId: doc.companyId ?? null,
+          }).catch((e) => console.error("[accounting] postSalesCogs error:", e));
+        }
+
+        // ── Sync ke inventory_stock + stock_movements (ERP) ─────────────────
+        // Cari ERP warehouse: SO.warehouseId → company warehouse → fallback global
+        let erpWhId: number | null = doc.warehouseId ?? null;
+        if (!erpWhId) {
+          if (doc.companyId) {
+            const r = (await db.execute(sql`
+              SELECT id FROM warehouses
+              WHERE company_id = ${doc.companyId} AND is_active = TRUE
+              ORDER BY id ASC LIMIT 1
+            `)).rows[0] as { id: number } | undefined;
+            erpWhId = r?.id ?? null;
+          }
+          if (!erpWhId) {
+            const r = (await db.execute(sql`
+              SELECT id FROM warehouses WHERE is_active = TRUE ORDER BY id ASC LIMIT 1
+            `)).rows[0] as { id: number } | undefined;
+            erpWhId = r?.id ?? null;
+          }
+        }
+
+        if (erpWhId) {
+          for (const line of productLines) {
+            const qty = line.baseQty != null ? Number(line.baseQty) : Number(line.quantity);
+            const costRow = (await db.execute(sql`
+              SELECT average_cost::float, cost_price::float
+              FROM inventory_stock WHERE product_id = ${line.productId} AND warehouse_id = ${erpWhId} LIMIT 1
+            `)).rows[0] as { average_cost: number; cost_price?: number } | undefined;
+            // fallback to wh_stock cost_price if no ERP record yet
+            const whCostRow = (await db.execute(sql`
+              SELECT cost_price::float FROM wh_stock
+              WHERE product_id = ${line.productId} LIMIT 1
+            `)).rows[0] as { cost_price: number } | undefined;
+            const unitCost = Number(costRow?.average_cost ?? whCostRow?.cost_price ?? 0);
+            try {
+              await postStockOut({
+                productId: line.productId!,
+                warehouseId: erpWhId,
+                qty,
+                unitCost,
+                movementType: "SALES_DELIVERY",
+                referenceType: "SALES_ORDER",
+                referenceId: id,
+                notes: `SO Terkirim: ${doc.docNumber}`,
+                strict: false,
+              });
+            } catch (e) {
+              console.error(`[inventory] postStockOut gagal produk #${line.productId}:`, e);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      if (e instanceof StockShortageError) {
+        // Rollback delivery status
+        await db.update(salesDocumentsTable)
+          .set({ deliveryStatus: doc.deliveryStatus, status: doc.status })
+          .where(eq(salesDocumentsTable.id, id));
+        return res.status(422).json({ message: e.message });
+      }
+      console.error("[wh] mark_delivered stock-out error:", e);
+    }
+  }
 
   // Notify admin via WhatsApp when quotation is confirmed as Sales Order (fire-and-forget)
   // Guard: only send if status was not already "confirmed" to prevent duplicate notifications on retries
@@ -475,11 +678,176 @@ router.post("/documents/:id/action", async (req, res) => {
       netAmount: net,
       taxAmount,
       taxAccountId: null,
+      companyId: doc.companyId ?? null,
     });
   }
 
   const detail = await loadDocWithLines(id);
+
+  // Broadcast real-time notification to admin SSE clients
+  const actionLabels: Record<string, string> = {
+    send: "Dikirim ke Customer",
+    confirm: "Dikonfirmasi sebagai Sales Order",
+    cancel: "Dibatalkan",
+    draft: "Dikembalikan ke Draft",
+    mark_invoiced: "Invoice Dibuat",
+    cancel_invoice: "Invoice Dibatalkan",
+    mark_delivered: "Tandai Terkirim",
+  };
+  saveAndBroadcast("sales_order_update", {
+    type: "sales_update",
+    orderId: id,
+    orderNumber: doc.docNumber,
+    customerName: doc.customerName,
+    companyName: null,
+    action,
+    actionLabel: actionLabels[action] ?? action,
+    newStatus: (patch["status"] as string | undefined) ?? doc.status,
+    grandTotal: Number(doc.totalAmount ?? 0) + Number(doc.taxAmount ?? 0),
+    updatedAt: new Date().toISOString(),
+  }).catch(() => {});
+
   return res.json(detail);
+});
+
+// ── Sales Return: POST /api/sales/documents/:id/return ───────────────────────
+// Body: { reason?: string, warehouseId?: number,
+//        lines?: Array<{ productId: number; qty: number }> }
+// Kembalikan stok ke wh_stock + inventory_stock, buat RETURN_IN movements,
+// posting akuntansi reversal HPP.
+router.post("/documents/:id/return", async (req, res) => {
+  const id = Number(req.params.id);
+  if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+
+  const [doc] = await db.select().from(salesDocumentsTable).where(eq(salesDocumentsTable.id, id));
+  if (!doc) return res.status(404).json({ message: "Document tidak ditemukan" });
+  if (doc.deliveryStatus !== "delivered") {
+    return res.status(400).json({ message: "Hanya SO yang sudah terkirim yang bisa diretur" });
+  }
+
+  const { reason, warehouseId: bodyWhId, lines: bodyLines } = req.body as {
+    reason?: string;
+    warehouseId?: number;
+    lines?: Array<{ productId: number; qty: number }>;
+  };
+
+  // Ambil semua lines dari SO
+  const docLines = await db.select().from(salesDocumentLinesTable)
+    .where(eq(salesDocumentLinesTable.documentId, id));
+  const productLines = docLines.filter((l) => l.productId != null);
+
+  if (productLines.length === 0) {
+    return res.status(400).json({ message: "Tidak ada item produk untuk diretur" });
+  }
+
+  // Resolve quantity per productId dari bodyLines (atau full qty)
+  const returnQtyMap = new Map<number, number>();
+  if (bodyLines && bodyLines.length > 0) {
+    for (const bl of bodyLines) {
+      returnQtyMap.set(bl.productId, bl.qty);
+    }
+  } else {
+    for (const l of productLines) {
+      returnQtyMap.set(l.productId!, Number(l.quantity));
+    }
+  }
+
+  // ── Resolve ERP warehouse ─────────────────────────────────────────────────
+  let erpWhId: number | null = bodyWhId ?? doc.warehouseId ?? null;
+  if (!erpWhId && doc.companyId) {
+    const r = (await db.execute(sql`
+      SELECT id FROM warehouses
+      WHERE company_id = ${doc.companyId} AND is_active = TRUE
+      ORDER BY id ASC LIMIT 1
+    `)).rows[0] as { id: number } | undefined;
+    erpWhId = r?.id ?? null;
+  }
+  if (!erpWhId) {
+    const r = (await db.execute(sql`
+      SELECT id FROM warehouses WHERE is_active = TRUE ORDER BY id ASC LIMIT 1
+    `)).rows[0] as { id: number } | undefined;
+    erpWhId = r?.id ?? null;
+  }
+
+  // ── Resolve gudang ERP (sistem tunggal) ──────────────────────────────────
+  const posWhRow = (await db.execute(sql`
+    SELECT id FROM warehouses WHERE is_active = TRUE ORDER BY id ASC LIMIT 1
+  `)).rows[0] as { id: number } | undefined;
+  const posWhId = posWhRow?.id ?? null;
+
+  const returnedLines: Array<{ name: string; qty: number; costPrice: number }> = [];
+  const warnings: string[] = [];
+  const returnNo = `RTN-SO/${new Date().getFullYear()}/${String(id).padStart(5, "0")}`;
+
+  for (const line of productLines) {
+    const qty = returnQtyMap.get(line.productId!) ?? 0;
+    if (qty <= 0) continue;
+
+    const note = `Retur: ${returnNo} — ${doc.docNumber} (${reason ?? "tanpa alasan"})`;
+
+    // ── wh_stock: kembalikan stok ke POS warehouse ────────────────────────
+    if (posWhId) {
+      await db.execute(sql`
+        INSERT INTO wh_stock (product_id, warehouse_id, rack_id, qty, updated_at)
+        VALUES (${line.productId}, ${posWhId}, NULL, ${qty}, NOW())
+        ON CONFLICT ON CONSTRAINT wh_stock_product_warehouse_rack_idx
+        DO UPDATE SET qty = wh_stock.qty + ${qty}, updated_at = NOW()
+      `);
+      await db.execute(sql`
+        INSERT INTO wh_movements (product_id, warehouse_id, rack_id, type, qty, qty_before, qty_after, ref_type, ref_id, note)
+        SELECT ${line.productId}, ${posWhId}, NULL, 'return_in',
+               ${qty},
+               COALESCE((SELECT qty FROM wh_stock WHERE product_id = ${line.productId} AND warehouse_id = ${posWhId}), 0) - ${qty},
+               COALESCE((SELECT qty FROM wh_stock WHERE product_id = ${line.productId} AND warehouse_id = ${posWhId}), 0),
+               'sales_order', ${id}, ${note}
+      `);
+    }
+
+    // ── inventory_stock: kembalikan stok ke ERP warehouse ────────────────
+    let unitCost = 0;
+    if (erpWhId) {
+      const costRow = (await db.execute(sql`
+        SELECT average_cost::float FROM inventory_stock
+        WHERE product_id = ${line.productId} AND warehouse_id = ${erpWhId} LIMIT 1
+      `)).rows[0] as { average_cost: number } | undefined;
+      unitCost = Number(costRow?.average_cost ?? 0);
+      try {
+        await postStockIn({
+          productId: line.productId!,
+          warehouseId: erpWhId,
+          qty,
+          unitCost,
+          movementType: "RETURN_IN",
+          referenceType: "RETURN",
+          referenceId: id,
+          notes: note,
+        });
+      } catch (e) {
+        warnings.push(`ERP sync gagal produk #${line.productId}: ${(e as Error).message}`);
+      }
+    }
+
+    returnedLines.push({ name: line.name, qty, costPrice: unitCost });
+  }
+
+  // ── Accounting reversal: DR Persediaan / CR HPP ───────────────────────────
+  if (returnedLines.length > 0) {
+    void postSalesCogsReturn({
+      salesDocId: id,
+      docNumber: doc.docNumber,
+      lines: returnedLines,
+      companyId: doc.companyId ?? null,
+    }).catch((e) => console.error("[accounting] postSalesCogsReturn error:", e));
+  }
+
+  return res.json({
+    message: "Retur berhasil diproses",
+    returnNumber: returnNo,
+    salesDocId: id,
+    salesDocNumber: doc.docNumber,
+    linesReturned: returnedLines.length,
+    warnings,
+  });
 });
 
 router.get("/documents/:id/pdf", async (req, res): Promise<void> => {

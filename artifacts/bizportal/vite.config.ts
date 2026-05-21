@@ -20,10 +20,25 @@ export default defineConfig({
     {
       name: "redirect-root-to-base",
       configureServer(server) {
-        server.middlewares.use((req, _res, next) => {
+        server.middlewares.use((req, res, next) => {
           if (req.url === "/" && basePath !== "/") {
-            _res.writeHead(302, { Location: basePath });
-            _res.end();
+            // Serve an HTML page so client-side JS can forward the hash fragment
+            // (e.g. #access_token=... from Supabase OAuth) to the customer portal.
+            // A plain 302 redirect would lose the hash because it is client-only.
+            res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+            res.end(`<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>Redirecting…</title>
+<script>
+var h = window.location.hash;
+var s = window.location.search;
+// If this looks like a Supabase OAuth callback, forward to customer portal
+if (h.indexOf('access_token') !== -1 || h.indexOf('error=') !== -1 ||
+    s.indexOf('code=') !== -1 || s.indexOf('error=') !== -1) {
+  window.location.replace('/customer-portal/' + s + h);
+} else {
+  window.location.replace('/bizportal/');
+}
+</script></head><body>Redirecting…</body></html>`);
             return;
           }
           next();
@@ -67,11 +82,21 @@ export default defineConfig({
       },
     },
   },
+  css: {
+    postcss: {
+      plugins: [],
+    },
+  },
   server: {
     port,
     strictPort: false,
     host: "0.0.0.0",
     allowedHosts: true,
+    hmr: {
+      clientPort: 443,
+      protocol: "wss",
+      host: process.env.REPLIT_DEV_DOMAIN ?? "localhost",
+    },
     watch: {
       ignored: [
         "**/node_modules/**",
@@ -87,8 +112,17 @@ export default defineConfig({
     },
     proxy: {
       "/api": {
-        target: "http://localhost:8080",
+        target: "http://localhost:18444",
         changeOrigin: true,
+      },
+      "/pos-images": {
+        target: "http://localhost:18444",
+        changeOrigin: true,
+      },
+      "/sport-center": {
+        target: "http://localhost:8082",
+        changeOrigin: true,
+        ws: true,
       },
     },
   },

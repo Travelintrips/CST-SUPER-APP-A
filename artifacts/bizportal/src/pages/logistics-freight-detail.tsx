@@ -1,7 +1,9 @@
 import { AppShell } from "@/components/layout/AppShell";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation, useParams } from "wouter";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useOrderNotificationsContext } from "@/contexts/OrderNotificationsContext";
 import {
   Select,
   SelectContent,
@@ -21,6 +23,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import {
   ArrowLeft, Pencil, Printer, Plus, CheckCircle, Loader2, Ship, FileText, FileDown, Paperclip,
   TrendingDown, TrendingUp, Receipt, ExternalLink, MessageSquare, ShoppingCart, Package, Truck,
+  History, User, ArrowRight,
 } from "lucide-react";
 import { CorrespondenceTab } from "@/components/CorrespondenceTab";
 import {
@@ -98,6 +101,9 @@ export default function LogisticsFreightDetailPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { t } = useLanguage();
+  const { lastFreightEventAt, notifications } = useOrderNotificationsContext();
+  const [liveRefreshFlash, setLiveRefreshFlash] = useState(false);
+  const lastSeenNotifIdRef = useRef<string | null>(null);
 
   const { data: shipment, isLoading } = useGetFreightShipment(id);
   const typedShipment = shipment as FreightShipmentDetail | undefined;
@@ -107,6 +113,18 @@ export default function LogisticsFreightDetailPage() {
   const { data: linkedPurchaseDoc } = useGetPurchaseDocument(purchaseDocId ?? 0, { query: { queryKey: getGetPurchaseDocumentQueryKey(purchaseDocId ?? 0), enabled: !!purchaseDocId } });
   const { data: expenses = [], isLoading: expensesLoading } = useListExpenses({ shipmentId: id });
   const { data: profitability } = useGetFreightShipmentProfitability(id, { query: { queryKey: getGetFreightShipmentProfitabilityQueryKey(id), enabled: !!id } });
+
+  interface AuditLog { id: number; shipmentId: number; shipmentNumber: string; fromStatus: string | null; toStatus: string; changedBy: string; changedById: string | null; notes: string | null; createdAt: string; }
+  const auditLogQueryKey = ["freight-audit-log", id];
+  const { data: auditLogs = [], refetch: refetchAuditLog } = useQuery<AuditLog[]>({
+    queryKey: auditLogQueryKey,
+    queryFn: async () => {
+      const res = await fetch(`/api/logistics/freight-shipments/${id}/audit-log`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch audit log");
+      return res.json() as Promise<AuditLog[]>;
+    },
+    enabled: !!id,
+  });
   const idr = (n: number) =>
     new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
   const createRfq = useCreateFreightRfq();
@@ -185,6 +203,22 @@ export default function LogisticsFreightDetailPage() {
   }, [shipment, stagesInitialized]);
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: getGetFreightShipmentQueryKey(id) });
+
+  useEffect(() => {
+    if (!lastFreightEventAt || notifications.length === 0) return;
+    const latest = notifications[0];
+    if (latest.id === lastSeenNotifIdRef.current) return;
+    const isFreight = latest.type === "freight_new" || latest.type === "freight_status" || latest.type === "freight_stage";
+    if (!isFreight) return;
+    if (latest.orderId !== id) return;
+    lastSeenNotifIdRef.current = latest.id;
+    queryClient.invalidateQueries({ queryKey: getGetFreightShipmentQueryKey(id) });
+    queryClient.invalidateQueries({ queryKey: getGetFreightShipmentProfitabilityQueryKey(id) });
+    refetchAuditLog();
+    setLiveRefreshFlash(true);
+    const timer = setTimeout(() => setLiveRefreshFlash(false), 2500);
+    return () => clearTimeout(timer);
+  }, [lastFreightEventAt, notifications]);
 
   const handleSaveStage = (stageType: StageType) => {
     const f = stageForms[stageType];
@@ -414,8 +448,14 @@ export default function LogisticsFreightDetailPage() {
                   {STATUS_LABELS[shipment.status] ?? shipment.status}
                 </Badge>
               </div>
-              <p className="text-sm text-muted-foreground mt-1">
-                Dibuat {new Date(shipment.createdAt).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}
+              <p className="text-sm text-muted-foreground mt-1 flex items-center gap-2">
+                <span>Dibuat {new Date(shipment.createdAt).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</span>
+                {liveRefreshFlash && (
+                  <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-medium text-xs animate-pulse">
+                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500 animate-ping" />
+                    Diperbarui otomatis
+                  </span>
+                )}
               </p>
             </div>
           </div>
@@ -575,7 +615,7 @@ export default function LogisticsFreightDetailPage() {
                     <p className="text-sm">{shipment.notes}</p>
                   </>
                 )}
-                {(salesDocId || purchaseDocId) && (
+                {(salesDocId || purchaseDocId || (typedShipment as any)?.linkedLogisticRfq) && (
                   <>
                     <Separator className="my-2" />
                     <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Tautan</p>
@@ -593,6 +633,14 @@ export default function LogisticsFreightDetailPage() {
                           <span className="inline-flex items-center gap-1 text-xs text-violet-600 dark:text-violet-400 hover:underline font-mono">
                             <Package size={10} />
                             {linkedPurchaseDoc?.docNumber ?? `PO #${purchaseDocId}`}
+                          </span>
+                        </Link>
+                      )}
+                      {(typedShipment as any)?.linkedLogisticRfq && (
+                        <Link href={`/logistics/rfq/${(typedShipment as any).linkedLogisticRfq.id}/comparison`}>
+                          <span className="inline-flex items-center gap-1 text-xs text-teal-600 dark:text-teal-400 hover:underline font-mono">
+                            <ArrowLeft size={10} />
+                            {(typedShipment as any).linkedLogisticRfq.rfqNumber}
                           </span>
                         </Link>
                       )}
@@ -836,6 +884,73 @@ export default function LogisticsFreightDetailPage() {
             )}
           </CardContent>
         </Card>
+
+        {/* Linked from RFQ Card */}
+        {(typedShipment as any)?.linkedLogisticRfq && (() => {
+          const lrfq = (typedShipment as any).linkedLogisticRfq as {
+            id: number; rfqNumber: string; rfqStatus: string;
+            orderId: number; orderNumber: string | null;
+          };
+          const RFQ_STATUS_LABELS: Record<string, string> = {
+            admin_review: "Review Admin",
+            rfq_sent: "RFQ Terkirim",
+            vendor_selected: "Vendor Dipilih",
+            customer_quoted: "Penawaran Dikirim",
+            customer_approved: "Disetujui Customer",
+            customer_rejected: "Ditolak Customer",
+            customer_revision_requested: "Revisi Diminta",
+            closed: "Ditutup",
+          };
+          const RFQ_STATUS_COLORS: Record<string, string> = {
+            admin_review: "bg-muted text-muted-foreground",
+            rfq_sent: "bg-blue-500/10 text-blue-600 border-blue-500/20",
+            vendor_selected: "bg-violet-500/10 text-violet-600 border-violet-500/20",
+            customer_quoted: "bg-amber-500/10 text-amber-600 border-amber-500/20",
+            customer_approved: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20",
+            customer_rejected: "bg-destructive/10 text-destructive border-destructive/20",
+            customer_revision_requested: "bg-orange-500/10 text-orange-600 border-orange-500/20",
+            closed: "bg-muted text-muted-foreground",
+          };
+          return (
+            <Card className="print:hidden border-teal-200 dark:border-teal-900">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-teal-700 dark:text-teal-400">
+                  <ArrowLeft className="h-4 w-4" />
+                  Dibuat dari RFQ Logistik
+                </CardTitle>
+                <p className="text-xs text-muted-foreground">
+                  Freight Shipment ini dibuat otomatis dari proses negosiasi RFQ berikut.
+                </p>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-wrap items-center gap-4 p-3 rounded-lg border border-teal-100 dark:border-teal-900 bg-teal-50/50 dark:bg-teal-950/20">
+                  <div className="flex-1 min-w-0 space-y-1">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">No. RFQ</p>
+                    <p className="font-mono font-semibold text-sm">{lrfq.rfqNumber}</p>
+                  </div>
+                  {lrfq.orderNumber && (
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <p className="text-xs text-muted-foreground uppercase tracking-wide">Order Logistik</p>
+                      <p className="font-mono text-sm">{lrfq.orderNumber}</p>
+                    </div>
+                  )}
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Status RFQ</p>
+                    <Badge variant="outline" className={RFQ_STATUS_COLORS[lrfq.rfqStatus] ?? "bg-muted text-muted-foreground"}>
+                      {RFQ_STATUS_LABELS[lrfq.rfqStatus] ?? lrfq.rfqStatus}
+                    </Badge>
+                  </div>
+                  <Link href={`/logistics/rfq/${lrfq.id}/comparison`}>
+                    <Button variant="outline" size="sm" className="border-teal-300 text-teal-700 hover:bg-teal-50 dark:border-teal-700 dark:text-teal-400">
+                      <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+                      Buka Perbandingan RFQ
+                    </Button>
+                  </Link>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })()}
 
         {/* Profitability Report Card */}
         <Card className="print:hidden">
@@ -1175,6 +1290,65 @@ export default function LogisticsFreightDetailPage() {
           </CardHeader>
           <CardContent>
             <FreightCustomsPanel shipmentId={id} />
+          </CardContent>
+        </Card>
+
+        {/* Audit Trail Section */}
+        <Card className="print:hidden">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <History className="h-4 w-4 text-primary" />
+              Riwayat Perubahan Status
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {auditLogs.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 py-8 text-muted-foreground">
+                <History className="h-8 w-8 opacity-25" />
+                <p className="text-sm">Belum ada riwayat perubahan status.</p>
+              </div>
+            ) : (
+              <ol className="relative border-l border-border ml-3 space-y-0">
+                {auditLogs.map((log, idx) => (
+                  <li key={log.id} className="ml-6 pb-6 last:pb-0">
+                    <span className={`absolute -left-3 flex h-6 w-6 items-center justify-center rounded-full ring-4 ring-background ${idx === 0 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+                      <History className="h-3 w-3" />
+                    </span>
+                    <div className="flex flex-col gap-1 pt-0.5">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {log.fromStatus ? (
+                          <>
+                            <Badge variant="outline" className={`text-[11px] px-1.5 py-0 ${STATUS_COLORS[log.fromStatus] ?? "bg-muted text-muted-foreground"}`}>
+                              {STATUS_LABELS[log.fromStatus] ?? log.fromStatus}
+                            </Badge>
+                            <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0" />
+                          </>
+                        ) : (
+                          <span className="text-xs text-muted-foreground italic mr-1">Dibuat</span>
+                        )}
+                        <Badge variant="outline" className={`text-[11px] px-1.5 py-0 ${STATUS_COLORS[log.toStatus] ?? "bg-muted text-muted-foreground"}`}>
+                          {STATUS_LABELS[log.toStatus] ?? log.toStatus}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground flex-wrap">
+                        <User className="h-3 w-3 shrink-0" />
+                        <span className="font-medium text-foreground">{log.changedBy}</span>
+                        <span className="text-muted-foreground/50">·</span>
+                        <span>
+                          {new Date(log.createdAt).toLocaleString("id-ID", {
+                            day: "numeric", month: "short", year: "numeric",
+                            hour: "2-digit", minute: "2-digit",
+                          })}
+                        </span>
+                      </div>
+                      {log.notes && (
+                        <p className="text-xs text-muted-foreground italic mt-0.5">{log.notes}</p>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            )}
           </CardContent>
         </Card>
 

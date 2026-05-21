@@ -18,10 +18,12 @@ import {
   useDeleteSalesDocument,
   useSalesDocumentAction,
   getListSalesDocumentsQueryKey,
+  getGetSalesDocumentQueryOptions,
 } from "@workspace/api-client-react";
 import type { SalesDocument } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { usePrefetchOnHover } from "@/hooks/use-prefetch-on-hover";
 import { Plus, Trash2, X, Search, RefreshCw, FileText } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 
@@ -88,6 +90,7 @@ export default function SalesDocumentsListPage({ kind = "quote" }: Props) {
   const isQuote = kind === "quote";
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
+  const prefetchHover = usePrefetchOnHover();
   const { toast } = useToast();
   const { t } = useLanguage();
 
@@ -357,6 +360,7 @@ export default function SalesDocumentsListPage({ kind = "quote" }: Props) {
                     className="cursor-pointer hover:bg-muted/40 transition-colors"
                     onClick={() => setQuickViewDoc(d)}
                     data-testid={`row-doc-${d.id}`}
+                    {...prefetchHover(getGetSalesDocumentQueryOptions(d.id))}
                   >
                     <TableCell className="pl-4" onClick={(e) => e.stopPropagation()}>
                       <Checkbox

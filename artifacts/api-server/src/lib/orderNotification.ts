@@ -2,8 +2,10 @@ import { db, suppliersTable, vendorCatalogItemsTable } from "@workspace/db";
 import { eq, and, ilike } from "drizzle-orm";
 import { sendWhatsApp } from "./fonnte";
 import { getAdminWa, getAdminGroupWa } from "./adminWa";
+import { getPreferredDomain } from "./domain";
 import { sendMail, isSmtpConfigured } from "./mailer";
 import { logger } from "./logger";
+import { generateShortLink } from "./shortLink";
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? "admcst001@gmail.com";
 
@@ -77,7 +79,7 @@ function formatJamOrder(jam: string): string {
 }
 
 function getApproveFormUrl(orderNumber: string): string {
-  const domain = (process.env.REPLIT_DOMAINS ?? "").split(",")[0].trim();
+  const domain = getPreferredDomain();
   if (!domain) return "";
   return `https://${domain}/approve/${orderNumber}`;
 }
@@ -94,6 +96,8 @@ function isFreightWithDimensions(shipmentType: string): boolean {
 
 function buildAdminWaMessage(order: LogisticOrderData): string {
   const approveUrl = getApproveFormUrl(order.orderNumber);
+  const domain = getPreferredDomain() || "cstlogistic.co.id";
+  const bizportalUrl = `https://${domain}/bizportal/logistics/orders/${order.id}`;
   const tgl = order.createdAt ? formatTanggal(order.createdAt) : "";
   const jam = order.jamOrder ?? (order.createdAt ? formatJam(order.createdAt) : "");
   return (
@@ -117,7 +121,9 @@ function buildAdminWaMessage(order: LogisticOrderData): string {
     (order.requiredDate ? `Tgl Kirim       : ${order.requiredDate}\n` : ``) +
     (order.notes ? `Catatan         : ${order.notes}\n` : ``) +
     `━━━━━━━━━━━━━━━━━━\n` +
-    (approveUrl ? `📋 *Lihat penawaran vendor:*\n${approveUrl}\n\n` : ``) +
+    `⚡ *Aksi Cepat Admin:*\n` +
+    (approveUrl ? `📋 Penawaran vendor → ${approveUrl}\n` : ``) +
+    `🖥️ Buka BizPortal → ${bizportalUrl}\n\n` +
     `_Dikirim: ${nowWIB()}_`
   );
 }
@@ -125,6 +131,7 @@ function buildAdminWaMessage(order: LogisticOrderData): string {
 function buildVendorWaMessage(order: LogisticOrderData, vendorName: string): string {
   const tgl = order.createdAt ? formatTanggal(order.createdAt) : "";
   const jam = order.jamOrder ?? (order.createdAt ? formatJam(order.createdAt) : "");
+  const responseUrl = getVendorResponseUrl(order.orderNumber);
   return (
     `📦 *PERMINTAAN ORDER BARU — CST LOGISTICS*\n` +
     `━━━━━━━━━━━━━━━━━━━━\n` +
@@ -143,29 +150,30 @@ function buildVendorWaMessage(order: LogisticOrderData, vendorName: string): str
     `Layanan         :\n${order.serviceList}\n` +
     (order.notes ? `Catatan         : ${order.notes}\n` : ``) +
     `━━━━━━━━━━━━━━━━━━━━\n` +
-    `✏️ *DRAFT BALASAN — tinggal copy, isi harga, lalu kirim:*\n\n` +
-    `📌 *Kirim penawaran harga:*\n` +
-    `\`${order.orderNumber} [HARGA] [TGL_PICKUP] [TGL_KIRIM]\`\n\n` +
-    `_Contoh:_\n` +
-    `\`${order.orderNumber} 5500000 20-Mei 25-Mei\`\n\n` +
-    `📌 *Terima pesanan (tanpa harga dulu):*\n` +
-    `\`TERIMA ${order.orderNumber}\`\n\n` +
-    `📌 *Tolak pesanan:*\n` +
-    `\`TOLAK ${order.orderNumber}\`\n\n` +
-    `_Balas pesan ini langsung dengan salah satu format di atas._\n` +
-    `Terima kasih 🙏\n\n` +
+    `🔗 *Aksi Cepat (klik link):*\n` +
+    `✅ Terima  → ${responseUrl}?action=accept\n` +
+    `❌ Tolak   → ${responseUrl}?action=reject\n` +
+    `💬 Form    → ${responseUrl}\n\n` +
+    `✏️ *Atau balas WA dengan format:*\n` +
+    `📌 Harga: \`${order.orderNumber} [HARGA] [TGL_PICKUP]\`\n` +
+    `📌 Terima: \`TERIMA ${order.orderNumber}\`\n` +
+    `📌 Tolak:  \`TOLAK ${order.orderNumber}\`\n\n` +
+    `Terima kasih 🙏\n` +
     `_Dikirim: ${nowWIB()}_`
   );
 }
 
 function getVendorResponseUrl(orderNumber: string): string {
-  const domain = (process.env.REPLIT_DOMAINS ?? "").split(",")[0].trim() || "cstlogistic.co.id";
-  return `https://${domain}/vendor-response/${orderNumber}`;
+  const domain = getPreferredDomain() || "cstlogistic.co.id";
+  const { signVendorResponseToken } = require("./vendorResponseToken") as typeof import("./vendorResponseToken");
+  const token = signVendorResponseToken(orderNumber);
+  return `https://${domain}/vendor-response/${orderNumber}?t=${token}`;
 }
 
 function buildTruckingVendorWaMessage(
   order: LogisticOrderData,
   vendorName: string,
+  responseUrl: string,
   contractRate?: number | null,
 ): string {
   const pickupDate = order.requiredDate ? formatISODate(order.requiredDate) : "";
@@ -181,8 +189,6 @@ function buildTruckingVendorWaMessage(
   const contractRateStr = contractRate
     ? `Rp ${Math.round(contractRate).toLocaleString("id-ID")}`
     : null;
-
-  const responseUrl = getVendorResponseUrl(order.orderNumber);
 
   return (
     `🚛 *TRUCKING REQUEST — CST LOGISTICS*\n` +
@@ -205,8 +211,7 @@ function buildTruckingVendorWaMessage(
 }
 
 function getOrderUrl(orderId: number): string {
-  const domains = (process.env.REPLIT_DOMAINS ?? "").split(",").map((d) => d.trim()).filter(Boolean);
-  const domain = domains[0] ?? "cstlogistic.co.id";
+  const domain = getPreferredDomain() || "cstlogistic.co.id";
   return `https://${domain}/logistic/orders/${orderId}`;
 }
 
@@ -360,7 +365,7 @@ async function notifyAdmin(order: LogisticOrderData): Promise<void> {
         "Order Logistik Baru Masuk",
         `Order baru telah diterima dari <strong>${order.customerName}</strong>. Silakan login ke sistem untuk memproses.`,
         rows,
-        'Login ke sistem: <a href="https://cstlogistic.co.id/logistic-order">https://cstlogistic.co.id/logistic-order</a>'
+        (() => { const d = getPreferredDomain() || "cstlogistic.co.id"; return `Login ke sistem: <a href="https://${d}/logistic-order">https://${d}/logistic-order</a>`; })()
       ),
       text:
         `ORDER BARU: ${order.orderNumber}\n` +
@@ -439,8 +444,12 @@ async function notifyVendors(order: LogisticOrderData): Promise<void> {
     }
 
     if (vendor.phone) {
+      const longResponseUrl = getVendorResponseUrl(order.orderNumber);
+      const responseUrl = isTrucking
+        ? await generateShortLink(longResponseUrl, { context: "vendor_response", refType: "order", refId: order.orderNumber })
+        : longResponseUrl;
       const msg = isTrucking
-        ? buildTruckingVendorWaMessage(order, vendor.name, contractRate)
+        ? buildTruckingVendorWaMessage(order, vendor.name, responseUrl, contractRate)
         : buildVendorWaMessage(order, vendor.name);
       sendWhatsApp(vendor.phone, msg).catch((err: unknown) =>
         logger.error({ err, vendorId: vendor.id }, "WA vendor notification failed")

@@ -60,18 +60,18 @@ function DocUploader({
   async function handleFile(file: File) {
     onChange({ label, name: file.name, objectPath: "", uploading: true });
     try {
-      const tokenRes = await fetch("/api/portal/order-upload-url", {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch("/api/portal/order-upload", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-        body: JSON.stringify({ contentType: file.type || "application/pdf" }),
+        headers: { ...getAuthHeaders() },
+        body: form,
       });
-      if (!tokenRes.ok) throw new Error("Gagal mendapatkan URL upload");
-      const { uploadURL, objectPath } = await tokenRes.json() as { uploadURL: string; objectPath: string };
-      const putRes = await fetch(uploadURL, {
-        method: "PUT", body: file,
-        headers: { "Content-Type": file.type || "application/pdf" },
-      });
-      if (!putRes.ok) throw new Error("Upload gagal");
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { message?: string };
+        throw new Error(body.message ?? "Upload gagal");
+      }
+      const { objectPath } = await res.json() as { objectPath: string };
       onChange({ label, name: file.name, objectPath, uploading: false });
     } catch (err) {
       onChange({ label, name: file.name, objectPath: "", uploading: false, error: String(err) });
@@ -420,20 +420,44 @@ export default function Pabean() {
 
   /* ── SECTION: Header ──────────────────────────────────────────── */
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Top bar */}
-      <div className="bg-primary text-primary-foreground py-4 px-4">
-        <div className="max-w-2xl mx-auto flex items-center gap-3">
+    <div className="min-h-screen" style={{ background: "linear-gradient(160deg,#F7F9FC 0%,#F0F4F9 100%)" }}>
+      {/* Top bar — premium */}
+      <div
+        className="sticky top-0 z-50"
+        style={{
+          background: "linear-gradient(135deg, #0A2444 0%, #0B3D6B 45%, #0D5FA0 100%)",
+          borderBottom: "1px solid rgba(255,255,255,0.10)",
+          boxShadow: "0 2px 20px rgba(10,36,68,0.28), 0 1px 4px rgba(10,36,68,0.18)",
+        }}
+      >
+        {/* Top accent line */}
+        <div className="h-[2.5px] w-full" style={{ background: "linear-gradient(90deg, #F59E0B 0%, #FBBF24 40%, rgba(251,191,36,0.3) 80%, transparent 100%)" }} />
+        <div className="max-w-2xl mx-auto px-4 py-3.5 flex items-center gap-3">
           <button
             onClick={() => setLocation("/jasa")}
-            className="flex items-center gap-1.5 text-sm text-primary-foreground/70 hover:text-primary-foreground transition-colors"
+            className="flex items-center gap-1.5 text-sm font-medium transition-all duration-150 rounded-lg px-2.5 py-1.5"
+            style={{
+              color: "rgba(255,255,255,0.72)",
+              background: "rgba(255,255,255,0.06)",
+              border: "1px solid rgba(255,255,255,0.10)",
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = "rgba(255,255,255,0.96)"; (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.12)"; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "rgba(255,255,255,0.72)"; (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.06)"; }}
           >
             <ArrowLeft className="h-4 w-4" /> Kembali
           </button>
-          <div className="w-px h-4 bg-primary-foreground/30" />
-          <div className="flex items-center gap-2">
-            <FileCheck className="h-5 w-5 text-orange-300" />
-            <span className="font-semibold text-sm">Pengurusan Pabean / PPJK</span>
+          <div className="w-px h-5" style={{ background: "rgba(255,255,255,0.18)" }} />
+          <div className="flex items-center gap-2.5 flex-1">
+            <div
+              className="flex items-center justify-center w-8 h-8 rounded-lg flex-shrink-0"
+              style={{ background: "linear-gradient(135deg, rgba(245,158,11,0.28) 0%, rgba(245,158,11,0.12) 100%)", border: "1px solid rgba(245,158,11,0.40)" }}
+            >
+              <FileCheck className="h-4.5 w-4.5" style={{ color: "#FBBF24" }} />
+            </div>
+            <div>
+              <p className="font-bold text-sm leading-tight" style={{ color: "rgba(255,255,255,0.97)" }}>Pengurusan Pabean / PPJK</p>
+              <p className="text-[10px] font-medium" style={{ color: "rgba(255,255,255,0.48)", letterSpacing: "0.05em" }}>CST Logistics · Layanan Kepabeanan</p>
+            </div>
           </div>
         </div>
       </div>

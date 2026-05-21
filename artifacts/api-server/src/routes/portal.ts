@@ -1,15 +1,19 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
-import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, portalContentTable, accountingSettingsTable, salesDocumentsTable, salesDocumentLinesTable, customersTable, logisticOrdersTable, suppliersTable, logisticOrderRfqsTable, logisticOrderQuotesTable } from "@workspace/db";
-import { eq, inArray, and, sql, desc } from "drizzle-orm";
+import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, portalContentTable, accountingSettingsTable, salesDocumentsTable, salesDocumentLinesTable, customersTable, logisticOrdersTable, suppliersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, quoteRequestsTable, userProfilesTable, identityDocumentsTable, ocrResultsTable, vendorProfilesTable, driverProfilesTable, employeeProfilesTable, onboardingApprovalsTable, waOtpCodesTable } from "@workspace/db";
+import { eq, inArray, and, sql, desc, gte, lte, ilike, or } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { sendWhatsApp } from "../lib/fonnte";
 import { getAdminWa } from "../lib/adminWa.js";
 import { sendMail, isSmtpConfigured } from "../lib/mailer";
 import { requirePortalAuth, requirePortalAdmin, type PortalAuthReq } from "../lib/supabaseAuth";
+import { requireClerkUser } from "../lib/requireAdmin";
 import { broadcastToAdmins } from "../lib/sseManager";
 import multer from "multer";
 import { randomUUID } from "crypto";
 import { compressImageBuffer } from "../lib/imageCompress.js";
+import bcrypt from "bcryptjs";
+import { signPortalJwt } from "../lib/portalJwt.js";
+import OpenAI from "openai";
 
 const router = Router();
 
@@ -85,22 +89,15 @@ router.get("/products", async (_req, res) => {
   return res.json(await listByType("barang"));
 });
 
-// ── Admin jasa management (protected by X-Admin-Password header) ──────────
-const LOGISTIC_ADMIN_PASSWORD = process.env.LOGISTIC_ADMIN_PASSWORD ?? "admin123";
-
-function requireLogisticAdmin(req: Request, res: Response, next: NextFunction) {
-  const pw = req.headers["x-admin-password"];
-  if (!pw || pw !== LOGISTIC_ADMIN_PASSWORD) {
-    res.status(403).json({ message: "Akses admin diperlukan" });
-    return;
-  }
-  next();
-}
-
-// ── Routes khusus untuk /logistic-admin (auth: X-Admin-Password) ──────────
+// ── Routes khusus untuk /logistic-admin (auth: portal admin JWT) ─────────────
+// Security: these routes previously checked x-admin-password against a hardcoded
+// fallback of "admin123" which was also embedded in the customer portal JS bundle.
+// All /logistic-admin/* routes now require requirePortalAdmin — a Supabase Bearer
+// token that belongs to an email on the server-side PORTAL_ADMIN_EMAILS allowlist.
+// No shared secret is shipped to the browser.
 
 // GET /api/portal/logistic-admin/services — semua jasa (incl. inactive)
-router.get("/logistic-admin/services", requireLogisticAdmin, async (_req, res) => {
+router.get("/logistic-admin/services", requirePortalAdmin, async (_req, res) => {
   const rows = await db
     .select()
     .from(productsTable)
@@ -119,7 +116,7 @@ router.get("/logistic-admin/services", requireLogisticAdmin, async (_req, res) =
 });
 
 // POST /api/portal/logistic-admin/services — tambah jasa baru
-router.post("/logistic-admin/services", requireLogisticAdmin, async (req, res) => {
+router.post("/logistic-admin/services", requirePortalAdmin, async (req, res) => {
   const { name, sku, price, subcategory, unit, description } = req.body ?? {};
   if (!name || !sku) return res.status(400).json({ message: "Nama dan SKU wajib diisi" });
   const [inserted] = await db.insert(productsTable).values({
@@ -138,7 +135,7 @@ router.post("/logistic-admin/services", requireLogisticAdmin, async (req, res) =
 });
 
 // PUT /api/portal/logistic-admin/services/:id
-router.put("/logistic-admin/services/:id", requireLogisticAdmin, async (req, res) => {
+router.put("/logistic-admin/services/:id", requirePortalAdmin, async (req, res) => {
   const id = Number(req.params.id);
   const { name, price, subcategory, unit, description, isActive } = req.body ?? {};
   const updates: Record<string, unknown> = {};
@@ -155,21 +152,380 @@ router.put("/logistic-admin/services/:id", requireLogisticAdmin, async (req, res
 });
 
 // DELETE /api/portal/logistic-admin/services/:id
-router.delete("/logistic-admin/services/:id", requireLogisticAdmin, async (req, res) => {
+router.delete("/logistic-admin/services/:id", requirePortalAdmin, async (req, res) => {
   const id = Number(req.params.id);
   await db.delete(productsTable).where(eq(productsTable.id, id));
   return res.json({ ok: true });
 });
 
 // Emails yang otomatis mendapat role admin saat login (comma-separated)
-const PORTAL_ADMIN_EMAILS = (process.env.PORTAL_ADMIN_EMAILS ?? "")
-  .split(",")
+const PORTAL_ADMIN_EMAILS = [
+  "admcst001@gmail.com",
+  "wangsamasindo@gmail.com",
+  ...(process.env.PORTAL_ADMIN_EMAILS ?? "").split(","),
+]
   .map((e) => e.trim().toLowerCase())
   .filter(Boolean);
 
-// POST /api/portal/auth/login — deprecated, login sekarang via Supabase Auth langsung
-router.post("/auth/login", (_req, res) => {
-  res.status(410).json({ message: "Login sekarang menggunakan Supabase Auth. Gunakan /api/portal/auth/me setelah login via Supabase." });
+// POST /api/portal/auth/login — email/password login (non-Supabase)
+router.post("/auth/login", async (req, res) => {
+  const { email, password } = req.body ?? {};
+  if (!email || !password) {
+    return res.status(400).json({ message: "Email dan password diperlukan." });
+  }
+  const [customer] = await db
+    .select()
+    .from(portalCustomersTable)
+    .where(eq(portalCustomersTable.email, String(email).toLowerCase().trim()));
+  if (!customer || !customer.passwordHash) {
+    return res.status(401).json({ message: "Email atau password salah." });
+  }
+  const valid = await bcrypt.compare(String(password), customer.passwordHash);
+  if (!valid) {
+    return res.status(401).json({ message: "Email atau password salah." });
+  }
+  const token = await signPortalJwt({
+    sub: String(customer.id),
+    email: customer.email,
+    customerId: customer.id,
+    role: customer.role,
+  });
+  return res.json({
+    token,
+    user: {
+      id: customer.id,
+      name: customer.name,
+      email: customer.email,
+      phone: customer.phone,
+      company: customer.company,
+      role: customer.role,
+    },
+  });
+});
+
+// ─── WA OTP REGISTRATION ──────────────────────────────────────────────
+function normalizePhoneID(raw: string): string {
+  let p = String(raw).replace(/[^\d+]/g, "");
+  if (p.startsWith("+")) p = p.slice(1);
+  if (p.startsWith("0")) p = "62" + p.slice(1);
+  if (!p.startsWith("62")) p = "62" + p;
+  return p;
+}
+
+function genOtp(): string {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+// POST /api/portal/auth/wa-otp/send — kirim OTP via WhatsApp
+router.post("/auth/wa-otp/send", async (req, res) => {
+  if (!process.env.FONNTE_TOKEN) {
+    return res.status(503).json({ message: "Layanan OTP WhatsApp belum dikonfigurasi. Hubungi admin." });
+  }
+  const { phone } = req.body ?? {};
+  if (!phone) return res.status(400).json({ message: "Nomor HP diperlukan." });
+  const normalized = normalizePhoneID(String(phone));
+  if (normalized.length < 10) return res.status(400).json({ message: "Nomor HP tidak valid." });
+
+  // Rate limit: max 3 OTP per phone in last 10 minutes
+  const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000);
+  const recent = await db
+    .select({ id: waOtpCodesTable.id })
+    .from(waOtpCodesTable)
+    .where(and(eq(waOtpCodesTable.phone, normalized), gte(waOtpCodesTable.createdAt, tenMinAgo)));
+  if (recent.length >= 3) {
+    return res.status(429).json({ message: "Terlalu banyak permintaan OTP. Coba lagi nanti." });
+  }
+
+  const code = genOtp();
+  const codeHash = await bcrypt.hash(code, 10);
+  const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 menit
+
+  await db.insert(waOtpCodesTable).values({
+    phone: normalized,
+    codeHash,
+    purpose: "register",
+    expiresAt,
+  });
+
+  try {
+    await sendWhatsApp(
+      normalized,
+      `*Kode Verifikasi BizPortal*\n\nKode OTP Anda: *${code}*\n\nBerlaku 5 menit. Jangan bagikan kode ini ke siapapun.`
+    );
+  } catch (err) {
+    req.log?.error({ err }, "wa-otp send failed");
+    return res.status(500).json({ message: "Gagal mengirim OTP via WhatsApp." });
+  }
+
+  return res.json({ message: "OTP dikirim ke WhatsApp.", phone: normalized });
+});
+
+// POST /api/portal/auth/wa-otp/verify — verifikasi OTP, return verifyToken
+router.post("/auth/wa-otp/verify", async (req, res) => {
+  const { phone, code } = req.body ?? {};
+  if (!phone || !code) return res.status(400).json({ message: "Nomor HP dan kode diperlukan." });
+  const normalized = normalizePhoneID(String(phone));
+
+  const [otp] = await db
+    .select()
+    .from(waOtpCodesTable)
+    .where(and(eq(waOtpCodesTable.phone, normalized), eq(waOtpCodesTable.verified, false)))
+    .orderBy(desc(waOtpCodesTable.createdAt))
+    .limit(1);
+
+  if (!otp) return res.status(400).json({ message: "OTP tidak ditemukan. Minta OTP baru." });
+  if (otp.expiresAt < new Date()) return res.status(400).json({ message: "OTP kadaluarsa. Minta OTP baru." });
+  if (otp.attempts >= 5) return res.status(429).json({ message: "Terlalu banyak percobaan. Minta OTP baru." });
+
+  const valid = await bcrypt.compare(String(code), otp.codeHash);
+  if (!valid) {
+    await db.update(waOtpCodesTable).set({ attempts: otp.attempts + 1 }).where(eq(waOtpCodesTable.id, otp.id));
+    return res.status(400).json({ message: "Kode OTP salah." });
+  }
+
+  const verifyToken = randomUUID();
+  await db
+    .update(waOtpCodesTable)
+    .set({ verified: true, verifyToken, expiresAt: new Date(Date.now() + 15 * 60 * 1000) })
+    .where(eq(waOtpCodesTable.id, otp.id));
+
+  return res.json({ verifyToken, phone: normalized });
+});
+
+// POST /api/portal/auth/wa-register — lengkapi profil & buat akun
+router.post("/auth/wa-register", async (req, res) => {
+  const { verifyToken, name, role: requestedRole, company, serviceIds, email } = req.body ?? {};
+  if (!verifyToken || !name) return res.status(400).json({ message: "Token verifikasi dan nama diperlukan." });
+
+  const [otp] = await db
+    .select()
+    .from(waOtpCodesTable)
+    .where(and(eq(waOtpCodesTable.verifyToken, String(verifyToken)), eq(waOtpCodesTable.verified, true)))
+    .limit(1);
+
+  if (!otp) return res.status(400).json({ message: "Token verifikasi tidak valid." });
+  if (otp.expiresAt < new Date()) return res.status(400).json({ message: "Token kadaluarsa. Verifikasi ulang OTP." });
+
+  const phone = otp.phone;
+  const ALLOWED_ROLES = ["customer", "vendor"];
+  const role = ALLOWED_ROLES.includes(String(requestedRole)) ? String(requestedRole) : "customer";
+
+  // Cek apakah phone sudah terdaftar
+  const [existingByPhone] = await db
+    .select()
+    .from(portalCustomersTable)
+    .where(eq(portalCustomersTable.phone, phone))
+    .limit(1);
+  if (existingByPhone) {
+    return res.status(409).json({ message: "Nomor HP sudah terdaftar. Silakan login." });
+  }
+
+  const finalEmail = email ? String(email).toLowerCase().trim() : `${phone}@wa.local`;
+
+  // Cek email duplicate jika user provide
+  if (email) {
+    const [existingEmail] = await db
+      .select({ id: portalCustomersTable.id })
+      .from(portalCustomersTable)
+      .where(eq(portalCustomersTable.email, finalEmail))
+      .limit(1);
+    if (existingEmail) return res.status(409).json({ message: "Email sudah terdaftar." });
+  }
+
+  const [created] = await db
+    .insert(portalCustomersTable)
+    .values({
+      name: String(name),
+      email: finalEmail,
+      passwordHash: "",
+      phone,
+      company: company ? String(company) : null,
+      role,
+    })
+    .returning();
+
+  if (Array.isArray(serviceIds) && serviceIds.length > 0) {
+    await db
+      .insert(portalCustomerServicesTable)
+      .values((serviceIds as number[]).map((sid) => ({ customerId: created.id, serviceId: Number(sid) })))
+      .onConflictDoNothing();
+  }
+
+  // Invalidate token
+  await db.update(waOtpCodesTable).set({ verifyToken: null }).where(eq(waOtpCodesTable.id, otp.id));
+
+  const token = await signPortalJwt({
+    sub: String(created.id),
+    email: created.email,
+    customerId: created.id,
+    role: created.role,
+  });
+
+  return res.status(201).json({
+    token,
+    user: {
+      id: created.id,
+      name: created.name,
+      email: created.email,
+      phone: created.phone,
+      company: created.company,
+      role: created.role,
+    },
+  });
+});
+
+// POST /api/portal/auth/wa-login — login pakai phone + OTP
+router.post("/auth/wa-login", async (req, res) => {
+  const { verifyToken } = req.body ?? {};
+  if (!verifyToken) return res.status(400).json({ message: "Token verifikasi diperlukan." });
+
+  const [otp] = await db
+    .select()
+    .from(waOtpCodesTable)
+    .where(and(eq(waOtpCodesTable.verifyToken, String(verifyToken)), eq(waOtpCodesTable.verified, true)))
+    .limit(1);
+
+  if (!otp) return res.status(400).json({ message: "Token verifikasi tidak valid." });
+  if (otp.expiresAt < new Date()) return res.status(400).json({ message: "Token kadaluarsa." });
+
+  const matches = await db
+    .select()
+    .from(portalCustomersTable)
+    .where(eq(portalCustomersTable.phone, otp.phone))
+    .limit(2);
+
+  if (matches.length === 0) return res.status(404).json({ message: "Nomor HP belum terdaftar.", notRegistered: true, phone: otp.phone });
+  if (matches.length > 1) {
+    req.log?.error({ phone: otp.phone }, "wa-login: multiple accounts share phone — refusing login");
+    return res.status(409).json({ message: "Akun ambigu untuk nomor ini. Hubungi admin." });
+  }
+  const user = matches[0];
+
+  await db.update(waOtpCodesTable).set({ verifyToken: null }).where(eq(waOtpCodesTable.id, otp.id));
+
+  const token = await signPortalJwt({
+    sub: String(user.id),
+    email: user.email,
+    customerId: user.id,
+    role: user.role,
+  });
+
+  return res.json({
+    token,
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      company: user.company,
+      role: user.role,
+    },
+  });
+});
+
+// POST /api/portal/auth/signup — standalone register (non-Supabase)
+router.post("/auth/signup", async (req, res) => {
+  const { name, email, password, phone, company, role: requestedRole, serviceIds } = req.body ?? {};
+  if (!name || !email || !password) {
+    return res.status(400).json({ message: "Nama, email, dan password diperlukan." });
+  }
+  const emailLower = String(email).toLowerCase().trim();
+  const [existing] = await db
+    .select({ id: portalCustomersTable.id })
+    .from(portalCustomersTable)
+    .where(eq(portalCustomersTable.email, emailLower));
+  if (existing) {
+    return res.status(409).json({ message: "Email sudah terdaftar." });
+  }
+  const normalizedPhone = phone ? normalizePhoneID(String(phone)) : null;
+  if (normalizedPhone) {
+    const [phoneExisting] = await db
+      .select({ id: portalCustomersTable.id })
+      .from(portalCustomersTable)
+      .where(eq(portalCustomersTable.phone, normalizedPhone));
+    if (phoneExisting) return res.status(409).json({ message: "Nomor HP sudah terdaftar." });
+  }
+  const ALLOWED_ROLES = ["customer", "vendor"];
+  const role = ALLOWED_ROLES.includes(String(requestedRole)) ? String(requestedRole) : "customer";
+  const passwordHash = await bcrypt.hash(String(password), 12);
+  const [created] = await db
+    .insert(portalCustomersTable)
+    .values({ name: String(name), email: emailLower, passwordHash, phone: normalizedPhone, company: company ? String(company) : null, role })
+    .returning();
+  if (Array.isArray(serviceIds) && serviceIds.length > 0) {
+    await db.insert(portalCustomerServicesTable).values(
+      (serviceIds as number[]).map((sid) => ({ customerId: created.id, serviceId: Number(sid) }))
+    ).onConflictDoNothing();
+  }
+  const token = await signPortalJwt({
+    sub: String(created.id),
+    email: created.email,
+    customerId: created.id,
+    role: created.role,
+  });
+  return res.status(201).json({
+    token,
+    user: {
+      id: created.id,
+      name: created.name,
+      email: created.email,
+      phone: created.phone,
+      company: created.company,
+      role: created.role,
+    },
+  });
+});
+
+// POST /api/portal/auth/dev-login — hanya tersedia di non-production (dev & staging)
+// Membuat/menemukan dev user dan mengembalikan signed dev token untuk testing tanpa Supabase.
+router.post("/auth/dev-login", async (req, res) => {
+  if (process.env.NODE_ENV === "production") {
+    res.status(404).json({ message: "Not found" });
+    return;
+  }
+  const { signDevToken } = await import("../lib/supabaseAuth.js");
+  const { role } = req.body ?? {};
+  const allowedRoles = ["customer", "admin", "vendor"] as const;
+  type DevRole = typeof allowedRoles[number];
+  const safeRole: DevRole = allowedRoles.includes(role) ? role : "customer";
+
+  const devEmail = `dev-${safeRole}@dev.local`;
+  const devName = `Dev ${safeRole.charAt(0).toUpperCase() + safeRole.slice(1)}`;
+
+  let [customer] = await db
+    .select()
+    .from(portalCustomersTable)
+    .where(eq(portalCustomersTable.email, devEmail));
+
+  if (!customer) {
+    [customer] = await db
+      .insert(portalCustomersTable)
+      .values({ name: devName, email: devEmail, passwordHash: "", role: safeRole })
+      .returning();
+  } else if (customer.role !== safeRole) {
+    [customer] = await db
+      .update(portalCustomersTable)
+      .set({ role: safeRole })
+      .where(eq(portalCustomersTable.id, customer.id))
+      .returning();
+  }
+
+  const token = signDevToken({
+    id: customer.id,
+    email: customer.email,
+    role: customer.role,
+    exp: Date.now() + 1000 * 60 * 60 * 24 * 7, // 7 hari
+  });
+
+  return res.json({
+    token,
+    profile: {
+      id: customer.id,
+      name: customer.name,
+      email: customer.email,
+      role: customer.role,
+    },
+  });
 });
 
 // POST /api/portal/auth/register — sync profil ke DB setelah supabase.auth.signUp
@@ -181,7 +537,8 @@ router.post("/auth/register", requirePortalAuth, async (req, res) => {
   if (name) patch.name = String(name);
   if (phone !== undefined) patch.phone = phone ? String(phone) : null;
   if (company !== undefined) patch.company = company ? String(company) : null;
-  if (requestedRole && requestedRole !== "admin") patch.role = String(requestedRole);
+  const ALLOWED_ROLES = ["customer", "vendor"];
+  if (requestedRole && ALLOWED_ROLES.includes(String(requestedRole))) patch.role = String(requestedRole);
 
   if (Object.keys(patch).length > 0) {
     await db.update(portalCustomersTable).set(patch).where(eq(portalCustomersTable.id, customerId));
@@ -206,6 +563,80 @@ router.post("/auth/register", requirePortalAuth, async (req, res) => {
     company: customer!.company,
     role: customer!.role,
     serviceIds: finalServiceIds,
+  });
+});
+
+// POST /api/portal/auth/otp/request — kirim kode OTP ke email (passwordless login)
+router.post("/auth/otp/request", async (req, res) => {
+  const { email } = req.body ?? {};
+  if (!email) return res.status(400).json({ message: "Email diperlukan." });
+  const emailLower = String(email).toLowerCase().trim();
+
+  let [customer] = await db.select().from(portalCustomersTable).where(eq(portalCustomersTable.email, emailLower));
+  if (!customer) {
+    const [created] = await db.insert(portalCustomersTable).values({
+      name: emailLower.split("@")[0],
+      email: emailLower,
+      passwordHash: "",
+      role: "customer",
+    }).returning();
+    customer = created;
+  }
+
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  const expiry = new Date(Date.now() + 10 * 60 * 1000);
+  await db.update(portalCustomersTable)
+    .set({ resetPasswordToken: `otp:${code}`, resetPasswordExpiry: expiry })
+    .where(eq(portalCustomersTable.id, customer.id));
+
+  const smtpOk = isSmtpConfigured();
+  if (smtpOk) {
+    try {
+      await sendMail({
+        to: emailLower,
+        subject: "Kode Login CST Portal",
+        html: `<p>Kode login Anda: <strong style="font-size:24px;letter-spacing:4px">${code}</strong></p><p>Berlaku 10 menit.</p>`,
+        text: `Kode login Anda: ${code}\nBerlaku 10 menit.`,
+      });
+    } catch (err) {
+      req.log?.warn({ err }, "OTP email failed");
+    }
+  }
+
+  const isDev = process.env.NODE_ENV !== "production";
+  return res.json({
+    sent: smtpOk,
+    ...(isDev ? { _dev_code: code } : {}),
+    message: smtpOk ? "Kode OTP telah dikirim ke email Anda." : `Kode OTP: ${code} (SMTP tidak dikonfigurasi)`,
+  });
+});
+
+// POST /api/portal/auth/otp/verify — verifikasi kode OTP dan login
+router.post("/auth/otp/verify", async (req, res) => {
+  const { email, code } = req.body ?? {};
+  if (!email || !code) return res.status(400).json({ message: "Email dan kode diperlukan." });
+  const emailLower = String(email).toLowerCase().trim();
+
+  const [customer] = await db.select().from(portalCustomersTable).where(eq(portalCustomersTable.email, emailLower));
+  if (!customer) return res.status(401).json({ message: "Email tidak terdaftar." });
+
+  const stored = customer.resetPasswordToken;
+  const expiry = customer.resetPasswordExpiry;
+  if (!stored?.startsWith("otp:") || stored.slice(4) !== String(code).trim()) {
+    return res.status(401).json({ message: "Kode OTP salah." });
+  }
+  if (!expiry || expiry < new Date()) {
+    return res.status(401).json({ message: "Kode OTP sudah kadaluarsa." });
+  }
+
+  await db.update(portalCustomersTable)
+    .set({ resetPasswordToken: null, resetPasswordExpiry: null })
+    .where(eq(portalCustomersTable.id, customer.id));
+
+  const token = await signPortalJwt({ sub: String(customer.id), email: customer.email, customerId: customer.id, role: customer.role });
+  return res.json({
+    token,
+    user: { id: customer.id, name: customer.name, email: customer.email, phone: customer.phone, company: customer.company, role: customer.role },
   });
 });
 
@@ -466,12 +897,13 @@ function sanitizeText(val: unknown): string | null {
 router.put("/admin/services/:id", requirePortalAdmin, async (req, res) => {
   const id = parseInt(String(req.params.id), 10);
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
-  const { name, description, price, imageUrl } = req.body ?? {};
+  const { name, description, price, imageUrl, mediaItems } = req.body ?? {};
   const updates: Record<string, unknown> = {};
   if (name !== undefined) updates.name = String(name);
   if (description !== undefined) updates.description = sanitizeText(description);
   if (price !== undefined) updates.price = parseFloat(String(price)).toFixed(2);
   if (imageUrl !== undefined) updates.imageUrl = sanitizeText(imageUrl);
+  if (mediaItems !== undefined) updates.mediaItems = JSON.stringify(Array.isArray(mediaItems) ? mediaItems : []);
   if (Object.keys(updates).length === 0) return res.status(400).json({ message: "Tidak ada field yang diubah" });
   const [updated] = await db.update(productsTable).set(updates).where(eq(productsTable.id, id)).returning();
   return res.json(updated);
@@ -541,9 +973,18 @@ router.get("/admin/products", requirePortalAdmin, async (_req, res) => {
   }));
 });
 
+// GET /api/portal/admin/product-categories
+router.get("/admin/product-categories", requirePortalAdmin, async (_req, res) => {
+  const cats = await db
+    .select({ id: productCategoriesTable.id, name: productCategoriesTable.name })
+    .from(productCategoriesTable)
+    .orderBy(productCategoriesTable.name);
+  return res.json(cats);
+});
+
 // POST /api/portal/admin/products  — create a new product (admin only)
 router.post("/admin/products", requirePortalAdmin, async (req, res) => {
-  const { name, description, price, imageUrl, mediaItems, unit, unitOptions } = req.body ?? {};
+  const { name, description, price, imageUrl, mediaItems, unit, unitOptions, categories } = req.body ?? {};
   if (!name || typeof name !== "string" || !name.trim()) {
     return res.status(400).json({ message: "Nama produk harus diisi" });
   }
@@ -554,21 +995,31 @@ router.post("/admin/products", requirePortalAdmin, async (req, res) => {
     .from(productsTable);
   const nextId = (Number(maxRow?.maxId ?? 0) + 1);
   const autoSku = `PRD-${year}-${String(nextId).padStart(4, "0")}`;
-  const [created] = await db
-    .insert(productsTable)
-    .values({
-      name: name.trim(),
-      sku: autoSku,
-      description: description ? String(description).trim() : null,
-      price: parsedPrice.toFixed(2),
-      imageUrl: imageUrl ? String(imageUrl).trim() : null,
-      mediaItems: mediaItems ? JSON.stringify(mediaItems) : "[]",
-      itemType: "barang",
-      unit: unit ? String(unit).trim() : "pcs",
-      unitOptions: Array.isArray(unitOptions) ? JSON.stringify(unitOptions) : (unitOptions ? JSON.stringify(String(unitOptions).split(",").map((s: string) => s.trim()).filter(Boolean)) : "[]"),
-      isActive: true,
-    })
-    .returning();
+  const catNames: string[] = Array.isArray(categories) ? categories.map(String).filter(Boolean) : [];
+  const created = await db.transaction(async (tx) => {
+    const [p] = await tx
+      .insert(productsTable)
+      .values({
+        name: name.trim(),
+        sku: autoSku,
+        description: description ? String(description).trim() : null,
+        price: parsedPrice.toFixed(2),
+        imageUrl: imageUrl ? String(imageUrl).trim() : null,
+        mediaItems: mediaItems ? JSON.stringify(mediaItems) : "[]",
+        itemType: "barang",
+        unit: unit ? String(unit).trim() : "pcs",
+        unitOptions: Array.isArray(unitOptions) ? JSON.stringify(unitOptions) : (unitOptions ? JSON.stringify(String(unitOptions).split(",").map((s: string) => s.trim()).filter(Boolean)) : "[]"),
+        isActive: true,
+      })
+      .returning();
+    if (catNames.length > 0) {
+      const validCats = await tx.select().from(productCategoriesTable).where(inArray(productCategoriesTable.name, catNames));
+      if (validCats.length > 0) {
+        await tx.insert(productCategoryMapTable).values(validCats.map((c) => ({ productId: p.id, categoryId: c.id })));
+      }
+    }
+    return { ...p, categories: catNames };
+  });
   return res.status(201).json(created);
 });
 
@@ -576,7 +1027,7 @@ router.post("/admin/products", requirePortalAdmin, async (req, res) => {
 router.put("/admin/products/:id", requirePortalAdmin, async (req, res) => {
   const id = parseInt(String(req.params.id), 10);
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
-  const { name, description, price, stock, imageUrl, mediaItems, unit, unitOptions } = req.body ?? {};
+  const { name, description, price, stock, imageUrl, mediaItems, unit, unitOptions, categories } = req.body ?? {};
   const updates: Record<string, unknown> = {};
   if (name !== undefined) updates.name = String(name);
   if (description !== undefined) updates.description = sanitizeText(description);
@@ -590,9 +1041,27 @@ router.put("/admin/products/:id", requirePortalAdmin, async (req, res) => {
       ? JSON.stringify(unitOptions)
       : JSON.stringify(String(unitOptions).split(",").map((s: string) => s.trim()).filter(Boolean));
   }
-  if (Object.keys(updates).length === 0) return res.status(400).json({ message: "Tidak ada field yang diubah" });
-  const [updated] = await db.update(productsTable).set(updates).where(eq(productsTable.id, id)).returning();
-  return res.json(updated);
+  const catNames: string[] = Array.isArray(categories) ? categories.map(String).filter(Boolean) : [];
+  const hasProductUpdates = Object.keys(updates).length > 0;
+  const hasCategoryUpdate = categories !== undefined;
+  if (!hasProductUpdates && !hasCategoryUpdate) return res.status(400).json({ message: "Tidak ada field yang diubah" });
+  const result = await db.transaction(async (tx) => {
+    let updated = hasProductUpdates
+      ? (await tx.update(productsTable).set(updates).where(eq(productsTable.id, id)).returning())[0]
+      : (await tx.select().from(productsTable).where(eq(productsTable.id, id)))[0];
+    if (hasCategoryUpdate) {
+      await tx.delete(productCategoryMapTable).where(eq(productCategoryMapTable.productId, id));
+      if (catNames.length > 0) {
+        const validCats = await tx.select().from(productCategoriesTable).where(inArray(productCategoriesTable.name, catNames));
+        if (validCats.length > 0) {
+          await tx.insert(productCategoryMapTable).values(validCats.map((c) => ({ productId: id, categoryId: c.id })));
+        }
+      }
+    }
+    const catMap = await getProductCategories([id]);
+    return { ...updated, categories: catMap[id] ?? [] };
+  });
+  return res.json(result);
 });
 
 // DELETE /api/portal/admin/products/:id — hapus produk (admin only)
@@ -621,21 +1090,80 @@ router.post("/admin/upload", requirePortalAdmin, _multerUpload.single("file"), a
   }
 });
 
-// POST /api/portal/order-upload-url  — get presigned URL for order document uploads (customer-attachments)
-router.post("/order-upload-url", requirePortalAuth, async (req, res) => {
-  const { contentType } = req.body ?? {};
-  if (!contentType) return res.status(400).json({ message: "contentType wajib diisi" });
-  const allowed = ["application/pdf", "image/jpeg", "image/png", "image/webp", "application/msword",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
-  if (!allowed.includes(contentType) && !contentType.startsWith("image/"))
-    return res.status(415).json({ message: "Tipe file tidak diizinkan" });
-  try {
-    const uploadURL = await _objectStorage.getObjectEntityUploadURL();
-    const objectPath = _objectStorage.normalizeObjectEntityPath(uploadURL);
-    return res.json({ uploadURL, objectPath });
-  } catch (_err) {
-    return res.status(500).json({ message: "Gagal membuat URL upload" });
+// Per-customer rate limit for portal order uploads: 20 per customer per hour.
+// Portal customers are self-registered (public sign-up); keying by customer ID
+// (not IP) prevents bypass via proxy / shared NAT.
+interface _RateEntry { count: number; resetAt: number }
+const _PORTAL_UPLOAD_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const _PORTAL_UPLOAD_LIMIT = 20;
+const _portalUploadCustomerMap = new Map<number, _RateEntry>();
+
+function _checkPortalUploadLimit(customerId: number): boolean {
+  const now = Date.now();
+  let entry = _portalUploadCustomerMap.get(customerId);
+  if (!entry || now > entry.resetAt) {
+    entry = { count: 0, resetAt: now + _PORTAL_UPLOAD_WINDOW_MS };
   }
+  if (entry.count >= _PORTAL_UPLOAD_LIMIT) return false;
+  entry.count += 1;
+  _portalUploadCustomerMap.set(customerId, entry);
+  return true;
+}
+
+const _portalUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB hard cap enforced by multer/server
+});
+
+const _PORTAL_ALLOWED_MIME = new Set([
+  "application/pdf",
+  "image/jpeg", "image/png", "image/webp", "image/gif",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+]);
+
+// POST /api/portal/order-upload
+// Server-side proxy upload: file goes through the API server so multer enforces
+// the 20 MB size limit before any byte reaches object storage.  This replaces
+// the old presigned-URL flow (/order-upload-url) which issued unconstrained GCS
+// PUT URLs that bypassed all server-side size limits.
+router.post("/order-upload", requirePortalAuth, (req, res, next) => {
+  _portalUpload.single("file")(req, res, (err) => {
+    if (err) {
+      if (err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE") {
+        res.status(413).json({ message: "Ukuran file melebihi batas 20 MB." }); return;
+      }
+      res.status(400).json({ message: "Upload gagal: " + (err as Error).message }); return;
+    }
+    next();
+  });
+}, async (req, res) => {
+  const portalReq = req as unknown as PortalAuthReq;
+  const customerId = portalReq.portalCustomerId;
+
+  if (!_checkPortalUploadLimit(customerId)) {
+    return res.status(429).json({ message: "Terlalu banyak upload. Coba lagi dalam 1 jam." });
+  }
+
+  if (!req.file) return res.status(400).json({ message: "File wajib diunggah" });
+
+  const mime = req.file.mimetype;
+  if (!_PORTAL_ALLOWED_MIME.has(mime) && !mime.startsWith("image/")) {
+    return res.status(415).json({ message: "Tipe file tidak diizinkan" });
+  }
+
+  try {
+    const objectPath = await _objectStorage.uploadPrivateEntity(req.file.buffer, mime);
+    return res.json({ objectPath });
+  } catch (_err) {
+    return res.status(500).json({ message: "Gagal mengunggah file" });
+  }
+});
+
+// POST /api/portal/order-upload-url  — DEPRECATED, kept for backward compat.
+// Returns 410 Gone so old clients fail visibly rather than silently.
+router.post("/order-upload-url", requirePortalAuth, (_req, res) => {
+  return res.status(410).json({ message: "Endpoint ini sudah tidak aktif. Gunakan /api/portal/order-upload (multipart/form-data)." });
 });
 
 // Shared helper: find or create CRM customer by email
@@ -1101,6 +1629,698 @@ router.get("/cargo-types", async (_req, res) => {
     return res.json(["Electronics", "Textiles", "Furniture", "Food & Beverage", "Chemicals"]);
   }
 });
+
+// POST /api/portal/request-quote — public, no auth required
+router.post("/request-quote", async (req, res) => {
+  const {
+    name, email, whatsapp, service, origin, destination,
+    weight, length, width, height, incoterms, insurance, express, result,
+  } = req.body as {
+    name: string; email?: string; whatsapp: string;
+    service: string; origin: string; destination: string;
+    weight?: string; length?: string; width?: string; height?: string;
+    incoterms?: string; insurance?: boolean; express?: boolean;
+    result?: {
+      baseCost?: number; weightCost?: number; handlingFee?: number;
+      customsFee?: number; insuranceFee?: number; expressFee?: number;
+      total?: number; chargeableWeight?: number; cbm?: number;
+    };
+  };
+
+  if (!name?.trim() || !whatsapp?.trim()) {
+    return res.status(400).json({ error: "Nama dan WhatsApp wajib diisi" });
+  }
+
+  const fmt = (n?: number) =>
+    n ? new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n) : "-";
+
+  const serviceLabels: Record<string, string> = {
+    seaFreight: "Sea Freight 🚢", airFreight: "Air Freight ✈️",
+    customs: "Bea Cukai 📦", domestic: "Domestik/Trucking 🚚",
+    warehousing: "Gudang/Warehousing 🏠", projectCargo: "Project Cargo 🌐",
+  };
+  const svcLabel = serviceLabels[service] ?? service;
+  const ts = new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" });
+
+  const waLines = [
+    `🚢 *REQUEST QUOTE BARU — CST Logistics*`,
+    `───────────────────────────`,
+    `👤 *Nama:* ${name}`,
+    `📧 *Email:* ${email || "-"}`,
+    `📱 *WhatsApp:* ${whatsapp}`,
+    `───────────────────────────`,
+    `📦 *Layanan:* ${svcLabel}`,
+    `🌍 *Rute:* ${origin} → ${destination}`,
+    weight ? `⚖️ *Berat:* ${weight} kg` : null,
+    (length && width && height) ? `📐 *Dimensi:* ${length}×${width}×${height} cm` : null,
+    incoterms ? `📋 *Incoterms:* ${incoterms}` : null,
+    insurance ? `🛡️ *Asuransi:* Ya` : null,
+    express ? `⚡ *Express:* Ya` : null,
+    `───────────────────────────`,
+    result?.total ? `💰 *Estimasi Total:* ${fmt(result.total)}` : null,
+    result?.chargeableWeight != null ? `  • Chargeable: ${result.chargeableWeight} kg` : null,
+    result?.cbm != null ? `  • Volume: ${result.cbm} CBM` : null,
+    result?.baseCost ? `  • Biaya Dasar: ${fmt(result.baseCost)}` : null,
+    result?.weightCost ? `  • Biaya Berat/CBM: ${fmt(result.weightCost)}` : null,
+    result?.handlingFee ? `  • Handling: ${fmt(result.handlingFee)}` : null,
+    result?.customsFee ? `  • Bea Cukai: ${fmt(result.customsFee)}` : null,
+    result?.insuranceFee ? `  • Asuransi: ${fmt(result.insuranceFee)}` : null,
+    result?.expressFee ? `  • Express: ${fmt(result.expressFee)}` : null,
+    `───────────────────────────`,
+    `🕐 ${ts}`,
+    ``,
+    `_Segera tindaklanjuti permintaan ini._`,
+  ].filter(Boolean).join("\n");
+
+  const errors: string[] = [];
+
+  // WhatsApp ke admin
+  try {
+    const adminTarget = await getAdminWa();
+    if (adminTarget) await sendWhatsApp(adminTarget, waLines);
+  } catch (err) {
+    errors.push("WA-admin: " + String(err));
+  }
+
+  // WhatsApp konfirmasi ke customer
+  try {
+    if (whatsapp?.trim()) {
+      const confirmLines = [
+        `✅ *Halo ${name}!*`,
+        ``,
+        `Terima kasih telah menghubungi *CST Logistics*.`,
+        `Tim kami telah menerima permintaan penawaran Anda:`,
+        ``,
+        `📦 *Layanan:* ${svcLabel}`,
+        `🌍 *Rute:* ${origin} → ${destination}`,
+        result?.total ? `💰 *Estimasi:* ${fmt(result.total)}` : null,
+        ``,
+        `Kami akan menghubungi Anda dalam *1×24 jam kerja* untuk konfirmasi dan penawaran resmi.`,
+        ``,
+        `_Salam,_`,
+        `_Tim CST Logistics 🚢_`,
+      ].filter(Boolean).join("\n");
+      await sendWhatsApp(whatsapp, confirmLines);
+    }
+  } catch (err) {
+    errors.push("WA-customer: " + String(err));
+  }
+
+  // Email ke admin
+  try {
+    const adminEmail = process.env.ADMIN_EMAIL?.split(",")[0]?.trim();
+    if (adminEmail && isSmtpConfigured()) {
+      const row = (c: string, v: string) =>
+        `<tr><td style="color:#64748B;padding:4px 0;width:140px;font-size:12px;">${c}</td><td style="font-weight:600;color:#1E293B;font-size:12px;">${v}</td></tr>`;
+
+      const emailHtml = `
+        <div style="font-family:system-ui,sans-serif;max-width:560px;margin:0 auto;background:#F8FAFC;padding:20px;border-radius:12px;">
+          <div style="background:linear-gradient(135deg,#0B3D6B,#1A73D4);padding:18px 22px;border-radius:10px 10px 0 0;">
+            <h2 style="color:white;margin:0;font-size:17px;">🚢 Request Quote Baru</h2>
+            <p style="color:rgba(255,255,255,0.70);margin:3px 0 0;font-size:11px;">${ts}</p>
+          </div>
+          <div style="background:white;padding:18px 22px;border-radius:0 0 10px 10px;border:1px solid #E2E8F0;border-top:none;">
+            <h4 style="color:#0B3D6B;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin:0 0 10px;">Kontak</h4>
+            <table style="width:100%;border-collapse:collapse;">
+              ${row("Nama", name)}
+              ${row("Email", email || "-")}
+              ${row("WhatsApp", whatsapp)}
+            </table>
+            <hr style="border:none;border-top:1px solid #E2E8F0;margin:14px 0;">
+            <h4 style="color:#0B3D6B;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin:0 0 10px;">Detail Pengiriman</h4>
+            <table style="width:100%;border-collapse:collapse;">
+              ${row("Layanan", svcLabel)}
+              ${row("Rute", `${origin} → ${destination}`)}
+              ${weight ? row("Berat", `${weight} kg`) : ""}
+              ${length && width && height ? row("Dimensi", `${length} × ${width} × ${height} cm`) : ""}
+              ${incoterms ? row("Incoterms", incoterms) : ""}
+              ${insurance ? row("Asuransi", "✅ Ya") : ""}
+              ${express ? row("Express", "✅ Ya") : ""}
+            </table>
+            ${result?.total ? `
+            <hr style="border:none;border-top:1px solid #E2E8F0;margin:14px 0;">
+            <h4 style="color:#1D4ED8;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin:0 0 10px;">Estimasi Biaya</h4>
+            <table style="width:100%;border-collapse:collapse;">
+              ${result.chargeableWeight != null ? row("Chargeable", `${result.chargeableWeight} kg`) : ""}
+              ${result.cbm != null ? row("Volume", `${result.cbm} CBM`) : ""}
+              ${result.baseCost ? row("Biaya Dasar", fmt(result.baseCost)) : ""}
+              ${result.weightCost ? row("Berat/CBM", fmt(result.weightCost)) : ""}
+              ${result.handlingFee ? row("Handling", fmt(result.handlingFee)) : ""}
+              ${result.customsFee ? row("Bea Cukai", fmt(result.customsFee)) : ""}
+              ${result.insuranceFee ? row("Asuransi", fmt(result.insuranceFee)) : ""}
+              ${result.expressFee ? row("Express", fmt(result.expressFee)) : ""}
+            </table>
+            <div style="margin-top:12px;padding:12px 14px;background:#EFF6FF;border-radius:8px;border:1px solid #BFDBFE;display:flex;justify-content:space-between;align-items:center;">
+              <span style="font-weight:700;color:#1D4ED8;font-size:12px;">TOTAL ESTIMASI</span>
+              <span style="font-weight:800;color:#0B3D6B;font-size:20px;">${fmt(result.total)}</span>
+            </div>` : ""}
+            <div style="margin-top:18px;padding:10px 14px;background:#F1F5F9;border-radius:8px;text-align:center;font-size:10px;color:#94A3B8;">
+              CST Logistics — Sistem Manajemen Logistik Terintegrasi
+            </div>
+          </div>
+        </div>`;
+
+      await sendMail({
+        to: adminEmail,
+        subject: `[Request Quote] ${svcLabel.replace(/[^\w\s→/-]/g, "").trim()} — ${name} — ${origin} → ${destination}`,
+        html: emailHtml,
+        text: waLines,
+      });
+    }
+  } catch (err) {
+    errors.push("Email: " + String(err));
+  }
+
+  // Simpan ke database
+  try {
+    await db.insert(quoteRequestsTable).values({
+      name: name.trim(),
+      email: email?.trim() || null,
+      whatsapp: whatsapp.trim(),
+      service,
+      origin: origin.trim(),
+      destination: destination.trim(),
+      weight: weight ?? null,
+      length: length ?? null,
+      width: width ?? null,
+      height: height ?? null,
+      incoterms: incoterms ?? null,
+      insurance: insurance ?? false,
+      express: express ?? false,
+      estimatedTotal: result?.total != null ? String(result.total) : null,
+      estimatedCbm: result?.cbm != null ? String(result.cbm) : null,
+      estimatedChargeableWeight: result?.chargeableWeight != null ? String(result.chargeableWeight) : null,
+      status: "new",
+    });
+  } catch (err) {
+    errors.push("DB-save: " + String(err));
+  }
+
+  return res.json({ ok: true, warnings: errors.length ? errors : undefined });
+});
+
+// GET /api/portal/quote-requests — daftar semua request quote (BizPortal admin)
+router.get("/quote-requests", async (req, res) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const status = req.query.status as string | undefined;
+  const conditions = status ? [eq(quoteRequestsTable.status, status)] : [];
+  const items = await db
+    .select()
+    .from(quoteRequestsTable)
+    .where(conditions.length ? and(...conditions) : undefined)
+    .orderBy(desc(quoteRequestsTable.createdAt));
+  res.json({ items, total: items.length });
+});
+
+// PATCH /api/portal/quote-requests/:id — update status/notes/handledBy (BizPortal admin)
+router.patch("/quote-requests/:id", async (req, res): Promise<void> => {
+  if (!(await requireClerkUser(req, res))) return;
+  const id = Number(req.params.id);
+  if (!id) { res.status(400).json({ error: "invalid id" }); return; }
+  const { status, notes, handledBy } = req.body ?? {};
+  await db
+    .update(quoteRequestsTable)
+    .set({
+      ...(status != null ? { status } : {}),
+      ...(notes != null ? { notes } : {}),
+      ...(handledBy != null ? { handledBy } : {}),
+      updatedAt: new Date(),
+    })
+    .where(eq(quoteRequestsTable.id, id));
+  res.json({ ok: true });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// ONBOARDING ROUTES
+// ════════════════════════════════════════════════════════════════════════════
+
+const onboardingUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+
+function getOnboardingOpenAI(): OpenAI {
+  const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new Error("OpenAI API key not configured.");
+  return new OpenAI({ apiKey, baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL });
+}
+
+// GET /api/portal/onboarding/status
+router.get("/onboarding/status", requirePortalAuth, async (req, res): Promise<void> => {
+  const customerId = (req as PortalAuthReq).portalCustomerId;
+  const [profile] = await db.select().from(userProfilesTable).where(eq(userProfilesTable.customerId, customerId));
+  if (!profile) {
+    res.json({ status: "incomplete", accountType: null, hasProfile: false });
+    return;
+  }
+  const rejectionReason = profile.status === "rejected" ? profile.rejectionReason : undefined;
+  res.json({
+    hasProfile: true,
+    status: profile.status,
+    accountType: profile.accountType,
+    ...(rejectionReason ? { rejectionReason } : {}),
+    profile: {
+      fullName: profile.fullName,
+      phone: profile.phone,
+      address: profile.address,
+      ktpUrl: profile.ktpUrl,
+    },
+  });
+});
+
+// POST /api/portal/onboarding/ktp-ocr — upload KTP image → OCR
+router.post("/onboarding/ktp-ocr", requirePortalAuth, onboardingUpload.single("file"), async (req, res): Promise<void> => {
+  const customerId = (req as PortalAuthReq).portalCustomerId;
+  if (!req.file) { res.status(400).json({ ok: false, error: "File tidak ditemukan." }); return; }
+
+  try {
+    const openai = getOnboardingOpenAI();
+    const base64 = req.file.buffer.toString("base64");
+    const mime = req.file.mimetype || "image/jpeg";
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      max_tokens: 800,
+      messages: [{
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: `Kamu adalah sistem OCR KTP Indonesia. Ekstrak semua field dari KTP ini dan kembalikan HANYA JSON tanpa markdown, format:
+{"nik":"...","name":"...","birthPlace":"...","birthDate":"...","address":"...","rt":"...","rw":"...","kelurahan":"...","kecamatan":"...","kabupaten":"...","provinsi":"...","gender":"...","religion":"...","maritalStatus":"...","occupation":"...","nationality":"WNI"}
+Isi string kosong jika field tidak terbaca.`,
+          },
+          { type: "image_url", image_url: { url: `data:${mime};base64,${base64}`, detail: "high" } },
+        ],
+      }],
+    });
+
+    const raw = response.choices[0]?.message?.content ?? "{}";
+    const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+    let data: Record<string, string> = {};
+    try { data = JSON.parse(cleaned); } catch { /* fallback empty */ }
+
+    // Persist OCR result
+    await db.insert(ocrResultsTable).values({
+      customerId,
+      docType: "ktp",
+      nik: data.nik || null,
+      name: data.name || null,
+      birthPlace: data.birthPlace || null,
+      birthDate: data.birthDate || null,
+      address: data.address || null,
+      rt: data.rt || null,
+      rw: data.rw || null,
+      kelurahan: data.kelurahan || null,
+      kecamatan: data.kecamatan || null,
+      kabupaten: data.kabupaten || null,
+      provinsi: data.provinsi || null,
+      gender: data.gender || null,
+      religion: data.religion || null,
+      maritalStatus: data.maritalStatus || null,
+      occupation: data.occupation || null,
+      nationality: data.nationality || null,
+      rawJson: JSON.stringify(data),
+    }).onConflictDoNothing();
+
+    res.json({ ok: true, data });
+  } catch (err) {
+    console.error("[ktp-ocr]", err);
+    res.status(500).json({ ok: false, error: "OCR gagal. Pastikan OpenAI API key dikonfigurasi." });
+  }
+});
+
+// POST /api/portal/onboarding/upload-doc — upload any document to object storage
+router.post("/onboarding/upload-doc", requirePortalAuth, onboardingUpload.single("file"), async (req, res): Promise<void> => {
+  const customerId = (req as PortalAuthReq).portalCustomerId;
+  if (!req.file) { res.status(400).json({ ok: false, error: "File tidak ditemukan." }); return; }
+  const docType = String(req.body?.docType ?? "doc");
+
+  try {
+    const ext = req.file.originalname.split(".").pop() ?? "bin";
+    const key = `portal/onboarding/${customerId}/${docType}-${randomUUID()}.${ext}`;
+    const storage = new ObjectStorageService();
+    let buf = req.file.buffer;
+    if (req.file.mimetype.startsWith("image/")) {
+      try { buf = await compressImageBuffer(buf, 1400); } catch { /* use original */ }
+    }
+    const url = await storage.uploadPublic(key, buf, req.file.mimetype);
+    // Record in identity_documents
+    await db.insert(identityDocumentsTable).values({ customerId, docType, url, fileName: req.file.originalname });
+    res.json({ ok: true, url });
+  } catch (err) {
+    console.error("[upload-doc]", err);
+    res.status(500).json({ ok: false, error: "Gagal upload file." });
+  }
+});
+
+// POST /api/portal/onboarding/complete — submit full profile
+router.post("/onboarding/complete", requirePortalAuth, async (req, res): Promise<void> => {
+  const customerId = (req as PortalAuthReq).portalCustomerId;
+  const { fullName, phone, address, accountType, ktpUrl, ocrData, vendor, driver, employee } = req.body ?? {};
+
+  if (!fullName || !phone || !address || !accountType) {
+    res.status(400).json({ ok: false, error: "Data tidak lengkap." });
+    return;
+  }
+
+  const isCustomer = accountType === "customer";
+  const status = isCustomer ? "active" : "pending";
+  const now = new Date();
+
+  // Upsert user_profiles
+  await db.insert(userProfilesTable).values({
+    customerId,
+    fullName: String(fullName),
+    phone: String(phone),
+    address: String(address),
+    accountType: String(accountType),
+    status,
+    ktpUrl: ktpUrl ? String(ktpUrl) : null,
+    completedAt: now,
+    updatedAt: now,
+  }).onConflictDoUpdate({
+    target: userProfilesTable.customerId,
+    set: {
+      fullName: String(fullName),
+      phone: String(phone),
+      address: String(address),
+      accountType: String(accountType),
+      status,
+      ktpUrl: ktpUrl ? String(ktpUrl) : null,
+      completedAt: now,
+      updatedAt: now,
+    },
+  });
+
+  // Update portal_customers role + phone
+  await db.update(portalCustomersTable).set({
+    name: String(fullName),
+    phone: String(phone),
+    role: accountType === "vendor" ? "vendor" : accountType === "driver" ? "driver" : accountType === "employee" ? "employee" : "customer",
+  }).where(eq(portalCustomersTable.id, customerId));
+
+  // Update OCR result name if provided
+  if (ocrData?.nik) {
+    await db.update(ocrResultsTable).set({ name: ocrData.name ?? null, nik: ocrData.nik ?? null }).where(eq(ocrResultsTable.customerId, customerId));
+  }
+
+  // Upsert vendor profile
+  if (accountType === "vendor" && vendor) {
+    await db.insert(vendorProfilesTable).values({
+      customerId,
+      companyName: vendor.companyName ?? null,
+      nib: vendor.nib ?? null,
+      npwp: vendor.npwp ?? null,
+      serviceType: vendor.serviceType ?? null,
+      legalityDocUrl: vendor.legalityDocUrl ?? null,
+      updatedAt: now,
+    }).onConflictDoUpdate({
+      target: vendorProfilesTable.customerId,
+      set: {
+        companyName: vendor.companyName ?? null,
+        nib: vendor.nib ?? null,
+        npwp: vendor.npwp ?? null,
+        serviceType: vendor.serviceType ?? null,
+        legalityDocUrl: vendor.legalityDocUrl ?? null,
+        updatedAt: now,
+      },
+    });
+  }
+
+  // Upsert driver profile
+  if (accountType === "driver" && driver) {
+    await db.insert(driverProfilesTable).values({
+      customerId,
+      licenseNumber: driver.licenseNumber ?? null,
+      vehicleType: driver.vehicleType ?? null,
+      plateNumber: driver.plateNumber ?? null,
+      simUrl: driver.simUrl ?? null,
+      stnkUrl: driver.stnkUrl ?? null,
+      updatedAt: now,
+    }).onConflictDoUpdate({
+      target: driverProfilesTable.customerId,
+      set: {
+        licenseNumber: driver.licenseNumber ?? null,
+        vehicleType: driver.vehicleType ?? null,
+        plateNumber: driver.plateNumber ?? null,
+        simUrl: driver.simUrl ?? null,
+        stnkUrl: driver.stnkUrl ?? null,
+        updatedAt: now,
+      },
+    });
+  }
+
+  // Upsert employee profile
+  if (accountType === "employee" && employee) {
+    await db.insert(employeeProfilesTable).values({
+      customerId,
+      companyName: employee.companyName ?? null,
+      branch: employee.branch ?? null,
+      department: employee.department ?? null,
+      division: employee.division ?? null,
+      position: employee.position ?? null,
+      updatedAt: now,
+    }).onConflictDoUpdate({
+      target: employeeProfilesTable.customerId,
+      set: {
+        companyName: employee.companyName ?? null,
+        branch: employee.branch ?? null,
+        department: employee.department ?? null,
+        division: employee.division ?? null,
+        position: employee.position ?? null,
+        updatedAt: now,
+      },
+    });
+  }
+
+  // Create approval request for non-customer accounts
+  if (!isCustomer) {
+    await db.insert(onboardingApprovalsTable).values({
+      customerId,
+      accountType: String(accountType),
+      status: "pending",
+      updatedAt: now,
+    }).onConflictDoNothing();
+
+    // Notify admin via WA
+    void (async () => {
+      try {
+        const adminWa = await getAdminWa();
+        if (adminWa) {
+          const [customer] = await db.select().from(portalCustomersTable).where(eq(portalCustomersTable.id, customerId));
+          const msg = [
+            "🔔 *Permohonan Akun Baru*",
+            `👤 Nama   : ${fullName}`,
+            `📧 Email  : ${customer?.email ?? "-"}`,
+            `📱 HP     : ${phone}`,
+            `🏷️ Tipe   : ${accountType}`,
+            `🕐 Waktu  : ${new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })} WIB`,
+            ``,
+            `Tinjau di panel admin portal.`,
+          ].join("\n");
+          await sendWhatsApp(adminWa, msg);
+        }
+      } catch (e) { console.error("[onboarding-notif-wa]", e); }
+    })();
+  }
+
+  res.json({ ok: true, status });
+});
+
+// GET /api/portal/admin/approvals — list approval requests (portal admin)
+router.get("/admin/approvals", requirePortalAdmin, async (req, res): Promise<void> => {
+  const { status, accountType } = req.query;
+  const conds = [];
+  if (status) conds.push(eq(onboardingApprovalsTable.status, String(status)));
+  if (accountType) conds.push(eq(onboardingApprovalsTable.accountType, String(accountType)));
+
+  const rows = await db
+    .select({
+      id: onboardingApprovalsTable.id,
+      customerId: onboardingApprovalsTable.customerId,
+      accountType: onboardingApprovalsTable.accountType,
+      status: onboardingApprovalsTable.status,
+      adminNote: onboardingApprovalsTable.adminNote,
+      reviewedBy: onboardingApprovalsTable.reviewedBy,
+      reviewedAt: onboardingApprovalsTable.reviewedAt,
+      createdAt: onboardingApprovalsTable.createdAt,
+      customerName: portalCustomersTable.name,
+      customerEmail: portalCustomersTable.email,
+      customerPhone: portalCustomersTable.phone,
+    })
+    .from(onboardingApprovalsTable)
+    .leftJoin(portalCustomersTable, eq(onboardingApprovalsTable.customerId, portalCustomersTable.id))
+    .where(conds.length ? and(...conds) : undefined)
+    .orderBy(desc(onboardingApprovalsTable.createdAt));
+
+  // Attach type-specific profiles
+  const enriched = await Promise.all(rows.map(async (row) => {
+    let typeProfile = null;
+    if (row.accountType === "vendor") {
+      const [vp] = await db.select().from(vendorProfilesTable).where(eq(vendorProfilesTable.customerId, row.customerId));
+      typeProfile = vp ?? null;
+    } else if (row.accountType === "driver") {
+      const [dp] = await db.select().from(driverProfilesTable).where(eq(driverProfilesTable.customerId, row.customerId));
+      typeProfile = dp ?? null;
+    } else if (row.accountType === "employee") {
+      const [ep] = await db.select().from(employeeProfilesTable).where(eq(employeeProfilesTable.customerId, row.customerId));
+      typeProfile = ep ?? null;
+    }
+    const [up] = await db.select().from(userProfilesTable).where(eq(userProfilesTable.customerId, row.customerId));
+    return { ...row, userProfile: up ?? null, typeProfile };
+  }));
+
+  res.json(enriched);
+});
+
+// PATCH /api/portal/admin/approvals/:id — approve or reject
+router.patch("/admin/approvals/:id", requirePortalAdmin, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const { status, adminNote, reviewedBy } = req.body ?? {};
+  if (!id || !["approved", "rejected"].includes(status)) {
+    res.status(400).json({ error: "status must be approved or rejected" });
+    return;
+  }
+
+  const [approval] = await db.select().from(onboardingApprovalsTable).where(eq(onboardingApprovalsTable.id, id));
+  if (!approval) { res.status(404).json({ error: "Not found" }); return; }
+
+  const now = new Date();
+  await db.update(onboardingApprovalsTable).set({
+    status,
+    adminNote: adminNote ?? null,
+    reviewedBy: reviewedBy ?? null,
+    reviewedAt: now,
+    updatedAt: now,
+  }).where(eq(onboardingApprovalsTable.id, id));
+
+  const newProfileStatus = status === "approved" ? "active" : "rejected";
+  await db.update(userProfilesTable).set({
+    status: newProfileStatus,
+    rejectionReason: status === "rejected" ? (adminNote ?? "Tidak memenuhi syarat") : null,
+    updatedAt: now,
+  }).where(eq(userProfilesTable.customerId, approval.customerId));
+
+  // If approved: update portal_customers role
+  if (status === "approved") {
+    await db.update(portalCustomersTable)
+      .set({ role: approval.accountType })
+      .where(eq(portalCustomersTable.id, approval.customerId));
+  }
+
+  // Notify user via WA
+  void (async () => {
+    try {
+      const [customer] = await db.select().from(portalCustomersTable).where(eq(portalCustomersTable.id, approval.customerId));
+      const adminWa = await getAdminWa();
+      if (adminWa && customer) {
+        const msg = status === "approved"
+          ? `✅ *Akun Anda Disetujui!*\n\nHai ${customer.name}, akun ${approval.accountType} Anda di CST Logistics telah disetujui.\n\nSilakan login kembali untuk mengakses sistem.`
+          : `❌ *Akun Anda Ditolak*\n\nHai ${customer.name}, permintaan akun ${approval.accountType} Anda tidak dapat kami setujui.\n\nAlasan: ${adminNote ?? "Tidak memenuhi syarat"}\n\nHubungi kami untuk informasi lebih lanjut.`;
+        await sendWhatsApp(adminWa, msg);
+      }
+    } catch (e) { console.error("[approval-notif-wa]", e); }
+  })();
+
+  res.json({ ok: true, status: newProfileStatus });
+});
+
+// GET /api/portal/admin/approvals/stats — quick stats for admin dashboard
+router.get("/admin/approvals/stats", requirePortalAdmin, async (_req, res): Promise<void> => {
+  const rows = await db
+    .select({ status: onboardingApprovalsTable.status, accountType: onboardingApprovalsTable.accountType })
+    .from(onboardingApprovalsTable);
+  const stats: Record<string, number> = { pending: 0, approved: 0, rejected: 0, total: rows.length };
+  for (const r of rows) {
+    stats[r.status] = (stats[r.status] ?? 0) + 1;
+  }
+  res.json(stats);
+});
+
+// GET /api/portal/admin/customers — list all portal customers (with onboarding status)
+router.get("/admin/customers", requirePortalAdmin, async (req, res): Promise<void> => {
+  const { role, q } = req.query;
+  const conds = [];
+  if (role) conds.push(eq(portalCustomersTable.role, String(role)));
+
+  const rows = await db
+    .select({
+      id: portalCustomersTable.id,
+      name: portalCustomersTable.name,
+      email: portalCustomersTable.email,
+      phone: portalCustomersTable.phone,
+      company: portalCustomersTable.company,
+      role: portalCustomersTable.role,
+      oauthProvider: portalCustomersTable.oauthProvider,
+      createdAt: portalCustomersTable.createdAt,
+      profileStatus: userProfilesTable.status,
+      profileAccountType: userProfilesTable.accountType,
+      profileFullName: userProfilesTable.fullName,
+      profileAddress: userProfilesTable.address,
+    })
+    .from(portalCustomersTable)
+    .leftJoin(userProfilesTable, eq(userProfilesTable.customerId, portalCustomersTable.id))
+    .where(conds.length ? and(...conds) : undefined)
+    .orderBy(desc(portalCustomersTable.createdAt));
+
+  const search = q ? String(q).toLowerCase().trim() : "";
+  const filtered = search
+    ? rows.filter((r) =>
+        (r.name ?? "").toLowerCase().includes(search) ||
+        (r.email ?? "").toLowerCase().includes(search) ||
+        (r.phone ?? "").toLowerCase().includes(search) ||
+        (r.company ?? "").toLowerCase().includes(search))
+    : rows;
+
+  // Derive registration source: WA (email ends with @wa.local), OAuth, or email/password
+  const enriched = filtered.map((r) => {
+    let source: "wa" | "oauth" | "email" = "email";
+    if (r.email && r.email.endsWith("@wa.local")) source = "wa";
+    else if (r.oauthProvider) source = "oauth";
+    const profileState = r.profileStatus ?? "not_started";
+    return {
+      id: r.id,
+      name: r.name,
+      email: r.email,
+      phone: r.phone,
+      company: r.company,
+      role: r.role,
+      source,
+      createdAt: r.createdAt,
+      profileStatus: profileState,
+      profileAccountType: r.profileAccountType,
+      profileFullName: r.profileFullName,
+      profileAddress: r.profileAddress,
+    };
+  });
+
+  res.json({ items: enriched, total: enriched.length });
+});
+
+// GET /api/portal/admin/customers/stats — quick stats
+router.get("/admin/customers/stats", requirePortalAdmin, async (_req, res): Promise<void> => {
+  const rows = await db
+    .select({
+      id: portalCustomersTable.id,
+      role: portalCustomersTable.role,
+      email: portalCustomersTable.email,
+      profileStatus: userProfilesTable.status,
+    })
+    .from(portalCustomersTable)
+    .leftJoin(userProfilesTable, eq(userProfilesTable.customerId, portalCustomersTable.id));
+  const stats = {
+    total: rows.length,
+    wa: rows.filter((r) => r.email?.endsWith("@wa.local")).length,
+    customer: rows.filter((r) => r.role === "customer").length,
+    vendor: rows.filter((r) => r.role === "vendor").length,
+    profileIncomplete: rows.filter((r) => !r.profileStatus || r.profileStatus === "incomplete" || r.profileStatus === "not_started").length,
+    profilePending: rows.filter((r) => r.profileStatus === "pending").length,
+    profileActive: rows.filter((r) => r.profileStatus === "active").length,
+  };
+  res.json(stats);
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// CALCULATOR RATES
+// ════════════════════════════════════════════════════════════════════════════
 
 // GET /api/portal/calculator-rates — public, returns current calculator rates
 router.get("/calculator-rates", async (_req, res) => {

@@ -1,4 +1,5 @@
-import { pgTable, serial, text, integer, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -15,7 +16,9 @@ export const portalCustomersTable = pgTable("portal_customers", {
   resetPasswordExpiry: timestamp("reset_password_expiry"),
   oauthProvider: text("oauth_provider"),
   oauthId: text("oauth_id"),
-});
+}, (t) => ({
+  phoneUniqueIdx: uniqueIndex("portal_customers_phone_unique").on(t.phone).where(sql`${t.phone} IS NOT NULL AND ${t.phone} <> ''`),
+}));
 
 export const portalCustomerServicesTable = pgTable("portal_customer_services", {
   id: serial("id").primaryKey(),

@@ -14,9 +14,11 @@ import {
 import {
   useListExpenses, useListExpenseCategories, getListExpensesQueryKey,
   useDeleteExpense, useListSalesDocuments, useListFreightShipments,
+  getGetExpenseQueryOptions,
   type Expense,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { usePrefetchOnHover } from "@/hooks/use-prefetch-on-hover";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useCompany } from "@/contexts/CompanyContext";
@@ -69,6 +71,7 @@ function StatusBadge({ status }: { status: string }) {
 
 export default function ExpenseListPage() {
   const qc = useQueryClient();
+  const prefetchHover = usePrefetchOnHover();
   const { toast } = useToast();
   const { t } = useLanguage();
   const { activeCompanyId } = useCompany();
@@ -284,7 +287,7 @@ export default function ExpenseListPage() {
                 {expenses.map((exp) => {
                   const cat = cats.find((c) => c.id === exp.categoryId);
                   return (
-                    <TableRow key={exp.id} className="cursor-pointer hover:bg-muted/50">
+                    <TableRow key={exp.id} className="cursor-pointer hover:bg-muted/50" {...prefetchHover(getGetExpenseQueryOptions(exp.id))}>
                       <TableCell>
                         <Link href={`/expense/${exp.id}`}>
                           <span className="font-mono text-xs text-primary hover:underline">{exp.expenseNumber}</span>

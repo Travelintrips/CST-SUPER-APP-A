@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { isAuthenticated, isPortalAdmin, getAuthHeaders, setAuthToken } from "@/lib/auth";
 import { resolveImageUrl } from "@/lib/utils";
-import { getProductFallbackImage } from "@/lib/categoryImages";
+import { getProductFallbackImage, getServiceFallbackImage } from "@/lib/categoryImages";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -222,6 +222,21 @@ async function apiPost<T>(path: string, body: unknown): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
+
+function validateImageFile(file: File, toast: ReturnType<typeof useToast>["toast"]): boolean {
+  if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+    toast({ title: "Format file tidak didukung", description: "Hanya JPG, JPEG, PNG, atau WEBP yang diizinkan.", variant: "destructive" });
+    return false;
+  }
+  if (file.size > MAX_IMAGE_SIZE_BYTES) {
+    toast({ title: "Ukuran file terlalu besar", description: `Maksimum 5MB per file. File ini ${(file.size / 1024 / 1024).toFixed(1)}MB.`, variant: "destructive" });
+    return false;
+  }
+  return true;
+}
+
 function ImageUploader({
   currentUrl,
   onUpload,
@@ -239,10 +254,7 @@ function ImageUploader({
   }, [currentUrl]);
 
   async function handleFile(file: File) {
-    if (!file.type.startsWith("image/")) {
-      toast({ title: "Hanya file gambar", variant: "destructive" });
-      return;
-    }
+    if (!validateImageFile(file, toast)) return;
     setUploading(true);
     try {
       const formData = new FormData();
@@ -268,7 +280,14 @@ function ImageUploader({
     <div className="space-y-2">
       {preview && (
         <div className="relative rounded-lg overflow-hidden border border-border bg-muted h-40 flex items-center justify-center">
-          <img src={preview} alt="preview" className="h-full w-full object-cover" />
+          <img src={preview} alt="preview" className="h-full w-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+          <button
+            type="button"
+            onClick={() => { setPreview(null); onUpload(""); }}
+            className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 transition-colors"
+          >
+            <X className="h-3 w-3" />
+          </button>
         </div>
       )}
       {!preview && (
@@ -280,24 +299,28 @@ function ImageUploader({
       <input
         ref={inputRef}
         type="file"
-        accept="image/*"
+        accept="image/jpeg,image/jpg,image/png,image/webp"
         className="hidden"
         onChange={(e) => {
           const file = e.target.files?.[0];
           if (file) void handleFile(file);
+          e.target.value = "";
         }}
       />
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="gap-2"
-        disabled={uploading}
-        onClick={() => inputRef.current?.click()}
-      >
-        {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-        {uploading ? "Mengunggah..." : "Unggah Gambar"}
-      </Button>
+      <div className="flex gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="gap-2"
+          disabled={uploading}
+          onClick={() => inputRef.current?.click()}
+        >
+          {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+          {uploading ? "Mengunggah..." : "Unggah Gambar"}
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground">Format: JPG, PNG, WEBP. Maks. 5MB.</p>
     </div>
   );
 }
@@ -432,8 +455,15 @@ function MediaUploader({
   const imgRef = useRef<HTMLInputElement>(null);
   const vidRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [urlInput, setUrlInput] = useState("");
+  const [showUrlInput, setShowUrlInput] = useState(false);
 
   async function uploadFiles(files: File[], type: "image" | "video") {
+    if (type === "image") {
+      for (const file of files) {
+        if (!validateImageFile(file, toast)) return;
+      }
+    }
     setUploading(true);
     const newItems: MediaItem[] = [];
     try {
@@ -461,6 +491,18 @@ function MediaUploader({
     }
   }
 
+  function addUrlItem() {
+    const trimmed = urlInput.trim();
+    if (!trimmed) return;
+    try { new URL(trimmed); } catch {
+      toast({ title: "URL tidak valid", description: "Masukkan URL gambar yang lengkap (diawali https://)", variant: "destructive" });
+      return;
+    }
+    onChange([...mediaItems, { type: "image", url: trimmed }]);
+    setUrlInput("");
+    setShowUrlInput(false);
+  }
+
   function remove(idx: number) {
     onChange(mediaItems.filter((_, i) => i !== idx));
   }
@@ -475,7 +517,7 @@ function MediaUploader({
               {m.type === "video" ? (
                 <VideoThumbCell src={resolveImageUrl(m.url) ?? m.url} />
               ) : (
-                <img src={resolveImageUrl(m.url) ?? ""} alt="" className="w-full h-full object-cover" />
+                <img src={resolveImageUrl(m.url) ?? ""} alt="" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
               )}
               <button
                 onClick={() => remove(i)}
@@ -514,7 +556,7 @@ function MediaUploader({
       )}
 
       {/* Upload buttons */}
-      <input ref={imgRef} type="file" accept="image/*" multiple className="hidden"
+      <input ref={imgRef} type="file" accept="image/jpeg,image/jpg,image/png,image/webp" multiple className="hidden"
         onChange={(e) => {
           const files = Array.from(e.target.files ?? []);
           if (files.length) void uploadFiles(files, "image");
@@ -540,7 +582,27 @@ function MediaUploader({
           Tambah Video
         </Button>
       </div>
-      <p className="text-xs text-muted-foreground">Foto pertama jadi cover. Foto bisa lebih dari satu.</p>
+      {showUrlInput ? (
+        <div className="flex gap-2">
+          <input
+            type="url"
+            value={urlInput}
+            onChange={(e) => setUrlInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addUrlItem(); } }}
+            placeholder="https://example.com/gambar.jpg"
+            className="flex-1 h-8 rounded-md border border-input bg-background px-3 py-1 text-sm"
+          />
+          <Button type="button" size="sm" onClick={addUrlItem} className="h-8">Tambah</Button>
+          <Button type="button" variant="ghost" size="sm" className="h-8" onClick={() => { setShowUrlInput(false); setUrlInput(""); }}>
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      ) : (
+        <button type="button" onClick={() => setShowUrlInput(true)} className="text-xs text-primary hover:underline underline-offset-2">
+          atau masukkan URL gambar secara manual
+        </button>
+      )}
+      <p className="text-xs text-muted-foreground">Foto pertama jadi cover. Format: JPG, PNG, WEBP. Maks. 5MB.</p>
     </div>
   );
 }
@@ -549,21 +611,22 @@ function ItemEditCard({
   item,
   onSave,
   type,
+  allCategories,
 }: {
   item: Service | Product;
-  onSave: (id: number, data: Partial<Service & Product & { mediaItems: MediaItem[] }>) => Promise<void>;
+  onSave: (id: number, data: Partial<Service & Product & { mediaItems: MediaItem[]; categories: string[] }>) => Promise<void>;
   type: "services" | "products";
+  allCategories?: string[];
 }) {
   const { toast } = useToast();
   const [name, setName] = useState(item.name);
   const [description, setDescription] = useState(item.description ?? "");
   const [price, setPrice] = useState(String(item.price));
-  const firstMediaImage = (item as Service | Product).mediaItems?.find((m) => m.type === "image")?.url ?? null;
+  const existingMedia = (item as Service | Product).mediaItems ?? [];
+  const firstMediaImage = existingMedia.find((m) => m.type === "image")?.url ?? null;
   const [imageUrl, setImageUrl] = useState<string | null>(item.imageUrl ?? firstMediaImage);
   const [mediaItems, setMediaItems] = useState<MediaItem[]>(() => {
-    if (type !== "products") return [];
-    const existing = (item as Product).mediaItems ?? [];
-    if (existing.length > 0) return existing;
+    if (existingMedia.length > 0) return existingMedia;
     if (item.imageUrl) return [{ type: "image" as const, url: item.imageUrl }];
     return [];
   });
@@ -572,28 +635,37 @@ function ItemEditCard({
     type === "products" ? ((item as Product).unitOptions ?? []).join(", ") : ""
   );
   const [stock, setStock] = useState(type === "products" ? String((item as Product).stock ?? 0) : "0");
+  const [selectedCategories, setSelectedCategories] = useState<string[]>(
+    type === "products" ? ((item as Product).categories ?? []) : []
+  );
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+
+  function toggleCategory(name: string) {
+    setSelectedCategories((prev) =>
+      prev.includes(name) ? prev.filter((c) => c !== name) : [...prev, name]
+    );
+  }
 
   async function handleSave() {
     setSaving(true);
     try {
-      const payload: Partial<Service & Product & { mediaItems: MediaItem[] }> = {
+      const coverImage = mediaItems.find((m) => m.type === "image")?.url ?? imageUrl;
+      const payload: Partial<Service & Product & { mediaItems: MediaItem[]; categories: string[] }> = {
         name,
         description: description || null,
         price: parseFloat(price) || 0,
-        imageUrl: type === "products" && mediaItems.length > 0
-          ? (mediaItems.find((m) => m.type === "image")?.url ?? imageUrl)
-          : imageUrl,
+        imageUrl: mediaItems.length > 0 ? coverImage : imageUrl,
+        mediaItems,
       };
       if (type === "products") {
-        payload.mediaItems = mediaItems;
         payload.unit = unit.trim() || "pcs";
         payload.unitOptions = unitOptionsRaw
           .split(",")
           .map((s) => s.trim())
           .filter(Boolean);
         payload.stock = Math.max(0, parseInt(stock, 10) || 0);
+        payload.categories = selectedCategories;
       }
       await onSave(item.id, payload);
       setSaved(true);
@@ -663,29 +735,49 @@ function ItemEditCard({
                     placeholder="cth: pcs, dus, karton"
                   />
                 </div>
+                {allCategories && allCategories.length > 0 && (
+                  <div className="space-y-1.5">
+                    <Label className="text-sm">Kategori</Label>
+                    <div className="border rounded-md p-3 max-h-36 overflow-y-auto space-y-2">
+                      {allCategories.map((cat) => (
+                        <div key={cat} className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            id={`cat-edit-${item.id}-${cat}`}
+                            checked={selectedCategories.includes(cat)}
+                            onChange={() => toggleCategory(cat)}
+                            className="h-4 w-4 rounded border-gray-300"
+                          />
+                          <label htmlFor={`cat-edit-${item.id}-${cat}`} className="text-sm cursor-pointer">{cat}</label>
+                        </div>
+                      ))}
+                    </div>
+                    {selectedCategories.length === 0 && (
+                      <p className="text-xs text-amber-600">Pilih minimal 1 kategori agar produk muncul di filter BizPortal</p>
+                    )}
+                  </div>
+                )}
               </>
             )}
           </div>
           <div className="space-y-1.5">
-            {type === "products" ? (
-              <>
-                <Label className="text-sm">Foto & Video Produk</Label>
-                <MediaUploader
-                  mediaItems={mediaItems}
-                  onChange={setMediaItems}
-                  fallbackSrc={getProductFallbackImage(
-                    (item as Product).categories ?? [],
-                    item.name,
-                    (item as Product).subcategory ?? null
-                  )}
-                />
-              </>
-            ) : (
-              <>
-                <Label className="text-sm">Gambar</Label>
-                <ImageUploader currentUrl={imageUrl} onUpload={(url) => setImageUrl(url)} />
-              </>
-            )}
+            <Label className="text-sm">
+              {type === "products" ? "Foto & Video Produk" : "Foto Layanan"}
+              <span className="ml-1 text-xs font-normal text-muted-foreground">(tampil di website publik)</span>
+            </Label>
+            <MediaUploader
+              mediaItems={mediaItems}
+              onChange={(items) => {
+                setMediaItems(items);
+                const cover = items.find((m) => m.type === "image")?.url ?? null;
+                if (cover) setImageUrl(cover);
+              }}
+              fallbackSrc={type === "products" ? getProductFallbackImage(
+                (item as Product).categories ?? [],
+                item.name,
+                (item as Product).subcategory ?? null
+              ) : getServiceFallbackImage([], item.name)}
+            />
           </div>
         </div>
         <Button onClick={handleSave} disabled={saving} size="sm" className="gap-2">
@@ -887,6 +979,7 @@ function ServicesTab() {
 function ProductsTab() {
   const { toast } = useToast();
   const [products, setProducts] = useState<Product[]>([]);
+  const [allCategories, setAllCategories] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -896,14 +989,19 @@ function ProductsTab() {
   const [newUnit, setNewUnit] = useState("pcs");
   const [newUnitOptions, setNewUnitOptions] = useState("");
   const [newImageUrl, setNewImageUrl] = useState<string | null>(null);
+  const [newCategories, setNewCategories] = useState<string[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     void (async () => {
       try {
-        const data = await apiGet<Product[]>("/api/portal/admin/products");
+        const [data, cats] = await Promise.all([
+          apiGet<Product[]>("/api/portal/admin/products"),
+          apiGet<{ id: number; name: string }[]>("/api/portal/admin/product-categories"),
+        ]);
         setProducts(data);
+        setAllCategories(cats.map((c) => c.name));
       } catch {
         toast({ title: "Gagal memuat produk", variant: "destructive" });
       } finally {
@@ -912,9 +1010,15 @@ function ProductsTab() {
     })();
   }, []);
 
-  async function handleSave(id: number, data: Partial<Service & Product & { mediaItems: MediaItem[] }>) {
-    await apiPut(`/api/portal/admin/products/${id}`, data);
-    setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, ...data } : p)));
+  async function handleSave(id: number, data: Partial<Service & Product & { mediaItems: MediaItem[]; categories: string[] }>) {
+    const result = await apiPut<Product & { categories?: string[] }>(`/api/portal/admin/products/${id}`, data);
+    setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, ...data, categories: result.categories ?? data.categories ?? p.categories } : p)));
+  }
+
+  function toggleNewCategory(name: string) {
+    setNewCategories((prev) =>
+      prev.includes(name) ? prev.filter((c) => c !== name) : [...prev, name]
+    );
   }
 
   async function handleAdd() {
@@ -935,6 +1039,7 @@ function ProductsTab() {
         imageUrl: newImageUrl,
         unit: newUnit.trim() || "pcs",
         unitOptions: parsedUnitOptions,
+        categories: newCategories,
       });
       setProducts((prev) => [created, ...prev]);
       setShowAdd(false);
@@ -944,6 +1049,7 @@ function ProductsTab() {
       setNewUnit("pcs");
       setNewUnitOptions("");
       setNewImageUrl(null);
+      setNewCategories([]);
       toast({ title: "Produk berhasil ditambahkan" });
     } catch (err) {
       toast({ title: "Gagal menambahkan produk", description: String(err), variant: "destructive" });
@@ -992,7 +1098,7 @@ function ProductsTab() {
 
       {products.map((p) => (
         <div key={p.id} className="relative">
-          <ItemEditCard item={p} onSave={handleSave} type="products" />
+          <ItemEditCard item={p} onSave={handleSave} type="products" allCategories={allCategories} />
           <Button
             size="icon"
             variant="ghost"
@@ -1059,6 +1165,28 @@ function ProductsTab() {
                 <Input value={newUnitOptions} onChange={(e) => setNewUnitOptions(e.target.value)} placeholder="pcs, dus, karton" />
               </div>
             </div>
+            {allCategories.length > 0 && (
+              <div className="space-y-1.5">
+                <Label>Kategori</Label>
+                <div className="border rounded-md p-3 max-h-36 overflow-y-auto space-y-2">
+                  {allCategories.map((cat) => (
+                    <div key={cat} className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id={`new-cat-${cat}`}
+                        checked={newCategories.includes(cat)}
+                        onChange={() => toggleNewCategory(cat)}
+                        className="h-4 w-4 rounded border-gray-300"
+                      />
+                      <label htmlFor={`new-cat-${cat}`} className="text-sm cursor-pointer">{cat}</label>
+                    </div>
+                  ))}
+                </div>
+                {newCategories.length === 0 && (
+                  <p className="text-xs text-amber-600">Pilih minimal 1 kategori agar produk muncul di filter BizPortal</p>
+                )}
+              </div>
+            )}
             <div className="space-y-1.5">
               <Label>Gambar Produk</Label>
               <ImageUploader currentUrl={newImageUrl} onUpload={(url) => setNewImageUrl(url)} />

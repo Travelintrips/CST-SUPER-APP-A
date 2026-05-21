@@ -4,32 +4,51 @@ import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 
-const rawPort = process.env.PORT;
-
-// PORT is only required for dev/preview — build mode doesn't need it
-const isBuildMode = process.argv.includes("build");
-if (!isBuildMode && !rawPort) {
-  throw new Error(
-    "PORT environment variable is required but was not provided.",
-  );
-}
-
-const port = Number(rawPort ?? "3000");
-
-if (!isBuildMode && (Number.isNaN(port) || port <= 0)) {
-  throw new Error(`Invalid PORT value: "${rawPort}"`);
-}
+const port = Number(process.env.PORT ?? "3000");
 
 const basePath = process.env.BASE_PATH ?? "/";
+const isPosMode = process.env.VITE_POS_MODE === "true";
+
+// Plugin: paksa semua request ke /kasir/login saat mode POS aktif,
+// kecuali path kasir itu sendiri, API, dan asset internal Vite
+function posRedirectPlugin() {
+  return {
+    name: "pos-redirect",
+    configureServer(server: import("vite").ViteDevServer) {
+      server.middlewares.use((req, res, next) => {
+        if (!isPosMode) { next(); return; }
+        const url = req.url ?? "/";
+        const isAllowed =
+          url.startsWith("/kasir") ||
+          url.startsWith("/menu-board") ||
+          url.startsWith("/api/") ||
+          url.startsWith("/@") ||
+          url.startsWith("/node_modules") ||
+          url.startsWith("/__vite") ||
+          url.includes(".") // file statis (js, css, png, dll.)
+        if (!isAllowed) {
+          res.writeHead(302, { Location: "/kasir/login" });
+          res.end();
+          return;
+        }
+        next();
+      });
+    },
+  };
+}
 
 export default defineConfig({
   base: basePath,
   define: {
     "import.meta.env.VITE_SUPABASE_URL": JSON.stringify(process.env.VITE_SUPABASE_URL ?? process.env.SUPABASE_URL ?? ""),
     "import.meta.env.VITE_SUPABASE_ANON_KEY": JSON.stringify(process.env.VITE_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY ?? ""),
+    "import.meta.env.VITE_SUPABASE_URL_DEV": JSON.stringify(process.env.VITE_SUPABASE_URL_DEV ?? process.env.SUPABASE_URL_DEV ?? ""),
+    "import.meta.env.VITE_SUPABASE_ANON_KEY_DEV": JSON.stringify(process.env.VITE_SUPABASE_ANON_KEY_DEV ?? process.env.SUPABASE_ANON_KEY_DEV ?? ""),
     "import.meta.env.VITE_REPLIT_DEV_DOMAIN": JSON.stringify(process.env.REPLIT_DEV_DOMAIN ?? ""),
+    "import.meta.env.VITE_POS_MODE": JSON.stringify(process.env.VITE_POS_MODE ?? ""),
   },
   plugins: [
+    posRedirectPlugin(),
     react(),
     tailwindcss(),
     runtimeErrorOverlay(),
@@ -81,13 +100,27 @@ export default defineConfig({
         path.resolve(import.meta.dirname, "../mockup-sandbox/**"),
       ],
     },
+    hmr: {
+      clientPort: 443,
+      protocol: "wss",
+      host: process.env.REPLIT_DEV_DOMAIN ?? "localhost",
+    },
     proxy: {
       "/api": {
-        target: "http://localhost:8080",
+        target: "http://localhost:18444",
         changeOrigin: true,
       },
+      "/q": {
+        target: "http://localhost:18444",
+        changeOrigin: true,
+      },
+      "/pos-images": {
+        target: "http://localhost:18444",
+        changeOrigin: true,
+      },
+      // BizPortal dev server — proxied so /bizportal/* works via main entry port
       "/bizportal": {
-        target: "http://localhost:8080",
+        target: "http://localhost:18442",
         changeOrigin: true,
         ws: true,
       },

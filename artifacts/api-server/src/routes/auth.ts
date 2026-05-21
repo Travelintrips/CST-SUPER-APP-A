@@ -23,6 +23,7 @@ import {
   ISSUER_URL,
   type SessionData,
 } from "../lib/auth";
+import { writeAuditLog, extractRequestMeta } from "../lib/auditLog.js";
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID!;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET!;
@@ -50,7 +51,14 @@ function getOrigin(req: Request): string {
 }
 
 function getGoogleOrigin(req: Request): string {
-  // Explicit override always wins (set this in production secrets)
+  // In Replit dev (NOT deployed), always prefer the stable dev domain.
+  // REPLIT_DEPLOYMENT=1 is injected by Replit in deployed environments only.
+  // This check must come FIRST so global secrets (APP_URL, etc.) don't
+  // accidentally force dev logins to redirect to the production domain.
+  if (process.env.REPLIT_DEV_DOMAIN && !process.env.REPLIT_DEPLOYMENT) {
+    return `https://${process.env.REPLIT_DEV_DOMAIN}`;
+  }
+  // Explicit override for production (set GOOGLE_REDIRECT_BASE_URL in secrets)
   const override = process.env.GOOGLE_REDIRECT_BASE_URL || process.env.GOOGLE_CALLBACK_ORIGIN;
   if (override) {
     return override.replace(/\/$/, "");
@@ -59,19 +67,22 @@ function getGoogleOrigin(req: Request): string {
   if (process.env.APP_URL) {
     return process.env.APP_URL.replace(/\/$/, "");
   }
-  // In Replit dev (NOT deployed), use the stable dev domain
-  // REPLIT_DEPLOYMENT=1 is set in deployed environments, so skip dev domain there
-  if (process.env.REPLIT_DEV_DOMAIN && !process.env.REPLIT_DEPLOYMENT) {
-    return `https://${process.env.REPLIT_DEV_DOMAIN}`;
-  }
   return getOrigin(req);
 }
 
 function setSessionCookie(res: Response, sid: string) {
+  // In the Replit dev environment the BizPortal frontend runs inside a
+  // cross-site iframe (top-level: replit.com, API/app: *.replit.dev).
+  // SameSite=Lax blocks cookies on cross-site fetch requests, which makes
+  // /api/auth/user always return {user:null} inside the preview pane.
+  // We use SameSite=None (which still requires Secure=true) so the session
+  // cookie is included in credentialed fetch calls from the iframe.
+  // In production (REPLIT_DEPLOYMENT=1) we revert to Lax for CSRF safety.
+  const isReplitDev = !!process.env.REPLIT_DEV_DOMAIN && !process.env.REPLIT_DEPLOYMENT;
   res.cookie(SESSION_COOKIE, sid, {
     httpOnly: true,
     secure: true,
-    sameSite: "none",
+    sameSite: isReplitDev ? "none" : "lax",
     path: "/",
     maxAge: SESSION_TTL,
   });
@@ -81,7 +92,10 @@ function setOidcCookie(res: Response, name: string, value: string) {
   res.cookie(name, value, {
     httpOnly: true,
     secure: true,
-    sameSite: "none",
+    // Same reasoning as setSessionCookie above. The OIDC state/nonce cookies
+    // are consumed by the Google callback (a top-level GET navigation) which
+    // "lax" permits.
+    sameSite: "lax",
     path: "/",
     maxAge: OIDC_COOKIE_TTL,
   });
@@ -341,9 +355,38 @@ router.get("/callback/google", async (req: Request, res: Response) => {
 
     const sid = await createSession(sessionData);
     setSessionCookie(res, sid);
+    // Audit log: login berhasil via Google OAuth
+    const _meta = extractRequestMeta(req);
+    writeAuditLog({
+      companyId: dbUser.companyId ?? null,
+      userId: dbUser.id,
+      userEmail: dbUser.email ?? null,
+      action: "login",
+      module: "auth",
+      referenceId: "google-oauth",
+      newData: { email: dbUser.email, role: dbUser.role },
+      ipAddress: _meta.ipAddress,
+      userAgent: _meta.userAgent,
+    });
+    // If returnTo is the sentinel value "popup", render a page that signals
+    // the parent window via postMessage then closes itself.
+    if (returnTo === "popup") {
+      res.send(`<!DOCTYPE html><html><body><script>
+        try { window.opener && window.opener.postMessage("auth:done", "*"); } catch(e){}
+        window.close();
+      </script><p>Login berhasil. Tutup tab ini jika tidak tertutup otomatis.</p></body></html>`);
+      return;
+    }
     res.redirect(returnTo);
   } catch (err) {
     req.log.error({ err }, "[Google OAuth] callback token exchange error");
+    if (returnTo === "popup") {
+      res.send(`<!DOCTYPE html><html><body><script>
+        try { window.opener && window.opener.postMessage("auth:error", "*"); } catch(e){}
+        window.close();
+      </script><p>Login gagal. Tutup tab ini dan coba lagi.</p></body></html>`);
+      return;
+    }
     res.redirect(returnTo);
   }
 });
@@ -389,6 +432,25 @@ router.post("/dev-login", async (req: Request, res: Response) => {
   const sid = await createSession(sessionData);
   setSessionCookie(res, sid);
   req.log.info({ email }, "[Dev Login] session created");
+  // Audit log: dev login
+  const _devMeta = extractRequestMeta(req);
+  writeAuditLog({
+    companyId: dbUser.companyId ?? null,
+    userId: dbUser.id,
+    userEmail: dbUser.email ?? null,
+    action: "login",
+    module: "auth",
+    referenceId: "dev-login",
+    newData: { email: dbUser.email, role: dbUser.role },
+    ipAddress: _devMeta.ipAddress,
+    userAgent: _devMeta.userAgent,
+  });
+
+  const redirectTo = typeof req.query.redirect === "string" ? req.query.redirect : null;
+  if (redirectTo) {
+    res.redirect(302, redirectTo);
+    return;
+  }
   res.json({ ok: true, email: dbUser.email, role: dbUser.role });
 });
 

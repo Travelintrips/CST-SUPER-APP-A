@@ -1,7 +1,6 @@
 import { useRef } from "react";
-import { Bell, Package, Ship, ShoppingBag, CheckCheck, Trash2 } from "lucide-react";
+import { Bell, Package, Ship, ShoppingBag, CheckCheck, Trash2, FileText, RefreshCw, Container, Layers, BellOff, BellRing } from "lucide-react";
 import { toast } from "sonner";
-import { useLink } from "wouter";
 import {
   Popover,
   PopoverContent,
@@ -9,23 +8,36 @@ import {
 } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useOrderNotificationsContext, type OrderNotification } from "@/contexts/OrderNotificationsContext";
+import { useOrderNotificationsContext } from "@/contexts/OrderNotificationsContext";
+import type { OrderNotification } from "@/hooks/useOrderNotifications";
 
 function typeLabel(type: OrderNotification["type"]) {
-  if (type === "logistic") return "Order Logistik";
+  if (type === "logistic") return "Order Logistik Baru";
+  if (type === "logistic_status") return "Update Status Logistik";
   if (type === "portal_sales") return "Order Portal";
+  if (type === "sales_update") return "Update Sales Order";
+  if (type === "freight_new") return "Freight Shipment Baru";
+  if (type === "freight_status") return "Update Status Shipment";
+  if (type === "freight_stage") return "Update Stage Shipment";
   return "Order Produk";
 }
 
 function typeIcon(type: OrderNotification["type"]) {
   if (type === "logistic") return <Ship size={14} className="text-blue-500 shrink-0" />;
+  if (type === "logistic_status") return <RefreshCw size={14} className="text-cyan-500 shrink-0" />;
   if (type === "portal_sales") return <ShoppingBag size={14} className="text-purple-500 shrink-0" />;
+  if (type === "sales_update") return <FileText size={14} className="text-orange-500 shrink-0" />;
+  if (type === "freight_new") return <Container size={14} className="text-indigo-500 shrink-0" />;
+  if (type === "freight_status") return <RefreshCw size={14} className="text-violet-500 shrink-0" />;
+  if (type === "freight_stage") return <Layers size={14} className="text-teal-500 shrink-0" />;
   return <Package size={14} className="text-green-500 shrink-0" />;
 }
 
 function orderHref(n: OrderNotification) {
-  if (n.type === "logistic") return `/logistics/portal-orders/${n.orderId}`;
+  if (n.type === "logistic" || n.type === "logistic_status") return `/logistics/portal-orders/${n.orderId}`;
   if (n.type === "portal_sales") return `/logistics/portal-orders`;
+  if (n.type === "sales_update") return `/sales/documents/${n.orderId}`;
+  if (n.type === "freight_new" || n.type === "freight_status" || n.type === "freight_stage") return `/logistics/freight/${n.orderId}`;
   return `/portal-product-orders`;
 }
 
@@ -43,18 +55,51 @@ function timeAgo(isoDate: string) {
   return `${Math.floor(hrs / 24)} hari lalu`;
 }
 
+function notifDescription(n: OrderNotification): string {
+  if (n.type === "logistic") {
+    return `${n.shipmentType ?? ""} · ${n.origin ?? ""} → ${n.destination ?? ""}`;
+  }
+  if (n.type === "logistic_status") {
+    return `Status: ${n.status ?? ""}`;
+  }
+  if (n.type === "sales_update") {
+    const total = n.grandTotal != null ? ` · ${formatRupiah(n.grandTotal)}` : "";
+    return `${n.actionLabel ?? ""}${total}`;
+  }
+  if (n.type === "freight_new") {
+    const route = n.origin && n.destination ? ` · ${n.origin} → ${n.destination}` : "";
+    return `${n.commodity ?? ""}${route}`;
+  }
+  if (n.type === "freight_status") {
+    const route = n.origin && n.destination ? ` · ${n.origin} → ${n.destination}` : "";
+    return `Status: ${n.status ?? ""}${route}`;
+  }
+  if (n.type === "freight_stage") {
+    const vendor = n.vendorName ? ` · ${n.vendorName}` : "";
+    return `${n.stageType ?? ""}: ${n.stageStatus ?? ""}${vendor}`;
+  }
+  return `${n.itemCount ?? 1} item · ${formatRupiah(n.grandTotal ?? 0)}`;
+}
+
 export function NotificationBell() {
-  const { notifications, unreadCount, markAllRead, clearAll, setOnNewOrder } = useOrderNotificationsContext();
+  const {
+    notifications,
+    dbUnreadTotal,
+    unreadCount,
+    markAllRead,
+    clearAll,
+    setOnNewOrder,
+    notifPermission,
+    requestNotifPermission,
+  } = useOrderNotificationsContext();
   const initialized = useRef(false);
 
   if (!initialized.current) {
     initialized.current = true;
     setOnNewOrder((n) => {
       const label = typeLabel(n.type);
-      const desc = n.type === "logistic"
-        ? `${n.shipmentType ?? ""} · ${n.origin ?? ""} → ${n.destination ?? ""}`
-        : `${n.itemCount ?? 1} item · ${formatRupiah(n.grandTotal)}`;
-      toast.info(`${label} Baru!`, {
+      const desc = notifDescription(n);
+      toast.info(`${label}`, {
         description: `${n.customerName}${n.companyName ? ` (${n.companyName})` : ""} — ${desc}`,
         duration: 8_000,
         action: {
@@ -65,21 +110,34 @@ export function NotificationBell() {
     });
   }
 
+  async function handleEnableNotif() {
+    const result = await requestNotifPermission();
+    if (result === "granted") {
+      toast.success("Notifikasi browser aktif", {
+        description: "Anda akan menerima notifikasi meski sedang di tab lain.",
+      });
+    } else if (result === "denied") {
+      toast.error("Notifikasi diblokir", {
+        description: "Aktifkan notifikasi dari pengaturan browser Anda.",
+      });
+    }
+  }
+
   return (
-    <Popover onOpenChange={(open) => { if (open && unreadCount > 0) markAllRead(); }}>
+    <Popover onOpenChange={(open) => { if (open && dbUnreadTotal > 0) markAllRead(); }}>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon" className="relative h-9 w-9" aria-label="Notifikasi order baru">
+        <Button variant="ghost" size="icon" className="relative h-9 w-9" aria-label="Notifikasi">
           <Bell size={18} />
-          {unreadCount > 0 && (
+          {dbUnreadTotal > 0 && (
             <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white leading-none">
-              {unreadCount > 9 ? "9+" : unreadCount}
+              {dbUnreadTotal > 99 ? "99+" : dbUnreadTotal}
             </span>
           )}
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80 p-0 shadow-lg">
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
-          <span className="text-sm font-semibold">Notifikasi Order</span>
+          <span className="text-sm font-semibold">Notifikasi</span>
           {notifications.length > 0 && (
             <button
               onClick={clearAll}
@@ -91,6 +149,32 @@ export function NotificationBell() {
             </button>
           )}
         </div>
+
+        {/* Banner aktifkan notifikasi browser */}
+        {notifPermission === "default" && (
+          <div className="flex items-center gap-3 border-b border-border bg-amber-50 dark:bg-amber-950/30 px-4 py-2.5">
+            <BellRing size={15} className="text-amber-500 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-medium text-amber-800 dark:text-amber-300">Aktifkan notifikasi suara</p>
+              <p className="text-[11px] text-amber-700 dark:text-amber-400">Muncul meski di tab lain</p>
+            </div>
+            <button
+              onClick={handleEnableNotif}
+              className="shrink-0 rounded-md bg-amber-500 hover:bg-amber-600 px-2.5 py-1 text-[11px] font-semibold text-white transition-colors"
+            >
+              Aktifkan
+            </button>
+          </div>
+        )}
+
+        {notifPermission === "denied" && (
+          <div className="flex items-center gap-2 border-b border-border bg-red-50 dark:bg-red-950/20 px-4 py-2">
+            <BellOff size={13} className="text-red-400 shrink-0" />
+            <p className="text-[11px] text-red-600 dark:text-red-400">
+              Notifikasi diblokir browser. Ubah di pengaturan situs.
+            </p>
+          </div>
+        )}
 
         {notifications.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-10 text-muted-foreground">
@@ -112,13 +196,14 @@ export function NotificationBell() {
                       <span className="text-xs font-semibold text-foreground truncate">{n.orderNumber}</span>
                       <span className="text-[10px] text-muted-foreground shrink-0">{timeAgo(n.createdAt)}</span>
                     </div>
-                    <p className="text-xs text-foreground truncate mt-0.5">
+                    <p className="text-xs text-muted-foreground truncate mt-0.5">
+                      {typeLabel(n.type)}
+                    </p>
+                    <p className="text-xs text-foreground truncate">
                       {n.customerName}{n.companyName ? ` · ${n.companyName}` : ""}
                     </p>
                     <p className="text-[11px] text-muted-foreground truncate">
-                      {n.type === "logistic"
-                        ? `${n.shipmentType ?? ""} · ${n.origin ?? ""} → ${n.destination ?? ""}`
-                        : `${n.itemCount ?? 1} item · ${formatRupiah(n.grandTotal)}`}
+                      {notifDescription(n)}
                     </p>
                   </div>
                 </a>
@@ -128,14 +213,30 @@ export function NotificationBell() {
         )}
 
         {notifications.length > 0 && (
-          <div className="border-t border-border px-4 py-2">
+          <div className="border-t border-border px-4 py-2 flex items-center justify-between">
             <button
               onClick={markAllRead}
               className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
               <CheckCheck size={12} />
-              Tandai semua sudah dibaca
+              Tandai semua dibaca
             </button>
+            <a
+              href="/bizportal/notifications"
+              className="text-xs text-indigo-500 hover:text-indigo-400 font-medium transition-colors"
+            >
+              Lihat semua →
+            </a>
+          </div>
+        )}
+        {notifications.length === 0 && (
+          <div className="border-t border-border px-4 py-2 text-right">
+            <a
+              href="/bizportal/notifications"
+              className="text-xs text-indigo-500 hover:text-indigo-400 font-medium transition-colors"
+            >
+              Lihat riwayat →
+            </a>
           </div>
         )}
       </PopoverContent>

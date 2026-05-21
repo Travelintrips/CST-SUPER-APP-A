@@ -1,4 +1,5 @@
-import { logger } from "./logger";
+import { logger } from "./logger.js";
+import { logNotification } from "./notificationLog.js";
 
 const FONNTE_TOKEN = process.env.FONNTE_TOKEN ?? "";
 const FONNTE_URL = "https://api.fonnte.com/send";
@@ -9,25 +10,26 @@ const FONNTE_URL = "https://api.fonnte.com/send";
  * Handles: 08..., +62..., 62..., +628..., spaces/dashes.
  */
 function normalizePhoneID(raw: string): string {
-  // WhatsApp group IDs look like "1234567890@g.us" — pass through unchanged
   if (raw.includes("@")) return raw.trim();
-
-  // Strip everything except digits and leading +
   let digits = raw.replace(/[^\d+]/g, "");
-  // Remove leading +
   digits = digits.replace(/^\+/, "");
-
-  if (digits.startsWith("62")) return digits;           // already international
-  if (digits.startsWith("0")) return "62" + digits.slice(1); // 08xxx → 628xxx
-  return "62" + digits;                                 // bare number → 628xxx
+  if (digits.startsWith("62")) return digits;
+  if (digits.startsWith("0")) return "62" + digits.slice(1);
+  return "62" + digits;
 }
 
 export async function sendWhatsApp(
   target: string,
   message: string,
+  opts?: { context?: string; refType?: string; refId?: string },
 ): Promise<void> {
   if (!FONNTE_TOKEN) {
     logger.warn("FONNTE_TOKEN not set — skipping WhatsApp notification");
+    await logNotification({
+      channel: "wa", recipient: target, message,
+      status: "failed", errorMsg: "FONNTE_TOKEN not configured",
+      context: opts?.context, refType: opts?.refType, refId: opts?.refId,
+    });
     return;
   }
   if (!target?.trim()) {
@@ -36,9 +38,13 @@ export async function sendWhatsApp(
   }
 
   const phone = normalizePhoneID(target);
-  // Group IDs are longer than phone numbers; skip the length check for them
   if (!phone.includes("@") && phone.length < 10) {
     logger.warn({ raw: target, normalized: phone }, "sendWhatsApp: phone too short — skipping");
+    await logNotification({
+      channel: "wa", recipient: target, message,
+      status: "failed", errorMsg: "Phone number too short",
+      context: opts?.context, refType: opts?.refType, refId: opts?.refId,
+    });
     return;
   }
 
@@ -49,21 +55,40 @@ export async function sendWhatsApp(
         Authorization: FONNTE_TOKEN,
         "Content-Type": "application/x-www-form-urlencoded",
       },
-      // No countryCode — number is already in 628xxx format
       body: new URLSearchParams({ target: phone, message }).toString(),
     });
     const body = await res.json() as unknown;
     if (!res.ok) {
       logger.warn({ status: res.status, body, phone }, "Fonnte responded with non-OK status");
+      await logNotification({
+        channel: "wa", recipient: phone, message,
+        status: "failed", errorMsg: `HTTP ${res.status}`,
+        context: opts?.context, refType: opts?.refType, refId: opts?.refId,
+      });
     } else {
       const b = body as Record<string, unknown>;
       if (b.status === false || b.status === "false") {
         logger.warn({ body, phone }, "Fonnte returned status:false (send failed)");
+        await logNotification({
+          channel: "wa", recipient: phone, message,
+          status: "failed", errorMsg: String(b.reason ?? b.message ?? "Fonnte status:false"),
+          context: opts?.context, refType: opts?.refType, refId: opts?.refId,
+        });
       } else {
         logger.info({ phone }, "WhatsApp sent via Fonnte");
+        await logNotification({
+          channel: "wa", recipient: phone, message,
+          status: "sent",
+          context: opts?.context, refType: opts?.refType, refId: opts?.refId,
+        });
       }
     }
   } catch (err) {
     logger.error({ err, phone }, "Failed to send WhatsApp via Fonnte");
+    await logNotification({
+      channel: "wa", recipient: phone, message,
+      status: "failed", errorMsg: String(err),
+      context: opts?.context, refType: opts?.refType, refId: opts?.refId,
+    });
   }
 }

@@ -7,13 +7,16 @@ import {
   jsonb,
   timestamp,
   boolean,
+  index,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { suppliersTable } from "./suppliers";
+import { companiesTable } from "./companies";
 
 export const logisticOrdersTable = pgTable("logistic_orders", {
   id: serial("id").primaryKey(),
   orderNumber: text("order_number").notNull().unique(),
+  companyId: integer("company_id").references(() => companiesTable.id, { onDelete: "set null" }),
   companyName: text("company_name").notNull(),
   customerName: text("customer_name").notNull(),
   email: text("email").notNull(),
@@ -66,8 +69,15 @@ export const logisticOrdersTable = pgTable("logistic_orders", {
   // [MULTI-MODE] Customer options flow
   optionsToken: text("options_token").unique(),
   optionsSentAt: timestamp("options_sent_at", { withTimezone: true }),
+  publicRfqToken: text("public_rfq_token").unique(),
+  geofenceEnabled: boolean("geofence_enabled").default(true).notNull(),
+  geofenceRadiusKm: integer("geofence_radius_km").default(75).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (t) => [
+  index("logistic_orders_company_idx").on(t.companyId),
+  index("logistic_orders_status_idx").on(t.status),
+  index("logistic_orders_vendor_idx").on(t.approvedVendorId),
+]);
 
 export const logisticOrderItemsTable = pgTable("logistic_order_items", {
   id: serial("id").primaryKey(),
@@ -86,8 +96,18 @@ export const logisticOrderRfqsTable = pgTable("logistic_order_rfqs", {
   orderId: integer("order_id").notNull().references(() => logisticOrdersTable.id, { onDelete: "cascade" }),
   rfqNumber: text("rfq_number").notNull().unique(),
   vendorIds: integer("vendor_ids").array().notNull().default([]),
+  openedVendorIds: integer("opened_vendor_ids").array().notNull().default([]),
   notes: text("notes"),
-  status: text("status").notNull().default("open"),
+  status: text("status").notNull().default("admin_review"),
+  responseDeadline: timestamp("response_deadline", { withTimezone: true }),
+  basicPrice: numeric("basic_price", { precision: 14, scale: 2 }),
+  quotedPrice: numeric("quoted_price", { precision: 14, scale: 2 }),
+  quotedAt: timestamp("quoted_at", { withTimezone: true }),
+  quoteNotes: text("quote_notes"),
+  customerResponseNotes: text("customer_response_notes"),
+  customerRespondedAt: timestamp("customer_responded_at", { withTimezone: true }),
+  createdByUserId: text("created_by_user_id"),
+  createdByUserName: text("created_by_user_name"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -108,7 +128,10 @@ export const logisticOrderQuotesTable = pgTable("logistic_order_quotes", {
   quoteStatus: text("quote_status").notNull().default("pending"),
   replySource: text("reply_source").notNull().default("manual"),
   replyTimestamp: timestamp("reply_timestamp"),
-  vendorConfirmToken: text("vendor_confirm_token").unique(),                                   // [TRUCKING-FIX]
+  vendorConfirmToken: text("vendor_confirm_token").unique(),
+  // Enterprise: ranking & scoring
+  rankScore: numeric("rank_score", { precision: 6, scale: 2 }),
+  rankBadges: text("rank_badges").array().default([]),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -178,6 +201,7 @@ export const vendorResponsesTable = pgTable("vendor_responses", {
   vehicleType: text("vehicle_type"),
   notes: text("notes"),
   unitPhotoUrl: text("unit_photo_url"),
+  quotedPrice: numeric("quoted_price", { precision: 14, scale: 2 }),
   submittedAt: timestamp("submitted_at").defaultNow().notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

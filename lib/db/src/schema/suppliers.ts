@@ -1,9 +1,11 @@
-import { pgTable, serial, text, integer, timestamp, boolean, numeric } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, timestamp, boolean, numeric, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { companiesTable } from "./companies";
 
 export const suppliersTable = pgTable("suppliers", {
   id: serial("id").primaryKey(),
+  companyId: integer("company_id").references(() => companiesTable.id, { onDelete: "set null" }),
   name: text("name").notNull(),
   country: text("country"),
   contactEmail: text("contact_email"),
@@ -22,7 +24,9 @@ export const suppliersTable = pgTable("suppliers", {
   yearVehicle: integer("year_vehicle"),
   supportedModes: text("supported_modes").array(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (t) => [
+  index("suppliers_company_idx").on(t.companyId),
+]);
 
 export const vendorCatalogItemsTable = pgTable("vendor_catalog_items", {
   id: serial("id").primaryKey(),

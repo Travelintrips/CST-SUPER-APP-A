@@ -1,10 +1,11 @@
 import { Router } from "express";
 import { db, productsTable, ordersTable, productCategoriesTable, productCategoryMapTable } from "@workspace/db";
-import { eq, count, inArray, and, ilike, or, type SQL } from "drizzle-orm";
+import { eq, ne, count, inArray, and, ilike, or, type SQL } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { postEcommerceOrder } from "../lib/accounting.js";
 import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa } from "../lib/adminWa.js";
+import { saveAndBroadcast } from "../lib/notificationStore.js";
 
 const router = Router();
 const objectStorageService = new ObjectStorageService();
@@ -139,6 +140,21 @@ router.delete("/product-categories/:id", async (req, res) => {
   }
   await db.delete(productCategoriesTable).where(eq(productCategoriesTable.id, id));
   return res.json({ message: "Category deleted" });
+});
+
+// GET /api/ecommerce/products/check-sku
+router.get("/products/check-sku", async (req, res) => {
+  const sku = String(req.query.sku ?? "").trim();
+  const excludeId = req.query.excludeId ? Number(req.query.excludeId) : null;
+  if (!sku) return res.json({ taken: false });
+  const conds: SQL[] = [eq(productsTable.sku, sku)];
+  if (excludeId && !Number.isNaN(excludeId)) conds.push(ne(productsTable.id, excludeId));
+  const rows = await db
+    .select({ id: productsTable.id })
+    .from(productsTable)
+    .where(and(...conds))
+    .limit(1);
+  return res.json({ taken: rows.length > 0 });
 });
 
 // GET /api/ecommerce/products
@@ -455,6 +471,18 @@ router.post("/orders", async (req, res) => {
     grandTotal: String(grand),
     status: "pending",
   }).returning();
+
+  // Simpan ke DB + broadcast SSE realtime ke admin
+  const itemCount = parsedLineItems?.length ?? (legacyItems ? 1 : 0);
+  saveAndBroadcast("new_ecommerce_order", {
+    type: "ecommerce",
+    orderId: order.id,
+    orderNumber: `ECO-${String(order.id).padStart(6, "0")}`,
+    customerName: order.customerName,
+    companyName: null,
+    grandTotal: grand,
+    itemCount,
+  }).catch(() => {});
 
   // Notify admin via WhatsApp (fire-and-forget)
   getAdminWa().then((adminWa) => {

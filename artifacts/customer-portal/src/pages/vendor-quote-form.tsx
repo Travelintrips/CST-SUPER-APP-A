@@ -1,9 +1,14 @@
 import { useState, useEffect } from "react";
-import { Truck, MapPin, Package, Weight, CheckCircle2, AlertCircle, Loader2, CalendarDays, ClipboardList } from "lucide-react";
+import { Truck, MapPin, Package, Weight, CheckCircle2, AlertCircle, Loader2, CalendarDays, ClipboardList, DollarSign, FileText, ShoppingCart, Clock } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 function apiUrl(path: string) {
   return `${BASE}${path}`;
+}
+
+interface OrderItem {
+  serviceName: string;
+  category: string;
 }
 
 interface RfqFormData {
@@ -14,10 +19,17 @@ interface RfqFormData {
   origin: string;
   destination: string;
   commodity: string | null;
+  cargoDescription: string | null;
   grossWeight: number | null;
   volumeCbm: number | null;
   requiredDate: string | null;
+  vehicleType: string | null;
+  vendorBasePrice: number | null;
   alreadySubmitted: boolean;
+  orderItems?: OrderItem[] | null;
+  createdAt?: string | null;
+  jamOrder?: string | null;
+  isTrucking?: boolean;
 }
 
 function fmt(label: string, value: string | null | undefined) {
@@ -29,6 +41,7 @@ export default function VendorQuoteFormPage() {
   const params = new URLSearchParams(window.location.search);
   const rfqNumber = params.get("rfq") ?? "";
   const vendorId = params.get("v") ?? "";
+  const token = params.get("token") ?? "";
 
   const [data, setData] = useState<RfqFormData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -50,15 +63,21 @@ export default function VendorQuoteFormPage() {
       setLoading(false);
       return;
     }
-    fetch(apiUrl(`/api/logistic/orders/rfq-form?rfq=${encodeURIComponent(rfqNumber)}&v=${encodeURIComponent(vendorId)}`))
+    if (!token) {
+      setError("Link tidak valid. Token tidak ditemukan.");
+      setLoading(false);
+      return;
+    }
+    fetch(apiUrl(`/api/logistic/orders/rfq-form?rfq=${encodeURIComponent(rfqNumber)}&v=${encodeURIComponent(vendorId)}&token=${encodeURIComponent(token)}`))
       .then((r) => r.ok ? r.json() : r.json().then((e: { message: string }) => Promise.reject(e.message)))
       .then((d: RfqFormData) => {
         setData(d);
+        if (d.vendorBasePrice != null) setVendorPrice(String(Math.round(d.vendorBasePrice)));
         if (d.alreadySubmitted) setSuccess(true);
       })
       .catch((msg: unknown) => setError(typeof msg === "string" ? msg : "Gagal memuat data RFQ"))
       .finally(() => setLoading(false));
-  }, [rfqNumber, vendorId]);
+  }, [rfqNumber, vendorId, token]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -74,6 +93,7 @@ export default function VendorQuoteFormPage() {
         rfqNumber,
         vendorId: parseInt(vendorId, 10),
         vendorPrice: price,
+        token,
       };
       if (estimatedPickup) body.estimatedPickup = estimatedPickup;
       if (estimatedDelivery) body.estimatedDelivery = estimatedDelivery;
@@ -159,11 +179,11 @@ export default function VendorQuoteFormPage() {
     );
   }
 
-  const infoRows = [
-    fmt("Jenis", data.shipmentType),
-    fmt("Rute", `${data.origin} → ${data.destination}`),
+  const optionalRows = [
+    fmt("Tipe Kendaraan", data.vehicleType),
     fmt("Komoditi", data.commodity),
-    fmt("Berat", data.grossWeight ? `${data.grossWeight} kg` : null),
+    fmt("Deskripsi Muatan", data.cargoDescription),
+    fmt("Berat", data.grossWeight ? `${data.grossWeight.toLocaleString("id-ID")} kg` : null),
     fmt("Volume", data.volumeCbm ? `${data.volumeCbm} CBM` : null),
     fmt("Tgl Butuh", data.requiredDate),
   ].filter(Boolean) as { label: string; value: string }[];
@@ -194,12 +214,76 @@ export default function VendorQuoteFormPage() {
             <ClipboardList className="w-3.5 h-3.5" /> Detail Permintaan
           </h3>
           <div className="space-y-2.5">
-            {infoRows.map(({ label, value }) => (
+            {/* No. Order — selalu tampil */}
+            <div className="flex items-start gap-3">
+              <div className="w-4 mt-0.5 flex-shrink-0 text-slate-500">
+                <FileText className="w-4 h-4" />
+              </div>
+              <div>
+                <p className="text-xs text-slate-400">No. Order</p>
+                <p className="text-sm text-white font-mono font-medium">{data.orderNumber || data.rfqNumber}</p>
+              </div>
+            </div>
+            {/* Jenis Layanan — selalu tampil + produk yang dipesan */}
+            <div className="flex items-start gap-3">
+              <div className="w-4 mt-0.5 flex-shrink-0 text-slate-500">
+                <Truck className="w-4 h-4" />
+              </div>
+              <div className="flex-1">
+                <p className="text-xs text-slate-400">Jenis Layanan</p>
+                <p className="text-sm text-white font-medium">{data.shipmentType || "—"}</p>
+                {data.orderItems && data.orderItems.length > 0 && (
+                  <div className="mt-1.5 space-y-1">
+                    {data.orderItems.map((item, idx) => (
+                      <div key={idx} className="flex items-center gap-1.5">
+                        <ShoppingCart className="w-3 h-3 text-blue-400 flex-shrink-0" />
+                        <span className="text-xs text-blue-300">{item.serviceName || item.category}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            {/* Tanggal & Jam Order — hanya untuk trucking */}
+            {data.isTrucking && (data.createdAt || data.jamOrder) && (
+              <div className="flex items-start gap-3">
+                <div className="w-4 mt-0.5 flex-shrink-0 text-slate-500">
+                  <Clock className="w-4 h-4" />
+                </div>
+                <div>
+                  <p className="text-xs text-slate-400">Tanggal &amp; Jam Order</p>
+                  <p className="text-sm text-white font-medium">
+                    {data.createdAt
+                      ? new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Jakarta", day: "2-digit", month: "long", year: "numeric" }).format(new Date(data.createdAt))
+                      : ""}
+                    {data.jamOrder ? ` · ${data.jamOrder}` : data.createdAt
+                      ? ` · ${new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Jakarta", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(data.createdAt)).replace(":", ".")}`
+                      : ""}
+                  </p>
+                </div>
+              </div>
+            )}
+            {/* Rute — selalu tampil */}
+            <div className="flex items-start gap-3">
+              <div className="w-4 mt-0.5 flex-shrink-0 text-slate-500">
+                <MapPin className="w-4 h-4" />
+              </div>
+              <div>
+                <p className="text-xs text-slate-400">Rute</p>
+                <p className="text-sm text-white font-medium">
+                  {(data.origin || data.destination)
+                    ? `${data.origin || "—"} → ${data.destination || "—"}`
+                    : "—"}
+                </p>
+              </div>
+            </div>
+            {/* Baris opsional — hanya tampil jika ada nilai */}
+            {optionalRows.map(({ label, value }) => (
               <div key={label} className="flex items-start gap-3">
                 <div className="w-4 mt-0.5 flex-shrink-0 text-slate-500">
-                  {label === "Jenis" && <Truck className="w-4 h-4" />}
-                  {label === "Rute" && <MapPin className="w-4 h-4" />}
+                  {label === "Tipe Kendaraan" && <Truck className="w-4 h-4" />}
                   {label === "Komoditi" && <Package className="w-4 h-4" />}
+                  {label === "Deskripsi Muatan" && <FileText className="w-4 h-4" />}
                   {(label === "Berat" || label === "Volume") && <Weight className="w-4 h-4" />}
                   {label === "Tgl Butuh" && <CalendarDays className="w-4 h-4" />}
                 </div>
@@ -209,6 +293,20 @@ export default function VendorQuoteFormPage() {
                 </div>
               </div>
             ))}
+            {data.vendorBasePrice != null && (
+              <div className="flex items-start gap-3 mt-1 pt-2.5 border-t border-slate-700">
+                <div className="w-4 mt-0.5 flex-shrink-0 text-emerald-400">
+                  <DollarSign className="w-4 h-4" />
+                </div>
+                <div>
+                  <p className="text-xs text-slate-400">Harga Referensi Vendor</p>
+                  <p className="text-sm font-bold text-emerald-400">
+                    Rp {Math.round(data.vendorBasePrice).toLocaleString("id-ID")}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-0.5">Berdasarkan katalog vendor — dapat disesuaikan</p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

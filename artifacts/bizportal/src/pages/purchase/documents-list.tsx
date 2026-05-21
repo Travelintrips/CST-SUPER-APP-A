@@ -18,11 +18,14 @@ import {
   useDeletePurchaseDocument,
   usePurchaseDocumentAction,
   getListPurchaseDocumentsQueryKey,
+  getGetPurchaseDocumentQueryOptions,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { usePrefetchOnHover } from "@/hooks/use-prefetch-on-hover";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Trash2, X } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useCompany } from "@/contexts/CompanyContext";
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
@@ -75,14 +78,17 @@ export default function PurchaseDocumentsListPage({ kind }: Props) {
   const [bulkDeleting, setBulkDeleting] = useState(false);
 
   const queryClient = useQueryClient();
+  const prefetchHover = usePrefetchOnHover();
   const { toast } = useToast();
   const { t } = useLanguage();
+  const { activeCompanyId } = useCompany();
   const deleteMut = useDeletePurchaseDocument();
   const actionMut = usePurchaseDocumentAction();
 
   const { data: docs } = useListPurchaseDocuments({
     kind,
     ...(!isRfq && paymentFilter !== "all" ? { paymentStatus: paymentFilter } : {}),
+    company: activeCompanyId,
   });
 
   const allDocs = docs ?? [];
@@ -242,7 +248,12 @@ export default function PurchaseDocumentsListPage({ kind }: Props) {
               </TableHeader>
               <TableBody>
                 {(docs ?? []).map((d) => (
-                  <TableRow key={d.id} data-testid={`row-doc-${d.id}`}>
+                  <TableRow
+                    key={d.id}
+                    data-testid={`row-doc-${d.id}`}
+                    className="cursor-pointer hover:bg-muted/40 transition-colors"
+                    {...prefetchHover(getGetPurchaseDocumentQueryOptions(d.id))}
+                  >
                     <TableCell>
                       <Checkbox
                         checked={selectedIds.has(d.id)}

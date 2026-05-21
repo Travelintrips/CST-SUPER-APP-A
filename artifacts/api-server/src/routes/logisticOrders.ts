@@ -1,4 +1,5 @@
 import { Router, Request, Response } from "express";
+import { randomBytes } from "crypto";
 import { db } from "@workspace/db";
 import {
   logisticOrdersTable,
@@ -8,12 +9,20 @@ import {
   driverJobsTable,
   driverJobLogsTable,
   driverPhotosTable,
+  logisticOrderRfqsTable,
+  driverLocationsTable,
 } from "@workspace/db";
-import { eq, ilike, and, gte, lte, or, sql, desc } from "drizzle-orm";
+import { eq, ilike, and, gte, lte, or, sql, desc, inArray, isNotNull } from "drizzle-orm";
+import { salesDocumentsTable } from "@workspace/db";
+import { requireClerkUser } from "../lib/requireAdmin.js";
+import { resolveCompanyId } from "../lib/resolveCompany.js";
+import { requirePortalAdmin } from "../lib/supabaseAuth.js";
 import { sendLogisticOrderNotification } from "../lib/orderNotification";
-import { autoCreateRfqAndNotifyVendors } from "./logisticRfq";
+// [FLOW BARU] autoCreateRfqAndNotifyVendors dinonaktifkan — vendor tidak boleh dihubungi langsung saat order dibuat.
+// Admin harus review dulu via /bizportal/logistics/rfq sebelum blast ke vendor.
+// import { autoCreateRfqAndNotifyVendors } from "./logisticRfq";
 import { sendWhatsApp } from "../lib/fonnte";
-import { broadcastToAdmins } from "../lib/sseManager";
+import { saveAndBroadcast } from "../lib/notificationStore";
 import {
   CreateLogisticOrderBody,
   ListLogisticOrdersQueryParams,
@@ -38,6 +47,7 @@ function toOrder(row: typeof logisticOrdersTable.$inferSelect, approvedVendorNam
   return {
     id: row.id,
     orderNumber: row.orderNumber,
+    companyId: row.companyId ?? null,
     companyName: row.companyName,
     customerName: row.customerName,
     email: row.email,
@@ -58,7 +68,7 @@ function toOrder(row: typeof logisticOrdersTable.$inferSelect, approvedVendorNam
     nomorPenerima: row.nomorPenerima ?? null,
     jamOrder: row.jamOrder ?? null,
     source: row.source ?? "manual",
-    aiSessionToken: row.aiSessionToken ?? null,
+
     subtotal: parseFloat(row.subtotal),
     tax: parseFloat(row.tax),
     grandTotal: parseFloat(row.grandTotal),
@@ -87,6 +97,42 @@ function toItem(row: typeof logisticOrderItemsTable.$inferSelect) {
     createdAt: row.createdAt.toISOString(),
   };
 }
+
+/** Public-safe item projection — strips financial and raw-input data */
+function toPublicItem(row: typeof logisticOrderItemsTable.$inferSelect) {
+  return {
+    id: row.id,
+    category: row.category,
+    serviceName: row.serviceName,
+    calculatorType: row.calculatorType,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+const TRUCKING_RATES_KEY = "logistic_trucking_rates";
+
+const DEFAULT_TRUCKING_RATES: Record<string, { ratePerKm: number; loadingFee: number }> = {
+  CDE:      { ratePerKm: 5000,  loadingFee: 500000 },
+  CDD:      { ratePerKm: 7000,  loadingFee: 700000 },
+  Fuso:     { ratePerKm: 10000, loadingFee: 1000000 },
+  Wingbox:  { ratePerKm: 12000, loadingFee: 1200000 },
+  Trailer:  { ratePerKm: 15000, loadingFee: 1500000 },
+};
+
+async function getTruckingRates() {
+  const [row] = await db
+    .select()
+    .from(portalContentTable)
+    .where(eq(portalContentTable.key, TRUCKING_RATES_KEY));
+  if (!row) return DEFAULT_TRUCKING_RATES;
+  try {
+    return JSON.parse(row.value) as typeof DEFAULT_TRUCKING_RATES;
+  } catch {
+    return DEFAULT_TRUCKING_RATES;
+  }
+}
+
+// ─── PUBLIC ROUTES (no auth required) ────────────────────────────────────────
 
 // POST /api/logistic/orders — create order (public)
 logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
@@ -139,6 +185,7 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
       tax: String(body.tax),
       grandTotal: String(body.grandTotal),
       status: "New Order",
+      publicRfqToken: randomBytes(16).toString("hex"),
     })
     .returning();
 
@@ -188,24 +235,22 @@ sendLogisticOrderNotification({
     req.log.error({ err }, "sendLogisticOrderNotification failed");
   });
 
-  // Fire-and-forget: auto-create RFQ + send WA to matching vendors with quote form link
-  autoCreateRfqAndNotifyVendors(order.id, {
+  // [FLOW BARU] Auto-blast ke vendor DINONAKTIFKAN.
+  // Order masuk → status admin_review → Admin review → Admin blast ke vendor.
+  // RFQ dibuat manual oleh admin via POST /api/logistic/rfq/create-from-order/:orderId
+
+  saveAndBroadcast("new_logistic_order", {
+    type: "logistic",
+    orderId: order.id,
     orderNumber,
+    customerName: body.customerName,
+    companyName: body.companyName ?? null,
     shipmentType: body.shipmentType,
     origin: body.origin,
     destination: body.destination,
-    commodity: body.commodity ?? null,
-    cargoDescription: body.cargoDescription ?? null,
-    grossWeight: body.grossWeight != null ? Number(body.grossWeight) : null,
-    volumeCbm: body.volumeCbm != null ? Number(body.volumeCbm) : null,
-    requiredDate: body.requiredDate ?? null,
-    notes: body.notes ?? null,
-    jamOrder: body.jamOrder ?? null,
-    vehicleType,
-    createdAt: order.createdAt,
-  }).catch((err: unknown) => {
-    req.log.error({ err }, "autoCreateRfqAndNotifyVendors failed");
-  });
+    grandTotal: Number(body.grandTotal),
+    createdAt: order.createdAt.toISOString(),
+  }).catch(() => {});
 
   return res.status(201).json({
     ...toOrder(order),
@@ -213,61 +258,47 @@ sendLogisticOrderNotification({
   });
 });
 
-// GET /api/logistic/orders — list orders (admin)
-logisticOrdersRouter.get("/", async (req: Request, res: Response) => {
-  const parsed = ListLogisticOrdersQueryParams.safeParse(req.query);
-  const q = parsed.success ? parsed.data : {};
+/** Public-safe order projection — strips PII, payment, financial, and internal approval fields */
+function toPublicOrder(row: typeof logisticOrdersTable.$inferSelect) {
+  return {
+    id: row.id,
+    orderNumber: row.orderNumber,
+    shipmentType: row.shipmentType,
+    origin: row.origin,
+    destination: row.destination,
+    grossWeight: row.grossWeight ? parseFloat(row.grossWeight) : null,
+    volumeCbm: row.volumeCbm ? parseFloat(row.volumeCbm) : null,
+    jumlahKoli: row.jumlahKoli ?? null,
+    requiredDate: row.requiredDate ?? null,
+    status: row.status,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
 
-  const conditions = [];
-  if (q.status) conditions.push(eq(logisticOrdersTable.status, q.status));
-  if (q.shipmentType) conditions.push(eq(logisticOrdersTable.shipmentType, q.shipmentType));
-  if (q.search) {
-    conditions.push(
-      or(
-        ilike(logisticOrdersTable.customerName, `%${q.search}%`),
-        ilike(logisticOrdersTable.companyName, `%${q.search}%`),
-        ilike(logisticOrdersTable.orderNumber, `%${q.search}%`)
-      )!
-    );
+/** Simple in-memory rate limiter for public order-number lookup endpoints */
+const publicLookupHits = new Map<string, { count: number; resetAt: number }>();
+function publicLookupRateLimit(req: Request, res: Response, next: () => void) {
+  const ip = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ?? req.socket.remoteAddress ?? "unknown";
+  const now = Date.now();
+  const window = 60_000;
+  const limit = 20;
+  const entry = publicLookupHits.get(ip);
+  if (!entry || now > entry.resetAt) {
+    publicLookupHits.set(ip, { count: 1, resetAt: now + window });
+    return next();
   }
-  if (q.dateFrom) conditions.push(gte(logisticOrdersTable.createdAt, new Date(q.dateFrom)));
-  if (q.dateTo) conditions.push(lte(logisticOrdersTable.createdAt, new Date(q.dateTo)));
-
-  const rows =
-    conditions.length > 0
-      ? await db
-          .select()
-          .from(logisticOrdersTable)
-          .where(and(...conditions))
-          .orderBy(sql`${logisticOrdersTable.createdAt} DESC`)
-      : await db
-          .select()
-          .from(logisticOrdersTable)
-          .orderBy(sql`${logisticOrdersTable.createdAt} DESC`);
-
-  return res.json(rows.map((row) => toOrder(row)));
-});
-
-// GET /api/logistic/orders/summary — dashboard stats (admin)
-logisticOrdersRouter.get("/summary", async (_req: Request, res: Response) => {
-  const rows = await db.select().from(logisticOrdersTable);
-  const count = (status: string) => rows.filter((r) => r.status === status).length;
-  return res.json({
-    totalOrders: rows.length,
-    newOrders: count("New Order"),
-    underReviewOrders: count("Under Review"),
-    quotationSentOrders: count("Quotation Sent"),
-    confirmedOrders: count("Confirmed"),
-    inProgressOrders: count("In Progress"),
-    completedOrders: count("Completed"),
-    cancelledOrders: count("Cancelled"),
-    totalEstimatedRevenue: rows.reduce((acc, r) => acc + parseFloat(r.grandTotal), 0),
-  });
-});
+  if (entry.count >= limit) {
+    res.status(429).json({ error: "Terlalu banyak permintaan. Coba lagi sebentar." });
+    return;
+  }
+  entry.count += 1;
+  next();
+}
 
 // GET /api/logistic/orders/by-number/:orderNumber — lookup by order number (public)
 logisticOrdersRouter.get(
   "/by-number/:orderNumber",
+  publicLookupRateLimit,
   async (req: Request, res: Response) => {
     const parsed = GetLogisticOrderByNumberParams.safeParse(req.params);
     if (!parsed.success) return res.status(400).json({ message: "Parameter tidak valid" });
@@ -285,13 +316,14 @@ logisticOrdersRouter.get(
       .from(logisticOrderItemsTable)
       .where(eq(logisticOrderItemsTable.orderId, order.id));
 
-    return res.json({ ...toOrder(order), items: items.map(toItem) });
+    return res.json({ ...toPublicOrder(order), items: items.map(toPublicItem) });
   }
 );
 
-// GET /api/logistic/orders/track/:orderNumber — full tracking data with driver job (public)
+// GET /api/logistic/orders/track/:orderNumber — tracking data with driver job (public)
 logisticOrdersRouter.get(
   "/track/:orderNumber",
+  publicLookupRateLimit,
   async (req: Request, res: Response) => {
     const orderNumber = String(req.params.orderNumber ?? "").toUpperCase().trim();
     if (!orderNumber) return res.status(400).json({ message: "Nomor order tidak valid" });
@@ -334,64 +366,48 @@ logisticOrdersRouter.get(
         jobNumber: driverJob.jobNumber,
         status: driverJob.status,
         vehicleType: driverJob.vehicleType ?? null,
-        truckPlate: driverJob.truckPlate ?? null,
-        pickupAddress: driverJob.pickupAddress ?? null,
-        deliveryAddress: driverJob.deliveryAddress ?? null,
         pickupDateTime: driverJob.pickupDateTime?.toISOString() ?? null,
         deliveryDateTime: driverJob.deliveryDateTime?.toISOString() ?? null,
         cargoDescription: driverJob.cargoDescription ?? null,
         weight: driverJob.weight ?? null,
         distance: driverJob.distance ?? null,
-        podReceiverName: driverJob.podReceiverName ?? null,
         assignedAt: driverJob.assignedAt.toISOString(),
         completedAt: driverJob.completedAt?.toISOString() ?? null,
         logs: logs.map((l) => ({
           id: l.id,
           status: l.status,
-          note: l.note ?? null,
           timestamp: l.timestamp.toISOString(),
-        })),
-        photos: photos.map((p) => ({
-          id: p.id,
-          url: p.url,
-          photoType: p.photoType,
-          takenAt: p.takenAt.toISOString(),
         })),
       };
     }
 
+    // RFQ quote info untuk customer portal
+    const [latestRfq] = await db
+      .select()
+      .from(logisticOrderRfqsTable)
+      .where(eq(logisticOrderRfqsTable.orderId, order.id))
+      .orderBy(desc(logisticOrderRfqsTable.createdAt))
+      .limit(1);
+
+    const rfqQuote = latestRfq ? {
+      rfqId: latestRfq.id,
+      rfqStatus: latestRfq.status,
+      quotedPrice: latestRfq.quotedPrice ? parseFloat(latestRfq.quotedPrice) : null,
+      quotedAt: latestRfq.quotedAt?.toISOString() ?? null,
+      quoteNotes: latestRfq.quoteNotes ?? null,
+      customerResponseNotes: (latestRfq as any).customerResponseNotes ?? null,
+      customerRespondedAt: (latestRfq as any).customerRespondedAt
+        ? new Date((latestRfq as any).customerRespondedAt).toISOString() : null,
+    } : null;
+
     return res.json({
-      ...toOrder(order),
-      items: items.map(toItem),
+      ...toPublicOrder(order),
+      items: items.map(toPublicItem),
       driverJob: driverJobData,
+      rfqQuote,
     });
   }
 );
-
-// --- Trucking Rates (must be registered BEFORE /:id) ---
-
-const TRUCKING_RATES_KEY = "logistic_trucking_rates";
-
-const DEFAULT_TRUCKING_RATES: Record<string, { ratePerKm: number; loadingFee: number }> = {
-  CDE:      { ratePerKm: 5000,  loadingFee: 500000 },
-  CDD:      { ratePerKm: 7000,  loadingFee: 700000 },
-  Fuso:     { ratePerKm: 10000, loadingFee: 1000000 },
-  Wingbox:  { ratePerKm: 12000, loadingFee: 1200000 },
-  Trailer:  { ratePerKm: 15000, loadingFee: 1500000 },
-};
-
-async function getTruckingRates() {
-  const [row] = await db
-    .select()
-    .from(portalContentTable)
-    .where(eq(portalContentTable.key, TRUCKING_RATES_KEY));
-  if (!row) return DEFAULT_TRUCKING_RATES;
-  try {
-    return JSON.parse(row.value) as typeof DEFAULT_TRUCKING_RATES;
-  } catch {
-    return DEFAULT_TRUCKING_RATES;
-  }
-}
 
 // GET /api/logistic/orders/trucking-rates — public
 logisticOrdersRouter.get("/trucking-rates", async (_req: Request, res: Response) => {
@@ -399,12 +415,138 @@ logisticOrdersRouter.get("/trucking-rates", async (_req: Request, res: Response)
   return res.json(rates);
 });
 
-// PUT /api/logistic/orders/trucking-rates — admin only
-logisticOrdersRouter.put("/trucking-rates", async (req: Request, res: Response) => {
-  const adminPassword = req.headers["x-admin-password"];
-  if (adminPassword !== "admin123") {
-    return res.status(403).json({ message: "Akses ditolak" });
+// GET /api/logistic/orders/vendors — admin & logistics staff
+logisticOrdersRouter.get("/vendors", async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const allowed = ["admin", "owner", "logistics"];
+  if (!user || !allowed.includes(user.role)) {
+    return res.status(403).json({ error: "Forbidden" });
   }
+  const rows = await db.select().from(suppliersTable).orderBy(suppliersTable.sortOrder);
+  return res.json(rows.map((v) => ({ ...v, fee: Number(v.fee ?? 0), email: v.contactEmail })));
+});
+
+// ─── AUTH WALL: all routes below require a valid session ─────────────────────
+
+logisticOrdersRouter.use(async (req, res, next) => {
+  if (!(await requireClerkUser(req, res))) return;
+  next();
+});
+
+// ─── STAFF-ONLY ROUTES ────────────────────────────────────────────────────────
+
+// GET /api/logistic/orders — list orders (admin)
+logisticOrdersRouter.get("/", async (req: Request, res: Response) => {
+  const parsed = ListLogisticOrdersQueryParams.safeParse(req.query);
+  const q = parsed.success ? parsed.data : {};
+
+  const rawCompany = req.query["company"] ?? req.query["companyId"];
+  const isConsolidated = rawCompany === "0" || rawCompany === "all" || rawCompany === undefined;
+  const companyId = isConsolidated ? null : resolveCompanyId(req);
+
+  // companyId=0 or "all" = consolidated view (all companies), otherwise filter by specific company
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const conditions: any[] = [];
+  if (companyId !== null && companyId > 0) conditions.push(eq(logisticOrdersTable.companyId, companyId));
+  if (q.status) conditions.push(eq(logisticOrdersTable.status, q.status));
+  if (q.shipmentType) conditions.push(eq(logisticOrdersTable.shipmentType, q.shipmentType));
+  if (q.search) {
+    conditions.push(
+      or(
+        ilike(logisticOrdersTable.customerName, `%${q.search}%`),
+        ilike(logisticOrdersTable.companyName, `%${q.search}%`),
+        ilike(logisticOrdersTable.orderNumber, `%${q.search}%`)
+      )!
+    );
+  }
+  if (q.dateFrom) conditions.push(gte(logisticOrdersTable.createdAt, new Date(q.dateFrom)));
+  if (q.dateTo) conditions.push(lte(logisticOrdersTable.createdAt, new Date(q.dateTo)));
+
+  const rows =
+    conditions.length > 0
+      ? await db
+          .select()
+          .from(logisticOrdersTable)
+          .where(and(...conditions))
+          .orderBy(sql`${logisticOrdersTable.createdAt} DESC`)
+      : await db
+          .select()
+          .from(logisticOrdersTable)
+          .orderBy(sql`${logisticOrdersTable.createdAt} DESC`);
+
+  // Attach linked sales doc info for each order
+  const orderIds = rows.map((r) => r.id);
+  const linkedDocMap = new Map<number, { id: number; docNumber: string }>();
+  if (orderIds.length > 0) {
+    const linkedDocs = await db
+      .select({ logisticOrderId: salesDocumentsTable.logisticOrderId, id: salesDocumentsTable.id, docNumber: salesDocumentsTable.docNumber })
+      .from(salesDocumentsTable)
+      .where(and(isNotNull(salesDocumentsTable.logisticOrderId), inArray(salesDocumentsTable.logisticOrderId, orderIds)));
+    for (const d of linkedDocs) {
+      if (d.logisticOrderId != null) linkedDocMap.set(d.logisticOrderId, { id: d.id, docNumber: d.docNumber });
+    }
+  }
+
+  // Attach latest RFQ info (including freight_shipment_id via raw SQL)
+  const rfqMap = new Map<number, {
+    rfqId: number; rfqNumber: string; rfqStatus: string;
+    freightShipmentId: number | null; freightShipmentNumber: string | null;
+  }>();
+  if (orderIds.length > 0) {
+    const rfqRows = await db.execute(sql`
+      SELECT DISTINCT ON (r.order_id)
+        r.order_id AS "orderId",
+        r.id AS "rfqId",
+        r.rfq_number AS "rfqNumber",
+        r.status AS "rfqStatus",
+        r.freight_shipment_id AS "freightShipmentId",
+        fs.shipment_number AS "freightShipmentNumber"
+      FROM logistic_order_rfqs r
+      LEFT JOIN freight_shipments fs ON fs.id = r.freight_shipment_id
+      WHERE r.order_id = ANY(${sql.raw(`ARRAY[${orderIds.join(",")}]::int[]`)})
+      ORDER BY r.order_id, r.created_at DESC
+    `);
+    for (const row of rfqRows as any[]) {
+      rfqMap.set(Number(row.orderId), {
+        rfqId: Number(row.rfqId),
+        rfqNumber: row.rfqNumber as string,
+        rfqStatus: row.rfqStatus as string,
+        freightShipmentId: row.freightShipmentId ? Number(row.freightShipmentId) : null,
+        freightShipmentNumber: (row.freightShipmentNumber as string) ?? null,
+      });
+    }
+  }
+
+  return res.json(rows.map((row) => ({
+    ...toOrder(row),
+    linkedSalesDocId: linkedDocMap.get(row.id)?.id ?? null,
+    linkedSalesDocNumber: linkedDocMap.get(row.id)?.docNumber ?? null,
+    latestRfq: rfqMap.get(row.id) ?? null,
+  })));
+});
+
+// GET /api/logistic/orders/summary — dashboard stats (admin)
+logisticOrdersRouter.get("/summary", async (_req: Request, res: Response) => {
+  const rows = await db.select().from(logisticOrdersTable);
+  const count = (status: string) => rows.filter((r) => r.status === status).length;
+  return res.json({
+    totalOrders: rows.length,
+    newOrders: count("New Order"),
+    underReviewOrders: count("Under Review"),
+    quotationSentOrders: count("Quotation Sent"),
+    confirmedOrders: count("Confirmed"),
+    inProgressOrders: count("In Progress"),
+    completedOrders: count("Completed"),
+    cancelledOrders: count("Cancelled"),
+    totalEstimatedRevenue: rows.reduce((acc, r) => acc + parseFloat(r.grandTotal), 0),
+  });
+});
+
+// PUT /api/logistic/orders/trucking-rates — admin only
+// Protected by requirePortalAdmin: caller must present a valid Supabase Bearer token
+// belonging to an email on the server-side PORTAL_ADMIN_EMAILS allowlist.
+// The shared x-admin-password mechanism has been removed entirely.
+logisticOrdersRouter.put("/trucking-rates", requirePortalAdmin, async (req: Request, res: Response) => {
   const rates = req.body as Record<string, { ratePerKm: number; loadingFee: number }>;
   if (!rates || typeof rates !== "object") {
     return res.status(400).json({ message: "Format tarif tidak valid" });
@@ -428,12 +570,6 @@ logisticOrdersRouter.put("/trucking-rates", async (req: Request, res: Response) 
 });
 
 // ─── Delivery Vendors CRUD (for BizPortal) ───────────────────────────────────
-
-// GET /api/logistic/orders/vendors
-logisticOrdersRouter.get("/vendors", async (_req: Request, res: Response) => {
-  const rows = await db.select().from(suppliersTable).orderBy(suppliersTable.sortOrder);
-  return res.json(rows.map((v) => ({ ...v, fee: Number(v.fee ?? 0), email: v.contactEmail })));
-});
 
 // POST /api/logistic/orders/vendors
 logisticOrdersRouter.post("/vendors", async (req: Request, res: Response) => {
@@ -504,10 +640,13 @@ logisticOrdersRouter.get("/:id", async (req: Request, res: Response) => {
 
   if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
 
-  const items = await db
-    .select()
-    .from(logisticOrderItemsTable)
-    .where(eq(logisticOrderItemsTable.orderId, id));
+  const [items, linkedDocRows] = await Promise.all([
+    db.select().from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, id)),
+    db.select({ id: salesDocumentsTable.id, docNumber: salesDocumentsTable.docNumber })
+      .from(salesDocumentsTable)
+      .where(eq(salesDocumentsTable.logisticOrderId, id))
+      .limit(1),
+  ]);
 
   let approvedVendorName: string | null = null;
   if (order.approvedVendorId) {
@@ -515,7 +654,13 @@ logisticOrdersRouter.get("/:id", async (req: Request, res: Response) => {
     approvedVendorName = v?.name ?? null;
   }
 
-  return res.json({ ...toOrder(order, approvedVendorName), items: items.map(toItem) });
+  const linkedDoc = linkedDocRows[0] ?? null;
+  return res.json({
+    ...toOrder(order, approvedVendorName),
+    items: items.map(toItem),
+    linkedSalesDocId: linkedDoc?.id ?? null,
+    linkedSalesDocNumber: linkedDoc?.docNumber ?? null,
+  });
 });
 
 // PUT /api/logistic/orders/:id/status — update status (admin)
@@ -561,6 +706,16 @@ logisticOrdersRouter.put("/:id/status", async (req: Request, res: Response) => {
     sendWhatsApp(updated.phone, msg).catch(() => undefined);
   }
 
+  saveAndBroadcast("logistic_order_status_changed", {
+    type: "logistic_status",
+    orderId: updated.id,
+    orderNumber: updated.orderNumber,
+    customerName: updated.customerName,
+    companyName: updated.companyName ?? null,
+    status: updated.status,
+    updatedAt: new Date().toISOString(),
+  }).catch(() => {});
+
   return res.json(toOrder(updated));
 });
 
@@ -592,3 +747,37 @@ logisticOrdersRouter.delete("/:id", async (req: Request, res: Response) => {
   return res.json({ message: "Deleted", id });
 });
 
+// GET /api/logistic/orders/:id/locations — GPS history for an order (admin)
+logisticOrdersRouter.get("/:id/locations", async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params["id"] ?? ""));
+  if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+  const limit = Math.min(parseInt(String(req.query["limit"] ?? "200"), 10), 500);
+
+  const rows = await db
+    .select({
+      id: driverLocationsTable.id,
+      latitude: driverLocationsTable.latitude,
+      longitude: driverLocationsTable.longitude,
+      accuracy: driverLocationsTable.accuracy,
+      speed: driverLocationsTable.speed,
+      checkpointType: driverLocationsTable.checkpointType,
+      updatedAt: driverLocationsTable.updatedAt,
+    })
+    .from(driverLocationsTable)
+    .where(eq(driverLocationsTable.orderId, id))
+    .orderBy(driverLocationsTable.updatedAt)
+    .limit(limit);
+
+  return res.json({
+    locations: rows.map(r => ({
+      id: r.id,
+      lat: parseFloat(String(r.latitude)),
+      lng: parseFloat(String(r.longitude)),
+      accuracy: r.accuracy != null ? parseFloat(String(r.accuracy)) : null,
+      speed: r.speed != null ? parseFloat(String(r.speed)) : null,
+      checkpointType: r.checkpointType,
+      updatedAt: r.updatedAt,
+    })),
+    total: rows.length,
+  });
+});

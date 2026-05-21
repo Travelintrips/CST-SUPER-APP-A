@@ -1,507 +1,369 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
-import { X, Minus, Plus, Trash2, ShoppingCart, ArrowRight, CheckCircle, AlertCircle, FileText } from "lucide-react";
+import {
+  X, Trash2, Plus, ShoppingCart, ArrowRight,
+  Package, Truck, Ship, Plane, FileCheck, Warehouse, FileText, Zap,
+} from "lucide-react";
+
+import { useCart, CartItem } from "@/lib/logistic-cart";
+import { formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { useCart } from "@/lib/cart";
-import { CART_KEY } from "@/lib/logistic-cart";
-import { getAuthToken, getAuthHeaders } from "@/lib/auth";
+import { Separator } from "@/components/ui/separator";
 
-const formatIDR = (v: number) =>
-  new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(v);
+export const OPEN_CART_EVENT = "open-cart-drawer";
 
-type Step = "cart" | "checkout" | "success";
+const TYPE_META: Record<string, {
+  label: string;
+  color: string;
+  iconBg: string;
+  icon: React.ComponentType<{ className?: string }>;
+}> = {
+  product:     { label: "Produk",      color: "bg-emerald-100 text-emerald-700 border-emerald-200", iconBg: "bg-emerald-100", icon: Package },
+  trucking:    { label: "Trucking",    color: "bg-amber-100 text-amber-700 border-amber-200",       iconBg: "bg-amber-100",   icon: Truck },
+  air_freight: { label: "Air Freight", color: "bg-sky-100 text-sky-700 border-sky-200",             iconBg: "bg-sky-100",     icon: Plane },
+  sea_fcl:     { label: "Sea FCL",     color: "bg-blue-100 text-blue-700 border-blue-200",          iconBg: "bg-blue-100",    icon: Ship },
+  sea_lcl:     { label: "Sea LCL",     color: "bg-blue-100 text-blue-700 border-blue-200",          iconBg: "bg-blue-100",    icon: Ship },
+  customs:     { label: "Pabean",      color: "bg-violet-100 text-violet-700 border-violet-200",    iconBg: "bg-violet-100",  icon: FileCheck },
+  storage:     { label: "Storage",     color: "bg-orange-100 text-orange-700 border-orange-200",    iconBg: "bg-orange-100",  icon: Warehouse },
+  document:    { label: "Document",    color: "bg-slate-100 text-slate-600 border-slate-200",       iconBg: "bg-slate-100",   icon: FileText },
+  additional:  { label: "Additional",  color: "bg-rose-100 text-rose-700 border-rose-200",          iconBg: "bg-rose-100",    icon: Zap },
+};
+
+function getTypeMeta(type: string) {
+  return TYPE_META[type] ?? {
+    label: type,
+    color: "bg-slate-100 text-slate-600 border-slate-200",
+    iconBg: "bg-slate-100",
+    icon: Package,
+  };
+}
+
+function getItemDetails(item: CartItem): string[] {
+  const d = item.inputData;
+  const str = (v: unknown) => (v != null && v !== "" ? String(v) : "");
+  const details: string[] = [];
+
+  switch (item.calculatorType) {
+    case "product":
+      if (d.qty) details.push(`Qty: ${str(d.qty)}${d.unit ? ` ${str(d.unit)}` : ""}`);
+      break;
+
+    case "trucking":
+      if (d.pickupCity && d.destCity) details.push(`${str(d.pickupCity)} → ${str(d.destCity)}`);
+      else if (d.pickupCity) details.push(`Asal: ${str(d.pickupCity)}`);
+      if (d.vehicleType) {
+        const v = str(d.vehicleType);
+        details.push(`Armada: ${d.trailerSize ? `${v} – ${str(d.trailerSize)}` : v}`);
+      }
+      if (d.gross_weight_kg) details.push(`Berat: ${str(d.gross_weight_kg)} kg`);
+      break;
+
+    case "air_freight": {
+      if (d.originAirport && d.destinationAirport)
+        details.push(`${str(d.originAirport)} → ${str(d.destinationAirport)}`);
+      const gw  = parseFloat(str(d.grossWeight)) || 0;
+      const l   = parseFloat(str(d.length))      || 0;
+      const w   = parseFloat(str(d.width))       || 0;
+      const h   = parseFloat(str(d.height))      || 0;
+      const qty = parseFloat(str(d.quantity))    || 1;
+      const vw  = (l * w * h * qty) / 6000;
+      if (gw > 0) details.push(`Berat Kotor: ${gw} kg`);
+      if (gw > 0 || vw > 0) details.push(`Chargeable: ${Math.max(gw, vw).toFixed(2)} kg`);
+      if (d.quantity) details.push(`Koli: ${str(d.quantity)} pcs`);
+      break;
+    }
+
+    case "sea_fcl":
+      if (d.originPort && d.destinationPort)
+        details.push(`${str(d.originPort)} → ${str(d.destinationPort)}`);
+      if (d.containerType) details.push(`Container: ${str(d.containerType)}`);
+      break;
+
+    case "sea_lcl":
+      if (d.originPort && d.destinationPort)
+        details.push(`${str(d.originPort)} → ${str(d.destinationPort)}`);
+      if (d.cbm)    details.push(`Volume: ${str(d.cbm)} CBM`);
+      if (d.weight) details.push(`Berat: ${str(d.weight)} kg`);
+      break;
+
+    case "customs":
+      if (d.shipmentType) details.push(str(d.shipmentType));
+      break;
+
+    case "storage":
+      if (d.days)     details.push(`${str(d.days)} hari`);
+      if (d.quantity) details.push(`${str(d.quantity)} ${str(d.unit) || "unit"}`);
+      break;
+
+    default: {
+      const skip = new Set(["unitPrice", "serviceFee", "adminFee", "notes", "ratePerKg", "ratePerCbm"]);
+      Object.entries(d)
+        .filter(([k, v]) => v && !skip.has(k))
+        .slice(0, 2)
+        .forEach(([, v]) => details.push(str(v)));
+    }
+  }
+
+  return details;
+}
+
+const CATEGORY_ORDER = [
+  "product", "trucking", "air_freight", "sea_fcl", "sea_lcl",
+  "customs", "storage", "document", "additional",
+];
+
+function groupItems(items: CartItem[]): [string, CartItem[]][] {
+  const map = new Map<string, CartItem[]>();
+  for (const item of items) {
+    const key = item.calculatorType;
+    if (!map.has(key)) map.set(key, []);
+    map.get(key)!.push(item);
+  }
+  const ordered = CATEGORY_ORDER.filter((k) => map.has(k)).map((k) => [k, map.get(k)!] as [string, CartItem[]]);
+  const rest = [...map.entries()].filter(([k]) => !CATEGORY_ORDER.includes(k));
+  return [...ordered, ...rest];
+}
+
+function CartItemCard({ item, onRemove }: { item: CartItem; onRemove: (id: string) => void }) {
+  const meta    = getTypeMeta(item.calculatorType);
+  const Icon    = meta.icon;
+  const details = getItemDetails(item);
+  const isTrucking = item.calculatorType === "trucking";
+  const hasPrice   = item.subtotal > 0;
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 mb-2 flex-wrap">
+            <div className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 ${meta.iconBg}`}>
+              <Icon className="w-3 h-3 text-slate-600" />
+            </div>
+            <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full border ${meta.color}`}>
+              {meta.label}
+            </span>
+          </div>
+
+          <p className="text-sm font-semibold text-slate-800 leading-snug">{item.serviceName}</p>
+
+          {details.length > 0 && (
+            <ul className="mt-1.5 space-y-0.5">
+              {details.map((d, i) => (
+                <li key={i} className="text-xs text-slate-500 flex items-start gap-1.5">
+                  <span className="w-1 h-1 rounded-full bg-slate-300 mt-1.5 shrink-0" />
+                  <span>{d}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="flex flex-col items-end gap-2 shrink-0">
+          {isTrucking ? (
+            <span className="text-[11px] font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded-lg px-2 py-0.5 whitespace-nowrap">
+              Harga menyusul
+            </span>
+          ) : hasPrice ? (
+            <span className="text-sm font-bold text-sky-700 whitespace-nowrap">
+              {formatCurrency(item.subtotal)}
+            </span>
+          ) : (
+            <span className="text-[11px] font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-2 py-0.5 whitespace-nowrap">
+              Harga nego
+            </span>
+          )}
+
+          <button
+            onClick={() => onRemove(item.cartId)}
+            className="w-6 h-6 rounded-md flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+            title="Hapus item"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function CartDrawer() {
-  const { items, removeItem, updateQty, updatePrice, clearCart, total, count, isOpen, closeCart, pendingCheckout, clearPendingCheckout } = useCart();
-  const [, setLocation] = useLocation();
-  const [step, setStep] = useState<Step>("cart");
+  const [open, setOpen]  = useState(false);
+  const [, setLocation]  = useLocation();
+  const { items, removeItem, clearCart, subtotal, tax, grandTotal, taxRate } = useCart();
 
-  // Logistic booking draft (separate localStorage-based cart)
-  const [logisticCount, setLogisticCount] = useState<number>(() => {
-    try {
-      const raw = localStorage.getItem(CART_KEY);
-      const parsed = raw ? JSON.parse(raw) : [];
-      return Array.isArray(parsed) ? parsed.length : 0;
-    } catch { return 0; }
-  });
   useEffect(() => {
-    function sync() {
-      try {
-        const raw = localStorage.getItem(CART_KEY);
-        const parsed = raw ? JSON.parse(raw) : [];
-        setLogisticCount(Array.isArray(parsed) ? parsed.length : 0);
-      } catch { setLogisticCount(0); }
-    }
-    window.addEventListener("logistic-cart-change", sync);
-    window.addEventListener("storage", sync);
-    return () => {
-      window.removeEventListener("logistic-cart-change", sync);
-      window.removeEventListener("storage", sync);
-    };
+    const handleOpen = () => setOpen(true);
+    window.addEventListener(OPEN_CART_EVENT, handleOpen);
+    return () => window.removeEventListener(OPEN_CART_EVENT, handleOpen);
   }, []);
 
-  useEffect(() => {
-    if (isOpen && pendingCheckout) {
-      setStep("checkout");
-      clearPendingCheckout();
-    }
-  }, [isOpen, pendingCheckout, clearPendingCheckout]);
-  const [notes, setNotes] = useState("");
-  const [expectedDate, setExpectedDate] = useState("");
-  const [paymentType, setPaymentType] = useState<"cash" | "termin" | "dp" | "">("");
-  const [paymentTerm, setPaymentTerm] = useState<"net7" | "net14" | "net30" | "net60" | "">("");
-  const [dpNext, setDpNext] = useState<"lunas-delivery" | "lunas-net30" | "lunas-net60" | "cicil" | "">("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [errorMsg, setErrorMsg] = useState("");
-  const [successOrder, setSuccessOrder] = useState<{ docNumber: string; id: number } | null>(null);
+  function close() { setOpen(false); }
 
-  const token = getAuthToken();
-  const hasNegotiatedItems = items.some((i) => i.unitPrice === 0);
-
-  function resetAndClose() {
-    closeCart();
-    setTimeout(() => {
-      setStep("cart");
-      setNotes("");
-      setExpectedDate("");
-      setPaymentType("");
-      setPaymentTerm("");
-      setDpNext("");
-      setErrorMsg("");
-      setSuccessOrder(null);
-    }, 300);
+  function handleCheckout() {
+    close();
+    setLocation("/book?step=3");
   }
 
-  async function handleCheckout() {
-    if (!token) {
-      closeCart();
-      setLocation("/login");
-      return;
-    }
-    setStep("checkout");
+  function handleAddService() {
+    close();
+    setLocation("/book");
   }
 
-  async function submitOrder() {
-    setIsSubmitting(true);
-    setErrorMsg("");
-    try {
-      const headers = getAuthHeaders() as Record<string, string>;
-      const res = await fetch("/api/portal/orders", {
-        method: "POST",
-        headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          items: items.map((i) => ({
-            productId: i.productId,
-            name: i.name,
-            quantity: i.quantity,
-            unitPrice: i.unitPrice,
-          })),
-          notes: notes || undefined,
-          expectedDate: expectedDate || undefined,
-          paymentType: paymentType
-            ? paymentType === "termin" && paymentTerm
-              ? `termin:${paymentTerm}`
-              : paymentType === "dp" && dpNext
-              ? `dp:${dpNext}`
-              : paymentType
-            : undefined,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setErrorMsg(data.message ?? "Gagal membuat pesanan");
-        return;
-      }
-      setSuccessOrder({ docNumber: data.docNumber, id: data.id });
-      clearCart();
-      setStep("success");
-    } catch {
-      setErrorMsg("Terjadi kesalahan jaringan. Silakan coba lagi.");
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
-
-  if (!isOpen) return null;
+  const grouped = groupItems(items);
+  const hasNegotiable = grandTotal === 0 && items.length > 0;
 
   return (
     <>
-      {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/40 z-40 transition-opacity"
-        onClick={resetAndClose}
+        className={`fixed inset-0 bg-black/50 z-40 transition-opacity duration-300 ${
+          open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+        }`}
+        onClick={close}
       />
 
-      {/* Drawer */}
-      <div className="fixed right-0 top-0 h-full w-full max-w-md bg-background shadow-2xl z-50 flex flex-col">
+      <div
+        className={`fixed top-0 right-0 h-full w-full max-w-[440px] bg-white z-50 shadow-2xl flex flex-col transition-transform duration-300 ease-in-out ${
+          open ? "translate-x-0" : "translate-x-full"
+        }`}
+      >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-white shrink-0">
           <div className="flex items-center gap-3">
-            <ShoppingCart className="h-5 w-5 text-accent" />
-            <h2 className="font-display font-bold text-lg">
-              {step === "cart" && "Keranjang Pesanan"}
-              {step === "checkout" && "Konfirmasi Pesanan"}
-              {step === "success" && "Pesanan Berhasil"}
-            </h2>
-            {step === "cart" && count > 0 && (
-              <span className="bg-accent text-accent-foreground text-xs font-bold px-2 py-0.5 rounded-full">
-                {count}
-              </span>
-            )}
+            <div className="w-9 h-9 rounded-xl bg-sky-100 flex items-center justify-center">
+              <ShoppingCart className="w-5 h-5 text-sky-600" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-slate-900">Keranjang Pesanan</h2>
+              <p className="text-xs text-slate-400">
+                {items.length === 0
+                  ? "Belum ada item"
+                  : `${items.length} item · 1 pesanan`}
+              </p>
+            </div>
           </div>
-          <button
-            onClick={resetAndClose}
-            className="p-2 rounded-lg hover:bg-muted transition-colors"
-          >
-            <X className="h-5 w-5" />
-          </button>
+
+          <div className="flex items-center gap-1">
+            {items.length > 0 && (
+              <button
+                onClick={clearCart}
+                className="text-xs text-red-400 hover:text-red-600 flex items-center gap-1 px-2.5 py-1.5 rounded-lg hover:bg-red-50 transition-colors"
+              >
+                <Trash2 className="w-3 h-3" /> Hapus Semua
+              </button>
+            )}
+            <button
+              onClick={close}
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors ml-1"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto">
-
-          {/* ── STEP: CART ── */}
-          {step === "cart" && (
-            <div className="p-6 space-y-4">
-              {/* Logistic booking draft notice */}
-              {logisticCount > 0 && (
-                <div className="flex items-start gap-3 rounded-xl border border-sky-200 bg-sky-50 p-4">
-                  <FileText className="h-5 w-5 text-sky-600 shrink-0 mt-0.5" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-sky-900">Draft Booking Logistik</p>
-                    <p className="text-xs text-sky-700 mt-0.5">
-                      {logisticCount} layanan tersimpan di draft pemesanan.
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => { closeCart(); setLocation("/book"); }}
-                    className="shrink-0 text-xs font-semibold text-sky-700 hover:text-sky-900 bg-white border border-sky-200 rounded-lg px-3 py-1.5 transition-colors"
-                  >
-                    Resume →
-                  </button>
-                </div>
-              )}
-              {items.length === 0 ? (
-                <div className="text-center py-12 text-muted-foreground">
-                  <ShoppingCart className="h-12 w-12 mx-auto mb-4 opacity-30" />
-                  <p className="font-medium">Keranjang Anda kosong</p>
-                  <p className="text-sm mt-1">Tambahkan layanan atau produk untuk mulai memesan</p>
-                </div>
-              ) : (
-                items.map((item) => (
-                  <div
-                    key={item.productId}
-                    className="flex gap-4 items-start bg-gray-50 rounded-xl p-4"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                        item.itemType === "jasa"
-                          ? "bg-blue-100 text-blue-700"
-                          : "bg-orange-100 text-orange-700"
-                      }`}>
-                        {item.itemType === "jasa" ? "Layanan" : "Produk"}
-                      </span>
-                      <p className="font-semibold mt-1 text-sm leading-tight">{item.name}</p>
-                      {item.unitPrice > 0 ? (
-                        <p className="text-accent font-bold text-sm mt-1">{formatIDR(item.unitPrice)}</p>
-                      ) : (
-                        <p className="text-amber-600 font-medium text-xs mt-1">Harga akan dikonfirmasi</p>
-                      )}
-                    </div>
-                    <div className="flex flex-col items-end gap-2">
-                      <button
-                        onClick={() => removeItem(item.productId)}
-                        className="text-muted-foreground hover:text-destructive transition-colors"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                      <div className="flex items-center gap-2 border border-border rounded-lg bg-white">
-                        <button
-                          className="p-1.5 hover:bg-muted transition-colors rounded-l-lg"
-                          onClick={() => updateQty(item.productId, item.quantity - 1)}
-                        >
-                          <Minus className="h-3.5 w-3.5" />
-                        </button>
-                        <span className="w-7 text-center text-sm font-semibold">{item.quantity}</span>
-                        <button
-                          className="p-1.5 hover:bg-muted transition-colors rounded-r-lg"
-                          onClick={() => updateQty(item.productId, item.quantity + 1)}
-                        >
-                          <Plus className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                      {item.unitPrice > 0 && (
-                        <p className="text-xs text-muted-foreground">
-                          {formatIDR(item.unitPrice * item.quantity)}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          )}
-
-          {/* ── STEP: CHECKOUT ── */}
-          {step === "checkout" && (
-            <div className="p-6 space-y-5">
-              {/* Order summary + price editing */}
-              <div className="bg-gray-50 rounded-xl p-4 space-y-3">
-                <p className="font-semibold text-sm text-muted-foreground">Ringkasan & Konfirmasi Harga</p>
-                {items.map((item) => (
-                  <div key={item.productId} className="space-y-1.5">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground truncate max-w-[180px]">
-                        {item.name} × {item.quantity}
-                      </span>
-                      {item.unitPrice > 0 && (
-                        <span className="font-medium shrink-0">{formatIDR(item.unitPrice * item.quantity)}</span>
-                      )}
-                    </div>
-                    {/* Editable price field */}
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground shrink-0">Harga satuan (Rp):</span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="1000"
-                        placeholder={item.unitPrice === 0 ? "Masukkan harga estimasi..." : ""}
-                        value={item.unitPrice === 0 ? "" : item.unitPrice}
-                        onChange={(e) => {
-                          const v = parseFloat(e.target.value);
-                          updatePrice(item.productId, isNaN(v) ? 0 : v);
-                        }}
-                        className="flex-1 text-xs rounded-md border border-input bg-white px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-accent/50"
-                      />
-                    </div>
-                    {item.unitPrice === 0 && (
-                      <p className="text-xs text-amber-600">
-                        Kosongkan jika ingin harga dikonfirmasi oleh tim kami.
-                      </p>
-                    )}
-                  </div>
-                ))}
-                <div className="border-t border-border pt-2 mt-1 flex justify-between font-bold text-sm">
-                  <span>Total Estimasi</span>
-                  <span className="text-accent">
-                    {total > 0 ? formatIDR(total) : "Akan dikonfirmasi"}
-                  </span>
-                </div>
+        <div className="flex-1 overflow-y-auto bg-slate-50/60">
+          {items.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full px-8 text-center py-16">
+              <div className="w-20 h-20 rounded-2xl bg-slate-100 flex items-center justify-center mb-4">
+                <ShoppingCart className="w-10 h-10 text-slate-300" />
               </div>
-
-              {/* Notes */}
-              <div>
-                <label className="block text-sm font-medium mb-1.5">
-                  Catatan Pesanan <span className="text-muted-foreground font-normal">(opsional)</span>
-                </label>
-                <textarea
-                  rows={3}
-                  placeholder="Asal & tujuan pengiriman, spesifikasi muatan, jadwal, dll..."
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  className="w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40 resize-none"
-                />
-              </div>
-
-              {/* Expected date */}
-              <div>
-                <label className="block text-sm font-medium mb-1.5">
-                  Tanggal yang Diharapkan <span className="text-muted-foreground font-normal">(opsional)</span>
-                </label>
-                <input
-                  type="date"
-                  value={expectedDate}
-                  min={new Date().toISOString().split("T")[0]}
-                  onChange={(e) => setExpectedDate(e.target.value)}
-                  className="w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40"
-                />
-              </div>
-
-              {/* Payment type */}
-              <div className="space-y-3">
-                <label className="block text-sm font-medium">
-                  Jenis Pembayaran <span className="text-muted-foreground font-normal">(opsional)</span>
-                </label>
-                <div className="grid grid-cols-3 gap-2">
-                  {(["cash", "termin", "dp"] as const).map((type) => {
-                    const labels: Record<string, { title: string; desc: string }> = {
-                      cash: { title: "Cash", desc: "Bayar lunas" },
-                      termin: { title: "Termin", desc: "Cicil berkala" },
-                      dp: { title: "DP / Advance", desc: "Uang muka" },
-                    };
-                    const selected = paymentType === type;
-                    return (
-                      <button
-                        key={type}
-                        type="button"
-                        onClick={() => {
-                          setPaymentType(selected ? "" : type);
-                          setPaymentTerm("");
-                          setDpNext("");
-                        }}
-                        className={`flex flex-col items-center gap-0.5 rounded-xl border-2 px-2 py-3 text-center transition-all ${
-                          selected
-                            ? "border-accent bg-accent/10 text-accent"
-                            : "border-border bg-background text-foreground hover:border-accent/50"
-                        }`}
-                      >
-                        <span className="font-semibold text-xs leading-tight">{labels[type].title}</span>
-                        <span className="text-[10px] text-muted-foreground leading-tight">{labels[type].desc}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Termin sub-options */}
-                {paymentType === "termin" && (
-                  <div className="rounded-xl border border-accent/30 bg-accent/5 p-3 space-y-2">
-                    <p className="text-xs font-medium text-accent">Pilih Jangka Waktu Termin</p>
-                    <div className="grid grid-cols-4 gap-1.5">
-                      {(["net7", "net14", "net30", "net60"] as const).map((term) => {
-                        const termLabels: Record<string, string> = {
-                          net7: "Net 7 Hari", net14: "Net 14 Hari",
-                          net30: "Net 30 Hari", net60: "Net 60 Hari",
-                        };
-                        return (
-                          <button
-                            key={term}
-                            type="button"
-                            onClick={() => setPaymentTerm(paymentTerm === term ? "" : term)}
-                            className={`rounded-lg border-2 py-2 text-[11px] font-semibold transition-all text-center ${
-                              paymentTerm === term
-                                ? "border-accent bg-accent text-white"
-                                : "border-border bg-white text-foreground hover:border-accent/50"
-                            }`}
-                          >
-                            {termLabels[term]}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {/* DP sub-options */}
-                {paymentType === "dp" && (
-                  <div className="rounded-xl border border-accent/30 bg-accent/5 p-3 space-y-2">
-                    <p className="text-xs font-medium text-accent">Pembayaran Selanjutnya Setelah DP</p>
-                    <div className="grid grid-cols-2 gap-1.5">
-                      {(["lunas-delivery", "lunas-net30", "lunas-net60", "cicil"] as const).map((opt) => {
-                        const dpLabels: Record<string, { title: string; desc: string }> = {
-                          "lunas-delivery": { title: "Pelunasan Setelah Pengiriman", desc: "Sisa dibayar saat barang tiba" },
-                          "lunas-net30":    { title: "Pelunasan Net 30 Hari", desc: "Sisa lunas maks. 30 hari" },
-                          "lunas-net60":    { title: "Pelunasan Net 60 Hari", desc: "Sisa lunas maks. 60 hari" },
-                          "cicil":          { title: "Cicilan Bertahap", desc: "Sisa dibayar secara cicil" },
-                        };
-                        return (
-                          <button
-                            key={opt}
-                            type="button"
-                            onClick={() => setDpNext(dpNext === opt ? "" : opt)}
-                            className={`flex flex-col gap-0.5 rounded-lg border-2 px-3 py-2.5 text-left transition-all ${
-                              dpNext === opt
-                                ? "border-accent bg-accent text-white"
-                                : "border-border bg-white text-foreground hover:border-accent/50"
-                            }`}
-                          >
-                            <span className="font-semibold text-[11px] leading-tight">{dpLabels[opt].title}</span>
-                            <span className={`text-[10px] leading-tight ${dpNext === opt ? "text-white/80" : "text-muted-foreground"}`}>{dpLabels[opt].desc}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {hasNegotiatedItems && (
-                <div className="flex gap-2 items-start p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs">
-                  <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                  <span>Pesanan dengan harga 0 akan diproses sebagai permintaan penawaran. Tim kami akan menghubungi Anda untuk konfirmasi harga.</span>
-                </div>
-              )}
-
-              {errorMsg && (
-                <div className="flex gap-2 items-start p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm">
-                  <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                  <span>{errorMsg}</span>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ── STEP: SUCCESS ── */}
-          {step === "success" && successOrder && (
-            <div className="p-6 text-center py-16">
-              <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-6">
-                <CheckCircle className="h-8 w-8 text-green-600" />
-              </div>
-              <h3 className="font-display font-bold text-xl mb-2">Pesanan Diterima!</h3>
-              <p className="text-muted-foreground mb-2">Nomor pesanan Anda:</p>
-              <p className="font-bold text-accent text-lg mb-4">{successOrder.docNumber}</p>
-              <p className="text-sm text-muted-foreground">
-                Tim kami akan segera memproses pesanan Anda dan menghubungi Anda dalam waktu 1×24 jam kerja.
+              <p className="text-sm font-semibold text-slate-600 mt-2">Keranjang kosong</p>
+              <p className="text-xs text-slate-400 mt-1 mb-6 leading-relaxed">
+                Tambahkan produk atau pilih layanan logistik — trucking, air freight, atau sea freight.
               </p>
+              <Button onClick={handleAddService} size="sm" className="gap-2">
+                <Plus className="w-4 h-4" /> Pilih Layanan
+              </Button>
+            </div>
+          ) : (
+            <div className="p-4 space-y-5">
+              {grouped.map(([type, typeItems]) => {
+                const meta = getTypeMeta(type);
+                const Icon = meta.icon;
+                return (
+                  <div key={type}>
+                    <div className="flex items-center gap-2 mb-2 px-1">
+                      <Icon className="w-3.5 h-3.5 text-slate-400" />
+                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">
+                        {meta.label} ({typeItems.length})
+                      </span>
+                    </div>
+                    <div className="space-y-2">
+                      {typeItems.map((item) => (
+                        <CartItemCard key={item.cartId} item={item} onRemove={removeItem} />
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+
+              <button
+                onClick={handleAddService}
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-slate-200 text-sm text-slate-400 hover:border-sky-300 hover:text-sky-600 hover:bg-sky-50/60 transition-colors"
+              >
+                <Plus className="w-4 h-4" /> Tambah Layanan / Produk
+              </button>
             </div>
           )}
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-border space-y-3">
-          {step === "cart" && items.length > 0 && (
-            <>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Total Estimasi</span>
-                <span className="font-bold text-lg text-accent">
-                  {total > 0 ? formatIDR(total) : "Akan dikonfirmasi"}
+        {items.length > 0 && (
+          <div className="border-t border-slate-200 px-5 py-4 space-y-3 bg-white shrink-0">
+            <div className="space-y-1.5 text-sm">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Subtotal</span>
+                <span className="font-medium text-slate-700">
+                  {subtotal > 0
+                    ? formatCurrency(subtotal)
+                    : <span className="text-slate-400 text-xs italic">Ditentukan vendor</span>}
                 </span>
               </div>
-              <Button className="w-full h-11 gap-2" onClick={handleCheckout}>
-                {token ? "Lanjut ke Konfirmasi" : "Masuk untuk Memesan"}
-                <ArrowRight className="h-4 w-4" />
-              </Button>
-              {!token && (
-                <p className="text-xs text-muted-foreground text-center">
-                  Anda harus masuk atau daftar terlebih dahulu
+              <div className="flex justify-between">
+                <span className="text-slate-500">PPN {taxRate === 0.011 ? "1,1%" : "11%"}</span>
+                <span className="font-medium text-slate-700">
+                  {tax > 0 ? formatCurrency(tax) : <span className="text-slate-400 text-xs">—</span>}
+                </span>
+              </div>
+              <Separator />
+              <div className="flex justify-between items-center pt-0.5">
+                <span className="font-bold text-slate-800">Total Estimasi</span>
+                <span className="text-lg font-bold text-sky-700">
+                  {grandTotal > 0 ? formatCurrency(grandTotal) : "—"}
+                </span>
+              </div>
+              {hasNegotiable && (
+                <p className="text-[11px] text-slate-400 leading-snug">
+                  Harga akhir dikonfirmasi vendor setelah pesanan diterima.
                 </p>
               )}
-            </>
-          )}
-
-          {step === "checkout" && (
-            <div className="flex gap-3">
-              <Button variant="outline" className="flex-1" onClick={() => setStep("cart")}>
-                Kembali
-              </Button>
-              <Button
-                className="flex-1 gap-2"
-                onClick={submitOrder}
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? "Mengirim..." : "Kirim Pesanan"}
-                {!isSubmitting && <ArrowRight className="h-4 w-4" />}
-              </Button>
             </div>
-          )}
 
-          {step === "success" && (
-            <div className="flex gap-3">
+            <Button className="w-full gap-2 h-11 text-sm font-semibold" onClick={handleCheckout}>
+              Lanjutkan ke Checkout <ArrowRight className="w-4 h-4" />
+            </Button>
+
+            <div className="grid grid-cols-2 gap-2">
               <Button
                 variant="outline"
-                className="flex-1"
-                onClick={() => {
-                  resetAndClose();
-                  setLocation("/orders");
-                }}
+                className="gap-1.5 text-sm h-10"
+                onClick={handleAddService}
               >
-                Lihat Riwayat
+                <Truck className="w-3.5 h-3.5" />
+                Pilih Layanan
               </Button>
-              <Button className="flex-1" onClick={resetAndClose}>
-                Tutup
+              <Button
+                variant="outline"
+                className="gap-1.5 text-sm h-10"
+                onClick={() => { close(); setLocation("/products"); }}
+              >
+                <Package className="w-3.5 h-3.5" />
+                Pilih Produk
               </Button>
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </>
   );

@@ -3,15 +3,15 @@ import path from "path";
 
 function resolveUrl(): string {
   const candidates = [
+    process.env.DATABASE_URL,
     process.env.SUPABASE_PG_URL,
     process.env.SUPABASE_DATABASE_URL,
-    process.env.DATABASE_URL,
   ];
   for (const url of candidates) {
     if (url && /^postgres(?:ql)?:\/\//i.test(url)) return url;
   }
   throw new Error(
-    "No valid PostgreSQL URL found. Set SUPABASE_PG_URL, SUPABASE_DATABASE_URL, or DATABASE_URL.",
+    "No valid PostgreSQL URL found. Set DATABASE_URL.",
   );
 }
 
@@ -21,4 +21,5 @@ export default defineConfig({
   dbCredentials: {
     url: resolveUrl(),
   },
+  tablesFilter: ["!oauth_states"],
 });
