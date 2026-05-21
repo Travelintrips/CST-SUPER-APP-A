@@ -114,9 +114,19 @@ type LatestRfq = {
   freightShipmentId: number | null; freightShipmentNumber: string | null;
 } | null;
 
-function RfqStatusCell({ latestRfq }: { latestRfq: LatestRfq }) {
+function RfqStatusCell({ latestRfq, onCreateRfq }: { latestRfq: LatestRfq; onCreateRfq: () => void }) {
   if (!latestRfq) {
-    return <span className="text-xs text-muted-foreground">—</span>;
+    return (
+      <Button
+        size="sm"
+        variant="outline"
+        className="h-6 text-[10px] px-1.5 py-0 gap-1 text-muted-foreground border-dashed hover:border-solid hover:text-foreground"
+        onClick={onCreateRfq}
+      >
+        <Send className="h-2.5 w-2.5 shrink-0" />
+        Buat RFQ
+      </Button>
+    );
   }
   return (
     <div className="flex flex-col gap-1 min-w-0">
@@ -569,7 +579,10 @@ export default function LogisticsPortalOrdersPage() {
                     </TableCell>
                     {/* RFQ status column */}
                     <TableCell onClick={(e) => e.stopPropagation()}>
-                      <RfqStatusCell latestRfq={(o as any).latestRfq ?? null} />
+                      <RfqStatusCell
+                        latestRfq={(o as any).latestRfq ?? null}
+                        onCreateRfq={() => openRfqDialog(o)}
+                      />
                     </TableCell>
                     <TableCell onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-1">
