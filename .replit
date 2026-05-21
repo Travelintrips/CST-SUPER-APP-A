@@ -28,6 +28,10 @@ args = "Sport Center"
 task = "workflow.run"
 args = "BizPortal"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start application"
+
 [[workflows.workflow]]
 name = "POS"
 author = "agent"
@@ -59,6 +63,17 @@ author = "agent"
 task = "shell.exec"
 args = "cd artifacts/bizportal && PORT=3000 BASE_PATH=/bizportal/ node_modules/.bin/vite --config vite.config.ts --host 0.0.0.0"
 waitForPort = 3000
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow]]
+name = "Start application"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "bash start-all.sh"
 
 [workflows.workflow.metadata]
 outputType = "console"

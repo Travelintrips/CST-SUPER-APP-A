@@ -112,11 +112,11 @@ if (h.indexOf('access_token') !== -1 || h.indexOf('error=') !== -1 ||
     },
     proxy: {
       "/api": {
-        target: "http://localhost:8080",
+        target: "http://localhost:18444",
         changeOrigin: true,
       },
       "/pos-images": {
-        target: "http://localhost:8080",
+        target: "http://localhost:18444",
         changeOrigin: true,
       },
       "/sport-center": {

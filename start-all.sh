@@ -1,31 +1,12 @@
 #!/usr/bin/env bash
 set -e
 
-# Kill any stale processes on our ports before starting
-for PORT in 8080 5000 18442; do
-  fuser -k ${PORT}/tcp 2>/dev/null || true
-done
+# Kill any stale process on API port before starting
+fuser -k 18444/tcp 2>/dev/null || true
 
 echo "==> Building API Server..."
 cd /home/runner/workspace/artifacts/api-server
 node ./build.mjs
 
-echo "==> Starting API Server on port 8080..."
-PORT=8080 NODE_ENV=development node --enable-source-maps ./dist/index.mjs &
-APISERVER_PID=$!
-
-cd /home/runner/workspace
-
-echo "==> Starting BizPortal frontend on port 18442..."
-cd artifacts/bizportal
-PORT=18442 BASE_PATH=/bizportal/ pnpm exec vite --config vite.config.ts --host 0.0.0.0 &
-BIZPORTAL_PID=$!
-
-echo "==> Starting Customer Portal (main entry) on port 5000..."
-cd ../customer-portal
-PORT=5000 BASE_PATH=/ pnpm exec vite --config vite.config.ts --host 0.0.0.0 &
-PORTAL_PID=$!
-
-echo "==> All services started. API=$APISERVER_PID BizPortal=$BIZPORTAL_PID Portal=$PORTAL_PID"
-
-wait
+echo "==> Starting API Server on port 18444..."
+PORT=18444 NODE_ENV=development node --enable-source-maps ./dist/index.mjs

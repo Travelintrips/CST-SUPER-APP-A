@@ -34,6 +34,7 @@ import { runQrMenuMigration } from "./lib/qrMenuMigration";
 import { runVendorMiniFormMigration } from "./lib/vendorMiniFormMigration";
 import { runCustomerQuoteFlowMigration } from "./lib/customerQuoteFlowMigration";
 import { runEnterpriseMigration } from "./lib/enterpriseMigration";
+import { runShortLinksMigration } from "./lib/shortLinksMigration";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 
@@ -192,6 +193,7 @@ async function startServer() {
     .then(() => runWithRetry("Vendor mini form migration", runVendorMiniFormMigration))
     .then(() => runWithRetry("Customer quote flow migration", runCustomerQuoteFlowMigration))
     .then(() => runWithRetry("Enterprise migration", runEnterpriseMigration))
+    .then(() => runWithRetry("Short links migration", runShortLinksMigration))
     .then(() => enableRealtimeTables().catch((err) => {
       logger.warn({ err }, "Supabase Realtime table enable failed (non-fatal)");
     }))
