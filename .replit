@@ -20,6 +20,25 @@ author = "agent"
 task = "workflow.run"
 args = "POS"
 
+<<<<<<< HEAD
+=======
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Sport Center"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "BizPortal"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "API Server"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Customer Portal"
+
+>>>>>>> cd2527d0d9b8cbe54793c39b12fb44a929fc5bb2
 [[workflows.workflow]]
 name = "POS"
 author = "agent"
@@ -31,6 +50,57 @@ outputType = "console"
 task = "shell.exec"
 args = "bash start-pos-kasir.sh"
 
+<<<<<<< HEAD
+=======
+[[workflows.workflow]]
+name = "Sport Center"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/sport-center && PORT=3002 BASE_PATH=/sport-center/ pnpm exec vite --config vite.config.ts --host 0.0.0.0"
+waitForPort = 3002
+
+[[workflows.workflow]]
+name = "BizPortal"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/bizportal && PORT=3000 BASE_PATH=/bizportal/ node_modules/.bin/vite --config vite.config.ts --host 0.0.0.0"
+waitForPort = 3000
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow]]
+name = "API Server"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/api-server && PORT=8080 NODE_ENV=development node --enable-source-maps ./dist/index.mjs"
+waitForPort = 8080
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow]]
+name = "Customer Portal"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/customer-portal && PORT=3001 BASE_PATH=/ node_modules/.bin/vite --config vite.config.ts --host 0.0.0.0"
+waitForPort = 3001
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+>>>>>>> cd2527d0d9b8cbe54793c39b12fb44a929fc5bb2
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
 expertMode = true
@@ -54,7 +124,17 @@ VITE_SUPABASE_URL = "https://nzdweipzckfszczzqtuw.supabase.co"
 CASHIER_TOKEN_SECRET = "239a1a73ea517bf5430a357fb7a39aa0deef38cecaf4d8135310a7cf3f2e11a19466d603c1dfd5bc0c735e92d58b135d"
 PUBLIC_OBJECT_SEARCH_PATHS = "/replit-objstore-e357cc66-19c3-4d73-9ca9-3069d78355d1/public"
 PRIVATE_OBJECT_DIR = "/replit-objstore-e357cc66-19c3-4d73-9ca9-3069d78355d1/private"
+<<<<<<< HEAD
 GOOGLE_CLIENT_ID = "751551151000-fqrgt8si0pgnchqkn3pfo6nmqienv38f.apps.googleusercontent.com"
+=======
+SUPABASE_STORAGE_BUCKET = "https://nzdweipzckfszczzqtuw.storage.supabase.co/storage/v1/s3"
+SUPABASE_URL = "nzdweipzckfszczzqtuw"
+GOOGLE_CLIENT_ID = "751551151000-fqrgt8si0pgnchqkn3pfo6nmqienv38f.apps.googleusercontent.com"
+AI_INTEGRATIONS_OPENAI_BASE_URL = "http://localhost:1106/modelfarm/openai"
+DEFAULT_OBJECT_STORAGE_BUCKET_ID = "replit-objstore-e357cc66-19c3-4d73-9ca9-3069d78355d1"
+SUPABASE_URL_DEV = "https://xssrfshdrtdfupgqwfdw.supabase.co"
+AI_INTEGRATIONS_OPENAI_API_KEY = "_DUMMY_API_KEY_"
+>>>>>>> cd2527d0d9b8cbe54793c39b12fb44a929fc5bb2
 
 [userenv.development]
 ADMIN_EMAIL_DOMAINS = "example.com"
@@ -71,8 +151,13 @@ localPort = 3000
 externalPort = 9000
 
 [[ports]]
+<<<<<<< HEAD
 localPort = 3002
 externalPort = 80
+=======
+localPort = 3001
+externalPort = 3001
+>>>>>>> cd2527d0d9b8cbe54793c39b12fb44a929fc5bb2
 
 [[ports]]
 localPort = 5000
@@ -80,7 +165,11 @@ externalPort = 80
 
 [[ports]]
 localPort = 8080
+<<<<<<< HEAD
 externalPort = 8008
+=======
+externalPort = 8080
+>>>>>>> cd2527d0d9b8cbe54793c39b12fb44a929fc5bb2
 
 [[ports]]
 localPort = 8081
