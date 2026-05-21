@@ -138,6 +138,17 @@ if (fs.existsSync(CUSTOMER_PORTAL_DIST)) {
   app.use(express.static(CUSTOMER_PORTAL_DIST, { index: false }));
 }
 
+// ─── Dev-mode root redirect ───────────────────────────────────────────────────
+// In development, frontend apps run as separate Vite processes so
+// customer-portal/dist doesn't exist yet. Redirect "/" to the BizPortal
+// so the port stays reachable and Replit's proxy health-check passes.
+app.get("/", (_req: Request, res: Response, next: NextFunction) => {
+  if (fs.existsSync(CUSTOMER_PORTAL_DIST)) return next();
+  const bizportalDist = path.join(ARTIFACTS_DIR, "bizportal/dist/public");
+  if (fs.existsSync(bizportalDist)) return next();
+  res.redirect(302, "/bizportal/");
+});
+
 // ─── BizPortal Static Serving ────────────────────────────────────────────────
 // BizPortal is built with base="/bizportal/" so all asset hrefs are /bizportal/...
 // The API server handles /bizportal/* so that:
