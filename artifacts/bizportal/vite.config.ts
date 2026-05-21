@@ -93,7 +93,7 @@ if (h.indexOf('access_token') !== -1 || h.indexOf('error=') !== -1 ||
     host: "0.0.0.0",
     allowedHosts: true,
     hmr: {
-      clientPort: 443,
+      clientPort: 9000,
       protocol: "wss",
       host: process.env.REPLIT_DEV_DOMAIN ?? "localhost",
       overlay: false,
