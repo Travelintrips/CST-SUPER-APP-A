@@ -40,6 +40,10 @@ args = "Customer Portal"
 task = "workflow.run"
 args = "Proxy"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Codegen Watch"
+
 [[workflows.workflow]]
 name = "POS"
 author = "agent"
@@ -110,6 +114,17 @@ waitForPort = 5000
 
 [workflows.workflow.metadata]
 outputType = "webview"
+
+[[workflows.workflow]]
+name = "Codegen Watch"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "node scripts/watch-codegen.mjs"
+
+[workflows.workflow.metadata]
+outputType = "console"
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
