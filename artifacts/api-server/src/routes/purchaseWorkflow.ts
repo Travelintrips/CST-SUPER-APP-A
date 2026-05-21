@@ -525,8 +525,15 @@ router.post("/gr/:id/confirm", async (req, res) => {
       const [existing] = await db.select().from(whStockTable)
         .where(and(eq(whStockTable.productId, line.productId), eq(whStockTable.warehouseId, warehouseId)));
       if (existing) {
-        const newQty = num(existing.qty) + qty;
-        await db.update(whStockTable).set({ qty: String(newQty), costPrice: line.unitCost, updatedAt: new Date() })
+        const oldQty = num(existing.qty);
+        const oldCost = Number(existing.costPrice ?? 0);
+        const newQty = oldQty + qty;
+        const newCostUnit = num(String(line.unitCost ?? 0));
+        // Step 3 Fix B: weighted average cost — jangan overwrite harga lama, hitung rata-rata tertimbang
+        const newCostPrice = (oldQty > 0 && oldCost > 0)
+          ? Math.round(((oldQty * oldCost + qty * newCostUnit) / newQty) * 100) / 100
+          : newCostUnit;
+        await db.update(whStockTable).set({ qty: String(newQty), costPrice: String(newCostPrice), updatedAt: new Date() })
           .where(eq(whStockTable.id, existing.id));
       } else {
         await db.insert(whStockTable).values({ productId: line.productId, warehouseId, qty: String(qty), costPrice: line.unitCost });
@@ -930,7 +937,10 @@ router.post("/vendor-invoices/:id/post", async (req, res) => {
     const taxAmount = num(vi.taxAmount);
     const netAmount = grandTotal - taxAmount;
     const lines = [];
-    if (settings.purchaseExpenseAccountId) lines.push({ accountId: settings.purchaseExpenseAccountId, debit: netAmount, credit: 0, description: "Purchase expense" });
+    // Step 3 Fix A: jika VI linked ke GR, debit GR/IR (clearing 3-way match). Jika tidak, debit akun beban pembelian.
+    const debitAccId = (vi.grId && settings.grirAccountId) ? settings.grirAccountId : settings.purchaseExpenseAccountId;
+    const debitDesc = (vi.grId && settings.grirAccountId) ? `GR/IR clearing ${vi.invoiceNumber}` : "Purchase expense";
+    if (debitAccId) lines.push({ accountId: debitAccId, debit: netAmount, credit: 0, description: debitDesc });
     if (taxAmount > 0 && settings.ppnInputAccountId) lines.push({ accountId: settings.ppnInputAccountId!, debit: taxAmount, credit: 0, description: "VAT in" });
     if (settings.apAccountId) lines.push({ accountId: settings.apAccountId!, debit: 0, credit: grandTotal, description: "AP vendor invoice" });
     if (lines.length >= 2) {

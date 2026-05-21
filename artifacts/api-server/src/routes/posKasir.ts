@@ -633,23 +633,40 @@ router.patch("/orders/:id/pay", async (req, res) => {
       `)).rows as Array<{ product_id: number; avg_cost: string }>;
       const costByProductId = new Map(costRows.map((r) => [r.product_id, Number(r.avg_cost)]));
 
+      // Step 4 Fix C: sertakan linkedId agar bisa dicari fallback dari pos_inventory_items
       const allCogsItems = itemsWithLinked.map((i) => {
         const linkedId = prodMeta.get(i.productId)!.linked_product_id!;
         const costPrice = costByProductId.get(linkedId) ?? 0;
-        return { name: i.productName, qty: i.qty, costPrice };
+        return { name: i.productName, qty: i.qty, costPrice, linkedId };
       });
 
-      const cogsItems = allCogsItems.filter((x) => x.costPrice > 0);
+      // Fallback: untuk item dengan costPrice = 0 di wh_stock, coba ambil dari pos_inventory_items.cost_price
+      const linkedIdsNeedFallback = allCogsItems.filter((x) => x.costPrice <= 0).map((x) => x.linkedId);
+      if (linkedIdsNeedFallback.length > 0) {
+        const fallbackRows = (await db.execute(sql`
+          SELECT id, cost_price::numeric as cost_price
+          FROM pos_inventory_items
+          WHERE id = ANY(${sql.raw(`ARRAY[${linkedIdsNeedFallback.join(",")}]::int[]`)})
+          AND cost_price > 0
+        `)).rows as Array<{ id: number; cost_price: string }>;
+        const fallbackByLinkedId = new Map(fallbackRows.map((r) => [Number(r.id), Number(r.cost_price)]));
+        for (const item of allCogsItems) {
+          if (item.costPrice <= 0 && fallbackByLinkedId.has(item.linkedId)) {
+            item.costPrice = fallbackByLinkedId.get(item.linkedId)!;
+          }
+        }
+      }
 
-      // Audit: warn jika ada item yang dilewati karena cost_price = 0 di wh_stock.
-      // Akibatnya: jurnal HPP tidak diposting → P&L tidak akurat (laba terlihat lebih besar).
-      // Solusi: isi cost_price di wh_stock saat menerima barang dari Purchase.
+      const cogsItems = allCogsItems
+        .filter((x) => x.costPrice > 0)
+        .map(({ name, qty, costPrice }) => ({ name, qty, costPrice }));
+
       const skippedItems = allCogsItems.filter((x) => x.costPrice <= 0);
       if (skippedItems.length > 0) {
         console.warn(
           `[pos-cogs] PERINGATAN: ${skippedItems.length} item dilewati karena cost_price = 0 ` +
-          `di wh_stock (order #${order.orderNumber}): ${skippedItems.map((x) => x.name).join(", ")}. ` +
-          `Jurnal HPP tidak akan diposting untuk item ini.`
+          `di wh_stock DAN pos_inventory_items (order #${order.orderNumber}): ` +
+          `${skippedItems.map((x) => x.name).join(", ")}. Jurnal HPP tidak akan diposting untuk item ini.`
         );
       }
 

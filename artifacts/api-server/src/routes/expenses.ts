@@ -537,26 +537,40 @@ router.post("/:id/action", async (req, res) => {
     const settings = await ensureAccountingSettings(expenseCompanyId);
     const totalN = Number(expense.total);
 
+    // Step 5 Fix F: support pembayaran tunai (kas) vs transfer (bank) via request body paymentMethod
+    const payMethodReq = (req.body?.paymentMethod as string | undefined) ?? "bank";
+    const isCashPay = payMethodReq === "cash" || payMethodReq === "tunai" || payMethodReq === "qris";
+
     const effectivePayableAccountId = expense.payableAccountId ?? settings.apAccountId;
-    const effectiveBankAccountId = settings.defaultBankAccountId;
+    const effectiveCashBankAccountId = isCashPay
+      ? (settings.defaultCashAccountId ?? settings.defaultBankAccountId)
+      : settings.defaultBankAccountId;
 
     if (!effectivePayableAccountId) {
       return res.status(400).json({ message: "Akun hutang belum dikonfigurasi." });
     }
-    if (!effectiveBankAccountId) {
-      return res.status(400).json({ message: "Akun bank default belum dikonfigurasi." });
+    if (!effectiveCashBankAccountId) {
+      return res.status(400).json({ message: "Akun kas/bank default belum dikonfigurasi." });
     }
 
-    const [bankJournal] = await db
+    const journalType = isCashPay ? "cash" : "bank";
+    const [payJournal] = await db
+      .select()
+      .from(accountingJournalsTable)
+      .where(eq(accountingJournalsTable.type, journalType))
+      .limit(1);
+    const fallbackJournal = payJournal ? null : await db
       .select()
       .from(accountingJournalsTable)
       .where(eq(accountingJournalsTable.type, "bank"))
-      .limit(1);
-    if (!bankJournal) return res.status(400).json({ message: "Jurnal bank tidak ditemukan." });
+      .limit(1)
+      .then((rows) => rows[0]);
+    const journal = payJournal ?? fallbackJournal;
+    if (!journal) return res.status(400).json({ message: "Jurnal kas/bank tidak ditemukan." });
 
     await postEntry(
       {
-        journalId: bankJournal.id,
+        journalId: journal.id,
         date: new Date(),
         ref: expense.expenseNumber,
         description: `Pembayaran ${expense.expenseNumber} — ${expense.vendorEmployee ?? expense.description ?? "Expense"}`,
@@ -564,10 +578,10 @@ router.post("/:id/action", async (req, res) => {
         companyId: expenseCompanyId,
         lines: [
           { accountId: effectivePayableAccountId, debit: totalN, credit: 0, description: "Pelunasan Hutang Biaya" },
-          { accountId: effectiveBankAccountId, debit: 0, credit: totalN, description: "Bank Mandiri" },
+          { accountId: effectiveCashBankAccountId, debit: 0, credit: totalN, description: isCashPay ? "Kas" : "Bank" },
         ],
       },
-      bankJournal.code,
+      journal.code,
     );
 
     await db.update(expensesTable)

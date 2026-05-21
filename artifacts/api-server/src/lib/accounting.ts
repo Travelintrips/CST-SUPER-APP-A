@@ -406,12 +406,12 @@ export async function postPosTransaction(args: {
   companyId?: number | null;
 }): Promise<void> {
   try {
-    const settings = await ensureAccountingSettings();
+    const settings = await ensureAccountingSettings(args.companyId ?? undefined);
     if (!settings.salesIncomeAccountId) {
       logger.warn({ transactionId: args.transactionId }, "Skipping POS post: salesIncomeAccountId missing");
       return;
     }
-    const isCash = args.paymentMethod === "cash" || args.paymentMethod === "qris";
+    const isCash = args.paymentMethod === "cash" || args.paymentMethod === "qris" || args.paymentMethod === "tunai";
     const debitAccountId = isCash
       ? (settings.defaultCashAccountId ?? settings.defaultBankAccountId)
       : settings.defaultBankAccountId;
