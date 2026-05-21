@@ -1,4 +1,5 @@
 import * as Haptics from 'expo-haptics';
+import { Audio } from 'expo-av';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
@@ -22,17 +23,34 @@ function getNotifications(): any | null {
   }
 }
 
-function playNotificationSound(): void {
-  if (Platform.OS !== 'web') return;
+async function playNotificationSound(): Promise<void> {
   try {
-    const src = typeof NOTIFY_SOUND === 'string' ? NOTIFY_SOUND : String(NOTIFY_SOUND);
-    const audio = new window.Audio(src);
-    audio.volume = 1.0;
-    audio.play().catch(() => {});
+    if (Platform.OS === 'web') {
+      // Web: gunakan Web Audio API
+      const src = typeof NOTIFY_SOUND === 'string' ? NOTIFY_SOUND : String(NOTIFY_SOUND);
+      const audio = new window.Audio(src);
+      audio.volume = 1.0;
+      audio.play().catch(() => {});
+    } else {
+      // Android / iOS: gunakan expo-av (berjalan di Expo Go maupun APK)
+      await Audio.setAudioModeAsync({
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: false,
+      });
+      const { sound } = await Audio.Sound.createAsync(NOTIFY_SOUND as number, {
+        shouldPlay: true,
+        volume: 1.0,
+      });
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if ('didJustFinish' in status && status.didJustFinish) {
+          sound.unloadAsync().catch(() => {});
+        }
+      });
+    }
   } catch {}
 }
 
-// Setup notification handler on native dev/prod build
+// Setup notification handler pada native dev/prod build (bukan Expo Go)
 (function setupHandler() {
   const Notif = getNotifications();
   if (!Notif) return;
