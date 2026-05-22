@@ -26,7 +26,6 @@ export interface PostingInput {
     | "purchase_bill"
     | "sales_payment"
     | "purchase_payment"
-    | "pos_sale"
     | "ecommerce_order"
     | "stock_received"
     | "manual_payment"
@@ -351,101 +350,6 @@ export async function postPurchaseBill(args: {
     logger.info({ purchaseDocId: args.purchaseDocId, inventoryAmount, expenseAmount, taxAmount }, "Purchase bill journal entry posted");
   } catch (err) {
     logger.error({ err, purchaseDocId: args.purchaseDocId }, "Auto-post purchase bill failed");
-  }
-}
-
-/** Auto-post POS COGS: DR HPP / CR Persediaan for recipe/linked inventory items. */
-export async function postPosCogs(args: {
-  orderId: number;
-  orderNumber: string;
-  items: Array<{ name: string; qty: number; costPrice: number }>;
-  createdById?: string | null;
-  companyId?: number | null;
-}): Promise<void> {
-  try {
-    const validItems = args.items.filter((i) => i.costPrice > 0 && i.qty > 0);
-    if (validItems.length === 0) return;
-    const settings = await ensureAccountingSettings(args.companyId ?? undefined);
-    if (!settings.cogsAccountId || !settings.inventoryAccountId || !settings.purchaseJournalId) {
-      logger.warn({ orderId: args.orderId }, "Skipping POS COGS post: settings incomplete");
-      return;
-    }
-    const totalCogs = round2(validItems.reduce((s, i) => s + i.costPrice * i.qty, 0));
-    if (totalCogs <= 0) return;
-    const desc = validItems.map((i) => `${i.name} ×${i.qty}`).join(", ");
-    await postEntry(
-      {
-        journalId: settings.purchaseJournalId,
-        date: new Date(),
-        ref: `POSCOGS-${args.orderId}`,
-        description: `HPP POS Order #${args.orderNumber}`,
-        source: "cogs_delivery",
-        sourceId: args.orderId,
-        createdById: args.createdById ?? null,
-        companyId: args.companyId ?? null,
-        lines: [
-          { accountId: settings.cogsAccountId, debit: totalCogs, credit: 0, description: `HPP POS: ${desc}` },
-          { accountId: settings.inventoryAccountId, debit: 0, credit: totalCogs, description: `Persediaan keluar POS: ${desc}` },
-        ],
-      },
-      "PUR",
-    );
-    logger.info({ orderId: args.orderId, totalCogs, itemCount: validItems.length }, "POS COGS journal posted");
-  } catch (err) {
-    logger.error({ err, orderId: args.orderId }, "Auto-post POS COGS failed");
-  }
-}
-
-/** Auto-post when a POS transaction is created (immediate cash/bank sale). */
-export async function postPosTransaction(args: {
-  transactionId: number;
-  productName: string;
-  totalPrice: number;
-  paymentMethod: string;
-  createdById?: string | null;
-  companyId?: number | null;
-}): Promise<void> {
-  try {
-    const settings = await ensureAccountingSettings(args.companyId ?? undefined);
-    if (!settings.salesIncomeAccountId) {
-      logger.warn({ transactionId: args.transactionId }, "Skipping POS post: salesIncomeAccountId missing");
-      return;
-    }
-    const isCash = args.paymentMethod === "cash" || args.paymentMethod === "qris" || args.paymentMethod === "tunai";
-    const debitAccountId = isCash
-      ? (settings.defaultCashAccountId ?? settings.defaultBankAccountId)
-      : settings.defaultBankAccountId;
-    if (!debitAccountId) {
-      logger.warn({ transactionId: args.transactionId }, "Skipping POS post: no cash/bank account configured");
-      return;
-    }
-    const journalId = isCash
-      ? (settings.cashJournalId ?? settings.bankJournalId)
-      : settings.bankJournalId;
-    if (!journalId) {
-      logger.warn({ transactionId: args.transactionId }, "Skipping POS post: no journal configured");
-      return;
-    }
-    const amt = round2(args.totalPrice);
-    await postEntry(
-      {
-        journalId,
-        date: new Date(),
-        ref: `POS-${args.transactionId}`,
-        description: `Penjualan POS: ${args.productName}`,
-        source: "pos_sale",
-        sourceId: args.transactionId,
-        createdById: args.createdById ?? null,
-        companyId: args.companyId ?? null,
-        lines: [
-          { accountId: debitAccountId, debit: amt, credit: 0, description: `Penerimaan POS #${args.transactionId}` },
-          { accountId: settings.salesIncomeAccountId, debit: 0, credit: amt, description: `Pendapatan POS: ${args.productName}` },
-        ],
-      },
-      isCash ? "CSH" : "BNK",
-    );
-  } catch (err) {
-    logger.error({ err, transactionId: args.transactionId }, "Auto-post POS transaction failed");
   }
 }
 

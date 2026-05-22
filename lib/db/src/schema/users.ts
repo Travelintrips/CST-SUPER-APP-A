@@ -5,7 +5,7 @@ import { companiesTable } from "./companies";
 import { branchesTable, divisionsTable, departmentsTable, sectionsTable } from "./orgStructure";
 import { customRolesTable } from "./customRoles";
 
-export const userRoleEnum = pgEnum("user_role", ["admin", "ecommerce", "trading", "logistics", "pos", "pos-kasir", "pos-inventory"]);
+export const userRoleEnum = pgEnum("user_role", ["admin", "ecommerce", "trading", "logistics"]);
 
 export const usersTable = pgTable("users", {
   id: text("id").primaryKey(),

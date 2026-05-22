@@ -134,15 +134,7 @@ interface GroupItem {
 
 type NavItem = FlatItem | GroupItem;
 
-// Role hierarchy — semua role diatas "kasir" juga dapat melihat semua yang kasir bisa lihat
-// kasir    : Dashboard, POS Kasir
-// gudang   : Inventory
-// manager  : Dashboard, POS Kasir, Inventory, Cabang, Laporan
-// admin    : semua menu dalam company
-// owner    : semua menu
-// (plus legacy built-in roles: ecommerce, trading, logistics, pos)
-
-const ALL_ROLES = ["kasir", "gudang", "manager", "admin", "owner", "ecommerce", "trading", "logistics", "pos"];
+const ALL_ROLES = ["manager", "admin", "owner", "ecommerce", "trading", "logistics"];
 
 const getKey = (item: NavItem): string =>
   item.type === "group" ? item.basePath : item.href;
@@ -174,15 +166,6 @@ export function AppShell({ children }: AppShellProps) {
       roles: ALL_ROLES,
     },
 
-    // ── 2. POS KASIR ──────────────────────────────────────────────────
-    {
-      type: "flat",
-      titleKey: "POS Kasir",
-      href: "/pos-kasir",
-      icon: Calculator,
-      roles: ["kasir", "manager", "admin", "owner", "pos"],
-    },
-
     // ── NOTIFIKASI ────────────────────────────────────────────────────
     {
       type: "flat",
@@ -205,35 +188,7 @@ export function AppShell({ children }: AppShellProps) {
       ],
     },
 
-    // ── 4. INVENTORY ──────────────────────────────────────────────────
-    {
-      type: "group",
-      titleKey: "Inventory",
-      basePath: "/pos-inventory",
-      icon: Boxes,
-      roles: ["gudang", "manager", "admin", "owner"],
-      children: [
-        { titleKey: "Gudang", href: "/pos-inventory/warehouses", icon: Warehouse },
-        { titleKey: "Rak", href: "/pos-inventory/racks", icon: LayoutGrid },
-        { titleKey: "Stok", href: "/pos-inventory/stocks", icon: Boxes },
-        { titleKey: "Transfer Stok", href: "/pos-inventory/transfers", icon: ArrowLeftRight },
-        { titleKey: "Retur Barang", href: "/pos-inventory/returns", icon: RotateCcw },
-        { titleKey: "Barang Rusak / Hilang", href: "/pos-inventory/losses", icon: AlertTriangle },
-        { titleKey: "Stock Opname", href: "/pos-inventory/opname", icon: ClipboardCheck },
-        { titleKey: "Riwayat Pergerakan", href: "/pos-inventory/mutations", icon: Activity },
-      ],
-    },
-
-    // ── 5. CABANG ─────────────────────────────────────────────────────
-    {
-      type: "flat",
-      titleKey: "Cabang",
-      href: "/pos-inventory/branches",
-      icon: GitBranch,
-      roles: ["manager", "admin", "owner"],
-    },
-
-    // ── 6. USER & ROLE ────────────────────────────────────────────────
+    // ── 4. USER & ROLE ────────────────────────────────────────────────
     {
       type: "group",
       titleKey: "User & Role",
@@ -254,9 +209,8 @@ export function AppShell({ children }: AppShellProps) {
       titleKey: "Laporan",
       basePath: "/reports",
       icon: BarChart2,
-      roles: ["manager", "admin", "owner", "kasir", "gudang"],
+      roles: ["manager", "admin", "owner"],
       children: [
-        { titleKey: "Lap. Operasional (POS & Stok)", href: "/pos-kasir", icon: BarChart2, roles: ["manager", "admin", "owner", "kasir", "gudang"] },
         { titleKey: "Audit Log Keamanan", href: "/reports/audit-log", icon: Shield, roles: ["admin", "owner"] },
         { titleKey: "Laporan Penjualan B2B", href: "/reports/sales", icon: TrendingUp, roles: ["manager", "admin", "owner"] },
         { titleKey: "Laporan Pembelian", href: "/reports/purchase", icon: ShoppingBag, roles: ["admin", "owner"] },
@@ -504,16 +458,16 @@ export function AppShell({ children }: AppShellProps) {
 
   // Pisahkan nav utama (8 menu pokok) dan ERP lanjutan
   const MAIN_PATHS = [
-    "/dashboard", "/pos-kasir", "/notifications", "/products", "/pos-inventory",
+    "/dashboard", "/notifications", "/products",
     "/users", "/reports", "/settings",
   ];
   const mainNav = orderedNav.filter((item) => {
     const p = getKey(item);
-    return MAIN_PATHS.includes(p) || p === "/pos-inventory/branches";
+    return MAIN_PATHS.includes(p);
   });
   const erpNav = orderedNav.filter((item) => {
     const p = getKey(item);
-    return !MAIN_PATHS.includes(p) && p !== "/pos-inventory/branches";
+    return !MAIN_PATHS.includes(p);
   });
 
   const handleMainNavDragEnd = ({ active, over }: DragEndEvent) => {

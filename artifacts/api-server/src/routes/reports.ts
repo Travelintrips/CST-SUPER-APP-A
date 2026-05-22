@@ -599,7 +599,7 @@ router.get("/inv/movements/summary", async (req: Request, res: Response) => {
     SELECT
       wm.product_id, p.name AS product_name, p.sku, p.unit,
       SUM(CASE WHEN wm.type IN ('po_receipt','transfer_in','return_in','manual_in','opname_in') THEN wm.qty ELSE 0 END)::float AS total_masuk,
-      SUM(CASE WHEN wm.type IN ('so_delivery','pos_sale','transfer_out','return_out','damage','manual_out','opname_out') THEN wm.qty ELSE 0 END)::float AS total_keluar,
+      SUM(CASE WHEN wm.type IN ('so_delivery','transfer_out','return_out','damage','manual_out','opname_out') THEN wm.qty ELSE 0 END)::float AS total_keluar,
       COUNT(*)::int AS jumlah_mutasi
     FROM wh_movements wm
     JOIN products p ON p.id = wm.product_id

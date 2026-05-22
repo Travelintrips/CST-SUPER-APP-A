@@ -28,7 +28,7 @@ import LogisticsDriversPage from "@/pages/logistics-drivers";
 import LogisticsDriverPerformancePage from "@/pages/logistics-driver-performance";
 import LogisticsQuoteRequestsPage from "@/pages/logistics-quote-requests";
 import LogisticsVendorsPage from "@/pages/logistics-vendors";
-import PosPage from "@/pages/pos";
+
 import SettingsPage from "@/pages/settings";
 import NavCompanyConfigPage from "@/pages/settings/nav-company-config";
 import AiChatbotSettingsPage from "@/pages/ai-chatbot-settings";
@@ -90,7 +90,7 @@ import HoldingDashboardPage from "@/pages/accounting/holding-dashboard";
 import HoldingPLReportPage from "@/pages/accounting/holding-pl-report";
 import HoldingCashflowReportPage from "@/pages/accounting/holding-cashflow-report";
 import OrgManagementPage from "@/pages/OrgManagementPage";
-import PosKasirAdminPage from "@/pages/pos-kasir-admin";
+
 import PurchaseReceivePage from "@/pages/purchase/receive";
 import ThaiTeaPurchasePage from "@/pages/purchase/thai-tea";
 import ThaiTeaDashboardPage from "@/pages/thai-tea/dashboard";
@@ -99,22 +99,10 @@ import ThaiTeaStockPage from "@/pages/thai-tea/stock";
 import ThaiTeaBranchesPage from "@/pages/thai-tea/branches";
 import ThaiTeaProductionPage from "@/pages/thai-tea/production";
 import ThaiTeaReportsPage from "@/pages/thai-tea/reports";
-import PosInventoryDashboardPage from "@/pages/pos-inventory-dashboard";
-import PosInventoryItemsPage from "@/pages/pos-inventory-items";
-import PosInventoryStocksPage from "@/pages/pos-inventory-stocks";
-import PosStockLossesPage from "@/pages/pos-stock-losses";
-import PosStockMutationsPage from "@/pages/pos-stock-mutations";
-import PosStockOpnamePage from "@/pages/pos-stock-opname";
-import PosStockReturnsPage from "@/pages/pos-stock-returns";
-import PosStockTransfersPage from "@/pages/pos-stock-transfers";
-import PosBranchesPage from "@/pages/pos-branches";
-import PosWarehousesPage from "@/pages/pos-warehouses";
-import PosRacksPage from "@/pages/pos-racks";
-import PosRecipesPage from "@/pages/pos-recipes";
+
 import ProductItemsPage from "@/pages/products/items";
 import ProductRecipesPage from "@/pages/products/recipes";
-import PosQrGeneratorPage from "@/pages/pos-qr-generator";
-import PosQrScannerPage from "@/pages/pos-qr-scanner";
+
 import SettingsRolesPage from "@/pages/settings-roles";
 import SettingsApprovalRulesPage from "@/pages/settings-approval-rules";
 import PurchaseRequestListPage from "@/pages/purchase/pr-list";
@@ -172,8 +160,6 @@ function roleToPath(role?: string | null) {
       return "/trading";
     case "logistics":
       return "/logistics";
-    case "pos":
-      return "/pos";
     default:
       return "/welcome";
   }
@@ -297,7 +283,6 @@ function Router() {
         <Route path="/ecommerce" component={() => <ProtectedRoute component={EcommercePage} />} />
         <Route path="/trading" component={() => <ProtectedRoute component={TradingPage} />} />
         <Route path="/katalog-terpadu" component={() => <ProtectedRoute component={KatalogTerpaduPage} />} />
-        <Route path="/pos" component={() => <ProtectedRoute component={PosPage} />} />
         {/* Logistics */}
         <Route path="/logistics" component={() => <ProtectedRoute component={LogisticsPage} />} />
         <Route path="/logistics/freight" component={() => <ProtectedRoute component={LogisticsFreightPage} />} />
@@ -423,8 +408,6 @@ function Router() {
         <Route path="/holding/cashflow-report" component={() => <ProtectedRoute component={HoldingCashflowReportPage} />} />
         <Route path="/holding" component={() => <ProtectedRoute component={HoldingPage} />} />
         <Route path="/org" component={() => <ProtectedRoute component={OrgManagementPage} />} />
-        {/* POS Kasir Thai Tea */}
-        <Route path="/pos-kasir" component={() => <ProtectedRoute component={PosKasirAdminPage} />} />
         {/* Purchase Receive */}
         <Route path="/purchase/receive" component={() => <ProtectedRoute component={PurchaseReceivePage} />} />
         {/* Thai Tea Purchase */}
@@ -439,21 +422,7 @@ function Router() {
         {/* Products & BOM */}
         <Route path="/products/items" component={() => <ProtectedRoute component={ProductItemsPage} />} />
         <Route path="/products/recipes" component={() => <ProtectedRoute component={ProductRecipesPage} />} />
-        {/* POS Inventory */}
-        <Route path="/pos-inventory/dashboard" component={() => <ProtectedRoute component={PosInventoryDashboardPage} />} />
-        <Route path="/pos-inventory/branches" component={() => <ProtectedRoute component={PosBranchesPage} />} />
-        <Route path="/pos-inventory/warehouses" component={() => <ProtectedRoute component={PosWarehousesPage} />} />
-        <Route path="/pos-inventory/racks" component={() => <ProtectedRoute component={PosRacksPage} />} />
-        <Route path="/pos-inventory/items" component={() => <ProtectedRoute component={PosInventoryItemsPage} />} />
-        <Route path="/pos-inventory/stocks" component={() => <ProtectedRoute component={PosInventoryStocksPage} />} />
-        <Route path="/pos-inventory/recipes" component={() => <ProtectedRoute component={PosRecipesPage} />} />
-        <Route path="/pos-inventory/losses" component={() => <ProtectedRoute component={PosStockLossesPage} />} />
-        <Route path="/pos-inventory/mutations" component={() => <ProtectedRoute component={PosStockMutationsPage} />} />
-        <Route path="/pos-inventory/opname" component={() => <ProtectedRoute component={PosStockOpnamePage} />} />
-        <Route path="/pos-inventory/returns" component={() => <ProtectedRoute component={PosStockReturnsPage} />} />
-        <Route path="/pos-inventory/transfers" component={() => <ProtectedRoute component={PosStockTransfersPage} />} />
-        <Route path="/pos-inventory/qr-generator" component={() => <ProtectedRoute component={PosQrGeneratorPage} />} />
-        <Route path="/pos-inventory/qr-scanner" component={() => <ProtectedRoute component={PosQrScannerPage} />} />
+
         <Route path="/notifications" component={() => <ProtectedRoute component={NotificationsPage} />} />
         {/* Analytics & Performance */}
         <Route path="/analytics" component={() => <ProtectedRoute component={AnalyticsDashboardPage} />} />
@@ -465,23 +434,6 @@ function Router() {
         <Route path="/expenses/categories" component={() => <Redirect to="/expense/categories" />} />
         <Route path="/expenses/reports" component={() => <Redirect to="/expense/reports" />} />
         <Route path="/expenses/:id" component={({ params }: { params: { id: string } }) => <Redirect to={`/expense/${params.id}/edit`} />} />
-        {/* Legacy /warehouse/* → /pos-inventory/* */}
-        <Route path="/warehouse/stock" component={() => <Redirect to="/pos-inventory/stocks" />} />
-        <Route path="/warehouse/movements" component={() => <Redirect to="/pos-inventory/mutations" />} />
-        <Route path="/warehouse/transfers" component={() => <Redirect to="/pos-inventory/transfers" />} />
-        <Route path="/warehouse/damage" component={() => <Redirect to="/pos-inventory/losses" />} />
-        <Route path="/warehouse/returns" component={() => <Redirect to="/pos-inventory/returns" />} />
-        <Route path="/warehouse/recipes" component={() => <Redirect to="/pos-inventory/recipes" />} />
-        <Route path="/warehouse/opname" component={() => <Redirect to="/pos-inventory/opname" />} />
-        {/* Legacy /inventory/* → /pos-inventory/* */}
-        <Route path="/inventory/warehouses" component={() => <Redirect to="/pos-inventory/warehouses" />} />
-        <Route path="/inventory/racks" component={() => <Redirect to="/pos-inventory/racks" />} />
-        <Route path="/inventory/stock" component={() => <Redirect to="/pos-inventory/stocks" />} />
-        <Route path="/inventory/transfers" component={() => <Redirect to="/pos-inventory/transfers" />} />
-        <Route path="/inventory/returns" component={() => <Redirect to="/pos-inventory/returns" />} />
-        <Route path="/inventory/damage" component={() => <Redirect to="/pos-inventory/losses" />} />
-        <Route path="/inventory/opname" component={() => <Redirect to="/pos-inventory/opname" />} />
-        <Route path="/inventory/movements" component={() => <Redirect to="/pos-inventory/mutations" />} />
         <Route component={NotFound} />
       </Switch>
       <AppRoutes rootGuard={AuthRouteGuard} />

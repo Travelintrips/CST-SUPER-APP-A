@@ -46,7 +46,7 @@ export const accountingEntrySourceEnum = pgEnum("accounting_entry_source", [
   "purchase_bill",
   "sales_payment",
   "purchase_payment",
-  "pos_sale",
+
   "ecommerce_order",
   "stock_received",
   "manual_payment",

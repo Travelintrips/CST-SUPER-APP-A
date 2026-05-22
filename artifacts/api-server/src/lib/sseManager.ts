@@ -57,34 +57,3 @@ export function getStats() {
     adminConnections: adminConnections.size,
   };
 }
-
-// ── POS Kasir branch connections (keyed by branchId) ─────────────────────────
-const posKasirConnections = new Map<number, Set<Response>>();
-
-export function registerPosKasirConnection(branchId: number, res: Response): void {
-  if (!posKasirConnections.has(branchId)) {
-    posKasirConnections.set(branchId, new Set());
-  }
-  posKasirConnections.get(branchId)!.add(res);
-}
-
-export function unregisterPosKasirConnection(branchId: number, res: Response): void {
-  const set = posKasirConnections.get(branchId);
-  if (set) {
-    set.delete(res);
-    if (set.size === 0) posKasirConnections.delete(branchId);
-  }
-}
-
-export function broadcastToPosKasirBranch(branchId: number, event: string, data: unknown): void {
-  const connections = posKasirConnections.get(branchId);
-  if (!connections || connections.size === 0) return;
-  const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-  for (const res of connections) {
-    try {
-      res.write(payload);
-    } catch {
-      connections.delete(res);
-    }
-  }
-}

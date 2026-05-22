@@ -34,18 +34,18 @@ const MOV_TYPES = [
   { value: "all", label: "Semua Tipe" },
   { value: "po_receipt", label: "Terima PO" },
   { value: "thai_tea_receive", label: "Terima Bahan" },
-  { value: "pos_sale", label: "Jual POS" },
+
   { value: "production_consumption", label: "Konsumsi Produksi" },
   { value: "adjustment", label: "Penyesuaian" },
 ];
 const movTypeLabel: Record<string, string> = {
   po_receipt: "Terima PO", thai_tea_receive: "Terima Bahan",
-  pos_sale: "Jual POS", production_consumption: "Produksi",
+  production_consumption: "Produksi",
   adjustment: "Penyesuaian",
 };
 const movBadgeVariant = (t: string): "default" | "destructive" | "secondary" | "outline" => {
   if (t === "po_receipt" || t === "thai_tea_receive") return "default";
-  if (t === "pos_sale" || t === "production_consumption") return "destructive";
+  if (t === "production_consumption") return "destructive";
   if (t === "adjustment") return "outline";
   return "secondary";
 };

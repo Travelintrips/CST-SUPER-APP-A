@@ -574,7 +574,7 @@ function TabStockLow({ filters }: { filters: Filters }) {
 // ─── Tab: Mutasi Stok ─────────────────────────────────────────────────────────
 
 const MOVEMENT_LABELS: Record<string, string> = {
-  po_receipt: "Terima PO", so_delivery: "Kirim SO", pos_sale: "Jual POS",
+  po_receipt: "Terima PO", so_delivery: "Kirim SO",
   transfer_in: "Transfer Masuk", transfer_out: "Transfer Keluar",
   return_in: "Retur Masuk", return_out: "Retur Keluar",
   damage: "Rusak/Hilang", manual_in: "Masuk Manual", manual_out: "Keluar Manual",

@@ -28,14 +28,13 @@ interface Movement { id: number; type: string; qty: number; product_name: string
 
 const movTypeLabel: Record<string, string> = {
   po_receipt: "Terima PO",
-  pos_sale: "Jual POS",
   production_consumption: "Produksi",
   thai_tea_receive: "Terima Bahan",
   adjustment: "Penyesuaian",
 };
 const movTypeBadge = (t: string) => {
   if (t === "po_receipt" || t === "thai_tea_receive") return "default";
-  if (t === "pos_sale" || t === "production_consumption") return "destructive";
+  if (t === "production_consumption") return "destructive";
   return "secondary";
 };
 

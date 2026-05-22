@@ -29,7 +29,7 @@ const SOURCE_LABELS: Record<string, string> = {
   purchase_bill: "Tagihan Beli",
   sales_payment: "Bayar Masuk",
   purchase_payment: "Bayar Keluar",
-  pos_sale: "POS",
+
   ecommerce_order: "E-Commerce",
   stock_received: "Stok Masuk",
   manual_payment: "Bayar Manual",

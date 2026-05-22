@@ -35,21 +35,12 @@ interface CommandEntry {
 
 const COMMANDS: CommandEntry[] = [
   { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, group: "Utama" },
-  { title: "POS Kasir", href: "/pos-kasir", icon: Calculator, group: "Utama" },
+
   { title: "Settings", href: "/settings", icon: Settings, group: "Utama" },
 
   { title: "Produk / Bahan Baku", href: "/products/items", icon: PackageSearch, group: "Produk & Recipe" },
   { title: "Recipe / BOM", href: "/products/recipes", icon: FlaskConical, group: "Produk & Recipe" },
 
-  { title: "Gudang", href: "/pos-inventory/warehouses", icon: Warehouse, group: "Inventory" },
-  { title: "Rak", href: "/pos-inventory/racks", icon: LayoutGrid, group: "Inventory" },
-  { title: "Stok", href: "/pos-inventory/stocks", icon: Boxes, group: "Inventory" },
-  { title: "Transfer Stok", href: "/pos-inventory/transfers", icon: ArrowLeftRight, group: "Inventory" },
-  { title: "Retur Barang", href: "/pos-inventory/returns", icon: RotateCcw, group: "Inventory" },
-  { title: "Barang Rusak / Hilang", href: "/pos-inventory/losses", icon: AlertTriangle, group: "Inventory" },
-  { title: "Stock Opname", href: "/pos-inventory/opname", icon: ClipboardCheck, group: "Inventory" },
-  { title: "Riwayat Pergerakan Stok", href: "/pos-inventory/mutations", icon: Activity, group: "Inventory" },
-  { title: "Cabang", href: "/pos-inventory/branches", icon: GitBranch, group: "Inventory" },
 
   { title: "Sales Dashboard", href: "/sales", icon: LayoutDashboard, group: "Sales" },
   { title: "Sales Items (Master)", href: "/sales/items", icon: Boxes, group: "Sales" },

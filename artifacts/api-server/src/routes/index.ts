@@ -8,9 +8,6 @@ import tradingRouter from "./trading";
 // Jika diaktifkan kembali, akan terjadi route shadowing di /api/logistics/shipments → tabel lama.
 // import logisticsRouter from "./logistics";
 import freightRouter from "./freight";
-// pos.ts (LAMA) dinonaktifkan — pakai posKasir.ts (BARU) sebagai satu-satunya handler POS.
-// Jika diaktifkan kembali, traffic POS bisa masuk ke tabel berbeda yang tidak terhubung ke sistem kasir.
-// import posRouter from "./pos";
 import salesRouter from "./sales";
 import purchaseRouter from "./purchase";
 import reportsRouter from "./reports";
@@ -34,8 +31,7 @@ import geocodeRouter from "./geocode";
 import { whatsappRouter } from "./whatsapp";
 import { vendorResponseRouter } from "./vendorResponse";
 import mediaRouter from "./media";
-import posKasirRouter from "./posKasir";
-import posInventoryRouter from "./posInventory";
+
 import warehouseRouter from "./warehouse";
 import inventoryReceiveRouter from "./inventoryReceive";
 import inventoryStockRouter from "./inventoryStock";
@@ -52,7 +48,7 @@ import auditLogRouter from "./auditLog";
 
 import navPreferencesRouter from "./navPreferences";
 import notificationsRouter from "./notifications";
-import qrMenuRouter from "./qrMenu";
+
 import { vendorMiniFormRouter } from "./vendorMiniForm";
 import {
   customerQuoteAdminRouter,
@@ -106,8 +102,7 @@ router.use(geocodeRouter);
 router.use("/whatsapp", whatsappRouter);
 router.use("/vendor-response", vendorResponseRouter);
 router.use("/media", mediaRouter);
-router.use("/pos-kasir", posKasirRouter);
-router.use("/pos-inventory", posInventoryRouter);
+
 router.use("/warehouse", warehouseRouter);
 router.use("/inventory", inventoryMainRouter);
 router.use("/inventory/receive", inventoryReceiveRouter);
@@ -129,7 +124,7 @@ router.use("/audit-logs", auditLogRouter);
 
 router.use("/notifications", notificationsRouter);
 router.use("/nav-preferences", navPreferencesRouter);
-router.use("/qr-menu", qrMenuRouter);
+
 router.use("/vendor-form", vendorMiniFormRouter);
 router.use("/logistic", customerQuoteAdminRouter);
 router.use("/customer-quote", customerQuotePublicRouter);

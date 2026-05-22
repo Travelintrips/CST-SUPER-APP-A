@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Pencil, Users, ShieldAlert, ShieldCheck, X, CheckCircle2, XCircle, Clock } from "lucide-react";
+import { Pencil, Users, ShieldAlert, ShieldCheck, X } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,17 +15,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
 
-const ROLES = ["admin", "ecommerce", "trading", "logistics", "pos", "pos-kasir", "pos-inventory"] as const;
+const ROLES = ["admin", "ecommerce", "trading", "logistics"] as const;
 type Role = typeof ROLES[number];
 
 const ROLE_LABELS: Record<string, string> = {
-  admin:           "Admin",
-  ecommerce:       "E-Commerce",
-  trading:         "Trading",
-  logistics:       "Logistik",
-  pos:             "POS Kasir",
-  "pos-kasir":     "Kasir POS",
-  "pos-inventory": "Inventori POS",
+  admin:     "Admin",
+  ecommerce: "E-Commerce",
+  trading:   "Trading",
+  logistics: "Logistik",
 };
 
 const roleColor = (role: string) => {
@@ -34,9 +31,7 @@ const roleColor = (role: string) => {
     case "ecommerce":      return "bg-blue-500/10 text-blue-500 border-blue-500/20";
     case "trading":        return "bg-emerald-500/10 text-emerald-500 border-emerald-500/20";
     case "logistics":      return "bg-indigo-500/10 text-indigo-500 border-indigo-500/20";
-    case "pos":            return "bg-amber-500/10 text-amber-500 border-amber-500/20";
-    case "pos-kasir":      return "bg-orange-500/10 text-orange-500 border-orange-500/20";
-    case "pos-inventory":  return "bg-yellow-500/10 text-yellow-600 border-yellow-500/20";
+
     default:               return "bg-muted text-muted-foreground";
   }
 };
@@ -49,13 +44,6 @@ interface UserRow {
   divisionId: number | null; divisionName: string | null;
   departmentId: number | null; departmentName: string | null;
   sectionId: number | null; sectionName: string | null;
-}
-
-interface KasirRow {
-  id: number; name: string; email: string; phone: string | null;
-  status: "pending" | "approved" | "rejected";
-  branchId: number | null; branchName: string | null;
-  createdAt: string;
 }
 
 interface CustomRole { id: number; name: string; color: string }
@@ -71,14 +59,6 @@ async function apiFetch(path: string, opts?: RequestInit) {
   return res.json();
 }
 
-const kasirStatusBadge = (status: KasirRow["status"]) => {
-  switch (status) {
-    case "approved": return <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 gap-1"><CheckCircle2 className="h-3 w-3" />Aktif</Badge>;
-    case "pending":  return <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/20 gap-1"><Clock className="h-3 w-3" />Menunggu</Badge>;
-    case "rejected": return <Badge variant="outline" className="bg-red-500/10 text-red-500 border-red-500/20 gap-1"><XCircle className="h-3 w-3" />Ditolak</Badge>;
-  }
-};
-
 export default function UsersPage() {
   const { t } = useLanguage();
   const queryClient = useQueryClient();
@@ -88,22 +68,6 @@ export default function UsersPage() {
     queryKey: getListUsersQueryKey(),
     queryFn: () => apiFetch("/users"),
     retry: false,
-  });
-
-  const { data: kasirs = [], isLoading: kasirLoading } = useQuery<KasirRow[]>({
-    queryKey: ["pos-kasir-admin-cashiers"],
-    queryFn: () => apiFetch("/pos-kasir/admin/cashiers"),
-    retry: false,
-  });
-
-  const kasirStatusMutation = useMutation({
-    mutationFn: ({ id, status }: { id: number; status: string }) =>
-      apiFetch(`/pos-kasir/admin/cashiers/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["pos-kasir-admin-cashiers"] });
-      toast({ title: "Status kasir diperbarui" });
-    },
-    onError: () => toast({ title: "Gagal memperbarui status", variant: "destructive" }),
   });
 
   const { data: customRoles = [] } = useQuery<CustomRole[]>({
@@ -214,7 +178,7 @@ export default function UsersPage() {
   };
 
   const isForbidden = (error as any)?.status === 403 || (error as any)?.message?.includes("403");
-  const allLoading = isLoading || kasirLoading;
+  const allLoading = isLoading;
 
   return (
     <AppShell>
@@ -299,54 +263,7 @@ export default function UsersPage() {
                           </TableRow>
                         ))}
 
-                        {/* Kasir POS users */}
-                        {kasirs.map((k) => (
-                          <TableRow key={`kasir-${k.id}`}>
-                            <TableCell className="font-medium">{k.name}</TableCell>
-                            <TableCell className="text-muted-foreground text-sm">{k.email}</TableCell>
-                            <TableCell>
-                              <Badge variant="outline" className="bg-orange-500/10 text-orange-600 border-orange-500/20 text-xs">
-                                Kasir POS
-                              </Badge>
-                            </TableCell>
-                            <TableCell>{kasirStatusBadge(k.status)}</TableCell>
-                            <TableCell>
-                              {k.phone
-                                ? <span className="text-xs text-muted-foreground">{k.phone}</span>
-                                : <span className="text-xs text-muted-foreground">—</span>}
-                            </TableCell>
-                            <TableCell className="text-sm">
-                              {k.branchName
-                                ? <span className="text-xs">{k.branchName}</span>
-                                : <span className="text-muted-foreground">—</span>}
-                            </TableCell>
-                            <TableCell className="text-xs text-muted-foreground">
-                              {new Date(k.createdAt).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <div className="flex justify-end gap-1">
-                                {k.status !== "approved" && (
-                                  <Button size="sm" variant="outline"
-                                    className="text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 h-7 px-2 text-xs"
-                                    onClick={() => kasirStatusMutation.mutate({ id: k.id, status: "approved" })}
-                                    disabled={kasirStatusMutation.isPending}>
-                                    <CheckCircle2 className="h-3.5 w-3.5 mr-1" />Setujui
-                                  </Button>
-                                )}
-                                {k.status !== "rejected" && (
-                                  <Button size="sm" variant="outline"
-                                    className="text-red-500 border-red-500/30 hover:bg-red-500/10 h-7 px-2 text-xs"
-                                    onClick={() => kasirStatusMutation.mutate({ id: k.id, status: "rejected" })}
-                                    disabled={kasirStatusMutation.isPending}>
-                                    <XCircle className="h-3.5 w-3.5 mr-1" />Tolak
-                                  </Button>
-                                )}
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-
-                        {!allLoading && (users?.length ?? 0) === 0 && kasirs.length === 0 && (
+                        {!allLoading && (users?.length ?? 0) === 0 && (
                           <TableRow>
                             <TableCell colSpan={8} className="h-24 text-center">
                               <div className="flex flex-col items-center justify-center text-muted-foreground">
@@ -396,41 +313,6 @@ export default function UsersPage() {
                     </CardContent></Card>
                   ))}
 
-                  {kasirs.map((k) => (
-                    <Card key={`kasir-${k.id}`}><CardContent className="p-4 space-y-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5 mb-0.5">
-                            <Badge variant="outline" className="bg-orange-500/10 text-orange-600 border-orange-500/20 text-[10px] px-1.5 py-0">Kasir POS</Badge>
-                          </div>
-                          <p className="font-medium truncate">{k.name}</p>
-                          <p className="text-xs text-muted-foreground truncate mt-0.5">{k.email}</p>
-                          {k.phone && <p className="text-xs text-muted-foreground">{k.phone}</p>}
-                        </div>
-                        {kasirStatusBadge(k.status)}
-                      </div>
-                      <div className="flex flex-wrap gap-1.5 text-xs text-muted-foreground">
-                        {k.branchName && <span>Cabang: {k.branchName}</span>}
-                        <span>Daftar: {new Date(k.createdAt).toLocaleDateString("id-ID")}</span>
-                      </div>
-                      <div className="flex gap-2">
-                        {k.status !== "approved" && (
-                          <Button size="sm" variant="outline" className="flex-1 text-emerald-600 border-emerald-500/30"
-                            onClick={() => kasirStatusMutation.mutate({ id: k.id, status: "approved" })}
-                            disabled={kasirStatusMutation.isPending}>
-                            <CheckCircle2 className="h-3.5 w-3.5 mr-1" />Setujui
-                          </Button>
-                        )}
-                        {k.status !== "rejected" && (
-                          <Button size="sm" variant="outline" className="flex-1 text-red-500 border-red-500/30"
-                            onClick={() => kasirStatusMutation.mutate({ id: k.id, status: "rejected" })}
-                            disabled={kasirStatusMutation.isPending}>
-                            <XCircle className="h-3.5 w-3.5 mr-1" />Tolak
-                          </Button>
-                        )}
-                      </div>
-                    </CardContent></Card>
-                  ))}
                 </>
               )}
             </div>

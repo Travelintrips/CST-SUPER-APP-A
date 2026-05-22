@@ -49,9 +49,7 @@ import VendorQuoteFormPage from "@/pages/vendor-quote-form";
 import VendorConfirmPage from "@/pages/vendor-confirm"; // [TRUCKING-FIX]
 import VendorFormPage from "@/pages/vendor-form"; // [NEW-RFQ-FLOW]
 import ChooseOptionPage from "@/pages/choose-option"; // [MULTI-MODE]
-import KasirLoginPage from "@/pages/kasir-login";
-import KasirPage from "@/pages/kasir";
-import MenuBoardPage from "@/pages/menu-board";
+
 import OnboardingPage from "@/pages/onboarding";
 import PendingApprovalPage from "@/pages/pending-approval";
 import VendorMiniFormPage from "@/pages/vendor-mini-form";
@@ -66,21 +64,10 @@ if (typeof window !== "undefined" && window.location.hostname === "bizportal.cst
   window.location.replace("https://cstlogistic.co.id/bizportal/");
 }
 
-// Jika berjalan dalam mode POS Kasir, paksa semua path non-kasir ke /kasir/login
-if (typeof window !== "undefined" && import.meta.env.VITE_POS_MODE === "true") {
-  const path = window.location.pathname;
-  const isKasirPath =
-    path.startsWith("/kasir") ||
-    path.startsWith("/menu-board") ||
-    path.startsWith("/api/");
-  if (!isKasirPath) {
-    window.location.replace("/kasir/login");
-  }
-}
 
 
 const LOGISTIC_ROUTES = ["/book", "/logistic-order-success", "/logistic-admin", "/order-produk"];
-const NO_SHELL_PREFIXES = ["/jasa/", "/services/", "/vendor-response", "/vendor-product-approval", "/approve", "/confirm", "/vendor-quote", "/vendor-confirm", "/vendor-form", "/choose-option", "/kasir", "/menu-board", "/onboarding", "/pending-approval", "/customer-quote", "/order-task", "/customer-order"]; // [TRUCKING-FIX] [MULTI-MODE] [NEW-RFQ-FLOW] [QUOTE-FLOW]
+const NO_SHELL_PREFIXES = ["/jasa/", "/services/", "/vendor-response", "/vendor-product-approval", "/approve", "/confirm", "/vendor-quote", "/vendor-confirm", "/vendor-form", "/choose-option", "/onboarding", "/pending-approval", "/customer-quote", "/order-task", "/customer-order"]; // [TRUCKING-FIX] [MULTI-MODE] [NEW-RFQ-FLOW] [QUOTE-FLOW]
 
 const BASE_PREFIX = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -177,9 +164,7 @@ function AppShell() {
       <Route path="/vendor-confirm" component={VendorConfirmPage} />    {/* [TRUCKING-FIX] */}
       <Route path="/vendor-form/:token" component={VendorFormPage} />   {/* [NEW-RFQ-FLOW] */}
       <Route path="/choose-option/:token" component={ChooseOptionPage} />   {/* [MULTI-MODE] */}
-      <Route path="/kasir/login" component={KasirLoginPage} />
-      <Route path="/kasir" component={KasirPage} />
-      <Route path="/menu-board" component={MenuBoardPage} />
+
       <Route path="/onboarding" component={OnboardingPage} />
       <Route path="/pending-approval" component={PendingApprovalPage} />
       <Route path="/vendor-form/:token" component={VendorMiniFormPage} />

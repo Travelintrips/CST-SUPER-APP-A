@@ -23,10 +23,7 @@ import { ShieldCheck, Plus, Pencil, Trash2, Users, UserPlus, X, ChevronRight, Bu
 // Contoh: "dashboard:view", "inventory:create", dst.
 const MODULES = [
   { key: "dashboard",    label: "Dashboard",          group: "Menu Utama" },
-  { key: "pos-kasir",    label: "POS Kasir",           group: "Menu Utama" },
   { key: "pos-products", label: "Produk & Recipe/BOM", group: "Menu Utama" },
-  { key: "pos-inventory",label: "Inventory",           group: "Menu Utama" },
-  { key: "cabang",       label: "Cabang",              group: "Menu Utama" },
   { key: "users-role",   label: "User & Role",         group: "Menu Utama" },
   { key: "reports",      label: "Laporan",             group: "Menu Utama" },
   { key: "settings",     label: "Settings",            group: "Menu Utama" },
@@ -58,34 +55,11 @@ const COLORS = [
 ];
 
 // Preset role templates
-const ROLE_TEMPLATES: Record<string, { label: string; permissions: string[] }> = {
-  kasir: {
-    label: "Kasir",
-    permissions: ["dashboard:view", "pos-kasir:view", "pos-kasir:create"],
-  },
-  gudang: {
-    label: "Gudang",
-    permissions: [
-      "pos-inventory:view", "pos-inventory:create", "pos-inventory:edit",
-    ],
-  },
-  manager: {
-    label: "Manager",
-    permissions: [
-      "dashboard:view",
-      "pos-kasir:view",
-      "pos-products:view",
-      "pos-inventory:view", "pos-inventory:create", "pos-inventory:edit",
-      "cabang:view",
-      "reports:view",
-    ],
-  },
-};
+const ROLE_TEMPLATES: Record<string, { label: string; permissions: string[] }> = {};
 
 const ROLE_LABELS: Record<string, string> = {
-  admin: "Admin", owner: "Owner", kasir: "Kasir", gudang: "Gudang",
-  manager: "Manager", ecommerce: "Ecommerce", trading: "Trading",
-  logistics: "Logistik", pos: "POS",
+  admin: "Admin", owner: "Owner", manager: "Manager",
+  ecommerce: "Ecommerce", trading: "Trading", logistics: "Logistik",
 };
 
 const SCOPE_OPTIONS = [

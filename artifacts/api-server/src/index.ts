@@ -14,7 +14,7 @@ import { enableRealtimeTables } from "./lib/enableRealtimeTables";
 import { runKnowledgeBaseMigration } from "./lib/knowledgeBaseMigration";
 import { runCompaniesMigration } from "./lib/companiesMigration";
 import { runHoldingMigration } from "./lib/holdingMigration";
-import { runPosKasirMigration } from "./lib/posKasirMigration";
+
 import { runSessionsMigration } from "./lib/sessionsMigration";
 import { runCustomRolesMigration } from "./lib/customRolesMigration";
 import { runUomMigration } from "./lib/uomMigration";
@@ -30,7 +30,7 @@ import { runAuditLogMigration } from "./lib/auditLogMigration";
 import { runNavPreferencesMigration } from "./lib/navPreferencesMigration";
 import { runNotificationLogMigration } from "./lib/notificationLogMigration";
 import { runAdminNotificationsMigration } from "./lib/adminNotificationsMigration";
-import { runQrMenuMigration } from "./lib/qrMenuMigration";
+
 import { runVendorMiniFormMigration } from "./lib/vendorMiniFormMigration";
 import { runCustomerQuoteFlowMigration } from "./lib/customerQuoteFlowMigration";
 import { runEnterpriseMigration } from "./lib/enterpriseMigration";
@@ -176,7 +176,6 @@ async function startServer() {
     .then(() => runWithRetry("Accounting migration", runAccountingMigration))
     .then(() => runWithRetry("OAuth state migration", runOauthStateMigration))
     .then(() => runWithRetry("Knowledge base migration", runKnowledgeBaseMigration))
-    .then(() => runWithRetry("POS Kasir migration", runPosKasirMigration))
     .then(() => runWithRetry("Custom roles migration", runCustomRolesMigration))
     .then(() => runWithRetry("UOM migration", runUomMigration))
     .then(() => runWithRetry("Freight audit log migration", runFreightAuditMigration))
@@ -189,7 +188,6 @@ async function startServer() {
     .then(() => runWithRetry("Notification log migration", runNotificationLogMigration))
     .then(() => runWithRetry("Admin notifications migration", runAdminNotificationsMigration))
     .then(() => runWithRetry("Nav preferences migration", runNavPreferencesMigration))
-    .then(() => runWithRetry("QR menu migration", runQrMenuMigration))
     .then(() => runWithRetry("Vendor mini form migration", runVendorMiniFormMigration))
     .then(() => runWithRetry("Customer quote flow migration", runCustomerQuoteFlowMigration))
     .then(() => runWithRetry("Enterprise migration", runEnterpriseMigration))

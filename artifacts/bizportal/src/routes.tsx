@@ -98,23 +98,7 @@ import SettingsApprovalRulesPage from "@/pages/settings-approval-rules";
 import UsersPage from "@/pages/users";
 import MediaManagerPage from "@/pages/media-manager";
 import OrgManagementPage from "@/pages/OrgManagementPage";
-// POS
-import PosPage from "@/pages/pos";
-import PosKasirAdminPage from "@/pages/pos-kasir-admin";
-import PosInventoryDashboardPage from "@/pages/pos-inventory-dashboard";
-import PosBranchesPage from "@/pages/pos-branches";
-import PosWarehousesPage from "@/pages/pos-warehouses";
-import PosRacksPage from "@/pages/pos-racks";
-import PosInventoryItemsPage from "@/pages/pos-inventory-items";
-import PosInventoryStocksPage from "@/pages/pos-inventory-stocks";
-import PosRecipesPage from "@/pages/pos-recipes";
-import PosStockTransfersPage from "@/pages/pos-stock-transfers";
-import PosStockReturnsPage from "@/pages/pos-stock-returns";
-import PosStockLossesPage from "@/pages/pos-stock-losses";
-import PosStockOpnamePage from "@/pages/pos-stock-opname";
-import PosStockMutationsPage from "@/pages/pos-stock-mutations";
-import PosQrGeneratorPage from "@/pages/pos-qr-generator";
-import PosQrScannerPage from "@/pages/pos-qr-scanner";
+
 // Products
 import ProductItemsPage from "@/pages/products/items";
 import ProductRecipesPage from "@/pages/products/recipes";
@@ -143,24 +127,8 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
 
       {/* ── Logistics ──────────────────────────────────────────────────── */}
       <Route path="/katalog-terpadu" component={PR(KatalogTerpaduPage)} />
-      <Route path="/pos" component={PR(PosPage)} />
-      <Route path="/pos-kasir" component={PR(PosKasirAdminPage)} />
-      <Route path="/pos-inventory/branches" component={PR(PosBranchesPage)} />
-      <Route path="/pos-inventory/warehouses" component={PR(PosWarehousesPage)} />
-      <Route path="/pos-inventory/racks" component={PR(PosRacksPage)} />
-      <Route path="/pos-inventory/items" component={PR(PosInventoryItemsPage)} />
-      <Route path="/pos-inventory/stocks" component={PR(PosInventoryStocksPage)} />
-      <Route path="/pos-inventory/recipes" component={PR(PosRecipesPage)} />
       <Route path="/products/items" component={PR(ProductItemsPage)} />
       <Route path="/products/recipes" component={PR(ProductRecipesPage)} />
-      <Route path="/pos-inventory/transfers" component={PR(PosStockTransfersPage)} />
-      <Route path="/pos-inventory/returns" component={PR(PosStockReturnsPage)} />
-      <Route path="/pos-inventory/losses" component={PR(PosStockLossesPage)} />
-      <Route path="/pos-inventory/opname" component={PR(PosStockOpnamePage)} />
-      <Route path="/pos-inventory/mutations" component={PR(PosStockMutationsPage)} />
-      <Route path="/pos-inventory/dashboard" component={PR(PosInventoryDashboardPage)} />
-      <Route path="/pos-inventory/qr-generator" component={PR(PosQrGeneratorPage)} />
-      <Route path="/pos-inventory/qr-scanner" component={PR(PosQrScannerPage)} />
       <Route path="/logistics" component={PR(LogisticsPage)} />
       <Route path="/logistics/freight/new" component={PR(LogisticsFreightEditorPage)} />
       <Route path="/logistics/freight/:id/bl" component={PR(LogisticsFreightBLPage)} />
@@ -290,23 +258,6 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/media" component={PR(MediaManagerPage)} />
       <Route path="/org" component={PR(OrgManagementPage)} />
 
-      {/* ── POS ────────────────────────────────────────────────────────── */}
-      <Route path="/pos" component={PR(PosPage)} />
-      <Route path="/pos-kasir" component={PR(PosKasirAdminPage)} />
-      <Route path="/pos-inventory/dashboard" component={PR(PosInventoryDashboardPage)} />
-      <Route path="/pos-inventory/branches" component={PR(PosBranchesPage)} />
-      <Route path="/pos-inventory/warehouses" component={PR(PosWarehousesPage)} />
-      <Route path="/pos-inventory/racks" component={PR(PosRacksPage)} />
-      <Route path="/pos-inventory/items" component={PR(PosInventoryItemsPage)} />
-      <Route path="/pos-inventory/stocks" component={PR(PosInventoryStocksPage)} />
-      <Route path="/pos-inventory/recipes" component={PR(PosRecipesPage)} />
-      <Route path="/pos-inventory/transfers" component={PR(PosStockTransfersPage)} />
-      <Route path="/pos-inventory/returns" component={PR(PosStockReturnsPage)} />
-      <Route path="/pos-inventory/losses" component={PR(PosStockLossesPage)} />
-      <Route path="/pos-inventory/opname" component={PR(PosStockOpnamePage)} />
-      <Route path="/pos-inventory/mutations" component={PR(PosStockMutationsPage)} />
-      <Route path="/pos-inventory/qr-generator" component={PR(PosQrGeneratorPage)} />
-      <Route path="/pos-inventory/qr-scanner" component={PR(PosQrScannerPage)} />
 
       {/* ── Products ───────────────────────────────────────────────────── */}
       <Route path="/products/items" component={PR(ProductItemsPage)} />
@@ -328,21 +279,6 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/expenses/reports" component={() => <Redirect to="/expense/reports" />} />
       <Route path="/expenses/:id" component={({ params }: { params: { id: string } }) => <Redirect to={`/expense/${params.id}/edit`} />} />
       <Route path="/expenses" component={() => <Redirect to="/expense" />} />
-      <Route path="/warehouse/stock" component={() => <Redirect to="/pos-inventory/stocks" />} />
-      <Route path="/warehouse/movements" component={() => <Redirect to="/pos-inventory/mutations" />} />
-      <Route path="/warehouse/transfers" component={() => <Redirect to="/pos-inventory/transfers" />} />
-      <Route path="/warehouse/damage" component={() => <Redirect to="/pos-inventory/losses" />} />
-      <Route path="/warehouse/returns" component={() => <Redirect to="/pos-inventory/returns" />} />
-      <Route path="/warehouse/recipes" component={() => <Redirect to="/pos-inventory/recipes" />} />
-      <Route path="/warehouse/opname" component={() => <Redirect to="/pos-inventory/opname" />} />
-      <Route path="/inventory/warehouses" component={() => <Redirect to="/pos-inventory/warehouses" />} />
-      <Route path="/inventory/racks" component={() => <Redirect to="/pos-inventory/racks" />} />
-      <Route path="/inventory/stock" component={() => <Redirect to="/pos-inventory/stocks" />} />
-      <Route path="/inventory/transfers" component={() => <Redirect to="/pos-inventory/transfers" />} />
-      <Route path="/inventory/returns" component={() => <Redirect to="/pos-inventory/returns" />} />
-      <Route path="/inventory/damage" component={() => <Redirect to="/pos-inventory/losses" />} />
-      <Route path="/inventory/opname" component={() => <Redirect to="/pos-inventory/opname" />} />
-      <Route path="/inventory/movements" component={() => <Redirect to="/pos-inventory/mutations" />} />
       <Route path="/logistics/vendors" component={() => <Redirect to="/purchase/vendors" />} />
 
       <Route component={NotFound} />

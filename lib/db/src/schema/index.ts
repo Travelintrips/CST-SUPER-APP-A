@@ -35,7 +35,7 @@ export * from "./holding";
 export * from "./waIncomingMessages";
 export * from "./quoteRequests";
 export * from "./mediaAssets";
-export * from "./posKasir";
+
 export * from "./warehouse";
 export * from "./inventory";
 export * from "./thaiTea";
@@ -45,7 +45,7 @@ export * from "./customRoles";
 export * from "./orgStructure";
 export * from "./approvalRules";
 export * from "./productBom";
-export * from "./posAccess";
+
 
 export * from "./notificationLogs";
 
