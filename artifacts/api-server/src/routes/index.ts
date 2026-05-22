@@ -64,6 +64,7 @@ import { marginRulesRouter } from "./marginRules";
 import { adminActionPublicRouter, adminActionAdminRouter } from "./adminAction";
 import { vendorFulfillmentPublicRouter } from "./vendorFulfillment";
 import { fulfillmentAdminRouter, fulfillmentPublicRouter } from "./orderFulfillment.js";
+import { vendorJobAdminRouter, vendorJobPublicRouter, orderTrackingPublicRouter } from "./vendorJobOrder.js";
 
 const router: IRouter = Router();
 
@@ -142,4 +143,7 @@ router.use("/admin-action", adminActionPublicRouter);
 router.use("/vendor-fulfillment", vendorFulfillmentPublicRouter);
 router.use("/logistic", fulfillmentAdminRouter);
 router.use("/fulfillment", fulfillmentPublicRouter);
+router.use("/logistic", vendorJobAdminRouter);
+router.use("/vendor-job", vendorJobPublicRouter);
+router.use("/order-track", orderTrackingPublicRouter);
 export default router;

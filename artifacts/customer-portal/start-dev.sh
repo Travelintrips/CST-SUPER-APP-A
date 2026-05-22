@@ -6,8 +6,8 @@
 ARTIFACT_PORT=${PORT:-3001}
 
 # Kill whatever is on 3001 or ARTIFACT_PORT
-kill $(lsof -ti tcp:3001) 2>/dev/null || true
-[ "$ARTIFACT_PORT" != "3001" ] && kill $(lsof -ti tcp:"$ARTIFACT_PORT") 2>/dev/null || true
+fuser -k 3001/tcp 2>/dev/null || true
+[ "$ARTIFACT_PORT" != "3001" ] && fuser -k "${ARTIFACT_PORT}/tcp" 2>/dev/null || true
 sleep 0.2
 
 # If Replit assigned a non-3001 port, open it immediately with an HTTP forward proxy.
@@ -32,4 +32,4 @@ fi
 export PORT=3001
 export BASE_PATH=${BASE_PATH:-/}
 
-exec vite --config vite.config.ts --host 0.0.0.0
+exec npx vite --config vite.config.ts --host 0.0.0.0
