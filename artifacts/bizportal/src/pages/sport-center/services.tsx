@@ -22,7 +22,11 @@ interface Service {
   sort_order: number;
 }
 
-const CATEGORIES = ["Futsal", "Badminton", "Basket", "Gym", "Yoga", "Aerobik", "Lainnya"];
+const CATEGORIES = [
+  "Futsal", "Badminton", "Basket", "Voli", "Tenis", "Tenis Meja",
+  "Gym", "Yoga", "Aerobik", "Zumba", "Renang", "Squash", "Panahan",
+  "Biliar", "Bowling", "Lainnya",
+];
 
 const EMPTY: Omit<Service, "id"> = {
   name: "", category: "Lainnya", description: "", price_per_hour: 0,
@@ -30,13 +34,22 @@ const EMPTY: Omit<Service, "id"> = {
 };
 
 const CAT_COLOR: Record<string, string> = {
-  Futsal:   "bg-blue-500/20 text-blue-300",
-  Badminton:"bg-emerald-500/20 text-emerald-300",
-  Basket:   "bg-orange-500/20 text-orange-300",
-  Gym:      "bg-violet-500/20 text-violet-300",
-  Yoga:     "bg-pink-500/20 text-pink-300",
-  Aerobik:  "bg-red-500/20 text-red-300",
-  Lainnya:  "bg-white/10 text-white/60",
+  Futsal:       "bg-blue-500/20 text-blue-300",
+  Badminton:    "bg-emerald-500/20 text-emerald-300",
+  Basket:       "bg-orange-500/20 text-orange-300",
+  Voli:         "bg-yellow-500/20 text-yellow-300",
+  Tenis:        "bg-lime-500/20 text-lime-300",
+  "Tenis Meja": "bg-teal-500/20 text-teal-300",
+  Gym:          "bg-violet-500/20 text-violet-300",
+  Yoga:         "bg-pink-500/20 text-pink-300",
+  Aerobik:      "bg-red-500/20 text-red-300",
+  Zumba:        "bg-fuchsia-500/20 text-fuchsia-300",
+  Renang:       "bg-cyan-500/20 text-cyan-300",
+  Squash:       "bg-amber-500/20 text-amber-300",
+  Panahan:      "bg-rose-500/20 text-rose-300",
+  Biliar:       "bg-indigo-500/20 text-indigo-300",
+  Bowling:      "bg-purple-500/20 text-purple-300",
+  Lainnya:      "bg-white/10 text-white/60",
 };
 
 export default function SportCenterServicesPage() {
@@ -194,10 +207,16 @@ export default function SportCenterServicesPage() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label>Kategori</Label>
-                <Select value={form.category} onValueChange={(v) => setForm({ ...form, category: v })}>
-                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                  <SelectContent>{CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-                </Select>
+                <Input
+                  list="category-suggestions"
+                  value={form.category}
+                  onChange={(e) => setForm({ ...form, category: e.target.value })}
+                  placeholder="Pilih atau ketik kategori..."
+                  className="mt-1"
+                />
+                <datalist id="category-suggestions">
+                  {CATEGORIES.map((c) => <option key={c} value={c} />)}
+                </datalist>
               </div>
               <div>
                 <Label>Satuan</Label>
