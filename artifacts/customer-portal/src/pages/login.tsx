@@ -163,9 +163,13 @@ export default function Login() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone: waPhone.trim() }),
       });
-      const json = await res.json() as { message?: string; phone?: string };
+      const json = await res.json() as { message?: string; phone?: string; _dev_code?: string };
       if (!res.ok) { setWaMsg({ type: "err", text: json.message ?? "Gagal mengirim OTP." }); }
-      else { setWaStep("code"); setWaMsg({ type: "ok", text: json.message ?? "OTP dikirim ke WhatsApp Anda." }); }
+      else {
+        setWaStep("code");
+        setWaMsg({ type: "ok", text: json.message ?? "OTP dikirim ke WhatsApp Anda." });
+        if (json._dev_code) setWaCode(json._dev_code);
+      }
     } catch { setWaMsg({ type: "err", text: "Gagal menghubungi server." }); }
     setWaSending(false);
   }

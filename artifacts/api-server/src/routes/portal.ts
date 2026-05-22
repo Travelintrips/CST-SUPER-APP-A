@@ -218,9 +218,9 @@ function genOtp(): string {
 
 // POST /api/portal/auth/wa-otp/send — kirim OTP via WhatsApp
 router.post("/auth/wa-otp/send", async (req, res) => {
-  if (!process.env.FONNTE_TOKEN) {
-    return res.status(503).json({ message: "Layanan OTP WhatsApp belum dikonfigurasi. Hubungi admin." });
-  }
+  const isDev = process.env.NODE_ENV !== "production";
+  const hasFonnte = !!process.env.FONNTE_TOKEN;
+
   const { phone } = req.body ?? {};
   if (!phone) return res.status(400).json({ message: "Nomor HP diperlukan." });
   const normalized = normalizePhoneID(String(phone));
@@ -243,21 +243,34 @@ router.post("/auth/wa-otp/send", async (req, res) => {
   await db.insert(waOtpCodesTable).values({
     phone: normalized,
     codeHash,
-    purpose: "register",
+    purpose: "login",
     expiresAt,
   });
 
-  try {
-    await sendWhatsApp(
-      normalized,
-      `*Kode Verifikasi BizPortal*\n\nKode OTP Anda: *${code}*\n\nBerlaku 5 menit. Jangan bagikan kode ini ke siapapun.`
-    );
-  } catch (err) {
-    req.log?.error({ err }, "wa-otp send failed");
-    return res.status(500).json({ message: "Gagal mengirim OTP via WhatsApp." });
+  if (hasFonnte) {
+    try {
+      await sendWhatsApp(
+        normalized,
+        `*Kode Verifikasi BizPortal*\n\nKode OTP Anda: *${code}*\n\nBerlaku 5 menit. Jangan bagikan kode ini ke siapapun.`
+      );
+    } catch (err) {
+      req.log?.error({ err }, "wa-otp send failed");
+      return res.status(500).json({ message: "Gagal mengirim OTP via WhatsApp." });
+    }
+    return res.json({ message: "OTP dikirim ke WhatsApp.", phone: normalized });
   }
 
-  return res.json({ message: "OTP dikirim ke WhatsApp.", phone: normalized });
+  // Dev mode: Fonnte tidak dikonfigurasi — kembalikan kode langsung (jangan di production)
+  if (isDev) {
+    req.log?.warn({ normalized }, "wa-otp dev mode: FONNTE_TOKEN not set, returning _dev_code");
+    return res.json({
+      message: "Dev mode: OTP tidak dikirim via WA (FONNTE_TOKEN belum diset).",
+      phone: normalized,
+      _dev_code: code,
+    });
+  }
+
+  return res.status(503).json({ message: "Layanan OTP WhatsApp belum dikonfigurasi. Hubungi admin." });
 });
 
 // POST /api/portal/auth/wa-otp/verify — verifikasi OTP, return verifyToken
