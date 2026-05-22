@@ -251,6 +251,10 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
     if (link.expiresAt && link.expiresAt < new Date()) {
       return res.status(410).json({ error: "Link sudah kadaluarsa" });
     }
+    // compare_vendors and forward_vendor are single-use; review_order is multi-use
+    if (link.actionType !== "review_order" && link.usedAt) {
+      return res.status(409).json({ error: "Link sudah digunakan", isUsed: true, usedAt: link.usedAt?.toISOString() });
+    }
 
     const [order] = await db.select().from(logisticOrdersTable)
       .where(eq(logisticOrdersTable.id, link.orderId));
