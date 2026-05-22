@@ -346,10 +346,12 @@ async function notifyAdmin(order: LogisticOrderData): Promise<void> {
     ...(order.notes ? [["Catatan", order.notes] as [string, string]] : []),
   ];
 
+  // Generate admin review link upfront — used in both WA and email
+  const adminReviewUrl = await createAdminReviewLink(order.id).catch(() => "");
+
   const adminWa = await getAdminWa();
   if (adminWa) {
     logger.info({ phone: adminWa, orderNumber: order.orderNumber }, "Sending admin WA notification");
-    const adminReviewUrl = await createAdminReviewLink(order.id).catch(() => "");
     sendWhatsApp(adminWa, buildAdminWaMessage(order, adminReviewUrl || undefined)).catch((err: unknown) =>
       logger.error({ err }, "WA admin notification failed")
     );
@@ -370,21 +372,26 @@ async function notifyAdmin(order: LogisticOrderData): Promise<void> {
 
   if (isSmtpConfigured()) {
     logger.info({ to: ADMIN_EMAIL, orderNumber: order.orderNumber }, "Sending admin email notification");
+    const emailDomain = getPreferredDomain() || "cstlogistic.co.id";
+    const reviewCta = adminReviewUrl
+      ? `Tinjau dan proses order tanpa login: <a href="${adminReviewUrl}" style="display:inline-block;margin-top:8px;padding:10px 20px;background:#1e40af;color:#fff;border-radius:6px;text-decoration:none;font-weight:600">🚀 Review &amp; Blast Vendor</a>`
+      : `Login ke sistem: <a href="https://${emailDomain}/logistic-order">https://${emailDomain}/logistic-order</a>`;
     sendMail({
       to: ADMIN_EMAIL,
       subject: `[ORDER BARU] ${order.orderNumber} — ${order.customerName}`,
       html: buildEmailHtml(
         "Order Logistik Baru Masuk",
-        `Order baru telah diterima dari <strong>${order.customerName}</strong>. Silakan login ke sistem untuk memproses.`,
+        `Order baru telah diterima dari <strong>${order.customerName}</strong>. Silakan tinjau dan proses.`,
         rows,
-        (() => { const d = getPreferredDomain() || "cstlogistic.co.id"; return `Login ke sistem: <a href="https://${d}/logistic-order">https://${d}/logistic-order</a>`; })()
+        reviewCta
       ),
       text:
         `ORDER BARU: ${order.orderNumber}\n` +
         `Customer: ${order.customerName} (${order.companyName})\n` +
         `Rute: ${order.origin} → ${order.destination}\n` +
         `Jenis: ${order.shipmentType}\n` +
-        `Total: Rp ${formatRupiah(order.grandTotal)}`,
+        `Total: Rp ${formatRupiah(order.grandTotal)}` +
+        (adminReviewUrl ? `\nReview & Blast Vendor: ${adminReviewUrl}` : ""),
     })
       .then(() => logger.info({ to: ADMIN_EMAIL, orderNumber: order.orderNumber }, "Admin email sent successfully"))
       .catch((err: unknown) => logger.error({ err, to: ADMIN_EMAIL }, "Email admin notification failed"));

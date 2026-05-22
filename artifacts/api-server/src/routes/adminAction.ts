@@ -10,6 +10,7 @@ import {
   rfqVendorLinksTable,
   suppliersTable,
   customerQuoteLinksTable,
+  orderUpdatesTable,
 } from "@workspace/db";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { logger } from "../lib/logger";
@@ -344,6 +345,17 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
         responseDeadline: expiredAt,
       }).where(eq(logisticOrderRfqsTable.id, rfq.id));
 
+      // Activity log
+      const sentNames = results.filter(r => r.sent).map(r => r.vendorName).join(", ");
+      await db.insert(orderUpdatesTable).values({
+        orderId: order.id,
+        actorType: "admin",
+        actorName: "Admin",
+        status: "vendor_blasted",
+        notes: `RFQ ${rfq.rfqNumber} di-blast ke ${results.filter(r => r.sent).length} vendor via mini form: ${sentNames}`,
+        isPublic: false,
+      }).catch(() => {});
+
       await db.update(adminActionLinksTable).set({ usedAt: new Date() })
         .where(eq(adminActionLinksTable.token, token));
 
@@ -379,6 +391,10 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
       const [vendorLink] = await db.select().from(rfqVendorLinksTable)
         .where(eq(rfqVendorLinksTable.id, linkId));
       if (!vendorLink) return res.status(404).json({ error: "Vendor link tidak ditemukan" });
+      // Scope check: vendorLink must belong to the RFQ tied to this token
+      if (vendorLink.rfqId !== link.rfqId) {
+        return res.status(403).json({ error: "Vendor link tidak sesuai dengan RFQ pada token ini" });
+      }
 
       const [rfq] = await db.select().from(logisticOrderRfqsTable)
         .where(eq(logisticOrderRfqsTable.id, link.rfqId));
@@ -456,6 +472,16 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
         }
       }
 
+      // Activity log
+      await db.insert(orderUpdatesTable).values({
+        orderId: order.id,
+        actorType: "admin",
+        actorName: "Admin",
+        status: "vendor_selected",
+        notes: `Vendor dipilih: ${vendor?.name ?? `#${vendorLink.vendorId}`}${sellingPrice ? ` | Harga jual: ${fmtRp(sellingPrice)}` : ""}${sendQuoteToCustomer ? " | Penawaran terkirim ke customer" : ""}`,
+        isPublic: false,
+      }).catch(() => {});
+
       await db.update(adminActionLinksTable).set({ usedAt: new Date() })
         .where(eq(adminActionLinksTable.token, token));
 
@@ -532,6 +558,16 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
           `⏰ Batas waktu: ${expiresInHours} jam\n\nTerima kasih 🙏`
         ).catch(() => {});
       }
+
+      // Activity log
+      await db.insert(orderUpdatesTable).values({
+        orderId: order.id,
+        actorType: "admin",
+        actorName: "Admin",
+        status: "assigned_to_vendor",
+        notes: `Link fulfillment dikirim ke vendor ${vendor?.name ?? `#${vendorId}`} (${serviceType}) via mini form`,
+        isPublic: false,
+      }).catch(() => {});
 
       await db.update(adminActionLinksTable).set({ usedAt: new Date() })
         .where(eq(adminActionLinksTable.token, token));
