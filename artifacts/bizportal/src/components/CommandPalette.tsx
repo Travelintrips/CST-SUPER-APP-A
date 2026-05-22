@@ -22,7 +22,7 @@ import {
   Warehouse, LayoutGrid, PackageSearch, ArrowLeftRight, ClipboardCheck,
   Activity, FlaskConical, GitBranch, RotateCcw, AlertTriangle,
   PackageCheck, FileBarChart2, ShieldCheck, Shield, Calendar,
-  CalendarDays, Dumbbell, Network, Clock, X, Pin, PinOff,
+  Network, Clock, X, Pin, PinOff,
   type LucideIcon,
 } from "lucide-react";
 
@@ -118,11 +118,6 @@ const COMMANDS: CommandEntry[] = [
   { title: "Holding Dashboard", href: "/holding/dashboard", icon: LayoutDashboard, group: "Holding" },
   { title: "Holding P&L Report", href: "/holding/pl-report", icon: TrendingUp, group: "Holding" },
 
-  { title: "Sport Center Dashboard", href: "/sport-center", icon: Dumbbell, group: "Sport Center" },
-  { title: "Sport Center Booking", href: "/sport-center/bookings", icon: Calendar, group: "Sport Center" },
-  { title: "Sport Center Jadwal", href: "/sport-center/schedule", icon: CalendarDays, group: "Sport Center" },
-  { title: "Sport Center Produk & Layanan", href: "/sport-center/services", icon: Package, group: "Sport Center" },
-  { title: "Sport Center Laporan", href: "/sport-center/reports", icon: BarChart2, group: "Sport Center" },
 
   { title: "Trading", href: "/trading", icon: Package, group: "Lainnya" },
   { title: "Katalog Terpadu", href: "/katalog-terpadu", icon: Layers, group: "Lainnya" },

@@ -49,8 +49,7 @@ import approvalWorkflowRouter from "./approvalWorkflow";
 import approvalRulesRouter from "./approvalRules";
 import productBomRouter from "./productBom";
 import auditLogRouter from "./auditLog";
-import { sportCenterRouter, sportCenterPublicRouter } from "./sportCenter";
-import { sportCenterAdminRouter } from "./sportCenterAdmin";
+
 import navPreferencesRouter from "./navPreferences";
 import notificationsRouter from "./notifications";
 import qrMenuRouter from "./qrMenu";
@@ -127,9 +126,7 @@ router.use("/approvals", approvalWorkflowRouter);
 router.use("/approval-rules", approvalRulesRouter);
 router.use("/bom", productBomRouter);
 router.use("/audit-logs", auditLogRouter);
-router.use("/sport-center", sportCenterPublicRouter);
-router.use("/sport-center/bookings", sportCenterRouter);
-router.use("/sport-center/admin", sportCenterAdminRouter);
+
 router.use("/notifications", notificationsRouter);
 router.use("/nav-preferences", navPreferencesRouter);
 router.use("/qr-menu", qrMenuRouter);

@@ -125,13 +125,7 @@ import ThaiTeaBranchesPage from "@/pages/thai-tea/branches";
 import ThaiTeaProductionPage from "@/pages/thai-tea/production";
 import ThaiTeaRecipesPage from "@/pages/thai-tea/recipes";
 import ThaiTeaReportsPage from "@/pages/thai-tea/reports";
-// Sport Center
-import SportCenterDashboard from "@/pages/sport-center/index";
-import SportCenterBookingsPage from "@/pages/sport-center/bookings";
-import SportCenterServicesPage from "@/pages/sport-center/services";
-import SportCenterPurchaseRequestsPage from "@/pages/sport-center/purchase-requests";
-import SportCenterSchedulePage from "@/pages/sport-center-schedule";
-import SportCenterReportPage from "@/pages/sport-center-report";
+
 
 const PR = (C: React.ComponentType) => () => <ProtectedRoute component={C} />;
 
@@ -327,13 +321,6 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/thai-tea/reports" component={PR(ThaiTeaReportsPage)} />
       <Route path="/thai-tea" component={PR(ThaiTeaDashboardPage)} />
 
-      {/* ── Sport Center ───────────────────────────────────────────────── */}
-      <Route path="/sport-center/bookings" component={PR(SportCenterBookingsPage)} />
-      <Route path="/sport-center/schedule" component={PR(SportCenterSchedulePage)} />
-      <Route path="/sport-center/services" component={PR(SportCenterServicesPage)} />
-      <Route path="/sport-center/purchase-requests" component={PR(SportCenterPurchaseRequestsPage)} />
-      <Route path="/sport-center/reports" component={PR(SportCenterReportPage)} />
-      <Route path="/sport-center" component={PR(SportCenterDashboard)} />
 
       {/* ── Legacy redirects ───────────────────────────────────────────── */}
       <Route path="/expenses/new" component={() => <Redirect to="/expense/new" />} />

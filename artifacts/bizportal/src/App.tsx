@@ -128,13 +128,7 @@ import { PaymentRequestsListPage, PaymentRequestEditorPage } from "@/pages/purch
 import { PurchaseReturnsListPage, PurchaseReturnEditorPage } from "@/pages/purchase/purchase-returns";
 import { LandedCostsListPage, LandedCostEditorPage } from "@/pages/purchase/landed-costs";
 import VendorComparisonPage from "@/pages/purchase/vendor-comparison";
-import SportCenterDashboard from "@/pages/sport-center/index";
-import SportCenterBookingsPage from "@/pages/sport-center/bookings";
-import SportCenterServicesPage from "@/pages/sport-center/services";
-import SportCenterPurchaseRequestsPage from "@/pages/sport-center/purchase-requests";
 import InventoryValuationPage from "@/pages/reports/inventory-valuation";
-import SportCenterSchedulePage from "@/pages/sport-center-schedule";
-import SportCenterReportPage from "@/pages/sport-center-report";
 import NotificationsPage from "@/pages/notifications";
 import VendorFormsPage from "@/pages/purchase/vendor-forms";
 import AnalyticsDashboardPage from "@/pages/analytics-dashboard";
@@ -460,13 +454,6 @@ function Router() {
         <Route path="/pos-inventory/transfers" component={() => <ProtectedRoute component={PosStockTransfersPage} />} />
         <Route path="/pos-inventory/qr-generator" component={() => <ProtectedRoute component={PosQrGeneratorPage} />} />
         <Route path="/pos-inventory/qr-scanner" component={() => <ProtectedRoute component={PosQrScannerPage} />} />
-        {/* Sport Center */}
-        <Route path="/sport-center" component={() => <ProtectedRoute component={SportCenterDashboard} />} />
-        <Route path="/sport-center/bookings" component={() => <ProtectedRoute component={SportCenterBookingsPage} />} />
-        <Route path="/sport-center/schedule" component={() => <ProtectedRoute component={SportCenterSchedulePage} />} />
-        <Route path="/sport-center/services" component={() => <ProtectedRoute component={SportCenterServicesPage} />} />
-        <Route path="/sport-center/purchase-requests" component={() => <ProtectedRoute component={SportCenterPurchaseRequestsPage} />} />
-        <Route path="/sport-center/reports" component={() => <ProtectedRoute component={SportCenterReportPage} />} />
         <Route path="/notifications" component={() => <ProtectedRoute component={NotificationsPage} />} />
         {/* Analytics & Performance */}
         <Route path="/analytics" component={() => <ProtectedRoute component={AnalyticsDashboardPage} />} />

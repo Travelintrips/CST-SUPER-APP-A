@@ -46,7 +46,7 @@ const TYPE_HREFS: Record<string, string> = {
   freight_new:     "/logistics/freight",
   freight_status:  "/logistics/freight",
   freight_stage:   "/logistics/freight",
-  sport_booking:   "/sport-center/bookings",
+
   ecommerce:       "/ecommerce",
   product:         "/portal-product-orders",
 };

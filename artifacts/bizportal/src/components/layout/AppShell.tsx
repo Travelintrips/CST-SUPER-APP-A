@@ -55,8 +55,7 @@ import {
   ShieldCheck,
   Shield,
   Calendar,
-  CalendarDays,
-  Dumbbell,
+
   Search,
   Bell,
   Eye,
@@ -414,21 +413,6 @@ export function AppShell({ children }: AppShellProps) {
       ],
     },
 
-    {
-      type: "group",
-      titleKey: "Sport Center",
-      basePath: "/sport-center",
-      icon: Dumbbell,
-      roles: ["admin", "owner"],
-      children: [
-        { titleKey: "Dashboard", href: "/sport-center", icon: LayoutDashboard },
-        { titleKey: "Booking", href: "/sport-center/bookings", icon: Calendar },
-        { titleKey: "Jadwal Booking", href: "/sport-center/schedule", icon: CalendarDays },
-        { titleKey: "Produk & Layanan", href: "/sport-center/services", icon: Package },
-        { titleKey: "Purchase Request", href: "/sport-center/purchase-requests", icon: ClipboardList },
-        { titleKey: "Laporan", href: "/sport-center/reports", icon: BarChart2 },
-      ],
-    },
     {
       type: "group",
       titleKey: "Thai Tea CST",
