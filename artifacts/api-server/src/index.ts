@@ -134,41 +134,40 @@ async function runCriticalPreStartMigrations() {
 }
 
 async function startServer() {
-  try {
-    await runCriticalPreStartMigrations();
-    logger.info("Pre-start schema migrations applied");
-  } catch (err) {
-    logger.warn({ err }, "Pre-start migrations failed (non-fatal — table may not exist yet)");
-  }
-
-  const server = app.listen(port, (err) => {
+  // Listen on port FIRST so Replit's startup health-check passes immediately.
+  // All migrations & seeds run in the background after the server is ready.
+  const server = app.listen(port, (err?: Error) => {
     if (err) {
       logger.error({ err }, "Error listening on port");
       process.exit(1);
     }
 
     logger.info({ port }, "Server listening");
+  });
 
-  // Graceful shutdown on SIGTERM / SIGINT — release port immediately so the
-  // next process can bind without waiting for OS TIME_WAIT.
+  // Graceful shutdown on SIGTERM / SIGINT
   const shutdown = () => {
     server.close(() => process.exit(0));
-    // Force-exit after 5 s if connections are still draining.
     setTimeout(() => process.exit(0), 5_000).unref();
   };
   process.once("SIGTERM", shutdown);
   process.once("SIGINT", shutdown);
 
-  // Start IMAP email poller (polls every 3 minutes when IMAP credentials are configured)
+  // Start background services immediately
   startImapPoller(3 * 60 * 1000);
-
-  // Auto-delete OCR temp files older than 24 hours (runs every 6 hours)
   startOcrTempCleanup();
 
-  // Jalankan semua migration BERURUTAN dengan jeda 5 detik di awal.
-  // Ini mencegah connection storm ke Supabase yang men-trigger circuit breaker
-  // (ECIRCUITBREAKER) akibat banyak koneksi DB dibuka serentak saat startup.
-  sleep(5_000)
+  // Run all migrations + seeds in the background with a small initial delay
+  // to prevent a DB connection storm on cold starts.
+  sleep(2_000)
+    .then(async () => {
+      try {
+        await runCriticalPreStartMigrations();
+        logger.info("Pre-start schema migrations applied");
+      } catch (err) {
+        logger.warn({ err }, "Pre-start migrations failed (non-fatal)");
+      }
+    })
     .then(() => runWithRetry("Sessions migration", runSessionsMigration))
     .then(() => runWithRetry("Companies migration", runCompaniesMigration))
     .then(() => runWithRetry("Holding migration", runHoldingMigration))
@@ -215,7 +214,6 @@ async function startServer() {
     .catch((err) => {
       logger.error({ err }, "Startup migration/seed chain failed");
     });
-  });
 }
 
 startServer().catch((err) => {

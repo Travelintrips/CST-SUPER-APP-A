@@ -152,7 +152,7 @@ importers:
         specifier: ^3.0.3
         version: 3.0.3
       compression:
-        specifier: ^1.8.0
+        specifier: ^1.8.1
         version: 1.8.1
       cookie-parser:
         specifier: ^1.4.7
@@ -216,7 +216,7 @@ importers:
         version: 0.34.5
     devDependencies:
       '@types/compression':
-        specifier: ^1.7.5
+        specifier: ^1.8.1
         version: 1.8.1
       '@types/cookie-parser':
         specifier: ^1.4.10
