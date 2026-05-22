@@ -2,11 +2,10 @@ import { AppShell } from "@/components/layout/AppShell";
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import {
-  Calendar, TrendingUp, Clock, CheckCircle, XCircle,
-  AlertCircle, Users, DollarSign, BarChart2, ArrowRight,
+  Calendar, TrendingUp, Clock,
+  Users, DollarSign, BarChart2, ArrowRight,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/utils";
 
 interface Stats {
@@ -55,35 +54,10 @@ export default function SportCenterDashboard() {
 
   const statCards = stats
     ? [
-        {
-          title: "Booking Hari Ini",
-          value: stats.todayBookings,
-          icon: Calendar,
-          color: "text-blue-400",
-          bg: "bg-blue-500/20",
-        },
-        {
-          title: "Menunggu Konfirmasi",
-          value: stats.pendingConfirmation,
-          icon: Clock,
-          color: "text-amber-400",
-          bg: "bg-amber-500/20",
-        },
-        {
-          title: "Booking Bulan Ini",
-          value: stats.monthBookings,
-          icon: Users,
-          color: "text-violet-400",
-          bg: "bg-violet-500/20",
-        },
-        {
-          title: "Revenue Bulan Ini",
-          value: formatCurrency(stats.monthRevenue),
-          icon: DollarSign,
-          color: "text-emerald-400",
-          bg: "bg-emerald-500/20",
-          isText: true,
-        },
+        { title: "Booking Hari Ini", value: stats.todayBookings, icon: Calendar, color: "text-blue-400", bg: "bg-blue-500/20" },
+        { title: "Menunggu Konfirmasi", value: stats.pendingConfirmation, icon: Clock, color: "text-amber-400", bg: "bg-amber-500/20" },
+        { title: "Booking Bulan Ini", value: stats.monthBookings, icon: Users, color: "text-violet-400", bg: "bg-violet-500/20" },
+        { title: "Revenue Bulan Ini", value: formatCurrency(stats.monthRevenue), icon: DollarSign, color: "text-emerald-400", bg: "bg-emerald-500/20", isText: true },
       ]
     : [];
 
@@ -92,8 +66,8 @@ export default function SportCenterDashboard() {
       <div className="p-6 space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-slate-100">Sport Center</h1>
-            <p className="text-sm text-slate-400 mt-0.5">Dashboard pengelolaan Sport Center SHIA</p>
+            <h1 className="text-2xl font-bold text-white">Sport Center</h1>
+            <p className="text-sm text-white/60 mt-0.5">Dashboard pengelolaan Sport Center SHIA</p>
           </div>
           <Link
             href="/sport-center/bookings"
@@ -107,7 +81,7 @@ export default function SportCenterDashboard() {
         {loading ? (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {[...Array(4)].map((_, i) => (
-              <div key={i} className="h-28 rounded-xl bg-slate-700/50 animate-pulse" />
+              <div key={i} className="h-28 rounded-xl bg-white/10 animate-pulse" />
             ))}
           </div>
         ) : (
@@ -118,10 +92,10 @@ export default function SportCenterDashboard() {
                   <div className={`w-10 h-10 rounded-xl ${card.bg} flex items-center justify-center mb-3`}>
                     <card.icon className={`w-5 h-5 ${card.color}`} />
                   </div>
-                  <p className="text-2xl font-bold text-slate-100">
+                  <p className="text-2xl font-bold text-white">
                     {card.isText ? card.value : card.value.toLocaleString("id-ID")}
                   </p>
-                  <p className="text-xs text-slate-400 mt-0.5">{card.title}</p>
+                  <p className="text-xs text-white/60 mt-0.5">{card.title}</p>
                 </CardContent>
               </Card>
             ))}
@@ -132,7 +106,7 @@ export default function SportCenterDashboard() {
           <div className="grid grid-cols-4 gap-3">
             {Object.entries(STATUS_MAP).map(([key, { label, color }]) => (
               <div key={key} className={`rounded-xl px-4 py-3 ${color.split(" ")[0]}`}>
-                <p className="text-xs font-medium text-slate-400">{label}</p>
+                <p className="text-xs font-medium text-white/60">{label}</p>
                 <p className={`text-xl font-bold ${color.split(" ")[1]}`}>{stats.byStatus[key] ?? 0}</p>
               </div>
             ))}
@@ -152,10 +126,10 @@ export default function SportCenterDashboard() {
                     <item.icon className="w-5 h-5 text-white" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-slate-200 text-sm">{item.title}</p>
-                    <p className="text-xs text-slate-400 mt-0.5 truncate">{item.desc}</p>
+                    <p className="font-semibold text-white text-sm">{item.title}</p>
+                    <p className="text-xs text-white/60 mt-0.5 truncate">{item.desc}</p>
                   </div>
-                  <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-slate-200 transition-colors shrink-0" />
+                  <ArrowRight className="w-4 h-4 text-white/40 group-hover:text-white transition-colors shrink-0" />
                 </CardContent>
               </Card>
             </Link>
@@ -165,7 +139,7 @@ export default function SportCenterDashboard() {
         <Card className="border-0 shadow-sm">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-base font-semibold text-slate-100">Booking Terbaru</CardTitle>
+              <CardTitle className="text-base font-semibold text-white">Booking Terbaru</CardTitle>
               <Link href="/sport-center/bookings" className="text-xs text-blue-400 hover:underline flex items-center gap-1">
                 Lihat semua <ArrowRight className="w-3 h-3" />
               </Link>
@@ -174,10 +148,10 @@ export default function SportCenterDashboard() {
           <CardContent className="p-0">
             {loading ? (
               <div className="p-6 space-y-3">
-                {[...Array(5)].map((_, i) => <div key={i} className="h-8 bg-slate-700/50 rounded animate-pulse" />)}
+                {[...Array(5)].map((_, i) => <div key={i} className="h-8 bg-white/10 rounded animate-pulse" />)}
               </div>
             ) : recentBookings.length === 0 ? (
-              <div className="py-12 text-center text-slate-400">
+              <div className="py-12 text-center text-white/40">
                 <Calendar className="w-8 h-8 mx-auto mb-2 opacity-30" />
                 <p className="text-sm">Belum ada booking</p>
               </div>
@@ -185,27 +159,27 @@ export default function SportCenterDashboard() {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-slate-700/50">
-                      <th className="text-left px-4 py-2.5 font-medium text-slate-400 text-xs">Kode</th>
-                      <th className="text-left px-4 py-2.5 font-medium text-slate-400 text-xs">Pelanggan</th>
-                      <th className="text-left px-4 py-2.5 font-medium text-slate-400 text-xs hidden md:table-cell">Fasilitas</th>
-                      <th className="text-left px-4 py-2.5 font-medium text-slate-400 text-xs hidden lg:table-cell">Tanggal</th>
-                      <th className="text-right px-4 py-2.5 font-medium text-slate-400 text-xs">Total</th>
-                      <th className="text-center px-4 py-2.5 font-medium text-slate-400 text-xs">Status</th>
+                    <tr className="border-b border-white/10">
+                      <th className="text-left px-4 py-2.5 font-medium text-white/50 text-xs">Kode</th>
+                      <th className="text-left px-4 py-2.5 font-medium text-white/50 text-xs">Pelanggan</th>
+                      <th className="text-left px-4 py-2.5 font-medium text-white/50 text-xs hidden md:table-cell">Fasilitas</th>
+                      <th className="text-left px-4 py-2.5 font-medium text-white/50 text-xs hidden lg:table-cell">Tanggal</th>
+                      <th className="text-right px-4 py-2.5 font-medium text-white/50 text-xs">Total</th>
+                      <th className="text-center px-4 py-2.5 font-medium text-white/50 text-xs">Status</th>
                     </tr>
                   </thead>
                   <tbody>
                     {recentBookings.map((b) => {
-                      const st = STATUS_MAP[b.status] ?? { label: b.status, color: "bg-slate-700/50 text-slate-300" };
+                      const st = STATUS_MAP[b.status] ?? { label: b.status, color: "bg-white/10 text-white/70" };
                       return (
-                        <tr key={b.id} className="border-b border-slate-700/30 hover:bg-slate-700/20">
-                          <td className="px-4 py-3 font-mono text-xs font-semibold text-slate-300">{b.booking_code}</td>
-                          <td className="px-4 py-3 font-medium text-slate-200">{b.customer_name}</td>
-                          <td className="px-4 py-3 text-slate-300 hidden md:table-cell">{b.facility_name}</td>
-                          <td className="px-4 py-3 text-slate-400 hidden lg:table-cell">
+                        <tr key={b.id} className="border-b border-white/5 hover:bg-white/5">
+                          <td className="px-4 py-3 font-mono text-xs font-semibold text-white/80">{b.booking_code}</td>
+                          <td className="px-4 py-3 font-medium text-white">{b.customer_name}</td>
+                          <td className="px-4 py-3 text-white/80 hidden md:table-cell">{b.facility_name}</td>
+                          <td className="px-4 py-3 text-white/60 hidden lg:table-cell">
                             {b.date} · {b.start_time}–{b.end_time}
                           </td>
-                          <td className="px-4 py-3 text-right font-semibold text-slate-200">
+                          <td className="px-4 py-3 text-right font-semibold text-white">
                             {formatCurrency(b.total_price)}
                           </td>
                           <td className="px-4 py-3 text-center">
