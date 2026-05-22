@@ -36,6 +36,7 @@ import { runCustomerQuoteFlowMigration } from "./lib/customerQuoteFlowMigration"
 import { runEnterpriseMigration } from "./lib/enterpriseMigration";
 import { runShortLinksMigration } from "./lib/shortLinksMigration";
 import { runGeofenceMigration } from "./lib/geofenceMigration";
+import { runOrderFulfillmentMigration } from "./routes/orderFulfillment.js";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 
@@ -192,6 +193,7 @@ async function startServer() {
     .then(() => runWithRetry("Enterprise migration", runEnterpriseMigration))
     .then(() => runWithRetry("Short links migration", runShortLinksMigration))
     .then(() => runWithRetry("Geofence migration", runGeofenceMigration))
+    .then(() => runWithRetry("Order fulfillment migration", runOrderFulfillmentMigration))
     .then(() => enableRealtimeTables().catch((err) => {
       logger.warn({ err }, "Supabase Realtime table enable failed (non-fatal)");
     }))

@@ -63,6 +63,7 @@ import { podOcrRouter } from "./podOcr";
 import { marginRulesRouter } from "./marginRules";
 import { adminActionPublicRouter, adminActionAdminRouter } from "./adminAction";
 import { vendorFulfillmentPublicRouter } from "./vendorFulfillment";
+import { fulfillmentAdminRouter, fulfillmentPublicRouter } from "./orderFulfillment.js";
 
 const router: IRouter = Router();
 
@@ -139,4 +140,6 @@ router.use("/margin-rules", marginRulesRouter);
 router.use("/admin-action", adminActionAdminRouter);
 router.use("/admin-action", adminActionPublicRouter);
 router.use("/vendor-fulfillment", vendorFulfillmentPublicRouter);
+router.use("/logistic", fulfillmentAdminRouter);
+router.use("/fulfillment", fulfillmentPublicRouter);
 export default router;
