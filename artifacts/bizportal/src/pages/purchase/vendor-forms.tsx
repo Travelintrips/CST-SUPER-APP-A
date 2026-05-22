@@ -77,7 +77,7 @@ async function apiFetch<T>(url: string, opts?: RequestInit): Promise<T> {
 
 function buildFormUrl(token: string): string {
   const domain = window.location.origin;
-  return `${domain}/vendor-form/${token}`;
+  return `${domain}/vendor-mini-form/${token}`;
 }
 
 // ── Create link dialog ─────────────────────────────────────────────────────────

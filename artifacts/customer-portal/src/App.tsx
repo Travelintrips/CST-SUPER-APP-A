@@ -73,7 +73,7 @@ if (typeof window !== "undefined" && window.location.hostname === "bizportal.cst
 
 
 const LOGISTIC_ROUTES = ["/book", "/logistic-order-success", "/logistic-admin", "/order-produk"];
-const NO_SHELL_PREFIXES = ["/jasa/", "/services/", "/vendor-response", "/vendor-product-approval", "/approve", "/confirm", "/vendor-quote", "/vendor-confirm", "/vendor-form", "/choose-option", "/onboarding", "/pending-approval", "/customer-quote", "/order-task", "/customer-order", "/admin-action", "/vendor-fulfillment"]; // [TRUCKING-FIX] [MULTI-MODE] [NEW-RFQ-FLOW] [QUOTE-FLOW] [MINI-FORM]
+const NO_SHELL_PREFIXES = ["/jasa/", "/services/", "/vendor-response", "/vendor-product-approval", "/approve", "/confirm", "/vendor-quote", "/vendor-confirm", "/vendor-form", "/vendor-mini-form", "/choose-option", "/onboarding", "/pending-approval", "/customer-quote", "/order-task", "/customer-order", "/admin-action", "/vendor-fulfillment"]; // [TRUCKING-FIX] [MULTI-MODE] [NEW-RFQ-FLOW] [QUOTE-FLOW] [MINI-FORM]
 
 const BASE_PREFIX = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -173,7 +173,7 @@ function AppShell() {
 
       <Route path="/onboarding" component={OnboardingPage} />
       <Route path="/pending-approval" component={PendingApprovalPage} />
-      <Route path="/vendor-form/:token" component={VendorMiniFormPage} />
+      <Route path="/vendor-mini-form/:token" component={VendorMiniFormPage} />
       <Route path="/approve/:orderNumber" component={ApprovePage} />
       <Route path="/confirm/:token" component={ConfirmPage} />
       <Route path="/customer-quote/:token" component={CustomerQuotePage} />
