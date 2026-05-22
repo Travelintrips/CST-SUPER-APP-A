@@ -18,14 +18,14 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "API Server"
+args = "POS"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Customer Portal"
+args = "API Server"
 
 [[workflows.workflow]]
-name = "API Server"
+name = "POS"
 author = "agent"
 
 [workflows.workflow.metadata]
@@ -33,20 +33,19 @@ outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "fuser -k 8080/tcp 2>/dev/null || true; cd artifacts/api-server && PORT=8080 NODE_ENV=development node --enable-source-maps ./dist/index.mjs"
-waitForPort = 8080
+args = "bash start-pos-kasir.sh"
 
 [[workflows.workflow]]
-name = "Customer Portal"
+name = "API Server"
 author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd artifacts/customer-portal && PORT=5000 BASE_PATH=/ pnpm run dev"
-waitForPort = 5000
+args = "fuser -k 8080/tcp 2>/dev/null || true; cd artifacts/api-server && PORT=8080 NODE_ENV=development node --enable-source-maps ./dist/index.mjs"
+waitForPort = 8080
 
 [workflows.workflow.metadata]
-outputType = "webview"
+outputType = "console"
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
@@ -91,28 +90,27 @@ localPort = 3001
 externalPort = 3001
 
 [[ports]]
+localPort = 3002
+externalPort = 3002
+
+[[ports]]
+localPort = 3003
+externalPort = 8008
+
+[[ports]]
 localPort = 5000
 externalPort = 80
 
 [[ports]]
-localPort = 5001
 localPort = 8080
+externalPort = 8080
+
+[[ports]]
+localPort = 8081
 externalPort = 9000
 
 [[ports]]
-localPort = 8080
-externalPort = 8008
-
-[[ports]]
 localPort = 8082
-externalPort = 3002
-
-[[ports]]
-localPort = 8083
-externalPort = 3001
-
-[[ports]]
-localPort = 8084
 externalPort = 3003
 
 [[ports]]
