@@ -18,7 +18,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Copy, ExternalLink, Link2, Plus, Trash2, Eye, ToggleLeft, ToggleRight } from "lucide-react";
+import { Copy, ExternalLink, Link2, Plus, Trash2, Eye, ToggleLeft, ToggleRight, Loader2 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -267,9 +267,20 @@ export default function VendorFormsPage() {
     onError: (e: Error) => toast({ title: "Gagal", description: e.message, variant: "destructive" }),
   });
 
-  const copyLink = (token: string) => {
-    navigator.clipboard.writeText(buildFormUrl(token));
-    toast({ title: "Link disalin!" });
+  const [generatingShortLink, setGeneratingShortLink] = useState<number | null>(null);
+
+
+  const copyShortLink = async (linkId: number) => {
+    setGeneratingShortLink(linkId);
+    try {
+      const data = await apiFetch<{ shortUrl: string }>(`/api/vendor-form/admin/links/${linkId}/short-link`, { method: "POST" });
+      await navigator.clipboard.writeText(data.shortUrl);
+      toast({ title: "Short link disalin!", description: data.shortUrl });
+    } catch (e: unknown) {
+      toast({ title: "Gagal generate short link", description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setGeneratingShortLink(null);
+    }
   };
 
   const submissionsByToken = useMemo(() => {
@@ -367,10 +378,13 @@ export default function VendorFormsPage() {
                               <div className="flex items-center justify-end gap-1">
                                 <Button
                                   variant="ghost" size="icon" className="h-7 w-7"
-                                  title="Salin link"
-                                  onClick={() => copyLink(link.token)}
+                                  title="Salin short link"
+                                  disabled={generatingShortLink === link.id}
+                                  onClick={() => copyShortLink(link.id)}
                                 >
-                                  <Copy className="h-3.5 w-3.5" />
+                                  {generatingShortLink === link.id
+                                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    : <Copy className="h-3.5 w-3.5" />}
                                 </Button>
                                 <a href={buildFormUrl(link.token)} target="_blank" rel="noopener noreferrer">
                                   <Button variant="ghost" size="icon" className="h-7 w-7" title="Buka form">

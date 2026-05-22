@@ -382,6 +382,39 @@ router.get("/admin/submissions", async (req: Request, res: Response) => {
   }
 });
 
+// ── ADMIN: POST /api/vendor-form-admin/links/:id/short-link ──────────────────
+
+router.post("/admin/links/:id/short-link", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const id = Number(req.params["id"]);
+  if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+  try {
+    const [link] = await db
+      .select()
+      .from(vendorMiniFormLinksTable)
+      .where(eq(vendorMiniFormLinksTable.id, id));
+    if (!link) return res.status(404).json({ error: "Link tidak ditemukan" });
+
+    const { generateShortLink } = await import("../lib/shortLink.js");
+    const { getPreferredDomain } = await import("../lib/domain.js");
+    const domain = getPreferredDomain();
+    const longUrl = domain
+      ? `https://${domain}/vendor-mini-form/${link.token}`
+      : `/vendor-mini-form/${link.token}`;
+
+    const shortUrl = await generateShortLink(longUrl, {
+      context: "vendor_mini_form",
+      refType: "vendor_mini_form_link",
+      refId: String(link.id),
+    });
+
+    return res.json({ shortUrl, longUrl });
+  } catch (err) {
+    req.log?.error({ err }, "vendor-mini-form short-link error");
+    return res.status(500).json({ error: "Gagal generate short link" });
+  }
+});
+
 // ── ADMIN: DELETE /api/vendor-form-admin/submissions/:id ─────────────────────
 
 router.delete("/admin/submissions/:id", async (req: Request, res: Response) => {
