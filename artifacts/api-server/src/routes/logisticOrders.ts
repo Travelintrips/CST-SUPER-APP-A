@@ -506,7 +506,7 @@ logisticOrdersRouter.get("/", async (req: Request, res: Response) => {
       WHERE r.order_id = ANY(${sql.raw(`ARRAY[${orderIds.join(",")}]::int[]`)})
       ORDER BY r.order_id, r.created_at DESC
     `);
-    for (const row of rfqRows as any[]) {
+    for (const row of (rfqRows.rows ?? rfqRows) as any[]) {
       rfqMap.set(Number(row.orderId), {
         rfqId: Number(row.rfqId),
         rfqNumber: row.rfqNumber as string,
