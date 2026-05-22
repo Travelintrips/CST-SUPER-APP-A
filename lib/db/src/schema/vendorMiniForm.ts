@@ -10,6 +10,7 @@ export const vendorMiniFormLinksTable = pgTable("vendor_mini_form_links", {
   notes: text("notes"),
   expiresAt: timestamp("expires_at"),
   isActive: boolean("is_active").notNull().default(true),
+  shortUrl: text("short_url"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   createdBy: text("created_by"),
 });

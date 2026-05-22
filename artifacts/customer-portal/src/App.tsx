@@ -58,10 +58,10 @@ import OrderTaskPage from "@/pages/order-task";
 import CustomerOrderPage from "@/pages/customer-order";
 import AdminActionPage from "@/pages/admin-action";
 import VendorFulfillmentPage from "@/pages/vendor-fulfillment";
+import FulfillmentFormPage from "@/pages/fulfillment-form";
 import PrivacyPolicy from "@/pages/privacy-policy";
 import Contact from "@/pages/contact";
 import ShipmentTimeline from "@/pages/shipment-timeline";
-import VendorFulfillment from "@/pages/vendor-fulfillment";
 
 const queryClient = new QueryClient();
 
@@ -73,7 +73,7 @@ if (typeof window !== "undefined" && window.location.hostname === "bizportal.cst
 
 
 const LOGISTIC_ROUTES = ["/book", "/logistic-order-success", "/logistic-admin", "/order-produk"];
-const NO_SHELL_PREFIXES = ["/jasa/", "/services/", "/vendor-response", "/vendor-product-approval", "/approve", "/confirm", "/vendor-quote", "/vendor-confirm", "/vendor-form", "/choose-option", "/onboarding", "/pending-approval", "/customer-quote", "/order-task", "/customer-order", "/admin-action", "/vendor-fulfillment"]; // [TRUCKING-FIX] [MULTI-MODE] [NEW-RFQ-FLOW] [QUOTE-FLOW] [MINI-FORM]
+const NO_SHELL_PREFIXES = ["/jasa/", "/services/", "/vendor-response", "/vendor-product-approval", "/approve", "/confirm", "/vendor-quote", "/vendor-confirm", "/vendor-form", "/vendor-mini-form", "/choose-option", "/onboarding", "/pending-approval", "/customer-quote", "/order-task", "/customer-order", "/admin-action", "/vendor-fulfillment"]; // [TRUCKING-FIX] [MULTI-MODE] [NEW-RFQ-FLOW] [QUOTE-FLOW] [MINI-FORM]
 
 const BASE_PREFIX = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -173,7 +173,7 @@ function AppShell() {
 
       <Route path="/onboarding" component={OnboardingPage} />
       <Route path="/pending-approval" component={PendingApprovalPage} />
-      <Route path="/vendor-form/:token" component={VendorMiniFormPage} />
+      <Route path="/vendor-mini-form/:token" component={VendorMiniFormPage} />
       <Route path="/approve/:orderNumber" component={ApprovePage} />
       <Route path="/confirm/:token" component={ConfirmPage} />
       <Route path="/customer-quote/:token" component={CustomerQuotePage} />
@@ -184,7 +184,7 @@ function AppShell() {
       <Route path="/privacy-policy" component={PrivacyPolicy} />
       <Route path="/contact" component={Contact} />
       <Route path="/shipment-timeline" component={ShipmentTimeline} />
-      <Route path="/fulfillment/:token" component={VendorFulfillment} />
+      <Route path="/fulfillment/:token" component={FulfillmentFormPage} />
       <Route component={NotFound} />
     </Switch>
   );
