@@ -1,10 +1,9 @@
 import { AppShell } from "@/components/layout/AppShell";
 import { useState, useEffect, useCallback } from "react";
-import { Calendar, Search, RefreshCw, Trash2, ChevronDown } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Calendar, Search, RefreshCw, Trash2 } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/lib/utils";
@@ -36,10 +35,10 @@ const STATUS_OPTIONS = [
 ];
 
 const STATUS_STYLE: Record<string, string> = {
-  pending: "bg-amber-100 text-amber-700",
-  confirmed: "bg-blue-100 text-blue-700",
-  completed: "bg-emerald-100 text-emerald-700",
-  cancelled: "bg-red-100 text-red-600",
+  pending: "bg-amber-500/20 text-amber-300",
+  confirmed: "bg-blue-500/20 text-blue-300",
+  completed: "bg-emerald-500/20 text-emerald-300",
+  cancelled: "bg-red-500/20 text-red-300",
 };
 const STATUS_LABEL: Record<string, string> = {
   pending: "Menunggu",
@@ -109,8 +108,8 @@ export default function SportCenterBookingsPage() {
       <div className="p-6 space-y-5">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">Manajemen Booking</h1>
-            <p className="text-sm text-slate-500 mt-0.5">Kelola semua booking Sport Center</p>
+            <h1 className="text-2xl font-bold text-white">Manajemen Booking</h1>
+            <p className="text-sm text-white/60 mt-0.5">Kelola semua booking Sport Center</p>
           </div>
           <Button onClick={fetchBookings} variant="outline" size="sm" className="gap-2">
             <RefreshCw className="w-4 h-4" /> Refresh
@@ -121,7 +120,7 @@ export default function SportCenterBookingsPage() {
           <CardContent className="p-4">
             <div className="flex flex-wrap gap-3">
               <div className="relative flex-1 min-w-48">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40" />
                 <Input
                   placeholder="Cari nama, kode, fasilitas..."
                   value={search}
@@ -139,8 +138,8 @@ export default function SportCenterBookingsPage() {
                   ))}
                 </SelectContent>
               </Select>
-              <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-36" placeholder="Dari" />
-              <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-36" placeholder="Sampai" />
+              <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-36" />
+              <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-36" />
             </div>
           </CardContent>
         </Card>
@@ -149,10 +148,10 @@ export default function SportCenterBookingsPage() {
           <CardContent className="p-0">
             {loading ? (
               <div className="p-8 space-y-3">
-                {[...Array(6)].map((_, i) => <div key={i} className="h-10 bg-slate-100 rounded animate-pulse" />)}
+                {[...Array(6)].map((_, i) => <div key={i} className="h-10 bg-white/10 rounded animate-pulse" />)}
               </div>
             ) : bookings.length === 0 ? (
-              <div className="py-16 text-center text-slate-400">
+              <div className="py-16 text-center text-white/40">
                 <Calendar className="w-10 h-10 mx-auto mb-3 opacity-30" />
                 <p className="font-medium">Tidak ada booking ditemukan</p>
               </div>
@@ -160,29 +159,29 @@ export default function SportCenterBookingsPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="bg-slate-50 border-b border-slate-100">
+                    <tr className="border-b border-white/10">
                       {["Kode Booking", "Pelanggan", "Fasilitas", "Jadwal", "Durasi", "Total", "Status", "Aksi"].map((h) => (
-                        <th key={h} className="text-left px-4 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide whitespace-nowrap">{h}</th>
+                        <th key={h} className="text-left px-4 py-3 font-semibold text-white/50 text-xs uppercase tracking-wide whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {bookings.map((b) => (
-                      <tr key={b.id} className="border-b border-slate-50 hover:bg-slate-50/50">
+                      <tr key={b.id} className="border-b border-white/5 hover:bg-white/5">
                         <td className="px-4 py-3">
-                          <span className="font-mono text-xs font-bold text-slate-700">{b.booking_code}</span>
+                          <span className="font-mono text-xs font-bold text-white/80">{b.booking_code}</span>
                         </td>
                         <td className="px-4 py-3">
-                          <p className="font-medium text-slate-800">{b.customer_name}</p>
-                          <p className="text-xs text-slate-500">{b.customer_phone}</p>
+                          <p className="font-medium text-white">{b.customer_name}</p>
+                          <p className="text-xs text-white/50">{b.customer_phone}</p>
                         </td>
-                        <td className="px-4 py-3 text-slate-700">{b.facility_name}</td>
-                        <td className="px-4 py-3 text-slate-600 whitespace-nowrap">
+                        <td className="px-4 py-3 text-white/80">{b.facility_name}</td>
+                        <td className="px-4 py-3 text-white/80 whitespace-nowrap">
                           <p>{b.date}</p>
-                          <p className="text-xs text-slate-500">{b.start_time} – {b.end_time}</p>
+                          <p className="text-xs text-white/50">{b.start_time} – {b.end_time}</p>
                         </td>
-                        <td className="px-4 py-3 text-slate-600">{parseFloat(b.total_hours)} jam</td>
-                        <td className="px-4 py-3 font-semibold text-slate-800">{formatCurrency(b.total_price)}</td>
+                        <td className="px-4 py-3 text-white/80">{parseFloat(b.total_hours)} jam</td>
+                        <td className="px-4 py-3 font-semibold text-white">{formatCurrency(b.total_price)}</td>
                         <td className="px-4 py-3">
                           <Select
                             value={b.status}
@@ -203,7 +202,7 @@ export default function SportCenterBookingsPage() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-7 w-7 text-red-400 hover:text-red-600 hover:bg-red-50"
+                            className="h-7 w-7 text-red-400 hover:text-red-300 hover:bg-red-500/20"
                             onClick={() => deleteBooking(b.id, b.booking_code)}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -218,7 +217,7 @@ export default function SportCenterBookingsPage() {
           </CardContent>
         </Card>
 
-        <p className="text-xs text-slate-400 text-right">{bookings.length} data ditemukan</p>
+        <p className="text-xs text-white/40 text-right">{bookings.length} data ditemukan</p>
       </div>
     </AppShell>
   );

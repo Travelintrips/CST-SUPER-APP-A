@@ -120,6 +120,12 @@ export default defineConfig({
         changeOrigin: true,
         ws: true,
       },
+      // Sport Center dev server — proxied so /sport-center/* works via main entry port
+      "/sport-center": {
+        target: "http://localhost:3002",
+        changeOrigin: true,
+        ws: true,
+      },
       "/logistic-order": {
         target: "http://localhost:19368",
         changeOrigin: true,

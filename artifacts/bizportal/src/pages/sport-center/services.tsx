@@ -30,10 +30,13 @@ const EMPTY: Omit<Service, "id"> = {
 };
 
 const CAT_COLOR: Record<string, string> = {
-  Futsal: "bg-blue-100 text-blue-700", Badminton: "bg-emerald-100 text-emerald-700",
-  Basket: "bg-orange-100 text-orange-700", Gym: "bg-violet-100 text-violet-700",
-  Yoga: "bg-pink-100 text-pink-700", Aerobik: "bg-red-100 text-red-700",
-  Lainnya: "bg-slate-100 text-slate-600",
+  Futsal:   "bg-blue-500/20 text-blue-300",
+  Badminton:"bg-emerald-500/20 text-emerald-300",
+  Basket:   "bg-orange-500/20 text-orange-300",
+  Gym:      "bg-violet-500/20 text-violet-300",
+  Yoga:     "bg-pink-500/20 text-pink-300",
+  Aerobik:  "bg-red-500/20 text-red-300",
+  Lainnya:  "bg-white/10 text-white/60",
 };
 
 export default function SportCenterServicesPage() {
@@ -57,11 +60,7 @@ export default function SportCenterServicesPage() {
 
   useEffect(() => { fetchServices(); }, []);
 
-  function openNew() {
-    setEditing(null);
-    setForm(EMPTY);
-    setOpen(true);
-  }
+  function openNew() { setEditing(null); setForm(EMPTY); setOpen(true); }
 
   function openEdit(s: Service) {
     setEditing(s);
@@ -75,8 +74,7 @@ export default function SportCenterServicesPage() {
     try {
       const body = { name: form.name, category: form.category, description: form.description, pricePerHour: form.price_per_hour, capacity: form.capacity, unit: form.unit, isActive: form.is_active, sortOrder: form.sort_order };
       const url = editing ? `/api/sport-center/admin/services/${editing.id}` : "/api/sport-center/admin/services";
-      const method = editing ? "PUT" : "POST";
-      const r = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const r = await fetch(url, { method: editing ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       if (!r.ok) throw new Error(await r.text());
       toast({ title: editing ? "Layanan diperbarui" : "Layanan ditambahkan" });
       setOpen(false);
@@ -117,8 +115,8 @@ export default function SportCenterServicesPage() {
       <div className="p-6 space-y-5">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">Produk & Layanan</h1>
-            <p className="text-sm text-slate-500 mt-0.5">Kelola fasilitas dan layanan Sport Center</p>
+            <h1 className="text-2xl font-bold text-white">Produk & Layanan</h1>
+            <p className="text-sm text-white/60 mt-0.5">Kelola fasilitas dan layanan Sport Center</p>
           </div>
           <Button onClick={openNew} className="gap-2">
             <Plus className="w-4 h-4" /> Tambah Layanan
@@ -127,10 +125,10 @@ export default function SportCenterServicesPage() {
 
         {loading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {[...Array(6)].map((_, i) => <div key={i} className="h-44 rounded-xl bg-slate-100 animate-pulse" />)}
+            {[...Array(6)].map((_, i) => <div key={i} className="h-44 rounded-xl bg-white/10 animate-pulse" />)}
           </div>
         ) : services.length === 0 ? (
-          <div className="py-20 text-center text-slate-400">
+          <div className="py-20 text-center text-white/40">
             <Package className="w-10 h-10 mx-auto mb-3 opacity-30" />
             <p className="font-medium">Belum ada layanan</p>
             <Button onClick={openNew} variant="outline" className="mt-4 gap-2">
@@ -140,39 +138,39 @@ export default function SportCenterServicesPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {services.map((s) => (
-              <Card key={s.id} className={`border-0 shadow-sm transition-opacity ${s.is_active ? "" : "opacity-60"}`}>
+              <Card key={s.id} className={`border-0 shadow-sm transition-opacity ${s.is_active ? "" : "opacity-50"}`}>
                 <CardContent className="p-5">
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1 min-w-0">
-                      <p className="font-bold text-slate-800 truncate">{s.name}</p>
+                      <p className="font-bold text-white truncate">{s.name}</p>
                       <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${CAT_COLOR[s.category] ?? CAT_COLOR.Lainnya}`}>
                         {s.category}
                       </span>
                     </div>
-                    <button onClick={() => toggleActive(s)} className="ml-2 text-slate-400 hover:text-slate-700">
+                    <button onClick={() => toggleActive(s)} className="ml-2 text-white/40 hover:text-white transition-colors">
                       {s.is_active
-                        ? <ToggleRight className="w-5 h-5 text-emerald-500" />
+                        ? <ToggleRight className="w-5 h-5 text-emerald-400" />
                         : <ToggleLeft className="w-5 h-5" />}
                     </button>
                   </div>
                   {s.description && (
-                    <p className="text-xs text-slate-500 mb-3 line-clamp-2">{s.description}</p>
+                    <p className="text-xs text-white/50 mb-3 line-clamp-2">{s.description}</p>
                   )}
                   <div className="grid grid-cols-2 gap-2 text-xs mb-4">
-                    <div className="bg-slate-50 rounded-lg px-3 py-2">
-                      <p className="text-slate-400">Harga</p>
-                      <p className="font-bold text-blue-600">{formatCurrency(s.price_per_hour)}<span className="font-normal text-slate-400">/{s.unit}</span></p>
+                    <div className="bg-white/5 rounded-lg px-3 py-2">
+                      <p className="text-white/40">Harga</p>
+                      <p className="font-bold text-blue-400">{formatCurrency(s.price_per_hour)}<span className="font-normal text-white/40">/{s.unit}</span></p>
                     </div>
-                    <div className="bg-slate-50 rounded-lg px-3 py-2">
-                      <p className="text-slate-400">Kapasitas</p>
-                      <p className="font-bold text-slate-700">{s.capacity} orang</p>
+                    <div className="bg-white/5 rounded-lg px-3 py-2">
+                      <p className="text-white/40">Kapasitas</p>
+                      <p className="font-bold text-white">{s.capacity} orang</p>
                     </div>
                   </div>
                   <div className="flex gap-2">
                     <Button variant="outline" size="sm" className="flex-1 gap-1.5 text-xs" onClick={() => openEdit(s)}>
                       <Pencil className="w-3.5 h-3.5" /> Edit
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-red-400 hover:text-red-600 hover:bg-red-50" onClick={() => deleteService(s.id, s.name)}>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-red-400 hover:text-red-300 hover:bg-red-500/20" onClick={() => deleteService(s.id, s.name)}>
                       <Trash2 className="w-3.5 h-3.5" />
                     </Button>
                   </div>
@@ -198,9 +196,7 @@ export default function SportCenterServicesPage() {
                 <Label>Kategori</Label>
                 <Select value={form.category} onValueChange={(v) => setForm({ ...form, category: v })}>
                   <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                  </SelectContent>
+                  <SelectContent>{CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               <div>
@@ -240,9 +236,7 @@ export default function SportCenterServicesPage() {
             </div>
             <div className="flex gap-3 pt-2">
               <Button variant="outline" className="flex-1" onClick={() => setOpen(false)}>Batal</Button>
-              <Button className="flex-1" onClick={save} disabled={saving}>
-                {saving ? "Menyimpan..." : "Simpan"}
-              </Button>
+              <Button className="flex-1" onClick={save} disabled={saving}>{saving ? "Menyimpan..." : "Simpan"}</Button>
             </div>
           </div>
         </DialogContent>

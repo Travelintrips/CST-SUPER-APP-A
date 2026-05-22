@@ -7,7 +7,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/lib/utils";
 
@@ -35,17 +34,17 @@ const PRIORITIES = [{ value: "low", label: "Rendah" }, { value: "normal", label:
 const STATUSES = [{ value: "draft", label: "Draft" }, { value: "submitted", label: "Diajukan" }, { value: "approved", label: "Disetujui" }, { value: "rejected", label: "Ditolak" }, { value: "completed", label: "Selesai" }];
 
 const STATUS_STYLE: Record<string, string> = {
-  draft: "bg-slate-100 text-slate-600",
-  submitted: "bg-blue-100 text-blue-700",
-  approved: "bg-emerald-100 text-emerald-700",
-  rejected: "bg-red-100 text-red-600",
-  completed: "bg-violet-100 text-violet-700",
+  draft:     "bg-white/10 text-white/60",
+  submitted: "bg-blue-500/20 text-blue-300",
+  approved:  "bg-emerald-500/20 text-emerald-300",
+  rejected:  "bg-red-500/20 text-red-300",
+  completed: "bg-violet-500/20 text-violet-300",
 };
 const PRIORITY_STYLE: Record<string, string> = {
-  low: "bg-slate-100 text-slate-500",
-  normal: "bg-blue-100 text-blue-600",
-  high: "bg-amber-100 text-amber-700",
-  urgent: "bg-red-100 text-red-700",
+  low:    "bg-white/10 text-white/50",
+  normal: "bg-blue-500/20 text-blue-300",
+  high:   "bg-amber-500/20 text-amber-300",
+  urgent: "bg-red-500/20 text-red-300",
 };
 
 const EMPTY_PR = {
@@ -76,8 +75,7 @@ export default function SportCenterPurchaseRequestsPage() {
   useEffect(() => { fetchPRs(); }, []);
 
   function openNew() {
-    setEditing(null);
-    setForm(EMPTY_PR);
+    setEditing(null); setForm(EMPTY_PR);
     setItems([{ name: "", qty: 1, unit: "pcs", estimatedPrice: 0 }]);
     setOpen(true);
   }
@@ -108,8 +106,7 @@ export default function SportCenterPurchaseRequestsPage() {
       const r = await fetch(url, { method: editing ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       if (!r.ok) throw new Error(await r.text());
       toast({ title: editing ? "PR diperbarui" : "PR dibuat" });
-      setOpen(false);
-      fetchPRs();
+      setOpen(false); fetchPRs();
     } catch (e) {
       toast({ title: "Gagal menyimpan", description: String(e), variant: "destructive" });
     } finally {
@@ -133,8 +130,8 @@ export default function SportCenterPurchaseRequestsPage() {
       <div className="p-6 space-y-5">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">Purchase Request</h1>
-            <p className="text-sm text-slate-500 mt-0.5">Ajukan kebutuhan pembelian dan maintenance Sport Center</p>
+            <h1 className="text-2xl font-bold text-white">Purchase Request</h1>
+            <p className="text-sm text-white/60 mt-0.5">Ajukan kebutuhan pembelian dan maintenance Sport Center</p>
           </div>
           <Button onClick={openNew} className="gap-2">
             <Plus className="w-4 h-4" /> Buat PR
@@ -142,9 +139,9 @@ export default function SportCenterPurchaseRequestsPage() {
         </div>
 
         {loading ? (
-          <div className="space-y-3">{[...Array(4)].map((_, i) => <div key={i} className="h-28 rounded-xl bg-slate-100 animate-pulse" />)}</div>
+          <div className="space-y-3">{[...Array(4)].map((_, i) => <div key={i} className="h-28 rounded-xl bg-white/10 animate-pulse" />)}</div>
         ) : prs.length === 0 ? (
-          <div className="py-20 text-center text-slate-400">
+          <div className="py-20 text-center text-white/40">
             <ShoppingCart className="w-10 h-10 mx-auto mb-3 opacity-30" />
             <p className="font-medium">Belum ada purchase request</p>
             <Button onClick={openNew} variant="outline" className="mt-4 gap-2"><Plus className="w-4 h-4" /> Buat pertama</Button>
@@ -157,28 +154,28 @@ export default function SportCenterPurchaseRequestsPage() {
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap mb-1">
-                        <span className="font-mono text-xs font-bold text-slate-500">{pr.pr_number}</span>
+                        <span className="font-mono text-xs font-bold text-white/50">{pr.pr_number}</span>
                         <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${STATUS_STYLE[pr.status] ?? ""}`}>
                           {STATUSES.find((s) => s.value === pr.status)?.label ?? pr.status}
                         </span>
                         <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${PRIORITY_STYLE[pr.priority] ?? ""}`}>
                           {PRIORITIES.find((p) => p.value === pr.priority)?.label ?? pr.priority}
                         </span>
-                        <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">{pr.category}</span>
+                        <span className="text-xs bg-white/10 text-white/60 px-2 py-0.5 rounded-full">{pr.category}</span>
                       </div>
-                      <p className="font-semibold text-slate-800">{pr.title}</p>
-                      {pr.description && <p className="text-xs text-slate-500 mt-0.5 line-clamp-1">{pr.description}</p>}
-                      <div className="flex items-center gap-4 mt-2 text-xs text-slate-500">
-                        <span>Pemohon: <strong className="text-slate-700">{pr.requested_by}</strong></span>
+                      <p className="font-semibold text-white">{pr.title}</p>
+                      {pr.description && <p className="text-xs text-white/50 mt-0.5 line-clamp-1">{pr.description}</p>}
+                      <div className="flex items-center gap-4 mt-2 text-xs text-white/50">
+                        <span>Pemohon: <strong className="text-white/80">{pr.requested_by}</strong></span>
                         <span>{pr.items.length} item</span>
-                        <span className="font-semibold text-blue-600">{formatCurrency(pr.total_estimated)}</span>
+                        <span className="font-semibold text-blue-400">{formatCurrency(pr.total_estimated)}</span>
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <Button variant="outline" size="sm" className="gap-1.5 text-xs" onClick={() => openEdit(pr)}>
                         <Pencil className="w-3.5 h-3.5" /> Edit
                       </Button>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-red-400 hover:text-red-600 hover:bg-red-50" onClick={() => deletePR(pr.id, pr.title)}>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-red-400 hover:text-red-300 hover:bg-red-500/20" onClick={() => deletePR(pr.id, pr.title)}>
                         <Trash2 className="w-3.5 h-3.5" />
                       </Button>
                     </div>
@@ -233,7 +230,6 @@ export default function SportCenterPurchaseRequestsPage() {
               <Label>Deskripsi</Label>
               <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Opsional" className="mt-1" />
             </div>
-
             <div>
               <div className="flex items-center justify-between mb-2">
                 <Label>Daftar Item</Label>
@@ -243,24 +239,23 @@ export default function SportCenterPurchaseRequestsPage() {
               </div>
               <div className="space-y-2">
                 {items.map((item, i) => (
-                  <div key={i} className="grid grid-cols-[1fr_60px_60px_100px_32px] gap-2 items-center bg-slate-50 rounded-lg p-2">
+                  <div key={i} className="grid grid-cols-[1fr_60px_60px_100px_32px] gap-2 items-center bg-white/5 rounded-lg p-2">
                     <Input value={item.name} onChange={(e) => updateItem(i, "name", e.target.value)} placeholder="Nama item" className="text-xs h-8" />
                     <Input type="number" value={item.qty} onChange={(e) => updateItem(i, "qty", parseInt(e.target.value) || 1)} placeholder="Qty" className="text-xs h-8 text-center" />
                     <Input value={item.unit} onChange={(e) => updateItem(i, "unit", e.target.value)} placeholder="Satuan" className="text-xs h-8" />
                     <Input type="number" value={item.estimatedPrice} onChange={(e) => updateItem(i, "estimatedPrice", parseInt(e.target.value) || 0)} placeholder="Harga" className="text-xs h-8" />
-                    <button onClick={() => removeItem(i)} className="text-slate-400 hover:text-red-500 transition-colors">
+                    <button onClick={() => removeItem(i)} className="text-white/40 hover:text-red-400 transition-colors">
                       <X className="w-4 h-4" />
                     </button>
                   </div>
                 ))}
               </div>
               <div className="flex justify-end mt-2">
-                <span className="text-sm font-semibold text-blue-600">
+                <span className="text-sm font-semibold text-blue-400">
                   Total Estimasi: {formatCurrency(totalEstimated)}
                 </span>
               </div>
             </div>
-
             <div>
               <Label>Catatan</Label>
               <Input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Opsional" className="mt-1" />
@@ -273,9 +268,7 @@ export default function SportCenterPurchaseRequestsPage() {
             )}
             <div className="flex gap-3 pt-2">
               <Button variant="outline" className="flex-1" onClick={() => setOpen(false)}>Batal</Button>
-              <Button className="flex-1" onClick={save} disabled={saving}>
-                {saving ? "Menyimpan..." : "Simpan"}
-              </Button>
+              <Button className="flex-1" onClick={save} disabled={saving}>{saving ? "Menyimpan..." : "Simpan"}</Button>
             </div>
           </div>
         </DialogContent>
