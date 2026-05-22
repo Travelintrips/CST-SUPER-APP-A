@@ -1,11 +1,14 @@
 #!/bin/bash
-export BASE_PATH=${BASE_PATH:-/bizportal/}
-TARGET_PORT=${PORT:-3000}
+ARTIFACT_PORT=${PORT:-3000}
 
-if curl -sf "http://localhost:${TARGET_PORT}/" -o /dev/null 2>/dev/null; then
-  echo "[bizportal] port ${TARGET_PORT} already serving — yielding to main workflow"
-  exec tail -f /dev/null
+# Kill any existing process on target port and on legacy 3000
+fuser -k "${ARTIFACT_PORT}/tcp" 2>/dev/null || true
+if [ "$ARTIFACT_PORT" != "3000" ]; then
+  fuser -k 3000/tcp 2>/dev/null || true
 fi
+sleep 0.3
 
-fuser -k "${TARGET_PORT}"/tcp 2>/dev/null || true
+export PORT=$ARTIFACT_PORT
+export BASE_PATH=${BASE_PATH:-/bizportal/}
+
 exec vite --config vite.config.ts --host 0.0.0.0
