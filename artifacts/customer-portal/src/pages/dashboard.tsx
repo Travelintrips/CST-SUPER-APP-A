@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import {
   Package, Truck, ArrowRight, Activity, Calendar, Ship, Plus,
   Plane, Box, Archive, BarChart2, Layers, Navigation,
-  ClipboardList, Globe, Anchor,
+  ClipboardList, Globe, Anchor, MapPin,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -367,6 +367,11 @@ export default function Dashboard() {
                 <Link href="/book">
                   <Button variant="secondary" className="w-full bg-white text-primary hover:bg-gray-100 gap-2">
                     <Ship className="h-4 w-4" /> {t("dashboard.createOrder")}
+                  </Button>
+                </Link>
+                <Link href="/shipment-timeline">
+                  <Button variant="ghost" className="w-full text-primary-foreground/80 hover:text-primary-foreground hover:bg-primary-foreground/10 gap-2">
+                    <MapPin className="h-4 w-4" /> Timeline Pengiriman
                   </Button>
                 </Link>
                 <Link href="/track">
