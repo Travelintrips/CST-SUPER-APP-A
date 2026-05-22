@@ -18,7 +18,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Copy, ExternalLink, Link2, Plus, Trash2, Eye, ToggleLeft, ToggleRight, Loader2 } from "lucide-react";
+import { Copy, ExternalLink, Link2, Plus, Trash2, Eye, ToggleLeft, ToggleRight, Loader2, RotateCcw } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -269,6 +269,24 @@ export default function VendorFormsPage() {
   });
 
   const [generatingShortLink, setGeneratingShortLink] = useState<number | null>(null);
+  const [resettingShortLink, setResettingShortLink] = useState<number | null>(null);
+
+  const resetShortLink = async (link: FormLink) => {
+    if (!confirm(`Reset short link untuk "${link.title ?? link.serviceType}"?\nShort link lama akan tidak aktif.`)) return;
+    setResettingShortLink(link.id);
+    try {
+      const data = await apiFetch<{ shortUrl: string }>(`/api/vendor-form/admin/links/${link.id}/reset-short-link`, { method: "POST" });
+      await navigator.clipboard.writeText(data.shortUrl);
+      toast({ title: "Short link baru disalin!", description: data.shortUrl });
+      qc.setQueryData<FormLink[]>(["vendor-form-links"], (old) =>
+        old?.map((l) => l.id === link.id ? { ...l, shortUrl: data.shortUrl } : l) ?? old
+      );
+    } catch (e: unknown) {
+      toast({ title: "Gagal reset short link", description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setResettingShortLink(null);
+    }
+  };
 
   const copyShortLink = async (link: FormLink) => {
     // If already cached, copy immediately without API call
@@ -368,7 +386,7 @@ export default function VendorFormsPage() {
                             </TableCell>
                             <TableCell>
                               {link.shortUrl ? (
-                                <div className="flex items-center gap-1.5">
+                                <div className="flex items-center gap-1">
                                   <span className="font-mono text-xs text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">
                                     {link.shortUrl.replace(/^https?:\/\/[^/]+/, "").slice(0, 14)}
                                   </span>
@@ -378,6 +396,16 @@ export default function VendorFormsPage() {
                                     onClick={() => copyShortLink(link)}
                                   >
                                     <Copy className="h-3 w-3" />
+                                  </button>
+                                  <button
+                                    className="text-slate-300 hover:text-orange-500 transition-colors"
+                                    title="Reset short link (generate baru)"
+                                    disabled={resettingShortLink === link.id}
+                                    onClick={() => resetShortLink(link)}
+                                  >
+                                    {resettingShortLink === link.id
+                                      ? <Loader2 className="h-3 w-3 animate-spin" />
+                                      : <RotateCcw className="h-3 w-3" />}
                                   </button>
                                 </div>
                               ) : (
