@@ -151,32 +151,32 @@ export default function SportCenterServicesPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {services.map((s) => (
-              <Card key={s.id} className={`border-0 shadow-sm transition-opacity ${s.is_active ? "" : "opacity-50"}`}>
+              <Card key={s.id} className={`border border-white/10 shadow-sm transition-opacity ${s.is_active ? "" : "opacity-50"}`}>
                 <CardContent className="p-5">
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1 min-w-0">
-                      <p className="font-bold text-white truncate">{s.name}</p>
-                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${CAT_COLOR[s.category] ?? CAT_COLOR.Lainnya}`}>
+                      <p className="font-bold !text-white truncate text-base">{s.name}</p>
+                      <span className={`inline-block mt-1 text-xs font-semibold px-2 py-0.5 rounded-full ${CAT_COLOR[s.category] ?? CAT_COLOR.Lainnya}`}>
                         {s.category}
                       </span>
                     </div>
-                    <button onClick={() => toggleActive(s)} className="ml-2 text-white/40 hover:text-white transition-colors">
+                    <button onClick={() => toggleActive(s)} className="ml-2 text-white/40 hover:text-white transition-colors shrink-0">
                       {s.is_active
                         ? <ToggleRight className="w-5 h-5 text-emerald-400" />
                         : <ToggleLeft className="w-5 h-5" />}
                     </button>
                   </div>
                   {s.description && (
-                    <p className="text-xs text-white/50 mb-3 line-clamp-2">{s.description}</p>
+                    <p className="text-xs !text-white/70 mb-3 line-clamp-2">{s.description}</p>
                   )}
                   <div className="grid grid-cols-2 gap-2 text-xs mb-4">
-                    <div className="bg-white/5 rounded-lg px-3 py-2">
-                      <p className="text-white/40">Harga</p>
-                      <p className="font-bold text-blue-400">{formatCurrency(s.price_per_hour)}<span className="font-normal text-white/40">/{s.unit}</span></p>
+                    <div className="bg-white/10 border border-white/10 rounded-lg px-3 py-2">
+                      <p className="!text-white/60 mb-0.5">Harga</p>
+                      <p className="font-bold !text-blue-400">{formatCurrency(s.price_per_hour)}<span className="font-normal !text-white/50">/{s.unit}</span></p>
                     </div>
-                    <div className="bg-white/5 rounded-lg px-3 py-2">
-                      <p className="text-white/40">Kapasitas</p>
-                      <p className="font-bold text-white">{s.capacity} orang</p>
+                    <div className="bg-white/10 border border-white/10 rounded-lg px-3 py-2">
+                      <p className="!text-white/60 mb-0.5">Kapasitas</p>
+                      <p className="font-bold !text-white">{s.capacity} orang</p>
                     </div>
                   </div>
                   <div className="flex gap-2">
