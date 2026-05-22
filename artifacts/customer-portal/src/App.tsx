@@ -58,6 +58,7 @@ import OrderTaskPage from "@/pages/order-task";
 import CustomerOrderPage from "@/pages/customer-order";
 import PrivacyPolicy from "@/pages/privacy-policy";
 import Contact from "@/pages/contact";
+import ShipmentTimeline from "@/pages/shipment-timeline";
 
 const queryClient = new QueryClient();
 
@@ -177,6 +178,7 @@ function AppShell() {
       <Route path="/customer-order/:token" component={CustomerOrderPage} />
       <Route path="/privacy-policy" component={PrivacyPolicy} />
       <Route path="/contact" component={Contact} />
+      <Route path="/shipment-timeline" component={ShipmentTimeline} />
       <Route component={NotFound} />
     </Switch>
   );

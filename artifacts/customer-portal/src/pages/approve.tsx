@@ -222,22 +222,13 @@ export default function ApprovePage() {
   }
 
   if (error === "__unauthorized__" || (!loading && !data && error === null)) {
+    const returnTo = encodeURIComponent(window.location.pathname + window.location.search);
+    window.location.replace(`/api/login?returnTo=${returnTo}`);
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-        <div className="bg-white rounded-2xl shadow p-6 max-w-sm w-full text-center space-y-4">
-          <div className="w-14 h-14 rounded-full bg-yellow-100 flex items-center justify-center mx-auto">
-            <AlertCircle className="w-8 h-8 text-yellow-600" />
-          </div>
-          <h2 className="font-semibold text-gray-800">Halaman Staff</h2>
-          <p className="text-sm text-gray-500">
-            Halaman approve hanya dapat diakses oleh staf internal yang sudah login ke BizPortal.
-          </p>
-          <a
-            href="/bizportal/logistics/portal-orders"
-            className="block w-full py-2 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition-colors"
-          >
-            Buka BizPortal
-          </a>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="flex flex-col items-center gap-3 text-gray-500">
+          <Loader2 className="w-8 h-8 animate-spin" />
+          <p className="text-sm">Mengalihkan ke halaman login...</p>
         </div>
       </div>
     );
