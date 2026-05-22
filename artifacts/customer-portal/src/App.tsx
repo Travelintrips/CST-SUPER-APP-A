@@ -56,6 +56,8 @@ import VendorMiniFormPage from "@/pages/vendor-mini-form";
 import CustomerQuotePage from "@/pages/customer-quote";
 import OrderTaskPage from "@/pages/order-task";
 import CustomerOrderPage from "@/pages/customer-order";
+import AdminActionPage from "@/pages/admin-action";
+import VendorFulfillmentPage from "@/pages/vendor-fulfillment";
 import PrivacyPolicy from "@/pages/privacy-policy";
 import Contact from "@/pages/contact";
 import ShipmentTimeline from "@/pages/shipment-timeline";
@@ -70,7 +72,7 @@ if (typeof window !== "undefined" && window.location.hostname === "bizportal.cst
 
 
 const LOGISTIC_ROUTES = ["/book", "/logistic-order-success", "/logistic-admin", "/order-produk"];
-const NO_SHELL_PREFIXES = ["/jasa/", "/services/", "/vendor-response", "/vendor-product-approval", "/approve", "/confirm", "/vendor-quote", "/vendor-confirm", "/vendor-form", "/choose-option", "/onboarding", "/pending-approval", "/customer-quote", "/order-task", "/customer-order"]; // [TRUCKING-FIX] [MULTI-MODE] [NEW-RFQ-FLOW] [QUOTE-FLOW]
+const NO_SHELL_PREFIXES = ["/jasa/", "/services/", "/vendor-response", "/vendor-product-approval", "/approve", "/confirm", "/vendor-quote", "/vendor-confirm", "/vendor-form", "/choose-option", "/onboarding", "/pending-approval", "/customer-quote", "/order-task", "/customer-order", "/admin-action", "/vendor-fulfillment"]; // [TRUCKING-FIX] [MULTI-MODE] [NEW-RFQ-FLOW] [QUOTE-FLOW] [MINI-FORM]
 
 const BASE_PREFIX = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -176,6 +178,8 @@ function AppShell() {
       <Route path="/customer-quote/:token" component={CustomerQuotePage} />
       <Route path="/order-task/:token" component={OrderTaskPage} />
       <Route path="/customer-order/:token" component={CustomerOrderPage} />
+      <Route path="/admin-action/:token" component={AdminActionPage} />
+      <Route path="/vendor-fulfillment/:token" component={VendorFulfillmentPage} />
       <Route path="/privacy-policy" component={PrivacyPolicy} />
       <Route path="/contact" component={Contact} />
       <Route path="/shipment-timeline" component={ShipmentTimeline} />

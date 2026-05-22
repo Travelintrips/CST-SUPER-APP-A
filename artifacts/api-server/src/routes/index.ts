@@ -61,6 +61,8 @@ import { vendorPerformanceRouter } from "./vendorPerformance";
 import { internalTasksRouter } from "./internalTasks";
 import { podOcrRouter } from "./podOcr";
 import { marginRulesRouter } from "./marginRules";
+import { adminActionPublicRouter, adminActionAdminRouter } from "./adminAction";
+import { vendorFulfillmentPublicRouter } from "./vendorFulfillment";
 
 const router: IRouter = Router();
 
@@ -134,4 +136,7 @@ router.use("/vendor-performance", vendorPerformanceRouter);
 router.use("/internal-tasks", internalTasksRouter);
 router.use("/pod-ocr", podOcrRouter);
 router.use("/margin-rules", marginRulesRouter);
+router.use("/admin-action", adminActionAdminRouter);
+router.use("/admin-action", adminActionPublicRouter);
+router.use("/vendor-fulfillment", vendorFulfillmentPublicRouter);
 export default router;

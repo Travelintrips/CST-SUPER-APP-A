@@ -84,6 +84,17 @@ function getApproveFormUrl(orderNumber: string): string {
   return `https://${domain}/approve/${orderNumber}`;
 }
 
+async function createAdminReviewLink(orderId: number): Promise<string> {
+  try {
+    const { createAdminActionLink, getAdminActionUrl } = await import("../routes/adminAction.js");
+    const token = await createAdminActionLink(orderId, "review_order", null, 72);
+    const url = getAdminActionUrl(token);
+    return await generateShortLink(url, { context: "admin_action", refType: "order", refId: String(orderId) });
+  } catch {
+    return "";
+  }
+}
+
 function formatRupiah(amount: number): string {
   return amount.toLocaleString("id-ID");
 }
@@ -94,7 +105,7 @@ function isFreightWithDimensions(shipmentType: string): boolean {
   return t.includes("air") || t.includes("sea") || t.includes("laut") || t.includes("udara");
 }
 
-function buildAdminWaMessage(order: LogisticOrderData): string {
+function buildAdminWaMessage(order: LogisticOrderData, adminReviewUrl?: string): string {
   const approveUrl = getApproveFormUrl(order.orderNumber);
   const domain = getPreferredDomain() || "cstlogistic.co.id";
   const bizportalUrl = `https://${domain}/bizportal/logistics/orders/${order.id}`;
@@ -121,9 +132,9 @@ function buildAdminWaMessage(order: LogisticOrderData): string {
     (order.requiredDate ? `Tgl Kirim       : ${order.requiredDate}\n` : ``) +
     (order.notes ? `Catatan         : ${order.notes}\n` : ``) +
     `━━━━━━━━━━━━━━━━━━\n` +
-    `⚡ *Aksi Cepat Admin:*\n` +
-    (approveUrl ? `📋 Penawaran vendor → ${approveUrl}\n` : ``) +
-    `🖥️ Buka BizPortal → ${bizportalUrl}\n\n` +
+    `⚡ *Aksi Cepat Admin (tanpa login):*\n` +
+    (adminReviewUrl ? `🚀 Review & Blast Vendor → ${adminReviewUrl}\n` : (approveUrl ? `📋 Penawaran vendor → ${approveUrl}\n` : ``)) +
+    `🖥️ BizPortal → ${bizportalUrl}\n\n` +
     `_Dikirim: ${nowWIB()}_`
   );
 }
@@ -338,7 +349,8 @@ async function notifyAdmin(order: LogisticOrderData): Promise<void> {
   const adminWa = await getAdminWa();
   if (adminWa) {
     logger.info({ phone: adminWa, orderNumber: order.orderNumber }, "Sending admin WA notification");
-    sendWhatsApp(adminWa, buildAdminWaMessage(order)).catch((err: unknown) =>
+    const adminReviewUrl = await createAdminReviewLink(order.id).catch(() => "");
+    sendWhatsApp(adminWa, buildAdminWaMessage(order, adminReviewUrl || undefined)).catch((err: unknown) =>
       logger.error({ err }, "WA admin notification failed")
     );
   } else {
