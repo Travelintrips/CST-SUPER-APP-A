@@ -56,6 +56,8 @@ import VendorMiniFormPage from "@/pages/vendor-mini-form";
 import CustomerQuotePage from "@/pages/customer-quote";
 import OrderTaskPage from "@/pages/order-task";
 import CustomerOrderPage from "@/pages/customer-order";
+import PrivacyPolicy from "@/pages/privacy-policy";
+import Contact from "@/pages/contact";
 
 const queryClient = new QueryClient();
 
@@ -173,6 +175,8 @@ function AppShell() {
       <Route path="/customer-quote/:token" component={CustomerQuotePage} />
       <Route path="/order-task/:token" component={OrderTaskPage} />
       <Route path="/customer-order/:token" component={CustomerOrderPage} />
+      <Route path="/privacy-policy" component={PrivacyPolicy} />
+      <Route path="/contact" component={Contact} />
       <Route component={NotFound} />
     </Switch>
   );

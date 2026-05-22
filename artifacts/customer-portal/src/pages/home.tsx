@@ -96,6 +96,9 @@ export default function Home() {
   return (
     <div className="flex flex-col min-h-screen">
 
+      {/* H1 tersembunyi untuk SEO — selalu ada di DOM tanpa JS rendering delay */}
+      <h1 className="sr-only">CST Logistics — Solusi Ekspor Impor, Freight Forwarding &amp; Logistik Terpadu</h1>
+
       {/* ── Draft Resume Banner ───────────────────────────────────── */}
       {showDraftBanner && (
         <div className="bg-sky-50 border-b border-sky-200">

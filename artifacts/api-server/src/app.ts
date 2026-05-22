@@ -3,6 +3,7 @@ import fs from "fs";
 import { fileURLToPath } from "url";
 import type { IncomingMessage, ServerResponse } from "http";
 import express, { type Express, type Request, type Response, type NextFunction } from "express";
+import compression from "compression";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import { pinoHttp } from "pino-http";
@@ -21,6 +22,83 @@ const app: Express = express();
 // This makes req.ip reflect the real client IP from X-Forwarded-For instead
 // of the proxy's internal address, which is required for IP-based rate limiting.
 app.set("trust proxy", 1);
+
+// ── Gzip compression ─────────────────────────────────────────────────────────
+app.use(compression());
+
+// ── Security headers ──────────────────────────────────────────────────────────
+app.use((_req: Request, res: Response, next: NextFunction) => {
+  const isProd = process.env["REPLIT_DEPLOYMENT"] === "1";
+
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+
+  if (isProd) {
+    res.setHeader("X-Frame-Options", "SAMEORIGIN");
+    res.setHeader("Strict-Transport-Security", "max-age=63072000; includeSubDomains");
+  }
+
+  // CSP: allow Replit preview in dev, restrict to own domain in prod
+  const frameAncestors = isProd
+    ? "'self' https://cstlogistic.co.id https://www.cstlogistic.co.id https://bizportal.cstlogistic.co.id"
+    : "'self' https://replit.com https://*.replit.dev https://*.sisko.replit.dev";
+
+  res.setHeader(
+    "Content-Security-Policy",
+    [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "font-src 'self' https://fonts.gstatic.com data:",
+      "img-src 'self' data: https: blob:",
+      "connect-src 'self' https: wss: ws:",
+      "media-src 'self' https: blob:",
+      "worker-src 'self' blob:",
+      `frame-ancestors ${frameAncestors}`,
+      "object-src 'none'",
+      "base-uri 'self'",
+    ].join("; "),
+  );
+
+  next();
+});
+
+// ── Dynamic sitemap.xml ────────────────────────────────────────────────────────
+app.get("/sitemap.xml", (_req: Request, res: Response) => {
+  const base = process.env["APP_URL"]
+    ? process.env["APP_URL"].replace(/\/$/, "")
+    : process.env["REPLIT_DEV_DOMAIN"]
+      ? `https://${process.env["REPLIT_DEV_DOMAIN"]}`
+      : "https://cstlogistic.co.id";
+
+  const today = new Date().toISOString().split("T")[0];
+  const pages = [
+    { loc: "/",                 priority: "1.0", changefreq: "daily"   },
+    { loc: "/services",         priority: "0.9", changefreq: "weekly"  },
+    { loc: "/products",         priority: "0.8", changefreq: "weekly"  },
+    { loc: "/freight-forwarding", priority: "0.8", changefreq: "weekly" },
+    { loc: "/pabean",           priority: "0.8", changefreq: "weekly"  },
+    { loc: "/calculator",       priority: "0.7", changefreq: "monthly" },
+    { loc: "/track",            priority: "0.7", changefreq: "monthly" },
+    { loc: "/contact",          priority: "0.6", changefreq: "monthly" },
+    { loc: "/privacy-policy",   priority: "0.3", changefreq: "yearly"  },
+  ];
+
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${pages.map((p) => `  <url>
+    <loc>${base}${p.loc}</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>${p.changefreq}</changefreq>
+    <priority>${p.priority}</priority>
+  </url>`).join("\n")}
+</urlset>`;
+
+  res.setHeader("Content-Type", "application/xml; charset=utf-8");
+  res.setHeader("Cache-Control", "public, max-age=3600");
+  res.send(xml);
+});
 
 app.use((req, res, next) => {
   const startNs = process.hrtime.bigint();

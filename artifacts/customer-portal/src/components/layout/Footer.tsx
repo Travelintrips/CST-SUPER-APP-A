@@ -109,6 +109,8 @@ export function Footer() {
     { label: t("footer.calculator"),    href: "/calculator" },
     { label: t("footer.track"),         href: "/track" },
     { label: t("footer.customerPortal"), href: "/login" },
+    { label: "Hubungi Kami",            href: "/contact" },
+    { label: "Kebijakan Privasi",       href: "/privacy-policy" },
   ];
 
   const serviceLinks: NavItem[] = [
