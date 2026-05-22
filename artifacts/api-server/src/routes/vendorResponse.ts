@@ -13,7 +13,7 @@ import {
 import { sendWhatsApp } from "../lib/fonnte";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { verifyVendorResponseToken } from "../lib/vendorResponseToken";
-import { getAdminGroupWa } from "../lib/adminWa";
+import { getAdminWa, getAdminGroupWa } from "../lib/adminWa";
 import { getPreferredDomain } from "../lib/domain";
 
 const router: IRouter = Router();
@@ -52,7 +52,7 @@ function formatWaAdminNotification(response: {
   const statusEmoji = response.status === "READY" ? "✅" : "❌";
   const statusLabel = response.status === "READY" ? "READY" : "NOT READY";
   const domain = getPreferredDomain() || "cstlogistic.co.id";
-  const adminUrl = `https://${domain}/logistic-admin/orders/${response.orderId ?? ""}`;
+  const approveUrl = `https://${domain}/approve/${response.orderNumber}`;
 
   const lines = [
     `${statusEmoji} *VENDOR RESPONSE — ${response.orderNumber}*`,
@@ -72,7 +72,11 @@ function formatWaAdminNotification(response: {
 
   if (response.notes) lines.push(`Catatan: ${response.notes}`);
   lines.push(`━━━━━━━━━━━━━━━━━━`);
-  if (response.orderId) lines.push(`🔗 Lihat Detail:\n${adminUrl}`);
+  if (response.status === "READY") {
+    lines.push(`📋 *Review & Approve:*\n${approveUrl}`);
+  } else {
+    lines.push(`📋 *Cek & pilih vendor lain:*\n${approveUrl}`);
+  }
   lines.push(`\n_Dikirim: ${nowWIB()}_`);
 
   return lines.join("\n");
@@ -250,13 +254,19 @@ router.post("/:orderNumber", async (req: Request, res: Response) => {
     }
 
     const waMsg = formatWaAdminNotification({ ...payload });
-    const adminGroupWa = await getAdminGroupWa();
+    const [adminWa, adminGroupWa] = await Promise.all([getAdminWa(), getAdminGroupWa()]);
+    if (adminWa) {
+      sendWhatsApp(adminWa, waMsg).catch((err) =>
+        req.log?.error({ err }, "vendor-response admin individual WA send failed")
+      );
+    }
     if (adminGroupWa) {
-      await sendWhatsApp(adminGroupWa, waMsg).catch((err) =>
+      sendWhatsApp(adminGroupWa, waMsg).catch((err) =>
         req.log?.error({ err }, "vendor-response admin group WA send failed")
       );
-    } else {
-      req.log?.warn("Admin WA group not configured — skipping vendor response notification");
+    }
+    if (!adminWa && !adminGroupWa) {
+      req.log?.warn("Admin WA not configured — skipping vendor response notification");
     }
 
     res.json({ success: true, message: "Response berhasil dikirim" });
