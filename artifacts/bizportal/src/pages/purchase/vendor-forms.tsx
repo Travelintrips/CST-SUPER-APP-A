@@ -30,6 +30,7 @@ type FormLink = {
   title: string | null;
   notes: string | null;
   isActive: boolean;
+  shortUrl: string | null;
   expiresAt: string | null;
   createdAt: string;
   vendorName: string | null;
@@ -269,13 +270,22 @@ export default function VendorFormsPage() {
 
   const [generatingShortLink, setGeneratingShortLink] = useState<number | null>(null);
 
-
-  const copyShortLink = async (linkId: number) => {
-    setGeneratingShortLink(linkId);
+  const copyShortLink = async (link: FormLink) => {
+    // If already cached, copy immediately without API call
+    if (link.shortUrl) {
+      await navigator.clipboard.writeText(link.shortUrl);
+      toast({ title: "Short link disalin!", description: link.shortUrl });
+      return;
+    }
+    setGeneratingShortLink(link.id);
     try {
-      const data = await apiFetch<{ shortUrl: string }>(`/api/vendor-form/admin/links/${linkId}/short-link`, { method: "POST" });
+      const data = await apiFetch<{ shortUrl: string }>(`/api/vendor-form/admin/links/${link.id}/short-link`, { method: "POST" });
       await navigator.clipboard.writeText(data.shortUrl);
       toast({ title: "Short link disalin!", description: data.shortUrl });
+      // Update local cache so subsequent clicks are instant
+      qc.setQueryData<FormLink[]>(["vendor-form-links"], (old) =>
+        old?.map((l) => l.id === link.id ? { ...l, shortUrl: data.shortUrl } : l) ?? old
+      );
     } catch (e: unknown) {
       toast({ title: "Gagal generate short link", description: (e as Error).message, variant: "destructive" });
     } finally {
@@ -333,6 +343,7 @@ export default function VendorFormsPage() {
                       <TableRow>
                         <TableHead>Judul / Service Type</TableHead>
                         <TableHead>Vendor</TableHead>
+                        <TableHead>Short Link</TableHead>
                         <TableHead>Kadaluarsa</TableHead>
                         <TableHead>Submission</TableHead>
                         <TableHead>Status</TableHead>
@@ -354,6 +365,34 @@ export default function VendorFormsPage() {
                             </TableCell>
                             <TableCell>
                               <span className="text-sm">{link.vendorName ?? <span className="text-slate-400">Umum</span>}</span>
+                            </TableCell>
+                            <TableCell>
+                              {link.shortUrl ? (
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-mono text-xs text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">
+                                    {link.shortUrl.replace(/^https?:\/\/[^/]+/, "").slice(0, 14)}
+                                  </span>
+                                  <button
+                                    className="text-slate-400 hover:text-slate-600 transition-colors"
+                                    title="Salin short link"
+                                    onClick={() => copyShortLink(link)}
+                                  >
+                                    <Copy className="h-3 w-3" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  className="text-xs text-slate-400 hover:text-indigo-600 transition-colors flex items-center gap-1"
+                                  title="Generate & salin short link"
+                                  disabled={generatingShortLink === link.id}
+                                  onClick={() => copyShortLink(link)}
+                                >
+                                  {generatingShortLink === link.id
+                                    ? <Loader2 className="h-3 w-3 animate-spin" />
+                                    : <Link2 className="h-3 w-3" />}
+                                  <span>{generatingShortLink === link.id ? "..." : "Generate"}</span>
+                                </button>
+                              )}
                             </TableCell>
                             <TableCell>
                               {link.expiresAt ? (
@@ -380,7 +419,7 @@ export default function VendorFormsPage() {
                                   variant="ghost" size="icon" className="h-7 w-7"
                                   title="Salin short link"
                                   disabled={generatingShortLink === link.id}
-                                  onClick={() => copyShortLink(link.id)}
+                                  onClick={() => copyShortLink(link)}
                                 >
                                   {generatingShortLink === link.id
                                     ? <Loader2 className="h-3.5 w-3.5 animate-spin" />

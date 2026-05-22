@@ -395,6 +395,11 @@ router.post("/admin/links/:id/short-link", async (req: Request, res: Response) =
       .where(eq(vendorMiniFormLinksTable.id, id));
     if (!link) return res.status(404).json({ error: "Link tidak ditemukan" });
 
+    // Return cached short URL if already generated
+    if (link.shortUrl) {
+      return res.json({ shortUrl: link.shortUrl, cached: true });
+    }
+
     const { generateShortLink } = await import("../lib/shortLink.js");
     const { getPreferredDomain } = await import("../lib/domain.js");
     const domain = getPreferredDomain();
@@ -408,7 +413,13 @@ router.post("/admin/links/:id/short-link", async (req: Request, res: Response) =
       refId: String(link.id),
     });
 
-    return res.json({ shortUrl, longUrl });
+    // Persist short URL to DB
+    await db
+      .update(vendorMiniFormLinksTable)
+      .set({ shortUrl })
+      .where(eq(vendorMiniFormLinksTable.id, id));
+
+    return res.json({ shortUrl, cached: false });
   } catch (err) {
     req.log?.error({ err }, "vendor-mini-form short-link error");
     return res.status(500).json({ error: "Gagal generate short link" });
