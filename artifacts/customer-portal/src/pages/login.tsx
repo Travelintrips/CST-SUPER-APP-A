@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -16,6 +16,39 @@ import { assetUrl } from "@/lib/utils";
 import { useLanguage } from "@/i18n/LanguageContext";
 
 const IS_DEV = import.meta.env.DEV;
+
+const TRUSTED_DEVICE_KEY = "cst_trusted_device";
+const REMEMBER_DAYS = 30;
+
+type TrustedDeviceData = { phone: string; deviceToken: string; expiresAt: number };
+
+function saveTrustedDevice(phone: string, deviceToken: string) {
+  const data: TrustedDeviceData = {
+    phone,
+    deviceToken,
+    expiresAt: Date.now() + REMEMBER_DAYS * 86400_000,
+  };
+  localStorage.setItem(TRUSTED_DEVICE_KEY, JSON.stringify(data));
+}
+
+function loadTrustedDevice(): TrustedDeviceData | null {
+  try {
+    const raw = localStorage.getItem(TRUSTED_DEVICE_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw) as TrustedDeviceData;
+    if (!data.phone || !data.deviceToken || data.expiresAt < Date.now()) {
+      localStorage.removeItem(TRUSTED_DEVICE_KEY);
+      return null;
+    }
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+function clearTrustedDevice() {
+  localStorage.removeItem(TRUSTED_DEVICE_KEY);
+}
 
 function GoogleIcon() {
   return (
@@ -51,6 +84,8 @@ export default function Login() {
   const [waCode, setWaCode] = useState("");
   const [waSending, setWaSending] = useState(false);
   const [waMsg, setWaMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [waRemember, setWaRemember] = useState(true);
+  const [waTrustedLoading, setWaTrustedLoading] = useState(false);
 
   const [forgotLoading, setForgotLoading] = useState(false);
   const [forgotMsg, setForgotMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
@@ -89,6 +124,35 @@ export default function Login() {
     if (role === "vendor") setLocation("/vendor-dashboard");
     else setLocation("/dashboard");
   }
+
+  // Cek trusted device saat tab WA dibuka
+  useEffect(() => {
+    if (mode !== "wa") return;
+    const stored = loadTrustedDevice();
+    if (!stored) return;
+
+    setWaTrustedLoading(true);
+    setWaPhone(stored.phone);
+
+    fetch(`${BASE}/api/portal/auth/wa-trusted-login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone: stored.phone, deviceToken: stored.deviceToken }),
+    })
+      .then(async (res) => {
+        const json = await res.json() as { token?: string; user?: { id: number; role: string; name: string; email: string }; expired?: boolean; message?: string };
+        if (res.ok && json.token && json.user) {
+          setAuthToken(json.token);
+          setPortalProfile({ customerId: json.user.id, role: json.user.role, name: json.user.name, email: json.user.email });
+          redirectAfterLogin(json.user.role, json.token);
+        } else {
+          if (json.expired) clearTrustedDevice();
+          setWaTrustedLoading(false);
+        }
+      })
+      .catch(() => setWaTrustedLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode]);
 
   async function handleDevLogin(role: "customer" | "admin" | "vendor") {
     setDevLoading(role);
@@ -185,13 +249,28 @@ export default function Login() {
         body: JSON.stringify({ phone: waPhone.trim(), code: waCode.trim() }),
       });
       const json = await res.json() as { verifyToken?: string; message?: string };
-      if (!res.ok || !json.verifyToken) { setWaMsg({ type: "err", text: json.message ?? "Kode OTP salah." }); setIsSubmitting(false); return; }
+      if (!res.ok || !json.verifyToken) {
+        setWaMsg({ type: "err", text: json.message ?? "Kode OTP salah." });
+        setIsSubmitting(false);
+        return;
+      }
+
       const loginRes = await fetch(`${BASE}/api/portal/auth/wa-login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ verifyToken: json.verifyToken }),
+        body: JSON.stringify({
+          verifyToken: json.verifyToken,
+          rememberDays: waRemember ? REMEMBER_DAYS : null,
+        }),
       });
-      const loginJson = await loginRes.json() as { token?: string; message?: string; notRegistered?: boolean; user?: { id: number; role: string; name: string; email: string } };
+      const loginJson = await loginRes.json() as {
+        token?: string;
+        deviceToken?: string;
+        message?: string;
+        notRegistered?: boolean;
+        user?: { id: number; role: string; name: string; email: string; phone?: string };
+      };
+
       if (!loginRes.ok || !loginJson.token) {
         if (loginJson.notRegistered) {
           setWaMsg({ type: "err", text: "Nomor HP belum terdaftar. Silakan daftar akun terlebih dahulu." });
@@ -200,8 +279,19 @@ export default function Login() {
         }
       } else {
         setAuthToken(loginJson.token);
-        setPortalProfile({ customerId: loginJson.user!.id, role: loginJson.user!.role, name: loginJson.user!.name, email: loginJson.user!.email });
-        redirectAfterLogin(loginJson.user!.role);
+        setPortalProfile({
+          customerId: loginJson.user!.id,
+          role: loginJson.user!.role,
+          name: loginJson.user!.name,
+          email: loginJson.user!.email,
+        });
+
+        if (waRemember && loginJson.deviceToken) {
+          const normalizedPhone = loginJson.user!.phone ?? waPhone.trim();
+          saveTrustedDevice(normalizedPhone, loginJson.deviceToken);
+        }
+
+        redirectAfterLogin(loginJson.user!.role, loginJson.token);
       }
     } catch { setWaMsg({ type: "err", text: "Gagal menghubungi server." }); }
     setIsSubmitting(false);
@@ -358,64 +448,99 @@ export default function Login() {
 
             {mode === "wa" && (
               <div className="space-y-4">
-                {waMsg && (
-                  <Alert variant={waMsg.type === "err" ? "destructive" : "default"} className={waMsg.type === "ok" ? "border-green-200 bg-green-50" : ""}>
-                    {waMsg.type === "ok" ? <CheckCircle2 className="h-4 w-4 text-green-600" /> : <AlertCircle className="h-4 w-4" />}
-                    <AlertDescription className={waMsg.type === "ok" ? "text-green-800" : ""}>{waMsg.text}</AlertDescription>
-                  </Alert>
-                )}
-                {waStep === "phone" ? (
-                  <>
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Nomor HP / WhatsApp</label>
-                      <div className="flex gap-2 items-center">
-                        <span className="flex items-center gap-1 h-10 px-3 rounded-md border border-input bg-muted text-sm text-muted-foreground shrink-0">
-                          🇮🇩 +62
-                        </span>
-                        <Input
-                          type="tel"
-                          inputMode="numeric"
-                          placeholder="812-3456-7890"
-                          value={waPhone}
-                          onChange={(e) => setWaPhone(e.target.value.replace(/[^\d\-\s]/g, ""))}
-                          onKeyDown={(e) => e.key === "Enter" && handleWaSend()}
-                        />
-                      </div>
-                      <p className="text-xs text-muted-foreground">Format: 081234… atau 628… atau 8…</p>
-                    </div>
-                    <Button className="w-full h-11" onClick={handleWaSend} disabled={waSending}>
-                      <Smartphone className="h-4 w-4 mr-2" />
-                      {waSending ? "Mengirim..." : "Kirim Kode OTP via WA"}
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-sm text-muted-foreground">
-                      Kode dikirim ke WhatsApp <strong>{waPhone}</strong>
-                    </p>
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Kode OTP (6 digit)</label>
-                      <Input
-                        type="text"
-                        inputMode="numeric"
-                        maxLength={6}
-                        placeholder="______"
-                        className="text-center text-2xl tracking-[0.5em] font-mono"
-                        value={waCode}
-                        onChange={(e) => setWaCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                        onKeyDown={(e) => e.key === "Enter" && handleWaVerify()}
-                      />
-                    </div>
-                    <Button className="w-full h-11" onClick={handleWaVerify} disabled={isSubmitting}>
-                      {isSubmitting ? "Memverifikasi..." : "Masuk"}
-                    </Button>
+                {/* Auto-login loading state */}
+                {waTrustedLoading && (
+                  <div className="flex flex-col items-center gap-3 py-6 text-slate-500">
+                    <div className="h-7 w-7 border-[3px] border-green-500 border-t-transparent rounded-full animate-spin" />
+                    <p className="text-sm font-medium">Masuk otomatis…</p>
+                    <p className="text-xs text-slate-400">Perangkat ini sudah dipercaya sebelumnya</p>
                     <button
                       type="button"
-                      onClick={() => { setWaStep("phone"); setWaCode(""); setWaMsg(null); }}
-                      className="w-full text-sm text-muted-foreground hover:text-foreground"
+                      onClick={() => { clearTrustedDevice(); setWaTrustedLoading(false); setWaPhone(""); }}
+                      className="text-xs text-blue-500 hover:underline mt-1"
                     >
-                      Ganti nomor / kirim ulang
+                      Gunakan nomor lain
                     </button>
+                  </div>
+                )}
+
+                {!waTrustedLoading && (
+                  <>
+                    {waMsg && (
+                      <Alert variant={waMsg.type === "err" ? "destructive" : "default"} className={waMsg.type === "ok" ? "border-green-200 bg-green-50" : ""}>
+                        {waMsg.type === "ok" ? <CheckCircle2 className="h-4 w-4 text-green-600" /> : <AlertCircle className="h-4 w-4" />}
+                        <AlertDescription className={waMsg.type === "ok" ? "text-green-800" : ""}>{waMsg.text}</AlertDescription>
+                      </Alert>
+                    )}
+
+                    {waStep === "phone" ? (
+                      <>
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Nomor HP / WhatsApp</label>
+                          <div className="flex gap-2 items-center">
+                            <span className="flex items-center gap-1 h-10 px-3 rounded-md border border-input bg-muted text-sm text-muted-foreground shrink-0">
+                              🇮🇩 +62
+                            </span>
+                            <Input
+                              type="tel"
+                              inputMode="numeric"
+                              placeholder="812-3456-7890"
+                              value={waPhone}
+                              onChange={(e) => setWaPhone(e.target.value.replace(/[^\d\-\s]/g, ""))}
+                              onKeyDown={(e) => e.key === "Enter" && handleWaSend()}
+                            />
+                          </div>
+                          <p className="text-xs text-muted-foreground">Format: 081234… atau 628… atau 8…</p>
+                        </div>
+                        <Button className="w-full h-11" onClick={handleWaSend} disabled={waSending}>
+                          <Smartphone className="h-4 w-4 mr-2" />
+                          {waSending ? "Mengirim..." : "Kirim Kode OTP via WA"}
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-sm text-muted-foreground">
+                          Kode dikirim ke WhatsApp <strong>{waPhone}</strong>
+                        </p>
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Kode OTP (6 digit)</label>
+                          <Input
+                            type="text"
+                            inputMode="numeric"
+                            maxLength={6}
+                            placeholder="______"
+                            className="text-center text-2xl tracking-[0.5em] font-mono"
+                            value={waCode}
+                            onChange={(e) => setWaCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                            onKeyDown={(e) => e.key === "Enter" && handleWaVerify()}
+                          />
+                        </div>
+
+                        {/* Checkbox ingat perangkat */}
+                        <label className="flex items-center gap-2.5 cursor-pointer group">
+                          <input
+                            type="checkbox"
+                            checked={waRemember}
+                            onChange={(e) => setWaRemember(e.target.checked)}
+                            className="h-4 w-4 rounded border-gray-300 text-blue-600 accent-blue-600 cursor-pointer"
+                          />
+                          <span className="text-sm text-slate-600 group-hover:text-slate-800 select-none">
+                            Ingat perangkat ini selama <strong>{REMEMBER_DAYS} hari</strong>
+                          </span>
+                        </label>
+
+                        <Button className="w-full h-11" onClick={handleWaVerify} disabled={isSubmitting}>
+                          {isSubmitting ? "Memverifikasi..." : "Masuk"}
+                        </Button>
+                        <button
+                          type="button"
+                          onClick={() => { setWaStep("phone"); setWaCode(""); setWaMsg(null); }}
+                          className="w-full text-sm text-muted-foreground hover:text-foreground"
+                        >
+                          Ganti nomor / kirim ulang
+                        </button>
+                      </>
+                    )}
                   </>
                 )}
               </div>
@@ -485,15 +610,8 @@ export default function Login() {
                       onClick={() => handleDevLogin(role)}
                       className="flex items-center justify-between rounded-md border border-amber-300 bg-white px-3 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50 transition-colors"
                     >
-                      <span>
-                        {role === "customer" && "👤 Customer"}
-                        {role === "admin" && "🛡️ Admin"}
-                        {role === "vendor" && "🏭 Vendor"}
-                      </span>
-                      {devLoading === role
-                        ? <span className="text-xs text-amber-600">Loading…</span>
-                        : <span className="text-xs text-amber-500">dev-{role}@dev.local</span>
-                      }
+                      <span>Login sebagai {role}</span>
+                      {devLoading === role && <span className="text-xs opacity-70">Loading…</span>}
                     </button>
                   ))}
                 </div>

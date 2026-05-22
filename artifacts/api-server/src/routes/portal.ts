@@ -1,5 +1,5 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
-import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, portalContentTable, accountingSettingsTable, salesDocumentsTable, salesDocumentLinesTable, customersTable, logisticOrdersTable, suppliersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, quoteRequestsTable, userProfilesTable, identityDocumentsTable, ocrResultsTable, vendorProfilesTable, driverProfilesTable, employeeProfilesTable, onboardingApprovalsTable, waOtpCodesTable } from "@workspace/db";
+import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, portalContentTable, accountingSettingsTable, salesDocumentsTable, salesDocumentLinesTable, customersTable, logisticOrdersTable, suppliersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, quoteRequestsTable, userProfilesTable, identityDocumentsTable, ocrResultsTable, vendorProfilesTable, driverProfilesTable, employeeProfilesTable, onboardingApprovalsTable, waOtpCodesTable, trustedDevicesTable } from "@workspace/db";
 import { eq, inArray, and, sql, desc, gte, lte, ilike, or } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { sendWhatsApp } from "../lib/fonnte";
@@ -389,7 +389,7 @@ router.post("/auth/wa-register", async (req, res) => {
 
 // POST /api/portal/auth/wa-login — login pakai phone + OTP
 router.post("/auth/wa-login", async (req, res) => {
-  const { verifyToken } = req.body ?? {};
+  const { verifyToken, rememberDays } = req.body ?? {};
   if (!verifyToken) return res.status(400).json({ message: "Token verifikasi diperlukan." });
 
   const [otp] = await db
@@ -415,6 +415,61 @@ router.post("/auth/wa-login", async (req, res) => {
   const user = matches[0];
 
   await db.update(waOtpCodesTable).set({ verifyToken: null }).where(eq(waOtpCodesTable.id, otp.id));
+
+  const token = await signPortalJwt({
+    sub: String(user.id),
+    email: user.email,
+    customerId: user.id,
+    role: user.role,
+  });
+
+  let deviceToken: string | undefined;
+  const days = typeof rememberDays === "number" && rememberDays > 0 && rememberDays <= 90 ? rememberDays : null;
+  if (days) {
+    deviceToken = randomUUID();
+    const expiresAt = new Date(Date.now() + days * 86400_000);
+    await db.insert(trustedDevicesTable).values({ phone: otp.phone, deviceToken, expiresAt });
+  }
+
+  return res.json({
+    token,
+    deviceToken,
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      company: user.company,
+      role: user.role,
+    },
+  });
+});
+
+// POST /api/portal/auth/wa-trusted-login — login tanpa OTP pakai device token tersimpan
+router.post("/auth/wa-trusted-login", async (req, res) => {
+  const { phone, deviceToken } = req.body ?? {};
+  if (!phone || !deviceToken) return res.status(400).json({ message: "phone dan deviceToken diperlukan." });
+
+  const [device] = await db
+    .select()
+    .from(trustedDevicesTable)
+    .where(and(eq(trustedDevicesTable.deviceToken, String(deviceToken)), eq(trustedDevicesTable.phone, String(phone))))
+    .limit(1);
+
+  if (!device) return res.status(401).json({ message: "Perangkat tidak dikenali." });
+  if (device.expiresAt < new Date()) {
+    await db.delete(trustedDevicesTable).where(eq(trustedDevicesTable.id, device.id));
+    return res.status(401).json({ message: "Sesi perangkat kadaluarsa.", expired: true });
+  }
+
+  const matches = await db
+    .select()
+    .from(portalCustomersTable)
+    .where(eq(portalCustomersTable.phone, device.phone))
+    .limit(2);
+
+  if (matches.length !== 1) return res.status(401).json({ message: "Akun tidak ditemukan." });
+  const user = matches[0];
 
   const token = await signPortalJwt({
     sub: String(user.id),
