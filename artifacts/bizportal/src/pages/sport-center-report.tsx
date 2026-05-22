@@ -325,19 +325,19 @@ export default function SportCenterReportPage() {
 
             {/* Status summary */}
             <div className="flex flex-wrap gap-2 text-sm">
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-700">
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-300">
                 <CheckCircle2 className="h-3.5 w-3.5" />
                 <span>{confirmedCount} dikonfirmasi</span>
               </div>
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-500/10 border border-slate-400/20 text-slate-600">
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-500/10 border border-slate-400/20 text-white/60">
                 <TrendingUp className="h-3.5 w-3.5" />
                 <span>{completedCount} selesai</span>
               </div>
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-700">
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-300">
                 <Clock3 className="h-3.5 w-3.5" />
                 <span>{pendingCount} menunggu</span>
               </div>
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-500/10 border border-red-400/20 text-red-600">
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-500/10 border border-red-400/20 text-red-300">
                 <XCircle className="h-3.5 w-3.5" />
                 <span>{cancelledCount} dibatalkan</span>
               </div>
