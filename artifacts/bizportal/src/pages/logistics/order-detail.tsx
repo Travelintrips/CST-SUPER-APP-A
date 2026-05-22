@@ -19,6 +19,7 @@ import { Switch } from "@/components/ui/switch";
 import {
   ArrowLeft, Loader2, Copy, ExternalLink, Plus, RefreshCw, Send,
   Package, Truck, User, ClipboardList, Clock, ShieldAlert, Ship,
+  ClipboardCheck,
 } from "lucide-react";
 import { Link } from "wouter";
 import GpsTrackingPanel from "@/components/logistics/GpsTrackingPanel";
@@ -57,6 +58,8 @@ type OrderUpdate = {
 type TaskLink = { id: number; token: string; roleType: string; label: string | null; status: string; taskUrl: string; createdAt: string };
 type CustomerLink = { id: number; token: string; status: string; trackUrl: string; createdAt: string };
 type QuoteLink = { id: number; token: string; status: string; quoteUrl: string; finalCustomerPrice: string | null; etaFinal: string | null; createdAt: string };
+type FulfillmentLink = { id: number; token: string; serviceType: string; status: string; formUrl: string; sentAt: string | null; expiresAt: string | null; submittedAt: string | null; createdAt: string };
+type FulfillmentSubmission = { id: number; linkId: number; serviceType: string; fulfillmentData: Record<string, string>; submittedAt: string };
 
 type FreightShipmentLink = {
   id: number; shipmentNumber: string; status: string;
@@ -264,6 +267,83 @@ function CreateTaskLinkDialog({ orderId, vendorId, onCreated }: { orderId: numbe
   );
 }
 
+// ── Send Fulfillment Dialog ────────────────────────────────────────────────────
+
+function SendFulfillmentDialog({ orderId, vendor, shipmentType, onSent }: {
+  orderId: number;
+  vendor: Vendor;
+  shipmentType: string;
+  onSent: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [expiresInDays, setExpiresInDays] = useState("7");
+  const [customNote, setCustomNote] = useState("");
+  const [loading, setLoading] = useState(false);
+  const { toast } = useToast();
+
+  const handleSend = async () => {
+    setLoading(true);
+    try {
+      const result = await apiFetch<{ ok: boolean; formUrl: string; vendorPhone: string | null }>(`/api/logistic/orders/${orderId}/send-fulfillment`, {
+        method: "POST",
+        body: JSON.stringify({
+          expiresInDays: expiresInDays ? Number(expiresInDays) : 7,
+          customNote: customNote || undefined,
+        }),
+      });
+      toast({ title: "Form fulfillment dikirim!", description: result.vendorPhone ? "WA dikirim ke vendor." : "Link berhasil dibuat." });
+      navigator.clipboard.writeText(result.formUrl).catch(() => {});
+      setOpen(false);
+      onSent();
+    } catch (e: unknown) {
+      toast({ title: "Gagal", description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <>
+      <Button
+        onClick={() => setOpen(true)}
+        className="bg-emerald-600 hover:bg-emerald-700 text-white"
+        size="sm"
+      >
+        <ClipboardCheck className="w-4 h-4 mr-1" />
+        Kirim ke Vendor
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Kirim Form Fulfillment ke Vendor</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="text-sm text-slate-600 bg-slate-50 rounded-lg p-3 space-y-1">
+              <p>Layanan: <strong>{shipmentType}</strong></p>
+              {vendor && <p>Vendor: <strong className="text-blue-700">{vendor.name}</strong> {vendor.phone ? `· ${vendor.phone}` : ""}</p>}
+              {!vendor && <p className="text-amber-600">⚠️ Belum ada vendor terpilih. Link tetap dibuat tanpa notifikasi WA otomatis.</p>}
+            </div>
+            <div className="space-y-1.5">
+              <Label>Link Berlaku (hari)</Label>
+              <Input type="number" value={expiresInDays} onChange={e => setExpiresInDays(e.target.value)} min={1} max={30} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Catatan Tambahan untuk Vendor (opsional)</Label>
+              <Textarea value={customNote} onChange={e => setCustomNote(e.target.value)} rows={2}
+                placeholder="Instruksi khusus, deadline, dll." />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)}>Batal</Button>
+            <Button onClick={handleSend} disabled={loading} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+              {loading ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Send className="w-4 h-4 mr-1" />}
+              {vendor?.phone ? "Kirim via WA" : "Buat Link"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 // ── Update Status Dialog ───────────────────────────────────────────────────────
 
 function UpdateStatusDialog({ orderId, currentStatus, onUpdated }: { orderId: number; currentStatus: string; onUpdated: () => void }) {
@@ -353,6 +433,13 @@ export default function LogisticOrderDetailPage() {
     onError: (e: Error) => toast({ title: "Gagal", description: e.message, variant: "destructive" }),
   });
 
+  const { data: fulfillmentData, refetch: refetchFulfillment } = useQuery<{ links: FulfillmentLink[]; submissions: FulfillmentSubmission[] }>({
+    queryKey: ["order-fulfillment", orderId],
+    queryFn: () => apiFetch(`/api/logistic/orders/${orderId}/fulfillment`),
+    enabled: !isNaN(orderId),
+    refetchInterval: 15000,
+  });
+
   const copyUrl = (url: string) => {
     navigator.clipboard.writeText(url);
     toast({ title: "Link disalin!" });
@@ -401,6 +488,12 @@ export default function LogisticOrderDetailPage() {
             {hasVendorSelected && (
               <SendQuoteDialog order={order} rfqId={activeRfqId} onSent={() => qc.invalidateQueries({ queryKey: ["order-detail", orderId] })} />
             )}
+            <SendFulfillmentDialog
+              orderId={orderId}
+              vendor={vendor}
+              shipmentType={order.shipmentType}
+              onSent={() => { qc.invalidateQueries({ queryKey: ["order-detail", orderId] }); void refetchFulfillment(); }}
+            />
             <Button variant="outline" size="sm" onClick={() => createCustomerLink.mutate()} disabled={createCustomerLink.isPending}>
               <Plus className="w-4 h-4 mr-1" /> Tracking Link
             </Button>
@@ -486,6 +579,66 @@ export default function LogisticOrderDetailPage() {
                       </div>
                     </div>
                   ))}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Fulfillment Links & Submissions */}
+            {(fulfillmentData?.links?.length ?? 0) > 0 && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-semibold text-emerald-700 uppercase tracking-wide flex items-center gap-1.5">
+                    <ClipboardCheck className="w-4 h-4" /> Form Fulfillment Vendor
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {fulfillmentData!.links.map(lnk => {
+                    const sub = fulfillmentData?.submissions.find(s => s.linkId === lnk.id);
+                    const isSubmitted = lnk.status === "submitted";
+                    return (
+                      <div key={lnk.id} className={`rounded-lg border px-3 py-3 space-y-2 ${isSubmitted ? "border-emerald-200 bg-emerald-50/40" : "border-slate-100"}`}>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <Badge className={isSubmitted ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-600"}>
+                              {isSubmitted ? "✅ Submitted" : "⏳ Menunggu"}
+                            </Badge>
+                            <span className="text-xs text-slate-500 capitalize">{lnk.serviceType}</span>
+                            {lnk.expiresAt && (
+                              <span className="text-xs text-slate-400">
+                                Exp: {new Date(lnk.expiresAt).toLocaleDateString("id-ID")}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex gap-1">
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => copyUrl(lnk.formUrl)}>
+                              <Copy className="h-3.5 w-3.5" />
+                            </Button>
+                            <a href={lnk.formUrl} target="_blank" rel="noopener noreferrer">
+                              <Button variant="ghost" size="icon" className="h-7 w-7">
+                                <ExternalLink className="h-3.5 w-3.5" />
+                              </Button>
+                            </a>
+                          </div>
+                        </div>
+                        {sub && (
+                          <div className="bg-white rounded-lg border border-emerald-100 px-3 py-2.5 space-y-1.5">
+                            <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">Data dari Vendor</p>
+                            {Object.entries(sub.fulfillmentData).map(([k, v]) => v ? (
+                              <div key={k} className="flex gap-2 text-xs">
+                                <span className="text-slate-400 capitalize min-w-[120px] flex-shrink-0">
+                                  {k.replace(/_/g, " ")}
+                                </span>
+                                <span className="text-slate-700 font-medium">{v}</span>
+                              </div>
+                            ) : null)}
+                            <p className="text-[10px] text-slate-400 pt-1">
+                              Diterima: {new Date(sub.submittedAt).toLocaleString("id-ID")}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </CardContent>
               </Card>
             )}

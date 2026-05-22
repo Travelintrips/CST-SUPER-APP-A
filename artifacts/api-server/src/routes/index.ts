@@ -61,6 +61,7 @@ import { vendorPerformanceRouter } from "./vendorPerformance";
 import { internalTasksRouter } from "./internalTasks";
 import { podOcrRouter } from "./podOcr";
 import { marginRulesRouter } from "./marginRules";
+import { fulfillmentAdminRouter, fulfillmentPublicRouter } from "./orderFulfillment.js";
 
 const router: IRouter = Router();
 
@@ -134,4 +135,6 @@ router.use("/vendor-performance", vendorPerformanceRouter);
 router.use("/internal-tasks", internalTasksRouter);
 router.use("/pod-ocr", podOcrRouter);
 router.use("/margin-rules", marginRulesRouter);
+router.use("/logistic", fulfillmentAdminRouter);
+router.use("/fulfillment", fulfillmentPublicRouter);
 export default router;
