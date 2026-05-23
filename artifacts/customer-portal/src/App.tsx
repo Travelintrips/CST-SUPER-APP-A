@@ -64,6 +64,7 @@ import PrivacyPolicy from "@/pages/privacy-policy";
 import Contact from "@/pages/contact";
 import ShipmentTimeline from "@/pages/shipment-timeline";
 import VendorFulfillment from "@/pages/vendor-fulfillment";
+import AdminReview from "@/pages/admin-review";
 import VendorJobPage from "@/pages/vendor-job";
 import OrderTrackPage from "@/pages/order-track";
 const queryClient = new QueryClient();
@@ -189,7 +190,7 @@ function AppShell() {
       <Route path="/contact" component={Contact} />
       <Route path="/shipment-timeline" component={ShipmentTimeline} />
       <Route path="/fulfillment/:token" component={FulfillmentFormPage} />
-      <Route path="/fulfillment/:token" component={VendorFulfillment} />
+      <Route path="/admin-review/:token" component={AdminReview} />
       <Route path="/vendor-job/:token" component={VendorJobPage} />
       <Route path="/order-track/:trackToken" component={OrderTrackPage} />
       <Route component={NotFound} />

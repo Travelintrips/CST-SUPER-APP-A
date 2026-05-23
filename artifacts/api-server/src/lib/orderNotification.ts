@@ -106,7 +106,6 @@ function isFreightWithDimensions(shipmentType: string): boolean {
   return t.includes("air") || t.includes("sea") || t.includes("laut") || t.includes("udara");
 }
 
-function buildAdminWaMessage(order: LogisticOrderData, adminActionShortUrl?: string): string {
 function buildAdminWaMessage(order: LogisticOrderData, adminReviewUrl?: string): string {
   const approveUrl = getApproveFormUrl(order.orderNumber);
   const domain = getPreferredDomain() || "cstlogistic.co.id";
@@ -369,7 +368,6 @@ async function notifyAdmin(order: LogisticOrderData): Promise<void> {
         return longUrl;
       });
     }
-    sendWhatsApp(adminWa, buildAdminWaMessage(order, adminActionShortUrl)).catch((err: unknown) =>
     sendWhatsApp(adminWa, buildAdminWaMessage(order, adminReviewUrl || undefined)).catch((err: unknown) =>
       logger.error({ err }, "WA admin notification failed")
     );

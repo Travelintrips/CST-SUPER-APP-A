@@ -20,83 +20,11 @@ export const adminActionRouter: Router = Router();
  */
 adminActionRouter.get("/admin-action/:token", async (req: Request, res: Response) => {
   const token = String(req.params.token ?? "").trim();
-
-  if (!token || !/^[a-f0-9]{8,128}$/i.test(token)) {
-    return res.status(400).send("Link tidak valid.");
-  }
-
   const domain = getPreferredDomain() || "cstlogistic.co.id";
+  // Redirect to the public no-login admin review page on customer portal
+  return res.redirect(302, `https://${domain}/admin-review/${token}`);
+});
 
-  // ── Strategy 1: publicRfqToken on logistic_orders ─────────────────────────
-  try {
-    const [order] = await db
-      .select({ id: logisticOrdersTable.id, orderNumber: logisticOrdersTable.orderNumber })
-      .from(logisticOrdersTable)
-      .where(eq(logisticOrdersTable.publicRfqToken, token))
-      .limit(1);
-
-    if (order) {
-      const url = `https://${domain}/bizportal/logistics/orders/${order.id}`;
-      logger.info({ orderId: order.id, orderNumber: order.orderNumber, via: "publicRfqToken" }, "admin-action redirect");
-      return res.redirect(302, url);
-    }
-  } catch (err) {
-    logger.warn({ err }, "admin-action: publicRfqToken lookup failed, trying fallback");
-  }
-
-  // ── Strategy 2: short_links ref_id fallback ───────────────────────────────
-  try {
-    const pattern = `%/admin-action/${token}`;
-    const linkRow = (await db.execute(
-      sql`SELECT ref_id, ref_type FROM short_links WHERE target_url LIKE ${pattern} LIMIT 1`
-    )).rows[0] as { ref_id?: string | null; ref_type?: string | null } | undefined;
-
-    if (linkRow !== undefined) {
-      // Link found in short_links — try to resolve to order
-      const refId = linkRow.ref_id;
-      if (refId) {
-        const numId = parseInt(refId, 10);
-        let orderId: number | null = null;
-        let orderNumber: string | null = null;
-
-        if (!isNaN(numId) && (linkRow.ref_type === "order_id" || linkRow.ref_type === "order")) {
-          const [o] = await db
-            .select({ id: logisticOrdersTable.id, orderNumber: logisticOrdersTable.orderNumber })
-            .from(logisticOrdersTable)
-            .where(eq(logisticOrdersTable.id, numId))
-            .limit(1);
-          if (o) { orderId = o.id; orderNumber = o.orderNumber; }
-        }
-
-        if (!orderId) {
-          // Try by orderNumber string
-          const [o] = await db
-            .select({ id: logisticOrdersTable.id, orderNumber: logisticOrdersTable.orderNumber })
-            .from(logisticOrdersTable)
-            .where(eq(logisticOrdersTable.orderNumber, refId))
-            .limit(1);
-          if (o) { orderId = o.id; orderNumber = o.orderNumber; }
-        }
-
-        if (orderId) {
-          const url = `https://${domain}/bizportal/logistics/orders/${orderId}`;
-          logger.info({ orderId, orderNumber, via: "short_links.ref_id" }, "admin-action redirect");
-          return res.redirect(302, url);
-        }
-      }
-
-      // Link found but ref_id is null or order not found → go to orders list
-      const fallbackUrl = `https://${domain}/bizportal/logistics/orders`;
-      logger.info({ token, refId, via: "short_links.fallback_list" }, "admin-action redirect to orders list");
-      return res.redirect(302, fallbackUrl);
-    }
-  } catch (err) {
-    logger.warn({ err }, "admin-action: short_links fallback failed");
-  }
-
-  // ── Strategy 3: final fallback to BizPortal logistics list ────────────────
-  logger.warn({ token }, "admin-action: token not resolved, redirecting to orders list");
-  return res.redirect(302, `https://${domain}/bizportal/logistics/orders`);
 import { randomBytes } from "crypto";
 import { eq, desc, inArray } from "drizzle-orm";
 import { sql } from "drizzle-orm";
@@ -165,7 +93,7 @@ export async function createAdminActionLink(
 
 export function getAdminActionUrl(token: string): string {
   const domain = getPreferredDomain() || "cstlogistic.co.id";
-  return `https://${domain}/admin-action/${token}`;
+  return `https://${domain}/admin-review/${token}`;
 }
 
 // ─── Admin: POST /api/admin-action/create ────────────────────────────────────
@@ -228,28 +156,41 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
       },
     };
 
-    // review_order: get list of matching vendors for blast
+    // review_order: get list of all vendors + matching flag for blast
     if (link.actionType === "review_order") {
-      const vendors = await db.select({
+      const allVendors = await db.select({
         id: suppliersTable.id,
         name: suppliersTable.name,
         phone: suppliersTable.phone,
+        email: suppliersTable.email,
         serviceType: suppliersTable.serviceType,
+        eta: suppliersTable.eta,
+        fee: suppliersTable.fee,
+        note: suppliersTable.note,
       }).from(suppliersTable)
-        .where(eq(suppliersTable.isActive, true));
+        .where(eq(suppliersTable.isActive, true))
+        .orderBy(suppliersTable.name);
 
-      const matching = vendors.filter((v) =>
-        v.serviceType && v.phone &&
-        order.shipmentType &&
-        v.serviceType.toLowerCase().includes(order.shipmentType.toLowerCase().split(" ")[0])
-      );
+      const shipKeyword = (order.shipmentType ?? "").toLowerCase().split(" ")[0];
+      const vendors = allVendors
+        .filter((v) => v.phone)
+        .map((v) => ({
+          ...v,
+          isMatching: !!(v.serviceType && shipKeyword &&
+            v.serviceType.toLowerCase().includes(shipKeyword)),
+        }));
 
       // Get existing RFQs for this order
-      const rfqs = await db.select().from(logisticOrderRfqsTable)
+      const rfqs = await db.select({
+        id: logisticOrderRfqsTable.id,
+        rfqNumber: logisticOrderRfqsTable.rfqNumber,
+        status: logisticOrderRfqsTable.status,
+        createdAt: logisticOrderRfqsTable.createdAt,
+      }).from(logisticOrderRfqsTable)
         .where(eq(logisticOrderRfqsTable.orderId, order.id))
         .orderBy(desc(logisticOrderRfqsTable.createdAt));
 
-      return res.json({ ...base, vendors: matching, rfqs });
+      return res.json({ ...base, vendors, rfqs });
     }
 
     // compare_vendors: show vendor quotes for an RFQ
