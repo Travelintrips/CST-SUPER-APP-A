@@ -70,6 +70,8 @@ import type { Request, Response } from "express";
 
 const router: IRouter = Router();
 
+router.get("/", (_req, res) => { res.json({ status: "ok" }); });
+
 router.use(healthRouter);
 router.use("/users", usersRouter);
 router.use("/dashboard", dashboardRouter);

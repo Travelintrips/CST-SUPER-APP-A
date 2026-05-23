@@ -18,27 +18,11 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Customer Portal"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
 args = "Gateway"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
 args = "API Spec Watcher"
-
-[[workflows.workflow]]
-name = "Customer Portal"
-author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "console"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "fuser -k 3001/tcp 2>/dev/null; sleep 0.3; cd artifacts/customer-portal && PORT=3001 BASE_PATH=/ pnpm exec vite --config vite.config.ts --host 0.0.0.0"
-waitForPort = 3001
 
 [[workflows.workflow]]
 name = "Gateway"
@@ -97,6 +81,7 @@ FONNTE_TOKEN = "3hYIZghAc5N1!sUe3dMb"
 
 [userenv.development]
 ADMIN_EMAIL_DOMAINS = "example.com"
+REPLIT_API_PORT = "18444"
 
 [nix]
 channel = "stable-25_05"

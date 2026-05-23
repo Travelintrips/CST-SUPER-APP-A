@@ -3,9 +3,9 @@
  * every request to the correct upstream based on the path prefix.
  *
  * Route table:
- *   /api/*          → API Server      :8080
- *   /pos-images/*   → API Server      :8080
- *   /q/*            → API Server      :8080  (short-link redirects)
+ *   /api/*          → API Server      :18444
+ *   /pos-images/*   → API Server      :18444
+ *   /q/*            → API Server      :18444  (short-link redirects)
  *   /bizportal/*    → BizPortal       :3000
  *   /sport-center/* → Sport Center    :3002
  *   /*              → Customer Portal :3001
@@ -30,17 +30,19 @@ const BASE_DELAY    = Number(process.env.GW_BASE_DELAY    ?? 200);
 
 const RETRYABLE_CODES = new Set(["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENOTFOUND"]);
 
+const API_PORT = Number(process.env.API_PORT ?? process.env.REPLIT_API_PORT ?? 8080);
+
 const ROUTES = [
-  { prefix: "/api",          upstream: { host: "localhost", port: 8080 } },
-  { prefix: "/pos-images",   upstream: { host: "localhost", port: 8080 } },
-  { prefix: "/q",            upstream: { host: "localhost", port: 8080 } },
+  { prefix: "/api",          upstream: { host: "localhost", port: API_PORT } },
+  { prefix: "/pos-images",   upstream: { host: "localhost", port: API_PORT } },
+  { prefix: "/q",            upstream: { host: "localhost", port: API_PORT } },
   { prefix: "/bizportal",    upstream: { host: "localhost", port: 3000 } },
   { prefix: "/sport-center", upstream: { host: "localhost", port: 3002 } },
 ];
 const DEFAULT_UPSTREAM = { host: "localhost", port: 3001 };
 
 const SERVICE_NAMES = {
-  8080: "API Server",
+  [API_PORT]: "API Server",
   3000: "BizPortal",
   3001: "Customer Portal",
   3002: "Sport Center",
@@ -220,7 +222,7 @@ server.on("upgrade", async (req, socket, head) => {
 
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`Gateway listening on port ${PORT}`);
-  console.log(`  /api/*          → :8080 (API Server)`);
+  console.log(`  /api/*          → :${API_PORT} (API Server)`);
   console.log(`  /bizportal/*    → :3000 (BizPortal)`);
   console.log(`  /sport-center/* → :3002 (Sport Center)`);
   console.log(`  /*              → :3001 (Customer Portal)`);
