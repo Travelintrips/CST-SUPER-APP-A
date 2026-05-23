@@ -273,7 +273,11 @@ export default function Login() {
 
       if (!loginRes.ok || !loginJson.token) {
         if (loginJson.notRegistered) {
-          setWaMsg({ type: "err", text: "Nomor HP belum terdaftar. Silakan daftar akun terlebih dahulu." });
+          const encodedPhone = encodeURIComponent(waPhone.trim());
+          setWaMsg({
+            type: "err",
+            text: `__NOT_REGISTERED__${encodedPhone}`,
+          });
         } else {
           setWaMsg({ type: "err", text: loginJson.message ?? "Login gagal." });
         }
@@ -466,12 +470,32 @@ export default function Login() {
 
                 {!waTrustedLoading && (
                   <>
-                    {waMsg && (
-                      <Alert variant={waMsg.type === "err" ? "destructive" : "default"} className={waMsg.type === "ok" ? "border-green-200 bg-green-50" : ""}>
-                        {waMsg.type === "ok" ? <CheckCircle2 className="h-4 w-4 text-green-600" /> : <AlertCircle className="h-4 w-4" />}
-                        <AlertDescription className={waMsg.type === "ok" ? "text-green-800" : ""}>{waMsg.text}</AlertDescription>
-                      </Alert>
-                    )}
+                    {waMsg && (() => {
+                      if (waMsg.text.startsWith("__NOT_REGISTERED__")) {
+                        const phone = decodeURIComponent(waMsg.text.slice("__NOT_REGISTERED__".length));
+                        return (
+                          <Alert variant="destructive">
+                            <AlertCircle className="h-4 w-4" />
+                            <AlertDescription>
+                              Nomor HP belum terdaftar.{" "}
+                              <a
+                                href={`${BASE}/register?phone=${encodeURIComponent(phone)}`}
+                                className="underline font-medium"
+                                onClick={(e) => { e.preventDefault(); setLocation(`/register?phone=${encodeURIComponent(phone)}`); }}
+                              >
+                                Daftar sekarang
+                              </a>
+                            </AlertDescription>
+                          </Alert>
+                        );
+                      }
+                      return (
+                        <Alert variant={waMsg.type === "err" ? "destructive" : "default"} className={waMsg.type === "ok" ? "border-green-200 bg-green-50" : ""}>
+                          {waMsg.type === "ok" ? <CheckCircle2 className="h-4 w-4 text-green-600" /> : <AlertCircle className="h-4 w-4" />}
+                          <AlertDescription className={waMsg.type === "ok" ? "text-green-800" : ""}>{waMsg.text}</AlertDescription>
+                        </Alert>
+                      );
+                    })()}
 
                     {waStep === "phone" ? (
                       <>
