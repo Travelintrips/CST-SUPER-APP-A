@@ -231,6 +231,7 @@ sendLogisticOrderNotification({
     jamOrder: body.jamOrder ?? null,
     vehicleType,
     createdAt: order.createdAt,
+    publicRfqToken: order.publicRfqToken ?? null,
   }).catch((err: unknown) => {
     req.log.error({ err }, "sendLogisticOrderNotification failed");
   });

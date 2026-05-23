@@ -30,6 +30,7 @@ export interface LogisticOrderData {
   jamOrder?: string | null;
   vehicleType?: string | null;
   createdAt?: Date | string | null;
+  publicRfqToken?: string | null;
 }
 
 const BULAN_ID = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agt","Sep","Okt","Nov","Des"];
@@ -94,8 +95,7 @@ function isFreightWithDimensions(shipmentType: string): boolean {
   return t.includes("air") || t.includes("sea") || t.includes("laut") || t.includes("udara");
 }
 
-function buildAdminWaMessage(order: LogisticOrderData): string {
-  const approveUrl = getApproveFormUrl(order.orderNumber);
+function buildAdminWaMessage(order: LogisticOrderData, adminActionShortUrl?: string): string {
   const domain = getPreferredDomain() || "cstlogistic.co.id";
   const bizportalUrl = `https://${domain}/bizportal/logistics/orders/${order.id}`;
   const tgl = order.createdAt ? formatTanggal(order.createdAt) : "";
@@ -121,9 +121,9 @@ function buildAdminWaMessage(order: LogisticOrderData): string {
     (order.requiredDate ? `Tgl Kirim       : ${order.requiredDate}\n` : ``) +
     (order.notes ? `Catatan         : ${order.notes}\n` : ``) +
     `━━━━━━━━━━━━━━━━━━\n` +
-    `⚡ *Aksi Cepat Admin:*\n` +
-    (approveUrl ? `📋 Penawaran vendor → ${approveUrl}\n` : ``) +
-    `🖥️ Buka BizPortal → ${bizportalUrl}\n\n` +
+    `⚡ *Aksi Cepat Admin (tanpa login):*\n` +
+    (adminActionShortUrl ? `🔭 Review & Blast Vendor → ${adminActionShortUrl}\n` : ``) +
+    `💻 BizPortal → ${bizportalUrl}\n\n` +
     `_Dikirim: ${nowWIB()}_`
   );
 }
@@ -338,7 +338,21 @@ async function notifyAdmin(order: LogisticOrderData): Promise<void> {
   const adminWa = await getAdminWa();
   if (adminWa) {
     logger.info({ phone: adminWa, orderNumber: order.orderNumber }, "Sending admin WA notification");
-    sendWhatsApp(adminWa, buildAdminWaMessage(order)).catch((err: unknown) =>
+    // Generate admin-action short link if publicRfqToken is available
+    let adminActionShortUrl: string | undefined;
+    if (order.publicRfqToken) {
+      const domain = getPreferredDomain() || "cstlogistic.co.id";
+      const longUrl = `https://${domain}/admin-action/${order.publicRfqToken}`;
+      adminActionShortUrl = await generateShortLink(longUrl, {
+        context: "admin_action",
+        refType: "order",
+        refId: order.orderNumber,
+      }).catch((err: unknown) => {
+        logger.warn({ err }, "admin WA: failed to generate short link, using long URL");
+        return longUrl;
+      });
+    }
+    sendWhatsApp(adminWa, buildAdminWaMessage(order, adminActionShortUrl)).catch((err: unknown) =>
       logger.error({ err }, "WA admin notification failed")
     );
   } else {
