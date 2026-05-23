@@ -229,8 +229,7 @@ function getOrderUrl(orderId: number): string {
   return `https://${domain}/logistic/orders/${orderId}`;
 }
 
-function buildAdminGroupWaMessage(order: LogisticOrderData): string {
-  const orderUrl = getOrderUrl(order.id);
+function buildAdminGroupWaMessage(order: LogisticOrderData, adminActionShortUrl?: string): string {
   const tgl = order.createdAt ? formatTanggal(order.createdAt) : nowWIB();
   const jam = order.jamOrder
     ? formatJamOrder(order.jamOrder)
@@ -242,6 +241,12 @@ function buildAdminGroupWaMessage(order: LogisticOrderData): string {
   const volumeLine = order.volumeCbm  ? `📐 Volume   : ${order.volumeCbm} CBM\n` : "";
   const reqDate    = order.requiredDate ? `📅 Tgl Kirim: ${formatISODate(order.requiredDate)}\n` : "";
   const notesLine  = order.notes ? `📝 Catatan  : ${order.notes}\n` : "";
+
+  // Fallback ke BizPortal jika admin action URL tidak tersedia
+  const domain = getPreferredDomain() || "cstlogistic.co.id";
+  const fallbackUrl = `https://${domain}/bizportal/logistics/orders/${order.id}`;
+  const actionUrl = adminActionShortUrl || fallbackUrl;
+  const actionLabel = adminActionShortUrl ? "🚀 Review & Blast Vendor" : "💻 Buka di BizPortal";
 
   return (
     `🔔 *[ORDER MASUK] ${order.orderNumber}*\n` +
@@ -264,7 +269,8 @@ function buildAdminGroupWaMessage(order: LogisticOrderData): string {
     `💰 Total Est.    : *Rp ${formatRupiah(order.grandTotal)}*\n` +
     `🔵 Status        : Menunggu Konfirmasi\n` +
     `━━━━━━━━━━━━━━━━━━\n` +
-    (orderUrl ? `🔗 *Buka di BizPortal:*\n${orderUrl}\n\n` : "") +
+    `⚡ *Aksi Cepat (tanpa login):*\n` +
+    `${actionLabel} → ${actionUrl}\n\n` +
     `_Harap segera diproses. Dikirim: ${nowWIB()}_`
   );
 }
@@ -380,7 +386,18 @@ async function notifyAdmin(order: LogisticOrderData): Promise<void> {
   const adminGroupWa = await getAdminGroupWa();
   if (adminGroupWa) {
     logger.info({ groupId: adminGroupWa, orderNumber: order.orderNumber }, "Sending group WA notification");
-    sendWhatsApp(adminGroupWa, buildAdminGroupWaMessage(order)).catch((err: unknown) =>
+    // Reuse adminActionShortUrl yang sudah di-generate untuk admin individual WA
+    let groupActionUrl: string | undefined;
+    if (order.publicRfqToken) {
+      const domain = getPreferredDomain() || "cstlogistic.co.id";
+      const longUrl = `https://${domain}/admin-action/${order.publicRfqToken}`;
+      groupActionUrl = await generateShortLink(longUrl, {
+        context: "admin_action",
+        refType: "order",
+        refId: order.orderNumber,
+      }).catch(() => longUrl);
+    }
+    sendWhatsApp(adminGroupWa, buildAdminGroupWaMessage(order, groupActionUrl)).catch((err: unknown) =>
       logger.error({ err }, "WA group notification failed")
     );
   } else {
