@@ -232,11 +232,15 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
       }).from(suppliersTable)
         .where(eq(suppliersTable.isActive, true));
 
-      const matching = vendors.filter((v) =>
-        v.serviceType && v.phone &&
-        order.shipmentType &&
-        v.serviceType.toLowerCase().includes(order.shipmentType.toLowerCase().split(" ")[0])
-      );
+      const shipmentKeyword = order.shipmentType?.trim().toLowerCase().split(" ")[0] ?? "";
+      const matching = vendors.filter((v) => {
+        if (!v.phone) return false;
+        // Kalau shipmentType kosong, tampilkan semua vendor yang punya serviceType
+        if (!shipmentKeyword) return !!v.serviceType;
+        // Kalau vendor tidak punya serviceType, skip
+        if (!v.serviceType) return false;
+        return v.serviceType.toLowerCase().includes(shipmentKeyword);
+      });
 
       // Get existing RFQs for this order
       const rfqs = await db.select().from(logisticOrderRfqsTable)
