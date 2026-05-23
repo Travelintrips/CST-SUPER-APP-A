@@ -24,6 +24,18 @@ args = "POS"
 task = "workflow.run"
 args = "API Server"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Gateway"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "BizPortal"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Customer Portal"
+
 [[workflows.workflow]]
 name = "POS"
 author = "agent"
@@ -34,6 +46,7 @@ outputType = "console"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "bash start-pos-kasir.sh"
+waitForPort = 3002
 
 [[workflows.workflow]]
 name = "API Server"
@@ -43,6 +56,42 @@ author = "agent"
 task = "shell.exec"
 args = "fuser -k 8080/tcp 2>/dev/null || true; cd artifacts/api-server && PORT=8080 NODE_ENV=development node --enable-source-maps ./dist/index.mjs"
 waitForPort = 8080
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow]]
+name = "Gateway"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "node scripts/proxy5000.mjs"
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[workflows.workflow]]
+name = "BizPortal"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/bizportal && PORT=3000 BASE_PATH=/bizportal/ pnpm exec vite --config vite.config.ts --host 0.0.0.0"
+waitForPort = 3000
+
+[[workflows.workflow]]
+name = "Customer Portal"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/customer-portal && PORT=3001 bash start-dev.sh"
+waitForPort = 3001
 
 [workflows.workflow.metadata]
 outputType = "console"
@@ -86,24 +135,12 @@ localPort = 3000
 externalPort = 3000
 
 [[ports]]
-localPort = 3001
-externalPort = 3001
-
-[[ports]]
-localPort = 3002
-externalPort = 3002
-
-[[ports]]
 localPort = 3003
 externalPort = 8008
 
 [[ports]]
 localPort = 5000
 externalPort = 80
-
-[[ports]]
-localPort = 8080
-externalPort = 8080
 
 [[ports]]
 localPort = 8081
@@ -152,3 +189,11 @@ externalPort = 5173
 [[ports]]
 localPort = 23435
 externalPort = 8081
+
+[[ports]]
+localPort = 3001
+externalPort = 3001
+
+[[ports]]
+localPort = 3002
+externalPort = 3002

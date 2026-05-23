@@ -8,6 +8,7 @@ await new Promise(r => setTimeout(r, 500));
 const API_PORT = 8080;
 const BIZPORTAL_PORT = 3000;
 const CUSTOMER_PORTAL_PORT = 3001;
+const POS_PORT = 3002;
 
 function getTargetPort(url, headers) {
   if (
@@ -17,9 +18,11 @@ function getTargetPort(url, headers) {
     url.startsWith("/auth/")
   ) return API_PORT;
   if (url.startsWith("/bizportal") || url.startsWith("/bizportal/")) return BIZPORTAL_PORT;
+  if (url.startsWith("/kasir") || url.startsWith("/menu-board")) return POS_PORT;
   if (url.startsWith("/__customer_portal_hmr")) return CUSTOMER_PORTAL_PORT;
   if (headers && headers.referer) {
     if (headers.referer.includes("/bizportal")) return BIZPORTAL_PORT;
+    if (headers.referer.includes("/kasir") || headers.referer.includes("/menu-board")) return POS_PORT;
   }
   return CUSTOMER_PORTAL_PORT;
 }
