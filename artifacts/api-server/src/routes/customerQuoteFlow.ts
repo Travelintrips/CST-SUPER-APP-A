@@ -487,13 +487,27 @@ customerQuotePublicRouter.post("/:token/respond", async (req: Request, res: Resp
       const trackToken = tok();
       await db.insert(customerOrderLinksTable).values({ orderId: order.id, token: trackToken });
 
+      // Generate forward_vendor mini-form link (no-login) for admin
+      let fwdShort: string | null = null;
+      try {
+        const { createAdminActionLink, getAdminActionUrl } = await import("./adminAction.js");
+        const { generateShortLink } = await import("../lib/shortLink.js");
+        const fwdToken = await createAdminActionLink(order.id, "forward_vendor", link.rfqId ?? undefined, 72);
+        const fwdUrl = getAdminActionUrl(fwdToken);
+        fwdShort = await generateShortLink(fwdUrl, { context: "admin_action", refType: "order", refId: String(order.id) });
+      } catch (e) {
+        logger.warn({ e }, "customerQuote approve: gagal generate forward_vendor link");
+      }
+
       // Send WA to admin
       const waAdmin =
         `✅ Customer Approve Penawaran\n\n` +
         `RFQ: ${rfqNum}\n` +
         `Customer: ${order.customerName}\n` +
         `Harga Final: ${fmtRp(link.finalCustomerPrice ? Number(link.finalCustomerPrice) : null)}\n\n` +
-        `Lihat order:\n${adminLink}`;
+        (fwdShort
+          ? `📦 Forward ke vendor (tanpa login):\n${fwdShort}`
+          : `Lihat order:\n${adminLink}`);
       sendWhatsApp(adminWa, waAdmin).catch(() => {});
 
       // Notify selected vendor

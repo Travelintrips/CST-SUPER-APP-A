@@ -231,6 +231,7 @@ sendLogisticOrderNotification({
     jamOrder: body.jamOrder ?? null,
     vehicleType,
     createdAt: order.createdAt,
+    publicRfqToken: order.publicRfqToken ?? null,
   }).catch((err: unknown) => {
     req.log.error({ err }, "sendLogisticOrderNotification failed");
   });
@@ -517,11 +518,27 @@ logisticOrdersRouter.get("/", async (req: Request, res: Response) => {
     }
   }
 
+  // Attach fulfillment status per order
+  const fulfillmentStatusMap = new Map<number, string>();
+  if (orderIds.length > 0) {
+    const fRows = await db.execute(sql`
+      SELECT DISTINCT ON (order_id)
+        order_id AS "orderId", status
+      FROM order_fulfillment_links
+      WHERE order_id = ANY(${sql.raw(`ARRAY[${orderIds.join(",")}]::int[]`)})
+      ORDER BY order_id, created_at DESC
+    `);
+    for (const row of ((fRows as unknown as { rows: unknown[] }).rows ?? fRows as unknown[]) as { orderId: unknown; status: unknown }[]) {
+      fulfillmentStatusMap.set(Number(row.orderId), row.status as string);
+    }
+  }
+
   return res.json(rows.map((row) => ({
     ...toOrder(row),
     linkedSalesDocId: linkedDocMap.get(row.id)?.id ?? null,
     linkedSalesDocNumber: linkedDocMap.get(row.id)?.docNumber ?? null,
     latestRfq: rfqMap.get(row.id) ?? null,
+    fulfillmentStatus: fulfillmentStatusMap.get(row.id) ?? null,
   })));
 });
 

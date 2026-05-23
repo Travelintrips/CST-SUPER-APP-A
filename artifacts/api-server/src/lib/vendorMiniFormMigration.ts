@@ -37,6 +37,10 @@ export async function runVendorMiniFormMigration(): Promise<void> {
       CREATE INDEX IF NOT EXISTS vmfs_token_idx ON vendor_mini_form_submissions(token);
       CREATE INDEX IF NOT EXISTS vmfs_link_id_idx ON vendor_mini_form_submissions(link_id);
     `);
+    await db.execute(sql`
+      ALTER TABLE vendor_mini_form_links
+        ADD COLUMN IF NOT EXISTS short_url TEXT;
+    `);
     logger.info("Vendor mini form migration: ok");
   } catch (err) {
     logger.error({ err }, "Vendor mini form migration failed");

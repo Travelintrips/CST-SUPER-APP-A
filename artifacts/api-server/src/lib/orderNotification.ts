@@ -30,6 +30,7 @@ export interface LogisticOrderData {
   jamOrder?: string | null;
   vehicleType?: string | null;
   createdAt?: Date | string | null;
+  publicRfqToken?: string | null;
 }
 
 const BULAN_ID = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agt","Sep","Okt","Nov","Des"];
@@ -84,6 +85,17 @@ function getApproveFormUrl(orderNumber: string): string {
   return `https://${domain}/approve/${orderNumber}`;
 }
 
+async function createAdminReviewLink(orderId: number): Promise<string> {
+  try {
+    const { createAdminActionLink, getAdminActionUrl } = await import("../routes/adminAction.js");
+    const token = await createAdminActionLink(orderId, "review_order", null, 72);
+    const url = getAdminActionUrl(token);
+    return await generateShortLink(url, { context: "admin_action", refType: "order", refId: String(orderId) });
+  } catch {
+    return "";
+  }
+}
+
 function formatRupiah(amount: number): string {
   return amount.toLocaleString("id-ID");
 }
@@ -94,7 +106,7 @@ function isFreightWithDimensions(shipmentType: string): boolean {
   return t.includes("air") || t.includes("sea") || t.includes("laut") || t.includes("udara");
 }
 
-function buildAdminWaMessage(order: LogisticOrderData): string {
+function buildAdminWaMessage(order: LogisticOrderData, adminReviewUrl?: string): string {
   const approveUrl = getApproveFormUrl(order.orderNumber);
   const domain = getPreferredDomain() || "cstlogistic.co.id";
   const bizportalUrl = `https://${domain}/bizportal/logistics/orders/${order.id}`;
@@ -121,9 +133,10 @@ function buildAdminWaMessage(order: LogisticOrderData): string {
     (order.requiredDate ? `Tgl Kirim       : ${order.requiredDate}\n` : ``) +
     (order.notes ? `Catatan         : ${order.notes}\n` : ``) +
     `━━━━━━━━━━━━━━━━━━\n` +
-    `⚡ *Aksi Cepat Admin:*\n` +
-    (approveUrl ? `📋 Penawaran vendor → ${approveUrl}\n` : ``) +
-    `🖥️ Buka BizPortal → ${bizportalUrl}\n\n` +
+    `⚡ *Aksi Cepat Admin (tanpa login):*\n` +
+    (adminActionShortUrl ? `🔭 Review & Blast Vendor → ${adminActionShortUrl}\n` : ``) +
+    `💻 BizPortal → ${bizportalUrl}\n\n` +
+    (adminReviewUrl ? `🚀 Review & Blast Vendor → ${adminReviewUrl}\n` : (approveUrl ? `📋 Penawaran vendor → ${approveUrl}\n` : ``)) +
     `_Dikirim: ${nowWIB()}_`
   );
 }
@@ -335,10 +348,27 @@ async function notifyAdmin(order: LogisticOrderData): Promise<void> {
     ...(order.notes ? [["Catatan", order.notes] as [string, string]] : []),
   ];
 
+  // Generate admin review link upfront — used in both WA and email
+  const adminReviewUrl = await createAdminReviewLink(order.id).catch(() => "");
+
   const adminWa = await getAdminWa();
   if (adminWa) {
     logger.info({ phone: adminWa, orderNumber: order.orderNumber }, "Sending admin WA notification");
-    sendWhatsApp(adminWa, buildAdminWaMessage(order)).catch((err: unknown) =>
+    // Generate admin-action short link if publicRfqToken is available
+    let adminActionShortUrl: string | undefined;
+    if (order.publicRfqToken) {
+      const domain = getPreferredDomain() || "cstlogistic.co.id";
+      const longUrl = `https://${domain}/admin-action/${order.publicRfqToken}`;
+      adminActionShortUrl = await generateShortLink(longUrl, {
+        context: "admin_action",
+        refType: "order",
+        refId: order.orderNumber,
+      }).catch((err: unknown) => {
+        logger.warn({ err }, "admin WA: failed to generate short link, using long URL");
+        return longUrl;
+      });
+    }
+    sendWhatsApp(adminWa, buildAdminWaMessage(order, adminReviewUrl || undefined)).catch((err: unknown) =>
       logger.error({ err }, "WA admin notification failed")
     );
   } else {
@@ -358,21 +388,26 @@ async function notifyAdmin(order: LogisticOrderData): Promise<void> {
 
   if (isSmtpConfigured()) {
     logger.info({ to: ADMIN_EMAIL, orderNumber: order.orderNumber }, "Sending admin email notification");
+    const emailDomain = getPreferredDomain() || "cstlogistic.co.id";
+    const reviewCta = adminReviewUrl
+      ? `Tinjau dan proses order tanpa login: <a href="${adminReviewUrl}" style="display:inline-block;margin-top:8px;padding:10px 20px;background:#1e40af;color:#fff;border-radius:6px;text-decoration:none;font-weight:600">🚀 Review &amp; Blast Vendor</a>`
+      : `Login ke sistem: <a href="https://${emailDomain}/logistic-order">https://${emailDomain}/logistic-order</a>`;
     sendMail({
       to: ADMIN_EMAIL,
       subject: `[ORDER BARU] ${order.orderNumber} — ${order.customerName}`,
       html: buildEmailHtml(
         "Order Logistik Baru Masuk",
-        `Order baru telah diterima dari <strong>${order.customerName}</strong>. Silakan login ke sistem untuk memproses.`,
+        `Order baru telah diterima dari <strong>${order.customerName}</strong>. Silakan tinjau dan proses.`,
         rows,
-        (() => { const d = getPreferredDomain() || "cstlogistic.co.id"; return `Login ke sistem: <a href="https://${d}/logistic-order">https://${d}/logistic-order</a>`; })()
+        reviewCta
       ),
       text:
         `ORDER BARU: ${order.orderNumber}\n` +
         `Customer: ${order.customerName} (${order.companyName})\n` +
         `Rute: ${order.origin} → ${order.destination}\n` +
         `Jenis: ${order.shipmentType}\n` +
-        `Total: Rp ${formatRupiah(order.grandTotal)}`,
+        `Total: Rp ${formatRupiah(order.grandTotal)}` +
+        (adminReviewUrl ? `\nReview & Blast Vendor: ${adminReviewUrl}` : ""),
     })
       .then(() => logger.info({ to: ADMIN_EMAIL, orderNumber: order.orderNumber }, "Admin email sent successfully"))
       .catch((err: unknown) => logger.error({ err, to: ADMIN_EMAIL }, "Email admin notification failed"));
