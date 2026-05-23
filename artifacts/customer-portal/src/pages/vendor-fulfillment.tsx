@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "wouter";
 
@@ -33,6 +32,17 @@ const CATEGORY_ICON: Record<string, string> = {
   customs: "🛃",
 };
 
+function FormField({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
+  return (
+    <div>
+      <label className="block text-sm font-medium text-slate-700 mb-1.5">
+        {label}
+        {required && <span className="text-red-500 ml-0.5">*</span>}
+      </label>
+      {children}
+    </div>
+  );
+}
 export default function VendorFulfillmentPage() {
   const { token } = useParams<{ token: string }>();
   const [meta, setMeta] = useState<FormMeta | null>(null);
@@ -504,6 +514,7 @@ export default function VendorFulfillmentPage() {
             disabled={submitting}
             className="mt-4 w-full rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:text-slate-400 text-white font-semibold py-3.5 text-sm transition-colors active:scale-[0.98]"
             className="w-full py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-semibold text-sm transition-colors active:scale-95"
+            className="mt-4 w-full rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-semibold py-3.5 text-sm transition-colors active:scale-95"
           >
             {submitting ? "Mengirim..." : "✅ Kirim Data Fulfillment"}
           </button>
@@ -531,5 +542,6 @@ function FormField({ label, required, children }: { label: string; required?: bo
         </div>
       </form>
     </div>
+
   );
 }
