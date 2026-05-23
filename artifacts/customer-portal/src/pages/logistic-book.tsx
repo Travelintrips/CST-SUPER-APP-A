@@ -705,7 +705,7 @@ export default function BookPage() {
       customerName,
       email,
       phone,
-      shipmentType: shipmentType ?? "",
+      shipmentType: shipmentType ?? (cartItems.every(c => c.calculatorType === "product") ? "Produk" : ""),
       origin,
       destination,
       commodity: customerForm.commodity || str(truckingInputData.cargo_category) || null,
