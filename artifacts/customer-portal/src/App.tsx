@@ -58,6 +58,7 @@ import OrderTaskPage from "@/pages/order-task";
 import CustomerOrderPage from "@/pages/customer-order";
 import AdminActionPage from "@/pages/admin-action";
 import VendorFulfillmentPage from "@/pages/vendor-fulfillment";
+import ShortLinkRedirect from "@/pages/short-link-redirect";
 import FulfillmentFormPage from "@/pages/fulfillment-form";
 import PrivacyPolicy from "@/pages/privacy-policy";
 import Contact from "@/pages/contact";
@@ -183,6 +184,7 @@ function AppShell() {
       <Route path="/customer-order/:token" component={CustomerOrderPage} />
       <Route path="/admin-action/:token" component={AdminActionPage} />
       <Route path="/vendor-fulfillment/:token" component={VendorFulfillmentPage} />
+      <Route path="/q/:code" component={ShortLinkRedirect} />
       <Route path="/privacy-policy" component={PrivacyPolicy} />
       <Route path="/contact" component={Contact} />
       <Route path="/shipment-timeline" component={ShipmentTimeline} />
