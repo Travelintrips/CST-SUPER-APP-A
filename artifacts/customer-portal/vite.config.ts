@@ -80,11 +80,11 @@ export default defineConfig({
     hmr: process.env.REPLIT_DEV_DOMAIN ? false : true,
     proxy: {
       "/api": {
-        target: "http://localhost:8080",
+        target: "http://localhost:18444",
         changeOrigin: true,
       },
       "/q": {
-        target: "http://localhost:8080",
+        target: "http://localhost:18444",
         changeOrigin: true,
       },
       // BizPortal dev server — proxied so /bizportal/* works via main entry port
