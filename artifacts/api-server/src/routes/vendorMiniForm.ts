@@ -9,6 +9,9 @@ import {
 } from "@workspace/db";
 import { requireClerkUser } from "../lib/requireAdmin";
 
+// Cache-Control for public GET (token metadata is immutable once fetched)
+const PUBLIC_CACHE = "public, max-age=30, stale-while-revalidate=60";
+
 const router = Router();
 
 // ── Shared form schema ────────────────────────────────────────────────────────
@@ -155,34 +158,36 @@ export const SERVICE_SCHEMAS: Record<string, {
 router.get("/:token", async (req: Request, res: Response) => {
   const { token } = req.params as { token: string };
   try {
-    const [link] = await db
-      .select()
+    // Single LEFT JOIN query — no second round-trip for vendor name
+    const [row] = await db
+      .select({
+        id: vendorMiniFormLinksTable.id,
+        serviceType: vendorMiniFormLinksTable.serviceType,
+        title: vendorMiniFormLinksTable.title,
+        notes: vendorMiniFormLinksTable.notes,
+        isActive: vendorMiniFormLinksTable.isActive,
+        expiresAt: vendorMiniFormLinksTable.expiresAt,
+        vendorName: suppliersTable.name,
+      })
       .from(vendorMiniFormLinksTable)
+      .leftJoin(suppliersTable, eq(suppliersTable.id, vendorMiniFormLinksTable.supplierId))
       .where(eq(vendorMiniFormLinksTable.token, token));
 
-    if (!link) return res.status(404).json({ error: "Link tidak ditemukan atau sudah tidak valid" });
-    if (!link.isActive) return res.status(410).json({ error: "Link ini sudah dinonaktifkan" });
-    if (link.expiresAt && link.expiresAt < new Date()) {
+    if (!row)          return res.status(404).json({ error: "Link tidak ditemukan atau sudah tidak valid" });
+    if (!row.isActive) return res.status(410).json({ error: "Link ini sudah dinonaktifkan" });
+    if (row.expiresAt && row.expiresAt < new Date()) {
       return res.status(410).json({ error: "Link ini sudah kadaluarsa" });
     }
 
-    let vendorName: string | null = null;
-    if (link.supplierId) {
-      const [vendor] = await db
-        .select({ name: suppliersTable.name })
-        .from(suppliersTable)
-        .where(eq(suppliersTable.id, link.supplierId));
-      vendorName = vendor?.name ?? null;
-    }
+    const schema = SERVICE_SCHEMAS[row.serviceType] ?? null;
 
-    const schema = SERVICE_SCHEMAS[link.serviceType] ?? null;
-
+    res.setHeader("Cache-Control", PUBLIC_CACHE);
     return res.json({
-      id: link.id,
-      serviceType: link.serviceType,
-      title: link.title,
-      notes: link.notes,
-      vendorName,
+      id: row.id,
+      serviceType: row.serviceType,
+      title: row.title,
+      notes: row.notes,
+      vendorName: row.vendorName ?? null,
       schema,
     });
   } catch (err) {
