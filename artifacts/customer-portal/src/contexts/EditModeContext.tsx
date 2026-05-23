@@ -17,6 +17,20 @@ interface EditModeContextValue {
 
 const EditModeContext = createContext<EditModeContextValue | null>(null);
 
+// Paths that do not need CMS content — skip the portal/content fetch for these
+const STANDALONE_PREFIXES = [
+  "/vendor-mini-form", "/vendor-form", "/vendor-response", "/vendor-product-approval",
+  "/vendor-quote", "/vendor-confirm", "/vendor-fulfillment", "/vendor-job",
+  "/approve", "/confirm", "/customer-quote", "/order-task", "/customer-order",
+  "/admin-action", "/admin-review", "/order-track", "/fulfillment", "/q/",
+  "/privacy-policy", "/contact",
+];
+
+function isStandalonePath() {
+  const path = window.location.pathname;
+  return STANDALONE_PREFIXES.some((p) => path.includes(p));
+}
+
 export function EditModeProvider({ children }: { children: ReactNode }) {
   const isAdmin = isPortalAdmin();
   const [editMode, setEditMode] = useState(false);
@@ -27,6 +41,8 @@ export function EditModeProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (hasFetched.current) return;
+    // Skip CMS fetch for standalone public pages (mini form, vendor form, etc.)
+    if (isStandalonePath()) return;
     hasFetched.current = true;
     fetch("/api/portal/content")
       .then((r) => r.json())
