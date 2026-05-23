@@ -393,6 +393,24 @@ router.get("/callback/google", async (req: Request, res: Response) => {
 
 // ─── Dev Login (development only) ─────────────────────────────────────────────
 
+router.get("/dev-users", async (req: Request, res: Response) => {
+  if (process.env.NODE_ENV !== "development") {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  const users = await db
+    .select({
+      id: usersTable.id,
+      email: usersTable.email,
+      firstName: usersTable.firstName,
+      lastName: usersTable.lastName,
+      role: usersTable.role,
+    })
+    .from(usersTable)
+    .orderBy(usersTable.role, usersTable.email);
+  res.json({ users });
+});
+
 router.post("/dev-login", async (req: Request, res: Response) => {
   if (process.env.NODE_ENV !== "development") {
     res.status(404).json({ error: "Not found" });
