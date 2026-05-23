@@ -9,6 +9,8 @@ import {
   logisticOrdersTable,
   productsTable,
   ordersTable,
+  portalProductOrdersTable,
+  portalProductOrderItemsTable,
 } from "@workspace/db";
 import { eq, asc, or, inArray, sql, and, gt, ilike } from "drizzle-orm";
 import { randomBytes } from "crypto";
@@ -16,6 +18,7 @@ import { createRequire } from "node:module";
 import multer from "multer";
 import { sendLogisticOrderNotification } from "../lib/orderNotification";
 import { sendWhatsApp } from "../lib/fonnte";
+import { getAdminWa } from "../lib/adminWa.js";
 import { requireAdmin } from "../lib/requireAdmin";
 import { logger } from "../lib/logger";
 
@@ -948,17 +951,37 @@ aiAgentRouter.post("/quick-product-order", async (req: Request, res: Response) =
     const totalAmount = qty * priceNum;
     const itemsSummary = `${productName} x${qty}`;
 
-    const [order] = await db.insert(ordersTable).values({
+    // Generate order number PRD-YYMMDD-XXXXX
+    const now = new Date();
+    const yy = now.getFullYear().toString().slice(-2);
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const dd = String(now.getDate()).padStart(2, "0");
+    const rand = Math.floor(Math.random() * 90000) + 10000;
+    const orderNumber = `PRD-${yy}${mm}${dd}-${rand}`;
+
+    // Simpan ke portal_product_orders agar muncul di halaman Portal Order Produk BizPortal
+    const [portalOrder] = await db.insert(portalProductOrdersTable).values({
+      orderNumber,
       customerName,
-      customerEmail: email || `${phone}@wa.cstlogistics.id`,
-      customerPhone: phone,
-      status: "pending",
-      totalAmount: String(totalAmount),
-      taxAmount: "0",
+      email: email || `${phone}@wa.cstlogistics.id`,
+      phone,
+      shippingAddress: "-",
+      notes: notes ? `[AI Chat] ${notes}` : "[AI Chat]",
+      subtotal: String(totalAmount),
       grandTotal: String(totalAmount),
-      items: itemsSummary,
-      lineItems: [{ name: productName, qty, unitPrice: priceNum }],
+      status: "New Order",
     }).returning();
+
+    await db.insert(portalProductOrderItemsTable).values({
+      orderId: portalOrder.id,
+      productId: productId ?? null,
+      productName,
+      productSku: null,
+      unit: null,
+      unitPrice: String(priceNum),
+      qty,
+      subtotal: String(totalAmount),
+    });
 
     if (notes) {
       await db.insert(aiChatMessagesTable).values({
@@ -972,21 +995,33 @@ aiAgentRouter.post("/quick-product-order", async (req: Request, res: Response) =
     getAdminWa().then((adminWa) => {
       if (!adminWa) return;
       const msg =
-        `🛒 *Order Produk Baru*\n` +
+        `🛒 *Order Produk Baru (AI Chat)*\n` +
+        `No. Order: ${orderNumber}\n` +
         `Customer: ${customerName}\n` +
         (phone ? `WhatsApp: ${phone}\n` : "") +
         (email ? `Email: ${email}\n` : "") +
         `Produk: ${productName} x${qty}\n` +
-        `Harga Satuan: Rp ${(priceNum).toLocaleString("id-ID")}\n` +
+        `Harga Satuan: Rp ${priceNum.toLocaleString("id-ID")}\n` +
         `Total: Rp ${totalAmount.toLocaleString("id-ID")}` +
         (notes ? `\nCatatan: ${notes}` : "");
       return sendWhatsApp(adminWa, msg);
     }).catch(() => undefined);
 
+    // Kirim konfirmasi WA ke customer
+    if (phone) {
+      const custMsg =
+        `✅ *Pesanan Anda Berhasil Diterima!*\n` +
+        `No. Order: *${orderNumber}*\n\n` +
+        `• ${productName} × ${qty} — Rp ${totalAmount.toLocaleString("id-ID")}\n\n` +
+        `Total: Rp ${totalAmount.toLocaleString("id-ID")}\n\n` +
+        `Tim kami akan segera menghubungi Anda untuk konfirmasi pengiriman. Terima kasih! 🙏`;
+      sendWhatsApp(phone, custMsg).catch(() => undefined);
+    }
+
     return res.status(201).json({
       success: true,
-      orderNumber: `PRD/${order.id}`,
-      orderId: order.id,
+      orderNumber,
+      orderId: portalOrder.id,
       sessionToken: session.sessionToken,
     });
   } catch (err) {

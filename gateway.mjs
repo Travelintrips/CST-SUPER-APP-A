@@ -30,34 +30,22 @@ const BASE_DELAY    = Number(process.env.GW_BASE_DELAY    ?? 200);
 
 const RETRYABLE_CODES = new Set(["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENOTFOUND"]);
 
-const API_PORT = Number(process.env.API_PORT ?? process.env.REPLIT_API_PORT ?? 8080);
+const API_PORT = 18444;
 
 const ROUTES = [
   { prefix: "/api",          upstream: { host: "localhost", port: API_PORT } },
   { prefix: "/pos-images",   upstream: { host: "localhost", port: API_PORT } },
   { prefix: "/q",            upstream: { host: "localhost", port: API_PORT } },
-  { prefix: "/api",          upstream: { host: "localhost", port: 8080 } },
-  { prefix: "/pos-images",   upstream: { host: "localhost", port: 8080 } },
-  { prefix: "/q",            upstream: { host: "localhost", port: 8080 } },
   { prefix: "/bizportal",    upstream: { host: "localhost", port: 18442 } },
-  { prefix: "/api",          upstream: { host: "localhost", port: 18444 } },
-  { prefix: "/pos-images",   upstream: { host: "localhost", port: 18444 } },
-  { prefix: "/q",            upstream: { host: "localhost", port: 18444 } },
-  { prefix: "/bizportal",    upstream: { host: "localhost", port: 3000 } },
   { prefix: "/sport-center", upstream: { host: "localhost", port: 3002 } },
 ];
 const DEFAULT_UPSTREAM = { host: "localhost", port: 3001 };
 
 const SERVICE_NAMES = {
-  [API_PORT]: "API Server",
-  8080:  "API Server",
-  18442: "BizPortal",
+  18444: "API Server",
+  3000:  "BizPortal",
   3001:  "Customer Portal",
   3002:  "Sport Center",
-  18444: "API Server",
-  3000: "BizPortal",
-  3001: "Customer Portal",
-  3002: "Sport Center",
 };
 
 function resolve(url) {
@@ -221,14 +209,6 @@ async function handleUpgrade(req, socket, head) {
 
 // ── Start with retry on EADDRINUSE ────────────────────────────────────────────
 
-server.listen(PORT, "0.0.0.0", () => {
-  console.log(`Gateway listening on port ${PORT}`);
-  console.log(`  /api/*          → :${API_PORT} (API Server)`);
-  console.log(`  /bizportal/*    → :3000 (BizPortal)`);
-  console.log(`  /sport-center/* → :3002 (Sport Center)`);
-  console.log(`  /*              → :3001 (Customer Portal)`);
-  console.log(`  retry: up to ${MAX_ATTEMPTS} attempts, ${BASE_DELAY}ms base backoff (cap ${BACKOFF_CAP}ms)`);
-});
 async function startGateway() {
   for (let attempt = 0; attempt < 20; attempt++) {
     const started = await new Promise((resolve) => {

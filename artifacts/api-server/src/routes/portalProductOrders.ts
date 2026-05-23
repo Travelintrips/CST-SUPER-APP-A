@@ -334,23 +334,38 @@ portalProductOrdersRouter.put("/orders/:id/status", async (req: Request, res: Re
 
   if (!updated) return res.status(404).json({ message: "Order tidak ditemukan" });
 
+  const statusLabels: Record<string, string> = {
+    "New Order": "Order Baru ✅",
+    "Confirmed": "Dikonfirmasi ✅",
+    "Processing": "Sedang Diproses 🔄",
+    "Shipped": "Dikirim 🚚",
+    "Completed": "Selesai 🎉",
+    "Cancelled": "Dibatalkan ❌",
+  };
+  const label = statusLabels[status.trim()] ?? status.trim();
+
+  // Notif WA ke customer
   if (updated.phone) {
-    const statusLabels: Record<string, string> = {
-      "New Order": "Order Baru",
-      "Confirmed": "Dikonfirmasi",
-      "Processing": "Sedang Diproses",
-      "Shipped": "Dikirim",
-      "Completed": "Selesai",
-      "Cancelled": "Dibatalkan",
-    };
-    const label = statusLabels[status] ?? status;
-    const msg =
+    const custMsg =
       `📦 *Update Status Pesanan Anda*\n` +
-      `No Order: ${updated.orderNumber}\n` +
+      `No. Order: ${updated.orderNumber}\n` +
+      `Customer: ${updated.customerName}\n` +
       `Status: *${label}*\n\n` +
-      `Terima kasih telah berbelanja di CST Logistic. Hubungi kami jika ada pertanyaan.`;
-    sendWhatsApp(updated.phone, msg).catch(() => undefined);
+      `Terima kasih telah berbelanja di CST Logistics. Hubungi kami jika ada pertanyaan. 🙏`;
+    sendWhatsApp(updated.phone, custMsg).catch(() => undefined);
   }
+
+  // Notif WA ke admin
+  getAdminWa().then((adminWa) => {
+    if (!adminWa) return;
+    const adminMsg =
+      `🔔 *Status Order Produk Diperbarui*\n` +
+      `No. Order : ${updated.orderNumber}\n` +
+      `Customer  : ${updated.customerName}\n` +
+      `HP        : ${updated.phone}\n` +
+      `Status    : *${label}*`;
+    return sendWhatsApp(adminWa, adminMsg);
+  }).catch(() => undefined);
 
   return res.json(toOrder(updated));
 });
