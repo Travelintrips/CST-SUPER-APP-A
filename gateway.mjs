@@ -34,16 +34,16 @@ const ROUTES = [
   { prefix: "/api",          upstream: { host: "localhost", port: 8080 } },
   { prefix: "/pos-images",   upstream: { host: "localhost", port: 8080 } },
   { prefix: "/q",            upstream: { host: "localhost", port: 8080 } },
-  { prefix: "/bizportal",    upstream: { host: "localhost", port: 3000 } },
+  { prefix: "/bizportal",    upstream: { host: "localhost", port: 18442 } },
   { prefix: "/sport-center", upstream: { host: "localhost", port: 3002 } },
 ];
 const DEFAULT_UPSTREAM = { host: "localhost", port: 3001 };
 
 const SERVICE_NAMES = {
-  8080: "API Server",
-  3000: "BizPortal",
-  3001: "Customer Portal",
-  3002: "Sport Center",
+  8080:  "API Server",
+  18442: "BizPortal",
+  3001:  "Customer Portal",
+  3002:  "Sport Center",
 };
 
 function resolve(url) {
@@ -121,14 +121,14 @@ function proxyAttempt(req, upstream, body) {
   });
 }
 
-const server = http.createServer((req, res) => {
-  const upstream = resolve(req.url ?? "/");
+// ── Request handler ───────────────────────────────────────────────────────────
 
+function handleRequest(req, res) {
+  const upstream = resolve(req.url ?? "/");
   const chunks = [];
   req.on("data", c => chunks.push(c));
   req.on("end", async () => {
     const body = Buffer.concat(chunks);
-
     let lastErr;
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
       try {
@@ -139,7 +139,6 @@ const server = http.createServer((req, res) => {
       } catch (err) {
         lastErr = err;
         if (!RETRYABLE_CODES.has(err.code)) break;
-
         const wait = backoffMs(attempt);
         if (attempt === 0) {
           console.warn(`[gw] ${upstream.port} not ready (${err.code}), retrying… (${req.method} ${req.url})`);
@@ -147,17 +146,12 @@ const server = http.createServer((req, res) => {
         await delay(wait);
       }
     }
-
     const port = upstream.port;
     const isApi = req.url?.startsWith("/api");
     console.error(`[gw] upstream :${port} unreachable after ${MAX_ATTEMPTS} attempts — ${lastErr?.message}`);
-
     if (!res.headersSent) {
       if (isApi) {
-        res.writeHead(503, {
-          "content-type": "application/json",
-          "retry-after":  "5",
-        });
+        res.writeHead(503, { "content-type": "application/json", "retry-after": "5" });
         res.end(JSON.stringify({
           error: "upstream_not_ready",
           message: `${SERVICE_NAMES[port] ?? `upstream :${port}`} belum siap, coba lagi beberapa saat.`,
@@ -169,11 +163,11 @@ const server = http.createServer((req, res) => {
       }
     }
   });
-});
+}
 
 // ── WebSocket upgrade with retry ──────────────────────────────────────────────
 
-function wsConnect(upstream, attempt = 0) {
+function wsConnect(upstream) {
   return new Promise((resolve, reject) => {
     const sock = net.connect(upstream.port, upstream.host);
     sock.once("connect", () => resolve(sock));
@@ -181,14 +175,12 @@ function wsConnect(upstream, attempt = 0) {
   });
 }
 
-server.on("upgrade", async (req, socket, head) => {
+async function handleUpgrade(req, socket, head) {
   const upstream = resolve(req.url ?? "/");
-
-  let tunnel;
-  let lastErr;
+  let tunnel, lastErr;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     try {
-      tunnel = await wsConnect(upstream, attempt);
+      tunnel = await wsConnect(upstream);
       break;
     } catch (err) {
       lastErr = err;
@@ -196,33 +188,54 @@ server.on("upgrade", async (req, socket, head) => {
       await delay(backoffMs(attempt));
     }
   }
-
   if (!tunnel) {
     console.error(`[gw] WS: upstream :${upstream.port} unreachable — ${lastErr?.message}`);
     socket.destroy();
     return;
   }
-
   tunnel.write(
     `${req.method} ${req.url} HTTP/1.1\r\n` +
     Object.entries(req.headers).map(([k, v]) => `${k}: ${v}`).join("\r\n") +
     "\r\n\r\n"
   );
   if (head?.length) tunnel.write(head);
-
   tunnel.on("error", (err) => { console.error(`[gw] WS tunnel error — ${err.message}`); socket.destroy(); });
   socket.on("error", () => tunnel.destroy());
   tunnel.pipe(socket, { end: true });
   socket.pipe(tunnel, { end: true });
-});
+}
 
-// ── Start ─────────────────────────────────────────────────────────────────────
+// ── Start with retry on EADDRINUSE ────────────────────────────────────────────
 
-server.listen(PORT, "0.0.0.0", () => {
-  console.log(`Gateway listening on port ${PORT}`);
-  console.log(`  /api/*          → :8080 (API Server)`);
-  console.log(`  /bizportal/*    → :3000 (BizPortal)`);
-  console.log(`  /sport-center/* → :3002 (Sport Center)`);
-  console.log(`  /*              → :3001 (Customer Portal)`);
-  console.log(`  retry: up to ${MAX_ATTEMPTS} attempts, ${BASE_DELAY}ms base backoff (cap ${BACKOFF_CAP}ms)`);
-});
+async function startGateway() {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const started = await new Promise((resolve) => {
+      const srv = http.createServer(handleRequest);
+      srv.on("upgrade", handleUpgrade);
+      srv.once("error", async (err) => {
+        if (err.code === "EADDRINUSE") {
+          console.warn(`[gw] Port ${PORT} busy, retrying in 1s… (attempt ${attempt + 1}/20)`);
+          srv.close();
+          resolve(false);
+        } else {
+          console.error(`[gw] Fatal server error: ${err.message}`);
+          process.exit(1);
+        }
+      });
+      srv.listen(PORT, "0.0.0.0", () => {
+        console.log(`Gateway listening on port ${PORT}`);
+        console.log(`  /api/*          → :8080 (API Server)`);
+        console.log(`  /bizportal/*    → :18442 (BizPortal)`);
+        console.log(`  /sport-center/* → :3002 (Sport Center)`);
+        console.log(`  /*              → :3001 (Customer Portal)`);
+        resolve(true);
+      });
+    });
+    if (started) return;
+    await delay(1000);
+  }
+  console.error(`[gw] Could not bind port ${PORT} after 20 attempts`);
+  process.exit(1);
+}
+
+startGateway();
