@@ -86,6 +86,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Badge } from "@/components/ui/badge";
 import { LanguageSelector } from "@/components/layout/LanguageSelector";
 import { NotificationBell } from "@/components/layout/NotificationBell";
+import { DevUserSwitcher } from "@/components/layout/DevUserSwitcher";
 import { useOrderNotificationsContext } from "@/contexts/OrderNotificationsContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { CompanySwitcher } from "@/components/CompanySwitcher";
@@ -108,6 +109,8 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { SortableNavWrapper } from "./SortableNavWrapper";
+
+const IS_DEV = import.meta.env.DEV;
 
 interface AppShellProps {
   children: ReactNode;
@@ -286,8 +289,6 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "balanceSheet", href: "/accounting/reports/balance-sheet", icon: Wallet },
         { titleKey: "reconciliation", href: "/accounting/reconciliation", icon: GitMerge },
         { titleKey: "accountingSettings", href: "/accounting/settings", icon: Settings },
-        { titleKey: "Holding Dashboard", href: "/holding/dashboard", icon: LayoutDashboard, companyCodes: ["__holding__"] },
-        { titleKey: "Holding P&L", href: "/holding/pl-report", icon: TrendingUp, companyCodes: ["__holding__"] },
       ],
     },
     {
@@ -774,6 +775,12 @@ export function AppShell({ children }: AppShellProps) {
                 <span className="hidden sm:inline">Cari...</span>
                 <kbd className="hidden sm:inline rounded bg-background px-1 py-0.5 text-[10px] font-mono border border-border">⌘K</kbd>
               </button>
+              {IS_DEV && dbUser && (
+                <span className="hidden sm:flex items-center gap-1 rounded border border-amber-600/40 bg-amber-950/30 px-2 py-0.5 text-[10px] font-mono text-amber-400 max-w-[140px] truncate" title={`Login sebagai: ${dbUser.email}`}>
+                  {dbUser.name || dbUser.email}
+                </span>
+              )}
+              {IS_DEV && <DevUserSwitcher />}
               <NotificationBell />
             </div>
           </div>
@@ -789,6 +796,13 @@ export function AppShell({ children }: AppShellProps) {
                 <span>Cari halaman...</span>
                 <kbd className="ml-1 rounded bg-background px-1 py-0.5 text-[10px] font-mono border border-border">Ctrl+K</kbd>
               </button>
+              {IS_DEV && dbUser && (
+                <span className="flex items-center gap-1.5 rounded border border-amber-600/40 bg-amber-950/30 px-2 py-1 text-[11px] font-mono text-amber-400 max-w-[200px]" title={dbUser.email ?? ""}>
+                  <span className="text-amber-600/70 shrink-0">as:</span>
+                  <span className="truncate">{dbUser.name || dbUser.email}</span>
+                </span>
+              )}
+              {IS_DEV && <DevUserSwitcher />}
               <LanguageSelector />
               <NotificationBell />
               <DropdownMenu>

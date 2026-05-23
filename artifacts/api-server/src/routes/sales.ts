@@ -647,22 +647,140 @@ router.post("/documents/:id/action", async (req, res) => {
     }
   }
 
-  // Notify admin via WhatsApp when quotation is confirmed as Sales Order (fire-and-forget)
-  // Guard: only send if status was not already "confirmed" to prevent duplicate notifications on retries
-  if (action === "confirm" && doc.status !== "confirmed") {
-    getAdminWa().then((adminWa) => {
-      if (!adminWa) return;
-      const soTotal = Number(doc.totalAmount ?? 0) + Number(doc.taxAmount ?? 0);
-      const tanggal = doc.createdAt.toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
-      const msg =
-        `📋 *Sales Order Baru (Dikonfirmasi)*\n` +
-        `No: ${doc.docNumber}\n` +
-        `Customer: ${doc.customerName}\n` +
-        `Total: Rp ${soTotal.toLocaleString("id-ID")}\n` +
-        `Tanggal: ${tanggal}`;
-      return sendWhatsApp(adminWa, msg);
-    }).catch(() => undefined);
-  }
+  // ── WA Notifications for sales milestones ─────────────────────────────────
+  // Fetch customer phone (fire-and-forget block)
+  void (async () => {
+    try {
+      let customerPhone: string | null = null;
+      if (doc.customerId != null) {
+        const [cust] = await db
+          .select({ phone: customersTable.phone, email: customersTable.email })
+          .from(customersTable)
+          .where(eq(customersTable.id, doc.customerId))
+          .limit(1);
+        customerPhone = cust?.phone ?? null;
+      }
+
+      const grandTotal = Number(doc.totalAmount ?? 0) + Number(doc.taxAmount ?? 0);
+      const fmtRp = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
+      const adminWa = await getAdminWa();
+
+      if (action === "send" && doc.status !== "sent") {
+        // WA ke customer: penawaran dikirim
+        if (customerPhone) {
+          const validStr = doc.validUntil
+            ? new Date(doc.validUntil).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })
+            : "—";
+          await sendWhatsApp(
+            customerPhone,
+            `📄 *Sales Quotation — ${doc.docNumber}*\n\n` +
+            `Halo ${doc.customerName},\n\n` +
+            `Penawaran kami untuk Anda:\n` +
+            `Total: ${fmtRp(grandTotal)}\n` +
+            `Berlaku hingga: ${validStr}\n\n` +
+            `Silakan hubungi kami untuk konfirmasi. Terima kasih!`,
+          ).catch(() => undefined);
+        }
+        // WA ke admin: dokumen dikirim ke customer
+        if (adminWa) {
+          await sendWhatsApp(
+            adminWa,
+            `📤 *Quotation Dikirim ke Customer*\n` +
+            `No: ${doc.docNumber}\n` +
+            `Customer: ${doc.customerName}\n` +
+            `Total: ${fmtRp(grandTotal)}`,
+          ).catch(() => undefined);
+        }
+      }
+
+      if (action === "confirm" && doc.status !== "confirmed") {
+        // WA ke admin: SO baru dikonfirmasi
+        if (adminWa) {
+          const tanggal = doc.createdAt.toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
+          await sendWhatsApp(
+            adminWa,
+            `📋 *Sales Order Baru (Dikonfirmasi)*\n` +
+            `No: ${doc.docNumber}\n` +
+            `Customer: ${doc.customerName}\n` +
+            `Total: ${fmtRp(grandTotal)}\n` +
+            `Tanggal: ${tanggal}`,
+          ).catch(() => undefined);
+        }
+        // WA ke customer: order dikonfirmasi
+        if (customerPhone) {
+          const expStr = doc.expectedDate
+            ? new Date(doc.expectedDate).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })
+            : "—";
+          await sendWhatsApp(
+            customerPhone,
+            `✅ *Sales Order Dikonfirmasi — ${doc.docNumber}*\n\n` +
+            `Halo ${doc.customerName},\n\n` +
+            `Order Anda telah dikonfirmasi:\n` +
+            `Total: ${fmtRp(grandTotal)}\n` +
+            `Estimasi pengiriman: ${expStr}\n\n` +
+            `Kami akan segera memproses pesanan Anda. Terima kasih!`,
+          ).catch(() => undefined);
+        }
+      }
+
+      if (action === "mark_delivered" && doc.deliveryStatus !== "delivered") {
+        // WA ke customer: pesanan terkirim
+        if (customerPhone) {
+          await sendWhatsApp(
+            customerPhone,
+            `🚚 *Pesanan Terkirim — ${doc.docNumber}*\n\n` +
+            `Halo ${doc.customerName},\n\n` +
+            `Pesanan Anda telah dikirim/diserahkan.\n` +
+            `Total: ${fmtRp(grandTotal)}\n\n` +
+            `Terima kasih telah berbelanja bersama kami!`,
+          ).catch(() => undefined);
+        }
+        // WA ke admin
+        if (adminWa) {
+          await sendWhatsApp(
+            adminWa,
+            `🚚 *SO Terkirim*\n` +
+            `No: ${doc.docNumber}\n` +
+            `Customer: ${doc.customerName}\n` +
+            `Total: ${fmtRp(grandTotal)}`,
+          ).catch(() => undefined);
+        }
+      }
+
+      if (action === "mark_invoiced" && doc.invoiceStatus !== "invoiced") {
+        // Ambil nomor invoice dari patch (sudah di-assign di atas)
+        const invNumber = (patch["invoiceNumber"] as string | undefined) ?? doc.docNumber;
+        const dueStr = patch["dueDate"]
+          ? new Date(patch["dueDate"] as string).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })
+          : "—";
+        // WA ke customer: invoice dibuat
+        if (customerPhone) {
+          await sendWhatsApp(
+            customerPhone,
+            `🧾 *Invoice Diterbitkan — ${invNumber}*\n\n` +
+            `Halo ${doc.customerName},\n\n` +
+            `Invoice untuk order Anda telah diterbitkan:\n` +
+            `Total: ${fmtRp(grandTotal)}\n` +
+            `Jatuh tempo: ${dueStr}\n\n` +
+            `Silakan hubungi kami untuk informasi pembayaran. Terima kasih!`,
+          ).catch(() => undefined);
+        }
+        // WA ke admin
+        if (adminWa) {
+          await sendWhatsApp(
+            adminWa,
+            `🧾 *Invoice Dibuat*\n` +
+            `No Invoice: ${invNumber}\n` +
+            `Customer: ${doc.customerName}\n` +
+            `Total: ${fmtRp(grandTotal)}\n` +
+            `Jatuh tempo: ${dueStr}`,
+          ).catch(() => undefined);
+        }
+      }
+    } catch (_e) {
+      // fire-and-forget — jangan sampai gagal notif membatalkan response
+    }
+  })();
 
   // Auto-post journal entry when order is newly confirmed (Debit AR / Credit Revenue)
   if (

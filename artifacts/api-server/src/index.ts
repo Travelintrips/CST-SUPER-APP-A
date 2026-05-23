@@ -42,7 +42,9 @@ import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 
 
-const rawPort = process.env["PORT"] ?? process.env["API_PORT"] ?? "5000";
+// REPLIT_API_PORT overrides PORT so the server listens on the local port
+// that maps to external port 8080 in the Replit dev proxy (localPort=18444).
+const rawPort = process.env["REPLIT_API_PORT"] ?? process.env["PORT"] ?? process.env["API_PORT"] ?? "5000";
 
 // Security: PORTAL_ADMIN_EMAILS must be set in production.
 // Without it, requirePortalAdmin falls back to DB role-only check,

@@ -518,6 +518,68 @@ router.post("/auth/wa-trusted-login", async (req, res) => {
   });
 });
 
+// GET /api/portal/auth/trusted-devices — daftar perangkat terpercaya milik user saat ini
+router.get("/auth/trusted-devices", requirePortalAuth, async (req, res) => {
+  const customerId = (req as PortalAuthReq).portalCustomerId;
+  const [customer] = await db
+    .select({ phone: portalCustomersTable.phone })
+    .from(portalCustomersTable)
+    .where(eq(portalCustomersTable.id, customerId))
+    .limit(1);
+  if (!customer?.phone) return res.json([]);
+
+  const devices = await db
+    .select({
+      id: trustedDevicesTable.id,
+      createdAt: trustedDevicesTable.createdAt,
+      expiresAt: trustedDevicesTable.expiresAt,
+    })
+    .from(trustedDevicesTable)
+    .where(eq(trustedDevicesTable.phone, customer.phone))
+    .orderBy(trustedDevicesTable.createdAt);
+
+  return res.json(devices);
+});
+
+// DELETE /api/portal/auth/trusted-devices/:id — cabut perangkat terpercaya
+router.delete("/auth/trusted-devices/:id", requirePortalAuth, async (req, res) => {
+  const customerId = (req as PortalAuthReq).portalCustomerId;
+  const deviceId = parseInt(req.params.id, 10);
+  if (isNaN(deviceId)) return res.status(400).json({ message: "ID tidak valid." });
+
+  const [customer] = await db
+    .select({ phone: portalCustomersTable.phone })
+    .from(portalCustomersTable)
+    .where(eq(portalCustomersTable.id, customerId))
+    .limit(1);
+  if (!customer?.phone) return res.status(404).json({ message: "User tidak ditemukan." });
+
+  const [device] = await db
+    .select({ id: trustedDevicesTable.id })
+    .from(trustedDevicesTable)
+    .where(and(eq(trustedDevicesTable.id, deviceId), eq(trustedDevicesTable.phone, customer.phone)))
+    .limit(1);
+
+  if (!device) return res.status(404).json({ message: "Perangkat tidak ditemukan." });
+
+  await db.delete(trustedDevicesTable).where(eq(trustedDevicesTable.id, deviceId));
+  return res.json({ message: "Perangkat berhasil dicabut." });
+});
+
+// DELETE /api/portal/auth/trusted-devices — cabut semua perangkat
+router.delete("/auth/trusted-devices", requirePortalAuth, async (req, res) => {
+  const customerId = (req as PortalAuthReq).portalCustomerId;
+  const [customer] = await db
+    .select({ phone: portalCustomersTable.phone })
+    .from(portalCustomersTable)
+    .where(eq(portalCustomersTable.id, customerId))
+    .limit(1);
+  if (!customer?.phone) return res.status(404).json({ message: "User tidak ditemukan." });
+
+  await db.delete(trustedDevicesTable).where(eq(trustedDevicesTable.phone, customer.phone));
+  return res.json({ message: "Semua perangkat berhasil dicabut." });
+});
+
 // POST /api/portal/auth/signup — standalone register (non-Supabase)
 router.post("/auth/signup", async (req, res) => {
   const { name, email, password, phone, company, role: requestedRole, serviceIds } = req.body ?? {};

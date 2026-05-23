@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
 import { useCompany, type Company } from "@/contexts/CompanyContext";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -6,8 +8,16 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Building2, Pencil, Save, X, CheckCircle2, AlertCircle } from "lucide-react";
+import { Building2, Pencil, Save, X, CheckCircle2, AlertCircle, Layers, ExternalLink } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
+
+interface HoldingGroup {
+  id: number;
+  holding_name: string;
+  holding_code: string;
+  description: string | null;
+  members: { companyId: number; companyName: string; companyCode: string }[];
+}
 
 const COMPANY_COLORS = [
   "from-indigo-600 to-indigo-800",
@@ -18,9 +28,19 @@ const COMPANY_COLORS = [
 
 export default function HoldingPage() {
   const { companies, refetch } = useCompany();
+  const [, navigate] = useLocation();
   const [editing, setEditing] = useState<number | null>(null);
   const [form, setForm] = useState<Partial<Company>>({});
   const [saving, setSaving] = useState(false);
+
+  const { data: groups = [] } = useQuery<HoldingGroup[]>({
+    queryKey: ["holding-groups"],
+    queryFn: async () => {
+      const r = await fetch("/api/accounting/holding/groups", { credentials: "include" });
+      if (!r.ok) throw new Error("Gagal memuat grup");
+      return r.json();
+    },
+  });
 
   const startEdit = (c: Company) => {
     setEditing(c.id);
@@ -75,6 +95,45 @@ export default function HoldingPage() {
             </p>
           </div>
         </div>
+
+        {/* Holding Groups — Laporan Keuangan */}
+        {groups.length > 0 && (
+          <div className="space-y-3">
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Grup Holding</h2>
+            <div className="grid gap-4 md:grid-cols-2">
+              {groups.map((g) => (
+                <Card key={g.id} className="border-border hover:border-indigo-500/40 transition-colors">
+                  <CardContent className="p-4 flex items-center gap-4">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-600/20 border border-indigo-500/30">
+                      <Layers className="h-5 w-5 text-indigo-400" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-sm">{g.holding_name}</span>
+                        <Badge className="bg-indigo-600/20 text-indigo-300 border border-indigo-500/40 text-xs font-mono">
+                          {g.holding_code}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {g.members.length} entitas anggota
+                        {g.description ? ` · ${g.description}` : ""}
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="shrink-0 gap-1.5 text-indigo-400 border-indigo-500/30 hover:bg-indigo-500/10"
+                      onClick={() => navigate(`/holding/groups/${g.id}`)}
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      Detail Laporan
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Company Cards */}
         {companies.length === 0 && (
