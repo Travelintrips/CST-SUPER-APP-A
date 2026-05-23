@@ -222,6 +222,21 @@ async function sendAdminRecapWa(rfqId: number, rfq: { rfqNumber: string; orderId
   });
 
   const compLink = getComparisonUrl(rfqId);
+
+  // Generate compare_vendors mini-form link (no-login) when there is at least one vendor response
+  let compareAdminLink = compLink;
+  if (answered.length > 0) {
+    try {
+      const { createAdminActionLink, getAdminActionUrl } = await import("./adminAction.js");
+      const { generateShortLink } = await import("../lib/shortLink.js");
+      const cmpToken = await createAdminActionLink(rfq.orderId, "compare_vendors", rfqId, 72);
+      const cmpUrl = getAdminActionUrl(cmpToken);
+      compareAdminLink = await generateShortLink(cmpUrl, { context: "admin_action", refType: "rfq", refId: String(rfqId) });
+    } catch (e) {
+      logger.warn({ e }, "sendAdminRecapWa: gagal generate compare_vendors link");
+    }
+  }
+
   const msg =
     `🔔 *Update Penawaran Vendor*\n\n` +
     `RFQ: ${rfq.rfqNumber}\n` +
@@ -229,7 +244,7 @@ async function sendAdminRecapWa(rfqId: number, rfq: { rfqNumber: string; orderId
     `Rute: ${order?.origin ?? "—"} → ${order?.destination ?? "—"}\n\n` +
     (listStr ? `📋 *Daftar penawaran:*\n${listStr}\n` : "") +
     (waitingStr ? `⏳ *Belum jawab:*\n${waitingStr}\n` : "") +
-    `🔗 Lihat & pilih vendor:\n${compLink}`;
+    `🔗 Bandingkan & pilih vendor:\n${compareAdminLink}`;
 
   sendWhatsApp(adminGroup, msg).catch((e: unknown) =>
     logger.error({ e }, "sendAdminRecapWa failed")

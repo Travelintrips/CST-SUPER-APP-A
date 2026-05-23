@@ -7,35 +7,6 @@ import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 const port = Number(process.env.PORT ?? "3000");
 
 const basePath = process.env.BASE_PATH ?? "/";
-const isPosMode = process.env.VITE_POS_MODE === "true";
-
-// Plugin: paksa semua request ke /kasir/login saat mode POS aktif,
-// kecuali path kasir itu sendiri, API, dan asset internal Vite
-function posRedirectPlugin() {
-  return {
-    name: "pos-redirect",
-    configureServer(server: import("vite").ViteDevServer) {
-      server.middlewares.use((req, res, next) => {
-        if (!isPosMode) { next(); return; }
-        const url = req.url ?? "/";
-        const isAllowed =
-          url.startsWith("/kasir") ||
-          url.startsWith("/menu-board") ||
-          url.startsWith("/api/") ||
-          url.startsWith("/@") ||
-          url.startsWith("/node_modules") ||
-          url.startsWith("/__vite") ||
-          url.includes(".") // file statis (js, css, png, dll.)
-        if (!isAllowed) {
-          res.writeHead(302, { Location: "/kasir/login" });
-          res.end();
-          return;
-        }
-        next();
-      });
-    },
-  };
-}
 
 export default defineConfig({
   base: basePath,
@@ -45,10 +16,8 @@ export default defineConfig({
     "import.meta.env.VITE_SUPABASE_URL_DEV": JSON.stringify(process.env.VITE_SUPABASE_URL_DEV ?? process.env.SUPABASE_URL_DEV ?? ""),
     "import.meta.env.VITE_SUPABASE_ANON_KEY_DEV": JSON.stringify(process.env.VITE_SUPABASE_ANON_KEY_DEV ?? process.env.SUPABASE_ANON_KEY_DEV ?? ""),
     "import.meta.env.VITE_REPLIT_DEV_DOMAIN": JSON.stringify(process.env.REPLIT_DEV_DOMAIN ?? ""),
-    "import.meta.env.VITE_POS_MODE": JSON.stringify(process.env.VITE_POS_MODE ?? ""),
   },
   plugins: [
-    posRedirectPlugin(),
     react(),
     tailwindcss(),
     runtimeErrorOverlay(),
@@ -110,19 +79,9 @@ export default defineConfig({
         target: "http://localhost:8080",
         changeOrigin: true,
       },
-      "/pos-images": {
-        target: "http://localhost:8080",
-        changeOrigin: true,
-      },
       // BizPortal dev server — proxied so /bizportal/* works via main entry port
       "/bizportal": {
         target: "http://localhost:3000",
-        changeOrigin: true,
-        ws: true,
-      },
-      // Sport Center dev server — proxied so /sport-center/* works via main entry port
-      "/sport-center": {
-        target: "http://localhost:3002",
         changeOrigin: true,
         ws: true,
       },

@@ -4,7 +4,7 @@ import { rfqRateLimit } from "../middlewares/rfqRateLimit.js";
 import { db, suppliersTable, logisticOrdersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, logisticOrderItemsTable, vendorCatalogItemsTable, vendorOffersTable, vendorRatesTable, salesDocumentsTable, salesDocumentLinesTable } from "@workspace/db";
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { sendWhatsApp } from "../lib/fonnte.js";
-import { getAdminWa } from "../lib/adminWa.js";
+import { getAdminWa, getAdminGroupWa } from "../lib/adminWa.js";
 import { logger } from "../lib/logger.js";
 import { getPreferredDomain } from "../lib/domain.js";
 import { sendVendorWhatsApp } from "../lib/vendorQuoteWa.js";
@@ -654,18 +654,24 @@ logisticRfqRouter.post("/vendor-quote", rfqRateLimit, async (req: Request, res: 
     replyTimestamp: new Date(),
   }).returning();
 
-  const adminWa = await getAdminWa();
+  const [adminWa, adminGroupWa] = await Promise.all([getAdminWa(), getAdminGroupWa()]);
+  const allQuotes = (adminWa || adminGroupWa)
+    ? await db.select().from(logisticOrderQuotesTable)
+        .where(and(eq(logisticOrderQuotesTable.orderId, rfq.orderId), eq(logisticOrderQuotesTable.quoteStatus, "pending")))
+        .orderBy(logisticOrderQuotesTable.createdAt)
+    : [];
+  const quotePosition = allQuotes.findIndex((q) => q.id === quote.id) + 1 || undefined;
+  const quoteNotifMsg = buildAdminQuoteNotif(
+    rfq.rfqNumber, order.orderNumber, vendor?.name ?? `#${vendorId}`, rfq.orderId,
+    { vendorPrice: vp, estimatedPickup: quote.estimatedPickup, estimatedDelivery: quote.estimatedDelivery,
+      estimatedDays: quote.estimatedDays, vendorNotes: quote.vendorNotes },
+    quotePosition
+  );
   if (adminWa) {
-    const allQuotes = await db.select().from(logisticOrderQuotesTable)
-      .where(and(eq(logisticOrderQuotesTable.orderId, rfq.orderId), eq(logisticOrderQuotesTable.quoteStatus, "pending")))
-      .orderBy(logisticOrderQuotesTable.createdAt);
-    const quotePosition = allQuotes.findIndex((q) => q.id === quote.id) + 1 || undefined;
-    sendWhatsApp(adminWa, buildAdminQuoteNotif(
-      rfq.rfqNumber, order.orderNumber, vendor?.name ?? `#${vendorId}`, rfq.orderId,
-      { vendorPrice: vp, estimatedPickup: quote.estimatedPickup, estimatedDelivery: quote.estimatedDelivery,
-        estimatedDays: quote.estimatedDays, vendorNotes: quote.vendorNotes },
-      quotePosition
-    )).catch((e: unknown) => logger.error({ e }, "WA admin vendor-form quote notif failed"));
+    sendWhatsApp(adminWa, quoteNotifMsg).catch((e: unknown) => logger.error({ e }, "WA admin vendor-form quote notif failed"));
+  }
+  if (adminGroupWa) {
+    sendWhatsApp(adminGroupWa, quoteNotifMsg).catch((e: unknown) => logger.error({ e }, "WA admin group vendor-form quote notif failed"));
   }
 
   logger.info({ rfqNumber, vendorId, vendorPrice: vp }, "Vendor submitted quote via form");

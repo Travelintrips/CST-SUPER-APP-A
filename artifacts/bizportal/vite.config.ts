@@ -92,12 +92,7 @@ if (h.indexOf('access_token') !== -1 || h.indexOf('error=') !== -1 ||
     strictPort: false,
     host: "0.0.0.0",
     allowedHosts: true,
-    hmr: {
-      clientPort: 9000,
-      protocol: "wss",
-      host: process.env.REPLIT_DEV_DOMAIN ?? "localhost",
-      overlay: false,
-    },
+    hmr: process.env.REPLIT_DEV_DOMAIN ? false : { overlay: false },
     watch: {
       ignored: [
         "**/node_modules/**",
@@ -113,10 +108,6 @@ if (h.indexOf('access_token') !== -1 || h.indexOf('error=') !== -1 ||
     },
     proxy: {
       "/api": {
-        target: "http://localhost:8080",
-        changeOrigin: true,
-      },
-      "/pos-images": {
         target: "http://localhost:8080",
         changeOrigin: true,
       },
