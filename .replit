@@ -24,6 +24,10 @@ args = "Gateway"
 task = "workflow.run"
 args = "API Spec Watcher"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start API Server"
+
 [[workflows.workflow]]
 name = "Gateway"
 author = "agent"
@@ -43,6 +47,18 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "node lib/api-spec/watch.mjs"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow]]
+name = "Start API Server"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "fuser -k 8080/tcp 2>/dev/null || true; cd artifacts/api-server && node build.mjs && PORT=8080 NODE_ENV=development node --enable-source-maps ./dist/index.mjs"
+waitForPort = 8080
 
 [workflows.workflow.metadata]
 outputType = "console"
@@ -156,3 +172,7 @@ externalPort = 5173
 [[ports]]
 localPort = 23435
 externalPort = 8081
+
+[[ports]]
+localPort = 8080
+externalPort = 8080
