@@ -5,6 +5,7 @@ import {
   accountingTaxesTable,
 } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
+type EntryLine = typeof accountingEntryLinesTable.$inferSelect;
 import { ensureAccountingSettings } from "./accountingSeed.js";
 import { logger } from "./logger.js";
 
@@ -48,12 +49,13 @@ function round2(n: number): number {
 
 async function nextEntryNumber(journalCode: string, source?: string): Promise<string> {
   const year = new Date().getFullYear();
-  // Manual entries always use JE prefix; auto-posted entries use the journal code
   const prefix = (source === "manual" || !source) ? "JE" : journalCode;
-  const [{ count }] = await db
-    .select({ count: sql<number>`cast(count(*) as int)` })
-    .from(accountingEntriesTable);
-  const seq = (Number(count) + 1).toString().padStart(4, "0");
+  const pattern = `${prefix}/${year}/%`;
+  const [{ maxSeq }] = await db
+    .select({ maxSeq: sql<number>`COALESCE(MAX(CAST(SPLIT_PART(entry_number, '/', 3) AS int)), 0)` })
+    .from(accountingEntriesTable)
+    .where(sql`entry_number LIKE ${pattern}`);
+  const seq = (Number(maxSeq) + 1).toString().padStart(4, "0");
   return `${prefix}/${year}/${seq}`;
 }
 
@@ -946,5 +948,88 @@ export async function postSportCenterBooking(args: {
     );
   } catch (err) {
     logger.error({ err, bookingId: args.bookingId }, "Auto-post Sport Center booking failed");
+  }
+}
+
+/**
+ * Post jurnal reversal saat bill pembelian dibatalkan.
+ * Membalik semua baris debit/kredit dari jurnal purchase_bill asli.
+ */
+export async function postPurchaseBillReversal(args: {
+  purchaseDocId: number;
+  docNumber: string;
+  supplierName: string;
+  companyId?: number | null;
+}): Promise<void> {
+  try {
+    const settings = await ensureAccountingSettings(args.companyId ?? undefined);
+    if (!settings.purchaseJournalId) {
+      logger.warn({ purchaseDocId: args.purchaseDocId }, "Skipping bill reversal: purchaseJournalId missing");
+      return;
+    }
+
+    // Cari entri purchase_bill asli untuk PO ini
+    const [entry] = await db
+      .select()
+      .from(accountingEntriesTable)
+      .where(
+        sql`${accountingEntriesTable.source} = 'purchase_bill' AND ${accountingEntriesTable.sourceId} = ${args.purchaseDocId}`,
+      )
+      .limit(1);
+
+    if (!entry) {
+      logger.warn({ purchaseDocId: args.purchaseDocId }, "No purchase_bill entry found to reverse — skipping");
+      return;
+    }
+
+    // Pastikan belum pernah di-reversal (cek entri reversal dengan sourceId sama)
+    const [existingReversal] = await db
+      .select()
+      .from(accountingEntriesTable)
+      .where(
+        sql`${accountingEntriesTable.source} = 'reversal' AND ${accountingEntriesTable.sourceId} = ${args.purchaseDocId}`,
+      )
+      .limit(1);
+    if (existingReversal) {
+      logger.info({ purchaseDocId: args.purchaseDocId }, "Bill reversal already posted — skipping");
+      return;
+    }
+
+    // Ambil baris entri asli
+    const entryLines = await db
+      .select()
+      .from(accountingEntryLinesTable)
+      .where(eq(accountingEntryLinesTable.entryId, entry.id));
+
+    if (!entryLines.length) {
+      logger.warn({ purchaseDocId: args.purchaseDocId, entryId: entry.id }, "Original entry has no lines — skipping reversal");
+      return;
+    }
+
+    // Balik debit/kredit
+    const reversalLines: PostingLine[] = entryLines.map((l: EntryLine) => ({
+      accountId: l.accountId,
+      debit: round2(Number(l.credit)),
+      credit: round2(Number(l.debit)),
+      description: `[Batal] ${l.description ?? ""}`.trim(),
+    }));
+
+    await postEntry(
+      {
+        journalId: settings.purchaseJournalId,
+        date: new Date(),
+        ref: args.docNumber,
+        description: `Pembatalan tagihan pembelian ${args.docNumber} - ${args.supplierName}`,
+        source: "reversal",
+        sourceId: args.purchaseDocId,
+        companyId: args.companyId ?? null,
+        lines: reversalLines,
+      },
+      "PUR",
+    );
+
+    logger.info({ purchaseDocId: args.purchaseDocId }, "Purchase bill reversal posted");
+  } catch (err) {
+    logger.error({ err, purchaseDocId: args.purchaseDocId }, "Auto-post purchase bill reversal failed");
   }
 }

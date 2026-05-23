@@ -9,6 +9,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { AlertCircle, ArrowLeft, Check, MessageCircle, Phone, Shield, Truck, User } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
+const TRUSTED_DEVICE_KEY = "cst_trusted_device";
+const REMEMBER_DAYS = 30;
+
+function saveTrustedDevice(phone: string, deviceToken: string) {
+  const data = { phone, deviceToken, expiresAt: Date.now() + REMEMBER_DAYS * 86400_000 };
+  localStorage.setItem(TRUSTED_DEVICE_KEY, JSON.stringify(data));
+}
+
 type UserRole = "customer" | "vendor";
 type Step = "phone" | "otp" | "profile";
 
@@ -23,12 +31,13 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 export default function Register() {
   const [, setLocation] = useLocation();
   const returnTo = new URLSearchParams(window.location.search).get("returnTo");
+  const phoneFromUrl = new URLSearchParams(window.location.search).get("phone") ?? "";
   const [step, setStep] = useState<Step>("phone");
   const [errorMsg, setErrorMsg] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [cooldown, setCooldown] = useState(0);
 
-  const [phone, setPhone] = useState("");
+  const [phone, setPhone] = useState(phoneFromUrl);
   const [normalizedPhone, setNormalizedPhone] = useState("");
   const [otp, setOtp] = useState("");
   const [verifyToken, setVerifyToken] = useState("");
@@ -39,6 +48,7 @@ export default function Register() {
   const [email, setEmail] = useState("");
   const [serviceIds, setServiceIds] = useState<number[]>([]);
   const [products, setProducts] = useState<SimpleItem[]>([]);
+  const [rememberDevice, setRememberDevice] = useState(true);
 
   const otpInputRef = useRef<HTMLInputElement>(null);
 
@@ -150,6 +160,7 @@ export default function Register() {
         body: JSON.stringify({
           verifyToken, name, role, company: company || null,
           email: email || null, serviceIds,
+          rememberDays: rememberDevice ? REMEMBER_DAYS : null,
         }),
       });
       const json = await res.json();
@@ -160,6 +171,9 @@ export default function Register() {
       }
       setAuthToken(json.token);
       setPortalProfile({ customerId: json.user.id, role: json.user.role, name: json.user.name, email: json.user.email });
+      if (rememberDevice && json.deviceToken) {
+        saveTrustedDevice(json.user.phone ?? normalizedPhone, json.deviceToken);
+      }
       // WA-registered users: force complete profile (KTP/alamat/dll) sebelum lanjut
       setLocation("/onboarding");
     } catch {
@@ -342,6 +356,18 @@ export default function Register() {
                   </div>
                 </div>
               )}
+
+              <label className="flex items-center gap-2.5 cursor-pointer group">
+                <input
+                  type="checkbox"
+                  checked={rememberDevice}
+                  onChange={(e) => setRememberDevice(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 text-emerald-600 accent-emerald-600 cursor-pointer"
+                />
+                <span className="text-sm text-slate-600 group-hover:text-slate-800 select-none">
+                  Ingat perangkat ini selama <strong>{REMEMBER_DAYS} hari</strong>
+                </span>
+              </label>
 
               <Button className="w-full h-12 bg-emerald-600 hover:bg-emerald-700" onClick={completeRegister} disabled={isLoading}>
                 {isLoading ? "Mendaftarkan..." : "Selesaikan Pendaftaran"}
