@@ -1,24 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams } from "wouter";
 
-type Vendor = {
-  id: number;
-  name: string;
-  phone: string | null;
-  email: string | null;
-  serviceType: string | null;
-  eta: string | null;
-  fee: string | null;
-  note: string | null;
-  isMatching: boolean;
-};
-
-type Rfq = {
-  id: number;
-  rfqNumber: string;
-  status: string;
-  createdAt: string;
-};
+// ── Shared types ──────────────────────────────────────────────────────────────
 
 type OrderInfo = {
   id: number;
@@ -31,15 +14,68 @@ type OrderInfo = {
   status: string;
 };
 
+type ReviewVendor = {
+  id: number;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  serviceType: string | null;
+  eta: string | null;
+  fee: string | null;
+  note: string | null;
+  isMatching: boolean;
+};
+
+type RfqSummary = {
+  id: number;
+  rfqNumber: string;
+  status: string;
+};
+
 type ReviewData = {
   token: string;
   actionType: string;
   isUsed: boolean;
   usedAt: string | null;
   order: OrderInfo;
-  vendors: Vendor[];
-  rfqs: Rfq[];
+  vendors: ReviewVendor[];
+  rfqs: RfqSummary[];
 };
+
+// ── Compare-vendors types ─────────────────────────────────────────────────────
+
+type VendorQuote = {
+  linkId: number;
+  vendorId: number;
+  vendorName: string;
+  status: string;
+  basicPrice: number | null;
+  offeredPrice: number | null;
+  eta: string | null;
+  notes: string | null;
+  submittedAt: string | null;
+};
+
+type CompareData = {
+  token: string;
+  actionType: "compare_vendors";
+  isUsed: boolean;
+  usedAt: string | null;
+  order: OrderInfo;
+  rfq: RfqSummary;
+  vendors: VendorQuote[];
+};
+
+type CompareResult = {
+  ok: boolean;
+  vendorName: string;
+  sellingPrice: number;
+  quoteToken: string | null;
+  quoteUrl: string | null;
+  forwardVendorUrl: string | null;
+};
+
+// ── Blast types ───────────────────────────────────────────────────────────────
 
 type BlastResult = {
   vendorId: number;
@@ -55,8 +91,10 @@ type BlastResponse = {
   compareUrl: string;
 };
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
 const idr = (n: number | string | null | undefined) =>
-  n == null ? "—" : `Rp ${Number(n).toLocaleString("id-ID")}`;
+  n == null ? "—" : `Rp ${Math.round(Number(n)).toLocaleString("id-ID")}`;
 
 const RFQ_STATUS_LABEL: Record<string, string> = {
   draft: "Draft",
@@ -70,40 +108,556 @@ const RFQ_STATUS_LABEL: Record<string, string> = {
   closed: "Ditutup",
 };
 
-export default function AdminReviewPage() {
-  const params = useParams<{ token: string }>();
-  const token = params.token ?? "";
+const VENDOR_LINK_STATUS: Record<string, { label: string; cls: string }> = {
+  pending:       { label: "Menunggu",   cls: "bg-amber-100 text-amber-700" },
+  sent:          { label: "Terkirim",   cls: "bg-blue-100 text-blue-700" },
+  responded:     { label: "Masuk ✓",    cls: "bg-emerald-100 text-emerald-700" },
+  selected:      { label: "Dipilih ★",  cls: "bg-indigo-100 text-indigo-700" },
+  not_selected:  { label: "Tidak Dipilih", cls: "bg-slate-100 text-slate-500" },
+  rejected:      { label: "Ditolak",    cls: "bg-red-100 text-red-600" },
+  expired:       { label: "Kadaluarsa", cls: "bg-slate-100 text-slate-400" },
+  late_response: { label: "Terlambat",  cls: "bg-orange-100 text-orange-600" },
+};
 
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [data, setData] = useState<ReviewData | null>(null);
-  const [selected, setSelected] = useState<Set<number>>(new Set());
+// ── Shared: loading / error / order card ─────────────────────────────────────
+
+function LoadingScreen() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-slate-50">
+      <div className="flex flex-col items-center gap-3">
+        <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+        <p className="text-slate-500 text-sm">Memuat data…</p>
+      </div>
+    </div>
+  );
+}
+
+function ErrorScreen({ message }: { message: string }) {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
+      <div className="bg-white rounded-2xl shadow-md p-8 max-w-sm w-full text-center space-y-3">
+        <div className="text-5xl">⚠️</div>
+        <h2 className="text-lg font-semibold text-slate-800">Link Tidak Valid</h2>
+        <p className="text-slate-500 text-sm">{message}</p>
+      </div>
+    </div>
+  );
+}
+
+function OrderCard({ order, label = "Order" }: { order: OrderInfo; label?: string }) {
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+      <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-5 py-4">
+        <div className="flex items-center justify-between">
+          <span className="text-white/80 text-xs font-medium uppercase tracking-wider">{label}</span>
+          <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+            order.status === "New Order" ? "bg-yellow-400 text-yellow-900"
+            : order.status === "Cancelled" ? "bg-red-400 text-red-900"
+            : "bg-green-400 text-green-900"
+          }`}>
+            {order.status}
+          </span>
+        </div>
+        <p className="text-white font-bold text-lg mt-1 font-mono">{order.orderNumber}</p>
+      </div>
+      <div className="px-5 py-4">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-sm">
+          <div>
+            <p className="text-slate-400 text-xs">Customer</p>
+            <p className="font-semibold text-slate-800">{order.customerName}</p>
+          </div>
+          <div>
+            <p className="text-slate-400 text-xs">Layanan</p>
+            <p className="font-semibold text-slate-800">{order.serviceType ?? "—"}</p>
+          </div>
+          <div className="col-span-2">
+            <p className="text-slate-400 text-xs">Rute</p>
+            <p className="font-semibold text-slate-800">
+              {order.origin || "—"} → {order.destination || "—"}
+            </p>
+          </div>
+          {order.commodity && (
+            <div className="col-span-2">
+              <p className="text-slate-400 text-xs">Komoditi</p>
+              <p className="font-semibold text-slate-800">{order.commodity}</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── VendorRow (blast mode) ────────────────────────────────────────────────────
+
+function VendorRow({
+  vendor,
+  checked,
+  onChange,
+}: {
+  vendor: ReviewVendor;
+  checked: boolean;
+  onChange: () => void;
+}) {
+  return (
+    <label
+      className={`flex items-start gap-3.5 px-5 py-3.5 cursor-pointer transition-colors ${
+        checked ? "bg-blue-50/60" : "hover:bg-slate-50"
+      }`}
+    >
+      <div className="mt-0.5">
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={onChange}
+          className="w-4.5 h-4.5 rounded accent-blue-600"
+        />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-semibold text-slate-800 text-sm">{vendor.name}</span>
+          {vendor.isMatching && (
+            <span className="text-[10px] bg-emerald-100 text-emerald-700 font-medium px-1.5 py-0.5 rounded-full">
+              Sesuai
+            </span>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
+          {vendor.phone && <span className="text-xs text-slate-500">📱 {vendor.phone}</span>}
+          {vendor.serviceType && <span className="text-xs text-slate-400">{vendor.serviceType}</span>}
+          {vendor.fee && <span className="text-xs text-slate-400">~{vendor.fee}</span>}
+          {vendor.eta && <span className="text-xs text-slate-400">ETA {vendor.eta}</span>}
+        </div>
+        {vendor.note && (
+          <p className="text-xs text-slate-400 mt-0.5 italic">{vendor.note}</p>
+        )}
+      </div>
+    </label>
+  );
+}
+
+// ── CompareVendorsView ────────────────────────────────────────────────────────
+
+function CompareVendorsView({ data, token }: { data: CompareData; token: string }) {
+  const { order, rfq, vendors } = data;
+  const responded = vendors.filter((v) =>
+    ["responded", "selected", "late_response"].includes(v.status)
+  );
+  const notResponded = vendors.filter((v) =>
+    !["responded", "selected", "late_response"].includes(v.status)
+  );
+  const cheapest = responded[0] ?? null;
+
+  const [selectedLinkId, setSelectedLinkId] = useState<number | null>(
+    cheapest?.linkId ?? null
+  );
+  const [sellingPrice, setSellingPrice] = useState<string>("");
+  const [quoteNotes, setQuoteNotes] = useState("");
+  const [sendToCustomer, setSendToCustomer] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState<CompareResult | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const selectedVendor = vendors.find((v) => v.linkId === selectedLinkId) ?? null;
+  const effectivePrice = selectedVendor?.offeredPrice ?? selectedVendor?.basicPrice;
+
+  const fillPrice = () => {
+    if (effectivePrice != null) setSellingPrice(String(effectivePrice));
+  };
+
+  const handleSubmit = async () => {
+    if (!selectedLinkId) return;
+    setSubmitting(true);
+    setErr(null);
+    try {
+      const r = await fetch(`/api/admin-action/${token}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          linkId: selectedLinkId,
+          sellingPrice: sellingPrice ? Number(sellingPrice.replace(/\D/g, "")) : undefined,
+          quoteNotes: quoteNotes || undefined,
+          sendQuoteToCustomer: sendToCustomer,
+        }),
+      });
+      const body = await r.json();
+      if (!r.ok) throw new Error(body.error ?? "Gagal menyimpan pilihan");
+      setResult(body as CompareResult);
+    } catch (e: unknown) {
+      setErr((e as Error).message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // ── Result screen ───────────────────────────────────────────────────────────
+  if (result) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-md p-8 max-w-md w-full space-y-5">
+          <div className="text-center space-y-2">
+            <div className="text-5xl">✅</div>
+            <h2 className="text-xl font-bold text-slate-800">Vendor Dipilih!</h2>
+            <p className="text-slate-500 text-sm">
+              <strong>{result.vendorName}</strong> dipilih sebagai vendor untuk order ini.
+            </p>
+          </div>
+          {result.sellingPrice && (
+            <div className="bg-slate-50 rounded-xl px-4 py-3 flex items-center justify-between">
+              <span className="text-sm text-slate-500">Harga Jual ke Customer</span>
+              <span className="font-bold text-slate-800 text-lg">{idr(result.sellingPrice)}</span>
+            </div>
+          )}
+          {result.quoteUrl && (
+            <div className="rounded-xl bg-green-50 border border-green-100 p-4 space-y-2">
+              <p className="text-xs text-green-700 font-semibold uppercase tracking-wide">
+                📤 Penawaran Terkirim ke Customer
+              </p>
+              <p className="text-xs text-slate-500 break-all">{result.quoteUrl}</p>
+            </div>
+          )}
+          {result.forwardVendorUrl && (
+            <div className="rounded-xl bg-blue-50 border border-blue-100 p-4 space-y-2">
+              <p className="text-xs text-blue-700 font-semibold uppercase tracking-wide">Langkah Selanjutnya</p>
+              <p className="text-sm text-slate-600">
+                Forward instruksi ke vendor untuk eksekusi pengiriman:
+              </p>
+              <a
+                href={result.forwardVendorUrl}
+                className="block text-center bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-4 rounded-lg text-sm transition-colors"
+              >
+                📦 Forward ke Vendor →
+              </a>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Already used ────────────────────────────────────────────────────────────
+  if (data.isUsed && data.usedAt) {
+    return (
+      <div className="min-h-screen bg-slate-50">
+        <div className="bg-white border-b border-slate-100 sticky top-0 z-10">
+          <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
+            <span className="text-2xl">🔍</span>
+            <div>
+              <h1 className="text-base font-bold text-slate-800 leading-tight">Bandingkan Penawaran</h1>
+              <p className="text-xs text-slate-400">CST Logistics — Admin Panel</p>
+            </div>
+          </div>
+        </div>
+        <div className="max-w-2xl mx-auto px-4 py-5 space-y-5">
+          <OrderCard order={order} label="Order" />
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-3">
+            <span className="text-xl mt-0.5">⚠️</span>
+            <div>
+              <p className="text-amber-800 font-semibold text-sm">Link Sudah Digunakan</p>
+              <p className="text-amber-700 text-xs mt-0.5">
+                Vendor sudah dipilih sebelumnya pada{" "}
+                {new Date(data.usedAt).toLocaleString("id-ID")}. Buka BizPortal untuk detail RFQ {rfq.rfqNumber}.
+              </p>
+            </div>
+          </div>
+          <QuoteList vendors={vendors} selectedLinkId={null} onSelect={() => {}} disabled />
+        </div>
+      </div>
+    );
+  }
+
+  // ── Main compare screen ─────────────────────────────────────────────────────
+  return (
+    <div className="min-h-screen bg-slate-50">
+      <div className="bg-white border-b border-slate-100 sticky top-0 z-10">
+        <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
+          <span className="text-2xl">🔍</span>
+          <div>
+            <h1 className="text-base font-bold text-slate-800 leading-tight">Bandingkan Penawaran Vendor</h1>
+            <p className="text-xs text-slate-400">CST Logistics — Admin Panel</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-2xl mx-auto px-4 py-5 space-y-5">
+        <OrderCard order={order} label="Order" />
+
+        {/* RFQ Info */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 px-5 py-4 flex items-center justify-between">
+          <div>
+            <p className="text-xs text-slate-400">No. RFQ</p>
+            <p className="font-mono font-semibold text-slate-800">{rfq.rfqNumber}</p>
+          </div>
+          <span className={`text-xs font-semibold px-3 py-1.5 rounded-full ${
+            rfq.status === "vendor_selected" ? "bg-indigo-100 text-indigo-700"
+            : rfq.status === "customer_quoted" ? "bg-green-100 text-green-700"
+            : "bg-blue-100 text-blue-700"
+          }`}>
+            {RFQ_STATUS_LABEL[rfq.status] ?? rfq.status}
+          </span>
+        </div>
+
+        {/* Summary chips */}
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { label: "Total Vendor", val: vendors.length, cls: "bg-slate-50" },
+            { label: "Sudah Respon", val: responded.length, cls: responded.length > 0 ? "bg-emerald-50" : "bg-slate-50" },
+            { label: "Menunggu", val: notResponded.length, cls: notResponded.length > 0 ? "bg-amber-50" : "bg-slate-50" },
+          ].map((c) => (
+            <div key={c.label} className={`${c.cls} rounded-xl p-3 text-center border border-slate-100`}>
+              <p className="text-2xl font-bold text-slate-800">{c.val}</p>
+              <p className="text-[10px] text-slate-500 mt-0.5">{c.label}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Quote list */}
+        <QuoteList
+          vendors={vendors}
+          selectedLinkId={selectedLinkId}
+          onSelect={setSelectedLinkId}
+          disabled={false}
+        />
+
+        {/* Vendors not yet responded */}
+        {notResponded.length > 0 && (
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+            <div className="px-5 py-3 bg-amber-50 border-b border-amber-100">
+              <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide">
+                ⏳ Belum Respon ({notResponded.length})
+              </p>
+            </div>
+            <div className="divide-y divide-slate-50">
+              {notResponded.map((v) => {
+                const s = VENDOR_LINK_STATUS[v.status] ?? { label: v.status, cls: "bg-slate-100 text-slate-500" };
+                return (
+                  <div key={v.linkId} className="px-5 py-3 flex items-center justify-between">
+                    <span className="text-sm text-slate-600 font-medium">{v.vendorName}</span>
+                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${s.cls}`}>{s.label}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {responded.length === 0 && (
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 px-5 py-8 text-center">
+            <p className="text-3xl mb-2">⏳</p>
+            <p className="text-slate-500 text-sm">Belum ada vendor yang merespon.</p>
+            <p className="text-slate-400 text-xs mt-1">Kembali ke halaman ini setelah vendor mengisi penawaran.</p>
+          </div>
+        )}
+
+        {/* Selling price + options */}
+        {responded.length > 0 && (
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 px-5 py-5 space-y-4">
+            <h2 className="text-sm font-bold text-slate-800">💰 Harga Jual ke Customer</h2>
+
+            {/* Price suggestion */}
+            {effectivePrice != null && (
+              <div className="bg-slate-50 rounded-xl px-4 py-3 flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-slate-400">Harga vendor dipilih</p>
+                  <p className="font-semibold text-slate-700">{idr(effectivePrice)}</p>
+                </div>
+                <button
+                  onClick={fillPrice}
+                  className="text-xs text-blue-600 hover:underline font-medium"
+                >
+                  Pakai harga ini
+                </button>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">
+                Harga Jual (Rp)
+              </label>
+              <input
+                type="text"
+                inputMode="numeric"
+                placeholder="Contoh: 5000000"
+                value={sellingPrice}
+                onChange={(e) => setSellingPrice(e.target.value.replace(/[^0-9]/g, ""))}
+                className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+              />
+              {sellingPrice && (
+                <p className="text-xs text-slate-400 mt-1">{idr(Number(sellingPrice))}</p>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">
+                Catatan (opsional)
+              </label>
+              <textarea
+                value={quoteNotes}
+                onChange={(e) => setQuoteNotes(e.target.value)}
+                rows={2}
+                placeholder="Syarat & kondisi, catatan untuk customer…"
+                className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none"
+              />
+            </div>
+
+            <label className={`flex items-center gap-3 rounded-xl border px-4 py-3 cursor-pointer transition-colors ${
+              sendToCustomer ? "border-emerald-300 bg-emerald-50" : "border-slate-200 bg-white hover:bg-slate-50"
+            }`}>
+              <input
+                type="checkbox"
+                checked={sendToCustomer}
+                onChange={(e) => setSendToCustomer(e.target.checked)}
+                className="accent-emerald-600 w-4 h-4"
+              />
+              <div>
+                <p className="text-sm font-medium text-slate-700">📤 Kirim penawaran ke customer via WA</p>
+                <p className="text-xs text-slate-400">
+                  Customer akan menerima link untuk menyetujui / menolak harga
+                </p>
+              </div>
+            </label>
+
+            {sendToCustomer && !sellingPrice && (
+              <p className="text-xs text-amber-600">⚠️ Isi harga jual terlebih dahulu sebelum mengirim ke customer.</p>
+            )}
+          </div>
+        )}
+
+        {err && (
+          <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
+            ⚠️ {err}
+          </div>
+        )}
+
+        {/* Submit button */}
+        {responded.length > 0 && (
+          <button
+            onClick={handleSubmit}
+            disabled={submitting || !selectedLinkId || (sendToCustomer && !sellingPrice)}
+            className={`w-full py-4 rounded-2xl font-bold text-base flex items-center justify-center gap-3 transition-all ${
+              submitting || !selectedLinkId || (sendToCustomer && !sellingPrice)
+                ? "bg-slate-200 text-slate-400 cursor-not-allowed"
+                : "bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white shadow-md shadow-indigo-200"
+            }`}
+          >
+            {submitting ? (
+              <>
+                <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                Menyimpan…
+              </>
+            ) : (
+              <>
+                ✅ Pilih Vendor{selectedVendor ? ` — ${selectedVendor.vendorName}` : ""}
+              </>
+            )}
+          </button>
+        )}
+
+        <p className="text-center text-xs text-slate-400 pb-8">
+          Memilih vendor akan menandai RFQ sebagai selesai · Vendor lain ditandai tidak dipilih
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function QuoteList({
+  vendors,
+  selectedLinkId,
+  onSelect,
+  disabled = false,
+}: {
+  vendors: VendorQuote[];
+  selectedLinkId: number | null;
+  onSelect: (id: number) => void;
+  disabled?: boolean;
+}) {
+  const responded = vendors.filter((v) =>
+    ["responded", "selected", "late_response"].includes(v.status)
+  );
+  if (responded.length === 0) return null;
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+      <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
+        <h2 className="text-sm font-bold text-slate-800">Penawaran Vendor</h2>
+        <span className="text-xs text-slate-400 bg-slate-50 px-2 py-1 rounded-full">
+          Termurah di atas
+        </span>
+      </div>
+      <div className="divide-y divide-slate-50">
+        {responded.map((v, idx) => {
+          const price = v.offeredPrice ?? v.basicPrice;
+          const isSelected = selectedLinkId === v.linkId;
+          const s = VENDOR_LINK_STATUS[v.status] ?? { label: v.status, cls: "bg-slate-100 text-slate-500" };
+          return (
+            <label
+              key={v.linkId}
+              className={`flex items-start gap-3.5 px-5 py-4 cursor-pointer transition-colors ${
+                isSelected ? "bg-indigo-50/70" : "hover:bg-slate-50"
+              } ${disabled ? "cursor-default" : ""}`}
+            >
+              {!disabled && (
+                <div className="mt-1">
+                  <input
+                    type="radio"
+                    name="vendorPick"
+                    checked={isSelected}
+                    onChange={() => onSelect(v.linkId)}
+                    className="accent-indigo-600 w-4 h-4"
+                  />
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  {idx === 0 && !disabled && (
+                    <span className="text-[10px] bg-yellow-100 text-yellow-700 font-semibold px-1.5 py-0.5 rounded-full">
+                      Termurah
+                    </span>
+                  )}
+                  <span className="font-semibold text-slate-800 text-sm">{v.vendorName}</span>
+                  <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${s.cls}`}>
+                    {s.label}
+                  </span>
+                </div>
+                <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5">
+                  <span className="text-base font-bold text-slate-800">{idr(price)}</span>
+                  {v.eta && <span className="text-xs text-slate-500 self-center">ETA {v.eta}</span>}
+                </div>
+                {v.notes && (
+                  <p className="text-xs text-slate-400 mt-1 italic">{v.notes}</p>
+                )}
+                {v.submittedAt && (
+                  <p className="text-[10px] text-slate-400 mt-0.5">
+                    Masuk: {new Date(v.submittedAt).toLocaleString("id-ID")}
+                  </p>
+                )}
+              </div>
+            </label>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── ReviewOrderView ───────────────────────────────────────────────────────────
+
+function ReviewOrderView({ data, token }: { data: ReviewData; token: string }) {
+  const { order, vendors = [], rfqs = [] } = data;
+  const matching = vendors.filter((v) => v.isMatching);
+  const others = vendors.filter((v) => !v.isMatching);
+  const latestRfq = rfqs[0] ?? null;
+
+  const [selected, setSelected] = useState<Set<number>>(
+    new Set(matching.map((v) => v.id))
+  );
   const [deadlineHours, setDeadlineHours] = useState(48);
   const [showAll, setShowAll] = useState(false);
   const [blasting, setBlasting] = useState(false);
   const [blastResult, setBlastResult] = useState<BlastResponse | null>(null);
 
-  useEffect(() => {
-    if (!token) return;
-    fetch(`/api/admin-action/${token}`)
-      .then(async (r) => {
-        if (!r.ok) {
-          const body = await r.json().catch(() => ({}));
-          throw new Error(body.error ?? `Error ${r.status}`);
-        }
-        return r.json() as Promise<ReviewData>;
-      })
-      .then((d) => {
-        setData(d);
-        // Pre-select matching vendors
-        const matchingIds = new Set(
-          (d.vendors ?? []).filter((v) => v.isMatching).map((v) => v.id)
-        );
-        setSelected(matchingIds);
-      })
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, [token]);
+  const visibleOthers = showAll ? others : others.slice(0, 5);
 
   const toggleVendor = (id: number) => {
     setSelected((prev) => {
@@ -133,38 +687,6 @@ export default function AdminReviewPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
-          <p className="text-slate-500 text-sm">Memuat data order…</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
-        <div className="bg-white rounded-2xl shadow-md p-8 max-w-sm w-full text-center space-y-3">
-          <div className="text-5xl">⚠️</div>
-          <h2 className="text-lg font-semibold text-slate-800">Link Tidak Valid</h2>
-          <p className="text-slate-500 text-sm">{error}</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!data) return null;
-
-  const { order, vendors = [], rfqs = [] } = data;
-  const matching = vendors.filter((v) => v.isMatching);
-  const others = vendors.filter((v) => !v.isMatching);
-  const visibleOthers = showAll ? others : others.slice(0, 5);
-  const latestRfq = rfqs[0] ?? null;
-
-  // ── Blast success screen ──────────────────────────────────────────────────
   if (blastResult) {
     const sentCount = blastResult.results.filter((r) => r.sent).length;
     const failedCount = blastResult.results.filter((r) => !r.sent).length;
@@ -218,10 +740,8 @@ export default function AdminReviewPage() {
     );
   }
 
-  // ── Main review screen ───────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* Header */}
       <div className="bg-white border-b border-slate-100 sticky top-0 z-10">
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
           <span className="text-2xl">🚀</span>
@@ -233,56 +753,16 @@ export default function AdminReviewPage() {
       </div>
 
       <div className="max-w-2xl mx-auto px-4 py-5 space-y-5">
+        <OrderCard order={order} label="Order Baru" />
 
-        {/* Order Summary */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-          <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-5 py-4">
-            <div className="flex items-center justify-between">
-              <span className="text-white/80 text-xs font-medium uppercase tracking-wider">Order Baru</span>
-              <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
-                order.status === "New Order" ? "bg-yellow-400 text-yellow-900"
-                : order.status === "Cancelled" ? "bg-red-400 text-red-900"
-                : "bg-green-400 text-green-900"
-              }`}>
-                {order.status}
-              </span>
-            </div>
-            <p className="text-white font-bold text-lg mt-1 font-mono">{order.orderNumber}</p>
-          </div>
-          <div className="px-5 py-4 space-y-3">
-            <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-sm">
-              <div>
-                <p className="text-slate-400 text-xs">Customer</p>
-                <p className="font-semibold text-slate-800">{order.customerName}</p>
-              </div>
-              <div>
-                <p className="text-slate-400 text-xs">Layanan</p>
-                <p className="font-semibold text-slate-800">{order.serviceType ?? "—"}</p>
-              </div>
-              <div className="col-span-2">
-                <p className="text-slate-400 text-xs">Rute</p>
-                <p className="font-semibold text-slate-800">
-                  {order.origin || "—"} → {order.destination || "—"}
-                </p>
-              </div>
-              {order.commodity && (
-                <div className="col-span-2">
-                  <p className="text-slate-400 text-xs">Komoditi</p>
-                  <p className="font-semibold text-slate-800">{order.commodity}</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Existing RFQs banner */}
         {latestRfq && (
           <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-3">
             <span className="text-xl mt-0.5">⚠️</span>
             <div>
               <p className="text-amber-800 font-semibold text-sm">RFQ sudah pernah dibuat</p>
               <p className="text-amber-700 text-xs mt-0.5">
-                {latestRfq.rfqNumber} — Status: <strong>{RFQ_STATUS_LABEL[latestRfq.status] ?? latestRfq.status}</strong>
+                {latestRfq.rfqNumber} — Status:{" "}
+                <strong>{RFQ_STATUS_LABEL[latestRfq.status] ?? latestRfq.status}</strong>
               </p>
               <p className="text-amber-600 text-xs mt-1">
                 Melanjutkan blast akan menambah vendor ke RFQ yang sudah ada.
@@ -291,7 +771,6 @@ export default function AdminReviewPage() {
           </div>
         )}
 
-        {/* Deadline */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 px-5 py-4">
           <label className="block text-sm font-semibold text-slate-700 mb-2">
             ⏰ Batas Waktu Respon Vendor
@@ -324,7 +803,6 @@ export default function AdminReviewPage() {
           </div>
         </div>
 
-        {/* Vendor Selection */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
             <div>
@@ -350,7 +828,6 @@ export default function AdminReviewPage() {
             </div>
           </div>
 
-          {/* Matching vendors */}
           {matching.length > 0 && (
             <div>
               <div className="px-5 py-2 bg-emerald-50 border-b border-emerald-100">
@@ -366,7 +843,6 @@ export default function AdminReviewPage() {
             </div>
           )}
 
-          {/* Other vendors */}
           {others.length > 0 && (
             <div>
               <div className="px-5 py-2 bg-slate-50 border-b border-slate-100 border-t border-slate-100">
@@ -399,7 +875,6 @@ export default function AdminReviewPage() {
           )}
         </div>
 
-        {/* Blast Button */}
         <button
           onClick={handleBlast}
           disabled={blasting || selected.size === 0}
@@ -415,9 +890,7 @@ export default function AdminReviewPage() {
               Mengirim…
             </>
           ) : (
-            <>
-              📤 Blast ke {selected.size} Vendor
-            </>
+            <>📤 Blast ke {selected.size} Vendor</>
           )}
         </button>
 
@@ -429,56 +902,38 @@ export default function AdminReviewPage() {
   );
 }
 
-function VendorRow({
-  vendor,
-  checked,
-  onChange,
-}: {
-  vendor: Vendor;
-  checked: boolean;
-  onChange: () => void;
-}) {
-  return (
-    <label
-      className={`flex items-start gap-3.5 px-5 py-3.5 cursor-pointer transition-colors ${
-        checked ? "bg-blue-50/60" : "hover:bg-slate-50"
-      }`}
-    >
-      <div className="mt-0.5">
-        <input
-          type="checkbox"
-          checked={checked}
-          onChange={onChange}
-          className="w-4.5 h-4.5 rounded accent-blue-600"
-        />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-semibold text-slate-800 text-sm">{vendor.name}</span>
-          {vendor.isMatching && (
-            <span className="text-[10px] bg-emerald-100 text-emerald-700 font-medium px-1.5 py-0.5 rounded-full">
-              Sesuai
-            </span>
-          )}
-        </div>
-        <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
-          {vendor.phone && (
-            <span className="text-xs text-slate-500">📱 {vendor.phone}</span>
-          )}
-          {vendor.serviceType && (
-            <span className="text-xs text-slate-400">{vendor.serviceType}</span>
-          )}
-          {vendor.fee && (
-            <span className="text-xs text-slate-400">~{vendor.fee}</span>
-          )}
-          {vendor.eta && (
-            <span className="text-xs text-slate-400">ETA {vendor.eta}</span>
-          )}
-        </div>
-        {vendor.note && (
-          <p className="text-xs text-slate-400 mt-0.5 italic">{vendor.note}</p>
-        )}
-      </div>
-    </label>
-  );
+// ── Root page ─────────────────────────────────────────────────────────────────
+
+export default function AdminReviewPage() {
+  const params = useParams<{ token: string }>();
+  const token = params.token ?? "";
+
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [data, setData] = useState<ReviewData | CompareData | null>(null);
+
+  useEffect(() => {
+    if (!token) return;
+    fetch(`/api/admin-action/${token}`)
+      .then(async (r) => {
+        if (!r.ok) {
+          const body = await r.json().catch(() => ({}));
+          throw new Error(body.error ?? `Error ${r.status}`);
+        }
+        return r.json();
+      })
+      .then(setData)
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [token]);
+
+  if (loading) return <LoadingScreen />;
+  if (error) return <ErrorScreen message={error} />;
+  if (!data) return null;
+
+  if (data.actionType === "compare_vendors") {
+    return <CompareVendorsView data={data as CompareData} token={token} />;
+  }
+
+  return <ReviewOrderView data={data as ReviewData} token={token} />;
 }
