@@ -86,6 +86,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Badge } from "@/components/ui/badge";
 import { LanguageSelector } from "@/components/layout/LanguageSelector";
 import { NotificationBell } from "@/components/layout/NotificationBell";
+import { DevUserSwitcher } from "@/components/layout/DevUserSwitcher";
 import { useOrderNotificationsContext } from "@/contexts/OrderNotificationsContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { CompanySwitcher } from "@/components/CompanySwitcher";
@@ -108,6 +109,8 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { SortableNavWrapper } from "./SortableNavWrapper";
+
+const IS_DEV = import.meta.env.DEV;
 
 interface AppShellProps {
   children: ReactNode;
@@ -772,6 +775,7 @@ export function AppShell({ children }: AppShellProps) {
                 <span className="hidden sm:inline">Cari...</span>
                 <kbd className="hidden sm:inline rounded bg-background px-1 py-0.5 text-[10px] font-mono border border-border">⌘K</kbd>
               </button>
+              {IS_DEV && <DevUserSwitcher />}
               <NotificationBell />
             </div>
           </div>
@@ -787,6 +791,7 @@ export function AppShell({ children }: AppShellProps) {
                 <span>Cari halaman...</span>
                 <kbd className="ml-1 rounded bg-background px-1 py-0.5 text-[10px] font-mono border border-border">Ctrl+K</kbd>
               </button>
+              {IS_DEV && <DevUserSwitcher />}
               <LanguageSelector />
               <NotificationBell />
               <DropdownMenu>
