@@ -470,6 +470,69 @@ router.post("/documents/:id/action", async (req, res) => {
         const billNum = patch["billNumber"] as string ?? `BILL/${billYear}/${String(Number(billCount)).padStart(4, "0")}`;
         const waMsg = `🧾 *Bill Pembelian Diposting*\nNo: ${billNum}\nPO: ${doc.docNumber}\nSupplier: ${doc.supplierName}\nTotal: Rp ${grandTotal.toLocaleString("id-ID")}`;
         notifyAdminWa(waMsg, "bill_posted", "purchase_document", String(doc.id));
+
+        // Email ke supplier
+        if (isSmtpConfigured() && doc.supplierId) {
+          const supRows = await db.select().from(suppliersTable).where(eq(suppliersTable.id, doc.supplierId)).limit(1);
+          const sup = supRows[0] ?? null;
+          const supplierEmail = sup?.contactEmail;
+          if (supplierEmail) {
+            const billLines = await db
+              .select({
+                productId: purchaseDocumentLinesTable.productId,
+                description: purchaseDocumentLinesTable.description,
+                quantity: purchaseDocumentLinesTable.quantity,
+                unitCost: purchaseDocumentLinesTable.unitCost,
+                totalAmount: purchaseDocumentLinesTable.totalAmount,
+              })
+              .from(purchaseDocumentLinesTable)
+              .where(eq(purchaseDocumentLinesTable.documentId, doc.id));
+            const lineItems = billLines
+              .map((l) => {
+                const label = l.description ?? `Produk #${l.productId}`;
+                return (
+                  `<tr><td style="padding:4px 8px;border:1px solid #ddd;">${label}</td>` +
+                  `<td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${Number(l.quantity).toLocaleString("id-ID")}</td>` +
+                  `<td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Rp ${Number(l.unitCost).toLocaleString("id-ID")}</td>` +
+                  `<td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Rp ${Number(l.totalAmount ?? 0).toLocaleString("id-ID")}</td></tr>`
+                );
+              })
+              .join("");
+            const taxAmount = Number(doc.taxAmount ?? 0);
+            const html = `
+<p>Kepada Yth. ${doc.supplierName ?? sup?.name ?? "Supplier"},</p>
+<p>Berikut konfirmasi <strong>Bill Pembelian ${billNum}</strong> atas Purchase Order <strong>${doc.docNumber}</strong>:</p>
+<table style="border-collapse:collapse;width:100%;font-family:sans-serif;font-size:14px;">
+  <thead>
+    <tr style="background:#f5f5f5;">
+      <th style="padding:6px 8px;border:1px solid #ddd;text-align:left;">Deskripsi</th>
+      <th style="padding:6px 8px;border:1px solid #ddd;text-align:right;">Qty</th>
+      <th style="padding:6px 8px;border:1px solid #ddd;text-align:right;">Harga Satuan</th>
+      <th style="padding:6px 8px;border:1px solid #ddd;text-align:right;">Total</th>
+    </tr>
+  </thead>
+  <tbody>${lineItems}</tbody>
+  <tfoot>
+    ${taxAmount ? `<tr><td colspan="3" style="padding:4px 8px;border:1px solid #ddd;text-align:right;">PPN</td><td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Rp ${taxAmount.toLocaleString("id-ID")}</td></tr>` : ""}
+    <tr>
+      <td colspan="3" style="padding:6px 8px;border:1px solid #ddd;text-align:right;font-weight:bold;">Grand Total</td>
+      <td style="padding:6px 8px;border:1px solid #ddd;text-align:right;font-weight:bold;">Rp ${grandTotal.toLocaleString("id-ID")}</td>
+    </tr>
+  </tfoot>
+</table>
+<p>Mohon konfirmasi penerimaan bill ini. Terima kasih.</p>`;
+            const text = `Bill Pembelian ${billNum}\nPO: ${doc.docNumber}\nSupplier: ${doc.supplierName}\nTotal: Rp ${grandTotal.toLocaleString("id-ID")}`;
+            await sendMail({
+              to: supplierEmail,
+              subject: `Konfirmasi Bill Pembelian - ${billNum}`,
+              html,
+              text,
+              context: "bill_posted",
+              refType: "purchase_document",
+              refId: String(doc.id),
+            }).catch((e: unknown) => console.error("[bill email]", e));
+          }
+        }
       } catch (e) {
         console.error("[accounting] postPurchaseBill error:", e);
       }
