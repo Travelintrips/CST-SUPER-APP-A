@@ -2087,5 +2087,302 @@ router.get("/holding/cashflow-monthly", async (req, res) => {
   });
 });
 
+
+// ── Per-Group Detail Endpoints ───────────────────────────────────────────────
+
+/** GET /accounting/holding/groups/:id — detail grup + members */
+router.get("/holding/groups/:id", async (req, res) => {
+  const id = Number(req.params["id"]);
+  if (isNaN(id)) return res.status(400).json({ message: "Invalid group id" });
+  const result = await db.execute(sql`
+    SELECT
+      hg.id, hg.holding_name, hg.holding_code, hg.description, hg.created_at,
+      json_agg(json_build_object(
+        'memberId',             chm.id,
+        'companyId',            chm.company_id,
+        'companyName',          c.company_name,
+        'companyCode',          c.company_code,
+        'ownershipPercentage',  chm.ownership_percentage,
+        'consolidationMethod',  chm.consolidation_method
+      ) ORDER BY c.company_code) AS members
+    FROM holding_groups hg
+    LEFT JOIN company_holding_members chm ON chm.holding_group_id = hg.id
+    LEFT JOIN companies c ON c.id = chm.company_id
+    WHERE hg.id = ${id}
+    GROUP BY hg.id
+  `);
+  if (result.rows.length === 0)
+    return res.status(404).json({ message: "Holding group tidak ditemukan" });
+  return res.json(result.rows[0]);
+});
+
+/** GET /accounting/holding/groups/:id/pl — konsolidasi laba rugi */
+router.get("/holding/groups/:id/pl", async (req, res) => {
+  const id = Number(req.params["id"]);
+  if (isNaN(id)) return res.status(400).json({ message: "Invalid group id" });
+  const range = parseDateRange(req);
+  if (range.error) return res.status(400).json({ message: range.error });
+
+  const membersResult = await db.execute(sql`
+    SELECT chm.company_id, c.company_name, c.company_code
+    FROM company_holding_members chm
+    JOIN companies c ON c.id = chm.company_id
+    WHERE chm.holding_group_id = ${id}
+    ORDER BY c.company_code
+  `);
+  const members = membersResult.rows as {
+    company_id: number; company_name: string; company_code: string;
+  }[];
+  if (members.length === 0)
+    return res.json({ companies: [], perCompany: {}, consolidated: { revenues: [], expenses: [], totalRevenue: 0, totalExpense: 0, netIncome: 0 } });
+
+  const accounts = await db.select().from(chartOfAccountsTable).orderBy(chartOfAccountsTable.code);
+
+  type PLRow = { accountId: number; code: string; name: string; amount: number };
+  type PLResult = { revenues: PLRow[]; expenses: PLRow[]; totalRevenue: number; totalExpense: number; netIncome: number };
+  const perCompanyData: Record<number, PLResult> = {};
+
+  await Promise.all(members.map(async (m) => {
+    const { lines } = await buildLedgerWindow(range.from, range.to, m.company_id);
+    const totals = new Map<number, number>();
+    for (const l of lines) {
+      totals.set(l.accountId, (totals.get(l.accountId) ?? 0) + (Number(l.credit) - Number(l.debit)));
+    }
+    const revenues = accounts
+      .filter((a) => a.type === "revenue")
+      .map((a) => ({ accountId: a.id, code: a.code, name: a.name, amount: Math.round((totals.get(a.id) ?? 0) * 100) / 100 }))
+      .filter((r) => r.amount !== 0);
+    const expenses = accounts
+      .filter((a) => a.type === "expense")
+      .map((a) => ({ accountId: a.id, code: a.code, name: a.name, amount: Math.round(-(totals.get(a.id) ?? 0) * 100) / 100 }))
+      .filter((r) => r.amount !== 0);
+    const totalRevenue = revenues.reduce((s, r) => s + r.amount, 0);
+    const totalExpense = expenses.reduce((s, r) => s + r.amount, 0);
+    perCompanyData[m.company_id] = {
+      revenues, expenses,
+      totalRevenue: Math.round(totalRevenue * 100) / 100,
+      totalExpense: Math.round(totalExpense * 100) / 100,
+      netIncome: Math.round((totalRevenue - totalExpense) * 100) / 100,
+    };
+  }));
+
+  // Consolidated: sum per-account across companies
+  const conRevMap = new Map<number, number>();
+  const conExpMap = new Map<number, number>();
+  for (const d of Object.values(perCompanyData)) {
+    for (const r of d.revenues) conRevMap.set(r.accountId, (conRevMap.get(r.accountId) ?? 0) + r.amount);
+    for (const e of d.expenses) conExpMap.set(e.accountId, (conExpMap.get(e.accountId) ?? 0) + e.amount);
+  }
+  const conRevenues = accounts
+    .filter((a) => a.type === "revenue")
+    .map((a) => ({ accountId: a.id, code: a.code, name: a.name, amount: Math.round((conRevMap.get(a.id) ?? 0) * 100) / 100 }))
+    .filter((r) => r.amount !== 0);
+  const conExpenses = accounts
+    .filter((a) => a.type === "expense")
+    .map((a) => ({ accountId: a.id, code: a.code, name: a.name, amount: Math.round((conExpMap.get(a.id) ?? 0) * 100) / 100 }))
+    .filter((r) => r.amount !== 0);
+  const conRevTotal = conRevenues.reduce((s, r) => s + r.amount, 0);
+  const conExpTotal = conExpenses.reduce((s, r) => s + r.amount, 0);
+
+  return res.json({
+    from: range.from?.toISOString() ?? null,
+    to: range.to?.toISOString() ?? null,
+    companies: members.map((m) => ({ companyId: m.company_id, companyName: m.company_name, companyCode: m.company_code })),
+    perCompany: perCompanyData,
+    consolidated: {
+      revenues: conRevenues, expenses: conExpenses,
+      totalRevenue: Math.round(conRevTotal * 100) / 100,
+      totalExpense: Math.round(conExpTotal * 100) / 100,
+      netIncome: Math.round((conRevTotal - conExpTotal) * 100) / 100,
+    },
+  });
+});
+
+/** GET /accounting/holding/groups/:id/balance-sheet — konsolidasi neraca */
+router.get("/holding/groups/:id/balance-sheet", async (req, res) => {
+  const id = Number(req.params["id"]);
+  if (isNaN(id)) return res.status(400).json({ message: "Invalid group id" });
+  const range = parseDateRange(req);
+  if (range.error) return res.status(400).json({ message: range.error });
+  const asOf = range.to ?? new Date();
+
+  const membersResult = await db.execute(sql`
+    SELECT chm.company_id, c.company_name, c.company_code
+    FROM company_holding_members chm
+    JOIN companies c ON c.id = chm.company_id
+    WHERE chm.holding_group_id = ${id}
+    ORDER BY c.company_code
+  `);
+  const members = membersResult.rows as {
+    company_id: number; company_name: string; company_code: string;
+  }[];
+  if (members.length === 0)
+    return res.json({ companies: [], perCompany: {}, consolidated: {} });
+
+  const accounts = await db.select().from(chartOfAccountsTable).orderBy(chartOfAccountsTable.code);
+
+  type BSRow = { accountId: number; code: string; name: string; amount: number };
+  type BSResult = {
+    assets: BSRow[]; liabilities: BSRow[]; equity: BSRow[];
+    netIncomeYTD: number; totalAssets: number; totalLiabilities: number;
+    totalEquity: number; totalLiabilitiesAndEquity: number;
+  };
+  const perCompanyData: Record<number, BSResult> = {};
+
+  await Promise.all(members.map(async (m) => {
+    const { lines } = await buildLedgerWindow(null, asOf, m.company_id);
+    const totals = new Map<number, number>();
+    for (const l of lines) {
+      const acc = accounts.find((a) => a.id === l.accountId);
+      if (!acc) continue;
+      const isDebitNormal = acc.type === "asset" || acc.type === "expense";
+      const v = isDebitNormal
+        ? Number(l.debit) - Number(l.credit)
+        : Number(l.credit) - Number(l.debit);
+      totals.set(l.accountId, (totals.get(l.accountId) ?? 0) + v);
+    }
+    const mapAccs = (type: string): BSRow[] =>
+      accounts
+        .filter((a) => a.type === type)
+        .map((a) => ({ accountId: a.id, code: a.code, name: a.name, amount: Math.round((totals.get(a.id) ?? 0) * 100) / 100 }))
+        .filter((r) => r.amount !== 0);
+    const assets = mapAccs("asset");
+    const liabilities = mapAccs("liability");
+    const equity = mapAccs("equity");
+    const revenueTotal = accounts.filter((a) => a.type === "revenue").reduce((s, a) => s + (totals.get(a.id) ?? 0), 0);
+    const expenseTotal = accounts.filter((a) => a.type === "expense").reduce((s, a) => s + (totals.get(a.id) ?? 0), 0);
+    const netIncome = Math.round((revenueTotal - expenseTotal) * 100) / 100;
+    const totalAssets = Math.round(assets.reduce((s, a) => s + a.amount, 0) * 100) / 100;
+    const totalLiabilities = Math.round(liabilities.reduce((s, a) => s + a.amount, 0) * 100) / 100;
+    const totalEquity = Math.round((equity.reduce((s, a) => s + a.amount, 0) + netIncome) * 100) / 100;
+    perCompanyData[m.company_id] = {
+      assets, liabilities, equity, netIncomeYTD: netIncome,
+      totalAssets, totalLiabilities, totalEquity,
+      totalLiabilitiesAndEquity: Math.round((totalLiabilities + totalEquity) * 100) / 100,
+    };
+  }));
+
+  // Consolidated: sum per-account
+  const conMap = new Map<number, number>();
+  for (const d of Object.values(perCompanyData)) {
+    for (const a of [...d.assets, ...d.liabilities, ...d.equity]) {
+      conMap.set(a.accountId, (conMap.get(a.accountId) ?? 0) + a.amount);
+    }
+  }
+  const conNetIncome = Math.round(Object.values(perCompanyData).reduce((s, d) => s + d.netIncomeYTD, 0) * 100) / 100;
+  const mapConAccs = (type: string): BSRow[] =>
+    accounts
+      .filter((a) => a.type === type)
+      .map((a) => ({ accountId: a.id, code: a.code, name: a.name, amount: Math.round((conMap.get(a.id) ?? 0) * 100) / 100 }))
+      .filter((r) => r.amount !== 0);
+  const conAssets = mapConAccs("asset");
+  const conLiabilities = mapConAccs("liability");
+  const conEquity = mapConAccs("equity");
+  const conTotalAssets = Math.round(conAssets.reduce((s, a) => s + a.amount, 0) * 100) / 100;
+  const conTotalLiabilities = Math.round(conLiabilities.reduce((s, a) => s + a.amount, 0) * 100) / 100;
+  const conTotalEquity = Math.round((conEquity.reduce((s, a) => s + a.amount, 0) + conNetIncome) * 100) / 100;
+
+  return res.json({
+    asOf: asOf.toISOString(),
+    companies: members.map((m) => ({ companyId: m.company_id, companyName: m.company_name, companyCode: m.company_code })),
+    perCompany: perCompanyData,
+    consolidated: {
+      assets: conAssets, liabilities: conLiabilities, equity: conEquity,
+      netIncomeYTD: conNetIncome, totalAssets: conTotalAssets,
+      totalLiabilities: conTotalLiabilities, totalEquity: conTotalEquity,
+      totalLiabilitiesAndEquity: Math.round((conTotalLiabilities + conTotalEquity) * 100) / 100,
+    },
+  });
+});
+
+/** GET /accounting/holding/groups/:id/cashflow — arus kas per periode */
+router.get("/holding/groups/:id/cashflow", async (req, res) => {
+  const id = Number(req.params["id"]);
+  if (isNaN(id)) return res.status(400).json({ message: "Invalid group id" });
+  const dateRange = parseDateRange(req);
+  if (dateRange.error) return res.status(400).json({ message: dateRange.error });
+
+  const membersResult = await db.execute(sql`
+    SELECT chm.company_id, c.company_name, c.company_code
+    FROM company_holding_members chm
+    JOIN companies c ON c.id = chm.company_id
+    WHERE chm.holding_group_id = ${id}
+    ORDER BY c.company_code
+  `);
+  const members = membersResult.rows as {
+    company_id: number; company_name: string; company_code: string;
+  }[];
+  if (members.length === 0)
+    return res.json({ companies: [], perCompany: {}, consolidated: { opInflow: 0, opOutflow: 0, opNet: 0, invNet: 0, finNet: 0, cashChange: 0 } });
+
+  const companyIds = members.map((m) => m.company_id);
+  const companyIdsArr = sql`ARRAY[${sql.join(companyIds.map((cid) => sql`${cid}`), sql`, `)}]`;
+  const dateFilter =
+    dateRange.from && dateRange.to
+      ? sql`AND ae.entry_date BETWEEN ${dateRange.from.toISOString().slice(0, 10)} AND ${dateRange.to.toISOString().slice(0, 10)}`
+      : dateRange.from
+        ? sql`AND ae.entry_date >= ${dateRange.from.toISOString().slice(0, 10)}`
+        : dateRange.to
+          ? sql`AND ae.entry_date <= ${dateRange.to.toISOString().slice(0, 10)}`
+          : sql``;
+
+  const rows = await db.execute(sql`
+    SELECT
+      ae.company_id,
+      COALESCE(SUM(CASE WHEN coa.type = 'revenue'
+        THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END), 0) AS op_inflow,
+      COALESCE(SUM(CASE WHEN coa.type = 'expense'
+        THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END), 0) AS op_outflow,
+      COALESCE(SUM(CASE WHEN coa.type = 'asset'
+        AND (lower(coa.name) SIMILAR TO '%(aset tetap|peralatan|kendaraan|bangunan|tanah|mesin|investasi|penyertaan)%')
+        THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END), 0) AS inv_net,
+      COALESCE(SUM(CASE WHEN (coa.type = 'equity')
+        OR (coa.type = 'liability' AND (lower(coa.name) LIKE '%pinjaman%' OR lower(coa.name) LIKE '%hutang bank%'
+          OR lower(coa.name) LIKE '%modal%' OR lower(coa.name) LIKE '%saham%'))
+        THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END), 0) AS fin_net,
+      COALESCE(SUM(CASE WHEN coa.type = 'asset'
+        AND (lower(coa.name) LIKE '%kas%' OR lower(coa.name) LIKE '%cash%' OR lower(coa.name) LIKE '%bank%')
+        THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END), 0) AS cash_change
+    FROM accounting_entry_lines ael
+    JOIN accounting_entries ae ON ae.id = ael.entry_id
+    JOIN chart_of_accounts coa ON coa.id = ael.account_id
+    WHERE ae.status = 'posted'
+      AND ae.company_id = ANY(${companyIdsArr})
+      ${dateFilter}
+    GROUP BY ae.company_id
+  `);
+
+  type CFRow = { opInflow: number; opOutflow: number; opNet: number; invNet: number; finNet: number; cashChange: number };
+  const perCompanyData: Record<number, CFRow> = {};
+  for (const m of members) {
+    const row = (rows.rows as Record<string, unknown>[]).find((r) => r["company_id"] === m.company_id);
+    const opInflow = Number(row?.["op_inflow"] ?? 0);
+    const opOutflow = Number(row?.["op_outflow"] ?? 0);
+    const invNet = Number(row?.["inv_net"] ?? 0);
+    const finNet = Number(row?.["fin_net"] ?? 0);
+    const cashChange = Number(row?.["cash_change"] ?? 0);
+    perCompanyData[m.company_id] = { opInflow, opOutflow, opNet: opInflow - opOutflow, invNet, finNet, cashChange };
+  }
+
+  const all = Object.values(perCompanyData);
+  const consolidated: CFRow = {
+    opInflow: all.reduce((s, d) => s + d.opInflow, 0),
+    opOutflow: all.reduce((s, d) => s + d.opOutflow, 0),
+    opNet: all.reduce((s, d) => s + d.opNet, 0),
+    invNet: all.reduce((s, d) => s + d.invNet, 0),
+    finNet: all.reduce((s, d) => s + d.finNet, 0),
+    cashChange: all.reduce((s, d) => s + d.cashChange, 0),
+  };
+
+  return res.json({
+    from: dateRange.from?.toISOString() ?? null,
+    to: dateRange.to?.toISOString() ?? null,
+    companies: members.map((m) => ({ companyId: m.company_id, companyName: m.company_name, companyCode: m.company_code })),
+    perCompany: perCompanyData,
+    consolidated,
+  });
+});
+
 export default router;
+
 
