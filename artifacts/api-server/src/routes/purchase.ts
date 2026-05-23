@@ -2,8 +2,9 @@ import { Router, type Request } from "express";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { resolveCompanyId } from "../lib/resolveCompany.js";
 import { streamInvoicePdf, buildInvoicePdfBuffer } from "../lib/pdfInvoice.js";
-import { postPurchaseBill } from "../lib/accounting.js";
+import { postPurchaseBill, postPurchaseBillReversal } from "../lib/accounting.js";
 import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
+import { sendWhatsApp } from "../lib/fonnte.js";
 import { ensureAccountingSettings } from "../lib/accountingSeed.js";
 import { postStockIn } from "../lib/inventoryStock.js";
 import {
@@ -19,6 +20,20 @@ import {
   chartOfAccountsTable,
 } from "@workspace/db";
 import { eq, sql, desc, and, or, inArray, type SQL } from "drizzle-orm";
+
+/** Kirim WA ke semua admin (ADMIN_WA_PHONES + FONNTE_ADMIN_WA), fire-and-forget. */
+function notifyAdminWa(message: string, context?: string, refType?: string, refId?: string): void {
+  const phones = [
+    ...(process.env.ADMIN_WA_PHONES ?? "").split(",").map((p) => p.trim()).filter(Boolean),
+    ...(process.env.FONNTE_ADMIN_WA?.trim() ? [process.env.FONNTE_ADMIN_WA.trim()] : []),
+  ];
+  const unique = [...new Set(phones)];
+  for (const phone of unique) {
+    sendWhatsApp(phone, message, { context, refType, refId }).catch((e: unknown) =>
+      console.error("[purchase WA]", e),
+    );
+  }
+}
 
 async function computeTax(subtotal: number, taxRateId: number | null | undefined): Promise<{ taxAmount: number; grandTotal: number }> {
   if (!taxRateId) return { taxAmount: 0, grandTotal: subtotal };
@@ -342,7 +357,12 @@ router.post("/documents/:id/action", async (req, res) => {
       if (doc.billStatus !== "billed") {
         return res.status(400).json({ message: "Hanya bill yang sudah diposting yang bisa dibatalkan" });
       }
-      patch["cancelledAt"] = new Date();
+      patch["billStatus"] = "to_bill" satisfies PurchaseBillStatus;
+      patch["billNumber"] = null;
+      patch["billDate"] = null;
+      patch["dueDate"] = null;
+      // Kembalikan status ke confirmed jika sebelumnya done
+      if (doc.status === "done") patch["status"] = "confirmed" satisfies PurchaseStatus;
       break;
     }
     default:
@@ -417,7 +437,6 @@ router.post("/documents/:id/action", async (req, res) => {
 
   if (action === "mark_billed" && doc.billStatus !== "billed") {
     const taxAmount = Number(doc.taxAmount ?? 0);
-    // Fetch lines to split inventory vs service/expense debit
     void (async () => {
       try {
         const billLines = await db
@@ -441,8 +460,35 @@ router.post("/documents/:id/action", async (req, res) => {
           taxAccountId: null,
           companyId: doc.companyId ?? null,
         });
+        // Notifikasi WA admin setelah bill diposting
+        const grandTotal = Number(doc.grandTotal ?? doc.totalAmount ?? 0);
+        const billYear = new Date().getFullYear();
+        const [{ billCount }] = await db
+          .select({ billCount: sql<number>`cast(count(*) as int)` })
+          .from(purchaseDocumentsTable)
+          .where(sql`bill_number IS NOT NULL`);
+        const billNum = patch["billNumber"] as string ?? `BILL/${billYear}/${String(Number(billCount)).padStart(4, "0")}`;
+        const waMsg = `🧾 *Bill Pembelian Diposting*\nNo: ${billNum}\nPO: ${doc.docNumber}\nSupplier: ${doc.supplierName}\nTotal: Rp ${grandTotal.toLocaleString("id-ID")}`;
+        notifyAdminWa(waMsg, "bill_posted", "purchase_document", String(doc.id));
       } catch (e) {
         console.error("[accounting] postPurchaseBill error:", e);
+      }
+    })();
+  }
+
+  if (action === "cancel_bill" && doc.billStatus === "billed") {
+    void (async () => {
+      try {
+        await postPurchaseBillReversal({
+          purchaseDocId: doc.id,
+          docNumber: doc.docNumber,
+          supplierName: doc.supplierName,
+          companyId: doc.companyId ?? null,
+        });
+        const waMsg = `❌ *Bill Pembelian Dibatalkan*\nPO: ${doc.docNumber}\nSupplier: ${doc.supplierName}\nJurnal reversal telah diposting.`;
+        notifyAdminWa(waMsg, "bill_cancelled", "purchase_document", String(doc.id));
+      } catch (e) {
+        console.error("[accounting] postPurchaseBillReversal error:", e);
       }
     })();
   }

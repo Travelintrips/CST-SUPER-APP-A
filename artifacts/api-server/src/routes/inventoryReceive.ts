@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { postStockIn } from "../lib/inventoryStock.js";
+import { sendWhatsApp } from "../lib/fonnte.js";
 
 const router = Router();
 router.use(async (req, res, next) => {
@@ -214,6 +215,30 @@ router.post("/", async (req: Request, res: Response) => {
 
   const result = await loadReceipt(receiptId);
   res.status(201).json(result);
+
+  // Notifikasi WA admin setelah GRN dibuat (fire-and-forget, setelah response terkirim)
+  void (async () => {
+    try {
+      const poRow = po.rows[0] as any;
+      const totalValue = validLines.reduce((s, l) => s + l.qtyReceived * l.unitCost, 0);
+      const waMsg =
+        `📦 *GRN Dibuat*\nNo: ${rNo}\nPO: ${poRow.doc_number ?? poId}\nSupplier: ${poRow.supplier_name ?? "-"}\nTotal: Rp ${totalValue.toLocaleString("id-ID")}`;
+      const phones = [
+        ...(process.env.ADMIN_WA_PHONES ?? "").split(",").map((p) => p.trim()).filter(Boolean),
+        ...(process.env.FONNTE_ADMIN_WA?.trim() ? [process.env.FONNTE_ADMIN_WA.trim()] : []),
+      ];
+      const unique = [...new Set(phones)];
+      for (const phone of unique) {
+        await sendWhatsApp(phone, waMsg, {
+          context: "grn_created",
+          refType: "purchase_receipt",
+          refId: String(receiptId),
+        });
+      }
+    } catch (e) {
+      console.error("[grn WA]", e);
+    }
+  })();
 });
 
 // ── CANCEL ────────────────────────────────────────────────────────────────────
