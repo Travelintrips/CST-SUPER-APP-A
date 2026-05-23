@@ -32,4 +32,4 @@ fi
 export PORT=3001
 export BASE_PATH=${BASE_PATH:-/}
 
-exec npx vite --config vite.config.ts --host 0.0.0.0
+exec node_modules/.bin/vite --config vite.config.ts --host 0.0.0.0
