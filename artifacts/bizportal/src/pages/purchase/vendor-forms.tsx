@@ -18,7 +18,10 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Copy, ExternalLink, Link2, Plus, Trash2, Eye, ToggleLeft, ToggleRight, Loader2 } from "lucide-react";
+import { Copy, ExternalLink, Link2, Plus, Trash2, Eye, ToggleLeft, ToggleRight, Loader2, RotateCcw, CalendarDays, User, Phone } from "lucide-react";
+import {
+  Sheet, SheetContent, SheetHeader, SheetTitle,
+} from "@/components/ui/sheet";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -219,11 +222,150 @@ function SubmissionDetailDialog({ submission }: { submission: Submission }) {
   );
 }
 
+// ── Link detail sheet ─────────────────────────────────────────────────────────
+
+function LinkDetailSheet({
+  link,
+  submissions,
+  open,
+  onOpenChange,
+  onDeleteSubmission,
+}: {
+  link: FormLink;
+  submissions: Submission[];
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onDeleteSubmission: (id: number) => void;
+}) {
+  const meta = SERVICE_META[link.serviceType];
+  const expired = link.expiresAt && new Date(link.expiresAt) < new Date();
+  const linkSubs = submissions.filter(s => s.linkId === link.id);
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="w-full sm:max-w-2xl flex flex-col p-0">
+        {/* ── Header ── */}
+        <SheetHeader className="px-6 pt-6 pb-4 border-b bg-slate-50 shrink-0">
+          <SheetTitle className="text-lg leading-snug">
+            {meta?.emoji} {link.title ?? `Form ${meta?.label ?? link.serviceType}`}
+          </SheetTitle>
+          <div className="flex items-center gap-2 flex-wrap mt-1">
+            <Badge variant="outline" className="text-xs">{meta?.emoji} {meta?.label ?? link.serviceType}</Badge>
+            <Badge variant={link.isActive && !expired ? "default" : "secondary"} className="text-xs">
+              {link.isActive && !expired ? "Aktif" : "Nonaktif"}
+            </Badge>
+            <Badge variant="secondary" className="text-xs">{linkSubs.length} submission</Badge>
+          </div>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-2 mt-3 text-sm">
+            <div className="flex items-center gap-1.5 text-slate-600">
+              <User className="h-3.5 w-3.5 text-slate-400" />
+              <span>{link.vendorName ?? <span className="text-slate-400 italic">Umum / Semua Vendor</span>}</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-slate-600">
+              <CalendarDays className="h-3.5 w-3.5 text-slate-400" />
+              <span>Dibuat {new Date(link.createdAt).toLocaleDateString("id-ID")}</span>
+            </div>
+            {link.expiresAt && (
+              <div className={`flex items-center gap-1.5 ${expired ? "text-red-500" : "text-slate-600"}`}>
+                <CalendarDays className="h-3.5 w-3.5" />
+                <span>{expired ? "⚠️ Kadaluarsa " : "Berakhir "}{new Date(link.expiresAt).toLocaleDateString("id-ID")}</span>
+              </div>
+            )}
+            {link.shortUrl && (
+              <div className="flex items-center gap-1.5 col-span-2">
+                <Link2 className="h-3.5 w-3.5 text-slate-400" />
+                <span className="font-mono text-xs text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">{link.shortUrl}</span>
+              </div>
+            )}
+          </div>
+          {link.notes && (
+            <div className="mt-3 bg-white border rounded-md px-3 py-2 text-sm text-slate-600">
+              <span className="text-xs text-slate-400 block mb-0.5 font-medium uppercase tracking-wide">Instruksi untuk vendor</span>
+              {link.notes}
+            </div>
+          )}
+        </SheetHeader>
+
+        {/* ── Submissions list ── */}
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+          {linkSubs.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 text-slate-400 gap-2">
+              <Eye className="h-10 w-10 opacity-20" />
+              <p className="text-sm">Belum ada submission untuk link ini.</p>
+              <p className="text-xs">Bagikan link ke vendor agar mereka bisa mengisi form.</p>
+            </div>
+          ) : (
+            linkSubs.map((sub, idx) => {
+              const fd = sub.formData ?? {};
+              const highlight = getHighlight(sub.serviceType, fd);
+              const fields = Object.entries(fd).filter(([, v]) => v !== "" && v !== null && v !== undefined);
+              return (
+                <div key={sub.id} className="border rounded-lg overflow-hidden shadow-sm">
+                  {/* card header */}
+                  <div className="flex items-start justify-between bg-slate-50 px-4 py-3 border-b gap-3">
+                    <div className="min-w-0">
+                      <div className="font-semibold text-slate-800 text-sm">
+                        #{idx + 1} · {sub.vendorName ?? "—"}
+                      </div>
+                      <div className="flex flex-wrap gap-x-3 mt-0.5">
+                        {sub.contactPerson && (
+                          <span className="text-xs text-slate-500 flex items-center gap-1">
+                            <User className="h-3 w-3" />{sub.contactPerson}
+                          </span>
+                        )}
+                        {sub.contactPhone && (
+                          <span className="text-xs text-slate-500 flex items-center gap-1">
+                            <Phone className="h-3 w-3" />{sub.contactPhone}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-400 mt-1 truncate">{highlight}</p>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className="text-xs text-slate-400 whitespace-nowrap">
+                        {new Date(sub.submittedAt).toLocaleString("id-ID", {
+                          day: "2-digit", month: "short", year: "numeric",
+                          hour: "2-digit", minute: "2-digit",
+                        })}
+                      </span>
+                      <Button
+                        variant="ghost" size="icon" className="h-7 w-7 text-red-400 hover:text-red-600"
+                        title="Hapus submission"
+                        onClick={() => { if (confirm("Hapus submission ini?")) onDeleteSubmission(sub.id); }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                  {/* form data grid */}
+                  {fields.length > 0 ? (
+                    <div className="px-4 py-3 grid grid-cols-2 gap-x-6 gap-y-3">
+                      {fields.map(([k, v]) => (
+                        <div key={k}>
+                          <span className="text-xs text-slate-400 capitalize block">{k.replace(/_/g, " ")}</span>
+                          <span className="text-sm font-medium text-slate-800 break-words">{String(v)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="px-4 py-3 text-xs text-slate-400 italic">Tidak ada data form.</div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 // ── Main page ──────────────────────────────────────────────────────────────────
 
 export default function VendorFormsPage() {
   const { toast } = useToast();
   const qc = useQueryClient();
+  const [selectedLink, setSelectedLink] = useState<FormLink | null>(null);
 
   const { data: links = [], isLoading: linksLoading } = useQuery<FormLink[]>({
     queryKey: ["vendor-form-links"],
@@ -269,6 +411,24 @@ export default function VendorFormsPage() {
   });
 
   const [generatingShortLink, setGeneratingShortLink] = useState<number | null>(null);
+  const [resettingShortLink, setResettingShortLink] = useState<number | null>(null);
+
+  const resetShortLink = async (link: FormLink) => {
+    if (!confirm(`Reset short link untuk "${link.title ?? link.serviceType}"?\nShort link lama akan tidak aktif.`)) return;
+    setResettingShortLink(link.id);
+    try {
+      const data = await apiFetch<{ shortUrl: string }>(`/api/vendor-form/admin/links/${link.id}/reset-short-link`, { method: "POST" });
+      await navigator.clipboard.writeText(data.shortUrl);
+      toast({ title: "Short link baru disalin!", description: data.shortUrl });
+      qc.setQueryData<FormLink[]>(["vendor-form-links"], (old) =>
+        old?.map((l) => l.id === link.id ? { ...l, shortUrl: data.shortUrl } : l) ?? old
+      );
+    } catch (e: unknown) {
+      toast({ title: "Gagal reset short link", description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setResettingShortLink(null);
+    }
+  };
 
   const copyShortLink = async (link: FormLink) => {
     // If already cached, copy immediately without API call
@@ -368,7 +528,7 @@ export default function VendorFormsPage() {
                             </TableCell>
                             <TableCell>
                               {link.shortUrl ? (
-                                <div className="flex items-center gap-1.5">
+                                <div className="flex items-center gap-1">
                                   <span className="font-mono text-xs text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">
                                     {link.shortUrl.replace(/^https?:\/\/[^/]+/, "").slice(0, 14)}
                                   </span>
@@ -378,6 +538,16 @@ export default function VendorFormsPage() {
                                     onClick={() => copyShortLink(link)}
                                   >
                                     <Copy className="h-3 w-3" />
+                                  </button>
+                                  <button
+                                    className="text-slate-300 hover:text-orange-500 transition-colors"
+                                    title="Reset short link (generate baru)"
+                                    disabled={resettingShortLink === link.id}
+                                    onClick={() => resetShortLink(link)}
+                                  >
+                                    {resettingShortLink === link.id
+                                      ? <Loader2 className="h-3 w-3 animate-spin" />
+                                      : <RotateCcw className="h-3 w-3" />}
                                   </button>
                                 </div>
                               ) : (
@@ -415,6 +585,13 @@ export default function VendorFormsPage() {
                             </TableCell>
                             <TableCell className="text-right">
                               <div className="flex items-center justify-end gap-1">
+                                <Button
+                                  variant="ghost" size="icon" className="h-7 w-7"
+                                  title="Lihat detail submission"
+                                  onClick={() => setSelectedLink(link)}
+                                >
+                                  <Eye className="h-3.5 w-3.5" />
+                                </Button>
                                 <Button
                                   variant="ghost" size="icon" className="h-7 w-7"
                                   title="Salin short link"
@@ -530,6 +707,16 @@ export default function VendorFormsPage() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {selectedLink && (
+        <LinkDetailSheet
+          link={selectedLink}
+          submissions={submissions}
+          open={!!selectedLink}
+          onOpenChange={(v) => { if (!v) setSelectedLink(null); }}
+          onDeleteSubmission={(id) => deleteSubmission.mutate(id)}
+        />
+      )}
     </AppShell>
   );
 }

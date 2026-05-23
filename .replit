@@ -22,11 +22,47 @@ args = "API Server"
 
 [[workflows.workflow]]
 name = "API Server"
+args = "Gateway"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "API Spec Watcher"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start API Server"
+
+[[workflows.workflow]]
+name = "Gateway"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "fuser -k 5000/tcp 2>/dev/null; sleep 0.3; PORT=5000 node gateway.mjs"
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[workflows.workflow]]
+name = "API Spec Watcher"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "node lib/api-spec/watch.mjs"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow]]
+name = "Start API Server"
 author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "bash artifacts/api-server/start-dev.sh"
+args = "fuser -k 8080/tcp 2>/dev/null || true; cd artifacts/api-server && node build.mjs && PORT=8080 NODE_ENV=development node --enable-source-maps ./dist/index.mjs"
 waitForPort = 8080
 
 [workflows.workflow.metadata]
@@ -44,7 +80,7 @@ timeoutMs = 120000
 [userenv]
 
 [userenv.shared]
-ADMIN_EMAILS = "divatranssoetta@gmail.com,admcst001@gmail.com,almanosetiawan@gmail.com,divarestorxr@gmail.com,wangsamasindo@gmail.com,travelincars01@gmail.com"
+ADMIN_EMAILS = "divatranssoetta@gmail.com,admcst001@gmail.com,almanosetiawan@gmail.com,divarestorxr@gmail.com,wangsamasindo@gmail.com"
 PORTAL_ADMIN_EMAILS = "admcst001@gmail.com,wangsamasindo@gmail.com"
 FONNTE_ADMIN_WA = "6281288195206"
 ADMIN_WA_PHONES = "081382702074,087882639826"
@@ -55,6 +91,14 @@ VITE_SUPABASE_URL = "https://nzdweipzckfszczzqtuw.supabase.co"
 CASHIER_TOKEN_SECRET = "239a1a73ea517bf5430a357fb7a39aa0deef38cecaf4d8135310a7cf3f2e11a19466d603c1dfd5bc0c735e92d58b135d"
 PUBLIC_OBJECT_SEARCH_PATHS = "/replit-objstore-e357cc66-19c3-4d73-9ca9-3069d78355d1/public"
 PRIVATE_OBJECT_DIR = "/replit-objstore-e357cc66-19c3-4d73-9ca9-3069d78355d1/private"
+SUPABASE_STORAGE_BUCKET = "https://nzdweipzckfszczzqtuw.storage.supabase.co/storage/v1/s3"
+SUPABASE_URL = "nzdweipzckfszczzqtuw"
+GOOGLE_CLIENT_ID = "751551151000-fqrgt8si0pgnchqkn3pfo6nmqienv38f.apps.googleusercontent.com"
+AI_INTEGRATIONS_OPENAI_BASE_URL = "http://localhost:1106/modelfarm/openai"
+DEFAULT_OBJECT_STORAGE_BUCKET_ID = "replit-objstore-e357cc66-19c3-4d73-9ca9-3069d78355d1"
+SUPABASE_URL_DEV = "https://xssrfshdrtdfupgqwfdw.supabase.co"
+AI_INTEGRATIONS_OPENAI_API_KEY = "_DUMMY_API_KEY_"
+FONNTE_TOKEN = "3hYIZghAc5N1!sUe3dMb"
 
 [userenv.development]
 ADMIN_EMAIL_DOMAINS = "example.com"
@@ -81,6 +125,14 @@ externalPort = 8008
 [[ports]]
 localPort = 5000
 externalPort = 80
+
+[[ports]]
+localPort = 8080
+externalPort = 8080
+
+[[ports]]
+localPort = 8082
+externalPort = 3002
 
 [[ports]]
 localPort = 8083

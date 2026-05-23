@@ -37,18 +37,29 @@ async function getProductCategories(productIds: number[]): Promise<Record<number
   return map;
 }
 
+// ── In-memory cache for company settings (5 min TTL) ─────────────────────────
+let _companyCache: { data: object; expiresAt: number } | null = null;
+const COMPANY_TTL_MS = 5 * 60 * 1000;
+
 // GET /api/portal/company
 router.get("/company", async (_req, res) => {
+  if (_companyCache && Date.now() < _companyCache.expiresAt) {
+    res.setHeader("Cache-Control", "public, max-age=300, stale-while-revalidate=60");
+    return res.json(_companyCache.data);
+  }
   const [settings] = await db.select().from(accountingSettingsTable).limit(1);
   const adminWa = await getAdminWa();
-  return res.json({
+  const data = {
     name: settings?.companyName ?? "PT. Cahaya Sejati Teknologi",
     tagline: "Solusi Logistik Terintegrasi & Berbasis Teknologi",
     logoUrl: settings?.companyLogoUrl ?? null,
     address: settings?.companyAddress ?? null,
     email: null,
     phone: adminWa || null,
-  });
+  };
+  _companyCache = { data, expiresAt: Date.now() + COMPANY_TTL_MS };
+  res.setHeader("Cache-Control", "public, max-age=300, stale-while-revalidate=60");
+  return res.json(data);
 });
 
 async function listByType(type: string) {
@@ -307,7 +318,7 @@ router.post("/auth/wa-otp/verify", async (req, res) => {
 
 // POST /api/portal/auth/wa-register — lengkapi profil & buat akun
 router.post("/auth/wa-register", async (req, res) => {
-  const { verifyToken, name, role: requestedRole, company, serviceIds, email } = req.body ?? {};
+  const { verifyToken, name, role: requestedRole, company, serviceIds, email, rememberDays } = req.body ?? {};
   if (!verifyToken || !name) return res.status(400).json({ message: "Token verifikasi dan nama diperlukan." });
 
   const [otp] = await db
@@ -374,8 +385,17 @@ router.post("/auth/wa-register", async (req, res) => {
     role: created.role,
   });
 
+  let deviceToken: string | undefined;
+  const days = typeof rememberDays === "number" && rememberDays > 0 && rememberDays <= 90 ? rememberDays : null;
+  if (days) {
+    deviceToken = randomUUID();
+    const expiresAt = new Date(Date.now() + days * 86400_000);
+    await db.insert(trustedDevicesTable).values({ phone: created.phone, deviceToken, expiresAt });
+  }
+
   return res.status(201).json({
     token,
+    deviceToken,
     user: {
       id: created.id,
       name: created.name,
@@ -470,6 +490,13 @@ router.post("/auth/wa-trusted-login", async (req, res) => {
 
   if (matches.length !== 1) return res.status(401).json({ message: "Akun tidak ditemukan." });
   const user = matches[0];
+
+  // Sliding expiry: perpanjang masa berlaku 30 hari dari sekarang
+  const newExpiresAt = new Date(Date.now() + 30 * 86400_000);
+  await db
+    .update(trustedDevicesTable)
+    .set({ expiresAt: newExpiresAt })
+    .where(eq(trustedDevicesTable.id, device.id));
 
   const token = await signPortalJwt({
     sub: String(user.id),
@@ -918,11 +945,25 @@ router.post("/vendor/quotes", requirePortalAuth, async (req, res) => {
 });
 
 // ── PORTAL CONTENT (Public) ───────────────────────────────────────────────
+// ── In-memory cache for portal content (5 min TTL) ───────────────────────────
+let _contentCache: { data: Record<string, string>; expiresAt: number } | null = null;
+const CONTENT_TTL_MS = 5 * 60 * 1000;
+
+export function invalidateContentCache() {
+  _contentCache = null;
+}
+
 // GET /api/portal/content
 router.get("/content", async (_req, res) => {
+  if (_contentCache && Date.now() < _contentCache.expiresAt) {
+    res.setHeader("Cache-Control", "public, max-age=300, stale-while-revalidate=60");
+    return res.json(_contentCache.data);
+  }
   const rows = await db.select().from(portalContentTable);
   const content: Record<string, string> = {};
   for (const r of rows) content[r.key] = r.value;
+  _contentCache = { data: content, expiresAt: Date.now() + CONTENT_TTL_MS };
+  res.setHeader("Cache-Control", "public, max-age=300, stale-while-revalidate=60");
   return res.json(content);
 });
 
@@ -952,6 +993,7 @@ router.put("/admin/content", requirePortalAdmin, async (req, res) => {
       .values({ key, value: String(value), updatedAt: new Date() })
       .onConflictDoUpdate({ target: portalContentTable.key, set: { value: String(value), updatedAt: new Date() } });
   }
+  _contentCache = null;
   return res.json({ ok: true });
 });
 

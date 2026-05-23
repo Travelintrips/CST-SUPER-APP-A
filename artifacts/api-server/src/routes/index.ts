@@ -64,6 +64,9 @@ import { marginRulesRouter } from "./marginRules";
 import { adminActionPublicRouter, adminActionAdminRouter } from "./adminAction";
 import { vendorFulfillmentPublicRouter } from "./vendorFulfillment";
 import { fulfillmentAdminRouter, fulfillmentPublicRouter } from "./orderFulfillment.js";
+import { vendorJobAdminRouter, vendorJobPublicRouter, orderTrackingPublicRouter } from "./vendorJobOrder.js";
+import { resolveShortLink } from "../lib/shortLink.js";
+import type { Request, Response } from "express";
 
 const router: IRouter = Router();
 
@@ -142,4 +145,20 @@ router.use("/admin-action", adminActionPublicRouter);
 router.use("/vendor-fulfillment", vendorFulfillmentPublicRouter);
 router.use("/logistic", fulfillmentAdminRouter);
 router.use("/fulfillment", fulfillmentPublicRouter);
+router.use("/logistic", vendorJobAdminRouter);
+router.use("/vendor-job", vendorJobPublicRouter);
+router.use("/order-track", orderTrackingPublicRouter);
+
+router.get("/q/:code", async (req: Request, res: Response) => {
+  const code = String(req.params.code ?? "").trim();
+  if (!code || !/^[A-Z0-9]{4,32}$/i.test(code)) {
+    return res.status(400).json({ error: "Invalid short link" });
+  }
+  const target = await resolveShortLink(code);
+  if (!target) {
+    return res.status(404).json({ error: "Link tidak ditemukan atau sudah kedaluwarsa." });
+  }
+  return res.json({ targetUrl: target });
+});
+
 export default router;

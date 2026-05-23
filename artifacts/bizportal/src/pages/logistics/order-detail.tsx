@@ -19,7 +19,7 @@ import { Switch } from "@/components/ui/switch";
 import {
   ArrowLeft, Loader2, Copy, ExternalLink, Plus, RefreshCw, Send,
   Package, Truck, User, ClipboardList, Clock, ShieldAlert, Ship,
-  ClipboardCheck,
+  ClipboardCheck, CheckCircle2, XCircle, MapPin,
 } from "lucide-react";
 import { Link } from "wouter";
 import GpsTrackingPanel from "@/components/logistics/GpsTrackingPanel";
@@ -344,6 +344,459 @@ function SendFulfillmentDialog({ orderId, vendor, shipmentType, onSent }: {
   );
 }
 
+// ── Assign Vendor Dialog ───────────────────────────────────────────────────────
+
+type VendorQuoteRow = {
+  id: number;
+  vendorId: number;
+  vendorName: string | null;
+  vendorPhone: string | null;
+  vendorPrice: string | null;
+  sellingPrice: string | null;
+  quoteStatus: string | null;
+  eta: string | null;
+  currency: string | null;
+};
+
+type JobOrderData = {
+  jobOrder: {
+    id: number; order_id: number; vendor_id: number; token: string; status: string;
+    driver_name: string | null; driver_phone: string | null; vehicle_plate: string | null;
+    carrier: string | null; eta: string | null; accepted_at: string | null;
+    rejected_at: string | null; reject_reason: string | null; completed_at: string | null;
+    vendor_name: string | null;
+  } | null;
+  quotes: VendorQuoteRow[];
+  progress: { id: number; status: string; notes: string | null; updated_by: string; created_at: string }[];
+  trackingToken: string | null;
+  trackingUrl: string | null;
+  jobUrl: string | null;
+};
+
+function AssignVendorDialog({ orderId, onAssigned }: { orderId: number; onAssigned: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [selectedQuoteId, setSelectedQuoteId] = useState<number | null>(null);
+  const [adminNote, setAdminNote] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<{ jobUrl: string; trackingUrl: string | null; waMessage: string; vendorPhone: string | null } | null>(null);
+  const { toast } = useToast();
+  const qc = useQueryClient();
+
+  const { data: jobData } = useQuery<JobOrderData>({
+    queryKey: ["order-job", orderId],
+    queryFn: () => apiFetch(`/api/logistic/orders/${orderId}/job-order`),
+    enabled: !isNaN(orderId) && open,
+  });
+
+  const handleAssign = async () => {
+    if (!selectedQuoteId) {
+      toast({ title: "Pilih quote vendor terlebih dahulu", variant: "destructive" });
+      return;
+    }
+    setLoading(true);
+    try {
+      const r = await apiFetch<{ ok: boolean; jobUrl: string; trackingToken: string; trackingUrl: string; waMessage: string; vendorPhone: string | null }>
+        (`/api/logistic/orders/${orderId}/assign-vendor`, {
+          method: "POST",
+          body: JSON.stringify({ quoteId: selectedQuoteId, adminNote: adminNote || undefined }),
+        });
+      setResult({ jobUrl: r.jobUrl, trackingUrl: r.trackingUrl, waMessage: r.waMessage, vendorPhone: r.vendorPhone });
+      toast({ title: "Vendor berhasil ditugaskan!", description: "Job order telah dibuat." });
+      qc.invalidateQueries({ queryKey: ["order-detail", orderId] });
+      qc.invalidateQueries({ queryKey: ["order-job", orderId] });
+      onAssigned();
+    } catch (e: unknown) {
+      toast({ title: "Gagal", description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const copyText = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    toast({ title: `${label} disalin!` });
+  };
+
+  const QUOTE_STATUS_STYLE: Record<string, string> = {
+    approved: "text-green-700 bg-green-50",
+    not_selected: "text-slate-400 bg-slate-50",
+    pending: "text-amber-700 bg-amber-50",
+  };
+
+  return (
+    <>
+      <Button onClick={() => { setOpen(true); }} className="bg-blue-600 hover:bg-blue-700 text-white" size="sm">
+        <CheckCircle2 className="w-4 h-4 mr-1" />
+        Tugaskan Vendor
+      </Button>
+      <Dialog open={open} onOpenChange={o => { setOpen(o); if (!o) setResult(null); }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle2 className="w-5 h-5 text-blue-600" />
+              Tugaskan Vendor & Buat Job Order
+            </DialogTitle>
+          </DialogHeader>
+
+          {!result ? (
+            <div className="space-y-4 py-2">
+              {/* Existing job order warning */}
+              {jobData?.jobOrder && (
+                <div className={`rounded-lg border px-4 py-3 text-sm ${
+                  jobData.jobOrder.status === "accepted" ? "bg-green-50 border-green-200 text-green-800" :
+                  jobData.jobOrder.status === "rejected" ? "bg-red-50 border-red-200 text-red-800" :
+                  "bg-amber-50 border-amber-200 text-amber-800"
+                }`}>
+                  ⚠️ Job order sudah ada — Status: <strong>{jobData.jobOrder.status}</strong>
+                  {jobData.jobOrder.vendor_name && ` · Vendor: ${jobData.jobOrder.vendor_name}`}
+                  <br />
+                  <span className="text-xs">Klik "Tugaskan" untuk mendapatkan ulang link job order.</span>
+                </div>
+              )}
+
+              {/* Quote list */}
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold">Pilih Vendor Pemenang</Label>
+                {(!jobData?.quotes || jobData.quotes.length === 0) ? (
+                  <p className="text-sm text-slate-400 py-4 text-center border border-dashed rounded-lg">
+                    Belum ada quotes vendor. Buat RFQ dan tunggu respon vendor terlebih dahulu.
+                  </p>
+                ) : (
+                  <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                    {jobData.quotes.map((q) => {
+                      const isSelected = selectedQuoteId === q.id;
+                      const statusStyle = QUOTE_STATUS_STYLE[q.quoteStatus ?? ""] ?? "text-slate-500 bg-slate-50";
+                      return (
+                        <button
+                          key={q.id}
+                          type="button"
+                          onClick={() => setSelectedQuoteId(q.id)}
+                          className={`w-full text-left rounded-xl border-2 px-4 py-3 text-sm transition-all ${
+                            isSelected ? "border-blue-500 bg-blue-50" : "border-slate-200 hover:border-slate-300"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="font-semibold text-slate-800">{q.vendorName ?? "—"}</div>
+                            <div className="flex items-center gap-2">
+                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusStyle}`}>
+                                {q.quoteStatus ?? "—"}
+                              </span>
+                              {isSelected && <CheckCircle2 className="w-4 h-4 text-blue-600 flex-shrink-0" />}
+                            </div>
+                          </div>
+                          <div className="flex gap-4 mt-1 text-slate-500 text-xs">
+                            {q.vendorPrice && (
+                              <span>Vendor: <strong className="text-slate-700">
+                                Rp {Math.round(Number(q.vendorPrice)).toLocaleString("id-ID")}
+                              </strong></span>
+                            )}
+                            {q.sellingPrice && (
+                              <span>Jual: <strong className="text-blue-700">
+                                Rp {Math.round(Number(q.sellingPrice)).toLocaleString("id-ID")}
+                              </strong></span>
+                            )}
+                            {q.eta && <span>ETA: {q.eta}</span>}
+                            {q.vendorPhone && <span>📞 {q.vendorPhone}</span>}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold">Catatan untuk Vendor (opsional)</Label>
+                <Textarea
+                  value={adminNote}
+                  onChange={e => setAdminNote(e.target.value)}
+                  rows={2}
+                  placeholder="Instruksi khusus, prioritas, dll."
+                />
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setOpen(false)}>Batal</Button>
+                <Button
+                  onClick={handleAssign}
+                  disabled={loading || !selectedQuoteId}
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  {loading ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <CheckCircle2 className="w-4 h-4 mr-1" />}
+                  Tugaskan Vendor
+                </Button>
+              </DialogFooter>
+            </div>
+          ) : (
+            <div className="space-y-4 py-2">
+              <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+                <p className="text-green-800 font-semibold text-sm">✅ Vendor berhasil ditugaskan!</p>
+                <p className="text-green-700 text-xs mt-1">Job order telah dibuat dan notifikasi WhatsApp disiapkan.</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold">Link Job Order (untuk Vendor)</Label>
+                <div className="flex items-center gap-2">
+                  <Input readOnly value={result.jobUrl} className="text-xs font-mono" />
+                  <Button variant="outline" size="icon" onClick={() => copyText(result.jobUrl, "Link Job Order")}>
+                    <Copy className="w-4 h-4" />
+                  </Button>
+                  <a href={result.jobUrl} target="_blank" rel="noopener noreferrer">
+                    <Button variant="outline" size="icon"><ExternalLink className="w-4 h-4" /></Button>
+                  </a>
+                </div>
+              </div>
+
+              {result.trackingUrl && (
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Link Tracking (untuk Customer)</Label>
+                  <div className="flex items-center gap-2">
+                    <Input readOnly value={result.trackingUrl} className="text-xs font-mono" />
+                    <Button variant="outline" size="icon" onClick={() => copyText(result.trackingUrl!, "Link Tracking")}>
+                      <Copy className="w-4 h-4" />
+                    </Button>
+                    <a href={result.trackingUrl} target="_blank" rel="noopener noreferrer">
+                      <Button variant="outline" size="icon"><ExternalLink className="w-4 h-4" /></Button>
+                    </a>
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold">Pesan WhatsApp (copy-paste ke vendor)</Label>
+                <div className="relative">
+                  <Textarea readOnly value={result.waMessage} rows={8} className="text-xs font-mono pr-10" />
+                  <Button
+                    variant="ghost" size="icon"
+                    className="absolute top-2 right-2 h-7 w-7"
+                    onClick={() => copyText(result.waMessage, "Pesan WA")}
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+                {result.vendorPhone && (
+                  <p className="text-xs text-slate-500">
+                    📞 Nomor vendor: <strong>{result.vendorPhone}</strong>
+                    {" · "}
+                    <a
+                      href={`https://wa.me/${result.vendorPhone.replace(/\D/g, "")}?text=${encodeURIComponent(result.waMessage)}`}
+                      target="_blank" rel="noopener noreferrer"
+                      className="text-green-600 underline font-medium"
+                    >
+                      Buka WhatsApp
+                    </a>
+                  </p>
+                )}
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => { setOpen(false); setResult(null); }}>Tutup</Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+// ── Job Order Status Panel ─────────────────────────────────────────────────────
+
+function JobOrderPanel({ orderId }: { orderId: number }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [progressStatus, setProgressStatus] = useState("");
+  const [progressNotes, setProgressNotes] = useState("");
+  const [updatingProgress, setUpdatingProgress] = useState(false);
+  const [completingReview, setCompletingReview] = useState(false);
+
+  const { data, refetch } = useQuery<JobOrderData>({
+    queryKey: ["order-job", orderId],
+    queryFn: () => apiFetch(`/api/logistic/orders/${orderId}/job-order`),
+    enabled: !isNaN(orderId),
+    refetchInterval: 20000,
+  });
+
+  const copyText = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    toast({ title: `${label} disalin!` });
+  };
+
+  const handleAddProgress = async () => {
+    if (!progressStatus) return;
+    setUpdatingProgress(true);
+    try {
+      await apiFetch(`/api/logistic/orders/${orderId}/job-progress`, {
+        method: "POST",
+        body: JSON.stringify({ status: progressStatus, notes: progressNotes, isPublic: true }),
+      });
+      toast({ title: "Progress diperbarui" });
+      setProgressStatus(""); setProgressNotes("");
+      refetch();
+      qc.invalidateQueries({ queryKey: ["order-detail", orderId] });
+    } catch (e: unknown) {
+      toast({ title: "Gagal", description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setUpdatingProgress(false);
+    }
+  };
+
+  const handleCompleteReview = async () => {
+    setCompletingReview(true);
+    try {
+      await apiFetch(`/api/logistic/orders/${orderId}/complete-review`, {
+        method: "POST",
+        body: JSON.stringify({ sendCustomerNotif: true }),
+      });
+      toast({ title: "Order ditandai Completed", description: "Notifikasi dikirim ke customer." });
+      refetch();
+      qc.invalidateQueries({ queryKey: ["order-detail", orderId] });
+    } catch (e: unknown) {
+      toast({ title: "Gagal", description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setCompletingReview(false);
+    }
+  };
+
+  if (!data?.jobOrder) return null;
+
+  const job = data.jobOrder;
+  const JOB_STATUS_STYLE: Record<string, string> = {
+    pending:          "bg-amber-50 border-amber-200 text-amber-800",
+    accepted:         "bg-green-50 border-green-200 text-green-800",
+    rejected:         "bg-red-50 border-red-200 text-red-800",
+    in_progress:      "bg-blue-50 border-blue-200 text-blue-800",
+    pickup_scheduled: "bg-indigo-50 border-indigo-200 text-indigo-800",
+    completed:        "bg-emerald-50 border-emerald-200 text-emerald-800",
+    problem:          "bg-orange-50 border-orange-200 text-orange-800",
+  };
+
+  const STATUS_PROGRESS_OPTIONS = [
+    "Pickup Scheduled", "In Progress", "In Transit", "Delivered", "Completed", "Problem",
+  ];
+
+  return (
+    <Card className="border-blue-200">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm font-semibold text-blue-700 uppercase tracking-wide flex items-center gap-1.5">
+          <MapPin className="w-4 h-4" /> Job Order & Tracking
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {/* Job status */}
+        <div className={`rounded-xl border px-3 py-2.5 text-sm font-medium ${JOB_STATUS_STYLE[job.status] ?? "bg-slate-50 border-slate-200 text-slate-700"}`}>
+          Status: {job.status}
+          {job.vendor_name && <span className="ml-2 font-normal">· {job.vendor_name}</span>}
+        </div>
+
+        {/* Links */}
+        {data.jobUrl && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-500 min-w-fit">Job Order:</span>
+            <code className="text-xs text-slate-600 truncate flex-1 bg-slate-50 px-2 py-1 rounded">{data.jobUrl}</code>
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => copyText(data.jobUrl!, "Link Job Order")}>
+              <Copy className="h-3.5 w-3.5" />
+            </Button>
+            <a href={data.jobUrl} target="_blank" rel="noopener noreferrer">
+              <Button variant="ghost" size="icon" className="h-7 w-7"><ExternalLink className="h-3.5 w-3.5" /></Button>
+            </a>
+          </div>
+        )}
+        {data.trackingUrl && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-500 min-w-fit">Tracking:</span>
+            <code className="text-xs text-slate-600 truncate flex-1 bg-slate-50 px-2 py-1 rounded">{data.trackingUrl}</code>
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => copyText(data.trackingUrl!, "Link Tracking")}>
+              <Copy className="h-3.5 w-3.5" />
+            </Button>
+            <a href={data.trackingUrl} target="_blank" rel="noopener noreferrer">
+              <Button variant="ghost" size="icon" className="h-7 w-7"><ExternalLink className="h-3.5 w-3.5" /></Button>
+            </a>
+          </div>
+        )}
+
+        {/* Operational details (if accepted) */}
+        {(job.status === "accepted" || job.status === "in_progress" || job.status === "completed") && (
+          <div className="bg-slate-50 rounded-lg px-3 py-2.5 text-xs space-y-1">
+            {job.driver_name && <div><span className="text-slate-400">Driver:</span> <span className="font-medium">{job.driver_name}</span> {job.driver_phone && `· ${job.driver_phone}`}</div>}
+            {job.vehicle_plate && <div><span className="text-slate-400">Kendaraan:</span> <span className="font-medium">{job.vehicle_plate}</span></div>}
+            {job.carrier && <div><span className="text-slate-400">Carrier:</span> <span className="font-medium">{job.carrier}</span></div>}
+            {job.eta && <div><span className="text-slate-400">ETA:</span> <span className="font-medium">{job.eta}</span></div>}
+          </div>
+        )}
+
+        {/* Rejected */}
+        {job.status === "rejected" && (
+          <div className="bg-red-50 rounded-lg px-3 py-2 text-xs text-red-700">
+            ❌ Vendor menolak job.{job.reject_reason ? ` Alasan: ${job.reject_reason}` : ""}
+          </div>
+        )}
+
+        {/* Admin: add progress */}
+        {job.status !== "pending" && job.status !== "rejected" && job.status !== "completed" && (
+          <div className="space-y-2 border-t border-slate-100 pt-3">
+            <p className="text-xs font-semibold text-slate-600">Tambah Update Progress</p>
+            <Select value={progressStatus} onValueChange={setProgressStatus}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Pilih status..." /></SelectTrigger>
+              <SelectContent>
+                {STATUS_PROGRESS_OPTIONS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Textarea
+              value={progressNotes}
+              onChange={e => setProgressNotes(e.target.value)}
+              rows={1}
+              placeholder="Keterangan (opsional)"
+              className="text-xs"
+            />
+            <Button
+              onClick={handleAddProgress}
+              disabled={updatingProgress || !progressStatus}
+              size="sm"
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              {updatingProgress ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
+              Tambah Progress
+            </Button>
+          </div>
+        )}
+
+        {/* Admin: complete review */}
+        {(job.status === "completed" || job.status === "pod_uploaded") && (
+          <Button
+            onClick={handleCompleteReview}
+            disabled={completingReview}
+            size="sm"
+            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white mt-2"
+          >
+            {completingReview ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <CheckCircle2 className="w-3.5 h-3.5 mr-1" />}
+            Konfirmasi Selesai & Notif Customer
+          </Button>
+        )}
+
+        {/* Progress timeline */}
+        {data.progress.length > 0 && (
+          <div className="border-t border-slate-100 pt-3 space-y-2">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Riwayat Progress</p>
+            <div className="max-h-48 overflow-y-auto space-y-2">
+              {[...data.progress].reverse().map(p => (
+                <div key={p.id} className="text-xs border-l-2 border-blue-100 pl-2">
+                  <span className="font-medium text-slate-700">{p.status}</span>
+                  {p.notes && <p className="text-slate-500">{p.notes}</p>}
+                  <p className="text-slate-400">
+                    {new Date(p.created_at).toLocaleString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                    {" · "}{p.updated_by}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ── Update Status Dialog ───────────────────────────────────────────────────────
 
 function UpdateStatusDialog({ orderId, currentStatus, onUpdated }: { orderId: number; currentStatus: string; onUpdated: () => void }) {
@@ -488,6 +941,7 @@ export default function LogisticOrderDetailPage() {
             {hasVendorSelected && (
               <SendQuoteDialog order={order} rfqId={activeRfqId} onSent={() => qc.invalidateQueries({ queryKey: ["order-detail", orderId] })} />
             )}
+            <AssignVendorDialog orderId={orderId} onAssigned={() => qc.invalidateQueries({ queryKey: ["order-detail", orderId] })} />
             <SendFulfillmentDialog
               orderId={orderId}
               vendor={vendor}
@@ -642,6 +1096,9 @@ export default function LogisticOrderDetailPage() {
                 </CardContent>
               </Card>
             )}
+
+            {/* Job Order & Tracking Panel */}
+            <JobOrderPanel orderId={orderId} />
 
             {/* Task Links */}
             {taskLinks.length > 0 && (

@@ -11,6 +11,7 @@ import router from "./routes";
 import authRouter from "./routes/auth";
 import companiesRouter from "./routes/companies";
 import { shortLinkRedirectRouter } from "./routes/shortLinkRedirect";
+import { adminActionRouter } from "./routes/adminAction";
 import { authMiddleware } from "./middlewares/authMiddleware";
 import { bearerRateLimiter } from "./middlewares/bearerRateLimiter";
 import { logger } from "./lib/logger";
@@ -278,6 +279,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 });
 
 app.use(shortLinkRedirectRouter);
+app.use(adminActionRouter);
 app.use("/api/companies", companiesRouter);
 app.use("/api", router);
 
@@ -285,7 +287,7 @@ app.use("/api", router);
 // For any non-API, non-BizPortal path (e.g. /confirm/:token, /, /services, etc.)
 // serve the customer portal index.html so client-side routing works.
 if (fs.existsSync(CUSTOMER_PORTAL_DIST)) {
-  const PORTAL_SKIP = ["/api/", "/bizportal", "/login", "/logout", "/callback", "/auth", "/mobile-auth", "/q/"];
+  const PORTAL_SKIP = ["/api/", "/bizportal", "/login", "/logout", "/callback", "/auth", "/mobile-auth", "/q/", "/admin-action/"];
   app.use((req: Request, res: Response, next: NextFunction) => {
     if (PORTAL_SKIP.some((p) => req.path === p || req.path.startsWith(p + "/") || req.path.startsWith(p))) {
       return next();

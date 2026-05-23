@@ -31,7 +31,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { PackageOpen, Search, RefreshCw, FilePlus, X, Eye, Zap, Send, ExternalLink, Ship } from "lucide-react";
+import { PackageOpen, Search, RefreshCw, FilePlus, X, Eye, Zap, Send, ExternalLink, Ship, ClipboardCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import { useOrderNotificationsContext } from "@/contexts/OrderNotificationsContext";
@@ -170,6 +170,7 @@ export default function LogisticsPortalOrdersPage() {
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [fulfillmentFilter, setFulfillmentFilter] = useState("all");
   const [updatingId, setUpdatingId] = useState<number | null>(null);
   const [updatingTypeId, setUpdatingTypeId] = useState<number | null>(null);
   const [soDialog, setSoDialog] = useState<LogisticOrder | null>(null);
@@ -357,15 +358,26 @@ export default function LogisticsPortalOrdersPage() {
     );
   }
 
+  const fulfillmentOf = (o: typeof orders[number]) =>
+    (o as unknown as { fulfillmentStatus: string | null }).fulfillmentStatus;
+
   const filtered = orders.filter((o) => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return (
-      o.orderNumber.toLowerCase().includes(q) ||
-      o.customerName.toLowerCase().includes(q) ||
-      o.companyName.toLowerCase().includes(q) ||
-      o.email.toLowerCase().includes(q)
-    );
+    if (search) {
+      const q = search.toLowerCase();
+      const matchSearch =
+        o.orderNumber.toLowerCase().includes(q) ||
+        o.customerName.toLowerCase().includes(q) ||
+        o.companyName.toLowerCase().includes(q) ||
+        o.email.toLowerCase().includes(q);
+      if (!matchSearch) return false;
+    }
+    if (fulfillmentFilter !== "all") {
+      const fs = fulfillmentOf(o);
+      if (fulfillmentFilter === "not_sent" && fs !== null) return false;
+      if (fulfillmentFilter === "pending" && fs !== "pending") return false;
+      if (fulfillmentFilter === "submitted" && fs !== "submitted") return false;
+    }
+    return true;
   });
 
   const counts = {
@@ -373,6 +385,7 @@ export default function LogisticsPortalOrdersPage() {
     newOrder: orders.filter((o) => o.status === "New Order").length,
     inProgress: orders.filter((o) => o.status === "In Progress").length,
     completed: orders.filter((o) => o.status === "Completed").length,
+    fulfillmentPending: orders.filter((o) => fulfillmentOf(o) === "pending").length,
   };
 
   return (
@@ -412,16 +425,24 @@ export default function LogisticsPortalOrdersPage() {
         </div>
 
         {/* Stat Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           {[
-            { label: "Total", value: counts.total, color: "text-foreground" },
-            { label: "New Order", value: counts.newOrder, color: "text-yellow-700" },
-            { label: "In Progress", value: counts.inProgress, color: "text-orange-700" },
-            { label: "Completed", value: counts.completed, color: "text-green-700" },
+            { label: "Total", value: counts.total, color: "text-foreground", filter: "all" },
+            { label: "New Order", value: counts.newOrder, color: "text-yellow-700", filter: null },
+            { label: "In Progress", value: counts.inProgress, color: "text-orange-700", filter: null },
+            { label: "Completed", value: counts.completed, color: "text-green-700", filter: null },
+            { label: "Vendor Pending", value: counts.fulfillmentPending, color: "text-emerald-700", filter: "pending" },
           ].map((s) => (
-            <Card key={s.label}>
+            <Card
+              key={s.label}
+              className={`cursor-pointer transition-all hover:shadow-md ${s.filter && fulfillmentFilter === s.filter ? "ring-2 ring-emerald-500" : ""}`}
+              onClick={() => s.filter !== null ? setFulfillmentFilter(s.filter === fulfillmentFilter ? "all" : s.filter) : undefined}
+            >
               <CardHeader className="pb-1 pt-4 px-4">
-                <CardTitle className="text-xs text-muted-foreground">{s.label}</CardTitle>
+                <CardTitle className="text-xs text-muted-foreground flex items-center gap-1">
+                  {s.label === "Vendor Pending" && <ClipboardCheck className="h-3.5 w-3.5 text-emerald-600" />}
+                  {s.label}
+                </CardTitle>
               </CardHeader>
               <CardContent className="px-4 pb-4">
                 <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
@@ -431,8 +452,8 @@ export default function LogisticsPortalOrdersPage() {
         </div>
 
         {/* Filters */}
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
+        <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
+          <div className="relative flex-1 min-w-48">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Cari nomor order, nama, perusahaan, email..."
@@ -461,6 +482,23 @@ export default function LogisticsPortalOrdersPage() {
               ))}
             </SelectContent>
           </Select>
+          <Select value={fulfillmentFilter} onValueChange={setFulfillmentFilter}>
+            <SelectTrigger className="w-52">
+              <ClipboardCheck className="h-4 w-4 text-emerald-600 mr-1 shrink-0" />
+              <SelectValue placeholder="Semua fulfillment" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Semua Fulfillment</SelectItem>
+              <SelectItem value="not_sent">Belum Dikirim ke Vendor</SelectItem>
+              <SelectItem value="pending">Menunggu Konfirmasi</SelectItem>
+              <SelectItem value="submitted">Sudah Dikonfirmasi</SelectItem>
+            </SelectContent>
+          </Select>
+          {fulfillmentFilter !== "all" && (
+            <Button variant="ghost" size="sm" className="text-muted-foreground gap-1" onClick={() => setFulfillmentFilter("all")}>
+              <X className="h-3.5 w-3.5" /> Reset
+            </Button>
+          )}
         </div>
 
         {/* Table */}
@@ -477,19 +515,20 @@ export default function LogisticsPortalOrdersPage() {
                   <TableHead>Tanggal</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>RFQ</TableHead>
+                  <TableHead>Fulfillment</TableHead>
                   <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
                       Memuat...
                     </TableCell>
                   </TableRow>
                 ) : filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
                       Tidak ada pesanan
                     </TableCell>
                   </TableRow>
@@ -512,6 +551,12 @@ export default function LogisticsPortalOrdersPage() {
                           <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-violet-100 text-violet-700 border border-violet-200">
                             🤖 Via AI
                           </span>
+                        )}
+                        {(o as { orderType?: string }).orderType === "product" && (
+                          <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200">Produk</span>
+                        )}
+                        {(o as { orderType?: string }).orderType === "service" && (
+                          <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold bg-violet-100 text-violet-700 border border-violet-200">Jasa</span>
                         )}
                       </div>
                     </TableCell>
@@ -583,6 +628,25 @@ export default function LogisticsPortalOrdersPage() {
                         latestRfq={(o as any).latestRfq ?? null}
                         onCreateRfq={() => openRfqDialog(o)}
                       />
+                    </TableCell>
+                    {/* Fulfillment status column */}
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      {(() => {
+                        const fs = fulfillmentOf(o);
+                        if (fs === "submitted") return (
+                          <Badge className="bg-emerald-100 text-emerald-800 border border-emerald-200 text-[10px] px-1.5 py-0.5 gap-1 whitespace-nowrap">
+                            <ClipboardCheck className="h-2.5 w-2.5" /> Dikonfirmasi
+                          </Badge>
+                        );
+                        if (fs === "pending") return (
+                          <Badge className="bg-amber-100 text-amber-800 border border-amber-200 text-[10px] px-1.5 py-0.5 whitespace-nowrap">
+                            ⏳ Menunggu
+                          </Badge>
+                        );
+                        return (
+                          <span className="text-[10px] text-slate-400">—</span>
+                        );
+                      })()}
                     </TableCell>
                     <TableCell onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-1">

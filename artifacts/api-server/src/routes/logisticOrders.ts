@@ -52,6 +52,7 @@ function toOrder(row: typeof logisticOrdersTable.$inferSelect, approvedVendorNam
     customerName: row.customerName,
     email: row.email,
     phone: row.phone,
+    orderType: (row as any).orderType ?? "shipment",
     shipmentType: row.shipmentType,
     origin: row.origin,
     destination: row.destination,
@@ -152,9 +153,10 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
       customerName: body.customerName,
       email: body.email,
       phone: body.phone,
-      shipmentType: body.shipmentType,
-      origin: body.origin,
-      destination: body.destination,
+      orderType: body.orderType ?? "shipment",
+      shipmentType: body.shipmentType ?? "",
+      origin: body.origin ?? "",
+      destination: body.destination ?? "",
       commodity: body.commodity ?? null,
       cargoDescription: body.cargoDescription ?? null,
       grossWeight: body.grossWeight != null ? String(body.grossWeight) : null,
@@ -217,9 +219,10 @@ sendLogisticOrderNotification({
     companyName: body.companyName,
     email: body.email,
     phone: body.phone,
-    shipmentType: body.shipmentType,
-    origin: body.origin,
-    destination: body.destination,
+    orderType: body.orderType ?? "shipment",
+    shipmentType: body.shipmentType ?? "",
+    origin: body.origin ?? "",
+    destination: body.destination ?? "",
     commodity: body.commodity ?? null,
     cargoDescription: body.cargoDescription ?? null,
     grossWeight: body.grossWeight != null ? Number(body.grossWeight) : null,
@@ -231,6 +234,7 @@ sendLogisticOrderNotification({
     jamOrder: body.jamOrder ?? null,
     vehicleType,
     createdAt: order.createdAt,
+    publicRfqToken: order.publicRfqToken ?? null,
   }).catch((err: unknown) => {
     req.log.error({ err }, "sendLogisticOrderNotification failed");
   });
@@ -245,9 +249,10 @@ sendLogisticOrderNotification({
     orderNumber,
     customerName: body.customerName,
     companyName: body.companyName ?? null,
-    shipmentType: body.shipmentType,
-    origin: body.origin,
-    destination: body.destination,
+    orderType: body.orderType ?? "shipment",
+    shipmentType: body.shipmentType ?? "",
+    origin: body.origin ?? "",
+    destination: body.destination ?? "",
     grandTotal: Number(body.grandTotal),
     createdAt: order.createdAt.toISOString(),
   }).catch(() => {});
@@ -263,6 +268,7 @@ function toPublicOrder(row: typeof logisticOrdersTable.$inferSelect) {
   return {
     id: row.id,
     orderNumber: row.orderNumber,
+    orderType: (row as any).orderType ?? "shipment",
     shipmentType: row.shipmentType,
     origin: row.origin,
     destination: row.destination,
@@ -517,11 +523,27 @@ logisticOrdersRouter.get("/", async (req: Request, res: Response) => {
     }
   }
 
+  // Attach fulfillment status per order
+  const fulfillmentStatusMap = new Map<number, string>();
+  if (orderIds.length > 0) {
+    const fRows = await db.execute(sql`
+      SELECT DISTINCT ON (order_id)
+        order_id AS "orderId", status
+      FROM order_fulfillment_links
+      WHERE order_id = ANY(${sql.raw(`ARRAY[${orderIds.join(",")}]::int[]`)})
+      ORDER BY order_id, created_at DESC
+    `);
+    for (const row of ((fRows as unknown as { rows: unknown[] }).rows ?? fRows as unknown[]) as { orderId: unknown; status: unknown }[]) {
+      fulfillmentStatusMap.set(Number(row.orderId), row.status as string);
+    }
+  }
+
   return res.json(rows.map((row) => ({
     ...toOrder(row),
     linkedSalesDocId: linkedDocMap.get(row.id)?.id ?? null,
     linkedSalesDocNumber: linkedDocMap.get(row.id)?.docNumber ?? null,
     latestRfq: rfqMap.get(row.id) ?? null,
+    fulfillmentStatus: fulfillmentStatusMap.get(row.id) ?? null,
   })));
 });
 

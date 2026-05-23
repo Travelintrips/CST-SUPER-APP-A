@@ -16,6 +16,7 @@ export interface LogisticOrderData {
   companyName: string;
   email: string;
   phone: string;
+  orderType?: string;
   shipmentType: string;
   origin: string;
   destination: string;
@@ -30,6 +31,7 @@ export interface LogisticOrderData {
   jamOrder?: string | null;
   vehicleType?: string | null;
   createdAt?: Date | string | null;
+  publicRfqToken?: string | null;
 }
 
 const BULAN_ID = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agt","Sep","Okt","Nov","Des"];
@@ -106,6 +108,7 @@ function isFreightWithDimensions(shipmentType: string): boolean {
 }
 
 function buildAdminWaMessage(order: LogisticOrderData, adminReviewUrl?: string): string {
+function buildAdminWaMessage(order: LogisticOrderData, adminActionShortUrl?: string, adminReviewUrl?: string): string 
   const approveUrl = getApproveFormUrl(order.orderNumber);
   const domain = getPreferredDomain() || "cstlogistic.co.id";
   const bizportalUrl = `https://${domain}/bizportal/logistics/orders/${order.id}`;
@@ -133,8 +136,9 @@ function buildAdminWaMessage(order: LogisticOrderData, adminReviewUrl?: string):
     (order.notes ? `Catatan         : ${order.notes}\n` : ``) +
     `━━━━━━━━━━━━━━━━━━\n` +
     `⚡ *Aksi Cepat Admin (tanpa login):*\n` +
+    (adminActionShortUrl ? `🔭 Review & Blast Vendor → ${adminActionShortUrl}\n` : ``) +
+    `💻 BizPortal → ${bizportalUrl}\n\n` +
     (adminReviewUrl ? `🚀 Review & Blast Vendor → ${adminReviewUrl}\n` : (approveUrl ? `📋 Penawaran vendor → ${approveUrl}\n` : ``)) +
-    `🖥️ BizPortal → ${bizportalUrl}\n\n` +
     `_Dikirim: ${nowWIB()}_`
   );
 }
@@ -352,7 +356,21 @@ async function notifyAdmin(order: LogisticOrderData): Promise<void> {
   const adminWa = await getAdminWa();
   if (adminWa) {
     logger.info({ phone: adminWa, orderNumber: order.orderNumber }, "Sending admin WA notification");
-    sendWhatsApp(adminWa, buildAdminWaMessage(order, adminReviewUrl || undefined)).catch((err: unknown) =>
+    // Generate admin-action short link if publicRfqToken is available
+    let adminActionShortUrl: string | undefined;
+    if (order.publicRfqToken) {
+      const domain = getPreferredDomain() || "cstlogistic.co.id";
+      const longUrl = `https://${domain}/admin-action/${order.publicRfqToken}`;
+      adminActionShortUrl = await generateShortLink(longUrl, {
+        context: "admin_action",
+        refType: "order",
+        refId: order.orderNumber,
+      }).catch((err: unknown) => {
+        logger.warn({ err }, "admin WA: failed to generate short link, using long URL");
+        return longUrl;
+      });
+    }
+    sendWhatsApp(adminWa, buildAdminWaMessage(order, adminActionShortUrl, adminReviewUrl)).catch((err: unknown) =>
       logger.error({ err }, "WA admin notification failed")
     );
   } else {
@@ -401,6 +419,11 @@ async function notifyAdmin(order: LogisticOrderData): Promise<void> {
 }
 
 async function notifyVendors(order: LogisticOrderData): Promise<void> {
+  // Skip vendor blast for product and service orders — tidak butuh vendor logistik
+  if (order.orderType === "product" || order.orderType === "service") {
+    logger.info({ orderNumber: order.orderNumber, orderType: order.orderType }, "notifyVendors: skipping vendor notification for non-shipment order type");
+    return;
+  }
   // Guard: skip if shipmentType is empty — ilike('%%') would match ALL vendors
   if (!order.shipmentType || !order.shipmentType.trim()) {
     logger.warn({ orderNumber: order.orderNumber }, "notifyVendors: shipmentType is empty — skipping vendor notification to prevent all-vendor spam");

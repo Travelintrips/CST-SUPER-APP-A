@@ -1,7 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { randomBytes } from "crypto";
-import { eq, desc, inArray } from "drizzle-orm";
-import { sql } from "drizzle-orm";
+import { eq, desc, inArray, sql } from "drizzle-orm";
 import {
   db,
   adminActionLinksTable,
@@ -13,14 +12,33 @@ import {
   orderUpdatesTable,
 } from "@workspace/db";
 import { requireClerkUser } from "../lib/requireAdmin.js";
-import { logger } from "../lib/logger";
-import { sendWhatsApp } from "../lib/fonnte";
-import { getAdminWa } from "../lib/adminWa";
-import { generateShortLink } from "../lib/shortLink";
-import { getPreferredDomain } from "../lib/domain";
+import { getPreferredDomain } from "../lib/domain.js";
+import { logger } from "../lib/logger.js";
+import { sendWhatsApp } from "../lib/fonnte.js";
+import { getAdminWa } from "../lib/adminWa.js";
+import { generateShortLink } from "../lib/shortLink.js";
 
+export const adminActionRouter: Router = Router();
 export const adminActionPublicRouter = Router();
 export const adminActionAdminRouter = Router();
+
+/**
+ * GET /admin-action/:token
+ *
+ * Public no-login redirect link sent to admin via WhatsApp.
+ *
+ * Lookup strategy:
+ *   1. Try publicRfqToken column on logistic_orders (new format, 32 hex chars)
+ *   2. Fallback: query short_links table for target_url matching this token,
+ *      then use ref_id as orderNumber or orderId.
+ *   3. Final fallback: redirect to BizPortal logistics orders list.
+ */
+adminActionRouter.get("/admin-action/:token", async (req: Request, res: Response) => {
+  const token = String(req.params.token ?? "").trim();
+  const domain = getPreferredDomain() || "cstlogistic.co.id";
+  // Redirect to the public no-login admin review page on customer portal
+  return res.redirect(302, `https://${domain}/admin-review/${token}`);
+});
 
 // ─── Boot migration ───────────────────────────────────────────────────────────
 let migrationDone = false;
@@ -67,7 +85,7 @@ export async function createAdminActionLink(
 
 export function getAdminActionUrl(token: string): string {
   const domain = getPreferredDomain() || "cstlogistic.co.id";
-  return `https://${domain}/admin-action/${token}`;
+  return `https://${domain}/admin-review/${token}`;
 }
 
 // ─── Admin: POST /api/admin-action/create ────────────────────────────────────
@@ -101,23 +119,50 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
   await ensureTables();
 
   try {
-    const [link] = await db.select().from(adminActionLinksTable)
-      .where(eq(adminActionLinksTable.token, token));
-    if (!link) return res.status(404).json({ error: "Link tidak ditemukan" });
+    let link = (await db.select().from(adminActionLinksTable)
+      .where(eq(adminActionLinksTable.token, token)))[0];
 
-    if (link.expiresAt && link.expiresAt < new Date()) {
+    const ORDER_COLS = {
+      id: logisticOrdersTable.id,
+      orderNumber: logisticOrdersTable.orderNumber,
+      companyName: logisticOrdersTable.companyName,
+      customerName: logisticOrdersTable.customerName,
+      email: logisticOrdersTable.email,
+      phone: logisticOrdersTable.phone,
+      shipmentType: logisticOrdersTable.shipmentType,
+      origin: logisticOrdersTable.origin,
+      destination: logisticOrdersTable.destination,
+      commodity: logisticOrdersTable.commodity,
+      status: logisticOrdersTable.status,
+      publicRfqToken: logisticOrdersTable.publicRfqToken,
+      grandTotal: logisticOrdersTable.grandTotal,
+    };
+
+    // Fallback: token mungkin adalah publicRfqToken dari logistic_orders
+    let orderFromPublicToken: typeof ORDER_COLS extends Record<string, unknown> ? any : any;
+    if (!link) {
+      const [ord] = await db.select(ORDER_COLS).from(logisticOrdersTable)
+        .where(eq(logisticOrdersTable.publicRfqToken, token))
+        .limit(1);
+      if (!ord) return res.status(404).json({ error: "Link tidak ditemukan" });
+      orderFromPublicToken = ord;
+    }
+
+    if (link && link.expiresAt && link.expiresAt < new Date()) {
       return res.status(410).json({ error: "Link sudah kadaluarsa", isExpired: true });
     }
 
-    const [order] = await db.select().from(logisticOrdersTable)
-      .where(eq(logisticOrdersTable.id, link.orderId));
+    const order = orderFromPublicToken ?? (await db.select(ORDER_COLS).from(logisticOrdersTable)
+      .where(eq(logisticOrdersTable.id, link!.orderId))
+      .limit(1))[0];
     if (!order) return res.status(404).json({ error: "Order tidak ditemukan" });
 
+    const actionType = link?.actionType ?? "review_order";
     const base = {
       token,
-      actionType: link.actionType,
-      isUsed: !!link.usedAt,
-      usedAt: link.usedAt?.toISOString() ?? null,
+      actionType,
+      isUsed: link ? !!link.usedAt : false,
+      usedAt: link?.usedAt?.toISOString() ?? null,
       order: {
         id: order.id,
         orderNumber: order.orderNumber,
@@ -130,28 +175,41 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
       },
     };
 
-    // review_order: get list of matching vendors for blast
-    if (link.actionType === "review_order") {
-      const vendors = await db.select({
+    // review_order: get list of all vendors + matching flag for blast
+    if (actionType === "review_order") {
+      const allVendors = await db.select({
         id: suppliersTable.id,
         name: suppliersTable.name,
         phone: suppliersTable.phone,
+        email: suppliersTable.contactEmail,
         serviceType: suppliersTable.serviceType,
+        eta: suppliersTable.eta,
+        fee: suppliersTable.fee,
+        note: suppliersTable.note,
       }).from(suppliersTable)
-        .where(eq(suppliersTable.isActive, true));
+        .where(eq(suppliersTable.isActive, true))
+        .orderBy(suppliersTable.name);
 
-      const matching = vendors.filter((v) =>
-        v.serviceType && v.phone &&
-        order.shipmentType &&
-        v.serviceType.toLowerCase().includes(order.shipmentType.toLowerCase().split(" ")[0])
-      );
+      const shipKeyword = (order.shipmentType ?? "").toLowerCase().split(" ")[0];
+      const vendors = allVendors
+        .filter((v) => v.phone)
+        .map((v) => ({
+          ...v,
+          isMatching: !!(v.serviceType && shipKeyword &&
+            v.serviceType.toLowerCase().includes(shipKeyword)),
+        }));
 
       // Get existing RFQs for this order
-      const rfqs = await db.select().from(logisticOrderRfqsTable)
+      const rfqs = await db.select({
+        id: logisticOrderRfqsTable.id,
+        rfqNumber: logisticOrderRfqsTable.rfqNumber,
+        status: logisticOrderRfqsTable.status,
+        createdAt: logisticOrderRfqsTable.createdAt,
+      }).from(logisticOrderRfqsTable)
         .where(eq(logisticOrderRfqsTable.orderId, order.id))
         .orderBy(desc(logisticOrderRfqsTable.createdAt));
 
-      return res.json({ ...base, vendors: matching, rfqs });
+      return res.json({ ...base, vendors, rfqs });
     }
 
     // compare_vendors: show vendor quotes for an RFQ
@@ -246,23 +304,50 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
   await ensureTables();
 
   try {
-    const [link] = await db.select().from(adminActionLinksTable)
-      .where(eq(adminActionLinksTable.token, token));
-    if (!link) return res.status(404).json({ error: "Link tidak ditemukan" });
-    if (link.expiresAt && link.expiresAt < new Date()) {
+    let link = (await db.select().from(adminActionLinksTable)
+      .where(eq(adminActionLinksTable.token, token)))[0] ?? null;
+
+    // Fallback: token mungkin publicRfqToken dari logistic_orders (WA direct link)
+    let orderFromPublicToken: any = null;
+    if (!link) {
+      const ORDER_COLS = {
+        id: logisticOrdersTable.id,
+        orderNumber: logisticOrdersTable.orderNumber,
+        companyName: logisticOrdersTable.companyName,
+        customerName: logisticOrdersTable.customerName,
+        email: logisticOrdersTable.email,
+        phone: logisticOrdersTable.phone,
+        shipmentType: logisticOrdersTable.shipmentType,
+        origin: logisticOrdersTable.origin,
+        destination: logisticOrdersTable.destination,
+        commodity: logisticOrdersTable.commodity,
+        status: logisticOrdersTable.status,
+        publicRfqToken: logisticOrdersTable.publicRfqToken,
+        grandTotal: logisticOrdersTable.grandTotal,
+      };
+      const [ord] = await db.select(ORDER_COLS).from(logisticOrdersTable)
+        .where(eq(logisticOrdersTable.publicRfqToken, token))
+        .limit(1);
+      if (!ord) return res.status(404).json({ error: "Link tidak ditemukan" });
+      orderFromPublicToken = ord;
+    }
+
+    if (link && link.expiresAt && link.expiresAt < new Date()) {
       return res.status(410).json({ error: "Link sudah kadaluarsa" });
     }
     // compare_vendors and forward_vendor are single-use; review_order is multi-use
-    if (link.actionType !== "review_order" && link.usedAt) {
+    if (link && link.actionType !== "review_order" && link.usedAt) {
       return res.status(409).json({ error: "Link sudah digunakan", isUsed: true, usedAt: link.usedAt?.toISOString() });
     }
 
-    const [order] = await db.select().from(logisticOrdersTable)
-      .where(eq(logisticOrdersTable.id, link.orderId));
+    const order = orderFromPublicToken ?? (await db.select().from(logisticOrdersTable)
+      .where(eq(logisticOrdersTable.id, link!.orderId)))[0];
     if (!order) return res.status(404).json({ error: "Order tidak ditemukan" });
 
+    const actionType = link?.actionType ?? "review_order";
+
     // ── review_order: create RFQ + blast to selected vendors ──────────────
-    if (link.actionType === "review_order") {
+    if (actionType === "review_order") {
       const { vendorIds, deadlineHours = 48 } = req.body as {
         vendorIds: number[];
         deadlineHours?: number;
@@ -356,8 +441,10 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
         isPublic: false,
       }).catch(() => {});
 
-      await db.update(adminActionLinksTable).set({ usedAt: new Date() })
-        .where(eq(adminActionLinksTable.token, token));
+      if (link) {
+        await db.update(adminActionLinksTable).set({ usedAt: new Date() })
+          .where(eq(adminActionLinksTable.token, token));
+      }
 
       // Create compare_vendors link for next step
       const compareToken = await createAdminActionLink(order.id, "compare_vendors", rfq.id, 72);
@@ -378,7 +465,7 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
     }
 
     // ── compare_vendors: select vendor + (optionally) send customer quote ──
-    if (link.actionType === "compare_vendors") {
+    if (actionType === "compare_vendors") {
       const { linkId, sellingPrice, quoteNotes, sendQuoteToCustomer = false } = req.body as {
         linkId: number;
         sellingPrice?: number;
@@ -512,7 +599,7 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
     }
 
     // ── forward_vendor: create fulfillment task link for vendor ───────────
-    if (link.actionType === "forward_vendor") {
+    if (actionType === "forward_vendor") {
       const { vendorId, serviceType, expiresInHours = 72 } = req.body as {
         vendorId: number;
         serviceType: string;
