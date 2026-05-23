@@ -34,7 +34,6 @@ const ROUTES = [
   { prefix: "/api",          upstream: { host: "localhost", port: 8080 } },
   { prefix: "/pos-images",   upstream: { host: "localhost", port: 8080 } },
   { prefix: "/q",            upstream: { host: "localhost", port: 8080 } },
-  { prefix: "/admin-action", upstream: { host: "localhost", port: 8080 } },
   { prefix: "/bizportal",    upstream: { host: "localhost", port: 3000 } },
   { prefix: "/sport-center", upstream: { host: "localhost", port: 3002 } },
 ];
