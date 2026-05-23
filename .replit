@@ -18,13 +18,10 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "API Server"
+args = "POS"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-<<<<<<< HEAD
-args = "Gateway"
-=======
 args = "Sport Center"
 
 [[workflows.workflow.tasks]]
@@ -53,15 +50,10 @@ author = "agent"
 
 [workflows.workflow.metadata]
 outputType = "console"
->>>>>>> 8bb41a6a51a2c4148a17ddd3255040cf3f4d6a9b
 
 [[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "BizPortal"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Customer Portal"
+task = "shell.exec"
+args = "bash start-pos-kasir.sh"
 
 [[workflows.workflow]]
 name = "Sport Center"
@@ -134,42 +126,6 @@ args = "node lib/api-spec/watch.mjs"
 [workflows.workflow.metadata]
 outputType = "console"
 
-[[workflows.workflow]]
-name = "Gateway"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "node scripts/proxy5000.mjs"
-waitForPort = 5000
-
-[workflows.workflow.metadata]
-outputType = "webview"
-
-[[workflows.workflow]]
-name = "BizPortal"
-author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "console"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd artifacts/bizportal && PORT=3000 BASE_PATH=/bizportal/ pnpm exec vite --config vite.config.ts --host 0.0.0.0"
-waitForPort = 3000
-
-[[workflows.workflow]]
-name = "Customer Portal"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd artifacts/customer-portal && PORT=3001 bash start-dev.sh"
-waitForPort = 3001
-
-[workflows.workflow.metadata]
-outputType = "console"
-
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
 expertMode = true
@@ -193,12 +149,6 @@ VITE_SUPABASE_URL = "https://nzdweipzckfszczzqtuw.supabase.co"
 CASHIER_TOKEN_SECRET = "239a1a73ea517bf5430a357fb7a39aa0deef38cecaf4d8135310a7cf3f2e11a19466d603c1dfd5bc0c735e92d58b135d"
 PUBLIC_OBJECT_SEARCH_PATHS = "/replit-objstore-e357cc66-19c3-4d73-9ca9-3069d78355d1/public"
 PRIVATE_OBJECT_DIR = "/replit-objstore-e357cc66-19c3-4d73-9ca9-3069d78355d1/private"
-<<<<<<< HEAD
-SUPABASE_URL = "https://nzdweipzckfszczzqtuw.supabase.co"
-SUPABASE_URL_DEV = "https://xssrfshdrtdfupgqwfdw.supabase.co"
-SUPABASE_STORAGE_BUCKET = "https://nzdweipzckfszczzqtuw.storage.supabase.co/storage/v1/s3"
-DEFAULT_OBJECT_STORAGE_BUCKET_ID = "replit-objstore-e357cc66-19c3-4d73-9ca9-3069d78355d1"
-=======
 SUPABASE_STORAGE_BUCKET = "https://nzdweipzckfszczzqtuw.storage.supabase.co/storage/v1/s3"
 SUPABASE_URL = "nzdweipzckfszczzqtuw"
 GOOGLE_CLIENT_ID = "751551151000-fqrgt8si0pgnchqkn3pfo6nmqienv38f.apps.googleusercontent.com"
@@ -207,7 +157,6 @@ DEFAULT_OBJECT_STORAGE_BUCKET_ID = "replit-objstore-e357cc66-19c3-4d73-9ca9-3069
 SUPABASE_URL_DEV = "https://xssrfshdrtdfupgqwfdw.supabase.co"
 AI_INTEGRATIONS_OPENAI_API_KEY = "_DUMMY_API_KEY_"
 FONNTE_TOKEN = "3hYIZghAc5N1!sUe3dMb"
->>>>>>> 8bb41a6a51a2c4148a17ddd3255040cf3f4d6a9b
 
 [userenv.development]
 ADMIN_EMAIL_DOMAINS = "example.com"
