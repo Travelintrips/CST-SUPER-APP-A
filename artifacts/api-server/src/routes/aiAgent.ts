@@ -51,6 +51,8 @@ Aturan:
 - Jika search_products tidak menemukan produk sama sekali (found: false): baru beritahu pelanggan bahwa produk tidak tersedia
 - JANGAN katakan produk tidak tersedia hanya karena stock=0 — selalu tampilkan form
 - TOLAK SOPAN pertanyaan di luar layanan CST Logistics
+- LARANGAN KERAS: JANGAN panggil create_logistic_order atau show_order_form ketika pelanggan sedang memesan PRODUK (via show_product_order_form atau create_product_order). Order produk dan order pengiriman adalah dua hal berbeda. Hanya buat logistic order jika pelanggan secara eksplisit meminta layanan pengiriman/freight/trucking/customs.
+- JANGAN berasumsi pelanggan butuh layanan pengiriman hanya karena mereka membeli produk. Pelanggan yang membeli produk TIDAK otomatis perlu logistic order.
 
 Layanan yang tersedia:
 - Sea Freight (Laut): FCL dan LCL, domestik & internasional
@@ -965,6 +967,21 @@ aiAgentRouter.post("/quick-product-order", async (req: Request, res: Response) =
         content: `Order produk: ${itemsSummary}. Catatan: ${notes}`,
       });
     }
+
+    // Kirim notifikasi WA ke admin (fire-and-forget)
+    getAdminWa().then((adminWa) => {
+      if (!adminWa) return;
+      const msg =
+        `🛒 *Order Produk Baru*\n` +
+        `Customer: ${customerName}\n` +
+        (phone ? `WhatsApp: ${phone}\n` : "") +
+        (email ? `Email: ${email}\n` : "") +
+        `Produk: ${productName} x${qty}\n` +
+        `Harga Satuan: Rp ${(priceNum).toLocaleString("id-ID")}\n` +
+        `Total: Rp ${totalAmount.toLocaleString("id-ID")}` +
+        (notes ? `\nCatatan: ${notes}` : "");
+      return sendWhatsApp(adminWa, msg);
+    }).catch(() => undefined);
 
     return res.status(201).json({
       success: true,
