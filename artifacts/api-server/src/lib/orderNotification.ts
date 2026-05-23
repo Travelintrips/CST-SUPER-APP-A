@@ -370,7 +370,6 @@ async function notifyAdmin(order: LogisticOrderData): Promise<void> {
         return longUrl;
       });
     }
-    sendWhatsApp(adminWa, buildAdminWaMessage(order, adminReviewUrl || undefined)).catch((err: unknown) =>
     sendWhatsApp(adminWa, buildAdminWaMessage(order, adminActionShortUrl, adminReviewUrl)).catch((err: unknown) =>
       logger.error({ err }, "WA admin notification failed")
     );

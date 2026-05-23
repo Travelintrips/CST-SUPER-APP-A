@@ -2140,7 +2140,6 @@ export interface PortalLogisticOrder {
   status: string;
   grandTotal: number;
   createdAt: string;
-  orderType?: string;
   shipmentType: string;
   origin: string;
   destination: string;
@@ -2153,7 +2152,6 @@ export interface LogisticOrder {
   customerName: string;
   email: string;
   phone: string;
-  orderType?: string;
   shipmentType: string;
   origin: string;
   destination: string;

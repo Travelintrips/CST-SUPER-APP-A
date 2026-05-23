@@ -122,10 +122,26 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
     let link = (await db.select().from(adminActionLinksTable)
       .where(eq(adminActionLinksTable.token, token)))[0];
 
+    const ORDER_COLS = {
+      id: logisticOrdersTable.id,
+      orderNumber: logisticOrdersTable.orderNumber,
+      companyName: logisticOrdersTable.companyName,
+      customerName: logisticOrdersTable.customerName,
+      email: logisticOrdersTable.email,
+      phone: logisticOrdersTable.phone,
+      shipmentType: logisticOrdersTable.shipmentType,
+      origin: logisticOrdersTable.origin,
+      destination: logisticOrdersTable.destination,
+      commodity: logisticOrdersTable.commodity,
+      status: logisticOrdersTable.status,
+      publicRfqToken: logisticOrdersTable.publicRfqToken,
+      grandTotal: logisticOrdersTable.grandTotal,
+    };
+
     // Fallback: token mungkin adalah publicRfqToken dari logistic_orders
-    let orderFromPublicToken: (typeof logisticOrdersTable)["$inferSelect"] | undefined;
+    let orderFromPublicToken: typeof ORDER_COLS extends Record<string, unknown> ? any : any;
     if (!link) {
-      const [ord] = await db.select().from(logisticOrdersTable)
+      const [ord] = await db.select(ORDER_COLS).from(logisticOrdersTable)
         .where(eq(logisticOrdersTable.publicRfqToken, token))
         .limit(1);
       if (!ord) return res.status(404).json({ error: "Link tidak ditemukan" });
@@ -136,7 +152,7 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
       return res.status(410).json({ error: "Link sudah kadaluarsa", isExpired: true });
     }
 
-    const order = orderFromPublicToken ?? (await db.select().from(logisticOrdersTable)
+    const order = orderFromPublicToken ?? (await db.select(ORDER_COLS).from(logisticOrdersTable)
       .where(eq(logisticOrdersTable.id, link!.orderId))
       .limit(1))[0];
     if (!order) return res.status(404).json({ error: "Order tidak ditemukan" });
