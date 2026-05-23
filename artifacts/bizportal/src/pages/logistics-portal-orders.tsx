@@ -552,6 +552,12 @@ export default function LogisticsPortalOrdersPage() {
                             🤖 Via AI
                           </span>
                         )}
+                        {(o as { orderType?: string }).orderType === "product" && (
+                          <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200">Produk</span>
+                        )}
+                        {(o as { orderType?: string }).orderType === "service" && (
+                          <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold bg-violet-100 text-violet-700 border border-violet-200">Jasa</span>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell>

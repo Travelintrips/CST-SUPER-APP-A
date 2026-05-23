@@ -16,6 +16,7 @@ export interface LogisticOrderData {
   companyName: string;
   email: string;
   phone: string;
+  orderType?: string;
   shipmentType: string;
   origin: string;
   destination: string;
@@ -106,7 +107,6 @@ function isFreightWithDimensions(shipmentType: string): boolean {
   return t.includes("air") || t.includes("sea") || t.includes("laut") || t.includes("udara");
 }
 
-function buildAdminWaMessage(order: LogisticOrderData, adminActionShortUrl?: string): string {
 function buildAdminWaMessage(order: LogisticOrderData, adminReviewUrl?: string): string {
   const approveUrl = getApproveFormUrl(order.orderNumber);
   const domain = getPreferredDomain() || "cstlogistic.co.id";
@@ -369,7 +369,6 @@ async function notifyAdmin(order: LogisticOrderData): Promise<void> {
         return longUrl;
       });
     }
-    sendWhatsApp(adminWa, buildAdminWaMessage(order, adminActionShortUrl || adminReviewUrl || undefined)).catch((err: unknown) =>
     sendWhatsApp(adminWa, buildAdminWaMessage(order, adminReviewUrl || undefined)).catch((err: unknown) =>
       logger.error({ err }, "WA admin notification failed")
     );
@@ -419,6 +418,11 @@ async function notifyAdmin(order: LogisticOrderData): Promise<void> {
 }
 
 async function notifyVendors(order: LogisticOrderData): Promise<void> {
+  // Skip vendor blast for product and service orders — tidak butuh vendor logistik
+  if (order.orderType === "product" || order.orderType === "service") {
+    logger.info({ orderNumber: order.orderNumber, orderType: order.orderType }, "notifyVendors: skipping vendor notification for non-shipment order type");
+    return;
+  }
   // Guard: skip if shipmentType is empty — ilike('%%') would match ALL vendors
   if (!order.shipmentType || !order.shipmentType.trim()) {
     logger.warn({ orderNumber: order.orderNumber }, "notifyVendors: shipmentType is empty — skipping vendor notification to prevent all-vendor spam");

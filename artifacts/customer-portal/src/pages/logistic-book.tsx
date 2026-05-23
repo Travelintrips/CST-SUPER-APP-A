@@ -443,6 +443,7 @@ export default function BookPage() {
   const DRAFT_META_KEY = "logistic_draft_meta";
 
   const [step, setStep] = useState<Step>(0);
+  const [orderType, setOrderType] = useState<"product" | "service" | "shipment" | null>(null);
   const [shipmentType, setShipmentType] = useState<ShipmentType | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<ServiceCategory | null>(null);
   const [selectedItem, setSelectedItem] = useState<ServiceItem | null>(null);
@@ -463,7 +464,7 @@ export default function BookPage() {
 
   const [customerForm, setCustomerForm] = useState({
     companyName: "", customerName: "", email: "", phone: "",
-    origin: "", destination: "", commodity: "", cargoDescription: "",
+    origin: "", destination: "", shippingAddress: "", commodity: "", cargoDescription: "",
     grossWeight: "", volumeCbm: "", jumlahKoli: "", requiredDate: "", notes: "",
     quantity: "", unit: "",
     namaPenerima: "", nomorPenerima: "",
@@ -481,14 +482,14 @@ export default function BookPage() {
   const [paymentTerm, setPaymentTerm] = useState<"net7" | "net14" | "net30" | "net60" | "">("");
   const [dpNext, setDpNext] = useState<"lunas-delivery" | "lunas-net30" | "lunas-net60" | "cicil" | "">("");
 
-  // Persist shipmentType to localStorage whenever it changes
+  // Persist orderType + shipmentType to localStorage whenever they change
   useEffect(() => {
     try {
-      if (shipmentType) {
-        localStorage.setItem(DRAFT_META_KEY, JSON.stringify({ shipmentType }));
+      if (orderType) {
+        localStorage.setItem(DRAFT_META_KEY, JSON.stringify({ orderType, shipmentType }));
       }
     } catch { /* ignore */ }
-  }, [shipmentType]);
+  }, [orderType, shipmentType]);
 
   function clearDraft() {
     clearCart();
@@ -649,18 +650,23 @@ export default function BookPage() {
       try {
         const meta = localStorage.getItem(DRAFT_META_KEY);
         if (meta) {
-          const { shipmentType: saved } = JSON.parse(meta) as { shipmentType: ShipmentType };
-          if (saved) setShipmentType(saved);
+          const parsed = JSON.parse(meta) as { orderType?: string; shipmentType?: ShipmentType };
+          if (parsed.orderType) setOrderType(parsed.orderType as any);
+          if (parsed.shipmentType) setShipmentType(parsed.shipmentType);
         }
       } catch { /* ignore */ }
+      // Auto-detect orderType from cart items if not saved
+      const allProduct = cartItems.every(c => c.calculatorType === "product");
+      if (allProduct) setOrderType("product");
       setStep(3);
     } else if (cartItems.length > 0) {
-      // Restore draft: jump to Ringkasan and restore shipmentType if saved
+      // Restore draft: jump to Ringkasan and restore orderType+shipmentType if saved
       try {
         const meta = localStorage.getItem(DRAFT_META_KEY);
         if (meta) {
-          const { shipmentType: saved } = JSON.parse(meta) as { shipmentType: ShipmentType };
-          if (saved) setShipmentType(saved);
+          const parsed = JSON.parse(meta) as { orderType?: string; shipmentType?: ShipmentType };
+          if (parsed.orderType) setOrderType(parsed.orderType as any);
+          if (parsed.shipmentType) setShipmentType(parsed.shipmentType);
         }
       } catch { /* ignore */ }
       setStep(2);
@@ -669,6 +675,7 @@ export default function BookPage() {
   }, []);
 
   function handleShipmentSelect(type: ShipmentType) {
+    setOrderType("shipment");
     setShipmentType(type);
     setStep(1);
   }
@@ -688,26 +695,31 @@ export default function BookPage() {
   }
 
   function handleSubmit() {
-    const { companyName, customerName, email, phone, origin, destination } = customerForm;
+    const { companyName, customerName, email, phone, origin, destination, shippingAddress } = customerForm;
     if (!customerName || !email) {
       toast({ title: "Lengkapi nama PIC dan email", variant: "destructive" });
       return;
     }
     if (cartItems.length === 0) {
-      toast({ title: "Tambahkan minimal 1 layanan ke pesanan", variant: "destructive" });
+      toast({ title: "Tambahkan minimal 1 item ke pesanan", variant: "destructive" });
       return;
     }
     const truckingItem = cartItems.find(c => c.calculatorType === "trucking");
     const truckingInputData = (truckingItem?.inputData ?? {}) as Record<string, unknown>;
     const str = (v: unknown) => (v ? String(v) : "");
+    const effectiveOrigin = (orderType === "product" || orderType === "service") ? (origin || "") : origin;
+    const effectiveDestination = orderType === "product"
+      ? (shippingAddress || destination || "")
+      : (orderType === "service" ? (destination || "") : destination);
     createOrder.mutate({ data: {
       companyName,
       customerName,
       email,
       phone,
-      shipmentType: shipmentType ?? (cartItems.every(c => c.calculatorType === "product") ? "Produk" : ""),
-      origin,
-      destination,
+      orderType: orderType ?? "shipment",
+      shipmentType: shipmentType ?? "",
+      origin: effectiveOrigin,
+      destination: effectiveDestination,
       commodity: customerForm.commodity || str(truckingInputData.cargo_category) || null,
       cargoDescription: customerForm.cargoDescription || null,
       grossWeight: parseFloat(customerForm.grossWeight) || null,
@@ -763,7 +775,7 @@ export default function BookPage() {
         subtotal: c.subtotal,
       })),
     }}, {
-      onSuccess: (data) => {
+      onSuccess: (data: unknown) => {
         localStorage.setItem("last_order", JSON.stringify(data));
         localStorage.removeItem("logistic_cart");
         try { localStorage.removeItem(DRAFT_META_KEY); } catch { /* ignore */ }
@@ -776,35 +788,109 @@ export default function BookPage() {
   }
 
   const stepContent = () => {
-    // Step 0: Shipment Type
-    if (step === 0) return (
-      <div className="space-y-4">
-        <div>
-          <h2 className="text-xl font-bold text-foreground mb-1">Pilih Tipe Pengiriman</h2>
-          <p className="text-sm text-muted-foreground">Pilih jenis layanan logistik yang dibutuhkan</p>
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          {SHIPMENT_TYPES.map(({ type, description, icon }) => {
-            const Icon = ICON_MAP[icon] || Package;
-            return (
+    // Step 0: Order Type Selection
+    if (step === 0) {
+      const ORDER_TYPES = [
+        {
+          type: "product" as const,
+          icon: Package,
+          title: "Produk",
+          desc: "Pesan produk dari katalog. Shipment opsional, bisa pickup sendiri.",
+          badge: "Tanpa logistik",
+          color: "border-emerald-500 bg-emerald-50",
+          iconColor: "text-emerald-600",
+          badgeColor: "bg-emerald-100 text-emerald-700",
+        },
+        {
+          type: "service" as const,
+          icon: FileCheck,
+          title: "Layanan Jasa",
+          desc: "Customs, handling, storage, konsultasi, maintenance, dan lainnya.",
+          badge: "Non-shipment",
+          color: "border-violet-500 bg-violet-50",
+          iconColor: "text-violet-600",
+          badgeColor: "bg-violet-100 text-violet-700",
+        },
+        {
+          type: "shipment" as const,
+          icon: Ship,
+          title: "Pengiriman Logistik",
+          desc: "Trucking, air freight, sea freight, export/import.",
+          badge: "Butuh detail rute",
+          color: "border-blue-500 bg-blue-50",
+          iconColor: "text-blue-600",
+          badgeColor: "bg-blue-100 text-blue-700",
+        },
+      ];
+      return (
+        <div className="space-y-5">
+          <div>
+            <h2 className="text-xl font-bold text-foreground mb-1">Jenis Pesanan</h2>
+            <p className="text-sm text-muted-foreground">Pilih jenis pesanan untuk melanjutkan</p>
+          </div>
+          <div className="space-y-3">
+            {ORDER_TYPES.map(({ type, icon: Icon, title, desc, badge, color, iconColor, badgeColor }) => (
               <button
                 key={type}
-                onClick={() => handleShipmentSelect(type)}
-                className={`text-left p-5 rounded-xl border-2 transition-all hover:shadow-md ${
-                  shipmentType === type
-                    ? "border-primary bg-primary/5"
-                    : "border-border bg-card hover:border-primary/50"
+                onClick={() => {
+                  setOrderType(type);
+                  if (type === "product") {
+                    setShipmentType(null);
+                    setStep(cartItems.length > 0 ? 3 : 2);
+                  } else if (type === "service") {
+                    setShipmentType(null);
+                    setStep(1);
+                  }
+                  // For shipment: stay here, show sub-selector below
+                }}
+                className={`w-full text-left p-4 rounded-xl border-2 transition-all hover:shadow-md ${
+                  orderType === type ? color : "border-border bg-card hover:border-primary/50"
                 }`}
               >
-                <Icon className="w-8 h-8 text-accent mb-3" />
-                <p className="font-bold text-foreground text-sm mb-1">{type}</p>
-                <p className="text-xs text-muted-foreground">{description}</p>
+                <div className="flex items-start gap-4">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${orderType === type ? "bg-white/70" : "bg-muted"}`}>
+                    <Icon className={`w-5 h-5 ${orderType === type ? iconColor : "text-muted-foreground"}`} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <p className="font-bold text-foreground text-sm">{title}</p>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${badgeColor}`}>{badge}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground leading-snug">{desc}</p>
+                  </div>
+                </div>
               </button>
-            );
-          })}
+            ))}
+          </div>
+          {/* Sub-selector: Shipment Type — tampil saat orderType = shipment */}
+          {orderType === "shipment" && (
+            <div className="space-y-3 pt-2">
+              <p className="text-sm font-semibold text-foreground">Pilih Tipe Pengiriman:</p>
+              <div className="grid grid-cols-2 gap-3">
+                {SHIPMENT_TYPES.map(({ type, description, icon }) => {
+                  const Icon = ICON_MAP[icon] || Package;
+                  return (
+                    <button
+                      key={type}
+                      onClick={() => handleShipmentSelect(type)}
+                      className={`text-left p-4 rounded-xl border-2 transition-all hover:shadow-md ${
+                        shipmentType === type
+                          ? "border-primary bg-primary/5"
+                          : "border-border bg-card hover:border-primary/50"
+                      }`}
+                    >
+                      <Icon className="w-7 h-7 text-accent mb-2" />
+                      <p className="font-bold text-foreground text-xs mb-0.5">{type}</p>
+                      <p className="text-[11px] text-muted-foreground leading-snug">{description}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
-      </div>
-    );
+      );
+    }
 
     // Step 1: Category & Item selection
     if (step === 1) return (
@@ -1021,10 +1107,12 @@ export default function BookPage() {
     if (step === 3) {
       const f = customerForm;
       const set = (k: string, v: string) => setCustomerForm((p) => ({ ...p, [k]: v }));
-      const hasLogisticService = cartItems.some(c =>
+      const isProductOrder = orderType === "product";
+      const isServiceOrder = orderType === "service";
+      const hasLogisticService = !isProductOrder && cartItems.some(c =>
         ["trucking","air_freight","sea_fcl","sea_lcl"].includes(c.calculatorType)
       );
-      const hasOriginDest = cartItems.some(c =>
+      const hasOriginDest = !isProductOrder && !isServiceOrder && cartItems.some(c =>
         c.inputData?.pickupCity || c.inputData?.originAirport || c.inputData?.originPort ||
         c.inputData?.destCity   || c.inputData?.destinationAirport || c.inputData?.destinationPort
       );
@@ -1152,6 +1240,15 @@ export default function BookPage() {
                 </div>
               </>)}
 
+              {/* ── Alamat Pengiriman — hanya untuk product order ─── */}
+              {isProductOrder && (
+                <div className="col-span-2">
+                  <Label className="text-xs">Alamat Pengiriman (opsional)</Label>
+                  <Input placeholder="Jl. ..., Kota, Provinsi (kosongkan jika pickup)" value={f.shippingAddress} onChange={e => set("shippingAddress", e.target.value)} />
+                  <p className="text-[11px] text-muted-foreground mt-1">Kosongkan jika akan pickup sendiri</p>
+                </div>
+              )}
+
               {/* ── Asal & Tujuan Pengiriman — hanya tampil jika ada data dari layanan ─── */}
               {hasOriginDest && (<>
                 <div className="col-span-2 sm:col-span-1">
@@ -1240,7 +1337,7 @@ export default function BookPage() {
   };
 
   const canProceed = () => {
-    if (step === 0) return !!shipmentType;
+    if (step === 0) return !!orderType && (orderType !== "shipment" || !!shipmentType);
     if (step === 1) return false;
     if (step === 2) return cartItems.length > 0;
     if (step === 3) return !!(customerForm.customerName && customerForm.email);
@@ -1308,8 +1405,8 @@ export default function BookPage() {
       <div className="max-w-3xl mx-auto px-4 py-6">
         {stepContent()}
 
-        {/* Navigation buttons */}
-        {step !== 1 && (
+        {/* Navigation buttons — step 0 navigates via card clicks */}
+        {step !== 1 && step !== 0 && (
           <div className="flex justify-between mt-8 pt-4 border-t border-border">
             <Button
               variant="outline"
