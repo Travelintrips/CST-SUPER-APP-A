@@ -2121,11 +2121,19 @@ router.post("/onboarding/complete", requirePortalAuth, async (req, res): Promise
   });
 
   // Update portal_customers role + phone
-  await db.update(portalCustomersTable).set({
-    name: String(fullName),
-    phone: String(phone),
-    role: accountType === "vendor" ? "vendor" : accountType === "driver" ? "driver" : accountType === "employee" ? "employee" : "customer",
-  }).where(eq(portalCustomersTable.id, customerId));
+  try {
+    await db.update(portalCustomersTable).set({
+      name: String(fullName),
+      phone: String(phone),
+      role: accountType === "vendor" ? "vendor" : accountType === "driver" ? "driver" : accountType === "employee" ? "employee" : "customer",
+    }).where(eq(portalCustomersTable.id, customerId));
+  } catch (err: any) {
+    if (err?.code === "23505" && err?.constraint?.includes("phone")) {
+      res.status(409).json({ ok: false, error: "Nomor telepon sudah digunakan oleh akun lain. Gunakan nomor yang berbeda." });
+      return;
+    }
+    throw err;
+  }
 
   // Update OCR result name if provided
   if (ocrData?.nik) {
