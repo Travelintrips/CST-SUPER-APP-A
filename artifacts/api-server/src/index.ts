@@ -133,6 +133,18 @@ async function runCriticalPreStartMigrations() {
       END IF;
     END $$;
   `);
+
+  // Add order_type to logistic_orders (Drizzle schema field missing from older DB installs)
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'logistic_orders' AND column_name = 'order_type'
+      ) THEN
+        ALTER TABLE logistic_orders ADD COLUMN order_type TEXT NOT NULL DEFAULT 'shipment';
+      END IF;
+    END $$;
+  `);
 }
 
 async function startServer() {

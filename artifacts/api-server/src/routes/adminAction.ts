@@ -304,23 +304,50 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
   await ensureTables();
 
   try {
-    const [link] = await db.select().from(adminActionLinksTable)
-      .where(eq(adminActionLinksTable.token, token));
-    if (!link) return res.status(404).json({ error: "Link tidak ditemukan" });
-    if (link.expiresAt && link.expiresAt < new Date()) {
+    let link = (await db.select().from(adminActionLinksTable)
+      .where(eq(adminActionLinksTable.token, token)))[0] ?? null;
+
+    // Fallback: token mungkin publicRfqToken dari logistic_orders (WA direct link)
+    let orderFromPublicToken: any = null;
+    if (!link) {
+      const ORDER_COLS = {
+        id: logisticOrdersTable.id,
+        orderNumber: logisticOrdersTable.orderNumber,
+        companyName: logisticOrdersTable.companyName,
+        customerName: logisticOrdersTable.customerName,
+        email: logisticOrdersTable.email,
+        phone: logisticOrdersTable.phone,
+        shipmentType: logisticOrdersTable.shipmentType,
+        origin: logisticOrdersTable.origin,
+        destination: logisticOrdersTable.destination,
+        commodity: logisticOrdersTable.commodity,
+        status: logisticOrdersTable.status,
+        publicRfqToken: logisticOrdersTable.publicRfqToken,
+        grandTotal: logisticOrdersTable.grandTotal,
+      };
+      const [ord] = await db.select(ORDER_COLS).from(logisticOrdersTable)
+        .where(eq(logisticOrdersTable.publicRfqToken, token))
+        .limit(1);
+      if (!ord) return res.status(404).json({ error: "Link tidak ditemukan" });
+      orderFromPublicToken = ord;
+    }
+
+    if (link && link.expiresAt && link.expiresAt < new Date()) {
       return res.status(410).json({ error: "Link sudah kadaluarsa" });
     }
     // compare_vendors and forward_vendor are single-use; review_order is multi-use
-    if (link.actionType !== "review_order" && link.usedAt) {
+    if (link && link.actionType !== "review_order" && link.usedAt) {
       return res.status(409).json({ error: "Link sudah digunakan", isUsed: true, usedAt: link.usedAt?.toISOString() });
     }
 
-    const [order] = await db.select().from(logisticOrdersTable)
-      .where(eq(logisticOrdersTable.id, link.orderId));
+    const order = orderFromPublicToken ?? (await db.select().from(logisticOrdersTable)
+      .where(eq(logisticOrdersTable.id, link!.orderId)))[0];
     if (!order) return res.status(404).json({ error: "Order tidak ditemukan" });
 
+    const actionType = link?.actionType ?? "review_order";
+
     // ── review_order: create RFQ + blast to selected vendors ──────────────
-    if (link.actionType === "review_order") {
+    if (actionType === "review_order") {
       const { vendorIds, deadlineHours = 48 } = req.body as {
         vendorIds: number[];
         deadlineHours?: number;
@@ -414,8 +441,10 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
         isPublic: false,
       }).catch(() => {});
 
-      await db.update(adminActionLinksTable).set({ usedAt: new Date() })
-        .where(eq(adminActionLinksTable.token, token));
+      if (link) {
+        await db.update(adminActionLinksTable).set({ usedAt: new Date() })
+          .where(eq(adminActionLinksTable.token, token));
+      }
 
       // Create compare_vendors link for next step
       const compareToken = await createAdminActionLink(order.id, "compare_vendors", rfq.id, 72);
@@ -436,7 +465,7 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
     }
 
     // ── compare_vendors: select vendor + (optionally) send customer quote ──
-    if (link.actionType === "compare_vendors") {
+    if (actionType === "compare_vendors") {
       const { linkId, sellingPrice, quoteNotes, sendQuoteToCustomer = false } = req.body as {
         linkId: number;
         sellingPrice?: number;
@@ -570,7 +599,7 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
     }
 
     // ── forward_vendor: create fulfillment task link for vendor ───────────
-    if (link.actionType === "forward_vendor") {
+    if (actionType === "forward_vendor") {
       const { vendorId, serviceType, expiresInHours = 72 } = req.body as {
         vendorId: number;
         serviceType: string;
