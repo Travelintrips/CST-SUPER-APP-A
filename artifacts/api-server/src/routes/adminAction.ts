@@ -1,11 +1,26 @@
 import { Router, type Request, type Response } from "express";
-import { db } from "@workspace/db";
-import { logisticOrdersTable } from "@workspace/db/schema";
-import { eq, sql } from "drizzle-orm";
+import { randomBytes } from "crypto";
+import { eq, desc, inArray, sql } from "drizzle-orm";
+import {
+  db,
+  adminActionLinksTable,
+  logisticOrdersTable,
+  logisticOrderRfqsTable,
+  rfqVendorLinksTable,
+  suppliersTable,
+  customerQuoteLinksTable,
+  orderUpdatesTable,
+} from "@workspace/db";
+import { requireClerkUser } from "../lib/requireAdmin.js";
 import { getPreferredDomain } from "../lib/domain.js";
 import { logger } from "../lib/logger.js";
+import { sendWhatsApp } from "../lib/fonnte.js";
+import { getAdminWa } from "../lib/adminWa.js";
+import { generateShortLink } from "../lib/shortLink.js";
 
 export const adminActionRouter: Router = Router();
+export const adminActionPublicRouter = Router();
+export const adminActionAdminRouter = Router();
 
 /**
  * GET /admin-action/:token
@@ -97,28 +112,7 @@ adminActionRouter.get("/admin-action/:token", async (req: Request, res: Response
   // ── Strategy 3: final fallback to BizPortal logistics list ────────────────
   logger.warn({ token }, "admin-action: token not resolved, redirecting to orders list");
   return res.redirect(302, `https://${domain}/bizportal/logistics/orders`);
-import { randomBytes } from "crypto";
-import { eq, desc, inArray } from "drizzle-orm";
-import { sql } from "drizzle-orm";
-import {
-  db,
-  adminActionLinksTable,
-  logisticOrdersTable,
-  logisticOrderRfqsTable,
-  rfqVendorLinksTable,
-  suppliersTable,
-  customerQuoteLinksTable,
-  orderUpdatesTable,
-} from "@workspace/db";
-import { requireClerkUser } from "../lib/requireAdmin.js";
-import { logger } from "../lib/logger";
-import { sendWhatsApp } from "../lib/fonnte";
-import { getAdminWa } from "../lib/adminWa";
-import { generateShortLink } from "../lib/shortLink";
-import { getPreferredDomain } from "../lib/domain";
-
-export const adminActionPublicRouter = Router();
-export const adminActionAdminRouter = Router();
+});
 
 // ─── Boot migration ───────────────────────────────────────────────────────────
 let migrationDone = false;

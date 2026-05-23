@@ -18,26 +18,11 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "POS"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
 args = "API Server"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
 args = "Customer Portal"
-
-[[workflows.workflow]]
-name = "POS"
-author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "console"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "bash start-pos-kasir.sh"
 
 [[workflows.workflow]]
 name = "API Server"
@@ -48,7 +33,7 @@ outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "fuser -k 8080/tcp 2>/dev/null || true; cd artifacts/api-server && node build.mjs && PORT=8080 NODE_ENV=development node --enable-source-maps ./dist/index.mjs"
+args = "fuser -k 8080/tcp 2>/dev/null || true; cd artifacts/api-server && pnpm run build && PORT=8080 NODE_ENV=development node --enable-source-maps ./dist/index.mjs"
 waitForPort = 8080
 
 [[workflows.workflow]]
@@ -116,10 +101,6 @@ externalPort = 80
 [[ports]]
 localPort = 8080
 externalPort = 8080
-
-[[ports]]
-localPort = 8081
-externalPort = 3002
 
 [[ports]]
 localPort = 8083
