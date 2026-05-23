@@ -101,7 +101,7 @@ router.get("/companies", async (_req, res) => {
   const rows = await db
     .select()
     .from(companiesTable)
-    .orderBy(companiesTable.name);
+    .orderBy(companiesTable.companyName);
   return res.json(rows.map(serializeCompany));
 });
 

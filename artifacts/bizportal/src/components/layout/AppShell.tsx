@@ -286,8 +286,6 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "balanceSheet", href: "/accounting/reports/balance-sheet", icon: Wallet },
         { titleKey: "reconciliation", href: "/accounting/reconciliation", icon: GitMerge },
         { titleKey: "accountingSettings", href: "/accounting/settings", icon: Settings },
-        { titleKey: "Holding Dashboard", href: "/holding/dashboard", icon: LayoutDashboard, companyCodes: ["__holding__"] },
-        { titleKey: "Holding P&L", href: "/holding/pl-report", icon: TrendingUp, companyCodes: ["__holding__"] },
       ],
     },
     {
