@@ -63,6 +63,7 @@ const ShipmentTimeline          = lazy(() => import("@/pages/shipment-timeline")
 const AdminReview               = lazy(() => import("@/pages/admin-review"));
 const VendorJobPage             = lazy(() => import("@/pages/vendor-job"));
 const OrderTrackPage            = lazy(() => import("@/pages/order-track"));
+const AccountSecurity           = lazy(() => import("@/pages/account-security"));
 const NotFound                  = lazy(() => import("@/pages/not-found"));
 
 const queryClient = new QueryClient();
@@ -216,6 +217,7 @@ function AppShell() {
         <Route path="/admin-review/:token" component={AdminReview} />
         <Route path="/vendor-job/:token" component={VendorJobPage} />
         <Route path="/order-track/:trackToken" component={OrderTrackPage} />
+        <Route path="/account-security" component={AccountSecurity} />
         <Route component={NotFound} />
       </Switch>
     </Suspense>
