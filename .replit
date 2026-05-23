@@ -18,22 +18,6 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "POS"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Sport Center"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "BizPortal"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "API Server"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
 args = "Customer Portal"
 
 [[workflows.workflow.tasks]]
@@ -43,53 +27,6 @@ args = "Gateway"
 [[workflows.workflow.tasks]]
 task = "workflow.run"
 args = "API Spec Watcher"
-
-[[workflows.workflow]]
-name = "POS"
-author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "console"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "bash start-pos-kasir.sh"
-
-[[workflows.workflow]]
-name = "Sport Center"
-author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "console"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "fuser -k 3002/tcp 2>/dev/null; sleep 0.3; cd artifacts/sport-center && PORT=3002 BASE_PATH=/sport-center/ pnpm exec vite --config vite.config.ts --host 0.0.0.0"
-waitForPort = 3002
-
-[[workflows.workflow]]
-name = "BizPortal"
-author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "console"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "fuser -k 3000/tcp 2>/dev/null; sleep 0.3; cd artifacts/bizportal && PORT=3000 BASE_PATH=/bizportal/ node_modules/.bin/vite --config vite.config.ts --host 0.0.0.0"
-waitForPort = 3000
-
-[[workflows.workflow]]
-name = "API Server"
-author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "console"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "fuser -k 8080/tcp 2>/dev/null; sleep 0.3; cd artifacts/api-server && node build.mjs && cd ../../lib/api-spec && pnpm exec orval --config ./orval.config.ts && cd ../../artifacts/api-server && PORT=8080 NODE_ENV=development node --enable-source-maps ./dist/index.mjs"
-waitForPort = 8080
 
 [[workflows.workflow]]
 name = "Customer Portal"
