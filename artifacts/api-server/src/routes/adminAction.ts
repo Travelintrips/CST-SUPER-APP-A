@@ -35,12 +35,10 @@ export const adminActionAdminRouter = Router();
  */
 adminActionRouter.get("/admin-action/:token", async (req: Request, res: Response) => {
   const token = String(req.params.token ?? "").trim();
-
-  if (!token || !/^[a-f0-9]{8,128}$/i.test(token)) {
-    return res.status(400).send("Link tidak valid.");
-  }
-
   const domain = getPreferredDomain() || "cstlogistic.co.id";
+  // Redirect to the public no-login admin review page on customer portal
+  return res.redirect(302, `https://${domain}/admin-review/${token}`);
+});
 
   // ── Strategy 1: publicRfqToken on logistic_orders ─────────────────────────
   try {
@@ -113,7 +111,28 @@ adminActionRouter.get("/admin-action/:token", async (req: Request, res: Response
   logger.warn({ token }, "admin-action: token not resolved, redirecting to orders list");
   return res.redirect(302, `https://${domain}/bizportal/logistics/orders`);
 });
+import { randomBytes } from "crypto";
+import { eq, desc, inArray } from "drizzle-orm";
+import { sql } from "drizzle-orm";
+import {
+  db,
+  adminActionLinksTable,
+  logisticOrdersTable,
+  logisticOrderRfqsTable,
+  rfqVendorLinksTable,
+  suppliersTable,
+  customerQuoteLinksTable,
+  orderUpdatesTable,
+} from "@workspace/db";
+import { requireClerkUser } from "../lib/requireAdmin.js";
+import { logger } from "../lib/logger";
+import { sendWhatsApp } from "../lib/fonnte";
+import { getAdminWa } from "../lib/adminWa";
+import { generateShortLink } from "../lib/shortLink";
+import { getPreferredDomain } from "../lib/domain";
 
+export const adminActionPublicRouter = Router();
+export const adminActionAdminRouter = Router();
 // ─── Boot migration ───────────────────────────────────────────────────────────
 let migrationDone = false;
 async function ensureTables() {
@@ -159,7 +178,7 @@ export async function createAdminActionLink(
 
 export function getAdminActionUrl(token: string): string {
   const domain = getPreferredDomain() || "cstlogistic.co.id";
-  return `https://${domain}/admin-action/${token}`;
+  return `https://${domain}/admin-review/${token}`;
 }
 
 // ─── Admin: POST /api/admin-action/create ────────────────────────────────────
@@ -222,15 +241,20 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
       },
     };
 
-    // review_order: get list of matching vendors for blast
+    // review_order: get list of all vendors + matching flag for blast
     if (link.actionType === "review_order") {
-      const vendors = await db.select({
+      const allVendors = await db.select({
         id: suppliersTable.id,
         name: suppliersTable.name,
         phone: suppliersTable.phone,
+        email: suppliersTable.email,
         serviceType: suppliersTable.serviceType,
+        eta: suppliersTable.eta,
+        fee: suppliersTable.fee,
+        note: suppliersTable.note,
       }).from(suppliersTable)
-        .where(eq(suppliersTable.isActive, true));
+        .where(eq(suppliersTable.isActive, true))
+        .orderBy(suppliersTable.name);
 
       const shipmentKeyword = order.shipmentType?.trim().toLowerCase().split(" ")[0] ?? "";
       const matching = vendors.filter((v) => {
@@ -241,13 +265,26 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
         if (!v.serviceType) return false;
         return v.serviceType.toLowerCase().includes(shipmentKeyword);
       });
+      const shipKeyword = (order.shipmentType ?? "").toLowerCase().split(" ")[0];
+      const vendors = allVendors
+        .filter((v) => v.phone)
+        .map((v) => ({
+          ...v,
+          isMatching: !!(v.serviceType && shipKeyword &&
+            v.serviceType.toLowerCase().includes(shipKeyword)),
+        }));
 
       // Get existing RFQs for this order
-      const rfqs = await db.select().from(logisticOrderRfqsTable)
+      const rfqs = await db.select({
+        id: logisticOrderRfqsTable.id,
+        rfqNumber: logisticOrderRfqsTable.rfqNumber,
+        status: logisticOrderRfqsTable.status,
+        createdAt: logisticOrderRfqsTable.createdAt,
+      }).from(logisticOrderRfqsTable)
         .where(eq(logisticOrderRfqsTable.orderId, order.id))
         .orderBy(desc(logisticOrderRfqsTable.createdAt));
 
-      return res.json({ ...base, vendors: matching, rfqs });
+      return res.json({ ...base, vendors, rfqs });
     }
 
     // compare_vendors: show vendor quotes for an RFQ

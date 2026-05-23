@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import {
   ArrowLeft, Search, Ship, Truck, CheckCircle2, Clock,
   MapPin, Package, RefreshCw, AlertCircle, FileText,
   Circle, ArrowRight, Loader2, ThumbsUp, ThumbsDown, RotateCcw, Tag,
+  Bell,
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { cn } from "@/lib/utils";
@@ -93,6 +94,18 @@ const STATUS_COLORS: Record<string, string> = {
   "Completed":   "bg-green-100 text-green-800 border-green-200",
   "Cancelled":   "bg-red-100 text-red-800 border-red-200",
 };
+
+const STATUS_LABELS: Record<string, string> = {
+  "New Order":   "Order Masuk",
+  "Processing":  "Sedang Diproses",
+  "In Progress": "Dalam Pengerjaan",
+  "Completed":   "Selesai",
+  "Cancelled":   "Dibatalkan",
+};
+
+function isTerminalStatus(status: string) {
+  return status === "Completed" || status === "Cancelled";
+}
 
 function formatDateTime(iso: string) {
   return new Date(iso).toLocaleString("id-ID", {
@@ -239,7 +252,6 @@ function QuoteCard({
 
   const { rfqStatus, quotedPrice, quotedAt, quoteNotes, customerResponseNotes, customerRespondedAt } = rfqQuote;
 
-  // Jika customer sudah approved
   if (rfqStatus === "customer_approved") {
     return (
       <div className="bg-card border border-green-200 rounded-xl p-5 space-y-3">
@@ -257,7 +269,6 @@ function QuoteCard({
     );
   }
 
-  // Jika customer sudah rejected
   if (rfqStatus === "customer_rejected") {
     return (
       <div className="bg-card border border-red-200 rounded-xl p-5 space-y-3">
@@ -275,7 +286,6 @@ function QuoteCard({
     );
   }
 
-  // Jika customer minta revisi
   if (rfqStatus === "customer_revision_requested") {
     return (
       <div className="bg-card border border-yellow-200 rounded-xl p-5 space-y-3">
@@ -293,7 +303,6 @@ function QuoteCard({
     );
   }
 
-  // Jika penawaran sudah dikirim dan menunggu respons customer
   if (rfqStatus === "customer_quoted" && quotedPrice != null) {
     return (
       <div className="bg-card border border-primary/20 rounded-xl p-5 space-y-4">
@@ -423,12 +432,113 @@ function QuoteCard({
   return null;
 }
 
+// ── Status-change notification banner ────────────────────────────────────────
+function StatusChangeBanner({
+  prevStatus,
+  newStatus,
+  onDismiss,
+}: {
+  prevStatus: string;
+  newStatus: string;
+  onDismiss: () => void;
+}) {
+  useEffect(() => {
+    const t = setTimeout(onDismiss, 6000);
+    return () => clearTimeout(t);
+  }, [onDismiss]);
+
+  return (
+    <div className="animate-in slide-in-from-top-2 fade-in duration-300 bg-green-50 border border-green-200 rounded-xl p-4 flex items-start gap-3">
+      <Bell className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
+      <div className="flex-1">
+        <p className="text-sm font-semibold text-green-800">Status Pengiriman Diperbarui</p>
+        <p className="text-xs text-green-700 mt-0.5">
+          <span className="line-through opacity-60">{STATUS_LABELS[prevStatus] ?? prevStatus}</span>
+          {" → "}
+          <strong>{STATUS_LABELS[newStatus] ?? newStatus}</strong>
+        </p>
+      </div>
+      <button onClick={onDismiss} className="text-green-500 hover:text-green-700 text-xs font-medium">
+        Tutup
+      </button>
+    </div>
+  );
+}
+
+// ── Countdown + live indicator ────────────────────────────────────────────────
+const ACTIVE_INTERVAL   = 15;
+const TERMINAL_INTERVAL = 60;
+
+function AutoRefreshBar({
+  isTerminal,
+  isFetching,
+  lastRefreshed,
+  onRefresh,
+}: {
+  isTerminal: boolean;
+  isFetching: boolean;
+  lastRefreshed: Date | null;
+  onRefresh: () => void;
+}) {
+  const intervalSec = isTerminal ? TERMINAL_INTERVAL : ACTIVE_INTERVAL;
+  const [countdown, setCountdown] = useState(intervalSec);
+
+  useEffect(() => {
+    setCountdown(intervalSec);
+  }, [lastRefreshed, intervalSec]);
+
+  useEffect(() => {
+    if (isTerminal) return;
+    const t = setInterval(() => {
+      setCountdown((prev) => (prev <= 1 ? intervalSec : prev - 1));
+    }, 1000);
+    return () => clearInterval(t);
+  }, [isTerminal, intervalSec, lastRefreshed]);
+
+  return (
+    <div className="flex items-center justify-between text-xs text-muted-foreground">
+      <div className="flex items-center gap-2">
+        {isFetching ? (
+          <RefreshCw className="w-3 h-3 animate-spin text-primary" />
+        ) : isTerminal ? (
+          <CheckCircle2 className="w-3 h-3 text-green-500" />
+        ) : (
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+          </span>
+        )}
+        <span>
+          {isFetching
+            ? "Memperbarui..."
+            : isTerminal
+              ? "Order selesai — tracking dihentikan"
+              : `Live tracking aktif — refresh dalam ${countdown}d`}
+        </span>
+      </div>
+      {!isTerminal && (
+        <button
+          onClick={onRefresh}
+          disabled={isFetching}
+          className="flex items-center gap-1 hover:text-foreground transition-colors disabled:opacity-50"
+        >
+          <RefreshCw className="w-3 h-3" />
+          Perbarui
+        </button>
+      )}
+    </div>
+  );
+}
+
 export default function TrackPage() {
   const [, setLocation] = useLocation();
   const [input, setInput] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
-  const [respondedFlag, setRespondedFlag] = useState(false);
+
+  const prevStatusRef = useRef<string | null>(null);
+  const prevDriverStatusRef = useRef<string | null>(null);
+  const [statusChangeBanner, setStatusChangeBanner] = useState<{ prev: string; next: string } | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -436,28 +546,51 @@ export default function TrackPage() {
     if (o) { setInput(o); setSearchTerm(o.toUpperCase().trim()); }
   }, []);
 
+  const isTerminal = !!(lastRefreshed && prevStatusRef.current && isTerminalStatus(prevStatusRef.current));
+
   const {
     data: tracking, isLoading, isError, error, refetch, isFetching,
   } = useQuery<TrackingData, Error>({
     queryKey: ["tracking", searchTerm],
     queryFn: () => fetchTracking(searchTerm),
     enabled: !!searchTerm,
-    refetchInterval: 30_000,
-    staleTime: 10_000,
+    refetchInterval: isTerminal
+      ? false
+      : (ACTIVE_INTERVAL * 1000),
+    staleTime: 5_000,
   });
 
   useEffect(() => {
-    if (tracking) setLastRefreshed(new Date());
+    if (!tracking) return;
+    const prev = prevStatusRef.current;
+
+    // Deteksi perubahan order status
+    if (prev !== null && prev !== tracking.status) {
+      setStatusChangeBanner({ prev, next: tracking.status });
+    }
+    prevStatusRef.current = tracking.status;
+
+    // Deteksi perubahan driver status
+    if (tracking.driverJob) {
+      prevDriverStatusRef.current = tracking.driverJob.status;
+    }
+
+    setLastRefreshed(new Date());
   }, [tracking]);
 
   function handleSearch() {
     const trimmed = input.trim().toUpperCase();
     if (!trimmed) return;
+    prevStatusRef.current = null;
+    prevDriverStatusRef.current = null;
+    setStatusChangeBanner(null);
+    setLastRefreshed(null);
     setSearchTerm(trimmed);
-    setRespondedFlag(false);
   }
 
   const handleRefresh = useCallback(() => { refetch(); }, [refetch]);
+
+  const isOrderTerminal = tracking ? isTerminalStatus(tracking.status) : false;
 
   return (
     <div className="min-h-screen bg-background">
@@ -500,25 +633,30 @@ export default function TrackPage() {
 
         {tracking && (
           <div className="space-y-4">
-            {/* Auto-refresh indicator */}
-            <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <span className="flex items-center gap-1">
-                <RefreshCw className={cn("w-3 h-3", isFetching && "animate-spin")} />
-                {isFetching ? "Memperbarui..." : lastRefreshed ? `Diperbarui ${formatDateTime(lastRefreshed.toISOString())}` : ""}
-              </span>
-              <button onClick={handleRefresh} disabled={isFetching}
-                className="flex items-center gap-1 hover:text-foreground transition-colors disabled:opacity-50">
-                Perbarui sekarang
-              </button>
-            </div>
 
-            {/* Penawaran harga — tampil di atas jika ada dan relevan */}
+            {/* Status change banner */}
+            {statusChangeBanner && (
+              <StatusChangeBanner
+                prevStatus={statusChangeBanner.prev}
+                newStatus={statusChangeBanner.next}
+                onDismiss={() => setStatusChangeBanner(null)}
+              />
+            )}
+
+            {/* Auto-refresh bar */}
+            <AutoRefreshBar
+              isTerminal={isOrderTerminal}
+              isFetching={isFetching}
+              lastRefreshed={lastRefreshed}
+              onRefresh={handleRefresh}
+            />
+
+            {/* Penawaran harga */}
             {tracking.rfqQuote && ["customer_quoted", "customer_approved", "customer_rejected", "customer_revision_requested"].includes(tracking.rfqQuote.rfqStatus) && (
               <QuoteCard
                 rfqQuote={tracking.rfqQuote}
                 orderNumber={tracking.orderNumber}
                 onRespond={() => {
-                  setRespondedFlag(true);
                   setTimeout(() => refetch(), 1000);
                 }}
               />
@@ -532,7 +670,7 @@ export default function TrackPage() {
                   <p className="text-xl font-bold font-mono text-foreground">{tracking.orderNumber}</p>
                 </div>
                 <Badge className={cn("border font-medium", STATUS_COLORS[tracking.status] ?? "bg-gray-100 text-gray-800")}>
-                  {tracking.status}
+                  {STATUS_LABELS[tracking.status] ?? tracking.status}
                 </Badge>
               </div>
               <Separator className="mb-4" />
@@ -600,7 +738,6 @@ export default function TrackPage() {
 
                 {/* Driver status timeline */}
                 <DriverStepper job={tracking.driverJob} />
-
               </div>
             ) : (
               tracking.status !== "Completed" && (
@@ -630,11 +767,6 @@ export default function TrackPage() {
                 </div>
               </div>
             )}
-
-            <div className="bg-muted/40 rounded-lg p-4 text-xs text-muted-foreground">
-              <p className="font-medium text-foreground mb-1">Informasi</p>
-              <p>Status diperbarui otomatis setiap 30 detik. Hubungi kami jika ada pertanyaan mengenai pengiriman Anda.</p>
-            </div>
 
             <Button variant="outline" className="w-full" onClick={() => setLocation("/jasa")}>
               <Ship className="w-4 h-4 mr-2" /> Buat Order Baru

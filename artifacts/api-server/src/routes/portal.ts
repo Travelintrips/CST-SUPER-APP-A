@@ -37,18 +37,29 @@ async function getProductCategories(productIds: number[]): Promise<Record<number
   return map;
 }
 
+// ── In-memory cache for company settings (5 min TTL) ─────────────────────────
+let _companyCache: { data: object; expiresAt: number } | null = null;
+const COMPANY_TTL_MS = 5 * 60 * 1000;
+
 // GET /api/portal/company
 router.get("/company", async (_req, res) => {
+  if (_companyCache && Date.now() < _companyCache.expiresAt) {
+    res.setHeader("Cache-Control", "public, max-age=300, stale-while-revalidate=60");
+    return res.json(_companyCache.data);
+  }
   const [settings] = await db.select().from(accountingSettingsTable).limit(1);
   const adminWa = await getAdminWa();
-  return res.json({
+  const data = {
     name: settings?.companyName ?? "PT. Cahaya Sejati Teknologi",
     tagline: "Solusi Logistik Terintegrasi & Berbasis Teknologi",
     logoUrl: settings?.companyLogoUrl ?? null,
     address: settings?.companyAddress ?? null,
     email: null,
     phone: adminWa || null,
-  });
+  };
+  _companyCache = { data, expiresAt: Date.now() + COMPANY_TTL_MS };
+  res.setHeader("Cache-Control", "public, max-age=300, stale-while-revalidate=60");
+  return res.json(data);
 });
 
 async function listByType(type: string) {
@@ -918,11 +929,25 @@ router.post("/vendor/quotes", requirePortalAuth, async (req, res) => {
 });
 
 // ── PORTAL CONTENT (Public) ───────────────────────────────────────────────
+// ── In-memory cache for portal content (5 min TTL) ───────────────────────────
+let _contentCache: { data: Record<string, string>; expiresAt: number } | null = null;
+const CONTENT_TTL_MS = 5 * 60 * 1000;
+
+export function invalidateContentCache() {
+  _contentCache = null;
+}
+
 // GET /api/portal/content
 router.get("/content", async (_req, res) => {
+  if (_contentCache && Date.now() < _contentCache.expiresAt) {
+    res.setHeader("Cache-Control", "public, max-age=300, stale-while-revalidate=60");
+    return res.json(_contentCache.data);
+  }
   const rows = await db.select().from(portalContentTable);
   const content: Record<string, string> = {};
   for (const r of rows) content[r.key] = r.value;
+  _contentCache = { data: content, expiresAt: Date.now() + CONTENT_TTL_MS };
+  res.setHeader("Cache-Control", "public, max-age=300, stale-while-revalidate=60");
   return res.json(content);
 });
 
@@ -952,6 +977,7 @@ router.put("/admin/content", requirePortalAdmin, async (req, res) => {
       .values({ key, value: String(value), updatedAt: new Date() })
       .onConflictDoUpdate({ target: portalContentTable.key, set: { value: String(value), updatedAt: new Date() } });
   }
+  _contentCache = null;
   return res.json({ ok: true });
 });
 
