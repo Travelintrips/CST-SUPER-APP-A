@@ -318,7 +318,7 @@ router.post("/auth/wa-otp/verify", async (req, res) => {
 
 // POST /api/portal/auth/wa-register — lengkapi profil & buat akun
 router.post("/auth/wa-register", async (req, res) => {
-  const { verifyToken, name, role: requestedRole, company, serviceIds, email } = req.body ?? {};
+  const { verifyToken, name, role: requestedRole, company, serviceIds, email, rememberDays } = req.body ?? {};
   if (!verifyToken || !name) return res.status(400).json({ message: "Token verifikasi dan nama diperlukan." });
 
   const [otp] = await db
@@ -385,8 +385,17 @@ router.post("/auth/wa-register", async (req, res) => {
     role: created.role,
   });
 
+  let deviceToken: string | undefined;
+  const days = typeof rememberDays === "number" && rememberDays > 0 && rememberDays <= 90 ? rememberDays : null;
+  if (days) {
+    deviceToken = randomUUID();
+    const expiresAt = new Date(Date.now() + days * 86400_000);
+    await db.insert(trustedDevicesTable).values({ phone: created.phone, deviceToken, expiresAt });
+  }
+
   return res.status(201).json({
     token,
+    deviceToken,
     user: {
       id: created.id,
       name: created.name,
@@ -481,6 +490,13 @@ router.post("/auth/wa-trusted-login", async (req, res) => {
 
   if (matches.length !== 1) return res.status(401).json({ message: "Akun tidak ditemukan." });
   const user = matches[0];
+
+  // Sliding expiry: perpanjang masa berlaku 30 hari dari sekarang
+  const newExpiresAt = new Date(Date.now() + 30 * 86400_000);
+  await db
+    .update(trustedDevicesTable)
+    .set({ expiresAt: newExpiresAt })
+    .where(eq(trustedDevicesTable.id, device.id));
 
   const token = await signPortalJwt({
     sub: String(user.id),

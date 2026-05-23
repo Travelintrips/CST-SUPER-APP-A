@@ -152,6 +152,40 @@ function buildVendorWaMessage(
   );
 }
 
+function buildCustomerProgressWaMessage(
+  orderNumber: string,
+  status: string,
+  notes: string | undefined,
+  trackingUrl: string
+): string {
+  const statusLabel = JOB_STATUS_LABEL[status.toLowerCase().replace(/\s+/g, "_")] ?? status;
+  return (
+    `📦 *Update Status Pengiriman Anda*\n\n` +
+    `Order: *${orderNumber}*\n` +
+    `Status: *${statusLabel}*\n` +
+    (notes ? `Keterangan: ${notes}\n` : "") +
+    `\n🔗 Pantau progress real-time:\n${trackingUrl}\n\n` +
+    `_CST Logistics — kami informasikan setiap perubahan status._`
+  );
+}
+
+function buildCustomerPodWaMessage(
+  orderNumber: string,
+  vendorName: string,
+  completionNotes: string | undefined,
+  trackingUrl: string
+): string {
+  return (
+    `✅ *Pengiriman Selesai!*\n\n` +
+    `Order: *${orderNumber}*\n` +
+    `Vendor *${vendorName}* telah mengunggah dokumen bukti pengiriman (POD).\n` +
+    (completionNotes ? `Catatan: ${completionNotes}\n` : "") +
+    `\nMohon konfirmasi penerimaan barang kepada tim CST Logistics jika diperlukan.\n` +
+    `\n🔗 Detail tracking:\n${trackingUrl}\n\n` +
+    `_CST Logistics_`
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Object storage for POD
 // ─────────────────────────────────────────────────────────────────────────────
@@ -711,7 +745,7 @@ vendorJobPublicRouter.post("/:token/progress", async (req: Request, res: Respons
 
   try {
     const result = await db.execute(
-      sql`SELECT vjo.*, o.order_number, o.phone, s.name as vendor_name
+      sql`SELECT vjo.*, o.order_number, o.phone, o.tracking_token, s.name as vendor_name
           FROM vendor_job_orders vjo
           LEFT JOIN logistic_orders o ON o.id = vjo.order_id
           LEFT JOIN suppliers s ON s.id = vjo.vendor_id
@@ -763,6 +797,18 @@ vendorJobPublicRouter.post("/:token/progress", async (req: Request, res: Respons
       ).catch(() => {});
     }
 
+    // Notify customer via WA
+    const customerPhone = job.phone as string | null;
+    if (customerPhone) {
+      const trackingUrl = job.tracking_token
+        ? `${baseUrl()}/order-track/${job.tracking_token}`
+        : `${baseUrl()}/order-track`;
+      sendWhatsApp(
+        customerPhone,
+        buildCustomerProgressWaMessage(job.order_number, status, notes, trackingUrl)
+      ).catch((e) => logger.warn({ e, phone: customerPhone }, "customer progress WA failed"));
+    }
+
     return res.json({ ok: true });
   } catch (err) {
     logger.error({ err }, "vendor-progress error");
@@ -779,7 +825,7 @@ vendorJobPublicRouter.post("/:token/pod", upload.array("files", 10), async (req:
 
   try {
     const result = await db.execute(
-      sql`SELECT vjo.*, o.order_number, o.id as order_id_num, s.name as vendor_name
+      sql`SELECT vjo.*, o.order_number, o.id as order_id_num, o.phone, o.tracking_token, s.name as vendor_name
           FROM vendor_job_orders vjo
           LEFT JOIN logistic_orders o ON o.id = vjo.order_id
           LEFT JOIN suppliers s ON s.id = vjo.vendor_id
@@ -853,6 +899,18 @@ vendorJobPublicRouter.post("/:token/pod", upload.array("files", 10), async (req:
         `File diunggah: ${files.length}\n` +
         (completionNotes ? `Catatan: ${completionNotes}` : "")
       ).catch(() => {});
+    }
+
+    // Notify customer via WA
+    const customerPhonePod = job.phone as string | null;
+    if (customerPhonePod) {
+      const trackingUrlPod = job.tracking_token
+        ? `${baseUrl()}/order-track/${job.tracking_token}`
+        : `${baseUrl()}/order-track`;
+      sendWhatsApp(
+        customerPhonePod,
+        buildCustomerPodWaMessage(job.order_number, job.vendor_name ?? "Vendor", completionNotes, trackingUrlPod)
+      ).catch((e) => logger.warn({ e, phone: customerPhonePod }, "customer POD WA failed"));
     }
 
     return res.json({ ok: true, uploadedFiles: uploadedUrls.length, message: "POD berhasil diunggah. Menunggu konfirmasi admin." });
