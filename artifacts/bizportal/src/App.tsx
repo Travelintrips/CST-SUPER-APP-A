@@ -174,9 +174,118 @@ function LoadingSpinner() {
 
 const IS_DEV = import.meta.env.DEV;
 
+type DevUser = { id: string; email: string; firstName: string | null; lastName: string | null; role: string | null };
+
+const ROLE_LABELS: Record<string, string> = {
+  admin: "Admin",
+  ecommerce: "Ecommerce",
+  trading: "Trading",
+  logistics: "Logistics",
+};
+
+function DevLoginSection() {
+  const [users, setUsers] = React.useState<DevUser[]>([]);
+  const [devEmail, setDevEmail] = React.useState("");
+  const [mode, setMode] = React.useState<"pick" | "manual">("pick");
+
+  React.useEffect(() => {
+    fetch("/api/dev-users")
+      .then((r) => r.ok ? r.json() : { users: [] })
+      .then((d: { users: DevUser[] }) => {
+        setUsers(d.users ?? []);
+        if (d.users?.length > 0) {
+          setDevEmail(d.users[0].email ?? "");
+        }
+      })
+      .catch(() => setMode("manual"));
+  }, []);
+
+  const grouped = React.useMemo(() => {
+    const map: Record<string, DevUser[]> = {};
+    for (const u of users) {
+      const r = u.role ?? "other";
+      if (!map[r]) map[r] = [];
+      map[r].push(u);
+    }
+    return map;
+  }, [users]);
+
+  return (
+    <>
+      <div className="flex items-center gap-3">
+        <div className="flex-1 h-px bg-slate-700" />
+        <span className="text-xs text-amber-400 font-mono">DEV ONLY</span>
+        <div className="flex-1 h-px bg-slate-700" />
+      </div>
+      <form
+        method="post"
+        action={`/api/dev-login?redirect=/bizportal/`}
+        className="flex flex-col gap-2"
+      >
+        {mode === "pick" && users.length > 0 ? (
+          <>
+            <select
+              name="email"
+              value={devEmail}
+              onChange={(e) => setDevEmail(e.target.value)}
+              className="rounded-lg bg-slate-800 border border-amber-600/40 px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
+            >
+              {Object.entries(grouped).map(([role, roleUsers]) => (
+                <optgroup key={role} label={`— ${ROLE_LABELS[role] ?? role} —`}>
+                  {roleUsers.map((u) => {
+                    const name = [u.firstName, u.lastName].filter(Boolean).join(" ") || u.email;
+                    return (
+                      <option key={u.id} value={u.email ?? ""}>
+                        {name} ({u.email})
+                      </option>
+                    );
+                  })}
+                </optgroup>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => setMode("manual")}
+              className="text-xs text-slate-500 hover:text-slate-400 text-right -mt-1"
+            >
+              + email lain
+            </button>
+          </>
+        ) : (
+          <>
+            <input
+              type="email"
+              name="email"
+              placeholder="Email (dev bypass)"
+              value={devEmail}
+              onChange={(e) => setDevEmail(e.target.value)}
+              required
+              className="rounded-lg bg-slate-800 border border-amber-600/40 px-4 py-2.5 text-sm text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500"
+            />
+            {users.length > 0 && (
+              <button
+                type="button"
+                onClick={() => { setMode("pick"); setDevEmail(users[0].email ?? ""); }}
+                className="text-xs text-slate-500 hover:text-slate-400 text-right -mt-1"
+              >
+                ← pilih dari daftar
+              </button>
+            )}
+          </>
+        )}
+        <button
+          type="submit"
+          className="rounded-lg bg-amber-600 px-6 py-2.5 text-sm font-medium text-white shadow hover:bg-amber-500 active:scale-95 transition-all"
+        >
+          Dev Login (tanpa Google)
+        </button>
+      </form>
+    </>
+  );
+}
+
 function LoginScreen() {
   const { signInWithGoogle } = useSupabaseAuth();
-  const [devEmail, setDevEmail] = React.useState("elmiraratuabadi@gmail.com");
 
   return (
     <div className="flex h-screen flex-col items-center justify-center gap-6 bg-slate-950 text-white">
@@ -214,36 +323,7 @@ function LoginScreen() {
           </svg>
           Masuk dengan Google
         </button>
-        {IS_DEV && (
-          <>
-            <div className="flex items-center gap-3">
-              <div className="flex-1 h-px bg-slate-700" />
-              <span className="text-xs text-amber-400 font-mono">DEV ONLY</span>
-              <div className="flex-1 h-px bg-slate-700" />
-            </div>
-            <form
-              method="post"
-              action={`/api/dev-login?redirect=/bizportal/`}
-              className="flex flex-col gap-2"
-            >
-              <input
-                type="email"
-                name="email"
-                placeholder="Email (dev bypass)"
-                value={devEmail}
-                onChange={(e) => setDevEmail(e.target.value)}
-                required
-                className="rounded-lg bg-slate-800 border border-amber-600/40 px-4 py-2.5 text-sm text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500"
-              />
-              <button
-                type="submit"
-                className="rounded-lg bg-amber-600 px-6 py-2.5 text-sm font-medium text-white shadow hover:bg-amber-500 active:scale-95 transition-all"
-              >
-                Dev Login (tanpa Google)
-              </button>
-            </form>
-          </>
-        )}
+        {IS_DEV && <DevLoginSection />}
       </div>
     </div>
   );
