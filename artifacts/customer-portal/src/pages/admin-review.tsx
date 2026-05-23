@@ -75,6 +75,37 @@ type CompareResult = {
   forwardVendorUrl: string | null;
 };
 
+// ── Forward-vendor types ──────────────────────────────────────────────────────
+
+type SelectedVendorLink = {
+  id: number;
+  rfqId: number;
+  vendorId: number;
+  status: string;
+  offeredPrice: number | null;
+  basicPrice: number | null;
+  eta: string | null;
+  notes: string | null;
+};
+
+type ForwardVendorData = {
+  token: string;
+  actionType: "forward_vendor";
+  isUsed: boolean;
+  usedAt: string | null;
+  order: OrderInfo;
+  rfq: RfqSummary | null;
+  selectedVendor: { id: number; name: string; phone: string | null } | null;
+  selectedVendorLink: SelectedVendorLink | null;
+};
+
+type ForwardResult = {
+  ok: boolean;
+  fulfillToken: string;
+  fulfillUrl: string;
+  vendorName: string;
+};
+
 // ── Blast types ───────────────────────────────────────────────────────────────
 
 type BlastResult = {
@@ -902,6 +933,356 @@ function ReviewOrderView({ data, token }: { data: ReviewData; token: string }) {
   );
 }
 
+// ── ForwardVendorView ─────────────────────────────────────────────────────────
+
+const SERVICE_TYPE_OPTIONS = [
+  "Sea Freight",
+  "Air Freight",
+  "Land Freight",
+  "Custom Clearance",
+  "Warehousing",
+  "Door to Door",
+  "Full Container Load (FCL)",
+  "Less Container Load (LCL)",
+];
+
+function ForwardVendorView({ data, token }: { data: ForwardVendorData; token: string }) {
+  const { order, rfq, selectedVendor, selectedVendorLink } = data;
+
+  const price = selectedVendorLink?.offeredPrice ?? selectedVendorLink?.basicPrice;
+
+  const [serviceType, setServiceType] = useState(order.serviceType ?? "");
+  const [customService, setCustomService] = useState("");
+  const [expiresInHours, setExpiresInHours] = useState(72);
+  const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState<ForwardResult | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const effectiveService = serviceType === "__custom__" ? customService : serviceType;
+
+  const handleSubmit = async () => {
+    if (!selectedVendor || !effectiveService.trim()) return;
+    setSubmitting(true);
+    setErr(null);
+    try {
+      const r = await fetch(`/api/admin-action/${token}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vendorId: selectedVendor.id,
+          serviceType: effectiveService.trim(),
+          expiresInHours,
+        }),
+      });
+      const body = await r.json();
+      if (!r.ok) throw new Error(body.error ?? "Gagal mengirim tugas");
+      setResult(body as ForwardResult);
+    } catch (e: unknown) {
+      setErr((e as Error).message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // ── Already used ────────────────────────────────────────────────────────────
+  if (data.isUsed && data.usedAt && !result) {
+    return (
+      <div className="min-h-screen bg-slate-50">
+        <PageHeader icon="📦" title="Forward ke Vendor" />
+        <div className="max-w-2xl mx-auto px-4 py-5 space-y-5">
+          <OrderCard order={order} label="Order" />
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-3">
+            <span className="text-xl mt-0.5">⚠️</span>
+            <div>
+              <p className="text-amber-800 font-semibold text-sm">Link Sudah Digunakan</p>
+              <p className="text-amber-700 text-xs mt-0.5">
+                Tugas fulfillment sudah dikirim ke vendor pada{" "}
+                {new Date(data.usedAt).toLocaleString("id-ID")}.
+              </p>
+            </div>
+          </div>
+          {selectedVendor && (
+            <VendorInfoCard vendor={selectedVendor} link={selectedVendorLink} />
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Success screen ──────────────────────────────────────────────────────────
+  if (result) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-md p-8 max-w-md w-full space-y-5">
+          <div className="text-center space-y-2">
+            <div className="text-5xl">📦</div>
+            <h2 className="text-xl font-bold text-slate-800">Tugas Terkirim!</h2>
+            <p className="text-slate-500 text-sm">
+              Link fulfillment berhasil dikirim ke WA{" "}
+              <strong>{result.vendorName}</strong>.
+            </p>
+          </div>
+          <div className="bg-slate-50 rounded-xl px-4 py-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-slate-400">No. Order</span>
+              <span className="font-mono font-semibold text-slate-800 text-sm">{order.orderNumber}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-slate-400">Vendor</span>
+              <span className="font-semibold text-slate-700 text-sm">{result.vendorName}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-slate-400">Layanan</span>
+              <span className="text-slate-600 text-sm">{effectiveService}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-slate-400">Batas Waktu</span>
+              <span className="text-slate-600 text-sm">{expiresInHours} jam</span>
+            </div>
+          </div>
+          <div className="rounded-xl bg-green-50 border border-green-100 p-4 space-y-2">
+            <p className="text-xs text-green-700 font-semibold uppercase tracking-wide">
+              ✅ Vendor Sudah Dapat Link via WA
+            </p>
+            <p className="text-xs text-slate-500 break-all">{result.fulfillUrl}</p>
+          </div>
+          <p className="text-center text-xs text-slate-400">
+            Vendor akan mengisi data pengiriman, BL, dan dokumen melalui link tersebut.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── No selected vendor ──────────────────────────────────────────────────────
+  if (!selectedVendor) {
+    return (
+      <div className="min-h-screen bg-slate-50">
+        <PageHeader icon="📦" title="Forward ke Vendor" />
+        <div className="max-w-2xl mx-auto px-4 py-5 space-y-5">
+          <OrderCard order={order} label="Order" />
+          <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 flex items-start gap-3">
+            <span className="text-xl mt-0.5">❌</span>
+            <div>
+              <p className="text-red-800 font-semibold text-sm">Vendor Belum Dipilih</p>
+              <p className="text-red-700 text-xs mt-0.5">
+                Kembali ke langkah sebelumnya untuk memilih vendor dari penawaran yang masuk.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Main forward screen ─────────────────────────────────────────────────────
+  return (
+    <div className="min-h-screen bg-slate-50">
+      <PageHeader icon="📦" title="Forward Tugas ke Vendor" />
+
+      <div className="max-w-2xl mx-auto px-4 py-5 space-y-5">
+        <OrderCard order={order} label="Order" />
+
+        {/* RFQ badge */}
+        {rfq && (
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 px-5 py-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs text-slate-400">No. RFQ</p>
+              <p className="font-mono font-semibold text-slate-800">{rfq.rfqNumber}</p>
+            </div>
+            <span className="text-xs font-semibold px-3 py-1.5 rounded-full bg-indigo-100 text-indigo-700">
+              Vendor Dipilih
+            </span>
+          </div>
+        )}
+
+        {/* Selected vendor card */}
+        <VendorInfoCard vendor={selectedVendor} link={selectedVendorLink} />
+
+        {/* Service type */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 px-5 py-5 space-y-4">
+          <h2 className="text-sm font-bold text-slate-800">🛳 Jenis Layanan</h2>
+          <p className="text-xs text-slate-400 -mt-2">
+            Layanan yang harus dieksekusi vendor untuk order ini
+          </p>
+
+          <div className="grid grid-cols-2 gap-2">
+            {SERVICE_TYPE_OPTIONS.map((opt) => (
+              <button
+                key={opt}
+                onClick={() => setServiceType(opt)}
+                className={`text-left px-3 py-2.5 rounded-xl border text-xs font-medium transition-all ${
+                  serviceType === opt
+                    ? "border-blue-500 bg-blue-50 text-blue-800"
+                    : "border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:bg-slate-50"
+                }`}
+              >
+                {opt}
+              </button>
+            ))}
+            <button
+              onClick={() => setServiceType("__custom__")}
+              className={`text-left px-3 py-2.5 rounded-xl border text-xs font-medium transition-all ${
+                serviceType === "__custom__"
+                  ? "border-blue-500 bg-blue-50 text-blue-800"
+                  : "border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:bg-slate-50"
+              }`}
+            >
+              ✏️ Lainnya…
+            </button>
+          </div>
+
+          {serviceType === "__custom__" && (
+            <input
+              type="text"
+              placeholder="Ketik jenis layanan…"
+              value={customService}
+              onChange={(e) => setCustomService(e.target.value)}
+              className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+              autoFocus
+            />
+          )}
+
+          {effectiveService && serviceType !== "__custom__" && (
+            <div className="bg-blue-50 rounded-xl px-3 py-2 flex items-center gap-2">
+              <span className="text-blue-600 text-sm">✓</span>
+              <span className="text-sm font-medium text-blue-800">{effectiveService}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Deadline */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 px-5 py-4">
+          <label className="block text-sm font-semibold text-slate-700 mb-2">
+            ⏰ Batas Waktu Pengisian Data
+          </label>
+          <div className="flex items-center gap-3">
+            {[24, 48, 72].map((h) => (
+              <button
+                key={h}
+                onClick={() => setExpiresInHours(h)}
+                className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-all ${
+                  expiresInHours === h
+                    ? "bg-blue-600 text-white border-blue-600"
+                    : "bg-white text-slate-600 border-slate-200 hover:border-blue-300"
+                }`}
+              >
+                {h} jam
+              </button>
+            ))}
+            <div className="flex items-center gap-1.5 flex-1">
+              <input
+                type="number"
+                value={expiresInHours}
+                onChange={(e) => setExpiresInHours(Number(e.target.value))}
+                min={1}
+                max={168}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-300"
+              />
+              <span className="text-slate-400 text-xs shrink-0">jam</span>
+            </div>
+          </div>
+        </div>
+
+        {err && (
+          <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
+            ⚠️ {err}
+          </div>
+        )}
+
+        {/* Submit */}
+        <button
+          onClick={handleSubmit}
+          disabled={submitting || !effectiveService.trim()}
+          className={`w-full py-4 rounded-2xl font-bold text-base flex items-center justify-center gap-3 transition-all ${
+            submitting || !effectiveService.trim()
+              ? "bg-slate-200 text-slate-400 cursor-not-allowed"
+              : "bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white shadow-md shadow-emerald-200"
+          }`}
+        >
+          {submitting ? (
+            <>
+              <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              Mengirim…
+            </>
+          ) : (
+            <>📤 Kirim Tugas ke {selectedVendor.name}</>
+          )}
+        </button>
+
+        <p className="text-center text-xs text-slate-400 pb-8">
+          Vendor akan menerima WA dengan link form pengisian data fulfillment
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function PageHeader({ icon, title }: { icon: string; title: string }) {
+  return (
+    <div className="bg-white border-b border-slate-100 sticky top-0 z-10">
+      <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
+        <span className="text-2xl">{icon}</span>
+        <div>
+          <h1 className="text-base font-bold text-slate-800 leading-tight">{title}</h1>
+          <p className="text-xs text-slate-400">CST Logistics — Admin Panel</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function VendorInfoCard({
+  vendor,
+  link,
+}: {
+  vendor: { id: number; name: string; phone: string | null };
+  link: SelectedVendorLink | null;
+}) {
+  const price = link?.offeredPrice ?? link?.basicPrice;
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+      <div className="px-5 py-3 bg-indigo-50 border-b border-indigo-100 flex items-center gap-2">
+        <span className="text-sm font-semibold text-indigo-700 uppercase tracking-wide text-xs">
+          ★ Vendor Terpilih
+        </span>
+      </div>
+      <div className="px-5 py-4 space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="font-bold text-slate-800 text-base">{vendor.name}</p>
+            {vendor.phone && (
+              <p className="text-xs text-slate-500 mt-0.5">📱 {vendor.phone}</p>
+            )}
+          </div>
+          {price != null && (
+            <div className="text-right shrink-0">
+              <p className="text-xs text-slate-400">Harga Penawaran</p>
+              <p className="font-bold text-slate-800">{idr(price)}</p>
+            </div>
+          )}
+        </div>
+        {(link?.eta || link?.notes) && (
+          <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-50">
+            {link.eta && (
+              <div>
+                <p className="text-xs text-slate-400">ETA</p>
+                <p className="text-sm font-medium text-slate-700">{link.eta}</p>
+              </div>
+            )}
+            {link.notes && (
+              <div className="col-span-2">
+                <p className="text-xs text-slate-400">Catatan Vendor</p>
+                <p className="text-sm text-slate-600 italic">{link.notes}</p>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Root page ─────────────────────────────────────────────────────────────────
 
 export default function AdminReviewPage() {
@@ -910,7 +1291,7 @@ export default function AdminReviewPage() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [data, setData] = useState<ReviewData | CompareData | null>(null);
+  const [data, setData] = useState<ReviewData | CompareData | ForwardVendorData | null>(null);
 
   useEffect(() => {
     if (!token) return;
@@ -933,6 +1314,10 @@ export default function AdminReviewPage() {
 
   if (data.actionType === "compare_vendors") {
     return <CompareVendorsView data={data as CompareData} token={token} />;
+  }
+
+  if (data.actionType === "forward_vendor") {
+    return <ForwardVendorView data={data as ForwardVendorData} token={token} />;
   }
 
   return <ReviewOrderView data={data as ReviewData} token={token} />;
