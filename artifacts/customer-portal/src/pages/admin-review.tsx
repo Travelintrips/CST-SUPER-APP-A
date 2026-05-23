@@ -140,14 +140,17 @@ const RFQ_STATUS_LABEL: Record<string, string> = {
 };
 
 const VENDOR_LINK_STATUS: Record<string, { label: string; cls: string }> = {
-  pending:       { label: "Menunggu",   cls: "bg-amber-100 text-amber-700" },
-  sent:          { label: "Terkirim",   cls: "bg-blue-100 text-blue-700" },
-  responded:     { label: "Masuk ✓",    cls: "bg-emerald-100 text-emerald-700" },
-  selected:      { label: "Dipilih ★",  cls: "bg-indigo-100 text-indigo-700" },
-  not_selected:  { label: "Tidak Dipilih", cls: "bg-slate-100 text-slate-500" },
-  rejected:      { label: "Ditolak",    cls: "bg-red-100 text-red-600" },
-  expired:       { label: "Kadaluarsa", cls: "bg-slate-100 text-slate-400" },
-  late_response: { label: "Terlambat",  cls: "bg-orange-100 text-orange-600" },
+  pending:              { label: "Menunggu",        cls: "bg-amber-100 text-amber-700" },
+  waiting_response:     { label: "Menunggu",        cls: "bg-amber-100 text-amber-700" },
+  sent:                 { label: "Terkirim",         cls: "bg-blue-100 text-blue-700" },
+  responded:            { label: "Masuk ✓",          cls: "bg-emerald-100 text-emerald-700" },
+  accepted_basic_price: { label: "Terima Harga ✓",  cls: "bg-emerald-100 text-emerald-700" },
+  counter_offer:        { label: "Counter Offer ✓", cls: "bg-blue-100 text-blue-700" },
+  selected:             { label: "Dipilih ★",        cls: "bg-indigo-100 text-indigo-700" },
+  not_selected:         { label: "Tidak Dipilih",    cls: "bg-slate-100 text-slate-500" },
+  rejected:             { label: "Ditolak",          cls: "bg-red-100 text-red-600" },
+  expired:              { label: "Kadaluarsa",       cls: "bg-slate-100 text-slate-400" },
+  late_response:        { label: "Terlambat",        cls: "bg-orange-100 text-orange-600" },
 };
 
 // ── Shared: loading / error / order card ─────────────────────────────────────
@@ -269,14 +272,15 @@ function VendorRow({
 
 // ── CompareVendorsView ────────────────────────────────────────────────────────
 
+const RESPONDED_STATUSES = new Set([
+  "accepted_basic_price", "counter_offer", "rejected",
+  "responded", "selected", "not_selected", "late_response",
+]);
+
 function CompareVendorsView({ data, token }: { data: CompareData; token: string }) {
   const { order, rfq, vendors } = data;
-  const responded = vendors.filter((v) =>
-    ["responded", "selected", "late_response"].includes(v.status)
-  );
-  const notResponded = vendors.filter((v) =>
-    !["responded", "selected", "late_response"].includes(v.status)
-  );
+  const responded = vendors.filter((v) => RESPONDED_STATUSES.has(v.status));
+  const notResponded = vendors.filter((v) => !RESPONDED_STATUSES.has(v.status));
   const cheapest = responded[0] ?? null;
 
   const [selectedLinkId, setSelectedLinkId] = useState<number | null>(
@@ -603,9 +607,7 @@ function QuoteList({
   onSelect: (id: number) => void;
   disabled?: boolean;
 }) {
-  const responded = vendors.filter((v) =>
-    ["responded", "selected", "late_response"].includes(v.status)
-  );
+  const responded = vendors.filter((v) => RESPONDED_STATUSES.has(v.status));
   if (responded.length === 0) return null;
 
   return (
