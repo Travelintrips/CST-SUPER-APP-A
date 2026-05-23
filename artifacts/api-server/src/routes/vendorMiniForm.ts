@@ -9,6 +9,39 @@ import {
 } from "@workspace/db";
 import { requireClerkUser } from "../lib/requireAdmin";
 
+// Cache-Control for public GET (token metadata is immutable once fetched)
+const PUBLIC_CACHE = "public, max-age=300, stale-while-revalidate=600";
+
+// In-memory server-side cache for token lookups — avoids DB round-trip on every visit
+type CachedForm = {
+  id: number;
+  serviceType: string;
+  title: string | null;
+  notes: string | null;
+  vendorName: string | null;
+  isActive: boolean;
+  expiresAt: Date | null;
+  expiresCache: number; // Date.now() + TTL
+};
+const TOKEN_CACHE = new Map<string, CachedForm>();
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+function getCached(token: string): CachedForm | null {
+  const entry = TOKEN_CACHE.get(token);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresCache) { TOKEN_CACHE.delete(token); return null; }
+  return entry;
+}
+
+function setCached(token: string, row: CachedForm) {
+  TOKEN_CACHE.set(token, { ...row, expiresCache: Date.now() + CACHE_TTL_MS });
+}
+
+// Call this when admin deactivates/deletes a link so cache is immediately invalidated
+export function invalidateTokenCache(token: string) {
+  TOKEN_CACHE.delete(token);
+}
+
 const router = Router();
 
 // ── Shared form schema ────────────────────────────────────────────────────────
@@ -155,34 +188,48 @@ export const SERVICE_SCHEMAS: Record<string, {
 router.get("/:token", async (req: Request, res: Response) => {
   const { token } = req.params as { token: string };
   try {
-    const [link] = await db
-      .select()
-      .from(vendorMiniFormLinksTable)
-      .where(eq(vendorMiniFormLinksTable.token, token));
+    // Serve from in-memory cache if available (avoids DB round-trip ~1-1.5s)
+    let row = getCached(token);
 
-    if (!link) return res.status(404).json({ error: "Link tidak ditemukan atau sudah tidak valid" });
-    if (!link.isActive) return res.status(410).json({ error: "Link ini sudah dinonaktifkan" });
-    if (link.expiresAt && link.expiresAt < new Date()) {
+    if (!row) {
+      // Cache miss — fetch from DB (single LEFT JOIN, token has UNIQUE index)
+      const [dbRow] = await db
+        .select({
+          id: vendorMiniFormLinksTable.id,
+          serviceType: vendorMiniFormLinksTable.serviceType,
+          title: vendorMiniFormLinksTable.title,
+          notes: vendorMiniFormLinksTable.notes,
+          isActive: vendorMiniFormLinksTable.isActive,
+          expiresAt: vendorMiniFormLinksTable.expiresAt,
+          vendorName: suppliersTable.name,
+        })
+        .from(vendorMiniFormLinksTable)
+        .leftJoin(suppliersTable, eq(suppliersTable.id, vendorMiniFormLinksTable.supplierId))
+        .where(eq(vendorMiniFormLinksTable.token, token));
+
+      if (!dbRow) return res.status(404).json({ error: "Link tidak ditemukan atau sudah tidak valid" });
+      row = { ...dbRow, vendorName: dbRow.vendorName ?? null, expiresCache: 0 };
+      // Only cache active, non-expired links
+      if (dbRow.isActive && (!dbRow.expiresAt || dbRow.expiresAt >= new Date())) {
+        setCached(token, row);
+      }
+    }
+
+    if (!row.isActive) return res.status(410).json({ error: "Link ini sudah dinonaktifkan" });
+    if (row.expiresAt && row.expiresAt < new Date()) {
+      invalidateTokenCache(token);
       return res.status(410).json({ error: "Link ini sudah kadaluarsa" });
     }
 
-    let vendorName: string | null = null;
-    if (link.supplierId) {
-      const [vendor] = await db
-        .select({ name: suppliersTable.name })
-        .from(suppliersTable)
-        .where(eq(suppliersTable.id, link.supplierId));
-      vendorName = vendor?.name ?? null;
-    }
+    const schema = SERVICE_SCHEMAS[row.serviceType] ?? null;
 
-    const schema = SERVICE_SCHEMAS[link.serviceType] ?? null;
-
+    res.setHeader("Cache-Control", PUBLIC_CACHE);
     return res.json({
-      id: link.id,
-      serviceType: link.serviceType,
-      title: link.title,
-      notes: link.notes,
-      vendorName,
+      id: row.id,
+      serviceType: row.serviceType,
+      title: row.title,
+      notes: row.notes,
+      vendorName: row.vendorName ?? null,
       schema,
     });
   } catch (err) {
@@ -336,6 +383,7 @@ router.patch("/admin/links/:id", async (req: Request, res: Response) => {
       .returning();
 
     if (!updated) return res.status(404).json({ error: "Link tidak ditemukan" });
+    invalidateTokenCache(updated.token);
     return res.json({ ...updated, expiresAt: updated.expiresAt?.toISOString() ?? null, createdAt: updated.createdAt.toISOString() });
   } catch (err) {
     req.log?.error({ err }, "vendor-mini-form admin PATCH links error");
@@ -355,6 +403,7 @@ router.delete("/admin/links/:id", async (req: Request, res: Response) => {
       .where(eq(vendorMiniFormLinksTable.id, id))
       .returning();
     if (!deleted) return res.status(404).json({ error: "Link tidak ditemukan" });
+    invalidateTokenCache(deleted.token);
     return res.json({ success: true });
   } catch (err) {
     req.log?.error({ err }, "vendor-mini-form admin DELETE links error");

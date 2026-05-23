@@ -39,6 +39,7 @@ adminActionRouter.get("/admin-action/:token", async (req: Request, res: Response
   // Redirect to the public no-login admin review page on customer portal
   return res.redirect(302, `https://${domain}/admin-review/${token}`);
 });
+
 // ─── Boot migration ───────────────────────────────────────────────────────────
 let migrationDone = false;
 async function ensureTables() {
@@ -118,23 +119,34 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
   await ensureTables();
 
   try {
-    const [link] = await db.select().from(adminActionLinksTable)
-      .where(eq(adminActionLinksTable.token, token));
-    if (!link) return res.status(404).json({ error: "Link tidak ditemukan" });
+    let link = (await db.select().from(adminActionLinksTable)
+      .where(eq(adminActionLinksTable.token, token)))[0];
 
-    if (link.expiresAt && link.expiresAt < new Date()) {
+    // Fallback: token mungkin adalah publicRfqToken dari logistic_orders
+    let orderFromPublicToken: (typeof logisticOrdersTable)["$inferSelect"] | undefined;
+    if (!link) {
+      const [ord] = await db.select().from(logisticOrdersTable)
+        .where(eq(logisticOrdersTable.publicRfqToken, token))
+        .limit(1);
+      if (!ord) return res.status(404).json({ error: "Link tidak ditemukan" });
+      orderFromPublicToken = ord;
+    }
+
+    if (link && link.expiresAt && link.expiresAt < new Date()) {
       return res.status(410).json({ error: "Link sudah kadaluarsa", isExpired: true });
     }
 
-    const [order] = await db.select().from(logisticOrdersTable)
-      .where(eq(logisticOrdersTable.id, link.orderId));
+    const order = orderFromPublicToken ?? (await db.select().from(logisticOrdersTable)
+      .where(eq(logisticOrdersTable.id, link!.orderId))
+      .limit(1))[0];
     if (!order) return res.status(404).json({ error: "Order tidak ditemukan" });
 
+    const actionType = link?.actionType ?? "review_order";
     const base = {
       token,
-      actionType: link.actionType,
-      isUsed: !!link.usedAt,
-      usedAt: link.usedAt?.toISOString() ?? null,
+      actionType,
+      isUsed: link ? !!link.usedAt : false,
+      usedAt: link?.usedAt?.toISOString() ?? null,
       order: {
         id: order.id,
         orderNumber: order.orderNumber,
@@ -148,12 +160,12 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
     };
 
     // review_order: get list of all vendors + matching flag for blast
-    if (link.actionType === "review_order") {
+    if (actionType === "review_order") {
       const allVendors = await db.select({
         id: suppliersTable.id,
         name: suppliersTable.name,
         phone: suppliersTable.phone,
-        email: suppliersTable.email,
+        email: suppliersTable.contactEmail,
         serviceType: suppliersTable.serviceType,
         eta: suppliersTable.eta,
         fee: suppliersTable.fee,
@@ -162,15 +174,6 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
         .where(eq(suppliersTable.isActive, true))
         .orderBy(suppliersTable.name);
 
-      const shipmentKeyword = order.shipmentType?.trim().toLowerCase().split(" ")[0] ?? "";
-      const matching = vendors.filter((v) => {
-        if (!v.phone) return false;
-        // Kalau shipmentType kosong, tampilkan semua vendor yang punya serviceType
-        if (!shipmentKeyword) return !!v.serviceType;
-        // Kalau vendor tidak punya serviceType, skip
-        if (!v.serviceType) return false;
-        return v.serviceType.toLowerCase().includes(shipmentKeyword);
-      });
       const shipKeyword = (order.shipmentType ?? "").toLowerCase().split(" ")[0];
       const vendors = allVendors
         .filter((v) => v.phone)
