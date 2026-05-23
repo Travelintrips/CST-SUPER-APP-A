@@ -107,8 +107,7 @@ function isFreightWithDimensions(shipmentType: string): boolean {
   return t.includes("air") || t.includes("sea") || t.includes("laut") || t.includes("udara");
 }
 
-function buildAdminWaMessage(order: LogisticOrderData, adminReviewUrl?: string): string {
-function buildAdminWaMessage(order: LogisticOrderData, adminActionShortUrl?: string, adminReviewUrl?: string): string 
+function buildAdminWaMessage(order: LogisticOrderData, adminActionShortUrl?: string, adminReviewUrl?: string): string {
   const approveUrl = getApproveFormUrl(order.orderNumber);
   const domain = getPreferredDomain() || "cstlogistic.co.id";
   const bizportalUrl = `https://${domain}/bizportal/logistics/orders/${order.id}`;
