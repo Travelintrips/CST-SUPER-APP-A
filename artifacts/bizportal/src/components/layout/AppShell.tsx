@@ -634,11 +634,6 @@ export function AppShell({ children }: AppShellProps) {
           >
             <item.icon size={18} />
             <span className="flex-1">{getNavTitle(item.titleKey)}</span>
-            {isErpModule && open && (
-              <span className="shrink-0 max-w-[64px] truncate rounded-sm bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase leading-none text-primary">
-                {isConsolidated ? "Holding" : (activeCompany?.companyCode ?? "")}
-              </span>
-            )}
             {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           </SidebarMenuButton>
           {customizeMode && (
@@ -653,14 +648,6 @@ export function AppShell({ children }: AppShellProps) {
         </div>
         {open && (
           <SidebarMenuSub>
-            {isErpModule && (
-              <div className="mx-2 mb-1 flex items-center gap-1.5 rounded-md border border-border/60 bg-muted/40 px-2 py-1">
-                <Building2 size={11} className="shrink-0 text-muted-foreground" />
-                <span className="truncate text-[10px] font-medium text-muted-foreground">
-                  {isConsolidated ? "Holding Consolidated" : (activeCompany?.companyName ?? "—")}
-                </span>
-              </div>
-            )}
             {visibleChildren.map((c) => {
               const childHidden = hiddenItems.includes(c.href);
               return (
