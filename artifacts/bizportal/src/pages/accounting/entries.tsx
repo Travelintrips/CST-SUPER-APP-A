@@ -267,7 +267,7 @@ export default function EntriesPage() {
                   <div className="grid grid-cols-3 gap-3">
                     <div>
                       <Label>Jurnal</Label>
-                      <Select value={String(form.journalId || "")} onValueChange={(v) => setForm({ ...form, journalId: parseInt(v) })}>
+                      <Select value={form.journalId ? String(form.journalId) : undefined} onValueChange={(v) => setForm({ ...form, journalId: parseInt(v) })}>
                         <SelectTrigger data-testid="select-entry-journal"><SelectValue placeholder="Pilih" /></SelectTrigger>
                         <SelectContent>{(journals ?? []).map((j) => (<SelectItem key={j.id} value={String(j.id)}>{j.code} - {j.name}</SelectItem>))}</SelectContent>
                       </Select>

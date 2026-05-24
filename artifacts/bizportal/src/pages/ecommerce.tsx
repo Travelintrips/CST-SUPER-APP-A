@@ -295,11 +295,11 @@ export default function EcommercePage() {
   const [editLineItemsTouched, setEditLineItemsTouched] = useState(false);
 
   const createSubtotal = createLineItems.reduce((s, li) => s + li.qty * li.unitPrice, 0);
-  const [createTaxRateId, setCreateTaxRateId] = useState<string>("");
+  const [createTaxRateId, setCreateTaxRateId] = useState<string>("none");
   const [createTaxAmount, setCreateTaxAmount] = useState(0);
 
   const [editSubtotal, setEditSubtotal] = useState(0);
-  const [editTaxRateId, setEditTaxRateId] = useState<string>("");
+  const [editTaxRateId, setEditTaxRateId] = useState<string>("none");
   const [editTaxAmount, setEditTaxAmount] = useState(0);
 
   const { data: allTaxes = [] as AccountingTax[] } = useListTaxes();
