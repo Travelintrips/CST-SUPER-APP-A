@@ -512,6 +512,7 @@ export default function LogisticsPortalOrdersPage() {
                   <TableHead>Pelanggan</TableHead>
                   <TableHead>Rute</TableHead>
                   <TableHead>Tipe</TableHead>
+                  <TableHead className="text-center">Koli</TableHead>
                   <TableHead className="text-right">Total</TableHead>
                   <TableHead>Tanggal</TableHead>
                   <TableHead>Status</TableHead>
@@ -523,13 +524,13 @@ export default function LogisticsPortalOrdersPage() {
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
                       Memuat...
                     </TableCell>
                   </TableRow>
                 ) : filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
                       Tidak ada pesanan
                     </TableCell>
                   </TableRow>
@@ -593,6 +594,9 @@ export default function LogisticsPortalOrdersPage() {
                           ))}
                         </SelectContent>
                       </Select>
+                    </TableCell>
+                    <TableCell className="text-center text-sm text-muted-foreground">
+                      {o.jumlahKoli != null ? <span className="font-medium text-foreground">{o.jumlahKoli}</span> : <span className="text-xs">—</span>}
                     </TableCell>
                     <TableCell className="text-right font-medium text-sm">
                       {idr(o.grandTotal)}
