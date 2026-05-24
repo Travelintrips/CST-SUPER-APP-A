@@ -172,6 +172,7 @@ export default function LogisticsPortalOrdersPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [fulfillmentFilter, setFulfillmentFilter] = useState("all");
+  const [koliFilter, setKoliFilter] = useState("all");
   const [updatingId, setUpdatingId] = useState<number | null>(null);
   const [updatingTypeId, setUpdatingTypeId] = useState<number | null>(null);
   const [soDialog, setSoDialog] = useState<LogisticOrder | null>(null);
@@ -378,6 +379,13 @@ export default function LogisticsPortalOrdersPage() {
       if (fulfillmentFilter === "pending" && fs !== "pending") return false;
       if (fulfillmentFilter === "submitted" && fs !== "submitted") return false;
     }
+    if (koliFilter !== "all") {
+      const k = o.jumlahKoli ?? null;
+      if (koliFilter === "has_koli" && k == null) return false;
+      if (koliFilter === "lt5" && (k == null || k >= 5)) return false;
+      if (koliFilter === "5to10" && (k == null || k < 5 || k > 10)) return false;
+      if (koliFilter === "gt10" && (k == null || k <= 10)) return false;
+    }
     return true;
   });
 
@@ -495,8 +503,20 @@ export default function LogisticsPortalOrdersPage() {
               <SelectItem value="submitted">Sudah Dikonfirmasi</SelectItem>
             </SelectContent>
           </Select>
-          {fulfillmentFilter !== "all" && (
-            <Button variant="ghost" size="sm" className="text-muted-foreground gap-1" onClick={() => setFulfillmentFilter("all")}>
+          <Select value={koliFilter} onValueChange={setKoliFilter}>
+            <SelectTrigger className="w-44">
+              <SelectValue placeholder="Semua koli" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Semua Koli</SelectItem>
+              <SelectItem value="has_koli">Ada Koli</SelectItem>
+              <SelectItem value="lt5">&lt; 5 koli</SelectItem>
+              <SelectItem value="5to10">5 – 10 koli</SelectItem>
+              <SelectItem value="gt10">&gt; 10 koli</SelectItem>
+            </SelectContent>
+          </Select>
+          {(fulfillmentFilter !== "all" || koliFilter !== "all") && (
+            <Button variant="ghost" size="sm" className="text-muted-foreground gap-1" onClick={() => { setFulfillmentFilter("all"); setKoliFilter("all"); }}>
               <X className="h-3.5 w-3.5" /> Reset
             </Button>
           )}
