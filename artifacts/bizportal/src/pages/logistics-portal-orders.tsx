@@ -5,7 +5,6 @@ import {
   useUpdateLogisticOrderStatus,
   useUpdateLogisticOrderType,
   useCreateSalesDocument,
-  useCreateLogisticOrderRfq,
   getListLogisticOrdersQueryKey,
   getGetLogisticOrderQueryOptions,
   useGetLogisticOrder,
@@ -89,7 +88,9 @@ const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
 
 const RFQ_STATUS_LABELS: Record<string, string> = {
+  open: "Terkirim",
   admin_review: "Review",
+  vendor_blasted: "Blast Terkirim",
   rfq_sent: "Terkirim",
   vendor_selected: "Vendor Dipilih",
   customer_quoted: "Quoted",
@@ -100,7 +101,9 @@ const RFQ_STATUS_LABELS: Record<string, string> = {
 };
 
 const RFQ_STATUS_COLORS: Record<string, string> = {
+  open:                        "bg-blue-100 text-blue-700 border-blue-200",
   admin_review:                "bg-slate-100 text-slate-600 border-slate-200",
+  vendor_blasted:              "bg-blue-100 text-blue-700 border-blue-200",
   rfq_sent:                    "bg-blue-100 text-blue-700 border-blue-200",
   vendor_selected:             "bg-violet-100 text-violet-700 border-violet-200",
   customer_quoted:             "bg-amber-100 text-amber-700 border-amber-200",
@@ -194,6 +197,7 @@ export default function LogisticsPortalOrdersPage() {
   const [rfqSelectedVendors, setRfqSelectedVendors] = useState<number[]>([]);
   const [rfqNotes, setRfqNotes] = useState("");
   const [rfqShipmentType, setRfqShipmentType] = useState("");
+  const [sendingRfq, setSendingRfq] = useState(false);
 
   const { setOnNewOrder } = useOrderNotificationsContext();
 
@@ -241,7 +245,6 @@ export default function LogisticsPortalOrdersPage() {
   const updateStatus = useUpdateLogisticOrderStatus();
   const updateType = useUpdateLogisticOrderType();
   const createSalesDoc = useCreateSalesDocument();
-  const createRfq = useCreateLogisticOrderRfq();
 
   const { data: vendors = [] } = useQuery<VendorRow[]>({
     queryKey: ["logistic-vendors"],
@@ -260,29 +263,33 @@ export default function LogisticsPortalOrdersPage() {
     setRfqShipmentType(o.shipmentType ?? "");
   }
 
-  function handleSendRfq() {
+  async function handleSendRfq() {
     if (!rfqTargetOrder || rfqSelectedVendors.length === 0) return;
-    createRfq.mutate(
-      {
-        id: rfqTargetOrder.id,
-        data: {
+    setSendingRfq(true);
+    try {
+      const res = await fetch(`/api/logistic/orders/${rfqTargetOrder.id}/rfq-blast`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
           vendorIds: rfqSelectedVendors,
           notes: rfqNotes || undefined,
-          shipmentType: rfqShipmentType || undefined,
-        } as Parameters<typeof createRfq.mutate>[0]["data"],
-      },
-      {
-        onSuccess: () => {
-          toast({ title: "RFQ berhasil dikirim ke vendor" });
-          setRfqTargetOrder(null);
-          queryClient.invalidateQueries({ queryKey: getListLogisticOrdersQueryKey() });
-        },
-        onError: (err: unknown) => {
-          const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
-          toast({ title: msg ?? "Gagal mengirim RFQ", variant: "destructive" });
-        },
-      },
-    );
+          deadlineHours: 48,
+        }),
+      });
+      const data = await res.json() as { ok?: boolean; rfqId?: number; rfqNumber?: string; sentCount?: number; message?: string };
+      if (!res.ok) throw new Error(data.message ?? "Gagal mengirim RFQ");
+      toast({
+        title: `RFQ berhasil dikirim ke ${data.sentCount ?? 0} vendor`,
+        description: `No. RFQ: ${data.rfqNumber ?? ""}`,
+      });
+      setRfqTargetOrder(null);
+      queryClient.invalidateQueries({ queryKey: getListLogisticOrdersQueryKey() });
+    } catch (e: unknown) {
+      toast({ title: (e as Error).message ?? "Gagal mengirim RFQ", variant: "destructive" });
+    } finally {
+      setSendingRfq(false);
+    }
   }
 
   function handleStatusChange(id: number, status: string) {
@@ -1238,14 +1245,14 @@ export default function LogisticsPortalOrdersPage() {
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setRfqTargetOrder(null)}>Batal</Button>
+            <Button variant="outline" onClick={() => setRfqTargetOrder(null)} disabled={sendingRfq}>Batal</Button>
             <Button
-              onClick={handleSendRfq}
-              disabled={createRfq.isPending || rfqSelectedVendors.length === 0}
+              onClick={() => void handleSendRfq()}
+              disabled={sendingRfq || rfqSelectedVendors.length === 0}
               className="gap-2"
             >
               <Send className="h-4 w-4" />
-              {createRfq.isPending ? "Mengirim..." : `Kirim ke ${rfqSelectedVendors.length} Vendor`}
+              {sendingRfq ? "Mengirim..." : `Kirim ke ${rfqSelectedVendors.length} Vendor`}
             </Button>
           </DialogFooter>
         </DialogContent>
