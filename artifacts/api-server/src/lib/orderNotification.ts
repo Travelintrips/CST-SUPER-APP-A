@@ -136,7 +136,6 @@ function buildAdminWaMessage(order: LogisticOrderData, adminActionShortUrl?: str
     `━━━━━━━━━━━━━━━━━━\n` +
     `⚡ *Aksi Cepat Admin (tanpa login):*\n` +
     (adminActionShortUrl ? `🔭 Review & Blast Vendor → ${adminActionShortUrl}\n` : ``) +
-    `💻 BizPortal → ${bizportalUrl}\n\n` +
     (adminReviewUrl ? `🚀 Review & Blast Vendor → ${adminReviewUrl}\n` : (approveUrl ? `📋 Penawaran vendor → ${approveUrl}\n` : ``)) +
     `_Dikirim: ${nowWIB()}_`
   );
