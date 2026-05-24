@@ -711,11 +711,12 @@ export default function BookPage() {
     const effectiveDestination = orderType === "product"
       ? (shippingAddress || destination || "")
       : (orderType === "service" ? (destination || "") : destination);
-    createOrder.mutate({ data: ({
+    createOrder.mutate({ data: {
       companyName,
       customerName,
       email,
       phone,
+      orderType: orderType ?? undefined,
       shipmentType: shipmentType ?? "",
       origin: effectiveOrigin,
       destination: effectiveDestination,
@@ -773,7 +774,7 @@ export default function BookPage() {
         calculationResult: c.calculationResult,
         subtotal: c.subtotal,
       })),
-    }) as any}, {
+    }}, {
       onSuccess: (data: unknown) => {
         localStorage.setItem("last_order", JSON.stringify(data));
         localStorage.removeItem("logistic_cart");

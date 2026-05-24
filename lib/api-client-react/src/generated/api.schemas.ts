@@ -2213,6 +2213,7 @@ export interface CreateLogisticOrderBody {
   customerName: string;
   email: string;
   phone: string;
+  orderType?: string | null;
   shipmentType: string;
   origin: string;
   destination: string;
@@ -2228,6 +2229,18 @@ export interface CreateLogisticOrderBody {
   namaPenerima?: string | null;
   nomorPenerima?: string | null;
   jamOrder?: string | null;
+  transportMode?: string | null;
+  originDistrict?: string | null;
+  destDistrict?: string | null;
+  pickupDate?: string | null;
+  pickupTime?: string | null;
+  truckType?: string | null;
+  originPort?: string | null;
+  destPort?: string | null;
+  weightKg?: number | null;
+  incoterm?: string | null;
+  etd?: string | null;
+  eta?: string | null;
   subtotal: number;
   tax: number;
   grandTotal: number;
