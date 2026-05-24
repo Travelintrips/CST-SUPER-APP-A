@@ -19,6 +19,7 @@ type CachedForm = {
   title: string | null;
   notes: string | null;
   vendorName: string | null;
+  vendorPhone: string | null;
   isActive: boolean;
   expiresAt: Date | null;
   expiresCache: number; // Date.now() + TTL
@@ -202,13 +203,14 @@ router.get("/:token", async (req: Request, res: Response) => {
           isActive: vendorMiniFormLinksTable.isActive,
           expiresAt: vendorMiniFormLinksTable.expiresAt,
           vendorName: suppliersTable.name,
+          vendorPhone: suppliersTable.phone,
         })
         .from(vendorMiniFormLinksTable)
         .leftJoin(suppliersTable, eq(suppliersTable.id, vendorMiniFormLinksTable.supplierId))
         .where(eq(vendorMiniFormLinksTable.token, token));
 
       if (!dbRow) return res.status(404).json({ error: "Link tidak ditemukan atau sudah tidak valid" });
-      row = { ...dbRow, vendorName: dbRow.vendorName ?? null, expiresCache: 0 };
+      row = { ...dbRow, vendorName: dbRow.vendorName ?? null, vendorPhone: dbRow.vendorPhone ?? null, expiresCache: 0 };
       // Only cache active, non-expired links
       if (dbRow.isActive && (!dbRow.expiresAt || dbRow.expiresAt >= new Date())) {
         setCached(token, row);
@@ -230,6 +232,7 @@ router.get("/:token", async (req: Request, res: Response) => {
       title: row.title,
       notes: row.notes,
       vendorName: row.vendorName ?? null,
+      vendorPhone: row.vendorPhone ?? null,
       schema,
     });
   } catch (err) {

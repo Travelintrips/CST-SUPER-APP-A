@@ -22,6 +22,7 @@ type FormMeta = {
   title: string | null;
   notes: string | null;
   vendorName: string | null;
+  vendorPhone: string | null;
   schema: ServiceSchema | null;
 };
 
@@ -148,6 +149,8 @@ export default function VendorMiniFormPage() {
         const data = await r.json() as FormMeta & { error?: string };
         if (!r.ok) throw new Error(data.error ?? "Terjadi kesalahan");
         setMeta(data);
+        if (data.vendorName) setVendorName(data.vendorName);
+        if (data.vendorPhone) setContactPhone(data.vendorPhone);
       })
       .catch((e: Error) => {
         if (e.name !== "AbortError") setError(e.message);
