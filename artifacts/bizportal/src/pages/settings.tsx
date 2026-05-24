@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { User, Mail, Briefcase, Shield, MessageCircle, Save, Loader2, CheckCircle, Calculator, ChevronDown, ChevronUp, Package, Plus, X, Bot } from "lucide-react";
+import { User, Mail, Briefcase, Shield, MessageCircle, Save, Loader2, CheckCircle, Calculator, ChevronDown, ChevronUp, Package, Plus, X, Bot, Link2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -641,6 +641,107 @@ function WhatsAppNotificationCard() {
   );
 }
 
+const SERVICE_META_SETTINGS: Record<string, { label: string; emoji: string }> = {
+  product: { label: "Produk", emoji: "📦" },
+  trucking: { label: "Trucking", emoji: "🚛" },
+  air_freight: { label: "Air Freight", emoji: "✈️" },
+  sea_freight: { label: "Sea Freight", emoji: "🚢" },
+  ppjk: { label: "PPJK", emoji: "📋" },
+  customs_clearance: { label: "Customs Clearance", emoji: "🛃" },
+  warehouse: { label: "Warehouse", emoji: "🏭" },
+  handling: { label: "Handling", emoji: "🔧" },
+  exim_service: { label: "Exim Service", emoji: "🌐" },
+};
+
+function VendorMiniFormCard() {
+  const [stats, setStats] = useState<{ links: number; activeLinks: number; submissions: number } | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const [links, subs] = await Promise.all([
+          fetch("/api/vendor-form/admin/links", { credentials: "include" }).then(r => r.json()),
+          fetch("/api/vendor-form/admin/submissions", { credentials: "include" }).then(r => r.json()),
+        ]);
+        const linksArr = Array.isArray(links) ? links : [];
+        const subsArr = Array.isArray(subs) ? subs : [];
+        const now = new Date();
+        setStats({
+          links: linksArr.length,
+          activeLinks: linksArr.filter((l: { isActive: boolean; expiresAt: string | null }) =>
+            l.isActive && (!l.expiresAt || new Date(l.expiresAt) >= now)
+          ).length,
+          submissions: subsArr.length,
+        });
+      } catch { /* noop */ }
+      finally { setLoading(false); }
+    })();
+  }, []);
+
+  return (
+    <Card className="col-span-1 md:col-span-3 bg-card border-border">
+      <CardHeader>
+        <CardTitle className="text-xl flex items-center gap-2">
+          <Link2 className="h-5 w-5 text-indigo-400" />
+          Vendor Mini Form
+        </CardTitle>
+        <CardDescription>
+          Buat dan kelola link form dinamis untuk vendor mengisi rate/data layanan.
+          Setiap link berisi field sesuai service type yang dapat dibagikan langsung ke vendor.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {loading ? (
+          <div className="grid grid-cols-3 gap-4">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="h-20 rounded-xl bg-muted animate-pulse" />
+            ))}
+          </div>
+        ) : stats ? (
+          <div className="grid grid-cols-3 gap-4">
+            <div className="rounded-xl border border-border bg-background p-4 text-center">
+              <p className="text-2xl font-bold text-foreground">{stats.links}</p>
+              <p className="text-xs text-muted-foreground mt-1">Total Link</p>
+            </div>
+            <div className="rounded-xl border border-border bg-background p-4 text-center">
+              <p className="text-2xl font-bold text-green-500">{stats.activeLinks}</p>
+              <p className="text-xs text-muted-foreground mt-1">Link Aktif</p>
+            </div>
+            <div className="rounded-xl border border-border bg-background p-4 text-center">
+              <p className="text-2xl font-bold text-indigo-400">{stats.submissions}</p>
+              <p className="text-xs text-muted-foreground mt-1">Submission Masuk</p>
+            </div>
+          </div>
+        ) : null}
+
+        <div className="flex flex-wrap gap-2">
+          {Object.entries(SERVICE_META_SETTINGS).map(([k, v]) => (
+            <Badge key={k} variant="secondary" className="text-xs gap-1">
+              {v.emoji} {v.label}
+            </Badge>
+          ))}
+        </div>
+
+        <div className="pt-2 border-t border-border flex items-center justify-between gap-4">
+          <p className="text-xs text-muted-foreground">
+            Kelola semua link form, lihat submission masuk, dan bagikan ke vendor di halaman khusus Mini Form.
+          </p>
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-2 shrink-0"
+            onClick={() => { window.location.href = "/bizportal/purchase/vendor-forms"; }}
+          >
+            <Link2 className="h-4 w-4" />
+            Buka Manajemen Mini Form
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function SettingsPage() {
   const { isAuthenticated } = useSupabaseAuth();
   const { data: dbUser, isLoading } = useGetCurrentUser({
@@ -754,6 +855,7 @@ export default function SettingsPage() {
           {isAdmin && <AiIntakeSettingsCard />}
           {isAdmin && <CargoTypesCard />}
           {isAdmin && <CalculatorRatesCard />}
+          {isAdmin && <VendorMiniFormCard />}
 
           <Card className="col-span-1 md:col-span-3 bg-card border-border">
             <CardHeader>

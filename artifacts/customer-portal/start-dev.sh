@@ -5,9 +5,6 @@ fuser -k 3001/tcp 2>/dev/null || true
 [ "$ARTIFACT_PORT" != "3001" ] && fuser -k "${ARTIFACT_PORT}/tcp" 2>/dev/null || true
 sleep 0.2
 
-# If Replit assigned a non-3001 port, open it immediately with an HTTP forward proxy.
-# This satisfies Replit's "did the port open?" check before the 60-second timeout.
-# Never proxy on port 5000 — that port is reserved for the Gateway (main webview).
 if [ "$ARTIFACT_PORT" != "3001" ] && [ "$ARTIFACT_PORT" != "5000" ]; then
   node -e "
 const http = require('http');
@@ -28,4 +25,4 @@ fi
 export PORT=3001
 export BASE_PATH=${BASE_PATH:-/}
 
-exec node_modules/.bin/vite --config vite.config.ts --host 0.0.0.0
+exec pnpm exec vite --config vite.config.ts --host 0.0.0.0

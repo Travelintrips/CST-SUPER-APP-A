@@ -1,5 +1,6 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
-import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, portalContentTable, accountingSettingsTable, salesDocumentsTable, salesDocumentLinesTable, customersTable, logisticOrdersTable, suppliersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, quoteRequestsTable, userProfilesTable, identityDocumentsTable, ocrResultsTable, vendorProfilesTable, driverProfilesTable, employeeProfilesTable, onboardingApprovalsTable, waOtpCodesTable, trustedDevicesTable } from "@workspace/db";
+import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, portalContentTable, accountingSettingsTable, salesDocumentsTable, salesDocumentLinesTable, customersTable, logisticOrdersTable, suppliersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, quoteRequestsTable, userProfilesTable, identityDocumentsTable, ocrResultsTable, vendorProfilesTable, driverProfilesTable, employeeProfilesTable, onboardingApprovalsTable, waOtpCodesTable, trustedDevicesTable, vendorMiniFormLinksTable, vendorMiniFormSubmissionsTable } from "@workspace/db";
+import { invalidateTokenCache, SERVICE_SCHEMAS } from "./vendorMiniForm";
 import { eq, inArray, and, sql, desc, gte, lte, ilike, or } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { sendWhatsApp } from "../lib/fonnte";
@@ -2496,6 +2497,111 @@ router.get("/admin/customers/stats", requirePortalAdmin, async (_req, res): Prom
     profileActive: rows.filter((r) => r.profileStatus === "active").length,
   };
   res.json(stats);
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// VENDOR MINI FORM — portal admin routes
+// ════════════════════════════════════════════════════════════════════════════
+
+router.get("/admin/vendor-form/links", requirePortalAdmin, async (_req, res) => {
+  try {
+    const links = await db
+      .select()
+      .from(vendorMiniFormLinksTable)
+      .orderBy(desc(vendorMiniFormLinksTable.createdAt));
+    const vendorIds = links.map(l => l.supplierId).filter(Boolean) as number[];
+    let vendorMap: Record<number, string> = {};
+    if (vendorIds.length) {
+      const vendors = await db.select({ id: suppliersTable.id, name: suppliersTable.name }).from(suppliersTable);
+      vendorMap = Object.fromEntries(vendors.map(v => [v.id, v.name]));
+    }
+    return res.json(links.map(l => ({
+      ...l,
+      vendorName: l.supplierId ? (vendorMap[l.supplierId] ?? null) : null,
+      expiresAt: l.expiresAt?.toISOString() ?? null,
+      createdAt: l.createdAt.toISOString(),
+    })));
+  } catch {
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/admin/vendor-form/links", requirePortalAdmin, async (req, res) => {
+  try {
+    const { serviceType, title, notes, expiresInDays } = req.body as {
+      serviceType: string;
+      title?: string;
+      notes?: string;
+      expiresInDays?: number;
+    };
+    if (!serviceType || !SERVICE_SCHEMAS[serviceType]) {
+      return res.status(400).json({ error: "serviceType tidak valid" });
+    }
+    const { randomBytes } = await import("crypto");
+    const token = randomBytes(24).toString("hex");
+    const expiresAt = expiresInDays ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000) : null;
+    const [link] = await db
+      .insert(vendorMiniFormLinksTable)
+      .values({ token, supplierId: null, serviceType, title: title ?? null, notes: notes ?? null, expiresAt: expiresAt ?? undefined })
+      .returning();
+    return res.status(201).json({ ...link, expiresAt: link.expiresAt?.toISOString() ?? null, createdAt: link.createdAt.toISOString() });
+  } catch (err) {
+    req.log?.error({ err }, "portal admin POST vendor-form/links error");
+    return res.status(500).json({ error: "Gagal membuat link" });
+  }
+});
+
+router.patch("/admin/vendor-form/links/:id", requirePortalAdmin, async (req, res) => {
+  const id = Number(req.params["id"]);
+  if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+  try {
+    const { isActive } = req.body as { isActive?: boolean };
+    const patch: Record<string, unknown> = {};
+    if (typeof isActive === "boolean") patch["isActive"] = isActive;
+    const [updated] = await db
+      .update(vendorMiniFormLinksTable)
+      .set(patch)
+      .where(eq(vendorMiniFormLinksTable.id, id))
+      .returning();
+    if (!updated) return res.status(404).json({ error: "Link tidak ditemukan" });
+    invalidateTokenCache(updated.token);
+    return res.json({ ...updated, expiresAt: updated.expiresAt?.toISOString() ?? null, createdAt: updated.createdAt.toISOString() });
+  } catch (err) {
+    req.log?.error({ err }, "portal admin PATCH vendor-form/links error");
+    return res.status(500).json({ error: "Gagal update link" });
+  }
+});
+
+router.delete("/admin/vendor-form/links/:id", requirePortalAdmin, async (req, res) => {
+  const id = Number(req.params["id"]);
+  if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+  try {
+    const [deleted] = await db
+      .delete(vendorMiniFormLinksTable)
+      .where(eq(vendorMiniFormLinksTable.id, id))
+      .returning();
+    if (!deleted) return res.status(404).json({ error: "Link tidak ditemukan" });
+    invalidateTokenCache(deleted.token);
+    return res.json({ ok: true });
+  } catch (err) {
+    req.log?.error({ err }, "portal admin DELETE vendor-form/links error");
+    return res.status(500).json({ error: "Gagal hapus link" });
+  }
+});
+
+router.get("/admin/vendor-form/submissions", requirePortalAdmin, async (_req, res) => {
+  try {
+    const submissions = await db
+      .select()
+      .from(vendorMiniFormSubmissionsTable)
+      .orderBy(desc(vendorMiniFormSubmissionsTable.submittedAt));
+    return res.json(submissions.map(s => ({
+      ...s,
+      submittedAt: s.submittedAt.toISOString(),
+    })));
+  } catch {
+    return res.status(500).json({ error: "Internal server error" });
+  }
 });
 
 // ════════════════════════════════════════════════════════════════════════════

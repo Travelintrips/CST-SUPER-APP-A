@@ -33,6 +33,8 @@ import {
   Tag,
   Ship,
   ExternalLink,
+  Link2,
+  Copy,
 } from "lucide-react";
 import {
   Dialog,
@@ -1851,6 +1853,329 @@ function ClaimAdminTab() {
   );
 }
 
+const MINI_FORM_SERVICE_META: Record<string, { label: string; emoji: string }> = {
+  product: { label: "Produk", emoji: "📦" },
+  trucking: { label: "Trucking", emoji: "🚛" },
+  air_freight: { label: "Air Freight", emoji: "✈️" },
+  sea_freight: { label: "Sea Freight", emoji: "🚢" },
+  ppjk: { label: "PPJK", emoji: "📋" },
+  customs_clearance: { label: "Customs Clearance", emoji: "🛃" },
+  warehouse: { label: "Warehouse", emoji: "🏭" },
+  handling: { label: "Handling", emoji: "🔧" },
+  exim_service: { label: "Exim Service", emoji: "🌐" },
+};
+
+type MiniFormLink = {
+  id: number;
+  token: string;
+  serviceType: string;
+  title: string | null;
+  notes: string | null;
+  isActive: boolean;
+  expiresAt: string | null;
+  createdAt: string;
+  vendorName: string | null;
+};
+
+type MiniFormSubmission = {
+  id: number;
+  linkId: number | null;
+  serviceType: string;
+  vendorName: string | null;
+  contactPerson: string | null;
+  contactPhone: string | null;
+  formData: Record<string, unknown>;
+  submittedAt: string;
+};
+
+function MiniFormTab() {
+  const { toast } = useToast();
+  const [links, setLinks] = useState<MiniFormLink[]>([]);
+  const [submissions, setSubmissions] = useState<MiniFormSubmission[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
+  const [newServiceType, setNewServiceType] = useState("");
+  const [newTitle, setNewTitle] = useState("");
+  const [newNotes, setNewNotes] = useState("");
+  const [newExpires, setNewExpires] = useState("");
+  const [selectedLink, setSelectedLink] = useState<MiniFormLink | null>(null);
+
+  const load = async () => {
+    try {
+      const [l, s] = await Promise.all([
+        apiGet<MiniFormLink[]>("/api/portal/admin/vendor-form/links"),
+        apiGet<MiniFormSubmission[]>("/api/portal/admin/vendor-form/submissions"),
+      ]);
+      setLinks(l);
+      setSubmissions(s);
+    } catch {
+      toast({ title: "Gagal memuat data mini form", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { void load(); }, []);
+
+  const handleCreate = async () => {
+    if (!newServiceType) { toast({ title: "Pilih service type dulu", variant: "destructive" }); return; }
+    setCreating(true);
+    try {
+      await apiPost("/api/portal/admin/vendor-form/links", {
+        serviceType: newServiceType,
+        title: newTitle.trim() || undefined,
+        notes: newNotes.trim() || undefined,
+        expiresInDays: newExpires ? Number(newExpires) : undefined,
+      });
+      toast({ title: "Link berhasil dibuat" });
+      setShowCreate(false);
+      setNewServiceType(""); setNewTitle(""); setNewNotes(""); setNewExpires("");
+      void load();
+    } catch {
+      toast({ title: "Gagal membuat link", variant: "destructive" });
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleToggle = async (link: MiniFormLink) => {
+    try {
+      const res = await fetch(`/api/portal/admin/vendor-form/links/${link.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        body: JSON.stringify({ isActive: !link.isActive }),
+      });
+      if (!res.ok) throw new Error();
+      void load();
+    } catch {
+      toast({ title: "Gagal update status", variant: "destructive" });
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    try {
+      const res = await fetch(`/api/portal/admin/vendor-form/links/${id}`, {
+        method: "DELETE",
+        headers: { ...getAuthHeaders() },
+      });
+      if (!res.ok) throw new Error();
+      toast({ title: "Link dihapus" });
+      if (selectedLink?.id === id) setSelectedLink(null);
+      void load();
+    } catch {
+      toast({ title: "Gagal hapus link", variant: "destructive" });
+    }
+  };
+
+  const copyLink = (token: string) => {
+    const url = `${window.location.origin}/vendor-mini-form/${token}`;
+    void navigator.clipboard.writeText(url).then(() => {
+      toast({ title: "Link disalin ke clipboard" });
+    });
+  };
+
+  const buildUrl = (token: string) => `${window.location.origin}/vendor-mini-form/${token}`;
+
+  if (loading) {
+    return (
+      <div className="space-y-3">
+        {[1, 2, 3].map(i => <div key={i} className="h-14 rounded-lg bg-muted animate-pulse" />)}
+      </div>
+    );
+  }
+
+  const linkSubs = selectedLink ? submissions.filter(s => s.linkId === selectedLink.id) : [];
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex gap-4 text-sm text-muted-foreground">
+          <span><strong className="text-foreground">{links.length}</strong> total link</span>
+          <span><strong className="text-green-600">{links.filter(l => l.isActive).length}</strong> aktif</span>
+          <span><strong className="text-indigo-500">{submissions.length}</strong> submission</span>
+        </div>
+        <Button size="sm" className="gap-2" onClick={() => setShowCreate(true)}>
+          <Plus className="h-4 w-4" />
+          Buat Link Form
+        </Button>
+      </div>
+
+      {links.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-3">
+          <Link2 className="h-12 w-12 opacity-20" />
+          <p className="text-sm">Belum ada link mini form.</p>
+          <Button size="sm" variant="outline" onClick={() => setShowCreate(true)}>
+            <Plus className="h-4 w-4 mr-1" /> Buat Link Pertama
+          </Button>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {links.map(link => {
+            const meta = MINI_FORM_SERVICE_META[link.serviceType];
+            const expired = link.expiresAt && new Date(link.expiresAt) < new Date();
+            const isActive = link.isActive && !expired;
+            const linkSubs = submissions.filter(s => s.linkId === link.id).length;
+            return (
+              <div
+                key={link.id}
+                className="flex items-center gap-3 p-3 rounded-lg border border-border bg-background hover:bg-muted/30 transition-colors"
+              >
+                <div className="text-xl shrink-0">{meta?.emoji ?? "📄"}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-medium text-sm truncate">
+                      {link.title ?? `Form ${meta?.label ?? link.serviceType}`}
+                    </span>
+                    <Badge variant={isActive ? "default" : "secondary"} className="text-[10px] shrink-0">
+                      {isActive ? "Aktif" : expired ? "Kadaluarsa" : "Nonaktif"}
+                    </Badge>
+                    {linkSubs > 0 && (
+                      <Badge variant="outline" className="text-[10px] shrink-0 text-indigo-600 border-indigo-300">
+                        {linkSubs} submission
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5 font-mono truncate">
+                    {buildUrl(link.token)}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    title="Salin link"
+                    onClick={() => copyLink(link.token)}
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                  </Button>
+                  <a href={buildUrl(link.token)} target="_blank" rel="noopener noreferrer">
+                    <Button variant="ghost" size="icon" className="h-7 w-7" title="Buka form">
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </Button>
+                  </a>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    title={link.isActive ? "Nonaktifkan" : "Aktifkan"}
+                    onClick={() => void handleToggle(link)}
+                  >
+                    {link.isActive
+                      ? <ToggleRight className="h-4 w-4 text-green-500" />
+                      : <ToggleLeft className="h-4 w-4 text-muted-foreground" />}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-destructive hover:text-destructive"
+                    title="Hapus"
+                    onClick={() => void handleDelete(link.id)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                  {submissions.filter(s => s.linkId === link.id).length > 0 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs gap-1"
+                      onClick={() => setSelectedLink(selectedLink?.id === link.id ? null : link)}
+                    >
+                      Lihat Submission
+                    </Button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {selectedLink && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold">
+              Submission — {selectedLink.title ?? selectedLink.serviceType} ({linkSubs.length})
+            </h3>
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setSelectedLink(null)}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+          <div className="space-y-2">
+            {linkSubs.map(sub => (
+              <div key={sub.id} className="border border-border rounded-lg p-3 bg-muted/20 space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">{sub.vendorName ?? "—"}</span>
+                    {sub.contactPerson && <span className="text-muted-foreground">· {sub.contactPerson}</span>}
+                    {sub.contactPhone && <span className="text-muted-foreground">· {sub.contactPhone}</span>}
+                  </div>
+                  <span className="text-xs text-muted-foreground">
+                    {new Date(sub.submittedAt).toLocaleString("id-ID")}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                  {Object.entries(sub.formData ?? {})
+                    .filter(([, v]) => v !== "" && v !== null && v !== undefined)
+                    .map(([k, v]) => (
+                      <div key={k} className="flex justify-between text-xs border-b border-border/50 py-1">
+                        <span className="text-muted-foreground capitalize">{k.replace(/_/g, " ")}</span>
+                        <span className="font-medium text-right">{String(v)}</span>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <Dialog open={showCreate} onOpenChange={v => { setShowCreate(v); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Buat Link Form Baru</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label>Service Type <span className="text-red-500">*</span></Label>
+              <select
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                value={newServiceType}
+                onChange={e => setNewServiceType(e.target.value)}
+              >
+                <option value="">Pilih tipe layanan...</option>
+                {Object.entries(MINI_FORM_SERVICE_META).map(([k, v]) => (
+                  <option key={k} value={k}>{v.emoji} {v.label}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Judul Form (opsional)</Label>
+              <Input value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder="Contoh: Penawaran Rate Trucking Q3 2025" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Instruksi untuk Vendor</Label>
+              <Textarea value={newNotes} onChange={e => setNewNotes(e.target.value)} rows={3} placeholder="Instruksi khusus untuk vendor..." />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Kadaluarsa (hari, opsional)</Label>
+              <Input type="number" value={newExpires} onChange={e => setNewExpires(e.target.value)} placeholder="Kosongkan = tidak ada batas" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCreate(false)}>Batal</Button>
+            <Button onClick={() => void handleCreate()} disabled={creating}>
+              {creating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              {creating ? "Membuat..." : "Buat Link"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 export default function AdminPage() {
   const [, setLocation] = useLocation();
 
@@ -1912,6 +2237,10 @@ export default function AdminPage() {
                 <TabsTrigger value="pricing" className="gap-2">
                   <Tag className="h-4 w-4" />
                   Kelola Harga
+                </TabsTrigger>
+                <TabsTrigger value="mini-forms" className="gap-2">
+                  <Link2 className="h-4 w-4" />
+                  Mini Form
                 </TabsTrigger>
               </>
             )}
@@ -1989,6 +2318,24 @@ export default function AdminPage() {
                   </CardHeader>
                   <CardContent>
                     <PricingTab />
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="mini-forms">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Link2 className="h-5 w-5 text-indigo-500" />
+                      Vendor Mini Form
+                    </CardTitle>
+                    <CardDescription>
+                      Buat dan kelola link form dinamis untuk vendor mengisi rate/data layanan.
+                      Bagikan link ke vendor sesuai service type — mereka cukup membuka link dan mengisi form tanpa perlu login.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <MiniFormTab />
                   </CardContent>
                 </Card>
               </TabsContent>
