@@ -11,8 +11,10 @@ function resolveUserDisplay(user: { id: string; firstName?: string | null; lastN
 
 const TRANSPORT_MODES = ["sea", "air", "land", "multimodal"] as const;
 const CARGO_TYPES = ["FCL", "LCL", "Air"] as const;
+const FREIGHT_SHIPMENT_STATUSES = ["draft", "rfq_sent", "confirmed", "in_transit", "completed", "cancelled"] as const;
 type TransportMode = typeof TRANSPORT_MODES[number];
 type CargoType = typeof CARGO_TYPES[number];
+type FreightShipmentStatus = typeof FREIGHT_SHIPMENT_STATUSES[number];
 
 function validateTransportMode(v: unknown): TransportMode | null | undefined {
   if (v === undefined) return undefined;
@@ -27,6 +29,12 @@ function validateCargoType(v: unknown): CargoType | null | undefined {
   if (!CARGO_TYPES.includes(v as CargoType))
     throw Object.assign(new Error(`cargoType tidak valid. Nilai yang diterima: ${CARGO_TYPES.join(", ")}`), { statusCode: 400 });
   return v as CargoType;
+}
+function validateShipmentStatus(v: unknown): FreightShipmentStatus | undefined {
+  if (v === undefined) return undefined;
+  if (!FREIGHT_SHIPMENT_STATUSES.includes(v as FreightShipmentStatus))
+    throw Object.assign(new Error(`status tidak valid. Nilai yang diterima: ${FREIGHT_SHIPMENT_STATUSES.join(", ")}`), { statusCode: 400 });
+  return v as FreightShipmentStatus;
 }
 
 const router = Router();
@@ -256,7 +264,10 @@ router.put("/freight-shipments/:id", async (req, res) => {
   if (notifyParty !== undefined) patch.notifyParty = notifyParty || null;
   if (marksAndNumbers !== undefined) patch.marksAndNumbers = marksAndNumbers || null;
   if (measurement !== undefined) patch.measurement = measurement || null;
-  if (status !== undefined) patch.status = status;
+  if (status !== undefined) {
+    try { patch.status = validateShipmentStatus(status); }
+    catch (e: any) { return res.status(400).json({ message: e.message }); }
+  }
   if (notes !== undefined) patch.notes = notes || null;
   if (actualCost !== undefined) patch.actualCost = actualCost != null ? String(actualCost) : null;
   if (departureDate !== undefined) patch.departureDate = departureDate || null;
