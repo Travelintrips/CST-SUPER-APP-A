@@ -192,7 +192,7 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
         .orderBy(suppliersTable.name);
 
       const shipKeyword = (order.shipmentType ?? "").toLowerCase().split(" ")[0];
-      const allWithPhone = allVendors.filter((v) => v.phone);
+      const allWithPhone = allVendors.filter((v) => v.phone && v.serviceType);
 
       // Fetch catalog items for all vendors in one query to check commodity match
       const vendorIdList = allWithPhone.map((v) => v.id);
