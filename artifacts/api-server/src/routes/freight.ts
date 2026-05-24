@@ -47,6 +47,20 @@ function validateStageStatus(v: unknown): StageStatus | undefined {
   return v as StageStatus;
 }
 
+const STAGE_TYPES = [
+  "booking", "trucking", "handling", "customs",
+  "pickup", "customs_export", "sea_freight", "customs_import", "delivery",
+] as const;
+type StageType = typeof STAGE_TYPES[number];
+
+function validateStageType(v: unknown): StageType {
+  if (!v || typeof v !== "string")
+    throw Object.assign(new Error("stageType wajib diisi"), { statusCode: 400 });
+  if (!STAGE_TYPES.includes(v as StageType))
+    throw Object.assign(new Error(`stageType tidak valid. Nilai yang diterima: ${STAGE_TYPES.join(", ")}`), { statusCode: 400 });
+  return v as StageType;
+}
+
 const router = Router();
 
 router.use(async (req, res, next) => {
@@ -364,8 +378,10 @@ router.post("/freight-shipments/:shipmentId/stages", async (req, res) => {
   const shipmentId = Number(req.params.shipmentId);
   if (!Number.isInteger(shipmentId) || shipmentId <= 0) return res.status(400).json({ message: "Invalid shipmentId" });
   const { stageType, vendorName, date, status, notes } = req.body;
-  if (!stageType) return res.status(400).json({ message: "stageType wajib diisi" });
+  let validatedStageType: StageType;
   let validatedStatus: StageStatus | undefined;
+  try { validatedStageType = validateStageType(stageType); }
+  catch (e: any) { return res.status(400).json({ message: e.message }); }
   try { validatedStatus = validateStageStatus(status); }
   catch (e: any) { return res.status(400).json({ message: e.message }); }
   const [existing] = await db.select().from(shipmentStagesTable)
@@ -386,7 +402,7 @@ router.post("/freight-shipments/:shipmentId/stages", async (req, res) => {
     [stage] = await db.insert(shipmentStagesTable)
       .values({
         shipmentId,
-        stageType,
+        stageType: validatedStageType,
         vendorName: vendorName ?? null,
         date: date ?? null,
         status: validatedStatus ?? "pending",
