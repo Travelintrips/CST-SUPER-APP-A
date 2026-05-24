@@ -161,6 +161,7 @@ function buildVendorWaMessage(order: LogisticOrderData, vendorName: string): str
     (order.cargoDescription ? `Deskripsi       : ${order.cargoDescription}\n` : ``) +
     (order.grossWeight ? `Berat           : ${order.grossWeight} kg\n` : ``) +
     (order.volumeCbm ? `Volume          : ${order.volumeCbm} CBM\n` : ``) +
+    (order.jumlahKoli ? `Jumlah Koli     : ${order.jumlahKoli} koli\n` : ``) +
     (order.requiredDate ? `Tgl Butuh       : ${order.requiredDate}\n` : ``) +
     `Layanan         :\n${order.serviceList}\n` +
     (order.notes ? `Catatan         : ${order.notes}\n` : ``) +
