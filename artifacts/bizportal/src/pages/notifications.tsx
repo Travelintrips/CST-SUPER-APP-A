@@ -1,9 +1,9 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Bell, Package, Ship, ShoppingBag, FileText, RefreshCw,
   Container, Layers, ShoppingCart, Trash2, CheckCheck,
   ChevronLeft, ChevronRight, Eye, ClipboardList, MessageSquare,
-  Filter, Search, X,
+  Filter, Search, X, Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -193,6 +193,14 @@ const READ_FILTERS = [
 
 const PAGE_SIZE = 25;
 
+const SSE_EVENTS = [
+  "new_order", "new_logistic_order", "logistic_order_status_changed",
+  "sales_order_update", "freight_shipment_created", "freight_shipment_status",
+  "freight_stage_update", "new_ecommerce_order", "new_product_order",
+  "sales_doc_created", "purchase_doc_created", "purchase_doc_confirmed",
+  "vendor_quote_received", "portal_order_created",
+];
+
 export default function NotificationsPage() {
   const [data, setData] = useState<DbNotification[]>([]);
   const [total, setTotal] = useState(0);
@@ -204,6 +212,10 @@ export default function NotificationsPage() {
   const [searchInput, setSearchInput] = useState("");
   const [page, setPage] = useState(0);
   const [deleting, setDeleting] = useState(false);
+  const [newArrived, setNewArrived] = useState(0);
+
+  const pageRef = useRef(page);
+  pageRef.current = page;
 
   const fetchData = useCallback(() => {
     setLoading(true);
@@ -220,12 +232,70 @@ export default function NotificationsPage() {
         setData(json.data ?? []);
         setTotal(json.total ?? 0);
         setUnreadTotal(json.unreadTotal ?? 0);
+        setNewArrived(0);
       })
       .finally(() => setLoading(false));
   }, [typeFilter, readFilter, page, search]);
 
   useEffect(() => { setPage(0); }, [typeFilter, readFilter, search]);
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // ── SSE auto-refresh ──
+  useEffect(() => {
+    let es: EventSource | null = null;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let retryDelay = 2000;
+    let unmounted = false;
+
+    function connect() {
+      if (unmounted) return;
+      es = new EventSource("/api/drivers/events", { withCredentials: true });
+
+      function onNotif() {
+        if (unmounted) return;
+        if (pageRef.current === 0) {
+          // On first page: silently refresh list
+          setLoading(true);
+          const params = new URLSearchParams({ type: "all", read: "all", limit: String(PAGE_SIZE), offset: "0" });
+          fetch(`/api/notifications?${params}`, { credentials: "include" })
+            .then((r) => r.ok ? r.json() : null)
+            .then((json) => {
+              if (!json) return;
+              setData(json.data ?? []);
+              setTotal(json.total ?? 0);
+              setUnreadTotal(json.unreadTotal ?? 0);
+              setNewArrived(0);
+            })
+            .finally(() => setLoading(false));
+        } else {
+          // On deeper pages: show banner
+          setNewArrived((n) => n + 1);
+          setUnreadTotal((n) => n + 1);
+        }
+      }
+
+      SSE_EVENTS.forEach((evt) => es!.addEventListener(evt, onNotif));
+
+      es.onerror = () => {
+        es?.close();
+        if (!unmounted) {
+          retryTimer = setTimeout(() => {
+            retryDelay = Math.min(retryDelay * 2, 30_000);
+            connect();
+          }, retryDelay);
+        }
+      };
+
+      es.onopen = () => { retryDelay = 2000; };
+    }
+
+    connect();
+    return () => {
+      unmounted = true;
+      if (retryTimer) clearTimeout(retryTimer);
+      es?.close();
+    };
+  }, []);
 
   function markRead(id: number) {
     fetch(`/api/notifications/${id}/read`, { method: "POST", credentials: "include" })
@@ -303,6 +373,18 @@ export default function NotificationsPage() {
             )}
           </div>
         </div>
+
+        {/* ── Banner notifikasi baru (halaman > 0) ── */}
+        {newArrived > 0 && (
+          <button
+            onClick={() => { setPage(0); setNewArrived(0); }}
+            className="flex w-full items-center justify-center gap-2 rounded-lg border border-indigo-300 bg-indigo-50 dark:bg-indigo-950/30 dark:border-indigo-700 px-4 py-2.5 text-xs font-medium text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-950/50 transition-colors animate-in slide-in-from-top-2 duration-300"
+          >
+            <Sparkles size={13} className="animate-pulse" />
+            {newArrived} notifikasi baru masuk — klik untuk melihat
+            <span className="ml-auto text-indigo-400 dark:text-indigo-500">↑ ke atas</span>
+          </button>
+        )}
 
         {/* ── Search ── */}
         <form onSubmit={handleSearch} className="flex gap-2">
