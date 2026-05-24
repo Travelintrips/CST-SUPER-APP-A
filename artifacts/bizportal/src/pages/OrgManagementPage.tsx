@@ -317,7 +317,7 @@ function GenericTab<T extends { id: number; companyId: number; name: string; cod
           <div className="grid gap-3 py-2">
             <div>
               <Label className="text-xs">Perusahaan *</Label>
-              <Select value={String(dialog.item.companyId ?? "")} onValueChange={v => setDialog(d => ({ ...d, item: { ...d.item, companyId: Number(v) } }))}>
+              <Select value={dialog.item.companyId ? String(dialog.item.companyId) : undefined} onValueChange={v => setDialog(d => ({ ...d, item: { ...d.item, companyId: Number(v) } }))}>
                 <SelectTrigger className="mt-1"><SelectValue placeholder="Pilih perusahaan" /></SelectTrigger>
                 <SelectContent>
                   {companies.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.companyCode} — {c.companyName}</SelectItem>)}
