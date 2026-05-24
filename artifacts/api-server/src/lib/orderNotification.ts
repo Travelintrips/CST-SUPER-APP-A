@@ -108,10 +108,7 @@ function isFreightWithDimensions(shipmentType: string): boolean {
   return t.includes("air") || t.includes("sea") || t.includes("laut") || t.includes("udara");
 }
 
-function buildAdminWaMessage(order: LogisticOrderData, adminActionShortUrl?: string, adminReviewUrl?: string): string {
-  const approveUrl = getApproveFormUrl(order.orderNumber);
-  const domain = getPreferredDomain() || "cstlogistic.co.id";
-  const bizportalUrl = `https://${domain}/bizportal/logistics/orders/${order.id}`;
+function buildAdminWaMessage(order: LogisticOrderData, adminActionShortUrl?: string): string {
   const tgl = order.createdAt ? formatTanggal(order.createdAt) : "";
   const jam = order.jamOrder ?? (order.createdAt ? formatJam(order.createdAt) : "");
   return (
@@ -136,9 +133,7 @@ function buildAdminWaMessage(order: LogisticOrderData, adminActionShortUrl?: str
     (order.requiredDate ? `Tgl Kirim       : ${order.requiredDate}\n` : ``) +
     (order.notes ? `Catatan         : ${order.notes}\n` : ``) +
     `━━━━━━━━━━━━━━━━━━\n` +
-    `⚡ *Aksi Cepat Admin (tanpa login):*\n` +
-    (adminActionShortUrl ? `🔭 Review & Blast Vendor → ${adminActionShortUrl}\n` : ``) +
-    (adminReviewUrl ? `🚀 Review & Blast Vendor → ${adminReviewUrl}\n` : (approveUrl ? `📋 Penawaran vendor → ${approveUrl}\n` : ``)) +
+    (adminActionShortUrl ? `⚡ *Aksi Cepat Admin (tanpa login):*\n🔭 Review & Blast Vendor → ${adminActionShortUrl}\n` : ``) +
     `_Dikirim: ${nowWIB()}_`
   );
 }
@@ -377,7 +372,7 @@ async function notifyAdmin(order: LogisticOrderData): Promise<void> {
         return longUrl;
       });
     }
-    sendWhatsApp(adminWa, buildAdminWaMessage(order, adminActionShortUrl, adminReviewUrl)).catch((err: unknown) =>
+    sendWhatsApp(adminWa, buildAdminWaMessage(order, adminActionShortUrl)).catch((err: unknown) =>
       logger.error({ err }, "WA admin notification failed")
     );
   } else {
