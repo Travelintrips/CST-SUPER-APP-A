@@ -5,7 +5,9 @@ import { execSync } from "child_process";
 try { execSync("fuser -k 5000/tcp 2>/dev/null", { stdio: "ignore" }); } catch {}
 await new Promise(r => setTimeout(r, 500));
 
-const API_PORT = 18444;
+// Production (GCE) uses port 8080 (from .replit "API Server" workflow)
+// Development uses port 18444 (from artifact workflow "artifacts/api-server: API Server")
+const API_PORT = process.env.REPLIT_DEPLOYMENT === "1" ? 8080 : 18444;
 const BIZPORTAL_PORT = 3000;
 const CUSTOMER_PORTAL_PORT = 3001;
 const POS_PORT = 3002;
