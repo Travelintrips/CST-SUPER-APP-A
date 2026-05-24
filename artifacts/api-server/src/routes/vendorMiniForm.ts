@@ -8,6 +8,8 @@ import {
   suppliersTable,
 } from "@workspace/db";
 import { requireClerkUser } from "../lib/requireAdmin";
+import { sendWhatsApp } from "../lib/fonnte.js";
+import { getAdminWa } from "../lib/adminWa.js";
 
 // Cache-Control for public GET (token metadata is immutable once fetched)
 const PUBLIC_CACHE = "public, max-age=300, stale-while-revalidate=600";
@@ -281,6 +283,41 @@ router.post("/:token", async (req: Request, res: Response) => {
       contactPhone: contactPhone ?? null,
       formData,
     });
+
+    // ── Fire-and-forget WA notifications ──────────────────────────────────────
+    const vendorLabel = vendorName?.trim() || "Vendor";
+    const picLabel = contactPerson?.trim() || "-";
+
+    // 1. Konfirmasi ke vendor (jika nomor tersedia)
+    if (contactPhone?.trim()) {
+      const msgVendor =
+        `Halo *${picLabel}* dari *${vendorLabel}*,\n\n` +
+        `Terima kasih! Data Anda telah kami terima dengan baik. ` +
+        `Tim CST Logistics akan segera menghubungi Anda jika diperlukan.\n\n` +
+        `_Pesan ini dikirim otomatis, mohon tidak dibalas._`;
+      sendWhatsApp(contactPhone.trim(), msgVendor, {
+        context: "vendor-mini-form-confirm",
+        refType: "vendor_mini_form",
+        refId: token,
+      }).catch(() => {});
+    }
+
+    // 2. Notifikasi ke admin
+    getAdminWa().then((adminWa) => {
+      if (!adminWa) return;
+      const msgAdmin =
+        `📋 *Submission Form Vendor Baru*\n` +
+        `Vendor: *${vendorLabel}*\n` +
+        `PIC: ${picLabel}\n` +
+        `Telepon: ${contactPhone?.trim() || "-"}\n` +
+        `Token Link: \`${token}\``;
+      sendWhatsApp(adminWa, msgAdmin, {
+        context: "vendor-mini-form-admin-notif",
+        refType: "vendor_mini_form",
+        refId: token,
+      }).catch(() => {});
+    }).catch(() => {});
+    // ──────────────────────────────────────────────────────────────────────────
 
     return res.json({ success: true, message: "Data berhasil dikirim, terima kasih!" });
   } catch (err) {
