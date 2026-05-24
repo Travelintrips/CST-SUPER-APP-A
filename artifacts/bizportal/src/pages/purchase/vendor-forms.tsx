@@ -148,10 +148,10 @@ function CreateLinkDialog({ suppliers, onCreated }: { suppliers: Supplier[]; onC
           </div>
           <div className="space-y-1.5">
             <Label>Vendor (opsional)</Label>
-            <Select value={supplierId} onValueChange={setSupplierId}>
+            <Select value={supplierId || "__all__"} onValueChange={v => setSupplierId(v === "__all__" ? "" : v)}>
               <SelectTrigger><SelectValue placeholder="Semua vendor / tidak spesifik" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="">— Tidak spesifik —</SelectItem>
+                <SelectItem value="__all__">— Tidak spesifik —</SelectItem>
                 {suppliers.map(s => (
                   <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
                 ))}
