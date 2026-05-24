@@ -268,6 +268,7 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "Payment Request", href: "/purchase/payment-requests", icon: Wallet },
         { titleKey: "Landed Cost", href: "/purchase/landed-costs", icon: Calculator },
         { titleKey: "vendors", href: "/purchase/vendors", icon: UserCircle },
+        { titleKey: "Vendor Forms", href: "/purchase/vendor-forms", icon: Send },
         { titleKey: "Thai Tea Procurement", href: "/purchase/thai-tea", icon: ShoppingBag, companyCodes: ["CST"] },
       ],
     },
