@@ -37,6 +37,16 @@ function validateShipmentStatus(v: unknown): FreightShipmentStatus | undefined {
   return v as FreightShipmentStatus;
 }
 
+const STAGE_STATUSES = ["pending", "in_progress", "completed", "skipped"] as const;
+type StageStatus = typeof STAGE_STATUSES[number];
+
+function validateStageStatus(v: unknown): StageStatus | undefined {
+  if (v === undefined) return undefined;
+  if (!STAGE_STATUSES.includes(v as StageStatus))
+    throw Object.assign(new Error(`status stage tidak valid. Nilai yang diterima: ${STAGE_STATUSES.join(", ")}`), { statusCode: 400 });
+  return v as StageStatus;
+}
+
 const router = Router();
 
 router.use(async (req, res, next) => {
@@ -355,6 +365,9 @@ router.post("/freight-shipments/:shipmentId/stages", async (req, res) => {
   if (!Number.isInteger(shipmentId) || shipmentId <= 0) return res.status(400).json({ message: "Invalid shipmentId" });
   const { stageType, vendorName, date, status, notes } = req.body;
   if (!stageType) return res.status(400).json({ message: "stageType wajib diisi" });
+  let validatedStatus: StageStatus | undefined;
+  try { validatedStatus = validateStageStatus(status); }
+  catch (e: any) { return res.status(400).json({ message: e.message }); }
   const [existing] = await db.select().from(shipmentStagesTable)
     .where(eq(shipmentStagesTable.shipmentId, shipmentId))
     .then((rows) => rows.filter((r) => r.stageType === stageType));
@@ -364,7 +377,7 @@ router.post("/freight-shipments/:shipmentId/stages", async (req, res) => {
       .set({
         vendorName: vendorName ?? null,
         date: date ?? null,
-        status: status ?? existing.status,
+        status: validatedStatus ?? existing.status,
         notes: notes ?? null,
       })
       .where(eq(shipmentStagesTable.id, existing.id))
@@ -376,7 +389,7 @@ router.post("/freight-shipments/:shipmentId/stages", async (req, res) => {
         stageType,
         vendorName: vendorName ?? null,
         date: date ?? null,
-        status: status ?? "pending",
+        status: validatedStatus ?? "pending",
         notes: notes ?? null,
       })
       .returning();
