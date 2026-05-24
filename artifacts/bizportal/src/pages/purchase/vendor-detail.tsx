@@ -297,7 +297,6 @@ export default function VendorDetailPage() {
           name: vendorForm.name.trim(),
           country: vendorForm.country || null,
           contactEmail: vendorForm.contactEmail || null,
-          contactPerson: vendorForm.contactPerson || null,
           phone: vendorForm.phone || null,
           address: vendorForm.address || null,
           taxId: vendorForm.taxId || null,

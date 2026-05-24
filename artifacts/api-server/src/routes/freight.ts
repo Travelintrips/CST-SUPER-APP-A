@@ -120,7 +120,7 @@ router.get("/freight-shipments/:id", async (req, res) => {
     LIMIT 1
   `);
 
-  const linkedLogisticRfqRow = (linkedRfqRows as any[])[0] ?? null;
+  const linkedLogisticRfqRow = (linkedRfqRows.rows as any[])[0] ?? null;
   const linkedLogisticRfq = linkedLogisticRfqRow
     ? {
         id: linkedLogisticRfqRow.id as number,

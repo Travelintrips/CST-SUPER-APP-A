@@ -20,7 +20,7 @@ const STANDARD_UOMS: Array<{ code: string; name: string; symbol: string }> = [
 export async function seedUom(): Promise<void> {
   try {
     const existing = (await db.execute(sql`SELECT id, code FROM uom`))
-      .rows as UomRow[];
+      .rows as unknown as UomRow[];
     const existingCodes = new Set(existing.map((r) => r.code));
 
     for (const u of STANDARD_UOMS) {
@@ -36,7 +36,7 @@ export async function seedUom(): Promise<void> {
 
     // Re-fetch IDs after insert
     const allRows = (await db.execute(sql`SELECT id, code FROM uom`))
-      .rows as UomRow[];
+      .rows as unknown as UomRow[];
     const byCode: Record<string, number> = {};
     for (const r of allRows) byCode[r.code] = r.id;
 

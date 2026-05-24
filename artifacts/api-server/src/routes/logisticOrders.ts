@@ -534,7 +534,7 @@ logisticOrdersRouter.get("/", async (req: Request, res: Response) => {
       WHERE order_id = ANY(${sql.raw(`ARRAY[${orderIds.join(",")}]::int[]`)})
       ORDER BY order_id, created_at DESC
     `);
-    for (const row of ((fRows as unknown as { rows: unknown[] }).rows ?? fRows as unknown[]) as { orderId: unknown; status: unknown }[]) {
+    for (const row of (fRows.rows as { orderId: unknown; status: unknown }[])) {
       fulfillmentStatusMap.set(Number(row.orderId), row.status as string);
     }
   }

@@ -494,7 +494,7 @@ router.post("/documents/:id/action", async (req, res) => {
                 description: purchaseDocumentLinesTable.description,
                 quantity: purchaseDocumentLinesTable.quantity,
                 unitCost: purchaseDocumentLinesTable.unitCost,
-                totalAmount: purchaseDocumentLinesTable.totalAmount,
+                subtotal: purchaseDocumentLinesTable.subtotal,
               })
               .from(purchaseDocumentLinesTable)
               .where(eq(purchaseDocumentLinesTable.documentId, doc.id));
@@ -505,7 +505,7 @@ router.post("/documents/:id/action", async (req, res) => {
                   `<tr><td style="padding:4px 8px;border:1px solid #ddd;">${label}</td>` +
                   `<td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${Number(l.quantity).toLocaleString("id-ID")}</td>` +
                   `<td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Rp ${Number(l.unitCost).toLocaleString("id-ID")}</td>` +
-                  `<td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Rp ${Number(l.totalAmount ?? 0).toLocaleString("id-ID")}</td></tr>`
+                  `<td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Rp ${Number(l.subtotal ?? 0).toLocaleString("id-ID")}</td></tr>`
                 );
               })
               .join("");

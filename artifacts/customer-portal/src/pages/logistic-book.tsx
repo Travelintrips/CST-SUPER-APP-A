@@ -711,12 +711,11 @@ export default function BookPage() {
     const effectiveDestination = orderType === "product"
       ? (shippingAddress || destination || "")
       : (orderType === "service" ? (destination || "") : destination);
-    createOrder.mutate({ data: {
+    createOrder.mutate({ data: ({
       companyName,
       customerName,
       email,
       phone,
-      orderType: orderType ?? "shipment",
       shipmentType: shipmentType ?? "",
       origin: effectiveOrigin,
       destination: effectiveDestination,
@@ -774,7 +773,7 @@ export default function BookPage() {
         calculationResult: c.calculationResult,
         subtotal: c.subtotal,
       })),
-    }}, {
+    }) as any}, {
       onSuccess: (data: unknown) => {
         localStorage.setItem("last_order", JSON.stringify(data));
         localStorage.removeItem("logistic_cart");
@@ -1424,7 +1423,7 @@ export default function BookPage() {
             <Button
               variant="outline"
               onClick={() => setStep((s) => Math.max(0, s - 1) as Step)}
-              disabled={step === 0}
+              disabled={(step as number) === 0}
             >
               <ChevronLeft className="w-4 h-4 mr-1" /> Kembali
             </Button>

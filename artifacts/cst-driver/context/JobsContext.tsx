@@ -141,7 +141,7 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      supabase?.removeChannel(channel);
     };
   }, [isAuthenticated, driver, refreshJobs]);
 

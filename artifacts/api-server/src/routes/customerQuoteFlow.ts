@@ -267,7 +267,7 @@ customerQuoteAdminRouter.get("/orders/:orderId/detail", async (req: Request, res
       WHERE r.order_id = ${orderId}
       ORDER BY fs.created_at DESC
     `);
-    const freightShipments = (freightRows as any[]).map((row: any) => ({
+    const freightShipments = (freightRows.rows as any[]).map((row: any) => ({
       id: row.id as number,
       shipmentNumber: row.shipmentNumber as string,
       status: row.status as string,

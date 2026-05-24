@@ -6,7 +6,7 @@ export type FeatherName =
   | "camera" | "check" | "check-circle" | "chevron-right" | "circle" | "clock"
   | "credit-card" | "edit-3" | "eye" | "eye-off" | "hash" | "home" | "inbox"
   | "info" | "layers" | "lock" | "log-out" | "mail" | "map" | "map-pin"
-  | "navigation" | "package" | "phone" | "star" | "trash-2" | "truck"
+  | "navigation" | "package" | "phone" | "settings" | "star" | "trash-2" | "truck"
   | "user" | "x";
 
 interface IconProps {
@@ -196,6 +196,12 @@ export function Icon({ name, size = 24, color = "#000", style }: IconProps) {
     "phone": (
       <Svg width={size} height={size} viewBox={vb} style={style}>
         <Path {...s} d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.46 14a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.17 3h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 10.91a16 16 0 0 0 6.08 6.08l1.28-.64a2 2 0 0 1 2.11.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 19.82v3z" />
+      </Svg>
+    ),
+    "settings": (
+      <Svg width={size} height={size} viewBox={vb} style={style}>
+        <Circle {...s} cx="12" cy="12" r="3" />
+        <Path {...s} d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
       </Svg>
     ),
     "star": (

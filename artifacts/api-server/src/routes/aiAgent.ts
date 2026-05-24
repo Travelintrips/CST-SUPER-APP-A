@@ -1,4 +1,5 @@
 import express, { Router, Request, Response } from "express";
+import type OpenAI from "openai";
 import { getOpenAI } from "../lib/openaiClient.js";
 import { db } from "@workspace/db";
 import {

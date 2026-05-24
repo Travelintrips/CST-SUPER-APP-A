@@ -840,9 +840,7 @@ vendorJobPublicRouter.post("/:token/pod", upload.array("files", 10), async (req:
     for (const file of files) {
       const key = `private/pod/${job.order_id}/${Date.now()}_${file.originalname}`;
       try {
-        const uploadResult = await objStore.uploadFromBytes(key, file.buffer, {
-          contentType: file.mimetype,
-        });
+        const uploadResult = await objStore.uploadFromBytes(key, file.buffer);
         if (uploadResult.ok) {
           uploadedUrls.push({
             name: file.originalname,

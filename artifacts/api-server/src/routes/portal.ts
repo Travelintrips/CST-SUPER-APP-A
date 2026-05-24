@@ -546,7 +546,7 @@ router.get("/auth/trusted-devices", requirePortalAuth, async (req, res) => {
 // DELETE /api/portal/auth/trusted-devices/:id — cabut perangkat terpercaya
 router.delete("/auth/trusted-devices/:id", requirePortalAuth, async (req, res) => {
   const customerId = (req as PortalAuthReq).portalCustomerId;
-  const deviceId = parseInt(req.params.id, 10);
+  const deviceId = parseInt(String(req.params.id), 10);
   if (isNaN(deviceId)) return res.status(400).json({ message: "ID tidak valid." });
 
   const [customer] = await db
@@ -2133,7 +2133,7 @@ router.post("/onboarding/upload-doc", requirePortalAuth, onboardingUpload.single
     const storage = new ObjectStorageService();
     let buf = req.file.buffer;
     if (req.file.mimetype.startsWith("image/")) {
-      try { buf = await compressImageBuffer(buf, 1400); } catch { /* use original */ }
+      try { const c = await compressImageBuffer(buf, req.file.mimetype); buf = c.buffer; } catch { /* use original */ }
     }
     const url = await storage.uploadPublic(key, buf, req.file.mimetype);
     // Record in identity_documents

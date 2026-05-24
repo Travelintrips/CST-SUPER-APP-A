@@ -68,7 +68,9 @@ export default function Services() {
     query: { queryKey: ["listPortalServices"] }
   });
 
-  const allServices: Service[] = Array.isArray(servicesData) ? servicesData : [];
+  const allServices: Service[] = Array.isArray(servicesData)
+    ? (servicesData as Service[]).map((s) => ({ ...s, description: s.description ?? undefined }))
+    : [];
 
   const groupedServices = allServices.filter(isGrouped);
   const regularServices = allServices.filter((s) => !isGrouped(s));

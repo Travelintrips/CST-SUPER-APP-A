@@ -1,10 +1,10 @@
 import { useCallback } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, skipToken } from "@tanstack/react-query";
 import type { QueryFunction, QueryKey } from "@tanstack/react-query";
 
 export interface PrefetchOptions {
   queryKey: QueryKey;
-  queryFn?: QueryFunction<unknown>;
+  queryFn?: QueryFunction<unknown> | typeof skipToken;
 }
 
 export function usePrefetchOnHover(delay = 150) {
