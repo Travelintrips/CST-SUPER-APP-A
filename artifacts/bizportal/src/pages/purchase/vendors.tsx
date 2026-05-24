@@ -543,6 +543,7 @@ export default function VendorsPage() {
                   <TableHead>Tipe Layanan</TableHead>
                   <TableHead>Negara</TableHead>
                   <TableHead>Telepon</TableHead>
+                  <TableHead>PIC</TableHead>
                   <TableHead>ETA</TableHead>
                   <TableHead className="text-right">Tarif Dasar</TableHead>
                   <TableHead className="text-right">Markup (%)</TableHead>
@@ -576,6 +577,7 @@ export default function VendorsPage() {
                       </TableCell>
                       <TableCell>{v.country ?? "-"}</TableCell>
                       <TableCell>{v.phone ?? "-"}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{(v as { contactPerson?: string | null }).contactPerson ?? "-"}</TableCell>
                       <TableCell>{v.eta ?? "-"}</TableCell>
                       <TableCell className="text-right font-mono text-sm">
                         {baseFee > 0 ? `Rp ${baseFee.toLocaleString("id-ID")}` : "-"}
@@ -607,7 +609,7 @@ export default function VendorsPage() {
                 })}
                 {allList.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={11} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={12} className="text-center text-muted-foreground py-8">
                       Belum ada vendor.
                     </TableCell>
                   </TableRow>
