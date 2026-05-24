@@ -4,7 +4,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { getLastResponseTime, useListLogisticOrders } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ShoppingCart, DollarSign, Truck, Package, Activity, AlertTriangle, ChevronRight, Ship, ArrowRight, Clock, RefreshCw, TrendingUp, TrendingDown, Minus, PackageOpen, ChevronDown, ChevronUp, FilePlus, X, Users, CheckCircle2, CircleDot, FileText, BarChart2, ExternalLink, Building2, Globe, LayoutGrid } from "lucide-react";
+import { ShoppingCart, DollarSign, Truck, Package, Activity, AlertTriangle, ChevronRight, Ship, ArrowRight, Clock, RefreshCw, TrendingUp, TrendingDown, Minus, PackageOpen, ChevronDown, ChevronUp, FilePlus, X, Users, CheckCircle2, CircleDot, FileText, BarChart2, ExternalLink, Globe, LayoutGrid } from "lucide-react";
 import { useCompany } from "@/contexts/CompanyContext";
 import { useQueryClient } from "@tanstack/react-query";
 import { useUpdateLogisticOrderStatus, useCreateSalesDocument, getListLogisticOrdersQueryKey } from "@workspace/api-client-react";
@@ -376,15 +376,11 @@ export default function DashboardPage() {
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">{t.dashboard.title}</h1>
-              {isConsolidated ? (
+              {isConsolidated && (
                 <Badge className="bg-purple-100 text-purple-800 border border-purple-200 gap-1 text-xs font-medium">
                   <LayoutGrid className="h-3 w-3" /> Holding Consolidated
                 </Badge>
-              ) : activeCompany ? (
-                <Badge className="bg-indigo-100 text-indigo-800 border border-indigo-200 gap-1 text-xs font-medium">
-                  <Building2 className="h-3 w-3" /> {activeCompany.companyName}
-                </Badge>
-              ) : null}
+              )}
             </div>
             <p className="text-sm sm:text-base text-muted-foreground mt-1 sm:mt-2">{t.dashboard.subtitle}</p>
           </div>
