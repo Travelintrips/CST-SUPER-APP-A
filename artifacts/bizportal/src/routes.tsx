@@ -102,6 +102,7 @@ import MediaManagerPage from "@/pages/media-manager";
 import OrgManagementPage from "@/pages/OrgManagementPage";
 import AuditReportListPage from "@/pages/audit/index";
 import AuditReportFormPage from "@/pages/audit/form";
+import AuditComparePage from "@/pages/audit/compare";
 
 // Products
 import ProductItemsPage from "@/pages/products/items";
@@ -280,6 +281,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
 
 
       {/* ── Audit ERP ──────────────────────────────────────────────────── */}
+      <Route path="/audit/compare" component={PR(AuditComparePage)} />
       <Route path="/audit/:id" component={PR(AuditReportFormPage)} />
       <Route path="/audit" component={PR(AuditReportListPage)} />
 

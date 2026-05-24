@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
-import { Plus, ClipboardCheck, Trash2, Pencil, BarChart2 } from "lucide-react";
+import { Plus, ClipboardCheck, Trash2, Pencil, GitCompare } from "lucide-react";
 import { TOTAL_ITEMS } from "@/lib/auditChecklistData";
 
 interface AuditReport {
@@ -106,10 +106,18 @@ export default function AuditReportListPage() {
             Checklist audit interaktif · {TOTAL_ITEMS} item · 14 modul
           </p>
         </div>
-        <Button onClick={() => setNewDialog(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Buat Laporan Baru
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" asChild disabled={reports.length < 2}>
+            <Link href="/audit/compare">
+              <GitCompare className="h-4 w-4 mr-2" />
+              Bandingkan
+            </Link>
+          </Button>
+          <Button onClick={() => setNewDialog(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Buat Laporan Baru
+          </Button>
+        </div>
       </div>
 
       {isLoading && (
