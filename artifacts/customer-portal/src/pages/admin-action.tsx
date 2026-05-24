@@ -19,6 +19,7 @@ type Vendor = {
   name: string;
   phone: string | null;
   serviceType?: string | null;
+  isMatching?: boolean;
 };
 
 type VendorRow = {

@@ -191,13 +191,18 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
         .orderBy(suppliersTable.name);
 
       const shipKeyword = (order.shipmentType ?? "").toLowerCase().split(" ")[0];
-      const vendors = allVendors
-        .filter((v) => v.phone)
-        .map((v) => ({
-          ...v,
-          isMatching: !!(v.serviceType && shipKeyword &&
-            v.serviceType.toLowerCase().includes(shipKeyword)),
-        }));
+      const allWithPhone = allVendors.filter((v) => v.phone);
+      const allWithFlag = allWithPhone.map((v) => ({
+        ...v,
+        isMatching: !!(v.serviceType && shipKeyword &&
+          v.serviceType.toLowerCase().includes(shipKeyword)),
+      }));
+
+      // Only show vendors whose serviceType matches the order's shipmentType.
+      // If nothing matches (e.g. shipmentType is blank or no vendor carries it),
+      // fall back to showing all active vendors so the list is never empty.
+      const matched = allWithFlag.filter((v) => v.isMatching);
+      const vendors = matched.length > 0 ? matched : allWithFlag;
 
       // Get existing RFQs for this order
       const rfqs = await db.select({
