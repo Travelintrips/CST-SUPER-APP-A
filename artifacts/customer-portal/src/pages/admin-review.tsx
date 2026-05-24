@@ -24,6 +24,7 @@ type ReviewVendor = {
   fee: string | null;
   note: string | null;
   isMatching: boolean;
+  hasCommodityMatch?: boolean;
 };
 
 type RfqSummary = {
@@ -250,9 +251,14 @@ function VendorRow({
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-semibold text-slate-800 text-sm">{vendor.name}</span>
-          {vendor.isMatching && (
+          {vendor.hasCommodityMatch && (
+            <span className="text-[10px] bg-orange-100 text-orange-700 font-medium px-1.5 py-0.5 rounded-full">
+              🏷️ Komoditi
+            </span>
+          )}
+          {vendor.isMatching && !vendor.hasCommodityMatch && (
             <span className="text-[10px] bg-emerald-100 text-emerald-700 font-medium px-1.5 py-0.5 rounded-full">
-              Sesuai
+              ✓ Layanan
             </span>
           )}
         </div>
@@ -678,12 +684,14 @@ function QuoteList({
 
 function ReviewOrderView({ data, token }: { data: ReviewData; token: string }) {
   const { order, vendors = [], rfqs = [] } = data;
-  const matching = vendors.filter((v) => v.isMatching);
-  const others = vendors.filter((v) => !v.isMatching);
+  const commodityMatched = vendors.filter((v) => v.hasCommodityMatch);
+  const serviceMatched   = vendors.filter((v) => v.isMatching && !v.hasCommodityMatch);
+  const others           = vendors.filter((v) => !v.isMatching && !v.hasCommodityMatch);
   const latestRfq = rfqs[0] ?? null;
 
+  const autoSelected = [...commodityMatched, ...serviceMatched].map((v) => v.id);
   const [selected, setSelected] = useState<Set<number>>(
-    new Set(matching.map((v) => v.id))
+    new Set(autoSelected)
   );
   const [deadlineHours, setDeadlineHours] = useState(48);
   const [showAll, setShowAll] = useState(false);
@@ -861,15 +869,30 @@ function ReviewOrderView({ data, token }: { data: ReviewData; token: string }) {
             </div>
           </div>
 
-          {matching.length > 0 && (
+          {commodityMatched.length > 0 && (
             <div>
-              <div className="px-5 py-2 bg-emerald-50 border-b border-emerald-100">
-                <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">
-                  ✅ Sesuai Layanan ({matching.length})
+              <div className="px-5 py-2 bg-orange-50 border-b border-orange-100">
+                <p className="text-xs font-semibold text-orange-700 uppercase tracking-wide">
+                  🏷️ Sesuai Komoditi ({commodityMatched.length})
                 </p>
               </div>
               <div className="divide-y divide-slate-50">
-                {matching.map((v) => (
+                {commodityMatched.map((v) => (
+                  <VendorRow key={v.id} vendor={v} checked={selected.has(v.id)} onChange={() => toggleVendor(v.id)} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {serviceMatched.length > 0 && (
+            <div>
+              <div className="px-5 py-2 bg-emerald-50 border-b border-emerald-100">
+                <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">
+                  ✅ Sesuai Layanan ({serviceMatched.length})
+                </p>
+              </div>
+              <div className="divide-y divide-slate-50">
+                {serviceMatched.map((v) => (
                   <VendorRow key={v.id} vendor={v} checked={selected.has(v.id)} onChange={() => toggleVendor(v.id)} />
                 ))}
               </div>
