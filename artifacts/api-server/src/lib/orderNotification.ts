@@ -606,3 +606,36 @@ export async function sendLogisticOrderNotification(order: LogisticOrderData): P
     notifyCustomer(order),
   ]);
 }
+
+function buildExpiredLinkRefreshMessage(refId: string, newShortUrl: string): string {
+  return (
+    `🔄 *LINK ADMIN DIPERBARUI OTOMATIS*\n` +
+    `━━━━━━━━━━━━━━━━━━\n` +
+    `Link *Review & Blast Vendor* untuk order \`${refId}\` sudah kadaluarsa.\n\n` +
+    `Link baru telah dibuat secara otomatis (berlaku 72 jam):\n` +
+    `🚀 Review & Blast Vendor → ${newShortUrl}\n\n` +
+    `_Dikirim: ${nowWIB()}_`
+  );
+}
+
+/**
+ * Kirim notifikasi WhatsApp ke admin (personal + group) bahwa link admin
+ * yang expired sudah diperbarui otomatis dengan link baru.
+ */
+export async function sendAdminLinkRefreshedNotification(
+  refId: string,
+  newShortUrl: string,
+): Promise<void> {
+  const msg = buildExpiredLinkRefreshMessage(refId, newShortUrl);
+  const [adminWa, adminGroupWa] = await Promise.all([getAdminWa(), getAdminGroupWa()]);
+  if (adminWa) {
+    sendWhatsApp(adminWa, msg).catch((err: unknown) =>
+      logger.error({ err }, "WA expired link refresh (admin) failed")
+    );
+  }
+  if (adminGroupWa) {
+    sendWhatsApp(adminGroupWa, msg).catch((err: unknown) =>
+      logger.error({ err }, "WA expired link refresh (group) failed")
+    );
+  }
+}
