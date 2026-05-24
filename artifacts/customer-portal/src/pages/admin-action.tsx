@@ -20,6 +20,7 @@ type Vendor = {
   phone: string | null;
   serviceType?: string | null;
   isMatching?: boolean;
+  hasCommodityMatch?: boolean;
 };
 
 type VendorRow = {
@@ -200,10 +201,18 @@ function ReviewOrderView({ token, data }: { token: string; data: ReviewData }) {
                     className="w-4 h-4 accent-blue-600"
                   />
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium text-slate-800 text-sm">{v.name}</p>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <p className="font-medium text-slate-800 text-sm">{v.name}</p>
+                      {v.hasCommodityMatch && (
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 border border-green-200">✓ Komoditi</span>
+                      )}
+                      {v.isMatching && !v.hasCommodityMatch && (
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 border border-blue-200">✓ Layanan</span>
+                      )}
+                    </div>
                     {v.serviceType && <p className="text-xs text-slate-400 truncate">{v.serviceType}</p>}
                   </div>
-                  {v.phone && <span className="text-xs text-slate-400">{v.phone}</span>}
+                  {v.phone && <span className="text-xs text-slate-400 shrink-0">{v.phone}</span>}
                 </label>
               ))}
             </div>

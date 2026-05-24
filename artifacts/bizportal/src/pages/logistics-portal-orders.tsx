@@ -74,6 +74,7 @@ const SHIPMENT_TYPE_OPTIONS = [
   "Container Trucking",
   "Cargo Trucking",
   "Customs Clearance",
+  "FOB",
 ];
 
 const STATUS_COLORS: Record<string, string> = {

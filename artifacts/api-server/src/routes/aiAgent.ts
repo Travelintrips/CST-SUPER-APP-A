@@ -214,7 +214,7 @@ const TOOLS: OpenAI.Chat.ChatCompletionTool[] = [
           companyName: { type: "string", description: "Nama perusahaan (pakai '-' jika individu)" },
           shipmentType: {
             type: "string",
-            enum: ["Sea Freight", "Air Freight", "Trucking"],
+            enum: ["Sea Freight", "Air Freight", "Trucking", "FOB"],
             description: "Jenis pengiriman",
           },
           origin: { type: "string", description: "Kota/pelabuhan asal" },
@@ -329,6 +329,7 @@ async function handleToolCall(
         { type: "Sea Freight", description: "FCL & LCL, rute domestik & internasional via kapal", etaDomestic: "3-7 hari", etaInternational: "14-45 hari" },
         { type: "Air Freight", description: "Pengiriman cepat via udara", etaDomestic: "1-2 hari", etaInternational: "3-7 hari" },
         { type: "Trucking", description: "CDE, CDD, Fuso, Wingbox, Trailer untuk pengiriman darat", etaDomestic: "1-5 hari" },
+        { type: "FOB", description: "Free On Board — penjual bertanggung jawab hingga barang naik ke kapal di pelabuhan asal", etaInternational: "Sesuai jadwal kapal" },
         { type: "Customs/Pabean", description: "Layanan kepabeanan PIB, PEB, dan dokumen impor/ekspor" },
         { type: "Packing & Crating", description: "Pengemasan profesional untuk barang fragile atau heavy lift" },
       ],

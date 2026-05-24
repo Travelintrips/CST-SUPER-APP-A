@@ -1159,6 +1159,7 @@ export default function BookPage() {
                     <option value="TRUCKING">🚛 Trucking / Darat</option>
                     <option value="AIR_FREIGHT">✈️ Air Freight / Udara</option>
                     <option value="SEA_FREIGHT">🚢 Sea Freight / Laut</option>
+                    <option value="FOB">📦 FOB (Free On Board)</option>
                   </select>
                 </div>
               )}

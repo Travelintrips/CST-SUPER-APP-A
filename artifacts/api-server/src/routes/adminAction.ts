@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { randomBytes } from "crypto";
-import { eq, desc, inArray, sql } from "drizzle-orm";
+import { eq, desc, inArray, sql, and } from "drizzle-orm";
 import {
   db,
   adminActionLinksTable,
@@ -8,6 +8,7 @@ import {
   logisticOrderRfqsTable,
   rfqVendorLinksTable,
   suppliersTable,
+  vendorCatalogItemsTable,
   customerQuoteLinksTable,
   orderUpdatesTable,
 } from "@workspace/db";
@@ -192,17 +193,49 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
 
       const shipKeyword = (order.shipmentType ?? "").toLowerCase().split(" ")[0];
       const allWithPhone = allVendors.filter((v) => v.phone);
+
+      // Fetch catalog items for all vendors in one query to check commodity match
+      const vendorIdList = allWithPhone.map((v) => v.id);
+      const catalogItems = vendorIdList.length
+        ? await db.select({
+            vendorId: vendorCatalogItemsTable.vendorId,
+            name: vendorCatalogItemsTable.name,
+          }).from(vendorCatalogItemsTable)
+            .where(and(
+              inArray(vendorCatalogItemsTable.vendorId, vendorIdList),
+              eq(vendorCatalogItemsTable.isActive, true),
+            ))
+        : [];
+
+      // Build set of vendor IDs whose catalog contains the order's commodity
+      const commodityKeyword = (order.commodity ?? "").toLowerCase().trim();
+      const vendorIdsWithCommodity = new Set<number>();
+      if (commodityKeyword) {
+        const kwParts = commodityKeyword.split(/\s+/).filter((k) => k.length > 2);
+        for (const item of catalogItems) {
+          const itemName = item.name.toLowerCase();
+          const matches = itemName.includes(commodityKeyword) ||
+            kwParts.some((kw) => itemName.includes(kw));
+          if (matches) vendorIdsWithCommodity.add(item.vendorId);
+        }
+      }
+
       const allWithFlag = allWithPhone.map((v) => ({
         ...v,
         isMatching: !!(v.serviceType && shipKeyword &&
           v.serviceType.toLowerCase().includes(shipKeyword)),
+        hasCommodityMatch: vendorIdsWithCommodity.has(v.id),
       }));
 
-      // Only show vendors whose serviceType matches the order's shipmentType.
-      // If nothing matches (e.g. shipmentType is blank or no vendor carries it),
-      // fall back to showing all active vendors so the list is never empty.
-      const matched = allWithFlag.filter((v) => v.isMatching);
-      const vendors = matched.length > 0 ? matched : allWithFlag;
+      // Priority:
+      //   1. Vendors with the commodity in their catalog  (most relevant)
+      //   2. Vendors whose serviceType matches the order  (service-type fit)
+      //   3. All active vendors with phone               (fallback)
+      const commodityMatched = allWithFlag.filter((v) => v.hasCommodityMatch);
+      const serviceMatched   = allWithFlag.filter((v) => v.isMatching && !v.hasCommodityMatch);
+      const vendors = (commodityMatched.length > 0 || serviceMatched.length > 0)
+        ? [...commodityMatched, ...serviceMatched]
+        : allWithFlag;
 
       // Get existing RFQs for this order
       const rfqs = await db.select({
