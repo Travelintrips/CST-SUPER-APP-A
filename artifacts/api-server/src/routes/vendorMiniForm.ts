@@ -1,10 +1,11 @@
 import { Router, type Request, type Response } from "express";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, inArray } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import { db } from "@workspace/db";
 import {
   vendorMiniFormLinksTable,
   vendorMiniFormSubmissionsTable,
+  notificationLogsTable,
   suppliersTable,
 } from "@workspace/db";
 import { requireClerkUser } from "../lib/requireAdmin";
@@ -464,9 +465,43 @@ router.get("/admin/submissions", async (req: Request, res: Response) => {
       .from(vendorMiniFormSubmissionsTable)
       .orderBy(desc(vendorMiniFormSubmissionsTable.submittedAt));
 
+    // ── Fetch WA notification status per token ────────────────────────────────
+    const tokens = submissions.map(s => s.token);
+    let waMap: Record<string, { status: string; recipient: string; createdAt: string }> = {};
+
+    if (tokens.length > 0) {
+      const waLogs = await db
+        .select({
+          refId: notificationLogsTable.refId,
+          status: notificationLogsTable.status,
+          recipient: notificationLogsTable.recipient,
+          createdAt: notificationLogsTable.createdAt,
+        })
+        .from(notificationLogsTable)
+        .where(
+          inArray(notificationLogsTable.refId, tokens)
+        )
+        .orderBy(desc(notificationLogsTable.createdAt));
+
+      // Keep latest log per token (first in desc order = most recent)
+      for (const log of waLogs) {
+        if (log.refId && !waMap[log.refId]) {
+          waMap[log.refId] = {
+            status: log.status,
+            recipient: log.recipient,
+            createdAt: log.createdAt.toISOString(),
+          };
+        }
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     return res.json(submissions.map(s => ({
       ...s,
       submittedAt: s.submittedAt.toISOString(),
+      waStatus: waMap[s.token]?.status ?? null,
+      waRecipient: waMap[s.token]?.recipient ?? null,
+      waAt: waMap[s.token]?.createdAt ?? null,
     })));
   } catch (err) {
     req.log?.error({ err }, "vendor-mini-form admin GET submissions error");

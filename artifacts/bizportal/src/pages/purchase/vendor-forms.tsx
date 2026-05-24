@@ -18,7 +18,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Copy, ExternalLink, Link2, Plus, Trash2, Eye, ToggleLeft, ToggleRight, Loader2, RotateCcw, CalendarDays, User, Phone } from "lucide-react";
+import { Copy, ExternalLink, Link2, Plus, Trash2, Eye, ToggleLeft, ToggleRight, Loader2, RotateCcw, CalendarDays, User, Phone, MessageCircle, XCircle, Clock } from "lucide-react";
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
 } from "@/components/ui/sheet";
@@ -50,6 +50,9 @@ type Submission = {
   contactPhone: string | null;
   formData: Record<string, unknown>;
   submittedAt: string;
+  waStatus: string | null;
+  waRecipient: string | null;
+  waAt: string | null;
 };
 
 type Supplier = { id: number; name: string; serviceType: string | null };
@@ -656,6 +659,7 @@ export default function VendorFormsPage() {
                         <TableHead>Service Type</TableHead>
                         <TableHead>Contact</TableHead>
                         <TableHead>Waktu</TableHead>
+                        <TableHead>WA Vendor</TableHead>
                         <TableHead>Highlight</TableHead>
                         <TableHead className="text-right">Aksi</TableHead>
                       </TableRow>
@@ -680,6 +684,14 @@ export default function VendorFormsPage() {
                             <TableCell>
                               <span className="text-sm">{new Date(sub.submittedAt).toLocaleDateString("id-ID")}</span>
                               <div className="text-xs text-slate-400">{new Date(sub.submittedAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}</div>
+                            </TableCell>
+                            <TableCell>
+                              <WaBadge status={sub.waStatus} recipient={sub.waRecipient} waAt={sub.waAt} />
+                              {sub.waAt && (
+                                <div className="text-xs text-slate-400 mt-0.5">
+                                  {new Date(sub.waAt).toLocaleString("id-ID", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                                </div>
+                              )}
                             </TableCell>
                             <TableCell>
                               <span className="text-sm text-slate-600">{highlight}</span>
@@ -718,6 +730,37 @@ export default function VendorFormsPage() {
         />
       )}
     </AppShell>
+  );
+}
+
+function WaBadge({ status, recipient, waAt }: { status: string | null; recipient: string | null; waAt: string | null }) {
+  if (!status) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs text-slate-400">
+        <Clock className="h-3 w-3" />
+        Belum kirim
+      </span>
+    );
+  }
+  if (status === "sent") {
+    return (
+      <span
+        className="inline-flex items-center gap-1 text-xs text-green-600 font-medium"
+        title={`Ke: ${recipient ?? "-"}${waAt ? `\n${new Date(waAt).toLocaleString("id-ID")}` : ""}`}
+      >
+        <MessageCircle className="h-3 w-3" />
+        Terkirim
+      </span>
+    );
+  }
+  return (
+    <span
+      className="inline-flex items-center gap-1 text-xs text-red-500"
+      title={`Gagal kirim ke: ${recipient ?? "-"}`}
+    >
+      <XCircle className="h-3 w-3" />
+      Gagal
+    </span>
   );
 }
 
