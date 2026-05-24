@@ -32,10 +32,14 @@ const NOTIF_TITLES: Record<string, string> = {
   portal_sales: "🛍️ Order Portal",
   product: "📦 Order Produk",
   sales_update: "📄 Update Sales Order",
+  sales_new: "📋 Sales Baru",
   logistic_status: "🔄 Update Status Logistik",
   freight_new: "🚢 Freight Shipment Baru",
   freight_status: "🔄 Update Status Shipment",
   freight_stage: "📋 Update Stage Shipment",
+  purchase_rfq: "📥 RFQ Pembelian Baru",
+  purchase_po: "✅ Purchase Order Dikonfirmasi",
+  vendor_quote: "💬 Penawaran Vendor Masuk",
 };
 
 function showBrowserNotification(notification: OrderNotification) {
@@ -83,7 +87,8 @@ export interface OrderNotification {
   dbId?: number | null;
   type: "logistic" | "portal_sales" | "product" | "sales_update" | "logistic_status"
       | "freight_new" | "freight_status" | "freight_stage"
-      | "sport_booking" | "ecommerce";
+      | "sport_booking" | "ecommerce"
+      | "sales_new" | "purchase_rfq" | "purchase_po" | "vendor_quote";
   orderId: number;
   orderNumber: string;
   customerName: string;
@@ -104,6 +109,10 @@ export interface OrderNotification {
   bookingDate?: string;
   startTime?: string;
   endTime?: string;
+  docKind?: string;
+  rfqNumber?: string;
+  vendorPrice?: number;
+  quotePosition?: number;
   createdAt: string;
   readAt: number | null;
 }
@@ -144,6 +153,10 @@ function dbRowToNotif(row: Record<string, unknown>): OrderNotification {
     bookingDate: payload.bookingDate as string | undefined,
     startTime: payload.startTime as string | undefined,
     endTime: payload.endTime as string | undefined,
+    docKind: payload.docKind as string | undefined,
+    rfqNumber: payload.rfqNumber as string | undefined,
+    vendorPrice: payload.vendorPrice as number | undefined,
+    quotePosition: payload.quotePosition as number | undefined,
     createdAt: (row.created_at as string) ?? new Date().toISOString(),
     readAt: row.read_at ? new Date(row.read_at as string).getTime() : null,
   };
@@ -497,6 +510,85 @@ export function useOrderNotifications() {
             companyName: null,
             grandTotal: data.grandTotal,
             itemCount: data.itemCount,
+            createdAt: data.createdAt ?? new Date().toISOString(),
+            readAt: null,
+          });
+        } catch { }
+      });
+
+      es.addEventListener("sales_doc_created", (e: MessageEvent) => {
+        if (!mounted) return;
+        try {
+          const data = JSON.parse(e.data);
+          pushNotification({
+            id: generateId(),
+            dbId: data.dbId ?? null,
+            type: "sales_new",
+            orderId: data.orderId,
+            orderNumber: data.orderNumber,
+            customerName: data.customerName,
+            companyName: data.companyName ?? null,
+            grandTotal: data.grandTotal,
+            docKind: data.docKind,
+            createdAt: data.createdAt ?? new Date().toISOString(),
+            readAt: null,
+          });
+        } catch { }
+      });
+
+      es.addEventListener("purchase_doc_created", (e: MessageEvent) => {
+        if (!mounted) return;
+        try {
+          const data = JSON.parse(e.data);
+          pushNotification({
+            id: generateId(),
+            dbId: data.dbId ?? null,
+            type: data.type === "purchase_po" ? "purchase_po" : "purchase_rfq",
+            orderId: data.orderId,
+            orderNumber: data.orderNumber,
+            customerName: data.customerName,
+            companyName: null,
+            grandTotal: data.grandTotal,
+            createdAt: data.createdAt ?? new Date().toISOString(),
+            readAt: null,
+          });
+        } catch { }
+      });
+
+      es.addEventListener("purchase_doc_confirmed", (e: MessageEvent) => {
+        if (!mounted) return;
+        try {
+          const data = JSON.parse(e.data);
+          pushNotification({
+            id: generateId(),
+            dbId: data.dbId ?? null,
+            type: "purchase_po",
+            orderId: data.orderId,
+            orderNumber: data.orderNumber,
+            customerName: data.customerName,
+            companyName: null,
+            grandTotal: data.grandTotal,
+            createdAt: data.createdAt ?? new Date().toISOString(),
+            readAt: null,
+          });
+        } catch { }
+      });
+
+      es.addEventListener("vendor_quote_received", (e: MessageEvent) => {
+        if (!mounted) return;
+        try {
+          const data = JSON.parse(e.data);
+          pushNotification({
+            id: generateId(),
+            dbId: data.dbId ?? null,
+            type: "vendor_quote",
+            orderId: data.orderId,
+            orderNumber: data.orderNumber,
+            customerName: data.customerName,
+            companyName: null,
+            rfqNumber: data.rfqNumber,
+            vendorPrice: data.vendorPrice,
+            quotePosition: data.quotePosition,
             createdAt: data.createdAt ?? new Date().toISOString(),
             readAt: null,
           });

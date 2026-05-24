@@ -360,6 +360,16 @@ router.post("/documents", async (req, res) => {
     return sendWhatsApp(adminWa, msg);
   }).catch(() => undefined);
 
+  saveAndBroadcast("sales_doc_created", {
+    type: "sales_new",
+    orderId: doc.id,
+    orderNumber: docNumber,
+    customerName,
+    companyName: null,
+    grandTotal,
+    docKind,
+  } as Parameters<typeof saveAndBroadcast>[1] & { docKind: string }).catch(() => {});
+
   return res.status(201).json(detail);
 });
 

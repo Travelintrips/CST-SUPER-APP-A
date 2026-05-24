@@ -9,6 +9,7 @@ import { sendMail, isSmtpConfigured } from "../lib/mailer";
 import { requirePortalAuth, requirePortalAdmin, type PortalAuthReq } from "../lib/supabaseAuth";
 import { requireClerkUser } from "../lib/requireAdmin";
 import { broadcastToAdmins } from "../lib/sseManager";
+import { saveAndBroadcast } from "../lib/notificationStore";
 import multer from "multer";
 import { randomUUID } from "crypto";
 import { compressImageBuffer } from "../lib/imageCompress.js";
@@ -1493,8 +1494,8 @@ router.post("/orders", requirePortalAuth, async (req, res) => {
     });
   }
 
-  // Real-time SSE: notify BizPortal admins immediately
-  broadcastToAdmins("new_order", {
+  // Real-time SSE: notify BizPortal admins immediately (persisted to DB)
+  saveAndBroadcast("new_order", {
     type: "portal_sales",
     orderId: doc!.id,
     orderNumber: doc!.docNumber,
@@ -1502,8 +1503,8 @@ router.post("/orders", requirePortalAuth, async (req, res) => {
     companyName: portalCustomer.company ?? null,
     grandTotal: Number(doc!.grandTotal),
     itemCount: orderItems.length,
-    createdAt: doc!.createdAt,
-  });
+    createdAt: (doc!.createdAt as Date).toISOString(),
+  }).catch(() => {});
 
   // Notify admin via WhatsApp (fire-and-forget)
   getAdminWa().then((adminWa) => {

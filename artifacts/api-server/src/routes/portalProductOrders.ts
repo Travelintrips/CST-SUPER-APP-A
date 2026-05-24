@@ -12,6 +12,7 @@ import { getAdminWa, getAdminGroupWa } from "../lib/adminWa";
 import { getPreferredDomain } from "../lib/domain";
 import { sendMail, isSmtpConfigured } from "../lib/mailer";
 import { logger } from "../lib/logger";
+import { saveAndBroadcast } from "../lib/notificationStore";
 import { broadcastToAdmins } from "../lib/sseManager";
 import { signVendorResponseToken, verifyVendorResponseToken } from "../lib/vendorResponseToken.js";
 
@@ -217,8 +218,8 @@ portalProductOrdersRouter.post("/orders", async (req: Request, res: Response) =>
   const orderOut = toOrder(order);
   const itemsOut = insertedItems.map(toItem);
 
-  // Real-time SSE: notify BizPortal admins immediately
-  broadcastToAdmins("new_order", {
+  // Real-time SSE: notify BizPortal admins immediately (persisted to DB)
+  saveAndBroadcast("new_order", {
     type: "product",
     orderId: order.id,
     orderNumber,
@@ -226,8 +227,8 @@ portalProductOrdersRouter.post("/orders", async (req: Request, res: Response) =>
     companyName: null,
     grandTotal: grandTotal,
     itemCount: items.length,
-    createdAt: order.createdAt,
-  });
+    createdAt: (order.createdAt as Date).toISOString(),
+  }).catch(() => {});
 
   sendProductOrderNotification(orderOut, itemsOut).catch((err: unknown) => {
     req.log.error({ err }, "sendProductOrderNotification failed");

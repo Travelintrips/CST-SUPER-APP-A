@@ -4,6 +4,7 @@ import { rfqRateLimit } from "../middlewares/rfqRateLimit.js";
 import { db, suppliersTable, logisticOrdersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, logisticOrderItemsTable, vendorCatalogItemsTable, vendorOffersTable, vendorRatesTable, salesDocumentsTable, salesDocumentLinesTable } from "@workspace/db";
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { sendWhatsApp } from "../lib/fonnte.js";
+import { saveAndBroadcast } from "../lib/notificationStore.js";
 import { getAdminWa, getAdminGroupWa } from "../lib/adminWa.js";
 import { logger } from "../lib/logger.js";
 import { getPreferredDomain } from "../lib/domain.js";
@@ -673,6 +674,17 @@ logisticRfqRouter.post("/vendor-quote", rfqRateLimit, async (req: Request, res: 
   if (adminGroupWa) {
     sendWhatsApp(adminGroupWa, quoteNotifMsg).catch((e: unknown) => logger.error({ e }, "WA admin group vendor-form quote notif failed"));
   }
+
+  saveAndBroadcast("vendor_quote_received", {
+    type: "vendor_quote",
+    orderId: rfq.orderId,
+    orderNumber: order.orderNumber,
+    customerName: vendor?.name ?? `Vendor #${vendorId}`,
+    companyName: null,
+    rfqNumber: rfq.rfqNumber,
+    vendorPrice: vp,
+    quotePosition,
+  } as Parameters<typeof saveAndBroadcast>[1] & { rfqNumber: string; vendorPrice: number; quotePosition?: number }).catch(() => {});
 
   logger.info({ rfqNumber, vendorId, vendorPrice: vp }, "Vendor submitted quote via form");
 

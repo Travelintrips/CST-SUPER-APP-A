@@ -5,6 +5,7 @@ import { streamInvoicePdf, buildInvoicePdfBuffer } from "../lib/pdfInvoice.js";
 import { postPurchaseBill, postPurchaseBillReversal } from "../lib/accounting.js";
 import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
 import { sendWhatsApp } from "../lib/fonnte.js";
+import { saveAndBroadcast } from "../lib/notificationStore.js";
 import { ensureAccountingSettings } from "../lib/accountingSeed.js";
 import { postStockIn } from "../lib/inventoryStock.js";
 import {
@@ -226,6 +227,16 @@ router.post("/documents", async (req, res) => {
   );
 
   const detail = await loadDocWithLines(doc.id);
+
+  saveAndBroadcast("purchase_doc_created", {
+    type: docKind === "rfq" ? "purchase_rfq" : "purchase_po",
+    orderId: doc.id,
+    orderNumber: docNumber,
+    customerName: supplierName,
+    companyName: null,
+    grandTotal,
+  }).catch(() => {});
+
   return res.status(201).json(detail);
 });
 
@@ -557,6 +568,18 @@ router.post("/documents/:id/action", async (req, res) => {
   }
 
   const detail = await loadDocWithLines(id);
+
+  if (action === "confirm") {
+    saveAndBroadcast("purchase_doc_confirmed", {
+      type: "purchase_po",
+      orderId: id,
+      orderNumber: detail?.docNumber ?? doc.docNumber,
+      customerName: doc.supplierName,
+      companyName: null,
+      grandTotal: Number(doc.grandTotal ?? doc.totalAmount ?? 0),
+    }).catch(() => {});
+  }
+
   return res.json(detail);
 });
 
