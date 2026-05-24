@@ -323,7 +323,7 @@ logisticRfqV2Router.get("/rfq/list", async (req: Request, res: Response) => {
 // Buat RFQ baru dari order yang sudah ada, status awal = admin_review
 logisticRfqV2Router.post("/rfq/create-from-order/:orderId", async (req: Request, res: Response) => {
   if (!(await requireClerkUser(req, res))) return;
-  const orderId = parseInt(req.params.orderId, 10);
+  const orderId = parseInt(req.params.orderId as string, 10);
   if (isNaN(orderId)) return res.status(400).json({ message: "orderId tidak valid" });
 
   const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
@@ -372,7 +372,7 @@ logisticRfqV2Router.post("/rfq/create-from-order/:orderId", async (req: Request,
 
 // ─── PUBLIC: GET /vendor-form/:token ─────────────────────────────────────────
 logisticRfqV2Router.get("/vendor-form/:token", async (req: Request, res: Response) => {
-  const token = req.params.token?.trim();
+  const token = (req.params.token as string | undefined)?.trim();
   if (!token) return res.status(400).json({ message: "Token tidak valid" });
 
   const [link] = await db.select().from(rfqVendorLinksTable)
@@ -433,7 +433,7 @@ logisticRfqV2Router.get("/vendor-form/:token", async (req: Request, res: Respons
 
 // ─── PUBLIC: POST /vendor-form/:token ────────────────────────────────────────
 logisticRfqV2Router.post("/vendor-form/:token/upload", upload.single("file") as any, async (req: Request, res: Response) => {
-  const token = req.params.token?.trim();
+  const token = (req.params.token as string | undefined)?.trim();
   if (!token) return res.status(400).json({ message: "Token tidak valid" });
   const [link] = await db.select({ id: rfqVendorLinksTable.id, status: rfqVendorLinksTable.status })
     .from(rfqVendorLinksTable).where(eq(rfqVendorLinksTable.token, token));
@@ -452,7 +452,7 @@ logisticRfqV2Router.post("/vendor-form/:token/upload", upload.single("file") as 
 });
 
 logisticRfqV2Router.post("/vendor-form/:token", async (req: Request, res: Response) => {
-  const token = req.params.token?.trim();
+  const token = (req.params.token as string | undefined)?.trim();
   if (!token) return res.status(400).json({ message: "Token tidak valid" });
 
   const [link] = await db.select().from(rfqVendorLinksTable)
@@ -530,7 +530,7 @@ logisticRfqV2Router.post("/vendor-form/:token", async (req: Request, res: Respon
 // ─── ADMIN: POST /rfq/:rfqId/blast ────────────────────────────────────────────
 logisticRfqV2Router.post("/rfq/:rfqId/blast", async (req: Request, res: Response) => {
   if (!(await requireClerkUser(req, res))) return;
-  const rfqId = parseInt(req.params.rfqId, 10);
+  const rfqId = parseInt(req.params.rfqId as string, 10);
   if (isNaN(rfqId)) return res.status(400).json({ message: "rfqId tidak valid" });
 
   const { vendorIds, deadlineHours = 48 } = req.body as { vendorIds: number[]; deadlineHours?: number };
@@ -625,14 +625,14 @@ logisticRfqV2Router.post("/rfq/:rfqId/blast", async (req: Request, res: Response
 // ─── ADMIN: GET /rfq/:rfqId/comparison ───────────────────────────────────────
 logisticRfqV2Router.get("/rfq/:rfqId/comparison", async (req: Request, res: Response) => {
   if (!(await requireClerkUser(req, res))) return;
-  const rfqId = parseInt(req.params.rfqId, 10);
+  const rfqId = parseInt(req.params.rfqId as string, 10);
   if (isNaN(rfqId)) return res.status(400).json({ message: "rfqId tidak valid" });
 
   // Use raw SQL to include freight_shipment_id added via migration
   const rfqRows = await db.execute(sql`
     SELECT *, freight_shipment_id FROM logistic_order_rfqs WHERE id = ${rfqId}
   `);
-  const rfqRaw = rfqRows[0] as any;
+  const rfqRaw = rfqRows.rows[0] as any;
   if (!rfqRaw) return res.status(404).json({ message: "RFQ tidak ditemukan" });
 
   const [rfq] = await db.select().from(logisticOrderRfqsTable)
@@ -745,13 +745,14 @@ logisticRfqV2Router.get("/rfq/:rfqId/comparison", async (req: Request, res: Resp
 // ─── ADMIN: POST /rfq/:rfqId/create-freight-shipment ─────────────────────────
 logisticRfqV2Router.post("/rfq/:rfqId/create-freight-shipment", async (req: Request, res: Response) => {
   if (!(await requireClerkUser(req, res))) return;
-  const rfqId = parseInt(req.params.rfqId, 10);
+  const rfqId = parseInt(req.params.rfqId as string, 10);
   if (isNaN(rfqId)) return res.status(400).json({ message: "rfqId tidak valid" });
 
   // Load RFQ
-  const [rfqRow] = await db.execute(sql`
+  const rfqRowResult = await db.execute(sql`
     SELECT *, freight_shipment_id FROM logistic_order_rfqs WHERE id = ${rfqId}
   `);
+  const rfqRow = rfqRowResult.rows[0];
   const rfq = rfqRow as any;
   if (!rfq) return res.status(404).json({ message: "RFQ tidak ditemukan" });
 
@@ -847,7 +848,7 @@ logisticRfqV2Router.post("/rfq/:rfqId/create-freight-shipment", async (req: Requ
 // ─── ADMIN: POST /rfq/:rfqId/select-vendor ───────────────────────────────────
 logisticRfqV2Router.post("/rfq/:rfqId/select-vendor", async (req: Request, res: Response) => {
   if (!(await requireClerkUser(req, res))) return;
-  const rfqId = parseInt(req.params.rfqId, 10);
+  const rfqId = parseInt(req.params.rfqId as string, 10);
   if (isNaN(rfqId)) return res.status(400).json({ message: "rfqId tidak valid" });
 
   const { linkId, sellingPrice } = req.body as { linkId: number; sellingPrice?: number };
@@ -895,8 +896,8 @@ logisticRfqV2Router.post("/rfq/:rfqId/select-vendor", async (req: Request, res: 
 // ─── ADMIN: POST /rfq/:rfqId/vendor-link/:linkId/action ──────────────────────
 logisticRfqV2Router.post("/rfq/:rfqId/vendor-link/:linkId/action", async (req: Request, res: Response) => {
   if (!(await requireClerkUser(req, res))) return;
-  const rfqId = parseInt(req.params.rfqId, 10);
-  const linkId = parseInt(req.params.linkId, 10);
+  const rfqId = parseInt(req.params.rfqId as string, 10);
+  const linkId = parseInt(req.params.linkId as string, 10);
   if (isNaN(rfqId) || isNaN(linkId)) return res.status(400).json({ message: "ID tidak valid" });
 
   const { action, message: actionMsg } = req.body as { action: "request_revision" | "reject" | "mark_read"; message?: string };
@@ -949,7 +950,7 @@ logisticRfqV2Router.post("/rfq/:rfqId/vendor-link/:linkId/action", async (req: R
 // Admin kirim penawaran harga ke customer setelah memilih vendor
 logisticRfqV2Router.post("/rfq/:rfqId/send-customer-quote", async (req: Request, res: Response) => {
   if (!(await requireClerkUser(req, res))) return;
-  const rfqId = parseInt(req.params.rfqId, 10);
+  const rfqId = parseInt(req.params.rfqId as string, 10);
   if (isNaN(rfqId)) return res.status(400).json({ message: "rfqId tidak valid" });
 
   const [rfq] = await db.select().from(logisticOrderRfqsTable)
@@ -1110,7 +1111,7 @@ logisticRfqV2Router.post("/rfq/quote-respond", async (req: Request, res: Respons
 // ─── ADMIN: POST /rfq/:rfqId/close — tutup RFQ ───────────────────────────────
 logisticRfqV2Router.post("/rfq/:rfqId/close", async (req: Request, res: Response) => {
   if (!(await requireClerkUser(req, res))) return;
-  const rfqId = parseInt(req.params.rfqId, 10);
+  const rfqId = parseInt(req.params.rfqId as string, 10);
   if (isNaN(rfqId)) return res.status(400).json({ message: "rfqId tidak valid" });
 
   const [rfq] = await db.select().from(logisticOrderRfqsTable)
@@ -1145,7 +1146,7 @@ logisticRfqV2Router.post("/rfq/:rfqId/close", async (req: Request, res: Response
 // ─── ADMIN: GET /rfq/by-order/:orderId ────────────────────────────────────────
 logisticRfqV2Router.get("/rfq/by-order/:orderId", async (req: Request, res: Response) => {
   if (!(await requireClerkUser(req, res))) return;
-  const orderId = parseInt(req.params.orderId, 10);
+  const orderId = parseInt(req.params.orderId as string, 10);
   if (isNaN(orderId)) return res.status(400).json({ message: "orderId tidak valid" });
 
   const rfqs = await db.select().from(logisticOrderRfqsTable)

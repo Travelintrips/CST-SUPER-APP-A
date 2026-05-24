@@ -389,7 +389,7 @@ export default function PurchaseRequestEditorPage() {
           <Card>
             <CardHeader><CardTitle className="text-base">Riwayat Approval</CardTitle></CardHeader>
             <CardContent>
-              {pr.approvals.map((a, i) => (
+              {pr.approvals.map((a: any, i) => (
                 <div key={i} className="flex items-center gap-3 py-2 border-b last:border-0">
                   <Badge variant={a.status === "approved" ? "default" : a.status === "rejected" ? "destructive" : "secondary"}>
                     Step {String(a.step)}: {String(a.status)}

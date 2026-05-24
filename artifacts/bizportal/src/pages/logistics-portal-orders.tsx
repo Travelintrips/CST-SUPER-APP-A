@@ -228,7 +228,7 @@ export default function LogisticsPortalOrdersPage() {
 
   const { activeCompanyId } = useCompany();
   const { data: orders = [], isLoading, refetch } = useListLogisticOrders(
-    { ...(statusFilter !== "all" ? { status: statusFilter } : {}), company: activeCompanyId },
+    { ...(statusFilter !== "all" ? { status: statusFilter } : {}), company: activeCompanyId } as any,
     { query: { queryKey: [...getListLogisticOrdersQueryKey(), statusFilter, activeCompanyId] } },
   );
 
@@ -946,14 +946,14 @@ export default function LogisticsPortalOrdersPage() {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setSoDialog(null)}>Batal</Button>
-            {soDialog?.linkedSalesDocId ? (
+            {(soDialog as any)?.linkedSalesDocId ? (
               <Button
                 variant="secondary"
                 className="gap-2"
                 onClick={() => { setSoDialog(null); navigate("/sales/orders"); }}
               >
                 <ExternalLink className="h-4 w-4" />
-                Lihat SO: {soDialog.linkedSalesDocNumber}
+                Lihat SO: {(soDialog as any).linkedSalesDocNumber}
               </Button>
             ) : (
               <Button

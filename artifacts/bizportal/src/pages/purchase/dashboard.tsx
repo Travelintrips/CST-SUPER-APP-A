@@ -17,8 +17,8 @@ const idr = (n: number) =>
 export default function PurchaseDashboardPage() {
   const { t } = useLanguage();
   const { activeCompanyId } = useCompany();
-  const { data: summary } = useGetPurchaseSummary({ company: activeCompanyId });
-  const { data: recentDocs } = useListPurchaseDocuments({ company: activeCompanyId });
+  const { data: summary } = useGetPurchaseSummary({ company: activeCompanyId } as any);
+  const { data: recentDocs } = useListPurchaseDocuments({ company: activeCompanyId } as any);
   const recent = (recentDocs ?? []).slice(0, 8);
 
   return (

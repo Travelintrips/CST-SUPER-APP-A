@@ -207,7 +207,7 @@ export default function VendorDetailPage() {
       priceBase: String(item.priceBase),
       markupPct: String(item.markupPct),
       isActive: item.isActive,
-      isCommodityTag: item.isCommodityTag ?? false,
+      isCommodityTag: (item as any).isCommodityTag ?? false,
       sortOrder: String(item.sortOrder),
     });
     setCatalogOpen(true);
@@ -448,7 +448,7 @@ export default function VendorDetailPage() {
                             : <Badge variant="outline" className="text-xs text-muted-foreground">Nonaktif</Badge>}
                         </TableCell>
                         <TableCell>
-                          {item.isCommodityTag && (
+                          {(item as any).isCommodityTag && (
                             <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-100 text-xs">🏷️ Komoditi</Badge>
                           )}
                         </TableCell>

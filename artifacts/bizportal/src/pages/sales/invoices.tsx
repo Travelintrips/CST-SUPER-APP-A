@@ -169,12 +169,12 @@ export default function SalesInvoicesPage() {
                 {filtered.map((d) => {
                   const balanceDue = Math.max(0, Number(d.grandTotal) - Number(d.amountPaid ?? 0));
                   const effectivePayStatus = balanceDue === 0 ? "paid" : (d.amountPaid ?? 0) > 0 ? "partial" : "unpaid";
-                  const canPay = d.invoiceStatus === "invoiced" && effectivePayStatus !== "paid" && !d.cancelledAt;
-                  const isOverdue = d.dueDate && new Date(d.dueDate) < new Date() && effectivePayStatus !== "paid" && d.invoiceStatus === "invoiced";
+                  const canPay = d.invoiceStatus === "invoiced" && effectivePayStatus !== "paid" && !(d as any).cancelledAt;
+                  const isOverdue = (d as any).dueDate && new Date((d as any).dueDate) < new Date() && effectivePayStatus !== "paid" && d.invoiceStatus === "invoiced";
                   return (
-                    <TableRow key={d.id} data-testid={`row-invoice-${d.id}`} className={d.cancelledAt ? "opacity-50" : undefined}>
+                    <TableRow key={d.id} data-testid={`row-invoice-${d.id}`} className={(d as any).cancelledAt ? "opacity-50" : undefined}>
                       <TableCell className="font-mono text-xs text-indigo-400">
-                        {d.invoiceNumber ?? <span className="text-slate-600">—</span>}
+                        {(d as any).invoiceNumber ?? <span className="text-slate-600">—</span>}
                       </TableCell>
                       <TableCell>
                         <Link href={`/sales/orders/${d.id}`}>
@@ -185,7 +185,7 @@ export default function SalesInvoicesPage() {
                       </TableCell>
                       <TableCell>{d.customerName}</TableCell>
                       <TableCell>
-                        {d.cancelledAt ? (
+                        {(d as any).cancelledAt ? (
                           <Badge className="bg-slate-700/60 text-slate-400 border-slate-600 text-xs">Dibatalkan</Badge>
                         ) : (
                           <Badge variant={d.invoiceStatus === "invoiced" ? "default" : "outline"} className="capitalize">
@@ -194,7 +194,7 @@ export default function SalesInvoicesPage() {
                         )}
                       </TableCell>
                       <TableCell>
-                        {d.invoiceStatus === "invoiced" && !d.cancelledAt ? (
+                        {d.invoiceStatus === "invoiced" && !(d as any).cancelledAt ? (
                           <PaymentStatusBadge status={effectivePayStatus} />
                         ) : (
                           <span className="text-slate-500 text-xs">-</span>
@@ -202,19 +202,19 @@ export default function SalesInvoicesPage() {
                       </TableCell>
                       <TableCell className="text-right font-medium">{idr(Number(d.grandTotal ?? d.totalAmount))}</TableCell>
                       <TableCell className="text-right">
-                        {d.invoiceStatus === "invoiced" && !d.cancelledAt && balanceDue > 0 ? (
+                        {d.invoiceStatus === "invoiced" && !(d as any).cancelledAt && balanceDue > 0 ? (
                           <span className="text-amber-400 font-mono text-sm">{idr(balanceDue)}</span>
-                        ) : d.invoiceStatus === "invoiced" && !d.cancelledAt && balanceDue === 0 ? (
+                        ) : d.invoiceStatus === "invoiced" && !(d as any).cancelledAt && balanceDue === 0 ? (
                           <span className="text-emerald-400 text-xs">Lunas</span>
                         ) : (
                           <span className="text-slate-500 text-xs">-</span>
                         )}
                       </TableCell>
                       <TableCell className="text-xs text-slate-400">
-                        {d.invoiceDate ? new Date(d.invoiceDate + "T00:00:00").toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
+                        {(d as any).invoiceDate ? new Date((d as any).invoiceDate + "T00:00:00").toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
                       </TableCell>
                       <TableCell className={`text-xs ${isOverdue ? "text-red-400 font-semibold" : "text-slate-400"}`}>
-                        {d.dueDate ? new Date(d.dueDate + "T00:00:00").toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
+                        {(d as any).dueDate ? new Date((d as any).dueDate + "T00:00:00").toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
                         {isOverdue && <span className="ml-1 text-xs">(Lewat)</span>}
                       </TableCell>
                       <TableCell>

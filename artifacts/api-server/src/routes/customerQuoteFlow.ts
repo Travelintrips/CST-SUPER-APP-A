@@ -74,7 +74,7 @@ customerQuoteAdminRouter.post("/rfq/:rfqId/send-customer-quote", async (req: Req
       orderId: order.id,
       token,
       status: "pending",
-      etaFinal: etaFinal ?? order.etaFinal ?? null,
+      etaFinal: etaFinal ?? (order as any).etaFinal ?? null,
       termsConditions: termsConditions ?? null,
       quoteNotes: quoteNotes ?? null,
       finalCustomerPrice: customerPrice ? String(customerPrice) : null,

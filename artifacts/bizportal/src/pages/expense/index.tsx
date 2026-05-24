@@ -122,7 +122,7 @@ export default function ExpenseListPage() {
     from: fromFilter || undefined,
     to: toFilter || undefined,
     company: activeCompanyId,
-  });
+  } as any);
   const { data: cats = [] } = useListExpenseCategories();
   const { data: salesDocs = [] } = useListSalesDocuments({ kind: "order" });
   const { data: shipments = [] } = useListFreightShipments();

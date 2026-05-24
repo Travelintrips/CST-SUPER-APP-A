@@ -182,6 +182,18 @@ export class ObjectStorageService {
     const { objectName } = parseObjectPath(storagePath);
     return `/api/storage/public-objects/${objectName}`;
   }
+
+  /** Upload buffer to storagePath and return the public serving URL. */
+  async uploadPublicFile(buffer: Buffer, storagePath: string, contentType: string): Promise<string> {
+    await this.uploadFile(buffer, storagePath, contentType);
+    return this.getPublicUrl(storagePath);
+  }
+
+  /** Upload buffer to storagePath and return the public serving URL (args: storagePath, buffer, contentType). */
+  async uploadPublic(storagePath: string, buffer: Buffer, contentType: string): Promise<string> {
+    await this.uploadFile(buffer, storagePath, contentType);
+    return this.getPublicUrl(storagePath);
+  }
 }
 
 function parseObjectPath(path: string): { bucketName: string; objectName: string } {

@@ -389,7 +389,7 @@ router.post("/auth/wa-register", async (req, res) => {
 
   let deviceToken: string | undefined;
   const days = typeof rememberDays === "number" && rememberDays > 0 && rememberDays <= 90 ? rememberDays : null;
-  if (days) {
+  if (days && created.phone) {
     deviceToken = randomUUID();
     const expiresAt = new Date(Date.now() + days * 86400_000);
     await db.insert(trustedDevicesTable).values({ phone: created.phone, deviceToken, expiresAt });

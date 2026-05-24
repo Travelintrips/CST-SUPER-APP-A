@@ -1007,14 +1007,14 @@ function GlobalSearchResults({
     });
 
     (stocks as StockItem[]).forEach((s) => {
-      const n = (s.name ?? "").toLowerCase();
+      const n = ((s as any).name ?? "").toLowerCase();
       const sku = (s.sku ?? "").toLowerCase();
       if (n.includes(q) || sku.includes(q)) {
         out.push({
           id: `st-${s.id}`,
-          name: s.name ?? "-",
+          name: (s as any).name ?? "-",
           sku: s.sku ?? "-",
-          detail: `Stok Trading • ${s.unit ?? "-"} • Beli ${fmt(Number(s.buyPrice ?? 0))}`,
+          detail: `Stok Trading • ${s.unit ?? "-"} • Beli ${fmt(Number((s as any).buyPrice ?? 0))}`,
           source: "Stok Trading",
           sourceColor: "bg-green-100 text-green-700",
           sourceIcon: Globe,
@@ -1027,7 +1027,7 @@ function GlobalSearchResults({
       if ((s.name ?? "").toLowerCase().includes(q) || (s.contactEmail ?? "").toLowerCase().includes(q)) {
         out.push({
           id: `sp-${s.id}`,
-          name: s.name ?? "-",
+          name: (s as any).name ?? "-",
           sku: s.contactEmail ?? "-",
           detail: `Supplier • ${s.country ?? "-"} • ${s.phone ?? "-"}`,
           source: "Supplier",

@@ -4,7 +4,7 @@ import type { QueryFunction, QueryKey } from "@tanstack/react-query";
 
 export interface PrefetchOptions {
   queryKey: QueryKey;
-  queryFn: QueryFunction<unknown>;
+  queryFn?: QueryFunction<unknown>;
 }
 
 export function usePrefetchOnHover(delay = 150) {
@@ -15,8 +15,9 @@ export function usePrefetchOnHover(delay = 150) {
       let timerId: ReturnType<typeof setTimeout> | null = null;
 
       const onMouseEnter = () => {
+        if (!opts.queryFn) return;
         timerId = setTimeout(() => {
-          queryClient.prefetchQuery(opts);
+          queryClient.prefetchQuery(opts as { queryKey: QueryKey; queryFn: QueryFunction<unknown> });
         }, delay);
       };
 

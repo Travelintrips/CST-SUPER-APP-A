@@ -36,7 +36,9 @@ export interface PostingInput {
     | "opname_adjust"
     | "damage_adjust"
     | "grn_receipt"
-    | "reversal";
+    | "reversal"
+    | "wh_transfer"
+    | "sport_center_booking";
   sourceId?: number | null;
   createdById?: string | null;
   companyId?: number | null;

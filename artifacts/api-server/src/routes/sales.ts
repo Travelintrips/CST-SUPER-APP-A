@@ -555,8 +555,8 @@ router.post("/documents/:id/action", async (req, res) => {
         // nothing to deduct, fall through
       } else {
         // ── wh_stock deduction (gudang ERP — sistem tunggal) ─────────────────
-        const [defaultWh] = await db.execute(sql`SELECT id FROM warehouses WHERE is_active = TRUE ORDER BY id LIMIT 1`);
-        const wh = (defaultWh as any)?.rows?.[0] ?? (defaultWh as any);
+        const defaultWhResult = await db.execute(sql`SELECT id FROM warehouses WHERE is_active = TRUE ORDER BY id LIMIT 1`);
+        const wh = defaultWhResult.rows[0] as any;
         const legacyWhId: number | undefined = wh?.id;
         const cogsLines: Array<{ name: string; qty: number; costPrice: number }> = [];
         if (legacyWhId) {

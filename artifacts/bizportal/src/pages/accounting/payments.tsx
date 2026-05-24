@@ -865,7 +865,7 @@ export default function PaymentsPage() {
                     return (
                       <TableRow key={p.id} className={isVoided ? "opacity-50" : undefined}>
                         <TableCell className="text-indigo-400 text-xs font-mono whitespace-nowrap">
-                          {p.paymentNumber ?? <span className="text-slate-600">—</span>}
+                          {(p as any).paymentNumber ?? <span className="text-slate-600">—</span>}
                         </TableCell>
                         <TableCell className="text-slate-300 text-xs whitespace-nowrap">
                           {formatDate(p.date)}

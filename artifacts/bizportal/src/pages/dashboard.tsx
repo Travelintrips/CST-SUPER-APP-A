@@ -701,7 +701,7 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent className="space-y-3">
               {summary.perCompany.map((co) => {
-                const barW = Math.max(co.contribution, 2);
+                const barW = Math.max(co.contributionPct, 2);
                 return (
                   <div key={co.companyId} className="space-y-1">
                     <div className="flex items-center justify-between text-sm">
@@ -716,7 +716,7 @@ export default function DashboardPage() {
                         <span className="font-semibold text-emerald-700 tabular-nums">
                           {new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(co.revenueThisMonth)}
                         </span>
-                        <span className="text-xs font-medium text-purple-700 w-8 text-right">{co.contribution}%</span>
+                        <span className="text-xs font-medium text-purple-700 w-8 text-right">{co.contributionPct}%</span>
                       </div>
                     </div>
                     <div className="h-1.5 rounded-full bg-muted overflow-hidden">
@@ -1140,14 +1140,14 @@ export default function DashboardPage() {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setSoDialog(null)}>{t.common.cancel}</Button>
-            {soDialog?.linkedSalesDocId ? (
+            {(soDialog as any)?.linkedSalesDocId ? (
               <Button
                 variant="secondary"
                 className="gap-2"
                 onClick={() => { setSoDialog(null); window.location.href = "/sales/orders"; }}
               >
                 <ExternalLink className="h-4 w-4" />
-                Lihat SO: {soDialog.linkedSalesDocNumber}
+                Lihat SO: {(soDialog as any).linkedSalesDocNumber}
               </Button>
             ) : (
               <Button onClick={handleCreateSalesOrder} disabled={createSalesDoc.isPending} className="gap-2">

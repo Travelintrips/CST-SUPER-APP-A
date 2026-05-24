@@ -214,12 +214,12 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
       const commodityKeyword = (order.commodity ?? "").toLowerCase().trim();
       const vendorIdsWithCommodity = new Set<number>();
       if (commodityKeyword) {
-        const kwParts = commodityKeyword.split(/\s+/).filter((k) => k.length > 2);
+        const kwParts = commodityKeyword.split(/\s+/).filter((k: string) => k.length > 2);
         for (const item of catalogItems) {
           const isTagged = item.isCommodityTag === true;
           const itemName = item.name.toLowerCase();
           const nameMatches = itemName.includes(commodityKeyword) ||
-            kwParts.some((kw) => itemName.includes(kw));
+            kwParts.some((kw: string) => itemName.includes(kw));
           if (isTagged || nameMatches) vendorIdsWithCommodity.add(item.vendorId);
         }
       }

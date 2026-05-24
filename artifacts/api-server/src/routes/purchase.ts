@@ -393,8 +393,8 @@ router.post("/documents/:id/action", async (req, res) => {
         const docWarehouseId = (doc as any).warehouseId ?? null;
         let posWhId: number | undefined = docWarehouseId ? Number(docWarehouseId) : undefined;
         if (!posWhId) {
-          const [defaultWh] = await db.execute(sql`SELECT id FROM warehouses WHERE is_active = TRUE ORDER BY id LIMIT 1`);
-          const wh = (defaultWh as any)?.rows?.[0] ?? (defaultWh as any);
+          const defaultWhResult = await db.execute(sql`SELECT id FROM warehouses WHERE is_active = TRUE ORDER BY id LIMIT 1`);
+          const wh = defaultWhResult.rows[0] as any;
           posWhId = wh?.id;
         }
         // ERP warehouse (inventory_stock)
@@ -787,7 +787,7 @@ router.get("/po-detail/:id", async (req, res) => {
     ...doc,
     goodsReceipts: grs.map((g) => ({
       ...g,
-      receivedAt: g.receivedAt instanceof Date ? g.receivedAt.toISOString() : (g.receivedAt ?? null),
+      receivedAt: (g as any).receiveDate instanceof Date ? (g as any).receiveDate.toISOString() : ((g as any).receiveDate ?? null),
       createdAt: g.createdAt.toISOString(),
       updatedAt: g.updatedAt.toISOString(),
     })),

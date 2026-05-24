@@ -394,7 +394,7 @@ export function AppShell({ children }: AppShellProps) {
 
   const { data: aiDrafts = [] } = useListAiDraftQuotations({
     query: {
-      enabled: dbUser?.role === "admin" || dbUser?.role === "owner",
+      enabled: (dbUser?.role as string) === "admin" || (dbUser?.role as string) === "owner",
       refetchInterval: 60_000,
       queryKey: getListAiDraftQuotationsQueryKey(),
     },
@@ -421,8 +421,8 @@ export function AppShell({ children }: AppShellProps) {
     }
 
     // owner dan admin (built-in) melihat semua
-    if (dbUser.role === "owner") return true;
-    if (dbUser.role === "admin") return true;
+    if ((dbUser.role as string) === "owner") return true;
+    if ((dbUser.role as string) === "admin") return true;
 
     // Custom role permissions (format: "module" atau "module:view")
     if (customRolePermissions != null) {
@@ -514,7 +514,7 @@ export function AppShell({ children }: AppShellProps) {
       } catch { return {}; }
     },
     staleTime: 5 * 60 * 1000,
-    enabled: dbUser?.role === "admin" || dbUser?.role === "owner",
+    enabled: (dbUser?.role as string) === "admin" || (dbUser?.role as string) === "owner",
   });
 
   const companyKey = isConsolidated ? "__all__" : String(activeCompany?.id ?? 0);

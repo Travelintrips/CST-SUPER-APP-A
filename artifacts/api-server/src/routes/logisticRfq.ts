@@ -986,7 +986,7 @@ logisticRfqRouter.get("/rfq-form", rfqRateLimit, async (req: Request, res: Respo
       .where(eq(logisticOrderItemsTable.orderId, rfq.orderId)),
   ]);
 
-  const vt = order.vehicleType ?? (order as any).truckType ?? null;
+  const vt = (order as any).vehicleType ?? (order as any).truckType ?? null;
   const matchingCatalog = vt
     ? catalogItems.find((c) => c.name.toLowerCase().includes(vt.toLowerCase()))
     : null;
@@ -1296,7 +1296,7 @@ logisticRfqRouter.post("/:id/resend-rfq", async (req: Request, res: Response) =>
   for (const vendor of eligible) {
     const catalogItems = await db.select().from(vendorCatalogItemsTable)
       .where(and(eq(vendorCatalogItemsTable.vendorId, vendor.id), eq(vendorCatalogItemsTable.isActive, true)));
-    const vt = order.vehicleType ?? (order as any).truckType ?? null;
+    const vt = (order as any).vehicleType ?? (order as any).truckType ?? null;
     const matchingCatalog = vt
       ? catalogItems.find((c) => c.name.toLowerCase().includes(vt.toLowerCase()))
       : null;
