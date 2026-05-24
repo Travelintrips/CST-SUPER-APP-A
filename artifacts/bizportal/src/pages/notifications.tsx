@@ -3,7 +3,7 @@ import {
   Bell, Package, Ship, ShoppingBag, FileText, RefreshCw,
   Container, Layers, ShoppingCart, Trash2, CheckCheck,
   ChevronLeft, ChevronRight, Eye, ClipboardList, MessageSquare,
-  Filter, Search, X, Sparkles,
+  Filter, Search, X, Sparkles, ArrowLeft,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -339,7 +339,17 @@ export default function NotificationsPage() {
 
         {/* ── Header ── */}
         <div className="flex items-start justify-between gap-3">
-          <div>
+          <div className="flex items-start gap-3">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 shrink-0 mt-0.5"
+              onClick={() => window.history.back()}
+              title="Kembali"
+            >
+              <ArrowLeft size={16} />
+            </Button>
+            <div>
             <div className="flex items-center gap-2">
               <Bell size={20} className="text-indigo-500" />
               <h1 className="text-lg font-semibold">Riwayat Notifikasi</h1>
@@ -354,6 +364,7 @@ export default function NotificationsPage() {
                 {total} notifikasi tersimpan
               </p>
             )}
+            </div>
           </div>
           <div className="flex gap-2">
             {unreadTotal > 0 && (
