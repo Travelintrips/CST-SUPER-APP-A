@@ -641,18 +641,6 @@ function WhatsAppNotificationCard() {
   );
 }
 
-const SERVICE_META_SETTINGS: Record<string, { label: string; emoji: string }> = {
-  product: { label: "Produk", emoji: "📦" },
-  trucking: { label: "Trucking", emoji: "🚛" },
-  air_freight: { label: "Air Freight", emoji: "✈️" },
-  sea_freight: { label: "Sea Freight", emoji: "🚢" },
-  ppjk: { label: "PPJK", emoji: "📋" },
-  customs_clearance: { label: "Customs Clearance", emoji: "🛃" },
-  warehouse: { label: "Warehouse", emoji: "🏭" },
-  handling: { label: "Handling", emoji: "🔧" },
-  exim_service: { label: "Exim Service", emoji: "🌐" },
-};
-
 function VendorMiniFormCard() {
   const [stats, setStats] = useState<{ links: number; activeLinks: number; submissions: number } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -714,14 +702,6 @@ function VendorMiniFormCard() {
             </div>
           </div>
         ) : null}
-
-        <div className="flex flex-wrap gap-2">
-          {Object.entries(SERVICE_META_SETTINGS).map(([k, v]) => (
-            <Badge key={k} variant="secondary" className="text-xs gap-1">
-              {v.emoji} {v.label}
-            </Badge>
-          ))}
-        </div>
 
         <div className="pt-2 border-t border-border flex items-center justify-between gap-4">
           <p className="text-xs text-muted-foreground">
