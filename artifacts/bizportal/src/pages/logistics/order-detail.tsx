@@ -37,7 +37,7 @@ type Order = {
   id: number; orderNumber: string; customerName: string; email: string; phone: string;
   shipmentType: string; origin: string; destination: string;
   commodity: string | null; cargoDescription: string | null;
-  grossWeight: string | null; volumeCbm: string | null;
+  grossWeight: string | null; volumeCbm: string | null; jumlahKoli: number | null;
   status: string;
   finalSellingPrice: string | null; finalPrice: string | null; markupPercent: string | null;
   approvedVendorId: number | null;
@@ -985,6 +985,7 @@ export default function LogisticOrderDetailPage() {
                 {order.cargoDescription && <Field label="Deskripsi" value={order.cargoDescription} />}
                 {order.grossWeight && <Field label="Berat" value={`${order.grossWeight} kg`} />}
                 {order.volumeCbm && <Field label="Volume" value={`${order.volumeCbm} CBM`} />}
+                {order.jumlahKoli != null && <Field label="Jumlah Koli" value={`${order.jumlahKoli} koli`} />}
                 <Field label="Status" value={<Badge className={STATUS_COLOR[order.status] ?? "bg-slate-100 text-slate-700"}>{order.status}</Badge>} />
                 <Field label="Order Dibuat" value={dt(order.createdAt)} />
               </CardContent>

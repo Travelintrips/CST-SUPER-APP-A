@@ -299,7 +299,6 @@ export interface VendorCatalogItem {
   priceBase: number;
   markupPct: number;
   isActive: boolean;
-  isCommodityTag: boolean;
   sortOrder: number;
   createdAt: string;
 }
@@ -312,7 +311,6 @@ export interface CreateVendorCatalogItemBody {
   priceBase?: number;
   markupPct?: number;
   isActive?: boolean;
-  isCommodityTag?: boolean;
   sortOrder?: number;
 }
 

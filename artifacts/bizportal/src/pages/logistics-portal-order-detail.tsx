@@ -691,6 +691,7 @@ export default function LogisticsPortalOrderDetailPage() {
                   {order.cargoDescription && <InfoRow label="Kargo" value={order.cargoDescription} />}
                   {order.grossWeight != null && <InfoRow label="Berat" value={`${order.grossWeight} kg`} />}
                   {order.volumeCbm != null && <InfoRow label="Volume" value={`${order.volumeCbm} CBM`} />}
+                  {order.jumlahKoli != null && <InfoRow label="Jumlah Koli" value={`${order.jumlahKoli} koli`} />}
                   {order.requiredDate && <InfoRow label="Tgl Butuh" value={order.requiredDate} />}
                   {order.paymentType && <InfoRow label="Pembayaran" value={order.paymentType} />}
                   {order.notes && <InfoRow label="Catatan" value={order.notes} />}
