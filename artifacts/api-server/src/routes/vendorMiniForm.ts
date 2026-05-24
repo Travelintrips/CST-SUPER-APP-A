@@ -591,6 +591,44 @@ router.post("/admin/links/:id/reset-short-link", async (req: Request, res: Respo
   }
 });
 
+// ── ADMIN: POST /api/vendor-form-admin/submissions/:id/resend-wa ──────────────
+
+router.post("/admin/submissions/:id/resend-wa", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const id = Number(req.params["id"]);
+  if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+  try {
+    const [sub] = await db
+      .select()
+      .from(vendorMiniFormSubmissionsTable)
+      .where(eq(vendorMiniFormSubmissionsTable.id, id));
+
+    if (!sub) return res.status(404).json({ error: "Submission tidak ditemukan" });
+    if (!sub.contactPhone?.trim()) {
+      return res.status(400).json({ error: "Submission tidak memiliki nomor telepon vendor" });
+    }
+
+    const vendorLabel = sub.vendorName?.trim() || "Vendor";
+    const picLabel = sub.contactPerson?.trim() || "-";
+    const msg =
+      `Halo *${picLabel}* dari *${vendorLabel}*,\n\n` +
+      `Terima kasih! Data Anda telah kami terima dengan baik. ` +
+      `Tim CST Logistics akan segera menghubungi Anda jika diperlukan.\n\n` +
+      `_Pesan ini dikirim otomatis, mohon tidak dibalas._`;
+
+    await sendWhatsApp(sub.contactPhone.trim(), msg, {
+      context: "vendor-mini-form-confirm",
+      refType: "vendor_mini_form",
+      refId: sub.token,
+    });
+
+    return res.json({ success: true });
+  } catch (err) {
+    req.log?.error({ err }, "vendor-mini-form admin resend-wa error");
+    return res.status(500).json({ error: "Gagal mengirim ulang WA" });
+  }
+});
+
 // ── ADMIN: DELETE /api/vendor-form-admin/submissions/:id ─────────────────────
 
 router.delete("/admin/submissions/:id", async (req: Request, res: Response) => {

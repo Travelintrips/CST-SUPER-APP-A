@@ -18,7 +18,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Copy, ExternalLink, Link2, Plus, Trash2, Eye, ToggleLeft, ToggleRight, Loader2, RotateCcw, CalendarDays, User, Phone, MessageCircle, XCircle, Clock } from "lucide-react";
+import { Copy, ExternalLink, Link2, Plus, Trash2, Eye, ToggleLeft, ToggleRight, Loader2, RotateCcw, CalendarDays, User, Phone, MessageCircle, XCircle, Clock, SendHorizonal } from "lucide-react";
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
 } from "@/components/ui/sheet";
@@ -413,6 +413,20 @@ export default function VendorFormsPage() {
     onError: (e: Error) => toast({ title: "Gagal", description: e.message, variant: "destructive" }),
   });
 
+  const [resendingWa, setResendingWa] = useState<number | null>(null);
+  const resendWa = async (id: number) => {
+    setResendingWa(id);
+    try {
+      await apiFetch(`/api/vendor-form/admin/submissions/${id}/resend-wa`, { method: "POST" });
+      toast({ title: "WA berhasil dikirim ulang" });
+      qc.invalidateQueries({ queryKey: ["vendor-form-submissions"] });
+    } catch (e: unknown) {
+      toast({ title: "Gagal kirim ulang WA", description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setResendingWa(null);
+    }
+  };
+
   const [generatingShortLink, setGeneratingShortLink] = useState<number | null>(null);
   const [resettingShortLink, setResettingShortLink] = useState<number | null>(null);
 
@@ -699,6 +713,18 @@ export default function VendorFormsPage() {
                             <TableCell className="text-right">
                               <div className="flex items-center justify-end gap-1">
                                 <SubmissionDetailDialog submission={sub} />
+                                {sub.contactPhone && (sub.waStatus !== "sent") && (
+                                  <Button
+                                    variant="ghost" size="icon" className="h-7 w-7 text-indigo-400 hover:text-indigo-600"
+                                    title="Kirim ulang WA konfirmasi ke vendor"
+                                    disabled={resendingWa === sub.id}
+                                    onClick={() => resendWa(sub.id)}
+                                  >
+                                    {resendingWa === sub.id
+                                      ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                      : <SendHorizonal className="h-3.5 w-3.5" />}
+                                  </Button>
+                                )}
                                 <Button
                                   variant="ghost" size="icon" className="h-7 w-7 text-red-400 hover:text-red-600"
                                   title="Hapus submission"
