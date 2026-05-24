@@ -117,7 +117,7 @@ export default function AccountingSettingsPage() {
       <div>
         <Label>{label}</Label>
         <Select value={form[key] ? String(form[key]) : "none"} onValueChange={(v) => setForm({ ...form, [key]: v === "none" ? null : parseInt(v) })}>
-          <SelectTrigger data-testid={`select-${key}`}><SelectValue /></SelectTrigger>
+          <SelectTrigger data-testid={`select-${String(key)}`}><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="none">— Tidak ada —</SelectItem>
             {list.map((a) => (<SelectItem key={a.id} value={String(a.id)}>{a.code} {a.name}</SelectItem>))}
@@ -131,7 +131,7 @@ export default function AccountingSettingsPage() {
     <div>
       <Label>{label}</Label>
       <Select value={form[key] ? String(form[key]) : "none"} onValueChange={(v) => setForm({ ...form, [key]: v === "none" ? null : parseInt(v) })}>
-        <SelectTrigger data-testid={`select-${key}`}><SelectValue /></SelectTrigger>
+        <SelectTrigger data-testid={`select-${String(key)}`}><SelectValue /></SelectTrigger>
         <SelectContent>
           <SelectItem value="none">— Tidak ada —</SelectItem>
           {(journals ?? []).filter((j) => j.type === type).map((j) => (<SelectItem key={j.id} value={String(j.id)}>{j.code} - {j.name}</SelectItem>))}
@@ -144,7 +144,7 @@ export default function AccountingSettingsPage() {
     <div>
       <Label>{label}</Label>
       <Select value={form[key] ? String(form[key]) : "none"} onValueChange={(v) => setForm({ ...form, [key]: v === "none" ? null : parseInt(v) })}>
-        <SelectTrigger data-testid={`select-${key}`}><SelectValue /></SelectTrigger>
+        <SelectTrigger data-testid={`select-${String(key)}`}><SelectValue /></SelectTrigger>
         <SelectContent>
           <SelectItem value="none">— Tidak ada —</SelectItem>
           {(taxes ?? []).filter((t) => t.kind === kind && t.isActive).map((t) => (<SelectItem key={t.id} value={String(t.id)}>{t.name} ({t.rate}%)</SelectItem>))}

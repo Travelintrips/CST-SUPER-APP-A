@@ -222,6 +222,8 @@ router.get("/:token", async (req: Request, res: Response) => {
       }
     }
 
+    if (!row) return res.status(404).json({ error: "Link tidak ditemukan atau sudah tidak valid" });
+
     if (!row.isActive) return res.status(410).json({ error: "Link ini sudah dinonaktifkan" });
     if (row.expiresAt && row.expiresAt < new Date()) {
       invalidateTokenCache(token);
