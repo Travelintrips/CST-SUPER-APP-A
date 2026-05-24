@@ -292,7 +292,7 @@ app.use("/api", router);
 // For any non-API, non-BizPortal path (e.g. /confirm/:token, /, /services, etc.)
 // serve the customer portal index.html so client-side routing works.
 if (fs.existsSync(CUSTOMER_PORTAL_DIST)) {
-  const PORTAL_SKIP = ["/api/", "/bizportal", "/login", "/logout", "/callback", "/auth", "/mobile-auth", "/q/", "/admin-action/"];
+  const PORTAL_SKIP = ["/api/", "/bizportal", "/login", "/logout", "/callback", "/auth", "/mobile-auth"];
   app.use((req: Request, res: Response, next: NextFunction) => {
     if (PORTAL_SKIP.some((p) => req.path === p || req.path.startsWith(p + "/") || req.path.startsWith(p))) {
       return next();
