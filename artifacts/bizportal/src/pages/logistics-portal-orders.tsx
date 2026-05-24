@@ -182,6 +182,8 @@ export default function LogisticsPortalOrdersPage() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkDeleteDialog, setBulkDeleteDialog] = useState(false);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  const [bulkStatusValue, setBulkStatusValue] = useState("");
+  const [isBulkUpdating, setIsBulkUpdating] = useState(false);
 
   const [newOrderCount, setNewOrderCount] = useState(0);
   const [lastAutoRefresh, setLastAutoRefresh] = useState<Date | null>(null);
@@ -389,6 +391,29 @@ export default function LogisticsPortalOrdersPage() {
     });
   }
 
+  async function handleBulkStatusUpdate(status: string) {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0 || !status) return;
+    setIsBulkUpdating(true);
+    try {
+      const res = await fetch("/api/logistic/orders/bulk-status", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids, status }),
+      });
+      if (!res.ok) throw new Error("Gagal update");
+      const data = await res.json();
+      toast({ title: `${data.count} transaksi diubah ke "${status}"` });
+      setSelectedIds(new Set());
+      setBulkStatusValue("");
+      queryClient.invalidateQueries({ queryKey: getListLogisticOrdersQueryKey() });
+    } catch {
+      toast({ title: "Gagal mengubah status", variant: "destructive" });
+    } finally {
+      setIsBulkUpdating(false);
+    }
+  }
+
   async function handleBulkDelete() {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
@@ -574,28 +599,63 @@ export default function LogisticsPortalOrdersPage() {
           )}
         </div>
 
-        {/* Bulk Delete Toolbar */}
+        {/* Bulk Action Toolbar */}
         {selectedIds.size > 0 && (
-          <div className="flex items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-2.5 animate-in fade-in slide-in-from-top-2 duration-200">
-            <span className="text-sm font-medium text-destructive">
+          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-2.5 animate-in fade-in slide-in-from-top-2 duration-200">
+            <span className="text-sm font-semibold">
               {selectedIds.size} transaksi dipilih
             </span>
+            <div className="w-px h-4 bg-border" />
+            {/* Bulk Status Update */}
+            <div className="flex items-center gap-2">
+              <Select
+                value={bulkStatusValue}
+                onValueChange={(v) => {
+                  setBulkStatusValue(v);
+                  handleBulkStatusUpdate(v);
+                }}
+                disabled={isBulkUpdating}
+              >
+                <SelectTrigger className="h-7 w-44 text-xs">
+                  <SelectValue placeholder={isBulkUpdating ? "Memperbarui..." : "Ubah status ke..."} />
+                </SelectTrigger>
+                <SelectContent>
+                  {STATUS_OPTIONS.map((s) => (
+                    <SelectItem key={s} value={s} className="text-xs">
+                      <span className={`inline-block w-2 h-2 rounded-full mr-1.5 ${
+                        s === "New Order" ? "bg-yellow-500" :
+                        s === "Confirmed" ? "bg-blue-500" :
+                        s === "In Progress" ? "bg-orange-500" :
+                        s === "Completed" ? "bg-green-500" :
+                        "bg-red-500"
+                      }`} />
+                      {s}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="w-px h-4 bg-border" />
+            {/* Bulk Delete */}
             <Button
               size="sm"
               variant="destructive"
               className="gap-1.5 h-7"
               onClick={() => setBulkDeleteDialog(true)}
+              disabled={isBulkDeleting || isBulkUpdating}
             >
               <Trash2 className="h-3.5 w-3.5" />
-              Hapus yang dipilih
+              Hapus
             </Button>
             <Button
               size="sm"
               variant="ghost"
               className="h-7 text-muted-foreground"
-              onClick={() => setSelectedIds(new Set())}
+              onClick={() => { setSelectedIds(new Set()); setBulkStatusValue(""); }}
+              disabled={isBulkUpdating}
             >
-              Batal pilih
+              <X className="h-3.5 w-3.5 mr-1" />
+              Batal
             </Button>
           </div>
         )}

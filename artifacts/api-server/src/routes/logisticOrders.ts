@@ -758,6 +758,22 @@ logisticOrdersRouter.patch("/:id/type", async (req: Request, res: Response) => {
   return res.json(toOrder(updated));
 });
 
+// PUT /api/logistic/orders/bulk-status — ubah status banyak order sekaligus
+logisticOrdersRouter.put("/bulk-status", async (req: Request, res: Response) => {
+  const parsed = z.object({
+    ids: z.array(z.number().int().positive()).min(1),
+    status: z.enum(["New Order", "Confirmed", "In Progress", "Completed", "Cancelled"]),
+  }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: "ids dan status harus valid" });
+  const { ids, status } = parsed.data;
+  const updated = await db
+    .update(logisticOrdersTable)
+    .set({ status })
+    .where(inArray(logisticOrdersTable.id, ids))
+    .returning({ id: logisticOrdersTable.id });
+  return res.json({ message: "Updated", updatedIds: updated.map((r) => r.id), count: updated.length });
+});
+
 // DELETE /api/logistic/orders/bulk — hapus banyak order sekaligus
 logisticOrdersRouter.delete("/bulk", async (req: Request, res: Response) => {
   const parsed = z.object({ ids: z.array(z.number().int().positive()).min(1) }).safeParse(req.body);
