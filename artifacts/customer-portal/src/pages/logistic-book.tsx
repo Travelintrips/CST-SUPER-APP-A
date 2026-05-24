@@ -1262,6 +1262,18 @@ export default function BookPage() {
                 </div>
               </>)}
 
+              <div className="col-span-2 sm:col-span-1">
+                <Label className="text-xs">Jumlah Koli <span className="text-muted-foreground font-normal">(pcs/koli)</span></Label>
+                <Input
+                  type="number"
+                  min="1"
+                  placeholder="Contoh: 10"
+                  value={f.jumlahKoli}
+                  onChange={e => set("jumlahKoli", e.target.value)}
+                />
+                <p className="text-[11px] text-muted-foreground mt-1">Total jumlah koli / kotak / karton</p>
+              </div>
+
               <div className="col-span-2">
                 <Label className="text-xs">Catatan Tambahan</Label>
                 <Textarea placeholder="Informasi tambahan untuk tim kami..." value={f.notes} onChange={e => set("notes", e.target.value)} rows={3} />
