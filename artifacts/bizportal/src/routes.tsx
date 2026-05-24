@@ -100,6 +100,8 @@ import SettingsApprovalRulesPage from "@/pages/settings-approval-rules";
 import UsersPage from "@/pages/users";
 import MediaManagerPage from "@/pages/media-manager";
 import OrgManagementPage from "@/pages/OrgManagementPage";
+import AuditReportListPage from "@/pages/audit/index";
+import AuditReportFormPage from "@/pages/audit/form";
 
 // Products
 import ProductItemsPage from "@/pages/products/items";
@@ -276,6 +278,10 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/thai-tea/reports" component={PR(ThaiTeaReportsPage)} />
       <Route path="/thai-tea" component={PR(ThaiTeaDashboardPage)} />
 
+
+      {/* ── Audit ERP ──────────────────────────────────────────────────── */}
+      <Route path="/audit/:id" component={PR(AuditReportFormPage)} />
+      <Route path="/audit" component={PR(AuditReportListPage)} />
 
       {/* ── Legacy redirects ───────────────────────────────────────────── */}
       <Route path="/expenses/new" component={() => <Redirect to="/expense/new" />} />
