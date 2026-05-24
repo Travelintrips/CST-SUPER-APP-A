@@ -200,6 +200,7 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
         ? await db.select({
             vendorId: vendorCatalogItemsTable.vendorId,
             name: vendorCatalogItemsTable.name,
+            isCommodityTag: vendorCatalogItemsTable.isCommodityTag,
           }).from(vendorCatalogItemsTable)
             .where(and(
               inArray(vendorCatalogItemsTable.vendorId, vendorIdList),
@@ -207,16 +208,19 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
             ))
         : [];
 
-      // Build set of vendor IDs whose catalog contains the order's commodity
+      // Build set of vendor IDs whose catalog contains the order's commodity.
+      // Priority: items explicitly tagged as "komoditi yang ditangani" (isCommodityTag=true)
+      // are matched first. Name-based keyword matching is the fallback.
       const commodityKeyword = (order.commodity ?? "").toLowerCase().trim();
       const vendorIdsWithCommodity = new Set<number>();
       if (commodityKeyword) {
         const kwParts = commodityKeyword.split(/\s+/).filter((k) => k.length > 2);
         for (const item of catalogItems) {
+          const isTagged = item.isCommodityTag === true;
           const itemName = item.name.toLowerCase();
-          const matches = itemName.includes(commodityKeyword) ||
+          const nameMatches = itemName.includes(commodityKeyword) ||
             kwParts.some((kw) => itemName.includes(kw));
-          if (matches) vendorIdsWithCommodity.add(item.vendorId);
+          if (isTagged || nameMatches) vendorIdsWithCommodity.add(item.vendorId);
         }
       }
 

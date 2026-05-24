@@ -38,6 +38,7 @@ export const vendorCatalogItemsTable = pgTable("vendor_catalog_items", {
   priceBase: numeric("price_base", { precision: 15, scale: 2 }).notNull().default("0"),
   markupPct: numeric("markup_pct", { precision: 5, scale: 2 }).notNull().default("0"),
   isActive: boolean("is_active").notNull().default(true),
+  isCommodityTag: boolean("is_commodity_tag").notNull().default(false),
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

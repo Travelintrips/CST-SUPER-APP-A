@@ -150,7 +150,7 @@ router.get("/suppliers/:id/catalog", async (req, res) => {
 router.post("/suppliers/:id/catalog", async (req, res) => {
   const vendorId = Number(req.params.id);
   if (Number.isNaN(vendorId)) return res.status(400).json({ message: "Invalid id" });
-  const { type, name, description, unit, priceBase, markupPct, isActive, sortOrder } = req.body;
+  const { type, name, description, unit, priceBase, markupPct, isActive, isCommodityTag, sortOrder } = req.body;
   if (!name || typeof name !== "string")
     return res.status(400).json({ message: "name required" });
   const [item] = await db.insert(vendorCatalogItemsTable).values({
@@ -162,6 +162,7 @@ router.post("/suppliers/:id/catalog", async (req, res) => {
     priceBase: String(parseFloat(String(priceBase ?? 0)) || 0),
     markupPct: String(parseFloat(String(markupPct ?? 0)) || 0),
     isActive: isActive !== undefined ? Boolean(isActive) : true,
+    isCommodityTag: isCommodityTag !== undefined ? Boolean(isCommodityTag) : false,
     sortOrder: sortOrder !== undefined ? Number(sortOrder) : 0,
   }).returning();
   return res.status(201).json(toItem(item));
@@ -171,7 +172,7 @@ router.post("/suppliers/:id/catalog", async (req, res) => {
 router.put("/suppliers/catalog/:itemId", async (req, res) => {
   const itemId = Number(req.params.itemId);
   if (Number.isNaN(itemId)) return res.status(400).json({ message: "Invalid id" });
-  const { type, name, description, unit, priceBase, markupPct, isActive, sortOrder } = req.body;
+  const { type, name, description, unit, priceBase, markupPct, isActive, isCommodityTag, sortOrder } = req.body;
   const patch: Record<string, unknown> = {};
   if (type !== undefined) patch["type"] = type;
   if (typeof name === "string") patch["name"] = name;
@@ -180,6 +181,7 @@ router.put("/suppliers/catalog/:itemId", async (req, res) => {
   if (priceBase !== undefined) patch["priceBase"] = String(parseFloat(String(priceBase)) || 0);
   if (markupPct !== undefined) patch["markupPct"] = String(parseFloat(String(markupPct)) || 0);
   if (isActive !== undefined) patch["isActive"] = Boolean(isActive);
+  if (isCommodityTag !== undefined) patch["isCommodityTag"] = Boolean(isCommodityTag);
   if (sortOrder !== undefined) patch["sortOrder"] = Number(sortOrder);
   const [updated] = await db
     .update(vendorCatalogItemsTable)

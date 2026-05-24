@@ -92,6 +92,7 @@ type CatalogForm = {
   priceBase: string;
   markupPct: string;
   isActive: boolean;
+  isCommodityTag: boolean;
   sortOrder: string;
 };
 
@@ -103,6 +104,7 @@ const emptyCatalogForm = (): CatalogForm => ({
   priceBase: "0",
   markupPct: "0",
   isActive: true,
+  isCommodityTag: false,
   sortOrder: "0",
 });
 
@@ -204,6 +206,7 @@ export default function VendorDetailPage() {
       priceBase: String(item.priceBase),
       markupPct: String(item.markupPct),
       isActive: item.isActive,
+      isCommodityTag: item.isCommodityTag ?? false,
       sortOrder: String(item.sortOrder),
     });
     setCatalogOpen(true);
@@ -222,6 +225,7 @@ export default function VendorDetailPage() {
       priceBase: parseFloat(itemForm.priceBase) || 0,
       markupPct: parseFloat(itemForm.markupPct) || 0,
       isActive: itemForm.isActive,
+      isCommodityTag: itemForm.isCommodityTag,
       sortOrder: parseInt(itemForm.sortOrder) || 0,
     };
     try {
@@ -404,6 +408,7 @@ export default function VendorDetailPage() {
                     <TableHead className="text-right">Markup (%)</TableHead>
                     <TableHead className="text-right">Harga Jual</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Tag</TableHead>
                     <TableHead className="w-[90px] text-right">Aksi</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -437,6 +442,11 @@ export default function VendorDetailPage() {
                           {item.isActive
                             ? <Badge className="bg-green-100 text-green-800 hover:bg-green-100 text-xs">Aktif</Badge>
                             : <Badge variant="outline" className="text-xs text-muted-foreground">Nonaktif</Badge>}
+                        </TableCell>
+                        <TableCell>
+                          {item.isCommodityTag && (
+                            <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-100 text-xs">🏷️ Komoditi</Badge>
+                          )}
                         </TableCell>
                         <TableCell className="text-right">
                           <Button size="icon" variant="ghost" onClick={() => openEditItem(item)}>
@@ -592,6 +602,17 @@ export default function VendorDetailPage() {
                   onCheckedChange={(v) => setI("isActive", v)}
                 />
                 <Label htmlFor="item-active" className="cursor-pointer">Aktif</Label>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 rounded-md border border-orange-200 bg-orange-50 px-3 py-2">
+              <Switch
+                id="item-commodity"
+                checked={itemForm.isCommodityTag}
+                onCheckedChange={(v) => setI("isCommodityTag", v)}
+              />
+              <div>
+                <Label htmlFor="item-commodity" className="cursor-pointer text-orange-800 font-medium">🏷️ Komoditi yang Ditangani</Label>
+                <p className="text-xs text-orange-600 mt-0.5">Aktifkan agar item ini diprioritaskan saat auto-match blast vendor.</p>
               </div>
             </div>
           </div>

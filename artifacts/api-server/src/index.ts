@@ -122,6 +122,20 @@ async function runCriticalPreStartMigrations() {
     END $$;
   `);
 
+  // Add is_commodity_tag to vendor_catalog_items for blast auto-matching
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'vendor_catalog_items') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'vendor_catalog_items' AND column_name = 'is_commodity_tag'
+        ) THEN
+          ALTER TABLE vendor_catalog_items ADD COLUMN is_commodity_tag BOOLEAN NOT NULL DEFAULT FALSE;
+        END IF;
+      END IF;
+    END $$;
+  `);
+
   // Ensure wh_returns has company_id column (older installs may lack it)
   await db.execute(sql`
     DO $$ BEGIN
