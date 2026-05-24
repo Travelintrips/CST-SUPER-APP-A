@@ -758,6 +758,18 @@ logisticOrdersRouter.patch("/:id/type", async (req: Request, res: Response) => {
   return res.json(toOrder(updated));
 });
 
+// DELETE /api/logistic/orders/bulk — hapus banyak order sekaligus
+logisticOrdersRouter.delete("/bulk", async (req: Request, res: Response) => {
+  const parsed = z.object({ ids: z.array(z.number().int().positive()).min(1) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: "ids harus array angka yang valid" });
+  const { ids } = parsed.data;
+  const deleted = await db
+    .delete(logisticOrdersTable)
+    .where(inArray(logisticOrdersTable.id, ids))
+    .returning({ id: logisticOrdersTable.id });
+  return res.json({ message: "Deleted", deletedIds: deleted.map((r) => r.id), count: deleted.length });
+});
+
 // DELETE /api/logistic/orders/:id
 logisticOrdersRouter.delete("/:id", async (req: Request, res: Response) => {
   const id = parseInt(String(req.params["id"] ?? ""));

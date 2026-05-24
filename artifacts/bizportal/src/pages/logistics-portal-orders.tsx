@@ -31,7 +31,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { PackageOpen, Search, RefreshCw, FilePlus, X, Eye, Zap, Send, ExternalLink, Ship, ClipboardCheck } from "lucide-react";
+import { PackageOpen, Search, RefreshCw, FilePlus, X, Eye, Zap, Send, ExternalLink, Ship, ClipboardCheck, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import { useOrderNotificationsContext } from "@/contexts/OrderNotificationsContext";
@@ -178,6 +178,10 @@ export default function LogisticsPortalOrdersPage() {
   const [soDialog, setSoDialog] = useState<LogisticOrder | null>(null);
   const [viewPhoto, setViewPhoto] = useState<string | null>(null);
   const [detailDialog, setDetailDialog] = useState<LogisticOrder | null>(null);
+
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkDeleteDialog, setBulkDeleteDialog] = useState(false);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
 
   const [newOrderCount, setNewOrderCount] = useState(0);
   const [lastAutoRefresh, setLastAutoRefresh] = useState<Date | null>(null);
@@ -360,6 +364,54 @@ export default function LogisticsPortalOrdersPage() {
     );
   }
 
+  const allFilteredIds = filtered.map((o) => o.id);
+  const allSelected = allFilteredIds.length > 0 && allFilteredIds.every((id) => selectedIds.has(id));
+  const someSelected = allFilteredIds.some((id) => selectedIds.has(id)) && !allSelected;
+
+  function toggleAll() {
+    if (allSelected) {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        allFilteredIds.forEach((id) => next.delete(id));
+        return next;
+      });
+    } else {
+      setSelectedIds((prev) => new Set([...prev, ...allFilteredIds]));
+    }
+  }
+
+  function toggleOne(id: number) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function handleBulkDelete() {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    setIsBulkDeleting(true);
+    try {
+      const res = await fetch("/api/logistic/orders/bulk", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      if (!res.ok) throw new Error("Gagal menghapus");
+      const data = await res.json();
+      toast({ title: `${data.count} transaksi berhasil dihapus` });
+      setSelectedIds(new Set());
+      setBulkDeleteDialog(false);
+      queryClient.invalidateQueries({ queryKey: getListLogisticOrdersQueryKey() });
+    } catch {
+      toast({ title: "Gagal menghapus transaksi", variant: "destructive" });
+    } finally {
+      setIsBulkDeleting(false);
+    }
+  }
+
   const fulfillmentOf = (o: typeof orders[number]) =>
     (o as unknown as { fulfillmentStatus: string | null }).fulfillmentStatus;
 
@@ -522,12 +574,46 @@ export default function LogisticsPortalOrdersPage() {
           )}
         </div>
 
+        {/* Bulk Delete Toolbar */}
+        {selectedIds.size > 0 && (
+          <div className="flex items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-2.5 animate-in fade-in slide-in-from-top-2 duration-200">
+            <span className="text-sm font-medium text-destructive">
+              {selectedIds.size} transaksi dipilih
+            </span>
+            <Button
+              size="sm"
+              variant="destructive"
+              className="gap-1.5 h-7"
+              onClick={() => setBulkDeleteDialog(true)}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Hapus yang dipilih
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 text-muted-foreground"
+              onClick={() => setSelectedIds(new Set())}
+            >
+              Batal pilih
+            </Button>
+          </div>
+        )}
+
         {/* Table */}
         <Card>
           <CardContent className="p-0">
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10 pl-4">
+                    <Checkbox
+                      checked={allSelected}
+                      data-state={someSelected ? "indeterminate" : allSelected ? "checked" : "unchecked"}
+                      onCheckedChange={toggleAll}
+                      aria-label="Pilih semua"
+                    />
+                  </TableHead>
                   <TableHead>No. Order</TableHead>
                   <TableHead>Pelanggan</TableHead>
                   <TableHead>Rute</TableHead>
@@ -544,23 +630,30 @@ export default function LogisticsPortalOrdersPage() {
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={12} className="text-center py-8 text-muted-foreground">
                       Memuat...
                     </TableCell>
                   </TableRow>
                 ) : filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={12} className="text-center py-8 text-muted-foreground">
                       Tidak ada pesanan
                     </TableCell>
                   </TableRow>
                 ) : filtered.map((o) => (
                   <TableRow
                     key={o.id}
-                    className="cursor-pointer hover:bg-muted/40 transition-colors"
+                    className={`cursor-pointer hover:bg-muted/40 transition-colors ${selectedIds.has(o.id) ? "bg-destructive/5" : ""}`}
                     onClick={() => setDetailDialog(o)}
                     {...prefetchHover(getGetLogisticOrderQueryOptions(o.id))}
                   >
+                    <TableCell className="pl-4" onClick={(e) => e.stopPropagation()}>
+                      <Checkbox
+                        checked={selectedIds.has(o.id)}
+                        onCheckedChange={() => toggleOne(o.id)}
+                        aria-label={`Pilih order ${o.orderNumber}`}
+                      />
+                    </TableCell>
                     <TableCell onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <button
@@ -965,6 +1058,29 @@ export default function LogisticsPortalOrdersPage() {
                 {createSalesDoc.isPending ? "Membuat..." : "Buat Sales Order"}
               </Button>
             )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Delete Confirmation Dialog */}
+      <Dialog open={bulkDeleteDialog} onOpenChange={(open) => { if (!open) setBulkDeleteDialog(false); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <Trash2 className="h-5 w-5" /> Hapus Transaksi
+            </DialogTitle>
+            <DialogDescription>
+              Anda akan menghapus <strong>{selectedIds.size} transaksi</strong> secara permanen. Tindakan ini tidak dapat dibatalkan.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkDeleteDialog(false)} disabled={isBulkDeleting}>
+              Batal
+            </Button>
+            <Button variant="destructive" onClick={handleBulkDelete} disabled={isBulkDeleting} className="gap-2">
+              <Trash2 className="h-4 w-4" />
+              {isBulkDeleting ? "Menghapus..." : `Hapus ${selectedIds.size} transaksi`}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
