@@ -23,6 +23,7 @@ type FormMeta = {
   notes: string | null;
   vendorName: string | null;
   vendorPhone: string | null;
+  vendorContactPerson: string | null;
   schema: ServiceSchema | null;
 };
 
@@ -151,6 +152,7 @@ export default function VendorMiniFormPage() {
         setMeta(data);
         if (data.vendorName) setVendorName(data.vendorName);
         if (data.vendorPhone) setContactPhone(data.vendorPhone);
+        if (data.vendorContactPerson) setContactPerson(data.vendorContactPerson);
       })
       .catch((e: Error) => {
         if (e.name !== "AbortError") setError(e.message);

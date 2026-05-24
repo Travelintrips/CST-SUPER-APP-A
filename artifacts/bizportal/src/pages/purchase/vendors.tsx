@@ -80,6 +80,7 @@ type FormState = {
   name: string;
   country: string;
   contactEmail: string;
+  contactPerson: string;
   phone: string;
   address: string;
   taxId: string;
@@ -98,6 +99,7 @@ const emptyForm = (): FormState => ({
   name: "",
   country: "",
   contactEmail: "",
+  contactPerson: "",
   phone: "",
   address: "",
   taxId: "",
@@ -181,6 +183,7 @@ export default function VendorsPage() {
       name: v.name,
       country: v.country ?? "",
       contactEmail: v.contactEmail ?? "",
+      contactPerson: (v as { contactPerson?: string | null }).contactPerson ?? "",
       phone: v.phone ?? "",
       address: v.address ?? "",
       taxId: v.taxId ?? "",
@@ -206,6 +209,7 @@ export default function VendorsPage() {
       name: form.name.trim(),
       country: form.country || null,
       contactEmail: form.contactEmail || null,
+      contactPerson: form.contactPerson || null,
       phone: form.phone || null,
       address: form.address || null,
       taxId: form.taxId || null,
@@ -340,6 +344,10 @@ export default function VendorsPage() {
                       <Label htmlFor="phone">Telepon</Label>
                       <Input id="phone" value={form.phone} onChange={(e) => set("phone", e.target.value)} />
                     </div>
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="contactPerson">PIC / Contact Person</Label>
+                    <Input id="contactPerson" value={form.contactPerson} onChange={(e) => set("contactPerson", e.target.value)} placeholder="Nama penghubung" />
                   </div>
                   <div className="grid gap-1.5">
                     <Label htmlFor="email">Email Kontak</Label>

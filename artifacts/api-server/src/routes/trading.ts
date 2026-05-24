@@ -77,10 +77,11 @@ router.get("/suppliers", async (_req, res) => {
 
 // POST /api/trading/suppliers
 router.post("/suppliers", async (req, res) => {
-  const { name, country, contactEmail, phone, address, taxId, defaultPurchaseTaxId,
+  const { name, country, contactEmail, contactPerson, phone, address, taxId, defaultPurchaseTaxId,
     serviceType, isActive, logo, eta, fee, markup, note, sortOrder } = req.body;
   const [supplier] = await db.insert(suppliersTable).values({
     name, country: country ?? null, contactEmail: contactEmail ?? null,
+    contactPerson: contactPerson ?? null,
     phone: phone ?? null, address: address ?? null,
     taxId: taxId ?? null, defaultPurchaseTaxId: defaultPurchaseTaxId ?? null,
     serviceType: serviceType ?? null,
@@ -99,12 +100,13 @@ router.post("/suppliers", async (req, res) => {
 router.put("/suppliers/:id", async (req, res) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
-  const { name, country, contactEmail, phone, address, taxId, defaultPurchaseTaxId,
+  const { name, country, contactEmail, contactPerson, phone, address, taxId, defaultPurchaseTaxId,
     serviceType, isActive, logo, eta, fee, markup, note, sortOrder } = req.body;
   const patch: Record<string, unknown> = {};
   if (typeof name === "string") patch["name"] = name;
   if (country !== undefined) patch["country"] = country || null;
   if (contactEmail !== undefined) patch["contactEmail"] = contactEmail || null;
+  if (contactPerson !== undefined) patch["contactPerson"] = contactPerson || null;
   if (phone !== undefined) patch["phone"] = phone || null;
   if (address !== undefined) patch["address"] = address || null;
   if (taxId !== undefined) patch["taxId"] = taxId || null;

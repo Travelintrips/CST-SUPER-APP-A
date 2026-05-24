@@ -112,6 +112,7 @@ type VendorForm = {
   name: string;
   country: string;
   contactEmail: string;
+  contactPerson: string;
   phone: string;
   address: string;
   taxId: string;
@@ -268,6 +269,7 @@ export default function VendorDetailPage() {
       name: vendor.name,
       country: vendor.country ?? "",
       contactEmail: vendor.contactEmail ?? "",
+      contactPerson: (vendor as { contactPerson?: string | null }).contactPerson ?? "",
       phone: vendor.phone ?? "",
       address: vendor.address ?? "",
       taxId: vendor.taxId ?? "",
@@ -295,6 +297,7 @@ export default function VendorDetailPage() {
           name: vendorForm.name.trim(),
           country: vendorForm.country || null,
           contactEmail: vendorForm.contactEmail || null,
+          contactPerson: vendorForm.contactPerson || null,
           phone: vendorForm.phone || null,
           address: vendorForm.address || null,
           taxId: vendorForm.taxId || null,
@@ -362,6 +365,7 @@ export default function VendorDetailPage() {
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
+            { label: "PIC", value: (vendor as { contactPerson?: string | null }).contactPerson ?? "-" },
             { label: "Telepon", value: vendor.phone ?? "-" },
             { label: "Email", value: vendor.contactEmail ?? "-" },
             { label: "NPWP", value: vendor.taxId ?? "-" },
@@ -650,6 +654,10 @@ export default function VendorDetailPage() {
                     <Label>Telepon</Label>
                     <Input value={vendorForm.phone} onChange={(e) => setV("phone", e.target.value)} />
                   </div>
+                </div>
+                <div className="grid gap-1.5">
+                  <Label>PIC / Contact Person</Label>
+                  <Input value={vendorForm.contactPerson} onChange={(e) => setV("contactPerson", e.target.value)} placeholder="Nama penghubung" />
                 </div>
                 <div className="grid gap-1.5">
                   <Label>Email Kontak</Label>

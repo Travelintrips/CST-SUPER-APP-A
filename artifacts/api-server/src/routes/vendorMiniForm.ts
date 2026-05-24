@@ -20,6 +20,7 @@ type CachedForm = {
   notes: string | null;
   vendorName: string | null;
   vendorPhone: string | null;
+  vendorContactPerson: string | null;
   isActive: boolean;
   expiresAt: Date | null;
   expiresCache: number; // Date.now() + TTL
@@ -204,13 +205,14 @@ router.get("/:token", async (req: Request, res: Response) => {
           expiresAt: vendorMiniFormLinksTable.expiresAt,
           vendorName: suppliersTable.name,
           vendorPhone: suppliersTable.phone,
+          vendorContactPerson: suppliersTable.contactPerson,
         })
         .from(vendorMiniFormLinksTable)
         .leftJoin(suppliersTable, eq(suppliersTable.id, vendorMiniFormLinksTable.supplierId))
         .where(eq(vendorMiniFormLinksTable.token, token));
 
       if (!dbRow) return res.status(404).json({ error: "Link tidak ditemukan atau sudah tidak valid" });
-      row = { ...dbRow, vendorName: dbRow.vendorName ?? null, vendorPhone: dbRow.vendorPhone ?? null, expiresCache: 0 };
+      row = { ...dbRow, vendorName: dbRow.vendorName ?? null, vendorPhone: dbRow.vendorPhone ?? null, vendorContactPerson: dbRow.vendorContactPerson ?? null, expiresCache: 0 };
       // Only cache active, non-expired links
       if (dbRow.isActive && (!dbRow.expiresAt || dbRow.expiresAt >= new Date())) {
         setCached(token, row);
@@ -233,6 +235,7 @@ router.get("/:token", async (req: Request, res: Response) => {
       notes: row.notes,
       vendorName: row.vendorName ?? null,
       vendorPhone: row.vendorPhone ?? null,
+      vendorContactPerson: row.vendorContactPerson ?? null,
       schema,
     });
   } catch (err) {
