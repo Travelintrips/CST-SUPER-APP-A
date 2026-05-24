@@ -227,6 +227,7 @@ sendLogisticOrderNotification({
     cargoDescription: body.cargoDescription ?? null,
     grossWeight: body.grossWeight != null ? Number(body.grossWeight) : null,
     volumeCbm: body.volumeCbm != null ? Number(body.volumeCbm) : null,
+    jumlahKoli: body.jumlahKoli != null ? Number(body.jumlahKoli) : null,
     grandTotal: Number(body.grandTotal),
     serviceList,
     requiredDate: body.requiredDate ?? null,

@@ -24,6 +24,7 @@ export interface LogisticOrderData {
   cargoDescription?: string | null;
   grossWeight?: number | null;
   volumeCbm?: number | null;
+  jumlahKoli?: number | null;
   grandTotal: number;
   serviceList: string;
   requiredDate?: string | null;
@@ -129,6 +130,7 @@ function buildAdminWaMessage(order: LogisticOrderData, adminActionShortUrl?: str
     (order.cargoDescription ? `Deskripsi       : ${order.cargoDescription}\n` : ``) +
     (order.grossWeight ? `Berat           : ${order.grossWeight} kg\n` : ``) +
     (order.volumeCbm ? `Volume          : ${order.volumeCbm} CBM\n` : ``) +
+    (order.jumlahKoli ? `Jumlah Koli     : ${order.jumlahKoli} koli\n` : ``) +
     `Layanan         :\n${order.serviceList}\n` +
     `Total Est.      : Rp ${formatRupiah(order.grandTotal)}\n` +
     (order.requiredDate ? `Tgl Kirim       : ${order.requiredDate}\n` : ``) +
