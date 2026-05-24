@@ -62,6 +62,7 @@ import {
   EyeOff,
   SlidersHorizontal,
   Send,
+  Link2,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -365,6 +366,7 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "aiKnowledgeBase", href: "/settings/ai-chatbot/knowledge", icon: BookOpen },
         { titleKey: "aiScanSettings", href: "/settings/ai-scan", icon: ScanLine },
         { titleKey: "Konfigurasi Menu", href: "/settings/nav-company-config", icon: LayoutGrid },
+        { titleKey: "Short Links", href: "/settings/short-links", icon: Link2 },
         { titleKey: "Image Manager", href: "/media", icon: ImageIcon },
       ],
     },
