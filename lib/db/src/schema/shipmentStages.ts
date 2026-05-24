@@ -5,6 +5,9 @@ export const shipmentStageTypeEnum = pgEnum("shipment_stage_type", [
   "pickup", "customs_export", "sea_freight", "customs_import", "delivery",
 ]);
 
+export const SHIPMENT_STAGE_TYPES = shipmentStageTypeEnum.enumValues;
+export type ShipmentStageType = typeof SHIPMENT_STAGE_TYPES[number];
+
 export const shipmentStagesTable = pgTable("shipment_stages", {
   id: serial("id").primaryKey(),
   shipmentId: integer("shipment_id").notNull(),

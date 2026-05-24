@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, freightShipmentsTable, freightRfqsTable, freightQuotesTable, freightAttachmentsTable, shipmentStagesTable, salesDocumentsTable, purchaseDocumentsTable, expensesTable, freightCustomsDocsTable, freightShipmentAuditLogsTable } from "@workspace/db";
+import { db, freightShipmentsTable, freightRfqsTable, freightQuotesTable, freightAttachmentsTable, shipmentStagesTable, salesDocumentsTable, purchaseDocumentsTable, expensesTable, freightCustomsDocsTable, freightShipmentAuditLogsTable, SHIPMENT_STAGE_TYPES, type ShipmentStageType } from "@workspace/db";
 import { eq, desc, inArray, sum, and, sql } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { saveAndBroadcast } from "../lib/notificationStore.js";
@@ -47,18 +47,12 @@ function validateStageStatus(v: unknown): StageStatus | undefined {
   return v as StageStatus;
 }
 
-const STAGE_TYPES = [
-  "booking", "trucking", "handling", "customs",
-  "pickup", "customs_export", "sea_freight", "customs_import", "delivery",
-] as const;
-type StageType = typeof STAGE_TYPES[number];
-
-function validateStageType(v: unknown): StageType {
+function validateStageType(v: unknown): ShipmentStageType {
   if (!v || typeof v !== "string")
     throw Object.assign(new Error("stageType wajib diisi"), { statusCode: 400 });
-  if (!STAGE_TYPES.includes(v as StageType))
-    throw Object.assign(new Error(`stageType tidak valid. Nilai yang diterima: ${STAGE_TYPES.join(", ")}`), { statusCode: 400 });
-  return v as StageType;
+  if (!(SHIPMENT_STAGE_TYPES as readonly string[]).includes(v))
+    throw Object.assign(new Error(`stageType tidak valid. Nilai yang diterima: ${SHIPMENT_STAGE_TYPES.join(", ")}`), { statusCode: 400 });
+  return v as ShipmentStageType;
 }
 
 const router = Router();
