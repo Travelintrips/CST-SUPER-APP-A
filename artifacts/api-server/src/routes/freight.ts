@@ -9,6 +9,26 @@ function resolveUserDisplay(user: { id: string; firstName?: string | null; lastN
   return { name, id: user.id };
 }
 
+const TRANSPORT_MODES = ["sea", "air", "land", "multimodal"] as const;
+const CARGO_TYPES = ["FCL", "LCL", "Air"] as const;
+type TransportMode = typeof TRANSPORT_MODES[number];
+type CargoType = typeof CARGO_TYPES[number];
+
+function validateTransportMode(v: unknown): TransportMode | null | undefined {
+  if (v === undefined) return undefined;
+  if (v === null || v === "") return null;
+  if (!TRANSPORT_MODES.includes(v as TransportMode))
+    throw Object.assign(new Error(`transportMode tidak valid. Nilai yang diterima: ${TRANSPORT_MODES.join(", ")}`), { statusCode: 400 });
+  return v as TransportMode;
+}
+function validateCargoType(v: unknown): CargoType | null | undefined {
+  if (v === undefined) return undefined;
+  if (v === null || v === "") return null;
+  if (!CARGO_TYPES.includes(v as CargoType))
+    throw Object.assign(new Error(`cargoType tidak valid. Nilai yang diterima: ${CARGO_TYPES.join(", ")}`), { statusCode: 400 });
+  return v as CargoType;
+}
+
 const router = Router();
 
 router.use(async (req, res, next) => {
@@ -151,6 +171,14 @@ router.post("/freight-shipments", async (req, res) => {
   if (!salesDocId) {
     return res.status(400).json({ message: "Sales Order wajib dipilih sebelum membuat shipment." });
   }
+  let validatedTM: TransportMode | null;
+  let validatedCT: CargoType | null;
+  try {
+    validatedTM = validateTransportMode(transportMode) ?? null;
+    validatedCT = validateCargoType(cargoType) ?? null;
+  } catch (e: any) {
+    return res.status(400).json({ message: e.message });
+  }
   const [linkedDoc] = await db.select({ id: salesDocumentsTable.id }).from(salesDocumentsTable).where(eq(salesDocumentsTable.id, Number(salesDocId))).limit(1);
   if (!linkedDoc) {
     return res.status(400).json({ message: "Sales Order tidak ditemukan." });
@@ -175,8 +203,8 @@ router.post("/freight-shipments", async (req, res) => {
     vessel: vessel || null, voyage: voyage || null,
     notifyParty: notifyParty || null, marksAndNumbers: marksAndNumbers || null,
     measurement: measurement || null, notes: notes || null,
-    transportMode: transportMode || null,
-    cargoType: cargoType || null,
+    transportMode: validatedTM,
+    cargoType: validatedCT,
     containerNo: containerNo || null,
     salesDocId: salesDocId ? Number(salesDocId) : null,
     purchaseDocId: purchaseDocId ? Number(purchaseDocId) : null,
@@ -235,8 +263,14 @@ router.put("/freight-shipments/:id", async (req, res) => {
   if (arrivalDate !== undefined) patch.arrivalDate = arrivalDate || null;
   if (trackingNumber !== undefined) patch.trackingNumber = trackingNumber || null;
   if (awbNumber !== undefined) patch.awbNumber = awbNumber || null;
-  if (transportMode !== undefined) patch.transportMode = transportMode || null;
-  if (cargoType !== undefined) patch.cargoType = cargoType || null;
+  if (transportMode !== undefined) {
+    try { patch.transportMode = validateTransportMode(transportMode) ?? null; }
+    catch (e: any) { return res.status(400).json({ message: e.message }); }
+  }
+  if (cargoType !== undefined) {
+    try { patch.cargoType = validateCargoType(cargoType) ?? null; }
+    catch (e: any) { return res.status(400).json({ message: e.message }); }
+  }
   if (containerNo !== undefined) patch.containerNo = containerNo || null;
   if (salesDocId !== undefined) patch.salesDocId = salesDocId ? Number(salesDocId) : null;
   if (purchaseDocId !== undefined) {
