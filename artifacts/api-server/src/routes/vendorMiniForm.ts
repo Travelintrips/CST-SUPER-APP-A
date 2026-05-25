@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from "express";
-import { eq, desc, inArray, and } from "drizzle-orm";
+import { eq, desc, inArray, and, count } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import { db } from "@workspace/db";
 import {
@@ -7,6 +7,8 @@ import {
   vendorMiniFormSubmissionsTable,
   customerApprovalsTable,
   vendorOperationalConfirmationsTable,
+  vendorPriceHistoryTable,
+  vmfActivityLogTable,
   notificationLogsTable,
   suppliersTable,
   logisticOrdersTable,
@@ -18,21 +20,28 @@ import { getAdminWa } from "../lib/adminWa.js";
 
 const PUBLIC_CACHE = "public, max-age=300, stale-while-revalidate=600";
 
+// ── Activity log helper ────────────────────────────────────────────────────────
+
+async function logActivity(
+  entityType: string, entityId: number, action: string,
+  actor: string | null, note?: string | null, data?: object,
+) {
+  try {
+    await db.insert(vmfActivityLogTable).values({
+      entityType, entityId, action, actor: actor ?? "system",
+      note: note ?? null, data: data ?? {},
+    });
+  } catch { /* non-fatal */ }
+}
+
+// ── Token cache ────────────────────────────────────────────────────────────────
+
 type CachedForm = {
-  id: number;
-  serviceType: string;
-  title: string | null;
-  notes: string | null;
-  vendorName: string | null;
-  vendorPhone: string | null;
-  vendorContactPerson: string | null;
-  isActive: boolean;
-  expiresAt: Date | null;
-  mode: string;
-  orderId: number | null;
-  orderNumber: string | null;
-  orderItemId: number | null;
-  phase: string | null;
+  id: number; serviceType: string; title: string | null; notes: string | null;
+  vendorName: string | null; vendorPhone: string | null; vendorContactPerson: string | null;
+  isActive: boolean; expiresAt: Date | null; mode: string;
+  orderId: number | null; orderNumber: string | null; orderItemId: number | null;
+  phase: string | null; maxSubmissions: number | null; resubmitAllowed: boolean | null;
   expiresCache: number;
 };
 const TOKEN_CACHE = new Map<string, CachedForm>();
@@ -53,11 +62,10 @@ export function invalidateTokenCache(token: string) {
 
 export const vendorMiniFormRouter = Router();
 
-// ── Shared form schemas ────────────────────────────────────────────────────────
+// ── Service schemas ────────────────────────────────────────────────────────────
 
 export const SERVICE_SCHEMAS: Record<string, {
-  label: string;
-  emoji: string;
+  label: string; emoji: string;
   fields: {
     key: string; label: string;
     type: "text" | "number" | "select" | "textarea" | "date";
@@ -80,6 +88,11 @@ export const SERVICE_SCHEMAS: Record<string, {
       { key: "valid_until", label: "Harga Berlaku Sampai", type: "date", section: "quotation" },
       { key: "eta", label: "Estimasi Pengiriman (hari)", type: "text", section: "quotation" },
       { key: "notes", label: "Catatan", type: "textarea", section: "both" },
+      // Operational fields
+      { key: "stock_confirmation", label: "Konfirmasi Stok", type: "select", options: ["Ready", "Partially Ready", "Indent"], section: "operational" },
+      { key: "packing_confirmation", label: "Status Packing", type: "select", options: ["Belum Packing", "Sedang Packing", "Sudah Packing"], section: "operational" },
+      { key: "delivery_schedule", label: "Jadwal Pengiriman", type: "text", section: "operational" },
+      { key: "invoice_vendor", label: "No. Invoice Vendor", type: "text", section: "operational" },
     ],
   },
   trucking: {
@@ -94,13 +107,15 @@ export const SERVICE_SCHEMAS: Record<string, {
       { key: "eta_pickup", label: "Estimasi Pickup", type: "text", placeholder: "Contoh: H+1 setelah konfirmasi", section: "quotation" },
       { key: "eta_delivery", label: "Estimasi Delivery", type: "text", placeholder: "Contoh: 1–2 hari setelah pickup", section: "quotation" },
       { key: "valid_until", label: "Rate Berlaku Sampai", type: "date", section: "quotation" },
-      // Operational (setelah customer approve)
+      { key: "notes", label: "Catatan Penawaran", type: "textarea", section: "quotation" },
+      // Operational
       { key: "driver_name", label: "Nama Driver", type: "text", required: true, section: "operational" },
       { key: "driver_phone", label: "No HP Driver", type: "text", required: true, section: "operational" },
       { key: "plate_number", label: "Plat Nomor Kendaraan", type: "text", required: true, section: "operational" },
       { key: "vehicle_type", label: "Jenis Kendaraan", type: "text", section: "operational" },
+      { key: "pickup_time", label: "Waktu Pickup", type: "text", section: "operational" },
+      { key: "delivery_time", label: "Waktu Delivery", type: "text", section: "operational" },
       { key: "op_notes", label: "Catatan Operasional", type: "textarea", section: "operational" },
-      { key: "notes", label: "Catatan Penawaran", type: "textarea", section: "quotation" },
     ],
   },
   sea_freight: {
@@ -119,6 +134,12 @@ export const SERVICE_SCHEMAS: Record<string, {
       { key: "surcharge_note", label: "Surcharge / Additional", type: "textarea", section: "quotation" },
       { key: "validity", label: "Rate Berlaku Sampai", type: "date", section: "quotation" },
       { key: "notes", label: "Catatan", type: "textarea", section: "quotation" },
+      // Operational
+      { key: "booking_number", label: "Booking Number", type: "text", required: true, section: "operational" },
+      { key: "vessel_name", label: "Vessel / Kapal", type: "text", section: "operational" },
+      { key: "op_etd", label: "ETD Aktual", type: "text", section: "operational" },
+      { key: "op_eta", label: "ETA Aktual", type: "text", section: "operational" },
+      { key: "bl_number", label: "BL Number", type: "text", section: "operational" },
     ],
   },
   air_freight: {
@@ -136,6 +157,12 @@ export const SERVICE_SCHEMAS: Record<string, {
       { key: "charges_include", label: "Include Charges", type: "textarea", section: "quotation" },
       { key: "validity", label: "Rate Berlaku Sampai", type: "date", section: "quotation" },
       { key: "notes", label: "Catatan", type: "textarea", section: "quotation" },
+      // Operational
+      { key: "booking_number", label: "Booking Number", type: "text", required: true, section: "operational" },
+      { key: "flight_number", label: "Nomor Penerbangan", type: "text", section: "operational" },
+      { key: "op_etd", label: "ETD Aktual", type: "text", section: "operational" },
+      { key: "op_eta", label: "ETA Aktual", type: "text", section: "operational" },
+      { key: "awb_number", label: "AWB Number", type: "text", section: "operational" },
     ],
   },
   ppjk: {
@@ -149,6 +176,11 @@ export const SERVICE_SCHEMAS: Record<string, {
       { key: "sla", label: "SLA Proses (hari kerja)", type: "number", section: "quotation" },
       { key: "undername", label: "Biaya Undername (Rp)", type: "number", placeholder: "Kosongkan jika tidak ada", section: "quotation" },
       { key: "notes", label: "Catatan / Compliance", type: "textarea", section: "quotation" },
+      // Operational
+      { key: "nomor_aju", label: "Nomor Aju", type: "text", required: true, section: "operational" },
+      { key: "jenis_dokumen", label: "Jenis Dokumen Aktual", type: "text", section: "operational" },
+      { key: "status_customs", label: "Status Customs", type: "select", options: ["Dalam Proses", "Jalur Hijau", "Jalur Kuning", "Jalur Merah", "SPPB Terbit"], section: "operational" },
+      { key: "billing_info", label: "Info Billing / Pajak", type: "textarea", section: "operational" },
     ],
   },
   handling: {
@@ -177,7 +209,6 @@ export const SERVICE_SCHEMAS: Record<string, {
       { key: "notes", label: "Catatan", type: "textarea", section: "quotation" },
     ],
   },
-  // Legacy types — kept for backward compat
   warehouse: {
     label: "Warehouse", emoji: "🏭",
     fields: [
@@ -222,7 +253,6 @@ export const SERVICE_SCHEMAS: Record<string, {
 
 vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
   const { token } = req.params as { token: string };
-  // Skip admin subroutes
   if (token === "admin") return res.status(404).json({ error: "Not found" });
   try {
     let row = getCached(token);
@@ -240,6 +270,8 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
           orderNumber: vendorMiniFormLinksTable.orderNumber,
           orderItemId: vendorMiniFormLinksTable.orderItemId,
           phase: vendorMiniFormLinksTable.phase,
+          maxSubmissions: vendorMiniFormLinksTable.maxSubmissions,
+          resubmitAllowed: vendorMiniFormLinksTable.resubmitAllowed,
           vendorName: suppliersTable.name,
           vendorPhone: suppliersTable.phone,
           vendorContactPerson: suppliersTable.contactPerson,
@@ -262,6 +294,8 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
         orderNumber: dbRow.orderNumber ?? null,
         orderItemId: dbRow.orderItemId ?? null,
         phase: dbRow.phase ?? "quotation",
+        maxSubmissions: dbRow.maxSubmissions ?? null,
+        resubmitAllowed: dbRow.resubmitAllowed ?? false,
         vendorName: dbRow.linkVendorName ?? dbRow.vendorName ?? null,
         vendorPhone: dbRow.vendorPhone ?? null,
         vendorContactPerson: dbRow.vendorContactPerson ?? null,
@@ -278,19 +312,29 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
       return res.status(410).json({ error: "Link ini sudah kadaluarsa" });
     }
 
-    // Check duplicate submission for order-based links
+    // Check submission count & duplicate
+    const existingCount = await db
+      .select({ cnt: count() })
+      .from(vendorMiniFormSubmissionsTable)
+      .where(eq(vendorMiniFormSubmissionsTable.token, token));
+    const submissionCount = Number(existingCount[0]?.cnt ?? 0);
+
+    // Max submissions check
+    if (row.maxSubmissions !== null && submissionCount >= row.maxSubmissions) {
+      return res.status(410).json({ error: "Kuota submission untuk link ini sudah penuh" });
+    }
+
+    // Anti-duplicate: order-based or if resubmit not allowed
     let alreadySubmitted = false;
-    if (row.mode === "order_based" && row.phase === "quotation") {
-      const [existing] = await db
-        .select({ id: vendorMiniFormSubmissionsTable.id })
-        .from(vendorMiniFormSubmissionsTable)
-        .where(eq(vendorMiniFormSubmissionsTable.token, token))
-        .limit(1);
-      if (existing) alreadySubmitted = true;
+    if (submissionCount > 0) {
+      if (row.mode === "order_based" && !row.resubmitAllowed) {
+        alreadySubmitted = true;
+      } else if (row.mode === "rate_collection" && !row.resubmitAllowed) {
+        alreadySubmitted = true;
+      }
     }
 
     const schema = SERVICE_SCHEMAS[row.serviceType] ?? null;
-    // Filter fields by phase
     const filteredSchema = schema ? {
       ...schema,
       fields: schema.fields.filter(f => {
@@ -337,6 +381,29 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
     if (!link.isActive) return res.status(410).json({ error: "Link ini sudah dinonaktifkan" });
     if (link.expiresAt && link.expiresAt < new Date()) return res.status(410).json({ error: "Link sudah kadaluarsa" });
 
+    // Anti-duplicate check
+    const [existing] = await db
+      .select({ id: vendorMiniFormSubmissionsTable.id, locked: vendorMiniFormSubmissionsTable.locked })
+      .from(vendorMiniFormSubmissionsTable)
+      .where(eq(vendorMiniFormSubmissionsTable.token, token))
+      .limit(1);
+
+    if (existing) {
+      if (existing.locked) return res.status(409).json({ error: "Penawaran sudah dikunci — harga tidak dapat diubah setelah customer menyetujui" });
+      if (!link.resubmitAllowed) return res.status(409).json({ error: "Penawaran sudah pernah dikirim. Hubungi admin untuk izin revisi." });
+    }
+
+    // Max submissions check
+    if (link.maxSubmissions !== null) {
+      const [cntRow] = await db
+        .select({ cnt: count() })
+        .from(vendorMiniFormSubmissionsTable)
+        .where(eq(vendorMiniFormSubmissionsTable.token, token));
+      if (Number(cntRow?.cnt ?? 0) >= link.maxSubmissions) {
+        return res.status(410).json({ error: "Kuota submission sudah penuh" });
+      }
+    }
+
     const { vendorName, contactPerson, contactPhone, formData, responseStatus, vendorPrice, currency, eta, validUntil } = req.body as {
       vendorName?: string; contactPerson?: string; contactPhone?: string;
       formData?: Record<string, unknown>;
@@ -344,27 +411,87 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
       eta?: string; validUntil?: string;
     };
 
-    if (!formData || typeof formData !== "object") {
-      return res.status(400).json({ error: "formData diperlukan" });
-    }
+    if (!formData || typeof formData !== "object") return res.status(400).json({ error: "formData diperlukan" });
 
-    const [submission] = await db.insert(vendorMiniFormSubmissionsTable).values({
-      linkId: link.id,
-      token,
-      supplierId: link.supplierId,
-      serviceType: link.serviceType,
-      vendorName: vendorName ?? link.vendorName ?? null,
-      contactPerson: contactPerson ?? null,
-      contactPhone: contactPhone ?? null,
-      formData,
-      responseStatus: responseStatus ?? "submitted",
-      vendorPrice: vendorPrice ? String(vendorPrice) : null,
-      currency: currency ?? "IDR",
-      eta: eta ?? null,
-      validUntil: validUntil ?? null,
-      orderId: link.orderId ?? null,
-      orderItemId: link.orderItemId ?? null,
-    }).returning();
+    // Capture IP and UA
+    const submittedIp = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()
+      ?? req.socket?.remoteAddress ?? null;
+    const submittedUa = (req.headers["user-agent"] ?? null) as string | null;
+
+    const isRevision = existing && link.resubmitAllowed;
+
+    let submission: typeof vendorMiniFormSubmissionsTable.$inferSelect;
+
+    if (isRevision && existing) {
+      // Update existing submission (price versioning)
+      const [prev] = await db
+        .select({ vendorPrice: vendorMiniFormSubmissionsTable.vendorPrice, currency: vendorMiniFormSubmissionsTable.currency, revisionCount: vendorMiniFormSubmissionsTable.revisionCount })
+        .from(vendorMiniFormSubmissionsTable)
+        .where(eq(vendorMiniFormSubmissionsTable.id, existing.id));
+
+      // Save price history if price changed
+      if (vendorPrice !== undefined && prev?.vendorPrice !== null) {
+        const [lastVer] = await db
+          .select({ versionNumber: vendorPriceHistoryTable.versionNumber })
+          .from(vendorPriceHistoryTable)
+          .where(eq(vendorPriceHistoryTable.submissionId, existing.id))
+          .orderBy(desc(vendorPriceHistoryTable.versionNumber))
+          .limit(1);
+        await db.insert(vendorPriceHistoryTable).values({
+          submissionId: existing.id,
+          versionNumber: (lastVer?.versionNumber ?? 1) + 1,
+          oldPrice: prev?.vendorPrice ?? null,
+          newPrice: vendorPrice ? String(vendorPrice) : null,
+          currency: currency ?? prev?.currency ?? "IDR",
+          reason: "Revisi oleh vendor",
+          changedBy: "vendor",
+        });
+      }
+
+      const [updated] = await db.update(vendorMiniFormSubmissionsTable)
+        .set({
+          formData, vendorName: vendorName ?? link.vendorName ?? undefined,
+          contactPerson: contactPerson ?? undefined, contactPhone: contactPhone ?? undefined,
+          responseStatus: "resubmitted", vendorPrice: vendorPrice ? String(vendorPrice) : undefined,
+          currency: currency ?? undefined, eta: eta ?? undefined, validUntil: validUntil ?? undefined,
+          submittedIp, submittedUa,
+          revisionCount: (prev?.revisionCount ?? 0) + 1,
+        })
+        .where(eq(vendorMiniFormSubmissionsTable.id, existing.id))
+        .returning();
+
+      // Reset resubmitAllowed after revision
+      await db.update(vendorMiniFormLinksTable)
+        .set({ resubmitAllowed: false })
+        .where(eq(vendorMiniFormLinksTable.id, link.id));
+      invalidateTokenCache(token);
+
+      submission = updated;
+      await logActivity("submission", existing.id, "resubmitted", "vendor",
+        `Revisi penawaran oleh ${vendorName ?? link.vendorName ?? "vendor"}`,
+        { vendorPrice, currency, eta });
+    } else {
+      const [inserted] = await db.insert(vendorMiniFormSubmissionsTable).values({
+        linkId: link.id, token,
+        supplierId: link.supplierId,
+        serviceType: link.serviceType,
+        vendorName: vendorName ?? link.vendorName ?? null,
+        contactPerson: contactPerson ?? null, contactPhone: contactPhone ?? null,
+        formData,
+        responseStatus: responseStatus ?? "submitted",
+        vendorPrice: vendorPrice ? String(vendorPrice) : null,
+        currency: currency ?? "IDR",
+        eta: eta ?? null, validUntil: validUntil ?? null,
+        orderId: link.orderId ?? null,
+        orderItemId: link.orderItemId ?? null,
+        submittedIp, submittedUa,
+      }).returning();
+
+      submission = inserted;
+      await logActivity("submission", inserted.id, "submitted", "vendor",
+        `Penawaran dari ${vendorName ?? link.vendorName ?? "vendor"}`,
+        { linkId: link.id, orderNumber: link.orderNumber, vendorPrice, currency, eta });
+    }
 
     // Update link item_status for order-based
     if (link.mode === "order_based") {
@@ -376,6 +503,7 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
     const vendorLabel = vendorName?.trim() || link.vendorName || "Vendor";
     const picLabel = contactPerson?.trim() || "-";
 
+    // Confirm WA to vendor
     if (contactPhone?.trim()) {
       const msgVendor =
         `Halo *${picLabel}* dari *${vendorLabel}*,\n\n` +
@@ -389,22 +517,54 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
       }).catch(() => {});
     }
 
-    getAdminWa().then((adminWa) => {
+    // WA Summary to admin (especially useful for order-based: show all competing offers)
+    getAdminWa().then(async (adminWa) => {
       if (!adminWa) return;
-      const priceStr = vendorPrice ? `Rp ${Number(vendorPrice).toLocaleString("id-ID")}` : "-";
-      const msgAdmin =
-        `📋 *Submission Form Vendor*\n` +
-        `Vendor: *${vendorLabel}*\n` +
-        `PIC: ${picLabel} · ${contactPhone?.trim() || "-"}\n` +
-        (link.orderNumber ? `Order: ${link.orderNumber}\n` : "") +
-        `Service: ${SERVICE_SCHEMAS[link.serviceType]?.label ?? link.serviceType}\n` +
-        `Harga: ${priceStr} ${currency ?? "IDR"}\n` +
-        `Status: ${responseStatus ?? "submitted"}`;
-      sendWhatsApp(adminWa, msgAdmin, {
-        context: "vendor-mini-form-admin-notif",
-        refType: "vendor_mini_form",
-        refId: token,
-      }).catch(() => {});
+      const priceStr = vendorPrice ? `${currency ?? "IDR"} ${Number(vendorPrice).toLocaleString("id-ID")}` : "-";
+
+      if (link.mode === "order_based" && link.orderNumber) {
+        // Gather all existing submissions for this link for summary
+        const allSubs = await db
+          .select({ vendorName: vendorMiniFormSubmissionsTable.vendorName, vendorPrice: vendorMiniFormSubmissionsTable.vendorPrice, currency: vendorMiniFormSubmissionsTable.currency, eta: vendorMiniFormSubmissionsTable.eta })
+          .from(vendorMiniFormSubmissionsTable)
+          .where(eq(vendorMiniFormSubmissionsTable.linkId, link.id))
+          .orderBy(desc(vendorMiniFormSubmissionsTable.submittedAt));
+
+        const { getPreferredDomain } = await import("../lib/domain.js");
+        const domain = getPreferredDomain();
+        const adminReviewLink = domain ? `https://${domain}/bizportal/purchase/vendor-forms` : "/bizportal/purchase/vendor-forms";
+
+        const lines = allSubs.map((s, i) => {
+          const p = s.vendorPrice ? `${s.currency ?? "IDR"} ${Number(s.vendorPrice).toLocaleString("id-ID")}` : "-";
+          const etaStr = s.eta ? ` - ETA ${s.eta}` : "";
+          return `${i + 1}. *${s.vendorName ?? "Vendor"}* - ${p}${etaStr}`;
+        });
+
+        const msgAdmin =
+          `📊 *Update Penawaran Vendor untuk Order #${link.orderNumber}*\n` +
+          `${lines.join("\n")}\n\n` +
+          `Review: ${adminReviewLink}`;
+        sendWhatsApp(adminWa, msgAdmin, {
+          context: "vendor-mini-form-summary",
+          refType: "vendor_mini_form_link",
+          refId: String(link.id),
+        }).catch(() => {});
+      } else {
+        // Simple notification for rate_collection
+        const msgAdmin =
+          `📋 *Submission Form Vendor*\n` +
+          `Vendor: *${vendorLabel}*\n` +
+          `PIC: ${picLabel} · ${contactPhone?.trim() || "-"}\n` +
+          (link.orderNumber ? `Order: ${link.orderNumber}\n` : "") +
+          `Service: ${SERVICE_SCHEMAS[link.serviceType]?.label ?? link.serviceType}\n` +
+          `Harga: ${priceStr}\n` +
+          (isRevision ? `Status: *REVISI* (Rev-${(submission as { revisionCount?: number }).revisionCount ?? 1})` : `Status: ${responseStatus ?? "submitted"}`);
+        sendWhatsApp(adminWa, msgAdmin, {
+          context: "vendor-mini-form-admin-notif",
+          refType: "vendor_mini_form",
+          refId: token,
+        }).catch(() => {});
+      }
     }).catch(() => {});
 
     return res.json({ success: true, submissionId: submission.id, message: "Penawaran berhasil dikirim, terima kasih!" });
@@ -419,24 +579,14 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
 vendorMiniFormRouter.get("/customer-approval/:token", async (req: Request, res: Response) => {
   const { token } = req.params as { token: string };
   try {
-    const [approval] = await db
-      .select()
-      .from(customerApprovalsTable)
-      .where(eq(customerApprovalsTable.token, token));
+    const [approval] = await db.select().from(customerApprovalsTable).where(eq(customerApprovalsTable.token, token));
     if (!approval) return res.status(404).json({ error: "Link tidak ditemukan" });
-    if (approval.expiresAt && approval.expiresAt < new Date()) {
-      return res.status(410).json({ error: "Link penawaran sudah kadaluarsa" });
-    }
+    if (approval.expiresAt && approval.expiresAt < new Date()) return res.status(410).json({ error: "Link penawaran sudah kadaluarsa" });
     return res.json({
-      token: approval.token,
-      orderNumber: approval.orderNumber,
-      customerName: approval.customerName,
-      offerSummary: approval.offerSummary,
-      sellingPrice: approval.sellingPrice,
-      currency: approval.currency,
-      termsNotes: approval.termsNotes,
-      status: approval.status,
-      soNumber: approval.soNumber,
+      token: approval.token, orderNumber: approval.orderNumber,
+      customerName: approval.customerName, offerSummary: approval.offerSummary,
+      sellingPrice: approval.sellingPrice, currency: approval.currency,
+      termsNotes: approval.termsNotes, status: approval.status, soNumber: approval.soNumber,
     });
   } catch (err) {
     req.log?.error({ err }, "customer-approval GET error");
@@ -449,17 +599,10 @@ vendorMiniFormRouter.get("/customer-approval/:token", async (req: Request, res: 
 vendorMiniFormRouter.post("/customer-approval/:token", async (req: Request, res: Response) => {
   const { token } = req.params as { token: string };
   try {
-    const [approval] = await db
-      .select()
-      .from(customerApprovalsTable)
-      .where(eq(customerApprovalsTable.token, token));
+    const [approval] = await db.select().from(customerApprovalsTable).where(eq(customerApprovalsTable.token, token));
     if (!approval) return res.status(404).json({ error: "Link tidak ditemukan" });
-    if (approval.status !== "pending") {
-      return res.status(409).json({ error: "Penawaran ini sudah direspons sebelumnya", status: approval.status });
-    }
-    if (approval.expiresAt && approval.expiresAt < new Date()) {
-      return res.status(410).json({ error: "Link penawaran sudah kadaluarsa" });
-    }
+    if (approval.status !== "pending") return res.status(409).json({ error: "Penawaran ini sudah direspons sebelumnya", status: approval.status });
+    if (approval.expiresAt && approval.expiresAt < new Date()) return res.status(410).json({ error: "Link penawaran sudah kadaluarsa" });
 
     const { action, notes } = req.body as { action: "approve" | "reject"; notes?: string };
     if (!["approve", "reject"].includes(action)) return res.status(400).json({ error: "action harus approve atau reject" });
@@ -468,24 +611,38 @@ vendorMiniFormRouter.post("/customer-approval/:token", async (req: Request, res:
     let soNumber: string | null = null;
 
     if (action === "approve") {
-      // Auto-generate SO number
       const dateStr = now.getFullYear().toString() + String(now.getMonth() + 1).padStart(2, "0");
       soNumber = `SO/${dateStr}/${String(approval.id).padStart(5, "0")}`;
 
       await db.update(customerApprovalsTable)
-        .set({ status: "approved", approvedAt: now, notes: notes ?? null, soNumber })
+        .set({ status: "approved", approvedAt: now, notes: notes ?? null, soNumber, locked: true })
         .where(eq(customerApprovalsTable.token, token));
 
-      // Update logistic order status if linked
+      // Lock selected submissions if submissionId is known
+      if (approval.submissionId) {
+        await db.update(vendorMiniFormSubmissionsTable)
+          .set({ locked: true, responseStatus: "customer_approved" })
+          .where(eq(vendorMiniFormSubmissionsTable.id, approval.submissionId));
+      } else if (approval.orderId) {
+        // Lock all selected submissions for this order
+        await db.update(vendorMiniFormSubmissionsTable)
+          .set({ locked: true, responseStatus: "customer_approved" })
+          .where(and(
+            eq(vendorMiniFormSubmissionsTable.orderId, approval.orderId),
+            eq(vendorMiniFormSubmissionsTable.selectedByAdmin, true),
+          ));
+      }
+
+      // Update logistic order status
       if (approval.orderId) {
         await db.update(logisticOrdersTable)
-          .set({
-            customerConfirmStatus: "confirmed",
-            customerConfirmedAt: now,
-            status: "Customer Approved",
-          })
+          .set({ customerConfirmStatus: "confirmed", customerConfirmedAt: now, status: "Customer Approved" })
           .where(eq(logisticOrdersTable.id, approval.orderId));
       }
+
+      await logActivity("customer_approval", approval.id, "approved", "customer",
+        `Customer ${approval.customerName ?? "-"} menyetujui penawaran. SO: ${soNumber}`,
+        { soNumber, orderId: approval.orderId });
     } else {
       await db.update(customerApprovalsTable)
         .set({ status: "rejected", rejectedAt: now, notes: notes ?? null })
@@ -496,6 +653,9 @@ vendorMiniFormRouter.post("/customer-approval/:token", async (req: Request, res:
           .set({ customerConfirmStatus: "rejected", status: "Customer Rejected" })
           .where(eq(logisticOrdersTable.id, approval.orderId));
       }
+
+      await logActivity("customer_approval", approval.id, "rejected", "customer",
+        `Customer ${approval.customerName ?? "-"} menolak penawaran`, { orderId: approval.orderId });
     }
 
     // Notify admin
@@ -507,17 +667,11 @@ vendorMiniFormRouter.post("/customer-approval/:token", async (req: Request, res:
         `Customer: ${approval.customerName ?? "-"}\n` +
         (soNumber ? `SO: ${soNumber}\n` : "") +
         (notes ? `Catatan: ${notes}` : "");
-      sendWhatsApp(adminWa, msg, {
-        context: "customer-approval",
-        refType: "customer_approval",
-        refId: token,
-      }).catch(() => {});
+      sendWhatsApp(adminWa, msg, { context: "customer-approval", refType: "customer_approval", refId: token }).catch(() => {});
     }).catch(() => {});
 
     return res.json({
-      success: true,
-      action,
-      soNumber,
+      success: true, action, soNumber,
       message: action === "approve"
         ? `Terima kasih! Persetujuan Anda telah kami catat. Sales Order ${soNumber} telah dibuat.`
         : "Penolakan Anda telah kami catat. Tim kami akan segera menghubungi Anda.",
@@ -533,10 +687,7 @@ vendorMiniFormRouter.post("/customer-approval/:token", async (req: Request, res:
 vendorMiniFormRouter.get("/op-confirm/:token", async (req: Request, res: Response) => {
   const { token } = req.params as { token: string };
   try {
-    const [conf] = await db
-      .select()
-      .from(vendorOperationalConfirmationsTable)
-      .where(eq(vendorOperationalConfirmationsTable.token, token));
+    const [conf] = await db.select().from(vendorOperationalConfirmationsTable).where(eq(vendorOperationalConfirmationsTable.token, token));
     if (!conf) return res.status(404).json({ error: "Link tidak ditemukan" });
     const schema = SERVICE_SCHEMAS[conf.serviceType] ?? null;
     const opFields = schema ? {
@@ -544,13 +695,8 @@ vendorMiniFormRouter.get("/op-confirm/:token", async (req: Request, res: Respons
       fields: schema.fields.filter(f => f.section === "operational" || f.section === "both"),
     } : null;
     return res.json({
-      token: conf.token,
-      orderNumber: conf.orderNumber,
-      vendorName: conf.vendorName,
-      serviceType: conf.serviceType,
-      instruction: conf.instruction,
-      status: conf.status,
-      schema: opFields,
+      token: conf.token, orderNumber: conf.orderNumber, vendorName: conf.vendorName,
+      serviceType: conf.serviceType, instruction: conf.instruction, status: conf.status, schema: opFields,
     });
   } catch (err) {
     req.log?.error({ err }, "op-confirm GET error");
@@ -563,10 +709,7 @@ vendorMiniFormRouter.get("/op-confirm/:token", async (req: Request, res: Respons
 vendorMiniFormRouter.post("/op-confirm/:token", async (req: Request, res: Response) => {
   const { token } = req.params as { token: string };
   try {
-    const [conf] = await db
-      .select()
-      .from(vendorOperationalConfirmationsTable)
-      .where(eq(vendorOperationalConfirmationsTable.token, token));
+    const [conf] = await db.select().from(vendorOperationalConfirmationsTable).where(eq(vendorOperationalConfirmationsTable.token, token));
     if (!conf) return res.status(404).json({ error: "Link tidak ditemukan" });
     if (conf.status === "submitted") return res.status(409).json({ error: "Data operasional sudah dikirim sebelumnya" });
 
@@ -577,6 +720,9 @@ vendorMiniFormRouter.post("/op-confirm/:token", async (req: Request, res: Respon
       .set({ payload, status: "submitted", submittedAt: new Date() })
       .where(eq(vendorOperationalConfirmationsTable.token, token));
 
+    await logActivity("op_confirm", conf.id, "op_submitted", "vendor",
+      `Data operasional diisi oleh ${conf.vendorName ?? "vendor"}`, { orderNumber: conf.orderNumber, serviceType: conf.serviceType });
+
     getAdminWa().then((adminWa) => {
       if (!adminWa) return;
       const msg = `🚚 *Data Operasional Vendor*\n` +
@@ -584,11 +730,7 @@ vendorMiniFormRouter.post("/op-confirm/:token", async (req: Request, res: Respon
         `Vendor: ${conf.vendorName ?? "-"}\n` +
         `Service: ${SERVICE_SCHEMAS[conf.serviceType]?.label ?? conf.serviceType}\n` +
         `Status: Data operasional sudah diisi.`;
-      sendWhatsApp(adminWa, msg, {
-        context: "op-confirm",
-        refType: "vendor_op_confirm",
-        refId: token,
-      }).catch(() => {});
+      sendWhatsApp(adminWa, msg, { context: "op-confirm", refType: "vendor_op_confirm", refId: token }).catch(() => {});
     }).catch(() => {});
 
     return res.json({ success: true, message: "Data operasional berhasil dikirim, terima kasih!" });
@@ -610,18 +752,13 @@ vendorMiniFormRouter.get("/admin/schemas", async (req: Request, res: Response) =
 vendorMiniFormRouter.get("/admin/links", async (req: Request, res: Response) => {
   if (!(await requireClerkUser(req, res))) return;
   try {
-    const links = await db
-      .select()
-      .from(vendorMiniFormLinksTable)
-      .orderBy(desc(vendorMiniFormLinksTable.createdAt));
-
+    const links = await db.select().from(vendorMiniFormLinksTable).orderBy(desc(vendorMiniFormLinksTable.createdAt));
     const vendorIds = links.map(l => l.supplierId).filter(Boolean) as number[];
     let vendorMap: Record<number, string> = {};
     if (vendorIds.length) {
       const vendors = await db.select({ id: suppliersTable.id, name: suppliersTable.name }).from(suppliersTable);
       vendorMap = Object.fromEntries(vendors.map(v => [v.id, v.name]));
     }
-
     return res.json(links.map(l => ({
       ...l,
       vendorName: l.vendorName ?? (l.supplierId ? (vendorMap[l.supplierId] ?? null) : null),
@@ -639,35 +776,35 @@ vendorMiniFormRouter.get("/admin/links", async (req: Request, res: Response) => 
 vendorMiniFormRouter.post("/admin/links", async (req: Request, res: Response) => {
   if (!(await requireClerkUser(req, res))) return;
   try {
-    const { supplierId, serviceType, title, notes, expiresInDays, mode, orderId, orderNumber, orderItemId, vendorName } = req.body as {
+    const { supplierId, serviceType, title, notes, expiresInDays, mode, orderId, orderNumber, orderItemId, vendorName, maxSubmissions, adminNotes } = req.body as {
       supplierId?: number; serviceType: string; title?: string; notes?: string; expiresInDays?: number;
       mode?: string; orderId?: number; orderNumber?: string; orderItemId?: number; vendorName?: string;
+      maxSubmissions?: number; adminNotes?: string;
     };
 
-    if (!serviceType || !SERVICE_SCHEMAS[serviceType]) {
-      return res.status(400).json({ error: "serviceType tidak valid" });
-    }
+    if (!serviceType || !SERVICE_SCHEMAS[serviceType]) return res.status(400).json({ error: "serviceType tidak valid" });
 
     const token = randomBytes(24).toString("hex");
     const expiresAt = expiresInDays ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000) : null;
     const userId = (req.user as { id: string } | undefined)?.id ?? null;
 
     const [link] = await db.insert(vendorMiniFormLinksTable).values({
-      token,
-      supplierId: supplierId ?? null,
-      serviceType,
-      title: title ?? null,
-      notes: notes ?? null,
+      token, supplierId: supplierId ?? null, serviceType,
+      title: title ?? null, notes: notes ?? null,
       expiresAt: expiresAt ?? undefined,
       createdBy: userId,
       mode: mode ?? "rate_collection",
-      orderId: orderId ?? null,
-      orderNumber: orderNumber ?? null,
-      orderItemId: orderItemId ?? null,
+      orderId: orderId ?? null, orderNumber: orderNumber ?? null, orderItemId: orderItemId ?? null,
       vendorName: vendorName ?? null,
       itemStatus: mode === "order_based" ? "waiting_vendor" : null,
       phase: "quotation",
+      maxSubmissions: maxSubmissions ?? null,
+      adminNotes: adminNotes ?? null,
     }).returning();
+
+    await logActivity("link", link.id, "created", userId,
+      `Link dibuat untuk ${serviceType} (mode: ${mode ?? "rate_collection"})`,
+      { serviceType, orderId, orderNumber, mode });
 
     return res.status(201).json({ ...link, expiresAt: link.expiresAt?.toISOString() ?? null, createdAt: link.createdAt.toISOString() });
   } catch (err) {
@@ -683,18 +820,20 @@ vendorMiniFormRouter.patch("/admin/links/:id", async (req: Request, res: Respons
   const id = Number(req.params["id"]);
   if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
   try {
-    const { isActive, title, notes, itemStatus } = req.body as { isActive?: boolean; title?: string; notes?: string; itemStatus?: string };
+    const { isActive, title, notes, itemStatus, adminNotes, resubmitAllowed, maxSubmissions } = req.body as {
+      isActive?: boolean; title?: string; notes?: string; itemStatus?: string;
+      adminNotes?: string; resubmitAllowed?: boolean; maxSubmissions?: number | null;
+    };
     const patch: Record<string, unknown> = {};
     if (typeof isActive === "boolean") patch["isActive"] = isActive;
     if (typeof title === "string") patch["title"] = title;
     if (typeof notes === "string") patch["notes"] = notes;
     if (typeof itemStatus === "string") patch["itemStatus"] = itemStatus;
+    if (typeof adminNotes === "string") patch["adminNotes"] = adminNotes;
+    if (typeof resubmitAllowed === "boolean") patch["resubmitAllowed"] = resubmitAllowed;
+    if (maxSubmissions !== undefined) patch["maxSubmissions"] = maxSubmissions;
 
-    const [updated] = await db
-      .update(vendorMiniFormLinksTable)
-      .set(patch)
-      .where(eq(vendorMiniFormLinksTable.id, id))
-      .returning();
+    const [updated] = await db.update(vendorMiniFormLinksTable).set(patch).where(eq(vendorMiniFormLinksTable.id, id)).returning();
     if (!updated) return res.status(404).json({ error: "Link tidak ditemukan" });
     invalidateTokenCache(updated.token);
     return res.json({ ...updated, expiresAt: updated.expiresAt?.toISOString() ?? null, createdAt: updated.createdAt.toISOString() });
@@ -721,16 +860,12 @@ vendorMiniFormRouter.delete("/admin/links/:id", async (req: Request, res: Respon
   }
 });
 
-// ── ADMIN: GET /api/vendor-form/admin/submissions ────────────────────────────
+// ── ADMIN: GET /api/vendor-form/admin/submissions ─────────────────────────────
 
 vendorMiniFormRouter.get("/admin/submissions", async (req: Request, res: Response) => {
   if (!(await requireClerkUser(req, res))) return;
   try {
-    const submissions = await db
-      .select()
-      .from(vendorMiniFormSubmissionsTable)
-      .orderBy(desc(vendorMiniFormSubmissionsTable.submittedAt));
-
+    const submissions = await db.select().from(vendorMiniFormSubmissionsTable).orderBy(desc(vendorMiniFormSubmissionsTable.submittedAt));
     const tokens = submissions.map(s => s.token);
     let waMap: Record<string, { status: string; recipient: string; createdAt: string }> = {};
     if (tokens.length > 0) {
@@ -745,7 +880,6 @@ vendorMiniFormRouter.get("/admin/submissions", async (req: Request, res: Respons
         }
       }
     }
-
     return res.json(submissions.map(s => ({
       ...s,
       submittedAt: s.submittedAt.toISOString(),
@@ -761,17 +895,16 @@ vendorMiniFormRouter.get("/admin/submissions", async (req: Request, res: Respons
 });
 
 // ── ADMIN: POST /api/vendor-form/admin/submissions/:id/select ─────────────────
-// Pilih submission vendor terbaik untuk dikirim ke customer
 
 vendorMiniFormRouter.post("/admin/submissions/:id/select", async (req: Request, res: Response) => {
   if (!(await requireClerkUser(req, res))) return;
   const id = Number(req.params["id"]);
   if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
   try {
+    const userId = (req.user as { id: string } | undefined)?.id ?? "admin";
     const [sub] = await db.select().from(vendorMiniFormSubmissionsTable).where(eq(vendorMiniFormSubmissionsTable.id, id));
     if (!sub) return res.status(404).json({ error: "Submission tidak ditemukan" });
 
-    // Deselect others from same link
     if (sub.linkId) {
       await db.update(vendorMiniFormSubmissionsTable)
         .set({ selectedByAdmin: false, selectedAt: null })
@@ -782,12 +915,15 @@ vendorMiniFormRouter.post("/admin/submissions/:id/select", async (req: Request, 
       .where(eq(vendorMiniFormSubmissionsTable.id, id))
       .returning();
 
-    // Update link status
     if (sub.linkId) {
       await db.update(vendorMiniFormLinksTable)
         .set({ itemStatus: "admin_review" })
         .where(eq(vendorMiniFormLinksTable.id, sub.linkId));
     }
+
+    await logActivity("submission", id, "selected", userId,
+      `Vendor ${sub.vendorName ?? "-"} dipilih oleh admin`,
+      { vendorPrice: sub.vendorPrice, currency: sub.currency, linkId: sub.linkId });
 
     return res.json({ ...updated, selectedAt: updated.selectedAt?.toISOString() ?? null, submittedAt: updated.submittedAt.toISOString() });
   } catch (err) {
@@ -796,15 +932,115 @@ vendorMiniFormRouter.post("/admin/submissions/:id/select", async (req: Request, 
   }
 });
 
+// ── ADMIN: POST /api/vendor-form/admin/submissions/:id/request-revision ────────
+
+vendorMiniFormRouter.post("/admin/submissions/:id/request-revision", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const id = Number(req.params["id"]);
+  if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+  try {
+    const userId = (req.user as { id: string } | undefined)?.id ?? "admin";
+    const { reason } = req.body as { reason?: string };
+
+    const [sub] = await db.select().from(vendorMiniFormSubmissionsTable).where(eq(vendorMiniFormSubmissionsTable.id, id));
+    if (!sub) return res.status(404).json({ error: "Submission tidak ditemukan" });
+    if (sub.locked) return res.status(409).json({ error: "Submission sudah dikunci oleh customer approval" });
+
+    // Update submission status
+    await db.update(vendorMiniFormSubmissionsTable)
+      .set({ responseStatus: "revision_requested" })
+      .where(eq(vendorMiniFormSubmissionsTable.id, id));
+
+    // Allow resubmission on the link
+    if (sub.linkId) {
+      await db.update(vendorMiniFormLinksTable)
+        .set({ resubmitAllowed: true, isActive: true })
+        .where(eq(vendorMiniFormLinksTable.id, sub.linkId));
+      const [link] = await db.select({ token: vendorMiniFormLinksTable.token }).from(vendorMiniFormLinksTable).where(eq(vendorMiniFormLinksTable.id, sub.linkId));
+      if (link) invalidateTokenCache(link.token);
+    }
+
+    await logActivity("submission", id, "revision_requested", userId,
+      `Admin meminta revisi harga dari ${sub.vendorName ?? "vendor"}${reason ? `. Alasan: ${reason}` : ""}`,
+      { reason, linkId: sub.linkId, previousPrice: sub.vendorPrice });
+
+    // Optionally notify vendor if phone available
+    if (sub.contactPhone) {
+      const [linkRow] = sub.linkId ? await db.select().from(vendorMiniFormLinksTable).where(eq(vendorMiniFormLinksTable.id, sub.linkId)) : [null];
+      if (linkRow) {
+        const { getPreferredDomain } = await import("../lib/domain.js");
+        const domain = getPreferredDomain();
+        const formUrl = linkRow.shortUrl ?? (domain ? `https://${domain}/vendor-mini-form/${linkRow.token}` : `/vendor-mini-form/${linkRow.token}`);
+        const msg = `Halo *${sub.vendorName ?? "Vendor"}*, kami mohon revisi harga penawaran Anda` +
+          (linkRow.orderNumber ? ` untuk Order *${linkRow.orderNumber}*` : "") +
+          (reason ? `.\n\nAlasan: ${reason}` : "") +
+          `.\n\nSilakan update penawaran melalui:\n${formUrl}`;
+        sendWhatsApp(sub.contactPhone, msg, {
+          context: "revision-request",
+          refType: "vendor_mini_form",
+          refId: String(sub.linkId ?? sub.id),
+        }).catch(() => {});
+      }
+    }
+
+    return res.json({ success: true, message: "Permintaan revisi berhasil dikirim" });
+  } catch (err) {
+    req.log?.error({ err }, "request-revision error");
+    return res.status(500).json({ error: "Gagal meminta revisi" });
+  }
+});
+
+// ── ADMIN: GET /api/vendor-form/admin/submissions/:id/price-history ────────────
+
+vendorMiniFormRouter.get("/admin/submissions/:id/price-history", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const id = Number(req.params["id"]);
+  if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+  try {
+    const history = await db
+      .select()
+      .from(vendorPriceHistoryTable)
+      .where(eq(vendorPriceHistoryTable.submissionId, id))
+      .orderBy(desc(vendorPriceHistoryTable.changedAt));
+    return res.json(history.map(h => ({ ...h, changedAt: h.changedAt.toISOString() })));
+  } catch (err) {
+    req.log?.error({ err }, "price-history error");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── ADMIN: GET /api/vendor-form/admin/activity-log ────────────────────────────
+
+vendorMiniFormRouter.get("/admin/activity-log", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  try {
+    const logs = await db
+      .select()
+      .from(vmfActivityLogTable)
+      .orderBy(desc(vmfActivityLogTable.createdAt))
+      .limit(200);
+    return res.json(logs.map(l => ({ ...l, createdAt: l.createdAt.toISOString() })));
+  } catch (err) {
+    req.log?.error({ err }, "activity-log error");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // ── ADMIN: POST /api/vendor-form/admin/customer-approvals ────────────────────
-// Buat link customer approval
 
 vendorMiniFormRouter.post("/admin/customer-approvals", async (req: Request, res: Response) => {
   if (!(await requireClerkUser(req, res))) return;
   try {
-    const { orderId, orderNumber, customerName, customerPhone, customerEmail, offerSummary, sellingPrice, currency, termsNotes, expiresInDays } = req.body as {
+    const {
+      orderId, orderNumber, customerName, customerPhone, customerEmail,
+      offerSummary, sellingPrice, currency, termsNotes, expiresInDays,
+      submissionId, vendorCost, markupPct, markupNominal, ppnPct, ppnNominal,
+      profitMarginPct, adminNotes,
+    } = req.body as {
       orderId?: number; orderNumber?: string; customerName?: string; customerPhone?: string; customerEmail?: string;
       offerSummary?: object; sellingPrice?: number; currency?: string; termsNotes?: string; expiresInDays?: number;
+      submissionId?: number; vendorCost?: number; markupPct?: number; markupNominal?: number;
+      ppnPct?: number; ppnNominal?: number; profitMarginPct?: number; adminNotes?: string;
     };
 
     const token = randomBytes(20).toString("hex");
@@ -812,20 +1048,32 @@ vendorMiniFormRouter.post("/admin/customer-approvals", async (req: Request, res:
     const expiresAt = expiresInDays ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000) : null;
 
     const [approval] = await db.insert(customerApprovalsTable).values({
-      token,
-      orderId: orderId ?? null,
-      orderNumber: orderNumber ?? null,
-      customerName: customerName ?? null,
-      customerPhone: customerPhone ?? null,
-      customerEmail: customerEmail ?? null,
+      token, orderId: orderId ?? null, orderNumber: orderNumber ?? null,
+      customerName: customerName ?? null, customerPhone: customerPhone ?? null, customerEmail: customerEmail ?? null,
       offerSummary: offerSummary ?? {},
       sellingPrice: sellingPrice ? String(sellingPrice) : null,
-      currency: currency ?? "IDR",
-      termsNotes: termsNotes ?? null,
-      status: "pending",
-      createdBy: userId,
-      expiresAt: expiresAt ?? undefined,
+      currency: currency ?? "IDR", termsNotes: termsNotes ?? null, status: "pending",
+      createdBy: userId, expiresAt: expiresAt ?? undefined,
+      submissionId: submissionId ?? null,
+      vendorCost: vendorCost ? String(vendorCost) : null,
+      markupPct: markupPct ? String(markupPct) : null,
+      markupNominal: markupNominal ? String(markupNominal) : null,
+      ppnPct: ppnPct !== undefined ? String(ppnPct) : "11",
+      ppnNominal: ppnNominal ? String(ppnNominal) : null,
+      profitMarginPct: profitMarginPct ? String(profitMarginPct) : null,
+      adminNotes: adminNotes ?? null,
     }).returning();
+
+    await logActivity("customer_approval", approval.id, "created", userId,
+      `Link approval dibuat untuk ${customerName ?? "customer"}`,
+      { orderNumber, sellingPrice, currency, vendorCost, markupPct });
+
+    // Update link itemStatus if orderId matches
+    if (orderId) {
+      await db.update(vendorMiniFormLinksTable)
+        .set({ itemStatus: "waiting_customer" })
+        .where(and(eq(vendorMiniFormLinksTable.orderId, orderId), eq(vendorMiniFormLinksTable.mode, "order_based")));
+    }
 
     return res.status(201).json({ ...approval, createdAt: approval.createdAt.toISOString() });
   } catch (err) {
@@ -839,10 +1087,7 @@ vendorMiniFormRouter.post("/admin/customer-approvals", async (req: Request, res:
 vendorMiniFormRouter.get("/admin/customer-approvals", async (req: Request, res: Response) => {
   if (!(await requireClerkUser(req, res))) return;
   try {
-    const approvals = await db
-      .select()
-      .from(customerApprovalsTable)
-      .orderBy(desc(customerApprovalsTable.createdAt));
+    const approvals = await db.select().from(customerApprovalsTable).orderBy(desc(customerApprovalsTable.createdAt));
     return res.json(approvals.map(a => ({
       ...a,
       createdAt: a.createdAt.toISOString(),
@@ -857,7 +1102,6 @@ vendorMiniFormRouter.get("/admin/customer-approvals", async (req: Request, res: 
 });
 
 // ── ADMIN: POST /api/vendor-form/admin/op-confirms ────────────────────────────
-// Buat link konfirmasi operasional untuk vendor terpilih
 
 vendorMiniFormRouter.post("/admin/op-confirms", async (req: Request, res: Response) => {
   if (!(await requireClerkUser(req, res))) return;
@@ -869,18 +1113,15 @@ vendorMiniFormRouter.post("/admin/op-confirms", async (req: Request, res: Respon
     if (!serviceType) return res.status(400).json({ error: "serviceType wajib" });
 
     const token = randomBytes(20).toString("hex");
-
     const [conf] = await db.insert(vendorOperationalConfirmationsTable).values({
-      token,
-      orderId: orderId ?? null,
-      orderNumber: orderNumber ?? null,
-      orderItemId: orderItemId ?? null,
-      supplierId: supplierId ?? null,
-      vendorName: vendorName ?? null,
-      serviceType,
-      instruction: instruction ?? null,
-      status: "pending",
+      token, orderId: orderId ?? null, orderNumber: orderNumber ?? null,
+      orderItemId: orderItemId ?? null, supplierId: supplierId ?? null,
+      vendorName: vendorName ?? null, serviceType,
+      instruction: instruction ?? null, status: "pending",
     }).returning();
+
+    await logActivity("op_confirm", conf.id, "created", (req.user as { id: string } | undefined)?.id ?? "admin",
+      `Link konfirmasi operasional dibuat untuk ${vendorName ?? "vendor"}`, { orderNumber, serviceType });
 
     return res.status(201).json({ ...conf, createdAt: conf.createdAt.toISOString() });
   } catch (err) {
@@ -889,40 +1130,26 @@ vendorMiniFormRouter.post("/admin/op-confirms", async (req: Request, res: Respon
   }
 });
 
-// ── ADMIN: GET /api/vendor-form/admin/op-confirms ────────────────────────────
+// ── ADMIN: GET /api/vendor-form/admin/op-confirms ─────────────────────────────
 
 vendorMiniFormRouter.get("/admin/op-confirms", async (req: Request, res: Response) => {
   if (!(await requireClerkUser(req, res))) return;
   try {
-    const confs = await db
-      .select()
-      .from(vendorOperationalConfirmationsTable)
-      .orderBy(desc(vendorOperationalConfirmationsTable.createdAt));
-    return res.json(confs.map(c => ({
-      ...c,
-      createdAt: c.createdAt.toISOString(),
-      submittedAt: c.submittedAt?.toISOString() ?? null,
-    })));
+    const confs = await db.select().from(vendorOperationalConfirmationsTable).orderBy(desc(vendorOperationalConfirmationsTable.createdAt));
+    return res.json(confs.map(c => ({ ...c, createdAt: c.createdAt.toISOString(), submittedAt: c.submittedAt?.toISOString() ?? null })));
   } catch (err) {
     req.log?.error({ err }, "get op-confirms error");
     return res.status(500).json({ error: "Internal server error" });
   }
 });
 
-// ── ADMIN: GET /api/vendor-form/admin/orders ─────────────────────────────────
-// Daftar order untuk dropdown saat buat link
+// ── ADMIN: GET /api/vendor-form/admin/orders ──────────────────────────────────
 
 vendorMiniFormRouter.get("/admin/orders", async (req: Request, res: Response) => {
   if (!(await requireClerkUser(req, res))) return;
   try {
     const orders = await db
-      .select({
-        id: logisticOrdersTable.id,
-        orderNumber: logisticOrdersTable.orderNumber,
-        customerName: logisticOrdersTable.customerName,
-        status: logisticOrdersTable.status,
-        createdAt: logisticOrdersTable.createdAt,
-      })
+      .select({ id: logisticOrdersTable.id, orderNumber: logisticOrdersTable.orderNumber, customerName: logisticOrdersTable.customerName, status: logisticOrdersTable.status, createdAt: logisticOrdersTable.createdAt })
       .from(logisticOrdersTable)
       .orderBy(desc(logisticOrdersTable.createdAt))
       .limit(100);
@@ -940,14 +1167,81 @@ vendorMiniFormRouter.get("/admin/orders/:id/items", async (req: Request, res: Re
   const id = Number(req.params["id"]);
   if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
   try {
-    const items = await db
-      .select()
-      .from(logisticOrderItemsTable)
-      .where(eq(logisticOrderItemsTable.orderId, id));
+    const items = await db.select().from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, id));
     return res.json(items.map(i => ({ ...i, createdAt: i.createdAt.toISOString() })));
   } catch (err) {
     req.log?.error({ err }, "admin/orders/:id/items error");
     return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── ADMIN: PUT /api/vendor-form/admin/submissions/:id ────────────────────────
+
+vendorMiniFormRouter.put("/admin/submissions/:id", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const id = Number(req.params["id"]);
+  if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+  try {
+    const userId = (req.user as { id: string } | undefined)?.id ?? "admin";
+    const { formData, staffData, responseStatus, vendorPrice, currency, adminNotes } = req.body as {
+      formData?: Record<string, unknown>; staffData?: Record<string, unknown>;
+      responseStatus?: string; vendorPrice?: number; currency?: string; adminNotes?: string;
+    };
+    const [existing] = await db.select().from(vendorMiniFormSubmissionsTable).where(eq(vendorMiniFormSubmissionsTable.id, id));
+    if (!existing) return res.status(404).json({ error: "Submission tidak ditemukan" });
+    if (existing.locked) return res.status(409).json({ error: "Submission sudah dikunci oleh customer approval. Gunakan unlock terlebih dahulu." });
+
+    // Save price history if price changed
+    if (vendorPrice !== undefined && existing.vendorPrice !== null && String(vendorPrice) !== existing.vendorPrice) {
+      const [lastVer] = await db
+        .select({ versionNumber: vendorPriceHistoryTable.versionNumber })
+        .from(vendorPriceHistoryTable)
+        .where(eq(vendorPriceHistoryTable.submissionId, id))
+        .orderBy(desc(vendorPriceHistoryTable.versionNumber))
+        .limit(1);
+      await db.insert(vendorPriceHistoryTable).values({
+        submissionId: id,
+        versionNumber: (lastVer?.versionNumber ?? 1) + 1,
+        oldPrice: existing.vendorPrice ?? null,
+        newPrice: String(vendorPrice),
+        currency: currency ?? existing.currency ?? "IDR",
+        reason: "Admin edit",
+        changedBy: userId,
+      });
+      await logActivity("submission", id, "price_updated", userId,
+        `Harga diubah dari ${existing.vendorPrice} → ${vendorPrice}`,
+        { oldPrice: existing.vendorPrice, newPrice: vendorPrice, currency });
+    }
+
+    const patch: Record<string, unknown> = {};
+    if (formData !== undefined) patch["formData"] = formData;
+    if (staffData !== undefined) patch["staffData"] = { ...(existing.staffData as object ?? {}), ...staffData };
+    if (responseStatus !== undefined) patch["responseStatus"] = responseStatus;
+    if (vendorPrice !== undefined) patch["vendorPrice"] = String(vendorPrice);
+    if (currency !== undefined) patch["currency"] = currency;
+    if (adminNotes !== undefined) patch["adminNotes"] = adminNotes;
+
+    const [updated] = await db.update(vendorMiniFormSubmissionsTable).set(patch).where(eq(vendorMiniFormSubmissionsTable.id, id)).returning();
+    return res.json({ ...updated, submittedAt: updated.submittedAt.toISOString(), selectedAt: updated.selectedAt?.toISOString() ?? null });
+  } catch (err) {
+    req.log?.error({ err }, "vendor-mini-form PUT submission error");
+    return res.status(500).json({ error: "Gagal update submission" });
+  }
+});
+
+// ── ADMIN: DELETE /api/vendor-form/admin/submissions/:id ─────────────────────
+
+vendorMiniFormRouter.delete("/admin/submissions/:id", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const id = Number(req.params["id"]);
+  if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+  try {
+    const [deleted] = await db.delete(vendorMiniFormSubmissionsTable).where(eq(vendorMiniFormSubmissionsTable.id, id)).returning();
+    if (!deleted) return res.status(404).json({ error: "Submission tidak ditemukan" });
+    return res.json({ success: true });
+  } catch (err) {
+    req.log?.error({ err }, "vendor-mini-form DELETE submission error");
+    return res.status(500).json({ error: "Gagal menghapus submission" });
   }
 });
 
@@ -997,53 +1291,7 @@ vendorMiniFormRouter.post("/admin/links/:id/reset-short-link", async (req: Reque
   }
 });
 
-// ── ADMIN: PUT /api/vendor-form/admin/submissions/:id ────────────────────────
-
-vendorMiniFormRouter.put("/admin/submissions/:id", async (req: Request, res: Response) => {
-  if (!(await requireClerkUser(req, res))) return;
-  const id = Number(req.params["id"]);
-  if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
-  try {
-    const { formData, staffData, responseStatus, vendorPrice, currency } = req.body as {
-      formData?: Record<string, unknown>; staffData?: Record<string, unknown>;
-      responseStatus?: string; vendorPrice?: number; currency?: string;
-    };
-    const [existing] = await db.select().from(vendorMiniFormSubmissionsTable).where(eq(vendorMiniFormSubmissionsTable.id, id));
-    if (!existing) return res.status(404).json({ error: "Submission tidak ditemukan" });
-
-    const patch: Record<string, unknown> = {};
-    if (formData !== undefined) patch["formData"] = formData;
-    if (staffData !== undefined) patch["staffData"] = { ...(existing.staffData as object ?? {}), ...staffData };
-    if (responseStatus !== undefined) patch["responseStatus"] = responseStatus;
-    if (vendorPrice !== undefined) patch["vendorPrice"] = String(vendorPrice);
-    if (currency !== undefined) patch["currency"] = currency;
-
-    const [updated] = await db.update(vendorMiniFormSubmissionsTable).set(patch).where(eq(vendorMiniFormSubmissionsTable.id, id)).returning();
-    return res.json({ ...updated, submittedAt: updated.submittedAt.toISOString(), selectedAt: updated.selectedAt?.toISOString() ?? null });
-  } catch (err) {
-    req.log?.error({ err }, "vendor-mini-form PUT submission error");
-    return res.status(500).json({ error: "Gagal update submission" });
-  }
-});
-
-// ── ADMIN: DELETE /api/vendor-form/admin/submissions/:id ─────────────────────
-
-vendorMiniFormRouter.delete("/admin/submissions/:id", async (req: Request, res: Response) => {
-  if (!(await requireClerkUser(req, res))) return;
-  const id = Number(req.params["id"]);
-  if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
-  try {
-    const [deleted] = await db.delete(vendorMiniFormSubmissionsTable).where(eq(vendorMiniFormSubmissionsTable.id, id)).returning();
-    if (!deleted) return res.status(404).json({ error: "Submission tidak ditemukan" });
-    return res.json({ success: true });
-  } catch (err) {
-    req.log?.error({ err }, "vendor-mini-form DELETE submission error");
-    return res.status(500).json({ error: "Gagal menghapus submission" });
-  }
-});
-
 // ── ADMIN: POST /api/vendor-form/admin/links/:id/send-wa ─────────────────────
-// Kirim pesan WA ke vendor
 
 vendorMiniFormRouter.post("/admin/links/:id/send-wa", async (req: Request, res: Response) => {
   if (!(await requireClerkUser(req, res))) return;
@@ -1059,7 +1307,6 @@ vendorMiniFormRouter.post("/admin/links/:id/send-wa", async (req: Request, res: 
     const { getPreferredDomain } = await import("../lib/domain.js");
     const domain = getPreferredDomain();
     const formUrl = link.shortUrl ?? (domain ? `https://${domain}/vendor-mini-form/${link.token}` : `/vendor-mini-form/${link.token}`);
-
     const svcLabel = SERVICE_SCHEMAS[link.serviceType]?.label ?? link.serviceType;
     const msg = customMessage?.trim() ||
       `Halo${link.vendorName ? ` *${link.vendorName}*` : ""}, kami mohon bantuannya untuk mengisi penawaran layanan *${svcLabel}*` +
@@ -1067,11 +1314,10 @@ vendorMiniFormRouter.post("/admin/links/:id/send-wa", async (req: Request, res: 
       `.\n\nSilakan isi melalui link berikut:\n${formUrl}` +
       (link.expiresAt ? `\n\n_Link berlaku sampai ${new Date(link.expiresAt).toLocaleDateString("id-ID")}._` : "");
 
-    await sendWhatsApp(phone.trim(), msg, {
-      context: "vendor-mini-form-send",
-      refType: "vendor_mini_form_link",
-      refId: String(link.id),
-    });
+    await sendWhatsApp(phone.trim(), msg, { context: "vendor-mini-form-send", refType: "vendor_mini_form_link", refId: String(link.id) });
+
+    await logActivity("link", id, "sent_wa", (req.user as { id: string } | undefined)?.id ?? "admin",
+      `WA dikirim ke ${phone}`, { phone });
 
     return res.json({ success: true, message: "Pesan WA berhasil dikirim" });
   } catch (err) {
@@ -1097,22 +1343,17 @@ vendorMiniFormRouter.post("/admin/customer-approvals/:id/send-wa", async (req: R
     const { getPreferredDomain } = await import("../lib/domain.js");
     const domain = getPreferredDomain();
     const approvalUrl = domain ? `https://${domain}/customer-approval/${approval.token}` : `/customer-approval/${approval.token}`;
-
-    const priceStr = approval.sellingPrice
-      ? `${approval.currency ?? "IDR"} ${Number(approval.sellingPrice).toLocaleString("id-ID")}`
-      : "-";
-
+    const priceStr = approval.sellingPrice ? `${approval.currency ?? "IDR"} ${Number(approval.sellingPrice).toLocaleString("id-ID")}` : "-";
     const msg = customMessage?.trim() ||
       `Halo${approval.customerName ? ` *${approval.customerName}*` : ""}, berikut penawaran kami untuk request Anda.\n\n` +
       (approval.orderNumber ? `Order Ref: *${approval.orderNumber}*\n` : "") +
       `Total Harga: *${priceStr}*\n\n` +
       `Silakan review dan konfirmasi melalui link berikut:\n${approvalUrl}`;
 
-    await sendWhatsApp(target, msg, {
-      context: "customer-approval-send",
-      refType: "customer_approval",
-      refId: String(approval.id),
-    });
+    await sendWhatsApp(target, msg, { context: "customer-approval-send", refType: "customer_approval", refId: String(approval.id) });
+
+    await logActivity("customer_approval", id, "sent_wa", (req.user as { id: string } | undefined)?.id ?? "admin",
+      `WA penawaran dikirim ke customer ${approval.customerName ?? "-"}`, { phone: target });
 
     return res.json({ success: true, message: "Pesan WA ke customer berhasil dikirim" });
   } catch (err) {
@@ -1137,7 +1378,6 @@ vendorMiniFormRouter.post("/admin/op-confirms/:id/send-wa", async (req: Request,
     const { getPreferredDomain } = await import("../lib/domain.js");
     const domain = getPreferredDomain();
     const confirmUrl = domain ? `https://${domain}/op-confirm/${conf.token}` : `/op-confirm/${conf.token}`;
-
     const svcLabel = SERVICE_SCHEMAS[conf.serviceType]?.label ?? conf.serviceType;
     const msg = customMessage?.trim() ||
       `Halo${conf.vendorName ? ` *${conf.vendorName}*` : ""}, customer sudah menyetujui penawaran.\n\n` +
@@ -1146,11 +1386,10 @@ vendorMiniFormRouter.post("/admin/op-confirms/:id/send-wa", async (req: Request,
       ` melalui link berikut:\n${confirmUrl}` +
       (conf.instruction ? `\n\nInstruksi: ${conf.instruction}` : "");
 
-    await sendWhatsApp(phone.trim(), msg, {
-      context: "op-confirm-send",
-      refType: "vendor_op_confirm",
-      refId: String(conf.id),
-    });
+    await sendWhatsApp(phone.trim(), msg, { context: "op-confirm-send", refType: "vendor_op_confirm", refId: String(conf.id) });
+
+    await logActivity("op_confirm", id, "sent_wa", (req.user as { id: string } | undefined)?.id ?? "admin",
+      `WA op-confirm dikirim ke ${conf.vendorName ?? "vendor"}`, { phone });
 
     return res.json({ success: true, message: "Pesan WA ke vendor berhasil dikirim" });
   } catch (err) {

@@ -4,7 +4,7 @@ import { logger } from "./logger";
 
 export async function runVendorMiniFormMigration(): Promise<void> {
   try {
-    // ── Tabel lama (rate collection mode) ─────────────────────────────────────
+    // ── Base tables ────────────────────────────────────────────────────────────
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS vendor_mini_form_links (
         id          SERIAL PRIMARY KEY,
@@ -39,89 +39,45 @@ export async function runVendorMiniFormMigration(): Promise<void> {
       CREATE INDEX IF NOT EXISTS vmfs_link_id_idx ON vendor_mini_form_submissions(link_id);
     `);
 
-    // ── Kolom legacy ───────────────────────────────────────────────────────────
-    await db.execute(sql`
-      ALTER TABLE vendor_mini_form_links
-        ADD COLUMN IF NOT EXISTS short_url TEXT;
-    `);
-    await db.execute(sql`
-      ALTER TABLE vendor_mini_form_submissions
-        ADD COLUMN IF NOT EXISTS staff_data JSONB NOT NULL DEFAULT '{}';
-    `);
+    // ── Legacy columns ─────────────────────────────────────────────────────────
+    await db.execute(sql`ALTER TABLE vendor_mini_form_links ADD COLUMN IF NOT EXISTS short_url TEXT;`);
+    await db.execute(sql`ALTER TABLE vendor_mini_form_submissions ADD COLUMN IF NOT EXISTS staff_data JSONB NOT NULL DEFAULT '{}';`);
 
-    // ── Kolom order-based mode untuk links ────────────────────────────────────
-    await db.execute(sql`
-      ALTER TABLE vendor_mini_form_links
-        ADD COLUMN IF NOT EXISTS mode TEXT NOT NULL DEFAULT 'rate_collection';
-    `);
-    await db.execute(sql`
-      ALTER TABLE vendor_mini_form_links
-        ADD COLUMN IF NOT EXISTS order_id INTEGER;
-    `);
-    await db.execute(sql`
-      ALTER TABLE vendor_mini_form_links
-        ADD COLUMN IF NOT EXISTS order_number TEXT;
-    `);
-    await db.execute(sql`
-      ALTER TABLE vendor_mini_form_links
-        ADD COLUMN IF NOT EXISTS order_item_id INTEGER;
-    `);
-    await db.execute(sql`
-      ALTER TABLE vendor_mini_form_links
-        ADD COLUMN IF NOT EXISTS item_status TEXT DEFAULT 'waiting_vendor';
-    `);
-    await db.execute(sql`
-      ALTER TABLE vendor_mini_form_links
-        ADD COLUMN IF NOT EXISTS phase TEXT DEFAULT 'quotation';
-    `);
-    await db.execute(sql`
-      ALTER TABLE vendor_mini_form_links
-        ADD COLUMN IF NOT EXISTS vendor_name TEXT;
-    `);
+    // ── Order-based mode for links ─────────────────────────────────────────────
+    await db.execute(sql`ALTER TABLE vendor_mini_form_links ADD COLUMN IF NOT EXISTS mode TEXT NOT NULL DEFAULT 'rate_collection';`);
+    await db.execute(sql`ALTER TABLE vendor_mini_form_links ADD COLUMN IF NOT EXISTS order_id INTEGER;`);
+    await db.execute(sql`ALTER TABLE vendor_mini_form_links ADD COLUMN IF NOT EXISTS order_number TEXT;`);
+    await db.execute(sql`ALTER TABLE vendor_mini_form_links ADD COLUMN IF NOT EXISTS order_item_id INTEGER;`);
+    await db.execute(sql`ALTER TABLE vendor_mini_form_links ADD COLUMN IF NOT EXISTS item_status TEXT DEFAULT 'waiting_vendor';`);
+    await db.execute(sql`ALTER TABLE vendor_mini_form_links ADD COLUMN IF NOT EXISTS phase TEXT DEFAULT 'quotation';`);
+    await db.execute(sql`ALTER TABLE vendor_mini_form_links ADD COLUMN IF NOT EXISTS vendor_name TEXT;`);
 
-    // ── Kolom order-based mode untuk submissions ───────────────────────────────
-    await db.execute(sql`
-      ALTER TABLE vendor_mini_form_submissions
-        ADD COLUMN IF NOT EXISTS response_status TEXT DEFAULT 'submitted';
-    `);
-    await db.execute(sql`
-      ALTER TABLE vendor_mini_form_submissions
-        ADD COLUMN IF NOT EXISTS vendor_price NUMERIC(14,2);
-    `);
-    await db.execute(sql`
-      ALTER TABLE vendor_mini_form_submissions
-        ADD COLUMN IF NOT EXISTS currency TEXT DEFAULT 'IDR';
-    `);
-    await db.execute(sql`
-      ALTER TABLE vendor_mini_form_submissions
-        ADD COLUMN IF NOT EXISTS eta TEXT;
-    `);
-    await db.execute(sql`
-      ALTER TABLE vendor_mini_form_submissions
-        ADD COLUMN IF NOT EXISTS valid_until TEXT;
-    `);
-    await db.execute(sql`
-      ALTER TABLE vendor_mini_form_submissions
-        ADD COLUMN IF NOT EXISTS attachment_url TEXT;
-    `);
-    await db.execute(sql`
-      ALTER TABLE vendor_mini_form_submissions
-        ADD COLUMN IF NOT EXISTS order_id INTEGER;
-    `);
-    await db.execute(sql`
-      ALTER TABLE vendor_mini_form_submissions
-        ADD COLUMN IF NOT EXISTS order_item_id INTEGER;
-    `);
-    await db.execute(sql`
-      ALTER TABLE vendor_mini_form_submissions
-        ADD COLUMN IF NOT EXISTS selected_by_admin BOOLEAN DEFAULT FALSE;
-    `);
-    await db.execute(sql`
-      ALTER TABLE vendor_mini_form_submissions
-        ADD COLUMN IF NOT EXISTS selected_at TIMESTAMP;
-    `);
+    // ── Security & limits for links ────────────────────────────────────────────
+    await db.execute(sql`ALTER TABLE vendor_mini_form_links ADD COLUMN IF NOT EXISTS max_submissions INTEGER;`);
+    await db.execute(sql`ALTER TABLE vendor_mini_form_links ADD COLUMN IF NOT EXISTS resubmit_allowed BOOLEAN DEFAULT FALSE;`);
+    await db.execute(sql`ALTER TABLE vendor_mini_form_links ADD COLUMN IF NOT EXISTS admin_notes TEXT;`);
 
-    // ── Tabel customer_approvals ───────────────────────────────────────────────
+    // ── Order-based mode for submissions ──────────────────────────────────────
+    await db.execute(sql`ALTER TABLE vendor_mini_form_submissions ADD COLUMN IF NOT EXISTS response_status TEXT DEFAULT 'submitted';`);
+    await db.execute(sql`ALTER TABLE vendor_mini_form_submissions ADD COLUMN IF NOT EXISTS vendor_price NUMERIC(14,2);`);
+    await db.execute(sql`ALTER TABLE vendor_mini_form_submissions ADD COLUMN IF NOT EXISTS currency TEXT DEFAULT 'IDR';`);
+    await db.execute(sql`ALTER TABLE vendor_mini_form_submissions ADD COLUMN IF NOT EXISTS eta TEXT;`);
+    await db.execute(sql`ALTER TABLE vendor_mini_form_submissions ADD COLUMN IF NOT EXISTS valid_until TEXT;`);
+    await db.execute(sql`ALTER TABLE vendor_mini_form_submissions ADD COLUMN IF NOT EXISTS attachment_url TEXT;`);
+    await db.execute(sql`ALTER TABLE vendor_mini_form_submissions ADD COLUMN IF NOT EXISTS order_id INTEGER;`);
+    await db.execute(sql`ALTER TABLE vendor_mini_form_submissions ADD COLUMN IF NOT EXISTS order_item_id INTEGER;`);
+    await db.execute(sql`ALTER TABLE vendor_mini_form_submissions ADD COLUMN IF NOT EXISTS selected_by_admin BOOLEAN DEFAULT FALSE;`);
+    await db.execute(sql`ALTER TABLE vendor_mini_form_submissions ADD COLUMN IF NOT EXISTS selected_at TIMESTAMP;`);
+
+    // ── Security, revision & lock for submissions ──────────────────────────────
+    await db.execute(sql`ALTER TABLE vendor_mini_form_submissions ADD COLUMN IF NOT EXISTS submitted_ip TEXT;`);
+    await db.execute(sql`ALTER TABLE vendor_mini_form_submissions ADD COLUMN IF NOT EXISTS submitted_ua TEXT;`);
+    await db.execute(sql`ALTER TABLE vendor_mini_form_submissions ADD COLUMN IF NOT EXISTS revision_count INTEGER DEFAULT 0;`);
+    await db.execute(sql`ALTER TABLE vendor_mini_form_submissions ADD COLUMN IF NOT EXISTS admin_notes TEXT;`);
+    await db.execute(sql`ALTER TABLE vendor_mini_form_submissions ADD COLUMN IF NOT EXISTS locked BOOLEAN DEFAULT FALSE;`);
+    await db.execute(sql`ALTER TABLE vendor_mini_form_submissions ADD COLUMN IF NOT EXISTS unlock_reason TEXT;`);
+
+    // ── customer_approvals ─────────────────────────────────────────────────────
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS customer_approvals (
         id              SERIAL PRIMARY KEY,
@@ -146,12 +102,21 @@ export async function runVendorMiniFormMigration(): Promise<void> {
         expires_at      TIMESTAMP
       )
     `);
-    await db.execute(sql`
-      CREATE INDEX IF NOT EXISTS ca_token_idx ON customer_approvals(token);
-      CREATE INDEX IF NOT EXISTS ca_order_id_idx ON customer_approvals(order_id);
-    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS ca_token_idx ON customer_approvals(token);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS ca_order_id_idx ON customer_approvals(order_id);`);
 
-    // ── Tabel vendor_operational_confirmations ─────────────────────────────────
+    // ── Margin calculator columns for customer_approvals ──────────────────────
+    await db.execute(sql`ALTER TABLE customer_approvals ADD COLUMN IF NOT EXISTS submission_id INTEGER;`);
+    await db.execute(sql`ALTER TABLE customer_approvals ADD COLUMN IF NOT EXISTS vendor_cost NUMERIC(14,2);`);
+    await db.execute(sql`ALTER TABLE customer_approvals ADD COLUMN IF NOT EXISTS markup_pct NUMERIC(8,2);`);
+    await db.execute(sql`ALTER TABLE customer_approvals ADD COLUMN IF NOT EXISTS markup_nominal NUMERIC(14,2);`);
+    await db.execute(sql`ALTER TABLE customer_approvals ADD COLUMN IF NOT EXISTS ppn_pct NUMERIC(5,2) DEFAULT 11;`);
+    await db.execute(sql`ALTER TABLE customer_approvals ADD COLUMN IF NOT EXISTS ppn_nominal NUMERIC(14,2);`);
+    await db.execute(sql`ALTER TABLE customer_approvals ADD COLUMN IF NOT EXISTS profit_margin_pct NUMERIC(8,2);`);
+    await db.execute(sql`ALTER TABLE customer_approvals ADD COLUMN IF NOT EXISTS admin_notes TEXT;`);
+    await db.execute(sql`ALTER TABLE customer_approvals ADD COLUMN IF NOT EXISTS locked BOOLEAN DEFAULT FALSE;`);
+
+    // ── vendor_operational_confirmations ───────────────────────────────────────
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS vendor_operational_confirmations (
         id             SERIAL PRIMARY KEY,
@@ -169,10 +134,40 @@ export async function runVendorMiniFormMigration(): Promise<void> {
         created_at     TIMESTAMP NOT NULL DEFAULT NOW()
       )
     `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS voc_token_idx ON vendor_operational_confirmations(token);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS voc_order_id_idx ON vendor_operational_confirmations(order_id);`);
+
+    // ── vendor_price_history ───────────────────────────────────────────────────
     await db.execute(sql`
-      CREATE INDEX IF NOT EXISTS voc_token_idx ON vendor_operational_confirmations(token);
-      CREATE INDEX IF NOT EXISTS voc_order_id_idx ON vendor_operational_confirmations(order_id);
+      CREATE TABLE IF NOT EXISTS vendor_price_history (
+        id             SERIAL PRIMARY KEY,
+        submission_id  INTEGER REFERENCES vendor_mini_form_submissions(id) ON DELETE CASCADE,
+        version_number INTEGER NOT NULL DEFAULT 1,
+        old_price      NUMERIC(14,2),
+        new_price      NUMERIC(14,2),
+        currency       TEXT DEFAULT 'IDR',
+        reason         TEXT,
+        changed_by     TEXT,
+        changed_at     TIMESTAMP NOT NULL DEFAULT NOW()
+      )
     `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS vph_submission_id_idx ON vendor_price_history(submission_id);`);
+
+    // ── vmf_activity_log ───────────────────────────────────────────────────────
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS vmf_activity_log (
+        id          SERIAL PRIMARY KEY,
+        entity_type TEXT NOT NULL,
+        entity_id   INTEGER NOT NULL,
+        action      TEXT NOT NULL,
+        actor       TEXT,
+        note        TEXT,
+        data        JSONB DEFAULT '{}',
+        created_at  TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS val_entity_idx ON vmf_activity_log(entity_type, entity_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS val_created_idx ON vmf_activity_log(created_at);`);
 
     logger.info("Vendor mini form migration: ok");
   } catch (err) {

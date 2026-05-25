@@ -37,6 +37,7 @@ type FormLink = {
   vendorName: string | null; mode: string; orderId: number | null;
   orderNumber: string | null; orderItemId: number | null;
   itemStatus: string | null; phase: string | null;
+  maxSubmissions: number | null; resubmitAllowed: boolean | null; adminNotes: string | null;
 };
 
 type Submission = {
@@ -47,7 +48,8 @@ type Submission = {
   waStatus: string | null; waRecipient: string | null; waAt: string | null;
   responseStatus: string | null; vendorPrice: string | null; currency: string | null;
   eta: string | null; validUntil: string | null; selectedByAdmin: boolean;
-  selectedAt: string | null;
+  selectedAt: string | null; locked: boolean | null; revisionCount: number | null;
+  adminNotes: string | null; submittedIp: string | null;
 };
 
 type CustomerApproval = {
@@ -57,6 +59,22 @@ type CustomerApproval = {
   currency: string | null; termsNotes: string | null; status: string;
   approvedAt: string | null; rejectedAt: string | null; soNumber: string | null;
   createdAt: string; expiresAt: string | null;
+  submissionId: number | null; vendorCost: string | null;
+  markupPct: string | null; markupNominal: string | null;
+  ppnPct: string | null; ppnNominal: string | null; profitMarginPct: string | null;
+  adminNotes: string | null; locked: boolean | null;
+};
+
+type ActivityLog = {
+  id: number; entityType: string; entityId: number; action: string;
+  actor: string | null; note: string | null; data: Record<string, unknown>;
+  createdAt: string;
+};
+
+type PriceHistory = {
+  id: number; submissionId: number | null; versionNumber: number;
+  oldPrice: string | null; newPrice: string | null; currency: string | null;
+  reason: string | null; changedBy: string | null; changedAt: string;
 };
 
 type OpConfirm = {
@@ -245,6 +263,7 @@ function CreateLinkDialog({ suppliers, onCreated }: { suppliers: Supplier[]; onC
   const [expiresInDays, setExpiresInDays] = useState("");
   const [orderId, setOrderId] = useState<string>("");
   const [orderItemId, setOrderItemId] = useState<string>("");
+  const [maxSubmissions, setMaxSubmissions] = useState("");
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
@@ -264,7 +283,7 @@ function CreateLinkDialog({ suppliers, onCreated }: { suppliers: Supplier[]; onC
 
   const reset = () => {
     setMode("rate_collection"); setServiceType(""); setSupplierId(""); setVendorName("");
-    setTitle(""); setNotes(""); setExpiresInDays(""); setOrderId(""); setOrderItemId("");
+    setTitle(""); setNotes(""); setExpiresInDays(""); setOrderId(""); setOrderItemId(""); setMaxSubmissions("");
   };
 
   const handleCreate = async () => {
@@ -280,6 +299,7 @@ function CreateLinkDialog({ suppliers, onCreated }: { suppliers: Supplier[]; onC
           notes: notes.trim() || undefined, expiresInDays: expiresInDays ? Number(expiresInDays) : undefined,
           mode, orderId: orderId ? Number(orderId) : undefined,
           orderNumber: selectedOrder?.orderNumber, orderItemId: orderItemId ? Number(orderItemId) : undefined,
+          maxSubmissions: maxSubmissions ? Number(maxSubmissions) : undefined,
         }),
       });
       toast({ title: "Link berhasil dibuat" });
@@ -391,6 +411,11 @@ function CreateLinkDialog({ suppliers, onCreated }: { suppliers: Supplier[]; onC
             <Label>Kadaluarsa (hari, opsional)</Label>
             <Input type="number" value={expiresInDays} onChange={e => setExpiresInDays(e.target.value)} placeholder="Contoh: 7" />
           </div>
+          <div className="space-y-1.5">
+            <Label>Maks. Submission (opsional)</Label>
+            <Input type="number" value={maxSubmissions} onChange={e => setMaxSubmissions(e.target.value)} placeholder="Kosong = tidak dibatasi" />
+            <p className="text-xs text-slate-400">Batas jumlah vendor yang bisa submit melalui link ini.</p>
+          </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>Batal</Button>
@@ -412,11 +437,17 @@ function CreateApprovalDialog({ onCreated }: { onCreated: () => void }) {
   const [orderNumber, setOrderNumber] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
-  const [sellingPrice, setSellingPrice] = useState("");
   const [currency, setCurrency] = useState("IDR");
   const [termsNotes, setTermsNotes] = useState("");
   const [expiresInDays, setExpiresInDays] = useState("7");
   const [offerItems, setOfferItems] = useState<{ label: string; value: string }[]>([]);
+  const [adminNotes, setAdminNotes] = useState("");
+  // Margin calculator
+  const [vendorCost, setVendorCost] = useState("");
+  const [markupPct, setMarkupPct] = useState("");
+  const [markupNominal, setMarkupNominal] = useState("");
+  const [ppnPct, setPpnPct] = useState("11");
+  const [sellingPrice, setSellingPrice] = useState("");
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
@@ -431,6 +462,39 @@ function CreateApprovalDialog({ onCreated }: { onCreated: () => void }) {
     if (selectedOrder) setOrderNumber(selectedOrder.orderNumber);
   }, [selectedOrder]);
 
+  // Auto-calculate markup fields
+  const vendorCostNum = vendorCost ? Number(vendorCost) : null;
+  const markupPctNum = markupPct ? Number(markupPct) : null;
+  const markupNomNum = markupNominal ? Number(markupNominal) : null;
+  const ppnPctNum = ppnPct ? Number(ppnPct) : 0;
+
+  const computedMarkupNominal = vendorCostNum !== null && markupPctNum !== null
+    ? Math.round(vendorCostNum * markupPctNum / 100) : null;
+  const computedMarkupPct = vendorCostNum !== null && markupNomNum !== null && vendorCostNum > 0
+    ? Number(((markupNomNum / vendorCostNum) * 100).toFixed(2)) : null;
+
+  const baseBeforeTax = vendorCostNum !== null
+    ? vendorCostNum + (markupPct ? (computedMarkupNominal ?? 0) : (markupNomNum ?? 0))
+    : null;
+  const ppnNominal = baseBeforeTax !== null ? Math.round(baseBeforeTax * ppnPctNum / 100) : null;
+  const autoSellingPrice = baseBeforeTax !== null ? baseBeforeTax + (ppnNominal ?? 0) : null;
+  const profitMarginPct = autoSellingPrice && vendorCostNum
+    ? Number((((autoSellingPrice - vendorCostNum) / autoSellingPrice) * 100).toFixed(2)) : null;
+
+  // Sync sellingPrice to auto-calculated
+  useEffect(() => {
+    if (autoSellingPrice !== null) setSellingPrice(String(autoSellingPrice));
+  }, [autoSellingPrice]);
+
+  const handleMarkupPctChange = (v: string) => {
+    setMarkupPct(v);
+    setMarkupNominal("");
+  };
+  const handleMarkupNomChange = (v: string) => {
+    setMarkupNominal(v);
+    setMarkupPct("");
+  };
+
   const addItem = () => setOfferItems(p => [...p, { label: "", value: "" }]);
   const updateItem = (i: number, field: "label" | "value", val: string) => {
     setOfferItems(p => p.map((item, idx) => idx === i ? { ...item, [field]: val } : item));
@@ -439,7 +503,8 @@ function CreateApprovalDialog({ onCreated }: { onCreated: () => void }) {
 
   const reset = () => {
     setOrderId(""); setOrderNumber(""); setCustomerName(""); setCustomerPhone("");
-    setSellingPrice(""); setCurrency("IDR"); setTermsNotes(""); setExpiresInDays("7"); setOfferItems([]);
+    setSellingPrice(""); setCurrency("IDR"); setTermsNotes(""); setExpiresInDays("7");
+    setOfferItems([]); setAdminNotes(""); setVendorCost(""); setMarkupPct(""); setMarkupNominal(""); setPpnPct("11");
   };
 
   const handleCreate = async () => {
@@ -455,6 +520,13 @@ function CreateApprovalDialog({ onCreated }: { onCreated: () => void }) {
           sellingPrice: sellingPrice ? Number(sellingPrice) : undefined,
           currency, termsNotes: termsNotes || undefined,
           expiresInDays: expiresInDays ? Number(expiresInDays) : undefined,
+          adminNotes: adminNotes || undefined,
+          vendorCost: vendorCost ? Number(vendorCost) : undefined,
+          markupPct: markupPct ? Number(markupPct) : (computedMarkupPct ?? undefined),
+          markupNominal: markupNominal ? Number(markupNominal) : (computedMarkupNominal ?? undefined),
+          ppnPct: ppnPct ? Number(ppnPct) : undefined,
+          ppnNominal: ppnNominal ?? undefined,
+          profitMarginPct: profitMarginPct ?? undefined,
         }),
       });
       toast({ title: "Link approval berhasil dibuat!" });
@@ -464,12 +536,14 @@ function CreateApprovalDialog({ onCreated }: { onCreated: () => void }) {
     } finally { setLoading(false); }
   };
 
+  const fmt = (n: number | null) => n === null ? "—" : `${currency} ${n.toLocaleString("id-ID")}`;
+
   return (
     <Dialog open={open} onOpenChange={v => { setOpen(v); if (!v) reset(); }}>
       <DialogTrigger asChild>
         <Button size="sm" variant="outline"><Plus className="h-4 w-4 mr-1" />Buat Link Approval Customer</Button>
       </DialogTrigger>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
         <DialogHeader><DialogTitle>Buat Link Approval Customer</DialogTitle></DialogHeader>
         <div className="space-y-4 py-2">
           <div className="space-y-1.5">
@@ -492,14 +566,10 @@ function CreateApprovalDialog({ onCreated }: { onCreated: () => void }) {
               <Input value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="PT. ..." />
             </div>
           </div>
-          <div className="space-y-1.5">
-            <Label>No. WA Customer</Label>
-            <Input value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} placeholder="62812xxx" />
-          </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label>Total Harga <span className="text-red-500">*</span></Label>
-              <Input type="number" value={sellingPrice} onChange={e => setSellingPrice(e.target.value)} placeholder="5000000" />
+              <Label>No. WA Customer</Label>
+              <Input value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} placeholder="62812xxx" />
             </div>
             <div className="space-y-1.5">
               <Label>Mata Uang</Label>
@@ -510,6 +580,67 @@ function CreateApprovalDialog({ onCreated }: { onCreated: () => void }) {
                 </SelectContent>
               </Select>
             </div>
+          </div>
+
+          {/* ── Margin Calculator ── */}
+          <div className="border border-indigo-200 rounded-xl p-4 space-y-3 bg-indigo-50/40">
+            <p className="text-sm font-semibold text-indigo-700 flex items-center gap-1.5">
+              🧮 Kalkulator Margin (internal)
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Harga Vendor (Cost)</Label>
+                <Input type="number" value={vendorCost} onChange={e => setVendorCost(e.target.value)} placeholder="0" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">PPN %</Label>
+                <Select value={ppnPct} onValueChange={setPpnPct}>
+                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="0">0% (tidak ada PPN)</SelectItem>
+                    <SelectItem value="11">11% (PPN Normal)</SelectItem>
+                    <SelectItem value="12">12%</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Markup %</Label>
+                <Input type="number" value={markupPct} onChange={e => handleMarkupPctChange(e.target.value)} placeholder="Auto dari nominal" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Markup Nominal</Label>
+                <Input type="number" value={markupNominal || (computedMarkupNominal !== null ? String(computedMarkupNominal) : "")}
+                  onChange={e => handleMarkupNomChange(e.target.value)} placeholder="Auto dari %" readOnly={!!markupPct} />
+              </div>
+            </div>
+            {vendorCostNum !== null && (markupPct || markupNominal) && (
+              <div className="bg-white border border-indigo-100 rounded-lg p-3 grid grid-cols-2 sm:grid-cols-4 gap-3 text-center text-xs">
+                <div>
+                  <p className="text-slate-400 mb-0.5">Sebelum PPN</p>
+                  <p className="font-bold text-slate-800">{fmt(baseBeforeTax)}</p>
+                </div>
+                <div>
+                  <p className="text-slate-400 mb-0.5">PPN {ppnPct}%</p>
+                  <p className="font-bold text-slate-600">{fmt(ppnNominal)}</p>
+                </div>
+                <div>
+                  <p className="text-slate-400 mb-0.5">Total Jual</p>
+                  <p className="font-bold text-indigo-700 text-sm">{fmt(autoSellingPrice)}</p>
+                </div>
+                <div>
+                  <p className="text-slate-400 mb-0.5">Margin</p>
+                  <p className="font-bold text-green-600">{profitMarginPct !== null ? `${profitMarginPct}%` : "—"}</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Total Harga ke Customer <span className="text-red-500">*</span></Label>
+            <Input type="number" value={sellingPrice} onChange={e => setSellingPrice(e.target.value)} placeholder="Auto dari kalkulator, atau isi manual" />
+            <p className="text-xs text-slate-400">Harga ini yang akan dilihat oleh customer.</p>
           </div>
 
           {/* Offer line items */}
@@ -530,6 +661,10 @@ function CreateApprovalDialog({ onCreated }: { onCreated: () => void }) {
           <div className="space-y-1.5">
             <Label>Terms & Conditions / Catatan</Label>
             <Textarea value={termsNotes} onChange={e => setTermsNotes(e.target.value)} rows={2} placeholder="Syarat pembayaran, masa berlaku, dll." />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Catatan Internal Admin</Label>
+            <Textarea value={adminNotes} onChange={e => setAdminNotes(e.target.value)} rows={2} placeholder="Catatan internal, tidak terlihat oleh customer..." />
           </div>
           <div className="space-y-1.5">
             <Label>Berlaku (hari)</Label>
@@ -1000,25 +1135,63 @@ function CompareVendorsSheet({
                         </div>
                       )}
 
-                      {/* Select button */}
-                      {!isSelected && (
-                        <div className="mt-3 flex justify-end">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 text-xs gap-1 border-green-300 text-green-700 hover:bg-green-50"
-                            disabled={selectingId === sub.id}
-                            onClick={() => handleSelect(sub.id)}
-                          >
-                            {selectingId === sub.id
-                              ? <Loader2 className="h-3 w-3 animate-spin" />
-                              : <Star className="h-3 w-3" />}
-                            Pilih Vendor Ini
-                          </Button>
+                      {/* Action buttons */}
+                      <div className="mt-3 flex items-center justify-between gap-2 flex-wrap">
+                        {/* Locked badge */}
+                        {(sub as Submission & { locked?: boolean | null }).locked && (
+                          <span className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-0.5 flex items-center gap-1">
+                            🔒 Dikunci (customer approved)
+                          </span>
+                        )}
+                        {/* Revision count badge */}
+                        {(sub as Submission & { revisionCount?: number | null }).revisionCount != null &&
+                          (sub as Submission & { revisionCount?: number | null }).revisionCount! > 0 && (
+                          <span className="text-xs text-purple-600 bg-purple-50 border border-purple-200 rounded px-2 py-0.5">
+                            🔄 Rev-{(sub as Submission & { revisionCount?: number | null }).revisionCount}
+                          </span>
+                        )}
+                        <div className="flex items-center gap-2 ml-auto">
+                          {/* Request revision */}
+                          {!(sub as Submission & { locked?: boolean | null }).locked && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs gap-1 border-orange-300 text-orange-700 hover:bg-orange-50"
+                              onClick={async () => {
+                                const reason = prompt("Alasan minta revisi harga (opsional):");
+                                if (reason === null) return;
+                                try {
+                                  await apiFetch(`/api/vendor-form/admin/submissions/${sub.id}/request-revision`, {
+                                    method: "POST", body: JSON.stringify({ reason: reason || undefined }),
+                                  });
+                                  onSelect(sub.id);
+                                } catch (e: unknown) {
+                                  alert((e as Error).message);
+                                }
+                              }}
+                            >
+                              ↩ Minta Revisi
+                            </Button>
+                          )}
+                          {/* Select button */}
+                          {!isSelected && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs gap-1 border-green-300 text-green-700 hover:bg-green-50"
+                              disabled={selectingId === sub.id}
+                              onClick={() => handleSelect(sub.id)}
+                            >
+                              {selectingId === sub.id
+                                ? <Loader2 className="h-3 w-3 animate-spin" />
+                                : <Star className="h-3 w-3" />}
+                              Pilih Vendor Ini
+                            </Button>
+                          )}
                         </div>
-                      )}
+                      </div>
                       {isSelected && (
-                        <div className="mt-3 flex justify-end">
+                        <div className="mt-1 flex justify-end">
                           <span className="text-xs text-green-600 font-medium flex items-center gap-1">
                             <CheckCircle className="h-3.5 w-3.5" />
                             Vendor ini telah dipilih
@@ -1204,6 +1377,12 @@ export default function VendorFormsPage() {
     queryFn: () => apiFetch<OpConfirm[]>("/api/vendor-form/admin/op-confirms"),
     refetchInterval: 30_000,
   });
+  const { data: activityLogs = [], isLoading: actLoading } = useQuery<ActivityLog[]>({
+    queryKey: ["vmf-activity-log"],
+    queryFn: () => apiFetch<ActivityLog[]>("/api/vendor-form/admin/activity-log"),
+    enabled: tab === "activity-log",
+    refetchInterval: tab === "activity-log" ? 20_000 : false,
+  });
   const { data: suppliers = [] } = useQuery<Supplier[]>({
     queryKey: ["suppliers-simple"],
     queryFn: () => apiFetch<Supplier[]>("/api/trading/suppliers"),
@@ -1311,6 +1490,7 @@ export default function VendorFormsPage() {
             <TabsTrigger value="submissions">📝 Submissions ({submissions.length})</TabsTrigger>
             <TabsTrigger value="approvals">✅ Customer Approval ({approvals.length})</TabsTrigger>
             <TabsTrigger value="op-confirms">🚚 Konfirmasi Operasional ({opConfirms.length})</TabsTrigger>
+            <TabsTrigger value="activity-log">📋 Log Aktivitas</TabsTrigger>
           </TabsList>
 
           {/* ── LINKS TAB ── */}
@@ -1693,6 +1873,60 @@ export default function VendorFormsPage() {
                   </Table>
                 </CardContent>
               </Card>
+            )}
+          </TabsContent>
+
+          {/* ── ACTIVITY LOG TAB ── */}
+          <TabsContent value="activity-log" className="space-y-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-slate-500">200 aktivitas terakhir — update otomatis setiap 20 detik</p>
+              <Button size="sm" variant="outline" onClick={() => queryClient.invalidateQueries({ queryKey: ["vmf-activity-log"] })}>
+                ↻ Refresh
+              </Button>
+            </div>
+            {actLoading ? (
+              <div className="flex items-center justify-center py-12 text-slate-400">
+                <Loader2 className="h-5 w-5 animate-spin mr-2" />Memuat...
+              </div>
+            ) : activityLogs.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 text-slate-400">
+                <FileText className="h-10 w-10 mb-3 opacity-30" />
+                <p className="text-sm">Belum ada aktivitas tercatat</p>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {activityLogs.map(log => {
+                  const actionEmoji: Record<string, string> = {
+                    submitted: "📩", resubmitted: "🔄", selected: "⭐", revision_requested: "↩",
+                    sent_wa: "💬", approved: "✅", rejected: "❌", so_created: "🎉",
+                    locked: "🔒", unlocked: "🔓", created: "➕", op_submitted: "🚚",
+                    price_updated: "💱",
+                  };
+                  const entityLabel: Record<string, string> = {
+                    link: "Link", submission: "Submission", customer_approval: "Approval", op_confirm: "Op-Confirm",
+                  };
+                  return (
+                    <div key={log.id} className="flex items-start gap-3 px-4 py-3 border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                      <span className="text-lg shrink-0 mt-0.5">{actionEmoji[log.action] ?? "•"}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs bg-slate-100 text-slate-600 rounded px-1.5 py-0.5 font-mono">
+                            {entityLabel[log.entityType] ?? log.entityType} #{log.entityId}
+                          </span>
+                          <span className="text-xs font-semibold text-slate-700">{log.action.replace(/_/g, " ")}</span>
+                          {log.actor && log.actor !== "system" && (
+                            <span className="text-xs text-slate-400">oleh {log.actor}</span>
+                          )}
+                        </div>
+                        {log.note && <p className="text-xs text-slate-600 mt-0.5">{log.note}</p>}
+                      </div>
+                      <span className="text-xs text-slate-400 shrink-0 whitespace-nowrap">
+                        {new Date(log.createdAt).toLocaleString("id-ID", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </TabsContent>
         </Tabs>
