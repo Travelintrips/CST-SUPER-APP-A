@@ -319,11 +319,37 @@ router.get("/callback/google", async (req: Request, res: Response) => {
   const client = getGoogleOAuthClient(redirectUri);
 
   try {
-    const { tokens } = await client.getToken(code);
-    if (!tokens.id_token) throw new Error("No id_token");
+    // Manual token exchange — menggunakan fetch + URLSearchParams untuk memastikan
+    // code di-encode dengan benar di request body (menghindari bug gaxios v7).
+    const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        code,
+        client_id: GOOGLE_CLIENT_ID,
+        client_secret: GOOGLE_CLIENT_SECRET,
+        redirect_uri: redirectUri,
+        grant_type: "authorization_code",
+      }).toString(),
+    });
+
+    if (!tokenRes.ok) {
+      const errBody = await tokenRes.json().catch(() => ({})) as Record<string, unknown>;
+      req.log.error({ status: tokenRes.status, errBody }, "[Google OAuth] token endpoint error");
+      throw new Error(`Token exchange failed: ${errBody.error ?? tokenRes.status}`);
+    }
+
+    const tokenData = await tokenRes.json() as {
+      id_token?: string;
+      access_token?: string;
+      refresh_token?: string;
+      expires_in?: number;
+    };
+
+    if (!tokenData.id_token) throw new Error("No id_token in token response");
 
     const ticket = await client.verifyIdToken({
-      idToken: tokens.id_token,
+      idToken: tokenData.id_token,
       audience: GOOGLE_CLIENT_ID,
     });
     const payload = ticket.getPayload();
@@ -348,9 +374,9 @@ router.get("/callback/google", async (req: Request, res: Response) => {
         lastName: dbUser.lastName,
         profileImageUrl: dbUser.profileImageUrl,
       },
-      access_token: tokens.access_token || "",
-      refresh_token: tokens.refresh_token || undefined,
-      expires_at: tokens.expiry_date ? Math.floor(tokens.expiry_date / 1000) : now + 3600,
+      access_token: tokenData.access_token || "",
+      refresh_token: tokenData.refresh_token || undefined,
+      expires_at: tokenData.expires_in ? now + tokenData.expires_in : now + 3600,
     };
 
     const sid = await createSession(sessionData);
