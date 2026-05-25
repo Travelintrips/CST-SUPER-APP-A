@@ -102,6 +102,7 @@ function setOidcCookie(res: Response, name: string, value: string) {
 }
 
 function getSafeReturnTo(value: unknown): string {
+  if (value === "popup") return "popup";
   if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) {
     return "/";
   }
