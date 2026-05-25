@@ -1272,6 +1272,11 @@ function LinkDetailSheet({
             <Badge variant={link.isActive && !expired ? "default" : "secondary"} className="text-xs">
               {link.isActive && !expired ? "Aktif" : "Nonaktif"}
             </Badge>
+            {!link.isActive && link.adminNotes?.includes("[auto-replaced]") && (
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-700 border border-amber-200">
+                ↩ Digantikan
+              </span>
+            )}
             {link.mode === "order_based" && <ItemStatusBadge status={link.itemStatus} />}
             <Badge variant="secondary" className="text-xs">{linkSubs.length} submission</Badge>
           </div>
@@ -1585,6 +1590,11 @@ export default function VendorFormsPage() {
                                 </button>
                                 <span className="text-xs text-slate-500">{link.isActive && !expired ? "Aktif" : "Nonaktif"}</span>
                               </div>
+                              {!link.isActive && link.adminNotes?.includes("[auto-replaced]") && (
+                                <span className="inline-flex items-center gap-0.5 mt-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-700 border border-amber-200">
+                                  ↩ Digantikan
+                                </span>
+                              )}
                               {link.expiresAt && (
                                 <p className={`text-xs mt-0.5 ${expired ? "text-red-500" : "text-slate-400"}`}>
                                   {expired ? "⚠️ " : ""}{new Date(link.expiresAt).toLocaleDateString("id-ID")}

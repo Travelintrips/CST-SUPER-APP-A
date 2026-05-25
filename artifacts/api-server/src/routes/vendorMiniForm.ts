@@ -920,7 +920,7 @@ vendorMiniFormRouter.post("/admin/links", async (req: Request, res: Response) =>
       if (orderItemId) conditions.push(eq(vendorMiniFormLinksTable.orderItemId, orderItemId));
       const deactivated = await db
         .update(vendorMiniFormLinksTable)
-        .set({ isActive: false })
+        .set({ isActive: false, adminNotes: "[auto-replaced] Dinonaktifkan otomatis karena ada link baru untuk order yang sama." })
         .where(and(...conditions))
         .returning({ id: vendorMiniFormLinksTable.id });
       deactivatedCount = deactivated.length;
