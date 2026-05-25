@@ -1,8 +1,13 @@
 import { Router } from "express";
-import { db, freightShipmentsTable, freightRfqsTable, freightQuotesTable, freightAttachmentsTable, shipmentStagesTable, salesDocumentsTable, purchaseDocumentsTable, expensesTable, freightCustomsDocsTable, freightShipmentAuditLogsTable, SHIPMENT_STAGE_TYPES, type ShipmentStageType } from "@workspace/db";
+import { db, freightShipmentsTable, freightRfqsTable, freightQuotesTable, freightAttachmentsTable, shipmentStagesTable, salesDocumentsTable, purchaseDocumentsTable, expensesTable, freightCustomsDocsTable, freightShipmentAuditLogsTable, logisticOrdersTable, SHIPMENT_STAGE_TYPES, type ShipmentStageType } from "@workspace/db";
 import { eq, desc, inArray, sum, and, sql } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { saveAndBroadcast } from "../lib/notificationStore.js";
+import {
+  sendShipmentUpdateNotification,
+  sendDeliveryCompletedNotification,
+  type LogisticOrderData,
+} from "../lib/orderNotification.js";
 
 function resolveUserDisplay(user: { id: string; firstName?: string | null; lastName?: string | null; email?: string | null }): { name: string; id: string } {
   const name = [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || user.email || user.id;
@@ -331,6 +336,56 @@ router.put("/freight-shipments/:id", async (req, res) => {
       status: updated!.status,
       updatedAt: new Date().toISOString(),
     }).catch(() => {});
+
+    // Notifikasi template ke customer berdasarkan status baru
+    const newStatus = updated!.status;
+    if (newStatus === "in_transit" || newStatus === "completed") {
+      // Cari logistic order via RFQ (freight_shipment_id disimpan di logistic_order_rfqs)
+      db.execute(sql`
+        SELECT lo.* FROM logistic_orders lo
+        JOIN logistic_order_rfqs lor ON lor.order_id = lo.id
+        WHERE lor.freight_shipment_id = ${updated!.id}
+        LIMIT 1
+      `).then((result) => {
+        const row = result.rows[0] as (typeof logisticOrdersTable.$inferSelect) | undefined;
+        if (!row?.phone) return;
+        const orderData: LogisticOrderData = {
+          id: Number(row.id),
+          orderNumber: String(row.order_number ?? ""),
+          customerName: String(row.customer_name ?? ""),
+          companyName: String(row.company_name ?? ""),
+          email: String(row.email ?? ""),
+          phone: String(row.phone ?? ""),
+          orderType: row.order_type ? String(row.order_type) : undefined,
+          shipmentType: String(row.shipment_type ?? ""),
+          origin: String(row.origin ?? ""),
+          destination: String(row.destination ?? ""),
+          commodity: row.commodity ? String(row.commodity) : null,
+          cargoDescription: row.cargo_description ? String(row.cargo_description) : null,
+          grossWeight: row.gross_weight ? Number(row.gross_weight) : null,
+          volumeCbm: row.volume_cbm ? Number(row.volume_cbm) : null,
+          jumlahKoli: row.jumlah_koli ? Number(row.jumlah_koli) : null,
+          grandTotal: row.grand_total ? Number(row.grand_total) : 0,
+          serviceList: String(row.shipment_type ?? ""),
+          requiredDate: row.required_date ? String(row.required_date) : null,
+          notes: row.notes ? String(row.notes) : null,
+          jamOrder: row.jam_order ? String(row.jam_order) : null,
+          vehicleType: row.truck_type ? String(row.truck_type) : null,
+          createdAt: row.created_at ? new Date(String(row.created_at)) : null,
+          publicRfqToken: row.public_rfq_token ? String(row.public_rfq_token) : null,
+        };
+        if (newStatus === "in_transit") {
+          sendShipmentUpdateNotification(orderData, {
+            vessel: updated!.vessel ?? undefined,
+            voyage: updated!.voyage ?? undefined,
+            containerNumber: updated!.containerNo ?? undefined,
+            awbNumber: updated!.awbNumber ?? undefined,
+          }).catch(() => {});
+        } else if (newStatus === "completed") {
+          sendDeliveryCompletedNotification(orderData).catch(() => {});
+        }
+      }).catch(() => {});
+    }
   }
   return res.json(serializeShipment(updated!));
 });
