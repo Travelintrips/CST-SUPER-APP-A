@@ -374,6 +374,24 @@ export const SERVICE_SCHEMAS: Record<string, {
       { key: "recommendation", label: "Rekomendasi", type: "textarea", section: "quotation" },
     ],
   },
+  admin_rfq_forward: {
+    label: "Forward RFQ Customer ke Vendor", emoji: "📨",
+    fields: [
+      { key: "customer_name", label: "Nama Customer / Perusahaan", type: "text", required: true, section: "quotation", placeholder: "Contoh: PT Maju Bersama" },
+      { key: "rfq_ref", label: "Nomor RFQ / Referensi Internal", type: "text", section: "quotation", placeholder: "Contoh: RFQ/2025/001" },
+      { key: "service_needed", label: "Layanan yang Dibutuhkan", type: "select", required: true, options: ["Sea Freight", "Air Freight", "Trucking", "Customs Clearance", "Warehousing", "Exim Full Service", "Door to Door", "Lainnya"], section: "quotation" },
+      { key: "cargo_desc", label: "Deskripsi Barang / Komoditi", type: "textarea", required: true, section: "quotation", placeholder: "Jenis barang, HS code, kondisi khusus, dll." },
+      { key: "origin", label: "Asal (Kota / Negara)", type: "text", required: true, section: "quotation" },
+      { key: "destination", label: "Tujuan (Kota / Negara)", type: "text", required: true, section: "quotation" },
+      { key: "weight_volume", label: "Berat / Volume", type: "text", section: "quotation", placeholder: "Contoh: 500 kg / 2 CBM" },
+      { key: "incoterms", label: "Incoterms", type: "select", options: ["EXW", "FOB", "CIF", "DAP", "DDP", "FCA", "Tidak ditentukan"], section: "quotation" },
+      { key: "target_delivery_date", label: "Target Tanggal Pengiriman", type: "date", section: "quotation" },
+      { key: "customer_budget", label: "Budget Customer (Rp / USD)", type: "text", section: "quotation", placeholder: "Kosongkan jika tidak diketahui" },
+      { key: "special_req", label: "Persyaratan Khusus dari Customer", type: "textarea", section: "quotation", placeholder: "Contoh: butuh insurance, dokumen tertentu, dll." },
+      { key: "quote_deadline", label: "Batas Waktu Penawaran dari Vendor", type: "date", required: true, section: "quotation" },
+      { key: "notes_to_vendor", label: "Pesan / Instruksi ke Vendor", type: "textarea", section: "quotation", placeholder: "Tambahan informasi yang perlu diketahui vendor" },
+    ],
+  },
 };
 
 // ── PUBLIC: GET /api/vendor-form/:token ───────────────────────────────────────

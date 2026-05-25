@@ -1873,6 +1873,7 @@ const MINI_FORM_SERVICE_META: Record<string, { label: string; emoji: string }> =
   admin_checklist: { label: "Checklist Proses", emoji: "✅" },
   admin_handover: { label: "Serah Terima Pekerjaan", emoji: "🤝" },
   admin_inspection: { label: "Laporan Inspeksi", emoji: "🔍" },
+  admin_rfq_forward: { label: "Forward RFQ Customer ke Vendor", emoji: "📨" },
 };
 
 type SchemaField = {
