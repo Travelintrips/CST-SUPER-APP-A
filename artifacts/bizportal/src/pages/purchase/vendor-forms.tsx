@@ -58,6 +58,7 @@ type CustomerApproval = {
   offerSummary: Record<string, unknown>; sellingPrice: string | null;
   currency: string | null; termsNotes: string | null; status: string;
   approvedAt: string | null; rejectedAt: string | null; soNumber: string | null;
+  salesDocId: number | null;
   createdAt: string; expiresAt: string | null;
   submissionId: number | null; vendorCost: string | null;
   markupPct: string | null; markupNominal: string | null;
@@ -1770,7 +1771,16 @@ export default function VendorFormsPage() {
                           <TableCell><ApprovalStatusBadge status={a.status} /></TableCell>
                           <TableCell>
                             {a.soNumber ? (
-                              <span className="text-xs font-mono bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded">{a.soNumber}</span>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs font-mono bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded">{a.soNumber}</span>
+                                {a.salesDocId && (
+                                  <a href={`/sales/orders/${a.salesDocId}`} target="_blank" rel="noreferrer" title="Buka Sales Order">
+                                    <Button variant="ghost" size="icon" className="h-6 w-6 text-green-700 hover:text-green-900 hover:bg-green-100">
+                                      <ExternalLink className="h-3 w-3" />
+                                    </Button>
+                                  </a>
+                                )}
+                              </div>
                             ) : <span className="text-xs text-slate-400">—</span>}
                           </TableCell>
                           <TableCell>

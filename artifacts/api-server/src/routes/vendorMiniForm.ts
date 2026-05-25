@@ -14,6 +14,7 @@ import {
   suppliersTable,
   logisticOrdersTable,
   logisticOrderItemsTable,
+  salesDocumentsTable,
 } from "@workspace/db";
 import { requireClerkUser } from "../lib/requireAdmin";
 import { sendWhatsApp } from "../lib/fonnte.js";
@@ -1459,9 +1460,20 @@ vendorMiniFormRouter.post("/admin/customer-approvals", async (req: Request, res:
 vendorMiniFormRouter.get("/admin/customer-approvals", async (req: Request, res: Response) => {
   if (!(await requireClerkUser(req, res))) return;
   try {
-    const approvals = await db.select().from(customerApprovalsTable).orderBy(desc(customerApprovalsTable.createdAt));
-    return res.json(approvals.map(a => ({
+    const approvals = await db
+      .select({
+        approval: customerApprovalsTable,
+        salesDocId: salesDocumentsTable.id,
+      })
+      .from(customerApprovalsTable)
+      .leftJoin(
+        salesDocumentsTable,
+        eq(salesDocumentsTable.docNumber, customerApprovalsTable.soNumber),
+      )
+      .orderBy(desc(customerApprovalsTable.createdAt));
+    return res.json(approvals.map(({ approval: a, salesDocId }) => ({
       ...a,
+      salesDocId: salesDocId ?? null,
       createdAt: a.createdAt.toISOString(),
       approvedAt: a.approvedAt?.toISOString() ?? null,
       rejectedAt: a.rejectedAt?.toISOString() ?? null,
