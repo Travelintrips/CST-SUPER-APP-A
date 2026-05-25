@@ -105,7 +105,6 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
       }
 
       // Buka tanpa noopener agar postMessage dari popup ke parent bisa bekerja
-      const authWindow = window.open(data.url, "bizportal-google-auth", "width=520,height=680");      if (authWindow) {
       const popup = window.open(data.url, "bizportal-google-auth", "width=520,height=680");
 
       if (popup) {
