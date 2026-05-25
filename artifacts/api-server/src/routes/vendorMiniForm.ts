@@ -42,8 +42,15 @@ type CachedForm = {
   isActive: boolean; expiresAt: Date | null; mode: string;
   orderId: number | null; orderNumber: string | null; orderItemId: number | null;
   phase: string | null; maxSubmissions: number | null; resubmitAllowed: boolean | null;
+  formTarget: string;
   expiresCache: number;
 };
+
+function getExpectedTarget(baseUrl: string): string {
+  if (baseUrl.includes("customer-form")) return "customer";
+  if (baseUrl.includes("admin-form")) return "admin";
+  return "vendor";
+}
 const TOKEN_CACHE = new Map<string, CachedForm>();
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
@@ -249,6 +256,109 @@ export const SERVICE_SCHEMAS: Record<string, {
       { key: "op_notes", label: "Catatan Operasional", type: "textarea", section: "operational" },
     ],
   },
+
+  // ── Customer-facing schemas ─────────────────────────────────────────────────
+  customer_shipment: {
+    label: "Permintaan Pengiriman", emoji: "📦",
+    fields: [
+      { key: "cargo_name", label: "Nama / Jenis Barang", type: "text", required: true, section: "quotation" },
+      { key: "origin", label: "Kota / Negara Asal", type: "text", required: true, section: "quotation" },
+      { key: "destination", label: "Kota / Negara Tujuan", type: "text", required: true, section: "quotation" },
+      { key: "weight", label: "Berat Perkiraan (kg)", type: "number", section: "quotation" },
+      { key: "volume", label: "Volume / Dimensi (m³ atau cm)", type: "text", section: "quotation" },
+      { key: "qty", label: "Jumlah", type: "number", section: "quotation" },
+      { key: "unit", label: "Satuan", type: "select", options: ["pcs", "kg", "ton", "box", "palet", "kontainer"], section: "quotation" },
+      { key: "service_pref", label: "Layanan yang Diinginkan", type: "select", options: ["Sea Freight", "Air Freight", "Trucking", "Customs Clearance", "Door to Door", "Lainnya"], section: "quotation" },
+      { key: "preferred_date", label: "Tanggal Pengiriman yang Diinginkan", type: "date", section: "quotation" },
+      { key: "incoterms", label: "Incoterms (jika ada)", type: "select", options: ["EXW", "FOB", "CIF", "DAP", "DDP", "Tidak tahu"], section: "quotation" },
+      { key: "special_req", label: "Persyaratan Khusus", type: "textarea", section: "quotation" },
+      { key: "notes", label: "Catatan Tambahan", type: "textarea", section: "quotation" },
+    ],
+  },
+  customer_quote: {
+    label: "Permintaan Penawaran Harga", emoji: "💼",
+    fields: [
+      { key: "service_type", label: "Layanan yang Dibutuhkan", type: "select", required: true, options: ["Freight Forwarding", "Custom Clearance", "Trucking", "Warehousing", "Exim Consulting", "Full Logistics", "Lainnya"], section: "quotation" },
+      { key: "cargo_desc", label: "Deskripsi Barang / Komoditi", type: "textarea", required: true, section: "quotation" },
+      { key: "origin_country", label: "Negara / Kota Asal", type: "text", required: true, section: "quotation" },
+      { key: "dest_country", label: "Negara / Kota Tujuan", type: "text", required: true, section: "quotation" },
+      { key: "weight_volume", label: "Berat / Volume Perkiraan", type: "text", section: "quotation" },
+      { key: "frequency", label: "Frekuensi Pengiriman", type: "select", options: ["Sekali", "Mingguan", "2x/bulan", "Bulanan", "Berkala (proyek)"], section: "quotation" },
+      { key: "budget", label: "Budget Perkiraan", type: "text", section: "quotation" },
+      { key: "timeline", label: "Target Tanggal Pengiriman Pertama", type: "date", section: "quotation" },
+      { key: "notes", label: "Informasi Tambahan", type: "textarea", section: "quotation" },
+    ],
+  },
+  customer_document: {
+    label: "Pengiriman Dokumen", emoji: "📋",
+    fields: [
+      { key: "doc_type", label: "Jenis Dokumen", type: "select", required: true, options: ["Invoice", "Packing List", "Bill of Lading", "AWB", "COO", "MSDS", "Phytosanitary", "Fumigation", "Lainnya"], section: "quotation" },
+      { key: "doc_reference", label: "Nomor Referensi / PO", type: "text", section: "quotation" },
+      { key: "issued_by", label: "Diterbitkan Oleh", type: "text", section: "quotation" },
+      { key: "issued_date", label: "Tanggal Terbit", type: "date", section: "quotation" },
+      { key: "related_shipment", label: "Terkait Shipment / Order", type: "text", section: "quotation" },
+      { key: "notes", label: "Keterangan", type: "textarea", section: "quotation" },
+    ],
+  },
+  customer_complaint: {
+    label: "Keluhan / Klaim", emoji: "⚠️",
+    fields: [
+      { key: "order_ref", label: "Nomor Order / Shipment", type: "text", required: true, section: "quotation" },
+      { key: "complaint_type", label: "Jenis Keluhan", type: "select", required: true, options: ["Keterlambatan", "Kerusakan Barang", "Kehilangan Barang", "Dokumen Salah", "Overcharge", "Pelayanan", "Lainnya"], section: "quotation" },
+      { key: "incident_date", label: "Tanggal Kejadian", type: "date", section: "quotation" },
+      { key: "description", label: "Deskripsi Masalah", type: "textarea", required: true, section: "quotation" },
+      { key: "claimed_amount", label: "Nilai Klaim (Rp)", type: "number", section: "quotation" },
+      { key: "expected_resolution", label: "Penyelesaian yang Diharapkan", type: "textarea", section: "quotation" },
+    ],
+  },
+
+  // ── Admin / Internal schemas ────────────────────────────────────────────────
+  admin_checklist: {
+    label: "Checklist Proses", emoji: "✅",
+    fields: [
+      { key: "process_name", label: "Nama Proses / Pekerjaan", type: "text", required: true, section: "quotation" },
+      { key: "order_ref", label: "Nomor Order / Referensi", type: "text", section: "quotation" },
+      { key: "responsible", label: "Penanggung Jawab", type: "text", required: true, section: "quotation" },
+      { key: "check_date", label: "Tanggal Pengecekan", type: "date", section: "quotation" },
+      { key: "item_1", label: "Checklist Item 1", type: "select", options: ["✅ Selesai", "⏳ Proses", "❌ Belum"], section: "quotation" },
+      { key: "item_2", label: "Checklist Item 2", type: "select", options: ["✅ Selesai", "⏳ Proses", "❌ Belum"], section: "quotation" },
+      { key: "item_3", label: "Checklist Item 3", type: "select", options: ["✅ Selesai", "⏳ Proses", "❌ Belum"], section: "quotation" },
+      { key: "overall_status", label: "Status Keseluruhan", type: "select", required: true, options: ["Completed", "In Progress", "Blocked", "Cancelled"], section: "quotation" },
+      { key: "issues", label: "Kendala / Issues", type: "textarea", section: "quotation" },
+      { key: "next_action", label: "Tindakan Selanjutnya", type: "textarea", section: "quotation" },
+      { key: "notes", label: "Catatan", type: "textarea", section: "quotation" },
+    ],
+  },
+  admin_handover: {
+    label: "Serah Terima Pekerjaan", emoji: "🤝",
+    fields: [
+      { key: "job_ref", label: "Nomor Job / Order", type: "text", required: true, section: "quotation" },
+      { key: "from_staff", label: "Diserahkan Oleh", type: "text", required: true, section: "quotation" },
+      { key: "to_staff", label: "Diterima Oleh", type: "text", required: true, section: "quotation" },
+      { key: "handover_date", label: "Tanggal Serah Terima", type: "date", required: true, section: "quotation" },
+      { key: "job_description", label: "Deskripsi Pekerjaan", type: "textarea", required: true, section: "quotation" },
+      { key: "current_status", label: "Status Saat Ini", type: "select", required: true, options: ["Baru Mulai", "Sedang Berjalan", "Menunggu Dokumen", "Menunggu Vendor", "Menunggu Customer", "Hampir Selesai"], section: "quotation" },
+      { key: "pending_items", label: "Item yang Belum Selesai", type: "textarea", section: "quotation" },
+      { key: "important_contacts", label: "Kontak Penting", type: "textarea", section: "quotation" },
+      { key: "notes", label: "Catatan Tambahan", type: "textarea", section: "quotation" },
+    ],
+  },
+  admin_inspection: {
+    label: "Laporan Inspeksi", emoji: "🔍",
+    fields: [
+      { key: "inspection_ref", label: "Nomor Inspeksi / Referensi", type: "text", required: true, section: "quotation" },
+      { key: "location", label: "Lokasi Inspeksi", type: "text", required: true, section: "quotation" },
+      { key: "inspection_date", label: "Tanggal Inspeksi", type: "date", required: true, section: "quotation" },
+      { key: "inspector", label: "Nama Inspektor", type: "text", required: true, section: "quotation" },
+      { key: "goods_desc", label: "Deskripsi Barang / Aset", type: "textarea", required: true, section: "quotation" },
+      { key: "qty_checked", label: "Jumlah Diperiksa", type: "number", section: "quotation" },
+      { key: "qty_ok", label: "Jumlah OK", type: "number", section: "quotation" },
+      { key: "qty_rejected", label: "Jumlah Ditolak / Rusak", type: "number", section: "quotation" },
+      { key: "condition", label: "Kondisi Umum", type: "select", required: true, options: ["Baik", "Cukup Baik", "Ada Kerusakan Minor", "Kerusakan Signifikan", "Ditolak"], section: "quotation" },
+      { key: "findings", label: "Temuan / Catatan", type: "textarea", section: "quotation" },
+      { key: "recommendation", label: "Rekomendasi", type: "textarea", section: "quotation" },
+    ],
+  },
 };
 
 // ── PUBLIC: GET /api/vendor-form/:token ───────────────────────────────────────
@@ -274,6 +384,7 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
           phase: vendorMiniFormLinksTable.phase,
           maxSubmissions: vendorMiniFormLinksTable.maxSubmissions,
           resubmitAllowed: vendorMiniFormLinksTable.resubmitAllowed,
+          formTarget: vendorMiniFormLinksTable.formTarget,
           vendorName: suppliersTable.name,
           vendorPhone: suppliersTable.phone,
           vendorContactPerson: suppliersTable.contactPerson,
@@ -298,6 +409,7 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
         phase: dbRow.phase ?? "quotation",
         maxSubmissions: dbRow.maxSubmissions ?? null,
         resubmitAllowed: dbRow.resubmitAllowed ?? false,
+        formTarget: dbRow.formTarget ?? "vendor",
         vendorName: dbRow.linkVendorName ?? dbRow.vendorName ?? null,
         vendorPhone: dbRow.vendorPhone ?? null,
         vendorContactPerson: dbRow.vendorContactPerson ?? null,
@@ -308,6 +420,10 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
       }
     }
     if (!row) return res.status(404).json({ error: "Link tidak ditemukan atau sudah tidak valid" });
+    const expectedTarget = getExpectedTarget(req.baseUrl);
+    if ((row.formTarget ?? "vendor") !== expectedTarget) {
+      return res.status(404).json({ error: "Link tidak ditemukan atau sudah tidak valid" });
+    }
     if (!row.isActive) return res.status(410).json({ error: "Link ini sudah dinonaktifkan" });
     if (row.expiresAt && row.expiresAt < new Date()) {
       invalidateTokenCache(token);
@@ -380,6 +496,10 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
       .from(vendorMiniFormLinksTable)
       .where(eq(vendorMiniFormLinksTable.token, token));
     if (!link) return res.status(404).json({ error: "Link tidak ditemukan" });
+    const expectedTargetPost = getExpectedTarget(req.baseUrl);
+    if ((link.formTarget ?? "vendor") !== expectedTargetPost) {
+      return res.status(404).json({ error: "Link tidak ditemukan" });
+    }
     if (!link.isActive) return res.status(410).json({ error: "Link ini sudah dinonaktifkan" });
     if (link.expiresAt && link.expiresAt < new Date()) return res.status(410).json({ error: "Link sudah kadaluarsa" });
 
