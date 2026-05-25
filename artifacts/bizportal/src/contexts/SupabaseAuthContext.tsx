@@ -112,7 +112,10 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
 
       // Buka tanpa noopener agar postMessage dari popup ke parent bisa bekerja
       const authWindow = window.open(data.url, "bizportal-google-auth", "width=520,height=680");
-
+      // In iframe (Replit preview): open popup with returnTo=popup sentinel.
+      // The popup will postMessage "auth:done" then close itself.
+      const loginUrl = `${origin}/api/login/google?returnTo=${encodeURIComponent("popup")}`;
+      const authWindow = window.open(loginUrl, "_blank", "width=500,height=650,popup");
       if (authWindow) {
         const onMessage = async (evt: MessageEvent) => {
           // Hanya terima pesan dari origin yang sama
