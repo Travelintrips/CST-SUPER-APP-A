@@ -176,6 +176,14 @@ async function startServer() {
     logger.info({ port }, "Server listening");
   });
 
+  // Also bind on port 18444 (gateway routing port) if not already the main port
+  const GATEWAY_PORT = 18444;
+  if (port !== GATEWAY_PORT) {
+    app.listen(GATEWAY_PORT, (err?: Error) => {
+      if (!err) logger.info({ port: GATEWAY_PORT }, "Also listening on gateway port");
+    });
+  }
+
   // Graceful shutdown on SIGTERM / SIGINT
   const shutdown = () => {
     server.close(() => process.exit(0));

@@ -3,10 +3,7 @@ import { useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 
 function apiUrl(path: string) {
-  if (typeof window !== "undefined" && window.location.hostname !== "localhost") {
-    return path;
-  }
-  return `http://localhost:8080${path}`;
+  return path;
 }
 
 const idr = (n: number | null | undefined) =>
