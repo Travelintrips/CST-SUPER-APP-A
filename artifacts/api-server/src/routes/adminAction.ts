@@ -18,6 +18,7 @@ import { logger } from "../lib/logger.js";
 import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa } from "../lib/adminWa.js";
 import { generateShortLink } from "../lib/shortLink.js";
+import { sendVendorRequestNotification, type LogisticOrderData } from "../lib/orderNotification.js";
 
 export const adminActionRouter: Router = Router();
 export const adminActionPublicRouter = Router();
@@ -446,20 +447,33 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
         const formUrl = `https://${domain}/vendor-form/${linkToken}`;
         const shortUrl = await generateShortLink(formUrl, { context: "vendor_rfq", refType: "rfq", refId: String(rfq.id) });
 
-        const msg =
-          `📋 *REQUEST FOR QUOTATION — CST LOGISTICS*\n` +
-          `━━━━━━━━━━━━━━━━━━\n` +
-          `Kepada Yth. *${vendor.name}*,\n\n` +
-          `No. RFQ     : *${rfq.rfqNumber}*\n` +
-          `Layanan     : ${order.shipmentType ?? "—"}\n` +
-          `Rute        : ${order.origin} → ${order.destination}\n` +
-          (order.commodity ? `Komoditi    : ${order.commodity}\n` : "") +
-          `━━━━━━━━━━━━━━━━━━\n` +
-          `📱 *Isi penawaran di sini:*\n${shortUrl}\n\n` +
-          `⏰ Batas waktu: ${deadlineHours} jam\n\nTerima kasih 🙏`;
+        const orderData: LogisticOrderData = {
+          id: order.id,
+          orderNumber: order.orderNumber,
+          customerName: order.customerName ?? "",
+          companyName: order.companyName ?? "",
+          email: order.email ?? "",
+          phone: order.phone ?? "",
+          orderType: order.orderType ?? undefined,
+          shipmentType: order.shipmentType ?? "",
+          origin: order.origin ?? "",
+          destination: order.destination ?? "",
+          commodity: order.commodity,
+          cargoDescription: order.cargoDescription,
+          grossWeight: order.grossWeight != null ? parseFloat(String(order.grossWeight)) : null,
+          volumeCbm: order.volumeCbm != null ? parseFloat(String(order.volumeCbm)) : null,
+          jumlahKoli: order.jumlahKoli ?? null,
+          grandTotal: order.grandTotal != null ? parseFloat(String(order.grandTotal)) : 0,
+          serviceList: "",
+          requiredDate: order.requiredDate ?? null,
+          notes: order.notes,
+          jamOrder: order.jamOrder ?? null,
+          createdAt: order.createdAt,
+          publicRfqToken: order.publicRfqToken,
+        };
 
         try {
-          await sendWhatsApp(vendor.phone!, msg);
+          await sendVendorRequestNotification(orderData, vendor.name, vendor.phone!, shortUrl);
           results.push({ vendorId: vendor.id, vendorName: vendor.name, sent: true });
         } catch {
           results.push({ vendorId: vendor.id, vendorName: vendor.name, sent: false });
