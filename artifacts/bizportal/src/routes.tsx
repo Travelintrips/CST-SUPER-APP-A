@@ -114,7 +114,21 @@ import ThaiTeaBranchesPage from "@/pages/thai-tea/branches";
 import ThaiTeaProductionPage from "@/pages/thai-tea/production";
 import ThaiTeaRecipesPage from "@/pages/thai-tea/recipes";
 import ThaiTeaReportsPage from "@/pages/thai-tea/reports";
-
+// Portal
+import PortalCustomersPage from "@/pages/portal-customers";
+import PortalOnboardingApprovalsPage from "@/pages/portal-onboarding-approvals";
+// Logistics RFQ + Order detail
+import LogisticsRfqListPage from "@/pages/logistics-rfq-list";
+import LogisticsRfqDetailPage from "@/pages/logistics-rfq-detail";
+import LogisticsRfqComparisonPage from "@/pages/logistics-rfq-comparison";
+import LogisticOrderDetailPage from "@/pages/logistics/order-detail";
+import VendorPerformancePage from "@/pages/logistics/vendor-performance";
+import InternalTasksPage from "@/pages/logistics/internal-tasks";
+// Misc
+import NotificationsPage from "@/pages/notifications";
+import AnalyticsDashboardPage from "@/pages/analytics-dashboard";
+import POOrdersPage from "@/pages/purchase/po-orders";
+import VendorFormsPage from "@/pages/purchase/vendor-forms";
 
 const PR = (C: React.ComponentType) => () => <ProtectedRoute component={C} />;
 
@@ -149,7 +163,15 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/logistics/vendor-quote/:token" component={LogisticsVendorQuotePage} />
       <Route path="/logistics/quotation-reply/:token" component={LogisticsQuotationReplyPage} />
       <Route path="/logistics/margin-rules" component={PR(LogisticsMarginRulesPage)} />
+      <Route path="/logistics/rfq/:rfqId/comparison" component={PR(LogisticsRfqComparisonPage)} />
+      <Route path="/logistics/rfq/:rfqId/detail" component={PR(LogisticsRfqDetailPage)} />
+      <Route path="/logistics/rfq" component={PR(LogisticsRfqListPage)} />
+      <Route path="/logistics/orders/:orderId" component={PR(LogisticOrderDetailPage)} />
+      <Route path="/logistics/vendor-performance" component={PR(VendorPerformancePage)} />
+      <Route path="/logistics/internal-tasks" component={PR(InternalTasksPage)} />
       <Route path="/portal-product-orders" component={PR(PortalProductOrdersPage)} />
+      <Route path="/portal/customers" component={PR(PortalCustomersPage)} />
+      <Route path="/portal/onboarding-approvals" component={PR(PortalOnboardingApprovalsPage)} />
 
       {/* ── Sales ──────────────────────────────────────────────────────── */}
       <Route path="/sales/documents/new" component={PR(SalesDocumentEditorPage)} />
@@ -182,7 +204,8 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/purchase/rfq/:id" component={PR(PurchaseDocumentEditorPage)} />
       <Route path="/purchase/rfq" component={() => <ProtectedRoute component={() => <PurchaseDocumentsListPage kind="rfq" />} />} />
       <Route path="/purchase/orders/:id" component={PR(PurchaseDocumentEditorPage)} />
-      <Route path="/purchase/orders" component={() => <ProtectedRoute component={() => <PurchaseDocumentsListPage kind="order" />} />} />
+      <Route path="/purchase/orders" component={PR(POOrdersPage)} />
+      <Route path="/purchase/vendor-forms" component={PR(VendorFormsPage)} />
       <Route path="/purchase/vendors/:id" component={PR(VendorDetailPage)} />
       <Route path="/purchase/vendors" component={PR(VendorsPage)} />
       <Route path="/purchase/bills" component={PR(PurchaseBillsPage)} />
@@ -279,6 +302,10 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/thai-tea/reports" component={PR(ThaiTeaReportsPage)} />
       <Route path="/thai-tea" component={PR(ThaiTeaDashboardPage)} />
 
+
+      {/* ── Notifications & Analytics ──────────────────────────────────── */}
+      <Route path="/notifications" component={PR(NotificationsPage)} />
+      <Route path="/analytics" component={PR(AnalyticsDashboardPage)} />
 
       {/* ── Audit ERP ──────────────────────────────────────────────────── */}
       <Route path="/audit/compare" component={PR(AuditComparePage)} />
