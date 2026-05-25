@@ -2556,9 +2556,18 @@ router.patch("/admin/vendor-form/links/:id", requirePortalAdmin, async (req, res
   const id = Number(req.params["id"]);
   if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
   try {
-    const { isActive } = req.body as { isActive?: boolean };
+    const { isActive, expiresAt, title, notes } = req.body as { isActive?: boolean; expiresAt?: string | null; title?: string | null; notes?: string | null };
     const patch: Record<string, unknown> = {};
     if (typeof isActive === "boolean") patch["isActive"] = isActive;
+    if (expiresAt === null) patch["expiresAt"] = null;
+    else if (typeof expiresAt === "string") {
+      const d = new Date(expiresAt);
+      if (isNaN(d.getTime())) return res.status(400).json({ error: "expiresAt tidak valid" });
+      patch["expiresAt"] = d;
+    }
+    if (title !== undefined) patch["title"] = title;
+    if (notes !== undefined) patch["notes"] = notes;
+    if (Object.keys(patch).length === 0) return res.status(400).json({ error: "Tidak ada field untuk diupdate" });
     const [updated] = await db
       .update(vendorMiniFormLinksTable)
       .set(patch)
