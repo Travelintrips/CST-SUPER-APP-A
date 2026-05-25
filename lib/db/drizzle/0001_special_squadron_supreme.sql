@@ -1,113 +1,25 @@
-DO $$ BEGIN
- CREATE TYPE "public"."kasir_status" AS ENUM('pending', 'approved', 'rejected');
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- CREATE TYPE "public"."pos_order_status" AS ENUM('open', 'paid', 'cancelled');
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- CREATE TYPE "public"."pos_payment_method" AS ENUM('cash', 'qris', 'debit', 'credit', 'transfer');
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- CREATE TYPE "public"."pos_shift_status" AS ENUM('open', 'closed');
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- CREATE TYPE "public"."wh_damage_status" AS ENUM('draft', 'confirmed', 'cancelled');
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- CREATE TYPE "public"."wh_damage_type" AS ENUM('rusak', 'hilang', 'expired', 'lainnya');
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- CREATE TYPE "public"."wh_movement_type" AS ENUM('po_receipt', 'so_delivery', 'pos_sale', 'transfer_in', 'transfer_out', 'opname_adjust', 'damage', 'return_in', 'return_out', 'manual_in', 'manual_out');
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- CREATE TYPE "public"."wh_return_status" AS ENUM('draft', 'confirmed', 'cancelled');
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- CREATE TYPE "public"."wh_return_type" AS ENUM('purchase', 'sales');
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- CREATE TYPE "public"."wh_transfer_status" AS ENUM('draft', 'in_transit', 'received', 'cancelled');
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- CREATE TYPE "public"."inv_movement_type" AS ENUM('PURCHASE_RECEIPT', 'SALES_DELIVERY', 'POS_SALE', 'TRANSFER_IN', 'TRANSFER_OUT', 'RETURN_IN', 'RETURN_OUT', 'OPNAME_ADJUST', 'DAMAGE', 'MANUAL_IN', 'MANUAL_OUT');
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- CREATE TYPE "public"."inv_reference_type" AS ENUM('PURCHASE_ORDER', 'SALES_ORDER', 'POS_SESSION', 'TRANSFER', 'RETURN', 'OPNAME', 'MANUAL');
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- CREATE TYPE "public"."warehouse_type" AS ENUM('CENTRAL', 'BRANCH', 'OUTLET');
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- CREATE TYPE "public"."gr_status" AS ENUM('draft', 'confirmed', 'cancelled');
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- CREATE TYPE "public"."lc_method" AS ENUM('equal', 'by_quantity', 'by_amount', 'by_weight', 'by_volume');
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- CREATE TYPE "public"."pay_req_status" AS ENUM('draft', 'submitted', 'approved', 'rejected', 'paid', 'cancelled');
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- CREATE TYPE "public"."pr_return_status" AS ENUM('draft', 'confirmed', 'done', 'cancelled');
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- CREATE TYPE "public"."pr_status" AS ENUM('draft', 'submitted', 'approved', 'rejected', 'converted', 'cancelled');
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- CREATE TYPE "public"."pw_approval_status" AS ENUM('pending', 'approved', 'rejected');
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- CREATE TYPE "public"."qc_status" AS ENUM('pending', 'passed', 'failed', 'partial');
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- CREATE TYPE "public"."vi_status" AS ENUM('draft', 'posted', 'matched', 'paid', 'cancelled');
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- CREATE TYPE "public"."vq_status" AS ENUM('draft', 'submitted', 'selected', 'rejected');
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;--> statement-breakpoint
+CREATE TYPE "public"."kasir_status" AS ENUM('pending', 'approved', 'rejected');--> statement-breakpoint
+CREATE TYPE "public"."pos_order_status" AS ENUM('open', 'paid', 'cancelled');--> statement-breakpoint
+CREATE TYPE "public"."pos_payment_method" AS ENUM('cash', 'qris', 'debit', 'credit', 'transfer');--> statement-breakpoint
+CREATE TYPE "public"."pos_shift_status" AS ENUM('open', 'closed');--> statement-breakpoint
+CREATE TYPE "public"."wh_damage_status" AS ENUM('draft', 'confirmed', 'cancelled');--> statement-breakpoint
+CREATE TYPE "public"."wh_damage_type" AS ENUM('rusak', 'hilang', 'expired', 'lainnya');--> statement-breakpoint
+CREATE TYPE "public"."wh_movement_type" AS ENUM('po_receipt', 'so_delivery', 'pos_sale', 'transfer_in', 'transfer_out', 'opname_adjust', 'damage', 'return_in', 'return_out', 'manual_in', 'manual_out');--> statement-breakpoint
+CREATE TYPE "public"."wh_return_status" AS ENUM('draft', 'confirmed', 'cancelled');--> statement-breakpoint
+CREATE TYPE "public"."wh_return_type" AS ENUM('purchase', 'sales');--> statement-breakpoint
+CREATE TYPE "public"."wh_transfer_status" AS ENUM('draft', 'in_transit', 'received', 'cancelled');--> statement-breakpoint
+CREATE TYPE "public"."inv_movement_type" AS ENUM('PURCHASE_RECEIPT', 'SALES_DELIVERY', 'POS_SALE', 'TRANSFER_IN', 'TRANSFER_OUT', 'RETURN_IN', 'RETURN_OUT', 'OPNAME_ADJUST', 'DAMAGE', 'MANUAL_IN', 'MANUAL_OUT');--> statement-breakpoint
+CREATE TYPE "public"."inv_reference_type" AS ENUM('PURCHASE_ORDER', 'SALES_ORDER', 'POS_SESSION', 'TRANSFER', 'RETURN', 'OPNAME', 'MANUAL');--> statement-breakpoint
+CREATE TYPE "public"."warehouse_type" AS ENUM('CENTRAL', 'BRANCH', 'OUTLET');--> statement-breakpoint
+CREATE TYPE "public"."gr_status" AS ENUM('draft', 'confirmed', 'cancelled');--> statement-breakpoint
+CREATE TYPE "public"."lc_method" AS ENUM('equal', 'by_quantity', 'by_amount', 'by_weight', 'by_volume');--> statement-breakpoint
+CREATE TYPE "public"."pay_req_status" AS ENUM('draft', 'submitted', 'approved', 'rejected', 'paid', 'cancelled');--> statement-breakpoint
+CREATE TYPE "public"."pr_return_status" AS ENUM('draft', 'confirmed', 'done', 'cancelled');--> statement-breakpoint
+CREATE TYPE "public"."pr_status" AS ENUM('draft', 'submitted', 'approved', 'rejected', 'converted', 'cancelled');--> statement-breakpoint
+CREATE TYPE "public"."pw_approval_status" AS ENUM('pending', 'approved', 'rejected');--> statement-breakpoint
+CREATE TYPE "public"."qc_status" AS ENUM('pending', 'passed', 'failed', 'partial');--> statement-breakpoint
+CREATE TYPE "public"."vi_status" AS ENUM('draft', 'posted', 'matched', 'paid', 'cancelled');--> statement-breakpoint
+CREATE TYPE "public"."vq_status" AS ENUM('draft', 'submitted', 'selected', 'rejected');--> statement-breakpoint
 ALTER TYPE "public"."accounting_entry_source" ADD VALUE 'reversal';--> statement-breakpoint
 ALTER TYPE "public"."accounting_entry_source" ADD VALUE 'cogs_delivery';--> statement-breakpoint
 ALTER TYPE "public"."accounting_entry_source" ADD VALUE 'purchase_return';--> statement-breakpoint
@@ -115,7 +27,7 @@ ALTER TYPE "public"."accounting_entry_source" ADD VALUE 'sales_return';--> state
 ALTER TYPE "public"."accounting_entry_source" ADD VALUE 'opname_adjust';--> statement-breakpoint
 ALTER TYPE "public"."accounting_entry_source" ADD VALUE 'damage_adjust';--> statement-breakpoint
 ALTER TYPE "public"."accounting_entry_source" ADD VALUE 'grn_receipt';--> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "companies" (
+CREATE TABLE "companies" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"company_name" text NOT NULL,
 	"company_code" text NOT NULL,
@@ -133,7 +45,7 @@ CREATE TABLE IF NOT EXISTS "companies" (
 	CONSTRAINT "companies_company_code_unique" UNIQUE("company_code")
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "vendor_offers" (
+CREATE TABLE "vendor_offers" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"order_id" integer,
 	"vendor_id" integer,
@@ -151,7 +63,7 @@ CREATE TABLE IF NOT EXISTS "vendor_offers" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "vendor_responses" (
+CREATE TABLE "vendor_responses" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"order_number" text NOT NULL,
 	"order_id" integer,
@@ -168,7 +80,7 @@ CREATE TABLE IF NOT EXISTS "vendor_responses" (
 	"created_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "vendor_rates" (
+CREATE TABLE "vendor_rates" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"vendor_id" integer,
 	"transport_mode" text NOT NULL,
@@ -181,7 +93,7 @@ CREATE TABLE IF NOT EXISTS "vendor_rates" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "chatbot_knowledge_base" (
+CREATE TABLE "chatbot_knowledge_base" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"title" text NOT NULL,
 	"category" text DEFAULT 'umum' NOT NULL,
@@ -192,7 +104,7 @@ CREATE TABLE IF NOT EXISTS "chatbot_knowledge_base" (
 	"updated_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "quotation_reply_logs" (
+CREATE TABLE "quotation_reply_logs" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"rfq_id" text,
 	"order_id" integer,
@@ -219,7 +131,7 @@ CREATE TABLE IF NOT EXISTS "quotation_reply_logs" (
 	"created_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "company_holding_members" (
+CREATE TABLE "company_holding_members" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"holding_group_id" integer,
 	"company_id" integer NOT NULL,
@@ -228,7 +140,7 @@ CREATE TABLE IF NOT EXISTS "company_holding_members" (
 	"created_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "holding_groups" (
+CREATE TABLE "holding_groups" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"holding_name" text NOT NULL,
 	"holding_code" text NOT NULL,
@@ -237,7 +149,7 @@ CREATE TABLE IF NOT EXISTS "holding_groups" (
 	CONSTRAINT "holding_groups_holding_code_unique" UNIQUE("holding_code")
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "wa_incoming_messages" (
+CREATE TABLE "wa_incoming_messages" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"sender" text NOT NULL,
 	"sender_name" text,
@@ -252,7 +164,7 @@ CREATE TABLE IF NOT EXISTS "wa_incoming_messages" (
 	"created_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "quote_requests" (
+CREATE TABLE "quote_requests" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"name" text NOT NULL,
 	"email" text,
@@ -277,7 +189,7 @@ CREATE TABLE IF NOT EXISTS "quote_requests" (
 	"updated_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "media_assets" (
+CREATE TABLE "media_assets" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"original_name" text NOT NULL,
 	"content_type" text NOT NULL,
@@ -290,7 +202,7 @@ CREATE TABLE IF NOT EXISTS "media_assets" (
 	"public_url" text
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "pos_branches" (
+CREATE TABLE "pos_branches" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"company_id" integer,
 	"name" text NOT NULL,
@@ -301,7 +213,7 @@ CREATE TABLE IF NOT EXISTS "pos_branches" (
 	"created_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "pos_cashiers" (
+CREATE TABLE "pos_cashiers" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"name" text NOT NULL,
 	"email" text NOT NULL,
@@ -314,7 +226,7 @@ CREATE TABLE IF NOT EXISTS "pos_cashiers" (
 	CONSTRAINT "pos_cashiers_email_unique" UNIQUE("email")
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "pos_inventory_items" (
+CREATE TABLE "pos_inventory_items" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"company_id" integer,
 	"name" text NOT NULL,
@@ -329,7 +241,7 @@ CREATE TABLE IF NOT EXISTS "pos_inventory_items" (
 	CONSTRAINT "pos_inventory_items_sku_unique" UNIQUE("sku")
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "pos_inventory_stocks" (
+CREATE TABLE "pos_inventory_stocks" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"item_id" integer NOT NULL,
 	"branch_id" integer NOT NULL,
@@ -339,7 +251,7 @@ CREATE TABLE IF NOT EXISTS "pos_inventory_stocks" (
 	"updated_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "pos_order_items" (
+CREATE TABLE "pos_order_items" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"order_id" integer NOT NULL,
 	"product_id" integer NOT NULL,
@@ -349,7 +261,7 @@ CREATE TABLE IF NOT EXISTS "pos_order_items" (
 	"subtotal" numeric(12, 2) NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "pos_orders" (
+CREATE TABLE "pos_orders" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"company_id" integer,
 	"order_number" text NOT NULL,
@@ -368,7 +280,7 @@ CREATE TABLE IF NOT EXISTS "pos_orders" (
 	CONSTRAINT "pos_orders_order_number_unique" UNIQUE("order_number")
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "pos_products" (
+CREATE TABLE "pos_products" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"company_id" integer,
 	"name" text NOT NULL,
@@ -387,7 +299,7 @@ CREATE TABLE IF NOT EXISTS "pos_products" (
 	"created_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "pos_racks" (
+CREATE TABLE "pos_racks" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"code" text NOT NULL,
 	"name" text NOT NULL,
@@ -396,7 +308,7 @@ CREATE TABLE IF NOT EXISTS "pos_racks" (
 	"created_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "pos_recipe_items" (
+CREATE TABLE "pos_recipe_items" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"recipe_id" integer NOT NULL,
 	"item_id" integer NOT NULL,
@@ -405,7 +317,7 @@ CREATE TABLE IF NOT EXISTS "pos_recipe_items" (
 	"notes" text
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "pos_recipes" (
+CREATE TABLE "pos_recipes" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"product_id" integer NOT NULL,
 	"recipe_name" text,
@@ -418,13 +330,13 @@ CREATE TABLE IF NOT EXISTS "pos_recipes" (
 	CONSTRAINT "pos_recipes_product_id_unique" UNIQUE("product_id")
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "pos_settings" (
+CREATE TABLE "pos_settings" (
 	"key" text PRIMARY KEY NOT NULL,
 	"value" text NOT NULL,
 	"updated_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "pos_shifts" (
+CREATE TABLE "pos_shifts" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"branch_id" integer NOT NULL,
 	"cashier_id" integer NOT NULL,
@@ -439,7 +351,7 @@ CREATE TABLE IF NOT EXISTS "pos_shifts" (
 	"created_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "pos_stock_adjustments" (
+CREATE TABLE "pos_stock_adjustments" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"stock_item_id" integer NOT NULL,
 	"cashier_id" integer,
@@ -448,7 +360,7 @@ CREATE TABLE IF NOT EXISTS "pos_stock_adjustments" (
 	"created_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "pos_stock_items" (
+CREATE TABLE "pos_stock_items" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"name" text NOT NULL,
 	"unit" text DEFAULT 'pcs' NOT NULL,
@@ -458,7 +370,7 @@ CREATE TABLE IF NOT EXISTS "pos_stock_items" (
 	"updated_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "pos_stock_mutations" (
+CREATE TABLE "pos_stock_mutations" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"item_id" integer NOT NULL,
 	"branch_id" integer NOT NULL,
@@ -474,7 +386,7 @@ CREATE TABLE IF NOT EXISTS "pos_stock_mutations" (
 	"created_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "pos_stock_opname_items" (
+CREATE TABLE "pos_stock_opname_items" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"opname_id" integer NOT NULL,
 	"item_id" integer NOT NULL,
@@ -484,7 +396,7 @@ CREATE TABLE IF NOT EXISTS "pos_stock_opname_items" (
 	"note" text
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "pos_stock_opnames" (
+CREATE TABLE "pos_stock_opnames" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"opname_number" text NOT NULL,
 	"branch_id" integer NOT NULL,
@@ -496,7 +408,7 @@ CREATE TABLE IF NOT EXISTS "pos_stock_opnames" (
 	CONSTRAINT "pos_stock_opnames_opname_number_unique" UNIQUE("opname_number")
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "pos_stock_transfer_items" (
+CREATE TABLE "pos_stock_transfer_items" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"transfer_id" integer NOT NULL,
 	"item_id" integer NOT NULL,
@@ -505,7 +417,7 @@ CREATE TABLE IF NOT EXISTS "pos_stock_transfer_items" (
 	"to_warehouse_id" integer
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "pos_stock_transfers" (
+CREATE TABLE "pos_stock_transfers" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"transfer_number" text NOT NULL,
 	"from_branch_id" integer NOT NULL,
@@ -518,7 +430,7 @@ CREATE TABLE IF NOT EXISTS "pos_stock_transfers" (
 	CONSTRAINT "pos_stock_transfers_transfer_number_unique" UNIQUE("transfer_number")
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "pos_warehouses" (
+CREATE TABLE "pos_warehouses" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"company_id" integer,
 	"name" text NOT NULL,
@@ -528,7 +440,7 @@ CREATE TABLE IF NOT EXISTS "pos_warehouses" (
 	"created_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "product_recipe_items" (
+CREATE TABLE "product_recipe_items" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"recipe_id" integer NOT NULL,
 	"ingredient_product_id" integer NOT NULL,
@@ -537,7 +449,7 @@ CREATE TABLE IF NOT EXISTS "product_recipe_items" (
 	"note" text
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "product_recipes" (
+CREATE TABLE "product_recipes" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"product_id" integer NOT NULL,
 	"yield_qty" numeric(12, 3) DEFAULT '1' NOT NULL,
@@ -549,7 +461,7 @@ CREATE TABLE IF NOT EXISTS "product_recipes" (
 	CONSTRAINT "product_recipes_product_id_unique" UNIQUE("product_id")
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "wh_damage_lines" (
+CREATE TABLE "wh_damage_lines" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"report_id" integer NOT NULL,
 	"product_id" integer NOT NULL,
@@ -559,7 +471,7 @@ CREATE TABLE IF NOT EXISTS "wh_damage_lines" (
 	"note" text
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "wh_damage_reports" (
+CREATE TABLE "wh_damage_reports" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"company_id" integer,
 	"report_number" text NOT NULL,
@@ -574,7 +486,7 @@ CREATE TABLE IF NOT EXISTS "wh_damage_reports" (
 	CONSTRAINT "wh_damage_reports_report_number_unique" UNIQUE("report_number")
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "wh_movements" (
+CREATE TABLE "wh_movements" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"company_id" integer,
 	"product_id" integer NOT NULL,
@@ -592,7 +504,7 @@ CREATE TABLE IF NOT EXISTS "wh_movements" (
 	"created_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "wh_opname_lines" (
+CREATE TABLE "wh_opname_lines" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"opname_id" integer NOT NULL,
 	"product_id" integer NOT NULL,
@@ -603,7 +515,7 @@ CREATE TABLE IF NOT EXISTS "wh_opname_lines" (
 	"note" text
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "wh_opnames" (
+CREATE TABLE "wh_opnames" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"company_id" integer,
 	"opname_number" text NOT NULL,
@@ -617,7 +529,7 @@ CREATE TABLE IF NOT EXISTS "wh_opnames" (
 	CONSTRAINT "wh_opnames_opname_number_unique" UNIQUE("opname_number")
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "wh_return_lines" (
+CREATE TABLE "wh_return_lines" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"return_id" integer NOT NULL,
 	"product_id" integer NOT NULL,
@@ -627,7 +539,7 @@ CREATE TABLE IF NOT EXISTS "wh_return_lines" (
 	"note" text
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "wh_returns" (
+CREATE TABLE "wh_returns" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"company_id" integer,
 	"return_number" text NOT NULL,
@@ -644,7 +556,7 @@ CREATE TABLE IF NOT EXISTS "wh_returns" (
 	CONSTRAINT "wh_returns_return_number_unique" UNIQUE("return_number")
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "wh_stock" (
+CREATE TABLE "wh_stock" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"company_id" integer,
 	"product_id" integer NOT NULL,
@@ -655,7 +567,7 @@ CREATE TABLE IF NOT EXISTS "wh_stock" (
 	"updated_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "wh_transfer_lines" (
+CREATE TABLE "wh_transfer_lines" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"transfer_id" integer NOT NULL,
 	"product_id" integer NOT NULL,
@@ -666,7 +578,7 @@ CREATE TABLE IF NOT EXISTS "wh_transfer_lines" (
 	"qty_received" numeric(14, 3) DEFAULT '0' NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "wh_transfers" (
+CREATE TABLE "wh_transfers" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"company_id" integer,
 	"transfer_number" text NOT NULL,
@@ -682,7 +594,7 @@ CREATE TABLE IF NOT EXISTS "wh_transfers" (
 	CONSTRAINT "wh_transfers_transfer_number_unique" UNIQUE("transfer_number")
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "inventory_stock" (
+CREATE TABLE "inventory_stock" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"product_id" integer NOT NULL,
 	"warehouse_id" integer NOT NULL,
@@ -697,7 +609,7 @@ CREATE TABLE IF NOT EXISTS "inventory_stock" (
 	CONSTRAINT "inventory_stock_product_warehouse_rack_unique" UNIQUE("product_id","warehouse_id","rack_id")
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "stock_movements" (
+CREATE TABLE "stock_movements" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"movement_no" text NOT NULL,
 	"product_id" integer NOT NULL,
@@ -717,7 +629,7 @@ CREATE TABLE IF NOT EXISTS "stock_movements" (
 	CONSTRAINT "stock_movements_movement_no_unique" UNIQUE("movement_no")
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "warehouse_racks" (
+CREATE TABLE "warehouse_racks" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"warehouse_id" integer NOT NULL,
 	"rack_code" text NOT NULL,
@@ -728,7 +640,7 @@ CREATE TABLE IF NOT EXISTS "warehouse_racks" (
 	CONSTRAINT "warehouse_racks_code_unique" UNIQUE("warehouse_id","rack_code")
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "warehouses" (
+CREATE TABLE "warehouses" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"company_id" integer,
 	"warehouse_code" text NOT NULL,
@@ -742,7 +654,7 @@ CREATE TABLE IF NOT EXISTS "warehouses" (
 	CONSTRAINT "warehouses_warehouse_code_unique" UNIQUE("warehouse_code")
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "thai_tea_warehouse_links" (
+CREATE TABLE "thai_tea_warehouse_links" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"pos_warehouse_id" integer NOT NULL,
 	"erp_warehouse_id" integer NOT NULL,
@@ -751,7 +663,7 @@ CREATE TABLE IF NOT EXISTS "thai_tea_warehouse_links" (
 	"created_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "goods_receipt_lines" (
+CREATE TABLE "goods_receipt_lines" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"gr_id" integer NOT NULL,
 	"po_line_id" integer,
@@ -767,7 +679,7 @@ CREATE TABLE IF NOT EXISTS "goods_receipt_lines" (
 	"notes" text
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "goods_receipts" (
+CREATE TABLE "goods_receipts" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"gr_number" text NOT NULL,
 	"company_id" integer,
@@ -788,7 +700,7 @@ CREATE TABLE IF NOT EXISTS "goods_receipts" (
 	CONSTRAINT "goods_receipts_gr_number_unique" UNIQUE("gr_number")
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "landed_cost_allocations" (
+CREATE TABLE "landed_cost_allocations" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"lc_id" integer NOT NULL,
 	"gr_line_id" integer,
@@ -797,7 +709,7 @@ CREATE TABLE IF NOT EXISTS "landed_cost_allocations" (
 	"allocated_amount" numeric(14, 2) DEFAULT '0' NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "landed_cost_lines" (
+CREATE TABLE "landed_cost_lines" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"lc_id" integer NOT NULL,
 	"description" text NOT NULL,
@@ -806,7 +718,7 @@ CREATE TABLE IF NOT EXISTS "landed_cost_lines" (
 	"account_id" integer
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "landed_costs" (
+CREATE TABLE "landed_costs" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"lc_number" text NOT NULL,
 	"company_id" integer,
@@ -822,7 +734,7 @@ CREATE TABLE IF NOT EXISTS "landed_costs" (
 	CONSTRAINT "landed_costs_lc_number_unique" UNIQUE("lc_number")
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "payment_request_items" (
+CREATE TABLE "payment_request_items" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"payment_request_id" integer NOT NULL,
 	"vendor_invoice_id" integer,
@@ -830,7 +742,7 @@ CREATE TABLE IF NOT EXISTS "payment_request_items" (
 	"amount" numeric(14, 2) DEFAULT '0' NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "payment_requests" (
+CREATE TABLE "payment_requests" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"pay_req_number" text NOT NULL,
 	"company_id" integer,
@@ -853,7 +765,7 @@ CREATE TABLE IF NOT EXISTS "payment_requests" (
 	CONSTRAINT "payment_requests_pay_req_number_unique" UNIQUE("pay_req_number")
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "purchase_approvals" (
+CREATE TABLE "purchase_approvals" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"doc_type" text NOT NULL,
 	"doc_id" integer NOT NULL,
@@ -867,7 +779,7 @@ CREATE TABLE IF NOT EXISTS "purchase_approvals" (
 	"created_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "purchase_receipt_lines" (
+CREATE TABLE "purchase_receipt_lines" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"receipt_id" integer NOT NULL,
 	"po_line_id" integer,
@@ -879,7 +791,7 @@ CREATE TABLE IF NOT EXISTS "purchase_receipt_lines" (
 	"total_cost" numeric(14, 2) DEFAULT '0' NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "purchase_receipts" (
+CREATE TABLE "purchase_receipts" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"receipt_no" text NOT NULL,
 	"po_id" integer NOT NULL,
@@ -893,7 +805,7 @@ CREATE TABLE IF NOT EXISTS "purchase_receipts" (
 	CONSTRAINT "purchase_receipts_receipt_no_unique" UNIQUE("receipt_no")
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "purchase_request_lines" (
+CREATE TABLE "purchase_request_lines" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"pr_id" integer NOT NULL,
 	"product_id" integer,
@@ -905,7 +817,7 @@ CREATE TABLE IF NOT EXISTS "purchase_request_lines" (
 	"notes" text
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "purchase_requests" (
+CREATE TABLE "purchase_requests" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"pr_number" text NOT NULL,
 	"company_id" integer,
@@ -923,7 +835,7 @@ CREATE TABLE IF NOT EXISTS "purchase_requests" (
 	CONSTRAINT "purchase_requests_pr_number_unique" UNIQUE("pr_number")
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "purchase_return_lines" (
+CREATE TABLE "purchase_return_lines" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"return_id" integer NOT NULL,
 	"product_id" integer,
@@ -935,7 +847,7 @@ CREATE TABLE IF NOT EXISTS "purchase_return_lines" (
 	"reason" text
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "purchase_returns" (
+CREATE TABLE "purchase_returns" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"return_number" text NOT NULL,
 	"company_id" integer,
@@ -958,7 +870,7 @@ CREATE TABLE IF NOT EXISTS "purchase_returns" (
 	CONSTRAINT "purchase_returns_return_number_unique" UNIQUE("return_number")
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "qc_inspections" (
+CREATE TABLE "qc_inspections" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"qc_number" text NOT NULL,
 	"gr_id" integer NOT NULL,
@@ -973,7 +885,7 @@ CREATE TABLE IF NOT EXISTS "qc_inspections" (
 	CONSTRAINT "qc_inspections_qc_number_unique" UNIQUE("qc_number")
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "qc_lines" (
+CREATE TABLE "qc_lines" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"qc_id" integer NOT NULL,
 	"gr_line_id" integer,
@@ -986,7 +898,7 @@ CREATE TABLE IF NOT EXISTS "qc_lines" (
 	"notes" text
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "uom_conversions" (
+CREATE TABLE "uom_conversions" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"from_uom_id" integer NOT NULL,
 	"to_uom_id" integer NOT NULL,
@@ -995,7 +907,7 @@ CREATE TABLE IF NOT EXISTS "uom_conversions" (
 	CONSTRAINT "uom_conversions_pair_uidx" UNIQUE("from_uom_id","to_uom_id")
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "uom" (
+CREATE TABLE "uom" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"name" text NOT NULL,
 	"symbol" text NOT NULL,
@@ -1005,7 +917,7 @@ CREATE TABLE IF NOT EXISTS "uom" (
 	CONSTRAINT "uom_name_unique" UNIQUE("name")
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "vendor_invoice_lines" (
+CREATE TABLE "vendor_invoice_lines" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"invoice_id" integer NOT NULL,
 	"product_id" integer,
@@ -1018,7 +930,7 @@ CREATE TABLE IF NOT EXISTS "vendor_invoice_lines" (
 	"notes" text
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "vendor_invoices" (
+CREATE TABLE "vendor_invoices" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"invoice_number" text NOT NULL,
 	"vendor_invoice_ref" text,
@@ -1046,7 +958,7 @@ CREATE TABLE IF NOT EXISTS "vendor_invoices" (
 	CONSTRAINT "vendor_invoices_invoice_number_unique" UNIQUE("invoice_number")
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "vendor_quotation_lines" (
+CREATE TABLE "vendor_quotation_lines" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"quotation_id" integer NOT NULL,
 	"product_id" integer,
@@ -1060,7 +972,7 @@ CREATE TABLE IF NOT EXISTS "vendor_quotation_lines" (
 	"notes" text
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "vendor_quotations" (
+CREATE TABLE "vendor_quotations" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"rfq_id" integer NOT NULL,
 	"supplier_id" integer,
@@ -1077,7 +989,7 @@ CREATE TABLE IF NOT EXISTS "vendor_quotations" (
 	"updated_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "freight_shipment_audit_logs" (
+CREATE TABLE "freight_shipment_audit_logs" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"shipment_id" integer NOT NULL,
 	"shipment_number" text NOT NULL,
@@ -1089,7 +1001,7 @@ CREATE TABLE IF NOT EXISTS "freight_shipment_audit_logs" (
 	"created_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "custom_roles" (
+CREATE TABLE "custom_roles" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"company_id" integer,
 	"name" text NOT NULL,
@@ -1100,7 +1012,7 @@ CREATE TABLE IF NOT EXISTS "custom_roles" (
 	"updated_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "branches" (
+CREATE TABLE "branches" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"company_id" integer NOT NULL,
 	"name" text NOT NULL,
@@ -1111,7 +1023,7 @@ CREATE TABLE IF NOT EXISTS "branches" (
 	"created_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "departments" (
+CREATE TABLE "departments" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"company_id" integer NOT NULL,
 	"division_id" integer,
@@ -1122,7 +1034,7 @@ CREATE TABLE IF NOT EXISTS "departments" (
 	"created_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "divisions" (
+CREATE TABLE "divisions" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"company_id" integer NOT NULL,
 	"name" text NOT NULL,
@@ -1200,1079 +1112,254 @@ ALTER TABLE "logistic_orders" ADD COLUMN "options_token" text;--> statement-brea
 ALTER TABLE "logistic_orders" ADD COLUMN "options_sent_at" timestamp with time zone;--> statement-breakpoint
 ALTER TABLE "logistic_orders" ADD COLUMN "public_rfq_token" text;--> statement-breakpoint
 ALTER TABLE "drivers" ADD COLUMN "company_id" integer;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "vendor_offers" ADD CONSTRAINT "vendor_offers_order_id_logistic_orders_id_fk" FOREIGN KEY ("order_id") REFERENCES "public"."logistic_orders"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "vendor_offers" ADD CONSTRAINT "vendor_offers_vendor_id_suppliers_id_fk" FOREIGN KEY ("vendor_id") REFERENCES "public"."suppliers"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "vendor_responses" ADD CONSTRAINT "vendor_responses_order_id_logistic_orders_id_fk" FOREIGN KEY ("order_id") REFERENCES "public"."logistic_orders"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "vendor_rates" ADD CONSTRAINT "vendor_rates_vendor_id_suppliers_id_fk" FOREIGN KEY ("vendor_id") REFERENCES "public"."suppliers"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "company_holding_members" ADD CONSTRAINT "company_holding_members_holding_group_id_holding_groups_id_fk" FOREIGN KEY ("holding_group_id") REFERENCES "public"."holding_groups"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "pos_branches" ADD CONSTRAINT "pos_branches_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "pos_cashiers" ADD CONSTRAINT "pos_cashiers_branch_id_pos_branches_id_fk" FOREIGN KEY ("branch_id") REFERENCES "public"."pos_branches"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "pos_inventory_items" ADD CONSTRAINT "pos_inventory_items_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "pos_inventory_stocks" ADD CONSTRAINT "pos_inventory_stocks_item_id_pos_inventory_items_id_fk" FOREIGN KEY ("item_id") REFERENCES "public"."pos_inventory_items"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "pos_inventory_stocks" ADD CONSTRAINT "pos_inventory_stocks_branch_id_pos_branches_id_fk" FOREIGN KEY ("branch_id") REFERENCES "public"."pos_branches"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "pos_inventory_stocks" ADD CONSTRAINT "pos_inventory_stocks_warehouse_id_pos_warehouses_id_fk" FOREIGN KEY ("warehouse_id") REFERENCES "public"."pos_warehouses"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "pos_inventory_stocks" ADD CONSTRAINT "pos_inventory_stocks_rack_id_pos_racks_id_fk" FOREIGN KEY ("rack_id") REFERENCES "public"."pos_racks"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "pos_order_items" ADD CONSTRAINT "pos_order_items_order_id_pos_orders_id_fk" FOREIGN KEY ("order_id") REFERENCES "public"."pos_orders"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "pos_order_items" ADD CONSTRAINT "pos_order_items_product_id_pos_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."pos_products"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "pos_orders" ADD CONSTRAINT "pos_orders_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "pos_orders" ADD CONSTRAINT "pos_orders_cashier_id_pos_cashiers_id_fk" FOREIGN KEY ("cashier_id") REFERENCES "public"."pos_cashiers"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "pos_orders" ADD CONSTRAINT "pos_orders_branch_id_pos_branches_id_fk" FOREIGN KEY ("branch_id") REFERENCES "public"."pos_branches"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "pos_products" ADD CONSTRAINT "pos_products_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "pos_racks" ADD CONSTRAINT "pos_racks_warehouse_id_pos_warehouses_id_fk" FOREIGN KEY ("warehouse_id") REFERENCES "public"."pos_warehouses"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "pos_recipe_items" ADD CONSTRAINT "pos_recipe_items_recipe_id_pos_recipes_id_fk" FOREIGN KEY ("recipe_id") REFERENCES "public"."pos_recipes"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "pos_recipe_items" ADD CONSTRAINT "pos_recipe_items_item_id_pos_inventory_items_id_fk" FOREIGN KEY ("item_id") REFERENCES "public"."pos_inventory_items"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "pos_recipes" ADD CONSTRAINT "pos_recipes_product_id_pos_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."pos_products"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "pos_shifts" ADD CONSTRAINT "pos_shifts_branch_id_pos_branches_id_fk" FOREIGN KEY ("branch_id") REFERENCES "public"."pos_branches"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "pos_shifts" ADD CONSTRAINT "pos_shifts_cashier_id_pos_cashiers_id_fk" FOREIGN KEY ("cashier_id") REFERENCES "public"."pos_cashiers"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "pos_stock_adjustments" ADD CONSTRAINT "pos_stock_adjustments_stock_item_id_pos_stock_items_id_fk" FOREIGN KEY ("stock_item_id") REFERENCES "public"."pos_stock_items"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "pos_stock_adjustments" ADD CONSTRAINT "pos_stock_adjustments_cashier_id_pos_cashiers_id_fk" FOREIGN KEY ("cashier_id") REFERENCES "public"."pos_cashiers"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "pos_stock_mutations" ADD CONSTRAINT "pos_stock_mutations_item_id_pos_inventory_items_id_fk" FOREIGN KEY ("item_id") REFERENCES "public"."pos_inventory_items"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "pos_stock_mutations" ADD CONSTRAINT "pos_stock_mutations_branch_id_pos_branches_id_fk" FOREIGN KEY ("branch_id") REFERENCES "public"."pos_branches"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "pos_stock_mutations" ADD CONSTRAINT "pos_stock_mutations_warehouse_id_pos_warehouses_id_fk" FOREIGN KEY ("warehouse_id") REFERENCES "public"."pos_warehouses"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "pos_stock_mutations" ADD CONSTRAINT "pos_stock_mutations_rack_id_pos_racks_id_fk" FOREIGN KEY ("rack_id") REFERENCES "public"."pos_racks"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "pos_stock_opname_items" ADD CONSTRAINT "pos_stock_opname_items_opname_id_pos_stock_opnames_id_fk" FOREIGN KEY ("opname_id") REFERENCES "public"."pos_stock_opnames"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "pos_stock_opname_items" ADD CONSTRAINT "pos_stock_opname_items_item_id_pos_inventory_items_id_fk" FOREIGN KEY ("item_id") REFERENCES "public"."pos_inventory_items"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "pos_stock_opnames" ADD CONSTRAINT "pos_stock_opnames_branch_id_pos_branches_id_fk" FOREIGN KEY ("branch_id") REFERENCES "public"."pos_branches"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "pos_stock_opnames" ADD CONSTRAINT "pos_stock_opnames_warehouse_id_pos_warehouses_id_fk" FOREIGN KEY ("warehouse_id") REFERENCES "public"."pos_warehouses"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "pos_stock_transfer_items" ADD CONSTRAINT "pos_stock_transfer_items_transfer_id_pos_stock_transfers_id_fk" FOREIGN KEY ("transfer_id") REFERENCES "public"."pos_stock_transfers"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "pos_stock_transfer_items" ADD CONSTRAINT "pos_stock_transfer_items_item_id_pos_inventory_items_id_fk" FOREIGN KEY ("item_id") REFERENCES "public"."pos_inventory_items"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "pos_stock_transfer_items" ADD CONSTRAINT "pos_stock_transfer_items_from_warehouse_id_pos_warehouses_id_fk" FOREIGN KEY ("from_warehouse_id") REFERENCES "public"."pos_warehouses"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "pos_stock_transfer_items" ADD CONSTRAINT "pos_stock_transfer_items_to_warehouse_id_pos_warehouses_id_fk" FOREIGN KEY ("to_warehouse_id") REFERENCES "public"."pos_warehouses"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "pos_stock_transfers" ADD CONSTRAINT "pos_stock_transfers_from_branch_id_pos_branches_id_fk" FOREIGN KEY ("from_branch_id") REFERENCES "public"."pos_branches"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "pos_stock_transfers" ADD CONSTRAINT "pos_stock_transfers_to_branch_id_pos_branches_id_fk" FOREIGN KEY ("to_branch_id") REFERENCES "public"."pos_branches"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "pos_warehouses" ADD CONSTRAINT "pos_warehouses_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "pos_warehouses" ADD CONSTRAINT "pos_warehouses_branch_id_pos_branches_id_fk" FOREIGN KEY ("branch_id") REFERENCES "public"."pos_branches"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "product_recipe_items" ADD CONSTRAINT "product_recipe_items_recipe_id_product_recipes_id_fk" FOREIGN KEY ("recipe_id") REFERENCES "public"."product_recipes"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "product_recipe_items" ADD CONSTRAINT "product_recipe_items_ingredient_product_id_products_id_fk" FOREIGN KEY ("ingredient_product_id") REFERENCES "public"."products"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "product_recipes" ADD CONSTRAINT "product_recipes_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "wh_damage_lines" ADD CONSTRAINT "wh_damage_lines_report_id_wh_damage_reports_id_fk" FOREIGN KEY ("report_id") REFERENCES "public"."wh_damage_reports"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "wh_damage_lines" ADD CONSTRAINT "wh_damage_lines_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "wh_damage_lines" ADD CONSTRAINT "wh_damage_lines_rack_id_pos_racks_id_fk" FOREIGN KEY ("rack_id") REFERENCES "public"."pos_racks"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "wh_damage_reports" ADD CONSTRAINT "wh_damage_reports_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "wh_damage_reports" ADD CONSTRAINT "wh_damage_reports_warehouse_id_pos_warehouses_id_fk" FOREIGN KEY ("warehouse_id") REFERENCES "public"."pos_warehouses"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "wh_movements" ADD CONSTRAINT "wh_movements_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "wh_movements" ADD CONSTRAINT "wh_movements_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "wh_movements" ADD CONSTRAINT "wh_movements_warehouse_id_pos_warehouses_id_fk" FOREIGN KEY ("warehouse_id") REFERENCES "public"."pos_warehouses"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "wh_movements" ADD CONSTRAINT "wh_movements_rack_id_pos_racks_id_fk" FOREIGN KEY ("rack_id") REFERENCES "public"."pos_racks"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "wh_opname_lines" ADD CONSTRAINT "wh_opname_lines_opname_id_wh_opnames_id_fk" FOREIGN KEY ("opname_id") REFERENCES "public"."wh_opnames"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "wh_opname_lines" ADD CONSTRAINT "wh_opname_lines_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "wh_opname_lines" ADD CONSTRAINT "wh_opname_lines_rack_id_pos_racks_id_fk" FOREIGN KEY ("rack_id") REFERENCES "public"."pos_racks"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "wh_opnames" ADD CONSTRAINT "wh_opnames_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "wh_opnames" ADD CONSTRAINT "wh_opnames_warehouse_id_pos_warehouses_id_fk" FOREIGN KEY ("warehouse_id") REFERENCES "public"."pos_warehouses"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "wh_return_lines" ADD CONSTRAINT "wh_return_lines_return_id_wh_returns_id_fk" FOREIGN KEY ("return_id") REFERENCES "public"."wh_returns"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "wh_return_lines" ADD CONSTRAINT "wh_return_lines_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "wh_return_lines" ADD CONSTRAINT "wh_return_lines_rack_id_pos_racks_id_fk" FOREIGN KEY ("rack_id") REFERENCES "public"."pos_racks"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "wh_returns" ADD CONSTRAINT "wh_returns_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "wh_returns" ADD CONSTRAINT "wh_returns_warehouse_id_pos_warehouses_id_fk" FOREIGN KEY ("warehouse_id") REFERENCES "public"."pos_warehouses"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "wh_stock" ADD CONSTRAINT "wh_stock_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "wh_stock" ADD CONSTRAINT "wh_stock_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "wh_stock" ADD CONSTRAINT "wh_stock_warehouse_id_pos_warehouses_id_fk" FOREIGN KEY ("warehouse_id") REFERENCES "public"."pos_warehouses"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "wh_stock" ADD CONSTRAINT "wh_stock_rack_id_pos_racks_id_fk" FOREIGN KEY ("rack_id") REFERENCES "public"."pos_racks"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "wh_transfer_lines" ADD CONSTRAINT "wh_transfer_lines_transfer_id_wh_transfers_id_fk" FOREIGN KEY ("transfer_id") REFERENCES "public"."wh_transfers"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "wh_transfer_lines" ADD CONSTRAINT "wh_transfer_lines_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "wh_transfer_lines" ADD CONSTRAINT "wh_transfer_lines_from_rack_id_pos_racks_id_fk" FOREIGN KEY ("from_rack_id") REFERENCES "public"."pos_racks"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "wh_transfer_lines" ADD CONSTRAINT "wh_transfer_lines_to_rack_id_pos_racks_id_fk" FOREIGN KEY ("to_rack_id") REFERENCES "public"."pos_racks"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "wh_transfers" ADD CONSTRAINT "wh_transfers_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "wh_transfers" ADD CONSTRAINT "wh_transfers_from_warehouse_id_pos_warehouses_id_fk" FOREIGN KEY ("from_warehouse_id") REFERENCES "public"."pos_warehouses"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "wh_transfers" ADD CONSTRAINT "wh_transfers_to_warehouse_id_pos_warehouses_id_fk" FOREIGN KEY ("to_warehouse_id") REFERENCES "public"."pos_warehouses"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "inventory_stock" ADD CONSTRAINT "inventory_stock_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "inventory_stock" ADD CONSTRAINT "inventory_stock_warehouse_id_warehouses_id_fk" FOREIGN KEY ("warehouse_id") REFERENCES "public"."warehouses"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "inventory_stock" ADD CONSTRAINT "inventory_stock_rack_id_warehouse_racks_id_fk" FOREIGN KEY ("rack_id") REFERENCES "public"."warehouse_racks"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "stock_movements" ADD CONSTRAINT "stock_movements_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "stock_movements" ADD CONSTRAINT "stock_movements_warehouse_id_warehouses_id_fk" FOREIGN KEY ("warehouse_id") REFERENCES "public"."warehouses"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "stock_movements" ADD CONSTRAINT "stock_movements_rack_id_warehouse_racks_id_fk" FOREIGN KEY ("rack_id") REFERENCES "public"."warehouse_racks"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "warehouse_racks" ADD CONSTRAINT "warehouse_racks_warehouse_id_warehouses_id_fk" FOREIGN KEY ("warehouse_id") REFERENCES "public"."warehouses"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "warehouses" ADD CONSTRAINT "warehouses_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "thai_tea_warehouse_links" ADD CONSTRAINT "thai_tea_warehouse_links_pos_warehouse_id_pos_warehouses_id_fk" FOREIGN KEY ("pos_warehouse_id") REFERENCES "public"."pos_warehouses"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "thai_tea_warehouse_links" ADD CONSTRAINT "thai_tea_warehouse_links_erp_warehouse_id_warehouses_id_fk" FOREIGN KEY ("erp_warehouse_id") REFERENCES "public"."warehouses"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "goods_receipt_lines" ADD CONSTRAINT "goods_receipt_lines_gr_id_goods_receipts_id_fk" FOREIGN KEY ("gr_id") REFERENCES "public"."goods_receipts"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "goods_receipt_lines" ADD CONSTRAINT "goods_receipt_lines_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "goods_receipt_lines" ADD CONSTRAINT "goods_receipt_lines_rack_id_pos_racks_id_fk" FOREIGN KEY ("rack_id") REFERENCES "public"."pos_racks"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "goods_receipts" ADD CONSTRAINT "goods_receipts_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "goods_receipts" ADD CONSTRAINT "goods_receipts_po_id_purchase_documents_id_fk" FOREIGN KEY ("po_id") REFERENCES "public"."purchase_documents"("id") ON DELETE restrict ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "goods_receipts" ADD CONSTRAINT "goods_receipts_warehouse_id_pos_warehouses_id_fk" FOREIGN KEY ("warehouse_id") REFERENCES "public"."pos_warehouses"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "goods_receipts" ADD CONSTRAINT "goods_receipts_supplier_id_suppliers_id_fk" FOREIGN KEY ("supplier_id") REFERENCES "public"."suppliers"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "landed_cost_allocations" ADD CONSTRAINT "landed_cost_allocations_lc_id_landed_costs_id_fk" FOREIGN KEY ("lc_id") REFERENCES "public"."landed_costs"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "landed_cost_allocations" ADD CONSTRAINT "landed_cost_allocations_gr_line_id_goods_receipt_lines_id_fk" FOREIGN KEY ("gr_line_id") REFERENCES "public"."goods_receipt_lines"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "landed_cost_allocations" ADD CONSTRAINT "landed_cost_allocations_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "landed_cost_lines" ADD CONSTRAINT "landed_cost_lines_lc_id_landed_costs_id_fk" FOREIGN KEY ("lc_id") REFERENCES "public"."landed_costs"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "landed_cost_lines" ADD CONSTRAINT "landed_cost_lines_supplier_id_suppliers_id_fk" FOREIGN KEY ("supplier_id") REFERENCES "public"."suppliers"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "landed_costs" ADD CONSTRAINT "landed_costs_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "landed_costs" ADD CONSTRAINT "landed_costs_gr_id_goods_receipts_id_fk" FOREIGN KEY ("gr_id") REFERENCES "public"."goods_receipts"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "landed_costs" ADD CONSTRAINT "landed_costs_po_id_purchase_documents_id_fk" FOREIGN KEY ("po_id") REFERENCES "public"."purchase_documents"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "payment_request_items" ADD CONSTRAINT "payment_request_items_payment_request_id_payment_requests_id_fk" FOREIGN KEY ("payment_request_id") REFERENCES "public"."payment_requests"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "payment_request_items" ADD CONSTRAINT "payment_request_items_vendor_invoice_id_vendor_invoices_id_fk" FOREIGN KEY ("vendor_invoice_id") REFERENCES "public"."vendor_invoices"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "payment_requests" ADD CONSTRAINT "payment_requests_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "payment_requests" ADD CONSTRAINT "payment_requests_supplier_id_suppliers_id_fk" FOREIGN KEY ("supplier_id") REFERENCES "public"."suppliers"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "purchase_receipt_lines" ADD CONSTRAINT "purchase_receipt_lines_receipt_id_purchase_receipts_id_fk" FOREIGN KEY ("receipt_id") REFERENCES "public"."purchase_receipts"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "purchase_receipt_lines" ADD CONSTRAINT "purchase_receipt_lines_po_line_id_purchase_document_lines_id_fk" FOREIGN KEY ("po_line_id") REFERENCES "public"."purchase_document_lines"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "purchase_receipt_lines" ADD CONSTRAINT "purchase_receipt_lines_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "purchase_receipt_lines" ADD CONSTRAINT "purchase_receipt_lines_rack_id_pos_racks_id_fk" FOREIGN KEY ("rack_id") REFERENCES "public"."pos_racks"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "purchase_receipts" ADD CONSTRAINT "purchase_receipts_po_id_purchase_documents_id_fk" FOREIGN KEY ("po_id") REFERENCES "public"."purchase_documents"("id") ON DELETE restrict ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "purchase_receipts" ADD CONSTRAINT "purchase_receipts_warehouse_id_pos_warehouses_id_fk" FOREIGN KEY ("warehouse_id") REFERENCES "public"."pos_warehouses"("id") ON DELETE restrict ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "purchase_request_lines" ADD CONSTRAINT "purchase_request_lines_pr_id_purchase_requests_id_fk" FOREIGN KEY ("pr_id") REFERENCES "public"."purchase_requests"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "purchase_request_lines" ADD CONSTRAINT "purchase_request_lines_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "purchase_requests" ADD CONSTRAINT "purchase_requests_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "purchase_requests" ADD CONSTRAINT "purchase_requests_warehouse_id_pos_warehouses_id_fk" FOREIGN KEY ("warehouse_id") REFERENCES "public"."pos_warehouses"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "purchase_return_lines" ADD CONSTRAINT "purchase_return_lines_return_id_purchase_returns_id_fk" FOREIGN KEY ("return_id") REFERENCES "public"."purchase_returns"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "purchase_return_lines" ADD CONSTRAINT "purchase_return_lines_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "purchase_returns" ADD CONSTRAINT "purchase_returns_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "purchase_returns" ADD CONSTRAINT "purchase_returns_po_id_purchase_documents_id_fk" FOREIGN KEY ("po_id") REFERENCES "public"."purchase_documents"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "purchase_returns" ADD CONSTRAINT "purchase_returns_gr_id_goods_receipts_id_fk" FOREIGN KEY ("gr_id") REFERENCES "public"."goods_receipts"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "purchase_returns" ADD CONSTRAINT "purchase_returns_supplier_id_suppliers_id_fk" FOREIGN KEY ("supplier_id") REFERENCES "public"."suppliers"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "purchase_returns" ADD CONSTRAINT "purchase_returns_warehouse_id_pos_warehouses_id_fk" FOREIGN KEY ("warehouse_id") REFERENCES "public"."pos_warehouses"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "qc_inspections" ADD CONSTRAINT "qc_inspections_gr_id_goods_receipts_id_fk" FOREIGN KEY ("gr_id") REFERENCES "public"."goods_receipts"("id") ON DELETE restrict ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "qc_inspections" ADD CONSTRAINT "qc_inspections_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "qc_lines" ADD CONSTRAINT "qc_lines_qc_id_qc_inspections_id_fk" FOREIGN KEY ("qc_id") REFERENCES "public"."qc_inspections"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "qc_lines" ADD CONSTRAINT "qc_lines_gr_line_id_goods_receipt_lines_id_fk" FOREIGN KEY ("gr_line_id") REFERENCES "public"."goods_receipt_lines"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "qc_lines" ADD CONSTRAINT "qc_lines_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "uom_conversions" ADD CONSTRAINT "uom_conversions_from_uom_id_uom_id_fk" FOREIGN KEY ("from_uom_id") REFERENCES "public"."uom"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "uom_conversions" ADD CONSTRAINT "uom_conversions_to_uom_id_uom_id_fk" FOREIGN KEY ("to_uom_id") REFERENCES "public"."uom"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "vendor_invoice_lines" ADD CONSTRAINT "vendor_invoice_lines_invoice_id_vendor_invoices_id_fk" FOREIGN KEY ("invoice_id") REFERENCES "public"."vendor_invoices"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "vendor_invoice_lines" ADD CONSTRAINT "vendor_invoice_lines_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "vendor_invoices" ADD CONSTRAINT "vendor_invoices_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "vendor_invoices" ADD CONSTRAINT "vendor_invoices_supplier_id_suppliers_id_fk" FOREIGN KEY ("supplier_id") REFERENCES "public"."suppliers"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "vendor_invoices" ADD CONSTRAINT "vendor_invoices_po_id_purchase_documents_id_fk" FOREIGN KEY ("po_id") REFERENCES "public"."purchase_documents"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "vendor_invoices" ADD CONSTRAINT "vendor_invoices_gr_id_goods_receipts_id_fk" FOREIGN KEY ("gr_id") REFERENCES "public"."goods_receipts"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "vendor_quotation_lines" ADD CONSTRAINT "vendor_quotation_lines_quotation_id_vendor_quotations_id_fk" FOREIGN KEY ("quotation_id") REFERENCES "public"."vendor_quotations"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "vendor_quotation_lines" ADD CONSTRAINT "vendor_quotation_lines_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "vendor_quotations" ADD CONSTRAINT "vendor_quotations_rfq_id_purchase_documents_id_fk" FOREIGN KEY ("rfq_id") REFERENCES "public"."purchase_documents"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "vendor_quotations" ADD CONSTRAINT "vendor_quotations_supplier_id_suppliers_id_fk" FOREIGN KEY ("supplier_id") REFERENCES "public"."suppliers"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "freight_shipment_audit_logs" ADD CONSTRAINT "freight_shipment_audit_logs_shipment_id_freight_shipments_id_fk" FOREIGN KEY ("shipment_id") REFERENCES "public"."freight_shipments"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "custom_roles" ADD CONSTRAINT "custom_roles_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "branches" ADD CONSTRAINT "branches_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "departments" ADD CONSTRAINT "departments_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "departments" ADD CONSTRAINT "departments_division_id_divisions_id_fk" FOREIGN KEY ("division_id") REFERENCES "public"."divisions"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "divisions" ADD CONSTRAINT "divisions_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "pos_branches_company_idx" ON "pos_branches" USING btree ("company_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "pos_cashiers_branch_idx" ON "pos_cashiers" USING btree ("branch_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "pos_order_items_order_idx" ON "pos_order_items" USING btree ("order_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "pos_order_items_product_idx" ON "pos_order_items" USING btree ("product_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "pos_orders_company_idx" ON "pos_orders" USING btree ("company_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "pos_orders_branch_idx" ON "pos_orders" USING btree ("branch_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "pos_orders_cashier_idx" ON "pos_orders" USING btree ("cashier_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "pos_orders_status_idx" ON "pos_orders" USING btree ("status");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "pos_orders_created_idx" ON "pos_orders" USING btree ("created_at");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "wh_movements_company_idx" ON "wh_movements" USING btree ("company_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "wh_movements_product_idx" ON "wh_movements" USING btree ("product_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "wh_movements_warehouse_idx" ON "wh_movements" USING btree ("warehouse_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "wh_movements_type_idx" ON "wh_movements" USING btree ("type");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "wh_movements_created_idx" ON "wh_movements" USING btree ("created_at");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "wh_stock_company_idx" ON "wh_stock" USING btree ("company_id");--> statement-breakpoint
-CREATE UNIQUE INDEX IF NOT EXISTS "wh_stock_product_warehouse_rack_idx" ON "wh_stock" USING btree ("product_id","warehouse_id","rack_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "wh_transfers_from_idx" ON "wh_transfers" USING btree ("from_warehouse_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "wh_transfers_to_idx" ON "wh_transfers" USING btree ("to_warehouse_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "wh_transfers_status_idx" ON "wh_transfers" USING btree ("status");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "stock_movements_product_idx" ON "stock_movements" USING btree ("product_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "stock_movements_warehouse_idx" ON "stock_movements" USING btree ("warehouse_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "stock_movements_type_idx" ON "stock_movements" USING btree ("movement_type");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "stock_movements_created_idx" ON "stock_movements" USING btree ("created_at");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "warehouses_company_idx" ON "warehouses" USING btree ("company_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "gr_lines_gr_idx" ON "goods_receipt_lines" USING btree ("gr_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "gr_po_idx" ON "goods_receipts" USING btree ("po_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "gr_company_idx" ON "goods_receipts" USING btree ("company_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "gr_status_idx" ON "goods_receipts" USING btree ("status");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "lc_alloc_lc_idx" ON "landed_cost_allocations" USING btree ("lc_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "lc_lines_lc_idx" ON "landed_cost_lines" USING btree ("lc_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "landed_costs_gr_idx" ON "landed_costs" USING btree ("gr_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "landed_costs_po_idx" ON "landed_costs" USING btree ("po_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "pay_req_items_pr_idx" ON "payment_request_items" USING btree ("payment_request_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "pay_req_supplier_idx" ON "payment_requests" USING btree ("supplier_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "pay_req_status_idx" ON "payment_requests" USING btree ("status");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "pw_approvals_doc_idx" ON "purchase_approvals" USING btree ("doc_type","doc_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "purchase_receipt_lines_receipt_idx" ON "purchase_receipt_lines" USING btree ("receipt_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "purchase_receipts_po_idx" ON "purchase_receipts" USING btree ("po_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "purchase_receipts_wh_idx" ON "purchase_receipts" USING btree ("warehouse_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "pr_lines_pr_idx" ON "purchase_request_lines" USING btree ("pr_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "pr_company_idx" ON "purchase_requests" USING btree ("company_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "pr_status_idx" ON "purchase_requests" USING btree ("status");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "purchase_return_lines_return_idx" ON "purchase_return_lines" USING btree ("return_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "purchase_returns_po_idx" ON "purchase_returns" USING btree ("po_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "purchase_returns_status_idx" ON "purchase_returns" USING btree ("status");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "qc_gr_idx" ON "qc_inspections" USING btree ("gr_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "qc_lines_qc_idx" ON "qc_lines" USING btree ("qc_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "vi_lines_invoice_idx" ON "vendor_invoice_lines" USING btree ("invoice_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "vi_po_idx" ON "vendor_invoices" USING btree ("po_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "vi_supplier_idx" ON "vendor_invoices" USING btree ("supplier_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "vi_status_idx" ON "vendor_invoices" USING btree ("status");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "vq_lines_quotation_idx" ON "vendor_quotation_lines" USING btree ("quotation_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "vq_rfq_idx" ON "vendor_quotations" USING btree ("rfq_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "vq_supplier_idx" ON "vendor_quotations" USING btree ("supplier_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "custom_roles_company_idx" ON "custom_roles" USING btree ("company_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "branches_company_idx" ON "branches" USING btree ("company_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "departments_company_idx" ON "departments" USING btree ("company_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "departments_division_idx" ON "departments" USING btree ("division_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "divisions_company_idx" ON "divisions" USING btree ("company_id");--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "users" ADD CONSTRAINT "users_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "users" ADD CONSTRAINT "users_branch_id_branches_id_fk" FOREIGN KEY ("branch_id") REFERENCES "public"."branches"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "users" ADD CONSTRAINT "users_custom_role_id_custom_roles_id_fk" FOREIGN KEY ("custom_role_id") REFERENCES "public"."custom_roles"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "products" ADD CONSTRAINT "products_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "products" ADD CONSTRAINT "products_base_uom_id_uom_id_fk" FOREIGN KEY ("base_uom_id") REFERENCES "public"."uom"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "suppliers" ADD CONSTRAINT "suppliers_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "customers" ADD CONSTRAINT "customers_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "sales_document_lines" ADD CONSTRAINT "sales_document_lines_sales_uom_id_uom_id_fk" FOREIGN KEY ("sales_uom_id") REFERENCES "public"."uom"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "sales_documents" ADD CONSTRAINT "sales_documents_logistic_order_id_logistic_orders_id_fk" FOREIGN KEY ("logistic_order_id") REFERENCES "public"."logistic_orders"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "sales_documents" ADD CONSTRAINT "sales_documents_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "purchase_documents" ADD CONSTRAINT "purchase_documents_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "purchase_documents" ADD CONSTRAINT "purchase_documents_warehouse_id_pos_warehouses_id_fk" FOREIGN KEY ("warehouse_id") REFERENCES "public"."pos_warehouses"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "accounting_taxes" ADD CONSTRAINT "accounting_taxes_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "correspondences" ADD CONSTRAINT "correspondences_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "freight_shipments" ADD CONSTRAINT "freight_shipments_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "logistic_orders" ADD CONSTRAINT "logistic_orders_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "drivers" ADD CONSTRAINT "drivers_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "products_company_idx" ON "products" USING btree ("company_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "suppliers_company_idx" ON "suppliers" USING btree ("company_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "customers_company_idx" ON "customers" USING btree ("company_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "purchase_doc_lines_doc_idx" ON "purchase_document_lines" USING btree ("document_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "purchase_doc_lines_product_idx" ON "purchase_document_lines" USING btree ("product_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "purchase_docs_company_idx" ON "purchase_documents" USING btree ("company_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "purchase_docs_supplier_idx" ON "purchase_documents" USING btree ("supplier_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "purchase_docs_status_idx" ON "purchase_documents" USING btree ("status","kind");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "accounting_entries_company_idx" ON "accounting_entries" USING btree ("company_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "accounting_entries_journal_idx" ON "accounting_entries" USING btree ("journal_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "accounting_entries_date_idx" ON "accounting_entries" USING btree ("date");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "entry_lines_entry_idx" ON "accounting_entry_lines" USING btree ("entry_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "entry_lines_account_idx" ON "accounting_entry_lines" USING btree ("account_id");--> statement-breakpoint
-CREATE UNIQUE INDEX IF NOT EXISTS "journals_company_code_uniq" ON "accounting_journals" USING btree ("company_id","code");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "accounting_payments_company_idx" ON "accounting_payments" USING btree ("company_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "accounting_payments_journal_idx" ON "accounting_payments" USING btree ("journal_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "accounting_payments_date_idx" ON "accounting_payments" USING btree ("date");--> statement-breakpoint
-CREATE UNIQUE INDEX IF NOT EXISTS "coa_company_code_uniq" ON "chart_of_accounts" USING btree ("company_id","code");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "correspondences_company_idx" ON "correspondences" USING btree ("company_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "expenses_company_idx" ON "expenses" USING btree ("company_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "expenses_category_idx" ON "expenses" USING btree ("category_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "expenses_status_idx" ON "expenses" USING btree ("status");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "expenses_date_idx" ON "expenses" USING btree ("date");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "logistic_orders_company_idx" ON "logistic_orders" USING btree ("company_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "logistic_orders_status_idx" ON "logistic_orders" USING btree ("status");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "logistic_orders_vendor_idx" ON "logistic_orders" USING btree ("approved_vendor_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "drivers_company_idx" ON "drivers" USING btree ("company_id");--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "logistic_order_quotes" ADD CONSTRAINT "logistic_order_quotes_vendor_confirm_token_unique" UNIQUE("vendor_confirm_token");
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "logistic_orders" ADD CONSTRAINT "logistic_orders_customer_confirm_token_unique" UNIQUE("customer_confirm_token");
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "logistic_orders" ADD CONSTRAINT "logistic_orders_options_token_unique" UNIQUE("options_token");
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;--> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "logistic_orders" ADD CONSTRAINT "logistic_orders_public_rfq_token_unique" UNIQUE("public_rfq_token");
-EXCEPTION
- WHEN duplicate_object THEN null;
- WHEN duplicate_table THEN null;
-END $$;
+ALTER TABLE "vendor_offers" ADD CONSTRAINT "vendor_offers_order_id_logistic_orders_id_fk" FOREIGN KEY ("order_id") REFERENCES "public"."logistic_orders"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "vendor_offers" ADD CONSTRAINT "vendor_offers_vendor_id_suppliers_id_fk" FOREIGN KEY ("vendor_id") REFERENCES "public"."suppliers"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "vendor_responses" ADD CONSTRAINT "vendor_responses_order_id_logistic_orders_id_fk" FOREIGN KEY ("order_id") REFERENCES "public"."logistic_orders"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "vendor_rates" ADD CONSTRAINT "vendor_rates_vendor_id_suppliers_id_fk" FOREIGN KEY ("vendor_id") REFERENCES "public"."suppliers"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "company_holding_members" ADD CONSTRAINT "company_holding_members_holding_group_id_holding_groups_id_fk" FOREIGN KEY ("holding_group_id") REFERENCES "public"."holding_groups"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "pos_branches" ADD CONSTRAINT "pos_branches_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "pos_cashiers" ADD CONSTRAINT "pos_cashiers_branch_id_pos_branches_id_fk" FOREIGN KEY ("branch_id") REFERENCES "public"."pos_branches"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "pos_inventory_items" ADD CONSTRAINT "pos_inventory_items_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "pos_inventory_stocks" ADD CONSTRAINT "pos_inventory_stocks_item_id_pos_inventory_items_id_fk" FOREIGN KEY ("item_id") REFERENCES "public"."pos_inventory_items"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "pos_inventory_stocks" ADD CONSTRAINT "pos_inventory_stocks_branch_id_pos_branches_id_fk" FOREIGN KEY ("branch_id") REFERENCES "public"."pos_branches"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "pos_inventory_stocks" ADD CONSTRAINT "pos_inventory_stocks_warehouse_id_pos_warehouses_id_fk" FOREIGN KEY ("warehouse_id") REFERENCES "public"."pos_warehouses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "pos_inventory_stocks" ADD CONSTRAINT "pos_inventory_stocks_rack_id_pos_racks_id_fk" FOREIGN KEY ("rack_id") REFERENCES "public"."pos_racks"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "pos_order_items" ADD CONSTRAINT "pos_order_items_order_id_pos_orders_id_fk" FOREIGN KEY ("order_id") REFERENCES "public"."pos_orders"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "pos_order_items" ADD CONSTRAINT "pos_order_items_product_id_pos_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."pos_products"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "pos_orders" ADD CONSTRAINT "pos_orders_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "pos_orders" ADD CONSTRAINT "pos_orders_cashier_id_pos_cashiers_id_fk" FOREIGN KEY ("cashier_id") REFERENCES "public"."pos_cashiers"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "pos_orders" ADD CONSTRAINT "pos_orders_branch_id_pos_branches_id_fk" FOREIGN KEY ("branch_id") REFERENCES "public"."pos_branches"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "pos_products" ADD CONSTRAINT "pos_products_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "pos_racks" ADD CONSTRAINT "pos_racks_warehouse_id_pos_warehouses_id_fk" FOREIGN KEY ("warehouse_id") REFERENCES "public"."pos_warehouses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "pos_recipe_items" ADD CONSTRAINT "pos_recipe_items_recipe_id_pos_recipes_id_fk" FOREIGN KEY ("recipe_id") REFERENCES "public"."pos_recipes"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "pos_recipe_items" ADD CONSTRAINT "pos_recipe_items_item_id_pos_inventory_items_id_fk" FOREIGN KEY ("item_id") REFERENCES "public"."pos_inventory_items"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "pos_recipes" ADD CONSTRAINT "pos_recipes_product_id_pos_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."pos_products"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "pos_shifts" ADD CONSTRAINT "pos_shifts_branch_id_pos_branches_id_fk" FOREIGN KEY ("branch_id") REFERENCES "public"."pos_branches"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "pos_shifts" ADD CONSTRAINT "pos_shifts_cashier_id_pos_cashiers_id_fk" FOREIGN KEY ("cashier_id") REFERENCES "public"."pos_cashiers"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "pos_stock_adjustments" ADD CONSTRAINT "pos_stock_adjustments_stock_item_id_pos_stock_items_id_fk" FOREIGN KEY ("stock_item_id") REFERENCES "public"."pos_stock_items"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "pos_stock_adjustments" ADD CONSTRAINT "pos_stock_adjustments_cashier_id_pos_cashiers_id_fk" FOREIGN KEY ("cashier_id") REFERENCES "public"."pos_cashiers"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "pos_stock_mutations" ADD CONSTRAINT "pos_stock_mutations_item_id_pos_inventory_items_id_fk" FOREIGN KEY ("item_id") REFERENCES "public"."pos_inventory_items"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "pos_stock_mutations" ADD CONSTRAINT "pos_stock_mutations_branch_id_pos_branches_id_fk" FOREIGN KEY ("branch_id") REFERENCES "public"."pos_branches"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "pos_stock_mutations" ADD CONSTRAINT "pos_stock_mutations_warehouse_id_pos_warehouses_id_fk" FOREIGN KEY ("warehouse_id") REFERENCES "public"."pos_warehouses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "pos_stock_mutations" ADD CONSTRAINT "pos_stock_mutations_rack_id_pos_racks_id_fk" FOREIGN KEY ("rack_id") REFERENCES "public"."pos_racks"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "pos_stock_opname_items" ADD CONSTRAINT "pos_stock_opname_items_opname_id_pos_stock_opnames_id_fk" FOREIGN KEY ("opname_id") REFERENCES "public"."pos_stock_opnames"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "pos_stock_opname_items" ADD CONSTRAINT "pos_stock_opname_items_item_id_pos_inventory_items_id_fk" FOREIGN KEY ("item_id") REFERENCES "public"."pos_inventory_items"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "pos_stock_opnames" ADD CONSTRAINT "pos_stock_opnames_branch_id_pos_branches_id_fk" FOREIGN KEY ("branch_id") REFERENCES "public"."pos_branches"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "pos_stock_opnames" ADD CONSTRAINT "pos_stock_opnames_warehouse_id_pos_warehouses_id_fk" FOREIGN KEY ("warehouse_id") REFERENCES "public"."pos_warehouses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "pos_stock_transfer_items" ADD CONSTRAINT "pos_stock_transfer_items_transfer_id_pos_stock_transfers_id_fk" FOREIGN KEY ("transfer_id") REFERENCES "public"."pos_stock_transfers"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "pos_stock_transfer_items" ADD CONSTRAINT "pos_stock_transfer_items_item_id_pos_inventory_items_id_fk" FOREIGN KEY ("item_id") REFERENCES "public"."pos_inventory_items"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "pos_stock_transfer_items" ADD CONSTRAINT "pos_stock_transfer_items_from_warehouse_id_pos_warehouses_id_fk" FOREIGN KEY ("from_warehouse_id") REFERENCES "public"."pos_warehouses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "pos_stock_transfer_items" ADD CONSTRAINT "pos_stock_transfer_items_to_warehouse_id_pos_warehouses_id_fk" FOREIGN KEY ("to_warehouse_id") REFERENCES "public"."pos_warehouses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "pos_stock_transfers" ADD CONSTRAINT "pos_stock_transfers_from_branch_id_pos_branches_id_fk" FOREIGN KEY ("from_branch_id") REFERENCES "public"."pos_branches"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "pos_stock_transfers" ADD CONSTRAINT "pos_stock_transfers_to_branch_id_pos_branches_id_fk" FOREIGN KEY ("to_branch_id") REFERENCES "public"."pos_branches"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "pos_warehouses" ADD CONSTRAINT "pos_warehouses_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "pos_warehouses" ADD CONSTRAINT "pos_warehouses_branch_id_pos_branches_id_fk" FOREIGN KEY ("branch_id") REFERENCES "public"."pos_branches"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "product_recipe_items" ADD CONSTRAINT "product_recipe_items_recipe_id_product_recipes_id_fk" FOREIGN KEY ("recipe_id") REFERENCES "public"."product_recipes"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "product_recipe_items" ADD CONSTRAINT "product_recipe_items_ingredient_product_id_products_id_fk" FOREIGN KEY ("ingredient_product_id") REFERENCES "public"."products"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "product_recipes" ADD CONSTRAINT "product_recipes_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "wh_damage_lines" ADD CONSTRAINT "wh_damage_lines_report_id_wh_damage_reports_id_fk" FOREIGN KEY ("report_id") REFERENCES "public"."wh_damage_reports"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "wh_damage_lines" ADD CONSTRAINT "wh_damage_lines_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "wh_damage_lines" ADD CONSTRAINT "wh_damage_lines_rack_id_pos_racks_id_fk" FOREIGN KEY ("rack_id") REFERENCES "public"."pos_racks"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "wh_damage_reports" ADD CONSTRAINT "wh_damage_reports_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "wh_damage_reports" ADD CONSTRAINT "wh_damage_reports_warehouse_id_pos_warehouses_id_fk" FOREIGN KEY ("warehouse_id") REFERENCES "public"."pos_warehouses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "wh_movements" ADD CONSTRAINT "wh_movements_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "wh_movements" ADD CONSTRAINT "wh_movements_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "wh_movements" ADD CONSTRAINT "wh_movements_warehouse_id_pos_warehouses_id_fk" FOREIGN KEY ("warehouse_id") REFERENCES "public"."pos_warehouses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "wh_movements" ADD CONSTRAINT "wh_movements_rack_id_pos_racks_id_fk" FOREIGN KEY ("rack_id") REFERENCES "public"."pos_racks"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "wh_opname_lines" ADD CONSTRAINT "wh_opname_lines_opname_id_wh_opnames_id_fk" FOREIGN KEY ("opname_id") REFERENCES "public"."wh_opnames"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "wh_opname_lines" ADD CONSTRAINT "wh_opname_lines_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "wh_opname_lines" ADD CONSTRAINT "wh_opname_lines_rack_id_pos_racks_id_fk" FOREIGN KEY ("rack_id") REFERENCES "public"."pos_racks"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "wh_opnames" ADD CONSTRAINT "wh_opnames_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "wh_opnames" ADD CONSTRAINT "wh_opnames_warehouse_id_pos_warehouses_id_fk" FOREIGN KEY ("warehouse_id") REFERENCES "public"."pos_warehouses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "wh_return_lines" ADD CONSTRAINT "wh_return_lines_return_id_wh_returns_id_fk" FOREIGN KEY ("return_id") REFERENCES "public"."wh_returns"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "wh_return_lines" ADD CONSTRAINT "wh_return_lines_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "wh_return_lines" ADD CONSTRAINT "wh_return_lines_rack_id_pos_racks_id_fk" FOREIGN KEY ("rack_id") REFERENCES "public"."pos_racks"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "wh_returns" ADD CONSTRAINT "wh_returns_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "wh_returns" ADD CONSTRAINT "wh_returns_warehouse_id_pos_warehouses_id_fk" FOREIGN KEY ("warehouse_id") REFERENCES "public"."pos_warehouses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "wh_stock" ADD CONSTRAINT "wh_stock_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "wh_stock" ADD CONSTRAINT "wh_stock_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "wh_stock" ADD CONSTRAINT "wh_stock_warehouse_id_pos_warehouses_id_fk" FOREIGN KEY ("warehouse_id") REFERENCES "public"."pos_warehouses"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "wh_stock" ADD CONSTRAINT "wh_stock_rack_id_pos_racks_id_fk" FOREIGN KEY ("rack_id") REFERENCES "public"."pos_racks"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "wh_transfer_lines" ADD CONSTRAINT "wh_transfer_lines_transfer_id_wh_transfers_id_fk" FOREIGN KEY ("transfer_id") REFERENCES "public"."wh_transfers"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "wh_transfer_lines" ADD CONSTRAINT "wh_transfer_lines_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "wh_transfer_lines" ADD CONSTRAINT "wh_transfer_lines_from_rack_id_pos_racks_id_fk" FOREIGN KEY ("from_rack_id") REFERENCES "public"."pos_racks"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "wh_transfer_lines" ADD CONSTRAINT "wh_transfer_lines_to_rack_id_pos_racks_id_fk" FOREIGN KEY ("to_rack_id") REFERENCES "public"."pos_racks"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "wh_transfers" ADD CONSTRAINT "wh_transfers_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "wh_transfers" ADD CONSTRAINT "wh_transfers_from_warehouse_id_pos_warehouses_id_fk" FOREIGN KEY ("from_warehouse_id") REFERENCES "public"."pos_warehouses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "wh_transfers" ADD CONSTRAINT "wh_transfers_to_warehouse_id_pos_warehouses_id_fk" FOREIGN KEY ("to_warehouse_id") REFERENCES "public"."pos_warehouses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "inventory_stock" ADD CONSTRAINT "inventory_stock_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "inventory_stock" ADD CONSTRAINT "inventory_stock_warehouse_id_warehouses_id_fk" FOREIGN KEY ("warehouse_id") REFERENCES "public"."warehouses"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "inventory_stock" ADD CONSTRAINT "inventory_stock_rack_id_warehouse_racks_id_fk" FOREIGN KEY ("rack_id") REFERENCES "public"."warehouse_racks"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "stock_movements" ADD CONSTRAINT "stock_movements_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "stock_movements" ADD CONSTRAINT "stock_movements_warehouse_id_warehouses_id_fk" FOREIGN KEY ("warehouse_id") REFERENCES "public"."warehouses"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "stock_movements" ADD CONSTRAINT "stock_movements_rack_id_warehouse_racks_id_fk" FOREIGN KEY ("rack_id") REFERENCES "public"."warehouse_racks"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "warehouse_racks" ADD CONSTRAINT "warehouse_racks_warehouse_id_warehouses_id_fk" FOREIGN KEY ("warehouse_id") REFERENCES "public"."warehouses"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "warehouses" ADD CONSTRAINT "warehouses_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "thai_tea_warehouse_links" ADD CONSTRAINT "thai_tea_warehouse_links_pos_warehouse_id_pos_warehouses_id_fk" FOREIGN KEY ("pos_warehouse_id") REFERENCES "public"."pos_warehouses"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "thai_tea_warehouse_links" ADD CONSTRAINT "thai_tea_warehouse_links_erp_warehouse_id_warehouses_id_fk" FOREIGN KEY ("erp_warehouse_id") REFERENCES "public"."warehouses"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "goods_receipt_lines" ADD CONSTRAINT "goods_receipt_lines_gr_id_goods_receipts_id_fk" FOREIGN KEY ("gr_id") REFERENCES "public"."goods_receipts"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "goods_receipt_lines" ADD CONSTRAINT "goods_receipt_lines_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "goods_receipt_lines" ADD CONSTRAINT "goods_receipt_lines_rack_id_pos_racks_id_fk" FOREIGN KEY ("rack_id") REFERENCES "public"."pos_racks"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "goods_receipts" ADD CONSTRAINT "goods_receipts_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "goods_receipts" ADD CONSTRAINT "goods_receipts_po_id_purchase_documents_id_fk" FOREIGN KEY ("po_id") REFERENCES "public"."purchase_documents"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "goods_receipts" ADD CONSTRAINT "goods_receipts_warehouse_id_pos_warehouses_id_fk" FOREIGN KEY ("warehouse_id") REFERENCES "public"."pos_warehouses"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "goods_receipts" ADD CONSTRAINT "goods_receipts_supplier_id_suppliers_id_fk" FOREIGN KEY ("supplier_id") REFERENCES "public"."suppliers"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "landed_cost_allocations" ADD CONSTRAINT "landed_cost_allocations_lc_id_landed_costs_id_fk" FOREIGN KEY ("lc_id") REFERENCES "public"."landed_costs"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "landed_cost_allocations" ADD CONSTRAINT "landed_cost_allocations_gr_line_id_goods_receipt_lines_id_fk" FOREIGN KEY ("gr_line_id") REFERENCES "public"."goods_receipt_lines"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "landed_cost_allocations" ADD CONSTRAINT "landed_cost_allocations_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "landed_cost_lines" ADD CONSTRAINT "landed_cost_lines_lc_id_landed_costs_id_fk" FOREIGN KEY ("lc_id") REFERENCES "public"."landed_costs"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "landed_cost_lines" ADD CONSTRAINT "landed_cost_lines_supplier_id_suppliers_id_fk" FOREIGN KEY ("supplier_id") REFERENCES "public"."suppliers"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "landed_costs" ADD CONSTRAINT "landed_costs_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "landed_costs" ADD CONSTRAINT "landed_costs_gr_id_goods_receipts_id_fk" FOREIGN KEY ("gr_id") REFERENCES "public"."goods_receipts"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "landed_costs" ADD CONSTRAINT "landed_costs_po_id_purchase_documents_id_fk" FOREIGN KEY ("po_id") REFERENCES "public"."purchase_documents"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_request_items" ADD CONSTRAINT "payment_request_items_payment_request_id_payment_requests_id_fk" FOREIGN KEY ("payment_request_id") REFERENCES "public"."payment_requests"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_request_items" ADD CONSTRAINT "payment_request_items_vendor_invoice_id_vendor_invoices_id_fk" FOREIGN KEY ("vendor_invoice_id") REFERENCES "public"."vendor_invoices"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_requests" ADD CONSTRAINT "payment_requests_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_requests" ADD CONSTRAINT "payment_requests_supplier_id_suppliers_id_fk" FOREIGN KEY ("supplier_id") REFERENCES "public"."suppliers"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "purchase_receipt_lines" ADD CONSTRAINT "purchase_receipt_lines_receipt_id_purchase_receipts_id_fk" FOREIGN KEY ("receipt_id") REFERENCES "public"."purchase_receipts"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "purchase_receipt_lines" ADD CONSTRAINT "purchase_receipt_lines_po_line_id_purchase_document_lines_id_fk" FOREIGN KEY ("po_line_id") REFERENCES "public"."purchase_document_lines"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "purchase_receipt_lines" ADD CONSTRAINT "purchase_receipt_lines_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "purchase_receipt_lines" ADD CONSTRAINT "purchase_receipt_lines_rack_id_pos_racks_id_fk" FOREIGN KEY ("rack_id") REFERENCES "public"."pos_racks"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "purchase_receipts" ADD CONSTRAINT "purchase_receipts_po_id_purchase_documents_id_fk" FOREIGN KEY ("po_id") REFERENCES "public"."purchase_documents"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "purchase_receipts" ADD CONSTRAINT "purchase_receipts_warehouse_id_pos_warehouses_id_fk" FOREIGN KEY ("warehouse_id") REFERENCES "public"."pos_warehouses"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "purchase_request_lines" ADD CONSTRAINT "purchase_request_lines_pr_id_purchase_requests_id_fk" FOREIGN KEY ("pr_id") REFERENCES "public"."purchase_requests"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "purchase_request_lines" ADD CONSTRAINT "purchase_request_lines_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "purchase_requests" ADD CONSTRAINT "purchase_requests_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "purchase_requests" ADD CONSTRAINT "purchase_requests_warehouse_id_pos_warehouses_id_fk" FOREIGN KEY ("warehouse_id") REFERENCES "public"."pos_warehouses"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "purchase_return_lines" ADD CONSTRAINT "purchase_return_lines_return_id_purchase_returns_id_fk" FOREIGN KEY ("return_id") REFERENCES "public"."purchase_returns"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "purchase_return_lines" ADD CONSTRAINT "purchase_return_lines_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "purchase_returns" ADD CONSTRAINT "purchase_returns_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "purchase_returns" ADD CONSTRAINT "purchase_returns_po_id_purchase_documents_id_fk" FOREIGN KEY ("po_id") REFERENCES "public"."purchase_documents"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "purchase_returns" ADD CONSTRAINT "purchase_returns_gr_id_goods_receipts_id_fk" FOREIGN KEY ("gr_id") REFERENCES "public"."goods_receipts"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "purchase_returns" ADD CONSTRAINT "purchase_returns_supplier_id_suppliers_id_fk" FOREIGN KEY ("supplier_id") REFERENCES "public"."suppliers"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "purchase_returns" ADD CONSTRAINT "purchase_returns_warehouse_id_pos_warehouses_id_fk" FOREIGN KEY ("warehouse_id") REFERENCES "public"."pos_warehouses"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "qc_inspections" ADD CONSTRAINT "qc_inspections_gr_id_goods_receipts_id_fk" FOREIGN KEY ("gr_id") REFERENCES "public"."goods_receipts"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "qc_inspections" ADD CONSTRAINT "qc_inspections_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "qc_lines" ADD CONSTRAINT "qc_lines_qc_id_qc_inspections_id_fk" FOREIGN KEY ("qc_id") REFERENCES "public"."qc_inspections"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "qc_lines" ADD CONSTRAINT "qc_lines_gr_line_id_goods_receipt_lines_id_fk" FOREIGN KEY ("gr_line_id") REFERENCES "public"."goods_receipt_lines"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "qc_lines" ADD CONSTRAINT "qc_lines_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "uom_conversions" ADD CONSTRAINT "uom_conversions_from_uom_id_uom_id_fk" FOREIGN KEY ("from_uom_id") REFERENCES "public"."uom"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "uom_conversions" ADD CONSTRAINT "uom_conversions_to_uom_id_uom_id_fk" FOREIGN KEY ("to_uom_id") REFERENCES "public"."uom"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "vendor_invoice_lines" ADD CONSTRAINT "vendor_invoice_lines_invoice_id_vendor_invoices_id_fk" FOREIGN KEY ("invoice_id") REFERENCES "public"."vendor_invoices"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "vendor_invoice_lines" ADD CONSTRAINT "vendor_invoice_lines_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "vendor_invoices" ADD CONSTRAINT "vendor_invoices_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "vendor_invoices" ADD CONSTRAINT "vendor_invoices_supplier_id_suppliers_id_fk" FOREIGN KEY ("supplier_id") REFERENCES "public"."suppliers"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "vendor_invoices" ADD CONSTRAINT "vendor_invoices_po_id_purchase_documents_id_fk" FOREIGN KEY ("po_id") REFERENCES "public"."purchase_documents"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "vendor_invoices" ADD CONSTRAINT "vendor_invoices_gr_id_goods_receipts_id_fk" FOREIGN KEY ("gr_id") REFERENCES "public"."goods_receipts"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "vendor_quotation_lines" ADD CONSTRAINT "vendor_quotation_lines_quotation_id_vendor_quotations_id_fk" FOREIGN KEY ("quotation_id") REFERENCES "public"."vendor_quotations"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "vendor_quotation_lines" ADD CONSTRAINT "vendor_quotation_lines_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "vendor_quotations" ADD CONSTRAINT "vendor_quotations_rfq_id_purchase_documents_id_fk" FOREIGN KEY ("rfq_id") REFERENCES "public"."purchase_documents"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "vendor_quotations" ADD CONSTRAINT "vendor_quotations_supplier_id_suppliers_id_fk" FOREIGN KEY ("supplier_id") REFERENCES "public"."suppliers"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "freight_shipment_audit_logs" ADD CONSTRAINT "freight_shipment_audit_logs_shipment_id_freight_shipments_id_fk" FOREIGN KEY ("shipment_id") REFERENCES "public"."freight_shipments"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "custom_roles" ADD CONSTRAINT "custom_roles_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "branches" ADD CONSTRAINT "branches_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "departments" ADD CONSTRAINT "departments_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "departments" ADD CONSTRAINT "departments_division_id_divisions_id_fk" FOREIGN KEY ("division_id") REFERENCES "public"."divisions"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "divisions" ADD CONSTRAINT "divisions_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "pos_branches_company_idx" ON "pos_branches" USING btree ("company_id");--> statement-breakpoint
+CREATE INDEX "pos_cashiers_branch_idx" ON "pos_cashiers" USING btree ("branch_id");--> statement-breakpoint
+CREATE INDEX "pos_order_items_order_idx" ON "pos_order_items" USING btree ("order_id");--> statement-breakpoint
+CREATE INDEX "pos_order_items_product_idx" ON "pos_order_items" USING btree ("product_id");--> statement-breakpoint
+CREATE INDEX "pos_orders_company_idx" ON "pos_orders" USING btree ("company_id");--> statement-breakpoint
+CREATE INDEX "pos_orders_branch_idx" ON "pos_orders" USING btree ("branch_id");--> statement-breakpoint
+CREATE INDEX "pos_orders_cashier_idx" ON "pos_orders" USING btree ("cashier_id");--> statement-breakpoint
+CREATE INDEX "pos_orders_status_idx" ON "pos_orders" USING btree ("status");--> statement-breakpoint
+CREATE INDEX "pos_orders_created_idx" ON "pos_orders" USING btree ("created_at");--> statement-breakpoint
+CREATE INDEX "wh_movements_company_idx" ON "wh_movements" USING btree ("company_id");--> statement-breakpoint
+CREATE INDEX "wh_movements_product_idx" ON "wh_movements" USING btree ("product_id");--> statement-breakpoint
+CREATE INDEX "wh_movements_warehouse_idx" ON "wh_movements" USING btree ("warehouse_id");--> statement-breakpoint
+CREATE INDEX "wh_movements_type_idx" ON "wh_movements" USING btree ("type");--> statement-breakpoint
+CREATE INDEX "wh_movements_created_idx" ON "wh_movements" USING btree ("created_at");--> statement-breakpoint
+CREATE INDEX "wh_stock_company_idx" ON "wh_stock" USING btree ("company_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "wh_stock_product_warehouse_rack_idx" ON "wh_stock" USING btree ("product_id","warehouse_id","rack_id");--> statement-breakpoint
+CREATE INDEX "wh_transfers_from_idx" ON "wh_transfers" USING btree ("from_warehouse_id");--> statement-breakpoint
+CREATE INDEX "wh_transfers_to_idx" ON "wh_transfers" USING btree ("to_warehouse_id");--> statement-breakpoint
+CREATE INDEX "wh_transfers_status_idx" ON "wh_transfers" USING btree ("status");--> statement-breakpoint
+CREATE INDEX "stock_movements_product_idx" ON "stock_movements" USING btree ("product_id");--> statement-breakpoint
+CREATE INDEX "stock_movements_warehouse_idx" ON "stock_movements" USING btree ("warehouse_id");--> statement-breakpoint
+CREATE INDEX "stock_movements_type_idx" ON "stock_movements" USING btree ("movement_type");--> statement-breakpoint
+CREATE INDEX "stock_movements_created_idx" ON "stock_movements" USING btree ("created_at");--> statement-breakpoint
+CREATE INDEX "warehouses_company_idx" ON "warehouses" USING btree ("company_id");--> statement-breakpoint
+CREATE INDEX "gr_lines_gr_idx" ON "goods_receipt_lines" USING btree ("gr_id");--> statement-breakpoint
+CREATE INDEX "gr_po_idx" ON "goods_receipts" USING btree ("po_id");--> statement-breakpoint
+CREATE INDEX "gr_company_idx" ON "goods_receipts" USING btree ("company_id");--> statement-breakpoint
+CREATE INDEX "gr_status_idx" ON "goods_receipts" USING btree ("status");--> statement-breakpoint
+CREATE INDEX "lc_alloc_lc_idx" ON "landed_cost_allocations" USING btree ("lc_id");--> statement-breakpoint
+CREATE INDEX "lc_lines_lc_idx" ON "landed_cost_lines" USING btree ("lc_id");--> statement-breakpoint
+CREATE INDEX "landed_costs_gr_idx" ON "landed_costs" USING btree ("gr_id");--> statement-breakpoint
+CREATE INDEX "landed_costs_po_idx" ON "landed_costs" USING btree ("po_id");--> statement-breakpoint
+CREATE INDEX "pay_req_items_pr_idx" ON "payment_request_items" USING btree ("payment_request_id");--> statement-breakpoint
+CREATE INDEX "pay_req_supplier_idx" ON "payment_requests" USING btree ("supplier_id");--> statement-breakpoint
+CREATE INDEX "pay_req_status_idx" ON "payment_requests" USING btree ("status");--> statement-breakpoint
+CREATE INDEX "pw_approvals_doc_idx" ON "purchase_approvals" USING btree ("doc_type","doc_id");--> statement-breakpoint
+CREATE INDEX "purchase_receipt_lines_receipt_idx" ON "purchase_receipt_lines" USING btree ("receipt_id");--> statement-breakpoint
+CREATE INDEX "purchase_receipts_po_idx" ON "purchase_receipts" USING btree ("po_id");--> statement-breakpoint
+CREATE INDEX "purchase_receipts_wh_idx" ON "purchase_receipts" USING btree ("warehouse_id");--> statement-breakpoint
+CREATE INDEX "pr_lines_pr_idx" ON "purchase_request_lines" USING btree ("pr_id");--> statement-breakpoint
+CREATE INDEX "pr_company_idx" ON "purchase_requests" USING btree ("company_id");--> statement-breakpoint
+CREATE INDEX "pr_status_idx" ON "purchase_requests" USING btree ("status");--> statement-breakpoint
+CREATE INDEX "purchase_return_lines_return_idx" ON "purchase_return_lines" USING btree ("return_id");--> statement-breakpoint
+CREATE INDEX "purchase_returns_po_idx" ON "purchase_returns" USING btree ("po_id");--> statement-breakpoint
+CREATE INDEX "purchase_returns_status_idx" ON "purchase_returns" USING btree ("status");--> statement-breakpoint
+CREATE INDEX "qc_gr_idx" ON "qc_inspections" USING btree ("gr_id");--> statement-breakpoint
+CREATE INDEX "qc_lines_qc_idx" ON "qc_lines" USING btree ("qc_id");--> statement-breakpoint
+CREATE INDEX "vi_lines_invoice_idx" ON "vendor_invoice_lines" USING btree ("invoice_id");--> statement-breakpoint
+CREATE INDEX "vi_po_idx" ON "vendor_invoices" USING btree ("po_id");--> statement-breakpoint
+CREATE INDEX "vi_supplier_idx" ON "vendor_invoices" USING btree ("supplier_id");--> statement-breakpoint
+CREATE INDEX "vi_status_idx" ON "vendor_invoices" USING btree ("status");--> statement-breakpoint
+CREATE INDEX "vq_lines_quotation_idx" ON "vendor_quotation_lines" USING btree ("quotation_id");--> statement-breakpoint
+CREATE INDEX "vq_rfq_idx" ON "vendor_quotations" USING btree ("rfq_id");--> statement-breakpoint
+CREATE INDEX "vq_supplier_idx" ON "vendor_quotations" USING btree ("supplier_id");--> statement-breakpoint
+CREATE INDEX "custom_roles_company_idx" ON "custom_roles" USING btree ("company_id");--> statement-breakpoint
+CREATE INDEX "branches_company_idx" ON "branches" USING btree ("company_id");--> statement-breakpoint
+CREATE INDEX "departments_company_idx" ON "departments" USING btree ("company_id");--> statement-breakpoint
+CREATE INDEX "departments_division_idx" ON "departments" USING btree ("division_id");--> statement-breakpoint
+CREATE INDEX "divisions_company_idx" ON "divisions" USING btree ("company_id");--> statement-breakpoint
+ALTER TABLE "users" ADD CONSTRAINT "users_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "users" ADD CONSTRAINT "users_branch_id_branches_id_fk" FOREIGN KEY ("branch_id") REFERENCES "public"."branches"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "users" ADD CONSTRAINT "users_custom_role_id_custom_roles_id_fk" FOREIGN KEY ("custom_role_id") REFERENCES "public"."custom_roles"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "products" ADD CONSTRAINT "products_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "products" ADD CONSTRAINT "products_base_uom_id_uom_id_fk" FOREIGN KEY ("base_uom_id") REFERENCES "public"."uom"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "suppliers" ADD CONSTRAINT "suppliers_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "customers" ADD CONSTRAINT "customers_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "sales_document_lines" ADD CONSTRAINT "sales_document_lines_sales_uom_id_uom_id_fk" FOREIGN KEY ("sales_uom_id") REFERENCES "public"."uom"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "sales_documents" ADD CONSTRAINT "sales_documents_logistic_order_id_logistic_orders_id_fk" FOREIGN KEY ("logistic_order_id") REFERENCES "public"."logistic_orders"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "sales_documents" ADD CONSTRAINT "sales_documents_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "purchase_documents" ADD CONSTRAINT "purchase_documents_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "purchase_documents" ADD CONSTRAINT "purchase_documents_warehouse_id_pos_warehouses_id_fk" FOREIGN KEY ("warehouse_id") REFERENCES "public"."pos_warehouses"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "accounting_taxes" ADD CONSTRAINT "accounting_taxes_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "correspondences" ADD CONSTRAINT "correspondences_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "freight_shipments" ADD CONSTRAINT "freight_shipments_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "logistic_orders" ADD CONSTRAINT "logistic_orders_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drivers" ADD CONSTRAINT "drivers_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "products_company_idx" ON "products" USING btree ("company_id");--> statement-breakpoint
+CREATE INDEX "suppliers_company_idx" ON "suppliers" USING btree ("company_id");--> statement-breakpoint
+CREATE INDEX "customers_company_idx" ON "customers" USING btree ("company_id");--> statement-breakpoint
+CREATE INDEX "purchase_doc_lines_doc_idx" ON "purchase_document_lines" USING btree ("document_id");--> statement-breakpoint
+CREATE INDEX "purchase_doc_lines_product_idx" ON "purchase_document_lines" USING btree ("product_id");--> statement-breakpoint
+CREATE INDEX "purchase_docs_company_idx" ON "purchase_documents" USING btree ("company_id");--> statement-breakpoint
+CREATE INDEX "purchase_docs_supplier_idx" ON "purchase_documents" USING btree ("supplier_id");--> statement-breakpoint
+CREATE INDEX "purchase_docs_status_idx" ON "purchase_documents" USING btree ("status","kind");--> statement-breakpoint
+CREATE INDEX "accounting_entries_company_idx" ON "accounting_entries" USING btree ("company_id");--> statement-breakpoint
+CREATE INDEX "accounting_entries_journal_idx" ON "accounting_entries" USING btree ("journal_id");--> statement-breakpoint
+CREATE INDEX "accounting_entries_date_idx" ON "accounting_entries" USING btree ("date");--> statement-breakpoint
+CREATE INDEX "entry_lines_entry_idx" ON "accounting_entry_lines" USING btree ("entry_id");--> statement-breakpoint
+CREATE INDEX "entry_lines_account_idx" ON "accounting_entry_lines" USING btree ("account_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "journals_company_code_uniq" ON "accounting_journals" USING btree ("company_id","code");--> statement-breakpoint
+CREATE INDEX "accounting_payments_company_idx" ON "accounting_payments" USING btree ("company_id");--> statement-breakpoint
+CREATE INDEX "accounting_payments_journal_idx" ON "accounting_payments" USING btree ("journal_id");--> statement-breakpoint
+CREATE INDEX "accounting_payments_date_idx" ON "accounting_payments" USING btree ("date");--> statement-breakpoint
+CREATE UNIQUE INDEX "coa_company_code_uniq" ON "chart_of_accounts" USING btree ("company_id","code");--> statement-breakpoint
+CREATE INDEX "correspondences_company_idx" ON "correspondences" USING btree ("company_id");--> statement-breakpoint
+CREATE INDEX "expenses_company_idx" ON "expenses" USING btree ("company_id");--> statement-breakpoint
+CREATE INDEX "expenses_category_idx" ON "expenses" USING btree ("category_id");--> statement-breakpoint
+CREATE INDEX "expenses_status_idx" ON "expenses" USING btree ("status");--> statement-breakpoint
+CREATE INDEX "expenses_date_idx" ON "expenses" USING btree ("date");--> statement-breakpoint
+CREATE INDEX "logistic_orders_company_idx" ON "logistic_orders" USING btree ("company_id");--> statement-breakpoint
+CREATE INDEX "logistic_orders_status_idx" ON "logistic_orders" USING btree ("status");--> statement-breakpoint
+CREATE INDEX "logistic_orders_vendor_idx" ON "logistic_orders" USING btree ("approved_vendor_id");--> statement-breakpoint
+CREATE INDEX "drivers_company_idx" ON "drivers" USING btree ("company_id");--> statement-breakpoint
+ALTER TABLE "logistic_order_quotes" ADD CONSTRAINT "logistic_order_quotes_vendor_confirm_token_unique" UNIQUE("vendor_confirm_token");--> statement-breakpoint
+ALTER TABLE "logistic_orders" ADD CONSTRAINT "logistic_orders_customer_confirm_token_unique" UNIQUE("customer_confirm_token");--> statement-breakpoint
+ALTER TABLE "logistic_orders" ADD CONSTRAINT "logistic_orders_options_token_unique" UNIQUE("options_token");--> statement-breakpoint
+ALTER TABLE "logistic_orders" ADD CONSTRAINT "logistic_orders_public_rfq_token_unique" UNIQUE("public_rfq_token");
