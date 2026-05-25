@@ -870,7 +870,41 @@ const DEFAULT_BODY: Partial<Record<RecipientKey, Partial<Record<WorkflowKey, str
       "Route     : {{route}}","Total     : {{currency}} {{sellingPrice}}","",
       "SO sudah berhasil dibuat.","Silakan lanjutkan instruksi ke vendor.",
     ].join("\n"),
-    delivery_completed: ["🏁 *PENGIRIMAN SELESAI — {{orderNumber}}*","Customer: {{customerName}}","Rute: {{route}}","_{{timestamp}}_"].join("\n"),
+    vendor_revision: [
+      "↩️ *REVISI PENAWARAN DIKIRIM — {{orderNumber}}*","",
+      "Revisi penawaran telah diminta dari vendor *{{vendorName}}*.",
+      "Layanan : {{serviceType}}","Harga saat ini : {{vendorPrice}}","",
+      "Tunggu respons vendor melalui link admin:","{{adminActionUrl}}","","_{{timestamp}}_",
+    ].join("\n"),
+    customer_approval: [
+      "✅ *LINK APPROVAL DIKIRIM — {{orderNumber}}*","",
+      "Link persetujuan penawaran sudah dikirim ke customer *{{customerName}}*.",
+      "Layanan : {{serviceType}}","Total   : {{currency}} {{sellingPrice}}","",
+      "Tunggu konfirmasi customer.","_{{timestamp}}_",
+    ].join("\n"),
+    driver_assigned: [
+      "🚚 *DRIVER DITUGASKAN — {{orderNumber}}*","",
+      "Driver untuk order *{{orderNumber}}* telah ditugaskan.","Customer : {{customerName}}","Layanan  : {{serviceType}}","",
+      "{{#if trucking}}","👤 Driver    : {{driverName}}","📞 HP        : {{driverPhone}}","🚛 Kendaraan : {{vehicleType}}","🔢 Plat      : {{plateNumber}}","{{/if}}","",
+      "Notifikasi sudah dikirim ke customer.","_{{timestamp}}_",
+    ].join("\n"),
+    shipment_update: [
+      "🚢 *SHIPMENT UPDATE DIKIRIM — {{orderNumber}}*","",
+      "Update pengiriman sudah dikirim ke customer *{{customerName}}*.",
+      "Layanan : {{serviceType}}","Rute    : {{route}}","",
+      "{{#if freight_sea}}","🚢 Kapal     : {{vessel}} / {{voyage}}","📦 Container : {{containerNumber}}","📃 BL No     : {{blNumber}}","{{/if}}","",
+      "{{#if freight_air}}","✈️ Airline   : {{airline}}","📋 AWB       : {{awbNumber}}","🛫 Flight    : {{flightNumber}}","{{/if}}","","_{{timestamp}}_",
+    ].join("\n"),
+    customs_update: [
+      "🏛️ *KEPABEANAN UPDATE DIKIRIM — {{orderNumber}}*","",
+      "Update kepabeanan sudah dikirim ke customer *{{customerName}}*.",
+      "Layanan : {{serviceType}}","",
+      "{{#if ppjk}}","📋 No. Aju : {{ajuNumber}}","📄 BC Type : {{bcType}}","✅ SPPB    : {{sppbNumber}}","{{/if}}","","_{{timestamp}}_",
+    ].join("\n"),
+    delivery_completed: [
+      "🏁 *PENGIRIMAN SELESAI — {{orderNumber}}*","",
+      "Order *{{orderNumber}}* telah selesai.","Customer : {{customerName}}","Rute     : {{route}}","","_{{timestamp}}_",
+    ].join("\n"),
   },
   admin_group: {
     order_new: [
@@ -885,7 +919,23 @@ const DEFAULT_BODY: Partial<Record<RecipientKey, Partial<Record<WorkflowKey, str
       "_Harap segera diproses. Dikirim: {{timestamp}}_",
     ].join("\n"),
     vendor_submission: ["📩 *VENDOR SUBMIT — {{orderNumber}}*","Vendor *{{vendorName}}* — Service: {{serviceType}}","💰 Harga: {{vendorPrice}}","","Segera review!","_{{timestamp}}_"].join("\n"),
+    vendor_revision: ["↩️ *REVISI PENAWARAN — {{orderNumber}}*","Vendor *{{vendorName}}* diminta revisi harga.","Layanan: {{serviceType}} | Harga saat ini: {{vendorPrice}}","_{{timestamp}}_"].join("\n"),
     customer_approved: ["🎉 *CUSTOMER APPROVED — {{orderNumber}}*","Customer *{{customerName}}* menyetujui penawaran.","Proses operasional sekarang!","_{{timestamp}}_"].join("\n"),
+    so_created: ["📑 *SO CREATED — {{orderNumber}}*","Customer: {{customerName}} | Total: {{currency}} {{sellingPrice}}","_{{timestamp}}_"].join("\n"),
+    driver_assigned: [
+      "🚚 *DRIVER DITUGASKAN — {{orderNumber}}*","Customer: {{customerName}}",
+      "{{#if trucking}}","Driver: {{driverName}} | Plat: {{plateNumber}}","{{/if}}","_{{timestamp}}_",
+    ].join("\n"),
+    shipment_update: [
+      "🚢 *SHIPMENT UPDATE — {{orderNumber}}*","Customer: {{customerName}} | Rute: {{route}}",
+      "{{#if freight_sea}}","Vessel: {{vessel}} / BL: {{blNumber}}","{{/if}}",
+      "{{#if freight_air}}","AWB: {{awbNumber}} / Flight: {{flightNumber}}","{{/if}}","_{{timestamp}}_",
+    ].join("\n"),
+    customs_update: [
+      "🏛️ *KEPABEANAN UPDATE — {{orderNumber}}*","Customer: {{customerName}}",
+      "{{#if ppjk}}","Aju: {{ajuNumber}} | SPPB: {{sppbNumber}}","{{/if}}","_{{timestamp}}_",
+    ].join("\n"),
+    delivery_completed: ["🏁 *PENGIRIMAN SELESAI — {{orderNumber}}*","Customer: {{customerName}} | Rute: {{route}}","_{{timestamp}}_"].join("\n"),
   },
   customer: {
     order_new: [
@@ -957,11 +1007,16 @@ const DEFAULT_BODY: Partial<Record<RecipientKey, Partial<Record<WorkflowKey, str
       "{{/if}}","",
       "Terima kasih.",
     ].join("\n"),
+    delivery_completed: [
+      "🏁 *ORDER SELESAI — {{orderNumber}}*","━━━━━━━━━━━━━━━━━━","Kepada Yth. *{{vendorName}}*,","",
+      "Order *{{orderNumber}}* telah selesai diantarkan.","Rute    : {{route}}","Layanan : {{serviceType}}","",
+      "Terima kasih atas kerja sama Anda bersama CST Logistics.","Sampai jumpa di order berikutnya 🙏","","_{{timestamp}}_",
+    ].join("\n"),
   },
 };
 
 function getDefaultBody(recipient: RecipientKey, workflow: WorkflowKey): string {
-  return DEFAULT_BODY[recipient]?.[workflow] ?? "";
+  return DEFAULT_BODY[recipient]?.[workflow] || "";
 }
 
 function WaTemplatesCard() {
@@ -978,7 +1033,7 @@ function WaTemplatesCard() {
   const [simSvc, setSimSvc] = useState<ServiceTypeSim>("");
 
   const cfgKey = (r: RecipientKey, w: WorkflowKey) => `${r}__${w}`;
-  const currentBody = configs[cfgKey(recipient, workflow)] ?? getDefaultBody(recipient, workflow);
+  const currentBody = configs[cfgKey(recipient, workflow)] || getDefaultBody(recipient, workflow);
   const isSaved = savedKeys.has(cfgKey(recipient, workflow));
 
   useEffect(() => {
