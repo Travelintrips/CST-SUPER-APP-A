@@ -291,7 +291,7 @@ function CreateLinkDialog({ suppliers, onCreated }: { suppliers: Supplier[]; onC
     if (mode === "order_based" && !orderId) { toast({ title: "Pilih order dulu", variant: "destructive" }); return; }
     setLoading(true);
     try {
-      await apiFetch("/api/vendor-form/admin/links", {
+      const result = await apiFetch<{ deactivatedCount?: number }>("/api/vendor-form/admin/links", {
         method: "POST",
         body: JSON.stringify({
           serviceType, supplierId: supplierId ? Number(supplierId) : undefined,
@@ -302,7 +302,13 @@ function CreateLinkDialog({ suppliers, onCreated }: { suppliers: Supplier[]; onC
           maxSubmissions: maxSubmissions ? Number(maxSubmissions) : undefined,
         }),
       });
-      toast({ title: "Link berhasil dibuat" });
+      const deactivated = result?.deactivatedCount ?? 0;
+      toast({
+        title: "Link berhasil dibuat",
+        description: deactivated > 0
+          ? `${deactivated} link lama untuk order ini dinonaktifkan otomatis.`
+          : undefined,
+      });
       onCreated(); setOpen(false); reset();
     } catch (e: unknown) {
       toast({ title: "Gagal membuat link", description: (e as Error).message, variant: "destructive" });
@@ -328,7 +334,9 @@ function CreateLinkDialog({ suppliers, onCreated }: { suppliers: Supplier[]; onC
               </SelectContent>
             </Select>
             <p className="text-xs text-slate-400">
-              {mode === "rate_collection" ? "Form penawaran umum — vendor isi rate tanpa konteks order spesifik." : "Form terkait order — vendor isi penawaran untuk order/item tertentu."}
+              {mode === "rate_collection"
+                ? "Form penawaran umum — vendor isi rate tanpa konteks order spesifik."
+                : "Form terkait order — vendor isi penawaran untuk order/item tertentu. Link lama untuk order yang sama akan dinonaktifkan otomatis."}
             </p>
           </div>
 

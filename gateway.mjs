@@ -30,7 +30,7 @@ const BASE_DELAY    = Number(process.env.GW_BASE_DELAY    ?? 200);
 
 const RETRYABLE_CODES = new Set(["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENOTFOUND"]);
 
-const API_PORT = 8080;
+const API_PORT = 18444;
 
 const ROUTES = [
   { prefix: "/api",          upstream: { host: "localhost", port: API_PORT } },
@@ -42,7 +42,7 @@ const ROUTES = [
 const DEFAULT_UPSTREAM = { host: "localhost", port: 3001 };
 
 const SERVICE_NAMES = {
-  8080:  "API Server",
+  18444: "API Server",
   3000:  "BizPortal",
   3001:  "Customer Portal",
   3002:  "Sport Center",
@@ -226,7 +226,7 @@ async function startGateway() {
       });
       srv.listen(PORT, "0.0.0.0", () => {
         console.log(`Gateway listening on port ${PORT}`);
-        console.log(`  /api/*          → :8080 (API Server)`);
+        console.log(`  /api/*          → :${API_PORT} (API Server)`);
         console.log(`  /bizportal/*    → :18442 (BizPortal)`);
         console.log(`  /sport-center/* → :3002 (Sport Center)`);
         console.log(`  /*              → :3001 (Customer Portal)`);

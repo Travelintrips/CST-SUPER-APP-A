@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from "express";
-import { eq, desc, inArray, and, count } from "drizzle-orm";
+import { eq, desc, inArray, and, count, isNull, ne } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import { db } from "@workspace/db";
 import {
@@ -910,6 +910,27 @@ vendorMiniFormRouter.post("/admin/links", async (req: Request, res: Response) =>
     const expiresAt = expiresInDays ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000) : null;
     const userId = (req.user as { id: string } | undefined)?.id ?? null;
 
+    // Auto-deactivate existing active links for the same order (order_based mode only)
+    let deactivatedCount = 0;
+    if ((mode ?? "rate_collection") === "order_based" && orderId) {
+      const conditions = [
+        eq(vendorMiniFormLinksTable.orderId, orderId),
+        eq(vendorMiniFormLinksTable.isActive, true),
+      ];
+      if (orderItemId) conditions.push(eq(vendorMiniFormLinksTable.orderItemId, orderItemId));
+      const deactivated = await db
+        .update(vendorMiniFormLinksTable)
+        .set({ isActive: false })
+        .where(and(...conditions))
+        .returning({ id: vendorMiniFormLinksTable.id });
+      deactivatedCount = deactivated.length;
+      if (deactivatedCount > 0) {
+        await logActivity("link", 0, "bulk_deactivated", userId,
+          `${deactivatedCount} link lama dinonaktifkan otomatis saat membuat link baru untuk order ${orderNumber ?? orderId}`,
+          { orderId, orderItemId, deactivatedIds: deactivated.map(d => d.id) });
+      }
+    }
+
     const [link] = await db.insert(vendorMiniFormLinksTable).values({
       token, supplierId: supplierId ?? null, serviceType,
       title: title ?? null, notes: notes ?? null,
@@ -928,7 +949,7 @@ vendorMiniFormRouter.post("/admin/links", async (req: Request, res: Response) =>
       `Link dibuat untuk ${serviceType} (mode: ${mode ?? "rate_collection"})`,
       { serviceType, orderId, orderNumber, mode });
 
-    return res.status(201).json({ ...link, expiresAt: link.expiresAt?.toISOString() ?? null, createdAt: link.createdAt.toISOString() });
+    return res.status(201).json({ ...link, expiresAt: link.expiresAt?.toISOString() ?? null, createdAt: link.createdAt.toISOString(), deactivatedCount });
   } catch (err) {
     req.log?.error({ err }, "vendor-mini-form admin POST links error");
     return res.status(500).json({ error: "Gagal membuat link" });
