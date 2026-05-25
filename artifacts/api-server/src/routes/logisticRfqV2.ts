@@ -426,12 +426,23 @@ logisticRfqV2Router.get("/vendor-form/:token", async (req: Request, res: Respons
       .where(eq(rfqVendorLinksTable.id, link.id)).catch(() => {});
   }
 
-  const [rfq] = await db.select().from(logisticOrderRfqsTable)
-    .where(eq(logisticOrderRfqsTable.id, link.rfqId));
-  if (!rfq) return res.status(404).json({ message: "RFQ tidak ditemukan" });
+  // Use raw SQL to include freight_shipment_id (added via migration, not in Drizzle schema)
+  const rfqRows = await db.execute(sql`
+    SELECT *, freight_shipment_id FROM logistic_order_rfqs WHERE id = ${link.rfqId}
+  `);
+  const rfqRaw = rfqRows.rows?.[0] as Record<string, unknown> | undefined;
+  if (!rfqRaw) return res.status(404).json({ message: "RFQ tidak ditemukan" });
+
+  const rfqId = Number(rfqRaw.id);
+  const rfqNumber = String(rfqRaw.rfq_number ?? "");
+  const orderId = Number(rfqRaw.order_id);
+  const freightShipmentId: number | null = rfqRaw.freight_shipment_id
+    ? Number(rfqRaw.freight_shipment_id) : null;
+  const rfqResponseDeadline = rfqRaw.response_deadline
+    ? new Date(rfqRaw.response_deadline as string) : null;
 
   const [order] = await db.select().from(logisticOrdersTable)
-    .where(eq(logisticOrdersTable.id, rfq.orderId));
+    .where(eq(logisticOrdersTable.id, orderId));
   if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
 
   const [vendor] = await db.select({ name: suppliersTable.name })
@@ -444,20 +455,42 @@ logisticRfqV2Router.get("/vendor-form/:token", async (req: Request, res: Respons
     basicPrice = catalog[0] ? Number(catalog[0].priceBase) : null;
   }
 
+  // Fallback to freight shipment data when order fields are empty
+  let serviceType = order.shipmentType ?? "";
+  let origin = order.origin ?? "";
+  let destination = order.destination ?? "";
+  let commodity = order.commodity ?? null;
+  let cargoDescription = order.cargoDescription ?? null;
+  let grossWeight = order.grossWeight ? parseFloat(order.grossWeight) : null;
+  let volumeCbm = order.volumeCbm ? parseFloat(order.volumeCbm) : null;
+
+  if (freightShipmentId && (!origin || !destination || !serviceType)) {
+    const [shipment] = await db.select().from(freightShipmentsTable)
+      .where(eq(freightShipmentsTable.id, freightShipmentId));
+    if (shipment) {
+      if (!origin) origin = shipment.origin ?? "";
+      if (!destination) destination = shipment.destination ?? "";
+      if (!serviceType) serviceType = shipment.transportMode ?? shipment.cargoType ?? "Freight";
+      if (!commodity) commodity = shipment.commodity ?? null;
+      if (!cargoDescription) cargoDescription = shipment.packingType ?? null;
+      if (grossWeight == null && shipment.grossWeight) grossWeight = parseFloat(shipment.grossWeight);
+    }
+  }
+
   return res.json({
     linkId: link.id,
-    rfqNumber: rfq.rfqNumber,
+    rfqNumber,
     vendorName: vendor?.name ?? `Vendor #${link.vendorId}`,
-    serviceType: order.shipmentType ?? "",
-    origin: order.origin,
-    destination: order.destination,
-    commodity: order.commodity ?? null,
-    cargoDescription: order.cargoDescription ?? null,
-    grossWeight: order.grossWeight ? parseFloat(order.grossWeight) : null,
-    volumeCbm: order.volumeCbm ? parseFloat(order.volumeCbm) : null,
+    serviceType,
+    origin,
+    destination,
+    commodity,
+    cargoDescription,
+    grossWeight,
+    volumeCbm,
     requiredDate: order.requiredDate ?? null,
     basicPrice,
-    responseDeadline: link.expiredAt?.toISOString() ?? null,
+    responseDeadline: link.expiredAt?.toISOString() ?? rfqResponseDeadline?.toISOString() ?? null,
     alreadySubmitted: !!link.submittedAt,
     currentStatus: link.status,
     currentOfferedPrice: link.offeredPrice ? Number(link.offeredPrice) : null,
