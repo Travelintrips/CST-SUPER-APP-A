@@ -375,6 +375,7 @@ const DEFAULT_TPL = {
     vendor_submission: ["📩 *VENDOR SUBMIT — {{orderNumber}}*","━━━━━━━━━━━━━━━━━━","Vendor *{{vendorName}}* telah mengirim penawaran.","","Order: {{orderNumber}}","Service: {{serviceType}}","💰 Harga Vendor: {{vendorPrice}}","","Segera review dan kirim approval ke customer.","_{{timestamp}}_"].join("\n"),
     customer_approved: ["✅ *CUSTOMER APPROVED — {{orderNumber}}*","━━━━━━━━━━━━━━━━━━","Customer: *{{customerName}}*","Order: {{orderNumber}}","Status: DISETUJUI ✅","","Segera proses konfirmasi operasional ke vendor.","_{{timestamp}}_"].join("\n"),
     op_request: ["⚙️ *OP. REQUEST DIKIRIM — {{orderNumber}}*","","Form konfirmasi operasional telah dikirim ke vendor *{{vendorName}}*.","","No. Order : {{orderNumber}}","Customer  : {{customerName}}","Layanan   : {{serviceType}}","Route     : {{route}}","","{{#if trucking}}","Data yang diminta: Driver, No. Plat, Kendaraan.","{{/if}}","{{#if freight_sea}}","Data yang diminta: Vessel, Voyage, Container, BL.","{{/if}}","{{#if freight_air}}","Data yang diminta: Airline, AWB, Flight Number.","{{/if}}","{{#if ppjk}}","Data yang diminta: Nomor Aju, BC Type, SPPB.","{{/if}}","","🔗 Link Operasional: {{operationalFormLink}}","","_{{timestamp}}_"].join("\n"),
+    driver_assigned: ["🚚 *DRIVER DITUGASKAN — {{orderNumber}}*","","Driver untuk order *{{orderNumber}}* telah ditugaskan.","Customer : {{customerName}}","Layanan  : {{serviceType}}","","{{#if trucking}}","👤 Driver    : {{driverName}}","📞 HP        : {{driverPhone}}","🚛 Kendaraan : {{vehicleType}}","🔢 Plat      : {{plateNumber}}","{{/if}}","","Notifikasi sudah dikirim ke customer.","_{{timestamp}}_"].join("\n"),
     delivery_completed: ["🏁 *PENGIRIMAN SELESAI — {{orderNumber}}*","Customer: {{customerName}}","Rute: {{route}}","_{{timestamp}}_"].join("\n"),
   },
   admin_group: {
@@ -382,6 +383,7 @@ const DEFAULT_TPL = {
     vendor_submission: ["📩 *VENDOR SUBMIT — {{orderNumber}}*","Vendor *{{vendorName}}* — Service: {{serviceType}}","💰 Harga: {{vendorPrice}}","","Segera review!","_{{timestamp}}_"].join("\n"),
     customer_approved: ["🎉 *CUSTOMER APPROVED — {{orderNumber}}*","Customer *{{customerName}}* menyetujui penawaran.","Proses operasional sekarang!","_{{timestamp}}_"].join("\n"),
     op_request: ["⚙️ *[OP. REQUEST] {{orderNumber}}*","Form operasional dikirim ke vendor *{{vendorName}}*.","Customer: {{customerName}} | Layanan: {{serviceType}}","Rute: {{route}}","_{{timestamp}}_"].join("\n"),
+    driver_assigned: ["🚚 *[DRIVER DITUGASKAN] {{orderNumber}}*","Customer: {{customerName}}","{{#if trucking}}","Driver: {{driverName}} | Plat: {{plateNumber}}","{{/if}}","_{{timestamp}}_"].join("\n"),
   },
   customer: {
     order_new: ["✅ *PESANAN ANDA DITERIMA*","━━━━━━━━━━━━━━━━━━","Halo *{{customerName}}*,","","Terima kasih telah mempercayakan pengiriman Anda kepada CST Logistics.","","No. Order       : *{{orderNumber}}*","Tanggal         : {{tanggal}}","Jam             : {{jam}}","Status          : Menunggu Penawaran Harga","Rute            : {{route}}","Kategori Barang : {{commodity}}","Berat           : {{grossWeightDisplay}}","Volume          : {{volumeDisplay}}","Layanan         :","{{serviceList}}","Tgl Butuh       : {{requiredDate}}","━━━━━━━━━━━━━━━━━━","Tim kami sedang memproses permintaan Anda dan akan segera mengirimkan *penawaran harga terbaik* untuk Anda.","","📞 Jakarta: (021) 6241234 | Tangerang: (021) 5591234","","_Dikirim: {{timestamp}}_"].join("\n"),
@@ -832,7 +834,7 @@ export async function sendOpRequestNotification(
   }
 }
 
-// ── Driver Assigned (notif customer saat driver ditugaskan) ───────────────────
+// ── Driver Assigned (notif customer + admin saat driver ditugaskan) ───────────
 export async function sendDriverAssignedNotification(
   order: LogisticOrderData,
   driverName: string,
@@ -840,10 +842,29 @@ export async function sendDriverAssignedNotification(
   plateNumber: string,
   vehicleType: string,
 ): Promise<void> {
-  if (!order.phone) return;
-  const tpl = await getWaTemplateConfig("customer", "driver_assigned", DEFAULT_TPL.customer.driver_assigned);
-  const msg = renderWf(tpl, order, { driverName, driverPhone, plateNumber, vehicleType });
-  sendWhatsApp(order.phone, msg).catch((e: unknown) => logger.error({ e }, "WA driver_assigned failed"));
+  const [custTpl, adminTpl, groupTpl, adminWa, adminGroupWa] = await Promise.all([
+    getWaTemplateConfig("customer", "driver_assigned", DEFAULT_TPL.customer.driver_assigned),
+    getWaTemplateConfig("admin_personal", "driver_assigned", DEFAULT_TPL.admin_personal.driver_assigned),
+    getWaTemplateConfig("admin_group", "driver_assigned", DEFAULT_TPL.admin_group.driver_assigned),
+    getAdminWa(),
+    getAdminGroupWa(),
+  ]);
+  const extras = { driverName, driverPhone, plateNumber, vehicleType };
+  if (order.phone) {
+    sendWhatsApp(order.phone, renderWf(custTpl, order, extras)).catch((e: unknown) =>
+      logger.error({ e }, "WA driver_assigned (customer) failed"),
+    );
+  }
+  if (adminWa) {
+    sendWhatsApp(adminWa, renderWf(adminTpl, order, extras)).catch((e: unknown) =>
+      logger.error({ e }, "WA driver_assigned (admin) failed"),
+    );
+  }
+  if (adminGroupWa) {
+    sendWhatsApp(adminGroupWa, renderWf(groupTpl, order, extras)).catch((e: unknown) =>
+      logger.error({ e }, "WA driver_assigned (group) failed"),
+    );
+  }
 }
 
 // ── Shipment Update (update status pengiriman ke customer) ────────────────────
