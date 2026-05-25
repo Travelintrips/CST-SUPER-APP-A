@@ -231,12 +231,16 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
             ))
         : [];
 
-      // Build set of vendor IDs whose catalog contains the order's commodity.
+      // Build sets: vendor dengan commodity match & vendor yang punya item apapun di etalase
       const commodityKeyword = (order.commodity ?? "").toLowerCase().trim();
       const vendorIdsWithCommodity = new Set<number>();
-      if (commodityKeyword) {
-        const kwParts = commodityKeyword.split(/\s+/).filter((k: string) => k.length > 2);
-        for (const item of catalogItems) {
+      const vendorIdsWithEtalase   = new Set<number>();
+
+      for (const item of catalogItems) {
+        vendorIdsWithEtalase.add(item.vendorId);
+
+        if (commodityKeyword) {
+          const kwParts = commodityKeyword.split(/\s+/).filter((k: string) => k.length > 2);
           const isTagged = item.isCommodityTag === true;
           const itemName = item.name.toLowerCase();
           const nameMatches = itemName.includes(commodityKeyword) ||
@@ -256,20 +260,23 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
         ...v,
         isMatching: isServiceMatch(v.serviceType),
         hasCommodityMatch: vendorIdsWithCommodity.has(v.id),
+        hasEtalase: vendorIdsWithEtalase.has(v.id),
       }));
 
       const commodityMatched = allWithFlag.filter((v) => v.hasCommodityMatch);
       const serviceMatched   = allWithFlag.filter((v) => v.isMatching && !v.hasCommodityMatch);
+      const etalaseVendors   = allWithFlag.filter((v) => v.hasEtalase);
 
       // ── Filter strategy ──────────────────────────────────────────────────
-      // 1. shipmentType ada + ada match → tampilkan yg match (service + commodity)
+      // 1. shipmentType ada + ada match → hanya vendor yg match (service + commodity)
       // 2. shipmentType ada + tak ada match → semua vendor berserviceType + warning
-      // 3. shipmentType kosong + commodity ada + ada match → hanya vendor dg commodity match
-      // 4. shipmentType kosong + commodity ada + tak ada match → vendor berserviceType + warning
-      // 5. shipmentType kosong + commodity kosong → vendor berserviceType + warning
+      // 3. shipmentType kosong + commodity ada + ada commodity match → hanya vendor dg commodity match
+      // 4. shipmentType kosong + commodity ada + tak ada match → vendor yg punya etalase apapun
+      // 5. shipmentType kosong + commodity kosong + ada etalase → hanya vendor yg punya etalase
+      // 6. shipmentType kosong + commodity kosong + tak ada etalase → vendor berserviceType (fallback)
       let vendors: typeof allWithFlag;
       let vendorFilterApplied = false;
-      let filterMode: "service" | "commodity" | "none" = "none";
+      let filterMode: "service" | "commodity" | "etalase" | "none" = "none";
 
       if (shipType) {
         const hasMatch = commodityMatched.length > 0 || serviceMatched.length > 0;
@@ -281,12 +288,17 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
           vendors = allWithFlag.filter((v) => !!(v.serviceType && v.serviceType.trim()));
         }
       } else if (commodityKeyword && commodityMatched.length > 0) {
-        // Order tanpa tipe layanan tapi punya commodity → filter by commodity match
+        // Ada commodity + ada vendor yg punya produk itu di etalase
         vendors = commodityMatched;
         vendorFilterApplied = true;
         filterMode = "commodity";
+      } else if (etalaseVendors.length > 0) {
+        // Tidak ada shipmentType → hanya tampilkan vendor yang punya etalase
+        vendors = etalaseVendors;
+        vendorFilterApplied = true;
+        filterMode = "etalase";
       } else {
-        // Tidak ada filter yang bisa diterapkan → tampilkan vendor yg punya serviceType
+        // Tidak ada vendor dengan etalase sama sekali → fallback ke vendor berserviceType
         vendors = allWithFlag.filter((v) => !!(v.serviceType && v.serviceType.trim()));
       }
 

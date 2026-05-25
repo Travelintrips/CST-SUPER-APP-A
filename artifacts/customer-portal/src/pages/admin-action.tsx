@@ -56,7 +56,7 @@ type BaseData = {
   order: OrderInfo;
 };
 
-type ReviewData = BaseData & { vendors: Vendor[]; rfqs: Rfq[]; vendorFilterApplied: boolean; filterMode: "service" | "commodity" | "none"; shipmentType: string; commodity: string | null };
+type ReviewData = BaseData & { vendors: Vendor[]; rfqs: Rfq[]; vendorFilterApplied: boolean; filterMode: "service" | "commodity" | "etalase" | "none"; shipmentType: string; commodity: string | null };
 type CompareData = BaseData & { rfq: Rfq; vendors: VendorRow[] };
 type ForwardData = BaseData & {
   rfq: Rfq | null;
@@ -262,21 +262,27 @@ function ReviewOrderView({ token, data }: { token: string; data: ReviewData }) {
           </div>
 
           {/* Kasus: shipmentType ada, tidak ada vendor yg cocok */}
-          {hasServiceType && !data.vendorFilterApplied && filterMode !== "commodity" && (
+          {hasServiceType && !data.vendorFilterApplied && (
             <div className="mb-3 px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-500">
               ℹ️ Tidak ada vendor yang cocok dengan "<strong>{data.shipmentType}</strong>" — menampilkan semua vendor aktif.
             </div>
           )}
-          {/* Kasus: shipmentType kosong, ada commodity, tidak ada vendor yg punya produk itu di etalase */}
-          {!hasServiceType && hasCommodity && filterMode !== "commodity" && (
-            <div className="mb-3 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-700">
-              ⚠️ Tidak ada vendor dengan "<strong>{data.commodity}</strong>" di etalase — menampilkan vendor yang memiliki tipe layanan.
+          {/* Kasus: shipmentType kosong, ada commodity, ada vendor etalase match */}
+          {filterMode === "commodity" && (
+            <div className="mb-3 px-3 py-2 rounded-lg bg-green-50 border border-green-200 text-xs text-green-700">
+              ✅ Menampilkan vendor yang menjual "<strong>{data.commodity}</strong>" di etalase.
             </div>
           )}
-          {/* Kasus: tidak ada shipmentType, tidak ada commodity */}
-          {!hasServiceType && !hasCommodity && (
+          {/* Kasus: shipmentType kosong, menampilkan hanya vendor yg punya etalase */}
+          {filterMode === "etalase" && (
+            <div className="mb-3 px-3 py-2 rounded-lg bg-blue-50 border border-blue-200 text-xs text-blue-700">
+              🛍️ Order produk — menampilkan vendor yang memiliki katalog produk/etalase.
+            </div>
+          )}
+          {/* Kasus: tidak ada etalase sama sekali, fallback ke serviceType */}
+          {!hasServiceType && !data.vendorFilterApplied && filterMode === "none" && (
             <div className="mb-3 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-700">
-              ⚠️ Tipe layanan dan komoditi order belum diisi — menampilkan vendor berdasarkan tipe layanan terdaftar.
+              ⚠️ Belum ada vendor dengan etalase produk — menampilkan vendor berdasarkan tipe layanan terdaftar.
             </div>
           )}
 
