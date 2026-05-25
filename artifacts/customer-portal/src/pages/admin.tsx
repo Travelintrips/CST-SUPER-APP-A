@@ -1868,6 +1868,7 @@ const MINI_FORM_SERVICE_META: Record<string, { label: string; emoji: string }> =
   customer_quote: { label: "Permintaan Penawaran Harga", emoji: "💼" },
   customer_document: { label: "Pengiriman Dokumen", emoji: "📋" },
   customer_complaint: { label: "Keluhan / Klaim", emoji: "⚠️" },
+  customer_product: { label: "Pemesanan Produk", emoji: "🛒" },
   // Admin / Internal schemas
   admin_checklist: { label: "Checklist Proses", emoji: "✅" },
   admin_handover: { label: "Serah Terima Pekerjaan", emoji: "🤝" },

@@ -311,6 +311,21 @@ export const SERVICE_SCHEMAS: Record<string, {
       { key: "expected_resolution", label: "Penyelesaian yang Diharapkan", type: "textarea", section: "quotation" },
     ],
   },
+  customer_product: {
+    label: "Pemesanan Produk", emoji: "🛒",
+    fields: [
+      { key: "product_name", label: "Nama / Jenis Produk", type: "text", required: true, section: "quotation", placeholder: "Contoh: Green Bean Arabica Grade 1" },
+      { key: "brand_spec", label: "Brand / Spesifikasi", type: "text", section: "quotation", placeholder: "Contoh: Grade A, moisture max 12%" },
+      { key: "qty", label: "Jumlah yang Dipesan", type: "number", required: true, section: "quotation" },
+      { key: "unit", label: "Satuan", type: "select", required: true, options: ["pcs", "kg", "ton", "box", "karton", "sak", "lusin", "unit", "lainnya"], section: "quotation" },
+      { key: "target_price", label: "Target Harga (Rp)", type: "number", section: "quotation", placeholder: "Kosongkan jika tidak ada target" },
+      { key: "currency", label: "Mata Uang", type: "select", options: ["IDR", "USD", "SGD", "EUR"], section: "quotation" },
+      { key: "delivery_address", label: "Alamat Pengiriman", type: "textarea", required: true, section: "quotation" },
+      { key: "preferred_delivery_date", label: "Tanggal Pengiriman yang Diinginkan", type: "date", section: "quotation" },
+      { key: "payment_terms", label: "Cara Pembayaran", type: "select", options: ["Cash", "Transfer 50% DP", "Transfer Lunas", "Credit 30 hari", "Credit 45 hari", "Lainnya"], section: "quotation" },
+      { key: "notes", label: "Catatan Tambahan", type: "textarea", section: "quotation", placeholder: "Persyaratan khusus, kemasan, dokumen, dll." },
+    ],
+  },
 
   // ── Admin / Internal schemas ────────────────────────────────────────────────
   admin_checklist: {
