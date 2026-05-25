@@ -21,6 +21,7 @@ import { ObjectStorageService } from "../lib/objectStorage.js";
 import {
   sendVendorRequestNotification,
   sendVendorSubmissionNotification,
+  sendVendorRevisionNotification,
   sendCustomerApprovalNotification,
   type LogisticOrderData,
 } from "../lib/orderNotification.js";
@@ -1067,17 +1068,26 @@ logisticRfqV2Router.post("/rfq/:rfqId/vendor-link/:linkId/action", async (req: R
   }
 
   if (action === "request_revision") {
-    if (vendor?.phone && actionMsg) {
-      const [rfq] = await db.select({ rfqNumber: logisticOrderRfqsTable.rfqNumber })
+    if (vendor?.phone) {
+      const [rfq] = await db.select({ rfqNumber: logisticOrderRfqsTable.rfqNumber, orderId: logisticOrderRfqsTable.orderId })
         .from(logisticOrderRfqsTable).where(eq(logisticOrderRfqsTable.id, rfqId));
       const formUrl = getVendorFormUrl(link.token);
-      const waMsg =
-        `📝 *Permintaan Revisi Penawaran*\n\n` +
-        `RFQ: ${rfq?.rfqNumber ?? ""}\n` +
-        `Vendor: ${vendorName}\n\n` +
-        `Catatan Admin: ${actionMsg}\n\n` +
-        `Silakan perbarui penawaran:\n${formUrl}`;
-      sendWhatsApp(vendor.phone, waMsg).catch(() => {});
+      const currentPrice = link.offeredPrice ?? link.basicPrice;
+      const [order] = rfq?.orderId
+        ? await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, rfq.orderId))
+        : [];
+      if (order) {
+        sendVendorRevisionNotification(
+          buildOrderData(order),
+          vendorName,
+          vendor.phone,
+          currentPrice ? fmtRp(currentPrice) : "-",
+          formUrl,
+        ).catch(() => {});
+      } else if (actionMsg) {
+        // Fallback jika order tidak ditemukan
+        sendWhatsApp(vendor.phone, `📝 *Permintaan Revisi Penawaran*\n\nRFQ: ${rfq?.rfqNumber ?? ""}\nVendor: ${vendorName}\n\nCatatan Admin: ${actionMsg}\n\nSilakan perbarui penawaran:\n${formUrl}`).catch(() => {});
+      }
     }
     await logActivity(rfqId, "admin", "Admin", "admin_request_revision",
       `Admin minta revisi dari ${vendorName}: ${actionMsg ?? ""}`);
