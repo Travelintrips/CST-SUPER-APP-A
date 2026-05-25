@@ -907,13 +907,18 @@ function WaTemplatesCard() {
                   </div>
 
                   {/* Template textarea */}
-                  <Textarea
-                    className="font-mono text-xs min-h-[320px] resize-y"
-                    value={templates[key]}
-                    onChange={(e) => setTemplates((prev) => ({ ...prev, [key]: e.target.value }))}
-                    placeholder="Tulis template pesan WA di sini…"
-                    spellCheck={false}
-                  />
+                  <div className="space-y-1.5">
+                    <p className="text-xs font-medium text-foreground flex items-center gap-1">
+                      ✏️ Edit teks template di bawah ini <span className="text-muted-foreground font-normal">(klik lalu ketik)</span>
+                    </p>
+                    <Textarea
+                      className="font-mono text-xs min-h-[320px] resize-y border-primary/40 focus:border-primary"
+                      value={templates[key]}
+                      onChange={(e) => setTemplates((prev) => ({ ...prev, [key]: e.target.value }))}
+                      placeholder="Tulis template pesan WA di sini…"
+                      spellCheck={false}
+                    />
+                  </div>
 
                   {/* Preview: highlight {{vars}} */}
                   <div className="space-y-2">
