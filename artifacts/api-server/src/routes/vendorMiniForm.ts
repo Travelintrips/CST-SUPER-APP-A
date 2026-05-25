@@ -24,8 +24,40 @@ import {
   sendCustomerApprovedNotification,
   sendSoCreatedNotification,
   sendOpRequestNotification,
+  sendVendorRequestNotification,
+  sendCustomerApprovalNotification,
+  sendVendorRevisionNotification,
+  sendVendorSubmissionNotification,
   type LogisticOrderData,
 } from "../lib/orderNotification.js";
+
+function buildOrderDataFromRow(row: typeof logisticOrdersTable.$inferSelect): LogisticOrderData {
+  return {
+    id: row.id,
+    orderNumber: row.orderNumber,
+    customerName: row.customerName,
+    companyName: row.companyName ?? "",
+    email: row.email,
+    phone: row.phone,
+    orderType: row.orderType ?? undefined,
+    shipmentType: row.shipmentType,
+    origin: row.origin,
+    destination: row.destination,
+    commodity: row.commodity ?? null,
+    cargoDescription: row.cargoDescription ?? null,
+    grossWeight: row.grossWeight ? Number(row.grossWeight) : null,
+    volumeCbm: row.volumeCbm ? Number(row.volumeCbm) : null,
+    jumlahKoli: row.jumlahKoli ?? null,
+    grandTotal: row.grandTotal ? Number(row.grandTotal) : 0,
+    serviceList: row.shipmentType,
+    requiredDate: row.requiredDate ?? null,
+    notes: row.notes ?? null,
+    jamOrder: row.jamOrder ?? null,
+    vehicleType: row.truckType ?? null,
+    createdAt: row.createdAt ?? null,
+    publicRfqToken: row.publicRfqToken ?? null,
+  };
+}
 
 const PUBLIC_CACHE = "public, max-age=300, stale-while-revalidate=600";
 
@@ -776,54 +808,56 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
     }
 
     // WA Summary to admin (especially useful for order-based: show all competing offers)
-    getAdminWa().then(async (adminWa) => {
-      if (!adminWa) return;
+    (() => {
       const priceStr = vendorPrice ? `${currency ?? "IDR"} ${Number(vendorPrice).toLocaleString("id-ID")}` : "-";
 
-      if (link.mode === "order_based" && link.orderNumber) {
-        // Gather all existing submissions for this link for summary
-        const allSubs = await db
-          .select({ vendorName: vendorMiniFormSubmissionsTable.vendorName, vendorPrice: vendorMiniFormSubmissionsTable.vendorPrice, currency: vendorMiniFormSubmissionsTable.currency, eta: vendorMiniFormSubmissionsTable.eta })
-          .from(vendorMiniFormSubmissionsTable)
-          .where(eq(vendorMiniFormSubmissionsTable.linkId, link.id))
-          .orderBy(desc(vendorMiniFormSubmissionsTable.submittedAt));
-
-        const { getPreferredDomain } = await import("../lib/domain.js");
-        const domain = getPreferredDomain();
-        const adminReviewLink = domain ? `https://${domain}/bizportal/purchase/vendor-forms` : "/bizportal/purchase/vendor-forms";
-
-        const lines = allSubs.map((s, i) => {
-          const p = s.vendorPrice ? `${s.currency ?? "IDR"} ${Number(s.vendorPrice).toLocaleString("id-ID")}` : "-";
-          const etaStr = s.eta ? ` - ETA ${s.eta}` : "";
-          return `${i + 1}. *${s.vendorName ?? "Vendor"}* - ${p}${etaStr}`;
-        });
-
-        const msgAdmin =
-          `📊 *Update Penawaran Vendor untuk Order #${link.orderNumber}*\n` +
-          `${lines.join("\n")}\n\n` +
-          `Review: ${adminReviewLink}`;
-        sendWhatsApp(adminWa, msgAdmin, {
-          context: "vendor-mini-form-summary",
-          refType: "vendor_mini_form_link",
-          refId: String(link.id),
+      if (link.mode === "order_based" && link.orderId) {
+        // Pakai template sendVendorSubmissionNotification
+        db.select().from(logisticOrdersTable)
+          .where(eq(logisticOrdersTable.id, link.orderId))
+          .limit(1)
+          .then(([orderRow]) => {
+            if (!orderRow) return;
+            sendVendorSubmissionNotification(buildOrderDataFromRow(orderRow), vendorLabel, priceStr).catch(() => {});
+          }).catch(() => {});
+      } else if (link.mode === "order_based" && link.orderNumber) {
+        // order_based tanpa orderId — fallback ke summary hardcoded
+        getAdminWa().then(async (adminWa) => {
+          if (!adminWa) return;
+          const allSubs = await db
+            .select({ vendorName: vendorMiniFormSubmissionsTable.vendorName, vendorPrice: vendorMiniFormSubmissionsTable.vendorPrice, currency: vendorMiniFormSubmissionsTable.currency, eta: vendorMiniFormSubmissionsTable.eta })
+            .from(vendorMiniFormSubmissionsTable)
+            .where(eq(vendorMiniFormSubmissionsTable.linkId, link.id))
+            .orderBy(desc(vendorMiniFormSubmissionsTable.submittedAt));
+          const { getPreferredDomain } = await import("../lib/domain.js");
+          const domain = getPreferredDomain();
+          const adminReviewLink = domain ? `https://${domain}/bizportal/purchase/vendor-forms` : "/bizportal/purchase/vendor-forms";
+          const lines = allSubs.map((s, i) => {
+            const p = s.vendorPrice ? `${s.currency ?? "IDR"} ${Number(s.vendorPrice).toLocaleString("id-ID")}` : "-";
+            return `${i + 1}. *${s.vendorName ?? "Vendor"}* - ${p}${s.eta ? ` - ETA ${s.eta}` : ""}`;
+          });
+          sendWhatsApp(adminWa, `📊 *Update Penawaran Vendor untuk Order #${link.orderNumber}*\n${lines.join("\n")}\n\nReview: ${adminReviewLink}`, {
+            context: "vendor-mini-form-summary", refType: "vendor_mini_form_link", refId: String(link.id),
+          }).catch(() => {});
         }).catch(() => {});
       } else {
-        // Simple notification for rate_collection
-        const msgAdmin =
-          `📋 *Submission Form Vendor*\n` +
-          `Vendor: *${vendorLabel}*\n` +
-          `PIC: ${picLabel} · ${contactPhone?.trim() || "-"}\n` +
-          (link.orderNumber ? `Order: ${link.orderNumber}\n` : "") +
-          `Service: ${SERVICE_SCHEMAS[link.serviceType]?.label ?? link.serviceType}\n` +
-          `Harga: ${priceStr}\n` +
-          (isRevision ? `Status: *REVISI* (Rev-${(submission as { revisionCount?: number }).revisionCount ?? 1})` : `Status: ${responseStatus ?? "submitted"}`);
-        sendWhatsApp(adminWa, msgAdmin, {
-          context: "vendor-mini-form-admin-notif",
-          refType: "vendor_mini_form",
-          refId: token,
+        // rate_collection / no order — hardcoded
+        getAdminWa().then((adminWa) => {
+          if (!adminWa) return;
+          const msgAdmin =
+            `📋 *Submission Form Vendor*\n` +
+            `Vendor: *${vendorLabel}*\n` +
+            `PIC: ${picLabel} · ${contactPhone?.trim() || "-"}\n` +
+            (link.orderNumber ? `Order: ${link.orderNumber}\n` : "") +
+            `Service: ${SERVICE_SCHEMAS[link.serviceType]?.label ?? link.serviceType}\n` +
+            `Harga: ${priceStr}\n` +
+            (isRevision ? `Status: *REVISI* (Rev-${(submission as { revisionCount?: number }).revisionCount ?? 1})` : `Status: ${responseStatus ?? "submitted"}`);
+          sendWhatsApp(adminWa, msgAdmin, {
+            context: "vendor-mini-form-admin-notif", refType: "vendor_mini_form", refId: token,
+          }).catch(() => {});
         }).catch(() => {});
       }
-    }).catch(() => {});
+    })();
 
     return res.json({ success: true, submissionId: submission.id, message: "Penawaran berhasil dikirim, terima kasih!" });
   } catch (err: unknown) {
@@ -1388,15 +1422,35 @@ vendorMiniFormRouter.post("/admin/submissions/:id/request-revision", async (req:
         const { getPreferredDomain } = await import("../lib/domain.js");
         const domain = getPreferredDomain();
         const formUrl = linkRow.shortUrl ?? (domain ? `https://${domain}/vendor-mini-form/${linkRow.token}` : `/vendor-mini-form/${linkRow.token}`);
-        const msg = `Halo *${sub.vendorName ?? "Vendor"}*, kami mohon revisi harga penawaran Anda` +
-          (linkRow.orderNumber ? ` untuk Order *${linkRow.orderNumber}*` : "") +
-          (reason ? `.\n\nAlasan: ${reason}` : "") +
-          `.\n\nSilakan update penawaran melalui:\n${formUrl}`;
-        sendWhatsApp(sub.contactPhone, msg, {
-          context: "revision-request",
-          refType: "vendor_mini_form",
-          refId: String(sub.linkId ?? sub.id),
-        }).catch(() => {});
+
+        if (linkRow.orderId) {
+          // Pakai template vendor_revision
+          const [orderRow] = await db.select().from(logisticOrdersTable)
+            .where(eq(logisticOrdersTable.id, linkRow.orderId)).limit(1);
+          if (orderRow) {
+            const currentPrice = sub.vendorPrice
+              ? `${sub.currency ?? "IDR"} ${Number(sub.vendorPrice).toLocaleString("id-ID")}`
+              : "-";
+            sendVendorRevisionNotification(
+              buildOrderDataFromRow(orderRow),
+              sub.vendorName ?? "Vendor",
+              sub.contactPhone,
+              currentPrice,
+              formUrl,
+            ).catch(() => {});
+          }
+        } else {
+          // Fallback hardcoded
+          const msg = `Halo *${sub.vendorName ?? "Vendor"}*, kami mohon revisi harga penawaran Anda` +
+            (linkRow.orderNumber ? ` untuk Order *${linkRow.orderNumber}*` : "") +
+            (reason ? `.\n\nAlasan: ${reason}` : "") +
+            `.\n\nSilakan update penawaran melalui:\n${formUrl}`;
+          sendWhatsApp(sub.contactPhone, msg, {
+            context: "revision-request",
+            refType: "vendor_mini_form",
+            refId: String(sub.linkId ?? sub.id),
+          }).catch(() => {});
+        }
       }
     }
 
@@ -1740,6 +1794,19 @@ vendorMiniFormRouter.post("/admin/links/:id/send-wa", async (req: Request, res: 
     const domain = getPreferredDomain();
     const formUrl = link.shortUrl ?? (domain ? `https://${domain}/vendor-mini-form/${link.token}` : `/vendor-mini-form/${link.token}`);
     const svcLabel = SERVICE_SCHEMAS[link.serviceType]?.label ?? link.serviceType;
+
+    if (!customMessage?.trim() && link.orderId && link.vendorName) {
+      // Pakai template vendor_request
+      const [orderRow] = await db.select().from(logisticOrdersTable)
+        .where(eq(logisticOrdersTable.id, link.orderId)).limit(1);
+      if (orderRow) {
+        await sendVendorRequestNotification(buildOrderDataFromRow(orderRow), link.vendorName, phone.trim(), formUrl);
+        await logActivity("link", id, "sent_wa", (req.user as { id: string } | undefined)?.id ?? "admin", `WA dikirim ke ${phone}`, { phone });
+        return res.json({ success: true, message: "Pesan WA berhasil dikirim" });
+      }
+    }
+
+    // Fallback: customMessage atau tidak ada order
     const msg = customMessage?.trim() ||
       `Halo${link.vendorName ? ` *${link.vendorName}*` : ""}, kami mohon bantuannya untuk mengisi penawaran layanan *${svcLabel}*` +
       (link.orderNumber ? ` untuk order *${link.orderNumber}*` : "") +
@@ -1776,6 +1843,20 @@ vendorMiniFormRouter.post("/admin/customer-approvals/:id/send-wa", async (req: R
     const domain = getPreferredDomain();
     const approvalUrl = domain ? `https://${domain}/customer-approval/${approval.token}` : `/customer-approval/${approval.token}`;
     const priceStr = approval.sellingPrice ? `${approval.currency ?? "IDR"} ${Number(approval.sellingPrice).toLocaleString("id-ID")}` : "-";
+
+    if (!customMessage?.trim() && approval.orderId) {
+      // Pakai template customer_approval
+      const [orderRow] = await db.select().from(logisticOrdersTable)
+        .where(eq(logisticOrdersTable.id, approval.orderId)).limit(1);
+      if (orderRow) {
+        await sendCustomerApprovalNotification(buildOrderDataFromRow(orderRow), priceStr, approvalUrl);
+        await logActivity("customer_approval", id, "sent_wa", (req.user as { id: string } | undefined)?.id ?? "admin",
+          `WA penawaran dikirim ke customer ${approval.customerName ?? "-"}`, { phone: target });
+        return res.json({ success: true, message: "Pesan WA ke customer berhasil dikirim" });
+      }
+    }
+
+    // Fallback: customMessage atau tidak ada order
     const msg = customMessage?.trim() ||
       `Halo${approval.customerName ? ` *${approval.customerName}*` : ""}, berikut penawaran kami untuk request Anda.\n\n` +
       (approval.orderNumber ? `Order Ref: *${approval.orderNumber}*\n` : "") +
