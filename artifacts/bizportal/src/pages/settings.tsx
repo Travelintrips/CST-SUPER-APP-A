@@ -857,6 +857,16 @@ const DEFAULT_BODY: Partial<Record<RecipientKey, Partial<Record<WorkflowKey, str
       "Mohon follow up vendor dan cek status penawaran melalui link admin:","{{adminActionUrl}}",
     ].join("\n"),
     vendor_submission: ["📩 *VENDOR SUBMIT — {{orderNumber}}*","━━━━━━━━━━━━━━━━━━","Vendor *{{vendorName}}* telah mengirim penawaran.","","Order: {{orderNumber}}","Service: {{serviceType}}","💰 Harga Vendor: {{vendorPrice}}","","Segera review dan kirim approval ke customer.","_{{timestamp}}_"].join("\n"),
+    op_request: [
+      "⚙️ *OP. REQUEST DIKIRIM — {{orderNumber}}*","",
+      "Form konfirmasi operasional telah dikirim ke vendor *{{vendorName}}*.","",
+      "No. Order : {{orderNumber}}","Customer  : {{customerName}}","Layanan   : {{serviceType}}","Route     : {{route}}","",
+      "{{#if trucking}}","Data yang diminta: Driver, No. Plat, Kendaraan.","{{/if}}",
+      "{{#if freight_sea}}","Data yang diminta: Vessel, Voyage, Container, BL.","{{/if}}",
+      "{{#if freight_air}}","Data yang diminta: Airline, AWB, Flight Number.","{{/if}}",
+      "{{#if ppjk}}","Data yang diminta: Nomor Aju, BC Type, SPPB.","{{/if}}","",
+      "🔗 Link Operasional: {{operationalFormLink}}","","_{{timestamp}}_",
+    ].join("\n"),
     customer_approved: [
       "✅ *CUSTOMER APPROVED*","",
       "No. Order : {{orderNumber}}","Customer  : {{customerName}}","Layanan   : {{serviceType}}",
