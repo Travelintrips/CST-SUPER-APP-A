@@ -1369,6 +1369,8 @@ export default function VendorFormsPage() {
   const [compareOpen, setCompareOpen] = useState(false);
   const [searchLinks, setSearchLinks] = useState("");
   const [filterMode, setFilterMode] = useState("all");
+  const [approvalSearch, setApprovalSearch] = useState("");
+  const [approvalStatusFilter, setApprovalStatusFilter] = useState("all");
 
   // ── Queries ──
   const { data: links = [], isLoading: linksLoading } = useQuery<FormLink[]>({
@@ -1386,6 +1388,20 @@ export default function VendorFormsPage() {
     queryFn: () => apiFetch<CustomerApproval[]>("/api/vendor-form/admin/customer-approvals"),
     refetchInterval: 30_000,
   });
+  const filteredApprovals = useMemo(() => {
+    const q = approvalSearch.trim().toLowerCase();
+    return approvals.filter(a => {
+      if (approvalStatusFilter !== "all" && a.status !== approvalStatusFilter) return false;
+      if (!q) return true;
+      return (
+        a.customerName?.toLowerCase().includes(q) ||
+        a.orderNumber?.toLowerCase().includes(q) ||
+        a.customerPhone?.toLowerCase().includes(q) ||
+        a.soNumber?.toLowerCase().includes(q)
+      );
+    });
+  }, [approvals, approvalSearch, approvalStatusFilter]);
+
   const approvalStats = useMemo(() => {
     const approved = approvals.filter(a => a.status === "approved");
     const totalRevenue = approved.reduce((s, a) => s + Number(a.sellingPrice ?? 0), 0);
@@ -1796,6 +1812,34 @@ export default function VendorFormsPage() {
               </div>
             )}
 
+            {/* ── Filter Bar ── */}
+            {!approvalsLoading && (
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Input
+                  placeholder="Cari nama customer, no. order, no. SO..."
+                  value={approvalSearch}
+                  onChange={e => setApprovalSearch(e.target.value)}
+                  className="sm:max-w-xs h-8 text-sm"
+                />
+                <div className="flex gap-1.5 flex-wrap">
+                  {(["all","pending","approved","rejected"] as const).map(s => (
+                    <Button
+                      key={s}
+                      size="sm"
+                      variant={approvalStatusFilter === s ? "default" : "outline"}
+                      className="h-8 text-xs capitalize"
+                      onClick={() => setApprovalStatusFilter(s)}
+                    >
+                      {s === "all" ? "Semua" : s === "pending" ? "Pending" : s === "approved" ? "Disetujui" : "Ditolak"}
+                      <span className="ml-1 opacity-60">
+                        ({s === "all" ? approvals.length : approvals.filter(a => a.status === s).length})
+                      </span>
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {approvalsLoading ? (
               <div className="flex items-center justify-center py-12 text-slate-400"><Loader2 className="h-5 w-5 animate-spin mr-2" />Memuat...</div>
             ) : (
@@ -1815,11 +1859,15 @@ export default function VendorFormsPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {approvals.length === 0 ? (
+                      {filteredApprovals.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={8} className="text-center py-10 text-slate-400 text-sm">Belum ada link approval. Klik "Buat Link Approval Customer" untuk memulai.</TableCell>
+                          <TableCell colSpan={8} className="text-center py-10 text-slate-400 text-sm">
+                            {approvals.length === 0
+                              ? "Belum ada link approval. Klik \"Buat Link Approval Customer\" untuk memulai."
+                              : "Tidak ada data yang cocok dengan filter."}
+                          </TableCell>
                         </TableRow>
-                      ) : approvals.map(a => {
+                      ) : filteredApprovals.map(a => {
                         const sell = Number(a.sellingPrice ?? 0);
                         const cost = Number(a.vendorCost ?? 0);
                         const margin = sell - cost;
