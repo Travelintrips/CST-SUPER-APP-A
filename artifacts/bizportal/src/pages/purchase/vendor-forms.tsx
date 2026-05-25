@@ -1386,6 +1386,16 @@ export default function VendorFormsPage() {
     queryFn: () => apiFetch<CustomerApproval[]>("/api/vendor-form/admin/customer-approvals"),
     refetchInterval: 30_000,
   });
+  const approvalStats = useMemo(() => {
+    const approved = approvals.filter(a => a.status === "approved");
+    const totalRevenue = approved.reduce((s, a) => s + Number(a.sellingPrice ?? 0), 0);
+    const totalCost    = approved.reduce((s, a) => s + Number(a.vendorCost ?? 0), 0);
+    const totalProfit  = totalRevenue - totalCost;
+    const marginPct    = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : null;
+    const pending      = approvals.filter(a => a.status === "pending").length;
+    return { count: approved.length, pending, totalRevenue, totalCost, totalProfit, marginPct };
+  }, [approvals]);
+
   const { data: opConfirms = [], isLoading: opLoading } = useQuery<OpConfirm[]>({
     queryKey: ["vmf-op-confirms"],
     queryFn: () => apiFetch<OpConfirm[]>("/api/vendor-form/admin/op-confirms"),
@@ -1736,6 +1746,56 @@ export default function VendorFormsPage() {
             <div className="flex justify-end">
               <CreateApprovalDialog onCreated={() => queryClient.invalidateQueries({ queryKey: ["vmf-approvals"] })} />
             </div>
+
+            {/* ── Summary Cards ── */}
+            {!approvalsLoading && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <Card className="bg-indigo-50 border-indigo-200">
+                  <CardContent className="p-4">
+                    <p className="text-xs text-indigo-500 font-medium mb-1">Total Revenue</p>
+                    <p className="text-lg font-bold text-indigo-700">
+                      {approvalStats.totalRevenue.toLocaleString("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 })}
+                    </p>
+                    <p className="text-xs text-indigo-400 mt-0.5">{approvalStats.count} disetujui</p>
+                  </CardContent>
+                </Card>
+                <Card className="bg-slate-50 border-slate-200">
+                  <CardContent className="p-4">
+                    <p className="text-xs text-slate-500 font-medium mb-1">Total Biaya Vendor</p>
+                    <p className="text-lg font-bold text-slate-700">
+                      {approvalStats.totalCost.toLocaleString("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 })}
+                    </p>
+                    <p className="text-xs text-slate-400 mt-0.5">{approvalStats.pending} masih pending</p>
+                  </CardContent>
+                </Card>
+                <Card className={approvalStats.totalProfit >= 0 ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}>
+                  <CardContent className="p-4">
+                    <p className={`text-xs font-medium mb-1 ${approvalStats.totalProfit >= 0 ? "text-emerald-600" : "text-red-500"}`}>Total Profit</p>
+                    <p className={`text-lg font-bold flex items-center gap-1 ${approvalStats.totalProfit >= 0 ? "text-emerald-700" : "text-red-600"}`}>
+                      {approvalStats.totalProfit >= 0
+                        ? <TrendingUp className="h-4 w-4" />
+                        : <TrendingDown className="h-4 w-4" />}
+                      {Math.abs(approvalStats.totalProfit).toLocaleString("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 })}
+                    </p>
+                    <p className={`text-xs mt-0.5 ${approvalStats.totalProfit >= 0 ? "text-emerald-500" : "text-red-400"}`}>
+                      {approvalStats.marginPct !== null ? `Margin ${approvalStats.marginPct.toFixed(1)}%` : "Belum ada data biaya"}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card className="bg-amber-50 border-amber-200">
+                  <CardContent className="p-4">
+                    <p className="text-xs text-amber-600 font-medium mb-1">Rata-rata Margin</p>
+                    <p className="text-lg font-bold text-amber-700 flex items-center gap-1">
+                      {approvalStats.marginPct !== null
+                        ? <><BarChart2 className="h-4 w-4" />{approvalStats.marginPct.toFixed(1)}%</>
+                        : <><Minus className="h-4 w-4" />—</>}
+                    </p>
+                    <p className="text-xs text-amber-500 mt-0.5">dari {approvalStats.count} approval disetujui</p>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
             {approvalsLoading ? (
               <div className="flex items-center justify-center py-12 text-slate-400"><Loader2 className="h-5 w-5 animate-spin mr-2" />Memuat...</div>
             ) : (
