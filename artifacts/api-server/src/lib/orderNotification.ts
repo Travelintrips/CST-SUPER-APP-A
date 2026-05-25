@@ -1,4 +1,4 @@
-import { db, suppliersTable, vendorCatalogItemsTable } from "@workspace/db";
+import { db, suppliersTable, vendorCatalogItemsTable, portalContentTable } from "@workspace/db";
 import { eq, and, ilike } from "drizzle-orm";
 import { sendWhatsApp } from "./fonnte";
 import { getAdminWa, getAdminGroupWa } from "./adminWa";
@@ -81,6 +81,91 @@ function formatJamOrder(jam: string): string {
   return jam.replace(".", ":");
 }
 
+// ─── WA Template Engine ────────────────────────────────────────────────────────
+
+/**
+ * Render a {{variable}} template. Lines containing a variable whose value is
+ * empty/null are omitted from the output (optional-field pattern).
+ * Empty lines (no variables) are always kept.
+ */
+function renderTemplate(template: string, vars: Record<string, string | null | undefined>): string {
+  const lines = template.split("\n");
+  const result: string[] = [];
+  for (const line of lines) {
+    const matches = [...line.matchAll(/\{\{(\w+)\}\}/g)];
+    if (matches.length === 0) { result.push(line); continue; }
+    let skip = false;
+    let rendered = line;
+    for (const m of matches) {
+      const val = vars[m[1]];
+      if (val == null || val === "") { skip = true; break; }
+      rendered = rendered.replaceAll(`{{${m[1]}}}`, val);
+    }
+    if (!skip) result.push(rendered);
+  }
+  return result.join("\n");
+}
+
+function buildOrderVars(
+  order: LogisticOrderData,
+  extras: Record<string, string | null | undefined> = {},
+): Record<string, string | null | undefined> {
+  const tgl = order.createdAt ? formatTanggal(order.createdAt) : null;
+  const jam = order.jamOrder
+    ? formatJamOrder(order.jamOrder)
+    : order.createdAt ? formatJam(order.createdAt) : null;
+  return {
+    orderNumber: order.orderNumber,
+    tanggal: tgl,
+    jam,
+    customerName: order.customerName,
+    customerDisplay: order.customerName + (order.companyName ? ` (${order.companyName})` : ""),
+    companyName: order.companyName ?? null,
+    email: order.email,
+    phone: order.phone,
+    shipmentType: order.shipmentType,
+    route: `${order.origin} → ${order.destination}`,
+    origin: order.origin,
+    destination: order.destination,
+    commodity: order.commodity ?? null,
+    cargoDescription: order.cargoDescription ?? null,
+    grossWeightDisplay: order.grossWeight ? `${order.grossWeight} kg` : null,
+    volumeDisplay: order.volumeCbm ? `${order.volumeCbm} CBM` : null,
+    jumlahKoliDisplay: order.jumlahKoli ? `${order.jumlahKoli} koli` : null,
+    serviceList: order.serviceList,
+    totalEst: formatRupiah(order.grandTotal),
+    requiredDate: order.requiredDate ?? null,
+    notes: order.notes ?? null,
+    timestamp: nowWIB(),
+    ...extras,
+  };
+}
+
+// 5-minute in-memory cache for WA templates
+let _waTemplateCache: Record<string, string> | null = null;
+let _waTemplateCacheAt = 0;
+const WA_TEMPLATE_TTL = 5 * 60 * 1000;
+
+export function invalidateWaTemplateCache() {
+  _waTemplateCache = null;
+}
+
+async function getWaTemplates(): Promise<Record<string, string>> {
+  if (_waTemplateCache && Date.now() - _waTemplateCacheAt < WA_TEMPLATE_TTL) {
+    return _waTemplateCache;
+  }
+  try {
+    const { DEFAULT_WA_TEMPLATES } = await import("../routes/settings.js");
+    const [row] = await db.select().from(portalContentTable).where(eq(portalContentTable.key, "wa_templates"));
+    const stored: Record<string, string> = row ? JSON.parse(row.value) as Record<string, string> : {};
+    _waTemplateCache = { ...DEFAULT_WA_TEMPLATES, ...stored };
+    _waTemplateCacheAt = Date.now();
+    return _waTemplateCache;
+  } catch {
+    return {};
+  }
+}
+
 function getApproveFormUrl(orderNumber: string): string {
   const domain = getPreferredDomain();
   if (!domain) return "";
@@ -108,7 +193,15 @@ function isFreightWithDimensions(shipmentType: string): boolean {
   return t.includes("air") || t.includes("sea") || t.includes("laut") || t.includes("udara");
 }
 
-function buildAdminWaMessage(order: LogisticOrderData, adminActionShortUrl?: string): string {
+function buildAdminWaMessage(
+  order: LogisticOrderData,
+  adminActionShortUrl?: string,
+  templates?: Record<string, string>,
+): string {
+  const tpl = templates?.admin_personal;
+  if (tpl) {
+    return renderTemplate(tpl, buildOrderVars(order, { adminActionUrl: adminActionShortUrl ?? null }));
+  }
   const tgl = order.createdAt ? formatTanggal(order.createdAt) : "";
   const jam = order.jamOrder ?? (order.createdAt ? formatJam(order.createdAt) : "");
   return (
@@ -138,10 +231,18 @@ function buildAdminWaMessage(order: LogisticOrderData, adminActionShortUrl?: str
   );
 }
 
-function buildVendorWaMessage(order: LogisticOrderData, vendorName: string): string {
+function buildVendorWaMessage(
+  order: LogisticOrderData,
+  vendorName: string,
+  templates?: Record<string, string>,
+): string {
+  const responseUrl = getVendorResponseUrl(order.orderNumber);
+  const tpl = templates?.vendor;
+  if (tpl) {
+    return renderTemplate(tpl, buildOrderVars(order, { vendorName, responseUrl }));
+  }
   const tgl = order.createdAt ? formatTanggal(order.createdAt) : "";
   const jam = order.jamOrder ?? (order.createdAt ? formatJam(order.createdAt) : "");
-  const responseUrl = getVendorResponseUrl(order.orderNumber);
   return (
     `📦 *PERMINTAAN ORDER BARU — CST LOGISTICS*\n` +
     `━━━━━━━━━━━━━━━━━━━━\n` +
@@ -226,23 +327,28 @@ function getOrderUrl(orderId: number): string {
   return `https://${domain}/logistic/orders/${orderId}`;
 }
 
-function buildAdminGroupWaMessage(order: LogisticOrderData, adminActionShortUrl?: string): string {
+function buildAdminGroupWaMessage(
+  order: LogisticOrderData,
+  adminActionShortUrl?: string,
+  templates?: Record<string, string>,
+): string {
+  const domain = getPreferredDomain() || "cstlogistic.co.id";
+  const fallbackUrl = `https://${domain}/bizportal/logistics/orders/${order.id}`;
+  const actionUrl = adminActionShortUrl || fallbackUrl;
+
+  const tpl = templates?.admin_group;
+  if (tpl) {
+    return renderTemplate(tpl, buildOrderVars(order, { adminActionUrl: actionUrl }));
+  }
+
   const tgl = order.createdAt ? formatTanggal(order.createdAt) : nowWIB();
   const jam = order.jamOrder
     ? formatJamOrder(order.jamOrder)
-    : order.createdAt
-      ? formatJam(order.createdAt)
-      : "";
-
+    : order.createdAt ? formatJam(order.createdAt) : "";
   const weightLine = order.grossWeight ? `⚖️ Berat    : ${order.grossWeight.toLocaleString("id-ID")} kg\n` : "";
   const volumeLine = order.volumeCbm  ? `📐 Volume   : ${order.volumeCbm} CBM\n` : "";
   const reqDate    = order.requiredDate ? `📅 Tgl Kirim: ${formatISODate(order.requiredDate)}\n` : "";
   const notesLine  = order.notes ? `📝 Catatan  : ${order.notes}\n` : "";
-
-  // Fallback ke BizPortal jika admin action URL tidak tersedia
-  const domain = getPreferredDomain() || "cstlogistic.co.id";
-  const fallbackUrl = `https://${domain}/bizportal/logistics/orders/${order.id}`;
-  const actionUrl = adminActionShortUrl || fallbackUrl;
   const actionLabel = adminActionShortUrl ? "🚀 Review & Blast Vendor" : "💻 Buka di BizPortal";
 
   return (
@@ -258,10 +364,7 @@ function buildAdminGroupWaMessage(order: LogisticOrderData, adminActionShortUrl?
     `📍 Rute          : ${order.origin} → ${order.destination}\n` +
     (order.commodity ? `📦 Komoditi      : ${order.commodity}\n` : "") +
     (order.cargoDescription ? `📋 Deskripsi     : ${order.cargoDescription}\n` : "") +
-    weightLine +
-    volumeLine +
-    reqDate +
-    notesLine +
+    weightLine + volumeLine + reqDate + notesLine +
     `━━━━━━━━━━━━━━━━━━\n` +
     `💰 Total Est.    : *Rp ${formatRupiah(order.grandTotal)}*\n` +
     `🔵 Status        : Menunggu Konfirmasi\n` +
@@ -272,7 +375,11 @@ function buildAdminGroupWaMessage(order: LogisticOrderData, adminActionShortUrl?
   );
 }
 
-function buildCustomerWaMessage(order: LogisticOrderData): string {
+function buildCustomerWaMessage(order: LogisticOrderData, templates?: Record<string, string>): string {
+  const tpl = templates?.customer;
+  if (tpl) {
+    return renderTemplate(tpl, buildOrderVars(order));
+  }
   const tgl = order.createdAt ? formatTanggal(order.createdAt) : "";
   const jam = order.jamOrder ?? (order.createdAt ? formatJam(order.createdAt) : "");
   return (
@@ -355,10 +462,9 @@ async function notifyAdmin(order: LogisticOrderData): Promise<void> {
   // Generate admin review link upfront — used in both WA and email
   const adminReviewUrl = await createAdminReviewLink(order.id).catch(() => "");
 
-  const adminWa = await getAdminWa();
+  const [adminWa, waTemplates] = await Promise.all([getAdminWa(), getWaTemplates()]);
   if (adminWa) {
     logger.info({ phone: adminWa, orderNumber: order.orderNumber }, "Sending admin WA notification");
-    // Generate admin-action short link if publicRfqToken is available
     let adminActionShortUrl: string | undefined;
     if (order.publicRfqToken) {
       const domain = getPreferredDomain() || "cstlogistic.co.id";
@@ -372,7 +478,7 @@ async function notifyAdmin(order: LogisticOrderData): Promise<void> {
         return longUrl;
       });
     }
-    sendWhatsApp(adminWa, buildAdminWaMessage(order, adminActionShortUrl)).catch((err: unknown) =>
+    sendWhatsApp(adminWa, buildAdminWaMessage(order, adminActionShortUrl, waTemplates)).catch((err: unknown) =>
       logger.error({ err }, "WA admin notification failed")
     );
   } else {
@@ -383,7 +489,6 @@ async function notifyAdmin(order: LogisticOrderData): Promise<void> {
   const adminGroupWa = await getAdminGroupWa();
   if (adminGroupWa) {
     logger.info({ groupId: adminGroupWa, orderNumber: order.orderNumber }, "Sending group WA notification");
-    // Reuse adminActionShortUrl yang sudah di-generate untuk admin individual WA
     let groupActionUrl: string | undefined;
     if (order.publicRfqToken) {
       const domain = getPreferredDomain() || "cstlogistic.co.id";
@@ -394,7 +499,7 @@ async function notifyAdmin(order: LogisticOrderData): Promise<void> {
         refId: order.orderNumber,
       }).catch(() => longUrl);
     }
-    sendWhatsApp(adminGroupWa, buildAdminGroupWaMessage(order, groupActionUrl)).catch((err: unknown) =>
+    sendWhatsApp(adminGroupWa, buildAdminGroupWaMessage(order, groupActionUrl, waTemplates)).catch((err: unknown) =>
       logger.error({ err }, "WA group notification failed")
     );
   } else {
@@ -503,9 +608,10 @@ async function notifyVendors(order: LogisticOrderData): Promise<void> {
       const responseUrl = isTrucking
         ? await generateShortLink(longResponseUrl, { context: "vendor_response", refType: "order", refId: order.orderNumber })
         : longResponseUrl;
+      const waTemplatesVendor = await getWaTemplates();
       const msg = isTrucking
         ? buildTruckingVendorWaMessage(order, vendor.name, responseUrl, contractRate)
-        : buildVendorWaMessage(order, vendor.name);
+        : buildVendorWaMessage(order, vendor.name, waTemplatesVendor);
       sendWhatsApp(vendor.phone, msg).catch((err: unknown) =>
         logger.error({ err, vendorId: vendor.id }, "WA vendor notification failed")
       );
@@ -560,7 +666,8 @@ async function notifyVendors(order: LogisticOrderData): Promise<void> {
 
 async function notifyCustomer(order: LogisticOrderData): Promise<void> {
   if (order.phone) {
-    sendWhatsApp(order.phone, buildCustomerWaMessage(order)).catch((err: unknown) =>
+    const waTemplatesCust = await getWaTemplates();
+    sendWhatsApp(order.phone, buildCustomerWaMessage(order, waTemplatesCust)).catch((err: unknown) =>
       logger.error({ err, phone: order.phone }, "WA customer notification failed")
     );
   }

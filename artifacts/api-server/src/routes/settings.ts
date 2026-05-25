@@ -81,6 +81,181 @@ router.get("/cargo-types", async (req: Request, res: Response) => {
   }
 });
 
+// ── WA Message Templates ───────────────────────────────────────────────────────
+const WA_TEMPLATES_KEY = "wa_templates";
+
+export const DEFAULT_WA_TEMPLATES: Record<string, string> = {
+  admin_personal: [
+    "🚢 *ORDER LOGISTIK BARU*",
+    "━━━━━━━━━━━━━━━━━━",
+    "No. Order       : `{{orderNumber}}`",
+    "Tanggal         : {{tanggal}}",
+    "Jam             : {{jam}}",
+    "Status          : Menunggu Konfirmasi",
+    "Customer        : {{customerDisplay}}",
+    "Email           : {{email}}",
+    "HP              : {{phone}}",
+    "Jenis           : {{shipmentType}}",
+    "Rute            : {{route}}",
+    "Kategori Barang : {{commodity}}",
+    "Deskripsi       : {{cargoDescription}}",
+    "Berat           : {{grossWeightDisplay}}",
+    "Volume          : {{volumeDisplay}}",
+    "Jumlah Koli     : {{jumlahKoliDisplay}}",
+    "Layanan         :",
+    "{{serviceList}}",
+    "Total Est.      : Rp {{totalEst}}",
+    "Tgl Kirim       : {{requiredDate}}",
+    "Catatan         : {{notes}}",
+    "━━━━━━━━━━━━━━━━━━",
+    "⚡ *Aksi Cepat Admin (tanpa login):*",
+    "🔭 Review & Blast Vendor → {{adminActionUrl}}",
+    "_Dikirim: {{timestamp}}_",
+  ].join("\n"),
+
+  admin_group: [
+    "🔔 *[ORDER MASUK] {{orderNumber}}*",
+    "━━━━━━━━━━━━━━━━━━",
+    "🏷️ No. Tracking  : `{{orderNumber}}`",
+    "📆 Tanggal       : {{tanggal}}",
+    "👤 Customer      : *{{customerDisplay}}*",
+    "📞 HP            : {{phone}}",
+    "📧 Email         : {{email}}",
+    "━━━━━━━━━━━━━━━━━━",
+    "🚢 Jenis         : {{shipmentType}}",
+    "📍 Rute          : {{route}}",
+    "📦 Komoditi      : {{commodity}}",
+    "📋 Deskripsi     : {{cargoDescription}}",
+    "⚖️ Berat         : {{grossWeightDisplay}}",
+    "📐 Volume        : {{volumeDisplay}}",
+    "📅 Tgl Kirim     : {{requiredDate}}",
+    "📝 Catatan       : {{notes}}",
+    "━━━━━━━━━━━━━━━━━━",
+    "💰 Total Est.    : *Rp {{totalEst}}*",
+    "🔵 Status        : Menunggu Konfirmasi",
+    "━━━━━━━━━━━━━━━━━━",
+    "⚡ *Aksi Cepat (tanpa login):*",
+    "🚀 Review & Blast Vendor → {{adminActionUrl}}",
+    "",
+    "_Harap segera diproses. Dikirim: {{timestamp}}_",
+  ].join("\n"),
+
+  customer: [
+    "✅ *PESANAN ANDA DITERIMA*",
+    "━━━━━━━━━━━━━━━━━━",
+    "Halo *{{customerName}}*,",
+    "",
+    "Terima kasih telah mempercayakan pengiriman Anda kepada CST Logistics.",
+    "",
+    "No. Order       : *{{orderNumber}}*",
+    "Tanggal         : {{tanggal}}",
+    "Jam             : {{jam}}",
+    "Status          : Menunggu Penawaran Harga",
+    "Rute            : {{route}}",
+    "Kategori Barang : {{commodity}}",
+    "Berat           : {{grossWeightDisplay}}",
+    "Volume          : {{volumeDisplay}}",
+    "Layanan         :",
+    "{{serviceList}}",
+    "Tgl Butuh       : {{requiredDate}}",
+    "━━━━━━━━━━━━━━━━━━",
+    "Tim kami sedang memproses permintaan Anda dan akan segera mengirimkan *penawaran harga terbaik* untuk Anda.",
+    "",
+    "📞 Jakarta: (021) 6241234 | Tangerang: (021) 5591234",
+    "",
+    "_Dikirim: {{timestamp}}_",
+  ].join("\n"),
+
+  vendor: [
+    "📦 *PERMINTAAN ORDER BARU — CST LOGISTICS*",
+    "━━━━━━━━━━━━━━━━━━━━",
+    "Kepada Yth. *{{vendorName}}*,",
+    "",
+    "No. Order       : *{{orderNumber}}*",
+    "Tanggal         : {{tanggal}}",
+    "Jam             : {{jam}}",
+    "Status          : Menunggu Konfirmasi",
+    "Jenis           : {{shipmentType}}",
+    "Rute            : {{route}}",
+    "Kategori Barang : {{commodity}}",
+    "Deskripsi       : {{cargoDescription}}",
+    "Berat           : {{grossWeightDisplay}}",
+    "Volume          : {{volumeDisplay}}",
+    "Jumlah Koli     : {{jumlahKoliDisplay}}",
+    "Tgl Butuh       : {{requiredDate}}",
+    "Layanan         :",
+    "{{serviceList}}",
+    "Catatan         : {{notes}}",
+    "━━━━━━━━━━━━━━━━━━━━",
+    "🔗 *Aksi Cepat (klik link):*",
+    "✅ Terima  → {{responseUrl}}?action=accept",
+    "❌ Tolak   → {{responseUrl}}?action=reject",
+    "💬 Form    → {{responseUrl}}",
+    "",
+    "✏️ *Atau balas WA dengan format:*",
+    "📌 Harga: `{{orderNumber}} [HARGA] [TGL_PICKUP]`",
+    "📌 Terima: `TERIMA {{orderNumber}}`",
+    "📌 Tolak:  `TOLAK {{orderNumber}}`",
+    "",
+    "Terima kasih 🙏",
+    "_Dikirim: {{timestamp}}_",
+  ].join("\n"),
+};
+
+// GET /api/settings/wa-templates
+router.get("/wa-templates", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  try {
+    const [row] = await db.select().from(portalContentTable).where(eq(portalContentTable.key, WA_TEMPLATES_KEY));
+    const stored: Record<string, string> = row ? JSON.parse(row.value) as Record<string, string> : {};
+    const merged = { ...DEFAULT_WA_TEMPLATES, ...stored };
+    return res.json({ templates: merged, customized: Object.keys(stored) });
+  } catch {
+    return res.json({ templates: DEFAULT_WA_TEMPLATES, customized: [] });
+  }
+});
+
+// PUT /api/settings/wa-templates
+router.put("/wa-templates", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const { templates } = req.body as { templates?: Record<string, string> };
+  if (!templates || typeof templates !== "object") {
+    return res.status(400).json({ message: "Payload harus berupa { templates: { ... } }" });
+  }
+  const allowed = Object.keys(DEFAULT_WA_TEMPLATES);
+  const filtered: Record<string, string> = {};
+  for (const key of allowed) {
+    if (typeof templates[key] === "string") filtered[key] = templates[key];
+  }
+  await db.insert(portalContentTable).values({ key: WA_TEMPLATES_KEY, value: JSON.stringify(filtered), updatedAt: new Date() })
+    .onConflictDoUpdate({ target: portalContentTable.key, set: { value: JSON.stringify(filtered), updatedAt: new Date() } });
+  // Invalidate in-memory template cache
+  try {
+    const { invalidateWaTemplateCache } = await import("../lib/orderNotification.js");
+    invalidateWaTemplateCache();
+  } catch { /* non-fatal */ }
+  return res.json({ ok: true });
+});
+
+// DELETE /api/settings/wa-templates/:key — reset satu template ke default
+router.delete("/wa-templates/:templateKey", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const { templateKey } = req.params as { templateKey: string };
+  if (!(templateKey in DEFAULT_WA_TEMPLATES)) {
+    return res.status(400).json({ message: "Template key tidak dikenal" });
+  }
+  try {
+    const [row] = await db.select().from(portalContentTable).where(eq(portalContentTable.key, WA_TEMPLATES_KEY));
+    if (row) {
+      const stored = JSON.parse(row.value) as Record<string, string>;
+      delete stored[templateKey];
+      await db.update(portalContentTable).set({ value: JSON.stringify(stored), updatedAt: new Date() })
+        .where(eq(portalContentTable.key, WA_TEMPLATES_KEY));
+    }
+  } catch { /* ignore */ }
+  return res.json({ ok: true, default: DEFAULT_WA_TEMPLATES[templateKey] });
+});
+
 // PUT /api/settings/cargo-types — update cargo types list (admin)
 router.put("/cargo-types", async (req: Request, res: Response) => {
   if (!(await requireAdmin(req, res))) return;

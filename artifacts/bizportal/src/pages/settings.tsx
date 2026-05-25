@@ -9,7 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { User, Mail, Briefcase, Shield, MessageCircle, Save, Loader2, CheckCircle, Calculator, ChevronDown, ChevronUp, Package, Plus, X, Bot, Link2 } from "lucide-react";
+import { User, Mail, Briefcase, Shield, MessageCircle, Save, Loader2, CheckCircle, Calculator, ChevronDown, ChevronUp, Package, Plus, X, Bot, Link2, RotateCcw } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -722,6 +723,243 @@ function VendorMiniFormCard() {
   );
 }
 
+// ── WA Template Editor ─────────────────────────────────────────────────────────
+type TemplateKey = "admin_personal" | "admin_group" | "customer" | "vendor";
+
+const TEMPLATE_META: Record<TemplateKey, { label: string; desc: string; vars: string[] }> = {
+  admin_personal: {
+    label: "Admin Pribadi",
+    desc: "WA ke nomor admin pribadi saat order baru masuk",
+    vars: ["orderNumber","tanggal","jam","customerDisplay","email","phone","shipmentType","route","commodity","cargoDescription","grossWeightDisplay","volumeDisplay","jumlahKoliDisplay","serviceList","totalEst","requiredDate","notes","adminActionUrl","timestamp"],
+  },
+  admin_group: {
+    label: "Grup Admin",
+    desc: "WA ke grup WhatsApp admin saat order baru masuk",
+    vars: ["orderNumber","tanggal","jam","customerDisplay","email","phone","shipmentType","route","commodity","cargoDescription","grossWeightDisplay","volumeDisplay","requiredDate","notes","totalEst","adminActionUrl","timestamp"],
+  },
+  customer: {
+    label: "Customer",
+    desc: "WA konfirmasi pesanan ke pelanggan",
+    vars: ["orderNumber","tanggal","jam","customerName","route","commodity","grossWeightDisplay","volumeDisplay","serviceList","requiredDate","timestamp"],
+  },
+  vendor: {
+    label: "Vendor",
+    desc: "WA permintaan penawaran ke vendor logistik",
+    vars: ["orderNumber","tanggal","jam","vendorName","shipmentType","route","commodity","cargoDescription","grossWeightDisplay","volumeDisplay","jumlahKoliDisplay","serviceList","requiredDate","notes","responseUrl","timestamp"],
+  },
+};
+
+const DEFAULT_TEMPLATES_FRONTEND: Record<TemplateKey, string> = {
+  admin_personal: [
+    "🚢 *ORDER LOGISTIK BARU*","━━━━━━━━━━━━━━━━━━",
+    "No. Order       : `{{orderNumber}}`","Tanggal         : {{tanggal}}","Jam             : {{jam}}",
+    "Status          : Menunggu Konfirmasi","Customer        : {{customerDisplay}}","Email           : {{email}}",
+    "HP              : {{phone}}","Jenis           : {{shipmentType}}","Rute            : {{route}}",
+    "Kategori Barang : {{commodity}}","Deskripsi       : {{cargoDescription}}",
+    "Berat           : {{grossWeightDisplay}}","Volume          : {{volumeDisplay}}","Jumlah Koli     : {{jumlahKoliDisplay}}",
+    "Layanan         :","{{serviceList}}","Total Est.      : Rp {{totalEst}}",
+    "Tgl Kirim       : {{requiredDate}}","Catatan         : {{notes}}","━━━━━━━━━━━━━━━━━━",
+    "⚡ *Aksi Cepat Admin (tanpa login):*","🔭 Review & Blast Vendor → {{adminActionUrl}}","_Dikirim: {{timestamp}}_",
+  ].join("\n"),
+  admin_group: [
+    "🔔 *[ORDER MASUK] {{orderNumber}}*","━━━━━━━━━━━━━━━━━━",
+    "🏷️ No. Tracking  : `{{orderNumber}}`","📆 Tanggal       : {{tanggal}}",
+    "👤 Customer      : *{{customerDisplay}}*","📞 HP            : {{phone}}","📧 Email         : {{email}}","━━━━━━━━━━━━━━━━━━",
+    "🚢 Jenis         : {{shipmentType}}","📍 Rute          : {{route}}","📦 Komoditi      : {{commodity}}",
+    "📋 Deskripsi     : {{cargoDescription}}","⚖️ Berat         : {{grossWeightDisplay}}","📐 Volume        : {{volumeDisplay}}",
+    "📅 Tgl Kirim     : {{requiredDate}}","📝 Catatan       : {{notes}}","━━━━━━━━━━━━━━━━━━",
+    "💰 Total Est.    : *Rp {{totalEst}}*","🔵 Status        : Menunggu Konfirmasi","━━━━━━━━━━━━━━━━━━",
+    "⚡ *Aksi Cepat (tanpa login):*","🚀 Review & Blast Vendor → {{adminActionUrl}}","",
+    "_Harap segera diproses. Dikirim: {{timestamp}}_",
+  ].join("\n"),
+  customer: [
+    "✅ *PESANAN ANDA DITERIMA*","━━━━━━━━━━━━━━━━━━","Halo *{{customerName}}*,","",
+    "Terima kasih telah mempercayakan pengiriman Anda kepada CST Logistics.","",
+    "No. Order       : *{{orderNumber}}*","Tanggal         : {{tanggal}}","Jam             : {{jam}}",
+    "Status          : Menunggu Penawaran Harga","Rute            : {{route}}","Kategori Barang : {{commodity}}",
+    "Berat           : {{grossWeightDisplay}}","Volume          : {{volumeDisplay}}","Layanan         :","{{serviceList}}",
+    "Tgl Butuh       : {{requiredDate}}","━━━━━━━━━━━━━━━━━━",
+    "Tim kami sedang memproses permintaan Anda dan akan segera mengirimkan *penawaran harga terbaik* untuk Anda.","",
+    "📞 Jakarta: (021) 6241234 | Tangerang: (021) 5591234","","_Dikirim: {{timestamp}}_",
+  ].join("\n"),
+  vendor: [
+    "📦 *PERMINTAAN ORDER BARU — CST LOGISTICS*","━━━━━━━━━━━━━━━━━━━━","Kepada Yth. *{{vendorName}}*,","",
+    "No. Order       : *{{orderNumber}}*","Tanggal         : {{tanggal}}","Jam             : {{jam}}",
+    "Status          : Menunggu Konfirmasi","Jenis           : {{shipmentType}}","Rute            : {{route}}",
+    "Kategori Barang : {{commodity}}","Deskripsi       : {{cargoDescription}}",
+    "Berat           : {{grossWeightDisplay}}","Volume          : {{volumeDisplay}}","Jumlah Koli     : {{jumlahKoliDisplay}}",
+    "Tgl Butuh       : {{requiredDate}}","Layanan         :","{{serviceList}}","Catatan         : {{notes}}","━━━━━━━━━━━━━━━━━━━━",
+    "🔗 *Aksi Cepat (klik link):*","✅ Terima  → {{responseUrl}}?action=accept",
+    "❌ Tolak   → {{responseUrl}}?action=reject","💬 Form    → {{responseUrl}}","",
+    "✏️ *Atau balas WA dengan format:*","📌 Harga: `{{orderNumber}} [HARGA] [TGL_PICKUP]`",
+    "📌 Terima: `TERIMA {{orderNumber}}`","📌 Tolak:  `TOLAK {{orderNumber}}`","","Terima kasih 🙏","_Dikirim: {{timestamp}}_",
+  ].join("\n"),
+};
+
+function WaTemplatesCard() {
+  const { toast } = useToast();
+  const [templates, setTemplates] = useState<Record<TemplateKey, string>>(DEFAULT_TEMPLATES_FRONTEND);
+  const [customized, setCustomized] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [resetting, setResetting] = useState<TemplateKey | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch("/api/settings/wa-templates", { credentials: "include" });
+        if (res.ok) {
+          const data = await res.json() as { templates: Record<string, string>; customized: string[] };
+          setTemplates({ ...DEFAULT_TEMPLATES_FRONTEND, ...data.templates } as Record<TemplateKey, string>);
+          setCustomized(data.customized ?? []);
+        }
+      } catch { /* ignore */ }
+      finally { setLoading(false); }
+    })();
+  }, []);
+
+  async function handleSave(key: TemplateKey) {
+    setSaving(true);
+    try {
+      const all = { ...templates };
+      const res = await fetch("/api/settings/wa-templates", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ templates: all }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setCustomized((prev) => prev.includes(key) ? prev : [...prev, key]);
+      toast({ title: "Template tersimpan" });
+    } catch (e) {
+      toast({ title: "Gagal menyimpan", description: String(e), variant: "destructive" });
+    } finally { setSaving(false); }
+  }
+
+  async function handleReset(key: TemplateKey) {
+    setResetting(key);
+    try {
+      const res = await fetch(`/api/settings/wa-templates/${key}`, { method: "DELETE", credentials: "include" });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json() as { default: string };
+      setTemplates((prev) => ({ ...prev, [key]: data.default }));
+      setCustomized((prev) => prev.filter((k) => k !== key));
+      toast({ title: "Template direset ke default" });
+    } catch (e) {
+      toast({ title: "Gagal reset", description: String(e), variant: "destructive" });
+    } finally { setResetting(null); }
+  }
+
+  return (
+    <Card className="col-span-1 md:col-span-3 bg-card border-border">
+      <CardHeader>
+        <CardTitle className="text-xl flex items-center gap-2">
+          <MessageCircle className="h-5 w-5 text-primary" />
+          Template Pesan WhatsApp
+        </CardTitle>
+        <CardDescription>
+          Atur format pesan WA untuk setiap jenis notifikasi. Gunakan <code className="bg-muted px-1 rounded text-xs">{"{{variabel}}"}</code> untuk data dinamis.
+          Baris yang mengandung variabel kosong akan otomatis dihilangkan.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <div className="space-y-3">{[1,2,3].map(i => <div key={i} className="h-8 bg-muted rounded animate-pulse" />)}</div>
+        ) : (
+          <Tabs defaultValue="admin_personal">
+            <TabsList className="flex flex-wrap h-auto gap-1 mb-4 bg-muted/50">
+              {(Object.keys(TEMPLATE_META) as TemplateKey[]).map((key) => (
+                <TabsTrigger key={key} value={key} className="text-xs relative">
+                  {TEMPLATE_META[key].label}
+                  {customized.includes(key) && (
+                    <span className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full bg-amber-400" title="Dikustomisasi" />
+                  )}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+
+            {(Object.keys(TEMPLATE_META) as TemplateKey[]).map((key) => {
+              const meta = TEMPLATE_META[key];
+              const isResetting = resetting === key;
+              return (
+                <TabsContent key={key} value={key} className="space-y-4 mt-0">
+                  <p className="text-sm text-muted-foreground">{meta.desc}</p>
+
+                  {/* Variable chip list */}
+                  <div className="space-y-1.5">
+                    <p className="text-xs font-medium text-muted-foreground">Variabel tersedia:</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {meta.vars.map((v) => (
+                        <button
+                          key={v}
+                          type="button"
+                          className="text-[10px] font-mono bg-muted hover:bg-primary/10 hover:text-primary border border-border rounded px-1.5 py-0.5 cursor-pointer transition-colors"
+                          title="Klik untuk copy"
+                          onClick={() => {
+                            void navigator.clipboard.writeText(`{{${v}}}`);
+                            toast({ title: `Disalin: {{${v}}}`, duration: 1500 });
+                          }}
+                        >
+                          {`{{${v}}}`}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Template textarea */}
+                  <Textarea
+                    className="font-mono text-xs min-h-[320px] resize-y"
+                    value={templates[key]}
+                    onChange={(e) => setTemplates((prev) => ({ ...prev, [key]: e.target.value }))}
+                    placeholder="Tulis template pesan WA di sini…"
+                    spellCheck={false}
+                  />
+
+                  {/* Preview: highlight {{vars}} */}
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground">Preview (variabel disorot):</p>
+                    <div className="font-mono text-xs bg-muted/40 border rounded-md p-3 whitespace-pre-wrap max-h-60 overflow-y-auto">
+                      {templates[key].split(/(\{\{[^}]+\}\})/).map((part, i) =>
+                        part.startsWith("{{") ? (
+                          <span key={i} className="bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 rounded px-0.5">{part}</span>
+                        ) : part
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      className="gap-1.5"
+                      disabled={saving}
+                      onClick={() => void handleSave(key)}
+                    >
+                      {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                      Simpan
+                    </Button>
+                    {customized.includes(key) && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-1.5 text-muted-foreground"
+                        disabled={isResetting}
+                        onClick={() => void handleReset(key)}
+                      >
+                        {isResetting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+                        Reset ke Default
+                      </Button>
+                    )}
+                  </div>
+                </TabsContent>
+              );
+            })}
+          </Tabs>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function SettingsPage() {
   const { isAuthenticated } = useSupabaseAuth();
   const { data: dbUser, isLoading } = useGetCurrentUser({
@@ -836,6 +1074,7 @@ export default function SettingsPage() {
           {isAdmin && <CargoTypesCard />}
           {isAdmin && <CalculatorRatesCard />}
           {isAdmin && <VendorMiniFormCard />}
+          {isAdmin && <WaTemplatesCard />}
 
           <Card className="col-span-1 md:col-span-3 bg-card border-border">
             <CardHeader>
