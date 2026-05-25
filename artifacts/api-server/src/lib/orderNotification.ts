@@ -374,6 +374,7 @@ const DEFAULT_TPL = {
     order_new: ["🚢 *ORDER LOGISTIK BARU*","━━━━━━━━━━━━━━━━━━","No. Order       : `{{orderNumber}}`","Tanggal         : {{tanggal}}","Jam             : {{jam}}","Customer        : {{customerDisplay}}","Email           : {{email}}","HP              : {{phone}}","Jenis           : {{shipmentType}}","Rute            : {{route}}","Kategori Barang : {{commodity}}","Deskripsi       : {{cargoDescription}}","Berat           : {{grossWeightDisplay}}","Volume          : {{volumeDisplay}}","Jumlah Koli     : {{jumlahKoliDisplay}}","Layanan         :","{{serviceList}}","Total Est.      : Rp {{totalEst}}","Tgl Kirim       : {{requiredDate}}","Catatan         : {{notes}}","━━━━━━━━━━━━━━━━━━","⚡ *Aksi Cepat Admin (tanpa login):*","🔭 Review & Blast Vendor → {{adminActionUrl}}","_Dikirim: {{timestamp}}_"].join("\n"),
     vendor_submission: ["📩 *VENDOR SUBMIT — {{orderNumber}}*","━━━━━━━━━━━━━━━━━━","Vendor *{{vendorName}}* telah mengirim penawaran.","","Order: {{orderNumber}}","Service: {{serviceType}}","💰 Harga Vendor: {{vendorPrice}}","","Segera review dan kirim approval ke customer.","_{{timestamp}}_"].join("\n"),
     customer_approved: ["✅ *CUSTOMER APPROVED — {{orderNumber}}*","━━━━━━━━━━━━━━━━━━","Customer: *{{customerName}}*","Order: {{orderNumber}}","Status: DISETUJUI ✅","","Segera proses konfirmasi operasional ke vendor.","_{{timestamp}}_"].join("\n"),
+    op_request: ["⚙️ *OP. REQUEST DIKIRIM — {{orderNumber}}*","","Form konfirmasi operasional telah dikirim ke vendor *{{vendorName}}*.","","No. Order : {{orderNumber}}","Customer  : {{customerName}}","Layanan   : {{serviceType}}","Route     : {{route}}","","{{#if trucking}}","Data yang diminta: Driver, No. Plat, Kendaraan.","{{/if}}","{{#if freight_sea}}","Data yang diminta: Vessel, Voyage, Container, BL.","{{/if}}","{{#if freight_air}}","Data yang diminta: Airline, AWB, Flight Number.","{{/if}}","{{#if ppjk}}","Data yang diminta: Nomor Aju, BC Type, SPPB.","{{/if}}","","🔗 Link Operasional: {{operationalFormLink}}","","_{{timestamp}}_"].join("\n"),
     delivery_completed: ["🏁 *PENGIRIMAN SELESAI — {{orderNumber}}*","Customer: {{customerName}}","Rute: {{route}}","_{{timestamp}}_"].join("\n"),
   },
   admin_group: {
@@ -807,9 +808,20 @@ export async function sendOpRequestNotification(
   vendorPhone: string,
   operationalFormLink: string,
 ): Promise<void> {
-  const tpl = await getWaTemplateConfig("vendor", "op_request", DEFAULT_TPL.vendor.op_request);
-  const msg = renderWf(tpl, order, { vendorName, vendorPhone, operationalFormLink });
-  sendWhatsApp(vendorPhone, msg).catch((e: unknown) => logger.error({ e, vendorName }, "WA op_request failed"));
+  const [vendorTpl, adminTpl, adminWa] = await Promise.all([
+    getWaTemplateConfig("vendor", "op_request", DEFAULT_TPL.vendor.op_request),
+    getWaTemplateConfig("admin_personal", "op_request", DEFAULT_TPL.admin_personal.op_request),
+    getAdminWa(),
+  ]);
+  const extras = { vendorName, vendorPhone, operationalFormLink };
+  sendWhatsApp(vendorPhone, renderWf(vendorTpl, order, extras)).catch((e: unknown) =>
+    logger.error({ e, vendorName }, "WA op_request (vendor) failed"),
+  );
+  if (adminWa) {
+    sendWhatsApp(adminWa, renderWf(adminTpl, order, extras)).catch((e: unknown) =>
+      logger.error({ e }, "WA op_request (admin) failed"),
+    );
+  }
 }
 
 // ── Driver Assigned (notif customer saat driver ditugaskan) ───────────────────
