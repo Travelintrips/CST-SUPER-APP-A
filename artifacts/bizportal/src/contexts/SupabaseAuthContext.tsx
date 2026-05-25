@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
 import type { AuthUser } from "@workspace/api-client-react";
+import { supabase } from "@/lib/supabaseClient";
 
 interface AuthContextValue {
   session: { user: AuthUser } | null;
@@ -32,7 +33,7 @@ function writeCache(u: AuthUser | null) {
 }
 
 function getBase(): string {
-  return (window as any).__BASE_PATH__ || import.meta.env.BASE_URL || "/bizportal/";
+  return (window as unknown as Record<string, string>).__BASE_PATH__ || import.meta.env.BASE_URL || "/bizportal/";
 }
 
 function getOrigin(): string {
@@ -47,55 +48,79 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
   const fetchUser = useCallback(async () => {
     try {
       const res = await fetch("/api/auth/user", { credentials: "include" });
-      if (res.status >= 500) {
-        // Transient server error (e.g. DB connection drop). Don't clear the
-        // cached session — the client will retry on the next interaction.
-        return;
-      }
-      if (!res.ok) {
-        // 401/403 → definitely not authenticated
-        setUser(null);
-        writeCache(null);
-        return;
-      }
+      if (res.status >= 500) return;
+      if (!res.ok) { setUser(null); writeCache(null); return; }
       const data = await res.json() as { user: AuthUser | null };
       const u = data.user ?? null;
       setUser(u);
       writeCache(u);
     } catch {
-      // Network error — keep existing cached session, don't flash login screen
+      // keep existing cache
     } finally {
       setIsLoading(false);
     }
   }, []);
 
-  useEffect(() => {
-    fetchUser();
+  useEffect(() => { fetchUser(); }, [fetchUser]);
+
+  // Exchange Supabase access_token → session cookie → set user state
+  const exchangeToken = useCallback(async (access_token: string) => {
+    try {
+      const res = await fetch("/api/auth/supabase-exchange", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ access_token }),
+      });
+      if (res.ok) {
+        const data = await res.json() as { user: AuthUser };
+        if (data.user) { writeCache(data.user); setUser(data.user); }
+      } else {
+        await fetchUser();
+      }
+    } catch {
+      await fetchUser();
+    }
   }, [fetchUser]);
 
-  const signInWithGoogle = useCallback(() => {
+  const signInWithGoogle = useCallback(async () => {
+    if (!supabase) {
+      console.error("[BizPortal] Supabase tidak terkonfigurasi — VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY belum di-set");
+      return;
+    }
+
     const origin = getOrigin();
     const base = getBase();
+    // Callback page yang di-serve oleh BizPortal router di /bizportal/auth/callback
+    const callbackUrl = `${origin}${base.replace(/\/$/, "")}/auth/callback`;
     const isInIframe = window !== window.top;
 
     if (isInIframe) {
-      // In iframe (Replit preview): open popup with returnTo=popup sentinel.
-      // The popup will postMessage "auth:done" then close itself.
-      const loginUrl = `${origin}/api/login/google?returnTo=${encodeURIComponent("popup")}`;
-      const authWindow = window.open(loginUrl, "_blank", "width=500,height=650,noopener");
+      // Popup mode (BizPortal di dalam iframe Replit preview)
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: callbackUrl,
+          skipBrowserRedirect: true,
+        },
+      });
+
+      if (error || !data.url) {
+        console.error("[BizPortal] Gagal mendapat OAuth URL:", error);
+        return;
+      }
+
+      // Buka tanpa noopener agar postMessage dari popup ke parent bisa bekerja
+      const authWindow = window.open(data.url, "bizportal-google-auth", "width=520,height=680");
 
       if (authWindow) {
-        const onMessage = (evt: MessageEvent) => {
-          if (evt.data === "auth:done") {
+        const onMessage = async (evt: MessageEvent) => {
+          // Hanya terima pesan dari origin yang sama
+          if (evt.origin !== origin) return;
+          if (evt.data?.type === "supabase-auth" && typeof evt.data.access_token === "string") {
             window.removeEventListener("message", onMessage);
             clearInterval(poll);
-            // Fetch user immediately after popup signals success
-            fetch("/api/auth/user", { credentials: "include" })
-              .then((r) => r.json())
-              .then((data: { user: AuthUser | null }) => {
-                if (data.user) { writeCache(data.user); setUser(data.user); }
-              })
-              .catch(() => {});
+            await exchangeToken(evt.data.access_token);
           } else if (evt.data === "auth:error") {
             window.removeEventListener("message", onMessage);
             clearInterval(poll);
@@ -103,45 +128,59 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
         };
         window.addEventListener("message", onMessage);
 
-        // Fallback polling in case postMessage doesn't work (cross-origin popup)
+        // Fallback polling: jika popup tutup tanpa postMessage
         const poll = setInterval(() => {
           if (authWindow.closed) {
             clearInterval(poll);
             window.removeEventListener("message", onMessage);
-            fetch("/api/auth/user", { credentials: "include" })
-              .then((r) => r.json())
-              .then((data: { user: AuthUser | null }) => {
-                if (data.user) { writeCache(data.user); setUser(data.user); }
-              })
-              .catch(() => {});
+            fetchUser();
           }
         }, 1000);
+
+        // Timeout 5 menit
         setTimeout(() => {
           clearInterval(poll);
           window.removeEventListener("message", onMessage);
         }, 5 * 60 * 1000);
       } else {
-        // Popup blocked — navigate the iframe directly using a normal returnTo
-        // (NOT the "popup" sentinel, which would render the close-me page).
-        const currentPath = window.location.pathname + window.location.search;
-        const fallbackReturnTo = encodeURIComponent(currentPath !== "/" ? currentPath : base);
-        const fallbackUrl = `${origin}/api/login/google?returnTo=${fallbackReturnTo}`;
-        window.location.href = fallbackUrl;
+        // Popup diblokir — fallback ke redirect langsung
+        const { error: e2 } = await supabase.auth.signInWithOAuth({
+          provider: "google",
+          options: { redirectTo: callbackUrl },
+        });
+        if (e2) console.error("[BizPortal] OAuth redirect gagal:", e2);
       }
     } else {
-      // Not in iframe: normal redirect flow
-      const currentPath = window.location.pathname + window.location.search;
-      const returnTo = encodeURIComponent(currentPath !== "/" ? currentPath : base);
-      window.location.href = `${origin}/api/login/google?returnTo=${returnTo}`;
+      // Bukan di iframe — redirect biasa, callback page akan handle exchange
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo: callbackUrl },
+      });
+      if (error) console.error("[BizPortal] OAuth redirect gagal:", error);
     }
-  }, []);
+  }, [exchangeToken, fetchUser]);
+
+  // Setelah redirect (non-iframe), callback page mengirim token via postMessage
+  // atau user kembali ke halaman ini — cek session Supabase dan exchange
+  useEffect(() => {
+    if (!supabase) return;
+    // Dengarkan SIGNED_IN dari Supabase (jika redirect ke halaman ini, bukan callback)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === "SIGNED_IN" && session?.access_token) {
+        await exchangeToken(session.access_token);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [exchangeToken]);
 
   const signInWithEmail = useCallback(async (_email: string, _password: string) => {
-    return { error: "Email login is not supported. Please use Google login." };
+    return { error: "Email login tidak didukung. Gunakan Google login." };
   }, []);
 
   const signOut = useCallback(() => {
     writeCache(null);
+    setUser(null);
+    if (supabase) supabase.auth.signOut().catch(() => {});
     const base = getBase();
     window.location.href = `${getOrigin()}/api/logout?redirect=${encodeURIComponent(base)}`;
   }, []);

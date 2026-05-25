@@ -24,6 +24,7 @@ import {
   type SessionData,
 } from "../lib/auth";
 import { writeAuditLog, extractRequestMeta } from "../lib/auditLog.js";
+import { verifySupabaseToken } from "../lib/supabaseAdmin";
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID!;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET!;
@@ -268,6 +269,116 @@ router.get("/callback", async (req: Request, res: Response) => {
   const sid = await createSession(sessionData);
   setSessionCookie(res, sid);
   res.redirect(returnTo);
+});
+
+// ─── Supabase Token Exchange → Session Cookie ─────────────────────────────────
+// BizPortal frontend melakukan Supabase Google OAuth via popup, lalu POST token
+// ke sini untuk mendapat session cookie (supaya semua API call tetap pakai cookie).
+
+router.post("/auth/supabase-exchange", async (req: Request, res: Response) => {
+  const { access_token } = req.body as { access_token?: string };
+  if (!access_token || typeof access_token !== "string") {
+    res.status(400).json({ error: "access_token required" });
+    return;
+  }
+
+  const supabaseUser = await verifySupabaseToken(access_token);
+  if (!supabaseUser?.email) {
+    res.status(401).json({ error: "Invalid or expired token" });
+    return;
+  }
+
+  // Cari user di DB berdasarkan email (handle migrasi dari id "google_<sub>")
+  let [dbUser] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.email, supabaseUser.email));
+
+  if (!dbUser) {
+    const meta = supabaseUser.user_metadata ?? {};
+    const adminEmails = (process.env.ADMIN_EMAIL ?? "")
+      .split(",")
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean);
+    const isAdmin = adminEmails.includes(supabaseUser.email.toLowerCase());
+
+    const firstName =
+      (meta.given_name as string) ||
+      (meta.full_name as string)?.split(" ")[0] ||
+      null;
+    const lastName =
+      (meta.family_name as string) ||
+      (meta.full_name as string)?.split(" ").slice(1).join(" ") ||
+      null;
+    const profileImageUrl =
+      (meta.avatar_url as string) || (meta.picture as string) || null;
+
+    try {
+      const [created] = await db
+        .insert(usersTable)
+        .values({
+          id: supabaseUser.id,
+          email: supabaseUser.email,
+          firstName,
+          lastName,
+          profileImageUrl,
+          role: isAdmin ? "admin" : "ecommerce",
+        })
+        .returning();
+      dbUser = created;
+    } catch {
+      // Race condition — coba select lagi
+      const [retry] = await db
+        .select()
+        .from(usersTable)
+        .where(eq(usersTable.email, supabaseUser.email));
+      if (!retry) {
+        res.status(500).json({ error: "Failed to create user" });
+        return;
+      }
+      dbUser = retry;
+    }
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const sessionData: SessionData = {
+    user: {
+      id: dbUser.id,
+      email: dbUser.email,
+      firstName: dbUser.firstName,
+      lastName: dbUser.lastName,
+      profileImageUrl: dbUser.profileImageUrl,
+    },
+    access_token,
+    expires_at: now + 3600,
+  };
+
+  const sid = await createSession(sessionData);
+  setSessionCookie(res, sid);
+
+  const _meta = extractRequestMeta(req);
+  writeAuditLog({
+    companyId: dbUser.companyId ?? null,
+    userId: dbUser.id,
+    userEmail: dbUser.email ?? null,
+    action: "login",
+    module: "auth",
+    referenceId: "supabase-exchange",
+    newData: { email: dbUser.email, role: dbUser.role },
+    ipAddress: _meta.ipAddress,
+    userAgent: _meta.userAgent,
+  });
+
+  res.json({
+    user: {
+      id: dbUser.id,
+      email: dbUser.email,
+      firstName: dbUser.firstName,
+      lastName: dbUser.lastName,
+      profileImageUrl: dbUser.profileImageUrl,
+      role: dbUser.role,
+    },
+  });
 });
 
 // ─── Google OAuth ─────────────────────────────────────────────────────────────

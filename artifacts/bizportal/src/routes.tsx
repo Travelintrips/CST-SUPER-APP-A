@@ -2,6 +2,7 @@ import React from "react";
 import { Switch, Route, Redirect } from "wouter";
 import NotFound from "@/pages/not-found";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import AuthCallbackPage from "@/pages/auth-callback";
 import DashboardPage from "@/pages/dashboard";
 import EcommercePage from "@/pages/ecommerce";
 import TradingPage from "@/pages/trading";
@@ -136,6 +137,9 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
   return (
     <Switch>
       {rootGuard && <Route path="/" component={rootGuard} />}
+
+      {/* ── Auth callback (Supabase OAuth popup) ───────────────────────── */}
+      <Route path="/auth/callback" component={AuthCallbackPage} />
 
       {/* ── Welcome / Dashboard ────────────────────────────────────────── */}
       <Route path="/welcome" component={WelcomePage} />
