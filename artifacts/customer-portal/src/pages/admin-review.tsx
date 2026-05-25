@@ -695,6 +695,7 @@ function ReviewOrderView({ data, token }: { data: ReviewData; token: string }) {
   );
   const [deadlineHours, setDeadlineHours] = useState(48);
   const [showAll, setShowAll] = useState(false);
+  const [showOthers, setShowOthers] = useState(false);
   const [blasting, setBlasting] = useState(false);
   const [blastResult, setBlastResult] = useState<BlastResponse | null>(null);
 
@@ -901,25 +902,33 @@ function ReviewOrderView({ data, token }: { data: ReviewData; token: string }) {
 
           {others.length > 0 && (
             <div>
-              <div className="px-5 py-2 bg-slate-50 border-b border-slate-100 border-t border-slate-100">
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                  Vendor Lain ({others.length})
+              <button
+                onClick={() => setShowOthers((p) => !p)}
+                className="w-full px-5 py-2.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between hover:bg-slate-100 transition-colors"
+              >
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+                  Vendor Lain ({others.length}) — tidak sesuai tipe layanan
                 </p>
-              </div>
-              <div className="divide-y divide-slate-50">
-                {visibleOthers.map((v) => (
-                  <VendorRow key={v.id} vendor={v} checked={selected.has(v.id)} onChange={() => toggleVendor(v.id)} />
-                ))}
-              </div>
-              {others.length > 5 && (
-                <div className="px-5 py-3 border-t border-slate-100">
-                  <button
-                    onClick={() => setShowAll((p) => !p)}
-                    className="text-xs text-blue-600 hover:underline font-medium"
-                  >
-                    {showAll ? "Tampilkan lebih sedikit ▲" : `Tampilkan ${others.length - 5} vendor lainnya ▼`}
-                  </button>
-                </div>
+                <span className="text-xs text-slate-400">{showOthers ? "▲ Sembunyikan" : "▼ Tampilkan"}</span>
+              </button>
+              {showOthers && (
+                <>
+                  <div className="divide-y divide-slate-50">
+                    {(showAll ? others : others.slice(0, 5)).map((v) => (
+                      <VendorRow key={v.id} vendor={v} checked={selected.has(v.id)} onChange={() => toggleVendor(v.id)} />
+                    ))}
+                  </div>
+                  {others.length > 5 && (
+                    <div className="px-5 py-3 border-t border-slate-100">
+                      <button
+                        onClick={() => setShowAll((p) => !p)}
+                        className="text-xs text-blue-600 hover:underline font-medium"
+                      >
+                        {showAll ? "Tampilkan lebih sedikit ▲" : `Tampilkan ${others.length - 5} vendor lainnya ▼`}
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}
