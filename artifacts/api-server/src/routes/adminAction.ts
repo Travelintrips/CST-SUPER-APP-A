@@ -214,13 +214,8 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
       const shipType = (order.shipmentType ?? "").toLowerCase().trim();
       const shipKeywords = shipType.split(/[\s,]+/).filter((k) => k.length > 1);
 
-      // Vendor harus punya phone. Jika shipmentType order kosong, hanya tampilkan
-      // vendor yang sudah mengisi serviceType (vendor tanpa tipe tidak relevan).
-      const allWithPhone = allVendors.filter((v) => {
-        if (!v.phone) return false;
-        if (!shipType) return !!(v.serviceType && v.serviceType.trim());
-        return true;
-      });
+      // Vendor harus punya phone.
+      const allWithPhone = allVendors.filter((v) => !!v.phone);
 
       // Fetch catalog items for all vendors in one query to check commodity match
       const vendorIdList = allWithPhone.map((v) => v.id);
@@ -263,20 +258,37 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
         hasCommodityMatch: vendorIdsWithCommodity.has(v.id),
       }));
 
-      // Build filtered vendor list:
-      //   - If shipmentType is known → only show vendors that match by service type OR commodity
-      //     (fallback to all if no match found, marked with noFilterApplied)
-      //   - If shipmentType is empty → show all (no filter possible)
       const commodityMatched = allWithFlag.filter((v) => v.hasCommodityMatch);
       const serviceMatched   = allWithFlag.filter((v) => v.isMatching && !v.hasCommodityMatch);
-      const hasAnyMatch = commodityMatched.length > 0 || serviceMatched.length > 0;
 
-      const vendors = (shipType && hasAnyMatch)
-        ? [...commodityMatched, ...serviceMatched]
-        : allWithFlag;
+      // ── Filter strategy ──────────────────────────────────────────────────
+      // 1. shipmentType ada + ada match → tampilkan yg match (service + commodity)
+      // 2. shipmentType ada + tak ada match → semua vendor berserviceType + warning
+      // 3. shipmentType kosong + commodity ada + ada match → hanya vendor dg commodity match
+      // 4. shipmentType kosong + commodity ada + tak ada match → vendor berserviceType + warning
+      // 5. shipmentType kosong + commodity kosong → vendor berserviceType + warning
+      let vendors: typeof allWithFlag;
+      let vendorFilterApplied = false;
+      let filterMode: "service" | "commodity" | "none" = "none";
 
-      // Let the frontend know if the filter was actually applied
-      const vendorFilterApplied = !!(shipType && hasAnyMatch);
+      if (shipType) {
+        const hasMatch = commodityMatched.length > 0 || serviceMatched.length > 0;
+        if (hasMatch) {
+          vendors = [...commodityMatched, ...serviceMatched];
+          vendorFilterApplied = true;
+          filterMode = "service";
+        } else {
+          vendors = allWithFlag.filter((v) => !!(v.serviceType && v.serviceType.trim()));
+        }
+      } else if (commodityKeyword && commodityMatched.length > 0) {
+        // Order tanpa tipe layanan tapi punya commodity → filter by commodity match
+        vendors = commodityMatched;
+        vendorFilterApplied = true;
+        filterMode = "commodity";
+      } else {
+        // Tidak ada filter yang bisa diterapkan → tampilkan vendor yg punya serviceType
+        vendors = allWithFlag.filter((v) => !!(v.serviceType && v.serviceType.trim()));
+      }
 
       // Get existing RFQs for this order
       const rfqs = await db.select({
@@ -288,7 +300,15 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
         .where(eq(logisticOrderRfqsTable.orderId, order.id))
         .orderBy(desc(logisticOrderRfqsTable.createdAt));
 
-      return res.json({ ...base, vendors, rfqs, vendorFilterApplied, shipmentType: order.shipmentType });
+      return res.json({
+        ...base,
+        vendors,
+        rfqs,
+        vendorFilterApplied,
+        filterMode,
+        shipmentType: order.shipmentType,
+        commodity: order.commodity,
+      });
     }
 
     // compare_vendors: show vendor quotes for an RFQ

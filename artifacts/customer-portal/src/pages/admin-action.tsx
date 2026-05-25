@@ -56,7 +56,7 @@ type BaseData = {
   order: OrderInfo;
 };
 
-type ReviewData = BaseData & { vendors: Vendor[]; rfqs: Rfq[]; vendorFilterApplied: boolean; shipmentType: string };
+type ReviewData = BaseData & { vendors: Vendor[]; rfqs: Rfq[]; vendorFilterApplied: boolean; filterMode: "service" | "commodity" | "none"; shipmentType: string; commodity: string | null };
 type CompareData = BaseData & { rfq: Rfq; vendors: VendorRow[] };
 type ForwardData = BaseData & {
   rfq: Rfq | null;
@@ -222,6 +222,8 @@ function ReviewOrderView({ token, data }: { token: string; data: ReviewData }) {
   if (result?.ok) return <SuccessCard title="RFQ Terkirim!" message={result.message} />;
 
   const hasServiceType = !!(data.shipmentType && data.shipmentType.trim());
+  const hasCommodity   = !!(data.commodity && data.commodity.trim());
+  const filterMode     = data.filterMode ?? "none";
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 py-8 px-4">
@@ -247,21 +249,34 @@ function ReviewOrderView({ token, data }: { token: string; data: ReviewData }) {
             <h2 className="font-semibold text-slate-800">
               Vendor Tersedia ({data.vendors.length})
             </h2>
-            {data.vendorFilterApplied && hasServiceType && (
+            {filterMode === "service" && (
               <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
                 Filter: {data.shipmentType}
               </span>
             )}
+            {filterMode === "commodity" && (
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">
+                Filter: {data.commodity}
+              </span>
+            )}
           </div>
 
-          {!hasServiceType && (
-            <div className="mb-3 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-700">
-              ⚠️ Tipe layanan order belum diisi — menampilkan semua vendor aktif tanpa filter.
-            </div>
-          )}
-          {hasServiceType && !data.vendorFilterApplied && (
+          {/* Kasus: shipmentType ada, tidak ada vendor yg cocok */}
+          {hasServiceType && !data.vendorFilterApplied && filterMode !== "commodity" && (
             <div className="mb-3 px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-500">
               ℹ️ Tidak ada vendor yang cocok dengan "<strong>{data.shipmentType}</strong>" — menampilkan semua vendor aktif.
+            </div>
+          )}
+          {/* Kasus: shipmentType kosong, ada commodity, tidak ada vendor yg punya produk itu di etalase */}
+          {!hasServiceType && hasCommodity && filterMode !== "commodity" && (
+            <div className="mb-3 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-700">
+              ⚠️ Tidak ada vendor dengan "<strong>{data.commodity}</strong>" di etalase — menampilkan vendor yang memiliki tipe layanan.
+            </div>
+          )}
+          {/* Kasus: tidak ada shipmentType, tidak ada commodity */}
+          {!hasServiceType && !hasCommodity && (
+            <div className="mb-3 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-700">
+              ⚠️ Tipe layanan dan komoditi order belum diisi — menampilkan vendor berdasarkan tipe layanan terdaftar.
             </div>
           )}
 
