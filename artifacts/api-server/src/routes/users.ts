@@ -177,6 +177,57 @@ router.get("/", async (req, res) => {
   })));
 });
 
+// POST /api/users — admin only, pre-register user by email
+router.post("/", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const { email, name, role } = req.body as { email?: string; name?: string; role?: string };
+
+  if (!email || !email.includes("@")) {
+    return res.status(400).json({ message: "Email tidak valid" });
+  }
+  if (!role || !ALLOWED_ROLES.includes(role as AllowedRole)) {
+    return res.status(400).json({ message: "Role tidak valid" });
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+  const existing = await db.select().from(usersTable).where(eq(usersTable.email, normalizedEmail)).limit(1);
+  if (existing.length > 0) {
+    return res.status(409).json({ message: "User dengan email ini sudah terdaftar" });
+  }
+
+  const userId = `pre_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const [created] = await db.insert(usersTable).values({
+    id: userId,
+    email: normalizedEmail,
+    name: name?.trim() || normalizedEmail.split("@")[0] || "User",
+    role: role as AllowedRole,
+  }).returning();
+
+  return res.status(201).json({
+    id: created.id,
+    email: created.email,
+    name: created.name,
+    role: created.role,
+    division: created.division,
+    companyId: created.companyId ?? null,
+    branchId: created.branchId ?? null,
+    divisionId: created.divisionId ?? null,
+    departmentId: created.departmentId ?? null,
+    sectionId: created.sectionId ?? null,
+    customRoleId: created.customRoleId ?? null,
+  });
+});
+
+// DELETE /api/users/:id — admin only
+router.delete("/:id", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const { id } = req.params;
+  const deleted = await db.delete(usersTable).where(eq(usersTable.id, id)).returning();
+  if (deleted.length === 0) return res.status(404).json({ message: "User tidak ditemukan" });
+  invalidateUserCtxCache(id);
+  return res.json({ ok: true });
+});
+
 // PUT /api/users/:id — admin only
 router.put("/:id", async (req, res) => {
   if (!(await requireAdmin(req, res))) return;

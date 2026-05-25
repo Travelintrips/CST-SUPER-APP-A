@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Pencil, Users, ShieldAlert, ShieldCheck, X } from "lucide-react";
+import { Pencil, Users, ShieldAlert, ShieldCheck, X, Plus, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -113,6 +113,51 @@ export default function UsersPage() {
   const [editSectionId, setEditSectionId]     = useState<string>("");
   const [saving, setSaving]                   = useState(false);
 
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createForm, setCreateForm] = useState({ email: "", name: "", role: "ecommerce" as Role });
+  const [creating, setCreating]     = useState(false);
+
+  const createMut = useMutation({
+    mutationFn: (data: { email: string; name: string; role: string }) =>
+      apiFetch("/users", { method: "POST", body: JSON.stringify(data) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
+      setCreateOpen(false);
+      setCreateForm({ email: "", name: "", role: "ecommerce" });
+      toast({ title: "User berhasil ditambahkan" });
+    },
+    onError: (e: Error) => {
+      toast({ title: "Gagal", description: e.message, variant: "destructive" });
+    },
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => apiFetch(`/users/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
+      toast({ title: "User dihapus" });
+    },
+    onError: (e: Error) => {
+      toast({ title: "Gagal hapus", description: e.message, variant: "destructive" });
+    },
+  });
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!createForm.email.trim()) return;
+    setCreating(true);
+    try {
+      await createMut.mutateAsync(createForm);
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleDelete = (u: UserRow) => {
+    if (!confirm(`Hapus user "${u.name}" (${u.email})? Tindakan ini tidak bisa dibatalkan.`)) return;
+    deleteMut.mutate(u.id);
+  };
+
   const selectedCompanyId = editCompanyId && editCompanyId !== "none" ? Number(editCompanyId) : null;
   const filteredBranches    = branches.filter(b => !selectedCompanyId || (b as any).company_id === selectedCompanyId);
   const filteredDivisions   = divisions.filter(d => !selectedCompanyId || (d as any).company_id === selectedCompanyId);
@@ -183,9 +228,14 @@ export default function UsersPage() {
   return (
     <AppShell>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">{t.users.title}</h1>
-          <p className="text-sm sm:text-base text-muted-foreground mt-1 sm:mt-2">{t.users.subtitle}</p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">{t.users.title}</h1>
+            <p className="text-sm sm:text-base text-muted-foreground mt-1 sm:mt-2">{t.users.subtitle}</p>
+          </div>
+          <Button onClick={() => setCreateOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" /> Tambah User
+          </Button>
         </div>
 
         {isForbidden ? (
@@ -259,6 +309,9 @@ export default function UsersPage() {
                               <Button size="icon" variant="ghost" onClick={() => openEdit(u)} aria-label={t.common.edit}>
                                 <Pencil className="h-4 w-4" />
                               </Button>
+                              <Button size="icon" variant="ghost" onClick={() => handleDelete(u)} aria-label="Hapus">
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
                             </TableCell>
                           </TableRow>
                         ))}
@@ -307,9 +360,14 @@ export default function UsersPage() {
                         {u.divisionName && <span className="text-xs text-muted-foreground">{u.divisionName}</span>}
                         {u.departmentName && <span className="text-xs text-muted-foreground">/ {u.departmentName}</span>}
                       </div>
-                      <Button size="sm" variant="outline" className="w-full" onClick={() => openEdit(u)}>
-                        <Pencil className="h-3.5 w-3.5 mr-1.5" /> {t.common.edit}
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button size="sm" variant="outline" className="flex-1" onClick={() => openEdit(u)}>
+                          <Pencil className="h-3.5 w-3.5 mr-1.5" /> {t.common.edit}
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => handleDelete(u)} className="text-destructive hover:text-destructive">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
                     </CardContent></Card>
                   ))}
 
@@ -319,6 +377,57 @@ export default function UsersPage() {
           </>
         )}
       </div>
+
+      {/* Create User dialog */}
+      <Dialog open={createOpen} onOpenChange={(v) => { setCreateOpen(v); if (!v) setCreateForm({ email: "", name: "", role: "ecommerce" }); }}>
+        <DialogContent className="max-w-md">
+          <form onSubmit={handleCreate}>
+            <DialogHeader>
+              <DialogTitle>Tambah User Baru</DialogTitle>
+              <DialogDescription>User akan bisa login menggunakan akun Google sesuai email yang didaftarkan.</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-3 py-4">
+              <div className="grid gap-1.5">
+                <Label htmlFor="create-email" className="text-xs">Email <span className="text-destructive">*</span></Label>
+                <Input
+                  id="create-email"
+                  type="email"
+                  placeholder="user@example.com"
+                  value={createForm.email}
+                  onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
+                  required
+                  className="text-sm"
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="create-name" className="text-xs">Nama</Label>
+                <Input
+                  id="create-name"
+                  placeholder="Nama lengkap (opsional)"
+                  value={createForm.name}
+                  onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
+                  className="text-sm"
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="create-role" className="text-xs">Role Sistem <span className="text-destructive">*</span></Label>
+                <Select value={createForm.role} onValueChange={(v) => setCreateForm({ ...createForm, role: v as Role })}>
+                  <SelectTrigger id="create-role" className="text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {ROLES.map((r) => <SelectItem key={r} value={r}>{ROLE_LABELS[r] ?? r}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>Batal</Button>
+              <Button type="submit" disabled={creating}>
+                {creating ? "Menyimpan..." : "Tambah"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* Edit dialog (BizPortal users) */}
       <Dialog open={!!editing} onOpenChange={(open) => !open && setEditing(null)}>
