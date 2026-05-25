@@ -18,6 +18,7 @@ import {
 import { requireClerkUser } from "../lib/requireAdmin";
 import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa } from "../lib/adminWa.js";
+import { createSalesOrderFromVmfApproval } from "../lib/vmfSoIntegration.js";
 
 const PUBLIC_CACHE = "public, max-age=300, stale-while-revalidate=600";
 
@@ -961,11 +962,41 @@ vendorMiniFormRouter.post("/customer-approval/:token", async (req: Request, res:
       }
     });
 
+    // ── Buat Sales Order nyata di sales_documents (hanya saat approve) ────
+    let salesDocId: number | null = null;
+    if (action === "approve") {
+      // Re-fetch approval row yang sudah di-update supaya helper punya data lengkap
+      const [freshApproval] = await db
+        .select()
+        .from(customerApprovalsTable)
+        .where(eq(customerApprovalsTable.token, token))
+        .limit(1);
+
+      if (freshApproval) {
+        const soResult = await createSalesOrderFromVmfApproval(freshApproval);
+        if (soResult.ok) {
+          // Gunakan doc_number dari sales_documents sebagai SO number canonical
+          soNumber = soResult.docNumber;
+          salesDocId = soResult.docId;
+          // Update customer_approvals.so_number dengan nomor SO yang benar
+          await db.update(customerApprovalsTable)
+            .set({ soNumber: soResult.docNumber })
+            .where(eq(customerApprovalsTable.token, token));
+        } else if (soResult.reason === "already_exists") {
+          soNumber = soResult.docNumber;
+          salesDocId = soResult.docId;
+        } else {
+          // SO creation gagal — log saja, jangan gagalkan approval
+          req.log?.warn({ reason: soResult.message }, "VMF SO creation failed — approval tetap valid");
+        }
+      }
+    }
+
     // Activity log (non-fatal, di luar transaksi)
     if (action === "approve") {
       await logActivity("customer_approval", 0, "approved", "customer",
         `Customer ${customerName ?? "-"} menyetujui penawaran. SO: ${soNumber}`,
-        { soNumber, orderId }).catch?.(() => {});
+        { soNumber, salesDocId, orderId }).catch?.(() => {});
     } else {
       await logActivity("customer_approval", 0, "rejected", "customer",
         `Customer ${customerName ?? "-"} menolak penawaran`, { orderId }).catch?.(() => {});
@@ -984,7 +1015,7 @@ vendorMiniFormRouter.post("/customer-approval/:token", async (req: Request, res:
     }).catch(() => {});
 
     return res.json({
-      success: true, action, soNumber,
+      success: true, action, soNumber, salesDocId,
       message: action === "approve"
         ? `Terima kasih! Persetujuan Anda telah kami catat. Sales Order ${soNumber} telah dibuat.`
         : "Penolakan Anda telah kami catat. Tim kami akan segera menghubungi Anda.",
