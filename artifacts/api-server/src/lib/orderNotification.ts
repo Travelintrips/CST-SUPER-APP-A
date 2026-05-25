@@ -376,6 +376,8 @@ const DEFAULT_TPL = {
     customer_approved: ["✅ *CUSTOMER APPROVED — {{orderNumber}}*","━━━━━━━━━━━━━━━━━━","Customer: *{{customerName}}*","Order: {{orderNumber}}","Status: DISETUJUI ✅","","Segera proses konfirmasi operasional ke vendor.","_{{timestamp}}_"].join("\n"),
     op_request: ["⚙️ *OP. REQUEST DIKIRIM — {{orderNumber}}*","","Form konfirmasi operasional telah dikirim ke vendor *{{vendorName}}*.","","No. Order : {{orderNumber}}","Customer  : {{customerName}}","Layanan   : {{serviceType}}","Route     : {{route}}","","{{#if trucking}}","Data yang diminta: Driver, No. Plat, Kendaraan.","{{/if}}","{{#if freight_sea}}","Data yang diminta: Vessel, Voyage, Container, BL.","{{/if}}","{{#if freight_air}}","Data yang diminta: Airline, AWB, Flight Number.","{{/if}}","{{#if ppjk}}","Data yang diminta: Nomor Aju, BC Type, SPPB.","{{/if}}","","🔗 Link Operasional: {{operationalFormLink}}","","_{{timestamp}}_"].join("\n"),
     driver_assigned: ["🚚 *DRIVER DITUGASKAN — {{orderNumber}}*","","Driver untuk order *{{orderNumber}}* telah ditugaskan.","Customer : {{customerName}}","Layanan  : {{serviceType}}","","{{#if trucking}}","👤 Driver    : {{driverName}}","📞 HP        : {{driverPhone}}","🚛 Kendaraan : {{vehicleType}}","🔢 Plat      : {{plateNumber}}","{{/if}}","","Notifikasi sudah dikirim ke customer.","_{{timestamp}}_"].join("\n"),
+    shipment_update: ["🚢 *SHIPMENT UPDATE DIKIRIM — {{orderNumber}}*","","Update pengiriman sudah dikirim ke customer *{{customerName}}*.","Layanan : {{serviceType}}","Rute    : {{route}}","","{{#if freight_sea}}","🚢 Kapal     : {{vessel}} / {{voyage}}","📦 Container : {{containerNumber}}","📃 BL No     : {{blNumber}}","{{/if}}","","{{#if freight_air}}","✈️ Airline   : {{airline}}","📋 AWB       : {{awbNumber}}","🛫 Flight    : {{flightNumber}}","{{/if}}","","_{{timestamp}}_"].join("\n"),
+    customs_update: ["🏛️ *KEPABEANAN UPDATE DIKIRIM — {{orderNumber}}*","","Update kepabeanan sudah dikirim ke customer *{{customerName}}*.","Layanan : {{serviceType}}","","{{#if ppjk}}","📋 No. Aju : {{ajuNumber}}","📄 BC Type : {{bcType}}","✅ SPPB    : {{sppbNumber}}","{{/if}}","","_{{timestamp}}_"].join("\n"),
     delivery_completed: ["🏁 *PENGIRIMAN SELESAI — {{orderNumber}}*","Customer: {{customerName}}","Rute: {{route}}","_{{timestamp}}_"].join("\n"),
   },
   admin_group: {
@@ -384,6 +386,8 @@ const DEFAULT_TPL = {
     customer_approved: ["🎉 *CUSTOMER APPROVED — {{orderNumber}}*","Customer *{{customerName}}* menyetujui penawaran.","Proses operasional sekarang!","_{{timestamp}}_"].join("\n"),
     op_request: ["⚙️ *[OP. REQUEST] {{orderNumber}}*","Form operasional dikirim ke vendor *{{vendorName}}*.","Customer: {{customerName}} | Layanan: {{serviceType}}","Rute: {{route}}","_{{timestamp}}_"].join("\n"),
     driver_assigned: ["🚚 *[DRIVER DITUGASKAN] {{orderNumber}}*","Customer: {{customerName}}","{{#if trucking}}","Driver: {{driverName}} | Plat: {{plateNumber}}","{{/if}}","_{{timestamp}}_"].join("\n"),
+    shipment_update: ["🚢 *SHIPMENT UPDATE — {{orderNumber}}*","Customer: {{customerName}} | Rute: {{route}}","{{#if freight_sea}}","Vessel: {{vessel}} / BL: {{blNumber}}","{{/if}}","{{#if freight_air}}","AWB: {{awbNumber}} / Flight: {{flightNumber}}","{{/if}}","_{{timestamp}}_"].join("\n"),
+    customs_update: ["🏛️ *KEPABEANAN UPDATE — {{orderNumber}}*","Customer: {{customerName}}","{{#if ppjk}}","Aju: {{ajuNumber}} | SPPB: {{sppbNumber}}","{{/if}}","_{{timestamp}}_"].join("\n"),
   },
   customer: {
     order_new: ["✅ *PESANAN ANDA DITERIMA*","━━━━━━━━━━━━━━━━━━","Halo *{{customerName}}*,","","Terima kasih telah mempercayakan pengiriman Anda kepada CST Logistics.","","No. Order       : *{{orderNumber}}*","Tanggal         : {{tanggal}}","Jam             : {{jam}}","Status          : Menunggu Penawaran Harga","Rute            : {{route}}","Kategori Barang : {{commodity}}","Berat           : {{grossWeightDisplay}}","Volume          : {{volumeDisplay}}","Layanan         :","{{serviceList}}","Tgl Butuh       : {{requiredDate}}","━━━━━━━━━━━━━━━━━━","Tim kami sedang memproses permintaan Anda dan akan segera mengirimkan *penawaran harga terbaik* untuk Anda.","","📞 Jakarta: (021) 6241234 | Tangerang: (021) 5591234","","_Dikirim: {{timestamp}}_"].join("\n"),
@@ -867,7 +871,7 @@ export async function sendDriverAssignedNotification(
   }
 }
 
-// ── Shipment Update (update status pengiriman ke customer) ────────────────────
+// ── Shipment Update (update status pengiriman ke customer + admin) ────────────
 export async function sendShipmentUpdateNotification(
   order: LogisticOrderData,
   extras: {
@@ -875,32 +879,83 @@ export async function sendShipmentUpdateNotification(
     airline?: string; awbNumber?: string; flightNumber?: string;
   } = {},
 ): Promise<void> {
-  if (!order.phone) return;
-  const tpl = await getWaTemplateConfig("customer", "shipment_update", DEFAULT_TPL.customer.shipment_update);
-  const msg = renderWf(tpl, order, extras);
-  sendWhatsApp(order.phone, msg).catch((e: unknown) => logger.error({ e }, "WA shipment_update failed"));
+  const [custTpl, adminTpl, groupTpl, adminWa, adminGroupWa] = await Promise.all([
+    getWaTemplateConfig("customer", "shipment_update", DEFAULT_TPL.customer.shipment_update),
+    getWaTemplateConfig("admin_personal", "shipment_update", DEFAULT_TPL.admin_personal.shipment_update),
+    getWaTemplateConfig("admin_group", "shipment_update", DEFAULT_TPL.admin_group.shipment_update),
+    getAdminWa(),
+    getAdminGroupWa(),
+  ]);
+  if (order.phone) {
+    sendWhatsApp(order.phone, renderWf(custTpl, order, extras)).catch((e: unknown) =>
+      logger.error({ e }, "WA shipment_update (customer) failed"),
+    );
+  }
+  if (adminWa) {
+    sendWhatsApp(adminWa, renderWf(adminTpl, order, extras)).catch((e: unknown) =>
+      logger.error({ e }, "WA shipment_update (admin) failed"),
+    );
+  }
+  if (adminGroupWa) {
+    sendWhatsApp(adminGroupWa, renderWf(groupTpl, order, extras)).catch((e: unknown) =>
+      logger.error({ e }, "WA shipment_update (group) failed"),
+    );
+  }
 }
 
-// ── Customs Update (update status kepabeanan ke customer) ─────────────────────
+// ── Customs Update (update status kepabeanan ke customer + admin) ─────────────
 export async function sendCustomsUpdateNotification(
   order: LogisticOrderData,
   extras: { ajuNumber?: string; bcType?: string; sppbNumber?: string } = {},
 ): Promise<void> {
-  if (!order.phone) return;
-  const tpl = await getWaTemplateConfig("customer", "customs_update", DEFAULT_TPL.customer.customs_update);
-  const msg = renderWf(tpl, order, extras);
-  sendWhatsApp(order.phone, msg).catch((e: unknown) => logger.error({ e }, "WA customs_update failed"));
+  const [custTpl, adminTpl, groupTpl, adminWa, adminGroupWa] = await Promise.all([
+    getWaTemplateConfig("customer", "customs_update", DEFAULT_TPL.customer.customs_update),
+    getWaTemplateConfig("admin_personal", "customs_update", DEFAULT_TPL.admin_personal.customs_update),
+    getWaTemplateConfig("admin_group", "customs_update", DEFAULT_TPL.admin_group.customs_update),
+    getAdminWa(),
+    getAdminGroupWa(),
+  ]);
+  if (order.phone) {
+    sendWhatsApp(order.phone, renderWf(custTpl, order, extras)).catch((e: unknown) =>
+      logger.error({ e }, "WA customs_update (customer) failed"),
+    );
+  }
+  if (adminWa) {
+    sendWhatsApp(adminWa, renderWf(adminTpl, order, extras)).catch((e: unknown) =>
+      logger.error({ e }, "WA customs_update (admin) failed"),
+    );
+  }
+  if (adminGroupWa) {
+    sendWhatsApp(adminGroupWa, renderWf(groupTpl, order, extras)).catch((e: unknown) =>
+      logger.error({ e }, "WA customs_update (group) failed"),
+    );
+  }
 }
 
 // ── Delivery Completed (notifikasi pengiriman selesai) ────────────────────────
 export async function sendDeliveryCompletedNotification(
   order: LogisticOrderData,
 ): Promise<void> {
-  const [custTpl, adminTpl] = await Promise.all([
+  const [custTpl, adminTpl, groupTpl, adminWa, adminGroupWa] = await Promise.all([
     getWaTemplateConfig("customer", "delivery_completed", DEFAULT_TPL.customer.delivery_completed),
     getWaTemplateConfig("admin_personal", "delivery_completed", DEFAULT_TPL.admin_personal.delivery_completed),
+    getWaTemplateConfig("admin_group", "delivery_completed", DEFAULT_TPL.admin_group.delivery_completed),
+    getAdminWa(),
+    getAdminGroupWa(),
   ]);
-  if (order.phone) sendWhatsApp(order.phone, renderWf(custTpl, order)).catch((e: unknown) => logger.error({ e }, "WA delivery_completed (customer) failed"));
-  const adminWa = await getAdminWa();
-  if (adminWa) sendWhatsApp(adminWa, renderWf(adminTpl, order)).catch((e: unknown) => logger.error({ e }, "WA delivery_completed (admin) failed"));
+  if (order.phone) {
+    sendWhatsApp(order.phone, renderWf(custTpl, order)).catch((e: unknown) =>
+      logger.error({ e }, "WA delivery_completed (customer) failed"),
+    );
+  }
+  if (adminWa) {
+    sendWhatsApp(adminWa, renderWf(adminTpl, order)).catch((e: unknown) =>
+      logger.error({ e }, "WA delivery_completed (admin) failed"),
+    );
+  }
+  if (adminGroupWa) {
+    sendWhatsApp(adminGroupWa, renderWf(groupTpl, order)).catch((e: unknown) =>
+      logger.error({ e }, "WA delivery_completed (group) failed"),
+    );
+  }
 }
