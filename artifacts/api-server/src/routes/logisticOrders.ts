@@ -742,6 +742,51 @@ logisticOrdersRouter.put("/:id/status", async (req: Request, res: Response) => {
   return res.json(toOrder(updated));
 });
 
+// PATCH /api/logistic/orders/:id/details — update detail order (admin)
+logisticOrdersRouter.patch("/:id/details", async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params["id"] ?? ""), 10);
+  if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+
+  const parsed = z.object({
+    shipmentType:    z.string().optional(),
+    origin:          z.string().optional(),
+    destination:     z.string().optional(),
+    commodity:       z.string().optional(),
+    cargoDescription: z.string().optional(),
+    grossWeight:     z.string().optional(),
+    volumeCbm:       z.string().optional(),
+    jumlahKoli:      z.number().int().nonnegative().optional(),
+    requiredDate:    z.string().optional(),
+    notes:           z.string().optional(),
+  }).safeParse(req.body);
+
+  if (!parsed.success) return res.status(400).json({ message: "Data tidak valid" });
+
+  const patch: Record<string, unknown> = {};
+  const d = parsed.data;
+  if (d.shipmentType    !== undefined) patch["shipmentType"]    = d.shipmentType.trim() || null;
+  if (d.origin          !== undefined) patch["origin"]          = d.origin.trim() || null;
+  if (d.destination     !== undefined) patch["destination"]     = d.destination.trim() || null;
+  if (d.commodity       !== undefined) patch["commodity"]       = d.commodity.trim() || null;
+  if (d.cargoDescription !== undefined) patch["cargoDescription"] = d.cargoDescription.trim() || null;
+  if (d.grossWeight     !== undefined) patch["grossWeight"]     = d.grossWeight.trim() || null;
+  if (d.volumeCbm       !== undefined) patch["volumeCbm"]       = d.volumeCbm.trim() || null;
+  if (d.jumlahKoli      !== undefined) patch["jumlahKoli"]      = d.jumlahKoli;
+  if (d.requiredDate    !== undefined) patch["requiredDate"]    = d.requiredDate.trim() || null;
+  if (d.notes           !== undefined) patch["notes"]           = d.notes.trim() || null;
+
+  if (Object.keys(patch).length === 0)
+    return res.status(400).json({ message: "Tidak ada field yang diupdate" });
+
+  const [updated] = await db
+    .update(logisticOrdersTable)
+    .set(patch as any)
+    .where(eq(logisticOrdersTable.id, id))
+    .returning();
+  if (!updated) return res.status(404).json({ message: "Order tidak ditemukan" });
+  return res.json(toOrder(updated));
+});
+
 // PATCH /api/logistic/orders/:id/type — update shipment type (admin)
 logisticOrdersRouter.patch("/:id/type", async (req: Request, res: Response) => {
   const id = parseInt(String(req.params["id"] ?? ""), 10);
