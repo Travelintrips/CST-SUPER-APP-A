@@ -82,7 +82,7 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
       // In iframe (Replit preview): open popup with returnTo=popup sentinel.
       // The popup will postMessage "auth:done" then close itself.
       const loginUrl = `${origin}/api/login/google?returnTo=${encodeURIComponent("popup")}`;
-      const authWindow = window.open(loginUrl, "_blank", "width=500,height=650,noopener");
+      const authWindow = window.open(loginUrl, "_blank", "width=500,height=650,popup");
 
       if (authWindow) {
         const onMessage = (evt: MessageEvent) => {
