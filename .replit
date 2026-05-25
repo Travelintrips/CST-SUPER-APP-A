@@ -28,6 +28,10 @@ args = "Gateway"
 task = "workflow.run"
 args = "API Spec Watcher"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "API Server"
+
 [[workflows.workflow]]
 name = "Customer Portal"
 author = "agent"
@@ -37,7 +41,7 @@ outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "fuser -k 3001/tcp 2>/dev/null; sleep 0.3; cd artifacts/customer-portal && PORT=3001 BASE_PATH=/ pnpm exec vite --config vite.config.ts --host 0.0.0.0"
+args = "fuser -k 3001/tcp 2>/dev/null; sleep 0.3; cd artifacts/customer-portal && PORT=3001 BASE_PATH=/ node_modules/.bin/vite --config vite.config.ts --host 0.0.0.0"
 waitForPort = 3001
 
 [[workflows.workflow]]
@@ -56,12 +60,24 @@ outputType = "webview"
 name = "API Spec Watcher"
 author = "agent"
 
+[workflows.workflow.metadata]
+outputType = "console"
+
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "node lib/api-spec/watch.mjs"
 
+[[workflows.workflow]]
+name = "API Server"
+author = "agent"
+
 [workflows.workflow.metadata]
 outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "fuser -k 8080/tcp 2>/dev/null; sleep 0.3; cd artifacts/api-server && node ./build.mjs && NODE_ENV=development PORT=8080 node --enable-source-maps ./dist/index.mjs"
+waitForPort = 8080
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
@@ -113,22 +129,15 @@ packages = ["freetype", "lcms2", "libimagequant", "libjpeg", "libtiff", "libwebp
 defaultBucketID = "replit-objstore-e357cc66-19c3-4d73-9ca9-3069d78355d1"
 
 [[ports]]
-localPort = 3000
-externalPort = 9000
-
-[[ports]]
 localPort = 3001
 externalPort = 3001
-
-[[ports]]
-localPort = 3002
-externalPort = 8008
 
 [[ports]]
 localPort = 5000
 externalPort = 80
 
 [[ports]]
+<<<<<<< HEAD
 localPort = 8081
 externalPort = 8008
 
@@ -183,3 +192,7 @@ externalPort = 5173
 [[ports]]
 localPort = 23435
 externalPort = 8081
+=======
+localPort = 8080
+externalPort = 8080
+>>>>>>> 931ebace789e131d7ab76af17736334a441f9f8d
