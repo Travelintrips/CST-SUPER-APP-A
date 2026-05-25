@@ -22,6 +22,7 @@ import {
   Copy, ExternalLink, Link2, Plus, Trash2, Eye, ToggleLeft, ToggleRight,
   Loader2, RotateCcw, CalendarDays, User, Phone, MessageCircle, XCircle,
   Clock, SendHorizonal, Pencil, CheckCircle, Package, Star, Building2, FileText,
+  BarChart2, TrendingDown, TrendingUp, Minus, Award,
 } from "lucide-react";
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
@@ -744,6 +745,310 @@ function SubmissionCard({
   );
 }
 
+// ── Compare Vendors Sheet ─────────────────────────────────────────────────────
+
+type RankedSub = Submission & { rank: number; priceNum: number | null; isLowest: boolean; isHighest: boolean };
+
+function rankSubmissions(subs: Submission[]): RankedSub[] {
+  const withPrice = subs.map(s => ({ ...s, priceNum: s.vendorPrice ? Number(s.vendorPrice) : null }));
+  const priced = withPrice.filter(s => s.priceNum !== null).sort((a, b) => (a.priceNum ?? 0) - (b.priceNum ?? 0));
+  const unpriced = withPrice.filter(s => s.priceNum === null);
+  const lowestPrice = priced[0]?.priceNum ?? null;
+  const highestPrice = priced[priced.length - 1]?.priceNum ?? null;
+
+  let rank = 1;
+  return [
+    ...priced.map(s => ({
+      ...s, rank: rank++,
+      isLowest: s.priceNum === lowestPrice && lowestPrice !== null,
+      isHighest: s.priceNum === highestPrice && highestPrice !== null && priced.length > 1,
+    })),
+    ...unpriced.map(s => ({ ...s, rank: 0, isLowest: false, isHighest: false })),
+  ];
+}
+
+function PriceTrendIcon({ isLowest, isHighest, hasPriced }: { isLowest: boolean; isHighest: boolean; hasPriced: boolean }) {
+  if (!hasPriced) return <Minus className="h-3.5 w-3.5 text-slate-300" />;
+  if (isLowest) return <TrendingDown className="h-3.5 w-3.5 text-green-500" />;
+  if (isHighest) return <TrendingUp className="h-3.5 w-3.5 text-red-400" />;
+  return <Minus className="h-3.5 w-3.5 text-yellow-400" />;
+}
+
+function CompareVendorsSheet({
+  link, submissions, open, onOpenChange, onSelect,
+}: {
+  link: FormLink; submissions: Submission[]; open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onSelect: (id: number) => void;
+}) {
+  const meta = SERVICE_META[link.serviceType];
+  const linkSubs = submissions.filter(s => s.linkId === link.id);
+  const ranked = rankSubmissions(linkSubs);
+  const allHavePrice = ranked.every(s => s.priceNum !== null);
+  const anySelected = ranked.some(s => s.selectedByAdmin);
+
+  const [selectingId, setSelectingId] = useState<number | null>(null);
+
+  const handleSelect = async (id: number) => {
+    setSelectingId(id);
+    try { await onSelect(id); }
+    finally { setSelectingId(null); }
+  };
+
+  const lowestPrice = ranked.find(s => s.isLowest)?.priceNum ?? null;
+
+  const priceSavings = (price: number | null): string | null => {
+    if (price === null || lowestPrice === null || price === lowestPrice) return null;
+    const diff = price - lowestPrice;
+    const pct = ((diff / lowestPrice) * 100).toFixed(1);
+    return `+${Number(pct).toLocaleString("id-ID")}%`;
+  };
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="w-full sm:max-w-3xl flex flex-col p-0" side="right">
+        {/* Header */}
+        <SheetHeader className="px-6 pt-6 pb-4 border-b bg-gradient-to-r from-indigo-50 to-blue-50 shrink-0">
+          <div className="flex items-center gap-2">
+            <BarChart2 className="h-5 w-5 text-indigo-500" />
+            <SheetTitle className="text-lg">Perbandingan Vendor</SheetTitle>
+          </div>
+          <p className="text-sm text-slate-600 mt-0.5">
+            {meta?.emoji} {link.title ?? `Form ${meta?.label ?? link.serviceType}`}
+            {link.orderNumber && <span className="ml-2 text-xs text-blue-600 font-medium">📦 {link.orderNumber}</span>}
+          </p>
+          <div className="flex items-center gap-2 mt-2 flex-wrap">
+            <span className="text-xs bg-indigo-100 text-indigo-700 border border-indigo-200 rounded px-2 py-0.5 font-medium">
+              {ranked.length} vendor
+            </span>
+            {allHavePrice && (
+              <span className="text-xs bg-green-100 text-green-700 border border-green-200 rounded px-2 py-0.5">
+                Semua ada harga ✓
+              </span>
+            )}
+            {anySelected && (
+              <span className="text-xs bg-amber-100 text-amber-700 border border-amber-200 rounded px-2 py-0.5">
+                <Star className="h-3 w-3 inline mr-0.5 fill-amber-500 text-amber-500" />Vendor dipilih
+              </span>
+            )}
+          </div>
+        </SheetHeader>
+
+        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          {ranked.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-slate-400">
+              <BarChart2 className="h-10 w-10 mb-3 opacity-30" />
+              <p className="text-sm">Belum ada submission untuk link ini</p>
+            </div>
+          ) : (
+            <>
+              {/* Summary bar */}
+              {ranked.filter(s => s.priceNum !== null).length >= 2 && (
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 grid grid-cols-3 gap-4 text-center">
+                  <div>
+                    <p className="text-xs text-slate-500 mb-0.5">Harga Terendah</p>
+                    <p className="font-bold text-green-600 text-sm">
+                      {fmtPrice(ranked.find(s => s.isLowest)?.vendorPrice ?? null, ranked.find(s => s.isLowest)?.currency ?? null)}
+                    </p>
+                    <p className="text-xs text-slate-400">{ranked.find(s => s.isLowest)?.vendorName ?? "—"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500 mb-0.5">Rata-rata</p>
+                    <p className="font-bold text-slate-700 text-sm">
+                      {(() => {
+                        const pricedRanked = ranked.filter(s => s.priceNum !== null);
+                        if (!pricedRanked.length) return "—";
+                        const avg = pricedRanked.reduce((a, s) => a + (s.priceNum ?? 0), 0) / pricedRanked.length;
+                        const cur = pricedRanked[0]?.currency ?? "IDR";
+                        return `${cur} ${Math.round(avg).toLocaleString("id-ID")}`;
+                      })()}
+                    </p>
+                    <p className="text-xs text-slate-400">{ranked.filter(s => s.priceNum !== null).length} vendor</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500 mb-0.5">Harga Tertinggi</p>
+                    <p className="font-bold text-red-500 text-sm">
+                      {fmtPrice(ranked.find(s => s.isHighest)?.vendorPrice ?? null, ranked.find(s => s.isHighest)?.currency ?? null)}
+                    </p>
+                    <p className="text-xs text-slate-400">{ranked.find(s => s.isHighest)?.vendorName ?? "—"}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Vendor cards */}
+              <div className="space-y-3">
+                {ranked.map((sub) => {
+                  const isSelected = sub.selectedByAdmin;
+                  const savings = priceSavings(sub.priceNum);
+                  const cardBg = isSelected
+                    ? "bg-green-50 border-green-300"
+                    : sub.isLowest
+                    ? "bg-emerald-50 border-emerald-200"
+                    : sub.isHighest
+                    ? "bg-red-50 border-red-200"
+                    : "bg-white border-slate-200";
+
+                  return (
+                    <div key={sub.id} className={`border rounded-xl p-4 transition-all ${cardBg}`}>
+                      <div className="flex items-start gap-3">
+                        {/* Rank badge */}
+                        <div className="shrink-0 mt-0.5">
+                          {isSelected ? (
+                            <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center">
+                              <Award className="h-4 w-4 text-white" />
+                            </div>
+                          ) : sub.rank > 0 ? (
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
+                              sub.rank === 1 ? "bg-green-100 text-green-700" :
+                              sub.rank === 2 ? "bg-blue-100 text-blue-700" :
+                              sub.rank === 3 ? "bg-orange-100 text-orange-700" :
+                              "bg-slate-100 text-slate-600"
+                            }`}>
+                              #{sub.rank}
+                            </div>
+                          ) : (
+                            <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 text-xs">
+                              —
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Main info */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-semibold text-slate-800 text-sm">{sub.vendorName ?? "—"}</span>
+                            {isSelected && (
+                              <span className="text-xs bg-green-600 text-white rounded px-1.5 py-0.5 font-medium flex items-center gap-0.5">
+                                <Star className="h-2.5 w-2.5 fill-white" /> Dipilih
+                              </span>
+                            )}
+                            {sub.isLowest && !isSelected && (
+                              <span className="text-xs bg-green-100 text-green-700 rounded px-1.5 py-0.5 font-medium">
+                                Termurah 🏆
+                              </span>
+                            )}
+                            {sub.isHighest && !isSelected && (
+                              <span className="text-xs bg-red-100 text-red-600 rounded px-1.5 py-0.5">
+                                Tertinggi
+                              </span>
+                            )}
+                          </div>
+                          {sub.contactPerson && (
+                            <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-1">
+                              <User className="h-3 w-3" />{sub.contactPerson}
+                              {sub.contactPhone && <span className="ml-1">· {sub.contactPhone}</span>}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Price + details grid */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
+                        <div className="col-span-2 sm:col-span-1">
+                          <p className="text-xs text-slate-400 mb-0.5 flex items-center gap-1">
+                            <PriceTrendIcon isLowest={sub.isLowest} isHighest={sub.isHighest} hasPriced={sub.priceNum !== null} />
+                            Harga Penawaran
+                          </p>
+                          {sub.vendorPrice ? (
+                            <div>
+                              <p className={`font-bold text-base ${sub.isLowest ? "text-green-700" : sub.isHighest ? "text-red-600" : "text-slate-800"}`}>
+                                {fmtPrice(sub.vendorPrice, sub.currency)}
+                              </p>
+                              {savings && (
+                                <p className="text-xs text-red-400 font-medium">{savings} dari termurah</p>
+                              )}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-slate-400 italic">Tidak diisi</p>
+                          )}
+                        </div>
+
+                        <div>
+                          <p className="text-xs text-slate-400 mb-0.5">⏱ ETA</p>
+                          <p className="text-sm text-slate-700 font-medium">{sub.eta ?? <span className="text-slate-400 italic text-xs">—</span>}</p>
+                        </div>
+
+                        <div>
+                          <p className="text-xs text-slate-400 mb-0.5">📅 Berlaku Sampai</p>
+                          <p className="text-sm text-slate-700">
+                            {sub.validUntil
+                              ? new Date(sub.validUntil).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })
+                              : <span className="text-slate-400 italic text-xs">—</span>}
+                          </p>
+                        </div>
+
+                        <div>
+                          <p className="text-xs text-slate-400 mb-0.5">📩 Dikirim</p>
+                          <p className="text-xs text-slate-600">
+                            {new Date(sub.submittedAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Form data snippet */}
+                      {Object.keys(sub.formData).length > 0 && (
+                        <div className="mt-3 pt-3 border-t border-dashed border-slate-200 grid grid-cols-2 sm:grid-cols-3 gap-2">
+                          {Object.entries(sub.formData).slice(0, 6).map(([k, v]) => (
+                            <div key={k}>
+                              <p className="text-xs text-slate-400 truncate">{k}</p>
+                              <p className="text-xs text-slate-700 font-medium truncate">{String(v)}</p>
+                            </div>
+                          ))}
+                          {Object.keys(sub.formData).length > 6 && (
+                            <p className="text-xs text-slate-400 col-span-full">+{Object.keys(sub.formData).length - 6} field lainnya…</p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Select button */}
+                      {!isSelected && (
+                        <div className="mt-3 flex justify-end">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs gap-1 border-green-300 text-green-700 hover:bg-green-50"
+                            disabled={selectingId === sub.id}
+                            onClick={() => handleSelect(sub.id)}
+                          >
+                            {selectingId === sub.id
+                              ? <Loader2 className="h-3 w-3 animate-spin" />
+                              : <Star className="h-3 w-3" />}
+                            Pilih Vendor Ini
+                          </Button>
+                        </div>
+                      )}
+                      {isSelected && (
+                        <div className="mt-3 flex justify-end">
+                          <span className="text-xs text-green-600 font-medium flex items-center gap-1">
+                            <CheckCircle className="h-3.5 w-3.5" />
+                            Vendor ini telah dipilih
+                            {sub.selectedAt && (
+                              <span className="text-slate-400 font-normal">
+                                · {new Date(sub.selectedAt).toLocaleDateString("id-ID")}
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Unpriced warning */}
+              {ranked.some(s => s.priceNum === null) && (
+                <p className="text-xs text-slate-400 text-center pt-2">
+                  * Vendor tanpa harga tidak diikutkan dalam ranking
+                </p>
+              )}
+            </>
+          )}
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 // ── Link Detail Sheet ─────────────────────────────────────────────────────────
 
 function LinkDetailSheet({
@@ -873,6 +1178,8 @@ export default function VendorFormsPage() {
   const [tab, setTab] = useState("links");
   const [selectedLink, setSelectedLink] = useState<FormLink | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [compareLink, setCompareLink] = useState<FormLink | null>(null);
+  const [compareOpen, setCompareOpen] = useState(false);
   const [searchLinks, setSearchLinks] = useState("");
   const [filterMode, setFilterMode] = useState("all");
 
@@ -1107,6 +1414,16 @@ export default function VendorFormsPage() {
                                 <Button variant="ghost" size="icon" className="h-7 w-7" title="Lihat detail" onClick={() => openLinkSheet(link)}>
                                   <Eye className="h-3.5 w-3.5" />
                                 </Button>
+                                {linkSubs.length >= 1 && (
+                                  <Button
+                                    variant="ghost" size="icon"
+                                    className="h-7 w-7 text-indigo-500 hover:text-indigo-700 hover:bg-indigo-50"
+                                    title={`Bandingkan ${linkSubs.length} vendor`}
+                                    onClick={() => { setCompareLink(link); setCompareOpen(true); }}
+                                  >
+                                    <BarChart2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                )}
                                 <CopyBtn text={formUrl} />
                                 <a href={formUrl} target="_blank" rel="noreferrer">
                                   <Button variant="ghost" size="icon" className="h-7 w-7"><ExternalLink className="h-3.5 w-3.5" /></Button>
@@ -1390,6 +1707,21 @@ export default function VendorFormsPage() {
           onOpenChange={setSheetOpen}
           onDeleteSubmission={(id) => deleteSubMut.mutate(id)}
           onSelectSubmission={(id) => selectSubMut.mutate(id)}
+        />
+      )}
+
+      {/* Compare Vendors Sheet */}
+      {compareLink && (
+        <CompareVendorsSheet
+          link={compareLink}
+          submissions={submissions}
+          open={compareOpen}
+          onOpenChange={setCompareOpen}
+          onSelect={async (id) => {
+            await new Promise<void>((resolve, reject) =>
+              selectSubMut.mutate(id, { onSuccess: () => resolve(), onError: (e) => reject(e) })
+            );
+          }}
         />
       )}
     </AppShell>
