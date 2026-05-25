@@ -389,6 +389,7 @@ export const SERVICE_SCHEMAS: Record<string, {
       { key: "customer_budget", label: "Budget Customer (Rp / USD)", type: "text", section: "quotation", placeholder: "Kosongkan jika tidak diketahui" },
       { key: "special_req", label: "Persyaratan Khusus dari Customer", type: "textarea", section: "quotation", placeholder: "Contoh: butuh insurance, dokumen tertentu, dll." },
       { key: "quote_deadline", label: "Batas Waktu Penawaran dari Vendor", type: "date", required: true, section: "quotation" },
+      { key: "vendor_phone", label: "No. WhatsApp Vendor (untuk notifikasi otomatis)", type: "text", section: "quotation", placeholder: "Contoh: 628123456789" },
       { key: "notes_to_vendor", label: "Pesan / Instruksi ke Vendor", type: "textarea", section: "quotation", placeholder: "Tambahan informasi yang perlu diketahui vendor" },
     ],
   },
@@ -670,6 +671,52 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
         refType: "vendor_mini_form",
         refId: token,
       }).catch(() => {});
+    }
+
+    // WA to vendor for admin_rfq_forward: notify vendor about the RFQ details
+    if (link.serviceType === "admin_rfq_forward" && formData) {
+      const fd = formData as Record<string, unknown>;
+      const vendorPhoneRaw = (fd["vendor_phone"] as string | undefined)?.trim();
+      if (vendorPhoneRaw) {
+        const { normalizePhone } = await import("../lib/phoneUtils.js");
+        const vendorPhoneNorm = normalizePhone(vendorPhoneRaw);
+        if (vendorPhoneNorm) {
+          const { getPreferredDomain } = await import("../lib/domain.js");
+          const domain = getPreferredDomain();
+          // Build a vendor response link (standard vendor-form link from the same token)
+          const vendorFormUrl = domain ? `https://${domain}/vendor-mini-form/${token}` : `/vendor-mini-form/${token}`;
+          const rfqRef = (fd["rfq_ref"] as string | undefined)?.trim();
+          const customerName = (fd["customer_name"] as string | undefined)?.trim();
+          const serviceNeeded = (fd["service_needed"] as string | undefined)?.trim();
+          const origin = (fd["origin"] as string | undefined)?.trim();
+          const destination = (fd["destination"] as string | undefined)?.trim();
+          const weightVolume = (fd["weight_volume"] as string | undefined)?.trim();
+          const cargoDesc = (fd["cargo_desc"] as string | undefined)?.trim();
+          const targetDeliveryDate = (fd["target_delivery_date"] as string | undefined)?.trim();
+          const quoteDeadline = (fd["quote_deadline"] as string | undefined)?.trim();
+          const notesToVendor = (fd["notes_to_vendor"] as string | undefined)?.trim();
+          const vendorLabelRfq = link.vendorName?.trim() || vendorLabel;
+          const msg =
+            `Halo *${vendorLabelRfq}*,\n\n` +
+            `Anda menerima permintaan penawaran (RFQ) dari *CST Logistics*.\n\n` +
+            (rfqRef ? `📌 *Ref: ${rfqRef}*\n` : "") +
+            (customerName ? `👤 Customer: ${customerName}\n` : "") +
+            (serviceNeeded ? `🚚 Layanan: ${serviceNeeded}\n` : "") +
+            (origin && destination ? `📍 Rute: ${origin} → ${destination}\n` : "") +
+            (weightVolume ? `⚖️ Berat/Volume: ${weightVolume}\n` : "") +
+            (cargoDesc ? `📦 Barang: ${cargoDesc}\n` : "") +
+            (targetDeliveryDate ? `📅 Target Pengiriman: ${targetDeliveryDate}\n` : "") +
+            (quoteDeadline ? `⏰ *Batas Penawaran: ${quoteDeadline}*\n` : "") +
+            (notesToVendor ? `\n📝 Pesan dari CST: ${notesToVendor}\n` : "") +
+            `\nMohon submit penawaran Anda melalui link berikut:\n${vendorFormUrl}\n\n` +
+            `_Pesan ini dikirim otomatis oleh sistem CST Logistics._`;
+          sendWhatsApp(vendorPhoneNorm, msg, {
+            context: "admin-rfq-forward-vendor-notif",
+            refType: "vendor_mini_form",
+            refId: token,
+          }).catch(() => {});
+        }
+      }
     }
 
     // WA Summary to admin (especially useful for order-based: show all competing offers)
