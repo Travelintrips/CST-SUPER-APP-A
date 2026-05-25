@@ -214,8 +214,13 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
       const shipType = (order.shipmentType ?? "").toLowerCase().trim();
       const shipKeywords = shipType.split(/[\s,]+/).filter((k) => k.length > 1);
 
-      // All active vendors with phone (no requirement for serviceType to be set)
-      const allWithPhone = allVendors.filter((v) => v.phone);
+      // Vendor harus punya phone. Jika shipmentType order kosong, hanya tampilkan
+      // vendor yang sudah mengisi serviceType (vendor tanpa tipe tidak relevan).
+      const allWithPhone = allVendors.filter((v) => {
+        if (!v.phone) return false;
+        if (!shipType) return !!(v.serviceType && v.serviceType.trim());
+        return true;
+      });
 
       // Fetch catalog items for all vendors in one query to check commodity match
       const vendorIdList = allWithPhone.map((v) => v.id);
