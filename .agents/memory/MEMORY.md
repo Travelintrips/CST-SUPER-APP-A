@@ -1,0 +1,1 @@
+- [Vendor Mini Form order-based](vendor-mini-form-order-based.md) — system dua mode (rate_collection + order_based) dengan flow multi-fase hingga SO creation + op confirmation
