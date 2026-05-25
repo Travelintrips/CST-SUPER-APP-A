@@ -1,5 +1,6 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
-import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, portalContentTable, accountingSettingsTable, salesDocumentsTable, salesDocumentLinesTable, customersTable, logisticOrdersTable, suppliersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, quoteRequestsTable, userProfilesTable, identityDocumentsTable, ocrResultsTable, vendorProfilesTable, driverProfilesTable, employeeProfilesTable, onboardingApprovalsTable, waOtpCodesTable, trustedDevicesTable } from "@workspace/db";
+import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, portalContentTable, accountingSettingsTable, salesDocumentsTable, salesDocumentLinesTable, customersTable, logisticOrdersTable, suppliersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, quoteRequestsTable, userProfilesTable, identityDocumentsTable, ocrResultsTable, vendorProfilesTable, driverProfilesTable, employeeProfilesTable, onboardingApprovalsTable, waOtpCodesTable, trustedDevicesTable, vendorMiniFormLinksTable, vendorMiniFormSubmissionsTable } from "@workspace/db";
+import { invalidateTokenCache, SERVICE_SCHEMAS } from "./vendorMiniForm";
 import { eq, inArray, and, sql, desc, gte, lte, ilike, or } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { sendWhatsApp } from "../lib/fonnte";
@@ -8,6 +9,7 @@ import { sendMail, isSmtpConfigured } from "../lib/mailer";
 import { requirePortalAuth, requirePortalAdmin, type PortalAuthReq } from "../lib/supabaseAuth";
 import { requireClerkUser } from "../lib/requireAdmin";
 import { broadcastToAdmins } from "../lib/sseManager";
+import { saveAndBroadcast } from "../lib/notificationStore";
 import multer from "multer";
 import { randomUUID } from "crypto";
 import { compressImageBuffer } from "../lib/imageCompress.js";
@@ -37,18 +39,29 @@ async function getProductCategories(productIds: number[]): Promise<Record<number
   return map;
 }
 
+// ── In-memory cache for company settings (5 min TTL) ─────────────────────────
+let _companyCache: { data: object; expiresAt: number } | null = null;
+const COMPANY_TTL_MS = 5 * 60 * 1000;
+
 // GET /api/portal/company
 router.get("/company", async (_req, res) => {
+  if (_companyCache && Date.now() < _companyCache.expiresAt) {
+    res.setHeader("Cache-Control", "public, max-age=300, stale-while-revalidate=60");
+    return res.json(_companyCache.data);
+  }
   const [settings] = await db.select().from(accountingSettingsTable).limit(1);
   const adminWa = await getAdminWa();
-  return res.json({
+  const data = {
     name: settings?.companyName ?? "PT. Cahaya Sejati Teknologi",
     tagline: "Solusi Logistik Terintegrasi & Berbasis Teknologi",
     logoUrl: settings?.companyLogoUrl ?? null,
     address: settings?.companyAddress ?? null,
     email: null,
     phone: adminWa || null,
-  });
+  };
+  _companyCache = { data, expiresAt: Date.now() + COMPANY_TTL_MS };
+  res.setHeader("Cache-Control", "public, max-age=300, stale-while-revalidate=60");
+  return res.json(data);
 });
 
 async function listByType(type: string) {
@@ -307,7 +320,7 @@ router.post("/auth/wa-otp/verify", async (req, res) => {
 
 // POST /api/portal/auth/wa-register — lengkapi profil & buat akun
 router.post("/auth/wa-register", async (req, res) => {
-  const { verifyToken, name, role: requestedRole, company, serviceIds, email } = req.body ?? {};
+  const { verifyToken, name, role: requestedRole, company, serviceIds, email, rememberDays } = req.body ?? {};
   if (!verifyToken || !name) return res.status(400).json({ message: "Token verifikasi dan nama diperlukan." });
 
   const [otp] = await db
@@ -374,8 +387,17 @@ router.post("/auth/wa-register", async (req, res) => {
     role: created.role,
   });
 
+  let deviceToken: string | undefined;
+  const days = typeof rememberDays === "number" && rememberDays > 0 && rememberDays <= 90 ? rememberDays : null;
+  if (days && created.phone) {
+    deviceToken = randomUUID();
+    const expiresAt = new Date(Date.now() + days * 86400_000);
+    await db.insert(trustedDevicesTable).values({ phone: created.phone, deviceToken, expiresAt });
+  }
+
   return res.status(201).json({
     token,
+    deviceToken,
     user: {
       id: created.id,
       name: created.name,
@@ -471,6 +493,13 @@ router.post("/auth/wa-trusted-login", async (req, res) => {
   if (matches.length !== 1) return res.status(401).json({ message: "Akun tidak ditemukan." });
   const user = matches[0];
 
+  // Sliding expiry: perpanjang masa berlaku 30 hari dari sekarang
+  const newExpiresAt = new Date(Date.now() + 30 * 86400_000);
+  await db
+    .update(trustedDevicesTable)
+    .set({ expiresAt: newExpiresAt })
+    .where(eq(trustedDevicesTable.id, device.id));
+
   const token = await signPortalJwt({
     sub: String(user.id),
     email: user.email,
@@ -489,6 +518,68 @@ router.post("/auth/wa-trusted-login", async (req, res) => {
       role: user.role,
     },
   });
+});
+
+// GET /api/portal/auth/trusted-devices — daftar perangkat terpercaya milik user saat ini
+router.get("/auth/trusted-devices", requirePortalAuth, async (req, res) => {
+  const customerId = (req as PortalAuthReq).portalCustomerId;
+  const [customer] = await db
+    .select({ phone: portalCustomersTable.phone })
+    .from(portalCustomersTable)
+    .where(eq(portalCustomersTable.id, customerId))
+    .limit(1);
+  if (!customer?.phone) return res.json([]);
+
+  const devices = await db
+    .select({
+      id: trustedDevicesTable.id,
+      createdAt: trustedDevicesTable.createdAt,
+      expiresAt: trustedDevicesTable.expiresAt,
+    })
+    .from(trustedDevicesTable)
+    .where(eq(trustedDevicesTable.phone, customer.phone))
+    .orderBy(trustedDevicesTable.createdAt);
+
+  return res.json(devices);
+});
+
+// DELETE /api/portal/auth/trusted-devices/:id — cabut perangkat terpercaya
+router.delete("/auth/trusted-devices/:id", requirePortalAuth, async (req, res) => {
+  const customerId = (req as PortalAuthReq).portalCustomerId;
+  const deviceId = parseInt(String(req.params.id), 10);
+  if (isNaN(deviceId)) return res.status(400).json({ message: "ID tidak valid." });
+
+  const [customer] = await db
+    .select({ phone: portalCustomersTable.phone })
+    .from(portalCustomersTable)
+    .where(eq(portalCustomersTable.id, customerId))
+    .limit(1);
+  if (!customer?.phone) return res.status(404).json({ message: "User tidak ditemukan." });
+
+  const [device] = await db
+    .select({ id: trustedDevicesTable.id })
+    .from(trustedDevicesTable)
+    .where(and(eq(trustedDevicesTable.id, deviceId), eq(trustedDevicesTable.phone, customer.phone)))
+    .limit(1);
+
+  if (!device) return res.status(404).json({ message: "Perangkat tidak ditemukan." });
+
+  await db.delete(trustedDevicesTable).where(eq(trustedDevicesTable.id, deviceId));
+  return res.json({ message: "Perangkat berhasil dicabut." });
+});
+
+// DELETE /api/portal/auth/trusted-devices — cabut semua perangkat
+router.delete("/auth/trusted-devices", requirePortalAuth, async (req, res) => {
+  const customerId = (req as PortalAuthReq).portalCustomerId;
+  const [customer] = await db
+    .select({ phone: portalCustomersTable.phone })
+    .from(portalCustomersTable)
+    .where(eq(portalCustomersTable.id, customerId))
+    .limit(1);
+  if (!customer?.phone) return res.status(404).json({ message: "User tidak ditemukan." });
+
+  await db.delete(trustedDevicesTable).where(eq(trustedDevicesTable.phone, customer.phone));
+  return res.json({ message: "Semua perangkat berhasil dicabut." });
 });
 
 // POST /api/portal/auth/signup — standalone register (non-Supabase)
@@ -918,11 +1009,25 @@ router.post("/vendor/quotes", requirePortalAuth, async (req, res) => {
 });
 
 // ── PORTAL CONTENT (Public) ───────────────────────────────────────────────
+// ── In-memory cache for portal content (5 min TTL) ───────────────────────────
+let _contentCache: { data: Record<string, string>; expiresAt: number } | null = null;
+const CONTENT_TTL_MS = 5 * 60 * 1000;
+
+export function invalidateContentCache() {
+  _contentCache = null;
+}
+
 // GET /api/portal/content
 router.get("/content", async (_req, res) => {
+  if (_contentCache && Date.now() < _contentCache.expiresAt) {
+    res.setHeader("Cache-Control", "public, max-age=300, stale-while-revalidate=60");
+    return res.json(_contentCache.data);
+  }
   const rows = await db.select().from(portalContentTable);
   const content: Record<string, string> = {};
   for (const r of rows) content[r.key] = r.value;
+  _contentCache = { data: content, expiresAt: Date.now() + CONTENT_TTL_MS };
+  res.setHeader("Cache-Control", "public, max-age=300, stale-while-revalidate=60");
   return res.json(content);
 });
 
@@ -952,6 +1057,7 @@ router.put("/admin/content", requirePortalAdmin, async (req, res) => {
       .values({ key, value: String(value), updatedAt: new Date() })
       .onConflictDoUpdate({ target: portalContentTable.key, set: { value: String(value), updatedAt: new Date() } });
   }
+  _contentCache = null;
   return res.json({ ok: true });
 });
 
@@ -1388,8 +1494,8 @@ router.post("/orders", requirePortalAuth, async (req, res) => {
     });
   }
 
-  // Real-time SSE: notify BizPortal admins immediately
-  broadcastToAdmins("new_order", {
+  // Real-time SSE: notify BizPortal admins immediately (persisted to DB)
+  saveAndBroadcast("new_order", {
     type: "portal_sales",
     orderId: doc!.id,
     orderNumber: doc!.docNumber,
@@ -1397,8 +1503,8 @@ router.post("/orders", requirePortalAuth, async (req, res) => {
     companyName: portalCustomer.company ?? null,
     grandTotal: Number(doc!.grandTotal),
     itemCount: orderItems.length,
-    createdAt: doc!.createdAt,
-  });
+    createdAt: (doc!.createdAt as Date).toISOString(),
+  }).catch(() => {});
 
   // Notify admin via WhatsApp (fire-and-forget)
   getAdminWa().then((adminWa) => {
@@ -2027,7 +2133,7 @@ router.post("/onboarding/upload-doc", requirePortalAuth, onboardingUpload.single
     const storage = new ObjectStorageService();
     let buf = req.file.buffer;
     if (req.file.mimetype.startsWith("image/")) {
-      try { buf = await compressImageBuffer(buf, 1400); } catch { /* use original */ }
+      try { const c = await compressImageBuffer(buf, req.file.mimetype); buf = c.buffer; } catch { /* use original */ }
     }
     const url = await storage.uploadPublic(key, buf, req.file.mimetype);
     // Record in identity_documents
@@ -2079,11 +2185,19 @@ router.post("/onboarding/complete", requirePortalAuth, async (req, res): Promise
   });
 
   // Update portal_customers role + phone
-  await db.update(portalCustomersTable).set({
-    name: String(fullName),
-    phone: String(phone),
-    role: accountType === "vendor" ? "vendor" : accountType === "driver" ? "driver" : accountType === "employee" ? "employee" : "customer",
-  }).where(eq(portalCustomersTable.id, customerId));
+  try {
+    await db.update(portalCustomersTable).set({
+      name: String(fullName),
+      phone: String(phone),
+      role: accountType === "vendor" ? "vendor" : accountType === "driver" ? "driver" : accountType === "employee" ? "employee" : "customer",
+    }).where(eq(portalCustomersTable.id, customerId));
+  } catch (err: any) {
+    if (err?.code === "23505" && err?.constraint?.includes("phone")) {
+      res.status(409).json({ ok: false, error: "Nomor telepon sudah digunakan oleh akun lain. Gunakan nomor yang berbeda." });
+      return;
+    }
+    throw err;
+  }
 
   // Update OCR result name if provided
   if (ocrData?.nik) {
@@ -2384,6 +2498,111 @@ router.get("/admin/customers/stats", requirePortalAdmin, async (_req, res): Prom
     profileActive: rows.filter((r) => r.profileStatus === "active").length,
   };
   res.json(stats);
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// VENDOR MINI FORM — portal admin routes
+// ════════════════════════════════════════════════════════════════════════════
+
+router.get("/admin/vendor-form/links", requirePortalAdmin, async (_req, res) => {
+  try {
+    const links = await db
+      .select()
+      .from(vendorMiniFormLinksTable)
+      .orderBy(desc(vendorMiniFormLinksTable.createdAt));
+    const vendorIds = links.map(l => l.supplierId).filter(Boolean) as number[];
+    let vendorMap: Record<number, string> = {};
+    if (vendorIds.length) {
+      const vendors = await db.select({ id: suppliersTable.id, name: suppliersTable.name }).from(suppliersTable);
+      vendorMap = Object.fromEntries(vendors.map(v => [v.id, v.name]));
+    }
+    return res.json(links.map(l => ({
+      ...l,
+      vendorName: l.supplierId ? (vendorMap[l.supplierId] ?? null) : null,
+      expiresAt: l.expiresAt?.toISOString() ?? null,
+      createdAt: l.createdAt.toISOString(),
+    })));
+  } catch {
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/admin/vendor-form/links", requirePortalAdmin, async (req, res) => {
+  try {
+    const { serviceType, title, notes, expiresInDays } = req.body as {
+      serviceType: string;
+      title?: string;
+      notes?: string;
+      expiresInDays?: number;
+    };
+    if (!serviceType || !SERVICE_SCHEMAS[serviceType]) {
+      return res.status(400).json({ error: "serviceType tidak valid" });
+    }
+    const { randomBytes } = await import("crypto");
+    const token = randomBytes(24).toString("hex");
+    const expiresAt = expiresInDays ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000) : null;
+    const [link] = await db
+      .insert(vendorMiniFormLinksTable)
+      .values({ token, supplierId: null, serviceType, title: title ?? null, notes: notes ?? null, expiresAt: expiresAt ?? undefined })
+      .returning();
+    return res.status(201).json({ ...link, expiresAt: link.expiresAt?.toISOString() ?? null, createdAt: link.createdAt.toISOString() });
+  } catch (err) {
+    req.log?.error({ err }, "portal admin POST vendor-form/links error");
+    return res.status(500).json({ error: "Gagal membuat link" });
+  }
+});
+
+router.patch("/admin/vendor-form/links/:id", requirePortalAdmin, async (req, res) => {
+  const id = Number(req.params["id"]);
+  if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+  try {
+    const { isActive } = req.body as { isActive?: boolean };
+    const patch: Record<string, unknown> = {};
+    if (typeof isActive === "boolean") patch["isActive"] = isActive;
+    const [updated] = await db
+      .update(vendorMiniFormLinksTable)
+      .set(patch)
+      .where(eq(vendorMiniFormLinksTable.id, id))
+      .returning();
+    if (!updated) return res.status(404).json({ error: "Link tidak ditemukan" });
+    invalidateTokenCache(updated.token);
+    return res.json({ ...updated, expiresAt: updated.expiresAt?.toISOString() ?? null, createdAt: updated.createdAt.toISOString() });
+  } catch (err) {
+    req.log?.error({ err }, "portal admin PATCH vendor-form/links error");
+    return res.status(500).json({ error: "Gagal update link" });
+  }
+});
+
+router.delete("/admin/vendor-form/links/:id", requirePortalAdmin, async (req, res) => {
+  const id = Number(req.params["id"]);
+  if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+  try {
+    const [deleted] = await db
+      .delete(vendorMiniFormLinksTable)
+      .where(eq(vendorMiniFormLinksTable.id, id))
+      .returning();
+    if (!deleted) return res.status(404).json({ error: "Link tidak ditemukan" });
+    invalidateTokenCache(deleted.token);
+    return res.json({ ok: true });
+  } catch (err) {
+    req.log?.error({ err }, "portal admin DELETE vendor-form/links error");
+    return res.status(500).json({ error: "Gagal hapus link" });
+  }
+});
+
+router.get("/admin/vendor-form/submissions", requirePortalAdmin, async (_req, res) => {
+  try {
+    const submissions = await db
+      .select()
+      .from(vendorMiniFormSubmissionsTable)
+      .orderBy(desc(vendorMiniFormSubmissionsTable.submittedAt));
+    return res.json(submissions.map(s => ({
+      ...s,
+      submittedAt: s.submittedAt.toISOString(),
+    })));
+  } catch {
+    return res.status(500).json({ error: "Internal server error" });
+  }
 });
 
 // ════════════════════════════════════════════════════════════════════════════

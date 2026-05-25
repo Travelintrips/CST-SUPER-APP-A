@@ -2,8 +2,10 @@ import { Router, type Request } from "express";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { resolveCompanyId } from "../lib/resolveCompany.js";
 import { streamInvoicePdf, buildInvoicePdfBuffer } from "../lib/pdfInvoice.js";
-import { postPurchaseBill } from "../lib/accounting.js";
+import { postPurchaseBill, postPurchaseBillReversal } from "../lib/accounting.js";
 import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
+import { sendWhatsApp } from "../lib/fonnte.js";
+import { saveAndBroadcast } from "../lib/notificationStore.js";
 import { ensureAccountingSettings } from "../lib/accountingSeed.js";
 import { postStockIn } from "../lib/inventoryStock.js";
 import {
@@ -19,6 +21,20 @@ import {
   chartOfAccountsTable,
 } from "@workspace/db";
 import { eq, sql, desc, and, or, inArray, type SQL } from "drizzle-orm";
+
+/** Kirim WA ke semua admin (ADMIN_WA_PHONES + FONNTE_ADMIN_WA), fire-and-forget. */
+function notifyAdminWa(message: string, context?: string, refType?: string, refId?: string): void {
+  const phones = [
+    ...(process.env.ADMIN_WA_PHONES ?? "").split(",").map((p) => p.trim()).filter(Boolean),
+    ...(process.env.FONNTE_ADMIN_WA?.trim() ? [process.env.FONNTE_ADMIN_WA.trim()] : []),
+  ];
+  const unique = [...new Set(phones)];
+  for (const phone of unique) {
+    sendWhatsApp(phone, message, { context, refType, refId }).catch((e: unknown) =>
+      console.error("[purchase WA]", e),
+    );
+  }
+}
 
 async function computeTax(subtotal: number, taxRateId: number | null | undefined): Promise<{ taxAmount: number; grandTotal: number }> {
   if (!taxRateId) return { taxAmount: 0, grandTotal: subtotal };
@@ -211,6 +227,16 @@ router.post("/documents", async (req, res) => {
   );
 
   const detail = await loadDocWithLines(doc.id);
+
+  saveAndBroadcast("purchase_doc_created", {
+    type: docKind === "rfq" ? "purchase_rfq" : "purchase_po",
+    orderId: doc.id,
+    orderNumber: docNumber,
+    customerName: supplierName,
+    companyName: null,
+    grandTotal,
+  }).catch(() => {});
+
   return res.status(201).json(detail);
 });
 
@@ -342,7 +368,12 @@ router.post("/documents/:id/action", async (req, res) => {
       if (doc.billStatus !== "billed") {
         return res.status(400).json({ message: "Hanya bill yang sudah diposting yang bisa dibatalkan" });
       }
-      patch["cancelledAt"] = new Date();
+      patch["billStatus"] = "to_bill" satisfies PurchaseBillStatus;
+      patch["billNumber"] = null;
+      patch["billDate"] = null;
+      patch["dueDate"] = null;
+      // Kembalikan status ke confirmed jika sebelumnya done
+      if (doc.status === "done") patch["status"] = "confirmed" satisfies PurchaseStatus;
       break;
     }
     default:
@@ -362,8 +393,8 @@ router.post("/documents/:id/action", async (req, res) => {
         const docWarehouseId = (doc as any).warehouseId ?? null;
         let posWhId: number | undefined = docWarehouseId ? Number(docWarehouseId) : undefined;
         if (!posWhId) {
-          const [defaultWh] = await db.execute(sql`SELECT id FROM warehouses WHERE is_active = TRUE ORDER BY id LIMIT 1`);
-          const wh = (defaultWh as any)?.rows?.[0] ?? (defaultWh as any);
+          const defaultWhResult = await db.execute(sql`SELECT id FROM warehouses WHERE is_active = TRUE ORDER BY id LIMIT 1`);
+          const wh = defaultWhResult.rows[0] as any;
           posWhId = wh?.id;
         }
         // ERP warehouse (inventory_stock)
@@ -417,7 +448,6 @@ router.post("/documents/:id/action", async (req, res) => {
 
   if (action === "mark_billed" && doc.billStatus !== "billed") {
     const taxAmount = Number(doc.taxAmount ?? 0);
-    // Fetch lines to split inventory vs service/expense debit
     void (async () => {
       try {
         const billLines = await db
@@ -441,13 +471,115 @@ router.post("/documents/:id/action", async (req, res) => {
           taxAccountId: null,
           companyId: doc.companyId ?? null,
         });
+        // Notifikasi WA admin setelah bill diposting
+        const grandTotal = Number(doc.grandTotal ?? doc.totalAmount ?? 0);
+        const billYear = new Date().getFullYear();
+        const [{ billCount }] = await db
+          .select({ billCount: sql<number>`cast(count(*) as int)` })
+          .from(purchaseDocumentsTable)
+          .where(sql`bill_number IS NOT NULL`);
+        const billNum = patch["billNumber"] as string ?? `BILL/${billYear}/${String(Number(billCount)).padStart(4, "0")}`;
+        const waMsg = `🧾 *Bill Pembelian Diposting*\nNo: ${billNum}\nPO: ${doc.docNumber}\nSupplier: ${doc.supplierName}\nTotal: Rp ${grandTotal.toLocaleString("id-ID")}`;
+        notifyAdminWa(waMsg, "bill_posted", "purchase_document", String(doc.id));
+
+        // Email ke supplier
+        if (isSmtpConfigured() && doc.supplierId) {
+          const supRows = await db.select().from(suppliersTable).where(eq(suppliersTable.id, doc.supplierId)).limit(1);
+          const sup = supRows[0] ?? null;
+          const supplierEmail = sup?.contactEmail;
+          if (supplierEmail) {
+            const billLines = await db
+              .select({
+                productId: purchaseDocumentLinesTable.productId,
+                description: purchaseDocumentLinesTable.description,
+                quantity: purchaseDocumentLinesTable.quantity,
+                unitCost: purchaseDocumentLinesTable.unitCost,
+                subtotal: purchaseDocumentLinesTable.subtotal,
+              })
+              .from(purchaseDocumentLinesTable)
+              .where(eq(purchaseDocumentLinesTable.documentId, doc.id));
+            const lineItems = billLines
+              .map((l) => {
+                const label = l.description ?? `Produk #${l.productId}`;
+                return (
+                  `<tr><td style="padding:4px 8px;border:1px solid #ddd;">${label}</td>` +
+                  `<td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${Number(l.quantity).toLocaleString("id-ID")}</td>` +
+                  `<td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Rp ${Number(l.unitCost).toLocaleString("id-ID")}</td>` +
+                  `<td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Rp ${Number(l.subtotal ?? 0).toLocaleString("id-ID")}</td></tr>`
+                );
+              })
+              .join("");
+            const taxAmount = Number(doc.taxAmount ?? 0);
+            const html = `
+<p>Kepada Yth. ${doc.supplierName ?? sup?.name ?? "Supplier"},</p>
+<p>Berikut konfirmasi <strong>Bill Pembelian ${billNum}</strong> atas Purchase Order <strong>${doc.docNumber}</strong>:</p>
+<table style="border-collapse:collapse;width:100%;font-family:sans-serif;font-size:14px;">
+  <thead>
+    <tr style="background:#f5f5f5;">
+      <th style="padding:6px 8px;border:1px solid #ddd;text-align:left;">Deskripsi</th>
+      <th style="padding:6px 8px;border:1px solid #ddd;text-align:right;">Qty</th>
+      <th style="padding:6px 8px;border:1px solid #ddd;text-align:right;">Harga Satuan</th>
+      <th style="padding:6px 8px;border:1px solid #ddd;text-align:right;">Total</th>
+    </tr>
+  </thead>
+  <tbody>${lineItems}</tbody>
+  <tfoot>
+    ${taxAmount ? `<tr><td colspan="3" style="padding:4px 8px;border:1px solid #ddd;text-align:right;">PPN</td><td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Rp ${taxAmount.toLocaleString("id-ID")}</td></tr>` : ""}
+    <tr>
+      <td colspan="3" style="padding:6px 8px;border:1px solid #ddd;text-align:right;font-weight:bold;">Grand Total</td>
+      <td style="padding:6px 8px;border:1px solid #ddd;text-align:right;font-weight:bold;">Rp ${grandTotal.toLocaleString("id-ID")}</td>
+    </tr>
+  </tfoot>
+</table>
+<p>Mohon konfirmasi penerimaan bill ini. Terima kasih.</p>`;
+            const text = `Bill Pembelian ${billNum}\nPO: ${doc.docNumber}\nSupplier: ${doc.supplierName}\nTotal: Rp ${grandTotal.toLocaleString("id-ID")}`;
+            await sendMail({
+              to: supplierEmail,
+              subject: `Konfirmasi Bill Pembelian - ${billNum}`,
+              html,
+              text,
+              context: "bill_posted",
+              refType: "purchase_document",
+              refId: String(doc.id),
+            }).catch((e: unknown) => console.error("[bill email]", e));
+          }
+        }
       } catch (e) {
         console.error("[accounting] postPurchaseBill error:", e);
       }
     })();
   }
 
+  if (action === "cancel_bill" && doc.billStatus === "billed") {
+    void (async () => {
+      try {
+        await postPurchaseBillReversal({
+          purchaseDocId: doc.id,
+          docNumber: doc.docNumber,
+          supplierName: doc.supplierName,
+          companyId: doc.companyId ?? null,
+        });
+        const waMsg = `❌ *Bill Pembelian Dibatalkan*\nPO: ${doc.docNumber}\nSupplier: ${doc.supplierName}\nJurnal reversal telah diposting.`;
+        notifyAdminWa(waMsg, "bill_cancelled", "purchase_document", String(doc.id));
+      } catch (e) {
+        console.error("[accounting] postPurchaseBillReversal error:", e);
+      }
+    })();
+  }
+
   const detail = await loadDocWithLines(id);
+
+  if (action === "confirm") {
+    saveAndBroadcast("purchase_doc_confirmed", {
+      type: "purchase_po",
+      orderId: id,
+      orderNumber: detail?.docNumber ?? doc.docNumber,
+      customerName: doc.supplierName,
+      companyName: null,
+      grandTotal: Number(doc.grandTotal ?? doc.totalAmount ?? 0),
+    }).catch(() => {});
+  }
+
   return res.json(detail);
 });
 
@@ -655,7 +787,7 @@ router.get("/po-detail/:id", async (req, res) => {
     ...doc,
     goodsReceipts: grs.map((g) => ({
       ...g,
-      receivedAt: g.receivedAt instanceof Date ? g.receivedAt.toISOString() : (g.receivedAt ?? null),
+      receivedAt: (g as any).receiveDate instanceof Date ? (g as any).receiveDate.toISOString() : ((g as any).receiveDate ?? null),
       createdAt: g.createdAt.toISOString(),
       updatedAt: g.updatedAt.toISOString(),
     })),

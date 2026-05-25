@@ -76,8 +76,8 @@ function ReverseDialog({ entry, onDone }: { entry: AccountingEntry; onDone: () =
     }
   };
 
-  if (entry.source === "reversal") return null;
-  if (entry.status !== "posted") return null;
+  if ((entry.source as string) === "reversal") return null;
+  if ((entry.status as string) !== "posted") return null;
 
   return (
     <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setReason(""); }}>
@@ -267,7 +267,7 @@ export default function EntriesPage() {
                   <div className="grid grid-cols-3 gap-3">
                     <div>
                       <Label>Jurnal</Label>
-                      <Select value={String(form.journalId || "")} onValueChange={(v) => setForm({ ...form, journalId: parseInt(v) })}>
+                      <Select value={form.journalId ? String(form.journalId) : undefined} onValueChange={(v) => setForm({ ...form, journalId: parseInt(v) })}>
                         <SelectTrigger data-testid="select-entry-journal"><SelectValue placeholder="Pilih" /></SelectTrigger>
                         <SelectContent>{(journals ?? []).map((j) => (<SelectItem key={j.id} value={String(j.id)}>{j.code} - {j.name}</SelectItem>))}</SelectContent>
                       </Select>
@@ -351,7 +351,7 @@ export default function EntriesPage() {
               {rows.length === 0 ? (
                 <TableRow><TableCell colSpan={10} className="text-center text-muted-foreground py-8">Tidak ada entri</TableCell></TableRow>
               ) : rows.map((e) => (
-                <TableRow key={e.id} data-testid={`row-entry-${e.id}`} className={e.status === "cancelled" ? "opacity-40" : undefined} {...prefetchHover(getGetAccountingEntryQueryOptions(e.id))}>
+                <TableRow key={e.id} data-testid={`row-entry-${e.id}`} className={(e.status as string) === "cancelled" ? "opacity-40" : undefined} {...prefetchHover(getGetAccountingEntryQueryOptions(e.id))}>
                   <TableCell>
                     <Link href={`/accounting/entries/${e.id}`} className="text-indigo-400 hover:underline font-mono text-xs">
                       {e.entryNumber}
@@ -360,21 +360,21 @@ export default function EntriesPage() {
                   <TableCell className="text-xs">{new Date(e.date).toLocaleDateString("id-ID")}</TableCell>
                   <TableCell><Badge variant="outline">{journalLabel(e.journalId)}</Badge></TableCell>
                   <TableCell>
-                    <Badge variant={e.source === "reversal" ? "destructive" : "secondary"} className="text-xs">
+                    <Badge variant={(e.source as string) === "reversal" ? "destructive" : "secondary"} className="text-xs">
                       {SOURCE_LABELS[e.source] ?? e.source}
                     </Badge>
                   </TableCell>
                   <TableCell>
                     <Badge
                       className={
-                        e.status === "posted"
+                        (e.status as string) === "posted"
                           ? "bg-green-900/40 text-green-300 border-green-700 text-xs"
-                          : e.status === "cancelled"
+                          : (e.status as string) === "cancelled"
                           ? "bg-slate-700/60 text-slate-400 border-slate-600 text-xs"
                           : "bg-yellow-900/40 text-yellow-300 border-yellow-700 text-xs"
                       }
                     >
-                      {e.status === "posted" ? "Posted" : e.status === "cancelled" ? "Dibatalkan" : "Draft"}
+                      {(e.status as string) === "posted" ? "Posted" : (e.status as string) === "cancelled" ? "Dibatalkan" : "Draft"}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-xs">{e.ref ?? "-"}</TableCell>

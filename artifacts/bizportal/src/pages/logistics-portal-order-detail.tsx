@@ -5,7 +5,6 @@ import {
   useGetLogisticOrder,
   useListLogisticOrderRfqs,
   useListLogisticOrderQuotes,
-  useCreateLogisticOrderRfq,
   useCreateLogisticOrderQuote,
   useUpdateLogisticOrderQuote,
   useApproveLogisticOrderQuote,
@@ -321,7 +320,6 @@ export default function LogisticsPortalOrderDetailPage() {
     }
   }
 
-  const createRfq = useCreateLogisticOrderRfq();
   const createQuote = useCreateLogisticOrderQuote();
   const updateQuote = useUpdateLogisticOrderQuote();
   const approveQuote = useApproveLogisticOrderQuote();
@@ -381,24 +379,30 @@ export default function LogisticsPortalOrderDetailPage() {
     }
   }
 
-  function handleSendRfq() {
+  async function handleSendRfq() {
     if (selectedVendors.length === 0) {
       toast({ title: t.common.error, variant: "destructive" });
       return;
     }
-    createRfq.mutate(
-      { id: orderId, data: { vendorIds: selectedVendors, notes: rfqNotes || undefined } },
-      {
-        onSuccess: (rfq) => {
-          toast({ title: t.common.success });
-          setRfqDialog(false);
-          setSelectedVendors([]);
-          setRfqNotes("");
-          invalidateAll();
-        },
-        onError: () => toast({ title: t.common.error, variant: "destructive" }),
-      }
-    );
+    try {
+      const res = await fetch(`/api/logistic/orders/${orderId}/rfq-blast`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ vendorIds: selectedVendors, notes: rfqNotes || undefined, deadlineHours: 48 }),
+      });
+      const data = await res.json() as { ok?: boolean; rfqId?: number; rfqNumber?: string; sentCount?: number; message?: string };
+      if (!res.ok) throw new Error(data.message ?? "Gagal mengirim RFQ");
+      toast({ title: `RFQ terkirim ke ${data.sentCount ?? 0} vendor`, description: `No. RFQ: ${data.rfqNumber ?? ""}` });
+      setRfqDialog(false);
+      setSelectedVendors([]);
+      setRfqNotes("");
+      invalidateAll();
+      if (data.rfqId) navigate(`/logistics/rfq/${data.rfqId}/comparison`);
+    } catch (e: unknown) {
+      toast({ title: (e as Error).message ?? t.common.error, variant: "destructive" });
+    }
+
   }
 
   function handleCreateQuote() {
@@ -691,6 +695,7 @@ export default function LogisticsPortalOrderDetailPage() {
                   {order.cargoDescription && <InfoRow label="Kargo" value={order.cargoDescription} />}
                   {order.grossWeight != null && <InfoRow label="Berat" value={`${order.grossWeight} kg`} />}
                   {order.volumeCbm != null && <InfoRow label="Volume" value={`${order.volumeCbm} CBM`} />}
+                  {order.jumlahKoli != null && <InfoRow label="Jumlah Koli" value={`${order.jumlahKoli} koli`} />}
                   {order.requiredDate && <InfoRow label="Tgl Butuh" value={order.requiredDate} />}
                   {order.paymentType && <InfoRow label="Pembayaran" value={order.paymentType} />}
                   {order.notes && <InfoRow label="Catatan" value={order.notes} />}
@@ -757,9 +762,8 @@ export default function LogisticsPortalOrderDetailPage() {
                   </Button>
                 )}
                 <Button size="sm" className="h-7 text-xs gap-1 bg-blue-600 hover:bg-blue-700 text-white"
-                  onClick={() => { setBlastV2VendorIds([]); setBlastV2Dialog(true); }}
-                  disabled={!latestRfq}>
-                  <Send className="h-3 w-3" /> Blast Vendor V2
+                  onClick={() => { setBlastV2VendorIds([]); setBlastV2Dialog(true); }}>
+                  <Send className="h-3 w-3" /> Blast Vendor
                 </Button>
               </div>
             </div>
@@ -1142,16 +1146,16 @@ export default function LogisticsPortalOrderDetailPage() {
               </CardContent>
             </Card>
 
-            {order.optionsToken && (
+            {(order as any).optionsToken && (
               <Card className="border-blue-200 bg-blue-50/50">
                 <CardContent className="p-4 text-sm space-y-1">
                   <p className="font-medium text-blue-800">Link opsi sudah dikirim ke customer:</p>
                   <a
-                    href={`/choose-option/${order.optionsToken}`}
+                    href={`/choose-option/${(order as any).optionsToken}`}
                     target="_blank" rel="noopener noreferrer"
                     className="text-blue-600 underline text-xs break-all"
                   >
-                    /choose-option/{order.optionsToken}
+                    /choose-option/{(order as any).optionsToken}
                   </a>
                 </CardContent>
               </Card>
@@ -1503,9 +1507,9 @@ export default function LogisticsPortalOrderDetailPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setRfqDialog(false)}>Batal</Button>
-            <Button onClick={handleSendRfq} disabled={createRfq.isPending || selectedVendors.length === 0} className="gap-2">
+            <Button onClick={() => void handleSendRfq()} disabled={selectedVendors.length === 0} className="gap-2">
               <Send className="h-4 w-4" />
-              {createRfq.isPending ? "Mengirim..." : `Kirim ke ${selectedVendors.length} Vendor`}
+              {`Kirim ke ${selectedVendors.length} Vendor`}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1976,22 +1980,22 @@ export default function LogisticsPortalOrderDetailPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setBlastV2Dialog(false)}>Batal</Button>
             <Button
-              disabled={blastV2VendorIds.length === 0 || blastingV2 || !latestRfq}
+              disabled={blastV2VendorIds.length === 0 || blastingV2}
               onClick={async () => {
-                if (!latestRfq) return;
                 setBlastingV2(true);
                 try {
-                  const res = await fetch(`/api/logistic/rfq/${latestRfq.id}/blast`, {
+                  const res = await fetch(`/api/logistic/orders/${orderId}/rfq-blast`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     credentials: "include",
                     body: JSON.stringify({ vendorIds: blastV2VendorIds, deadlineHours: Number(blastV2Hours) }),
                   });
-                  const d = await res.json() as { ok: boolean; sentCount: number; rfqNumber: string; comparisonUrl?: string; message?: string };
+                  const d = await res.json() as { ok: boolean; rfqId?: number; sentCount: number; rfqNumber: string; message?: string };
                   if (!res.ok) throw new Error(d.message ?? "Gagal blast");
                   toast({ title: `Blast berhasil ke ${d.sentCount} vendor`, description: `RFQ: ${d.rfqNumber}` });
                   setBlastV2Dialog(false);
-                  navigate(`/logistics/rfq/${latestRfq.id}/comparison`);
+                  invalidateAll();
+                  if (d.rfqId) navigate(`/logistics/rfq/${d.rfqId}/comparison`);
                 } catch (e) {
                   toast({ title: "Gagal blast", description: (e as Error).message, variant: "destructive" });
                 } finally {

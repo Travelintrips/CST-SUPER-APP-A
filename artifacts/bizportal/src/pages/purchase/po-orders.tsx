@@ -520,7 +520,7 @@ function PODetailPanel({ id }: { id: number }) {
 }
 
 export default function POOrdersPage() {
-  const { companyId } = useCompany();
+  const { activeCompanyId: companyId } = useCompany();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<POStatus>("all");
   const [receiveFilter, setReceiveFilter] = useState<ReceiveFilter>("all");
@@ -528,9 +528,8 @@ export default function POOrdersPage() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
 
   const { data: docs = [], isLoading } = useListPurchaseDocuments({
-    companyId: String(companyId),
     kind: "order",
-  });
+  } as any);
 
   const filtered = useMemo(() => {
     return docs.filter((d) => {

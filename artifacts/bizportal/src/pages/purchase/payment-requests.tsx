@@ -107,7 +107,7 @@ export function PaymentRequestEditorPage() {
   const saveMut = useMutation({
     mutationFn: async () => {
       const payload = { ...form, companyId: activeCompanyId, items };
-      const r = isNew ? await apiFetch("/purchase-workflow/payment-requests", { method: "POST", body: JSON.stringify(payload) }) : Promise.reject("Cannot update");
+      const r = await (isNew ? apiFetch("/purchase-workflow/payment-requests", { method: "POST", body: JSON.stringify(payload) }) : Promise.reject("Cannot update"));
       if (!r.ok) throw new Error();
       return r.json();
     },

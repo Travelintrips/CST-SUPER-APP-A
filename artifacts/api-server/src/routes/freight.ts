@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, freightShipmentsTable, freightRfqsTable, freightQuotesTable, freightAttachmentsTable, shipmentStagesTable, salesDocumentsTable, purchaseDocumentsTable, expensesTable, freightCustomsDocsTable, freightShipmentAuditLogsTable } from "@workspace/db";
+import { db, freightShipmentsTable, freightRfqsTable, freightQuotesTable, freightAttachmentsTable, shipmentStagesTable, salesDocumentsTable, purchaseDocumentsTable, expensesTable, freightCustomsDocsTable, freightShipmentAuditLogsTable, SHIPMENT_STAGE_TYPES, type ShipmentStageType } from "@workspace/db";
 import { eq, desc, inArray, sum, and, sql } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { saveAndBroadcast } from "../lib/notificationStore.js";
@@ -7,6 +7,52 @@ import { saveAndBroadcast } from "../lib/notificationStore.js";
 function resolveUserDisplay(user: { id: string; firstName?: string | null; lastName?: string | null; email?: string | null }): { name: string; id: string } {
   const name = [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || user.email || user.id;
   return { name, id: user.id };
+}
+
+const TRANSPORT_MODES = ["sea", "air", "land", "multimodal"] as const;
+const CARGO_TYPES = ["FCL", "LCL", "Air"] as const;
+const FREIGHT_SHIPMENT_STATUSES = ["draft", "rfq_sent", "confirmed", "in_transit", "completed", "cancelled"] as const;
+type TransportMode = typeof TRANSPORT_MODES[number];
+type CargoType = typeof CARGO_TYPES[number];
+type FreightShipmentStatus = typeof FREIGHT_SHIPMENT_STATUSES[number];
+
+function validateTransportMode(v: unknown): TransportMode | null | undefined {
+  if (v === undefined) return undefined;
+  if (v === null || v === "") return null;
+  if (!TRANSPORT_MODES.includes(v as TransportMode))
+    throw Object.assign(new Error(`transportMode tidak valid. Nilai yang diterima: ${TRANSPORT_MODES.join(", ")}`), { statusCode: 400 });
+  return v as TransportMode;
+}
+function validateCargoType(v: unknown): CargoType | null | undefined {
+  if (v === undefined) return undefined;
+  if (v === null || v === "") return null;
+  if (!CARGO_TYPES.includes(v as CargoType))
+    throw Object.assign(new Error(`cargoType tidak valid. Nilai yang diterima: ${CARGO_TYPES.join(", ")}`), { statusCode: 400 });
+  return v as CargoType;
+}
+function validateShipmentStatus(v: unknown): FreightShipmentStatus | undefined {
+  if (v === undefined) return undefined;
+  if (!FREIGHT_SHIPMENT_STATUSES.includes(v as FreightShipmentStatus))
+    throw Object.assign(new Error(`status tidak valid. Nilai yang diterima: ${FREIGHT_SHIPMENT_STATUSES.join(", ")}`), { statusCode: 400 });
+  return v as FreightShipmentStatus;
+}
+
+const STAGE_STATUSES = ["pending", "in_progress", "completed", "skipped"] as const;
+type StageStatus = typeof STAGE_STATUSES[number];
+
+function validateStageStatus(v: unknown): StageStatus | undefined {
+  if (v === undefined) return undefined;
+  if (!STAGE_STATUSES.includes(v as StageStatus))
+    throw Object.assign(new Error(`status stage tidak valid. Nilai yang diterima: ${STAGE_STATUSES.join(", ")}`), { statusCode: 400 });
+  return v as StageStatus;
+}
+
+function validateStageType(v: unknown): ShipmentStageType {
+  if (!v || typeof v !== "string")
+    throw Object.assign(new Error("stageType wajib diisi"), { statusCode: 400 });
+  if (!(SHIPMENT_STAGE_TYPES as readonly string[]).includes(v))
+    throw Object.assign(new Error(`stageType tidak valid. Nilai yang diterima: ${SHIPMENT_STAGE_TYPES.join(", ")}`), { statusCode: 400 });
+  return v as ShipmentStageType;
 }
 
 const router = Router();
@@ -120,7 +166,7 @@ router.get("/freight-shipments/:id", async (req, res) => {
     LIMIT 1
   `);
 
-  const linkedLogisticRfqRow = (linkedRfqRows as any[])[0] ?? null;
+  const linkedLogisticRfqRow = (linkedRfqRows.rows as any[])[0] ?? null;
   const linkedLogisticRfq = linkedLogisticRfqRow
     ? {
         id: linkedLogisticRfqRow.id as number,
@@ -151,6 +197,14 @@ router.post("/freight-shipments", async (req, res) => {
   if (!salesDocId) {
     return res.status(400).json({ message: "Sales Order wajib dipilih sebelum membuat shipment." });
   }
+  let validatedTM: TransportMode | null;
+  let validatedCT: CargoType | null;
+  try {
+    validatedTM = validateTransportMode(transportMode) ?? null;
+    validatedCT = validateCargoType(cargoType) ?? null;
+  } catch (e: any) {
+    return res.status(400).json({ message: e.message });
+  }
   const [linkedDoc] = await db.select({ id: salesDocumentsTable.id }).from(salesDocumentsTable).where(eq(salesDocumentsTable.id, Number(salesDocId))).limit(1);
   if (!linkedDoc) {
     return res.status(400).json({ message: "Sales Order tidak ditemukan." });
@@ -175,8 +229,8 @@ router.post("/freight-shipments", async (req, res) => {
     vessel: vessel || null, voyage: voyage || null,
     notifyParty: notifyParty || null, marksAndNumbers: marksAndNumbers || null,
     measurement: measurement || null, notes: notes || null,
-    transportMode: transportMode || null,
-    cargoType: cargoType || null,
+    transportMode: validatedTM,
+    cargoType: validatedCT,
     containerNo: containerNo || null,
     salesDocId: salesDocId ? Number(salesDocId) : null,
     purchaseDocId: purchaseDocId ? Number(purchaseDocId) : null,
@@ -228,15 +282,24 @@ router.put("/freight-shipments/:id", async (req, res) => {
   if (notifyParty !== undefined) patch.notifyParty = notifyParty || null;
   if (marksAndNumbers !== undefined) patch.marksAndNumbers = marksAndNumbers || null;
   if (measurement !== undefined) patch.measurement = measurement || null;
-  if (status !== undefined) patch.status = status;
+  if (status !== undefined) {
+    try { patch.status = validateShipmentStatus(status); }
+    catch (e: any) { return res.status(400).json({ message: e.message }); }
+  }
   if (notes !== undefined) patch.notes = notes || null;
   if (actualCost !== undefined) patch.actualCost = actualCost != null ? String(actualCost) : null;
   if (departureDate !== undefined) patch.departureDate = departureDate || null;
   if (arrivalDate !== undefined) patch.arrivalDate = arrivalDate || null;
   if (trackingNumber !== undefined) patch.trackingNumber = trackingNumber || null;
   if (awbNumber !== undefined) patch.awbNumber = awbNumber || null;
-  if (transportMode !== undefined) patch.transportMode = transportMode || null;
-  if (cargoType !== undefined) patch.cargoType = cargoType || null;
+  if (transportMode !== undefined) {
+    try { patch.transportMode = validateTransportMode(transportMode) ?? null; }
+    catch (e: any) { return res.status(400).json({ message: e.message }); }
+  }
+  if (cargoType !== undefined) {
+    try { patch.cargoType = validateCargoType(cargoType) ?? null; }
+    catch (e: any) { return res.status(400).json({ message: e.message }); }
+  }
   if (containerNo !== undefined) patch.containerNo = containerNo || null;
   if (salesDocId !== undefined) patch.salesDocId = salesDocId ? Number(salesDocId) : null;
   if (purchaseDocId !== undefined) {
@@ -309,7 +372,12 @@ router.post("/freight-shipments/:shipmentId/stages", async (req, res) => {
   const shipmentId = Number(req.params.shipmentId);
   if (!Number.isInteger(shipmentId) || shipmentId <= 0) return res.status(400).json({ message: "Invalid shipmentId" });
   const { stageType, vendorName, date, status, notes } = req.body;
-  if (!stageType) return res.status(400).json({ message: "stageType wajib diisi" });
+  let validatedStageType: StageType;
+  let validatedStatus: StageStatus | undefined;
+  try { validatedStageType = validateStageType(stageType); }
+  catch (e: any) { return res.status(400).json({ message: e.message }); }
+  try { validatedStatus = validateStageStatus(status); }
+  catch (e: any) { return res.status(400).json({ message: e.message }); }
   const [existing] = await db.select().from(shipmentStagesTable)
     .where(eq(shipmentStagesTable.shipmentId, shipmentId))
     .then((rows) => rows.filter((r) => r.stageType === stageType));
@@ -319,7 +387,7 @@ router.post("/freight-shipments/:shipmentId/stages", async (req, res) => {
       .set({
         vendorName: vendorName ?? null,
         date: date ?? null,
-        status: status ?? existing.status,
+        status: validatedStatus ?? existing.status,
         notes: notes ?? null,
       })
       .where(eq(shipmentStagesTable.id, existing.id))
@@ -328,10 +396,10 @@ router.post("/freight-shipments/:shipmentId/stages", async (req, res) => {
     [stage] = await db.insert(shipmentStagesTable)
       .values({
         shipmentId,
-        stageType,
+        stageType: validatedStageType,
         vendorName: vendorName ?? null,
         date: date ?? null,
-        status: status ?? "pending",
+        status: validatedStatus ?? "pending",
         notes: notes ?? null,
       })
       .returning();

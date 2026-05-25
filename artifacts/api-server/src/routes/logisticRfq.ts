@@ -4,6 +4,7 @@ import { rfqRateLimit } from "../middlewares/rfqRateLimit.js";
 import { db, suppliersTable, logisticOrdersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, logisticOrderItemsTable, vendorCatalogItemsTable, vendorOffersTable, vendorRatesTable, salesDocumentsTable, salesDocumentLinesTable } from "@workspace/db";
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { sendWhatsApp } from "../lib/fonnte.js";
+import { saveAndBroadcast } from "../lib/notificationStore.js";
 import { getAdminWa, getAdminGroupWa } from "../lib/adminWa.js";
 import { logger } from "../lib/logger.js";
 import { getPreferredDomain } from "../lib/domain.js";
@@ -674,6 +675,17 @@ logisticRfqRouter.post("/vendor-quote", rfqRateLimit, async (req: Request, res: 
     sendWhatsApp(adminGroupWa, quoteNotifMsg).catch((e: unknown) => logger.error({ e }, "WA admin group vendor-form quote notif failed"));
   }
 
+  saveAndBroadcast("vendor_quote_received", {
+    type: "vendor_quote",
+    orderId: rfq.orderId,
+    orderNumber: order.orderNumber,
+    customerName: vendor?.name ?? `Vendor #${vendorId}`,
+    companyName: null,
+    rfqNumber: rfq.rfqNumber,
+    vendorPrice: vp,
+    quotePosition,
+  } as Parameters<typeof saveAndBroadcast>[1] & { rfqNumber: string; vendorPrice: number; quotePosition?: number }).catch(() => {});
+
   logger.info({ rfqNumber, vendorId, vendorPrice: vp }, "Vendor submitted quote via form");
 
   return res.status(201).json({
@@ -974,7 +986,7 @@ logisticRfqRouter.get("/rfq-form", rfqRateLimit, async (req: Request, res: Respo
       .where(eq(logisticOrderItemsTable.orderId, rfq.orderId)),
   ]);
 
-  const vt = order.vehicleType ?? (order as any).truckType ?? null;
+  const vt = (order as any).vehicleType ?? (order as any).truckType ?? null;
   const matchingCatalog = vt
     ? catalogItems.find((c) => c.name.toLowerCase().includes(vt.toLowerCase()))
     : null;
@@ -1284,7 +1296,7 @@ logisticRfqRouter.post("/:id/resend-rfq", async (req: Request, res: Response) =>
   for (const vendor of eligible) {
     const catalogItems = await db.select().from(vendorCatalogItemsTable)
       .where(and(eq(vendorCatalogItemsTable.vendorId, vendor.id), eq(vendorCatalogItemsTable.isActive, true)));
-    const vt = order.vehicleType ?? (order as any).truckType ?? null;
+    const vt = (order as any).vehicleType ?? (order as any).truckType ?? null;
     const matchingCatalog = vt
       ? catalogItems.find((c) => c.name.toLowerCase().includes(vt.toLowerCase()))
       : null;

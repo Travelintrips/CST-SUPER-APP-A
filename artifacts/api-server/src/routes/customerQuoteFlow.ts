@@ -74,7 +74,7 @@ customerQuoteAdminRouter.post("/rfq/:rfqId/send-customer-quote", async (req: Req
       orderId: order.id,
       token,
       status: "pending",
-      etaFinal: etaFinal ?? order.etaFinal ?? null,
+      etaFinal: etaFinal ?? (order as any).etaFinal ?? null,
       termsConditions: termsConditions ?? null,
       quoteNotes: quoteNotes ?? null,
       finalCustomerPrice: customerPrice ? String(customerPrice) : null,
@@ -267,7 +267,7 @@ customerQuoteAdminRouter.get("/orders/:orderId/detail", async (req: Request, res
       WHERE r.order_id = ${orderId}
       ORDER BY fs.created_at DESC
     `);
-    const freightShipments = (freightRows as any[]).map((row: any) => ({
+    const freightShipments = (freightRows.rows as any[]).map((row: any) => ({
       id: row.id as number,
       shipmentNumber: row.shipmentNumber as string,
       status: row.status as string,

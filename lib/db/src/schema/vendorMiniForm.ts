@@ -25,6 +25,7 @@ export const vendorMiniFormSubmissionsTable = pgTable("vendor_mini_form_submissi
   contactPerson: text("contact_person"),
   contactPhone: text("contact_phone"),
   formData: jsonb("form_data").notNull().default({}),
+  staffData: jsonb("staff_data").notNull().default({}),
   submittedAt: timestamp("submitted_at").defaultNow().notNull(),
 });
 

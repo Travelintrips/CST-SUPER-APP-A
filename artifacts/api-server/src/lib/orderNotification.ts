@@ -16,6 +16,7 @@ export interface LogisticOrderData {
   companyName: string;
   email: string;
   phone: string;
+  orderType?: string;
   shipmentType: string;
   origin: string;
   destination: string;
@@ -23,6 +24,7 @@ export interface LogisticOrderData {
   cargoDescription?: string | null;
   grossWeight?: number | null;
   volumeCbm?: number | null;
+  jumlahKoli?: number | null;
   grandTotal: number;
   serviceList: string;
   requiredDate?: string | null;
@@ -30,6 +32,7 @@ export interface LogisticOrderData {
   jamOrder?: string | null;
   vehicleType?: string | null;
   createdAt?: Date | string | null;
+  publicRfqToken?: string | null;
 }
 
 const BULAN_ID = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agt","Sep","Okt","Nov","Des"];
@@ -105,10 +108,7 @@ function isFreightWithDimensions(shipmentType: string): boolean {
   return t.includes("air") || t.includes("sea") || t.includes("laut") || t.includes("udara");
 }
 
-function buildAdminWaMessage(order: LogisticOrderData, adminReviewUrl?: string): string {
-  const approveUrl = getApproveFormUrl(order.orderNumber);
-  const domain = getPreferredDomain() || "cstlogistic.co.id";
-  const bizportalUrl = `https://${domain}/bizportal/logistics/orders/${order.id}`;
+function buildAdminWaMessage(order: LogisticOrderData, adminActionShortUrl?: string): string {
   const tgl = order.createdAt ? formatTanggal(order.createdAt) : "";
   const jam = order.jamOrder ?? (order.createdAt ? formatJam(order.createdAt) : "");
   return (
@@ -127,14 +127,13 @@ function buildAdminWaMessage(order: LogisticOrderData, adminReviewUrl?: string):
     (order.cargoDescription ? `Deskripsi       : ${order.cargoDescription}\n` : ``) +
     (order.grossWeight ? `Berat           : ${order.grossWeight} kg\n` : ``) +
     (order.volumeCbm ? `Volume          : ${order.volumeCbm} CBM\n` : ``) +
+    (order.jumlahKoli ? `Jumlah Koli     : ${order.jumlahKoli} koli\n` : ``) +
     `Layanan         :\n${order.serviceList}\n` +
     `Total Est.      : Rp ${formatRupiah(order.grandTotal)}\n` +
     (order.requiredDate ? `Tgl Kirim       : ${order.requiredDate}\n` : ``) +
     (order.notes ? `Catatan         : ${order.notes}\n` : ``) +
     `━━━━━━━━━━━━━━━━━━\n` +
-    `⚡ *Aksi Cepat Admin (tanpa login):*\n` +
-    (adminReviewUrl ? `🚀 Review & Blast Vendor → ${adminReviewUrl}\n` : (approveUrl ? `📋 Penawaran vendor → ${approveUrl}\n` : ``)) +
-    `🖥️ BizPortal → ${bizportalUrl}\n\n` +
+    (adminActionShortUrl ? `⚡ *Aksi Cepat Admin (tanpa login):*\n🔭 Review & Blast Vendor → ${adminActionShortUrl}\n` : ``) +
     `_Dikirim: ${nowWIB()}_`
   );
 }
@@ -157,6 +156,7 @@ function buildVendorWaMessage(order: LogisticOrderData, vendorName: string): str
     (order.cargoDescription ? `Deskripsi       : ${order.cargoDescription}\n` : ``) +
     (order.grossWeight ? `Berat           : ${order.grossWeight} kg\n` : ``) +
     (order.volumeCbm ? `Volume          : ${order.volumeCbm} CBM\n` : ``) +
+    (order.jumlahKoli ? `Jumlah Koli     : ${order.jumlahKoli} koli\n` : ``) +
     (order.requiredDate ? `Tgl Butuh       : ${order.requiredDate}\n` : ``) +
     `Layanan         :\n${order.serviceList}\n` +
     (order.notes ? `Catatan         : ${order.notes}\n` : ``) +
@@ -226,8 +226,7 @@ function getOrderUrl(orderId: number): string {
   return `https://${domain}/logistic/orders/${orderId}`;
 }
 
-function buildAdminGroupWaMessage(order: LogisticOrderData): string {
-  const orderUrl = getOrderUrl(order.id);
+function buildAdminGroupWaMessage(order: LogisticOrderData, adminActionShortUrl?: string): string {
   const tgl = order.createdAt ? formatTanggal(order.createdAt) : nowWIB();
   const jam = order.jamOrder
     ? formatJamOrder(order.jamOrder)
@@ -239,6 +238,12 @@ function buildAdminGroupWaMessage(order: LogisticOrderData): string {
   const volumeLine = order.volumeCbm  ? `📐 Volume   : ${order.volumeCbm} CBM\n` : "";
   const reqDate    = order.requiredDate ? `📅 Tgl Kirim: ${formatISODate(order.requiredDate)}\n` : "";
   const notesLine  = order.notes ? `📝 Catatan  : ${order.notes}\n` : "";
+
+  // Fallback ke BizPortal jika admin action URL tidak tersedia
+  const domain = getPreferredDomain() || "cstlogistic.co.id";
+  const fallbackUrl = `https://${domain}/bizportal/logistics/orders/${order.id}`;
+  const actionUrl = adminActionShortUrl || fallbackUrl;
+  const actionLabel = adminActionShortUrl ? "🚀 Review & Blast Vendor" : "💻 Buka di BizPortal";
 
   return (
     `🔔 *[ORDER MASUK] ${order.orderNumber}*\n` +
@@ -261,7 +266,8 @@ function buildAdminGroupWaMessage(order: LogisticOrderData): string {
     `💰 Total Est.    : *Rp ${formatRupiah(order.grandTotal)}*\n` +
     `🔵 Status        : Menunggu Konfirmasi\n` +
     `━━━━━━━━━━━━━━━━━━\n` +
-    (orderUrl ? `🔗 *Buka di BizPortal:*\n${orderUrl}\n\n` : "") +
+    `⚡ *Aksi Cepat (tanpa login):*\n` +
+    `${actionLabel} → ${actionUrl}\n\n` +
     `_Harap segera diproses. Dikirim: ${nowWIB()}_`
   );
 }
@@ -352,7 +358,21 @@ async function notifyAdmin(order: LogisticOrderData): Promise<void> {
   const adminWa = await getAdminWa();
   if (adminWa) {
     logger.info({ phone: adminWa, orderNumber: order.orderNumber }, "Sending admin WA notification");
-    sendWhatsApp(adminWa, buildAdminWaMessage(order, adminReviewUrl || undefined)).catch((err: unknown) =>
+    // Generate admin-action short link if publicRfqToken is available
+    let adminActionShortUrl: string | undefined;
+    if (order.publicRfqToken) {
+      const domain = getPreferredDomain() || "cstlogistic.co.id";
+      const longUrl = `https://${domain}/admin-action/${order.publicRfqToken}`;
+      adminActionShortUrl = await generateShortLink(longUrl, {
+        context: "admin_action",
+        refType: "order",
+        refId: order.orderNumber,
+      }).catch((err: unknown) => {
+        logger.warn({ err }, "admin WA: failed to generate short link, using long URL");
+        return longUrl;
+      });
+    }
+    sendWhatsApp(adminWa, buildAdminWaMessage(order, adminActionShortUrl)).catch((err: unknown) =>
       logger.error({ err }, "WA admin notification failed")
     );
   } else {
@@ -363,7 +383,18 @@ async function notifyAdmin(order: LogisticOrderData): Promise<void> {
   const adminGroupWa = await getAdminGroupWa();
   if (adminGroupWa) {
     logger.info({ groupId: adminGroupWa, orderNumber: order.orderNumber }, "Sending group WA notification");
-    sendWhatsApp(adminGroupWa, buildAdminGroupWaMessage(order)).catch((err: unknown) =>
+    // Reuse adminActionShortUrl yang sudah di-generate untuk admin individual WA
+    let groupActionUrl: string | undefined;
+    if (order.publicRfqToken) {
+      const domain = getPreferredDomain() || "cstlogistic.co.id";
+      const longUrl = `https://${domain}/admin-action/${order.publicRfqToken}`;
+      groupActionUrl = await generateShortLink(longUrl, {
+        context: "admin_action",
+        refType: "order",
+        refId: order.orderNumber,
+      }).catch(() => longUrl);
+    }
+    sendWhatsApp(adminGroupWa, buildAdminGroupWaMessage(order, groupActionUrl)).catch((err: unknown) =>
       logger.error({ err }, "WA group notification failed")
     );
   } else {
@@ -401,6 +432,11 @@ async function notifyAdmin(order: LogisticOrderData): Promise<void> {
 }
 
 async function notifyVendors(order: LogisticOrderData): Promise<void> {
+  // Skip vendor blast for product and service orders — tidak butuh vendor logistik
+  if (order.orderType === "product" || order.orderType === "service") {
+    logger.info({ orderNumber: order.orderNumber, orderType: order.orderType }, "notifyVendors: skipping vendor notification for non-shipment order type");
+    return;
+  }
   // Guard: skip if shipmentType is empty — ilike('%%') would match ALL vendors
   if (!order.shipmentType || !order.shipmentType.trim()) {
     logger.warn({ orderNumber: order.orderNumber }, "notifyVendors: shipmentType is empty — skipping vendor notification to prevent all-vendor spam");
@@ -569,4 +605,37 @@ export async function sendLogisticOrderNotification(order: LogisticOrderData): P
     notifyAdmin(order),
     notifyCustomer(order),
   ]);
+}
+
+function buildExpiredLinkRefreshMessage(refId: string, newShortUrl: string): string {
+  return (
+    `🔄 *LINK ADMIN DIPERBARUI OTOMATIS*\n` +
+    `━━━━━━━━━━━━━━━━━━\n` +
+    `Link *Review & Blast Vendor* untuk order \`${refId}\` sudah kadaluarsa.\n\n` +
+    `Link baru telah dibuat secara otomatis (berlaku 72 jam):\n` +
+    `🚀 Review & Blast Vendor → ${newShortUrl}\n\n` +
+    `_Dikirim: ${nowWIB()}_`
+  );
+}
+
+/**
+ * Kirim notifikasi WhatsApp ke admin (personal + group) bahwa link admin
+ * yang expired sudah diperbarui otomatis dengan link baru.
+ */
+export async function sendAdminLinkRefreshedNotification(
+  refId: string,
+  newShortUrl: string,
+): Promise<void> {
+  const msg = buildExpiredLinkRefreshMessage(refId, newShortUrl);
+  const [adminWa, adminGroupWa] = await Promise.all([getAdminWa(), getAdminGroupWa()]);
+  if (adminWa) {
+    sendWhatsApp(adminWa, msg).catch((err: unknown) =>
+      logger.error({ err }, "WA expired link refresh (admin) failed")
+    );
+  }
+  if (adminGroupWa) {
+    sendWhatsApp(adminGroupWa, msg).catch((err: unknown) =>
+      logger.error({ err }, "WA expired link refresh (group) failed")
+    );
+  }
 }

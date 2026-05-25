@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,7 +18,10 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Copy, ExternalLink, Link2, Plus, Trash2, Eye, ToggleLeft, ToggleRight, Loader2 } from "lucide-react";
+import { Copy, ExternalLink, Link2, Plus, Trash2, Eye, ToggleLeft, ToggleRight, Loader2, RotateCcw, CalendarDays, User, Phone, MessageCircle, XCircle, Clock, SendHorizonal, Pencil } from "lucide-react";
+import {
+  Sheet, SheetContent, SheetHeader, SheetTitle,
+} from "@/components/ui/sheet";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -46,12 +49,39 @@ type Submission = {
   contactPerson: string | null;
   contactPhone: string | null;
   formData: Record<string, unknown>;
+  staffData: Record<string, unknown>;
   submittedAt: string;
+  waStatus: string | null;
+  waRecipient: string | null;
+  waAt: string | null;
 };
 
 type Supplier = { id: number; name: string; serviceType: string | null };
 
 // ── Schema labels ──────────────────────────────────────────────────────────────
+
+const REVIEW_STATUS_OPTS = [
+  { value: "pending",    label: "⏳ Pending" },
+  { value: "disetujui",  label: "✅ Disetujui" },
+  { value: "ditolak",    label: "❌ Ditolak" },
+  { value: "negosiasi",  label: "🤝 Negosiasi" },
+];
+
+function ReviewStatusBadge({ status }: { status: string | undefined }) {
+  if (!status) return <span className="text-xs text-slate-400">—</span>;
+  const opt = REVIEW_STATUS_OPTS.find(o => o.value === status);
+  const cls: Record<string, string> = {
+    disetujui: "bg-green-100 text-green-700 border-green-200",
+    ditolak:   "bg-red-100 text-red-700 border-red-200",
+    negosiasi: "bg-yellow-100 text-yellow-700 border-yellow-200",
+    pending:   "bg-slate-100 text-slate-600 border-slate-200",
+  };
+  return (
+    <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded border ${cls[status] ?? "bg-slate-100 text-slate-500 border-slate-200"}`}>
+      {opt?.label ?? status}
+    </span>
+  );
+}
 
 const SERVICE_META: Record<string, { label: string; emoji: string }> = {
   product: { label: "Produk", emoji: "📦" },
@@ -145,10 +175,10 @@ function CreateLinkDialog({ suppliers, onCreated }: { suppliers: Supplier[]; onC
           </div>
           <div className="space-y-1.5">
             <Label>Vendor (opsional)</Label>
-            <Select value={supplierId} onValueChange={setSupplierId}>
+            <Select value={supplierId || "__all__"} onValueChange={v => setSupplierId(v === "__all__" ? "" : v)}>
               <SelectTrigger><SelectValue placeholder="Semua vendor / tidak spesifik" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="">— Tidak spesifik —</SelectItem>
+                <SelectItem value="__all__">— Tidak spesifik —</SelectItem>
                 {suppliers.map(s => (
                   <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
                 ))}
@@ -219,11 +249,281 @@ function SubmissionDetailDialog({ submission }: { submission: Submission }) {
   );
 }
 
+// ── Link detail sheet ─────────────────────────────────────────────────────────
+
+function LinkDetailSheet({
+  link,
+  submissions,
+  open,
+  onOpenChange,
+  onDeleteSubmission,
+}: {
+  link: FormLink;
+  submissions: Submission[];
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onDeleteSubmission: (id: number) => void;
+}) {
+  const meta = SERVICE_META[link.serviceType];
+  const expired = link.expiresAt && new Date(link.expiresAt) < new Date();
+  const linkSubs = submissions.filter(s => s.linkId === link.id);
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="w-full sm:max-w-2xl flex flex-col p-0">
+        {/* ── Header ── */}
+        <SheetHeader className="px-6 pt-6 pb-4 border-b bg-slate-50 shrink-0">
+          <SheetTitle className="text-lg leading-snug">
+            {meta?.emoji} {link.title ?? `Form ${meta?.label ?? link.serviceType}`}
+          </SheetTitle>
+          <div className="flex items-center gap-2 flex-wrap mt-1">
+            <Badge variant="outline" className="text-xs">{meta?.emoji} {meta?.label ?? link.serviceType}</Badge>
+            <Badge variant={link.isActive && !expired ? "default" : "secondary"} className="text-xs">
+              {link.isActive && !expired ? "Aktif" : "Nonaktif"}
+            </Badge>
+            <Badge variant="secondary" className="text-xs">{linkSubs.length} submission</Badge>
+          </div>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-2 mt-3 text-sm">
+            <div className="flex items-center gap-1.5 text-slate-600">
+              <User className="h-3.5 w-3.5 text-slate-400" />
+              <span>{link.vendorName ?? <span className="text-slate-400 italic">Umum / Semua Vendor</span>}</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-slate-600">
+              <CalendarDays className="h-3.5 w-3.5 text-slate-400" />
+              <span>Dibuat {new Date(link.createdAt).toLocaleDateString("id-ID")}</span>
+            </div>
+            {link.expiresAt && (
+              <div className={`flex items-center gap-1.5 ${expired ? "text-red-500" : "text-slate-600"}`}>
+                <CalendarDays className="h-3.5 w-3.5" />
+                <span>{expired ? "⚠️ Kadaluarsa " : "Berakhir "}{new Date(link.expiresAt).toLocaleDateString("id-ID")}</span>
+              </div>
+            )}
+            {link.shortUrl && (
+              <div className="flex items-center gap-1.5 col-span-2">
+                <Link2 className="h-3.5 w-3.5 text-slate-400" />
+                <span className="font-mono text-xs text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">{link.shortUrl}</span>
+              </div>
+            )}
+          </div>
+          {link.notes && (
+            <div className="mt-3 bg-white border rounded-md px-3 py-2 text-sm text-slate-600">
+              <span className="text-xs text-slate-400 block mb-0.5 font-medium uppercase tracking-wide">Instruksi untuk vendor</span>
+              {link.notes}
+            </div>
+          )}
+        </SheetHeader>
+
+        {/* ── Submissions list ── */}
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+          {linkSubs.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 text-slate-400 gap-2">
+              <Eye className="h-10 w-10 opacity-20" />
+              <p className="text-sm">Belum ada submission untuk link ini.</p>
+              <p className="text-xs">Bagikan link ke vendor agar mereka bisa mengisi form.</p>
+            </div>
+          ) : (
+            linkSubs.map((sub, idx) => {
+              const fd = sub.formData ?? {};
+              const highlight = getHighlight(sub.serviceType, fd);
+              const fields = Object.entries(fd).filter(([, v]) => v !== "" && v !== null && v !== undefined);
+              return (
+                <div key={sub.id} className="border rounded-lg overflow-hidden shadow-sm">
+                  {/* card header */}
+                  <div className="flex items-start justify-between bg-slate-50 px-4 py-3 border-b gap-3">
+                    <div className="min-w-0">
+                      <div className="font-semibold text-slate-800 text-sm">
+                        #{idx + 1} · {sub.vendorName ?? "—"}
+                      </div>
+                      <div className="flex flex-wrap gap-x-3 mt-0.5">
+                        {sub.contactPerson && (
+                          <span className="text-xs text-slate-500 flex items-center gap-1">
+                            <User className="h-3 w-3" />{sub.contactPerson}
+                          </span>
+                        )}
+                        {sub.contactPhone && (
+                          <span className="text-xs text-slate-500 flex items-center gap-1">
+                            <Phone className="h-3 w-3" />{sub.contactPhone}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-400 mt-1 truncate">{highlight}</p>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className="text-xs text-slate-400 whitespace-nowrap">
+                        {new Date(sub.submittedAt).toLocaleString("id-ID", {
+                          day: "2-digit", month: "short", year: "numeric",
+                          hour: "2-digit", minute: "2-digit",
+                        })}
+                      </span>
+                      <Button
+                        variant="ghost" size="icon" className="h-7 w-7 text-red-400 hover:text-red-600"
+                        title="Hapus submission"
+                        onClick={() => { if (confirm("Hapus submission ini?")) onDeleteSubmission(sub.id); }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                  {/* form data grid */}
+                  {fields.length > 0 ? (
+                    <div className="px-4 py-3 grid grid-cols-2 gap-x-6 gap-y-3">
+                      {fields.map(([k, v]) => (
+                        <div key={k}>
+                          <span className="text-xs text-slate-400 capitalize block">{k.replace(/_/g, " ")}</span>
+                          <span className="text-sm font-medium text-slate-800 break-words">{String(v)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="px-4 py-3 text-xs text-slate-400 italic">Tidak ada data form.</div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+// ── Edit submission sheet ──────────────────────────────────────────────────────
+
+function EditSubmissionSheet({
+  submission,
+  open,
+  onOpenChange,
+  onSave,
+}: {
+  submission: Submission | null;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onSave: (id: number, formData: Record<string, unknown>, staffData: Record<string, unknown>) => Promise<void>;
+}) {
+  const [formData, setFormData] = useState<Record<string, string>>({});
+  const [reviewStatus, setReviewStatus] = useState("");
+  const [hargaFinal, setHargaFinal] = useState("");
+  const [catatanInternal, setCatatanInternal] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!submission) return;
+    const fd: Record<string, string> = {};
+    for (const [k, v] of Object.entries(submission.formData ?? {}))
+      fd[k] = v != null ? String(v) : "";
+    setFormData(fd);
+    const sd = submission.staffData ?? {};
+    setReviewStatus((sd["reviewStatus"] as string) ?? "");
+    setHargaFinal(sd["hargaFinal"] != null ? String(sd["hargaFinal"]) : "");
+    setCatatanInternal((sd["catatanInternal"] as string) ?? "");
+  }, [submission]);
+
+  const handleSave = async () => {
+    if (!submission) return;
+    setSaving(true);
+    const newFormData: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(formData))
+      newFormData[k] = v === "" ? null : v;
+    const newStaffData: Record<string, unknown> = {
+      reviewStatus: reviewStatus || null,
+      hargaFinal: hargaFinal ? Number(hargaFinal) : null,
+      catatanInternal: catatanInternal || null,
+    };
+    try { await onSave(submission.id, newFormData, newStaffData); onOpenChange(false); }
+    finally { setSaving(false); }
+  };
+
+  if (!submission) return null;
+  const meta = SERVICE_META[submission.serviceType];
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="w-full sm:max-w-xl flex flex-col p-0">
+        <SheetHeader className="px-6 pt-6 pb-4 border-b bg-slate-50 shrink-0">
+          <SheetTitle>Edit Submission — {submission.vendorName ?? "—"}</SheetTitle>
+          <p className="text-sm text-slate-500">{meta?.emoji} {meta?.label ?? submission.serviceType}</p>
+        </SheetHeader>
+        <div className="flex-1 overflow-y-auto">
+          <Tabs defaultValue="form-data">
+            <TabsList className="mx-6 mt-4 w-auto">
+              <TabsTrigger value="form-data">Data Vendor</TabsTrigger>
+              <TabsTrigger value="staff-data">Anotasi Internal</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="form-data" className="px-6 py-4 space-y-3">
+              <p className="text-xs text-slate-400 mb-1">Koreksi data yang diisi vendor. Perubahan disimpan di server.</p>
+              {Object.keys(formData).length === 0 && (
+                <p className="text-sm text-slate-400 italic">Tidak ada data form.</p>
+              )}
+              {Object.keys(formData).map((key) => (
+                <div key={key} className="space-y-1">
+                  <Label className="text-xs capitalize text-slate-600">{key.replace(/_/g, " ")}</Label>
+                  <Input
+                    value={formData[key] ?? ""}
+                    onChange={(e) => setFormData(p => ({ ...p, [key]: e.target.value }))}
+                  />
+                </div>
+              ))}
+            </TabsContent>
+
+            <TabsContent value="staff-data" className="px-6 py-4 space-y-4">
+              <p className="text-xs text-slate-400 mb-1">Kolom internal staf — tidak terlihat oleh vendor.</p>
+              <div className="space-y-1.5">
+                <Label>Status Review</Label>
+                <Select value={reviewStatus || "__none__"} onValueChange={v => setReviewStatus(v === "__none__" ? "" : v)}>
+                  <SelectTrigger><SelectValue placeholder="Pilih status" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">— Belum direview —</SelectItem>
+                    {REVIEW_STATUS_OPTS.map(o => (
+                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Harga Final (Rp)</Label>
+                <Input
+                  type="number"
+                  value={hargaFinal}
+                  onChange={(e) => setHargaFinal(e.target.value)}
+                  placeholder="Contoh: 1500000"
+                />
+                {hargaFinal && (
+                  <p className="text-xs text-slate-400">
+                    {Number(hargaFinal).toLocaleString("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 })}
+                  </p>
+                )}
+              </div>
+              <div className="space-y-1.5">
+                <Label>Catatan Internal Staf</Label>
+                <Textarea
+                  value={catatanInternal}
+                  onChange={(e) => setCatatanInternal(e.target.value)}
+                  rows={4}
+                  placeholder="Catatan khusus untuk tim internal, tidak terlihat vendor..."
+                />
+              </div>
+            </TabsContent>
+          </Tabs>
+        </div>
+        <div className="px-6 py-4 border-t flex justify-end gap-2 shrink-0 bg-white">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Batal</Button>
+          <Button onClick={handleSave} disabled={saving}>
+            {saving && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
+            Simpan
+          </Button>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 // ── Main page ──────────────────────────────────────────────────────────────────
 
 export default function VendorFormsPage() {
   const { toast } = useToast();
   const qc = useQueryClient();
+  const [selectedLink, setSelectedLink] = useState<FormLink | null>(null);
 
   const { data: links = [], isLoading: linksLoading } = useQuery<FormLink[]>({
     queryKey: ["vendor-form-links"],
@@ -258,6 +558,21 @@ export default function VendorFormsPage() {
     onError: (e: Error) => toast({ title: "Gagal", description: e.message, variant: "destructive" }),
   });
 
+  const [editingSubmission, setEditingSubmission] = useState<Submission | null>(null);
+
+  const updateSubmission = useMutation({
+    mutationFn: ({ id, formData, staffData }: { id: number; formData: Record<string, unknown>; staffData: Record<string, unknown> }) =>
+      apiFetch(`/api/vendor-form/admin/submissions/${id}`, {
+        method: "PUT",
+        body: JSON.stringify({ formData, staffData }),
+      }),
+    onSuccess: () => {
+      toast({ title: "Submission diperbarui" });
+      qc.invalidateQueries({ queryKey: ["vendor-form-submissions"] });
+    },
+    onError: (e: Error) => toast({ title: "Gagal menyimpan", description: e.message, variant: "destructive" }),
+  });
+
   const deleteSubmission = useMutation({
     mutationFn: (id: number) =>
       apiFetch(`/api/vendor-form/admin/submissions/${id}`, { method: "DELETE" }),
@@ -268,7 +583,39 @@ export default function VendorFormsPage() {
     onError: (e: Error) => toast({ title: "Gagal", description: e.message, variant: "destructive" }),
   });
 
+  const [resendingWa, setResendingWa] = useState<number | null>(null);
+  const resendWa = async (id: number) => {
+    setResendingWa(id);
+    try {
+      await apiFetch(`/api/vendor-form/admin/submissions/${id}/resend-wa`, { method: "POST" });
+      toast({ title: "WA berhasil dikirim ulang" });
+      qc.invalidateQueries({ queryKey: ["vendor-form-submissions"] });
+    } catch (e: unknown) {
+      toast({ title: "Gagal kirim ulang WA", description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setResendingWa(null);
+    }
+  };
+
   const [generatingShortLink, setGeneratingShortLink] = useState<number | null>(null);
+  const [resettingShortLink, setResettingShortLink] = useState<number | null>(null);
+
+  const resetShortLink = async (link: FormLink) => {
+    if (!confirm(`Reset short link untuk "${link.title ?? link.serviceType}"?\nShort link lama akan tidak aktif.`)) return;
+    setResettingShortLink(link.id);
+    try {
+      const data = await apiFetch<{ shortUrl: string }>(`/api/vendor-form/admin/links/${link.id}/reset-short-link`, { method: "POST" });
+      await navigator.clipboard.writeText(data.shortUrl);
+      toast({ title: "Short link baru disalin!", description: data.shortUrl });
+      qc.setQueryData<FormLink[]>(["vendor-form-links"], (old) =>
+        old?.map((l) => l.id === link.id ? { ...l, shortUrl: data.shortUrl } : l) ?? old
+      );
+    } catch (e: unknown) {
+      toast({ title: "Gagal reset short link", description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setResettingShortLink(null);
+    }
+  };
 
   const copyShortLink = async (link: FormLink) => {
     // If already cached, copy immediately without API call
@@ -368,7 +715,7 @@ export default function VendorFormsPage() {
                             </TableCell>
                             <TableCell>
                               {link.shortUrl ? (
-                                <div className="flex items-center gap-1.5">
+                                <div className="flex items-center gap-1">
                                   <span className="font-mono text-xs text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">
                                     {link.shortUrl.replace(/^https?:\/\/[^/]+/, "").slice(0, 14)}
                                   </span>
@@ -378,6 +725,16 @@ export default function VendorFormsPage() {
                                     onClick={() => copyShortLink(link)}
                                   >
                                     <Copy className="h-3 w-3" />
+                                  </button>
+                                  <button
+                                    className="text-slate-300 hover:text-orange-500 transition-colors"
+                                    title="Reset short link (generate baru)"
+                                    disabled={resettingShortLink === link.id}
+                                    onClick={() => resetShortLink(link)}
+                                  >
+                                    {resettingShortLink === link.id
+                                      ? <Loader2 className="h-3 w-3 animate-spin" />
+                                      : <RotateCcw className="h-3 w-3" />}
                                   </button>
                                 </div>
                               ) : (
@@ -415,6 +772,13 @@ export default function VendorFormsPage() {
                             </TableCell>
                             <TableCell className="text-right">
                               <div className="flex items-center justify-end gap-1">
+                                <Button
+                                  variant="ghost" size="icon" className="h-7 w-7"
+                                  title="Lihat detail submission"
+                                  onClick={() => setSelectedLink(link)}
+                                >
+                                  <Eye className="h-3.5 w-3.5" />
+                                </Button>
                                 <Button
                                   variant="ghost" size="icon" className="h-7 w-7"
                                   title="Salin short link"
@@ -479,6 +843,8 @@ export default function VendorFormsPage() {
                         <TableHead>Service Type</TableHead>
                         <TableHead>Contact</TableHead>
                         <TableHead>Waktu</TableHead>
+                        <TableHead>WA Vendor</TableHead>
+                        <TableHead>Review</TableHead>
                         <TableHead>Highlight</TableHead>
                         <TableHead className="text-right">Aksi</TableHead>
                       </TableRow>
@@ -505,11 +871,51 @@ export default function VendorFormsPage() {
                               <div className="text-xs text-slate-400">{new Date(sub.submittedAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}</div>
                             </TableCell>
                             <TableCell>
+                              <WaBadge status={sub.waStatus} recipient={sub.waRecipient} waAt={sub.waAt} />
+                              {sub.waAt && (
+                                <div className="text-xs text-slate-400 mt-0.5">
+                                  {new Date(sub.waAt).toLocaleString("id-ID", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                                </div>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <ReviewStatusBadge status={sub.staffData?.["reviewStatus"] as string | undefined} />
+                              {sub.staffData?.["hargaFinal"] != null && (
+                                <div className="text-xs text-slate-500 mt-0.5">
+                                  {Number(sub.staffData["hargaFinal"]).toLocaleString("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 })}
+                                </div>
+                              )}
+                            </TableCell>
+                            <TableCell>
                               <span className="text-sm text-slate-600">{highlight}</span>
+                              {sub.staffData?.["catatanInternal"] && (
+                                <div className="text-xs text-amber-600 mt-0.5 max-w-[180px] truncate" title={String(sub.staffData["catatanInternal"])}>
+                                  📝 {String(sub.staffData["catatanInternal"])}
+                                </div>
+                              )}
                             </TableCell>
                             <TableCell className="text-right">
                               <div className="flex items-center justify-end gap-1">
                                 <SubmissionDetailDialog submission={sub} />
+                                <Button
+                                  variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-slate-700"
+                                  title="Edit data & anotasi"
+                                  onClick={() => setEditingSubmission(sub)}
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </Button>
+                                {sub.contactPhone && (sub.waStatus !== "sent") && (
+                                  <Button
+                                    variant="ghost" size="icon" className="h-7 w-7 text-indigo-400 hover:text-indigo-600"
+                                    title="Kirim ulang WA konfirmasi ke vendor"
+                                    disabled={resendingWa === sub.id}
+                                    onClick={() => resendWa(sub.id)}
+                                  >
+                                    {resendingWa === sub.id
+                                      ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                      : <SendHorizonal className="h-3.5 w-3.5" />}
+                                  </Button>
+                                )}
                                 <Button
                                   variant="ghost" size="icon" className="h-7 w-7 text-red-400 hover:text-red-600"
                                   title="Hapus submission"
@@ -530,7 +936,55 @@ export default function VendorFormsPage() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {selectedLink && (
+        <LinkDetailSheet
+          link={selectedLink}
+          submissions={submissions}
+          open={!!selectedLink}
+          onOpenChange={(v) => { if (!v) setSelectedLink(null); }}
+          onDeleteSubmission={(id) => deleteSubmission.mutate(id)}
+        />
+      )}
+
+      <EditSubmissionSheet
+        submission={editingSubmission}
+        open={!!editingSubmission}
+        onOpenChange={(v) => { if (!v) setEditingSubmission(null); }}
+        onSave={async (id, formData, staffData) => { await updateSubmission.mutateAsync({ id, formData, staffData }); }}
+      />
     </AppShell>
+  );
+}
+
+function WaBadge({ status, recipient, waAt }: { status: string | null; recipient: string | null; waAt: string | null }) {
+  if (!status) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs text-slate-400">
+        <Clock className="h-3 w-3" />
+        Belum kirim
+      </span>
+    );
+  }
+  if (status === "sent") {
+    return (
+      <span
+        className="inline-flex items-center gap-1 text-xs text-green-600 font-medium"
+        title={`Ke: ${recipient ?? "-"}${waAt ? `\n${new Date(waAt).toLocaleString("id-ID")}` : ""}`}
+      >
+        <MessageCircle className="h-3 w-3" />
+        Terkirim
+      </span>
+    );
+  }
+  return (
+    <span
+      className="inline-flex items-center gap-1 text-xs text-red-500"
+      title={`Gagal kirim ke: ${recipient ?? "-"}`}
+    >
+      <XCircle className="h-3 w-3" />
+      Gagal
+    </span>
   );
 }
 

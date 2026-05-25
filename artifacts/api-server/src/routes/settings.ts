@@ -2,7 +2,8 @@ import { Router, type Request, type Response } from "express";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { getAdminWa, setAdminWa, getAdminGroupWa, setAdminGroupWa } from "../lib/adminWa.js";
 import { db, portalContentTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { shortLinksTable } from "@workspace/db/schema";
+import { eq, desc, ilike, or, sql } from "drizzle-orm";
 import { getAiIntakeSettings, saveAiIntakeSettings, type VendorFilterMode } from "../lib/aiOrderIntake.js";
 
 const router = Router();
@@ -154,6 +155,93 @@ router.put("/nav-company-config", async (req: Request, res: Response) => {
       set: { value: JSON.stringify(config), updatedAt: new Date() },
     });
   return res.json({ ok: true });
+});
+
+// ── Short Links Management (admin) ─────────────────────────────────────────
+
+// GET /api/settings/short-links?page=1&pageSize=20&search=xxx
+router.get("/short-links", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const page = Math.max(1, Number(req.query.page) || 1);
+  const pageSize = Math.min(100, Math.max(1, Number(req.query.pageSize) || 20));
+  const search = String(req.query.search ?? "").trim();
+  const offset = (page - 1) * pageSize;
+
+  try {
+    const where = search
+      ? or(
+          ilike(shortLinksTable.code, `%${search}%`),
+          ilike(shortLinksTable.targetUrl, `%${search}%`),
+          ilike(shortLinksTable.context, `%${search}%`),
+          ilike(shortLinksTable.refId, `%${search}%`),
+        )
+      : undefined;
+
+    const [rows, countResult] = await Promise.all([
+      db.select().from(shortLinksTable)
+        .where(where)
+        .orderBy(desc(shortLinksTable.createdAt))
+        .limit(pageSize)
+        .offset(offset),
+      db.select({ count: sql<number>`count(*)::int` }).from(shortLinksTable).where(where),
+    ]);
+
+    return res.json({
+      data: rows,
+      total: countResult[0]?.count ?? 0,
+      page,
+      pageSize,
+    });
+  } catch (err) {
+    req.log?.error({ err }, "short-links list error");
+    return res.status(500).json({ message: "Gagal memuat short links" });
+  }
+});
+
+// DELETE /api/settings/short-links/:id
+router.delete("/short-links/:id", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ message: "ID tidak valid" });
+  try {
+    await db.delete(shortLinksTable).where(eq(shortLinksTable.id, id));
+    return res.json({ ok: true });
+  } catch (err) {
+    req.log?.error({ err }, "short-link delete error");
+    return res.status(500).json({ message: "Gagal menghapus" });
+  }
+});
+
+// PATCH /api/settings/short-links/:id/deactivate — set expiresAt to now (expired)
+router.patch("/short-links/:id/deactivate", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ message: "ID tidak valid" });
+  try {
+    await db.update(shortLinksTable)
+      .set({ expiresAt: new Date(Date.now() - 1000) })
+      .where(eq(shortLinksTable.id, id));
+    return res.json({ ok: true });
+  } catch (err) {
+    req.log?.error({ err }, "short-link deactivate error");
+    return res.status(500).json({ message: "Gagal menonaktifkan" });
+  }
+});
+
+// PATCH /api/settings/short-links/:id/reactivate — clear expiresAt
+router.patch("/short-links/:id/reactivate", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ message: "ID tidak valid" });
+  try {
+    await db.update(shortLinksTable)
+      .set({ expiresAt: null })
+      .where(eq(shortLinksTable.id, id));
+    return res.json({ ok: true });
+  } catch (err) {
+    req.log?.error({ err }, "short-link reactivate error");
+    return res.status(500).json({ message: "Gagal mengaktifkan kembali" });
+  }
 });
 
 export default router;

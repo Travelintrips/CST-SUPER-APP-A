@@ -62,6 +62,7 @@ import {
   EyeOff,
   SlidersHorizontal,
   Send,
+  Link2,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -86,6 +87,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Badge } from "@/components/ui/badge";
 import { LanguageSelector } from "@/components/layout/LanguageSelector";
 import { NotificationBell } from "@/components/layout/NotificationBell";
+import { DevUserSwitcher } from "@/components/layout/DevUserSwitcher";
 import { useOrderNotificationsContext } from "@/contexts/OrderNotificationsContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { CompanySwitcher } from "@/components/CompanySwitcher";
@@ -108,6 +110,8 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { SortableNavWrapper } from "./SortableNavWrapper";
+
+const IS_DEV = import.meta.env.DEV;
 
 interface AppShellProps {
   children: ReactNode;
@@ -211,6 +215,7 @@ export function AppShell({ children }: AppShellProps) {
       icon: BarChart2,
       roles: ["manager", "admin", "owner"],
       children: [
+        { titleKey: "Audit ERP", href: "/audit", icon: ClipboardCheck, roles: ["admin", "owner"] },
         { titleKey: "Audit Log Keamanan", href: "/reports/audit-log", icon: Shield, roles: ["admin", "owner"] },
         { titleKey: "Laporan Penjualan B2B", href: "/reports/sales", icon: TrendingUp, roles: ["manager", "admin", "owner"] },
         { titleKey: "Laporan Pembelian", href: "/reports/purchase", icon: ShoppingBag, roles: ["admin", "owner"] },
@@ -265,6 +270,7 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "Payment Request", href: "/purchase/payment-requests", icon: Wallet },
         { titleKey: "Landed Cost", href: "/purchase/landed-costs", icon: Calculator },
         { titleKey: "vendors", href: "/purchase/vendors", icon: UserCircle },
+        { titleKey: "Vendor Forms", href: "/purchase/vendor-forms", icon: Send },
         { titleKey: "Thai Tea Procurement", href: "/purchase/thai-tea", icon: ShoppingBag, companyCodes: ["CST"] },
       ],
     },
@@ -286,8 +292,6 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "balanceSheet", href: "/accounting/reports/balance-sheet", icon: Wallet },
         { titleKey: "reconciliation", href: "/accounting/reconciliation", icon: GitMerge },
         { titleKey: "accountingSettings", href: "/accounting/settings", icon: Settings },
-        { titleKey: "Holding Dashboard", href: "/holding/dashboard", icon: LayoutDashboard, companyCodes: ["__holding__"] },
-        { titleKey: "Holding P&L", href: "/holding/pl-report", icon: TrendingUp, companyCodes: ["__holding__"] },
       ],
     },
     {
@@ -363,6 +367,7 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "aiKnowledgeBase", href: "/settings/ai-chatbot/knowledge", icon: BookOpen },
         { titleKey: "aiScanSettings", href: "/settings/ai-scan", icon: ScanLine },
         { titleKey: "Konfigurasi Menu", href: "/settings/nav-company-config", icon: LayoutGrid },
+        { titleKey: "Short Links", href: "/settings/short-links", icon: Link2 },
         { titleKey: "Image Manager", href: "/media", icon: ImageIcon },
       ],
     },
@@ -390,7 +395,7 @@ export function AppShell({ children }: AppShellProps) {
 
   const { data: aiDrafts = [] } = useListAiDraftQuotations({
     query: {
-      enabled: dbUser?.role === "admin" || dbUser?.role === "owner",
+      enabled: (dbUser?.role as string) === "admin" || (dbUser?.role as string) === "owner",
       refetchInterval: 60_000,
       queryKey: getListAiDraftQuotationsQueryKey(),
     },
@@ -417,8 +422,8 @@ export function AppShell({ children }: AppShellProps) {
     }
 
     // owner dan admin (built-in) melihat semua
-    if (dbUser.role === "owner") return true;
-    if (dbUser.role === "admin") return true;
+    if ((dbUser.role as string) === "owner") return true;
+    if ((dbUser.role as string) === "admin") return true;
 
     // Custom role permissions (format: "module" atau "module:view")
     if (customRolePermissions != null) {
@@ -510,7 +515,7 @@ export function AppShell({ children }: AppShellProps) {
       } catch { return {}; }
     },
     staleTime: 5 * 60 * 1000,
-    enabled: dbUser?.role === "admin" || dbUser?.role === "owner",
+    enabled: (dbUser?.role as string) === "admin" || (dbUser?.role as string) === "owner",
   });
 
   const companyKey = isConsolidated ? "__all__" : String(activeCompany?.id ?? 0);
@@ -633,11 +638,6 @@ export function AppShell({ children }: AppShellProps) {
           >
             <item.icon size={18} />
             <span className="flex-1">{getNavTitle(item.titleKey)}</span>
-            {isErpModule && open && (
-              <span className="shrink-0 max-w-[64px] truncate rounded-sm bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase leading-none text-primary">
-                {isConsolidated ? "Holding" : (activeCompany?.companyCode ?? "")}
-              </span>
-            )}
             {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           </SidebarMenuButton>
           {customizeMode && (
@@ -652,14 +652,6 @@ export function AppShell({ children }: AppShellProps) {
         </div>
         {open && (
           <SidebarMenuSub>
-            {isErpModule && (
-              <div className="mx-2 mb-1 flex items-center gap-1.5 rounded-md border border-border/60 bg-muted/40 px-2 py-1">
-                <Building2 size={11} className="shrink-0 text-muted-foreground" />
-                <span className="truncate text-[10px] font-medium text-muted-foreground">
-                  {isConsolidated ? "Holding Consolidated" : (activeCompany?.companyName ?? "—")}
-                </span>
-              </div>
-            )}
             {visibleChildren.map((c) => {
               const childHidden = hiddenItems.includes(c.href);
               return (
@@ -774,6 +766,12 @@ export function AppShell({ children }: AppShellProps) {
                 <span className="hidden sm:inline">Cari...</span>
                 <kbd className="hidden sm:inline rounded bg-background px-1 py-0.5 text-[10px] font-mono border border-border">⌘K</kbd>
               </button>
+              {IS_DEV && dbUser && (
+                <span className="hidden sm:flex items-center gap-1 rounded border border-amber-600/40 bg-amber-950/30 px-2 py-0.5 text-[10px] font-mono text-amber-400 max-w-[140px] truncate" title={`Login sebagai: ${dbUser.email}`}>
+                  {dbUser.name || dbUser.email}
+                </span>
+              )}
+              {IS_DEV && <DevUserSwitcher />}
               <NotificationBell />
             </div>
           </div>
@@ -789,6 +787,13 @@ export function AppShell({ children }: AppShellProps) {
                 <span>Cari halaman...</span>
                 <kbd className="ml-1 rounded bg-background px-1 py-0.5 text-[10px] font-mono border border-border">Ctrl+K</kbd>
               </button>
+              {IS_DEV && dbUser && (
+                <span className="flex items-center gap-1.5 rounded border border-amber-600/40 bg-amber-950/30 px-2 py-1 text-[11px] font-mono text-amber-400 max-w-[200px]" title={dbUser.email ?? ""}>
+                  <span className="text-amber-600/70 shrink-0">as:</span>
+                  <span className="truncate">{dbUser.name || dbUser.email}</span>
+                </span>
+              )}
+              {IS_DEV && <DevUserSwitcher />}
               <LanguageSelector />
               <NotificationBell />
               <DropdownMenu>

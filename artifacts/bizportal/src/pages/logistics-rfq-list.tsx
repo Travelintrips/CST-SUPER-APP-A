@@ -362,7 +362,7 @@ export default function LogisticsRfqListPage() {
             <div className="space-y-4">
               <div className="space-y-1.5">
                 <Label>Pilih Order Customer</Label>
-                <Select value={selectedOrderId} onValueChange={setSelectedOrderId}>
+                <Select value={selectedOrderId || undefined} onValueChange={setSelectedOrderId}>
                   <SelectTrigger>
                     <SelectValue placeholder="Pilih order yang masuk..." />
                   </SelectTrigger>

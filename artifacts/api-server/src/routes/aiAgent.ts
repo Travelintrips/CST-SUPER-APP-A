@@ -1,4 +1,5 @@
 import express, { Router, Request, Response } from "express";
+import type OpenAI from "openai";
 import { getOpenAI } from "../lib/openaiClient.js";
 import { db } from "@workspace/db";
 import {
@@ -9,6 +10,8 @@ import {
   logisticOrdersTable,
   productsTable,
   ordersTable,
+  portalProductOrdersTable,
+  portalProductOrderItemsTable,
 } from "@workspace/db";
 import { eq, asc, or, inArray, sql, and, gt, ilike } from "drizzle-orm";
 import { randomBytes } from "crypto";
@@ -16,6 +19,7 @@ import { createRequire } from "node:module";
 import multer from "multer";
 import { sendLogisticOrderNotification } from "../lib/orderNotification";
 import { sendWhatsApp } from "../lib/fonnte";
+import { getAdminWa } from "../lib/adminWa.js";
 import { requireAdmin } from "../lib/requireAdmin";
 import { logger } from "../lib/logger";
 
@@ -51,6 +55,8 @@ Aturan:
 - Jika search_products tidak menemukan produk sama sekali (found: false): baru beritahu pelanggan bahwa produk tidak tersedia
 - JANGAN katakan produk tidak tersedia hanya karena stock=0 — selalu tampilkan form
 - TOLAK SOPAN pertanyaan di luar layanan CST Logistics
+- LARANGAN KERAS: JANGAN panggil create_logistic_order atau show_order_form ketika pelanggan sedang memesan PRODUK (via show_product_order_form atau create_product_order). Order produk dan order pengiriman adalah dua hal berbeda. Hanya buat logistic order jika pelanggan secara eksplisit meminta layanan pengiriman/freight/trucking/customs.
+- JANGAN berasumsi pelanggan butuh layanan pengiriman hanya karena mereka membeli produk. Pelanggan yang membeli produk TIDAK otomatis perlu logistic order.
 
 Layanan yang tersedia:
 - Sea Freight (Laut): FCL dan LCL, domestik & internasional
@@ -209,7 +215,7 @@ const TOOLS: OpenAI.Chat.ChatCompletionTool[] = [
           companyName: { type: "string", description: "Nama perusahaan (pakai '-' jika individu)" },
           shipmentType: {
             type: "string",
-            enum: ["Sea Freight", "Air Freight", "Trucking"],
+            enum: ["Sea Freight", "Air Freight", "Trucking", "FOB"],
             description: "Jenis pengiriman",
           },
           origin: { type: "string", description: "Kota/pelabuhan asal" },
@@ -324,6 +330,7 @@ async function handleToolCall(
         { type: "Sea Freight", description: "FCL & LCL, rute domestik & internasional via kapal", etaDomestic: "3-7 hari", etaInternational: "14-45 hari" },
         { type: "Air Freight", description: "Pengiriman cepat via udara", etaDomestic: "1-2 hari", etaInternational: "3-7 hari" },
         { type: "Trucking", description: "CDE, CDD, Fuso, Wingbox, Trailer untuk pengiriman darat", etaDomestic: "1-5 hari" },
+        { type: "FOB", description: "Free On Board — penjual bertanggung jawab hingga barang naik ke kapal di pelabuhan asal", etaInternational: "Sesuai jadwal kapal" },
         { type: "Customs/Pabean", description: "Layanan kepabeanan PIB, PEB, dan dokumen impor/ekspor" },
         { type: "Packing & Crating", description: "Pengemasan profesional untuk barang fragile atau heavy lift" },
       ],
@@ -946,17 +953,37 @@ aiAgentRouter.post("/quick-product-order", async (req: Request, res: Response) =
     const totalAmount = qty * priceNum;
     const itemsSummary = `${productName} x${qty}`;
 
-    const [order] = await db.insert(ordersTable).values({
+    // Generate order number PRD-YYMMDD-XXXXX
+    const now = new Date();
+    const yy = now.getFullYear().toString().slice(-2);
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const dd = String(now.getDate()).padStart(2, "0");
+    const rand = Math.floor(Math.random() * 90000) + 10000;
+    const orderNumber = `PRD-${yy}${mm}${dd}-${rand}`;
+
+    // Simpan ke portal_product_orders agar muncul di halaman Portal Order Produk BizPortal
+    const [portalOrder] = await db.insert(portalProductOrdersTable).values({
+      orderNumber,
       customerName,
-      customerEmail: email || `${phone}@wa.cstlogistics.id`,
-      customerPhone: phone,
-      status: "pending",
-      totalAmount: String(totalAmount),
-      taxAmount: "0",
+      email: email || `${phone}@wa.cstlogistics.id`,
+      phone,
+      shippingAddress: "-",
+      notes: notes ? `[AI Chat] ${notes}` : "[AI Chat]",
+      subtotal: String(totalAmount),
       grandTotal: String(totalAmount),
-      items: itemsSummary,
-      lineItems: [{ name: productName, qty, unitPrice: priceNum }],
+      status: "New Order",
     }).returning();
+
+    await db.insert(portalProductOrderItemsTable).values({
+      orderId: portalOrder.id,
+      productId: productId ?? null,
+      productName,
+      productSku: null,
+      unit: null,
+      unitPrice: String(priceNum),
+      qty,
+      subtotal: String(totalAmount),
+    });
 
     if (notes) {
       await db.insert(aiChatMessagesTable).values({
@@ -966,10 +993,37 @@ aiAgentRouter.post("/quick-product-order", async (req: Request, res: Response) =
       });
     }
 
+    // Kirim notifikasi WA ke admin (fire-and-forget)
+    getAdminWa().then((adminWa) => {
+      if (!adminWa) return;
+      const msg =
+        `🛒 *Order Produk Baru (AI Chat)*\n` +
+        `No. Order: ${orderNumber}\n` +
+        `Customer: ${customerName}\n` +
+        (phone ? `WhatsApp: ${phone}\n` : "") +
+        (email ? `Email: ${email}\n` : "") +
+        `Produk: ${productName} x${qty}\n` +
+        `Harga Satuan: Rp ${priceNum.toLocaleString("id-ID")}\n` +
+        `Total: Rp ${totalAmount.toLocaleString("id-ID")}` +
+        (notes ? `\nCatatan: ${notes}` : "");
+      return sendWhatsApp(adminWa, msg);
+    }).catch(() => undefined);
+
+    // Kirim konfirmasi WA ke customer
+    if (phone) {
+      const custMsg =
+        `✅ *Pesanan Anda Berhasil Diterima!*\n` +
+        `No. Order: *${orderNumber}*\n\n` +
+        `• ${productName} × ${qty} — Rp ${totalAmount.toLocaleString("id-ID")}\n\n` +
+        `Total: Rp ${totalAmount.toLocaleString("id-ID")}\n\n` +
+        `Tim kami akan segera menghubungi Anda untuk konfirmasi pengiriman. Terima kasih! 🙏`;
+      sendWhatsApp(phone, custMsg).catch(() => undefined);
+    }
+
     return res.status(201).json({
       success: true,
-      orderNumber: `PRD/${order.id}`,
-      orderId: order.id,
+      orderNumber,
+      orderId: portalOrder.id,
       sessionToken: session.sessionToken,
     });
   } catch (err) {

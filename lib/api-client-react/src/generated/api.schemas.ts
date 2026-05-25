@@ -2208,11 +2208,15 @@ export interface CreateLogisticOrderItemBody {
   subtotal: number;
 }
 
+export type CreateLogisticOrderBodyOrderType = "shipment" | "product" | "service";
+export type CreateLogisticOrderBodyTransportMode = "sea" | "air" | "land" | "multimodal";
+
 export interface CreateLogisticOrderBody {
   companyName: string;
   customerName: string;
   email: string;
   phone: string;
+  orderType?: CreateLogisticOrderBodyOrderType | null;
   shipmentType: string;
   origin: string;
   destination: string;
@@ -2228,6 +2232,18 @@ export interface CreateLogisticOrderBody {
   namaPenerima?: string | null;
   nomorPenerima?: string | null;
   jamOrder?: string | null;
+  transportMode?: CreateLogisticOrderBodyTransportMode | null;
+  originDistrict?: string | null;
+  destDistrict?: string | null;
+  pickupDate?: string | null;
+  pickupTime?: string | null;
+  truckType?: string | null;
+  originPort?: string | null;
+  destPort?: string | null;
+  weightKg?: number | null;
+  incoterm?: string | null;
+  etd?: string | null;
+  eta?: string | null;
   subtotal: number;
   tax: number;
   grandTotal: number;

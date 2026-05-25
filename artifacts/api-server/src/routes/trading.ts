@@ -77,10 +77,11 @@ router.get("/suppliers", async (_req, res) => {
 
 // POST /api/trading/suppliers
 router.post("/suppliers", async (req, res) => {
-  const { name, country, contactEmail, phone, address, taxId, defaultPurchaseTaxId,
+  const { name, country, contactEmail, contactPerson, phone, address, taxId, defaultPurchaseTaxId,
     serviceType, isActive, logo, eta, fee, markup, note, sortOrder } = req.body;
   const [supplier] = await db.insert(suppliersTable).values({
     name, country: country ?? null, contactEmail: contactEmail ?? null,
+    contactPerson: contactPerson ?? null,
     phone: phone ?? null, address: address ?? null,
     taxId: taxId ?? null, defaultPurchaseTaxId: defaultPurchaseTaxId ?? null,
     serviceType: serviceType ?? null,
@@ -99,12 +100,13 @@ router.post("/suppliers", async (req, res) => {
 router.put("/suppliers/:id", async (req, res) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
-  const { name, country, contactEmail, phone, address, taxId, defaultPurchaseTaxId,
+  const { name, country, contactEmail, contactPerson, phone, address, taxId, defaultPurchaseTaxId,
     serviceType, isActive, logo, eta, fee, markup, note, sortOrder } = req.body;
   const patch: Record<string, unknown> = {};
   if (typeof name === "string") patch["name"] = name;
   if (country !== undefined) patch["country"] = country || null;
   if (contactEmail !== undefined) patch["contactEmail"] = contactEmail || null;
+  if (contactPerson !== undefined) patch["contactPerson"] = contactPerson || null;
   if (phone !== undefined) patch["phone"] = phone || null;
   if (address !== undefined) patch["address"] = address || null;
   if (taxId !== undefined) patch["taxId"] = taxId || null;
@@ -150,7 +152,7 @@ router.get("/suppliers/:id/catalog", async (req, res) => {
 router.post("/suppliers/:id/catalog", async (req, res) => {
   const vendorId = Number(req.params.id);
   if (Number.isNaN(vendorId)) return res.status(400).json({ message: "Invalid id" });
-  const { type, name, description, unit, priceBase, markupPct, isActive, sortOrder } = req.body;
+  const { type, name, description, unit, priceBase, markupPct, isActive, isCommodityTag, sortOrder } = req.body;
   if (!name || typeof name !== "string")
     return res.status(400).json({ message: "name required" });
   const [item] = await db.insert(vendorCatalogItemsTable).values({
@@ -162,6 +164,7 @@ router.post("/suppliers/:id/catalog", async (req, res) => {
     priceBase: String(parseFloat(String(priceBase ?? 0)) || 0),
     markupPct: String(parseFloat(String(markupPct ?? 0)) || 0),
     isActive: isActive !== undefined ? Boolean(isActive) : true,
+    isCommodityTag: isCommodityTag !== undefined ? Boolean(isCommodityTag) : false,
     sortOrder: sortOrder !== undefined ? Number(sortOrder) : 0,
   }).returning();
   return res.status(201).json(toItem(item));
@@ -171,7 +174,7 @@ router.post("/suppliers/:id/catalog", async (req, res) => {
 router.put("/suppliers/catalog/:itemId", async (req, res) => {
   const itemId = Number(req.params.itemId);
   if (Number.isNaN(itemId)) return res.status(400).json({ message: "Invalid id" });
-  const { type, name, description, unit, priceBase, markupPct, isActive, sortOrder } = req.body;
+  const { type, name, description, unit, priceBase, markupPct, isActive, isCommodityTag, sortOrder } = req.body;
   const patch: Record<string, unknown> = {};
   if (type !== undefined) patch["type"] = type;
   if (typeof name === "string") patch["name"] = name;
@@ -180,6 +183,7 @@ router.put("/suppliers/catalog/:itemId", async (req, res) => {
   if (priceBase !== undefined) patch["priceBase"] = String(parseFloat(String(priceBase)) || 0);
   if (markupPct !== undefined) patch["markupPct"] = String(parseFloat(String(markupPct)) || 0);
   if (isActive !== undefined) patch["isActive"] = Boolean(isActive);
+  if (isCommodityTag !== undefined) patch["isCommodityTag"] = Boolean(isCommodityTag);
   if (sortOrder !== undefined) patch["sortOrder"] = Number(sortOrder);
   const [updated] = await db
     .update(vendorCatalogItemsTable)

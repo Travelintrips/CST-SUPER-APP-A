@@ -329,3 +329,9 @@ id = "ItRCirGsgE8V4NrDjqY59"
 uri = "file://artifacts/cst-driver/assets/hero-square.png"
 type = "image"
 title = "Square / Responsive (1:1)"
+
+[[outputs]]
+id = "TwVLJNKT88c54a7air1bp"
+uri = "file://erp-audit-checklist.md"
+type = "text"
+title = "Checklist Audit ERP — BizPortal CST Logistics"

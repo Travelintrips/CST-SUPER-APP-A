@@ -11,6 +11,7 @@ import router from "./routes";
 import authRouter from "./routes/auth";
 import companiesRouter from "./routes/companies";
 import { shortLinkRedirectRouter } from "./routes/shortLinkRedirect";
+import { adminActionRouter } from "./routes/adminAction";
 import { authMiddleware } from "./middlewares/authMiddleware";
 import { bearerRateLimiter } from "./middlewares/bearerRateLimiter";
 import { logger } from "./lib/logger";
@@ -216,15 +217,20 @@ if (fs.existsSync(CUSTOMER_PORTAL_DIST)) {
   app.use(express.static(CUSTOMER_PORTAL_DIST, { index: false }));
 }
 
-// ─── Dev-mode root redirect ───────────────────────────────────────────────────
+// ─── Health check + Dev-mode root ─────────────────────────────────────────────
+// /healthz always returns 200 — used by Replit's workflow port health-check.
+app.get("/healthz", (_req: Request, res: Response) => {
+  res.status(200).json({ status: "ok" });
+});
+
 // In development, frontend apps run as separate Vite processes so
-// customer-portal/dist doesn't exist yet. Redirect "/" to the BizPortal
-// so the port stays reachable and Replit's proxy health-check passes.
+// customer-portal/dist doesn't exist yet. Return 200 with a redirect meta tag
+// so Replit's proxy health-check passes (302 causes health-check failures).
 app.get("/", (_req: Request, res: Response, next: NextFunction) => {
   if (fs.existsSync(CUSTOMER_PORTAL_DIST)) return next();
   const bizportalDist = path.join(ARTIFACTS_DIR, "bizportal/dist/public");
   if (fs.existsSync(bizportalDist)) return next();
-  res.redirect(302, "/bizportal/");
+  res.status(200).send(`<!DOCTYPE html><html><head><meta http-equiv="refresh" content="0;url=/bizportal/"></head><body><a href="/bizportal/">BizPortal</a></body></html>`);
 });
 
 // ─── BizPortal Static Serving ────────────────────────────────────────────────
@@ -278,6 +284,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 });
 
 app.use(shortLinkRedirectRouter);
+app.use(adminActionRouter);
 app.use("/api/companies", companiesRouter);
 app.use("/api", router);
 
@@ -285,7 +292,7 @@ app.use("/api", router);
 // For any non-API, non-BizPortal path (e.g. /confirm/:token, /, /services, etc.)
 // serve the customer portal index.html so client-side routing works.
 if (fs.existsSync(CUSTOMER_PORTAL_DIST)) {
-  const PORTAL_SKIP = ["/api/", "/bizportal", "/login", "/logout", "/callback", "/auth", "/mobile-auth", "/q/"];
+  const PORTAL_SKIP = ["/api/", "/bizportal", "/login", "/logout", "/callback", "/auth", "/mobile-auth"];
   app.use((req: Request, res: Response, next: NextFunction) => {
     if (PORTAL_SKIP.some((p) => req.path === p || req.path.startsWith(p + "/") || req.path.startsWith(p))) {
       return next();

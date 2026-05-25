@@ -853,7 +853,7 @@ router.post("/opname/:id/confirm", async (req: Request, res: Response) => {
     `);
     const totalValue = (diffLines.rows as any[]).reduce((s, r) => s + Math.abs(Number(r.diff_qty)) * Number(r.cost_price), 0);
     if (totalValue > 0) {
-      await postOpnameAdjust({ opnameId: id, opnameNumber: opname.opname_number, totalValue, createdById: null });
+      await postOpnameAdjust({ opnameId: id, opnameNumber: opname.opname_number, diffAmount: totalValue, createdById: null });
     }
   } catch (e) { console.error("[opname accounting]", e); }
 

@@ -164,6 +164,7 @@ export default function LogisticsFreightDetailPage() {
   });
 
   const upsertStage = useUpsertShipmentStage();
+  // Subset dari ShipmentStageType (@workspace/db) — hanya 4 stage yang ditampilkan di UI ini
   type StageType = "booking" | "trucking" | "handling" | "customs";
   const STAGE_DEFS: { type: StageType; label: string }[] = [
     { type: "booking", label: "Booking" },

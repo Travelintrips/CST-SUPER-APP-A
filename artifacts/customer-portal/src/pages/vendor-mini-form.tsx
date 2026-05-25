@@ -22,9 +22,111 @@ type FormMeta = {
   title: string | null;
   notes: string | null;
   vendorName: string | null;
+  vendorPhone: string | null;
+  vendorContactPerson: string | null;
   schema: ServiceSchema | null;
 };
 
+// ── Skeleton ──────────────────────────────────────────────────────────────────
+function Skeleton({ className }: { className?: string }) {
+  return <div className={`animate-pulse rounded bg-slate-200 ${className ?? ""}`} />;
+}
+
+function FormSkeleton() {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-blue-50 py-10 px-4">
+      <div className="max-w-xl mx-auto space-y-4">
+        {/* Header card skeleton */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+          <div className="flex items-center gap-3 mb-3">
+            <Skeleton className="h-9 w-9 rounded-lg" />
+            <div className="flex-1 space-y-2">
+              <Skeleton className="h-5 w-48" />
+              <Skeleton className="h-3.5 w-32" />
+            </div>
+          </div>
+          <Skeleton className="h-10 w-full rounded-lg mt-2" />
+        </div>
+
+        {/* Identity fields skeleton */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 space-y-4">
+          <Skeleton className="h-3.5 w-28" />
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="space-y-1.5">
+              <Skeleton className="h-3.5 w-40" />
+              <Skeleton className="h-9 w-full rounded-lg" />
+            </div>
+          ))}
+        </div>
+
+        {/* Dynamic fields skeleton */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 space-y-4">
+          <Skeleton className="h-3.5 w-36" />
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="space-y-1.5">
+              <Skeleton className="h-3.5 w-44" />
+              <Skeleton className="h-9 w-full rounded-lg" />
+            </div>
+          ))}
+        </div>
+
+        <Skeleton className="h-11 w-full rounded-xl" />
+      </div>
+    </div>
+  );
+}
+
+// ── Error & success states ────────────────────────────────────────────────────
+function ErrorState({ message }: { message: string }) {
+  return (
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-md p-8 max-w-md w-full text-center">
+        <div className="w-14 h-14 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
+          <svg className="w-7 h-7 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+          </svg>
+        </div>
+        <h2 className="text-lg font-semibold text-slate-800 mb-2">Link Tidak Valid</h2>
+        <p className="text-sm text-slate-500">{message}</p>
+      </div>
+    </div>
+  );
+}
+
+function SuccessState() {
+  return (
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-md p-8 max-w-md w-full text-center">
+        <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
+          <svg className="w-8 h-8 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+        </div>
+        <h2 className="text-xl font-semibold text-slate-800 mb-2">Data Terkirim!</h2>
+        <p className="text-sm text-slate-500">
+          Terima kasih, data Anda telah kami terima dan akan segera diproses oleh tim kami.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ── Field component ───────────────────────────────────────────────────────────
+function FormField({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
+  return (
+    <div>
+      <label className="block text-sm font-medium text-slate-700 mb-1">
+        {label}
+        {required && <span className="text-red-500 ml-0.5">*</span>}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+const INPUT_CLS = "w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400";
+
+// ── Main page ─────────────────────────────────────────────────────────────────
 export default function VendorMiniFormPage() {
   const { token } = useParams<{ token: string }>();
   const [meta, setMeta] = useState<FormMeta | null>(null);
@@ -39,16 +141,24 @@ export default function VendorMiniFormPage() {
   const [submitted, setSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
+  // Single fetch on mount — token validated once here, not re-validated client-side
   useEffect(() => {
-    if (!token) return;
-    fetch(`/api/vendor-form/${token}`)
+    if (!token) { setError("Token tidak ditemukan"); setLoading(false); return; }
+    const ctrl = new AbortController();
+    fetch(`/api/vendor-form/${token}`, { signal: ctrl.signal })
       .then(async (r) => {
         const data = await r.json() as FormMeta & { error?: string };
         if (!r.ok) throw new Error(data.error ?? "Terjadi kesalahan");
         setMeta(data);
+        if (data.vendorName) setVendorName(data.vendorName);
+        if (data.vendorPhone) setContactPhone(data.vendorPhone);
+        if (data.vendorContactPerson) setContactPerson(data.vendorContactPerson);
       })
-      .catch((e: Error) => setError(e.message))
+      .catch((e: Error) => {
+        if (e.name !== "AbortError") setError(e.message);
+      })
       .finally(() => setLoading(false));
+    return () => ctrl.abort();
   }, [token]);
 
   const handleChange = useCallback((key: string, val: string) => {
@@ -90,52 +200,12 @@ export default function VendorMiniFormPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3 text-slate-500">
-          <div className="h-8 w-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-          <span className="text-sm">Memuat form...</span>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-md p-8 max-w-md w-full text-center">
-          <div className="text-5xl mb-4">⚠️</div>
-          <h2 className="text-lg font-semibold text-slate-800 mb-2">Link Tidak Valid</h2>
-          <p className="text-sm text-slate-500">{error}</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (submitted) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-md p-8 max-w-md w-full text-center">
-          <div className="text-6xl mb-4">✅</div>
-          <h2 className="text-xl font-semibold text-slate-800 mb-2">Data Terkirim!</h2>
-          <p className="text-sm text-slate-500">
-            Terima kasih, data Anda telah kami terima dan akan segera diproses oleh tim kami.
-          </p>
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <FormSkeleton />;
+  if (error)   return <ErrorState message={error} />;
+  if (submitted) return <SuccessState />;
 
   if (!meta?.schema) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-md p-8 max-w-md w-full text-center">
-          <div className="text-4xl mb-4">❓</div>
-          <p className="text-sm text-slate-500">Form tidak tersedia.</p>
-        </div>
-      </div>
-    );
+    return <ErrorState message="Form tidak tersedia untuk link ini." />;
   }
 
   const { schema } = meta;
@@ -146,7 +216,7 @@ export default function VendorMiniFormPage() {
         {/* Header */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 mb-4">
           <div className="flex items-center gap-3 mb-1">
-            <span className="text-3xl">{schema.emoji}</span>
+            <span className="text-3xl leading-none">{schema.emoji}</span>
             <div>
               <h1 className="text-xl font-bold text-slate-800">
                 {meta.title ?? `Form ${schema.label}`}
@@ -164,9 +234,9 @@ export default function VendorMiniFormPage() {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Identity fields */}
+          {/* Identity */}
           <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-            <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-4">
+            <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-4">
               Identitas Vendor
             </h2>
             <div className="space-y-4">
@@ -177,7 +247,7 @@ export default function VendorMiniFormPage() {
                   onChange={e => setVendorName(e.target.value)}
                   required
                   placeholder="Nama perusahaan Anda"
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  className={INPUT_CLS}
                 />
               </FormField>
               <FormField label="Nama PIC / Contact Person">
@@ -186,7 +256,7 @@ export default function VendorMiniFormPage() {
                   value={contactPerson}
                   onChange={e => setContactPerson(e.target.value)}
                   placeholder="Nama penghubung"
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  className={INPUT_CLS}
                 />
               </FormField>
               <FormField label="Nomor WhatsApp / Telepon">
@@ -195,7 +265,7 @@ export default function VendorMiniFormPage() {
                   value={contactPhone}
                   onChange={e => setContactPhone(e.target.value)}
                   placeholder="Contoh: 0812xxxx"
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  className={INPUT_CLS}
                 />
               </FormField>
             </div>
@@ -203,7 +273,7 @@ export default function VendorMiniFormPage() {
 
           {/* Dynamic service fields */}
           <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-            <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-4">
+            <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-4">
               {schema.emoji} Detail {schema.label}
             </h2>
             <div className="space-y-4">
@@ -214,7 +284,7 @@ export default function VendorMiniFormPage() {
                       value={values[field.key] ?? ""}
                       onChange={e => handleChange(field.key, e.target.value)}
                       required={field.required}
-                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
+                      className={`${INPUT_CLS} bg-white`}
                     >
                       <option value="">— Pilih —</option>
                       {field.options?.map(opt => (
@@ -228,26 +298,17 @@ export default function VendorMiniFormPage() {
                       required={field.required}
                       placeholder={field.placeholder}
                       rows={3}
-                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
-                    />
-                  ) : field.type === "number" ? (
-                    <input
-                      type="number"
-                      value={values[field.key] ?? ""}
-                      onChange={e => handleChange(field.key, e.target.value)}
-                      required={field.required}
-                      placeholder={field.placeholder ?? "0"}
-                      min={0}
-                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                      className={`${INPUT_CLS} resize-none`}
                     />
                   ) : (
                     <input
-                      type="text"
+                      type={field.type === "number" ? "number" : "text"}
                       value={values[field.key] ?? ""}
                       onChange={e => handleChange(field.key, e.target.value)}
                       required={field.required}
-                      placeholder={field.placeholder}
-                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                      placeholder={field.placeholder ?? (field.type === "number" ? "0" : "")}
+                      min={field.type === "number" ? 0 : undefined}
+                      className={INPUT_CLS}
                     />
                   )}
                 </FormField>
@@ -266,26 +327,19 @@ export default function VendorMiniFormPage() {
             disabled={submitting}
             className="w-full rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-semibold py-3 text-sm transition-colors active:scale-95"
           >
-            {submitting ? "Mengirim..." : "Kirim Data"}
+            {submitting ? (
+              <span className="flex items-center justify-center gap-2">
+                <span className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                Mengirim...
+              </span>
+            ) : "Kirim Data"}
           </button>
 
-          <p className="text-center text-xs text-slate-400">
+          <p className="text-center text-xs text-slate-400 pb-4">
             Data yang Anda kirimkan akan digunakan untuk keperluan penawaran dan kerjasama.
           </p>
         </form>
       </div>
-    </div>
-  );
-}
-
-function FormField({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
-  return (
-    <div>
-      <label className="block text-sm font-medium text-slate-700 mb-1">
-        {label}
-        {required && <span className="text-red-500 ml-0.5">*</span>}
-      </label>
-      {children}
     </div>
   );
 }

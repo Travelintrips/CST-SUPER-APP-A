@@ -78,6 +78,7 @@ import HoldingPage from "@/pages/HoldingPage";
 import HoldingDashboardPage from "@/pages/accounting/holding-dashboard";
 import HoldingPLReportPage from "@/pages/accounting/holding-pl-report";
 import HoldingCashflowReportPage from "@/pages/accounting/holding-cashflow-report";
+import HoldingGroupDetailPage from "@/pages/accounting/holding-group-detail";
 // Expenses
 import ExpenseListPage from "@/pages/expense/index";
 import ExpenseEditorPage from "@/pages/expense/editor";
@@ -93,11 +94,15 @@ import AiChatbotKnowledgePage from "@/pages/ai-chatbot-knowledge";
 import AiScanSettingsPage from "@/pages/ai-scan-settings";
 import UomPage from "@/pages/settings/uom";
 import NavCompanyConfigPage from "@/pages/settings/nav-company-config";
+import ShortLinksPage from "@/pages/settings/short-links";
 import SettingsRolesPage from "@/pages/settings-roles";
 import SettingsApprovalRulesPage from "@/pages/settings-approval-rules";
 import UsersPage from "@/pages/users";
 import MediaManagerPage from "@/pages/media-manager";
 import OrgManagementPage from "@/pages/OrgManagementPage";
+import AuditReportListPage from "@/pages/audit/index";
+import AuditReportFormPage from "@/pages/audit/form";
+import AuditComparePage from "@/pages/audit/compare";
 
 // Products
 import ProductItemsPage from "@/pages/products/items";
@@ -226,6 +231,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/accounting/reports/general-ledger" component={PR(AccountingGeneralLedgerPage)} />
       <Route path="/accounting/reports/profit-loss" component={PR(AccountingProfitLossPage)} />
       <Route path="/accounting/reports/balance-sheet" component={PR(AccountingBalanceSheetPage)} />
+      <Route path="/holding/groups/:id" component={PR(HoldingGroupDetailPage)} />
       <Route path="/holding/dashboard" component={PR(HoldingDashboardPage)} />
       <Route path="/holding/pl-report" component={PR(HoldingPLReportPage)} />
       <Route path="/holding/cashflow-report" component={PR(HoldingCashflowReportPage)} />
@@ -246,6 +252,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       {/* ── Settings ───────────────────────────────────────────────────── */}
       <Route path="/settings/nav-company-config" component={PR(NavCompanyConfigPage)} />
       <Route path="/settings/uom" component={PR(UomPage)} />
+      <Route path="/settings/short-links" component={PR(ShortLinksPage)} />
       <Route path="/settings/ai-chatbot/knowledge" component={PR(AiChatbotKnowledgePage)} />
       <Route path="/settings/ai-chatbot" component={PR(AiChatbotSettingsPage)} />
       <Route path="/settings/ai-scan" component={PR(AiScanSettingsPage)} />
@@ -272,6 +279,11 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/thai-tea/reports" component={PR(ThaiTeaReportsPage)} />
       <Route path="/thai-tea" component={PR(ThaiTeaDashboardPage)} />
 
+
+      {/* ── Audit ERP ──────────────────────────────────────────────────── */}
+      <Route path="/audit/compare" component={PR(AuditComparePage)} />
+      <Route path="/audit/:id" component={PR(AuditReportFormPage)} />
+      <Route path="/audit" component={PR(AuditReportListPage)} />
 
       {/* ── Legacy redirects ───────────────────────────────────────────── */}
       <Route path="/expenses/new" component={() => <Redirect to="/expense/new" />} />

@@ -38,11 +38,14 @@ import { runShortLinksMigration } from "./lib/shortLinksMigration";
 import { runGeofenceMigration } from "./lib/geofenceMigration";
 import { runOrderFulfillmentMigration } from "./routes/orderFulfillment.js";
 import { runTrustedDevicesMigration } from "./lib/trustedDevicesMigration.js";
+import { runAuditReportsMigration } from "./lib/auditReportsMigration.js";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 
 
-const rawPort = process.env["PORT"] ?? process.env["API_PORT"] ?? "5000";
+// REPLIT_API_PORT overrides PORT so the server listens on the local port
+// that maps to external port 8080 in the Replit dev proxy (localPort=18444).
+const rawPort = process.env["REPLIT_API_PORT"] ?? process.env["PORT"] ?? process.env["API_PORT"] ?? "5000";
 
 // Security: PORTAL_ADMIN_EMAILS must be set in production.
 // Without it, requirePortalAdmin falls back to DB role-only check,
@@ -120,6 +123,20 @@ async function runCriticalPreStartMigrations() {
     END $$;
   `);
 
+  // Add is_commodity_tag to vendor_catalog_items for blast auto-matching
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'vendor_catalog_items') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'vendor_catalog_items' AND column_name = 'is_commodity_tag'
+        ) THEN
+          ALTER TABLE vendor_catalog_items ADD COLUMN is_commodity_tag BOOLEAN NOT NULL DEFAULT FALSE;
+        END IF;
+      END IF;
+    END $$;
+  `);
+
   // Ensure wh_returns has company_id column (older installs may lack it)
   await db.execute(sql`
     DO $$ BEGIN
@@ -130,6 +147,18 @@ async function runCriticalPreStartMigrations() {
         ) THEN
           ALTER TABLE wh_returns ADD COLUMN company_id INTEGER;
         END IF;
+      END IF;
+    END $$;
+  `);
+
+  // Add order_type to logistic_orders (Drizzle schema field missing from older DB installs)
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'logistic_orders' AND column_name = 'order_type'
+      ) THEN
+        ALTER TABLE logistic_orders ADD COLUMN order_type TEXT NOT NULL DEFAULT 'shipment';
       END IF;
     END $$;
   `);
@@ -196,6 +225,7 @@ async function startServer() {
     .then(() => runWithRetry("Geofence migration", runGeofenceMigration))
     .then(() => runWithRetry("Order fulfillment migration", runOrderFulfillmentMigration))
     .then(() => runWithRetry("Trusted devices migration", runTrustedDevicesMigration))
+    .then(() => runWithRetry("ERP audit reports migration", runAuditReportsMigration))
     .then(() => enableRealtimeTables().catch((err) => {
       logger.warn({ err }, "Supabase Realtime table enable failed (non-fatal)");
     }))

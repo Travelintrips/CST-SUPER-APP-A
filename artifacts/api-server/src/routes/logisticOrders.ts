@@ -52,6 +52,7 @@ function toOrder(row: typeof logisticOrdersTable.$inferSelect, approvedVendorNam
     customerName: row.customerName,
     email: row.email,
     phone: row.phone,
+    orderType: (row as any).orderType ?? "shipment",
     shipmentType: row.shipmentType,
     origin: row.origin,
     destination: row.destination,
@@ -152,9 +153,10 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
       customerName: body.customerName,
       email: body.email,
       phone: body.phone,
-      shipmentType: body.shipmentType,
-      origin: body.origin,
-      destination: body.destination,
+      orderType: body.orderType ?? "shipment",
+      shipmentType: body.shipmentType ?? "",
+      origin: body.origin ?? "",
+      destination: body.destination ?? "",
       commodity: body.commodity ?? null,
       cargoDescription: body.cargoDescription ?? null,
       grossWeight: body.grossWeight != null ? String(body.grossWeight) : null,
@@ -168,18 +170,18 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
       nomorPenerima: body.nomorPenerima ?? null,
       jamOrder: body.jamOrder ?? null,
       // [MULTI-MODE] transport mode fields
-      transportMode: (body as any).transportMode ?? null,
-      originDistrict: (body as any).originDistrict ?? null,
-      destDistrict: (body as any).destDistrict ?? null,
-      pickupDate: (body as any).pickupDate ?? null,
-      pickupTime: (body as any).pickupTime ?? null,
-      truckType: (body as any).truckType ?? null,
-      originPort: (body as any).originPort ?? null,
-      destPort: (body as any).destPort ?? null,
-      weightKg: (body as any).weightKg != null ? String((body as any).weightKg) : null,
-      incoterm: (body as any).incoterm ?? null,
-      etd: (body as any).etd ? new Date((body as any).etd as string) : null,
-      eta: (body as any).eta ? new Date((body as any).eta as string) : null,
+      transportMode: body.transportMode ?? null,
+      originDistrict: body.originDistrict ?? null,
+      destDistrict: body.destDistrict ?? null,
+      pickupDate: body.pickupDate ?? null,
+      pickupTime: body.pickupTime ?? null,
+      truckType: body.truckType ?? null,
+      originPort: body.originPort ?? null,
+      destPort: body.destPort ?? null,
+      weightKg: body.weightKg != null ? String(body.weightKg) : null,
+      incoterm: body.incoterm ?? null,
+      etd: body.etd ? new Date(body.etd) : null,
+      eta: body.eta ? new Date(body.eta) : null,
       source: "manual",
       subtotal: String(body.subtotal),
       tax: String(body.tax),
@@ -217,13 +219,15 @@ sendLogisticOrderNotification({
     companyName: body.companyName,
     email: body.email,
     phone: body.phone,
-    shipmentType: body.shipmentType,
-    origin: body.origin,
-    destination: body.destination,
+    orderType: (body as any).orderType ?? "shipment",
+    shipmentType: body.shipmentType ?? "",
+    origin: body.origin ?? "",
+    destination: body.destination ?? "",
     commodity: body.commodity ?? null,
     cargoDescription: body.cargoDescription ?? null,
     grossWeight: body.grossWeight != null ? Number(body.grossWeight) : null,
     volumeCbm: body.volumeCbm != null ? Number(body.volumeCbm) : null,
+    jumlahKoli: body.jumlahKoli != null ? Number(body.jumlahKoli) : null,
     grandTotal: Number(body.grandTotal),
     serviceList,
     requiredDate: body.requiredDate ?? null,
@@ -231,6 +235,7 @@ sendLogisticOrderNotification({
     jamOrder: body.jamOrder ?? null,
     vehicleType,
     createdAt: order.createdAt,
+    publicRfqToken: order.publicRfqToken ?? null,
   }).catch((err: unknown) => {
     req.log.error({ err }, "sendLogisticOrderNotification failed");
   });
@@ -245,9 +250,10 @@ sendLogisticOrderNotification({
     orderNumber,
     customerName: body.customerName,
     companyName: body.companyName ?? null,
-    shipmentType: body.shipmentType,
-    origin: body.origin,
-    destination: body.destination,
+    orderType: (body as any).orderType ?? "shipment",
+    shipmentType: body.shipmentType ?? "",
+    origin: body.origin ?? "",
+    destination: body.destination ?? "",
     grandTotal: Number(body.grandTotal),
     createdAt: order.createdAt.toISOString(),
   }).catch(() => {});
@@ -263,6 +269,7 @@ function toPublicOrder(row: typeof logisticOrdersTable.$inferSelect) {
   return {
     id: row.id,
     orderNumber: row.orderNumber,
+    orderType: (row as any).orderType ?? "shipment",
     shipmentType: row.shipmentType,
     origin: row.origin,
     destination: row.destination,
@@ -517,11 +524,27 @@ logisticOrdersRouter.get("/", async (req: Request, res: Response) => {
     }
   }
 
+  // Attach fulfillment status per order
+  const fulfillmentStatusMap = new Map<number, string>();
+  if (orderIds.length > 0) {
+    const fRows = await db.execute(sql`
+      SELECT DISTINCT ON (order_id)
+        order_id AS "orderId", status
+      FROM order_fulfillment_links
+      WHERE order_id = ANY(${sql.raw(`ARRAY[${orderIds.join(",")}]::int[]`)})
+      ORDER BY order_id, created_at DESC
+    `);
+    for (const row of (fRows.rows as { orderId: unknown; status: unknown }[])) {
+      fulfillmentStatusMap.set(Number(row.orderId), row.status as string);
+    }
+  }
+
   return res.json(rows.map((row) => ({
     ...toOrder(row),
     linkedSalesDocId: linkedDocMap.get(row.id)?.id ?? null,
     linkedSalesDocNumber: linkedDocMap.get(row.id)?.docNumber ?? null,
     latestRfq: rfqMap.get(row.id) ?? null,
+    fulfillmentStatus: fulfillmentStatusMap.get(row.id) ?? null,
   })));
 });
 
@@ -733,6 +756,34 @@ logisticOrdersRouter.patch("/:id/type", async (req: Request, res: Response) => {
     .returning();
   if (!updated) return res.status(404).json({ message: "Order tidak ditemukan" });
   return res.json(toOrder(updated));
+});
+
+// PUT /api/logistic/orders/bulk-status — ubah status banyak order sekaligus
+logisticOrdersRouter.put("/bulk-status", async (req: Request, res: Response) => {
+  const parsed = z.object({
+    ids: z.array(z.number().int().positive()).min(1),
+    status: z.enum(["New Order", "Confirmed", "In Progress", "Completed", "Cancelled"]),
+  }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: "ids dan status harus valid" });
+  const { ids, status } = parsed.data;
+  const updated = await db
+    .update(logisticOrdersTable)
+    .set({ status })
+    .where(inArray(logisticOrdersTable.id, ids))
+    .returning({ id: logisticOrdersTable.id });
+  return res.json({ message: "Updated", updatedIds: updated.map((r) => r.id), count: updated.length });
+});
+
+// DELETE /api/logistic/orders/bulk — hapus banyak order sekaligus
+logisticOrdersRouter.delete("/bulk", async (req: Request, res: Response) => {
+  const parsed = z.object({ ids: z.array(z.number().int().positive()).min(1) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: "ids harus array angka yang valid" });
+  const { ids } = parsed.data;
+  const deleted = await db
+    .delete(logisticOrdersTable)
+    .where(inArray(logisticOrdersTable.id, ids))
+    .returning({ id: logisticOrdersTable.id });
+  return res.json({ message: "Deleted", deletedIds: deleted.map((r) => r.id), count: deleted.length });
 });
 
 // DELETE /api/logistic/orders/:id

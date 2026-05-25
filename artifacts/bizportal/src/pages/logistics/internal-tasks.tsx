@@ -62,7 +62,7 @@ function isOverdue(deadline: string | null, status: string) {
 export default function InternalTasksPage() {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const { selectedCompany } = useCompany();
+  const { activeCompany: selectedCompany } = useCompany();
   const companyId = selectedCompany?.id;
 
   const [filterStatus, setFilterStatus] = useState("all");

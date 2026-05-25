@@ -1,13 +1,51 @@
 import { Router, type Request, type Response } from "express";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, inArray } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import { db } from "@workspace/db";
 import {
   vendorMiniFormLinksTable,
   vendorMiniFormSubmissionsTable,
+  notificationLogsTable,
   suppliersTable,
 } from "@workspace/db";
 import { requireClerkUser } from "../lib/requireAdmin";
+import { sendWhatsApp } from "../lib/fonnte.js";
+import { getAdminWa } from "../lib/adminWa.js";
+
+// Cache-Control for public GET (token metadata is immutable once fetched)
+const PUBLIC_CACHE = "public, max-age=300, stale-while-revalidate=600";
+
+// In-memory server-side cache for token lookups — avoids DB round-trip on every visit
+type CachedForm = {
+  id: number;
+  serviceType: string;
+  title: string | null;
+  notes: string | null;
+  vendorName: string | null;
+  vendorPhone: string | null;
+  vendorContactPerson: string | null;
+  isActive: boolean;
+  expiresAt: Date | null;
+  expiresCache: number; // Date.now() + TTL
+};
+const TOKEN_CACHE = new Map<string, CachedForm>();
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+function getCached(token: string): CachedForm | null {
+  const entry = TOKEN_CACHE.get(token);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresCache) { TOKEN_CACHE.delete(token); return null; }
+  return entry;
+}
+
+function setCached(token: string, row: CachedForm) {
+  TOKEN_CACHE.set(token, { ...row, expiresCache: Date.now() + CACHE_TTL_MS });
+}
+
+// Call this when admin deactivates/deletes a link so cache is immediately invalidated
+export function invalidateTokenCache(token: string) {
+  TOKEN_CACHE.delete(token);
+}
 
 const router = Router();
 
@@ -155,34 +193,54 @@ export const SERVICE_SCHEMAS: Record<string, {
 router.get("/:token", async (req: Request, res: Response) => {
   const { token } = req.params as { token: string };
   try {
-    const [link] = await db
-      .select()
-      .from(vendorMiniFormLinksTable)
-      .where(eq(vendorMiniFormLinksTable.token, token));
+    // Serve from in-memory cache if available (avoids DB round-trip ~1-1.5s)
+    let row = getCached(token);
 
-    if (!link) return res.status(404).json({ error: "Link tidak ditemukan atau sudah tidak valid" });
-    if (!link.isActive) return res.status(410).json({ error: "Link ini sudah dinonaktifkan" });
-    if (link.expiresAt && link.expiresAt < new Date()) {
+    if (!row) {
+      // Cache miss — fetch from DB (single LEFT JOIN, token has UNIQUE index)
+      const [dbRow] = await db
+        .select({
+          id: vendorMiniFormLinksTable.id,
+          serviceType: vendorMiniFormLinksTable.serviceType,
+          title: vendorMiniFormLinksTable.title,
+          notes: vendorMiniFormLinksTable.notes,
+          isActive: vendorMiniFormLinksTable.isActive,
+          expiresAt: vendorMiniFormLinksTable.expiresAt,
+          vendorName: suppliersTable.name,
+          vendorPhone: suppliersTable.phone,
+          vendorContactPerson: suppliersTable.contactPerson,
+        })
+        .from(vendorMiniFormLinksTable)
+        .leftJoin(suppliersTable, eq(suppliersTable.id, vendorMiniFormLinksTable.supplierId))
+        .where(eq(vendorMiniFormLinksTable.token, token));
+
+      if (!dbRow) return res.status(404).json({ error: "Link tidak ditemukan atau sudah tidak valid" });
+      row = { ...dbRow, vendorName: dbRow.vendorName ?? null, vendorPhone: dbRow.vendorPhone ?? null, vendorContactPerson: dbRow.vendorContactPerson ?? null, expiresCache: 0 };
+      // Only cache active, non-expired links
+      if (dbRow.isActive && (!dbRow.expiresAt || dbRow.expiresAt >= new Date())) {
+        setCached(token, row);
+      }
+    }
+
+    if (!row) return res.status(404).json({ error: "Link tidak ditemukan atau sudah tidak valid" });
+
+    if (!row.isActive) return res.status(410).json({ error: "Link ini sudah dinonaktifkan" });
+    if (row.expiresAt && row.expiresAt < new Date()) {
+      invalidateTokenCache(token);
       return res.status(410).json({ error: "Link ini sudah kadaluarsa" });
     }
 
-    let vendorName: string | null = null;
-    if (link.supplierId) {
-      const [vendor] = await db
-        .select({ name: suppliersTable.name })
-        .from(suppliersTable)
-        .where(eq(suppliersTable.id, link.supplierId));
-      vendorName = vendor?.name ?? null;
-    }
+    const schema = SERVICE_SCHEMAS[row.serviceType] ?? null;
 
-    const schema = SERVICE_SCHEMAS[link.serviceType] ?? null;
-
+    res.setHeader("Cache-Control", PUBLIC_CACHE);
     return res.json({
-      id: link.id,
-      serviceType: link.serviceType,
-      title: link.title,
-      notes: link.notes,
-      vendorName,
+      id: row.id,
+      serviceType: row.serviceType,
+      title: row.title,
+      notes: row.notes,
+      vendorName: row.vendorName ?? null,
+      vendorPhone: row.vendorPhone ?? null,
+      vendorContactPerson: row.vendorContactPerson ?? null,
       schema,
     });
   } catch (err) {
@@ -228,6 +286,41 @@ router.post("/:token", async (req: Request, res: Response) => {
       contactPhone: contactPhone ?? null,
       formData,
     });
+
+    // ── Fire-and-forget WA notifications ──────────────────────────────────────
+    const vendorLabel = vendorName?.trim() || "Vendor";
+    const picLabel = contactPerson?.trim() || "-";
+
+    // 1. Konfirmasi ke vendor (jika nomor tersedia)
+    if (contactPhone?.trim()) {
+      const msgVendor =
+        `Halo *${picLabel}* dari *${vendorLabel}*,\n\n` +
+        `Terima kasih! Data Anda telah kami terima dengan baik. ` +
+        `Tim CST Logistics akan segera menghubungi Anda jika diperlukan.\n\n` +
+        `_Pesan ini dikirim otomatis, mohon tidak dibalas._`;
+      sendWhatsApp(contactPhone.trim(), msgVendor, {
+        context: "vendor-mini-form-confirm",
+        refType: "vendor_mini_form",
+        refId: token,
+      }).catch(() => {});
+    }
+
+    // 2. Notifikasi ke admin
+    getAdminWa().then((adminWa) => {
+      if (!adminWa) return;
+      const msgAdmin =
+        `📋 *Submission Form Vendor Baru*\n` +
+        `Vendor: *${vendorLabel}*\n` +
+        `PIC: ${picLabel}\n` +
+        `Telepon: ${contactPhone?.trim() || "-"}\n` +
+        `Token Link: \`${token}\``;
+      sendWhatsApp(adminWa, msgAdmin, {
+        context: "vendor-mini-form-admin-notif",
+        refType: "vendor_mini_form",
+        refId: token,
+      }).catch(() => {});
+    }).catch(() => {});
+    // ──────────────────────────────────────────────────────────────────────────
 
     return res.json({ success: true, message: "Data berhasil dikirim, terima kasih!" });
   } catch (err) {
@@ -336,6 +429,7 @@ router.patch("/admin/links/:id", async (req: Request, res: Response) => {
       .returning();
 
     if (!updated) return res.status(404).json({ error: "Link tidak ditemukan" });
+    invalidateTokenCache(updated.token);
     return res.json({ ...updated, expiresAt: updated.expiresAt?.toISOString() ?? null, createdAt: updated.createdAt.toISOString() });
   } catch (err) {
     req.log?.error({ err }, "vendor-mini-form admin PATCH links error");
@@ -355,6 +449,7 @@ router.delete("/admin/links/:id", async (req: Request, res: Response) => {
       .where(eq(vendorMiniFormLinksTable.id, id))
       .returning();
     if (!deleted) return res.status(404).json({ error: "Link tidak ditemukan" });
+    invalidateTokenCache(deleted.token);
     return res.json({ success: true });
   } catch (err) {
     req.log?.error({ err }, "vendor-mini-form admin DELETE links error");
@@ -372,9 +467,43 @@ router.get("/admin/submissions", async (req: Request, res: Response) => {
       .from(vendorMiniFormSubmissionsTable)
       .orderBy(desc(vendorMiniFormSubmissionsTable.submittedAt));
 
+    // ── Fetch WA notification status per token ────────────────────────────────
+    const tokens = submissions.map(s => s.token);
+    let waMap: Record<string, { status: string; recipient: string; createdAt: string }> = {};
+
+    if (tokens.length > 0) {
+      const waLogs = await db
+        .select({
+          refId: notificationLogsTable.refId,
+          status: notificationLogsTable.status,
+          recipient: notificationLogsTable.recipient,
+          createdAt: notificationLogsTable.createdAt,
+        })
+        .from(notificationLogsTable)
+        .where(
+          inArray(notificationLogsTable.refId, tokens)
+        )
+        .orderBy(desc(notificationLogsTable.createdAt));
+
+      // Keep latest log per token (first in desc order = most recent)
+      for (const log of waLogs) {
+        if (log.refId && !waMap[log.refId]) {
+          waMap[log.refId] = {
+            status: log.status,
+            recipient: log.recipient,
+            createdAt: log.createdAt.toISOString(),
+          };
+        }
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     return res.json(submissions.map(s => ({
       ...s,
       submittedAt: s.submittedAt.toISOString(),
+      waStatus: waMap[s.token]?.status ?? null,
+      waRecipient: waMap[s.token]?.recipient ?? null,
+      waAt: waMap[s.token]?.createdAt ?? null,
     })));
   } catch (err) {
     req.log?.error({ err }, "vendor-mini-form admin GET submissions error");
@@ -423,6 +552,129 @@ router.post("/admin/links/:id/short-link", async (req: Request, res: Response) =
   } catch (err) {
     req.log?.error({ err }, "vendor-mini-form short-link error");
     return res.status(500).json({ error: "Gagal generate short link" });
+  }
+});
+
+// ── ADMIN: POST /api/vendor-form-admin/links/:id/reset-short-link ────────────
+
+router.post("/admin/links/:id/reset-short-link", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const id = Number(req.params["id"]);
+  if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+  try {
+    const [link] = await db
+      .select()
+      .from(vendorMiniFormLinksTable)
+      .where(eq(vendorMiniFormLinksTable.id, id));
+    if (!link) return res.status(404).json({ error: "Link tidak ditemukan" });
+
+    const { generateShortLink } = await import("../lib/shortLink.js");
+    const { getPreferredDomain } = await import("../lib/domain.js");
+    const domain = getPreferredDomain();
+    const longUrl = domain
+      ? `https://${domain}/vendor-mini-form/${link.token}`
+      : `/vendor-mini-form/${link.token}`;
+
+    const shortUrl = await generateShortLink(longUrl, {
+      context: "vendor_mini_form",
+      refType: "vendor_mini_form_link",
+      refId: String(link.id),
+    });
+
+    await db
+      .update(vendorMiniFormLinksTable)
+      .set({ shortUrl })
+      .where(eq(vendorMiniFormLinksTable.id, id));
+
+    return res.json({ shortUrl });
+  } catch (err) {
+    req.log?.error({ err }, "vendor-mini-form reset-short-link error");
+    return res.status(500).json({ error: "Gagal reset short link" });
+  }
+});
+
+// ── ADMIN: PUT /api/vendor-form-admin/submissions/:id ────────────────────────
+// Update formData (koreksi data vendor) dan/atau staffData (anotasi internal staf)
+
+router.put("/admin/submissions/:id", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const id = Number(req.params["id"]);
+  if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+  try {
+    const { formData, staffData } = req.body as {
+      formData?: Record<string, unknown>;
+      staffData?: Record<string, unknown>;
+    };
+    if (formData === undefined && staffData === undefined) {
+      return res.status(400).json({ error: "formData atau staffData wajib diisi" });
+    }
+    const [existing] = await db
+      .select()
+      .from(vendorMiniFormSubmissionsTable)
+      .where(eq(vendorMiniFormSubmissionsTable.id, id));
+    if (!existing) return res.status(404).json({ error: "Submission tidak ditemukan" });
+
+    const patch: Record<string, unknown> = {};
+    if (formData !== undefined) {
+      if (typeof formData !== "object" || Array.isArray(formData))
+        return res.status(400).json({ error: "formData harus berupa object" });
+      patch["formData"] = formData;
+    }
+    if (staffData !== undefined) {
+      if (typeof staffData !== "object" || Array.isArray(staffData))
+        return res.status(400).json({ error: "staffData harus berupa object" });
+      // Merge dengan existing staffData agar field lain tidak hilang
+      patch["staffData"] = { ...(existing.staffData as Record<string, unknown> ?? {}), ...staffData };
+    }
+
+    const [updated] = await db
+      .update(vendorMiniFormSubmissionsTable)
+      .set(patch)
+      .where(eq(vendorMiniFormSubmissionsTable.id, id))
+      .returning();
+
+    return res.json({ ...updated, submittedAt: updated!.submittedAt.toISOString() });
+  } catch (err) {
+    req.log?.error({ err }, "vendor-mini-form admin PUT submissions error");
+    return res.status(500).json({ error: "Gagal mengupdate submission" });
+  }
+});
+
+// ── ADMIN: POST /api/vendor-form-admin/submissions/:id/resend-wa ──────────────
+
+router.post("/admin/submissions/:id/resend-wa", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const id = Number(req.params["id"]);
+  if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+  try {
+    const [sub] = await db
+      .select()
+      .from(vendorMiniFormSubmissionsTable)
+      .where(eq(vendorMiniFormSubmissionsTable.id, id));
+
+    if (!sub) return res.status(404).json({ error: "Submission tidak ditemukan" });
+    if (!sub.contactPhone?.trim()) {
+      return res.status(400).json({ error: "Submission tidak memiliki nomor telepon vendor" });
+    }
+
+    const vendorLabel = sub.vendorName?.trim() || "Vendor";
+    const picLabel = sub.contactPerson?.trim() || "-";
+    const msg =
+      `Halo *${picLabel}* dari *${vendorLabel}*,\n\n` +
+      `Terima kasih! Data Anda telah kami terima dengan baik. ` +
+      `Tim CST Logistics akan segera menghubungi Anda jika diperlukan.\n\n` +
+      `_Pesan ini dikirim otomatis, mohon tidak dibalas._`;
+
+    await sendWhatsApp(sub.contactPhone.trim(), msg, {
+      context: "vendor-mini-form-confirm",
+      refType: "vendor_mini_form",
+      refId: sub.token,
+    });
+
+    return res.json({ success: true });
+  } catch (err) {
+    req.log?.error({ err }, "vendor-mini-form admin resend-wa error");
+    return res.status(500).json({ error: "Gagal mengirim ulang WA" });
   }
 });
 
