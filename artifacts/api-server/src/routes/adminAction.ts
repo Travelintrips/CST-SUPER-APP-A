@@ -19,7 +19,6 @@ import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa } from "../lib/adminWa.js";
 import { sendVendorRequestNotification, type LogisticOrderData } from "../lib/orderNotification.js";
 import { generateShortLink } from "../lib/shortLink.js";
-import { sendVendorRequestNotification, type LogisticOrderData } from "../lib/orderNotification.js";
 
 export const adminActionRouter: Router = Router();
 export const adminActionPublicRouter = Router();
@@ -136,6 +135,13 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
       origin: logisticOrdersTable.origin,
       destination: logisticOrdersTable.destination,
       commodity: logisticOrdersTable.commodity,
+      cargoDescription: logisticOrdersTable.cargoDescription,
+      grossWeight: logisticOrdersTable.grossWeight,
+      volumeCbm: logisticOrdersTable.volumeCbm,
+      jumlahKoli: logisticOrdersTable.jumlahKoli,
+      requiredDate: logisticOrdersTable.requiredDate,
+      notes: logisticOrdersTable.notes,
+      paymentType: logisticOrdersTable.paymentType,
       status: logisticOrdersTable.status,
       publicRfqToken: logisticOrdersTable.publicRfqToken,
       grandTotal: logisticOrdersTable.grandTotal,
@@ -170,10 +176,21 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
         id: order.id,
         orderNumber: order.orderNumber,
         customerName: order.customerName,
+        companyName: order.companyName ?? null,
+        email: order.email ?? null,
+        phone: (order as any).phone ?? null,
         serviceType: order.shipmentType,
         origin: order.origin,
         destination: order.destination,
         commodity: order.commodity ?? null,
+        cargoDescription: order.cargoDescription ?? null,
+        grossWeight: order.grossWeight ? String(order.grossWeight) : null,
+        volumeCbm: order.volumeCbm ? String(order.volumeCbm) : null,
+        jumlahKoli: (order as any).jumlahKoli ?? null,
+        requiredDate: (order as any).requiredDate ?? null,
+        notes: (order as any).notes ?? null,
+        paymentType: (order as any).paymentType ?? null,
+        grandTotal: order.grandTotal ? String(order.grandTotal) : null,
         status: order.status,
       },
     };
@@ -193,8 +210,12 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
         .where(eq(suppliersTable.isActive, true))
         .orderBy(suppliersTable.name);
 
-      const shipKeyword = (order.shipmentType ?? "").toLowerCase().split(" ")[0];
-      const allWithPhone = allVendors.filter((v) => v.phone && v.serviceType);
+      // Normalize shipment type for matching (check all words, not just first)
+      const shipType = (order.shipmentType ?? "").toLowerCase().trim();
+      const shipKeywords = shipType.split(/[\s,]+/).filter((k) => k.length > 1);
+
+      // All active vendors with phone (no requirement for serviceType to be set)
+      const allWithPhone = allVendors.filter((v) => v.phone);
 
       // Fetch catalog items for all vendors in one query to check commodity match
       const vendorIdList = allWithPhone.map((v) => v.id);
@@ -211,8 +232,6 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
         : [];
 
       // Build set of vendor IDs whose catalog contains the order's commodity.
-      // Priority: items explicitly tagged as "komoditi yang ditangani" (isCommodityTag=true)
-      // are matched first. Name-based keyword matching is the fallback.
       const commodityKeyword = (order.commodity ?? "").toLowerCase().trim();
       const vendorIdsWithCommodity = new Set<number>();
       if (commodityKeyword) {
@@ -226,22 +245,33 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
         }
       }
 
+      // Service type matching: vendor's serviceType must contain at least one of the ship keywords
+      const isServiceMatch = (vendorServiceType: string | null): boolean => {
+        if (!vendorServiceType || shipKeywords.length === 0) return false;
+        const vst = vendorServiceType.toLowerCase();
+        return shipKeywords.some((kw) => vst.includes(kw));
+      };
+
       const allWithFlag = allWithPhone.map((v) => ({
         ...v,
-        isMatching: !!(v.serviceType && shipKeyword &&
-          v.serviceType.toLowerCase().includes(shipKeyword)),
+        isMatching: isServiceMatch(v.serviceType),
         hasCommodityMatch: vendorIdsWithCommodity.has(v.id),
       }));
 
-      // Priority:
-      //   1. Vendors with the commodity in their catalog  (most relevant)
-      //   2. Vendors whose serviceType matches the order  (service-type fit)
-      //   3. All active vendors with phone               (fallback)
+      // Build filtered vendor list:
+      //   - If shipmentType is known → only show vendors that match by service type OR commodity
+      //     (fallback to all if no match found, marked with noFilterApplied)
+      //   - If shipmentType is empty → show all (no filter possible)
       const commodityMatched = allWithFlag.filter((v) => v.hasCommodityMatch);
       const serviceMatched   = allWithFlag.filter((v) => v.isMatching && !v.hasCommodityMatch);
-      const vendors = (commodityMatched.length > 0 || serviceMatched.length > 0)
+      const hasAnyMatch = commodityMatched.length > 0 || serviceMatched.length > 0;
+
+      const vendors = (shipType && hasAnyMatch)
         ? [...commodityMatched, ...serviceMatched]
         : allWithFlag;
+
+      // Let the frontend know if the filter was actually applied
+      const vendorFilterApplied = !!(shipType && hasAnyMatch);
 
       // Get existing RFQs for this order
       const rfqs = await db.select({
@@ -253,7 +283,7 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
         .where(eq(logisticOrderRfqsTable.orderId, order.id))
         .orderBy(desc(logisticOrderRfqsTable.createdAt));
 
-      return res.json({ ...base, vendors, rfqs });
+      return res.json({ ...base, vendors, rfqs, vendorFilterApplied, shipmentType: order.shipmentType });
     }
 
     // compare_vendors: show vendor quotes for an RFQ

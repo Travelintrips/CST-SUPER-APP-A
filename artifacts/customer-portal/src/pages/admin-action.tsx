@@ -7,10 +7,21 @@ type OrderInfo = {
   id: number;
   orderNumber: string;
   customerName: string;
+  companyName: string | null;
+  email: string | null;
+  phone: string | null;
   serviceType: string;
   origin: string;
   destination: string;
   commodity: string | null;
+  cargoDescription: string | null;
+  grossWeight: string | null;
+  volumeCbm: string | null;
+  jumlahKoli: number | null;
+  requiredDate: string | null;
+  notes: string | null;
+  paymentType: string | null;
+  grandTotal: string | null;
   status: string;
 };
 
@@ -45,7 +56,7 @@ type BaseData = {
   order: OrderInfo;
 };
 
-type ReviewData = BaseData & { vendors: Vendor[]; rfqs: Rfq[] };
+type ReviewData = BaseData & { vendors: Vendor[]; rfqs: Rfq[]; vendorFilterApplied: boolean; shipmentType: string };
 type CompareData = BaseData & { rfq: Rfq; vendors: VendorRow[] };
 type ForwardData = BaseData & {
   rfq: Rfq | null;
@@ -92,20 +103,67 @@ function SuccessCard({ title, message }: { title: string; message: string }) {
   );
 }
 
+function DetailRow({ label, value }: { label: string; value: string | number | null | undefined }) {
+  if (value == null || value === "") return null;
+  return (
+    <div className="flex justify-between gap-2 py-1 border-b border-slate-50 last:border-0">
+      <span className="text-xs text-slate-400 shrink-0">{label}</span>
+      <span className="text-xs text-slate-700 text-right font-medium">{value}</span>
+    </div>
+  );
+}
+
 function OrderCard({ order }: { order: OrderInfo }) {
+  const hasRoute = order.origin || order.destination;
+  const idr = (v: string | null) => v && Number(v) > 0 ? `Rp ${Math.round(Number(v)).toLocaleString("id-ID")}` : null;
+
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
-      <div className="flex items-center gap-3 mb-3">
+      <div className="flex items-center gap-3 mb-4">
         <span className="text-3xl">🚢</span>
         <div>
           <h1 className="text-lg font-bold text-slate-800">{order.orderNumber}</h1>
-          <p className="text-sm text-slate-500">{order.serviceType} · {order.origin} → {order.destination}</p>
-          <p className="text-xs text-slate-400 mt-0.5">Customer: {order.customerName}</p>
+          <p className="text-xs text-slate-400 mt-0.5">
+            {order.companyName ? `${order.companyName} · ` : ""}{order.customerName}
+          </p>
         </div>
+        <span className="ml-auto text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 uppercase tracking-wide">{order.status}</span>
       </div>
-      {order.commodity && (
-        <p className="text-xs text-slate-500">📦 {order.commodity}</p>
-      )}
+
+      <div className="space-y-0.5">
+        <DetailRow label="Tipe Layanan" value={order.serviceType || "—"} />
+        {hasRoute && (
+          <div className="flex justify-between gap-2 py-1 border-b border-slate-50">
+            <span className="text-xs text-slate-400 shrink-0">Rute</span>
+            <span className="text-xs text-slate-700 text-right font-medium">
+              {order.origin || "?"} → {order.destination || "?"}
+            </span>
+          </div>
+        )}
+        <DetailRow label="Komoditi" value={order.commodity} />
+        <DetailRow label="Deskripsi Kargo" value={order.cargoDescription} />
+        {(order.grossWeight || order.volumeCbm || order.jumlahKoli) && (
+          <div className="flex justify-between gap-2 py-1 border-b border-slate-50">
+            <span className="text-xs text-slate-400 shrink-0">Dimensi / Berat</span>
+            <span className="text-xs text-slate-700 text-right font-medium">
+              {[
+                order.grossWeight ? `${Number(order.grossWeight).toLocaleString("id-ID")} kg` : null,
+                order.volumeCbm ? `${Number(order.volumeCbm).toLocaleString("id-ID")} CBM` : null,
+                order.jumlahKoli ? `${order.jumlahKoli} koli` : null,
+              ].filter(Boolean).join(" · ")}
+            </span>
+          </div>
+        )}
+        <DetailRow label="Tanggal Diperlukan" value={order.requiredDate} />
+        <DetailRow label="Pembayaran" value={order.paymentType} />
+        <DetailRow label="Total" value={idr(order.grandTotal)} />
+        {order.notes && (
+          <div className="pt-2 mt-1">
+            <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide mb-1">Catatan Customer</p>
+            <p className="text-xs text-slate-600 bg-slate-50 rounded-lg px-3 py-2">{order.notes}</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -163,7 +221,7 @@ function ReviewOrderView({ token, data }: { token: string; data: ReviewData }) {
 
   if (result?.ok) return <SuccessCard title="RFQ Terkirim!" message={result.message} />;
 
-  const matchingVendors = data.vendors;
+  const hasServiceType = !!(data.shipmentType && data.shipmentType.trim());
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 py-8 px-4">
@@ -185,14 +243,33 @@ function ReviewOrderView({ token, data }: { token: string; data: ReviewData }) {
         )}
 
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
-          <h2 className="font-semibold text-slate-800 mb-4">
-            Vendor Tersedia ({matchingVendors.length})
-          </h2>
-          {matchingVendors.length === 0 ? (
-            <p className="text-sm text-slate-500">Tidak ada vendor aktif yang cocok dengan tipe layanan ini.</p>
+          <div className="flex items-center justify-between mb-1">
+            <h2 className="font-semibold text-slate-800">
+              Vendor Tersedia ({data.vendors.length})
+            </h2>
+            {data.vendorFilterApplied && hasServiceType && (
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                Filter: {data.shipmentType}
+              </span>
+            )}
+          </div>
+
+          {!hasServiceType && (
+            <div className="mb-3 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-700">
+              ⚠️ Tipe layanan order belum diisi — menampilkan semua vendor aktif tanpa filter.
+            </div>
+          )}
+          {hasServiceType && !data.vendorFilterApplied && (
+            <div className="mb-3 px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-500">
+              ℹ️ Tidak ada vendor yang cocok dengan "<strong>{data.shipmentType}</strong>" — menampilkan semua vendor aktif.
+            </div>
+          )}
+
+          {data.vendors.length === 0 ? (
+            <p className="text-sm text-slate-500">Tidak ada vendor aktif yang bisa dihubungi.</p>
           ) : (
-            <div className="space-y-2">
-              {matchingVendors.map((v) => (
+            <div className="space-y-2 mt-3">
+              {data.vendors.map((v) => (
                 <label key={v.id} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${selectedIds.includes(v.id) ? "border-blue-400 bg-blue-50" : "border-slate-200 hover:bg-slate-50"}`}>
                   <input
                     type="checkbox"
