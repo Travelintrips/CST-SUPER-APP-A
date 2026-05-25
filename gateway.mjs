@@ -30,7 +30,7 @@ const BASE_DELAY    = Number(process.env.GW_BASE_DELAY    ?? 200);
 
 const RETRYABLE_CODES = new Set(["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENOTFOUND"]);
 
-const API_PORT = 18444;
+const API_PORT = 8080;
 
 const ROUTES = [
   { prefix: "/api",          upstream: { host: "localhost", port: API_PORT } },
@@ -42,7 +42,7 @@ const ROUTES = [
 const DEFAULT_UPSTREAM = { host: "localhost", port: 3001 };
 
 const SERVICE_NAMES = {
-  18444: "API Server",
+  8080:  "API Server",
   3000:  "BizPortal",
   3001:  "Customer Portal",
   3002:  "Sport Center",

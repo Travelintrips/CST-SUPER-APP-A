@@ -50,6 +50,8 @@ const OnboardingPage            = lazy(() => import("@/pages/onboarding"));
 const PendingApprovalPage       = lazy(() => import("@/pages/pending-approval"));
 // Mini form: standalone + lightweight — preload its own tiny chunk immediately
 const VendorMiniFormPage        = lazy(() => import("@/pages/vendor-mini-form"));
+const CustomerApprovalPage      = lazy(() => import("@/pages/customer-approval"));
+const OpConfirmPage             = lazy(() => import("@/pages/op-confirm"));
 const CustomerQuotePage         = lazy(() => import("@/pages/customer-quote"));
 const OrderTaskPage             = lazy(() => import("@/pages/order-task"));
 const CustomerOrderPage         = lazy(() => import("@/pages/customer-order"));
@@ -81,6 +83,7 @@ const NO_SHELL_PREFIXES = [
   "/vendor-mini-form", "/choose-option", "/onboarding", "/pending-approval",
   "/customer-quote", "/order-task", "/customer-order", "/admin-action",
   "/vendor-fulfillment", "/vendor-job", "/order-track",
+  "/customer-approval", "/op-confirm",
 ];
 
 // Routes that should skip the Supabase auth check entirely (public/standalone pages)
@@ -90,6 +93,7 @@ const NO_AUTH_CHECK_PREFIXES = [
   "/approve", "/confirm", "/customer-quote", "/order-task", "/customer-order",
   "/admin-action", "/admin-review", "/order-track", "/fulfillment", "/q/",
   "/privacy-policy", "/contact",
+  "/customer-approval", "/op-confirm",
 ];
 
 const BASE_PREFIX = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -202,6 +206,8 @@ function AppShell() {
         <Route path="/onboarding" component={OnboardingPage} />
         <Route path="/pending-approval" component={PendingApprovalPage} />
         <Route path="/vendor-mini-form/:token" component={VendorMiniFormPage} />
+        <Route path="/customer-approval/:token" component={CustomerApprovalPage} />
+        <Route path="/op-confirm/:token" component={OpConfirmPage} />
         <Route path="/approve/:orderNumber" component={ApprovePage} />
         <Route path="/confirm/:token" component={ConfirmPage} />
         <Route path="/customer-quote/:token" component={CustomerQuotePage} />

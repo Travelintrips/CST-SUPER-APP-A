@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,7 +18,12 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Copy, ExternalLink, Link2, Plus, Trash2, Eye, ToggleLeft, ToggleRight, Loader2, RotateCcw, CalendarDays, User, Phone, MessageCircle, XCircle, Clock, SendHorizonal, Pencil } from "lucide-react";
+import {
+  Copy, ExternalLink, Link2, Plus, Trash2, Eye, ToggleLeft, ToggleRight,
+  Loader2, RotateCcw, CalendarDays, User, Phone, MessageCircle, XCircle,
+  Clock, SendHorizonal, Pencil, CheckCircle, Package, Star, Building2, FileText,
+  BarChart2, TrendingDown, TrendingUp, Minus, Award,
+} from "lucide-react";
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
 } from "@/components/ui/sheet";
@@ -26,76 +31,100 @@ import {
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 type FormLink = {
-  id: number;
-  token: string;
-  supplierId: number | null;
-  serviceType: string;
-  title: string | null;
-  notes: string | null;
-  isActive: boolean;
-  shortUrl: string | null;
-  expiresAt: string | null;
-  createdAt: string;
-  vendorName: string | null;
+  id: number; token: string; supplierId: number | null; serviceType: string;
+  title: string | null; notes: string | null; isActive: boolean;
+  shortUrl: string | null; expiresAt: string | null; createdAt: string;
+  vendorName: string | null; mode: string; orderId: number | null;
+  orderNumber: string | null; orderItemId: number | null;
+  itemStatus: string | null; phase: string | null;
+  maxSubmissions: number | null; resubmitAllowed: boolean | null; adminNotes: string | null;
 };
 
 type Submission = {
-  id: number;
-  linkId: number | null;
-  token: string;
-  supplierId: number | null;
-  serviceType: string;
-  vendorName: string | null;
-  contactPerson: string | null;
-  contactPhone: string | null;
-  formData: Record<string, unknown>;
-  staffData: Record<string, unknown>;
-  submittedAt: string;
-  waStatus: string | null;
-  waRecipient: string | null;
-  waAt: string | null;
+  id: number; linkId: number | null; token: string; supplierId: number | null;
+  serviceType: string; vendorName: string | null; contactPerson: string | null;
+  contactPhone: string | null; formData: Record<string, unknown>;
+  staffData: Record<string, unknown>; submittedAt: string;
+  waStatus: string | null; waRecipient: string | null; waAt: string | null;
+  responseStatus: string | null; vendorPrice: string | null; currency: string | null;
+  eta: string | null; validUntil: string | null; selectedByAdmin: boolean;
+  selectedAt: string | null; locked: boolean | null; revisionCount: number | null;
+  adminNotes: string | null; submittedIp: string | null;
 };
 
-type Supplier = { id: number; name: string; serviceType: string | null };
+type CustomerApproval = {
+  id: number; token: string; orderId: number | null; orderNumber: string | null;
+  customerName: string | null; customerPhone: string | null;
+  offerSummary: Record<string, unknown>; sellingPrice: string | null;
+  currency: string | null; termsNotes: string | null; status: string;
+  approvedAt: string | null; rejectedAt: string | null; soNumber: string | null;
+  createdAt: string; expiresAt: string | null;
+  submissionId: number | null; vendorCost: string | null;
+  markupPct: string | null; markupNominal: string | null;
+  ppnPct: string | null; ppnNominal: string | null; profitMarginPct: string | null;
+  adminNotes: string | null; locked: boolean | null;
+};
 
-// ── Schema labels ──────────────────────────────────────────────────────────────
+type ActivityLog = {
+  id: number; entityType: string; entityId: number; action: string;
+  actor: string | null; note: string | null; data: Record<string, unknown>;
+  createdAt: string;
+};
 
-const REVIEW_STATUS_OPTS = [
-  { value: "pending",    label: "⏳ Pending" },
-  { value: "disetujui",  label: "✅ Disetujui" },
-  { value: "ditolak",    label: "❌ Ditolak" },
-  { value: "negosiasi",  label: "🤝 Negosiasi" },
-];
+type PriceHistory = {
+  id: number; submissionId: number | null; versionNumber: number;
+  oldPrice: string | null; newPrice: string | null; currency: string | null;
+  reason: string | null; changedBy: string | null; changedAt: string;
+};
 
-function ReviewStatusBadge({ status }: { status: string | undefined }) {
-  if (!status) return <span className="text-xs text-slate-400">—</span>;
-  const opt = REVIEW_STATUS_OPTS.find(o => o.value === status);
-  const cls: Record<string, string> = {
-    disetujui: "bg-green-100 text-green-700 border-green-200",
-    ditolak:   "bg-red-100 text-red-700 border-red-200",
-    negosiasi: "bg-yellow-100 text-yellow-700 border-yellow-200",
-    pending:   "bg-slate-100 text-slate-600 border-slate-200",
-  };
-  return (
-    <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded border ${cls[status] ?? "bg-slate-100 text-slate-500 border-slate-200"}`}>
-      {opt?.label ?? status}
-    </span>
-  );
-}
+type OpConfirm = {
+  id: number; token: string; orderId: number | null; orderNumber: string | null;
+  orderItemId: number | null; supplierId: number | null; vendorName: string | null;
+  serviceType: string; status: string; submittedAt: string | null;
+  instruction: string | null; createdAt: string;
+};
+
+type Supplier = { id: number; name: string; serviceType: string | null; phone: string | null };
+type Order = { id: number; orderNumber: string; customerName: string; status: string; createdAt: string };
+type OrderItem = { id: number; orderId: number; category: string; serviceName: string; calculatorType: string; subtotal: string };
+
+// ── Constants ─────────────────────────────────────────────────────────────────
 
 const SERVICE_META: Record<string, { label: string; emoji: string }> = {
   product: { label: "Produk", emoji: "📦" },
   trucking: { label: "Trucking", emoji: "🚛" },
   air_freight: { label: "Air Freight", emoji: "✈️" },
   sea_freight: { label: "Sea Freight", emoji: "🚢" },
-  ppjk: { label: "PPJK", emoji: "📋" },
-  customs_clearance: { label: "Customs Clearance", emoji: "🛃" },
+  ppjk: { label: "PPJK / Customs", emoji: "📋" },
+  handling: { label: "Handling / WH", emoji: "🏭" },
+  document: { label: "Document / Misc", emoji: "📄" },
   warehouse: { label: "Warehouse", emoji: "🏭" },
-  handling: { label: "Handling", emoji: "🔧" },
+  customs_clearance: { label: "Customs Clearance", emoji: "🛃" },
   exim_service: { label: "Exim Service", emoji: "🌐" },
 };
-
 const SERVICE_TYPES = Object.keys(SERVICE_META);
+
+const ITEM_STATUS_META: Record<string, { label: string; color: string }> = {
+  waiting_vendor: { label: "Menunggu Vendor", color: "bg-yellow-100 text-yellow-700 border-yellow-200" },
+  vendor_submitted: { label: "Vendor Submitted", color: "bg-blue-100 text-blue-700 border-blue-200" },
+  admin_review: { label: "Admin Review", color: "bg-purple-100 text-purple-700 border-purple-200" },
+  waiting_customer: { label: "Menunggu Customer", color: "bg-orange-100 text-orange-700 border-orange-200" },
+  customer_approved: { label: "Customer Approved ✅", color: "bg-green-100 text-green-700 border-green-200" },
+  customer_rejected: { label: "Customer Rejected ❌", color: "bg-red-100 text-red-700 border-red-200" },
+  so_created: { label: "SO Dibuat 🎉", color: "bg-emerald-100 text-emerald-700 border-emerald-200" },
+  vendor_confirmed: { label: "Vendor Operasional ✔", color: "bg-teal-100 text-teal-700 border-teal-200" },
+};
+
+const APPROVAL_STATUS_META: Record<string, { label: string; color: string }> = {
+  pending: { label: "Menunggu", color: "bg-yellow-100 text-yellow-700" },
+  approved: { label: "Disetujui ✅", color: "bg-green-100 text-green-700" },
+  rejected: { label: "Ditolak ❌", color: "bg-red-100 text-red-700" },
+};
+
+const OP_STATUS_META: Record<string, { label: string; color: string }> = {
+  pending: { label: "Belum Diisi", color: "bg-yellow-100 text-yellow-700" },
+  submitted: { label: "Sudah Diisi ✅", color: "bg-green-100 text-green-700" },
+};
 
 // ── API helpers ────────────────────────────────────────────────────────────────
 
@@ -107,49 +136,177 @@ async function apiFetch<T>(url: string, opts?: RequestInit): Promise<T> {
 }
 
 function buildFormUrl(token: string): string {
-  const domain = window.location.origin;
-  return `${domain}/vendor-mini-form/${token}`;
+  return `${window.location.origin}/vendor-mini-form/${token}`;
 }
 
-// ── Create link dialog ─────────────────────────────────────────────────────────
+function buildApprovalUrl(token: string): string {
+  return `${window.location.origin}/customer-approval/${token}`;
+}
 
-function CreateLinkDialog({ suppliers, onCreated }: { suppliers: Supplier[]; onCreated: () => void }) {
+function buildOpConfirmUrl(token: string): string {
+  return `${window.location.origin}/op-confirm/${token}`;
+}
+
+function fmtPrice(price: string | null, currency: string | null) {
+  if (!price) return "—";
+  return `${currency ?? "IDR"} ${Number(price).toLocaleString("id-ID")}`;
+}
+
+// ── Badges ────────────────────────────────────────────────────────────────────
+
+function ItemStatusBadge({ status }: { status: string | null | undefined }) {
+  if (!status) return <span className="text-xs text-slate-400">—</span>;
+  const meta = ITEM_STATUS_META[status];
+  return (
+    <span className={`inline-flex items-center text-xs font-medium px-2 py-0.5 rounded border ${meta?.color ?? "bg-slate-100 text-slate-600 border-slate-200"}`}>
+      {meta?.label ?? status}
+    </span>
+  );
+}
+
+function ApprovalStatusBadge({ status }: { status: string }) {
+  const meta = APPROVAL_STATUS_META[status];
+  return (
+    <span className={`inline-flex items-center text-xs font-medium px-2 py-0.5 rounded ${meta?.color ?? "bg-slate-100 text-slate-600"}`}>
+      {meta?.label ?? status}
+    </span>
+  );
+}
+
+// ── Copy helper ───────────────────────────────────────────────────────────────
+
+function CopyBtn({ text, label }: { text: string; label?: string }) {
+  const [copied, setCopied] = useState(false);
+  const { toast } = useToast();
+  return (
+    <Button
+      variant="ghost" size="icon" className="h-7 w-7"
+      title={label ?? "Salin URL"}
+      onClick={() => {
+        navigator.clipboard.writeText(text).then(() => {
+          setCopied(true); setTimeout(() => setCopied(false), 1500);
+          toast({ title: "Disalin!" });
+        });
+      }}
+    >
+      {copied ? <CheckCircle className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+    </Button>
+  );
+}
+
+// ── Send WA dialog ────────────────────────────────────────────────────────────
+
+function SendWaDialog({
+  title, defaultPhone, onSend, trigger,
+}: {
+  title: string; defaultPhone?: string | null;
+  onSend: (phone: string, msg: string) => Promise<void>;
+  trigger: React.ReactNode;
+}) {
   const [open, setOpen] = useState(false);
-  const [serviceType, setServiceType] = useState("");
-  const [supplierId, setSupplierId] = useState<string>("");
-  const [title, setTitle] = useState("");
-  const [notes, setNotes] = useState("");
-  const [expiresInDays, setExpiresInDays] = useState("");
+  const [phone, setPhone] = useState(defaultPhone ?? "");
+  const [msg, setMsg] = useState("");
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
+  useEffect(() => { if (open) setPhone(defaultPhone ?? ""); }, [open, defaultPhone]);
+
+  const handleSend = async () => {
+    if (!phone.trim()) { toast({ title: "Masukkan nomor WhatsApp", variant: "destructive" }); return; }
+    setLoading(true);
+    try {
+      await onSend(phone.trim(), msg.trim());
+      toast({ title: "Pesan WA berhasil dikirim!" });
+      setOpen(false); setMsg("");
+    } catch (e: unknown) {
+      toast({ title: "Gagal kirim WA", description: (e as Error).message, variant: "destructive" });
+    } finally { setLoading(false); }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      <DialogContent className="max-w-md">
+        <DialogHeader><DialogTitle>{title}</DialogTitle></DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="space-y-1.5">
+            <Label>Nomor WhatsApp <span className="text-red-500">*</span></Label>
+            <Input value={phone} onChange={e => setPhone(e.target.value)} placeholder="62812xxxx" />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Pesan Kustom (opsional)</Label>
+            <Textarea value={msg} onChange={e => setMsg(e.target.value)} rows={4} placeholder="Kosongkan untuk menggunakan pesan default..." />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>Batal</Button>
+          <Button onClick={handleSend} disabled={loading}>
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageCircle className="h-4 w-4 mr-1" />}
+            Kirim WA
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Create Link Dialog ─────────────────────────────────────────────────────────
+
+function CreateLinkDialog({ suppliers, onCreated }: { suppliers: Supplier[]; onCreated: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<"rate_collection" | "order_based">("rate_collection");
+  const [serviceType, setServiceType] = useState("");
+  const [supplierId, setSupplierId] = useState<string>("");
+  const [vendorName, setVendorName] = useState("");
+  const [title, setTitle] = useState("");
+  const [notes, setNotes] = useState("");
+  const [expiresInDays, setExpiresInDays] = useState("");
+  const [orderId, setOrderId] = useState<string>("");
+  const [orderItemId, setOrderItemId] = useState<string>("");
+  const [maxSubmissions, setMaxSubmissions] = useState("");
+  const [loading, setLoading] = useState(false);
+  const { toast } = useToast();
+
+  const { data: orders } = useQuery<Order[]>({
+    queryKey: ["vmf-orders"],
+    queryFn: () => apiFetch<Order[]>("/api/vendor-form/admin/orders"),
+    enabled: open && mode === "order_based",
+  });
+
+  const { data: orderItems } = useQuery<OrderItem[]>({
+    queryKey: ["vmf-order-items", orderId],
+    queryFn: () => apiFetch<OrderItem[]>(`/api/vendor-form/admin/orders/${orderId}/items`),
+    enabled: !!orderId && mode === "order_based",
+  });
+
+  const selectedOrder = orders?.find(o => String(o.id) === orderId);
+
   const reset = () => {
-    setServiceType(""); setSupplierId(""); setTitle(""); setNotes(""); setExpiresInDays("");
+    setMode("rate_collection"); setServiceType(""); setSupplierId(""); setVendorName("");
+    setTitle(""); setNotes(""); setExpiresInDays(""); setOrderId(""); setOrderItemId(""); setMaxSubmissions("");
   };
 
   const handleCreate = async () => {
     if (!serviceType) { toast({ title: "Pilih service type dulu", variant: "destructive" }); return; }
+    if (mode === "order_based" && !orderId) { toast({ title: "Pilih order dulu", variant: "destructive" }); return; }
     setLoading(true);
     try {
       await apiFetch("/api/vendor-form/admin/links", {
         method: "POST",
         body: JSON.stringify({
-          serviceType,
-          supplierId: supplierId ? Number(supplierId) : undefined,
-          title: title.trim() || undefined,
-          notes: notes.trim() || undefined,
-          expiresInDays: expiresInDays ? Number(expiresInDays) : undefined,
+          serviceType, supplierId: supplierId ? Number(supplierId) : undefined,
+          vendorName: vendorName.trim() || undefined, title: title.trim() || undefined,
+          notes: notes.trim() || undefined, expiresInDays: expiresInDays ? Number(expiresInDays) : undefined,
+          mode, orderId: orderId ? Number(orderId) : undefined,
+          orderNumber: selectedOrder?.orderNumber, orderItemId: orderItemId ? Number(orderItemId) : undefined,
+          maxSubmissions: maxSubmissions ? Number(maxSubmissions) : undefined,
         }),
       });
       toast({ title: "Link berhasil dibuat" });
-      onCreated();
-      setOpen(false);
-      reset();
+      onCreated(); setOpen(false); reset();
     } catch (e: unknown) {
       toast({ title: "Gagal membuat link", description: (e as Error).message, variant: "destructive" });
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
   return (
@@ -157,26 +314,76 @@ function CreateLinkDialog({ suppliers, onCreated }: { suppliers: Supplier[]; onC
       <DialogTrigger asChild>
         <Button size="sm"><Plus className="h-4 w-4 mr-1" />Buat Link Form</Button>
       </DialogTrigger>
-      <DialogContent className="max-w-md">
-        <DialogHeader><DialogTitle>Buat Link Form Baru</DialogTitle></DialogHeader>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader><DialogTitle>Buat Link Form Vendor Baru</DialogTitle></DialogHeader>
         <div className="space-y-4 py-2">
+          {/* Mode */}
+          <div className="space-y-1.5">
+            <Label>Mode <span className="text-red-500">*</span></Label>
+            <Select value={mode} onValueChange={v => setMode(v as typeof mode)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="rate_collection">📊 Rate Collection (form umum)</SelectItem>
+                <SelectItem value="order_based">📦 Order-Based (terkait order)</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-slate-400">
+              {mode === "rate_collection" ? "Form penawaran umum — vendor isi rate tanpa konteks order spesifik." : "Form terkait order — vendor isi penawaran untuk order/item tertentu."}
+            </p>
+          </div>
+
+          {/* Order picker (order_based only) */}
+          {mode === "order_based" && (
+            <div className="space-y-1.5">
+              <Label>Order <span className="text-red-500">*</span></Label>
+              <Select value={orderId || "__none__"} onValueChange={v => { setOrderId(v === "__none__" ? "" : v); setOrderItemId(""); }}>
+                <SelectTrigger><SelectValue placeholder="Pilih order" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">— Pilih order —</SelectItem>
+                  {orders?.map(o => (
+                    <SelectItem key={o.id} value={String(o.id)}>
+                      {o.orderNumber} · {o.customerName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {orderId && orderItems && (
+                <div className="space-y-1.5 mt-2">
+                  <Label>Item Spesifik (opsional)</Label>
+                  <Select value={orderItemId || "__none__"} onValueChange={v => setOrderItemId(v === "__none__" ? "" : v)}>
+                    <SelectTrigger><SelectValue placeholder="Semua item / tidak spesifik" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">— Tidak spesifik —</SelectItem>
+                      {orderItems.map(i => (
+                        <SelectItem key={i.id} value={String(i.id)}>
+                          {i.serviceName} · {i.category}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Service type */}
           <div className="space-y-1.5">
             <Label>Service Type <span className="text-red-500">*</span></Label>
             <Select value={serviceType} onValueChange={setServiceType}>
               <SelectTrigger><SelectValue placeholder="Pilih tipe layanan" /></SelectTrigger>
               <SelectContent>
                 {SERVICE_TYPES.map(k => (
-                  <SelectItem key={k} value={k}>
-                    {SERVICE_META[k]!.emoji} {SERVICE_META[k]!.label}
-                  </SelectItem>
+                  <SelectItem key={k} value={k}>{SERVICE_META[k]!.emoji} {SERVICE_META[k]!.label}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
+
+          {/* Vendor */}
           <div className="space-y-1.5">
-            <Label>Vendor (opsional)</Label>
+            <Label>Vendor dari Daftar (opsional)</Label>
             <Select value={supplierId || "__all__"} onValueChange={v => setSupplierId(v === "__all__" ? "" : v)}>
-              <SelectTrigger><SelectValue placeholder="Semua vendor / tidak spesifik" /></SelectTrigger>
+              <SelectTrigger><SelectValue placeholder="Tidak spesifik" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="__all__">— Tidak spesifik —</SelectItem>
                 {suppliers.map(s => (
@@ -185,23 +392,36 @@ function CreateLinkDialog({ suppliers, onCreated }: { suppliers: Supplier[]; onC
               </SelectContent>
             </Select>
           </div>
+
+          {/* Vendor name override */}
+          <div className="space-y-1.5">
+            <Label>Nama Vendor (override / manual)</Label>
+            <Input value={vendorName} onChange={e => setVendorName(e.target.value)} placeholder="Jika tidak ada di daftar" />
+          </div>
+
           <div className="space-y-1.5">
             <Label>Judul Form (opsional)</Label>
-            <Input value={title} onChange={e => setTitle(e.target.value)} placeholder="Contoh: Penawaran Rate Trucking Q3 2025" />
+            <Input value={title} onChange={e => setTitle(e.target.value)} placeholder="Contoh: Penawaran Rate Trucking Q3" />
           </div>
           <div className="space-y-1.5">
-            <Label>Instruksi / Catatan untuk Vendor</Label>
-            <Textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} placeholder="Masukkan instruksi khusus untuk vendor..." />
+            <Label>Instruksi untuk Vendor</Label>
+            <Textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="Instruksi khusus untuk vendor..." />
           </div>
           <div className="space-y-1.5">
             <Label>Kadaluarsa (hari, opsional)</Label>
-            <Input type="number" value={expiresInDays} onChange={e => setExpiresInDays(e.target.value)} placeholder="Contoh: 7 (kosongkan = tidak ada batas)" />
+            <Input type="number" value={expiresInDays} onChange={e => setExpiresInDays(e.target.value)} placeholder="Contoh: 7" />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Maks. Submission (opsional)</Label>
+            <Input type="number" value={maxSubmissions} onChange={e => setMaxSubmissions(e.target.value)} placeholder="Kosong = tidak dibatasi" />
+            <p className="text-xs text-slate-400">Batas jumlah vendor yang bisa submit melalui link ini.</p>
           </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>Batal</Button>
           <Button onClick={handleCreate} disabled={loading}>
-            {loading ? "Membuat..." : "Buat Link"}
+            {loading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+            Buat Link
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -209,85 +429,858 @@ function CreateLinkDialog({ suppliers, onCreated }: { suppliers: Supplier[]; onC
   );
 }
 
-// ── Submission detail dialog ───────────────────────────────────────────────────
+// ── Create Customer Approval Dialog ───────────────────────────────────────────
 
-function SubmissionDetailDialog({ submission }: { submission: Submission }) {
+function CreateApprovalDialog({ onCreated }: { onCreated: () => void }) {
   const [open, setOpen] = useState(false);
-  const meta = SERVICE_META[submission.serviceType];
+  const [orderId, setOrderId] = useState("");
+  const [orderNumber, setOrderNumber] = useState("");
+  const [customerName, setCustomerName] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [currency, setCurrency] = useState("IDR");
+  const [termsNotes, setTermsNotes] = useState("");
+  const [expiresInDays, setExpiresInDays] = useState("7");
+  const [offerItems, setOfferItems] = useState<{ label: string; value: string }[]>([]);
+  const [adminNotes, setAdminNotes] = useState("");
+  // Margin calculator
+  const [vendorCost, setVendorCost] = useState("");
+  const [markupPct, setMarkupPct] = useState("");
+  const [markupNominal, setMarkupNominal] = useState("");
+  const [ppnPct, setPpnPct] = useState("11");
+  const [sellingPrice, setSellingPrice] = useState("");
+  const [loading, setLoading] = useState(false);
+  const { toast } = useToast();
+
+  const { data: orders } = useQuery<Order[]>({
+    queryKey: ["vmf-orders"],
+    queryFn: () => apiFetch<Order[]>("/api/vendor-form/admin/orders"),
+    enabled: open,
+  });
+
+  const selectedOrder = orders?.find(o => String(o.id) === orderId);
+  useEffect(() => {
+    if (selectedOrder) setOrderNumber(selectedOrder.orderNumber);
+  }, [selectedOrder]);
+
+  // Auto-calculate markup fields
+  const vendorCostNum = vendorCost ? Number(vendorCost) : null;
+  const markupPctNum = markupPct ? Number(markupPct) : null;
+  const markupNomNum = markupNominal ? Number(markupNominal) : null;
+  const ppnPctNum = ppnPct ? Number(ppnPct) : 0;
+
+  const computedMarkupNominal = vendorCostNum !== null && markupPctNum !== null
+    ? Math.round(vendorCostNum * markupPctNum / 100) : null;
+  const computedMarkupPct = vendorCostNum !== null && markupNomNum !== null && vendorCostNum > 0
+    ? Number(((markupNomNum / vendorCostNum) * 100).toFixed(2)) : null;
+
+  const baseBeforeTax = vendorCostNum !== null
+    ? vendorCostNum + (markupPct ? (computedMarkupNominal ?? 0) : (markupNomNum ?? 0))
+    : null;
+  const ppnNominal = baseBeforeTax !== null ? Math.round(baseBeforeTax * ppnPctNum / 100) : null;
+  const autoSellingPrice = baseBeforeTax !== null ? baseBeforeTax + (ppnNominal ?? 0) : null;
+  const profitMarginPct = autoSellingPrice && vendorCostNum
+    ? Number((((autoSellingPrice - vendorCostNum) / autoSellingPrice) * 100).toFixed(2)) : null;
+
+  // Sync sellingPrice to auto-calculated
+  useEffect(() => {
+    if (autoSellingPrice !== null) setSellingPrice(String(autoSellingPrice));
+  }, [autoSellingPrice]);
+
+  const handleMarkupPctChange = (v: string) => {
+    setMarkupPct(v);
+    setMarkupNominal("");
+  };
+  const handleMarkupNomChange = (v: string) => {
+    setMarkupNominal(v);
+    setMarkupPct("");
+  };
+
+  const addItem = () => setOfferItems(p => [...p, { label: "", value: "" }]);
+  const updateItem = (i: number, field: "label" | "value", val: string) => {
+    setOfferItems(p => p.map((item, idx) => idx === i ? { ...item, [field]: val } : item));
+  };
+  const removeItem = (i: number) => setOfferItems(p => p.filter((_, idx) => idx !== i));
+
+  const reset = () => {
+    setOrderId(""); setOrderNumber(""); setCustomerName(""); setCustomerPhone("");
+    setSellingPrice(""); setCurrency("IDR"); setTermsNotes(""); setExpiresInDays("7");
+    setOfferItems([]); setAdminNotes(""); setVendorCost(""); setMarkupPct(""); setMarkupNominal(""); setPpnPct("11");
+  };
+
+  const handleCreate = async () => {
+    if (!sellingPrice) { toast({ title: "Masukkan harga total", variant: "destructive" }); return; }
+    setLoading(true);
+    try {
+      const offerSummary = Object.fromEntries(offerItems.filter(i => i.label).map(i => [i.label, i.value]));
+      await apiFetch("/api/vendor-form/admin/customer-approvals", {
+        method: "POST",
+        body: JSON.stringify({
+          orderId: orderId ? Number(orderId) : undefined, orderNumber,
+          customerName, customerPhone, offerSummary,
+          sellingPrice: sellingPrice ? Number(sellingPrice) : undefined,
+          currency, termsNotes: termsNotes || undefined,
+          expiresInDays: expiresInDays ? Number(expiresInDays) : undefined,
+          adminNotes: adminNotes || undefined,
+          vendorCost: vendorCost ? Number(vendorCost) : undefined,
+          markupPct: markupPct ? Number(markupPct) : (computedMarkupPct ?? undefined),
+          markupNominal: markupNominal ? Number(markupNominal) : (computedMarkupNominal ?? undefined),
+          ppnPct: ppnPct ? Number(ppnPct) : undefined,
+          ppnNominal: ppnNominal ?? undefined,
+          profitMarginPct: profitMarginPct ?? undefined,
+        }),
+      });
+      toast({ title: "Link approval berhasil dibuat!" });
+      onCreated(); setOpen(false); reset();
+    } catch (e: unknown) {
+      toast({ title: "Gagal", description: (e as Error).message, variant: "destructive" });
+    } finally { setLoading(false); }
+  };
+
+  const fmt = (n: number | null) => n === null ? "—" : `${currency} ${n.toLocaleString("id-ID")}`;
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={v => { setOpen(v); if (!v) reset(); }}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="icon" className="h-7 w-7"><Eye className="h-3.5 w-3.5" /></Button>
+        <Button size="sm" variant="outline"><Plus className="h-4 w-4 mr-1" />Buat Link Approval Customer</Button>
       </DialogTrigger>
-      <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>
-            {meta?.emoji} Detail Submission — {submission.vendorName ?? "—"}
-          </DialogTitle>
-        </DialogHeader>
+      <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader><DialogTitle>Buat Link Approval Customer</DialogTitle></DialogHeader>
         <div className="space-y-4 py-2">
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            <div><span className="text-slate-500">Service Type</span><p className="font-medium">{meta?.label ?? submission.serviceType}</p></div>
-            <div><span className="text-slate-500">Dikirim</span><p className="font-medium">{new Date(submission.submittedAt).toLocaleString("id-ID")}</p></div>
-            {submission.contactPerson && <div><span className="text-slate-500">Contact Person</span><p className="font-medium">{submission.contactPerson}</p></div>}
-            {submission.contactPhone && <div><span className="text-slate-500">Telepon</span><p className="font-medium">{submission.contactPhone}</p></div>}
+          <div className="space-y-1.5">
+            <Label>Order (opsional)</Label>
+            <Select value={orderId || "__none__"} onValueChange={v => setOrderId(v === "__none__" ? "" : v)}>
+              <SelectTrigger><SelectValue placeholder="— Pilih order —" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">— Tanpa order —</SelectItem>
+                {orders?.map(o => <SelectItem key={o.id} value={String(o.id)}>{o.orderNumber} · {o.customerName}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </div>
-          <hr />
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>No. Order (manual)</Label>
+              <Input value={orderNumber} onChange={e => setOrderNumber(e.target.value)} placeholder="ORD/..." />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Nama Customer</Label>
+              <Input value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="PT. ..." />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>No. WA Customer</Label>
+              <Input value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} placeholder="62812xxx" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Mata Uang</Label>
+              <Select value={currency} onValueChange={setCurrency}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {["IDR", "USD", "SGD", "EUR"].map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* ── Margin Calculator ── */}
+          <div className="border border-indigo-200 rounded-xl p-4 space-y-3 bg-indigo-50/40">
+            <p className="text-sm font-semibold text-indigo-700 flex items-center gap-1.5">
+              🧮 Kalkulator Margin (internal)
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Harga Vendor (Cost)</Label>
+                <Input type="number" value={vendorCost} onChange={e => setVendorCost(e.target.value)} placeholder="0" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">PPN %</Label>
+                <Select value={ppnPct} onValueChange={setPpnPct}>
+                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="0">0% (tidak ada PPN)</SelectItem>
+                    <SelectItem value="11">11% (PPN Normal)</SelectItem>
+                    <SelectItem value="12">12%</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Markup %</Label>
+                <Input type="number" value={markupPct} onChange={e => handleMarkupPctChange(e.target.value)} placeholder="Auto dari nominal" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Markup Nominal</Label>
+                <Input type="number" value={markupNominal || (computedMarkupNominal !== null ? String(computedMarkupNominal) : "")}
+                  onChange={e => handleMarkupNomChange(e.target.value)} placeholder="Auto dari %" readOnly={!!markupPct} />
+              </div>
+            </div>
+            {vendorCostNum !== null && (markupPct || markupNominal) && (
+              <div className="bg-white border border-indigo-100 rounded-lg p-3 grid grid-cols-2 sm:grid-cols-4 gap-3 text-center text-xs">
+                <div>
+                  <p className="text-slate-400 mb-0.5">Sebelum PPN</p>
+                  <p className="font-bold text-slate-800">{fmt(baseBeforeTax)}</p>
+                </div>
+                <div>
+                  <p className="text-slate-400 mb-0.5">PPN {ppnPct}%</p>
+                  <p className="font-bold text-slate-600">{fmt(ppnNominal)}</p>
+                </div>
+                <div>
+                  <p className="text-slate-400 mb-0.5">Total Jual</p>
+                  <p className="font-bold text-indigo-700 text-sm">{fmt(autoSellingPrice)}</p>
+                </div>
+                <div>
+                  <p className="text-slate-400 mb-0.5">Margin</p>
+                  <p className="font-bold text-green-600">{profitMarginPct !== null ? `${profitMarginPct}%` : "—"}</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Total Harga ke Customer <span className="text-red-500">*</span></Label>
+            <Input type="number" value={sellingPrice} onChange={e => setSellingPrice(e.target.value)} placeholder="Auto dari kalkulator, atau isi manual" />
+            <p className="text-xs text-slate-400">Harga ini yang akan dilihat oleh customer.</p>
+          </div>
+
+          {/* Offer line items */}
           <div className="space-y-2">
-            <p className="text-sm font-semibold text-slate-600">Data Form</p>
-            {Object.entries(submission.formData).filter(([, v]) => v !== "" && v !== null && v !== undefined).map(([k, v]) => (
-              <div key={k} className="flex justify-between text-sm border-b border-slate-50 py-1.5">
-                <span className="text-slate-500 capitalize">{k.replace(/_/g, " ")}</span>
-                <span className="font-medium text-right max-w-[60%]">{String(v)}</span>
+            <div className="flex items-center justify-between">
+              <Label>Detail Item Penawaran</Label>
+              <Button type="button" size="sm" variant="outline" onClick={addItem}><Plus className="h-3.5 w-3.5 mr-1" />Tambah</Button>
+            </div>
+            {offerItems.map((item, i) => (
+              <div key={i} className="flex gap-2">
+                <Input className="flex-1" placeholder="Label (cth: Trucking)" value={item.label} onChange={e => updateItem(i, "label", e.target.value)} />
+                <Input className="flex-1" placeholder="Nilai (cth: Rp 2.000.000)" value={item.value} onChange={e => updateItem(i, "value", e.target.value)} />
+                <Button type="button" variant="ghost" size="icon" className="h-9 w-9" onClick={() => removeItem(i)}><XCircle className="h-4 w-4 text-slate-400" /></Button>
               </div>
             ))}
           </div>
+
+          <div className="space-y-1.5">
+            <Label>Terms & Conditions / Catatan</Label>
+            <Textarea value={termsNotes} onChange={e => setTermsNotes(e.target.value)} rows={2} placeholder="Syarat pembayaran, masa berlaku, dll." />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Catatan Internal Admin</Label>
+            <Textarea value={adminNotes} onChange={e => setAdminNotes(e.target.value)} rows={2} placeholder="Catatan internal, tidak terlihat oleh customer..." />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Berlaku (hari)</Label>
+            <Input type="number" value={expiresInDays} onChange={e => setExpiresInDays(e.target.value)} />
+          </div>
         </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>Batal</Button>
+          <Button onClick={handleCreate} disabled={loading}>
+            {loading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+            Buat Link
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
 
-// ── Link detail sheet ─────────────────────────────────────────────────────────
+// ── Create Op Confirm Dialog ───────────────────────────────────────────────────
+
+function CreateOpConfirmDialog({ suppliers, onCreated }: { suppliers: Supplier[]; onCreated: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [orderId, setOrderId] = useState("");
+  const [orderNumber, setOrderNumber] = useState("");
+  const [supplierId, setSupplierId] = useState("");
+  const [vendorName, setVendorName] = useState("");
+  const [serviceType, setServiceType] = useState("");
+  const [instruction, setInstruction] = useState("");
+  const [loading, setLoading] = useState(false);
+  const { toast } = useToast();
+
+  const { data: orders } = useQuery<Order[]>({
+    queryKey: ["vmf-orders"],
+    queryFn: () => apiFetch<Order[]>("/api/vendor-form/admin/orders"),
+    enabled: open,
+  });
+  const selectedOrder = orders?.find(o => String(o.id) === orderId);
+  useEffect(() => { if (selectedOrder) setOrderNumber(selectedOrder.orderNumber); }, [selectedOrder]);
+
+  const reset = () => {
+    setOrderId(""); setOrderNumber(""); setSupplierId(""); setVendorName(""); setServiceType(""); setInstruction("");
+  };
+
+  const handleCreate = async () => {
+    if (!serviceType) { toast({ title: "Pilih service type", variant: "destructive" }); return; }
+    setLoading(true);
+    try {
+      await apiFetch("/api/vendor-form/admin/op-confirms", {
+        method: "POST",
+        body: JSON.stringify({
+          orderId: orderId ? Number(orderId) : undefined, orderNumber,
+          supplierId: supplierId ? Number(supplierId) : undefined,
+          vendorName: vendorName || undefined, serviceType,
+          instruction: instruction || undefined,
+        }),
+      });
+      toast({ title: "Link konfirmasi operasional dibuat!" });
+      onCreated(); setOpen(false); reset();
+    } catch (e: unknown) {
+      toast({ title: "Gagal", description: (e as Error).message, variant: "destructive" });
+    } finally { setLoading(false); }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={v => { setOpen(v); if (!v) reset(); }}>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="outline"><Plus className="h-4 w-4 mr-1" />Buat Link Konfirmasi Operasional</Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-md">
+        <DialogHeader><DialogTitle>Buat Link Konfirmasi Operasional Vendor</DialogTitle></DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="space-y-1.5">
+            <Label>Order (opsional)</Label>
+            <Select value={orderId || "__none__"} onValueChange={v => setOrderId(v === "__none__" ? "" : v)}>
+              <SelectTrigger><SelectValue placeholder="— Pilih order —" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">— Tanpa order —</SelectItem>
+                {orders?.map(o => <SelectItem key={o.id} value={String(o.id)}>{o.orderNumber} · {o.customerName}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>No. Order (manual)</Label>
+            <Input value={orderNumber} onChange={e => setOrderNumber(e.target.value)} placeholder="ORD/..." />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Service Type <span className="text-red-500">*</span></Label>
+            <Select value={serviceType} onValueChange={setServiceType}>
+              <SelectTrigger><SelectValue placeholder="Pilih layanan" /></SelectTrigger>
+              <SelectContent>
+                {SERVICE_TYPES.map(k => (
+                  <SelectItem key={k} value={k}>{SERVICE_META[k]!.emoji} {SERVICE_META[k]!.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Vendor dari Daftar</Label>
+            <Select value={supplierId || "__none__"} onValueChange={v => setSupplierId(v === "__none__" ? "" : v)}>
+              <SelectTrigger><SelectValue placeholder="— Pilih vendor —" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">— Tanpa vendor —</SelectItem>
+                {suppliers.map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Nama Vendor (manual)</Label>
+            <Input value={vendorName} onChange={e => setVendorName(e.target.value)} placeholder="Jika tidak ada di daftar" />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Instruksi untuk Vendor</Label>
+            <Textarea value={instruction} onChange={e => setInstruction(e.target.value)} rows={2} placeholder="Instruksi khusus operasional..." />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>Batal</Button>
+          <Button onClick={handleCreate} disabled={loading}>
+            {loading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}Buat Link
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Highlight helper ──────────────────────────────────────────────────────────
+
+function getHighlight(serviceType: string, fd: Record<string, unknown>): string {
+  const pick = (...keys: string[]) => keys.map(k => fd[k]).find(v => v && v !== "") as string | undefined;
+  switch (serviceType) {
+    case "trucking": return [pick("truck_type"), pick("area_pickup"), pick("area_delivery"), pick("price") ? `Rp ${Number(pick("price")).toLocaleString("id-ID")}` : null].filter(Boolean).join(" · ") || "—";
+    case "sea_freight": return [pick("pol"), "→", pick("pod"), pick("container_type"), pick("freight_rate") ? `USD ${pick("freight_rate")}` : null].filter(Boolean).join(" ") || "—";
+    case "air_freight": return [pick("origin_airport"), "→", pick("dest_airport"), pick("rate_per_kg") ? `Rp ${Number(pick("rate_per_kg")).toLocaleString("id-ID")}/kg` : null].filter(Boolean).join(" ") || "—";
+    case "product": return [pick("product_name"), pick("unit_price") ? `Rp ${Number(pick("unit_price")).toLocaleString("id-ID")}` : null].filter(Boolean).join(" · ") || "—";
+    default: return pick("price", "service_fee", "customs_service", "handling_fee") ? `Rp ${Number(pick("price", "service_fee", "customs_service", "handling_fee")).toLocaleString("id-ID")}` : "—";
+  }
+}
+
+// ── Submission Card ───────────────────────────────────────────────────────────
+
+function SubmissionCard({
+  sub, idx, onDelete, onSelect, onToggleDetail, showDetail,
+}: {
+  sub: Submission; idx: number;
+  onDelete: (id: number) => void;
+  onSelect: (id: number) => void;
+  onToggleDetail: (id: number) => void;
+  showDetail: boolean;
+}) {
+  const fd = sub.formData ?? {};
+  const highlight = getHighlight(sub.serviceType, fd);
+  const fields = Object.entries(fd).filter(([, v]) => v !== "" && v !== null && v !== undefined);
+  const meta = SERVICE_META[sub.serviceType];
+
+  return (
+    <div className={`border rounded-lg overflow-hidden shadow-sm ${sub.selectedByAdmin ? "ring-2 ring-green-400 border-green-300" : ""}`}>
+      <div className={`flex items-start justify-between px-4 py-3 border-b gap-3 ${sub.selectedByAdmin ? "bg-green-50" : "bg-slate-50"}`}>
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5 font-semibold text-slate-800 text-sm">
+            #{idx + 1} · {sub.vendorName ?? "—"}
+            {sub.selectedByAdmin && <Star className="h-3.5 w-3.5 text-green-500 fill-green-500" />}
+          </div>
+          <div className="flex flex-wrap gap-x-3 mt-0.5">
+            {sub.contactPerson && <span className="text-xs text-slate-500 flex items-center gap-1"><User className="h-3 w-3" />{sub.contactPerson}</span>}
+            {sub.contactPhone && <span className="text-xs text-slate-500 flex items-center gap-1"><Phone className="h-3 w-3" />{sub.contactPhone}</span>}
+          </div>
+          <div className="flex gap-2 mt-1 flex-wrap">
+            <span className="text-xs text-slate-400">{highlight}</span>
+            {sub.vendorPrice && (
+              <span className="text-xs font-semibold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded">
+                {fmtPrice(sub.vendorPrice, sub.currency)}
+              </span>
+            )}
+            {sub.eta && <span className="text-xs text-slate-500">ETA: {sub.eta}</span>}
+          </div>
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          <span className="text-xs text-slate-400 whitespace-nowrap">
+            {new Date(sub.submittedAt).toLocaleString("id-ID", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+          </span>
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onToggleDetail(sub.id)}>
+            <Eye className="h-3.5 w-3.5" />
+          </Button>
+          {!sub.selectedByAdmin && (
+            <Button
+              variant="ghost" size="icon" className="h-7 w-7 text-green-600 hover:text-green-700"
+              title="Pilih vendor ini"
+              onClick={() => { if (confirm("Pilih vendor ini sebagai vendor terpilih?")) onSelect(sub.id); }}
+            >
+              <CheckCircle className="h-3.5 w-3.5" />
+            </Button>
+          )}
+          <Button
+            variant="ghost" size="icon" className="h-7 w-7 text-red-400 hover:text-red-600"
+            onClick={() => { if (confirm("Hapus submission ini?")) onDelete(sub.id); }}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </div>
+      {showDetail && (
+        <div className="px-4 py-3 grid grid-cols-2 gap-x-6 gap-y-2 bg-white text-xs">
+          {fields.map(([k, v]) => (
+            <div key={k}>
+              <span className="text-slate-400 capitalize block">{k.replace(/_/g, " ")}</span>
+              <span className="font-medium text-slate-800 break-words">{String(v)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Compare Vendors Sheet ─────────────────────────────────────────────────────
+
+type RankedSub = Submission & { rank: number; priceNum: number | null; isLowest: boolean; isHighest: boolean };
+
+function rankSubmissions(subs: Submission[]): RankedSub[] {
+  const withPrice = subs.map(s => ({ ...s, priceNum: s.vendorPrice ? Number(s.vendorPrice) : null }));
+  const priced = withPrice.filter(s => s.priceNum !== null).sort((a, b) => (a.priceNum ?? 0) - (b.priceNum ?? 0));
+  const unpriced = withPrice.filter(s => s.priceNum === null);
+  const lowestPrice = priced[0]?.priceNum ?? null;
+  const highestPrice = priced[priced.length - 1]?.priceNum ?? null;
+
+  let rank = 1;
+  return [
+    ...priced.map(s => ({
+      ...s, rank: rank++,
+      isLowest: s.priceNum === lowestPrice && lowestPrice !== null,
+      isHighest: s.priceNum === highestPrice && highestPrice !== null && priced.length > 1,
+    })),
+    ...unpriced.map(s => ({ ...s, rank: 0, isLowest: false, isHighest: false })),
+  ];
+}
+
+function PriceTrendIcon({ isLowest, isHighest, hasPriced }: { isLowest: boolean; isHighest: boolean; hasPriced: boolean }) {
+  if (!hasPriced) return <Minus className="h-3.5 w-3.5 text-slate-300" />;
+  if (isLowest) return <TrendingDown className="h-3.5 w-3.5 text-green-500" />;
+  if (isHighest) return <TrendingUp className="h-3.5 w-3.5 text-red-400" />;
+  return <Minus className="h-3.5 w-3.5 text-yellow-400" />;
+}
+
+function CompareVendorsSheet({
+  link, submissions, open, onOpenChange, onSelect,
+}: {
+  link: FormLink; submissions: Submission[]; open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onSelect: (id: number) => void;
+}) {
+  const meta = SERVICE_META[link.serviceType];
+  const linkSubs = submissions.filter(s => s.linkId === link.id);
+  const ranked = rankSubmissions(linkSubs);
+  const allHavePrice = ranked.every(s => s.priceNum !== null);
+  const anySelected = ranked.some(s => s.selectedByAdmin);
+
+  const [selectingId, setSelectingId] = useState<number | null>(null);
+
+  const handleSelect = async (id: number) => {
+    setSelectingId(id);
+    try { await onSelect(id); }
+    finally { setSelectingId(null); }
+  };
+
+  const lowestPrice = ranked.find(s => s.isLowest)?.priceNum ?? null;
+
+  const priceSavings = (price: number | null): string | null => {
+    if (price === null || lowestPrice === null || price === lowestPrice) return null;
+    const diff = price - lowestPrice;
+    const pct = ((diff / lowestPrice) * 100).toFixed(1);
+    return `+${Number(pct).toLocaleString("id-ID")}%`;
+  };
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="w-full sm:max-w-3xl flex flex-col p-0" side="right">
+        {/* Header */}
+        <SheetHeader className="px-6 pt-6 pb-4 border-b bg-gradient-to-r from-indigo-50 to-blue-50 shrink-0">
+          <div className="flex items-center gap-2">
+            <BarChart2 className="h-5 w-5 text-indigo-500" />
+            <SheetTitle className="text-lg">Perbandingan Vendor</SheetTitle>
+          </div>
+          <p className="text-sm text-slate-600 mt-0.5">
+            {meta?.emoji} {link.title ?? `Form ${meta?.label ?? link.serviceType}`}
+            {link.orderNumber && <span className="ml-2 text-xs text-blue-600 font-medium">📦 {link.orderNumber}</span>}
+          </p>
+          <div className="flex items-center gap-2 mt-2 flex-wrap">
+            <span className="text-xs bg-indigo-100 text-indigo-700 border border-indigo-200 rounded px-2 py-0.5 font-medium">
+              {ranked.length} vendor
+            </span>
+            {allHavePrice && (
+              <span className="text-xs bg-green-100 text-green-700 border border-green-200 rounded px-2 py-0.5">
+                Semua ada harga ✓
+              </span>
+            )}
+            {anySelected && (
+              <span className="text-xs bg-amber-100 text-amber-700 border border-amber-200 rounded px-2 py-0.5">
+                <Star className="h-3 w-3 inline mr-0.5 fill-amber-500 text-amber-500" />Vendor dipilih
+              </span>
+            )}
+          </div>
+        </SheetHeader>
+
+        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          {ranked.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-slate-400">
+              <BarChart2 className="h-10 w-10 mb-3 opacity-30" />
+              <p className="text-sm">Belum ada submission untuk link ini</p>
+            </div>
+          ) : (
+            <>
+              {/* Summary bar */}
+              {ranked.filter(s => s.priceNum !== null).length >= 2 && (
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 grid grid-cols-3 gap-4 text-center">
+                  <div>
+                    <p className="text-xs text-slate-500 mb-0.5">Harga Terendah</p>
+                    <p className="font-bold text-green-600 text-sm">
+                      {fmtPrice(ranked.find(s => s.isLowest)?.vendorPrice ?? null, ranked.find(s => s.isLowest)?.currency ?? null)}
+                    </p>
+                    <p className="text-xs text-slate-400">{ranked.find(s => s.isLowest)?.vendorName ?? "—"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500 mb-0.5">Rata-rata</p>
+                    <p className="font-bold text-slate-700 text-sm">
+                      {(() => {
+                        const pricedRanked = ranked.filter(s => s.priceNum !== null);
+                        if (!pricedRanked.length) return "—";
+                        const avg = pricedRanked.reduce((a, s) => a + (s.priceNum ?? 0), 0) / pricedRanked.length;
+                        const cur = pricedRanked[0]?.currency ?? "IDR";
+                        return `${cur} ${Math.round(avg).toLocaleString("id-ID")}`;
+                      })()}
+                    </p>
+                    <p className="text-xs text-slate-400">{ranked.filter(s => s.priceNum !== null).length} vendor</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500 mb-0.5">Harga Tertinggi</p>
+                    <p className="font-bold text-red-500 text-sm">
+                      {fmtPrice(ranked.find(s => s.isHighest)?.vendorPrice ?? null, ranked.find(s => s.isHighest)?.currency ?? null)}
+                    </p>
+                    <p className="text-xs text-slate-400">{ranked.find(s => s.isHighest)?.vendorName ?? "—"}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Vendor cards */}
+              <div className="space-y-3">
+                {ranked.map((sub) => {
+                  const isSelected = sub.selectedByAdmin;
+                  const savings = priceSavings(sub.priceNum);
+                  const cardBg = isSelected
+                    ? "bg-green-50 border-green-300"
+                    : sub.isLowest
+                    ? "bg-emerald-50 border-emerald-200"
+                    : sub.isHighest
+                    ? "bg-red-50 border-red-200"
+                    : "bg-white border-slate-200";
+
+                  return (
+                    <div key={sub.id} className={`border rounded-xl p-4 transition-all ${cardBg}`}>
+                      <div className="flex items-start gap-3">
+                        {/* Rank badge */}
+                        <div className="shrink-0 mt-0.5">
+                          {isSelected ? (
+                            <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center">
+                              <Award className="h-4 w-4 text-white" />
+                            </div>
+                          ) : sub.rank > 0 ? (
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
+                              sub.rank === 1 ? "bg-green-100 text-green-700" :
+                              sub.rank === 2 ? "bg-blue-100 text-blue-700" :
+                              sub.rank === 3 ? "bg-orange-100 text-orange-700" :
+                              "bg-slate-100 text-slate-600"
+                            }`}>
+                              #{sub.rank}
+                            </div>
+                          ) : (
+                            <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 text-xs">
+                              —
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Main info */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-semibold text-slate-800 text-sm">{sub.vendorName ?? "—"}</span>
+                            {isSelected && (
+                              <span className="text-xs bg-green-600 text-white rounded px-1.5 py-0.5 font-medium flex items-center gap-0.5">
+                                <Star className="h-2.5 w-2.5 fill-white" /> Dipilih
+                              </span>
+                            )}
+                            {sub.isLowest && !isSelected && (
+                              <span className="text-xs bg-green-100 text-green-700 rounded px-1.5 py-0.5 font-medium">
+                                Termurah 🏆
+                              </span>
+                            )}
+                            {sub.isHighest && !isSelected && (
+                              <span className="text-xs bg-red-100 text-red-600 rounded px-1.5 py-0.5">
+                                Tertinggi
+                              </span>
+                            )}
+                          </div>
+                          {sub.contactPerson && (
+                            <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-1">
+                              <User className="h-3 w-3" />{sub.contactPerson}
+                              {sub.contactPhone && <span className="ml-1">· {sub.contactPhone}</span>}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Price + details grid */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
+                        <div className="col-span-2 sm:col-span-1">
+                          <p className="text-xs text-slate-400 mb-0.5 flex items-center gap-1">
+                            <PriceTrendIcon isLowest={sub.isLowest} isHighest={sub.isHighest} hasPriced={sub.priceNum !== null} />
+                            Harga Penawaran
+                          </p>
+                          {sub.vendorPrice ? (
+                            <div>
+                              <p className={`font-bold text-base ${sub.isLowest ? "text-green-700" : sub.isHighest ? "text-red-600" : "text-slate-800"}`}>
+                                {fmtPrice(sub.vendorPrice, sub.currency)}
+                              </p>
+                              {savings && (
+                                <p className="text-xs text-red-400 font-medium">{savings} dari termurah</p>
+                              )}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-slate-400 italic">Tidak diisi</p>
+                          )}
+                        </div>
+
+                        <div>
+                          <p className="text-xs text-slate-400 mb-0.5">⏱ ETA</p>
+                          <p className="text-sm text-slate-700 font-medium">{sub.eta ?? <span className="text-slate-400 italic text-xs">—</span>}</p>
+                        </div>
+
+                        <div>
+                          <p className="text-xs text-slate-400 mb-0.5">📅 Berlaku Sampai</p>
+                          <p className="text-sm text-slate-700">
+                            {sub.validUntil
+                              ? new Date(sub.validUntil).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })
+                              : <span className="text-slate-400 italic text-xs">—</span>}
+                          </p>
+                        </div>
+
+                        <div>
+                          <p className="text-xs text-slate-400 mb-0.5">📩 Dikirim</p>
+                          <p className="text-xs text-slate-600">
+                            {new Date(sub.submittedAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Form data snippet */}
+                      {Object.keys(sub.formData).length > 0 && (
+                        <div className="mt-3 pt-3 border-t border-dashed border-slate-200 grid grid-cols-2 sm:grid-cols-3 gap-2">
+                          {Object.entries(sub.formData).slice(0, 6).map(([k, v]) => (
+                            <div key={k}>
+                              <p className="text-xs text-slate-400 truncate">{k}</p>
+                              <p className="text-xs text-slate-700 font-medium truncate">{String(v)}</p>
+                            </div>
+                          ))}
+                          {Object.keys(sub.formData).length > 6 && (
+                            <p className="text-xs text-slate-400 col-span-full">+{Object.keys(sub.formData).length - 6} field lainnya…</p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Action buttons */}
+                      <div className="mt-3 flex items-center justify-between gap-2 flex-wrap">
+                        {/* Locked badge */}
+                        {(sub as Submission & { locked?: boolean | null }).locked && (
+                          <span className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-0.5 flex items-center gap-1">
+                            🔒 Dikunci (customer approved)
+                          </span>
+                        )}
+                        {/* Revision count badge */}
+                        {(sub as Submission & { revisionCount?: number | null }).revisionCount != null &&
+                          (sub as Submission & { revisionCount?: number | null }).revisionCount! > 0 && (
+                          <span className="text-xs text-purple-600 bg-purple-50 border border-purple-200 rounded px-2 py-0.5">
+                            🔄 Rev-{(sub as Submission & { revisionCount?: number | null }).revisionCount}
+                          </span>
+                        )}
+                        <div className="flex items-center gap-2 ml-auto">
+                          {/* Request revision */}
+                          {!(sub as Submission & { locked?: boolean | null }).locked && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs gap-1 border-orange-300 text-orange-700 hover:bg-orange-50"
+                              onClick={async () => {
+                                const reason = prompt("Alasan minta revisi harga (opsional):");
+                                if (reason === null) return;
+                                try {
+                                  await apiFetch(`/api/vendor-form/admin/submissions/${sub.id}/request-revision`, {
+                                    method: "POST", body: JSON.stringify({ reason: reason || undefined }),
+                                  });
+                                  onSelect(sub.id);
+                                } catch (e: unknown) {
+                                  alert((e as Error).message);
+                                }
+                              }}
+                            >
+                              ↩ Minta Revisi
+                            </Button>
+                          )}
+                          {/* Select button */}
+                          {!isSelected && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs gap-1 border-green-300 text-green-700 hover:bg-green-50"
+                              disabled={selectingId === sub.id}
+                              onClick={() => handleSelect(sub.id)}
+                            >
+                              {selectingId === sub.id
+                                ? <Loader2 className="h-3 w-3 animate-spin" />
+                                : <Star className="h-3 w-3" />}
+                              Pilih Vendor Ini
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                      {isSelected && (
+                        <div className="mt-1 flex justify-end">
+                          <span className="text-xs text-green-600 font-medium flex items-center gap-1">
+                            <CheckCircle className="h-3.5 w-3.5" />
+                            Vendor ini telah dipilih
+                            {sub.selectedAt && (
+                              <span className="text-slate-400 font-normal">
+                                · {new Date(sub.selectedAt).toLocaleDateString("id-ID")}
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Unpriced warning */}
+              {ranked.some(s => s.priceNum === null) && (
+                <p className="text-xs text-slate-400 text-center pt-2">
+                  * Vendor tanpa harga tidak diikutkan dalam ranking
+                </p>
+              )}
+            </>
+          )}
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+// ── Link Detail Sheet ─────────────────────────────────────────────────────────
 
 function LinkDetailSheet({
-  link,
-  submissions,
-  open,
-  onOpenChange,
-  onDeleteSubmission,
+  link, submissions, open, onOpenChange, onDeleteSubmission, onSelectSubmission,
 }: {
-  link: FormLink;
-  submissions: Submission[];
-  open: boolean;
+  link: FormLink; submissions: Submission[]; open: boolean;
   onOpenChange: (v: boolean) => void;
   onDeleteSubmission: (id: number) => void;
+  onSelectSubmission: (id: number) => void;
 }) {
   const meta = SERVICE_META[link.serviceType];
   const expired = link.expiresAt && new Date(link.expiresAt) < new Date();
   const linkSubs = submissions.filter(s => s.linkId === link.id);
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  const toggleDetail = useCallback((id: number) => {
+    setExpandedIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  }, []);
+
+  const formUrl = link.shortUrl ?? buildFormUrl(link.token);
+
+  const handleSendWa = async (phone: string, msg: string) => {
+    await apiFetch(`/api/vendor-form/admin/links/${link.id}/send-wa`, {
+      method: "POST",
+      body: JSON.stringify({ phone, customMessage: msg || undefined }),
+    });
+  };
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-2xl flex flex-col p-0">
-        {/* ── Header ── */}
         <SheetHeader className="px-6 pt-6 pb-4 border-b bg-slate-50 shrink-0">
           <SheetTitle className="text-lg leading-snug">
             {meta?.emoji} {link.title ?? `Form ${meta?.label ?? link.serviceType}`}
           </SheetTitle>
           <div className="flex items-center gap-2 flex-wrap mt-1">
-            <Badge variant="outline" className="text-xs">{meta?.emoji} {meta?.label ?? link.serviceType}</Badge>
+            <Badge variant="outline" className="text-xs">{link.mode === "order_based" ? "📦 Order-Based" : "📊 Rate Collection"}</Badge>
             <Badge variant={link.isActive && !expired ? "default" : "secondary"} className="text-xs">
               {link.isActive && !expired ? "Aktif" : "Nonaktif"}
             </Badge>
+            {link.mode === "order_based" && <ItemStatusBadge status={link.itemStatus} />}
             <Badge variant="secondary" className="text-xs">{linkSubs.length} submission</Badge>
           </div>
+
           <div className="grid grid-cols-2 gap-x-6 gap-y-2 mt-3 text-sm">
-            <div className="flex items-center gap-1.5 text-slate-600">
-              <User className="h-3.5 w-3.5 text-slate-400" />
-              <span>{link.vendorName ?? <span className="text-slate-400 italic">Umum / Semua Vendor</span>}</span>
-            </div>
+            {link.vendorName && (
+              <div className="flex items-center gap-1.5 text-slate-600">
+                <Building2 className="h-3.5 w-3.5 text-slate-400" />
+                <span>{link.vendorName}</span>
+              </div>
+            )}
+            {link.orderNumber && (
+              <div className="flex items-center gap-1.5 text-slate-600">
+                <Package className="h-3.5 w-3.5 text-slate-400" />
+                <span>Order: {link.orderNumber}</span>
+              </div>
+            )}
             <div className="flex items-center gap-1.5 text-slate-600">
               <CalendarDays className="h-3.5 w-3.5 text-slate-400" />
               <span>Dibuat {new Date(link.createdAt).toLocaleDateString("id-ID")}</span>
@@ -298,88 +1291,50 @@ function LinkDetailSheet({
                 <span>{expired ? "⚠️ Kadaluarsa " : "Berakhir "}{new Date(link.expiresAt).toLocaleDateString("id-ID")}</span>
               </div>
             )}
-            {link.shortUrl && (
-              <div className="flex items-center gap-1.5 col-span-2">
-                <Link2 className="h-3.5 w-3.5 text-slate-400" />
-                <span className="font-mono text-xs text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">{link.shortUrl}</span>
-              </div>
-            )}
           </div>
+
+          {/* URL + actions */}
+          <div className="mt-3 flex items-center gap-1">
+            <span className="font-mono text-xs text-indigo-600 bg-indigo-50 px-2 py-1 rounded flex-1 truncate">{formUrl}</span>
+            <CopyBtn text={formUrl} label="Salin URL form" />
+            <a href={formUrl} target="_blank" rel="noreferrer">
+              <Button variant="ghost" size="icon" className="h-7 w-7"><ExternalLink className="h-3.5 w-3.5" /></Button>
+            </a>
+            <SendWaDialog
+              title="Kirim Link Form ke Vendor via WA"
+              onSend={handleSendWa}
+              trigger={
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-green-600">
+                  <MessageCircle className="h-3.5 w-3.5" />
+                </Button>
+              }
+            />
+          </div>
+
           {link.notes && (
-            <div className="mt-3 bg-white border rounded-md px-3 py-2 text-sm text-slate-600">
+            <div className="mt-2 bg-white border rounded-md px-3 py-2 text-sm text-slate-600">
               <span className="text-xs text-slate-400 block mb-0.5 font-medium uppercase tracking-wide">Instruksi untuk vendor</span>
               {link.notes}
             </div>
           )}
         </SheetHeader>
 
-        {/* ── Submissions list ── */}
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
           {linkSubs.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-slate-400 gap-2">
               <Eye className="h-10 w-10 opacity-20" />
               <p className="text-sm">Belum ada submission untuk link ini.</p>
-              <p className="text-xs">Bagikan link ke vendor agar mereka bisa mengisi form.</p>
             </div>
           ) : (
-            linkSubs.map((sub, idx) => {
-              const fd = sub.formData ?? {};
-              const highlight = getHighlight(sub.serviceType, fd);
-              const fields = Object.entries(fd).filter(([, v]) => v !== "" && v !== null && v !== undefined);
-              return (
-                <div key={sub.id} className="border rounded-lg overflow-hidden shadow-sm">
-                  {/* card header */}
-                  <div className="flex items-start justify-between bg-slate-50 px-4 py-3 border-b gap-3">
-                    <div className="min-w-0">
-                      <div className="font-semibold text-slate-800 text-sm">
-                        #{idx + 1} · {sub.vendorName ?? "—"}
-                      </div>
-                      <div className="flex flex-wrap gap-x-3 mt-0.5">
-                        {sub.contactPerson && (
-                          <span className="text-xs text-slate-500 flex items-center gap-1">
-                            <User className="h-3 w-3" />{sub.contactPerson}
-                          </span>
-                        )}
-                        {sub.contactPhone && (
-                          <span className="text-xs text-slate-500 flex items-center gap-1">
-                            <Phone className="h-3 w-3" />{sub.contactPhone}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs text-slate-400 mt-1 truncate">{highlight}</p>
-                    </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <span className="text-xs text-slate-400 whitespace-nowrap">
-                        {new Date(sub.submittedAt).toLocaleString("id-ID", {
-                          day: "2-digit", month: "short", year: "numeric",
-                          hour: "2-digit", minute: "2-digit",
-                        })}
-                      </span>
-                      <Button
-                        variant="ghost" size="icon" className="h-7 w-7 text-red-400 hover:text-red-600"
-                        title="Hapus submission"
-                        onClick={() => { if (confirm("Hapus submission ini?")) onDeleteSubmission(sub.id); }}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-                  {/* form data grid */}
-                  {fields.length > 0 ? (
-                    <div className="px-4 py-3 grid grid-cols-2 gap-x-6 gap-y-3">
-                      {fields.map(([k, v]) => (
-                        <div key={k}>
-                          <span className="text-xs text-slate-400 capitalize block">{k.replace(/_/g, " ")}</span>
-                          <span className="text-sm font-medium text-slate-800 break-words">{String(v)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="px-4 py-3 text-xs text-slate-400 italic">Tidak ada data form.</div>
-                  )}
-                </div>
-              );
-            })
+            linkSubs.map((sub, idx) => (
+              <SubmissionCard
+                key={sub.id} sub={sub} idx={idx}
+                showDetail={expandedIds.has(sub.id)}
+                onDelete={onDeleteSubmission}
+                onSelect={onSelectSubmission}
+                onToggleDetail={toggleDetail}
+              />
+            ))
           )}
         </div>
       </SheetContent>
@@ -387,426 +1342,284 @@ function LinkDetailSheet({
   );
 }
 
-// ── Edit submission sheet ──────────────────────────────────────────────────────
-
-function EditSubmissionSheet({
-  submission,
-  open,
-  onOpenChange,
-  onSave,
-}: {
-  submission: Submission | null;
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  onSave: (id: number, formData: Record<string, unknown>, staffData: Record<string, unknown>) => Promise<void>;
-}) {
-  const [formData, setFormData] = useState<Record<string, string>>({});
-  const [reviewStatus, setReviewStatus] = useState("");
-  const [hargaFinal, setHargaFinal] = useState("");
-  const [catatanInternal, setCatatanInternal] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (!submission) return;
-    const fd: Record<string, string> = {};
-    for (const [k, v] of Object.entries(submission.formData ?? {}))
-      fd[k] = v != null ? String(v) : "";
-    setFormData(fd);
-    const sd = submission.staffData ?? {};
-    setReviewStatus((sd["reviewStatus"] as string) ?? "");
-    setHargaFinal(sd["hargaFinal"] != null ? String(sd["hargaFinal"]) : "");
-    setCatatanInternal((sd["catatanInternal"] as string) ?? "");
-  }, [submission]);
-
-  const handleSave = async () => {
-    if (!submission) return;
-    setSaving(true);
-    const newFormData: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(formData))
-      newFormData[k] = v === "" ? null : v;
-    const newStaffData: Record<string, unknown> = {
-      reviewStatus: reviewStatus || null,
-      hargaFinal: hargaFinal ? Number(hargaFinal) : null,
-      catatanInternal: catatanInternal || null,
-    };
-    try { await onSave(submission.id, newFormData, newStaffData); onOpenChange(false); }
-    finally { setSaving(false); }
-  };
-
-  if (!submission) return null;
-  const meta = SERVICE_META[submission.serviceType];
-
-  return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-xl flex flex-col p-0">
-        <SheetHeader className="px-6 pt-6 pb-4 border-b bg-slate-50 shrink-0">
-          <SheetTitle>Edit Submission — {submission.vendorName ?? "—"}</SheetTitle>
-          <p className="text-sm text-slate-500">{meta?.emoji} {meta?.label ?? submission.serviceType}</p>
-        </SheetHeader>
-        <div className="flex-1 overflow-y-auto">
-          <Tabs defaultValue="form-data">
-            <TabsList className="mx-6 mt-4 w-auto">
-              <TabsTrigger value="form-data">Data Vendor</TabsTrigger>
-              <TabsTrigger value="staff-data">Anotasi Internal</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="form-data" className="px-6 py-4 space-y-3">
-              <p className="text-xs text-slate-400 mb-1">Koreksi data yang diisi vendor. Perubahan disimpan di server.</p>
-              {Object.keys(formData).length === 0 && (
-                <p className="text-sm text-slate-400 italic">Tidak ada data form.</p>
-              )}
-              {Object.keys(formData).map((key) => (
-                <div key={key} className="space-y-1">
-                  <Label className="text-xs capitalize text-slate-600">{key.replace(/_/g, " ")}</Label>
-                  <Input
-                    value={formData[key] ?? ""}
-                    onChange={(e) => setFormData(p => ({ ...p, [key]: e.target.value }))}
-                  />
-                </div>
-              ))}
-            </TabsContent>
-
-            <TabsContent value="staff-data" className="px-6 py-4 space-y-4">
-              <p className="text-xs text-slate-400 mb-1">Kolom internal staf — tidak terlihat oleh vendor.</p>
-              <div className="space-y-1.5">
-                <Label>Status Review</Label>
-                <Select value={reviewStatus || "__none__"} onValueChange={v => setReviewStatus(v === "__none__" ? "" : v)}>
-                  <SelectTrigger><SelectValue placeholder="Pilih status" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">— Belum direview —</SelectItem>
-                    {REVIEW_STATUS_OPTS.map(o => (
-                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Harga Final (Rp)</Label>
-                <Input
-                  type="number"
-                  value={hargaFinal}
-                  onChange={(e) => setHargaFinal(e.target.value)}
-                  placeholder="Contoh: 1500000"
-                />
-                {hargaFinal && (
-                  <p className="text-xs text-slate-400">
-                    {Number(hargaFinal).toLocaleString("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 })}
-                  </p>
-                )}
-              </div>
-              <div className="space-y-1.5">
-                <Label>Catatan Internal Staf</Label>
-                <Textarea
-                  value={catatanInternal}
-                  onChange={(e) => setCatatanInternal(e.target.value)}
-                  rows={4}
-                  placeholder="Catatan khusus untuk tim internal, tidak terlihat vendor..."
-                />
-              </div>
-            </TabsContent>
-          </Tabs>
-        </div>
-        <div className="px-6 py-4 border-t flex justify-end gap-2 shrink-0 bg-white">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Batal</Button>
-          <Button onClick={handleSave} disabled={saving}>
-            {saving && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
-            Simpan
-          </Button>
-        </div>
-      </SheetContent>
-    </Sheet>
-  );
-}
-
-// ── Main page ──────────────────────────────────────────────────────────────────
+// ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function VendorFormsPage() {
+  const queryClient = useQueryClient();
   const { toast } = useToast();
-  const qc = useQueryClient();
+
+  const [tab, setTab] = useState("links");
   const [selectedLink, setSelectedLink] = useState<FormLink | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [compareLink, setCompareLink] = useState<FormLink | null>(null);
+  const [compareOpen, setCompareOpen] = useState(false);
+  const [searchLinks, setSearchLinks] = useState("");
+  const [filterMode, setFilterMode] = useState("all");
 
+  // ── Queries ──
   const { data: links = [], isLoading: linksLoading } = useQuery<FormLink[]>({
-    queryKey: ["vendor-form-links"],
-    queryFn: () => apiFetch("/api/vendor-form/admin/links"),
+    queryKey: ["vmf-links"],
+    queryFn: () => apiFetch<FormLink[]>("/api/vendor-form/admin/links"),
+    refetchInterval: 30_000,
   });
-
   const { data: submissions = [], isLoading: subsLoading } = useQuery<Submission[]>({
-    queryKey: ["vendor-form-submissions"],
-    queryFn: () => apiFetch("/api/vendor-form/admin/submissions"),
+    queryKey: ["vmf-submissions"],
+    queryFn: () => apiFetch<Submission[]>("/api/vendor-form/admin/submissions"),
+    refetchInterval: 30_000,
   });
-
+  const { data: approvals = [], isLoading: approvalsLoading } = useQuery<CustomerApproval[]>({
+    queryKey: ["vmf-approvals"],
+    queryFn: () => apiFetch<CustomerApproval[]>("/api/vendor-form/admin/customer-approvals"),
+    refetchInterval: 30_000,
+  });
+  const { data: opConfirms = [], isLoading: opLoading } = useQuery<OpConfirm[]>({
+    queryKey: ["vmf-op-confirms"],
+    queryFn: () => apiFetch<OpConfirm[]>("/api/vendor-form/admin/op-confirms"),
+    refetchInterval: 30_000,
+  });
+  const { data: activityLogs = [], isLoading: actLoading } = useQuery<ActivityLog[]>({
+    queryKey: ["vmf-activity-log"],
+    queryFn: () => apiFetch<ActivityLog[]>("/api/vendor-form/admin/activity-log"),
+    enabled: tab === "activity-log",
+    refetchInterval: tab === "activity-log" ? 20_000 : false,
+  });
   const { data: suppliers = [] } = useQuery<Supplier[]>({
-    queryKey: ["suppliers-list"],
-    queryFn: () => apiFetch("/api/trading/suppliers"),
+    queryKey: ["suppliers-simple"],
+    queryFn: () => apiFetch<Supplier[]>("/api/trading/suppliers"),
   });
 
-  const toggleLink = useMutation({
+  // ── Mutations ──
+  const toggleLinkMut = useMutation({
     mutationFn: ({ id, isActive }: { id: number; isActive: boolean }) =>
       apiFetch(`/api/vendor-form/admin/links/${id}`, { method: "PATCH", body: JSON.stringify({ isActive }) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["vendor-form-links"] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["vmf-links"] }),
     onError: (e: Error) => toast({ title: "Gagal", description: e.message, variant: "destructive" }),
   });
 
-  const deleteLink = useMutation({
-    mutationFn: (id: number) =>
-      apiFetch(`/api/vendor-form/admin/links/${id}`, { method: "DELETE" }),
+  const deleteLinkMut = useMutation({
+    mutationFn: (id: number) => apiFetch(`/api/vendor-form/admin/links/${id}`, { method: "DELETE" }),
     onSuccess: () => {
-      toast({ title: "Link dihapus" });
-      qc.invalidateQueries({ queryKey: ["vendor-form-links"] });
-      qc.invalidateQueries({ queryKey: ["vendor-form-submissions"] });
+      queryClient.invalidateQueries({ queryKey: ["vmf-links"] });
+      setSheetOpen(false);
+    },
+    onError: (e: Error) => toast({ title: "Gagal hapus", description: e.message, variant: "destructive" }),
+  });
+
+  const deleteSubMut = useMutation({
+    mutationFn: (id: number) => apiFetch(`/api/vendor-form/admin/submissions/${id}`, { method: "DELETE" }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["vmf-submissions"] }),
+    onError: (e: Error) => toast({ title: "Gagal hapus", description: e.message, variant: "destructive" }),
+  });
+
+  const selectSubMut = useMutation({
+    mutationFn: (id: number) => apiFetch(`/api/vendor-form/admin/submissions/${id}/select`, { method: "POST" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["vmf-submissions"] });
+      queryClient.invalidateQueries({ queryKey: ["vmf-links"] });
+      toast({ title: "Vendor berhasil dipilih!" });
     },
     onError: (e: Error) => toast({ title: "Gagal", description: e.message, variant: "destructive" }),
   });
 
-  const [editingSubmission, setEditingSubmission] = useState<Submission | null>(null);
-
-  const updateSubmission = useMutation({
-    mutationFn: ({ id, formData, staffData }: { id: number; formData: Record<string, unknown>; staffData: Record<string, unknown> }) =>
-      apiFetch(`/api/vendor-form/admin/submissions/${id}`, {
-        method: "PUT",
-        body: JSON.stringify({ formData, staffData }),
-      }),
-    onSuccess: () => {
-      toast({ title: "Submission diperbarui" });
-      qc.invalidateQueries({ queryKey: ["vendor-form-submissions"] });
-    },
-    onError: (e: Error) => toast({ title: "Gagal menyimpan", description: e.message, variant: "destructive" }),
-  });
-
-  const deleteSubmission = useMutation({
-    mutationFn: (id: number) =>
-      apiFetch(`/api/vendor-form/admin/submissions/${id}`, { method: "DELETE" }),
-    onSuccess: () => {
-      toast({ title: "Submission dihapus" });
-      qc.invalidateQueries({ queryKey: ["vendor-form-submissions"] });
-    },
+  const genShortLinkMut = useMutation({
+    mutationFn: (id: number) => apiFetch<{ shortUrl: string }>(`/api/vendor-form/admin/links/${id}/short-link`, { method: "POST" }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["vmf-links"] }),
     onError: (e: Error) => toast({ title: "Gagal", description: e.message, variant: "destructive" }),
   });
 
-  const [resendingWa, setResendingWa] = useState<number | null>(null);
-  const resendWa = async (id: number) => {
-    setResendingWa(id);
-    try {
-      await apiFetch(`/api/vendor-form/admin/submissions/${id}/resend-wa`, { method: "POST" });
-      toast({ title: "WA berhasil dikirim ulang" });
-      qc.invalidateQueries({ queryKey: ["vendor-form-submissions"] });
-    } catch (e: unknown) {
-      toast({ title: "Gagal kirim ulang WA", description: (e as Error).message, variant: "destructive" });
-    } finally {
-      setResendingWa(null);
-    }
-  };
-
-  const [generatingShortLink, setGeneratingShortLink] = useState<number | null>(null);
-  const [resettingShortLink, setResettingShortLink] = useState<number | null>(null);
-
-  const resetShortLink = async (link: FormLink) => {
-    if (!confirm(`Reset short link untuk "${link.title ?? link.serviceType}"?\nShort link lama akan tidak aktif.`)) return;
-    setResettingShortLink(link.id);
-    try {
-      const data = await apiFetch<{ shortUrl: string }>(`/api/vendor-form/admin/links/${link.id}/reset-short-link`, { method: "POST" });
-      await navigator.clipboard.writeText(data.shortUrl);
-      toast({ title: "Short link baru disalin!", description: data.shortUrl });
-      qc.setQueryData<FormLink[]>(["vendor-form-links"], (old) =>
-        old?.map((l) => l.id === link.id ? { ...l, shortUrl: data.shortUrl } : l) ?? old
+  // ── Filtered links ──
+  const filteredLinks = useMemo(() => {
+    let list = links;
+    if (filterMode !== "all") list = list.filter(l => l.mode === filterMode);
+    if (searchLinks.trim()) {
+      const q = searchLinks.toLowerCase();
+      list = list.filter(l =>
+        l.title?.toLowerCase().includes(q) ||
+        l.vendorName?.toLowerCase().includes(q) ||
+        l.serviceType.toLowerCase().includes(q) ||
+        l.orderNumber?.toLowerCase().includes(q) ||
+        l.token.includes(q)
       );
-    } catch (e: unknown) {
-      toast({ title: "Gagal reset short link", description: (e as Error).message, variant: "destructive" });
-    } finally {
-      setResettingShortLink(null);
     }
-  };
+    return list;
+  }, [links, filterMode, searchLinks]);
 
-  const copyShortLink = async (link: FormLink) => {
-    // If already cached, copy immediately without API call
-    if (link.shortUrl) {
-      await navigator.clipboard.writeText(link.shortUrl);
-      toast({ title: "Short link disalin!", description: link.shortUrl });
-      return;
-    }
-    setGeneratingShortLink(link.id);
-    try {
-      const data = await apiFetch<{ shortUrl: string }>(`/api/vendor-form/admin/links/${link.id}/short-link`, { method: "POST" });
-      await navigator.clipboard.writeText(data.shortUrl);
-      toast({ title: "Short link disalin!", description: data.shortUrl });
-      // Update local cache so subsequent clicks are instant
-      qc.setQueryData<FormLink[]>(["vendor-form-links"], (old) =>
-        old?.map((l) => l.id === link.id ? { ...l, shortUrl: data.shortUrl } : l) ?? old
-      );
-    } catch (e: unknown) {
-      toast({ title: "Gagal generate short link", description: (e as Error).message, variant: "destructive" });
-    } finally {
-      setGeneratingShortLink(null);
-    }
-  };
+  const rateCollectionLinks = links.filter(l => l.mode === "rate_collection");
+  const orderBasedLinks = links.filter(l => l.mode === "order_based");
+  const pendingVendorLinks = orderBasedLinks.filter(l => l.itemStatus === "waiting_vendor");
+  const submittedLinks = orderBasedLinks.filter(l => l.itemStatus === "vendor_submitted");
 
-  const submissionsByToken = useMemo(() => {
-    const map: Record<string, number> = {};
-    for (const s of submissions) map[s.token] = (map[s.token] ?? 0) + 1;
-    return map;
-  }, [submissions]);
+  const openLinkSheet = (link: FormLink) => { setSelectedLink(link); setSheetOpen(true); };
 
   return (
     <AppShell>
-      <div className="p-6 max-w-6xl mx-auto space-y-6">
-        <div className="flex items-center justify-between">
+      <div className="max-w-7xl mx-auto p-6 space-y-6">
+        {/* Header */}
+        <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-              <Link2 className="h-6 w-6 text-indigo-500" />
-              Vendor Mini Form
-            </h1>
+            <h1 className="text-2xl font-bold text-slate-800">Vendor Mini Forms</h1>
             <p className="text-sm text-slate-500 mt-0.5">
-              Buat link form dinamis untuk vendor mengisi data rate/layanan sesuai service type.
+              Kelola form penawaran vendor — Rate Collection & Order-Based
             </p>
           </div>
-          <CreateLinkDialog suppliers={suppliers} onCreated={() => qc.invalidateQueries({ queryKey: ["vendor-form-links"] })} />
         </div>
 
-        <Tabs defaultValue="links">
-          <TabsList>
-            <TabsTrigger value="links">
-              Link Form
-              <Badge variant="secondary" className="ml-2">{links.length}</Badge>
-            </TabsTrigger>
-            <TabsTrigger value="submissions">
-              Submission Masuk
-              <Badge variant="secondary" className="ml-2">{submissions.length}</Badge>
-            </TabsTrigger>
+        {/* Stats */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          {[
+            { label: "Total Link", value: links.length, icon: Link2, color: "text-blue-600" },
+            { label: "Menunggu Vendor", value: pendingVendorLinks.length, icon: Clock, color: "text-yellow-600" },
+            { label: "Total Submission", value: submissions.length, icon: FileText, color: "text-indigo-600" },
+            { label: "Customer Approval", value: approvals.length, icon: CheckCircle, color: "text-green-600" },
+          ].map(s => (
+            <Card key={s.label}>
+              <CardContent className="flex items-center gap-3 pt-4">
+                <s.icon className={`h-6 w-6 ${s.color}`} />
+                <div>
+                  <p className="text-xl font-bold text-slate-800">{s.value}</p>
+                  <p className="text-xs text-slate-500">{s.label}</p>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        <Tabs value={tab} onValueChange={setTab}>
+          <TabsList className="flex-wrap h-auto gap-1">
+            <TabsTrigger value="links">🔗 Links ({links.length})</TabsTrigger>
+            <TabsTrigger value="submissions">📝 Submissions ({submissions.length})</TabsTrigger>
+            <TabsTrigger value="approvals">✅ Customer Approval ({approvals.length})</TabsTrigger>
+            <TabsTrigger value="op-confirms">🚚 Konfirmasi Operasional ({opConfirms.length})</TabsTrigger>
+            <TabsTrigger value="activity-log">📋 Log Aktivitas</TabsTrigger>
           </TabsList>
 
-          {/* ── Links tab ── */}
-          <TabsContent value="links">
-            <Card>
-              <CardContent className="p-0">
-                {linksLoading ? (
-                  <div className="py-12 text-center text-slate-400 text-sm">Memuat...</div>
-                ) : links.length === 0 ? (
-                  <div className="py-12 text-center text-slate-400 text-sm">
-                    Belum ada link form. Klik <strong>Buat Link Form</strong> untuk memulai.
-                  </div>
-                ) : (
+          {/* ── LINKS TAB ── */}
+          <TabsContent value="links" className="space-y-4">
+            <div className="flex items-center gap-3 flex-wrap">
+              <Input
+                placeholder="Cari judul, vendor, order, token..."
+                className="max-w-xs h-9 text-sm"
+                value={searchLinks}
+                onChange={e => setSearchLinks(e.target.value)}
+              />
+              <Select value={filterMode} onValueChange={setFilterMode}>
+                <SelectTrigger className="w-44 h-9 text-sm"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Semua Mode</SelectItem>
+                  <SelectItem value="rate_collection">📊 Rate Collection</SelectItem>
+                  <SelectItem value="order_based">📦 Order-Based</SelectItem>
+                </SelectContent>
+              </Select>
+              <div className="ml-auto">
+                <CreateLinkDialog suppliers={suppliers} onCreated={() => queryClient.invalidateQueries({ queryKey: ["vmf-links"] })} />
+              </div>
+            </div>
+
+            {linksLoading ? (
+              <div className="flex items-center justify-center py-12 text-slate-400">
+                <Loader2 className="h-5 w-5 animate-spin mr-2" />Memuat...
+              </div>
+            ) : (
+              <Card>
+                <CardContent className="p-0">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Judul / Service Type</TableHead>
-                        <TableHead>Vendor</TableHead>
-                        <TableHead>Short Link</TableHead>
-                        <TableHead>Kadaluarsa</TableHead>
-                        <TableHead>Submission</TableHead>
+                        <TableHead>Form / Vendor</TableHead>
+                        <TableHead>Mode</TableHead>
+                        <TableHead>Service</TableHead>
                         <TableHead>Status</TableHead>
-                        <TableHead className="text-right">Aksi</TableHead>
+                        <TableHead>Submission</TableHead>
+                        <TableHead>Aksi</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {links.map(link => {
+                      {filteredLinks.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center py-10 text-slate-400 text-sm">
+                            Belum ada link. Klik "Buat Link Form" untuk mulai.
+                          </TableCell>
+                        </TableRow>
+                      ) : filteredLinks.map(link => {
                         const meta = SERVICE_META[link.serviceType];
                         const expired = link.expiresAt && new Date(link.expiresAt) < new Date();
-                        const subCount = submissionsByToken[link.token] ?? 0;
+                        const linkSubs = submissions.filter(s => s.linkId === link.id);
+                        const formUrl = link.shortUrl ?? buildFormUrl(link.token);
                         return (
-                          <TableRow key={link.id}>
+                          <TableRow key={link.id} className="hover:bg-slate-50">
                             <TableCell>
-                              <div className="font-medium text-slate-800">
-                                {meta?.emoji} {link.title ?? `Form ${meta?.label ?? link.serviceType}`}
-                              </div>
-                              <div className="text-xs text-slate-400 font-mono mt-0.5">{link.token.slice(0, 16)}...</div>
+                              <button className="text-left" onClick={() => openLinkSheet(link)}>
+                                <p className="font-medium text-slate-800 text-sm hover:text-indigo-600">
+                                  {link.title ?? `Form ${meta?.label ?? link.serviceType}`}
+                                </p>
+                                {link.vendorName && <p className="text-xs text-slate-500">{link.vendorName}</p>}
+                                {link.orderNumber && <p className="text-xs text-blue-600">📦 {link.orderNumber}</p>}
+                                <p className="text-xs font-mono text-slate-400">{link.token.slice(0, 12)}…</p>
+                              </button>
                             </TableCell>
                             <TableCell>
-                              <span className="text-sm">{link.vendorName ?? <span className="text-slate-400">Umum</span>}</span>
+                              <span className="text-xs text-slate-600">
+                                {link.mode === "order_based" ? "📦 Order" : "📊 Rate"}
+                              </span>
                             </TableCell>
                             <TableCell>
-                              {link.shortUrl ? (
-                                <div className="flex items-center gap-1">
-                                  <span className="font-mono text-xs text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">
-                                    {link.shortUrl.replace(/^https?:\/\/[^/]+/, "").slice(0, 14)}
-                                  </span>
-                                  <button
-                                    className="text-slate-400 hover:text-slate-600 transition-colors"
-                                    title="Salin short link"
-                                    onClick={() => copyShortLink(link)}
-                                  >
-                                    <Copy className="h-3 w-3" />
-                                  </button>
-                                  <button
-                                    className="text-slate-300 hover:text-orange-500 transition-colors"
-                                    title="Reset short link (generate baru)"
-                                    disabled={resettingShortLink === link.id}
-                                    onClick={() => resetShortLink(link)}
-                                  >
-                                    {resettingShortLink === link.id
-                                      ? <Loader2 className="h-3 w-3 animate-spin" />
-                                      : <RotateCcw className="h-3 w-3" />}
-                                  </button>
-                                </div>
-                              ) : (
-                                <button
-                                  className="text-xs text-slate-400 hover:text-indigo-600 transition-colors flex items-center gap-1"
-                                  title="Generate & salin short link"
-                                  disabled={generatingShortLink === link.id}
-                                  onClick={() => copyShortLink(link)}
-                                >
-                                  {generatingShortLink === link.id
-                                    ? <Loader2 className="h-3 w-3 animate-spin" />
-                                    : <Link2 className="h-3 w-3" />}
-                                  <span>{generatingShortLink === link.id ? "..." : "Generate"}</span>
+                              <span className="text-sm">{meta?.emoji} {meta?.label ?? link.serviceType}</span>
+                              {link.mode === "order_based" && (
+                                <div className="mt-0.5"><ItemStatusBadge status={link.itemStatus} /></div>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1.5">
+                                <button onClick={() => toggleLinkMut.mutate({ id: link.id, isActive: !link.isActive })}>
+                                  {link.isActive && !expired
+                                    ? <ToggleRight className="h-5 w-5 text-green-500" />
+                                    : <ToggleLeft className="h-5 w-5 text-slate-400" />}
                                 </button>
+                                <span className="text-xs text-slate-500">{link.isActive && !expired ? "Aktif" : "Nonaktif"}</span>
+                              </div>
+                              {link.expiresAt && (
+                                <p className={`text-xs mt-0.5 ${expired ? "text-red-500" : "text-slate-400"}`}>
+                                  {expired ? "⚠️ " : ""}{new Date(link.expiresAt).toLocaleDateString("id-ID")}
+                                </p>
                               )}
                             </TableCell>
                             <TableCell>
-                              {link.expiresAt ? (
-                                <span className={expired ? "text-red-500 text-xs" : "text-sm"}>
-                                  {expired ? "⚠️ Kadaluarsa" : new Date(link.expiresAt).toLocaleDateString("id-ID")}
-                                </span>
-                              ) : (
-                                <span className="text-slate-400 text-xs">Tidak ada batas</span>
-                              )}
+                              <span className="text-sm font-semibold text-slate-700">
+                                {linkSubs.length}
+                                {linkSubs.some(s => s.selectedByAdmin) && <Star className="h-3 w-3 text-green-500 fill-green-500 inline ml-1" />}
+                              </span>
                             </TableCell>
                             <TableCell>
-                              <Badge variant={subCount > 0 ? "default" : "secondary"}>
-                                {subCount} masuk
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant={link.isActive && !expired ? "default" : "secondary"}>
-                                {link.isActive && !expired ? "Aktif" : "Nonaktif"}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <div className="flex items-center justify-end gap-1">
-                                <Button
-                                  variant="ghost" size="icon" className="h-7 w-7"
-                                  title="Lihat detail submission"
-                                  onClick={() => setSelectedLink(link)}
-                                >
+                              <div className="flex items-center gap-0.5">
+                                <Button variant="ghost" size="icon" className="h-7 w-7" title="Lihat detail" onClick={() => openLinkSheet(link)}>
                                   <Eye className="h-3.5 w-3.5" />
                                 </Button>
-                                <Button
-                                  variant="ghost" size="icon" className="h-7 w-7"
-                                  title="Salin short link"
-                                  disabled={generatingShortLink === link.id}
-                                  onClick={() => copyShortLink(link)}
-                                >
-                                  {generatingShortLink === link.id
-                                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                    : <Copy className="h-3.5 w-3.5" />}
-                                </Button>
-                                <a href={buildFormUrl(link.token)} target="_blank" rel="noopener noreferrer">
-                                  <Button variant="ghost" size="icon" className="h-7 w-7" title="Buka form">
-                                    <ExternalLink className="h-3.5 w-3.5" />
+                                {linkSubs.length >= 1 && (
+                                  <Button
+                                    variant="ghost" size="icon"
+                                    className="h-7 w-7 text-indigo-500 hover:text-indigo-700 hover:bg-indigo-50"
+                                    title={`Bandingkan ${linkSubs.length} vendor`}
+                                    onClick={() => { setCompareLink(link); setCompareOpen(true); }}
+                                  >
+                                    <BarChart2 className="h-3.5 w-3.5" />
                                   </Button>
+                                )}
+                                <CopyBtn text={formUrl} />
+                                <a href={formUrl} target="_blank" rel="noreferrer">
+                                  <Button variant="ghost" size="icon" className="h-7 w-7"><ExternalLink className="h-3.5 w-3.5" /></Button>
                                 </a>
+                                {!link.shortUrl && (
+                                  <Button
+                                    variant="ghost" size="icon" className="h-7 w-7" title="Buat short link"
+                                    onClick={() => genShortLinkMut.mutate(link.id)}
+                                    disabled={genShortLinkMut.isPending}
+                                  >
+                                    <Link2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                )}
                                 <Button
-                                  variant="ghost" size="icon" className="h-7 w-7"
-                                  title={link.isActive ? "Nonaktifkan" : "Aktifkan"}
-                                  onClick={() => toggleLink.mutate({ id: link.id, isActive: !link.isActive })}
-                                >
-                                  {link.isActive
-                                    ? <ToggleRight className="h-4 w-4 text-green-500" />
-                                    : <ToggleLeft className="h-4 w-4 text-slate-400" />}
-                                </Button>
-                                <Button
-                                  variant="ghost" size="icon" className="h-7 w-7 text-red-400 hover:text-red-600"
-                                  title="Hapus link"
-                                  onClick={() => { if (confirm("Hapus link ini? Semua submission terkait tetap tersimpan.")) deleteLink.mutate(link.id); }}
+                                  variant="ghost" size="icon" className="h-7 w-7 text-red-400 hover:text-red-600" title="Hapus link"
+                                  onClick={() => { if (confirm("Hapus link ini? Semua submission akan dibebaskan dari link ini.")) deleteLinkMut.mutate(link.id); }}
                                 >
                                   <Trash2 className="h-3.5 w-3.5" />
                                 </Button>
@@ -817,109 +1630,73 @@ export default function VendorFormsPage() {
                       })}
                     </TableBody>
                   </Table>
-                )}
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
 
-          {/* ── Submissions tab ── */}
-          <TabsContent value="submissions">
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Semua Submission Vendor</CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                {subsLoading ? (
-                  <div className="py-12 text-center text-slate-400 text-sm">Memuat...</div>
-                ) : submissions.length === 0 ? (
-                  <div className="py-12 text-center text-slate-400 text-sm">
-                    Belum ada submission. Bagikan link form ke vendor untuk mulai menerima data.
-                  </div>
-                ) : (
+          {/* ── SUBMISSIONS TAB ── */}
+          <TabsContent value="submissions" className="space-y-4">
+            {subsLoading ? (
+              <div className="flex items-center justify-center py-12 text-slate-400"><Loader2 className="h-5 w-5 animate-spin mr-2" />Memuat...</div>
+            ) : (
+              <Card>
+                <CardContent className="p-0">
                   <Table>
                     <TableHeader>
                       <TableRow>
                         <TableHead>Vendor</TableHead>
-                        <TableHead>Service Type</TableHead>
-                        <TableHead>Contact</TableHead>
-                        <TableHead>Waktu</TableHead>
-                        <TableHead>WA Vendor</TableHead>
-                        <TableHead>Review</TableHead>
-                        <TableHead>Highlight</TableHead>
-                        <TableHead className="text-right">Aksi</TableHead>
+                        <TableHead>Service</TableHead>
+                        <TableHead>Penawaran</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Dikirim</TableHead>
+                        <TableHead>Aksi</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {submissions.map(sub => {
+                      {submissions.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center py-10 text-slate-400 text-sm">Belum ada submission.</TableCell>
+                        </TableRow>
+                      ) : submissions.map(sub => {
                         const meta = SERVICE_META[sub.serviceType];
-                        const fd = sub.formData ?? {};
-                        const highlight = getHighlight(sub.serviceType, fd);
                         return (
-                          <TableRow key={sub.id}>
+                          <TableRow key={sub.id} className={sub.selectedByAdmin ? "bg-green-50" : ""}>
                             <TableCell>
-                              <div className="font-medium text-slate-800">{sub.vendorName ?? "—"}</div>
+                              <p className="font-medium text-sm">{sub.vendorName ?? "—"}{sub.selectedByAdmin && <Star className="h-3.5 w-3.5 text-green-500 fill-green-500 inline ml-1" />}</p>
+                              {sub.contactPerson && <p className="text-xs text-slate-500">{sub.contactPerson}</p>}
+                              {sub.contactPhone && <p className="text-xs text-slate-400">{sub.contactPhone}</p>}
                             </TableCell>
+                            <TableCell><span className="text-sm">{meta?.emoji} {meta?.label ?? sub.serviceType}</span></TableCell>
                             <TableCell>
-                              <Badge variant="outline">{meta?.emoji} {meta?.label ?? sub.serviceType}</Badge>
-                            </TableCell>
-                            <TableCell>
-                              <div className="text-sm">{sub.contactPerson ?? "—"}</div>
-                              {sub.contactPhone && <div className="text-xs text-slate-400">{sub.contactPhone}</div>}
-                            </TableCell>
-                            <TableCell>
-                              <span className="text-sm">{new Date(sub.submittedAt).toLocaleDateString("id-ID")}</span>
-                              <div className="text-xs text-slate-400">{new Date(sub.submittedAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}</div>
-                            </TableCell>
-                            <TableCell>
-                              <WaBadge status={sub.waStatus} recipient={sub.waRecipient} waAt={sub.waAt} />
-                              {sub.waAt && (
-                                <div className="text-xs text-slate-400 mt-0.5">
-                                  {new Date(sub.waAt).toLocaleString("id-ID", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
-                                </div>
+                              {sub.vendorPrice ? (
+                                <p className="font-semibold text-sm text-indigo-700">{fmtPrice(sub.vendorPrice, sub.currency)}</p>
+                              ) : (
+                                <span className="text-xs text-slate-400">—</span>
                               )}
+                              {sub.eta && <p className="text-xs text-slate-500">ETA: {sub.eta}</p>}
                             </TableCell>
                             <TableCell>
-                              <ReviewStatusBadge status={sub.staffData?.["reviewStatus"] as string | undefined} />
-                              {sub.staffData?.["hargaFinal"] != null && (
-                                <div className="text-xs text-slate-500 mt-0.5">
-                                  {Number(sub.staffData["hargaFinal"]).toLocaleString("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 })}
-                                </div>
-                              )}
+                              <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${sub.responseStatus === "selected" ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-600"}`}>
+                                {sub.responseStatus ?? "submitted"}
+                              </span>
                             </TableCell>
                             <TableCell>
-                              <span className="text-sm text-slate-600">{highlight}</span>
-                              {sub.staffData?.["catatanInternal"] && (
-                                <div className="text-xs text-amber-600 mt-0.5 max-w-[180px] truncate" title={String(sub.staffData["catatanInternal"])}>
-                                  📝 {String(sub.staffData["catatanInternal"])}
-                                </div>
-                              )}
+                              <p className="text-xs text-slate-500">{new Date(sub.submittedAt).toLocaleString("id-ID", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</p>
                             </TableCell>
-                            <TableCell className="text-right">
-                              <div className="flex items-center justify-end gap-1">
-                                <SubmissionDetailDialog submission={sub} />
-                                <Button
-                                  variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-slate-700"
-                                  title="Edit data & anotasi"
-                                  onClick={() => setEditingSubmission(sub)}
-                                >
-                                  <Pencil className="h-3.5 w-3.5" />
-                                </Button>
-                                {sub.contactPhone && (sub.waStatus !== "sent") && (
+                            <TableCell>
+                              <div className="flex gap-0.5">
+                                {!sub.selectedByAdmin && (
                                   <Button
-                                    variant="ghost" size="icon" className="h-7 w-7 text-indigo-400 hover:text-indigo-600"
-                                    title="Kirim ulang WA konfirmasi ke vendor"
-                                    disabled={resendingWa === sub.id}
-                                    onClick={() => resendWa(sub.id)}
+                                    variant="ghost" size="icon" className="h-7 w-7 text-green-600" title="Pilih vendor ini"
+                                    onClick={() => { if (confirm("Pilih vendor ini?")) selectSubMut.mutate(sub.id); }}
                                   >
-                                    {resendingWa === sub.id
-                                      ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                      : <SendHorizonal className="h-3.5 w-3.5" />}
+                                    <CheckCircle className="h-3.5 w-3.5" />
                                   </Button>
                                 )}
                                 <Button
                                   variant="ghost" size="icon" className="h-7 w-7 text-red-400 hover:text-red-600"
-                                  title="Hapus submission"
-                                  onClick={() => { if (confirm("Hapus submission ini?")) deleteSubmission.mutate(sub.id); }}
+                                  onClick={() => { if (confirm("Hapus submission?")) deleteSubMut.mutate(sub.id); }}
                                 >
                                   <Trash2 className="h-3.5 w-3.5" />
                                 </Button>
@@ -930,77 +1707,257 @@ export default function VendorFormsPage() {
                       })}
                     </TableBody>
                   </Table>
-                )}
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
+
+          {/* ── CUSTOMER APPROVAL TAB ── */}
+          <TabsContent value="approvals" className="space-y-4">
+            <div className="flex justify-end">
+              <CreateApprovalDialog onCreated={() => queryClient.invalidateQueries({ queryKey: ["vmf-approvals"] })} />
+            </div>
+            {approvalsLoading ? (
+              <div className="flex items-center justify-center py-12 text-slate-400"><Loader2 className="h-5 w-5 animate-spin mr-2" />Memuat...</div>
+            ) : (
+              <Card>
+                <CardContent className="p-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Order / Customer</TableHead>
+                        <TableHead>Harga</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>SO Number</TableHead>
+                        <TableHead>Link</TableHead>
+                        <TableHead>Dibuat</TableHead>
+                        <TableHead>Aksi</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {approvals.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={7} className="text-center py-10 text-slate-400 text-sm">Belum ada link approval. Klik "Buat Link Approval Customer" untuk memulai.</TableCell>
+                        </TableRow>
+                      ) : approvals.map(a => (
+                        <TableRow key={a.id}>
+                          <TableCell>
+                            <p className="font-medium text-sm">{a.orderNumber ?? "—"}</p>
+                            <p className="text-xs text-slate-500">{a.customerName ?? "—"}</p>
+                            {a.customerPhone && <p className="text-xs text-slate-400">{a.customerPhone}</p>}
+                          </TableCell>
+                          <TableCell>
+                            <p className="font-semibold text-sm text-indigo-700">{fmtPrice(a.sellingPrice, a.currency)}</p>
+                          </TableCell>
+                          <TableCell><ApprovalStatusBadge status={a.status} /></TableCell>
+                          <TableCell>
+                            {a.soNumber ? (
+                              <span className="text-xs font-mono bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded">{a.soNumber}</span>
+                            ) : <span className="text-xs text-slate-400">—</span>}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-0.5">
+                              <CopyBtn text={buildApprovalUrl(a.token)} label="Salin link approval" />
+                              <a href={buildApprovalUrl(a.token)} target="_blank" rel="noreferrer">
+                                <Button variant="ghost" size="icon" className="h-7 w-7"><ExternalLink className="h-3.5 w-3.5" /></Button>
+                              </a>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <p className="text-xs text-slate-500">{new Date(a.createdAt).toLocaleDateString("id-ID")}</p>
+                          </TableCell>
+                          <TableCell>
+                            <SendWaDialog
+                              title="Kirim Link Approval ke Customer"
+                              defaultPhone={a.customerPhone}
+                              onSend={async (phone, msg) => {
+                                await apiFetch(`/api/vendor-form/admin/customer-approvals/${a.id}/send-wa`, {
+                                  method: "POST", body: JSON.stringify({ phone, customMessage: msg || undefined }),
+                                });
+                              }}
+                              trigger={
+                                <Button variant="ghost" size="icon" className="h-7 w-7 text-green-600" title="Kirim WA ke customer">
+                                  <MessageCircle className="h-3.5 w-3.5" />
+                                </Button>
+                              }
+                            />
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
+
+          {/* ── OP CONFIRM TAB ── */}
+          <TabsContent value="op-confirms" className="space-y-4">
+            <div className="flex justify-end">
+              <CreateOpConfirmDialog suppliers={suppliers} onCreated={() => queryClient.invalidateQueries({ queryKey: ["vmf-op-confirms"] })} />
+            </div>
+            {opLoading ? (
+              <div className="flex items-center justify-center py-12 text-slate-400"><Loader2 className="h-5 w-5 animate-spin mr-2" />Memuat...</div>
+            ) : (
+              <Card>
+                <CardContent className="p-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Order</TableHead>
+                        <TableHead>Vendor</TableHead>
+                        <TableHead>Service</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Link</TableHead>
+                        <TableHead>Dibuat</TableHead>
+                        <TableHead>Aksi</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {opConfirms.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={7} className="text-center py-10 text-slate-400 text-sm">Belum ada link konfirmasi operasional.</TableCell>
+                        </TableRow>
+                      ) : opConfirms.map(c => {
+                        const meta = SERVICE_META[c.serviceType];
+                        const statusMeta = OP_STATUS_META[c.status];
+                        return (
+                          <TableRow key={c.id}>
+                            <TableCell>
+                              <p className="font-medium text-sm">{c.orderNumber ?? "—"}</p>
+                            </TableCell>
+                            <TableCell>
+                              <p className="text-sm">{c.vendorName ?? "—"}</p>
+                            </TableCell>
+                            <TableCell>
+                              <span className="text-sm">{meta?.emoji} {meta?.label ?? c.serviceType}</span>
+                            </TableCell>
+                            <TableCell>
+                              <span className={`text-xs font-medium px-2 py-0.5 rounded ${statusMeta?.color ?? "bg-slate-100 text-slate-600"}`}>
+                                {statusMeta?.label ?? c.status}
+                              </span>
+                              {c.submittedAt && (
+                                <p className="text-xs text-slate-400 mt-0.5">{new Date(c.submittedAt).toLocaleDateString("id-ID")}</p>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-0.5">
+                                <CopyBtn text={buildOpConfirmUrl(c.token)} label="Salin link konfirmasi" />
+                                <a href={buildOpConfirmUrl(c.token)} target="_blank" rel="noreferrer">
+                                  <Button variant="ghost" size="icon" className="h-7 w-7"><ExternalLink className="h-3.5 w-3.5" /></Button>
+                                </a>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <p className="text-xs text-slate-500">{new Date(c.createdAt).toLocaleDateString("id-ID")}</p>
+                            </TableCell>
+                            <TableCell>
+                              <SendWaDialog
+                                title="Kirim Link Konfirmasi Operasional ke Vendor"
+                                onSend={async (phone, msg) => {
+                                  await apiFetch(`/api/vendor-form/admin/op-confirms/${c.id}/send-wa`, {
+                                    method: "POST", body: JSON.stringify({ phone, customMessage: msg || undefined }),
+                                  });
+                                }}
+                                trigger={
+                                  <Button variant="ghost" size="icon" className="h-7 w-7 text-green-600" title="Kirim WA ke vendor">
+                                    <MessageCircle className="h-3.5 w-3.5" />
+                                  </Button>
+                                }
+                              />
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
+
+          {/* ── ACTIVITY LOG TAB ── */}
+          <TabsContent value="activity-log" className="space-y-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-slate-500">200 aktivitas terakhir — update otomatis setiap 20 detik</p>
+              <Button size="sm" variant="outline" onClick={() => queryClient.invalidateQueries({ queryKey: ["vmf-activity-log"] })}>
+                ↻ Refresh
+              </Button>
+            </div>
+            {actLoading ? (
+              <div className="flex items-center justify-center py-12 text-slate-400">
+                <Loader2 className="h-5 w-5 animate-spin mr-2" />Memuat...
+              </div>
+            ) : activityLogs.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 text-slate-400">
+                <FileText className="h-10 w-10 mb-3 opacity-30" />
+                <p className="text-sm">Belum ada aktivitas tercatat</p>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {activityLogs.map(log => {
+                  const actionEmoji: Record<string, string> = {
+                    submitted: "📩", resubmitted: "🔄", selected: "⭐", revision_requested: "↩",
+                    sent_wa: "💬", approved: "✅", rejected: "❌", so_created: "🎉",
+                    locked: "🔒", unlocked: "🔓", created: "➕", op_submitted: "🚚",
+                    price_updated: "💱",
+                  };
+                  const entityLabel: Record<string, string> = {
+                    link: "Link", submission: "Submission", customer_approval: "Approval", op_confirm: "Op-Confirm",
+                  };
+                  return (
+                    <div key={log.id} className="flex items-start gap-3 px-4 py-3 border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                      <span className="text-lg shrink-0 mt-0.5">{actionEmoji[log.action] ?? "•"}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs bg-slate-100 text-slate-600 rounded px-1.5 py-0.5 font-mono">
+                            {entityLabel[log.entityType] ?? log.entityType} #{log.entityId}
+                          </span>
+                          <span className="text-xs font-semibold text-slate-700">{log.action.replace(/_/g, " ")}</span>
+                          {log.actor && log.actor !== "system" && (
+                            <span className="text-xs text-slate-400">oleh {log.actor}</span>
+                          )}
+                        </div>
+                        {log.note && <p className="text-xs text-slate-600 mt-0.5">{log.note}</p>}
+                      </div>
+                      <span className="text-xs text-slate-400 shrink-0 whitespace-nowrap">
+                        {new Date(log.createdAt).toLocaleString("id-ID", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </TabsContent>
         </Tabs>
       </div>
 
+      {/* Link Detail Sheet */}
       {selectedLink && (
         <LinkDetailSheet
           link={selectedLink}
           submissions={submissions}
-          open={!!selectedLink}
-          onOpenChange={(v) => { if (!v) setSelectedLink(null); }}
-          onDeleteSubmission={(id) => deleteSubmission.mutate(id)}
+          open={sheetOpen}
+          onOpenChange={setSheetOpen}
+          onDeleteSubmission={(id) => deleteSubMut.mutate(id)}
+          onSelectSubmission={(id) => selectSubMut.mutate(id)}
         />
       )}
 
-      <EditSubmissionSheet
-        submission={editingSubmission}
-        open={!!editingSubmission}
-        onOpenChange={(v) => { if (!v) setEditingSubmission(null); }}
-        onSave={async (id, formData, staffData) => { await updateSubmission.mutateAsync({ id, formData, staffData }); }}
-      />
+      {/* Compare Vendors Sheet */}
+      {compareLink && (
+        <CompareVendorsSheet
+          link={compareLink}
+          submissions={submissions}
+          open={compareOpen}
+          onOpenChange={setCompareOpen}
+          onSelect={async (id) => {
+            await new Promise<void>((resolve, reject) =>
+              selectSubMut.mutate(id, { onSuccess: () => resolve(), onError: (e) => reject(e) })
+            );
+          }}
+        />
+      )}
     </AppShell>
   );
-}
-
-function WaBadge({ status, recipient, waAt }: { status: string | null; recipient: string | null; waAt: string | null }) {
-  if (!status) {
-    return (
-      <span className="inline-flex items-center gap-1 text-xs text-slate-400">
-        <Clock className="h-3 w-3" />
-        Belum kirim
-      </span>
-    );
-  }
-  if (status === "sent") {
-    return (
-      <span
-        className="inline-flex items-center gap-1 text-xs text-green-600 font-medium"
-        title={`Ke: ${recipient ?? "-"}${waAt ? `\n${new Date(waAt).toLocaleString("id-ID")}` : ""}`}
-      >
-        <MessageCircle className="h-3 w-3" />
-        Terkirim
-      </span>
-    );
-  }
-  return (
-    <span
-      className="inline-flex items-center gap-1 text-xs text-red-500"
-      title={`Gagal kirim ke: ${recipient ?? "-"}`}
-    >
-      <XCircle className="h-3 w-3" />
-      Gagal
-    </span>
-  );
-}
-
-function getHighlight(serviceType: string, fd: Record<string, unknown>): string {
-  const fmt = (v: unknown) => v ? String(v) : "—";
-  const fmtRp = (v: unknown) => v ? `Rp ${Number(v).toLocaleString("id-ID")}` : "—";
-  switch (serviceType) {
-    case "trucking": return `${fmt(fd["truck_type"])} · ${fmtRp(fd["price"])}/trip · ${fmt(fd["eta"])}`;
-    case "air_freight": return `${fmt(fd["airline"])} · ${fmt(fd["origin"])}→${fmt(fd["destination"])} · ${fmtRp(fd["freight_charge"])}/kg`;
-    case "sea_freight": return `${fmt(fd["shipping_line"])} · ${fmt(fd["container_type"])} · $${fmt(fd["freight_rate"])}`;
-    case "ppjk": return `${fmt(fd["pib_type"])} · Jasa ${fmtRp(fd["customs_service"])}`;
-    case "customs_clearance": return `${fmt(fd["clearance_type"])} · ${fmtRp(fd["service_fee"])}`;
-    case "warehouse": return `${fmt(fd["location"])} · ${fmt(fd["area_sqm"])}m² · ${fmtRp(fd["storage_rate"])}/m²/bln`;
-    case "handling": return `${fmt(fd["handling_type"])} · ${fmtRp(fd["price_per_unit"])} ${fmt(fd["unit"])}`;
-    case "exim_service": return `${fmt(fd["service_type"])} · ${fmt(fd["origin_country"])}→${fmt(fd["dest_country"])}`;
-    case "product": return `${fmt(fd["product_name"])} · ${fmt(fd["qty"])} ${fmt(fd["unit"])} · ${fmtRp(fd["unit_price"])}`;
-    default: return Object.values(fd).filter(Boolean).slice(0, 2).map(String).join(" · ");
-  }
 }

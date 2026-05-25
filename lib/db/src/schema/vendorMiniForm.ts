@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, text, boolean, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, text, boolean, timestamp, jsonb, numeric } from "drizzle-orm/pg-core";
 import { suppliersTable } from "./suppliers";
 
 export const vendorMiniFormLinksTable = pgTable("vendor_mini_form_links", {
@@ -13,6 +13,19 @@ export const vendorMiniFormLinksTable = pgTable("vendor_mini_form_links", {
   shortUrl: text("short_url"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   createdBy: text("created_by"),
+  // Order-based mode columns
+  mode: text("mode").notNull().default("rate_collection"),
+  orderId: integer("order_id"),
+  orderNumber: text("order_number"),
+  orderItemId: integer("order_item_id"),
+  itemStatus: text("item_status").default("waiting_vendor"),
+  phase: text("phase").default("quotation"),
+  vendorName: text("vendor_name"),
+  // Security & limits
+  maxSubmissions: integer("max_submissions"),
+  resubmitAllowed: boolean("resubmit_allowed").default(false),
+  // Internal
+  adminNotes: text("admin_notes"),
 });
 
 export const vendorMiniFormSubmissionsTable = pgTable("vendor_mini_form_submissions", {
@@ -27,9 +40,108 @@ export const vendorMiniFormSubmissionsTable = pgTable("vendor_mini_form_submissi
   formData: jsonb("form_data").notNull().default({}),
   staffData: jsonb("staff_data").notNull().default({}),
   submittedAt: timestamp("submitted_at").defaultNow().notNull(),
+  // Order-based fields
+  responseStatus: text("response_status").default("submitted"),
+  vendorPrice: numeric("vendor_price", { precision: 14, scale: 2 }),
+  currency: text("currency").default("IDR"),
+  eta: text("eta"),
+  validUntil: text("valid_until"),
+  attachmentUrl: text("attachment_url"),
+  orderId: integer("order_id"),
+  orderItemId: integer("order_item_id"),
+  selectedByAdmin: boolean("selected_by_admin").default(false),
+  selectedAt: timestamp("selected_at"),
+  // Security tracking
+  submittedIp: text("submitted_ip"),
+  submittedUa: text("submitted_ua"),
+  // Revision tracking
+  revisionCount: integer("revision_count").default(0),
+  // Admin internal
+  adminNotes: text("admin_notes"),
+  // Lock after customer approve
+  locked: boolean("locked").default(false),
+  unlockReason: text("unlock_reason"),
+});
+
+export const customerApprovalsTable = pgTable("customer_approvals", {
+  id: serial("id").primaryKey(),
+  token: text("token").notNull().unique(),
+  orderId: integer("order_id"),
+  orderNumber: text("order_number"),
+  customerName: text("customer_name"),
+  customerPhone: text("customer_phone"),
+  customerEmail: text("customer_email"),
+  offerSummary: jsonb("offer_summary").default({}),
+  // Margin calculator fields
+  submissionId: integer("submission_id"),
+  vendorCost: numeric("vendor_cost", { precision: 14, scale: 2 }),
+  markupPct: numeric("markup_pct", { precision: 8, scale: 2 }),
+  markupNominal: numeric("markup_nominal", { precision: 14, scale: 2 }),
+  sellingPrice: numeric("selling_price", { precision: 14, scale: 2 }),
+  currency: text("currency").default("IDR"),
+  ppnPct: numeric("ppn_pct", { precision: 5, scale: 2 }).default("11"),
+  ppnNominal: numeric("ppn_nominal", { precision: 14, scale: 2 }),
+  profitMarginPct: numeric("profit_margin_pct", { precision: 8, scale: 2 }),
+  termsNotes: text("terms_notes"),
+  adminNotes: text("admin_notes"),
+  status: text("status").notNull().default("pending"),
+  approvedAt: timestamp("approved_at"),
+  rejectedAt: timestamp("rejected_at"),
+  notes: text("notes"),
+  soId: integer("so_id"),
+  soNumber: text("so_number"),
+  locked: boolean("locked").default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  createdBy: text("created_by"),
+  expiresAt: timestamp("expires_at"),
+});
+
+export const vendorOperationalConfirmationsTable = pgTable("vendor_operational_confirmations", {
+  id: serial("id").primaryKey(),
+  token: text("token").notNull().unique(),
+  orderId: integer("order_id"),
+  orderNumber: text("order_number"),
+  orderItemId: integer("order_item_id"),
+  supplierId: integer("supplier_id").references(() => suppliersTable.id, { onDelete: "set null" }),
+  vendorName: text("vendor_name"),
+  serviceType: text("service_type").notNull(),
+  payload: jsonb("payload").notNull().default({}),
+  status: text("status").notNull().default("pending"),
+  submittedAt: timestamp("submitted_at"),
+  instruction: text("instruction"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const vendorPriceHistoryTable = pgTable("vendor_price_history", {
+  id: serial("id").primaryKey(),
+  submissionId: integer("submission_id").references(() => vendorMiniFormSubmissionsTable.id, { onDelete: "cascade" }),
+  versionNumber: integer("version_number").notNull().default(1),
+  oldPrice: numeric("old_price", { precision: 14, scale: 2 }),
+  newPrice: numeric("new_price", { precision: 14, scale: 2 }),
+  currency: text("currency").default("IDR"),
+  reason: text("reason"),
+  changedBy: text("changed_by"),
+  changedAt: timestamp("changed_at").defaultNow().notNull(),
+});
+
+export const vmfActivityLogTable = pgTable("vmf_activity_log", {
+  id: serial("id").primaryKey(),
+  entityType: text("entity_type").notNull(), // link|submission|customer_approval|op_confirm
+  entityId: integer("entity_id").notNull(),
+  action: text("action").notNull(), // submitted|selected|revision_requested|sent_wa|approved|rejected|so_created|locked|unlocked|created
+  actor: text("actor"), // user id | "vendor" | "customer" | "system"
+  note: text("note"),
+  data: jsonb("data").default({}),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 export type VendorMiniFormLink = typeof vendorMiniFormLinksTable.$inferSelect;
 export type InsertVendorMiniFormLink = typeof vendorMiniFormLinksTable.$inferInsert;
 export type VendorMiniFormSubmission = typeof vendorMiniFormSubmissionsTable.$inferSelect;
 export type InsertVendorMiniFormSubmission = typeof vendorMiniFormSubmissionsTable.$inferInsert;
+export type CustomerApproval = typeof customerApprovalsTable.$inferSelect;
+export type InsertCustomerApproval = typeof customerApprovalsTable.$inferInsert;
+export type VendorOperationalConfirmation = typeof vendorOperationalConfirmationsTable.$inferSelect;
+export type InsertVendorOperationalConfirmation = typeof vendorOperationalConfirmationsTable.$inferInsert;
+export type VendorPriceHistory = typeof vendorPriceHistoryTable.$inferSelect;
+export type VmfActivityLog = typeof vmfActivityLogTable.$inferSelect;

@@ -1,0 +1,285 @@
+Tolong upgrade fitur Vendor Mini Form menjadi sistem mini form transaksional sesuai tipe layanan/item, bukan hanya form rate umum.
+
+ALUR UTAMA:
+Customer Request Order → Admin Review/Approve → Admin kirim link Mini Form ke vendor sesuai tipe layanan → Vendor isi approval/penawaran → Admin review → Admin kirim ke Customer → Customer setuju → sistem otomatis buat SO → Admin kirim instruksi final ke Vendor → Vendor isi data operasional sesuai tipe layanan.
+
+SERVICE TYPE MINI FORM:
+Buat template form berbeda untuk:
+1. Product
+2. Trucking
+3. Freight Sea
+4. Freight Air
+5. PPJK / Customs Clearance
+6. Handling / Warehouse
+7. Document / Additional Service
+
+KONSEP LINK:
+Setiap link Mini Form harus terhubung ke:
+- order_id
+- order_item_id
+- service_type
+- vendor_id atau vendor_name
+- status link
+- expired_at optional
+- unique_token
+
+Jangan hanya generate link umum. Link harus spesifik per item agar vendor hanya melihat kebutuhan yang relevan.
+
+CONTOH:
+Jika order customer berisi:
+- Produk
+- Trucking
+- PPJK
+
+Maka admin bisa generate 3 link berbeda:
+- Mini Form Produk untuk Vendor A
+- Mini Form Trucking untuk Vendor B
+- Mini Form PPJK untuk Vendor C
+
+FIELD UMUM UNTUK SEMUA VENDOR:
+- Nama vendor
+- Nama PIC
+- Nomor WhatsApp
+- Status respon: Accept / Reject / Revise Price
+- Harga vendor
+- Mata uang
+- Catatan vendor
+- Attachment optional
+- Valid until
+- Estimasi pengerjaan / ETA
+- Submit button
+
+FIELD KHUSUS PRODUCT:
+- Nama produk
+- Brand / spesifikasi
+- Qty available
+- Unit price
+- Minimum order
+- Lead time
+- Stock status
+- Foto produk optional
+
+FIELD KHUSUS TRUCKING:
+- Jenis armada
+- Kapasitas
+- Area pickup
+- Area delivery
+- Harga trucking
+- Harga tambahan jika ada
+- Estimasi pickup
+- Estimasi delivery
+- Setelah customer approve, vendor wajib isi:
+  - Nama driver
+  - No HP driver
+  - Plat nomor kendaraan
+  - Jenis kendaraan
+  - Foto kendaraan optional
+  - Catatan operasional
+
+FIELD KHUSUS FREIGHT SEA:
+- POL
+- POD
+- Shipping line
+- Container type
+- Freight rate
+- ETD
+- ETA
+- Transit time
+- Free time
+- Include / exclude charges
+- Catatan surcharge
+
+FIELD KHUSUS FREIGHT AIR:
+- Airport origin
+- Airport destination
+- Airline
+- Rate per kg
+- Min charge
+- FSC / SSC / MYC jika ada
+- ETD / flight schedule
+- Transit time
+- Chargeable weight rule
+- Include / exclude charges
+
+FIELD KHUSUS PPJK / CUSTOMS:
+- Jenis dokumen BC
+- HS Code jika ada
+- Estimasi biaya jasa
+- Estimasi duty/tax jika ada
+- Dokumen yang dibutuhkan
+- SLA proses
+- Catatan compliance
+
+FIELD KHUSUS HANDLING / WAREHOUSE:
+- Lokasi warehouse
+- Handling fee
+- Storage fee
+- Free storage jika ada
+- Loading/unloading fee
+- SLA proses
+- Equipment support
+
+STATUS FLOW:
+Vendor submission status:
+- pending
+- submitted
+- revised_price
+- rejected
+- selected
+- not_selected
+
+Admin order item status:
+- waiting_vendor
+- vendor_submitted
+- admin_review
+- sent_to_customer
+- customer_approved
+- customer_rejected
+- so_created
+- vendor_instruction_sent
+- operational_data_completed
+
+FITUR ADMIN:
+Di halaman Mini Form / Order Detail, admin harus bisa:
+1. Pilih order item
+2. Pilih vendor
+3. Generate link Mini Form sesuai service_type
+4. Kirim link ke WhatsApp vendor
+5. Lihat semua submission vendor per item
+6. Bandingkan harga vendor
+7. Pilih vendor terbaik
+8. Kirim penawaran final ke customer
+9. Jika customer approve, otomatis buat Sales Order
+10. Kirim link final confirmation ke vendor untuk isi data operasional
+
+FITUR CUSTOMER APPROVAL:
+Buat mini form customer approval publik:
+- Customer melihat ringkasan penawaran
+- Harga jual
+- Service detail
+- Terms & conditions
+- Button Setuju
+- Button Tolak
+Jika customer klik Setuju:
+- status menjadi customer_approved
+- sistem otomatis create SO
+- admin mendapat notifikasi
+- vendor terpilih bisa dikirim instruksi final
+
+DATABASE YANG PERLU DIBUAT / DIUPDATE:
+Buat atau sesuaikan table berikut:
+
+vendor_mini_form_links:
+- id
+- token
+- order_id
+- order_item_id
+- service_type
+- vendor_id
+- title
+- instruction
+- status
+- expired_at
+- created_by
+- created_at
+
+vendor_mini_form_submissions:
+- id
+- link_id
+- order_id
+- order_item_id
+- vendor_id
+- service_type
+- response_status
+- vendor_price
+- currency
+- eta
+- valid_until
+- notes
+- payload_json
+- attachment_url
+- submitted_at
+
+customer_approvals:
+- id
+- order_id
+- customer_name
+- approval_token
+- status
+- approved_at
+- rejected_at
+- notes
+
+sales_orders:
+- id
+- order_id
+- so_number
+- customer_id
+- total_amount
+- status
+- created_at
+
+vendor_operational_confirmations:
+- id
+- order_id
+- order_item_id
+- vendor_id
+- service_type
+- payload_json
+- submitted_at
+
+PENTING:
+Gunakan payload_json untuk menyimpan field dinamis sesuai service_type agar tidak perlu membuat banyak kolom berbeda.
+
+UI:
+1. Pada modal "Buat Link Form Baru", tambahkan pilihan:
+   - Pilih Order
+   - Pilih Order Item
+   - Pilih Vendor
+   - Service Type otomatis mengikuti item, tapi tetap bisa dipilih manual jika belum ada order.
+2. Saat vendor membuka link, form yang muncul harus otomatis berubah sesuai service_type.
+3. Jangan tampilkan semua field sekaligus.
+4. Buat tampilan professional, clean, mobile friendly, cocok dibuka dari WhatsApp.
+5. Link publik tidak boleh butuh login.
+6. Validasi token dan expired_at.
+7. Jika link expired, tampilkan halaman expired.
+8. Jika sudah submitted, tampilkan halaman success dan jangan duplicate kecuali admin mengizinkan resubmit.
+
+WHATSAPP TEMPLATE:
+Tambahkan tombol atau function generate pesan WhatsApp:
+
+Untuk Vendor:
+"Halo [Nama Vendor], kami mohon bantuannya untuk mengisi penawaran layanan [Service Type] untuk order [Order Number]. Silakan isi melalui link berikut: [Mini Form Link]"
+
+Untuk Customer:
+"Halo [Customer], berikut penawaran untuk request Anda. Silakan review dan konfirmasi melalui link berikut: [Customer Approval Link]"
+
+Untuk Vendor setelah Customer Approve:
+"Halo [Nama Vendor], customer sudah menyetujui penawaran. Mohon lengkapi data operasional untuk layanan [Service Type] melalui link berikut: [Operational Confirmation Link]"
+
+JANGAN MERUSAK FITUR EXISTING:
+- Jangan hapus fitur mini form lama.
+- Upgrade secara bertahap.
+- Jika ada conflict, buat migration aman.
+- Pastikan existing link lama tetap bisa dibuka.
+- Pisahkan mode "Rate Collection" dan "Order-Based Mini Form".
+
+MODE MINI FORM:
+1. Rate Collection Mode:
+Untuk kumpulkan rate vendor umum, tidak terhubung order.
+
+2. Order-Based Mode:
+Terhubung ke order_id dan order_item_id untuk transaksi real.
+
+Tambahkan tab/filter:
+- Semua
+- Rate Collection
+- Order Based
+- Waiting Vendor
+- Submitted
+- Customer Approved
+- SO Created
+
+HASIL AKHIR YANG SAYA MAU:
+Mini Form bisa digunakan dari WhatsApp untuk seluruh flow:
+Customer request → Admin → Vendor quotation → Admin → Customer approval → SO otomatis → Vendor operational confirmation.

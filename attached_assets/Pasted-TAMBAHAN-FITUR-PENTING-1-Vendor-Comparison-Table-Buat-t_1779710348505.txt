@@ -1,0 +1,125 @@
+TAMBAHAN FITUR PENTING:
+
+1. Vendor Comparison Table
+Buat tabel perbandingan vendor per order item:
+- Vendor name
+- Harga vendor
+- ETA
+- Valid until
+- Status
+- Notes
+- Attachment
+- Button pilih vendor
+- Button minta revisi harga
+- Button kirim ke customer
+
+2. Auto Notification Log
+Setiap aktivitas harus masuk ke notification log:
+- Link dikirim ke vendor
+- Vendor submit form
+- Vendor revisi harga
+- Admin pilih vendor
+- Penawaran dikirim ke customer
+- Customer approve/reject
+- SO dibuat
+- Vendor submit data operasional
+
+3. WhatsApp Notification Summary
+Jika ada vendor baru submit, admin menerima ringkasan:
+"Update Penawaran Vendor untuk Order #[ORDER_NO]
+1. Vendor A - Rp xxx - ETA xx
+2. Vendor B - Rp xxx - ETA xx
+3. Vendor C - Rp xxx - ETA xx
+Review: [Admin Link]"
+
+4. Versioning Harga Vendor
+Jika vendor ubah harga, jangan overwrite data lama.
+Simpan versi:
+- version_number
+- old_price
+- new_price
+- reason
+- submitted_at
+
+5. Admin Margin / Markup
+Admin harus bisa input:
+- Harga vendor
+- Markup %
+- Markup nominal
+- Harga jual customer
+- PPN
+- Total jual
+Sistem otomatis hitung profit margin.
+
+6. Lock Setelah Customer Approve
+Jika customer sudah approve:
+- harga tidak boleh berubah sembarangan
+- vendor tidak bisa revisi harga lagi
+- hanya admin yang bisa unlock dengan alasan
+
+7. Operational Checklist
+Setelah SO dibuat, buat checklist per service type.
+
+Trucking:
+- Driver name
+- Driver phone
+- Plate number
+- Vehicle type
+- Pickup time
+- Delivery time
+
+Freight:
+- Booking number
+- Vessel / flight
+- ETD
+- ETA
+- BL / AWB number
+
+PPJK:
+- Nomor aju
+- Jenis dokumen
+- Status customs
+- Billing / tax info
+- SPPB upload
+
+Product:
+- Stock confirmation
+- Packing confirmation
+- Delivery schedule
+- Invoice vendor
+
+8. Activity Timeline
+Di order detail, tampilkan timeline:
+Customer request → Admin approved → Sent to vendor → Vendor submitted → Admin selected vendor → Sent to customer → Customer approved → SO created → Vendor operational completed.
+
+9. Anti Duplicate Submission
+Vendor tidak boleh submit berkali-kali tanpa status "resubmit allowed" dari admin.
+
+10. Internal Notes
+Buat catatan internal admin yang tidak terlihat oleh vendor/customer.
+
+11. Public Form Security
+Tambahkan:
+- token unik
+- expired date
+- max submission
+- submitted IP optional
+- submitted user agent optional
+- rate limit basic
+- expired page
+- success page
+
+12. Admin Quick Action
+Tambahkan tombol:
+- Copy link
+- Open link
+- Send WA vendor
+- Send WA customer
+- Request price revision
+- Mark as selected
+- Create SO
+- Send operational form
+
+13. Jangan Semua Vendor Lihat Harga Vendor Lain
+Vendor hanya boleh lihat form miliknya sendiri.
+Customer hanya lihat harga jual final, bukan harga modal vendor.
