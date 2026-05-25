@@ -381,6 +381,7 @@ const DEFAULT_TPL = {
     order_new: ["🔔 *[ORDER MASUK] {{orderNumber}}*","━━━━━━━━━━━━━━━━━━","🏷️ No. Tracking  : `{{orderNumber}}`","📆 Tanggal       : {{tanggal}}","👤 Customer      : *{{customerDisplay}}*","📞 HP            : {{phone}}","📧 Email         : {{email}}","━━━━━━━━━━━━━━━━━━","🚢 Jenis         : {{shipmentType}}","📍 Rute          : {{route}}","📦 Komoditi      : {{commodity}}","📋 Deskripsi     : {{cargoDescription}}","⚖️ Berat         : {{grossWeightDisplay}}","📐 Volume        : {{volumeDisplay}}","📅 Tgl Kirim     : {{requiredDate}}","📝 Catatan       : {{notes}}","━━━━━━━━━━━━━━━━━━","💰 Total Est.    : *Rp {{totalEst}}*","🔵 Status        : Menunggu Konfirmasi","━━━━━━━━━━━━━━━━━━","⚡ *Aksi Cepat (tanpa login):*","🚀 Review & Blast Vendor → {{adminActionUrl}}","","_Harap segera diproses. Dikirim: {{timestamp}}_"].join("\n"),
     vendor_submission: ["📩 *VENDOR SUBMIT — {{orderNumber}}*","Vendor *{{vendorName}}* — Service: {{serviceType}}","💰 Harga: {{vendorPrice}}","","Segera review!","_{{timestamp}}_"].join("\n"),
     customer_approved: ["🎉 *CUSTOMER APPROVED — {{orderNumber}}*","Customer *{{customerName}}* menyetujui penawaran.","Proses operasional sekarang!","_{{timestamp}}_"].join("\n"),
+    op_request: ["⚙️ *[OP. REQUEST] {{orderNumber}}*","Form operasional dikirim ke vendor *{{vendorName}}*.","Customer: {{customerName}} | Layanan: {{serviceType}}","Rute: {{route}}","_{{timestamp}}_"].join("\n"),
   },
   customer: {
     order_new: ["✅ *PESANAN ANDA DITERIMA*","━━━━━━━━━━━━━━━━━━","Halo *{{customerName}}*,","","Terima kasih telah mempercayakan pengiriman Anda kepada CST Logistics.","","No. Order       : *{{orderNumber}}*","Tanggal         : {{tanggal}}","Jam             : {{jam}}","Status          : Menunggu Penawaran Harga","Rute            : {{route}}","Kategori Barang : {{commodity}}","Berat           : {{grossWeightDisplay}}","Volume          : {{volumeDisplay}}","Layanan         :","{{serviceList}}","Tgl Butuh       : {{requiredDate}}","━━━━━━━━━━━━━━━━━━","Tim kami sedang memproses permintaan Anda dan akan segera mengirimkan *penawaran harga terbaik* untuk Anda.","","📞 Jakarta: (021) 6241234 | Tangerang: (021) 5591234","","_Dikirim: {{timestamp}}_"].join("\n"),
@@ -808,10 +809,12 @@ export async function sendOpRequestNotification(
   vendorPhone: string,
   operationalFormLink: string,
 ): Promise<void> {
-  const [vendorTpl, adminTpl, adminWa] = await Promise.all([
+  const [vendorTpl, adminTpl, groupTpl, adminWa, adminGroupWa] = await Promise.all([
     getWaTemplateConfig("vendor", "op_request", DEFAULT_TPL.vendor.op_request),
     getWaTemplateConfig("admin_personal", "op_request", DEFAULT_TPL.admin_personal.op_request),
+    getWaTemplateConfig("admin_group", "op_request", DEFAULT_TPL.admin_group.op_request),
     getAdminWa(),
+    getAdminGroupWa(),
   ]);
   const extras = { vendorName, vendorPhone, operationalFormLink };
   sendWhatsApp(vendorPhone, renderWf(vendorTpl, order, extras)).catch((e: unknown) =>
@@ -820,6 +823,11 @@ export async function sendOpRequestNotification(
   if (adminWa) {
     sendWhatsApp(adminWa, renderWf(adminTpl, order, extras)).catch((e: unknown) =>
       logger.error({ e }, "WA op_request (admin) failed"),
+    );
+  }
+  if (adminGroupWa) {
+    sendWhatsApp(adminGroupWa, renderWf(groupTpl, order, extras)).catch((e: unknown) =>
+      logger.error({ e }, "WA op_request (group) failed"),
     );
   }
 }

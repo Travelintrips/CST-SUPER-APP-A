@@ -931,6 +931,7 @@ const DEFAULT_BODY: Partial<Record<RecipientKey, Partial<Record<WorkflowKey, str
     vendor_submission: ["📩 *VENDOR SUBMIT — {{orderNumber}}*","Vendor *{{vendorName}}* — Service: {{serviceType}}","💰 Harga: {{vendorPrice}}","","Segera review!","_{{timestamp}}_"].join("\n"),
     vendor_revision: ["↩️ *REVISI PENAWARAN — {{orderNumber}}*","Vendor *{{vendorName}}* diminta revisi harga.","Layanan: {{serviceType}} | Harga saat ini: {{vendorPrice}}","_{{timestamp}}_"].join("\n"),
     customer_approved: ["🎉 *CUSTOMER APPROVED — {{orderNumber}}*","Customer *{{customerName}}* menyetujui penawaran.","Proses operasional sekarang!","_{{timestamp}}_"].join("\n"),
+    op_request: ["⚙️ *[OP. REQUEST] {{orderNumber}}*","Form operasional dikirim ke vendor *{{vendorName}}*.","Customer: {{customerName}} | Layanan: {{serviceType}}","Rute: {{route}}","_{{timestamp}}_"].join("\n"),
     so_created: ["📑 *SO CREATED — {{orderNumber}}*","Customer: {{customerName}} | Total: {{currency}} {{sellingPrice}}","_{{timestamp}}_"].join("\n"),
     driver_assigned: [
       "🚚 *DRIVER DITUGASKAN — {{orderNumber}}*","Customer: {{customerName}}",
