@@ -18,8 +18,42 @@ import { getAdminGroupWa, getAdminWa } from "../lib/adminWa.js";
 import { getPreferredDomain } from "../lib/domain.js";
 import { logger } from "../lib/logger.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
+import {
+  sendVendorRequestNotification,
+  sendVendorSubmissionNotification,
+  sendCustomerApprovalNotification,
+  type LogisticOrderData,
+} from "../lib/orderNotification.js";
 
 export const logisticRfqV2Router = Router();
+
+function buildOrderData(order: typeof logisticOrdersTable.$inferSelect): LogisticOrderData {
+  return {
+    id: order.id,
+    orderNumber: order.orderNumber,
+    customerName: order.customerName,
+    companyName: order.companyName ?? "",
+    email: order.email,
+    phone: order.phone,
+    orderType: order.orderType ?? undefined,
+    shipmentType: order.shipmentType,
+    origin: order.origin,
+    destination: order.destination,
+    commodity: order.commodity ?? null,
+    cargoDescription: order.cargoDescription ?? null,
+    grossWeight: order.grossWeight ? Number(order.grossWeight) : null,
+    volumeCbm: order.volumeCbm ? Number(order.volumeCbm) : null,
+    jumlahKoli: order.jumlahKoli ?? null,
+    grandTotal: order.grandTotal ? Number(order.grandTotal) : 0,
+    serviceList: order.shipmentType,
+    requiredDate: order.requiredDate ?? null,
+    notes: order.notes ?? null,
+    jamOrder: order.jamOrder ?? null,
+    vehicleType: order.truckType ?? null,
+    createdAt: order.createdAt ?? null,
+    publicRfqToken: order.publicRfqToken ?? null,
+  };
+}
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 const objectStorage = new ObjectStorageService();
@@ -524,6 +558,20 @@ logisticRfqV2Router.post("/vendor-form/:token", async (req: Request, res: Respon
 
   await sendAdminRecapWa(link.rfqId, rfq);
 
+  // Notifikasi template ke admin saat vendor submit penawaran
+  db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, rfq.orderId)).limit(1)
+    .then(([orderRow]) => {
+      if (!orderRow) return;
+      const finalPrice = action === "accept"
+        ? (link.basicPrice ? Number(link.basicPrice) : 0)
+        : (offeredPrice ? Number(offeredPrice) : 0);
+      sendVendorSubmissionNotification(
+        buildOrderData(orderRow),
+        vendorName,
+        fmtRp(finalPrice),
+      ).catch((e: unknown) => logger.error({ e }, "sendVendorSubmissionNotification failed"));
+    }).catch(() => {});
+
   return res.json({ success: true, message: "Penawaran berhasil dikirim", isUpdate });
 });
 
@@ -600,24 +648,8 @@ logisticRfqV2Router.post("/orders/:orderId/rfq-blast", async (req: Request, res:
     const basicPriceNum = existingLinkRow?.basicPrice ?? null;
     const fmtBasic = basicPriceNum ? ` (Harga Dasar: ${fmtRp(basicPriceNum)})` : "";
 
-    const msg =
-      `📋 *REQUEST FOR QUOTATION — CST LOGISTICS*\n` +
-      `━━━━━━━━━━━━━━━━━━\n` +
-      `Kepada Yth. *${vendor.name}*,\n\n` +
-      `Mohon penawaran harga untuk:\n\n` +
-      `No. RFQ     : *${rfq.rfqNumber}*\n` +
-      `Layanan     : ${order.shipmentType ?? "—"}\n` +
-      `Rute        : ${order.origin} → ${order.destination}\n` +
-      (order.commodity ? `Komoditi    : ${order.commodity}\n` : "") +
-      (order.grossWeight ? `Berat       : ${parseFloat(order.grossWeight)} kg\n` : "") +
-      (order.requiredDate ? `Tgl Butuh   : ${order.requiredDate}\n` : "") +
-      fmtBasic + `\n` +
-      `━━━━━━━━━━━━━━━━━━\n` +
-      `📱 *Isi penawaran di sini:*\n${formUrl}\n\n` +
-      `⏰ Batas waktu: ${deadlineHours} jam\n\nTerima kasih 🙏`;
-
     try {
-      await sendWhatsApp(vendor.phone!, msg);
+      await sendVendorRequestNotification(buildOrderData(order), vendor.name, vendor.phone!, formUrl);
       results.push({ vendorId: vendor.id, vendorName: vendor.name, sent: true });
     } catch (e) {
       logger.error({ e, vendorId: vendor.id }, "rfq-blast WA failed");
@@ -709,24 +741,8 @@ logisticRfqV2Router.post("/rfq/:rfqId/blast", async (req: Request, res: Response
     const basicPriceNum = existingLink?.basicPrice ?? null;
     const fmtBasic = basicPriceNum ? ` (Harga Dasar: ${fmtRp(basicPriceNum)})` : "";
 
-    const msg =
-      `📋 *REQUEST FOR QUOTATION — CST LOGISTICS*\n` +
-      `━━━━━━━━━━━━━━━━━━\n` +
-      `Kepada Yth. *${vendor.name}*,\n\n` +
-      `Mohon penawaran harga untuk:\n\n` +
-      `No. RFQ     : *${rfq.rfqNumber}*\n` +
-      `Layanan     : ${order.shipmentType ?? "—"}\n` +
-      `Rute        : ${order.origin} → ${order.destination}\n` +
-      (order.commodity ? `Komoditi    : ${order.commodity}\n` : "") +
-      (order.grossWeight ? `Berat       : ${parseFloat(order.grossWeight)} kg\n` : "") +
-      (order.requiredDate ? `Tgl Butuh   : ${order.requiredDate}\n` : "") +
-      fmtBasic + `\n` +
-      `━━━━━━━━━━━━━━━━━━\n` +
-      `📱 *Isi penawaran di sini:*\n${formUrl}\n\n` +
-      `⏰ Batas waktu: ${deadlineHours} jam\n\nTerima kasih 🙏`;
-
     try {
-      await sendWhatsApp(vendor.phone!, msg);
+      await sendVendorRequestNotification(buildOrderData(order), vendor.name, vendor.phone!, formUrl);
       results.push({ vendorId: vendor.id, vendorName: vendor.name, token: linkToken, sent: true });
     } catch (e) {
       logger.error({ e, vendorId: vendor.id }, "blast WA vendor failed");
@@ -1128,21 +1144,18 @@ logisticRfqV2Router.post("/rfq/:rfqId/send-customer-quote", async (req: Request,
     .set({ finalSellingPrice: String(sellingPrice) })
     .where(eq(logisticOrdersTable.id, rfq.orderId));
 
-  // Kirim WA ke customer
+  // Kirim WA ke customer via template
   let waSent = false;
   if (doSendWa && order.phone) {
-    const eta = selectedLink?.eta ? `\n⏱ *Estimasi:* ${selectedLink.eta}` : "";
-    const notes = quoteNotes ? `\n\n📝 *Catatan:* ${quoteNotes}` : "";
-    const waMsg =
-      `✅ *Penawaran Freight Anda Telah Siap*\n\n` +
-      `Halo *${order.customerName}*,\n\n` +
-      `Kami telah mendapatkan penawaran terbaik untuk pengiriman Anda:\n\n` +
-      `📦 *Layanan:* ${order.shipmentType}\n` +
-      `🗺 *Rute:* ${order.origin} → ${order.destination}\n` +
-      `💰 *Harga Penawaran:* ${fmtRp(sellingPrice)}${eta}` +
-      notes +
-      `\n\nSilakan hubungi tim kami untuk konfirmasi.\nNo. Order: *${order.orderNumber}*`;
-    await sendWhatsApp(order.phone, waMsg).then(() => { waSent = true; }).catch(() => {});
+    const domain = getPreferredDomain();
+    const customerApprovalLink = domain
+      ? `https://${domain}/approve/${order.orderNumber}`
+      : `/approve/${order.orderNumber}`;
+    sendCustomerApprovalNotification(
+      buildOrderData(order),
+      fmtRp(sellingPrice),
+      customerApprovalLink,
+    ).then(() => { waSent = true; }).catch(() => {});
   }
 
   await logActivity(rfqId, "admin", "Admin", "admin_send_customer_quote",

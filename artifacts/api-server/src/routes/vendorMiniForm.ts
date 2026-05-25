@@ -20,6 +20,11 @@ import { requireClerkUser } from "../lib/requireAdmin";
 import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa } from "../lib/adminWa.js";
 import { createSalesOrderFromVmfApproval } from "../lib/vmfSoIntegration.js";
+import {
+  sendCustomerApprovedNotification,
+  sendSoCreatedNotification,
+  type LogisticOrderData,
+} from "../lib/orderNotification.js";
 
 const PUBLIC_CACHE = "public, max-age=300, stale-while-revalidate=600";
 
@@ -1003,17 +1008,55 @@ vendorMiniFormRouter.post("/customer-approval/:token", async (req: Request, res:
         `Customer ${customerName ?? "-"} menolak penawaran`, { orderId }).catch?.(() => {});
     }
 
-    // Notify admin via WA (fire-and-forget)
-    getAdminWa().then((adminWa) => {
-      if (!adminWa) return;
-      const emoji = action === "approve" ? "✅" : "❌";
-      const msg = `${emoji} *Customer ${action === "approve" ? "Setuju" : "Tolak"} Penawaran*\n` +
-        `Order: ${orderNumber ?? "-"}\n` +
-        `Customer: ${customerName ?? "-"}\n` +
-        (soNumber ? `SO: ${soNumber}\n` : "") +
-        (notes ? `Catatan: ${notes}` : "");
-      sendWhatsApp(adminWa, msg, { context: "customer-approval", refType: "customer_approval", refId: token }).catch(() => {});
-    }).catch(() => {});
+    // Notify via WA templates (fire-and-forget)
+    if (orderId) {
+      db.select().from(logisticOrdersTable)
+        .where(eq(logisticOrdersTable.id, orderId))
+        .limit(1)
+        .then(([orderRow]) => {
+          if (!orderRow) return;
+          const orderData: LogisticOrderData = {
+            id: orderRow.id,
+            orderNumber: orderRow.orderNumber,
+            customerName: orderRow.customerName,
+            companyName: orderRow.companyName ?? "",
+            email: orderRow.email,
+            phone: orderRow.phone,
+            orderType: orderRow.orderType ?? undefined,
+            shipmentType: orderRow.shipmentType,
+            origin: orderRow.origin,
+            destination: orderRow.destination,
+            commodity: orderRow.commodity ?? null,
+            cargoDescription: orderRow.cargoDescription ?? null,
+            grossWeight: orderRow.grossWeight ? Number(orderRow.grossWeight) : null,
+            volumeCbm: orderRow.volumeCbm ? Number(orderRow.volumeCbm) : null,
+            jumlahKoli: orderRow.jumlahKoli ?? null,
+            grandTotal: orderRow.grandTotal ? Number(orderRow.grandTotal) : 0,
+            serviceList: orderRow.shipmentType,
+            requiredDate: orderRow.requiredDate ?? null,
+            notes: orderRow.notes ?? null,
+            jamOrder: orderRow.jamOrder ?? null,
+            vehicleType: orderRow.truckType ?? null,
+            createdAt: orderRow.createdAt ?? null,
+            publicRfqToken: orderRow.publicRfqToken ?? null,
+          };
+          if (action === "approve") {
+            sendCustomerApprovedNotification(orderData).catch(() => {});
+            if (soNumber) {
+              const sellingPriceStr = orderRow.finalSellingPrice
+                ? `Rp ${Number(orderRow.finalSellingPrice).toLocaleString("id-ID")}`
+                : "-";
+              sendSoCreatedNotification(orderData, sellingPriceStr).catch(() => {});
+            }
+          } else {
+            getAdminWa().then((adminWa) => {
+              if (!adminWa) return;
+              const msg = `❌ *Customer Tolak Penawaran*\nOrder: ${orderNumber ?? "-"}\nCustomer: ${customerName ?? "-"}${notes ? `\nCatatan: ${notes}` : ""}`;
+              sendWhatsApp(adminWa, msg, { context: "customer-approval", refType: "customer_approval", refId: token }).catch(() => {});
+            }).catch(() => {});
+          }
+        }).catch(() => {});
+    }
 
     return res.json({
       success: true, action, soNumber, salesDocId,
