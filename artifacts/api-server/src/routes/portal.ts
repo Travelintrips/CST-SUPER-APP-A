@@ -638,7 +638,7 @@ router.post("/auth/signup", async (req, res) => {
 // POST /api/portal/auth/dev-login — hanya tersedia di non-production (dev & staging)
 // Membuat/menemukan dev user dan mengembalikan signed dev token untuk testing tanpa Supabase.
 router.post("/auth/dev-login", async (req, res) => {
-  if (process.env.NODE_ENV === "production") {
+  if (process.env.REPLIT_DEPLOYMENT === "1") {
     res.status(404).json({ message: "Not found" });
     return;
   }

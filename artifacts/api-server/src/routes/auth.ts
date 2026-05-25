@@ -412,7 +412,7 @@ router.get("/dev-users", async (req: Request, res: Response) => {
 });
 
 router.post("/dev-login", async (req: Request, res: Response) => {
-  if (process.env.NODE_ENV !== "development") {
+  if (process.env.REPLIT_DEPLOYMENT === "1") {
     res.status(404).json({ error: "Not found" });
     return;
   }
