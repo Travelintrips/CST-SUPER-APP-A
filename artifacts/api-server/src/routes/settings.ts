@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { getAdminWa, setAdminWa, getAdminGroupWa, setAdminGroupWa } from "../lib/adminWa.js";
 import { db, portalContentTable } from "@workspace/db";
-import { shortLinksTable, waTemplateConfigsTable } from "@workspace/db/schema";
+import { shortLinksTable, waTemplateConfigsTable, notificationLogsTable } from "@workspace/db/schema";
 import { eq, desc, ilike, or, sql, and } from "drizzle-orm";
 import { getAiIntakeSettings, saveAiIntakeSettings, type VendorFilterMode } from "../lib/aiOrderIntake.js";
 
@@ -399,6 +399,48 @@ router.put("/nav-company-config", async (req: Request, res: Response) => {
 });
 
 // ── Short Links Management (admin) ─────────────────────────────────────────
+
+// GET /api/settings/wa-logs?page=1&pageSize=30&status=&search=
+router.get("/wa-logs", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const page     = Math.max(1, Number(req.query.page) || 1);
+  const pageSize = Math.min(100, Math.max(1, Number(req.query.pageSize) || 30));
+  const status   = String(req.query.status ?? "").trim();
+  const search   = String(req.query.search  ?? "").trim();
+  const offset   = (page - 1) * pageSize;
+  try {
+    const conditions: ReturnType<typeof eq>[] = [eq(notificationLogsTable.channel, "wa")];
+    if (status === "sent" || status === "failed") conditions.push(eq(notificationLogsTable.status, status));
+    if (search) {
+      conditions.push(
+        or(
+          ilike(notificationLogsTable.recipient, `%${search}%`),
+          ilike(notificationLogsTable.refId,     `%${search}%`),
+          ilike(notificationLogsTable.context,   `%${search}%`),
+        ) as ReturnType<typeof eq>,
+      );
+    }
+    const where = conditions.length === 1 ? conditions[0] : and(...conditions);
+    const [rows, countResult] = await Promise.all([
+      db.select({
+        id: notificationLogsTable.id,
+        recipient: notificationLogsTable.recipient,
+        message: notificationLogsTable.message,
+        status: notificationLogsTable.status,
+        errorMsg: notificationLogsTable.errorMsg,
+        context: notificationLogsTable.context,
+        refType: notificationLogsTable.refType,
+        refId: notificationLogsTable.refId,
+        createdAt: notificationLogsTable.createdAt,
+      }).from(notificationLogsTable).where(where).orderBy(desc(notificationLogsTable.createdAt)).limit(pageSize).offset(offset),
+      db.select({ count: sql<number>`count(*)::int` }).from(notificationLogsTable).where(where),
+    ]);
+    return res.json({ data: rows, total: countResult[0]?.count ?? 0, page, pageSize });
+  } catch (err) {
+    req.log?.error({ err }, "wa-logs list error");
+    return res.status(500).json({ message: "Gagal memuat log WA" });
+  }
+});
 
 // GET /api/settings/short-links?page=1&pageSize=20&search=xxx
 router.get("/short-links", async (req: Request, res: Response) => {

@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { User, Mail, Briefcase, Shield, MessageCircle, Save, Loader2, CheckCircle, Calculator, ChevronDown, ChevronUp, Package, Plus, X, Bot, Link2, RotateCcw } from "lucide-react";
+import { User, Mail, Briefcase, Shield, MessageCircle, Save, Loader2, CheckCircle, Calculator, ChevronDown, ChevronUp, Package, Plus, X, Bot, Link2, RotateCcw, History, RefreshCw } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -1290,6 +1290,180 @@ function WaTemplatesCard() {
   );
 }
 
+interface WaLogEntry {
+  id: number;
+  recipient: string;
+  message: string;
+  status: string;
+  errorMsg?: string | null;
+  context?: string | null;
+  refType?: string | null;
+  refId?: string | null;
+  createdAt: string;
+}
+
+function WaLogsCard() {
+  const [logs, setLogs]               = useState<WaLogEntry[]>([]);
+  const [total, setTotal]             = useState(0);
+  const [page, setPage]               = useState(1);
+  const [statusFilter, setStatusFilter] = useState<"" | "sent" | "failed">("");
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch]           = useState("");
+  const [loading, setLoading]         = useState(false);
+  const [expanded, setExpanded]       = useState<number | null>(null);
+  const PAGE_SIZE = 25;
+
+  const load = async (p: number, s: string, st: string) => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ page: String(p), pageSize: String(PAGE_SIZE) });
+      if (st) params.set("status", st);
+      if (s)  params.set("search", s);
+      const res = await fetch(`/api/settings/wa-logs?${params}`, { credentials: "include" });
+      if (res.ok) {
+        const data = await res.json() as { data: WaLogEntry[]; total: number };
+        setLogs(data.data ?? []);
+        setTotal(data.total ?? 0);
+      }
+    } catch { /* ignore */ }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { void load(page, search, statusFilter); }, [page, search, statusFilter]);
+
+  const applySearch = () => { setSearch(searchInput); setPage(1); };
+  const totalPages  = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  return (
+    <Card className="col-span-1 md:col-span-3 bg-card border-border">
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="text-xl flex items-center gap-2">
+              <History className="h-5 w-5 text-primary" />
+              Log Pengiriman WhatsApp
+            </CardTitle>
+            <CardDescription className="mt-1">
+              Riwayat semua pesan WA yang dikirim sistem — per workflow, ke customer, vendor, maupun admin.
+            </CardDescription>
+          </div>
+          <Button size="sm" variant="outline" className="gap-1.5 text-xs" onClick={() => void load(page, search, statusFilter)}>
+            <RefreshCw className="h-3.5 w-3.5" /> Refresh
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {/* ── Filter Bar ── */}
+        <div className="flex flex-wrap gap-2 mb-4">
+          <div className="flex gap-1">
+            {(["", "sent", "failed"] as const).map(s => (
+              <button key={s} type="button"
+                onClick={() => { setStatusFilter(s); setPage(1); }}
+                className={`text-xs px-3 py-1.5 rounded-full border transition-all ${statusFilter === s
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-background text-muted-foreground border-border hover:border-primary hover:text-foreground"}`}>
+                {s === "" ? "Semua" : s === "sent" ? "✅ Terkirim" : "❌ Gagal"}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-2 flex-1 min-w-[180px]">
+            <Input
+              placeholder="Cari nomor / no. order / context…"
+              value={searchInput}
+              onChange={e => setSearchInput(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter") applySearch(); }}
+              className="h-8 text-xs"
+            />
+            <Button size="sm" variant="outline" className="h-8 text-xs shrink-0" onClick={applySearch}>Cari</Button>
+          </div>
+        </div>
+
+        {/* ── List ── */}
+        {loading ? (
+          <div className="space-y-2">{[1,2,3,4,5].map(i => <div key={i} className="h-14 bg-muted rounded-lg animate-pulse" />)}</div>
+        ) : logs.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-2">
+            <History className="h-8 w-8 opacity-30" />
+            <p className="text-sm">Belum ada log pengiriman WA.</p>
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            {logs.map(log => (
+              <div key={log.id}
+                className={`rounded-lg border text-xs transition-colors ${log.status === "sent"
+                  ? "border-green-200 bg-green-50/40 dark:bg-green-950/20 dark:border-green-900"
+                  : "border-red-200 bg-red-50/40 dark:bg-red-950/20 dark:border-red-900"}`}>
+                {/* Row header */}
+                <div className="flex items-center gap-2.5 px-3 py-2 cursor-pointer select-none"
+                  onClick={() => setExpanded(expanded === log.id ? null : log.id)}>
+                  {/* Status badge */}
+                  <span className={`shrink-0 text-xs font-bold px-2 py-0.5 rounded-full ${log.status === "sent"
+                    ? "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300"
+                    : "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300"}`}>
+                    {log.status === "sent" ? "✅ OK" : "❌ ERR"}
+                  </span>
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono font-semibold text-foreground">{log.recipient}</span>
+                      {log.refId && (
+                        <span className="text-muted-foreground">· <span className="font-medium">{log.refId}</span></span>
+                      )}
+                      {log.context && log.context !== "general" && (
+                        <span className="bg-muted text-muted-foreground px-1.5 py-0.5 rounded">{log.context}</span>
+                      )}
+                    </div>
+                    <div className="text-muted-foreground truncate mt-0.5">
+                      {log.status === "failed" && log.errorMsg
+                        ? <span className="text-red-600 dark:text-red-400">⚠ {log.errorMsg}</span>
+                        : log.message.slice(0, 100).replace(/\n/g, " ")}
+                    </div>
+                  </div>
+                  {/* Timestamp */}
+                  <span className="shrink-0 text-muted-foreground whitespace-nowrap">
+                    {new Date(log.createdAt).toLocaleString("id-ID", { day:"2-digit", month:"short", hour:"2-digit", minute:"2-digit" })}
+                  </span>
+                  <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${expanded === log.id ? "rotate-180" : ""}`} />
+                </div>
+                {/* Expanded detail */}
+                {expanded === log.id && (
+                  <div className="px-3 pb-3 border-t border-border/50 pt-2 space-y-2">
+                    {log.errorMsg && (
+                      <p className="text-xs text-red-600 dark:text-red-400 font-medium">Error: {log.errorMsg}</p>
+                    )}
+                    <pre className="text-xs whitespace-pre-wrap font-mono bg-muted/60 rounded-md p-3 max-h-72 overflow-y-auto text-foreground leading-relaxed">
+                      {log.message}
+                    </pre>
+                    <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+                      {log.refType && <span>refType: <span className="font-medium text-foreground">{log.refType}</span></span>}
+                      {log.refId   && <span>refId: <span className="font-medium text-foreground">{log.refId}</span></span>}
+                      {log.context && <span>context: <span className="font-medium text-foreground">{log.context}</span></span>}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ── Pagination ── */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between mt-4 text-xs">
+            <span className="text-muted-foreground">{total} entri ditemukan</span>
+            <div className="flex items-center gap-1">
+              <Button size="sm" variant="outline" className="h-7 text-xs" disabled={page <= 1}
+                onClick={() => setPage(p => p - 1)}>‹ Prev</Button>
+              <span className="px-2 py-1 text-muted-foreground">{page} / {totalPages}</span>
+              <Button size="sm" variant="outline" className="h-7 text-xs" disabled={page >= totalPages}
+                onClick={() => setPage(p => p + 1)}>Next ›</Button>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function SettingsPage() {
   const { isAuthenticated } = useSupabaseAuth();
   const { data: dbUser, isLoading } = useGetCurrentUser({
@@ -1405,6 +1579,7 @@ export default function SettingsPage() {
           {isAdmin && <CalculatorRatesCard />}
           {isAdmin && <VendorMiniFormCard />}
           {isAdmin && <WaTemplatesCard />}
+          {isAdmin && <WaLogsCard />}
 
           <Card className="col-span-1 md:col-span-3 bg-card border-border">
             <CardHeader>
