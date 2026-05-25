@@ -593,6 +593,53 @@ router.post("/admin/links/:id/reset-short-link", async (req: Request, res: Respo
   }
 });
 
+// ── ADMIN: PUT /api/vendor-form-admin/submissions/:id ────────────────────────
+// Update formData (koreksi data vendor) dan/atau staffData (anotasi internal staf)
+
+router.put("/admin/submissions/:id", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const id = Number(req.params["id"]);
+  if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+  try {
+    const { formData, staffData } = req.body as {
+      formData?: Record<string, unknown>;
+      staffData?: Record<string, unknown>;
+    };
+    if (formData === undefined && staffData === undefined) {
+      return res.status(400).json({ error: "formData atau staffData wajib diisi" });
+    }
+    const [existing] = await db
+      .select()
+      .from(vendorMiniFormSubmissionsTable)
+      .where(eq(vendorMiniFormSubmissionsTable.id, id));
+    if (!existing) return res.status(404).json({ error: "Submission tidak ditemukan" });
+
+    const patch: Record<string, unknown> = {};
+    if (formData !== undefined) {
+      if (typeof formData !== "object" || Array.isArray(formData))
+        return res.status(400).json({ error: "formData harus berupa object" });
+      patch["formData"] = formData;
+    }
+    if (staffData !== undefined) {
+      if (typeof staffData !== "object" || Array.isArray(staffData))
+        return res.status(400).json({ error: "staffData harus berupa object" });
+      // Merge dengan existing staffData agar field lain tidak hilang
+      patch["staffData"] = { ...(existing.staffData as Record<string, unknown> ?? {}), ...staffData };
+    }
+
+    const [updated] = await db
+      .update(vendorMiniFormSubmissionsTable)
+      .set(patch)
+      .where(eq(vendorMiniFormSubmissionsTable.id, id))
+      .returning();
+
+    return res.json({ ...updated, submittedAt: updated!.submittedAt.toISOString() });
+  } catch (err) {
+    req.log?.error({ err }, "vendor-mini-form admin PUT submissions error");
+    return res.status(500).json({ error: "Gagal mengupdate submission" });
+  }
+});
+
 // ── ADMIN: POST /api/vendor-form-admin/submissions/:id/resend-wa ──────────────
 
 router.post("/admin/submissions/:id/resend-wa", async (req: Request, res: Response) => {
