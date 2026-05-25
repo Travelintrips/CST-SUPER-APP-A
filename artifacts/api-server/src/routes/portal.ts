@@ -2527,13 +2527,20 @@ router.get("/admin/vendor-form/links", requirePortalAdmin, async (_req, res) => 
   }
 });
 
+router.get("/admin/vendor-form/schemas", requirePortalAdmin, async (_req, res) => {
+  return res.json(SERVICE_SCHEMAS);
+});
+
 router.post("/admin/vendor-form/links", requirePortalAdmin, async (req, res) => {
   try {
-    const { serviceType, title, notes, expiresInDays } = req.body as {
+    const { serviceType, title, notes, expiresInDays, mode, vendorName, maxSubmissions } = req.body as {
       serviceType: string;
       title?: string;
       notes?: string;
       expiresInDays?: number;
+      mode?: "rate_collection" | "operational_update";
+      vendorName?: string;
+      maxSubmissions?: number;
     };
     if (!serviceType || !SERVICE_SCHEMAS[serviceType]) {
       return res.status(400).json({ error: "serviceType tidak valid" });
@@ -2543,7 +2550,17 @@ router.post("/admin/vendor-form/links", requirePortalAdmin, async (req, res) => 
     const expiresAt = expiresInDays ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000) : null;
     const [link] = await db
       .insert(vendorMiniFormLinksTable)
-      .values({ token, supplierId: null, serviceType, title: title ?? null, notes: notes ?? null, expiresAt: expiresAt ?? undefined })
+      .values({
+        token,
+        supplierId: null,
+        serviceType,
+        title: title ?? null,
+        notes: notes ?? null,
+        expiresAt: expiresAt ?? undefined,
+        mode: mode ?? "rate_collection",
+        vendorName: vendorName ?? null,
+        maxSubmissions: maxSubmissions ?? null,
+      })
       .returning();
     return res.status(201).json({ ...link, expiresAt: link.expiresAt?.toISOString() ?? null, createdAt: link.createdAt.toISOString() });
   } catch (err) {

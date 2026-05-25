@@ -1856,14 +1856,20 @@ function ClaimAdminTab() {
 const MINI_FORM_SERVICE_META: Record<string, { label: string; emoji: string }> = {
   product: { label: "Produk", emoji: "📦" },
   trucking: { label: "Trucking", emoji: "🚛" },
-  air_freight: { label: "Air Freight", emoji: "✈️" },
   sea_freight: { label: "Sea Freight", emoji: "🚢" },
-  ppjk: { label: "PPJK", emoji: "📋" },
-  customs_clearance: { label: "Customs Clearance", emoji: "🛃" },
-  warehouse: { label: "Warehouse", emoji: "🏭" },
-  handling: { label: "Handling", emoji: "🔧" },
+  air_freight: { label: "Air Freight", emoji: "✈️" },
+  ppjk: { label: "PPJK / Customs Clearance", emoji: "📋" },
+  handling: { label: "Handling / Warehouse", emoji: "🏭" },
+  document: { label: "Document / Additional", emoji: "📄" },
   exim_service: { label: "Exim Service", emoji: "🌐" },
 };
+
+type SchemaField = {
+  key: string; label: string; type: string;
+  options?: string[]; required?: boolean; placeholder?: string;
+  section?: "quotation" | "operational" | "both";
+};
+type ServiceSchemas = Record<string, { label: string; emoji: string; fields: SchemaField[] }>;
 
 type MiniFormLink = {
   id: number;
@@ -1899,16 +1905,22 @@ function MiniFormTab() {
   const [newTitle, setNewTitle] = useState("");
   const [newNotes, setNewNotes] = useState("");
   const [newExpires, setNewExpires] = useState("");
+  const [newMode, setNewMode] = useState<"rate_collection" | "operational_update">("rate_collection");
+  const [newVendorName, setNewVendorName] = useState("");
+  const [newMaxSubs, setNewMaxSubs] = useState("");
   const [selectedLink, setSelectedLink] = useState<MiniFormLink | null>(null);
+  const [schemas, setSchemas] = useState<ServiceSchemas>({});
 
   const load = async () => {
     try {
-      const [l, s] = await Promise.all([
+      const [l, s, sc] = await Promise.all([
         apiGet<MiniFormLink[]>("/api/portal/admin/vendor-form/links"),
         apiGet<MiniFormSubmission[]>("/api/portal/admin/vendor-form/submissions"),
+        apiGet<ServiceSchemas>("/api/portal/admin/vendor-form/schemas").catch(() => ({} as ServiceSchemas)),
       ]);
       setLinks(l);
       setSubmissions(s);
+      setSchemas(sc);
     } catch {
       toast({ title: "Gagal memuat data mini form", variant: "destructive" });
     } finally {
@@ -1917,6 +1929,16 @@ function MiniFormTab() {
   };
 
   useEffect(() => { void load(); }, []);
+
+  const previewFields = (() => {
+    const sc = schemas[newServiceType];
+    if (!sc) return [] as SchemaField[];
+    return sc.fields.filter(f => {
+      const sec = f.section ?? "quotation";
+      if (newMode === "rate_collection") return sec === "quotation" || sec === "both";
+      return sec === "operational" || sec === "both";
+    });
+  })();
 
   const handleCreate = async () => {
     if (!newServiceType) { toast({ title: "Pilih service type dulu", variant: "destructive" }); return; }
@@ -1927,10 +1949,14 @@ function MiniFormTab() {
         title: newTitle.trim() || undefined,
         notes: newNotes.trim() || undefined,
         expiresInDays: newExpires ? Number(newExpires) : undefined,
+        mode: newMode,
+        vendorName: newVendorName.trim() || undefined,
+        maxSubmissions: newMaxSubs ? Number(newMaxSubs) : undefined,
       });
       toast({ title: "Link berhasil dibuat" });
       setShowCreate(false);
       setNewServiceType(""); setNewTitle(""); setNewNotes(""); setNewExpires("");
+      setNewMode("rate_collection"); setNewVendorName(""); setNewMaxSubs("");
       void load();
     } catch {
       toast({ title: "Gagal membuat link", variant: "destructive" });
@@ -2132,35 +2158,104 @@ function MiniFormTab() {
       )}
 
       <Dialog open={showCreate} onOpenChange={v => { setShowCreate(v); }}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Buat Link Form Baru</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label>Service Type <span className="text-red-500">*</span></Label>
-              <select
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                value={newServiceType}
-                onChange={e => setNewServiceType(e.target.value)}
-              >
-                <option value="">Pilih tipe layanan...</option>
-                {Object.entries(MINI_FORM_SERVICE_META).map(([k, v]) => (
-                  <option key={k} value={k}>{v.emoji} {v.label}</option>
-                ))}
-              </select>
+          <div className="grid md:grid-cols-2 gap-4 py-2">
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <Label>Service Type <span className="text-red-500">*</span></Label>
+                <select
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={newServiceType}
+                  onChange={e => setNewServiceType(e.target.value)}
+                >
+                  <option value="">Pilih tipe layanan...</option>
+                  {Object.entries(MINI_FORM_SERVICE_META).map(([k, v]) => (
+                    <option key={k} value={k}>{v.emoji} {v.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Mode Form <span className="text-red-500">*</span></Label>
+                <select
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={newMode}
+                  onChange={e => setNewMode(e.target.value as "rate_collection" | "operational_update")}
+                >
+                  <option value="rate_collection">Rate Collection (penawaran harga)</option>
+                  <option value="operational_update">Operational Update (update data lapangan)</option>
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  {newMode === "rate_collection"
+                    ? "Vendor mengisi data penawaran/quotation."
+                    : "Vendor mengisi data operasional setelah order jalan."}
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Judul Form (opsional)</Label>
+                <Input value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder="Contoh: Penawaran Rate Trucking Q3 2025" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Nama Vendor (opsional)</Label>
+                <Input value={newVendorName} onChange={e => setNewVendorName(e.target.value)} placeholder="Pre-fill nama vendor di form" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Instruksi untuk Vendor</Label>
+                <Textarea value={newNotes} onChange={e => setNewNotes(e.target.value)} rows={3} placeholder="Instruksi khusus untuk vendor..." />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Kadaluarsa (hari)</Label>
+                  <Input type="number" value={newExpires} onChange={e => setNewExpires(e.target.value)} placeholder="Kosong = no limit" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Max Submission</Label>
+                  <Input type="number" value={newMaxSubs} onChange={e => setNewMaxSubs(e.target.value)} placeholder="Kosong = unlimited" />
+                </div>
+              </div>
             </div>
-            <div className="space-y-1.5">
-              <Label>Judul Form (opsional)</Label>
-              <Input value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder="Contoh: Penawaran Rate Trucking Q3 2025" />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Instruksi untuk Vendor</Label>
-              <Textarea value={newNotes} onChange={e => setNewNotes(e.target.value)} rows={3} placeholder="Instruksi khusus untuk vendor..." />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Kadaluarsa (hari, opsional)</Label>
-              <Input type="number" value={newExpires} onChange={e => setNewExpires(e.target.value)} placeholder="Kosongkan = tidak ada batas" />
+            <div className="space-y-2 md:border-l md:pl-4">
+              <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+                Preview Field yang Akan Diisi Vendor
+              </Label>
+              {!newServiceType ? (
+                <div className="text-sm text-muted-foreground italic py-8 text-center">
+                  Pilih service type untuk lihat field
+                </div>
+              ) : previewFields.length === 0 ? (
+                <div className="text-sm text-muted-foreground italic py-8 text-center">
+                  Schema belum ter-load atau service type tidak punya field untuk mode ini
+                </div>
+              ) : (
+                <div className="space-y-1 max-h-[400px] overflow-y-auto pr-2">
+                  {previewFields.map(f => (
+                    <div key={f.key} className="flex items-start justify-between text-xs border-b border-border/40 py-1.5 gap-2">
+                      <div className="flex-1">
+                        <div className="font-medium">
+                          {f.label}
+                          {f.required && <span className="text-red-500 ml-1">*</span>}
+                        </div>
+                        {f.options && f.options.length > 0 && (
+                          <div className="text-muted-foreground text-[10px] mt-0.5">
+                            {f.options.slice(0, 4).join(" · ")}{f.options.length > 4 ? " · …" : ""}
+                          </div>
+                        )}
+                      </div>
+                      <span className="text-[10px] uppercase text-muted-foreground bg-muted px-1.5 py-0.5 rounded shrink-0">
+                        {f.type}
+                      </span>
+                    </div>
+                  ))}
+                  <div className="text-[11px] text-muted-foreground pt-2">
+                    Total: {previewFields.length} field
+                    {previewFields.filter(f => f.required).length > 0 && (
+                      <> · {previewFields.filter(f => f.required).length} wajib</>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
           <DialogFooter>
