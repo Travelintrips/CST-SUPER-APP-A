@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { User, Mail, Briefcase, Shield, MessageCircle, Save, Loader2, CheckCircle, Calculator, ChevronDown, ChevronUp, Package, Plus, X, Bot, Link2, RotateCcw, History, RefreshCw } from "lucide-react";
+import { User, Mail, Briefcase, Shield, MessageCircle, Save, Loader2, CheckCircle, Calculator, ChevronDown, ChevronUp, Package, Plus, X, Bot, Link2, RotateCcw, History, RefreshCw, Download } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -1357,9 +1357,16 @@ function WaLogsCard() {
               Riwayat semua pesan WA yang dikirim sistem — per workflow, ke customer, vendor, maupun admin.
             </CardDescription>
           </div>
-          <Button size="sm" variant="outline" className="gap-1.5 text-xs" onClick={() => void load(page, search, statusFilter)}>
-            <RefreshCw className="h-3.5 w-3.5" /> Refresh
-          </Button>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" className="gap-1.5 text-xs" onClick={() => void load(page, search, statusFilter)}>
+              <RefreshCw className="h-3.5 w-3.5" /> Refresh
+            </Button>
+            <Button size="sm" variant="outline" className="gap-1.5 text-xs" asChild>
+              <a href={`/api/settings/wa-logs/export${statusFilter || search ? `?${new URLSearchParams([...(statusFilter ? [["status", statusFilter]] : []), ...(search ? [["search", search]] : [])]).toString()}` : ""}`} download>
+                <Download className="h-3.5 w-3.5" /> Export CSV
+              </a>
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent>

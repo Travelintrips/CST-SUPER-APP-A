@@ -442,6 +442,68 @@ router.get("/wa-logs", async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/settings/wa-logs/export?status=&search= — download as CSV
+router.get("/wa-logs/export", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const status = String(req.query.status ?? "").trim();
+  const search = String(req.query.search  ?? "").trim();
+  try {
+    const conditions: ReturnType<typeof eq>[] = [eq(notificationLogsTable.channel, "wa")];
+    if (status === "sent" || status === "failed") conditions.push(eq(notificationLogsTable.status, status));
+    if (search) {
+      conditions.push(
+        or(
+          ilike(notificationLogsTable.recipient, `%${search}%`),
+          ilike(notificationLogsTable.refId,     `%${search}%`),
+          ilike(notificationLogsTable.context,   `%${search}%`),
+        ) as ReturnType<typeof eq>,
+      );
+    }
+    const where = conditions.length === 1 ? conditions[0] : and(...conditions);
+    const rows = await db.select({
+      id: notificationLogsTable.id,
+      recipient: notificationLogsTable.recipient,
+      status: notificationLogsTable.status,
+      errorMsg: notificationLogsTable.errorMsg,
+      context: notificationLogsTable.context,
+      refType: notificationLogsTable.refType,
+      refId: notificationLogsTable.refId,
+      message: notificationLogsTable.message,
+      createdAt: notificationLogsTable.createdAt,
+    }).from(notificationLogsTable).where(where).orderBy(desc(notificationLogsTable.createdAt)).limit(5000);
+
+    const escape = (v: unknown) => {
+      if (v == null) return "";
+      const s = String(v).replace(/"/g, '""');
+      return /[",\n\r]/.test(s) ? `"${s}"` : s;
+    };
+    const header = ["id", "tanggal", "penerima", "status", "error", "context", "refType", "refId", "pesan"];
+    const csvRows = [
+      header.join(","),
+      ...rows.map(r => [
+        r.id,
+        new Date(r.createdAt).toLocaleString("id-ID"),
+        escape(r.recipient),
+        escape(r.status),
+        escape(r.errorMsg),
+        escape(r.context),
+        escape(r.refType),
+        escape(r.refId),
+        escape(r.message),
+      ].join(",")),
+    ];
+    const csv = csvRows.join("\r\n");
+    const filename = `wa-log-${new Date().toISOString().slice(0,10)}.csv`;
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Cache-Control", "no-cache");
+    return res.send("\uFEFF" + csv); // BOM for Excel UTF-8
+  } catch (err) {
+    req.log?.error({ err }, "wa-logs export error");
+    return res.status(500).json({ message: "Gagal export log WA" });
+  }
+});
+
 // GET /api/settings/short-links?page=1&pageSize=20&search=xxx
 router.get("/short-links", async (req: Request, res: Response) => {
   if (!(await requireAdmin(req, res))) return;
