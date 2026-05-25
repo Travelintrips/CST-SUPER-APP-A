@@ -1745,7 +1745,8 @@ export default function VendorFormsPage() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Order / Customer</TableHead>
-                        <TableHead>Harga</TableHead>
+                        <TableHead>Harga Jual</TableHead>
+                        <TableHead>Profit Margin</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>SO Number</TableHead>
                         <TableHead>Link</TableHead>
@@ -1756,9 +1757,15 @@ export default function VendorFormsPage() {
                     <TableBody>
                       {approvals.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={7} className="text-center py-10 text-slate-400 text-sm">Belum ada link approval. Klik "Buat Link Approval Customer" untuk memulai.</TableCell>
+                          <TableCell colSpan={8} className="text-center py-10 text-slate-400 text-sm">Belum ada link approval. Klik "Buat Link Approval Customer" untuk memulai.</TableCell>
                         </TableRow>
-                      ) : approvals.map(a => (
+                      ) : approvals.map(a => {
+                        const sell = Number(a.sellingPrice ?? 0);
+                        const cost = Number(a.vendorCost ?? 0);
+                        const margin = sell - cost;
+                        const marginPct = sell > 0 ? (margin / sell) * 100 : null;
+                        const marginColor = margin > 0 ? "text-emerald-700" : margin < 0 ? "text-red-600" : "text-slate-500";
+                        return (
                         <TableRow key={a.id}>
                           <TableCell>
                             <p className="font-medium text-sm">{a.orderNumber ?? "—"}</p>
@@ -1767,6 +1774,18 @@ export default function VendorFormsPage() {
                           </TableCell>
                           <TableCell>
                             <p className="font-semibold text-sm text-indigo-700">{fmtPrice(a.sellingPrice, a.currency)}</p>
+                          </TableCell>
+                          <TableCell>
+                            {a.vendorCost ? (
+                              <div>
+                                <p className={`font-semibold text-sm ${marginColor}`}>{fmtPrice(String(margin), a.currency)}</p>
+                                {marginPct !== null && (
+                                  <p className={`text-xs ${marginColor}`}>{marginPct.toFixed(1)}%</p>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-xs text-slate-400">—</span>
+                            )}
                           </TableCell>
                           <TableCell><ApprovalStatusBadge status={a.status} /></TableCell>
                           <TableCell>
@@ -1811,7 +1830,8 @@ export default function VendorFormsPage() {
                             />
                           </TableCell>
                         </TableRow>
-                      ))}
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </CardContent>
