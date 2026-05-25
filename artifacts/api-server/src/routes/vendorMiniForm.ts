@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from "express";
+import { rateLimit } from "express-rate-limit";
 import { eq, desc, inArray, and, count, isNull, ne } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import { db } from "@workspace/db";
@@ -68,6 +69,32 @@ export function invalidateTokenCache(token: string) {
 }
 
 export const vendorMiniFormRouter = Router();
+
+// ── Rate limiter untuk public endpoints ───────────────────────────────────────
+
+const vmfGetLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Terlalu banyak permintaan, coba lagi dalam 15 menit" },
+  skip: (req) => req.path.startsWith("/admin"),
+});
+
+const vmfPostLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Terlalu banyak pengiriman form, coba lagi dalam 15 menit" },
+  skip: (req) => req.path.startsWith("/admin"),
+});
+
+vendorMiniFormRouter.use((req, res, next) => {
+  if (req.method === "GET") return vmfGetLimiter(req, res, next);
+  if (req.method === "POST") return vmfPostLimiter(req, res, next);
+  next();
+});
 
 // ── Service schemas ────────────────────────────────────────────────────────────
 
@@ -549,17 +576,6 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
       if (!link.resubmitAllowed) return res.status(409).json({ error: "Penawaran sudah pernah dikirim. Hubungi admin untuk izin revisi." });
     }
 
-    // Max submissions check
-    if (link.maxSubmissions !== null) {
-      const [cntRow] = await db
-        .select({ cnt: count() })
-        .from(vendorMiniFormSubmissionsTable)
-        .where(eq(vendorMiniFormSubmissionsTable.token, token));
-      if (Number(cntRow?.cnt ?? 0) >= link.maxSubmissions) {
-        return res.status(410).json({ error: "Kuota submission sudah penuh" });
-      }
-    }
-
     const { vendorName, contactPerson, contactPhone, formData, responseStatus, vendorPrice, currency, eta, validUntil } = req.body as {
       vendorName?: string; contactPerson?: string; contactPhone?: string;
       formData?: Record<string, unknown>;
@@ -568,6 +584,25 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
     };
 
     if (!formData || typeof formData !== "object") return res.status(400).json({ error: "formData diperlukan" });
+
+    // Validasi server-side untuk field required berdasarkan SERVICE_SCHEMAS
+    const schema = SERVICE_SCHEMAS[link.serviceType];
+    if (schema) {
+      const activePhase = link.phase ?? "quotation";
+      const requiredKeys = schema.fields
+        .filter(f => f.required && (!f.section || f.section === activePhase || f.section === "both"))
+        .map(f => f.key);
+      const missingFields = requiredKeys.filter(k => {
+        const val = (formData as Record<string, unknown>)[k];
+        return val === undefined || val === null || String(val).trim() === "";
+      });
+      if (missingFields.length > 0) {
+        return res.status(400).json({
+          error: `Field wajib belum diisi: ${missingFields.join(", ")}`,
+          missingFields,
+        });
+      }
+    }
 
     // Capture IP and UA
     const submittedIp = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()
@@ -627,21 +662,34 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
         `Revisi penawaran oleh ${vendorName ?? link.vendorName ?? "vendor"}`,
         { vendorPrice, currency, eta });
     } else {
-      const [inserted] = await db.insert(vendorMiniFormSubmissionsTable).values({
-        linkId: link.id, token,
-        supplierId: link.supplierId,
-        serviceType: link.serviceType,
-        vendorName: vendorName ?? link.vendorName ?? null,
-        contactPerson: contactPerson ?? null, contactPhone: contactPhone ?? null,
-        formData,
-        responseStatus: responseStatus ?? "submitted",
-        vendorPrice: vendorPrice ? String(vendorPrice) : null,
-        currency: currency ?? "IDR",
-        eta: eta ?? null, validUntil: validUntil ?? null,
-        orderId: link.orderId ?? null,
-        orderItemId: link.orderItemId ?? null,
-        submittedIp, submittedUa,
-      }).returning();
+      // Wrap count-check + insert dalam transaksi agar maxSubmissions tidak bisa di-race
+      const inserted = await db.transaction(async (tx) => {
+        if (link.maxSubmissions !== null) {
+          const [cntRow] = await tx
+            .select({ cnt: count() })
+            .from(vendorMiniFormSubmissionsTable)
+            .where(eq(vendorMiniFormSubmissionsTable.linkId, link.id));
+          if (Number(cntRow?.cnt ?? 0) >= link.maxSubmissions) {
+            throw Object.assign(new Error("QUOTA_EXCEEDED"), {});
+          }
+        }
+        const [row] = await tx.insert(vendorMiniFormSubmissionsTable).values({
+          linkId: link.id, token,
+          supplierId: link.supplierId,
+          serviceType: link.serviceType,
+          vendorName: vendorName ?? link.vendorName ?? null,
+          contactPerson: contactPerson ?? null, contactPhone: contactPhone ?? null,
+          formData,
+          responseStatus: responseStatus ?? "submitted",
+          vendorPrice: vendorPrice ? String(vendorPrice) : null,
+          currency: currency ?? "IDR",
+          eta: eta ?? null, validUntil: validUntil ?? null,
+          orderId: link.orderId ?? null,
+          orderItemId: link.orderItemId ?? null,
+          submittedIp, submittedUa,
+        }).returning();
+        return row;
+      });
 
       submission = inserted;
       await logActivity("submission", inserted.id, "submitted", "vendor",
@@ -770,11 +818,29 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
     }).catch(() => {});
 
     return res.json({ success: true, submissionId: submission.id, message: "Penawaran berhasil dikirim, terima kasih!" });
-  } catch (err) {
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message === "QUOTA_EXCEEDED") {
+      return res.status(410).json({ error: "Kuota submission sudah penuh" });
+    }
     req.log?.error({ err }, "vendor-mini-form POST error");
     return res.status(500).json({ error: "Gagal menyimpan data" });
   }
 });
+
+// Kolom yang aman dikirim ke customer — vendor cost tidak boleh bocor
+const SAFE_OFFER_SUMMARY_KEYS = [
+  "serviceType", "origin", "destination", "weight", "volume", "commodity",
+  "incoterms", "eta", "notes", "items", "services",
+];
+
+function sanitizeOfferSummary(raw: unknown): Record<string, unknown> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  return Object.fromEntries(
+    Object.entries(raw as Record<string, unknown>).filter(([k]) =>
+      SAFE_OFFER_SUMMARY_KEYS.includes(k),
+    ),
+  );
+}
 
 // ── PUBLIC: GET /api/vendor-form/customer-approval/:token ─────────────────────
 
@@ -786,7 +852,8 @@ vendorMiniFormRouter.get("/customer-approval/:token", async (req: Request, res: 
     if (approval.expiresAt && approval.expiresAt < new Date()) return res.status(410).json({ error: "Link penawaran sudah kadaluarsa" });
     return res.json({
       token: approval.token, orderNumber: approval.orderNumber,
-      customerName: approval.customerName, offerSummary: approval.offerSummary,
+      customerName: approval.customerName,
+      offerSummary: sanitizeOfferSummary(approval.offerSummary),
       sellingPrice: approval.sellingPrice, currency: approval.currency,
       termsNotes: approval.termsNotes, status: approval.status, soNumber: approval.soNumber,
     });
@@ -801,72 +868,116 @@ vendorMiniFormRouter.get("/customer-approval/:token", async (req: Request, res: 
 vendorMiniFormRouter.post("/customer-approval/:token", async (req: Request, res: Response) => {
   const { token } = req.params as { token: string };
   try {
-    const [approval] = await db.select().from(customerApprovalsTable).where(eq(customerApprovalsTable.token, token));
-    if (!approval) return res.status(404).json({ error: "Link tidak ditemukan" });
-    if (approval.status !== "pending") return res.status(409).json({ error: "Penawaran ini sudah direspons sebelumnya", status: approval.status });
-    if (approval.expiresAt && approval.expiresAt < new Date()) return res.status(410).json({ error: "Link penawaran sudah kadaluarsa" });
+    // Cek awal sebelum masuk transaksi (fast-fail untuk expired/not found)
+    const [preCheck] = await db.select({ expiresAt: customerApprovalsTable.expiresAt, status: customerApprovalsTable.status })
+      .from(customerApprovalsTable).where(eq(customerApprovalsTable.token, token));
+    if (!preCheck) return res.status(404).json({ error: "Link tidak ditemukan" });
+    if (preCheck.expiresAt && preCheck.expiresAt < new Date()) return res.status(410).json({ error: "Link penawaran sudah kadaluarsa" });
+    if (preCheck.status !== "pending") return res.status(409).json({ error: "Penawaran ini sudah direspons sebelumnya", status: preCheck.status });
 
     const { action, notes } = req.body as { action: "approve" | "reject"; notes?: string };
     if (!["approve", "reject"].includes(action)) return res.status(400).json({ error: "action harus approve atau reject" });
 
     const now = new Date();
     let soNumber: string | null = null;
+    let orderId: number | null = null;
+    let orderNumber: string | null = null;
+    let customerName: string | null = null;
 
+    // Semua operasi dalam satu transaksi atomik
+    await db.transaction(async (tx) => {
+      // Atomic lock: UPDATE hanya jika status masih 'pending' — mencegah double-approve
+      let locked: typeof customerApprovalsTable.$inferSelect | undefined;
+
+      if (action === "approve") {
+        const dateStr = now.getFullYear().toString() + String(now.getMonth() + 1).padStart(2, "0");
+        const randomSuffix = randomBytes(2).toString("hex").toUpperCase();
+        soNumber = `SO/${dateStr}/${String(0).padStart(4, "0")}${randomSuffix}`; // placeholder, diupdate setelah dapat id
+
+        // Atomic update: hanya berhasil jika status = 'pending'
+        const rows = await tx.update(customerApprovalsTable)
+          .set({ status: "approved", approvedAt: now, notes: notes ?? null, locked: true })
+          .where(and(eq(customerApprovalsTable.token, token), eq(customerApprovalsTable.status, "pending")))
+          .returning();
+        locked = rows[0];
+        if (!locked) throw new Error("ALREADY_RESPONDED");
+
+        // Generate SO number dengan approval.id yang sudah diketahui
+        soNumber = `SO/${dateStr}/${String(locked.id).padStart(4, "0")}${randomSuffix}`;
+        await tx.update(customerApprovalsTable)
+          .set({ soNumber })
+          .where(eq(customerApprovalsTable.id, locked.id));
+
+        orderId = locked.orderId;
+        orderNumber = locked.orderNumber;
+        customerName = locked.customerName;
+
+        // Lock submissions
+        if (locked.submissionId) {
+          await tx.update(vendorMiniFormSubmissionsTable)
+            .set({ locked: true, responseStatus: "customer_approved" })
+            .where(eq(vendorMiniFormSubmissionsTable.id, locked.submissionId));
+        } else if (locked.orderId) {
+          await tx.update(vendorMiniFormSubmissionsTable)
+            .set({ locked: true, responseStatus: "customer_approved" })
+            .where(and(
+              eq(vendorMiniFormSubmissionsTable.orderId, locked.orderId),
+              eq(vendorMiniFormSubmissionsTable.selectedByAdmin, true),
+            ));
+        }
+
+        // Update logistic order status
+        if (locked.orderId) {
+          await tx.update(logisticOrdersTable)
+            .set({ customerConfirmStatus: "confirmed", customerConfirmedAt: now, status: "Customer Approved" })
+            .where(eq(logisticOrdersTable.id, locked.orderId));
+
+          // Update itemStatus di VMF links menjadi customer_approved
+          await tx.update(vendorMiniFormLinksTable)
+            .set({ itemStatus: "customer_approved" })
+            .where(and(
+              eq(vendorMiniFormLinksTable.orderId, locked.orderId),
+              eq(vendorMiniFormLinksTable.mode, "order_based"),
+            ));
+        }
+      } else {
+        // Reject — atomic update
+        const rows = await tx.update(customerApprovalsTable)
+          .set({ status: "rejected", rejectedAt: now, notes: notes ?? null })
+          .where(and(eq(customerApprovalsTable.token, token), eq(customerApprovalsTable.status, "pending")))
+          .returning();
+        locked = rows[0];
+        if (!locked) throw new Error("ALREADY_RESPONDED");
+
+        orderId = locked.orderId;
+        orderNumber = locked.orderNumber;
+        customerName = locked.customerName;
+
+        if (locked.orderId) {
+          await tx.update(logisticOrdersTable)
+            .set({ customerConfirmStatus: "rejected", status: "Customer Rejected" })
+            .where(eq(logisticOrdersTable.id, locked.orderId));
+        }
+      }
+    });
+
+    // Activity log (non-fatal, di luar transaksi)
     if (action === "approve") {
-      const dateStr = now.getFullYear().toString() + String(now.getMonth() + 1).padStart(2, "0");
-      soNumber = `SO/${dateStr}/${String(approval.id).padStart(5, "0")}`;
-
-      await db.update(customerApprovalsTable)
-        .set({ status: "approved", approvedAt: now, notes: notes ?? null, soNumber, locked: true })
-        .where(eq(customerApprovalsTable.token, token));
-
-      // Lock selected submissions if submissionId is known
-      if (approval.submissionId) {
-        await db.update(vendorMiniFormSubmissionsTable)
-          .set({ locked: true, responseStatus: "customer_approved" })
-          .where(eq(vendorMiniFormSubmissionsTable.id, approval.submissionId));
-      } else if (approval.orderId) {
-        // Lock all selected submissions for this order
-        await db.update(vendorMiniFormSubmissionsTable)
-          .set({ locked: true, responseStatus: "customer_approved" })
-          .where(and(
-            eq(vendorMiniFormSubmissionsTable.orderId, approval.orderId),
-            eq(vendorMiniFormSubmissionsTable.selectedByAdmin, true),
-          ));
-      }
-
-      // Update logistic order status
-      if (approval.orderId) {
-        await db.update(logisticOrdersTable)
-          .set({ customerConfirmStatus: "confirmed", customerConfirmedAt: now, status: "Customer Approved" })
-          .where(eq(logisticOrdersTable.id, approval.orderId));
-      }
-
-      await logActivity("customer_approval", approval.id, "approved", "customer",
-        `Customer ${approval.customerName ?? "-"} menyetujui penawaran. SO: ${soNumber}`,
-        { soNumber, orderId: approval.orderId });
+      await logActivity("customer_approval", 0, "approved", "customer",
+        `Customer ${customerName ?? "-"} menyetujui penawaran. SO: ${soNumber}`,
+        { soNumber, orderId }).catch?.(() => {});
     } else {
-      await db.update(customerApprovalsTable)
-        .set({ status: "rejected", rejectedAt: now, notes: notes ?? null })
-        .where(eq(customerApprovalsTable.token, token));
-
-      if (approval.orderId) {
-        await db.update(logisticOrdersTable)
-          .set({ customerConfirmStatus: "rejected", status: "Customer Rejected" })
-          .where(eq(logisticOrdersTable.id, approval.orderId));
-      }
-
-      await logActivity("customer_approval", approval.id, "rejected", "customer",
-        `Customer ${approval.customerName ?? "-"} menolak penawaran`, { orderId: approval.orderId });
+      await logActivity("customer_approval", 0, "rejected", "customer",
+        `Customer ${customerName ?? "-"} menolak penawaran`, { orderId }).catch?.(() => {});
     }
 
-    // Notify admin
+    // Notify admin via WA (fire-and-forget)
     getAdminWa().then((adminWa) => {
       if (!adminWa) return;
       const emoji = action === "approve" ? "✅" : "❌";
       const msg = `${emoji} *Customer ${action === "approve" ? "Setuju" : "Tolak"} Penawaran*\n` +
-        `Order: ${approval.orderNumber ?? "-"}\n` +
-        `Customer: ${approval.customerName ?? "-"}\n` +
+        `Order: ${orderNumber ?? "-"}\n` +
+        `Customer: ${customerName ?? "-"}\n` +
         (soNumber ? `SO: ${soNumber}\n` : "") +
         (notes ? `Catatan: ${notes}` : "");
       sendWhatsApp(adminWa, msg, { context: "customer-approval", refType: "customer_approval", refId: token }).catch(() => {});
@@ -878,7 +989,10 @@ vendorMiniFormRouter.post("/customer-approval/:token", async (req: Request, res:
         ? `Terima kasih! Persetujuan Anda telah kami catat. Sales Order ${soNumber} telah dibuat.`
         : "Penolakan Anda telah kami catat. Tim kami akan segera menghubungi Anda.",
     });
-  } catch (err) {
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message === "ALREADY_RESPONDED") {
+      return res.status(409).json({ error: "Penawaran ini sudah direspons sebelumnya" });
+    }
     req.log?.error({ err }, "customer-approval POST error");
     return res.status(500).json({ error: "Internal server error" });
   }
@@ -1088,7 +1202,11 @@ vendorMiniFormRouter.delete("/admin/links/:id", async (req: Request, res: Respon
 vendorMiniFormRouter.get("/admin/submissions", async (req: Request, res: Response) => {
   if (!(await requireClerkUser(req, res))) return;
   try {
-    const submissions = await db.select().from(vendorMiniFormSubmissionsTable).orderBy(desc(vendorMiniFormSubmissionsTable.submittedAt));
+    const limitParam = Math.min(Number(req.query["limit"] ?? 100), 500);
+    const offsetParam = Math.max(Number(req.query["offset"] ?? 0), 0);
+    const submissions = await db.select().from(vendorMiniFormSubmissionsTable)
+      .orderBy(desc(vendorMiniFormSubmissionsTable.submittedAt))
+      .limit(limitParam).offset(offsetParam);
     const tokens = submissions.map(s => s.token);
     let waMap: Record<string, { status: string; recipient: string; createdAt: string }> = {};
     if (tokens.length > 0) {
@@ -1461,6 +1579,10 @@ vendorMiniFormRouter.delete("/admin/submissions/:id", async (req: Request, res: 
   try {
     const [deleted] = await db.delete(vendorMiniFormSubmissionsTable).where(eq(vendorMiniFormSubmissionsTable.id, id)).returning();
     if (!deleted) return res.status(404).json({ error: "Submission tidak ditemukan" });
+    const userId = (req.user as { id: string } | undefined)?.id ?? "admin";
+    await logActivity("submission", id, "deleted", userId,
+      `Submission dari ${deleted.vendorName ?? "vendor"} dihapus oleh admin`,
+      { vendorPrice: deleted.vendorPrice, responseStatus: deleted.responseStatus });
     return res.json({ success: true });
   } catch (err) {
     req.log?.error({ err }, "vendor-mini-form DELETE submission error");
