@@ -8,6 +8,7 @@ import {
   rfqActivityLogsTable,
   logisticOrderRfqsTable,
   logisticOrdersTable,
+  logisticOrderItemsTable,
   suppliersTable,
   vendorCatalogItemsTable,
   freightShipmentsTable,
@@ -455,6 +456,15 @@ logisticRfqV2Router.get("/vendor-form/:token", async (req: Request, res: Respons
     basicPrice = catalog[0] ? Number(catalog[0].priceBase) : null;
   }
 
+  // Fetch order items for additional context
+  const orderItems = await db.select({
+    serviceName: logisticOrderItemsTable.serviceName,
+    category: logisticOrderItemsTable.category,
+    calculatorType: logisticOrderItemsTable.calculatorType,
+    inputData: logisticOrderItemsTable.inputData,
+    subtotal: logisticOrderItemsTable.subtotal,
+  }).from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, orderId));
+
   // Fallback to freight shipment data when order fields are empty
   let serviceType = order.shipmentType ?? "";
   let origin = order.origin ?? "";
@@ -477,6 +487,22 @@ logisticRfqV2Router.get("/vendor-form/:token", async (req: Request, res: Respons
     }
   }
 
+  // Derive serviceType from order items if still empty
+  if (!serviceType && orderItems.length > 0) {
+    const uniqueCategories = [...new Set(orderItems.map((i) => i.category).filter(Boolean))];
+    serviceType = uniqueCategories.join(", ");
+  }
+
+  // Extract origin/destination from item inputData for trucking items
+  if ((!origin || !destination) && orderItems.length > 0) {
+    for (const item of orderItems) {
+      const input = item.inputData as Record<string, unknown> | null;
+      if (!origin && input?.origin) origin = String(input.origin);
+      if (!destination && input?.destination) destination = String(input.destination);
+      if (origin && destination) break;
+    }
+  }
+
   return res.json({
     linkId: link.id,
     rfqNumber,
@@ -496,6 +522,12 @@ logisticRfqV2Router.get("/vendor-form/:token", async (req: Request, res: Respons
     currentOfferedPrice: link.offeredPrice ? Number(link.offeredPrice) : null,
     currentEta: link.eta ?? null,
     currentNotes: link.notes ?? null,
+    orderItems: orderItems.map((i) => ({
+      serviceName: i.serviceName,
+      category: i.category,
+      calculatorType: i.calculatorType,
+      subtotal: i.subtotal ? parseFloat(i.subtotal) : null,
+    })),
   });
 });
 

@@ -23,6 +23,13 @@ const STATUS_LABEL: Record<string, string> = {
   late_response: "Terlambat",
 };
 
+interface OrderItem {
+  serviceName: string;
+  category: string;
+  calculatorType: string;
+  subtotal: number | null;
+}
+
 interface FormData {
   rfqNumber: string;
   vendorName: string;
@@ -41,6 +48,7 @@ interface FormData {
   currentOfferedPrice: number | null;
   currentEta: string | null;
   currentNotes: string | null;
+  orderItems?: OrderItem[] | null;
 }
 
 function useCountdown(targetIso: string | null | undefined) {
@@ -262,13 +270,43 @@ export default function VendorFormPage() {
             Detail Muatan
           </h3>
           <div className="space-y-3">
-            <Row label="Layanan" value={data.serviceType || "—"} />
-            <Row label="Rute" value={`${data.origin} → ${data.destination}`} />
+            {/* Layanan */}
+            {data.serviceType ? (
+              <Row label="Layanan" value={data.serviceType} />
+            ) : (data.orderItems && data.orderItems.length > 0) ? (
+              <div className="flex justify-between items-start gap-4 text-sm">
+                <span className="text-gray-500 shrink-0">Layanan / Produk</span>
+                <div className="text-right space-y-1">
+                  {data.orderItems.map((item, i) => (
+                    <div key={i} className="text-gray-800 font-medium">{item.serviceName || item.category}</div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {/* Rute — hanya tampil jika ada origin atau destination */}
+            {(data.origin || data.destination) && (
+              <Row label="Rute" value={`${data.origin || "—"} → ${data.destination || "—"}`} />
+            )}
+
             {data.commodity && <Row label="Komoditi" value={data.commodity} />}
             {data.cargoDescription && <Row label="Deskripsi" value={data.cargoDescription} />}
             {data.grossWeight && <Row label="Berat" value={`${data.grossWeight} kg`} />}
             {data.volumeCbm && <Row label="Volume" value={`${data.volumeCbm} CBM`} />}
             {data.requiredDate && <Row label="Tgl Butuh" value={data.requiredDate} />}
+
+            {/* Order items detail (produk/jasa) */}
+            {data.orderItems && data.orderItems.length > 0 && !data.serviceType && (
+              <div className="pt-2 border-t border-gray-100 space-y-1.5">
+                {data.orderItems.map((item, i) => (
+                  <div key={i} className="flex justify-between items-center text-sm">
+                    <span className="text-gray-500">{item.category}</span>
+                    <span className="text-gray-800 font-medium text-right max-w-[55%]">{item.serviceName}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {data.basicPrice && (
               <div className="flex justify-between items-center pt-3 border-t border-gray-100">
                 <span className="text-sm text-gray-500">Harga Dasar (Referensi)</span>
