@@ -6,7 +6,7 @@ import { verifyPortalJwt } from "./portalJwt";
 import { createHmac } from "crypto";
 
 const DEV_SECRET = process.env.DEV_PORTAL_SECRET ?? "dev-portal-secret-local-only";
-const IS_PROD = process.env.NODE_ENV === "production";
+const IS_PROD = process.env.REPLIT_DEPLOYMENT === "1";
 
 export function signDevToken(payload: object): string {
   const b64 = Buffer.from(JSON.stringify(payload)).toString("base64url");

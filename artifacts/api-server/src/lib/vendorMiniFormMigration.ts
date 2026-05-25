@@ -41,6 +41,10 @@ export async function runVendorMiniFormMigration(): Promise<void> {
       ALTER TABLE vendor_mini_form_links
         ADD COLUMN IF NOT EXISTS short_url TEXT;
     `);
+    await db.execute(sql`
+      ALTER TABLE vendor_mini_form_submissions
+        ADD COLUMN IF NOT EXISTS staff_data JSONB NOT NULL DEFAULT '{}'::jsonb;
+    `);
     logger.info("Vendor mini form migration: ok");
   } catch (err) {
     logger.error({ err }, "Vendor mini form migration failed");

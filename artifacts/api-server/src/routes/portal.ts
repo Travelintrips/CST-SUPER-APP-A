@@ -2598,10 +2598,11 @@ router.get("/admin/vendor-form/submissions", requirePortalAdmin, async (_req, re
       .orderBy(desc(vendorMiniFormSubmissionsTable.submittedAt));
     return res.json(submissions.map(s => ({
       ...s,
-      submittedAt: s.submittedAt.toISOString(),
+      submittedAt: s.submittedAt ? new Date(s.submittedAt as unknown as string).toISOString() : null,
     })));
-  } catch {
-    return res.status(500).json({ error: "Internal server error" });
+  } catch (err) {
+    console.error("[vendor-form/submissions] error:", err);
+    return res.status(500).json({ error: "Internal server error", detail: String(err) });
   }
 });
 
