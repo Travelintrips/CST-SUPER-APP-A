@@ -104,8 +104,10 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
       }
 
       const popup = window.open(data.url, "bizportal-google-auth", "width=520,height=680");
+      // Buka tanpa noopener agar postMessage dari popup ke parent bisa bekerja
+      const authWindow = window.open(data.url, "bizportal-google-auth", "width=520,height=680");
 
-      if (popup) {
+      if (authWindow) {
         const onMessage = async (evt: MessageEvent) => {
           if (evt.origin !== origin) return;
           if (evt.data?.type === "supabase-auth" && typeof evt.data.access_token === "string") {
@@ -120,7 +122,7 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
         window.addEventListener("message", onMessage);
 
         const poll = setInterval(() => {
-          if (popup.closed) {
+          if (authWindow.closed) {
             clearInterval(poll);
             window.removeEventListener("message", onMessage);
             fetchUser();
