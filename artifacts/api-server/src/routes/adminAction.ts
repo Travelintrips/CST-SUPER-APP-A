@@ -223,6 +223,7 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
         ? await db.select({
             vendorId: vendorCatalogItemsTable.vendorId,
             name: vendorCatalogItemsTable.name,
+            type: vendorCatalogItemsTable.type,
             isCommodityTag: vendorCatalogItemsTable.isCommodityTag,
           }).from(vendorCatalogItemsTable)
             .where(and(
@@ -231,13 +232,15 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
             ))
         : [];
 
-      // Build sets: vendor dengan commodity match & vendor yang punya item apapun di etalase
+      // Build sets: vendor dengan commodity match & vendor yang punya item PRODUK di etalase
       const commodityKeyword = (order.commodity ?? "").toLowerCase().trim();
-      const vendorIdsWithCommodity = new Set<number>();
-      const vendorIdsWithEtalase   = new Set<number>();
+      const vendorIdsWithCommodity   = new Set<number>();
+      const vendorIdsWithProductItem = new Set<number>(); // hanya type='product'
 
       for (const item of catalogItems) {
-        vendorIdsWithEtalase.add(item.vendorId);
+        if (item.type === "product") {
+          vendorIdsWithProductItem.add(item.vendorId);
+        }
 
         if (commodityKeyword) {
           const kwParts = commodityKeyword.split(/\s+/).filter((k: string) => k.length > 2);
@@ -260,12 +263,12 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
         ...v,
         isMatching: isServiceMatch(v.serviceType),
         hasCommodityMatch: vendorIdsWithCommodity.has(v.id),
-        hasEtalase: vendorIdsWithEtalase.has(v.id),
+        hasProductItem: vendorIdsWithProductItem.has(v.id),
       }));
 
-      const commodityMatched = allWithFlag.filter((v) => v.hasCommodityMatch);
-      const serviceMatched   = allWithFlag.filter((v) => v.isMatching && !v.hasCommodityMatch);
-      const etalaseVendors   = allWithFlag.filter((v) => v.hasEtalase);
+      const commodityMatched  = allWithFlag.filter((v) => v.hasCommodityMatch);
+      const serviceMatched    = allWithFlag.filter((v) => v.isMatching && !v.hasCommodityMatch);
+      const productVendors    = allWithFlag.filter((v) => v.hasProductItem);
 
       // ── Filter strategy ──────────────────────────────────────────────────
       // 1. shipmentType ada + ada match → hanya vendor yg match (service + commodity)
@@ -292,13 +295,13 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
         vendors = commodityMatched;
         vendorFilterApplied = true;
         filterMode = "commodity";
-      } else if (etalaseVendors.length > 0) {
-        // Tidak ada shipmentType → hanya tampilkan vendor yang punya etalase
-        vendors = etalaseVendors;
+      } else if (productVendors.length > 0) {
+        // Tidak ada shipmentType → hanya tampilkan vendor yang punya item PRODUK di etalase
+        vendors = productVendors;
         vendorFilterApplied = true;
         filterMode = "etalase";
       } else {
-        // Tidak ada vendor dengan etalase sama sekali → fallback ke vendor berserviceType
+        // Tidak ada vendor dengan produk di etalase → fallback ke vendor berserviceType
         vendors = allWithFlag.filter((v) => !!(v.serviceType && v.serviceType.trim()));
       }
 
