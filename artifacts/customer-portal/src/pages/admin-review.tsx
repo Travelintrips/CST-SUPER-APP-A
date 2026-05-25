@@ -123,6 +123,48 @@ type BlastResponse = {
   compareUrl: string;
 };
 
+// ── Page Content ──────────────────────────────────────────────────────────────
+
+interface AdminReviewContent {
+  pageTitle: string;
+  pageSubtitle: string;
+  deadlineLabel: string;
+  vendorSectionTitle: string;
+  blastHint: string;
+}
+
+interface PageContent {
+  admin_review: AdminReviewContent;
+}
+
+const DEFAULT_PAGE_CONTENT: PageContent = {
+  admin_review: {
+    pageTitle: "Review & Blast Vendor",
+    pageSubtitle: "CST Logistics — Admin Panel",
+    deadlineLabel: "Batas Waktu Respon Vendor",
+    vendorSectionTitle: "Pilih Vendor",
+    blastHint: "Vendor akan menerima WA dengan link form penawaran",
+  },
+};
+
+function usePageContent(): PageContent {
+  const [content, setContent] = useState<PageContent>(DEFAULT_PAGE_CONTENT);
+  useEffect(() => {
+    fetch("/api/settings/page-content")
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (data?.admin_review) {
+          setContent((prev) => ({
+            ...prev,
+            admin_review: { ...prev.admin_review, ...data.admin_review },
+          }));
+        }
+      })
+      .catch(() => {});
+  }, []);
+  return content;
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const idr = (n: number | string | null | undefined) =>
@@ -684,6 +726,7 @@ function QuoteList({
 
 function ReviewOrderView({ data, token }: { data: ReviewData; token: string }) {
   const { order, vendors = [], rfqs = [] } = data;
+  const pc = usePageContent().admin_review;
   const commodityMatched = vendors.filter((v) => v.hasCommodityMatch);
   const serviceMatched   = vendors.filter((v) => v.isMatching && !v.hasCommodityMatch);
   const others           = vendors.filter((v) => !v.isMatching && !v.hasCommodityMatch);
@@ -788,8 +831,8 @@ function ReviewOrderView({ data, token }: { data: ReviewData; token: string }) {
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
           <span className="text-2xl">🚀</span>
           <div>
-            <h1 className="text-base font-bold text-slate-800 leading-tight">Review & Blast Vendor</h1>
-            <p className="text-xs text-slate-400">CST Logistics — Admin Panel</p>
+            <h1 className="text-base font-bold text-slate-800 leading-tight">{pc.pageTitle}</h1>
+            <p className="text-xs text-slate-400">{pc.pageSubtitle}</p>
           </div>
         </div>
       </div>
@@ -815,7 +858,7 @@ function ReviewOrderView({ data, token }: { data: ReviewData; token: string }) {
 
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 px-5 py-4">
           <label className="block text-sm font-semibold text-slate-700 mb-2">
-            ⏰ Batas Waktu Respon Vendor
+            ⏰ {pc.deadlineLabel}
           </label>
           <div className="flex items-center gap-3">
             {[24, 48, 72].map((h) => (
@@ -848,7 +891,7 @@ function ReviewOrderView({ data, token }: { data: ReviewData; token: string }) {
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
             <div>
-              <h2 className="text-sm font-bold text-slate-800">Pilih Vendor</h2>
+              <h2 className="text-sm font-bold text-slate-800">{pc.vendorSectionTitle}</h2>
               <p className="text-xs text-slate-400 mt-0.5">
                 {selected.size} vendor dipilih · {vendors.length} total aktif
               </p>
@@ -960,7 +1003,7 @@ function ReviewOrderView({ data, token }: { data: ReviewData; token: string }) {
         </button>
 
         <p className="text-center text-xs text-slate-400 pb-8">
-          Vendor akan menerima WA dengan link form penawaran · {deadlineHours} jam batas waktu
+          {pc.blastHint} · {deadlineHours} jam batas waktu
         </p>
       </div>
     </div>

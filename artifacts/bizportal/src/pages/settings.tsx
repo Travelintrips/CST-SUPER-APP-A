@@ -723,6 +723,113 @@ function VendorMiniFormCard() {
   );
 }
 
+// ── Page Content Editor ────────────────────────────────────────────────────────
+
+const DEFAULT_ADMIN_REVIEW_CONTENT = {
+  pageTitle: "Review & Blast Vendor",
+  pageSubtitle: "CST Logistics — Admin Panel",
+  deadlineLabel: "Batas Waktu Respon Vendor",
+  vendorSectionTitle: "Pilih Vendor",
+  blastHint: "Vendor akan menerima WA dengan link form penawaran",
+};
+
+function PageContentCard() {
+  const { toast } = useToast();
+  const [fields, setFields] = useState({ ...DEFAULT_ADMIN_REVIEW_CONTENT });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch("/api/settings/page-content", { credentials: "include" });
+        if (res.ok) {
+          const data = await res.json() as { admin_review?: typeof DEFAULT_ADMIN_REVIEW_CONTENT };
+          if (data.admin_review) setFields((p) => ({ ...p, ...data.admin_review }));
+        }
+      } catch { /* ignore */ }
+      finally { setLoading(false); }
+    })();
+  }, []);
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/settings/page-content", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ admin_review: fields }),
+      });
+      if (!res.ok) throw new Error("Gagal menyimpan");
+      toast({ title: "Tersimpan", description: "Konten halaman berhasil diperbarui." });
+    } catch {
+      toast({ title: "Error", description: "Gagal menyimpan konten.", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleReset() {
+    setFields({ ...DEFAULT_ADMIN_REVIEW_CONTENT });
+    toast({ title: "Direset", description: "Konten dikembalikan ke default." });
+  }
+
+  const fieldMeta: { key: keyof typeof DEFAULT_ADMIN_REVIEW_CONTENT; label: string; desc: string }[] = [
+    { key: "pageTitle",           label: "Judul Halaman",        desc: "Judul utama di header halaman admin blast" },
+    { key: "pageSubtitle",        label: "Subjudul / Branding",  desc: "Teks kecil di bawah judul (nama perusahaan, dsb.)" },
+    { key: "deadlineLabel",       label: "Label Batas Waktu",    desc: "Label di atas pilihan batas waktu respon vendor" },
+    { key: "vendorSectionTitle",  label: "Judul Bagian Vendor",  desc: "Heading di atas daftar vendor tersedia" },
+    { key: "blastHint",           label: "Hint Blast",           desc: "Teks kecil di bawah tombol Blast" },
+  ];
+
+  return (
+    <Card className="col-span-1 md:col-span-3 bg-card border-border">
+      <CardHeader>
+        <CardTitle className="text-xl flex items-center gap-2">
+          <MessageCircle className="h-5 w-5 text-primary" />
+          Konten Halaman Admin
+        </CardTitle>
+        <CardDescription>
+          Edit teks yang tampil di halaman "Review & Blast Vendor" yang dibuka admin dari link WA.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        {loading ? (
+          <div className="space-y-3">
+            {[1,2,3,4,5].map((i) => <Skeleton key={i} className="h-10 w-full bg-muted" />)}
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {fieldMeta.map(({ key, label, desc }) => (
+                <div key={key} className="space-y-1.5">
+                  <Label className="text-sm font-medium">{label}</Label>
+                  <p className="text-xs text-muted-foreground">{desc}</p>
+                  <Input
+                    value={fields[key]}
+                    onChange={(e) => setFields((p) => ({ ...p, [key]: e.target.value }))}
+                    className="bg-background border-border"
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-between items-center pt-2 border-t border-border">
+              <Button variant="ghost" size="sm" onClick={handleReset} className="gap-2 text-muted-foreground">
+                <RotateCcw className="h-4 w-4" /> Reset Default
+              </Button>
+              <Button onClick={handleSave} disabled={saving} size="sm" className="gap-2">
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                Simpan Perubahan
+              </Button>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ── WA Template Editor (Upgraded GB1) ─────────────────────────────────────────
 type RecipientKey = "admin_personal" | "admin_group" | "customer" | "vendor";
 type WorkflowKey =
@@ -1653,6 +1760,7 @@ export default function SettingsPage() {
           {isAdmin && <CargoTypesCard />}
           {isAdmin && <CalculatorRatesCard />}
           {isAdmin && <VendorMiniFormCard />}
+          {isAdmin && <PageContentCard />}
           {isAdmin && <WaTemplatesCard />}
           {isAdmin && <WaLogsCard />}
 

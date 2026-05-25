@@ -630,4 +630,45 @@ router.patch("/short-links/:id/reactivate", async (req: Request, res: Response) 
   }
 });
 
+// ── Page Content (konten teks halaman publik) ────────────────────────────────
+const PAGE_CONTENT_KEY = "page_content";
+
+export const DEFAULT_PAGE_CONTENT = {
+  admin_review: {
+    pageTitle: "Review & Blast Vendor",
+    pageSubtitle: "CST Logistics — Admin Panel",
+    deadlineLabel: "Batas Waktu Respon Vendor",
+    vendorSectionTitle: "Pilih Vendor",
+    blastHint: "Vendor akan menerima WA dengan link form penawaran",
+  },
+};
+
+// GET /api/settings/page-content — public (dipakai customer portal)
+router.get("/page-content", async (req: Request, res: Response) => {
+  try {
+    const [row] = await db.select().from(portalContentTable).where(eq(portalContentTable.key, PAGE_CONTENT_KEY));
+    const content = row ? JSON.parse(row.value) : DEFAULT_PAGE_CONTENT;
+    return res.json({ ...DEFAULT_PAGE_CONTENT, ...content });
+  } catch {
+    return res.json(DEFAULT_PAGE_CONTENT);
+  }
+});
+
+// PUT /api/settings/page-content — admin only
+router.put("/page-content", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const content = req.body;
+  if (!content || typeof content !== "object") {
+    return res.status(400).json({ message: "Invalid payload" });
+  }
+  await db
+    .insert(portalContentTable)
+    .values({ key: PAGE_CONTENT_KEY, value: JSON.stringify(content), updatedAt: new Date() })
+    .onConflictDoUpdate({
+      target: portalContentTable.key,
+      set: { value: JSON.stringify(content), updatedAt: new Date() },
+    });
+  return res.json({ ok: true });
+});
+
 export default router;
