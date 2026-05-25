@@ -2,8 +2,8 @@ import { Router, type Request, type Response } from "express";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { getAdminWa, setAdminWa, getAdminGroupWa, setAdminGroupWa } from "../lib/adminWa.js";
 import { db, portalContentTable } from "@workspace/db";
-import { shortLinksTable } from "@workspace/db/schema";
-import { eq, desc, ilike, or, sql } from "drizzle-orm";
+import { shortLinksTable, waTemplateConfigsTable } from "@workspace/db/schema";
+import { eq, desc, ilike, or, sql, and } from "drizzle-orm";
 import { getAiIntakeSettings, saveAiIntakeSettings, type VendorFilterMode } from "../lib/aiOrderIntake.js";
 
 const router = Router();
@@ -254,6 +254,72 @@ router.delete("/wa-templates/:templateKey", async (req: Request, res: Response) 
     }
   } catch { /* ignore */ }
   return res.json({ ok: true, default: DEFAULT_WA_TEMPLATES[templateKey] });
+});
+
+// ── WA Template Configs (workflow-based) ──────────────────────────────────────
+
+// GET /api/settings/wa-template-configs — fetch all saved workflow templates
+router.get("/wa-template-configs", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  try {
+    const rows = await db.select().from(waTemplateConfigsTable);
+    const configs: Record<string, string> = {};
+    const savedKeys: string[] = [];
+    for (const row of rows) {
+      const key = `${row.recipient}__${row.workflow}`;
+      configs[key] = row.body;
+      savedKeys.push(key);
+    }
+    return res.json({ configs, savedKeys });
+  } catch {
+    return res.json({ configs: {}, savedKeys: [] });
+  }
+});
+
+// PUT /api/settings/wa-template-configs — save/update one workflow template
+router.put("/wa-template-configs", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const { recipient, workflow, body } = req.body as { recipient?: string; workflow?: string; body?: string };
+  if (!recipient || !workflow || typeof body !== "string") {
+    return res.status(400).json({ message: "Payload harus berupa { recipient, workflow, body }" });
+  }
+  const VALID_RECIPIENTS = ["admin_personal", "admin_group", "customer", "vendor"];
+  const VALID_WORKFLOWS = [
+    "order_new", "vendor_request", "vendor_submission", "vendor_revision",
+    "customer_approval", "customer_approved", "so_created", "op_request",
+    "driver_assigned", "shipment_update", "customs_update", "delivery_completed",
+  ];
+  if (!VALID_RECIPIENTS.includes(recipient)) return res.status(400).json({ message: "recipient tidak valid" });
+  if (!VALID_WORKFLOWS.includes(workflow)) return res.status(400).json({ message: "workflow tidak valid" });
+
+  await db.insert(waTemplateConfigsTable)
+    .values({ recipient, workflow, body, updatedAt: new Date() })
+    .onConflictDoUpdate({
+      target: [waTemplateConfigsTable.recipient, waTemplateConfigsTable.workflow],
+      set: { body, updatedAt: new Date() },
+    });
+
+  try {
+    const { invalidateWaTemplateCache } = await import("../lib/orderNotification.js");
+    invalidateWaTemplateCache();
+  } catch { /* non-fatal */ }
+
+  return res.json({ ok: true });
+});
+
+// DELETE /api/settings/wa-template-configs/:recipient/:workflow — reset to default
+router.delete("/wa-template-configs/:recipient/:workflow", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const { recipient, workflow } = req.params as { recipient: string; workflow: string };
+  try {
+    await db.delete(waTemplateConfigsTable).where(
+      and(
+        eq(waTemplateConfigsTable.recipient, recipient),
+        eq(waTemplateConfigsTable.workflow, workflow),
+      )
+    );
+  } catch { /* ignore */ }
+  return res.json({ ok: true });
 });
 
 // PUT /api/settings/cargo-types — update cargo types list (admin)

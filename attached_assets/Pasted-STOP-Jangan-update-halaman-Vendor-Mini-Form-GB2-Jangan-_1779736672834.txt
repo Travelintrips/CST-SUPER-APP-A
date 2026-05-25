@@ -1,0 +1,218 @@
+STOP.
+
+Jangan update halaman Vendor Mini Form (GB2).
+Jangan ubah module Mini Form Management.
+
+Yang ingin saya upgrade adalah:
+GB1 = Template Pesan WhatsApp.
+
+Fokus hanya pada:
+- Template WA
+- Variable system
+- Dynamic notification flow
+- Conditional message
+- Vendor/customer/admin WA logic
+
+Bukan halaman Mini Form.
+
+==================================================
+TARGET MODULE
+==================================================
+
+Yang harus diupdate:
+Halaman:
+"Template Pesan WhatsApp"
+
+Tab:
+- Admin Pribadi
+- Grup Admin
+- Customer
+- Vendor
+
+==================================================
+YANG SAYA INGINKAN
+==================================================
+
+Saya ingin template WA menjadi:
+- Dynamic berdasarkan service type
+- Dynamic berdasarkan workflow status
+- Dynamic berdasarkan role penerima
+- Bisa dipakai untuk flow Mini Form order-based
+
+==================================================
+FITUR YANG HARUS DITAMBAHKAN
+==================================================
+
+1. Conditional Variable
+Tambahkan support conditional block:
+
+Contoh:
+{{#if trucking}}
+Driver: {{driverName}}
+Plat: {{plateNumber}}
+{{/if}}
+
+{{#if freight_air}}
+Airline: {{airline}}
+Flight: {{flightNumber}}
+{{/if}}
+
+==================================================
+2. Dynamic Service Type Message
+==================================================
+
+Jika service_type:
+- trucking
+→ tampilkan driver info
+
+- freight_sea
+→ tampilkan vessel + container
+
+- freight_air
+→ tampilkan airline + AWB
+
+- ppjk
+→ tampilkan nomor aju + dokumen BC
+
+- product
+→ tampilkan qty + product name
+
+==================================================
+3. Workflow-Based Template
+==================================================
+
+Tambahkan template terpisah untuk:
+
+A. Order Baru
+B. Vendor Request
+C. Vendor Submission
+D. Vendor Price Revision
+E. Customer Approval
+F. Customer Approved
+G. SO Created
+H. Operational Request
+I. Driver Assigned
+J. Shipment Update
+K. Customs Update
+L. Delivery Completed
+
+==================================================
+4. Variable System Upgrade
+==================================================
+
+Tambahkan variable baru:
+
+ORDER:
+{{orderNumber}}
+{{serviceType}}
+{{shipmentType}}
+{{route}}
+{{commodity}}
+
+CUSTOMER:
+{{customerName}}
+{{customerPhone}}
+
+VENDOR:
+{{vendorName}}
+{{vendorPhone}}
+
+TRUCKING:
+{{driverName}}
+{{driverPhone}}
+{{plateNumber}}
+{{vehicleType}}
+
+FREIGHT:
+{{airline}}
+{{vessel}}
+{{voyage}}
+{{containerNumber}}
+{{awbNumber}}
+{{blNumber}}
+
+CUSTOMS:
+{{ajuNumber}}
+{{bcType}}
+{{sppbNumber}}
+
+PRICE:
+{{vendorPrice}}
+{{sellingPrice}}
+{{currency}}
+{{margin}}
+
+LINK:
+{{vendorMiniFormLink}}
+{{customerApprovalLink}}
+{{operationalFormLink}}
+
+==================================================
+5. Auto Hide Empty Variables
+==================================================
+
+Jika variable kosong:
+- jangan tampilkan label kosong
+- jangan tampilkan baris kosong
+
+==================================================
+6. Preview Engine
+==================================================
+
+Preview harus realtime:
+- render variable
+- render conditional block
+- render hidden field
+- simulate service type
+
+==================================================
+7. Jangan Ubah GB2
+==================================================
+
+Jangan modifikasi:
+- Vendor Mini Forms page
+- Vendor submission page
+- Mini form management
+
+Hanya update:
+Template Pesan WhatsApp (GB1).
+
+==================================================
+8. Tambahkan Template Preset
+==================================================
+
+Preset Trucking:
+- vendor request
+- driver assigned
+
+Preset Freight:
+- booking confirmation
+- ETD update
+
+Preset PPJK:
+- dokumen kurang
+- SPPB selesai
+
+Preset Customer:
+- quotation
+- approved
+- completed
+
+==================================================
+9. Database
+==================================================
+
+Jika perlu:
+buat table:
+whatsapp_template_configs
+
+Jangan ubah struktur Mini Form existing.
+
+==================================================
+10. PENTING
+==================================================
+
+Jangan refactor sistem lain.
+Jangan ubah UI Mini Form.
+Jangan ubah dashboard GB2.
+Hanya fokus upgrade Template WA GB1.
