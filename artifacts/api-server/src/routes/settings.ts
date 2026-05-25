@@ -442,6 +442,47 @@ router.get("/wa-logs", async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/settings/wa-logs/stats — summary counts for 7d and 30d
+router.get("/wa-logs/stats", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  try {
+    const now = new Date();
+    const d7  = new Date(now.getTime() - 7  * 24 * 60 * 60 * 1000);
+    const d30 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    const [rows7, rows30, rowsAll] = await Promise.all([
+      db.select({
+        status: notificationLogsTable.status,
+        count: sql<number>`count(*)::int`,
+      }).from(notificationLogsTable)
+        .where(and(eq(notificationLogsTable.channel, "wa"), sql`${notificationLogsTable.createdAt} >= ${d7}`))
+        .groupBy(notificationLogsTable.status),
+      db.select({
+        status: notificationLogsTable.status,
+        count: sql<number>`count(*)::int`,
+      }).from(notificationLogsTable)
+        .where(and(eq(notificationLogsTable.channel, "wa"), sql`${notificationLogsTable.createdAt} >= ${d30}`))
+        .groupBy(notificationLogsTable.status),
+      db.select({
+        status: notificationLogsTable.status,
+        count: sql<number>`count(*)::int`,
+      }).from(notificationLogsTable)
+        .where(eq(notificationLogsTable.channel, "wa"))
+        .groupBy(notificationLogsTable.status),
+    ]);
+
+    const tally = (rows: { status: string; count: number }[]) => ({
+      sent:   rows.find(r => r.status === "sent")?.count   ?? 0,
+      failed: rows.find(r => r.status === "failed")?.count ?? 0,
+    });
+
+    return res.json({ d7: tally(rows7), d30: tally(rows30), all: tally(rowsAll) });
+  } catch (err) {
+    req.log?.error({ err }, "wa-logs stats error");
+    return res.status(500).json({ message: "Gagal memuat statistik WA" });
+  }
+});
+
 // GET /api/settings/wa-logs/export?status=&search= — download as CSV
 router.get("/wa-logs/export", async (req: Request, res: Response) => {
   if (!(await requireAdmin(req, res))) return;

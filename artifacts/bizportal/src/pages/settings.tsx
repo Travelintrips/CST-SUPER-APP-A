@@ -1312,6 +1312,40 @@ interface WaLogEntry {
   createdAt: string;
 }
 
+interface WaStats {
+  sent: number;
+  failed: number;
+}
+interface WaStatsResult {
+  d7: WaStats;
+  d30: WaStats;
+  all: WaStats;
+}
+
+function StatPill({ label, sent, failed }: { label: string; sent: number; failed: number }) {
+  const total = sent + failed;
+  const pct   = total === 0 ? 100 : Math.round((sent / total) * 100);
+  const good  = pct >= 90;
+  const mid   = pct >= 70;
+  return (
+    <div className="flex-1 min-w-[130px] rounded-xl border bg-background p-3 space-y-1.5">
+      <p className="text-xs text-muted-foreground font-medium">{label}</p>
+      <div className="flex items-end gap-2">
+        <span className="text-2xl font-bold text-foreground leading-none">{total}</span>
+        <span className={`text-sm font-semibold pb-0.5 ${good ? "text-green-600" : mid ? "text-amber-500" : "text-red-500"}`}>{pct}%</span>
+      </div>
+      <div className="flex gap-3 text-xs text-muted-foreground">
+        <span className="text-green-600 font-medium">✅ {sent}</span>
+        <span className="text-red-500 font-medium">❌ {failed}</span>
+      </div>
+      <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+        <div className={`h-full rounded-full transition-all ${good ? "bg-green-500" : mid ? "bg-amber-500" : "bg-red-500"}`}
+          style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
 function WaLogsCard() {
   const [logs, setLogs]               = useState<WaLogEntry[]>([]);
   const [total, setTotal]             = useState(0);
@@ -1321,6 +1355,7 @@ function WaLogsCard() {
   const [search, setSearch]           = useState("");
   const [loading, setLoading]         = useState(false);
   const [expanded, setExpanded]       = useState<number | null>(null);
+  const [stats, setStats]             = useState<WaStatsResult | null>(null);
   const PAGE_SIZE = 25;
 
   const load = async (p: number, s: string, st: string) => {
@@ -1339,7 +1374,15 @@ function WaLogsCard() {
     finally { setLoading(false); }
   };
 
+  const loadStats = async () => {
+    try {
+      const res = await fetch("/api/settings/wa-logs/stats", { credentials: "include" });
+      if (res.ok) setStats(await res.json() as WaStatsResult);
+    } catch { /* ignore */ }
+  };
+
   useEffect(() => { void load(page, search, statusFilter); }, [page, search, statusFilter]);
+  useEffect(() => { void loadStats(); }, []);
 
   const applySearch = () => { setSearch(searchInput); setPage(1); };
   const totalPages  = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -1358,7 +1401,7 @@ function WaLogsCard() {
             </CardDescription>
           </div>
           <div className="flex gap-2">
-            <Button size="sm" variant="outline" className="gap-1.5 text-xs" onClick={() => void load(page, search, statusFilter)}>
+            <Button size="sm" variant="outline" className="gap-1.5 text-xs" onClick={() => { void load(page, search, statusFilter); void loadStats(); }}>
               <RefreshCw className="h-3.5 w-3.5" /> Refresh
             </Button>
             <Button size="sm" variant="outline" className="gap-1.5 text-xs" asChild>
@@ -1370,6 +1413,20 @@ function WaLogsCard() {
         </div>
       </CardHeader>
       <CardContent>
+        {/* ── Stats Summary ── */}
+        {stats && (
+          <div className="flex flex-wrap gap-3 mb-5">
+            <StatPill label="7 Hari Terakhir"  sent={stats.d7.sent}  failed={stats.d7.failed} />
+            <StatPill label="30 Hari Terakhir" sent={stats.d30.sent} failed={stats.d30.failed} />
+            <StatPill label="Semua Waktu"      sent={stats.all.sent} failed={stats.all.failed} />
+          </div>
+        )}
+        {!stats && (
+          <div className="flex gap-3 mb-5">
+            {[1,2,3].map(i => <div key={i} className="flex-1 h-20 bg-muted rounded-xl animate-pulse" />)}
+          </div>
+        )}
+
         {/* ── Filter Bar ── */}
         <div className="flex flex-wrap gap-2 mb-4">
           <div className="flex gap-1">
