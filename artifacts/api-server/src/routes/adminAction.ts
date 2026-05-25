@@ -17,6 +17,7 @@ import { getPreferredDomain } from "../lib/domain.js";
 import { logger } from "../lib/logger.js";
 import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa } from "../lib/adminWa.js";
+import { sendVendorRequestNotification, type LogisticOrderData } from "../lib/orderNotification.js";
 import { generateShortLink } from "../lib/shortLink.js";
 import { sendVendorRequestNotification, type LogisticOrderData } from "../lib/orderNotification.js";
 
@@ -474,6 +475,32 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
 
         try {
           await sendVendorRequestNotification(orderData, vendor.name, vendor.phone!, shortUrl);
+        // Build a minimal LogisticOrderData so the configurable WA template is used
+        const orderData: LogisticOrderData = {
+          id:              order.id,
+          orderNumber:     (order as any).orderNumber ?? "",
+          customerName:    (order as any).customerName ?? "",
+          companyName:     (order as any).companyName  ?? "",
+          email:           (order as any).email        ?? "",
+          phone:           (order as any).phone        ?? "",
+          shipmentType:    (order as any).shipmentType ?? "",
+          origin:          (order as any).origin       ?? "",
+          destination:     (order as any).destination  ?? "",
+          commodity:       (order as any).commodity    ?? null,
+          cargoDescription:(order as any).cargoDescription ?? null,
+          grossWeight:     (order as any).grossWeight  ?? null,
+          volumeCbm:       (order as any).volumeCbm    ?? null,
+          jumlahKoli:      (order as any).jumlahKoli   ?? null,
+          grandTotal:      (order as any).grandTotal   ?? 0,
+          serviceList:     (order as any).serviceList  ?? "",
+          requiredDate:    (order as any).requiredDate ?? null,
+          notes:           (order as any).notes        ?? null,
+          createdAt:       (order as any).createdAt    ?? null,
+          publicRfqToken:  (order as any).publicRfqToken ?? null,
+        };
+
+        try {
+          await sendVendorRequestNotification(orderData, vendor.name!, vendor.phone!, shortUrl);
           results.push({ vendorId: vendor.id, vendorName: vendor.name, sent: true });
         } catch {
           results.push({ vendorId: vendor.id, vendorName: vendor.name, sent: false });
