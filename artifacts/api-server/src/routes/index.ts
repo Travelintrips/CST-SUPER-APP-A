@@ -136,6 +136,8 @@ router.use("/notifications", notificationsRouter);
 router.use("/nav-preferences", navPreferencesRouter);
 
 router.use("/vendor-form", vendorMiniFormRouter);
+router.use("/customer-form", vendorMiniFormRouter);
+router.use("/admin-form", vendorMiniFormRouter);
 router.use("/logistic", customerQuoteAdminRouter);
 router.use("/customer-quote", customerQuotePublicRouter);
 router.use("/order-task", orderTaskPublicRouter);

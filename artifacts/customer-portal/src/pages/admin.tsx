@@ -1854,6 +1854,7 @@ function ClaimAdminTab() {
 }
 
 const MINI_FORM_SERVICE_META: Record<string, { label: string; emoji: string }> = {
+  // Vendor schemas
   product: { label: "Produk", emoji: "📦" },
   trucking: { label: "Trucking", emoji: "🚛" },
   sea_freight: { label: "Sea Freight", emoji: "🚢" },
@@ -1862,6 +1863,15 @@ const MINI_FORM_SERVICE_META: Record<string, { label: string; emoji: string }> =
   handling: { label: "Handling / Warehouse", emoji: "🏭" },
   document: { label: "Document / Additional", emoji: "📄" },
   exim_service: { label: "Exim Service", emoji: "🌐" },
+  // Customer schemas
+  customer_shipment: { label: "Permintaan Pengiriman", emoji: "📦" },
+  customer_quote: { label: "Permintaan Penawaran Harga", emoji: "💼" },
+  customer_document: { label: "Pengiriman Dokumen", emoji: "📋" },
+  customer_complaint: { label: "Keluhan / Klaim", emoji: "⚠️" },
+  // Admin / Internal schemas
+  admin_checklist: { label: "Checklist Proses", emoji: "✅" },
+  admin_handover: { label: "Serah Terima Pekerjaan", emoji: "🤝" },
+  admin_inspection: { label: "Laporan Inspeksi", emoji: "🔍" },
 };
 
 type SchemaField = {
@@ -1894,7 +1904,7 @@ type MiniFormSubmission = {
   submittedAt: string;
 };
 
-function MiniFormTab() {
+function MiniFormTab({ formTarget }: { formTarget: "vendor" | "customer" | "admin" }) {
   const { toast } = useToast();
   const [links, setLinks] = useState<MiniFormLink[]>([]);
   const [submissions, setSubmissions] = useState<MiniFormSubmission[]>([]);
@@ -1914,7 +1924,7 @@ function MiniFormTab() {
   const load = async () => {
     try {
       const [l, s, sc] = await Promise.all([
-        apiGet<MiniFormLink[]>("/api/portal/admin/vendor-form/links"),
+        apiGet<MiniFormLink[]>(`/api/portal/admin/vendor-form/links?formTarget=${formTarget}`),
         apiGet<MiniFormSubmission[]>("/api/portal/admin/vendor-form/submissions"),
         apiGet<ServiceSchemas>("/api/portal/admin/vendor-form/schemas").catch(() => ({} as ServiceSchemas)),
       ]);
@@ -1952,6 +1962,7 @@ function MiniFormTab() {
         mode: newMode,
         vendorName: newVendorName.trim() || undefined,
         maxSubmissions: newMaxSubs ? Number(newMaxSubs) : undefined,
+        formTarget,
       });
       toast({ title: "Link berhasil dibuat" });
       setShowCreate(false);
@@ -1994,14 +2005,16 @@ function MiniFormTab() {
     }
   };
 
+  const formPath = formTarget === "customer" ? "customer-mini-form" : formTarget === "admin" ? "admin-mini-form" : "vendor-mini-form";
+
   const copyLink = (token: string) => {
-    const url = `${window.location.origin}/vendor-mini-form/${token}`;
+    const url = `${window.location.origin}/${formPath}/${token}`;
     void navigator.clipboard.writeText(url).then(() => {
       toast({ title: "Link disalin ke clipboard" });
     });
   };
 
-  const buildUrl = (token: string) => `${window.location.origin}/vendor-mini-form/${token}`;
+  const buildUrl = (token: string) => `${window.location.origin}/${formPath}/${token}`;
 
   if (loading) {
     return (
@@ -2172,9 +2185,15 @@ function MiniFormTab() {
                   onChange={e => setNewServiceType(e.target.value)}
                 >
                   <option value="">Pilih tipe layanan...</option>
-                  {Object.entries(MINI_FORM_SERVICE_META).map(([k, v]) => (
-                    <option key={k} value={k}>{v.emoji} {v.label}</option>
-                  ))}
+                  {Object.entries(MINI_FORM_SERVICE_META)
+                    .filter(([k]) => {
+                      if (formTarget === "customer") return k.startsWith("customer_");
+                      if (formTarget === "admin") return k.startsWith("admin_");
+                      return !k.startsWith("customer_") && !k.startsWith("admin_");
+                    })
+                    .map(([k, v]) => (
+                      <option key={k} value={k}>{v.emoji} {v.label}</option>
+                    ))}
                 </select>
               </div>
               <div className="space-y-1.5">
@@ -2218,7 +2237,7 @@ function MiniFormTab() {
             </div>
             <div className="space-y-2 md:border-l md:pl-4">
               <Label className="text-xs uppercase tracking-wider text-muted-foreground">
-                Preview Field yang Akan Diisi Vendor
+                Preview Field yang Akan Diisi
               </Label>
               {!newServiceType ? (
                 <div className="text-sm text-muted-foreground italic py-8 text-center">
@@ -2422,15 +2441,29 @@ export default function AdminPage() {
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <Link2 className="h-5 w-5 text-indigo-500" />
-                      Vendor Mini Form
+                      Mini Form
                     </CardTitle>
                     <CardDescription>
-                      Buat dan kelola link form dinamis untuk vendor mengisi rate/data layanan.
-                      Bagikan link ke vendor sesuai service type — mereka cukup membuka link dan mengisi form tanpa perlu login.
+                      Buat dan kelola link form dinamis. Bagikan ke penerima — mereka cukup membuka link dan mengisi form tanpa perlu login.
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <MiniFormTab />
+                    <Tabs defaultValue="vendor">
+                      <TabsList className="mb-4">
+                        <TabsTrigger value="vendor">🚛 Vendor</TabsTrigger>
+                        <TabsTrigger value="customer">👤 Customer</TabsTrigger>
+                        <TabsTrigger value="admin">🔐 Internal</TabsTrigger>
+                      </TabsList>
+                      <TabsContent value="vendor">
+                        <MiniFormTab formTarget="vendor" />
+                      </TabsContent>
+                      <TabsContent value="customer">
+                        <MiniFormTab formTarget="customer" />
+                      </TabsContent>
+                      <TabsContent value="admin">
+                        <MiniFormTab formTarget="admin" />
+                      </TabsContent>
+                    </Tabs>
                   </CardContent>
                 </Card>
               </TabsContent>

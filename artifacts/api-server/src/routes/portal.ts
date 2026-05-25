@@ -2504,11 +2504,13 @@ router.get("/admin/customers/stats", requirePortalAdmin, async (_req, res): Prom
 // VENDOR MINI FORM — portal admin routes
 // ════════════════════════════════════════════════════════════════════════════
 
-router.get("/admin/vendor-form/links", requirePortalAdmin, async (_req, res) => {
+router.get("/admin/vendor-form/links", requirePortalAdmin, async (req, res) => {
   try {
+    const formTarget = (req.query["formTarget"] as string) || "vendor";
     const links = await db
       .select()
       .from(vendorMiniFormLinksTable)
+      .where(eq(vendorMiniFormLinksTable.formTarget, formTarget))
       .orderBy(desc(vendorMiniFormLinksTable.createdAt));
     const vendorIds = links.map(l => l.supplierId).filter(Boolean) as number[];
     let vendorMap: Record<number, string> = {};
@@ -2533,7 +2535,7 @@ router.get("/admin/vendor-form/schemas", requirePortalAdmin, async (_req, res) =
 
 router.post("/admin/vendor-form/links", requirePortalAdmin, async (req, res) => {
   try {
-    const { serviceType, title, notes, expiresInDays, mode, vendorName, maxSubmissions } = req.body as {
+    const { serviceType, title, notes, expiresInDays, mode, vendorName, maxSubmissions, formTarget } = req.body as {
       serviceType: string;
       title?: string;
       notes?: string;
@@ -2541,6 +2543,7 @@ router.post("/admin/vendor-form/links", requirePortalAdmin, async (req, res) => 
       mode?: "rate_collection" | "operational_update";
       vendorName?: string;
       maxSubmissions?: number;
+      formTarget?: string;
     };
     if (!serviceType || !SERVICE_SCHEMAS[serviceType]) {
       return res.status(400).json({ error: "serviceType tidak valid" });
@@ -2560,6 +2563,7 @@ router.post("/admin/vendor-form/links", requirePortalAdmin, async (req, res) => 
         mode: mode ?? "rate_collection",
         vendorName: vendorName ?? null,
         maxSubmissions: maxSubmissions ?? null,
+        formTarget: (formTarget ?? "vendor") as string,
       })
       .returning();
     return res.status(201).json({ ...link, expiresAt: link.expiresAt?.toISOString() ?? null, createdAt: link.createdAt.toISOString() });

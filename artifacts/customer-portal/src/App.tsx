@@ -50,6 +50,8 @@ const OnboardingPage            = lazy(() => import("@/pages/onboarding"));
 const PendingApprovalPage       = lazy(() => import("@/pages/pending-approval"));
 // Mini form: standalone + lightweight — preload its own tiny chunk immediately
 const VendorMiniFormPage        = lazy(() => import("@/pages/vendor-mini-form"));
+const CustomerMiniFormPage      = lazy(() => import("@/pages/customer-mini-form"));
+const AdminMiniFormPage         = lazy(() => import("@/pages/admin-mini-form"));
 const CustomerApprovalPage      = lazy(() => import("@/pages/customer-approval"));
 const OpConfirmPage             = lazy(() => import("@/pages/op-confirm"));
 const CustomerQuotePage         = lazy(() => import("@/pages/customer-quote"));
@@ -80,7 +82,8 @@ const LOGISTIC_ROUTES = ["/book", "/logistic-order-success", "/logistic-admin", 
 const NO_SHELL_PREFIXES = [
   "/jasa/", "/services/", "/vendor-response", "/vendor-product-approval",
   "/approve", "/confirm", "/vendor-quote", "/vendor-confirm", "/vendor-form",
-  "/vendor-mini-form", "/choose-option", "/onboarding", "/pending-approval",
+  "/vendor-mini-form", "/customer-mini-form", "/admin-mini-form",
+  "/choose-option", "/onboarding", "/pending-approval",
   "/customer-quote", "/order-task", "/customer-order", "/admin-action",
   "/vendor-fulfillment", "/vendor-job", "/order-track",
   "/customer-approval", "/op-confirm",
@@ -88,7 +91,8 @@ const NO_SHELL_PREFIXES = [
 
 // Routes that should skip the Supabase auth check entirely (public/standalone pages)
 const NO_AUTH_CHECK_PREFIXES = [
-  "/vendor-mini-form", "/vendor-form", "/vendor-response", "/vendor-product-approval",
+  "/vendor-mini-form", "/customer-mini-form", "/admin-mini-form",
+  "/vendor-form", "/vendor-response", "/vendor-product-approval",
   "/vendor-quote", "/vendor-confirm", "/vendor-fulfillment", "/vendor-job",
   "/approve", "/confirm", "/customer-quote", "/order-task", "/customer-order",
   "/admin-action", "/admin-review", "/order-track", "/fulfillment", "/q/",
@@ -206,6 +210,8 @@ function AppShell() {
         <Route path="/onboarding" component={OnboardingPage} />
         <Route path="/pending-approval" component={PendingApprovalPage} />
         <Route path="/vendor-mini-form/:token" component={VendorMiniFormPage} />
+        <Route path="/customer-mini-form/:token" component={CustomerMiniFormPage} />
+        <Route path="/admin-mini-form/:token" component={AdminMiniFormPage} />
         <Route path="/customer-approval/:token" component={CustomerApprovalPage} />
         <Route path="/op-confirm/:token" component={OpConfirmPage} />
         <Route path="/approve/:orderNumber" component={ApprovePage} />
