@@ -23,6 +23,7 @@ import { createSalesOrderFromVmfApproval } from "../lib/vmfSoIntegration.js";
 import {
   sendCustomerApprovedNotification,
   sendSoCreatedNotification,
+  sendOpRequestNotification,
   type LogisticOrderData,
 } from "../lib/orderNotification.js";
 
@@ -1809,15 +1810,61 @@ vendorMiniFormRouter.post("/admin/op-confirms/:id/send-wa", async (req: Request,
     const { getPreferredDomain } = await import("../lib/domain.js");
     const domain = getPreferredDomain();
     const confirmUrl = domain ? `https://${domain}/op-confirm/${conf.token}` : `/op-confirm/${conf.token}`;
-    const svcLabel = SERVICE_SCHEMAS[conf.serviceType]?.label ?? conf.serviceType;
-    const msg = customMessage?.trim() ||
-      `Halo${conf.vendorName ? ` *${conf.vendorName}*` : ""}, customer sudah menyetujui penawaran.\n\n` +
-      `Mohon lengkapi data operasional untuk layanan *${svcLabel}*` +
-      (conf.orderNumber ? ` (Order: ${conf.orderNumber})` : "") +
-      ` melalui link berikut:\n${confirmUrl}` +
-      (conf.instruction ? `\n\nInstruksi: ${conf.instruction}` : "");
 
-    await sendWhatsApp(phone.trim(), msg, { context: "op-confirm-send", refType: "vendor_op_confirm", refId: String(conf.id) });
+    if (customMessage?.trim()) {
+      // Custom message override — kirim langsung
+      await sendWhatsApp(phone.trim(), customMessage.trim(), { context: "op-confirm-send", refType: "vendor_op_confirm", refId: String(conf.id) });
+    } else if (conf.orderId) {
+      // Ada order — pakai template sendOpRequestNotification
+      const [orderRow] = await db.select().from(logisticOrdersTable)
+        .where(eq(logisticOrdersTable.id, conf.orderId)).limit(1);
+      if (orderRow) {
+        const orderData: LogisticOrderData = {
+          id: orderRow.id,
+          orderNumber: orderRow.orderNumber,
+          customerName: orderRow.customerName,
+          companyName: orderRow.companyName ?? "",
+          email: orderRow.email,
+          phone: orderRow.phone,
+          orderType: orderRow.orderType ?? undefined,
+          shipmentType: orderRow.shipmentType,
+          origin: orderRow.origin,
+          destination: orderRow.destination,
+          commodity: orderRow.commodity ?? null,
+          cargoDescription: orderRow.cargoDescription ?? null,
+          grossWeight: orderRow.grossWeight ? Number(orderRow.grossWeight) : null,
+          volumeCbm: orderRow.volumeCbm ? Number(orderRow.volumeCbm) : null,
+          jumlahKoli: orderRow.jumlahKoli ?? null,
+          grandTotal: orderRow.grandTotal ? Number(orderRow.grandTotal) : 0,
+          serviceList: orderRow.shipmentType,
+          requiredDate: orderRow.requiredDate ?? null,
+          notes: orderRow.notes ?? null,
+          jamOrder: orderRow.jamOrder ?? null,
+          vehicleType: orderRow.truckType ?? null,
+          createdAt: orderRow.createdAt ?? null,
+          publicRfqToken: orderRow.publicRfqToken ?? null,
+        };
+        await sendOpRequestNotification(orderData, conf.vendorName ?? "Vendor", phone.trim(), confirmUrl);
+      } else {
+        // Order tidak ditemukan — fallback ke hardcoded
+        const svcLabel = SERVICE_SCHEMAS[conf.serviceType]?.label ?? conf.serviceType;
+        const msg = `Halo${conf.vendorName ? ` *${conf.vendorName}*` : ""}, customer sudah menyetujui penawaran.\n\n` +
+          `Mohon lengkapi data operasional untuk layanan *${svcLabel}*` +
+          (conf.orderNumber ? ` (Order: ${conf.orderNumber})` : "") +
+          ` melalui link berikut:\n${confirmUrl}` +
+          (conf.instruction ? `\n\nInstruksi: ${conf.instruction}` : "");
+        await sendWhatsApp(phone.trim(), msg, { context: "op-confirm-send", refType: "vendor_op_confirm", refId: String(conf.id) });
+      }
+    } else {
+      // Tidak ada orderId — fallback ke hardcoded
+      const svcLabel = SERVICE_SCHEMAS[conf.serviceType]?.label ?? conf.serviceType;
+      const msg = `Halo${conf.vendorName ? ` *${conf.vendorName}*` : ""}, customer sudah menyetujui penawaran.\n\n` +
+        `Mohon lengkapi data operasional untuk layanan *${svcLabel}*` +
+        (conf.orderNumber ? ` (Order: ${conf.orderNumber})` : "") +
+        ` melalui link berikut:\n${confirmUrl}` +
+        (conf.instruction ? `\n\nInstruksi: ${conf.instruction}` : "");
+      await sendWhatsApp(phone.trim(), msg, { context: "op-confirm-send", refType: "vendor_op_confirm", refId: String(conf.id) });
+    }
 
     await logActivity("op_confirm", id, "sent_wa", (req.user as { id: string } | undefined)?.id ?? "admin",
       `WA op-confirm dikirim ke ${conf.vendorName ?? "vendor"}`, { phone });
