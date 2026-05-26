@@ -19,6 +19,17 @@ const require_ = createRequire(import.meta.url);
 type PdfParseFn = (buffer: Buffer) => Promise<{ text: string; numpages: number }>;
 const pdfParse = require_("pdf-parse/lib/pdf-parse.js") as PdfParseFn;
 
+/** Escape user-controlled strings before inserting into HTML email bodies. */
+function esc(s: string | null | undefined): string {
+  if (!s) return "";
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#x27;");
+}
+
 const AI_INTAKE_KEY = "ai_intake_enabled";
 const AI_INTAKE_REPLY_WA_KEY = "ai_intake_reply_wa";
 const AI_INTAKE_REPLY_EMAIL_KEY = "ai_intake_reply_email";
@@ -396,7 +407,7 @@ async function processVendorReply(opts: {
       to: process.env.ADMIN_EMAIL ?? process.env.SMTP_FROM ?? "",
       subject: `[Penawaran Vendor] ${opts.vendorName} — ${opts.docNumber}`,
       text: `Vendor ${opts.vendorName} telah membalas penawaran untuk quotation ${opts.docNumber}.\n${notesAppend}\n\nSilakan buka sistem untuk meninjau dan mengonfirmasi.`,
-      html: `<p>Vendor <strong>${opts.vendorName}</strong> telah membalas penawaran untuk quotation <strong>${opts.docNumber}</strong>.</p><pre>${notesAppend}</pre><p>Silakan buka sistem untuk meninjau dan mengonfirmasi.</p>`,
+      html: `<p>Vendor <strong>${esc(opts.vendorName)}</strong> telah membalas penawaran untuk quotation <strong>${esc(opts.docNumber)}</strong>.</p><pre>${esc(notesAppend)}</pre><p>Silakan buka sistem untuk meninjau dan mengonfirmasi.</p>`,
     }).catch((err: unknown) => logger.warn({ err }, "AI intake: vendor reply notification email failed"));
   }
 
@@ -455,7 +466,7 @@ async function processCustomerApproval(opts: {
         to: process.env.ADMIN_EMAIL ?? process.env.SMTP_FROM ?? "",
         subject: `[Customer SETUJU] ${opts.customerName} — ${opts.docNumber}`,
         text: `Customer ${opts.customerName} telah menyetujui quotation ${opts.docNumber} via email.\n\nCatatan AI: ${classification.notes ?? "-"}\n\nSilakan buka sistem dan konfirmasi quotation tersebut.`,
-        html: `<p>Customer <strong>${opts.customerName}</strong> telah <strong>menyetujui</strong> quotation <strong>${opts.docNumber}</strong> via email.</p><p>Catatan AI: ${classification.notes ?? "-"}</p><p>Silakan buka sistem dan <strong>konfirmasi</strong> quotation tersebut.</p>`,
+        html: `<p>Customer <strong>${esc(opts.customerName)}</strong> telah <strong>menyetujui</strong> quotation <strong>${esc(opts.docNumber)}</strong> via email.</p><p>Catatan AI: ${esc(classification.notes ?? "-")}</p><p>Silakan buka sistem dan <strong>konfirmasi</strong> quotation tersebut.</p>`,
       }).catch((err: unknown) => logger.warn({ err }, "AI intake: customer approval notification email failed"));
     }
 
