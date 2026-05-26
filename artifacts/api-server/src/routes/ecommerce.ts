@@ -141,6 +141,7 @@ router.delete("/product-categories/:id", async (req, res) => {
     return res.status(409).json({ message: `Kategori ini digunakan oleh ${usageCount} produk. Ubah kategori produk tersebut terlebih dahulu.` });
   }
   await db.delete(productCategoriesTable).where(eq(productCategoriesTable.id, id));
+  broadcastToPortal("price_sync", { ts: Date.now() });
   return res.json({ message: "Category deleted" });
 });
 

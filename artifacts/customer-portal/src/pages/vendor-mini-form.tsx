@@ -144,6 +144,8 @@ export default function VendorMiniFormPage() {
   const [eta, setEta] = useState("");
   const [validUntil, setValidUntil] = useState("");
 
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -184,11 +186,24 @@ export default function VendorMiniFormPage() {
     setSubmitting(true);
     setSubmitError(null);
     try {
+      let attachmentUrl: string | undefined;
+      if (attachmentFile) {
+        setUploading(true);
+        const fd = new FormData();
+        fd.append("file", attachmentFile);
+        const upRes = await fetch(`/api/vendor-form/upload/${token}`, { method: "POST", body: fd });
+        const upData = await upRes.json() as { objectPath?: string; error?: string };
+        setUploading(false);
+        if (!upRes.ok) throw new Error(upData.error ?? "Upload file gagal");
+        attachmentUrl = upData.objectPath;
+      }
+
       const body: Record<string, unknown> = {
         vendorName: vendorName.trim() || null,
         contactPerson: contactPerson.trim() || null,
         contactPhone: contactPhone.trim() || null,
         formData: values,
+        attachmentUrl,
       };
       if (meta.mode === "order_based") {
         body["vendorPrice"] = vendorPrice ? Number(vendorPrice) : undefined;
@@ -205,6 +220,7 @@ export default function VendorMiniFormPage() {
       if (!res.ok) throw new Error(data.error ?? "Gagal mengirim data");
       setSubmitted(true);
     } catch (e: unknown) {
+      setUploading(false);
       setSubmitError((e as Error).message);
     } finally {
       setSubmitting(false);
@@ -345,6 +361,34 @@ export default function VendorMiniFormPage() {
             </div>
           )}
 
+          {/* Attachment upload (optional) */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+            <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-4">📎 Lampiran Dokumen</h2>
+            <p className="text-xs text-slate-500 mb-3">Opsional — sertakan dokumen pendukung (PDF, gambar, atau spreadsheet, maks. 10 MB).</p>
+            <label className="flex items-center gap-3 cursor-pointer">
+              <span className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 transition-colors">
+                <span>📂</span> Pilih File
+              </span>
+              <input
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx"
+                className="hidden"
+                onChange={e => setAttachmentFile(e.target.files?.[0] ?? null)}
+              />
+              {attachmentFile ? (
+                <span className="text-sm text-slate-700 truncate max-w-[200px]">{attachmentFile.name}</span>
+              ) : (
+                <span className="text-sm text-slate-400">Belum ada file dipilih</span>
+              )}
+            </label>
+            {attachmentFile && (
+              <button type="button" onClick={() => setAttachmentFile(null)}
+                className="mt-2 text-xs text-red-500 hover:text-red-700">
+                ✕ Hapus lampiran
+              </button>
+            )}
+          </div>
+
           {/* Error */}
           {submitError && (
             <div className="rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3">
@@ -354,10 +398,15 @@ export default function VendorMiniFormPage() {
 
           {/* Submit */}
           <button
-            type="submit" disabled={submitting}
+            type="submit" disabled={submitting || uploading}
             className="w-full rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-semibold py-3.5 text-sm transition-colors active:scale-95"
           >
-            {submitting ? (
+            {uploading ? (
+              <span className="flex items-center justify-center gap-2">
+                <span className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                Mengupload file...
+              </span>
+            ) : submitting ? (
               <span className="flex items-center justify-center gap-2">
                 <span className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                 Mengirim...
