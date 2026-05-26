@@ -458,7 +458,7 @@ logisticRfqRouter.post("/vendor-confirm", rfqRateLimit, async (req: Request, res
       (approveUrl ? `✅ Review & Approve: ${approveUrl}` : ``);
 
     const adminWa = await getAdminWa();
-    if (adminWa) sendWhatsApp(adminWa, adminMsg).catch((e: unknown) => logger.error({ e }, "Admin notify vendor confirmed failed"));
+    if (adminWa) sendWhatsApp(adminWa, adminMsg, { context: "vendor_confirmed", refType: "order", refId: order.orderNumber }).catch((e: unknown) => logger.error({ e }, "Admin notify vendor confirmed failed"));
   } else {
     await db.update(logisticOrdersTable).set({ status: newOrderStatus } as any).where(eq(logisticOrdersTable.id, orderId));
     console.log(`[TRUCKING-FLOW] State: Under Review → Vendor Rejected (order ${orderId})`);
@@ -472,7 +472,7 @@ logisticRfqRouter.post("/vendor-confirm", rfqRateLimit, async (req: Request, res
       (approveUrl ? `📋 Cek & pilih vendor lain: ${approveUrl}` : ``);
 
     const adminWa = await getAdminWa();
-    if (adminWa) sendWhatsApp(adminWa, adminMsg).catch((e: unknown) => logger.error({ e }, "Admin notify vendor rejected failed"));
+    if (adminWa) sendWhatsApp(adminWa, adminMsg, { context: "vendor_rejected", refType: "order", refId: order.orderNumber }).catch((e: unknown) => logger.error({ e }, "Admin notify vendor rejected failed"));
   }
 
   logger.info({ orderId, action, vendorId: quote.vendorId }, `[TRUCKING-FIX] Vendor ${action} order`);
@@ -669,10 +669,10 @@ logisticRfqRouter.post("/vendor-quote", rfqRateLimit, async (req: Request, res: 
     quotePosition
   );
   if (adminWa) {
-    sendWhatsApp(adminWa, quoteNotifMsg).catch((e: unknown) => logger.error({ e }, "WA admin vendor-form quote notif failed"));
+    sendWhatsApp(adminWa, quoteNotifMsg, { context: "vendor_quote_submitted", refType: "rfq", refId: rfq.rfqNumber }).catch((e: unknown) => logger.error({ e }, "WA admin vendor-form quote notif failed"));
   }
   if (adminGroupWa) {
-    sendWhatsApp(adminGroupWa, quoteNotifMsg).catch((e: unknown) => logger.error({ e }, "WA admin group vendor-form quote notif failed"));
+    sendWhatsApp(adminGroupWa, quoteNotifMsg, { context: "vendor_quote_submitted", refType: "rfq", refId: rfq.rfqNumber }).catch((e: unknown) => logger.error({ e }, "WA admin group vendor-form quote notif failed"));
   }
 
   saveAndBroadcast("vendor_quote_received", {
@@ -899,7 +899,7 @@ logisticRfqRouter.post("/:id/quotes", async (req: Request, res: Response) => {
       sendWhatsApp(adminWa, buildAdminQuoteNotif(rfq.rfqNumber, order.orderNumber, vendor?.name ?? `#${vendorId}`, orderId, {
         vendorPrice: vp, estimatedPickup: quote.estimatedPickup, estimatedDelivery: quote.estimatedDelivery,
         estimatedDays: quote.estimatedDays, vendorNotes: quote.vendorNotes,
-      }, quotePosition)).catch((e: unknown) => logger.error({ e }, "WA admin quote notif failed"));
+      }, quotePosition), { context: "vendor_quote_submitted", refType: "rfq", refId: rfq.rfqNumber }).catch((e: unknown) => logger.error({ e }, "WA admin quote notif failed"));
     }
   }
 
@@ -1447,7 +1447,11 @@ logisticRfqRouter.post("/:id/approve", async (req: Request, res: Response) => {
   if (isTrucking) console.log(`[TRUCKING-FLOW] State: Vendor Confirmed → Waiting Customer (order ${orderId})`);
 
   if (updatedOrder.phone) {
-    sendWhatsApp(updatedOrder.phone, customerMsg).catch((e: unknown) =>
+    sendWhatsApp(updatedOrder.phone, customerMsg, {
+      context: "quotation_sent_customer",
+      refType: "order",
+      refId: updatedOrder.orderNumber,
+    }).catch((e: unknown) =>
       logger.error({ e }, "WA customer quotation failed")
     );
   }
@@ -1688,7 +1692,11 @@ logisticRfqRouter.post("/confirm/:token", async (req: Request, res: Response) =>
         `📍 Rute: ${order.origin} → ${order.destination}\n` +
         `Silakan hubungi customer untuk negosiasi lebih lanjut.\n\n` +
         (orderUrl ? `🔗 Detail order:\n${orderUrl}` : "");
-    sendWhatsApp(adminWa, adminMsg).catch((e: unknown) =>
+    sendWhatsApp(adminWa, adminMsg, {
+      context: "customer_confirmation",
+      refType: "order",
+      refId: order.orderNumber,
+    }).catch((e: unknown) =>
       logger.error({ e }, "WA admin customer confirm notif failed")
     );
     if (action === "confirmed") console.log(`[TRUCKING-FLOW] State: Confirmed → SO_CREATED:${createdSoNumber} (order ${order.id})`);
@@ -1863,7 +1871,11 @@ logisticRfqRouter.post("/:id/send-customer-options", async (req: Request, res: R
     `👉 Pilih opsi Anda:\n${optionUrl}`;
 
   if (order.phone) {
-    sendWhatsApp(order.phone, waMsg).catch((e: unknown) =>
+    sendWhatsApp(order.phone, waMsg, {
+      context: "multi_mode_options_sent",
+      refType: "order",
+      refId: order.orderNumber,
+    }).catch((e: unknown) =>
       logger.error({ e }, "[MULTI-MODE] WA send-options to customer failed")
     );
   }
@@ -1985,7 +1997,11 @@ logisticRfqRouter.post("/choose-option", async (req: Request, res: Response) => 
       (orderAny.truckType ? `🚚 Unit: ${orderAny.truckType}\n` : "") +
       (chosen.vehicleYear ? `📅 Tahun Unit: ${chosen.vehicleYear}\n` : "") +
       `\n🔗 *Buat Sales Order:*\n${orderUrl}`;
-    sendWhatsApp(adminWa, adminMsg).catch((e: unknown) =>
+    sendWhatsApp(adminWa, adminMsg, {
+      context: "customer_chose_option",
+      refType: "order",
+      refId: order.orderNumber,
+    }).catch((e: unknown) =>
       logger.error({ e }, "[MULTI-MODE] WA admin choose-option failed")
     );
   }
@@ -2227,7 +2243,11 @@ logisticRfqRouter.put("/:id/operational-status", async (req: Request, res: Respo
         `CST Logistics — Terima kasih telah menggunakan layanan kami.`;
 
       if (order.phone) {
-        sendWhatsApp(order.phone, msg).catch((err: unknown) =>
+        sendWhatsApp(order.phone, msg, {
+          context: "operational_status_update",
+          refType: "order",
+          refId: order.order_number,
+        }).catch((err: unknown) =>
           logger.error({ err }, "WA milestone notification to customer failed")
         );
       }
@@ -2235,7 +2255,8 @@ logisticRfqRouter.put("/:id/operational-status", async (req: Request, res: Respo
       const adminWa = await getAdminWa();
       if (adminWa) {
         sendWhatsApp(adminWa,
-          `${emoji} *Status Update* — ${order.order_number}\nCustomer: ${order.customer_name}\nStatus: *${label}*`
+          `${emoji} *Status Update* — ${order.order_number}\nCustomer: ${order.customer_name}\nStatus: *${label}*`,
+          { context: "operational_status_update_admin", refType: "order", refId: order.order_number }
         ).catch(() => {});
       }
     }
