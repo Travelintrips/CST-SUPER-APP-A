@@ -195,11 +195,11 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
       isPublic: false,
     });
 
-    // Notify admin via WA — ringkasan lengkap + link BizPortal
+    // Notify admin via WA — ringkasan lengkap + link mini form (public, no login needed)
     const adminWa = await getAdminWa();
     if (adminWa) {
       const domain = getPreferredDomain() || "cstlogistic.co.id";
-      const bizportalLink = `https://${domain}/bizportal/logistics/orders/${link.orderId}`;
+      const bizportalLink = `https://${domain}/vendor-fulfillment/${token}`;
 
       // Build detailed field summary by service type
       const detailLines: string[] = [];
@@ -261,7 +261,7 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
         `━━━━━━━━━━━━━━━━━━\n` +
         (detailLines.length > 0 ? detailLines.join("\n") + "\n" : "") +
         `━━━━━━━━━━━━━━━━━━\n` +
-        `🔗 Lihat order:\n${bizportalLink}`;
+        `📋 Buka form fulfillment:\n${bizportalLink}`;
 
       sendWhatsApp(adminWa, waMsg).catch((e) =>
         logger.warn({ e }, "vendor-fulfillment WA to admin failed")
