@@ -1,5 +1,5 @@
 import { db, suppliersTable, vendorCatalogItemsTable, portalContentTable, waTemplateConfigsTable } from "@workspace/db";
-import { eq, and, ilike } from "drizzle-orm";
+import { eq, and, ilike, sql } from "drizzle-orm";
 import { sendWhatsApp } from "./fonnte";
 import { getAdminGroupWa } from "./adminWa";
 import { getPreferredDomain } from "./domain";
@@ -1371,46 +1371,77 @@ export async function getRfqVendorRecapTemplate(): Promise<string> {
 }
 
 // ── runWaTemplateMigration ─────────────────────────────────────────────────────
-// Upgrade stale DB templates that are missing {{productList}} conditional block.
-// Safe to run on every startup — only updates rows that are actually outdated.
+// Creates the whatsapp_template_configs table if missing, seeds default templates,
+// and upgrades stale rows that are missing required markers (e.g. {{productList}}).
 export async function runWaTemplateMigration(): Promise<void> {
-  // Map of (recipient, workflow) → required marker in body
-  const required: Array<[string, string, string]> = [
-    ["vendor", "vendor_request", "{{productList}}"],
-    ["vendor", "order_new", "{{productList}}"],
-    ["admin_personal", "order_new", "{{productList}}"],
-    ["admin_group", "order_new", "{{productList}}"],
-    ["customer", "order_new", "{{productList}}"],
-  ];
-
-  // Map to the current DEFAULT_TPL body for each pair
-  const tplMap: Record<string, string> = {
-    "vendor__vendor_request": DEFAULT_TPL.vendor.vendor_request,
-    "vendor__order_new": DEFAULT_TPL.vendor.order_new,
-    "admin_personal__order_new": DEFAULT_TPL.admin_personal.order_new,
-    "admin_group__order_new": DEFAULT_TPL.admin_group.order_new,
-    "customer__order_new": DEFAULT_TPL.customer.order_new,
-  };
-
   try {
+    // 1. Ensure table exists
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS whatsapp_template_configs (
+        id SERIAL PRIMARY KEY,
+        recipient TEXT NOT NULL,
+        workflow  TEXT NOT NULL,
+        body      TEXT NOT NULL DEFAULT '',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT uq_wa_tpl_cfg UNIQUE (recipient, workflow)
+      )
+    `);
+
+    // 2. All (recipient, workflow) pairs we manage
+    const allPairs: Array<[string, string]> = [
+      ["admin_personal", "order_new"],
+      ["admin_group",    "order_new"],
+      ["customer",       "order_new"],
+      ["vendor",         "vendor_request"],
+      ["vendor",         "order_new"],
+    ];
+
+    const tplMap: Record<string, string> = {
+      "admin_personal__order_new": DEFAULT_TPL.admin_personal.order_new,
+      "admin_group__order_new":    DEFAULT_TPL.admin_group.order_new,
+      "customer__order_new":       DEFAULT_TPL.customer.order_new,
+      "vendor__vendor_request":    DEFAULT_TPL.vendor.vendor_request,
+      "vendor__order_new":         DEFAULT_TPL.vendor.order_new,
+    };
+
+    // Required marker per pair — if missing from the DB row, force-upgrade it
+    const markerMap: Record<string, string> = {
+      "vendor__vendor_request": "{{productList}}",
+      "vendor__order_new":      "{{productList}}",
+      "admin_personal__order_new": "{{productList}}",
+      "admin_group__order_new":    "{{productList}}",
+      "customer__order_new":       "{{productList}}",
+    };
+
     const rows = await db.select().from(waTemplateConfigsTable);
-    for (const [recipient, workflow, marker] of required) {
-      const row = rows.find((r) => r.recipient === recipient && r.workflow === workflow);
-      if (row && !row.body.includes(marker)) {
-        const newBody = tplMap[`${recipient}__${workflow}`];
-        if (newBody) {
-          await db.update(waTemplateConfigsTable)
-            .set({ body: newBody, updatedAt: new Date() })
-            .where(and(
-              eq(waTemplateConfigsTable.recipient, recipient),
-              eq(waTemplateConfigsTable.workflow, workflow),
-            ));
-          logger.info({ recipient, workflow }, "WA template migration: upgraded stale template");
-        }
+
+    for (const [recipient, workflow] of allPairs) {
+      const key = `${recipient}__${workflow}`;
+      const newBody = tplMap[key];
+      if (!newBody) continue;
+
+      const existing = rows.find((r) => r.recipient === recipient && r.workflow === workflow);
+      const requiredMarker = markerMap[key];
+
+      if (!existing) {
+        // 3a. Seed missing row
+        await db.insert(waTemplateConfigsTable).values({ recipient, workflow, body: newBody });
+        logger.info({ recipient, workflow }, "WA template migration: seeded new template");
+      } else if (requiredMarker && !existing.body.includes(requiredMarker)) {
+        // 3b. Upgrade stale row
+        await db.update(waTemplateConfigsTable)
+          .set({ body: newBody, updatedAt: new Date() })
+          .where(and(
+            eq(waTemplateConfigsTable.recipient, recipient),
+            eq(waTemplateConfigsTable.workflow, workflow),
+          ));
+        logger.info({ recipient, workflow }, "WA template migration: upgraded stale template");
       }
     }
-    // Invalidate cache so next send picks up fresh templates
+
     invalidateWaTemplateCache();
+    logger.info("WA template migration: done");
   } catch (err) {
     logger.warn({ err }, "WA template migration failed (non-fatal)");
   }
