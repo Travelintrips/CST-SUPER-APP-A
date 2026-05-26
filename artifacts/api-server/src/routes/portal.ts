@@ -1802,6 +1802,7 @@ router.put("/admin/trucking-rates", requirePortalAdmin, async (req, res) => {
   const rates = req.body as Record<string, { ratePerKm: number; loadingFee: number }>;
   if (!rates || typeof rates !== "object") return res.status(400).json({ message: "Format tidak valid" });
   await setPricingKey(TRUCKING_RATES_KEY, rates);
+  broadcastToPortal("price_sync", { ts: Date.now(), type: "trucking_rates" });
   return res.json({ ok: true });
 });
 
@@ -1815,6 +1816,7 @@ router.get("/admin/freight-rates", requirePortalAdmin, async (_req, res) => {
 router.put("/admin/freight-rates", requirePortalAdmin, async (req, res) => {
   if (!req.body || typeof req.body !== "object") return res.status(400).json({ message: "Format tidak valid" });
   await setPricingKey(FREIGHT_RATES_KEY, req.body);
+  broadcastToPortal("price_sync", { ts: Date.now(), type: "freight_rates" });
   return res.json({ ok: true });
 });
 
