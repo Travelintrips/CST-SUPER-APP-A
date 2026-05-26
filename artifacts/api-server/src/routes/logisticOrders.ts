@@ -11,6 +11,7 @@ import {
   driverPhotosTable,
   logisticOrderRfqsTable,
   driverLocationsTable,
+  orderUpdatesTable,
 } from "@workspace/db";
 import { eq, ilike, and, gte, lte, or, sql, desc, inArray, isNotNull } from "drizzle-orm";
 import { salesDocumentsTable } from "@workspace/db";
@@ -831,7 +832,11 @@ async function notifyVendorStatusChange(
       `${note}\n\n` +
       `_CST Logistics — Notifikasi Otomatis_`;
 
-    sendWhatsApp(phone, msg).catch(() => undefined);
+    sendWhatsApp(phone, msg, {
+      context: "vendor_status_change",
+      refType: "order",
+      refId: order.orderNumber,
+    }).catch(() => undefined);
   } catch {
     // fire-and-forget, never block the response
   }
@@ -860,15 +865,29 @@ logisticOrdersRouter.put("/:id/status", async (req: Request, res: Response) => {
 
   if (!updated) return res.status(404).json({ message: "Order tidak ditemukan" });
 
+  const adminName = (req.user as { name?: string } | undefined)?.name ?? "Admin";
+  const adminId   = (req.user as { id?: string } | undefined)?.id ?? null;
+
   logActivity({
     orderId: updated.id,
     actorType: "admin",
-    actorName: (req.user as { name?: string } | undefined)?.name ?? "Admin",
-    actorId: (req.user as { id?: string } | undefined)?.id ?? null,
+    actorName: adminName,
+    actorId: adminId,
     action: "status_changed",
     description: `Status order ${updated.orderNumber} diubah menjadi "${status}"`,
     newValue: { status },
     ipAddress: req.ip ?? null,
+  }).catch(() => {});
+
+  // Persistent timeline entry — visible to customer tracking
+  db.insert(orderUpdatesTable).values({
+    orderId: updated.id,
+    actorType: "admin",
+    actorId: adminId,
+    actorName: adminName,
+    status,
+    notes: `Status diubah menjadi "${status}"`,
+    isPublic: true,
   }).catch(() => {});
 
   // Notify customer via WhatsApp (fire-and-forget)
@@ -888,7 +907,11 @@ logisticOrdersRouter.put("/:id/status", async (req: Request, res: Response) => {
       `No Order: ${updated.orderNumber}\n` +
       `Status: *${label}*\n\n` +
       `Terima kasih telah menggunakan layanan kami. Hubungi kami jika ada pertanyaan.`;
-    sendWhatsApp(updated.phone, msg).catch(() => undefined);
+    sendWhatsApp(updated.phone, msg, {
+      context: "order_status_change",
+      refType: "order",
+      refId: updated.orderNumber,
+    }).catch(() => undefined);
   }
 
   // Notify vendor via WhatsApp (fire-and-forget)
@@ -977,6 +1000,18 @@ logisticOrdersRouter.patch("/:id/type", async (req: Request, res: Response) => {
     .where(eq(logisticOrdersTable.id, id))
     .returning();
   if (!updated) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+  logActivity({
+    orderId: updated.id,
+    actorType: "admin",
+    actorName: (req.user as { name?: string } | undefined)?.name ?? "Admin",
+    actorId: (req.user as { id?: string } | undefined)?.id ?? null,
+    action: "shipment_type_changed",
+    description: `Jenis pengiriman order ${updated.orderNumber} diubah menjadi "${shipmentType.trim()}"`,
+    newValue: { shipmentType: shipmentType.trim() },
+    ipAddress: req.ip ?? null,
+  }).catch(() => {});
+
   return res.json(toOrder(updated));
 });
 
@@ -992,7 +1027,34 @@ logisticOrdersRouter.put("/bulk-status", async (req: Request, res: Response) => 
     .update(logisticOrdersTable)
     .set({ status })
     .where(inArray(logisticOrdersTable.id, ids))
-    .returning({ id: logisticOrdersTable.id });
+    .returning({ id: logisticOrdersTable.id, orderNumber: logisticOrdersTable.orderNumber });
+
+  const adminName = (req.user as { name?: string } | undefined)?.name ?? "Admin";
+  const adminId   = (req.user as { id?: string } | undefined)?.id ?? null;
+
+  // Log audit trail + timeline for each affected order (fire-and-forget)
+  for (const row of updated) {
+    logActivity({
+      orderId: row.id,
+      actorType: "admin",
+      actorName: adminName,
+      actorId: adminId,
+      action: "bulk_status_changed",
+      description: `Bulk status change → "${status}"`,
+      newValue: { status },
+      ipAddress: req.ip ?? null,
+    }).catch(() => {});
+    db.insert(orderUpdatesTable).values({
+      orderId: row.id,
+      actorType: "admin",
+      actorId: adminId,
+      actorName: adminName,
+      status,
+      notes: `Status diubah (bulk) menjadi "${status}"`,
+      isPublic: false,
+    }).catch(() => {});
+  }
+
   return res.json({ message: "Updated", updatedIds: updated.map((r) => r.id), count: updated.length });
 });
 

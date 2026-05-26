@@ -1186,6 +1186,21 @@ vendorMiniFormRouter.post("/op-confirm/:token", async (req: Request, res: Respon
       .set({ payload, status: "submitted", submittedAt: new Date() })
       .where(eq(vendorOperationalConfirmationsTable.token, token));
 
+    // BF-2 FIX: Auto-advance order status to "In Progress" when vendor submits
+    // operational data. Only transitions from Customer Approved / Confirmed states
+    // to avoid overwriting terminal statuses (Completed, Cancelled).
+    if (conf.orderId) {
+      await db.update(logisticOrdersTable)
+        .set({ status: "In Progress" })
+        .where(
+          and(
+            eq(logisticOrdersTable.id, conf.orderId),
+            inArray(logisticOrdersTable.status as any, ["Customer Approved", "Confirmed"]),
+          ),
+        )
+        .catch((e: unknown) => req.log?.error({ e }, "BF-2: auto-update order status to In Progress failed"));
+    }
+
     await logActivity("op_confirm", conf.id, "op_submitted", "vendor",
       `Data operasional diisi oleh ${conf.vendorName ?? "vendor"}`, { orderNumber: conf.orderNumber, serviceType: conf.serviceType });
 
@@ -1395,27 +1410,34 @@ vendorMiniFormRouter.post("/admin/submissions/:id/select", async (req: Request, 
     const [sub] = await db.select().from(vendorMiniFormSubmissionsTable).where(eq(vendorMiniFormSubmissionsTable.id, id));
     if (!sub) return res.status(404).json({ error: "Submission tidak ditemukan" });
 
-    if (sub.linkId) {
-      await db.update(vendorMiniFormSubmissionsTable)
-        .set({ selectedByAdmin: false, selectedAt: null })
-        .where(eq(vendorMiniFormSubmissionsTable.linkId, sub.linkId));
-    }
-    const [updated] = await db.update(vendorMiniFormSubmissionsTable)
-      .set({ selectedByAdmin: true, selectedAt: new Date(), responseStatus: "selected" })
-      .where(eq(vendorMiniFormSubmissionsTable.id, id))
-      .returning();
+    // RC-2 FIX: Wrap deselect-all + select-one in a single transaction to prevent
+    // race condition when two admins select different submissions simultaneously
+    let updated: typeof vendorMiniFormSubmissionsTable.$inferSelect;
+    await db.transaction(async (tx) => {
+      if (sub.linkId) {
+        await tx.update(vendorMiniFormSubmissionsTable)
+          .set({ selectedByAdmin: false, selectedAt: null })
+          .where(eq(vendorMiniFormSubmissionsTable.linkId, sub.linkId));
+      }
+      const [row] = await tx.update(vendorMiniFormSubmissionsTable)
+        .set({ selectedByAdmin: true, selectedAt: new Date(), responseStatus: "selected" })
+        .where(eq(vendorMiniFormSubmissionsTable.id, id))
+        .returning();
+      if (!row) throw new Error("Submission tidak ditemukan dalam transaksi");
+      updated = row;
 
-    if (sub.linkId) {
-      await db.update(vendorMiniFormLinksTable)
-        .set({ itemStatus: "admin_review" })
-        .where(eq(vendorMiniFormLinksTable.id, sub.linkId));
-    }
+      if (sub.linkId) {
+        await tx.update(vendorMiniFormLinksTable)
+          .set({ itemStatus: "admin_review" })
+          .where(eq(vendorMiniFormLinksTable.id, sub.linkId));
+      }
+    });
 
     await logActivity("submission", id, "selected", userId,
       `Vendor ${sub.vendorName ?? "-"} dipilih oleh admin`,
       { vendorPrice: sub.vendorPrice, currency: sub.currency, linkId: sub.linkId });
 
-    return res.json({ ...updated, selectedAt: updated.selectedAt?.toISOString() ?? null, submittedAt: updated.submittedAt.toISOString() });
+    return res.json({ ...updated!, selectedAt: updated!.selectedAt?.toISOString() ?? null, submittedAt: updated!.submittedAt.toISOString() });
   } catch (err) {
     req.log?.error({ err }, "select submission error");
     return res.status(500).json({ error: "Gagal memilih submission" });
@@ -1550,6 +1572,22 @@ vendorMiniFormRouter.post("/admin/customer-approvals", async (req: Request, res:
       submissionId?: number; vendorCost?: number; markupPct?: number; markupNominal?: number;
       ppnPct?: number; ppnNominal?: number; profitMarginPct?: number; adminNotes?: string;
     };
+
+    // DA-1 FIX: Prevent duplicate pending approvals for the same order.
+    // Admin must expire/cancel the existing pending approval before creating a new one.
+    if (orderId) {
+      const [existingPending] = await db
+        .select({ id: customerApprovalsTable.id, orderNumber: customerApprovalsTable.orderNumber })
+        .from(customerApprovalsTable)
+        .where(and(eq(customerApprovalsTable.orderId, orderId), eq(customerApprovalsTable.status, "pending")))
+        .limit(1);
+      if (existingPending) {
+        return res.status(409).json({
+          error: `Order ini sudah memiliki link approval pending (ID: ${existingPending.id}). Batalkan atau tunggu link lama expired sebelum membuat yang baru.`,
+          existingApprovalId: existingPending.id,
+        });
+      }
+    }
 
     const token = randomBytes(20).toString("hex");
     const userId = (req.user as { id: string } | undefined)?.id ?? null;
