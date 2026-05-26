@@ -2097,7 +2097,7 @@ logisticRfqRouter.post("/:id/duplicate-rfq", async (req: Request, res: Response)
   const orderToken = order.publicRfqToken ?? "";
   const orderItems = await db.select().from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, orderId));
   const isTrucking = orderItems.some((it) => it.calculatorType === "trucking");
-  const waItems = orderItems.map((it) => ({ serviceName: it.serviceName || it.category, category: it.category }));
+  const waItems = orderItems.map((it) => ({ serviceName: it.serviceName || it.category, category: it.category, subtotal: it.subtotal != null ? parseFloat(String(it.subtotal)) : null }));
 
   for (const vendor of eligible) {
     const catalogItems = await db.select().from(vendorCatalogItemsTable)
@@ -2118,6 +2118,7 @@ logisticRfqRouter.post("/:id/duplicate-rfq", async (req: Request, res: Response)
       jamOrder: order.jamOrder ?? null,
       orderItems: waItems,
       isTrucking,
+      orderType: order.orderType ?? null,
     }).catch((err: unknown) => logger.error({ err, vendorId: vendor.id }, "duplicate-rfq WA vendor failed"));
   }
 

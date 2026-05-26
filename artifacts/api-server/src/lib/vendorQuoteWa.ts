@@ -162,9 +162,11 @@ export async function sendVendorWhatsApp(input: SendVendorWhatsAppInput): Promis
   const jam = input.jamOrder ?? (input.createdAt ? formatJam(input.createdAt) : null);
 
   const productList: string | null = (() => {
-    const items = (input.orderItems ?? []).filter(
-      (it) => it.category?.toLowerCase().includes("product") || svcType === "product",
-    );
+    if (!input.orderItems?.length) return null;
+    // For product orders, show ALL items. For other types, filter by category.
+    const items = svcType === "product"
+      ? input.orderItems
+      : input.orderItems.filter((it) => it.category?.toLowerCase().includes("product"));
     if (!items.length) return null;
     return items
       .map((it) => {
@@ -173,6 +175,10 @@ export async function sendVendorWhatsApp(input: SendVendorWhatsAppInput): Promis
       })
       .join("\n");
   })();
+
+  // Build conditions: always include svcType; add "product" if we have a productList to render
+  const conditions: string[] = svcType ? [svcType] : [];
+  if (productList && !conditions.includes("product")) conditions.push("product");
 
   const vars: Record<string, string | null | undefined> = {
     rfqNumber: input.rfqNumber,
@@ -197,7 +203,7 @@ export async function sendVendorWhatsApp(input: SendVendorWhatsAppInput): Promis
     timestamp: new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" }),
   };
 
-  const message = renderTemplate(tplBody, vars, svcType);
+  const message = renderTemplate(tplBody, vars, conditions);
   await sendWhatsApp(input.vendorPhone, message, {
     context: "vendor_quote",
     refType: "rfq",
