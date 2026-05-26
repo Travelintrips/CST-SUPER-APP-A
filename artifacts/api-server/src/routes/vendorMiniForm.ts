@@ -65,6 +65,21 @@ function buildOrderDataFromRow(row: typeof logisticOrdersTable.$inferSelect): Lo
   };
 }
 
+async function buildOrderDataFromRowWithItems(row: typeof logisticOrdersTable.$inferSelect): Promise<LogisticOrderData> {
+  const base = buildOrderDataFromRow(row);
+  try {
+    const items = await db.select({
+      name: logisticOrderItemsTable.serviceName,
+      subtotal: logisticOrderItemsTable.subtotal,
+    }).from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, row.id));
+    base.orderItems = items.map(i => ({
+      name: i.name,
+      subtotal: i.subtotal ? parseFloat(i.subtotal) : null,
+    }));
+  } catch { /* non-critical, skip */ }
+  return base;
+}
+
 const PUBLIC_CACHE = "public, max-age=300, stale-while-revalidate=600";
 
 // ── Activity log helper ────────────────────────────────────────────────────────
@@ -1786,7 +1801,7 @@ vendorMiniFormRouter.post("/admin/links/:id/send-wa", async (req: Request, res: 
       const [orderRow] = await db.select().from(logisticOrdersTable)
         .where(eq(logisticOrdersTable.id, link.orderId)).limit(1);
       if (orderRow) {
-        await sendVendorRequestNotification(buildOrderDataFromRow(orderRow), link.vendorName, phone.trim(), formUrl);
+        await sendVendorRequestNotification(await buildOrderDataFromRowWithItems(orderRow), link.vendorName, phone.trim(), formUrl);
         await logActivity("link", id, "sent_wa", (req.user as { id: string } | undefined)?.id ?? "admin", `WA dikirim ke ${phone}`, { phone });
         return res.json({ success: true, message: "Pesan WA berhasil dikirim" });
       }

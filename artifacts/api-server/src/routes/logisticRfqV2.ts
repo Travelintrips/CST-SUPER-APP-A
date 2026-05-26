@@ -61,6 +61,21 @@ function buildOrderData(order: typeof logisticOrdersTable.$inferSelect): Logisti
   };
 }
 
+async function buildOrderDataWithItems(order: typeof logisticOrdersTable.$inferSelect): Promise<LogisticOrderData> {
+  const base = buildOrderData(order);
+  try {
+    const items = await db.select({
+      name: logisticOrderItemsTable.serviceName,
+      subtotal: logisticOrderItemsTable.subtotal,
+    }).from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, order.id));
+    base.orderItems = items.map(i => ({
+      name: i.name,
+      subtotal: i.subtotal ? parseFloat(i.subtotal) : null,
+    }));
+  } catch { /* non-critical, skip */ }
+  return base;
+}
+
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 const objectStorage = new ObjectStorageService();
 
@@ -721,7 +736,7 @@ logisticRfqV2Router.post("/orders/:orderId/rfq-blast", async (req: Request, res:
     const fmtBasic = basicPriceNum ? ` (Harga Dasar: ${fmtRp(basicPriceNum)})` : "";
 
     try {
-      await sendVendorRequestNotification(buildOrderData(order), vendor.name, vendor.phone!, formUrl);
+      await sendVendorRequestNotification(await buildOrderDataWithItems(order), vendor.name, vendor.phone!, formUrl);
       results.push({ vendorId: vendor.id, vendorName: vendor.name, sent: true });
     } catch (e) {
       logger.error({ e, vendorId: vendor.id }, "rfq-blast WA failed");
@@ -814,7 +829,7 @@ logisticRfqV2Router.post("/rfq/:rfqId/blast", async (req: Request, res: Response
     const fmtBasic = basicPriceNum ? ` (Harga Dasar: ${fmtRp(basicPriceNum)})` : "";
 
     try {
-      await sendVendorRequestNotification(buildOrderData(order), vendor.name, vendor.phone!, formUrl);
+      await sendVendorRequestNotification(await buildOrderDataWithItems(order), vendor.name, vendor.phone!, formUrl);
       results.push({ vendorId: vendor.id, vendorName: vendor.name, token: linkToken, sent: true });
     } catch (e) {
       logger.error({ e, vendorId: vendor.id }, "blast WA vendor failed");
