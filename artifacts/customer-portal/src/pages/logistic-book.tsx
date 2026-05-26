@@ -625,6 +625,7 @@ export default function BookPage() {
           subtotal: productPrice * qty,
         });
       }
+      setOrderType("product");
     }
 
     const serviceId = params.get("service");
@@ -707,16 +708,21 @@ export default function BookPage() {
     const truckingItem = cartItems.find(c => c.calculatorType === "trucking");
     const truckingInputData = (truckingItem?.inputData ?? {}) as Record<string, unknown>;
     const str = (v: unknown) => (v ? String(v) : "");
-    const effectiveOrigin = (orderType === "product" || orderType === "service") ? (origin || "") : origin;
-    const effectiveDestination = orderType === "product"
+    const derivedOrderType: "product" | "service" | "shipment" | null = orderType ?? (
+      cartItems.every(c => c.calculatorType === "product") ? "product" :
+      cartItems.every(c => c.calculatorType !== "trucking" && c.calculatorType !== "air_freight" && c.calculatorType !== "sea_fcl" && c.calculatorType !== "sea_lcl") && cartItems.some(c => c.calculatorType !== "product") ? "service" :
+      "shipment"
+    );
+    const effectiveOrigin = (derivedOrderType === "product" || derivedOrderType === "service") ? (origin || "") : origin;
+    const effectiveDestination = derivedOrderType === "product"
       ? (shippingAddress || destination || "")
-      : (orderType === "service" ? (destination || "") : destination);
+      : (derivedOrderType === "service" ? (destination || "") : destination);
     createOrder.mutate({ data: {
       companyName,
       customerName,
       email,
       phone,
-      orderType: orderType ?? undefined,
+      orderType: derivedOrderType ?? undefined,
       shipmentType: shipmentType ?? "",
       origin: effectiveOrigin,
       destination: effectiveDestination,
