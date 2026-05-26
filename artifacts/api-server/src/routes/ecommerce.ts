@@ -324,16 +324,29 @@ router.put("/products/:id", async (req, res) => {
     defaultSalesTaxId, defaultPurchaseTaxId,
     itemType, unit, unitOptions, subcategory, isActive,
   } = req.body;
-  const categoryNames: string[] = Array.isArray(categories) ? categories.map(String) : [];
-  if (categoryNames.length === 0) return res.status(400).json({ message: "Produk harus memiliki setidaknya satu kategori" });
+  const requestedNames: string[] = Array.isArray(categories) ? categories.map(String).filter(Boolean) : [];
 
+  // If categories not provided or empty, preserve the existing categories from DB
+  let categoryNames: string[] = requestedNames;
   let validCats: { id: number; name: string; createdAt: Date }[] = [];
-  if (categoryNames.length > 0) {
+
+  if (requestedNames.length === 0) {
+    // Preserve existing categories
+    const existing = await db
+      .select({ name: productCategoriesTable.name })
+      .from(productCategoryMapTable)
+      .innerJoin(productCategoriesTable, eq(productCategoryMapTable.categoryId, productCategoriesTable.id))
+      .where(eq(productCategoryMapTable.productId, id));
+    categoryNames = existing.map((r) => r.name);
+    if (categoryNames.length > 0) {
+      validCats = await db.select().from(productCategoriesTable).where(inArray(productCategoriesTable.name, categoryNames));
+    }
+  } else {
     validCats = await db
       .select()
       .from(productCategoriesTable)
-      .where(inArray(productCategoriesTable.name, categoryNames));
-    if (validCats.length !== categoryNames.length) {
+      .where(inArray(productCategoriesTable.name, requestedNames));
+    if (validCats.length !== requestedNames.length) {
       return res.status(400).json({ message: "One or more categories do not exist in the predefined list" });
     }
   }
@@ -353,11 +366,14 @@ router.put("/products/:id", async (req, res) => {
       isActive: isActive !== undefined ? Boolean(isActive) : true,
     }).where(eq(productsTable.id, id)).returning();
     if (!p) return null;
-    await tx.delete(productCategoryMapTable).where(eq(productCategoryMapTable.productId, id));
-    if (validCats.length > 0) {
-      await tx.insert(productCategoryMapTable).values(
-        validCats.map((c) => ({ productId: id, categoryId: c.id }))
-      );
+    if (requestedNames.length > 0) {
+      // Only update category map if caller explicitly sent categories
+      await tx.delete(productCategoryMapTable).where(eq(productCategoryMapTable.productId, id));
+      if (validCats.length > 0) {
+        await tx.insert(productCategoryMapTable).values(
+          validCats.map((c) => ({ productId: id, categoryId: c.id }))
+        );
+      }
     }
     return p;
   });

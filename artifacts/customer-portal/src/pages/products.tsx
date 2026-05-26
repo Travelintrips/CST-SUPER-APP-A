@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -503,20 +504,20 @@ const PRODUCT_HERO_BG = `${import.meta.env.BASE_URL}images/product-hero-brand.pn
 // ── Main page ──────────────────────────────────────────────────────────────
 export default function Products() {
   const [searchQuery, setSearchQuery] = useState("");
-  const [products, setProducts] = useState<Product[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>("");
   const { t } = useLanguage();
   const usdIdrRate = useUsdIdrRate();
 
-  useEffect(() => {
-    fetch("/api/portal/products")
-      .then((r) => r.json())
-      .then((data) => setProducts(Array.isArray(data) ? data : []))
-      .catch(() => setProducts([]))
-      .finally(() => setIsLoading(false));
-  }, []);
+  const { data: productsData, isLoading } = useQuery<Product[]>({
+    queryKey: ["portal-products"],
+    queryFn: () => fetch("/api/portal/products").then((r) => r.json()),
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+  });
+
+  const products = Array.isArray(productsData) ? productsData : [];
 
   const allCategories = Array.from(new Set(products.flatMap((p) => p.categories)));
 
