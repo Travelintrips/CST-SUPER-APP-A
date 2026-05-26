@@ -27,9 +27,9 @@ const adminRouter = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
 const objectStorageService = new ObjectStorageService();
 
-const JWT_SECRET = process.env.SESSION_SECRET;
+const JWT_SECRET = process.env.DRIVER_JWT_SECRET ?? process.env.SESSION_SECRET;
 if (!JWT_SECRET) {
-  throw new Error("SESSION_SECRET environment variable is required for driver auth");
+  throw new Error("DRIVER_JWT_SECRET (or SESSION_SECRET) environment variable is required for driver auth");
 }
 
 const BCRYPT_ROUNDS = 12;

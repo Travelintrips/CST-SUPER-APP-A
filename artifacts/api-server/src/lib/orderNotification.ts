@@ -314,6 +314,17 @@ function buildCustomerWaMessage(order: LogisticOrderData, tplBody: string): stri
   return renderTemplate(tplBody, buildOrderVars(order), svcType);
 }
 
+/** Escape user-controlled strings before inserting into HTML email bodies. */
+function escHtml(s: string | null | undefined): string {
+  if (!s) return "";
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#x27;");
+}
+
 function buildEmailHtml(title: string, intro: string, rows: [string, string][], footer: string): string {
   const rowsHtml = rows
     .map(
@@ -562,20 +573,20 @@ const DEFAULT_TPL = {
 
 async function notifyAdmin(order: LogisticOrderData): Promise<void> {
   const rows: [string, string][] = [
-    ["No. Order", `<strong>${order.orderNumber}</strong>`],
-    ["Customer", `${order.customerName}${order.companyName ? ` (${order.companyName})` : ""}`],
-    ["Email", order.email],
-    ["HP", order.phone],
-    ["Jenis", order.shipmentType],
-    ["Rute", `${order.origin} → ${order.destination}`],
-    ...(order.commodity ? [["Komoditi", order.commodity] as [string, string]] : []),
-    ...(order.cargoDescription ? [["Deskripsi", order.cargoDescription] as [string, string]] : []),
-    ...(order.grossWeight ? [["Berat", `${order.grossWeight} kg`] as [string, string]] : []),
-    ...(order.volumeCbm ? [["Volume", `${order.volumeCbm} CBM`] as [string, string]] : []),
-    ["Layanan", order.serviceList.replace(/\n/g, "<br>")],
+    ["No. Order", `<strong>${escHtml(order.orderNumber)}</strong>`],
+    ["Customer", `${escHtml(order.customerName)}${order.companyName ? ` (${escHtml(order.companyName)})` : ""}`],
+    ["Email", escHtml(order.email)],
+    ["HP", escHtml(order.phone)],
+    ["Jenis", escHtml(order.shipmentType)],
+    ["Rute", `${escHtml(order.origin)} → ${escHtml(order.destination)}`],
+    ...(order.commodity ? [["Komoditi", escHtml(order.commodity)] as [string, string]] : []),
+    ...(order.cargoDescription ? [["Deskripsi", escHtml(order.cargoDescription)] as [string, string]] : []),
+    ...(order.grossWeight ? [["Berat", `${escHtml(String(order.grossWeight))} kg`] as [string, string]] : []),
+    ...(order.volumeCbm ? [["Volume", `${escHtml(String(order.volumeCbm))} CBM`] as [string, string]] : []),
+    ["Layanan", escHtml(order.serviceList).replace(/\n/g, "<br>")],
     ["Total Est.", `Rp ${formatRupiah(order.grandTotal)}`],
-    ...(order.requiredDate ? [["Tgl Butuh", order.requiredDate] as [string, string]] : []),
-    ...(order.notes ? [["Catatan", order.notes] as [string, string]] : []),
+    ...(order.requiredDate ? [["Tgl Butuh", escHtml(order.requiredDate)] as [string, string]] : []),
+    ...(order.notes ? [["Catatan", escHtml(order.notes)] as [string, string]] : []),
   ];
 
   // Generate admin review link upfront — used in both WA and email
@@ -619,7 +630,7 @@ async function notifyAdmin(order: LogisticOrderData): Promise<void> {
       subject: `[ORDER BARU] ${order.orderNumber} — ${order.customerName}`,
       html: buildEmailHtml(
         "Order Logistik Baru Masuk",
-        `Order baru telah diterima dari <strong>${order.customerName}</strong>. Silakan tinjau dan proses.`,
+        `Order baru telah diterima dari <strong>${escHtml(order.customerName)}</strong>. Silakan tinjau dan proses.`,
         rows,
         reviewCta
       ),
@@ -676,17 +687,17 @@ async function notifyVendors(order: LogisticOrderData): Promise<void> {
   }
 
   const rows: [string, string][] = [
-    ["No. Order", `<strong>${order.orderNumber}</strong>`],
-    ["Jenis", order.shipmentType],
-    ["Rute", `${order.origin} → ${order.destination}`],
-    ...(order.commodity ? [["Komoditi", order.commodity] as [string, string]] : []),
-    ...(order.cargoDescription ? [["Deskripsi", order.cargoDescription] as [string, string]] : []),
-    ...(order.grossWeight ? [["Berat", `${order.grossWeight} kg`] as [string, string]] : []),
-    ...(order.volumeCbm ? [["Volume", `${order.volumeCbm} CBM`] as [string, string]] : []),
-    ...(order.vehicleType ? [["Vehicle Type", order.vehicleType] as [string, string]] : []),
-    ["Layanan", order.serviceList.replace(/\n/g, "<br>")],
-    ...(order.requiredDate ? [["Tgl Pickup", formatISODate(order.requiredDate)] as [string, string]] : []),
-    ...(order.notes ? [["Catatan", order.notes] as [string, string]] : []),
+    ["No. Order", `<strong>${escHtml(order.orderNumber)}</strong>`],
+    ["Jenis", escHtml(order.shipmentType)],
+    ["Rute", `${escHtml(order.origin)} → ${escHtml(order.destination)}`],
+    ...(order.commodity ? [["Komoditi", escHtml(order.commodity)] as [string, string]] : []),
+    ...(order.cargoDescription ? [["Deskripsi", escHtml(order.cargoDescription)] as [string, string]] : []),
+    ...(order.grossWeight ? [["Berat", `${escHtml(String(order.grossWeight))} kg`] as [string, string]] : []),
+    ...(order.volumeCbm ? [["Volume", `${escHtml(String(order.volumeCbm))} CBM`] as [string, string]] : []),
+    ...(order.vehicleType ? [["Vehicle Type", escHtml(order.vehicleType)] as [string, string]] : []),
+    ["Layanan", escHtml(order.serviceList).replace(/\n/g, "<br>")],
+    ...(order.requiredDate ? [["Tgl Pickup", escHtml(formatISODate(order.requiredDate))] as [string, string]] : []),
+    ...(order.notes ? [["Catatan", escHtml(order.notes)] as [string, string]] : []),
   ];
 
   for (const vendor of eligible) {
@@ -746,7 +757,7 @@ async function notifyVendors(order: LogisticOrderData): Promise<void> {
           : `[PERMINTAAN ORDER] ${order.orderNumber} — ${order.shipmentType}`,
         html: buildEmailHtml(
           isTrucking ? "Trucking Request Form" : "Permintaan Order Baru dari CST Logistics",
-          `Kepada Yth. <strong>${vendor.name}</strong>,<br><br>${isTrucking ? "Ada permintaan trucking baru. Mohon lengkapi form di bawah dan balas email ini." : "Anda mendapat permintaan pengiriman baru dari CST Logistics. Silakan balas email ini dengan salah satu format di bawah."}`,
+          `Kepada Yth. <strong>${escHtml(vendor.name)}</strong>,<br><br>${isTrucking ? "Ada permintaan trucking baru. Mohon lengkapi form di bawah dan balas email ini." : "Anda mendapat permintaan pengiriman baru dari CST Logistics. Silakan balas email ini dengan salah satu format di bawah."}`,
           rows,
           isTrucking ? "Balas email ini dengan form response yang sudah diisi." : "Balas email ini langsung dengan format penawaran di bawah ini."
         ).replace(
@@ -778,15 +789,15 @@ async function notifyCustomer(order: LogisticOrderData): Promise<void> {
   }
 
   const rows: [string, string][] = [
-    ["No. Order", `<strong>${order.orderNumber}</strong>`],
+    ["No. Order", `<strong>${escHtml(order.orderNumber)}</strong>`],
     ["Status", "<span style='color:#d97706;font-weight:600'>Menunggu Penawaran Harga</span>"],
-    ["Jenis", order.shipmentType],
-    ["Rute", `${order.origin} → ${order.destination}`],
-    ...(order.commodity ? [["Komoditi", order.commodity] as [string, string]] : []),
-    ...(order.grossWeight ? [["Berat", `${order.grossWeight} kg`] as [string, string]] : []),
-    ...(order.volumeCbm ? [["Volume", `${order.volumeCbm} CBM`] as [string, string]] : []),
-    ["Layanan", order.serviceList.replace(/\n/g, "<br>")],
-    ...(order.requiredDate ? [["Tgl Butuh", order.requiredDate] as [string, string]] : []),
+    ["Jenis", escHtml(order.shipmentType)],
+    ["Rute", `${escHtml(order.origin)} → ${escHtml(order.destination)}`],
+    ...(order.commodity ? [["Komoditi", escHtml(order.commodity)] as [string, string]] : []),
+    ...(order.grossWeight ? [["Berat", `${escHtml(String(order.grossWeight))} kg`] as [string, string]] : []),
+    ...(order.volumeCbm ? [["Volume", `${escHtml(String(order.volumeCbm))} CBM`] as [string, string]] : []),
+    ["Layanan", escHtml(order.serviceList).replace(/\n/g, "<br>")],
+    ...(order.requiredDate ? [["Tgl Butuh", escHtml(order.requiredDate)] as [string, string]] : []),
   ];
 
   if (isSmtpConfigured()) {
@@ -795,7 +806,7 @@ async function notifyCustomer(order: LogisticOrderData): Promise<void> {
       subject: `Permintaan Diterima — ${order.orderNumber}`,
       html: buildEmailHtml(
         "Permintaan Pengiriman Diterima",
-        `Halo <strong>${order.customerName}</strong>,<br><br>Terima kasih telah mempercayakan pengiriman Anda kepada CST Logistics. Tim kami sedang memproses permintaan Anda dan akan segera mengirimkan penawaran harga terbaik untuk Anda.`,
+        `Halo <strong>${escHtml(order.customerName)}</strong>,<br><br>Terima kasih telah mempercayakan pengiriman Anda kepada CST Logistics. Tim kami sedang memproses permintaan Anda dan akan segera mengirimkan penawaran harga terbaik untuk Anda.`,
         rows,
         "Gunakan nomor order di atas untuk tracking. Hubungi kami di: <strong>(021) 6241234</strong>"
       ),

@@ -90,7 +90,6 @@ whatsappRouter.post("/send-quotation", async (req: Request, res: Response) => {
   }
 
   const vars: Record<string, string | null> = {
-  const vars: Record<string, string> = {
     customerName: String(customerName),
     rfqId: rfqId ? String(rfqId) : "-",
     serviceType: serviceType ? String(serviceType) : "-",
