@@ -11,9 +11,73 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2, Search, Package, FlaskConical } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Package, FlaskConical, Tag } from "lucide-react";
 
 const UNITS = ["pcs", "gram", "kg", "ml", "liter", "sachet", "kaleng", "botol", "bungkus", "porsi", "cup", "lusin"];
+const NEW_CATEGORY_VALUE = "__new__";
+
+function CategorySelect({
+  value, onChange,
+}: { value: string; onChange: (v: string) => void }) {
+  const [isNew, setIsNew] = useState(value !== "" && false);
+  const [newVal, setNewVal] = useState("");
+
+  const { data: categories = [] } = useQuery<string[]>({
+    queryKey: ["bom-categories"],
+    queryFn: () => apiFetch("/bom/categories"),
+  });
+
+  const allCategories = categories.includes(value) || value === "" || value === NEW_CATEGORY_VALUE
+    ? categories
+    : [...categories, value];
+
+  const handleSelect = (v: string) => {
+    if (v === NEW_CATEGORY_VALUE) {
+      setIsNew(true);
+      setNewVal("");
+      onChange("");
+    } else {
+      setIsNew(false);
+      onChange(v === "__none__" ? "" : v);
+    }
+  };
+
+  const selectValue = isNew ? NEW_CATEGORY_VALUE : (value || "__none__");
+
+  return (
+    <div className="space-y-1.5">
+      <Select value={selectValue} onValueChange={handleSelect}>
+        <SelectTrigger>
+          <SelectValue placeholder="Pilih kategori..." />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="__none__">
+            <span className="text-gray-400 italic">— Tidak ada kategori —</span>
+          </SelectItem>
+          {allCategories.map(c => (
+            <SelectItem key={c} value={c}>
+              <div className="flex items-center gap-1.5">
+                <Tag className="w-3 h-3 text-gray-400" />
+                {c}
+              </div>
+            </SelectItem>
+          ))}
+          <SelectItem value={NEW_CATEGORY_VALUE}>
+            <span className="text-blue-600 font-medium">+ Kategori baru...</span>
+          </SelectItem>
+        </SelectContent>
+      </Select>
+      {isNew && (
+        <Input
+          autoFocus
+          placeholder="Nama kategori baru"
+          value={newVal}
+          onChange={e => { setNewVal(e.target.value); onChange(e.target.value); }}
+        />
+      )}
+    </div>
+  );
+}
 
 interface Product {
   id: number; name: string; sku: string; unit: string;
@@ -57,6 +121,7 @@ function ProductDialog({
     isActive: editing?.is_active ?? true,
   });
 
+  const qc = useQueryClient();
   const save = useMutation({
     mutationFn: () => {
       const payload = {
@@ -68,7 +133,12 @@ function ProductDialog({
       if (editing) return apiFetch(`/bom/products/${editing.id}`, { method: "PUT", body: JSON.stringify(payload) });
       return apiFetch("/bom/products", { method: "POST", body: JSON.stringify(payload) });
     },
-    onSuccess: () => { toast({ title: "Produk disimpan" }); onSaved(); onClose(); },
+    onSuccess: () => {
+      toast({ title: "Produk disimpan" });
+      qc.invalidateQueries({ queryKey: ["bom-categories"] });
+      onSaved();
+      onClose();
+    },
     onError: (e: Error) => toast({ title: "Gagal", description: e.message, variant: "destructive" }),
   });
 
@@ -115,8 +185,11 @@ function ProductDialog({
             </Select>
           </div>
           <div className="space-y-1">
-            <Label>Subkategori</Label>
-            <Input value={form.subcategory} onChange={f("subcategory")} placeholder="Minuman, Makanan, ..." />
+            <Label>Kategori</Label>
+            <CategorySelect
+              value={form.subcategory}
+              onChange={(v) => setForm(p => ({ ...p, subcategory: v }))}
+            />
           </div>
           <div className="col-span-2 flex items-center gap-2 pt-1">
             <Switch checked={form.isActive} onCheckedChange={(v) => setForm(p => ({ ...p, isActive: v }))} id="prod-active" />
@@ -318,6 +391,7 @@ export default function ProductItemsPage() {
                     <TableHead>Nama Produk</TableHead>
                     <TableHead>SKU</TableHead>
                     <TableHead>Tipe</TableHead>
+                    <TableHead>Kategori</TableHead>
                     <TableHead>Satuan</TableHead>
                     <TableHead className="text-right">Harga Jual</TableHead>
                     <TableHead className="text-right">HPP</TableHead>
@@ -327,15 +401,20 @@ export default function ProductItemsPage() {
                 </TableHeader>
                 <TableBody>
                   {prodLoading ? (
-                    <TableRow><TableCell colSpan={8} className="text-center py-10 text-gray-400">Memuat...</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={9} className="text-center py-10 text-gray-400">Memuat...</TableCell></TableRow>
                   ) : filteredProds.length === 0 ? (
-                    <TableRow><TableCell colSpan={8} className="text-center py-10 text-gray-400">Belum ada produk</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={9} className="text-center py-10 text-gray-400">Belum ada produk</TableCell></TableRow>
                   ) : filteredProds.map(p => (
                     <TableRow key={p.id}>
                       <TableCell className="font-medium">{p.name}</TableCell>
                       <TableCell className="text-gray-500 text-sm font-mono">{p.sku}</TableCell>
                       <TableCell>
                         <Badge variant="outline" className="text-xs capitalize">{p.item_type}</Badge>
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {p.subcategory
+                          ? <Badge variant="secondary" className="text-xs font-normal"><Tag className="w-3 h-3 mr-1 inline" />{p.subcategory}</Badge>
+                          : <span className="text-gray-300">—</span>}
                       </TableCell>
                       <TableCell className="text-sm">{p.unit}</TableCell>
                       <TableCell className="text-right text-sm">Rp {fmt(p.price)}</TableCell>

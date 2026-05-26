@@ -11,6 +11,22 @@ router.use(async (req: Request, res: Response, next) => {
   next();
 });
 
+// ── KATEGORI PRODUK ───────────────────────────────────────────────────────────
+
+router.get("/categories", async (req: Request, res: Response) => {
+  const companyId = resolveCompanyId(req);
+  const rows = await db.execute(sql`
+    SELECT DISTINCT subcategory
+    FROM products
+    WHERE company_id = ${companyId}
+      AND subcategory IS NOT NULL
+      AND subcategory <> ''
+    ORDER BY subcategory ASC
+  `);
+  const categories = rows.rows.map((r: Record<string, unknown>) => r.subcategory as string);
+  res.json(categories);
+});
+
 // ── PRODUK JUAL (dari tabel products) ────────────────────────────────────────
 
 router.get("/products", async (req: Request, res: Response) => {
