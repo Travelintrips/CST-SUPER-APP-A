@@ -268,9 +268,7 @@ export default function VendorFormPage() {
           </h3>
           <div className="space-y-3">
             {/* Layanan */}
-            {data.serviceType ? (
-              <Row label="Layanan" value={data.serviceType} />
-            ) : (data.orderItems && data.orderItems.length > 0) ? (
+            {data.orderItems && data.orderItems.length > 0 ? (
               <div className="flex justify-between items-start gap-4 text-sm">
                 <span className="text-gray-500 shrink-0">Layanan / Produk</span>
                 <div className="text-right space-y-1">
@@ -279,6 +277,8 @@ export default function VendorFormPage() {
                   ))}
                 </div>
               </div>
+            ) : data.serviceType ? (
+              <Row label="Layanan" value={data.serviceType} />
             ) : null}
 
             {/* Rute — hanya tampil jika ada origin atau destination */}

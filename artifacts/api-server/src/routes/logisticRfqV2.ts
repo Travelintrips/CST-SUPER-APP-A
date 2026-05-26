@@ -470,13 +470,6 @@ logisticRfqV2Router.get("/vendor-form/:token", async (req: Request, res: Respons
   const [vendor] = await db.select({ name: suppliersTable.name })
     .from(suppliersTable).where(eq(suppliersTable.id, link.vendorId));
 
-  let basicPrice = link.basicPrice ? Number(link.basicPrice) : null;
-  if (basicPrice == null) {
-    const catalog = await db.select().from(vendorCatalogItemsTable)
-      .where(and(eq(vendorCatalogItemsTable.vendorId, link.vendorId), eq(vendorCatalogItemsTable.isActive, true)));
-    basicPrice = catalog[0] ? Number(catalog[0].priceBase) : null;
-  }
-
   // Fetch order items for additional context
   const orderItems = await db.select({
     serviceName: logisticOrderItemsTable.serviceName,
@@ -485,6 +478,20 @@ logisticRfqV2Router.get("/vendor-form/:token", async (req: Request, res: Respons
     inputData: logisticOrderItemsTable.inputData,
     subtotal: logisticOrderItemsTable.subtotal,
   }).from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, orderId));
+
+  // Prefer order items subtotal sum as reference price (most accurate)
+  const orderSubtotal = orderItems.reduce(
+    (sum, i) => sum + (i.subtotal ? parseFloat(i.subtotal) : 0), 0
+  );
+  let basicPrice: number | null = orderSubtotal > 0 ? orderSubtotal : null;
+  if (basicPrice == null) {
+    basicPrice = link.basicPrice ? Number(link.basicPrice) : null;
+  }
+  if (basicPrice == null) {
+    const catalog = await db.select().from(vendorCatalogItemsTable)
+      .where(and(eq(vendorCatalogItemsTable.vendorId, link.vendorId), eq(vendorCatalogItemsTable.isActive, true)));
+    basicPrice = catalog[0] ? Number(catalog[0].priceBase) : null;
+  }
 
   // Fallback to freight shipment data when order fields are empty
   let serviceType = order.shipmentType ?? "";
@@ -710,15 +717,27 @@ logisticRfqV2Router.post("/orders/:orderId/rfq-blast", async (req: Request, res:
   const existingLinks = await db.select().from(rfqVendorLinksTable).where(eq(rfqVendorLinksTable.rfqId, rfqId));
   const results: { vendorId: number; vendorName: string; sent: boolean }[] = [];
 
+  // Compute basicPrice from order items subtotal sum (preferred) or catalog fallback
+  const orderItemsForPrice = await db.select({ subtotal: logisticOrderItemsTable.subtotal })
+    .from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, orderId));
+  const orderSubtotalSum = orderItemsForPrice.reduce(
+    (sum, i) => sum + (i.subtotal ? parseFloat(i.subtotal) : 0), 0
+  );
+
   for (const vendor of eligible) {
     let linkToken: string;
     const existingLink = existingLinks.find((l) => l.vendorId === vendor.id);
     if (existingLink) {
       linkToken = existingLink.token;
     } else {
-      const catalogItems = await db.select().from(vendorCatalogItemsTable)
-        .where(and(eq(vendorCatalogItemsTable.vendorId, vendor.id), eq(vendorCatalogItemsTable.isActive, true)));
-      const basicPrice = catalogItems[0] ? String(catalogItems[0].priceBase) : null;
+      let basicPrice: string | null = null;
+      if (orderSubtotalSum > 0) {
+        basicPrice = String(Math.round(orderSubtotalSum));
+      } else {
+        const catalogItems = await db.select().from(vendorCatalogItemsTable)
+          .where(and(eq(vendorCatalogItemsTable.vendorId, vendor.id), eq(vendorCatalogItemsTable.isActive, true)));
+        basicPrice = catalogItems[0] ? String(catalogItems[0].priceBase) : null;
+      }
       linkToken = randomUUID();
       await db.insert(rfqVendorLinksTable).values({
         rfqId,
@@ -798,6 +817,13 @@ logisticRfqV2Router.post("/rfq/:rfqId/blast", async (req: Request, res: Response
     .where(eq(rfqVendorLinksTable.rfqId, rfqId));
   const existingVendorIds = new Set(existingLinks.map((l) => l.vendorId));
 
+  // Compute basicPrice from order items subtotal sum (preferred) or catalog fallback
+  const orderItemsForPrice2 = await db.select({ subtotal: logisticOrderItemsTable.subtotal })
+    .from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, rfq.orderId));
+  const orderSubtotalSum2 = orderItemsForPrice2.reduce(
+    (sum, i) => sum + (i.subtotal ? parseFloat(i.subtotal) : 0), 0
+  );
+
   const results: { vendorId: number; vendorName: string; token: string; sent: boolean }[] = [];
 
   for (const vendor of eligible) {
@@ -809,9 +835,14 @@ logisticRfqV2Router.post("/rfq/:rfqId/blast", async (req: Request, res: Response
       linkToken = existingLink.token;
       linkId = existingLink.id;
     } else {
-      const catalogItems = await db.select().from(vendorCatalogItemsTable)
-        .where(and(eq(vendorCatalogItemsTable.vendorId, vendor.id), eq(vendorCatalogItemsTable.isActive, true)));
-      const basicPrice = catalogItems[0] ? String(catalogItems[0].priceBase) : null;
+      let basicPrice: string | null = null;
+      if (orderSubtotalSum2 > 0) {
+        basicPrice = String(Math.round(orderSubtotalSum2));
+      } else {
+        const catalogItems = await db.select().from(vendorCatalogItemsTable)
+          .where(and(eq(vendorCatalogItemsTable.vendorId, vendor.id), eq(vendorCatalogItemsTable.isActive, true)));
+        basicPrice = catalogItems[0] ? String(catalogItems[0].priceBase) : null;
+      }
       linkToken = randomUUID();
       const [inserted] = await db.insert(rfqVendorLinksTable).values({
         rfqId,
