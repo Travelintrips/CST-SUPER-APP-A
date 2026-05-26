@@ -67,6 +67,8 @@ router.put("/calculator-rates", async (req: Request, res: Response) => {
       target: portalContentTable.key,
       set: { value: JSON.stringify(rates), updatedAt: new Date() },
     });
+  // Notify Customer Portal: tarif kalkulator diperbarui oleh admin.
+  // Listener: calculator.tsx (invalidates ["portal-calculator-rates"])
   broadcastToPortal("price_sync", { ts: Date.now() });
   return res.json({ ok: true });
 });

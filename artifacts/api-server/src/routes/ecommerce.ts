@@ -305,6 +305,9 @@ router.post("/products/bulk-import", async (req, res) => {
     }
   }
 
+  // Notify Customer Portal: satu atau lebih produk baru/diperbarui via bulk-import.
+  // Listener: products.tsx (invalidates ["portal-products"]),
+  //           jasa.tsx (invalidates ["listPortalServicesJasa"])
   broadcastToPortal("price_sync", { ts: Date.now() });
   return res.json({ results });
 });
@@ -381,6 +384,9 @@ router.put("/products/:id", async (req, res) => {
   });
 
   if (!product) return res.status(404).json({ message: "Product not found" });
+  // Notify Customer Portal: harga/data produk berubah via BizPortal admin.
+  // Listener: products.tsx (invalidates ["portal-products"]),
+  //           jasa.tsx (invalidates ["listPortalServicesJasa"])
   broadcastToPortal("price_sync", { ts: Date.now() });
   return res.json(serializeProduct(product, categoryNames));
 });

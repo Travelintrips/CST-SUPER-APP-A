@@ -163,6 +163,8 @@ router.put("/logistic-admin/services/:id", requirePortalAdmin, async (req, res) 
   if (Object.keys(updates).length === 0) return res.status(400).json({ message: "Tidak ada data yang diupdate" });
   const [updated] = await db.update(productsTable).set(updates).where(eq(productsTable.id, id)).returning();
   if (!updated) return res.status(404).json({ message: "Jasa tidak ditemukan" });
+  // Notify Customer Portal: harga/data jasa diperbarui via logistic-admin portal.
+  // Listener: jasa.tsx (invalidates ["listPortalServicesJasa"])
   broadcastToPortal("price_sync", { ts: Date.now() });
   return res.json(updated);
 });
@@ -1083,6 +1085,8 @@ router.put("/admin/services/:id", requirePortalAdmin, async (req, res) => {
   if (mediaItems !== undefined) updates.mediaItems = JSON.stringify(Array.isArray(mediaItems) ? mediaItems : []);
   if (Object.keys(updates).length === 0) return res.status(400).json({ message: "Tidak ada field yang diubah" });
   const [updated] = await db.update(productsTable).set(updates).where(eq(productsTable.id, id)).returning();
+  // Notify Customer Portal: harga/data produk diperbarui via portal admin (JWT).
+  // Listener: products.tsx (invalidates ["portal-products"])
   broadcastToPortal("price_sync", { ts: Date.now() });
   return res.json(updated);
 });
@@ -1239,6 +1243,8 @@ router.put("/admin/products/:id", requirePortalAdmin, async (req, res) => {
     const catMap = await getProductCategories([id]);
     return { ...updated, categories: catMap[id] ?? [] };
   });
+  // Notify Customer Portal: harga/kategori/data produk diperbarui via portal admin (JWT).
+  // Listener: products.tsx (invalidates ["portal-products"])
   broadcastToPortal("price_sync", { ts: Date.now() });
   return res.json(result);
 });
