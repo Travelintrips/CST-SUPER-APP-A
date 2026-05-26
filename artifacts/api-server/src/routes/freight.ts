@@ -9,6 +9,7 @@ import {
   sendDeliveryCompletedNotification,
   type LogisticOrderData,
 } from "../lib/orderNotification.js";
+import { logStorageEvent, getRequestIp, getActor } from "../lib/storageAuditLog.js";
 
 const _freightObjectStorage = new ObjectStorageService();
 
@@ -730,6 +731,19 @@ router.post("/freight-shipments/:shipmentId/attachments", async (req, res) => {
     docStatus: docStatus || null,
     invoiceId: invoiceId ? Number(invoiceId) : null,
   }).returning();
+  const actor = getActor(req);
+  logStorageEvent({
+    action: "upload",
+    entityType: "freight_attachment",
+    entityId: attachment!.id,
+    objectPath: String(objectPath),
+    fileName: String(fileName),
+    contentType: String(contentType),
+    actorId: actor.actorId,
+    actorType: actor.actorType,
+    ipAddress: getRequestIp(req),
+    details: `shipmentId=${shipmentId} docType=${docType ?? "-"}`,
+  });
   return res.status(201).json({ ...attachment!, createdAt: attachment!.createdAt.toISOString() });
 });
 
@@ -767,6 +781,19 @@ router.delete("/freight-shipments/:shipmentId/attachments/:attachmentId", async 
   if (deleted.objectPath) {
     _freightObjectStorage.tryDeletePrivateEntity(deleted.objectPath).catch(() => {});
   }
+  const actor = getActor(req);
+  logStorageEvent({
+    action: "delete",
+    entityType: "freight_attachment",
+    entityId: deleted.id,
+    objectPath: deleted.objectPath,
+    fileName: deleted.fileName,
+    contentType: deleted.contentType,
+    actorId: actor.actorId,
+    actorType: actor.actorType,
+    ipAddress: getRequestIp(req),
+    details: `shipmentId=${shipmentId}`,
+  });
   return res.json({ message: "Deleted" });
 });
 

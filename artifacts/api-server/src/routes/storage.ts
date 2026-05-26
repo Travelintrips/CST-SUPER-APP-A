@@ -8,6 +8,7 @@ import {
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage.js";
 import { ObjectPermission } from "../lib/objectAcl.js";
 import { requireAdmin, requireClerkUser } from "../lib/requireAdmin.js";
+import { logStorageEvent, getRequestIp, getActor } from "../lib/storageAuditLog.js";
 
 // Allowed MIME types for presigned URL uploads (staff BizPortal).
 // Excludes executables, scripts, and server-side code formats.
@@ -86,6 +87,20 @@ router.post("/storage/uploads/file", upload.single("file"), async (req: Request,
     } catch (aclErr) {
       req.log.warn({ err: aclErr }, "Could not set ACL on uploaded object; admin-only fallback applies");
     }
+
+    const { actorId, actorType } = getActor(req);
+    logStorageEvent({
+      action: "upload",
+      entityType: "presigned_upload",
+      objectPath,
+      fileName: req.file.originalname,
+      contentType: req.file.mimetype,
+      fileSizeBytes: req.file.size,
+      actorId,
+      actorType,
+      ipAddress: getRequestIp(req),
+      details: "server-side multipart upload",
+    });
 
     res.json({ objectPath, url: `/api/storage${objectPath}` });
   } catch (error) {
@@ -200,6 +215,20 @@ router.post("/storage/uploads/request-url", async (req: Request, res: Response) 
       objectPath,
       userId,
       checkAfter: Date.now() + (PRESIGNED_URL_TTL_SEC + 60) * 1000,
+    });
+
+    const { actorId, actorType } = getActor(req);
+    logStorageEvent({
+      action: "upload_presigned_issued",
+      entityType: "presigned_upload",
+      objectPath,
+      fileName: name,
+      contentType,
+      fileSizeBytes: size ?? null,
+      actorId,
+      actorType,
+      ipAddress: getRequestIp(req),
+      details: "presigned PUT URL issued",
     });
 
     res.json(

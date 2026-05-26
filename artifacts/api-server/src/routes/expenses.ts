@@ -2,6 +2,7 @@ import { Router, type Request } from "express";
 import { resolveCompanyId } from "../lib/resolveCompany.js";
 import { eq, desc, and, gte, lte, like, or, sql, count } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage.js";
+import { logStorageEvent, getRequestIp, getActor } from "../lib/storageAuditLog.js";
 import {
   db,
   expenseCategoriesTable,
@@ -627,6 +628,19 @@ router.post("/:id/attachments", async (req, res) => {
     fileName: String(fileName),
     contentType: contentType ? String(contentType) : null,
   }).returning();
+  const actor = getActor(req);
+  logStorageEvent({
+    action: "upload",
+    entityType: "expense_attachment",
+    entityId: att!.id,
+    objectPath: String(objectPath),
+    fileName: String(fileName),
+    contentType: contentType ? String(contentType) : null,
+    actorId: actor.actorId,
+    actorType: actor.actorType,
+    ipAddress: getRequestIp(req),
+    details: `expenseId=${id}`,
+  });
   return res.status(201).json(att);
 });
 
@@ -644,6 +658,19 @@ router.delete("/:id/attachments/:attId", async (req, res) => {
   if (deleted.objectPath) {
     _expenseObjectStorage.tryDeletePrivateEntity(deleted.objectPath).catch(() => {});
   }
+  const actor = getActor(req);
+  logStorageEvent({
+    action: "delete",
+    entityType: "expense_attachment",
+    entityId: deleted.id,
+    objectPath: deleted.objectPath,
+    fileName: deleted.fileName,
+    contentType: deleted.contentType ?? null,
+    actorId: actor.actorId,
+    actorType: actor.actorType,
+    ipAddress: getRequestIp(req),
+    details: `expenseId=${expenseId}`,
+  });
   return res.json({ message: "Deleted" });
 });
 

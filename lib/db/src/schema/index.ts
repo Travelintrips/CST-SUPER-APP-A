@@ -69,3 +69,4 @@ export * from "./orderFulfillment";
 export * from "./trustedDevices";
 export * from "./auditReports";
 export * from "./waTemplateConfigs";
+export * from "./storageAuditLog";
