@@ -44,9 +44,10 @@ import {
   getListSuppliersQueryKey,
   useListTaxes,
   useListProducts,
+  useListProductCategories,
 } from "@workspace/api-client-react";
 import type { Supplier, VendorCatalogItem } from "@workspace/api-client-react";
-import { useQueryClient, useQuery } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Pencil, Plus, Tag, Trash2, Upload, X } from "lucide-react";
 import { useUpload } from "@workspace/object-storage-web";
 
@@ -84,51 +85,13 @@ function LogoDisplay({ logo, size = "sm" }: { logo: string | null | undefined; s
 
 const fmt = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
 
-async function apiFetch(path: string, opts?: RequestInit) {
-  const res = await fetch(`/api${path}`, { headers: { "Content-Type": "application/json" }, ...opts });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
-}
-
-function CatalogCategorySelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const [isNew, setIsNew] = useState(false);
-  const [newVal, setNewVal] = useState("");
-  const { data: categories = [] } = useQuery<string[]>({
-    queryKey: ["bom-categories"],
-    queryFn: () => apiFetch("/bom/categories"),
-  });
-  const allCategories = categories.includes(value) || !value ? categories : [...categories, value];
-  const selectValue = isNew ? "__new__" : (value || "__none__");
-  return (
-    <div className="space-y-1.5">
-      <Select value={selectValue} onValueChange={(v) => {
-        if (v === "__new__") { setIsNew(true); setNewVal(""); onChange(""); }
-        else { setIsNew(false); onChange(v === "__none__" ? "" : v); }
-      }}>
-        <SelectTrigger><SelectValue placeholder="Pilih kategori..." /></SelectTrigger>
-        <SelectContent>
-          <SelectItem value="__none__"><span className="text-muted-foreground italic">— Tidak ada —</span></SelectItem>
-          {allCategories.map((c) => (
-            <SelectItem key={c} value={c}>
-              <div className="flex items-center gap-1.5"><Tag className="w-3 h-3 text-muted-foreground" />{c}</div>
-            </SelectItem>
-          ))}
-          <SelectItem value="__new__"><span className="text-blue-600 font-medium">+ Kategori baru...</span></SelectItem>
-        </SelectContent>
-      </Select>
-      {isNew && (
-        <Input autoFocus placeholder="Nama kategori baru" value={newVal}
-          onChange={(e) => { setNewVal(e.target.value); onChange(e.target.value); }} />
-      )}
-    </div>
-  );
-}
 
 type CatalogForm = {
   type: string;
   name: string;
   description: string;
   unit: string;
+  kategori: string;
   subcategory: string;
   priceBase: string;
   markupPct: string;
@@ -142,6 +105,7 @@ const emptyCatalogForm = (): CatalogForm => ({
   name: "",
   description: "",
   unit: "",
+  kategori: "",
   subcategory: "",
   priceBase: "0",
   markupPct: "0",
@@ -177,6 +141,7 @@ export default function VendorDetailPage() {
   const { data: allVendors } = useListSuppliers({ query: { queryKey: getListSuppliersQueryKey() } });
   const { data: taxes } = useListTaxes();
   const { data: products = [] } = useListProducts();
+  const { data: productCategories = [] } = useListProductCategories();
   const vendor = (allVendors ?? []).find((v) => v.id === vendorId) as Supplier | undefined;
 
   const { data: catalog, isLoading: catalogLoading } = useListVendorCatalog(vendorId, {
@@ -189,6 +154,10 @@ export default function VendorDetailPage() {
   const updateVendor = useUpdateSupplier();
 
   const purchaseTaxes = (taxes ?? []).filter((t) => t.kind === "purchase" && t.isActive);
+
+  const allSubcategories = Array.from(new Set(
+    (catalog ?? []).map((i) => (i as any).subcategory).filter((s): s is string => !!s)
+  )).sort();
 
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<VendorCatalogItem | null>(null);
@@ -246,6 +215,7 @@ export default function VendorDetailPage() {
       name: item.name,
       description: item.description ?? "",
       unit: item.unit ?? "",
+      kategori: (item as any).kategori ?? "",
       subcategory: (item as any).subcategory ?? "",
       priceBase: String(item.priceBase),
       markupPct: String(item.markupPct),
@@ -266,6 +236,7 @@ export default function VendorDetailPage() {
       name: itemForm.name.trim(),
       description: itemForm.description || null,
       unit: itemForm.unit || null,
+      kategori: itemForm.kategori || null,
       subcategory: itemForm.subcategory || null,
       priceBase: parseFloat(itemForm.priceBase) || 0,
       markupPct: parseFloat(itemForm.markupPct) || 0,
@@ -474,9 +445,12 @@ export default function VendorDetailPage() {
                           )}
                         </TableCell>
                         <TableCell className="text-sm">
-                          {(item as any).subcategory
-                            ? <span className="flex items-center gap-1 text-muted-foreground"><Tag className="h-3 w-3" />{(item as any).subcategory}</span>
+                          {(item as any).kategori
+                            ? <span className="flex items-center gap-1 text-muted-foreground"><Tag className="h-3 w-3" />{(item as any).kategori}</span>
                             : <span className="text-muted-foreground">—</span>}
+                          {(item as any).subcategory && (
+                            <p className="text-xs text-muted-foreground mt-0.5">{(item as any).subcategory}</p>
+                          )}
                         </TableCell>
                         <TableCell>
                           <Badge variant="outline" className="text-xs capitalize">{item.type}</Badge>
@@ -544,6 +518,8 @@ export default function VendorDetailPage() {
                     setI("unit", match.unit);
                     if (match.price > 0) setI("priceBase", String(match.price));
                     if ((match as any).subcategory) setI("subcategory", (match as any).subcategory);
+                    const matchCat = (match.categories as string[] | undefined)?.[0];
+                    if (matchCat) setI("kategori", matchCat);
                   }
                 }}
                 placeholder="Ketik atau pilih dari daftar item..."
@@ -598,12 +574,38 @@ export default function VendorDetailPage() {
                 )}
               </div>
             </div>
-            <div className="grid gap-1.5">
-              <Label>Kategori</Label>
-              <CatalogCategorySelect
-                value={itemForm.subcategory}
-                onChange={(v) => setI("subcategory", v)}
-              />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-1.5">
+                <Label>Kategori</Label>
+                <Select
+                  value={itemForm.kategori || "__none__"}
+                  onValueChange={(v) => setI("kategori", v === "__none__" ? "" : v)}
+                >
+                  <SelectTrigger><SelectValue placeholder="Pilih kategori..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__"><span className="text-muted-foreground italic">— Tidak ada —</span></SelectItem>
+                    {productCategories.map((c) => (
+                      <SelectItem key={c.id} value={c.name}>
+                        <div className="flex items-center gap-1.5"><Tag className="w-3 h-3 text-muted-foreground" />{c.name}</div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-1.5">
+                <Label>Sub-kategori</Label>
+                <datalist id="catalog-subcat-list">
+                  {allSubcategories.map((s) => (
+                    <option key={s} value={s} />
+                  ))}
+                </datalist>
+                <Input
+                  list="catalog-subcat-list"
+                  value={itemForm.subcategory}
+                  onChange={(e) => setI("subcategory", e.target.value)}
+                  placeholder="cth: Ekspedisi Khusus..."
+                />
+              </div>
             </div>
             <div className="grid gap-1.5">
               <Label>Deskripsi</Label>

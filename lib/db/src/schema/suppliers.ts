@@ -36,6 +36,7 @@ export const vendorCatalogItemsTable = pgTable("vendor_catalog_items", {
   name: text("name").notNull(),
   description: text("description"),
   unit: text("unit"),
+  kategori: text("kategori"),
   subcategory: text("subcategory"),
   priceBase: numeric("price_base", { precision: 15, scale: 2 }).notNull().default("0"),
   markupPct: numeric("markup_pct", { precision: 5, scale: 2 }).notNull().default("0"),
