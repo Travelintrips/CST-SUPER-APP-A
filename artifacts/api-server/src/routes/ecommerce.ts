@@ -396,6 +396,10 @@ router.put("/products/:id", async (req, res) => {
 router.delete("/products/:id", async (req, res) => {
   const id = Number(req.params.id);
   await db.delete(productsTable).where(eq(productsTable.id, id));
+  // Notify Customer Portal: produk dihapus — hapus dari listing.
+  // Listener: products.tsx (invalidates ["portal-products"]),
+  //           jasa.tsx (invalidates ["listPortalServicesJasa"])
+  broadcastToPortal("price_sync", { ts: Date.now() });
   return res.json({ message: "Product deleted" });
 });
 

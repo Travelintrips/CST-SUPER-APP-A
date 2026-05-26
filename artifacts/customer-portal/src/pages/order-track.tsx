@@ -87,7 +87,7 @@ export default function OrderTrackPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const doFetch = () => {
     if (!trackToken) return;
     fetch(`/api/order-track/${trackToken}`)
       .then(async r => {
@@ -97,6 +97,14 @@ export default function OrderTrackPage() {
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    doFetch();
+    // Poll setiap 30 detik agar status order selalu terbaru tanpa refresh manual
+    const interval = setInterval(doFetch, 30_000);
+    return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trackToken]);
 
   if (loading) return (
