@@ -18,6 +18,7 @@ import { requireClerkUser } from "../lib/requireAdmin.js";
 import { resolveCompanyId } from "../lib/resolveCompany.js";
 import { requirePortalAdmin } from "../lib/supabaseAuth.js";
 import { sendLogisticOrderNotification } from "../lib/orderNotification";
+import { logActivity } from "../lib/activityLog.js";
 // [FLOW BARU] autoCreateRfqAndNotifyVendors dinonaktifkan — vendor tidak boleh dihubungi langsung saat order dibuat.
 // Admin harus review dulu via /bizportal/logistics/rfq sebelum blast ke vendor.
 // import { autoCreateRfqAndNotifyVendors } from "./logisticRfq";
@@ -267,6 +268,16 @@ sendLogisticOrderNotification({
     destination: body.destination ?? "",
     grandTotal: Number(body.grandTotal),
     createdAt: order.createdAt.toISOString(),
+  }).catch(() => {});
+
+  logActivity({
+    orderId: order.id,
+    actorType: "customer",
+    actorName: body.customerName,
+    action: "order_created",
+    description: `Order ${orderNumber} dibuat oleh ${body.customerName} (${body.companyName ?? "-"}) — ${body.shipmentType} ${body.origin}→${body.destination}`,
+    newValue: { orderNumber, grandTotal: body.grandTotal, shipmentType: body.shipmentType },
+    ipAddress: req.ip ?? null,
   }).catch(() => {});
 
   return res.status(201).json({
@@ -849,6 +860,17 @@ logisticOrdersRouter.put("/:id/status", async (req: Request, res: Response) => {
 
   if (!updated) return res.status(404).json({ message: "Order tidak ditemukan" });
 
+  logActivity({
+    orderId: updated.id,
+    actorType: "admin",
+    actorName: (req.user as { name?: string } | undefined)?.name ?? "Admin",
+    actorId: (req.user as { id?: string } | undefined)?.id ?? null,
+    action: "status_changed",
+    description: `Status order ${updated.orderNumber} diubah menjadi "${status}"`,
+    newValue: { status },
+    ipAddress: req.ip ?? null,
+  }).catch(() => {});
+
   // Notify customer via WhatsApp (fire-and-forget)
   if (updated.phone) {
     const statusLabels: Record<string, string> = {
@@ -927,6 +949,18 @@ logisticOrdersRouter.patch("/:id/details", async (req: Request, res: Response) =
     .where(eq(logisticOrdersTable.id, id))
     .returning();
   if (!updated) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+  logActivity({
+    orderId: updated.id,
+    actorType: "admin",
+    actorName: (req.user as { name?: string } | undefined)?.name ?? "Admin",
+    actorId: (req.user as { id?: string } | undefined)?.id ?? null,
+    action: "details_updated",
+    description: `Detail order ${updated.orderNumber} diperbarui`,
+    newValue: patch,
+    ipAddress: req.ip ?? null,
+  }).catch(() => {});
+
   return res.json(toOrder(updated));
 });
 
