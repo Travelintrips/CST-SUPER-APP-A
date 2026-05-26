@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useMemo } from "react";
 import { useParams, Link } from "wouter";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -48,7 +48,7 @@ import {
 } from "@workspace/api-client-react";
 import type { Supplier, VendorCatalogItem } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Pencil, Plus, Tag, Trash2, Upload, X } from "lucide-react";
+import { ArrowLeft, Pencil, Plus, Search, Tag, Trash2, Upload, X } from "lucide-react";
 import { useUpload } from "@workspace/object-storage-web";
 
 const SERVICE_TYPES = [
@@ -158,6 +158,31 @@ export default function VendorDetailPage() {
   const allSubcategories = Array.from(new Set(
     (catalog ?? []).map((i) => (i as any).subcategory).filter((s): s is string => !!s)
   )).sort();
+
+  const allKategoriCatalog = Array.from(new Set(
+    (catalog ?? []).map((i) => (i as any).kategori).filter((s): s is string => !!s)
+  )).sort();
+
+  const [catalogSearch, setCatalogSearch] = useState("");
+  const [filterKategoriCatalog, setFilterKategoriCatalog] = useState("all");
+  const [filterSubcatCatalog, setFilterSubcatCatalog] = useState("all");
+
+  const filteredCatalog = useMemo(() => {
+    return (catalog ?? []).filter((item) => {
+      if (filterKategoriCatalog !== "all" && (item as any).kategori !== filterKategoriCatalog) return false;
+      if (filterSubcatCatalog !== "all" && (item as any).subcategory !== filterSubcatCatalog) return false;
+      if (catalogSearch) {
+        const q = catalogSearch.toLowerCase();
+        return (
+          item.name.toLowerCase().includes(q) ||
+          (item.description ?? "").toLowerCase().includes(q) ||
+          ((item as any).kategori ?? "").toLowerCase().includes(q) ||
+          ((item as any).subcategory ?? "").toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+  }, [catalog, filterKategoriCatalog, filterSubcatCatalog, catalogSearch]);
 
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<VendorCatalogItem | null>(null);
@@ -411,6 +436,54 @@ export default function VendorDetailPage() {
                 <Plus className="h-4 w-4 mr-1" /> Tambah Item
               </Button>
             </div>
+            <div className="flex flex-wrap gap-2 mt-3">
+              <div className="relative flex-1 min-w-[160px]">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                <Input
+                  value={catalogSearch}
+                  onChange={(e) => setCatalogSearch(e.target.value)}
+                  placeholder="Cari nama, deskripsi..."
+                  className="pl-8 h-8 text-sm"
+                />
+                {catalogSearch && (
+                  <button onClick={() => setCatalogSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+              <Select value={filterKategoriCatalog} onValueChange={setFilterKategoriCatalog}>
+                <SelectTrigger className="h-8 text-sm w-[150px]">
+                  <SelectValue placeholder="Kategori" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Semua Kategori</SelectItem>
+                  {allKategoriCatalog.map((k) => (
+                    <SelectItem key={k} value={k}>{k}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={filterSubcatCatalog} onValueChange={setFilterSubcatCatalog}>
+                <SelectTrigger className="h-8 text-sm w-[160px]">
+                  <SelectValue placeholder="Sub-kategori" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Semua Sub-kategori</SelectItem>
+                  {allSubcategories.map((s) => (
+                    <SelectItem key={s} value={s}>{s}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {(catalogSearch || filterKategoriCatalog !== "all" || filterSubcatCatalog !== "all") && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 text-xs text-muted-foreground"
+                  onClick={() => { setCatalogSearch(""); setFilterKategoriCatalog("all"); setFilterSubcatCatalog("all"); }}
+                >
+                  <X className="h-3 w-3 mr-1" /> Reset
+                </Button>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             {catalogLoading ? (
@@ -432,7 +505,7 @@ export default function VendorDetailPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(catalog ?? []).map((item) => {
+                  {filteredCatalog.map((item) => {
                     const base = Number(item.priceBase ?? 0);
                     const markup = Number(item.markupPct ?? 0);
                     const sell = base * (1 + markup / 100);
@@ -486,10 +559,12 @@ export default function VendorDetailPage() {
                       </TableRow>
                     );
                   })}
-                  {(!catalog || catalog.length === 0) && (
+                  {filteredCatalog.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center text-muted-foreground py-10">
-                        Belum ada item. Klik <strong>Tambah Item</strong> untuk mulai mengisi etalase.
+                      <TableCell colSpan={10} className="text-center text-muted-foreground py-10">
+                        {(catalogSearch || filterKategoriCatalog !== "all" || filterSubcatCatalog !== "all")
+                          ? "Tidak ada item yang cocok dengan filter."
+                          : <>Belum ada item. Klik <strong>Tambah Item</strong> untuk mulai mengisi etalase.</>}
                       </TableCell>
                     </TableRow>
                   )}
