@@ -25,6 +25,8 @@ export interface LogisticOrderData {
   grossWeight?: number | null;
   volumeCbm?: number | null;
   jumlahKoli?: number | null;
+  subtotal?: number | null;
+  tax?: number | null;
   grandTotal: number;
   serviceList: string;
   orderItems?: Array<{ name: string; qty?: number | null; subtotal?: number | null }> | null;
@@ -187,6 +189,13 @@ function buildOrderVars(
     jumlahKoliDisplay: (!isProduct && order.jumlahKoli) ? `${order.jumlahKoli} koli` : null,
     serviceList: isProduct ? null : order.serviceList,
     productList,
+    subtotalEst: order.subtotal != null ? formatRupiah(order.subtotal) : null,
+    taxEst: order.tax != null ? formatRupiah(order.tax) : null,
+    taxLabel: (() => {
+      if (order.subtotal == null || order.tax == null || order.subtotal === 0) return "PPN";
+      const rate = Math.round((order.tax / order.subtotal) * 1000);
+      return rate === 11 ? "PPN 1,1%" : "PPN 11%";
+    })(),
     totalEst: formatRupiah(order.grandTotal),
     requiredDate: order.requiredDate ?? null,
     notes: order.notes ?? null,
@@ -366,7 +375,7 @@ function buildEmailHtml(title: string, intro: string, rows: [string, string][], 
 // ─── Default template bodies (fallback jika belum dikustomisasi di DB) ────────
 const DEFAULT_TPL = {
   admin_personal: {
-    order_new: ["🚢 *ORDER LOGISTIK BARU*","━━━━━━━━━━━━━━━━━━","No. Order       : `{{orderNumber}}`","Tanggal         : {{tanggal}}","Jam             : {{jam}}","Customer        : {{customerDisplay}}","Email           : {{email}}","HP              : {{phone}}","Jenis           : {{shipmentType}}","Rute            : {{route}}","Kategori Barang : {{commodity}}","Deskripsi       : {{cargoDescription}}","Berat           : {{grossWeightDisplay}}","Volume          : {{volumeDisplay}}","Jumlah Koli     : {{jumlahKoliDisplay}}","{{#if product}}","📦 Produk       :","{{productList}}","{{/if}}","Layanan         : {{serviceList}}","Total Est.      : Rp {{totalEst}}","Tgl Kirim       : {{requiredDate}}","Catatan         : {{notes}}","━━━━━━━━━━━━━━━━━━","⚡ *Aksi Cepat Admin (tanpa login):*","🔭 Review & Blast Vendor → {{adminActionUrl}}","_Dikirim: {{timestamp}}_"].join("\n"),
+    order_new: ["🚢 *ORDER LOGISTIK BARU*","━━━━━━━━━━━━━━━━━━","No. Order       : `{{orderNumber}}`","Tanggal         : {{tanggal}}","Jam             : {{jam}}","Customer        : {{customerDisplay}}","Email           : {{email}}","HP              : {{phone}}","Jenis           : {{shipmentType}}","Rute            : {{route}}","Kategori Barang : {{commodity}}","Deskripsi       : {{cargoDescription}}","Berat           : {{grossWeightDisplay}}","Volume          : {{volumeDisplay}}","Jumlah Koli     : {{jumlahKoliDisplay}}","{{#if product}}","📦 Produk       :","{{productList}}","{{/if}}","Layanan         : {{serviceList}}","{{#if subtotalEst}}","Subtotal        : Rp {{subtotalEst}}","{{taxLabel}}   : Rp {{taxEst}}","{{/if}}","Total Est.      : Rp {{totalEst}}","Tgl Kirim       : {{requiredDate}}","Catatan         : {{notes}}","━━━━━━━━━━━━━━━━━━","⚡ *Aksi Cepat Admin (tanpa login):*","🔭 Review & Blast Vendor → {{adminActionUrl}}","_Dikirim: {{timestamp}}_"].join("\n"),
     vendor_submission: ["📩 *PENAWARAN VENDOR DITERIMA — {{orderNumber}}*","━━━━━━━━━━━━━━━━━━","No. RFQ     : {{rfqNumber}}","No. Order   : {{orderNumber}}","Vendor      : *{{vendorName}}*{{quotePosition}}","Harga       : *{{vendorPrice}}*","ETA Pickup  : {{estimatedPickup}}","ETA Delivery: {{estimatedDelivery}}","Est. Hari   : {{estimatedDays}} hari","Catatan     : {{vendorNotes}}","━━━━━━━━━━━━━━━━━━","✅ Approve & Kirim ke Customer:","{{approveUrl}}","","Segera review dan kirim ke customer.","_{{timestamp}}_"].join("\n"),
     vendor_confirmed: ["🔔 *VENDOR CONFIRMED — {{orderNumber}}*","━━━━━━━━━━━━━━━━━━","Vendor      : *{{vendorName}}*","No. Order   : {{orderNumber}}","Harga Dasar : {{vendorPrice}}","Markup      : {{markup}}","Harga Final : {{finalCustomerPrice}}","━━━━━━━━━━━━━━━━━━","✅ Review & Approve:","{{approveUrl}}","_{{timestamp}}_"].join("\n"),
     vendor_rejected: ["🔴 *VENDOR REJECTED — {{orderNumber}}*","━━━━━━━━━━━━━━━━━━","Vendor *{{vendorName}}* menolak order ini.","","📋 Cek & pilih vendor lain:","{{approveUrl}}","_{{timestamp}}_"].join("\n"),
@@ -381,7 +390,7 @@ const DEFAULT_TPL = {
     delivery_completed: ["🏁 *PENGIRIMAN SELESAI — {{orderNumber}}*","Customer: {{customerName}}","Rute: {{route}}","_{{timestamp}}_"].join("\n"),
   },
   admin_group: {
-    order_new: ["🔔 *[ORDER MASUK] {{orderNumber}}*","━━━━━━━━━━━━━━━━━━","🏷️ No. Order     : `{{orderNumber}}`","📆 Tanggal       : {{tanggal}}","🕐 Jam           : {{jam}}","👤 Customer      : *{{customerDisplay}}*","📞 HP            : {{phone}}","━━━━━━━━━━━━━━━━━━","🚢 Jenis         : {{shipmentType}}","📍 Rute          : {{route}}","📦 Komoditi      : {{commodity}}","📋 Deskripsi     : {{cargoDescription}}","⚖️ Berat         : {{grossWeightDisplay}}","📐 Volume        : {{volumeDisplay}}","{{#if product}}","🛍️ Nama Produk   :","{{productList}}","{{/if}}","📅 Tgl Kirim     : {{requiredDate}}","📝 Catatan       : {{notes}}","━━━━━━━━━━━━━━━━━━","💰 Total Est.    : *Rp {{totalEst}}*","🔵 Status        : Menunggu Konfirmasi","━━━━━━━━━━━━━━━━━━","⚡ *Review & Proses Order (tanpa login):*","👉 {{adminActionUrl}}","","_Dikirim: {{timestamp}}_"].join("\n"),
+    order_new: ["🔔 *[ORDER MASUK] {{orderNumber}}*","━━━━━━━━━━━━━━━━━━","🏷️ No. Order     : `{{orderNumber}}`","📆 Tanggal       : {{tanggal}}","🕐 Jam           : {{jam}}","👤 Customer      : *{{customerDisplay}}*","📞 HP            : {{phone}}","━━━━━━━━━━━━━━━━━━","🚢 Jenis         : {{shipmentType}}","📍 Rute          : {{route}}","📦 Komoditi      : {{commodity}}","📋 Deskripsi     : {{cargoDescription}}","⚖️ Berat         : {{grossWeightDisplay}}","📐 Volume        : {{volumeDisplay}}","{{#if product}}","🛍️ Nama Produk   :","{{productList}}","{{/if}}","📅 Tgl Kirim     : {{requiredDate}}","📝 Catatan       : {{notes}}","━━━━━━━━━━━━━━━━━━","{{#if subtotalEst}}","💵 Subtotal      : Rp {{subtotalEst}}","🧾 {{taxLabel}}     : Rp {{taxEst}}","{{/if}}","💰 Total Est.    : *Rp {{totalEst}}*","🔵 Status        : Menunggu Konfirmasi","━━━━━━━━━━━━━━━━━━","⚡ *Review & Proses Order (tanpa login):*","👉 {{adminActionUrl}}","","_Dikirim: {{timestamp}}_"].join("\n"),
     vendor_submission: ["📩 *VENDOR SUBMIT — {{orderNumber}}*","RFQ: {{rfqNumber}} | Vendor *{{vendorName}}*{{quotePosition}}","💰 Harga: {{vendorPrice}}","ETA: {{estimatedPickup}} → {{estimatedDelivery}}","Segera review!","_{{timestamp}}_"].join("\n"),
     vendor_confirmed: ["🔔 *VENDOR CONFIRMED — {{orderNumber}}*","Vendor: *{{vendorName}}* | Harga Final: {{finalCustomerPrice}}","{{approveUrl}}","_{{timestamp}}_"].join("\n"),
     vendor_rejected: ["🔴 *VENDOR REJECTED — {{orderNumber}}*","Vendor *{{vendorName}}* menolak. Pilih vendor lain:","{{approveUrl}}","_{{timestamp}}_"].join("\n"),
