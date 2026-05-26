@@ -432,6 +432,7 @@ export default function ProductItemsPage() {
   const [rmDialog, setRmDialog] = useState(false);
   const [editRm, setEditRm] = useState<RawMaterial | null>(null);
   const [catMgrDialog, setCatMgrDialog] = useState(false);
+  const [filterCat, setFilterCat] = useState<string | null>(null);
 
   const { data: products = [], isLoading: prodLoading } = useQuery<Product[]>({
     queryKey: ["bom-products"],
@@ -455,9 +456,13 @@ export default function ProductItemsPage() {
     onError: (e: Error) => toast({ title: "Gagal", description: e.message, variant: "destructive" }),
   });
 
-  const filteredProds = products.filter(p =>
-    !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.sku.toLowerCase().includes(search.toLowerCase())
-  );
+  const categories = Array.from(new Set(products.map(p => p.subcategory).filter(Boolean) as string[])).sort();
+
+  const filteredProds = products.filter(p => {
+    const matchSearch = !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.sku.toLowerCase().includes(search.toLowerCase());
+    const matchCat = !filterCat || p.subcategory === filterCat;
+    return matchSearch && matchCat;
+  });
   const filteredRm = rawMaterials.filter(m =>
     !search || m.name.toLowerCase().includes(search.toLowerCase()) || m.sku.toLowerCase().includes(search.toLowerCase())
   );
@@ -497,7 +502,7 @@ export default function ProductItemsPage() {
           ] as Array<{ key: Tab; label: string; icon: typeof Package; count: number }>).map(({ key, label, icon: Icon, count }) => (
             <button
               key={key}
-              onClick={() => { setTab(key); setSearch(""); }}
+              onClick={() => { setTab(key); setSearch(""); setFilterCat(null); }}
               className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
                 tab === key
                   ? "border-orange-500 text-orange-600"
@@ -513,15 +518,50 @@ export default function ProductItemsPage() {
           ))}
         </div>
 
-        {/* Search */}
-        <div className="relative w-72">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <Input
-            className="pl-9"
-            placeholder={tab === "products" ? "Cari produk..." : "Cari bahan baku..."}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+        {/* Search + Category Filter */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative w-72">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <Input
+              className="pl-9"
+              placeholder={tab === "products" ? "Cari produk..." : "Cari bahan baku..."}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+
+          {tab === "products" && categories.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs text-gray-400">Filter:</span>
+              <button
+                onClick={() => setFilterCat(null)}
+                className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                  filterCat === null
+                    ? "bg-gray-800 text-white border-gray-800"
+                    : "bg-white text-gray-500 border-gray-200 hover:border-gray-400"
+                }`}
+              >
+                Semua
+              </button>
+              {categories.map(cat => (
+                <button
+                  key={cat}
+                  onClick={() => setFilterCat(filterCat === cat ? null : cat)}
+                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                    filterCat === cat
+                      ? "bg-orange-500 text-white border-orange-500"
+                      : "bg-white text-gray-600 border-gray-200 hover:border-orange-300 hover:text-orange-600"
+                  }`}
+                >
+                  <Tag className="w-3 h-3" />
+                  {cat}
+                  <span className={`ml-0.5 ${filterCat === cat ? "text-orange-100" : "text-gray-400"}`}>
+                    ({products.filter(p => p.subcategory === cat).length})
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Table — Produk Jual */}
@@ -556,7 +596,23 @@ export default function ProductItemsPage() {
                       </TableCell>
                       <TableCell className="text-sm">
                         {p.subcategory
-                          ? <Badge variant="secondary" className="text-xs font-normal"><Tag className="w-3 h-3 mr-1 inline" />{p.subcategory}</Badge>
+                          ? (
+                            <button
+                              onClick={() => setFilterCat(filterCat === p.subcategory ? null : p.subcategory)}
+                              title={filterCat === p.subcategory ? "Hapus filter" : `Filter: ${p.subcategory}`}
+                            >
+                              <Badge
+                                variant="secondary"
+                                className={`text-xs font-normal cursor-pointer transition-colors ${
+                                  filterCat === p.subcategory
+                                    ? "bg-orange-500 text-white hover:bg-orange-600"
+                                    : "hover:bg-orange-100 hover:text-orange-700"
+                                }`}
+                              >
+                                <Tag className="w-3 h-3 mr-1 inline" />{p.subcategory}
+                              </Badge>
+                            </button>
+                          )
                           : <span className="text-gray-300">—</span>}
                       </TableCell>
                       <TableCell className="text-sm">{p.unit}</TableCell>
