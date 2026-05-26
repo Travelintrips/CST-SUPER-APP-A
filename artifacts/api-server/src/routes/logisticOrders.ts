@@ -206,7 +206,15 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
       ? await db.insert(logisticOrderItemsTable).values(itemValues).returning()
       : [];
 
-  const serviceList = body.items.map((i) => `• ${i.serviceName}`).join("\n");
+  const isProductOrder = ((body as any).orderType ?? "shipment") === "product";
+  const serviceList = !isProductOrder
+    ? body.items.map((i) => `• ${i.serviceName}`).join("\n")
+    : "";
+  const orderItems = body.items.map((i) => ({
+    name: i.serviceName,
+    qty: null as number | null,
+    subtotal: i.subtotal != null ? Number(i.subtotal) : null,
+  }));
 
   const vehicleType =
     (body.items.find((i) => i.calculatorType === "trucking")
@@ -225,11 +233,12 @@ sendLogisticOrderNotification({
     destination: body.destination ?? "",
     commodity: body.commodity ?? null,
     cargoDescription: body.cargoDescription ?? null,
-    grossWeight: body.grossWeight != null ? Number(body.grossWeight) : null,
-    volumeCbm: body.volumeCbm != null ? Number(body.volumeCbm) : null,
-    jumlahKoli: body.jumlahKoli != null ? Number(body.jumlahKoli) : null,
+    grossWeight: !isProductOrder && body.grossWeight != null ? Number(body.grossWeight) : null,
+    volumeCbm: !isProductOrder && body.volumeCbm != null ? Number(body.volumeCbm) : null,
+    jumlahKoli: !isProductOrder && body.jumlahKoli != null ? Number(body.jumlahKoli) : null,
     grandTotal: Number(body.grandTotal),
     serviceList,
+    orderItems,
     requiredDate: body.requiredDate ?? null,
     notes: body.notes ?? null,
     jamOrder: body.jamOrder ?? null,
