@@ -1580,7 +1580,7 @@ logisticRfqRouter.post("/confirm/:token", async (req: Request, res: Response) =>
   }
 
   const now = new Date();
-  const newStatus = action === "confirmed" ? "Confirmed" : "Quotation Sent";
+  const newStatus = action === "confirmed" ? "Customer Approved" : "Quotation Sent";
 
   await db.update(logisticOrdersTable)
     .set({
@@ -1959,7 +1959,7 @@ logisticRfqRouter.post("/choose-option", async (req: Request, res: Response) => 
   // Update order: confirmed + final selling price
   const confirmToken = randomUUID();
   await db.update(logisticOrdersTable).set({
-    status: "Confirmed",
+    status: "Customer Approved",
     customerConfirmStatus: "confirmed",
     customerConfirmedAt: new Date(),
     finalSellingPrice: String(chosenPrice),
