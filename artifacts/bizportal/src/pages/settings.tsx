@@ -886,6 +886,23 @@ const WORKFLOW_META: Record<WorkflowKey, { label: string; icon: string; desc: st
   customer_rfq_response:        { label: "Respons Customer RFQ",    icon: "💬", desc: "Notifikasi admin saat customer setuju/tolak/minta revisi penawaran RFQ" },
 };
 
+type WorkflowCategory = "semua" | "logistik" | "produk";
+const WORKFLOW_CATEGORY: Record<WorkflowKey, WorkflowCategory> = {
+  order_new: "logistik", vendor_request: "logistik", vendor_submission: "logistik",
+  vendor_revision: "logistik", vendor_submit_confirm: "logistik", vendor_rfq_forward: "logistik",
+  vendor_submission_summary: "logistik", revision_fallback: "logistik",
+  customer_rejection: "logistik", op_confirm_submitted: "logistik", customer_rfq_response: "logistik",
+  customer_approval: "logistik", customer_approved: "logistik", so_created: "logistik",
+  op_request: "logistik", driver_assigned: "logistik", shipment_update: "logistik",
+  customs_update: "logistik", delivery_completed: "logistik", rfq_vendor_recap: "logistik",
+  product_order_new: "produk", product_order_status_update: "produk",
+};
+const CATEGORY_META: Record<WorkflowCategory, { label: string; icon: string; count: (saved: Set<string>, r: string) => number }> = {
+  semua:    { label: "Semua",    icon: "🔍", count: (s, r) => [...s].filter(k => k.startsWith(r + "__")).length },
+  logistik: { label: "Logistik", icon: "🚢", count: (s, r) => [...s].filter(k => k.startsWith(r + "__") && WORKFLOW_CATEGORY[k.split("__")[1] as WorkflowKey] === "logistik").length },
+  produk:   { label: "Produk",   icon: "🛒", count: (s, r) => [...s].filter(k => k.startsWith(r + "__") && WORKFLOW_CATEGORY[k.split("__")[1] as WorkflowKey] === "produk").length },
+};
+
 const VAR_GROUPS: Array<{ label: string; color: string; vars: string[]; onlyWorkflows?: WorkflowKey[] }> = [
   { label: "Dasar",    color: "bg-slate-100 text-slate-700 border-slate-300",   vars: ["orderNumber","tanggal","jam","timestamp"] },
   { label: "Order",    color: "bg-blue-50 text-blue-700 border-blue-200",       vars: ["serviceType","shipmentType","route","commodity","cargoDescription","grossWeightDisplay","volumeDisplay","jumlahKoliDisplay","requiredDate","totalEst","serviceList","notes"] },
@@ -1224,6 +1241,7 @@ function WaTemplatesCard() {
   const [resetting, setResetting] = useState(false);
   const [recipient, setRecipient] = useState<RecipientKey>("admin_personal");
   const [workflow, setWorkflow] = useState<WorkflowKey>("order_new");
+  const [category, setCategory] = useState<WorkflowCategory>("semua");
   const [simSvc, setSimSvc] = useState<ServiceTypeSim>("");
 
   const cfgKey = (r: RecipientKey, w: WorkflowKey) => `${r}__${w}`;
@@ -1232,6 +1250,17 @@ function WaTemplatesCard() {
   const currentBody = configs[cfgKey(effectiveRecipient, workflow)] || getDefaultBody(effectiveRecipient, workflow);
   const isSaved = savedKeys.has(cfgKey(effectiveRecipient, workflow));
   const visibleVarGroups = VAR_GROUPS.filter(g => !g.onlyWorkflows || g.onlyWorkflows.includes(workflow));
+  const filteredWorkflows = (Object.keys(WORKFLOW_META) as WorkflowKey[]).filter(
+    w => category === "semua" || WORKFLOW_CATEGORY[w] === category
+  );
+
+  function handleCategoryChange(cat: WorkflowCategory) {
+    setCategory(cat);
+    if (cat !== "semua" && WORKFLOW_CATEGORY[workflow] !== cat) {
+      const first = (Object.keys(WORKFLOW_META) as WorkflowKey[]).find(w => WORKFLOW_CATEGORY[w] === cat);
+      if (first) setWorkflow(first);
+    }
+  }
 
   useEffect(() => {
     void (async () => {
@@ -1330,22 +1359,55 @@ function WaTemplatesCard() {
 
             {/* ── Workflow Selector ── */}
             <div className="space-y-2">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Pilih Workflow Stage:</p>
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Pilih Workflow Stage:</p>
+                {/* Category Filter */}
+                <div className="flex gap-1">
+                  {(Object.keys(CATEGORY_META) as WorkflowCategory[]).map(cat => {
+                    const cm = CATEGORY_META[cat];
+                    const isActive = cat === category;
+                    const customCount = cm.count(savedKeys, effectiveRecipient);
+                    return (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => handleCategoryChange(cat)}
+                        className={`text-xs px-2.5 py-1 rounded-md border transition-all flex items-center gap-1 ${
+                          isActive
+                            ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                            : "bg-muted hover:bg-accent text-muted-foreground border-border hover:text-foreground"
+                        }`}
+                      >
+                        <span>{cm.icon}</span>
+                        {cm.label}
+                        {customCount > 0 && (
+                          <span className={`text-[10px] px-1 rounded-full font-medium ${isActive ? "bg-white/20" : "bg-amber-100 text-amber-700"}`}>
+                            {customCount}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
               <div className="flex flex-wrap gap-1.5">
-                {(Object.keys(WORKFLOW_META) as WorkflowKey[]).map(w => {
+                {filteredWorkflows.map(w => {
                   const m = WORKFLOW_META[w];
                   const isActive = w === workflow;
                   const hasSaved = savedKeys.has(cfgKey(effectiveRecipient, w));
+                  const catColor: Record<WorkflowCategory, string> = {
+                    semua: "", logistik: "border-l-2 border-l-blue-400", produk: "border-l-2 border-l-teal-400",
+                  };
                   return (
                     <button
                       key={w}
                       type="button"
                       title={m.desc}
                       onClick={() => setWorkflow(w)}
-                      className={`text-xs px-2.5 py-1.5 rounded-full border transition-all flex items-center gap-1 ${
+                      className={`text-xs px-2.5 py-1.5 rounded-md border transition-all flex items-center gap-1 ${
                         isActive
                           ? "bg-primary text-primary-foreground border-primary shadow-sm"
-                          : "bg-muted hover:bg-accent text-muted-foreground border-border hover:text-foreground"
+                          : `bg-muted hover:bg-accent text-muted-foreground border-border hover:text-foreground ${category === "semua" ? catColor[WORKFLOW_CATEGORY[w]] : ""}`
                       }`}
                     >
                       <span>{m.icon}</span>
