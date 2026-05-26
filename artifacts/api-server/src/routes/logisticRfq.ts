@@ -765,7 +765,14 @@ logisticRfqRouter.post("/:id/rfq", async (req: Request, res: Response) => {
 
       const formUrl = getVendorFormUrl(rfqNumber, vendor.id, orderToken2);
       const isTruckingOrder2 = !!truckingItem;
-      const waItems2 = orderItems.map((it) => ({ serviceName: it.serviceName || it.category, category: it.category, subtotal: it.subtotal != null ? parseFloat(String(it.subtotal)) : null }));
+      const waItems2 = orderItems.map((it) => {
+        const name = (it.serviceName || it.category || "").toLowerCase().trim();
+        const catalogMatch = name ? catalogItems.find((c) => {
+          const cName = c.name.toLowerCase();
+          return cName.includes(name) || name.includes(cName);
+        }) : null;
+        return { serviceName: it.serviceName || it.category, category: it.category, subtotal: catalogMatch ? Number(catalogMatch.priceBase) : null };
+      });
       sendVendorWhatsApp({
         vendorPhone: vendor.phone, vendorName: vendor.name, vendorId: vendor.id,
         rfqNumber, orderId, orderNumber: orderData.orderNumber, longUrl: formUrl,
@@ -1103,7 +1110,14 @@ logisticRfqRouter.post("/:id/manual-rfq", async (req: Request, res: Response) =>
       .where(and(eq(vendorCatalogItemsTable.vendorId, vendor.id), eq(vendorCatalogItemsTable.isActive, true)));
     const vendorBasePrice = catalogItems[0] ? Number(catalogItems[0].priceBase) : null;
     const formUrl = getVendorFormUrl(rfqNumber, vendor.id, orderToken3);
-    const waItemsManual = manualOrderItems.map((it) => ({ serviceName: it.serviceName || it.category, category: it.category, subtotal: it.subtotal != null ? parseFloat(String(it.subtotal)) : null }));
+    const waItemsManual = manualOrderItems.map((it) => {
+      const name = (it.serviceName || it.category || "").toLowerCase().trim();
+      const catalogMatch = name ? catalogItems.find((c) => {
+        const cName = c.name.toLowerCase();
+        return cName.includes(name) || name.includes(cName);
+      }) : null;
+      return { serviceName: it.serviceName || it.category, category: it.category, subtotal: catalogMatch ? Number(catalogMatch.priceBase) : null };
+    });
     sendVendorWhatsApp({
       vendorPhone: vendor.phone!, vendorName: vendor.name, vendorId: vendor.id,
       rfqNumber, orderId, orderNumber: orderData.orderNumber, longUrl: formUrl,
@@ -1309,7 +1323,14 @@ logisticRfqRouter.post("/:id/resend-rfq", async (req: Request, res: Response) =>
       : catalogItems[0] ? Number(catalogItems[0].priceBase) : null;
 
     const formUrl = getVendorFormUrl(rfqs.rfqNumber, vendor.id, orderToken);
-    const waResendItems = resendOrderItems.map((it) => ({ serviceName: it.serviceName || it.category, category: it.category, subtotal: it.subtotal != null ? parseFloat(String(it.subtotal)) : null }));
+    const waResendItems = resendOrderItems.map((it) => {
+      const name = (it.serviceName || it.category || "").toLowerCase().trim();
+      const catalogMatch = name ? catalogItems.find((c) => {
+        const cName = c.name.toLowerCase();
+        return cName.includes(name) || name.includes(cName);
+      }) : null;
+      return { serviceName: it.serviceName || it.category, category: it.category, subtotal: catalogMatch ? Number(catalogMatch.priceBase) : null };
+    });
     try {
       await sendVendorWhatsApp({
         vendorPhone: vendor.phone!, vendorName: vendor.name, vendorId: vendor.id,
