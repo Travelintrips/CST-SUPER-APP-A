@@ -1038,15 +1038,48 @@ router.get("/content", async (_req, res) => {
 
 // ── PORTAL ADMIN ENDPOINTS ─────────────────────────────────────────────────
 const PORTAL_ADMIN_KEY = process.env.PORTAL_ADMIN_KEY ?? "";
+const MIN_ADMIN_KEY_LEN = 16;
+
+// Rate limiter: max 5 claim attempts per IP per hour
+const _claimAttempts = new Map<string, { count: number; resetAt: number }>();
+function _claimRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const entry = _claimAttempts.get(ip);
+  if (!entry || now > entry.resetAt) {
+    _claimAttempts.set(ip, { count: 1, resetAt: now + 3_600_000 });
+    return true;
+  }
+  if (entry.count >= 5) return false;
+  entry.count++;
+  return true;
+}
 
 // POST /api/portal/admin/claim  — claim admin role using secret key
 router.post("/admin/claim", requirePortalAuth, async (req, res) => {
+  const ip =
+    (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ??
+    req.socket.remoteAddress ??
+    "unknown";
+
+  if (!_claimRateLimit(ip)) {
+    return res.status(429).json({ message: "Terlalu banyak percobaan. Coba lagi dalam 1 jam." });
+  }
+
+  if (!PORTAL_ADMIN_KEY || PORTAL_ADMIN_KEY.length < MIN_ADMIN_KEY_LEN) {
+    return res.status(503).json({ message: "Admin claim belum dikonfigurasi dengan benar." });
+  }
+
   const { key } = req.body ?? {};
-  if (!PORTAL_ADMIN_KEY || String(key) !== PORTAL_ADMIN_KEY) {
+  const customerId = (req as PortalAuthReq).portalCustomerId;
+
+  if (String(key) !== PORTAL_ADMIN_KEY) {
+    console.warn(`[SECURITY] admin/claim FAILED — ip=${ip} customerId=${customerId}`);
     return res.status(403).json({ message: "Kunci admin tidak valid" });
   }
-  const customerId = (req as PortalAuthReq).portalCustomerId;
+
   await db.update(portalCustomersTable).set({ role: "admin" }).where(eq(portalCustomersTable.id, customerId));
+  console.warn(`[SECURITY] admin/claim SUCCESS — ip=${ip} customerId=${customerId}`);
+  _claimAttempts.delete(ip);
   return res.json({ role: "admin" });
 });
 

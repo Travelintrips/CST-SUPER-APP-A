@@ -293,13 +293,14 @@ function toPublicOrder(row: typeof logisticOrdersTable.$inferSelect) {
   };
 }
 
-/** Simple in-memory rate limiter for public order-number lookup endpoints */
+/** In-memory rate limiter for public order-number lookup endpoints.
+ *  Limit: 5 requests / minute / IP (tightened from 20 to reduce enumeration risk). */
 const publicLookupHits = new Map<string, { count: number; resetAt: number }>();
 function publicLookupRateLimit(req: Request, res: Response, next: () => void) {
   const ip = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ?? req.socket.remoteAddress ?? "unknown";
   const now = Date.now();
   const window = 60_000;
-  const limit = 20;
+  const limit = 5;
   const entry = publicLookupHits.get(ip);
   if (!entry || now > entry.resetAt) {
     publicLookupHits.set(ip, { count: 1, resetAt: now + window });
@@ -313,7 +314,7 @@ function publicLookupRateLimit(req: Request, res: Response, next: () => void) {
   next();
 }
 
-// GET /api/logistic/orders/by-number/:orderNumber — lookup by order number (public)
+// GET /api/logistic/orders/by-number/:orderNumber — minimal public lookup (no PII fields)
 logisticOrdersRouter.get(
   "/by-number/:orderNumber",
   publicLookupRateLimit,
@@ -334,7 +335,10 @@ logisticOrdersRouter.get(
       .from(logisticOrderItemsTable)
       .where(eq(logisticOrderItemsTable.orderId, order.id));
 
-    return res.json({ ...toPublicOrder(order), items: items.map(toPublicItem) });
+    // Strip origin/destination to prevent PII enumeration via guessable order numbers.
+    // Full tracking detail (incl. route) is available on /track/:orderNumber for the owner.
+    const { origin: _o, destination: _d, ...safeOrder } = toPublicOrder(order);
+    return res.json({ ...safeOrder, items: items.map(toPublicItem) });
   }
 );
 

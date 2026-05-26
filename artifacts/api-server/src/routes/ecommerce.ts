@@ -7,6 +7,7 @@ import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa } from "../lib/adminWa.js";
 import { saveAndBroadcast } from "../lib/notificationStore.js";
 import { registerPortalConnection, unregisterPortalConnection, broadcastToPortal } from "../lib/sseManager.js";
+import { requireClerkUser } from "../lib/requireAdmin.js";
 
 const router = Router();
 const objectStorageService = new ObjectStorageService();
@@ -632,8 +633,9 @@ router.get("/events", (req, res) => {
   });
 });
 
-// POST /api/ecommerce/sync-prices — broadcast price_sync to all portal tabs
-router.post("/sync-prices", (req, res) => {
+// POST /api/ecommerce/sync-prices — broadcast price_sync to all portal tabs (staff only)
+router.post("/sync-prices", async (req, res) => {
+  if (!(await requireClerkUser(req, res))) return;
   broadcastToPortal("price_sync", { ts: Date.now() });
   return res.json({ ok: true, message: "Price sync broadcasted to all portal tabs" });
 });
