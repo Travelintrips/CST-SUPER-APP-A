@@ -1,6 +1,7 @@
 import { sendWhatsApp } from "./fonnte.js";
 import { generateShortLink } from "./shortLink.js";
 import { logger } from "./logger.js";
+import { getWaTemplateConfig, renderTemplate, deriveServiceType } from "./orderNotification.js";
 
 const TZ = "Asia/Jakarta";
 
@@ -128,7 +129,7 @@ export interface SendVendorWhatsAppInput {
 /**
  * Reusable end-to-end helper:
  *   1. shortens the long vendor-quote URL into /q/<code>
- *   2. builds the modern mini-card message
+ *   2. renders vendor_request template from Settings (DB) or default
  *   3. sends via Fonnte (with notification log)
  */
 export async function sendVendorWhatsApp(input: SendVendorWhatsAppInput): Promise<void> {
@@ -141,10 +142,40 @@ export async function sendVendorWhatsApp(input: SendVendorWhatsAppInput): Promis
     refType: "rfq",
     refId: input.rfqNumber,
   });
-  const message = generateVendorQuoteMessage({
-    ...input,
-    shortLinkUrl,
-  });
+
+  // Build default template (legacy mini-card — used only if Settings not configured)
+  const defaultTpl = generateVendorQuoteMessage({ ...input, shortLinkUrl });
+
+  // Fetch user-configured template (or default fallback)
+  const tplBody = await getWaTemplateConfig("vendor", "vendor_request", defaultTpl);
+
+  const svcType = deriveServiceType(input.vehicleType ?? input.orderItems?.[0]?.category ?? "");
+  const tgl = input.createdAt ? formatTanggal(input.createdAt) : null;
+  const jam = input.jamOrder ?? (input.createdAt ? formatJam(input.createdAt) : null);
+
+  const vars: Record<string, string | null | undefined> = {
+    rfqNumber: input.rfqNumber,
+    orderNumber: input.orderNumber,
+    vendorName: input.vendorName,
+    route: input.origin && input.destination ? `${input.origin} → ${input.destination}` : null,
+    origin: input.origin ?? null,
+    destination: input.destination ?? null,
+    shipmentType: input.vehicleType ?? null,
+    vehicleType: input.vehicleType ?? null,
+    commodity: input.commodity ?? null,
+    cargoDescription: null,
+    grossWeightDisplay: input.grossWeight ? `${input.grossWeight} kg` : null,
+    volumeDisplay: input.volumeCbm ? `${input.volumeCbm} CBM` : null,
+    requiredDate: input.requiredDate ?? null,
+    notes: input.notes ?? null,
+    vendorMiniFormLink: shortLinkUrl,
+    vendorBasePrice: input.vendorBasePrice != null ? fmtRp(input.vendorBasePrice) : null,
+    tanggal: tgl,
+    jam,
+    timestamp: new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" }),
+  };
+
+  const message = renderTemplate(tplBody, vars, svcType);
   await sendWhatsApp(input.vendorPhone, message, {
     context: "vendor_quote",
     refType: "rfq",

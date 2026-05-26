@@ -286,8 +286,12 @@ router.put("/wa-template-configs", async (req: Request, res: Response) => {
   const VALID_RECIPIENTS = ["admin_personal", "admin_group", "customer", "vendor"];
   const VALID_WORKFLOWS = [
     "order_new", "vendor_request", "vendor_submission", "vendor_revision",
-    "customer_approval", "customer_approved", "so_created", "op_request",
-    "driver_assigned", "shipment_update", "customs_update", "delivery_completed",
+    "vendor_confirmed", "vendor_rejected",
+    "customer_approval", "customer_approved", "customer_options",
+    "customer_revised", "customer_rejected",
+    "so_created", "op_request", "task_link", "task_update",
+    "driver_assigned", "shipment_update", "customs_update",
+    "operational_update", "delivery_completed",
   ];
   if (!VALID_RECIPIENTS.includes(recipient)) return res.status(400).json({ message: "recipient tidak valid" });
   if (!VALID_WORKFLOWS.includes(workflow)) return res.status(400).json({ message: "workflow tidak valid" });

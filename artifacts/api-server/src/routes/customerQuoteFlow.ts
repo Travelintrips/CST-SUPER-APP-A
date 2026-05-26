@@ -10,10 +10,11 @@ import {
 } from "@workspace/db";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { sendWhatsApp } from "../lib/fonnte.js";
-import { getAdminWa } from "../lib/adminWa.js";
+import { getAdminWa, getAdminGroupWa } from "../lib/adminWa.js";
 import { getPreferredDomain } from "../lib/domain.js";
 import { logger } from "../lib/logger.js";
 import { checkOrderGeofence } from "../lib/orderGeofenceChecker.js";
+import { getWaTemplateConfig, renderTemplate, deriveServiceType } from "../lib/orderNotification.js";
 
 const tok = () => randomBytes(24).toString("hex");
 const fmtRp = (n: number | null | undefined) =>
@@ -109,17 +110,26 @@ customerQuoteAdminRouter.post("/rfq/:rfqId/send-customer-quote", async (req: Req
 
     // Send WhatsApp to customer
     if (order.phone) {
-      const waMsg =
-        `Halo ${order.customerName ?? "Customer"},\n\n` +
+      const defaultTpl =
+        `Halo {{customerName}},\n\n` +
         `Berikut penawaran untuk permintaan Anda:\n\n` +
-        `RFQ: ${rfq.rfqNumber}\n` +
-        `Layanan: ${order.shipmentType}\n` +
-        `Rute: ${order.origin} → ${order.destination}\n` +
-        `Harga: ${fmtRp(customerPrice)}\n` +
-        `ETA: ${etaFinal ?? "—"}\n` +
-        `Valid sampai: ${validUntil.toLocaleDateString("id-ID")}\n\n` +
-        `Silakan review dan konfirmasi melalui link berikut:\n${quoteUrl}`;
-
+        `RFQ: {{rfqNumber}}\nLayanan: {{shipmentType}}\nRute: {{route}}\n` +
+        `Harga: {{sellingPrice}}\nETA: {{etaFinal}}\nValid s/d: {{validUntil}}\n\n` +
+        `Silakan review dan konfirmasi:\n{{customerApprovalLink}}`;
+      const tplBody = await getWaTemplateConfig("customer", "customer_approval", defaultTpl);
+      const svcType = deriveServiceType(order.shipmentType ?? "");
+      const waMsg = renderTemplate(tplBody, {
+        customerName: order.customerName ?? "Customer",
+        rfqNumber: rfq.rfqNumber,
+        orderNumber: order.orderNumber,
+        shipmentType: order.shipmentType,
+        route: `${order.origin} → ${order.destination}`,
+        sellingPrice: fmtRp(customerPrice),
+        etaFinal: etaFinal ?? null,
+        validUntil: validUntil.toLocaleDateString("id-ID"),
+        customerApprovalLink: quoteUrl,
+        timestamp: new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" }),
+      }, svcType);
       sendWhatsApp(order.phone, waMsg).catch((e) =>
         logger.warn({ e }, "customerQuote WA to customer failed")
       );
@@ -166,13 +176,16 @@ customerQuoteAdminRouter.post("/orders/:orderId/create-task-link", async (req: R
     if (vendorId) {
       const [vendor] = await db.select().from(suppliersTable).where(eq(suppliersTable.id, vendorId));
       if (vendor?.phone) {
-        const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
-        const waMsg =
-          `🚚 *Tugas Order Baru — CST Logistics*\n\n` +
-          `Order: ${order?.orderNumber ?? orderId}\n` +
-          `Rute: ${order?.origin ?? ""} → ${order?.destination ?? ""}\n` +
-          (label ? `Keterangan: ${label}\n` : "") +
-          `\nSilakan buka link berikut untuk konfirmasi dan update status:\n${taskUrl}`;
+        const [orderRow] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
+        const defaultTpl = ["🚚 *Tugas Order Baru — CST Logistics*","","Order: {{orderNumber}}","Rute: {{route}}","Keterangan: {{label}}","","Silakan buka link berikut untuk konfirmasi dan update status:","{{taskUrl}}","_{{timestamp}}_"].join("\n");
+        const tplBody = await getWaTemplateConfig("vendor", "task_link", defaultTpl);
+        const waMsg = renderTemplate(tplBody, {
+          orderNumber: orderRow?.orderNumber ?? String(orderId),
+          route: orderRow ? `${orderRow.origin ?? ""} → ${orderRow.destination ?? ""}` : "",
+          label: label ?? null,
+          taskUrl,
+          timestamp: new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" }),
+        });
         sendWhatsApp(vendor.phone, waMsg).catch((e) =>
           logger.warn({ e }, "createTaskLink WA failed")
         );
@@ -499,45 +512,52 @@ customerQuotePublicRouter.post("/:token/respond", async (req: Request, res: Resp
         logger.warn({ e }, "customerQuote approve: gagal generate forward_vendor link");
       }
 
-      // Send WA to admin
-      const waAdmin =
-        `✅ Customer Approve Penawaran\n\n` +
-        `RFQ: ${rfqNum}\n` +
-        `Customer: ${order.customerName}\n` +
-        `Harga Final: ${fmtRp(link.finalCustomerPrice ? Number(link.finalCustomerPrice) : null)}\n\n` +
-        (fwdShort
-          ? `📦 Forward ke vendor (tanpa login):\n${fwdShort}`
-          : `Lihat order:\n${adminLink}`);
-      sendWhatsApp(adminWa, waAdmin).catch(() => {});
+      // Send WA to admin (personal + group)
+      const ts = new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" });
+      const [adminGroupWa, tplApprovePersonal, tplApproveGroup] = await Promise.all([
+        getAdminGroupWa(),
+        getWaTemplateConfig("admin_personal", "customer_approved", "✅ Customer Approve Penawaran\n\nRFQ: {{rfqNumber}}\nCustomer: {{customerName}}\nHarga Final: {{sellingPrice}}\n\n{{fwdUrl}}\n_{{timestamp}}_"),
+        getWaTemplateConfig("admin_group", "customer_approved", "🎉 *CUSTOMER APPROVED — {{orderNumber}}*\nCustomer *{{customerName}}* menyetujui. Proses operasional!\n_{{timestamp}}_"),
+      ]);
+      const approvedVars = {
+        rfqNumber: rfqNum, orderNumber: order.orderNumber, customerName: order.customerName,
+        sellingPrice: fmtRp(link.finalCustomerPrice ? Number(link.finalCustomerPrice) : null),
+        fwdUrl: fwdShort ? `📦 Forward ke vendor (tanpa login):\n${fwdShort}` : `Lihat order:\n${adminLink}`,
+        timestamp: ts,
+      };
+      sendWhatsApp(adminWa, renderTemplate(tplApprovePersonal, approvedVars)).catch(() => {});
+      if (adminGroupWa) sendWhatsApp(adminGroupWa, renderTemplate(tplApproveGroup, approvedVars)).catch(() => {});
 
       // Notify selected vendor
       if (order.approvedVendorId) {
         const [vendor] = await db.select().from(suppliersTable)
           .where(eq(suppliersTable.id, order.approvedVendorId));
         if (vendor?.phone) {
-          const waVendor =
-            `📦 *Order Dikonfirmasi — CST Logistics*\n\n` +
-            `Order: ${order.orderNumber}\n` +
-            `Rute: ${order.origin} → ${order.destination}\n\n` +
-            `Customer telah menyetujui penawaran. Tim CST akan segera menghubungi Anda.`;
+          const defaultVendorTpl = "📦 *Order Dikonfirmasi — CST Logistics*\n\nOrder: {{orderNumber}}\nRute: {{route}}\n\nCustomer telah menyetujui penawaran. Tim CST akan segera menghubungi Anda.";
+          const tplVendor = await getWaTemplateConfig("vendor", "customer_approved", defaultVendorTpl);
+          const waVendor = renderTemplate(tplVendor, {
+            orderNumber: order.orderNumber,
+            route: `${order.origin} → ${order.destination}`,
+            timestamp: ts,
+          });
           sendWhatsApp(vendor.phone, waVendor).catch(() => {});
         }
       }
     } else if (adminWa && response === "revise") {
-      const waAdmin =
-        `🟡 Customer Minta Revisi\n\n` +
-        `RFQ: ${rfqNum}\n` +
-        `Customer: ${order.customerName}\n` +
-        `Catatan:\n${revisionNotes ?? "—"}\n\n` +
-        `Buka RFQ:\n${rfqLink}`;
+      const tpl = await getWaTemplateConfig("admin_personal", "customer_revised", "🟡 Customer Minta Revisi\n\nRFQ: {{rfqNumber}}\nCustomer: {{customerName}}\nCatatan:\n{{revisionNotes}}\n\nBuka RFQ:\n{{rfqLink}}\n_{{timestamp}}_");
+      const waAdmin = renderTemplate(tpl, {
+        rfqNumber: rfqNum, customerName: order.customerName,
+        revisionNotes: revisionNotes ?? "—", rfqLink,
+        timestamp: new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" }),
+      });
       sendWhatsApp(adminWa, waAdmin).catch(() => {});
     } else if (adminWa && response === "reject") {
-      const waAdmin =
-        `🔴 Customer Menolak Penawaran\n\n` +
-        `RFQ: ${rfqNum}\n` +
-        `Customer: ${order.customerName}\n` +
-        `Alasan:\n${rejectionReason ?? "—"}\n\n` +
-        `Buka RFQ:\n${rfqLink}`;
+      const tpl = await getWaTemplateConfig("admin_personal", "customer_rejected", "🔴 Customer Menolak Penawaran\n\nRFQ: {{rfqNumber}}\nCustomer: {{customerName}}\nAlasan:\n{{rejectionReason}}\n\nBuka RFQ:\n{{rfqLink}}\n_{{timestamp}}_");
+      const waAdmin = renderTemplate(tpl, {
+        rfqNumber: rfqNum, customerName: order.customerName,
+        rejectionReason: rejectionReason ?? "—", rfqLink,
+        timestamp: new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" }),
+      });
       sendWhatsApp(adminWa, waAdmin).catch(() => {});
     }
 

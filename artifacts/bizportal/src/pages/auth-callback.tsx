@@ -1,10 +1,15 @@
 import React, { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
+function getBase(): string {
+  return (window as unknown as Record<string, string>).__BASE_PATH__ || import.meta.env.BASE_URL || "/bizportal/";
+}
+
 /**
- * Halaman callback OAuth Supabase untuk popup BizPortal.
- * Supabase redirect ke sini setelah Google OAuth selesai (implicit flow → hash).
- * Halaman ini mengambil token dari sesi Supabase lalu postMessage ke parent dan close.
+ * Halaman callback OAuth Supabase untuk BizPortal.
+ * Menangani dua mode:
+ * - Popup mode (Replit/iframe): postMessage access_token ke parent, lalu window.close()
+ * - Redirect mode (production): exchange token langsung ke /api/auth/supabase-exchange, lalu redirect ke home
  */
 export default function AuthCallbackPage() {
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
@@ -13,41 +18,71 @@ export default function AuthCallbackPage() {
     if (!supabase) {
       setStatus("error");
       try { window.opener?.postMessage("auth:error", "*"); } catch {}
-      window.close();
       return;
     }
 
+    const isPopup = !!window.opener;
     let done = false;
 
-    function sendAndClose(accessToken: string) {
+    async function handleToken(accessToken: string) {
       if (done) return;
       done = true;
-      try {
-        window.opener?.postMessage({ type: "supabase-auth", access_token: accessToken }, "*");
-      } catch {}
-      setStatus("success");
-      setTimeout(() => window.close(), 500);
+
+      if (isPopup) {
+        // Popup mode: kirim ke parent window, tutup popup
+        try {
+          window.opener?.postMessage({ type: "supabase-auth", access_token: accessToken }, "*");
+        } catch {}
+        setStatus("success");
+        setTimeout(() => window.close(), 500);
+      } else {
+        // Redirect mode: exchange token langsung, redirect ke home
+        try {
+          const res = await fetch("/api/auth/supabase-exchange", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ access_token: accessToken }),
+          });
+          if (res.ok) {
+            setStatus("success");
+            const base = getBase();
+            setTimeout(() => { window.location.replace(base); }, 300);
+          } else {
+            setStatus("error");
+            setTimeout(() => { window.location.replace(getBase()); }, 1500);
+          }
+        } catch {
+          setStatus("error");
+          setTimeout(() => { window.location.replace(getBase()); }, 1500);
+        }
+      }
     }
 
-    function sendError() {
+    function handleError() {
       if (done) return;
       done = true;
-      try { window.opener?.postMessage("auth:error", "*"); } catch {}
-      setStatus("error");
-      setTimeout(() => window.close(), 1000);
+      if (isPopup) {
+        try { window.opener?.postMessage("auth:error", "*"); } catch {}
+        setStatus("error");
+        setTimeout(() => window.close(), 1000);
+      } else {
+        setStatus("error");
+        setTimeout(() => { window.location.replace(getBase()); }, 1500);
+      }
     }
 
     // Cek session yang mungkin sudah ter-detect otomatis dari hash URL (implicit flow)
     supabase!.auth.getSession().then(({ data: { session } }) => {
       if (session?.access_token) {
-        sendAndClose(session.access_token);
+        handleToken(session.access_token);
         return;
       }
 
       // Fallback: tunggu event SIGNED_IN dari Supabase (implicit flow parse hash async)
       const { data: { subscription } } = supabase!.auth.onAuthStateChange((event, session) => {
         if (event === "SIGNED_IN" && session?.access_token) {
-          sendAndClose(session.access_token);
+          handleToken(session.access_token);
           subscription.unsubscribe();
         }
       });
@@ -55,7 +90,7 @@ export default function AuthCallbackPage() {
       // Timeout 15 detik
       const timeout = setTimeout(() => {
         subscription.unsubscribe();
-        sendError();
+        handleError();
       }, 15_000);
 
       return () => {
@@ -75,7 +110,7 @@ export default function AuthCallbackPage() {
           </>
         )}
         {status === "success" && (
-          <p className="text-sm text-green-600">Login berhasil. Menutup tab...</p>
+          <p className="text-sm text-green-600">Login berhasil. Mengalihkan...</p>
         )}
         {status === "error" && (
           <p className="text-sm text-destructive">Login gagal. Tutup tab ini dan coba lagi.</p>

@@ -1,0 +1,99 @@
+Semua alur WhatsApp masih belum memakai Template WA dari Settings. Banyak pesan masih hardcoded di React.
+
+Tolong lakukan GLOBAL WHATSAPP TEMPLATE INTEGRATION.
+
+FOKUS:
+Semua fitur yang membuka WhatsApp / wa.me / encodeURIComponent / window.open harus memakai template dari Settings.
+
+Audit semua file React/TS/JS dan cari:
+- wa.me
+- whatsapp
+- encodeURIComponent
+- window.open
+- sendWhatsApp
+- handleWhatsApp
+- message =
+- template =
+- adminActionUrl
+- vendorMiniFormLink
+- customerApprovalLink
+- operationalFormLink
+
+WAJIB DIGANTI:
+Semua pesan hardcoded harus diganti memakai:
+1. workflow
+2. recipient
+3. template dari Settings
+4. variable builder
+5. renderWhatsAppTemplate()
+6. buildWhatsAppUrl()
+
+WORKFLOW YANG HARUS TERINTEGRASI:
+1. Order Baru → Admin Pribadi
+2. Order Baru → Grup Admin
+3. Vendor Request → Vendor
+4. Vendor Submission → Admin
+5. Vendor Price Revision → Admin
+6. Customer Approval → Customer
+7. Customer Approved → Admin
+8. SO Created → Admin
+9. Operational Request → Vendor
+10. Driver Assigned → Customer/Admin
+11. Shipment Update → Customer
+12. Customs Update → Customer
+13. Delivery Completed → Customer/Admin
+
+BUAT CENTRALIZED WA SERVICE:
+Buat satu service/helper, misalnya:
+src/lib/whatsappTemplateService.ts
+
+Isi fungsi:
+- getTemplate(workflow, recipient)
+- buildVariables(context)
+- renderTemplate(template, variables)
+- removeEmptyLines(renderedText)
+- renderConditionalBlocks(template, variables)
+- buildWhatsAppUrl(phone, message)
+- openWhatsApp(phone, workflow, recipient, context)
+
+SEMUA COMPONENT HARUS PAKAI SERVICE INI.
+Jangan ada component yang membuat message WhatsApp sendiri.
+
+ATURAN:
+- Jika template user ada di Settings, pakai template user.
+- Jika tidak ada, pakai default template.
+- Jika tetap kosong, tampilkan error.
+- Variable kosong harus auto-hide barisnya.
+- Conditional block harus jalan.
+- Jangan tampilkan harga vendor ke customer.
+- Vendor tidak boleh menerima template customer.
+- Customer tidak boleh melihat vendorPrice/margin.
+- Admin boleh lihat semua variable.
+
+MAPPING RECIPIENT:
+- Admin Pribadi = admin_private
+- Grup Admin = admin_group
+- Customer = customer
+- Vendor = vendor
+
+MAPPING WORKFLOW:
+- Order Baru = order_new
+- Vendor Request = vendor_request
+- Vendor Submission = vendor_submission
+- Vendor Price Revision = vendor_price_revision
+- Customer Approval = customer_approval
+- Customer Approved = customer_approved
+- SO Created = so_created
+- Operational Request = operational_request
+- Driver Assigned = driver_assigned
+- Shipment Update = shipment_update
+- Customs Update = customs_update
+- Delivery Completed = delivery_completed
+
+SETELAH FIX:
+Berikan laporan:
+1. File mana saja yang masih hardcoded sebelumnya
+2. File mana yang sudah diganti
+3. Workflow apa saja yang sudah terhubung ke Settings Template WA
+4. Bagaimana cara test masing-masing workflow
+5. Pastikan tidak ada lagi hardcoded WA message selain default preset
