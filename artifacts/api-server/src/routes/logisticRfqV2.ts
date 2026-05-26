@@ -535,7 +535,24 @@ logisticRfqV2Router.get("/vendor-form/:token", async (req: Request, res: Respons
     linkId: link.id,
     rfqNumber,
     vendorName: vendor?.name ?? `Vendor #${link.vendorId}`,
-    orderType: order.orderType ?? "shipment",
+    orderType: (() => {
+      if (order.orderType) return order.orderType;
+      // Derive dari orderItems jika order.orderType null (order lama)
+      const hasProduct = orderItems.some(
+        (i) => i.calculatorType === "product" ||
+               i.category?.toLowerCase().includes("produk") ||
+               i.category?.toLowerCase().includes("product")
+      );
+      if (hasProduct) return "product";
+      const hasService = orderItems.some(
+        (i) => i.calculatorType === "service" ||
+               i.category?.toLowerCase().includes("servis") ||
+               i.category?.toLowerCase().includes("service") ||
+               i.category?.toLowerCase().includes("jasa")
+      );
+      if (hasService) return "service";
+      return "shipment";
+    })(),
     serviceType,
     origin,
     destination,
