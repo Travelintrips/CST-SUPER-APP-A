@@ -72,10 +72,6 @@ vendorFulfillmentPublicRouter.get("/:token", async (req: Request, res: Response)
       return res.status(410).json({ error: "Link sudah kadaluarsa", isExpired: true });
     }
 
-    if (link.status === "submitted") {
-      return res.json({ token, isSubmitted: true, serviceType: link.serviceType });
-    }
-
     const [order] = await db.select().from(logisticOrdersTable)
       .where(eq(logisticOrdersTable.id, link.orderId));
     if (!order) return res.status(404).json({ error: "Order tidak ditemukan" });
@@ -87,23 +83,57 @@ vendorFulfillmentPublicRouter.get("/:token", async (req: Request, res: Response)
       vendorName = v?.name ?? null;
     }
 
+    const orderInfo = {
+      id: order.id,
+      orderNumber: order.orderNumber,
+      serviceType: order.shipmentType,
+      origin: order.origin,
+      destination: order.destination,
+      commodity: order.commodity ?? null,
+      grossWeight: order.grossWeight ?? null,
+      requiredDate: (order as any).requiredDate ?? null,
+      vehicleType: (order as any).vehicleType ?? null,
+      status: order.status,
+    };
+
+    if (link.status === "submitted") {
+      return res.json({
+        token,
+        isSubmitted: true,
+        serviceType: link.serviceType,
+        vendorName,
+        order: orderInfo,
+        submittedData: {
+          driverName:        link.driverName ?? null,
+          driverPhone:       link.driverPhone ?? null,
+          plateNumber:       link.plateNumber ?? null,
+          vehicleType:       link.vehicleType ?? null,
+          pickupTime:        link.pickupTime ?? null,
+          carrierName:       link.carrierName ?? null,
+          awbBlNumber:       link.awbBlNumber ?? null,
+          flightVessel:      link.flightVessel ?? null,
+          bookingNumber:     link.bookingNumber ?? null,
+          etd:               link.etd ?? null,
+          eta:               link.eta ?? null,
+          stockConfirmed:    link.stockConfirmed ?? null,
+          qtyConfirmed:      link.qtyConfirmed ?? null,
+          readyDate:         link.readyDate ?? null,
+          warehouseLocation: link.warehouseLocation ?? null,
+          customsPicName:    link.customsPicName ?? null,
+          customsDocuments:  link.customsDocuments ?? null,
+          customsProcessEta: link.customsProcessEta ?? null,
+          notes:             link.notes ?? null,
+          submittedAt:       link.submittedAt ?? null,
+        },
+      });
+    }
+
     return res.json({
       token,
       isSubmitted: false,
       serviceType: link.serviceType,
       vendorName,
-      order: {
-        id: order.id,
-        orderNumber: order.orderNumber,
-        serviceType: order.shipmentType,
-        origin: order.origin,
-        destination: order.destination,
-        commodity: order.commodity ?? null,
-        grossWeight: order.grossWeight ?? null,
-        requiredDate: (order as any).requiredDate ?? null,
-        vehicleType: (order as any).vehicleType ?? null,
-        status: order.status,
-      },
+      order: orderInfo,
     });
   } catch (err) {
     logger.error({ err }, "vendor-fulfillment GET error");
