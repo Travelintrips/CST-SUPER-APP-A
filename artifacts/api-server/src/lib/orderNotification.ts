@@ -488,6 +488,16 @@ const DEFAULT_TPL = {
       "",
       "_Pesan ini dikirim otomatis oleh sistem CST Logistics._",
     ].join("\n"),
+    revision_fallback: [
+      "Halo *{{vendorName}}*,",
+      "",
+      "Kami mohon revisi harga penawaran Anda{{orderRef}}.",
+      "",
+      "Alasan: {{reason}}",
+      "",
+      "Silakan update penawaran melalui:",
+      "{{vendorFormUrl}}",
+    ].join("\n"),
   },
   admin_personal_extra: {
     vendor_submission_summary: [
@@ -512,6 +522,30 @@ const DEFAULT_TPL = {
       "🔗 Bandingkan & pilih vendor:",
       "{{compareLink}}",
       "_{{timestamp}}_",
+    ].join("\n"),
+    customer_rejection: [
+      "❌ *Customer Tolak Penawaran*",
+      "Order: {{orderNumber}}",
+      "Customer: {{customerName}}",
+      "Catatan: {{notes}}",
+    ].join("\n"),
+    op_confirm_submitted: [
+      "🚚 *Data Operasional Vendor*",
+      "Order: {{orderNumber}}",
+      "Vendor: *{{vendorName}}*",
+      "Service: {{serviceLabel}}",
+      "Status: Data operasional sudah diisi.",
+    ].join("\n"),
+    customer_rfq_response: [
+      "{{responseEmoji}} *Customer {{responseLabel}} Penawaran*",
+      "",
+      "👤 Customer: *{{customerName}}*",
+      "📄 Order: *{{orderNumber}}*",
+      "🚚 {{shipmentType}}: {{route}}",
+      "💰 Penawaran: {{quotedPrice}}",
+      "📝 Catatan: {{notes}}",
+      "",
+      "Silakan cek BizPortal › RFQ untuk tindak lanjut.",
     ].join("\n"),
   },
 } as const;
@@ -1243,6 +1277,101 @@ export async function sendVendorRfqForwardNotification(
     refType: "vendor_mini_form",
     refId: refToken,
   }).catch(() => {});
+}
+
+// ── sendVendorRevisionFallbackNotification ─────────────────────────────────────
+export async function sendVendorRevisionFallbackNotification(
+  vendorPhone: string,
+  vendorName: string,
+  orderNumber: string | null,
+  reason: string | null,
+  vendorFormUrl: string,
+  refId: string,
+): Promise<void> {
+  const tpl = await getWaTemplateConfig("vendor", "revision_fallback", DEFAULT_TPL.vendor.revision_fallback);
+  const orderRef = orderNumber ? ` untuk Order *${orderNumber}*` : "";
+  const msg = renderTemplate(tpl, {
+    vendorName,
+    orderRef,
+    reason: reason ?? null,
+    vendorFormUrl,
+    timestamp: nowWIB(),
+  });
+  sendWhatsApp(vendorPhone, msg, {
+    context: "revision-request",
+    refType: "vendor_mini_form",
+    refId,
+  }).catch(() => {});
+}
+
+// ── sendCustomerRejectionAdminNotification ─────────────────────────────────────
+export async function sendCustomerRejectionAdminNotification(
+  adminWa: string,
+  vars: { orderNumber: string | null; customerName: string | null; notes: string | null },
+  refToken: string,
+): Promise<void> {
+  const tpl = await getWaTemplateConfig("admin_personal", "customer_rejection", DEFAULT_TPL.admin_personal_extra.customer_rejection);
+  const msg = renderTemplate(tpl, {
+    orderNumber: vars.orderNumber ?? null,
+    customerName: vars.customerName ?? null,
+    notes: vars.notes ?? null,
+  });
+  sendWhatsApp(adminWa, msg, {
+    context: "customer-approval",
+    refType: "customer_approval",
+    refId: refToken,
+  }).catch(() => {});
+}
+
+// ── sendOpConfirmSubmittedNotification ─────────────────────────────────────────
+export async function sendOpConfirmSubmittedNotification(
+  adminWa: string,
+  vars: { orderNumber: string | null; vendorName: string | null; serviceLabel: string },
+  refToken: string,
+): Promise<void> {
+  const tpl = await getWaTemplateConfig("admin_personal", "op_confirm_submitted", DEFAULT_TPL.admin_personal_extra.op_confirm_submitted);
+  const msg = renderTemplate(tpl, {
+    orderNumber: vars.orderNumber ?? null,
+    vendorName: vars.vendorName ?? null,
+    serviceLabel: vars.serviceLabel,
+  });
+  sendWhatsApp(adminWa, msg, {
+    context: "op-confirm",
+    refType: "vendor_op_confirm",
+    refId: refToken,
+  }).catch(() => {});
+}
+
+// ── sendCustomerRfqResponseAdminNotification ───────────────────────────────────
+export async function sendCustomerRfqResponseAdminNotification(
+  adminWa: string,
+  vars: {
+    response: "approved" | "revision_requested" | "rejected";
+    customerName: string;
+    orderNumber: string;
+    shipmentType: string;
+    origin: string;
+    destination: string;
+    quotedPrice: string | null;
+    notes: string | null;
+  },
+): Promise<void> {
+  const tpl = await getWaTemplateConfig("admin_personal", "customer_rfq_response", DEFAULT_TPL.admin_personal_extra.customer_rfq_response);
+  const emoji = vars.response === "approved" ? "✅" : vars.response === "revision_requested" ? "🔄" : "❌";
+  const label = vars.response === "approved" ? "MENYETUJUI" :
+    vars.response === "revision_requested" ? "MINTA REVISI" : "MENOLAK";
+  const msg = renderTemplate(tpl, {
+    responseEmoji: emoji,
+    responseLabel: label,
+    customerName: vars.customerName,
+    orderNumber: vars.orderNumber,
+    shipmentType: vars.shipmentType,
+    route: `${vars.origin} → ${vars.destination}`,
+    quotedPrice: vars.quotedPrice ?? null,
+    notes: vars.notes ?? null,
+    timestamp: nowWIB(),
+  });
+  sendWhatsApp(adminWa, msg).catch(() => {});
 }
 
 // ── sendVendorSubmissionSummaryNotification ────────────────────────────────────

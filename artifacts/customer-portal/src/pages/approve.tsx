@@ -15,6 +15,10 @@ interface Quote {
   estimatedDelivery: string | null;
   estimatedDays: number | null;
   vendorNotes: string | null;
+  vendorPrice: number;
+  markupType: string;
+  markupPercentage: number;
+  fixedSellingPrice: number | null;
   sellingPrice: number;
   quoteStatus: string;
   replySource: string | null;

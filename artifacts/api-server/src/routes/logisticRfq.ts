@@ -1179,6 +1179,10 @@ logisticRfqRouter.get("/approve-form/:orderNumber", async (req: Request, res: Re
       estimatedDelivery: q.estimatedDelivery ?? null,
       estimatedDays: q.estimatedDays ?? null,
       vendorNotes: q.vendorNotes ?? null,
+      vendorPrice: Number(q.vendorPrice),
+      markupType: q.markupType,
+      markupPercentage: Number(q.markupPercentage ?? 0),
+      fixedSellingPrice: q.fixedSellingPrice != null ? Number(q.fixedSellingPrice) : null,
       sellingPrice: q.sellingPrice != null
         ? Number(q.sellingPrice)
         : calcSellingPrice(Number(q.vendorPrice), q.markupType, Number(q.markupPercentage ?? 0), q.fixedSellingPrice != null ? Number(q.fixedSellingPrice) : null),

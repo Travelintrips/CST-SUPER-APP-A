@@ -27,10 +27,13 @@ import {
   sendVendorRequestNotification,
   sendCustomerApprovalNotification,
   sendVendorRevisionNotification,
+  sendVendorRevisionFallbackNotification,
   sendVendorSubmissionNotification,
   sendVendorSubmitConfirmNotification,
   sendVendorRfqForwardNotification,
   sendVendorSubmissionSummaryNotification,
+  sendCustomerRejectionAdminNotification,
+  sendOpConfirmSubmittedNotification,
   type LogisticOrderData,
 } from "../lib/orderNotification.js";
 
@@ -1073,8 +1076,7 @@ vendorMiniFormRouter.post("/customer-approval/:token", async (req: Request, res:
           } else {
             getAdminWa().then((adminWa) => {
               if (!adminWa) return;
-              const msg = `❌ *Customer Tolak Penawaran*\nOrder: ${orderNumber ?? "-"}\nCustomer: ${customerName ?? "-"}${notes ? `\nCatatan: ${notes}` : ""}`;
-              sendWhatsApp(adminWa, msg, { context: "customer-approval", refType: "customer_approval", refId: token }).catch(() => {});
+              sendCustomerRejectionAdminNotification(adminWa, { orderNumber: orderNumber ?? null, customerName: customerName ?? null, notes: notes ?? null }, token).catch(() => {});
             }).catch(() => {});
           }
         }).catch(() => {});
@@ -1138,12 +1140,11 @@ vendorMiniFormRouter.post("/op-confirm/:token", async (req: Request, res: Respon
 
     getAdminWa().then((adminWa) => {
       if (!adminWa) return;
-      const msg = `🚚 *Data Operasional Vendor*\n` +
-        `Order: ${conf.orderNumber ?? "-"}\n` +
-        `Vendor: ${conf.vendorName ?? "-"}\n` +
-        `Service: ${SERVICE_SCHEMAS[conf.serviceType]?.label ?? conf.serviceType}\n` +
-        `Status: Data operasional sudah diisi.`;
-      sendWhatsApp(adminWa, msg, { context: "op-confirm", refType: "vendor_op_confirm", refId: token }).catch(() => {});
+      sendOpConfirmSubmittedNotification(adminWa, {
+        orderNumber: conf.orderNumber ?? null,
+        vendorName: conf.vendorName ?? null,
+        serviceLabel: SERVICE_SCHEMAS[conf.serviceType]?.label ?? conf.serviceType,
+      }, token).catch(() => {});
     }).catch(() => {});
 
     return res.json({ success: true, message: "Data operasional berhasil dikirim, terima kasih!" });
@@ -1427,16 +1428,14 @@ vendorMiniFormRouter.post("/admin/submissions/:id/request-revision", async (req:
             ).catch(() => {});
           }
         } else {
-          // Fallback hardcoded
-          const msg = `Halo *${sub.vendorName ?? "Vendor"}*, kami mohon revisi harga penawaran Anda` +
-            (linkRow.orderNumber ? ` untuk Order *${linkRow.orderNumber}*` : "") +
-            (reason ? `.\n\nAlasan: ${reason}` : "") +
-            `.\n\nSilakan update penawaran melalui:\n${formUrl}`;
-          sendWhatsApp(sub.contactPhone, msg, {
-            context: "revision-request",
-            refType: "vendor_mini_form",
-            refId: String(sub.linkId ?? sub.id),
-          }).catch(() => {});
+          sendVendorRevisionFallbackNotification(
+            sub.contactPhone,
+            sub.vendorName ?? "Vendor",
+            linkRow.orderNumber ?? null,
+            reason ?? null,
+            formUrl,
+            String(sub.linkId ?? sub.id),
+          ).catch(() => {});
         }
       }
     }

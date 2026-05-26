@@ -835,6 +835,7 @@ type RecipientKey = "admin_personal" | "admin_group" | "customer" | "vendor";
 type WorkflowKey =
   | "order_new" | "vendor_request" | "vendor_submission" | "vendor_revision"
   | "vendor_submit_confirm" | "vendor_rfq_forward" | "vendor_submission_summary"
+  | "revision_fallback" | "customer_rejection" | "op_confirm_submitted" | "customer_rfq_response"
   | "customer_approval" | "customer_approved" | "so_created" | "op_request"
   | "driver_assigned" | "shipment_update" | "customs_update" | "delivery_completed"
   | "rfq_vendor_recap"
@@ -847,6 +848,10 @@ const WORKFLOW_VALID_RECIPIENTS: Partial<Record<WorkflowKey, RecipientKey[]>> = 
   vendor_rfq_forward:        ["vendor"],
   vendor_submission_summary: ["admin_personal"],
   rfq_vendor_recap:          ["admin_personal"],
+  revision_fallback:         ["vendor"],
+  customer_rejection:        ["admin_personal"],
+  op_confirm_submitted:      ["admin_personal"],
+  customer_rfq_response:     ["admin_personal"],
 };
 
 const RECIPIENT_META: Record<RecipientKey, { label: string; icon: string }> = {
@@ -875,6 +880,10 @@ const WORKFLOW_META: Record<WorkflowKey, { label: string; icon: string; desc: st
   vendor_rfq_forward:           { label: "RFQ Forward ke Vendor",   icon: "📤", desc: "Notifikasi ke vendor saat admin forward RFQ beserta detail permintaan" },
   vendor_submission_summary:    { label: "Ringkasan Penawaran",     icon: "📋", desc: "Ringkasan submission form vendor yang dikirim ke admin" },
   rfq_vendor_recap:             { label: "Rekap Penawaran RFQ",     icon: "🔔", desc: "Rekap semua penawaran vendor untuk satu RFQ, dikirim ke admin" },
+  revision_fallback:            { label: "Revisi Penawaran Vendor",  icon: "↩️", desc: "Pesan fallback ke vendor saat admin minta revisi tanpa data order" },
+  customer_rejection:           { label: "Customer Tolak",           icon: "❌", desc: "Notifikasi admin saat customer menolak penawaran" },
+  op_confirm_submitted:         { label: "Data Ops Masuk",           icon: "🚚", desc: "Notifikasi admin saat vendor submit data operasional" },
+  customer_rfq_response:        { label: "Respons Customer RFQ",    icon: "💬", desc: "Notifikasi admin saat customer setuju/tolak/minta revisi penawaran RFQ" },
 };
 
 const VAR_GROUPS: Array<{ label: string; color: string; vars: string[]; onlyWorkflows?: WorkflowKey[] }> = [

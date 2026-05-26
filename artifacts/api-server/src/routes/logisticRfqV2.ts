@@ -23,6 +23,8 @@ import {
   sendVendorRequestNotification,
   sendVendorSubmissionNotification,
   sendVendorRevisionNotification,
+  sendVendorRevisionFallbackNotification,
+  sendCustomerRfqResponseAdminNotification,
   sendCustomerApprovalNotification,
   getRfqVendorRecapTemplate,
   renderTemplate,
@@ -1156,8 +1158,14 @@ logisticRfqV2Router.post("/rfq/:rfqId/vendor-link/:linkId/action", async (req: R
           formUrl,
         ).catch(() => {});
       } else if (actionMsg) {
-        // Fallback jika order tidak ditemukan
-        sendWhatsApp(vendor.phone, `📝 *Permintaan Revisi Penawaran*\n\nRFQ: ${rfq?.rfqNumber ?? ""}\nVendor: ${vendorName}\n\nCatatan Admin: ${actionMsg}\n\nSilakan perbarui penawaran:\n${formUrl}`).catch(() => {});
+        sendVendorRevisionFallbackNotification(
+          vendor.phone,
+          vendorName,
+          rfq?.rfqNumber ?? null,
+          actionMsg,
+          formUrl,
+          String(rfqId),
+        ).catch(() => {});
       }
     }
     await logActivity(rfqId, "admin", "Admin", "admin_request_revision",
@@ -1303,19 +1311,16 @@ logisticRfqV2Router.post("/rfq/quote-respond", async (req: Request, res: Respons
   // Notif WA ke admin group
   const adminWa = await getAdminGroupWa().catch(() => null);
   if (adminWa) {
-    const emoji = response === "approved" ? "✅" : response === "revision_requested" ? "🔄" : "❌";
-    const label = response === "approved" ? "MENYETUJUI" :
-      response === "revision_requested" ? "MINTA REVISI" : "MENOLAK";
-    const priceInfo = rfq.quotedPrice ? `\n💰 Penawaran: ${fmtRp(rfq.quotedPrice)}` : "";
-    const notesInfo = notes ? `\n📝 Catatan: ${notes}` : "";
-    const msg =
-      `${emoji} *Customer ${label} Penawaran*\n\n` +
-      `👤 Customer: *${order.customerName}*\n` +
-      `📄 Order: *${order.orderNumber}*\n` +
-      `🚚 ${order.shipmentType}: ${order.origin} → ${order.destination}` +
-      priceInfo + notesInfo +
-      `\n\nSilakan cek BizPortal › RFQ untuk tindak lanjut.`;
-    sendWhatsApp(adminWa, msg).catch(() => {});
+    sendCustomerRfqResponseAdminNotification(adminWa, {
+      response,
+      customerName: order.customerName,
+      orderNumber: order.orderNumber,
+      shipmentType: order.shipmentType,
+      origin: order.origin,
+      destination: order.destination,
+      quotedPrice: rfq.quotedPrice ? fmtRp(rfq.quotedPrice) : null,
+      notes: notes ?? null,
+    }).catch(() => {});
   }
 
   await logActivity(rfq.id, "customer", order.customerName, `customer_${response}`,

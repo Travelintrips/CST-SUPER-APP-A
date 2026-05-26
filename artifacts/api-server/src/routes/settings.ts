@@ -287,13 +287,13 @@ router.put("/wa-template-configs", async (req: Request, res: Response) => {
   const VALID_WORKFLOWS = [
     "order_new", "vendor_request", "vendor_submission", "vendor_revision",
     "vendor_confirmed", "vendor_rejected",
-    "vendor_submit_confirm", "vendor_rfq_forward", "vendor_submission_summary",
+    "vendor_submit_confirm", "vendor_rfq_forward", "vendor_submission_summary", "revision_fallback",
     "customer_approval", "customer_approved", "customer_options",
     "customer_revised", "customer_rejected",
     "so_created", "op_request", "task_link", "task_update",
     "driver_assigned", "shipment_update", "customs_update",
     "operational_update", "delivery_completed",
-    "rfq_vendor_recap",
+    "rfq_vendor_recap", "customer_rejection", "op_confirm_submitted", "customer_rfq_response",
     "product_order_new",
     "product_order_status_update",
   ];
