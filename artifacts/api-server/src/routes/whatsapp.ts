@@ -66,31 +66,6 @@ const DEFAULT_QUOTATION_ADMIN_TPL = [
   "━━━━━━━━━━━━━━━━━━",
   "_Dikirim via Mini Form BizPortal_",
 ].join("\n");
-async function buildCustomerMessage(data: {
-  customerName: string;
-  rfqId: string;
-  serviceType: string;
-  route: string;
-  pickupDate: string;
-  deliveryDate: string;
-  finalPrice: number;
-  status: string;
-  notes: string;
-}): Promise<string> {
-  const fmt = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
-  const tplBody = await getWaTemplateConfig("customer", "manual_quote", DEFAULT_MANUAL_QUOTE_TPL);
-  return renderTemplate(tplBody, {
-    customerName: data.customerName || "-",
-    rfqId: data.rfqId || "-",
-    serviceType: data.serviceType || "-",
-    route: data.route || "-",
-    pickupDate: data.pickupDate || null,
-    deliveryDate: data.deliveryDate || null,
-    finalPrice: fmt(data.finalPrice),
-    status: data.status || "Ready",
-    notes: data.notes || null,
-  }, data.serviceType);
-}
 
 // POST /api/whatsapp/send-quotation
 whatsappRouter.post("/send-quotation", async (req: Request, res: Response) => {
@@ -113,9 +88,7 @@ whatsappRouter.post("/send-quotation", async (req: Request, res: Response) => {
     return res.status(400).json({ message: "finalPrice tidak valid" });
   }
 
-  const vars: Record<string, string> = {
-
-  const messageBody = await buildCustomerMessage({
+  const vars: Record<string, string | null> = {
     customerName: String(customerName),
     rfqId: rfqId ? String(rfqId) : "-",
     serviceType: serviceType ? String(serviceType) : "-",

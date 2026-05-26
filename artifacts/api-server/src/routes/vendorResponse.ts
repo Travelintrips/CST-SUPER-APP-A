@@ -8,7 +8,6 @@ import {
   logisticOrdersTable,
   logisticOrderItemsTable,
   suppliersTable,
-  vendorCatalogItemsTable,
 } from "@workspace/db";
 import { sendWhatsApp } from "../lib/fonnte";
 import { ObjectStorageService } from "../lib/objectStorage";
@@ -116,8 +115,7 @@ router.get("/:orderNumber", async (req: Request, res: Response) => {
       .from(vendorResponsesTable)
       .where(eq(vendorResponsesTable.orderNumber, orderNumber));
 
-    // Fetch vendor base price from catalog if vendorId provided
-    let vendorBasePrice: number | null = null;
+    // Fetch vendor name from DB if vendorId provided (base price not exposed to protect margin)
     let vendorNameFromDb: string | null = null;
     if (vendorId && !isNaN(vendorId)) {
       const [vendor] = await db
@@ -125,21 +123,6 @@ router.get("/:orderNumber", async (req: Request, res: Response) => {
         .from(suppliersTable)
         .where(eq(suppliersTable.id, vendorId));
       if (vendor) vendorNameFromDb = vendor.name;
-
-      const catalogItems = await db
-        .select()
-        .from(vendorCatalogItemsTable)
-        .where(and(
-          eq(vendorCatalogItemsTable.vendorId, vendorId),
-          eq(vendorCatalogItemsTable.isActive, true)
-        ));
-
-      const matchingItem = vehicleType
-        ? catalogItems.find((c) => c.name.toLowerCase().includes(vehicleType.toLowerCase()))
-        : null;
-      vendorBasePrice = matchingItem
-        ? Number(matchingItem.priceBase)
-        : (catalogItems[0] ? Number(catalogItems[0].priceBase) : null);
     }
 
     res.json({
@@ -154,7 +137,6 @@ router.get("/:orderNumber", async (req: Request, res: Response) => {
       requiredDate: order.requiredDate,
       jamOrder: order.jamOrder,
       shipmentType: order.shipmentType,
-      vendorBasePrice,
       vendorNameFromDb,
       alreadySubmitted: !!existing,
     });
