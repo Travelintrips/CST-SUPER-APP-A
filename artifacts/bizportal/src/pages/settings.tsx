@@ -1114,7 +1114,7 @@ const DEFAULT_BODY: Partial<Record<RecipientKey, Partial<Record<WorkflowKey, str
       "🛒 *[PESANAN PRODUK] {{orderNumber}}*","━━━━━━━━━━━━━━━━━━",
       "👤 Customer : *{{customerName}}*","📞 HP       : {{phone}}","📧 Email    : {{email}}",
       "📦 Produk   :","{{itemList}}","💰 Total    : *Rp {{grandTotal}}*","Catatan     : {{notes}}",
-      "━━━━━━━━━━━━━━━━━━","📋 Form vendor → {{vendorFormUrl}}","","_Dikirim: {{timestamp}}_",
+      "━━━━━━━━━━━━━━━━━━","_Dikirim: {{timestamp}}_",
     ].join("\n"),
     product_order_status_update: [
       "🔔 *[STATUS ORDER PRODUK DIPERBARUI]*",

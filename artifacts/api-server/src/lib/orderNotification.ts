@@ -472,8 +472,6 @@ const DEFAULT_TPL = {
       "💰 Total    : *Rp {{grandTotal}}*",
       "Catatan     : {{notes}}",
       "━━━━━━━━━━━━━━━━━━",
-      "📋 Form vendor → {{vendorFormUrl}}",
-      "",
       "_Dikirim: {{timestamp}}_",
     ].join("\n"),
     customer: [
