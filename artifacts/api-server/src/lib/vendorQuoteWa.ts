@@ -39,8 +39,9 @@ export interface VendorQuoteMessageInput {
   createdAt?: Date | string | null;
   jamOrder?: string | null;
   shortLinkUrl: string;
-  orderItems?: Array<{ serviceName: string; category: string }> | null;
+  orderItems?: Array<{ serviceName: string; category: string; subtotal?: number | null }> | null;
   isTrucking?: boolean;
+  orderType?: string | null;
 }
 
 /**
@@ -122,8 +123,9 @@ export interface SendVendorWhatsAppInput {
   vendorBasePrice?: number | null;
   createdAt?: Date | string | null;
   jamOrder?: string | null;
-  orderItems?: Array<{ serviceName: string; category: string }> | null;
+  orderItems?: Array<{ serviceName: string; category: string; subtotal?: number | null }> | null;
   isTrucking?: boolean;
+  orderType?: string | null;
 }
 
 /**
@@ -149,9 +151,25 @@ export async function sendVendorWhatsApp(input: SendVendorWhatsAppInput): Promis
   // Fetch user-configured template (or default fallback)
   const tplBody = await getWaTemplateConfig("vendor", "vendor_request", defaultTpl);
 
-  const svcType = deriveServiceType(input.vehicleType ?? input.orderItems?.[0]?.category ?? "");
+  const svcType = deriveServiceType(
+    input.vehicleType ?? input.orderItems?.[0]?.category ?? "",
+    input.orderType ?? undefined,
+  );
   const tgl = input.createdAt ? formatTanggal(input.createdAt) : null;
   const jam = input.jamOrder ?? (input.createdAt ? formatJam(input.createdAt) : null);
+
+  const productList: string | null = (() => {
+    const items = (input.orderItems ?? []).filter(
+      (it) => it.category?.toLowerCase().includes("product") || svcType === "product",
+    );
+    if (!items.length) return null;
+    return items
+      .map((it) => {
+        const price = it.subtotal != null && it.subtotal > 0 ? ` — ${fmtRp(it.subtotal)}` : "";
+        return `• ${it.serviceName}${price}`;
+      })
+      .join("\n");
+  })();
 
   const vars: Record<string, string | null | undefined> = {
     rfqNumber: input.rfqNumber,
@@ -170,6 +188,7 @@ export async function sendVendorWhatsApp(input: SendVendorWhatsAppInput): Promis
     notes: input.notes ?? null,
     vendorMiniFormLink: shortLinkUrl,
     vendorBasePrice: input.vendorBasePrice != null ? fmtRp(input.vendorBasePrice) : null,
+    productList,
     tanggal: tgl,
     jam,
     timestamp: new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" }),

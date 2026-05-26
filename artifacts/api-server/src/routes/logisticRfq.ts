@@ -765,7 +765,7 @@ logisticRfqRouter.post("/:id/rfq", async (req: Request, res: Response) => {
 
       const formUrl = getVendorFormUrl(rfqNumber, vendor.id, orderToken2);
       const isTruckingOrder2 = !!truckingItem;
-      const waItems2 = orderItems.map((it) => ({ serviceName: it.serviceName || it.category, category: it.category }));
+      const waItems2 = orderItems.map((it) => ({ serviceName: it.serviceName || it.category, category: it.category, subtotal: it.subtotal != null ? parseFloat(String(it.subtotal)) : null }));
       sendVendorWhatsApp({
         vendorPhone: vendor.phone, vendorName: vendor.name, vendorId: vendor.id,
         rfqNumber, orderId, orderNumber: orderData.orderNumber, longUrl: formUrl,
@@ -776,6 +776,7 @@ logisticRfqRouter.post("/:id/rfq", async (req: Request, res: Response) => {
         vendorBasePrice, createdAt: orderData.createdAt, jamOrder: orderData.jamOrder,
         orderItems: waItems2,
         isTrucking: isTruckingOrder2,
+        orderType: order.orderType ?? null,
       }).catch((err: unknown) =>
         logger.error({ err, vendorId: vendor.id }, "WA RFQ send failed")
       );
@@ -1073,7 +1074,7 @@ logisticRfqRouter.post("/:id/manual-rfq", async (req: Request, res: Response) =>
 
   await db.update(logisticOrdersTable).set({ status: "Under Review" }).where(eq(logisticOrdersTable.id, orderId));
 
-  const manualOrderItems = await db.select({ serviceName: logisticOrderItemsTable.serviceName, category: logisticOrderItemsTable.category, calculatorType: logisticOrderItemsTable.calculatorType })
+  const manualOrderItems = await db.select({ serviceName: logisticOrderItemsTable.serviceName, category: logisticOrderItemsTable.category, calculatorType: logisticOrderItemsTable.calculatorType, subtotal: logisticOrderItemsTable.subtotal })
     .from(logisticOrderItemsTable)
     .where(eq(logisticOrderItemsTable.orderId, orderId));
   const isTruckingManual = manualOrderItems.some((it) => it.calculatorType === "trucking");
@@ -1102,7 +1103,7 @@ logisticRfqRouter.post("/:id/manual-rfq", async (req: Request, res: Response) =>
       .where(and(eq(vendorCatalogItemsTable.vendorId, vendor.id), eq(vendorCatalogItemsTable.isActive, true)));
     const vendorBasePrice = catalogItems[0] ? Number(catalogItems[0].priceBase) : null;
     const formUrl = getVendorFormUrl(rfqNumber, vendor.id, orderToken3);
-    const waItemsManual = manualOrderItems.map((it) => ({ serviceName: it.serviceName || it.category, category: it.category }));
+    const waItemsManual = manualOrderItems.map((it) => ({ serviceName: it.serviceName || it.category, category: it.category, subtotal: it.subtotal != null ? parseFloat(String(it.subtotal)) : null }));
     sendVendorWhatsApp({
       vendorPhone: vendor.phone!, vendorName: vendor.name, vendorId: vendor.id,
       rfqNumber, orderId, orderNumber: orderData.orderNumber, longUrl: formUrl,
@@ -1113,6 +1114,7 @@ logisticRfqRouter.post("/:id/manual-rfq", async (req: Request, res: Response) =>
       jamOrder: orderData.jamOrder,
       orderItems: waItemsManual,
       isTrucking: isTruckingManual,
+      orderType: order.orderType ?? null,
     }).catch((err: unknown) =>
       logger.error({ err, vendorId: vendor.id }, "manualRFQ WA vendor failed")
     );
@@ -1291,6 +1293,8 @@ logisticRfqRouter.post("/:id/resend-rfq", async (req: Request, res: Response) =>
     return res.status(400).json({ message: "Tidak ada vendor terpilih yang memiliki nomor WhatsApp" });
 
   const orderToken = order.publicRfqToken ?? "";
+  const resendOrderItems = await db.select({ serviceName: logisticOrderItemsTable.serviceName, category: logisticOrderItemsTable.category, subtotal: logisticOrderItemsTable.subtotal })
+    .from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, orderId));
 
   const results: { vendorId: number; vendorName: string; sent: boolean }[] = [];
   for (const vendor of eligible) {
@@ -1305,6 +1309,7 @@ logisticRfqRouter.post("/:id/resend-rfq", async (req: Request, res: Response) =>
       : catalogItems[0] ? Number(catalogItems[0].priceBase) : null;
 
     const formUrl = getVendorFormUrl(rfqs.rfqNumber, vendor.id, orderToken);
+    const waResendItems = resendOrderItems.map((it) => ({ serviceName: it.serviceName || it.category, category: it.category, subtotal: it.subtotal != null ? parseFloat(String(it.subtotal)) : null }));
     try {
       await sendVendorWhatsApp({
         vendorPhone: vendor.phone!, vendorName: vendor.name, vendorId: vendor.id,
@@ -1315,6 +1320,8 @@ logisticRfqRouter.post("/:id/resend-rfq", async (req: Request, res: Response) =>
         requiredDate: order.requiredDate ?? null,
         notes: order.notes ?? null, vendorBasePrice, createdAt: order.createdAt,
         jamOrder: order.jamOrder ?? null,
+        orderItems: waResendItems,
+        orderType: order.orderType ?? null,
       });
       results.push({ vendorId: vendor.id, vendorName: vendor.name, sent: true });
     } catch (err) {
