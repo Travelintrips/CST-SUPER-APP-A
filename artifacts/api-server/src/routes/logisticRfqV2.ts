@@ -535,6 +535,7 @@ logisticRfqV2Router.get("/vendor-form/:token", async (req: Request, res: Respons
     linkId: link.id,
     rfqNumber,
     vendorName: vendor?.name ?? `Vendor #${link.vendorId}`,
+    orderType: order.orderType ?? "shipment",
     serviceType,
     origin,
     destination,
