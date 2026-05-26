@@ -5,6 +5,7 @@ import {
   db,
   adminActionLinksTable,
   logisticOrdersTable,
+  logisticOrderItemsTable,
   logisticOrderRfqsTable,
   rfqVendorLinksTable,
   suppliersTable,
@@ -131,6 +132,7 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
       customerName: logisticOrdersTable.customerName,
       email: logisticOrdersTable.email,
       phone: logisticOrdersTable.phone,
+      orderType: logisticOrdersTable.orderType,
       shipmentType: logisticOrdersTable.shipmentType,
       origin: logisticOrdersTable.origin,
       destination: logisticOrdersTable.destination,
@@ -140,11 +142,13 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
       volumeCbm: logisticOrdersTable.volumeCbm,
       jumlahKoli: logisticOrdersTable.jumlahKoli,
       requiredDate: logisticOrdersTable.requiredDate,
+      jamOrder: logisticOrdersTable.jamOrder,
       notes: logisticOrdersTable.notes,
       paymentType: logisticOrdersTable.paymentType,
       status: logisticOrdersTable.status,
       publicRfqToken: logisticOrdersTable.publicRfqToken,
       grandTotal: logisticOrdersTable.grandTotal,
+      createdAt: logisticOrdersTable.createdAt,
     };
 
     // Fallback: token mungkin adalah publicRfqToken dari logistic_orders
@@ -179,6 +183,7 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
         companyName: order.companyName ?? null,
         email: order.email ?? null,
         phone: (order as any).phone ?? null,
+        orderType: (order as any).orderType ?? null,
         serviceType: order.shipmentType,
         origin: order.origin,
         destination: order.destination,
@@ -518,6 +523,23 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
         const formUrl = `https://${domain}/vendor-form/${linkToken}`;
         const shortUrl = await generateShortLink(formUrl, { context: "vendor_rfq", refType: "rfq", refId: String(rfq.id) });
 
+        const rawItems = await db.select({
+          serviceName: logisticOrderItemsTable.serviceName,
+          subtotal: logisticOrderItemsTable.subtotal,
+        }).from(logisticOrderItemsTable)
+          .where(eq(logisticOrderItemsTable.orderId, order.id));
+
+        const isProductOrder = (order.orderType ?? "") === "product";
+        const serviceList = rawItems.length
+          ? rawItems.map(i => `• ${i.serviceName}`).join("\n")
+          : "";
+        const orderItems = rawItems.length
+          ? rawItems.map(i => ({
+              name: i.serviceName ?? "",
+              subtotal: i.subtotal != null ? parseFloat(String(i.subtotal)) : null,
+            }))
+          : undefined;
+
         const orderData: LogisticOrderData = {
           id: order.id,
           orderNumber: order.orderNumber,
@@ -531,11 +553,12 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
           destination: order.destination ?? "",
           commodity: order.commodity,
           cargoDescription: order.cargoDescription,
-          grossWeight: order.grossWeight != null ? parseFloat(String(order.grossWeight)) : null,
-          volumeCbm: order.volumeCbm != null ? parseFloat(String(order.volumeCbm)) : null,
-          jumlahKoli: order.jumlahKoli ?? null,
+          grossWeight: !isProductOrder && order.grossWeight != null ? parseFloat(String(order.grossWeight)) : null,
+          volumeCbm: !isProductOrder && order.volumeCbm != null ? parseFloat(String(order.volumeCbm)) : null,
+          jumlahKoli: !isProductOrder ? (order.jumlahKoli ?? null) : null,
           grandTotal: order.grandTotal != null ? parseFloat(String(order.grandTotal)) : 0,
-          serviceList: "",
+          serviceList,
+          orderItems,
           requiredDate: order.requiredDate ?? null,
           notes: order.notes,
           jamOrder: order.jamOrder ?? null,

@@ -7,6 +7,7 @@ type OrderInfo = {
   id: number;
   orderNumber: string;
   customerName: string;
+  orderType: string | null;
   serviceType: string | null;
   origin: string;
   destination: string;
@@ -222,6 +223,11 @@ function ErrorScreen({ message }: { message: string }) {
 }
 
 function OrderCard({ order, label = "Order" }: { order: OrderInfo; label?: string }) {
+  const isProduct = order.orderType === "product";
+  const hasRoute = !isProduct && (order.origin || order.destination);
+  const serviceLabel = isProduct ? "Tipe Order" : "Layanan";
+  const serviceValue = isProduct ? "Produk" : (order.serviceType ?? "—");
+
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
       <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-5 py-4">
@@ -244,15 +250,17 @@ function OrderCard({ order, label = "Order" }: { order: OrderInfo; label?: strin
             <p className="font-semibold text-slate-800">{order.customerName}</p>
           </div>
           <div>
-            <p className="text-slate-400 text-xs">Layanan</p>
-            <p className="font-semibold text-slate-800">{order.serviceType ?? "—"}</p>
+            <p className="text-slate-400 text-xs">{serviceLabel}</p>
+            <p className="font-semibold text-slate-800">{serviceValue}</p>
           </div>
-          <div className="col-span-2">
-            <p className="text-slate-400 text-xs">Rute</p>
-            <p className="font-semibold text-slate-800">
-              {order.origin || "—"} → {order.destination || "—"}
-            </p>
-          </div>
+          {hasRoute && (
+            <div className="col-span-2">
+              <p className="text-slate-400 text-xs">Rute</p>
+              <p className="font-semibold text-slate-800">
+                {order.origin || "—"} → {order.destination || "—"}
+              </p>
+            </div>
+          )}
           {order.commodity && (
             <div className="col-span-2">
               <p className="text-slate-400 text-xs">Komoditi</p>

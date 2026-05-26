@@ -10,6 +10,7 @@ type OrderInfo = {
   companyName: string | null;
   email: string | null;
   phone: string | null;
+  orderType: string | null;
   serviceType: string;
   origin: string;
   destination: string;
@@ -114,13 +115,14 @@ function DetailRow({ label, value }: { label: string; value: string | number | n
 }
 
 function OrderCard({ order }: { order: OrderInfo }) {
-  const hasRoute = order.origin || order.destination;
+  const isProduct = order.orderType === "product";
+  const hasRoute = !isProduct && (order.origin || order.destination);
   const idr = (v: string | null) => v && Number(v) > 0 ? `Rp ${Math.round(Number(v)).toLocaleString("id-ID")}` : null;
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
       <div className="flex items-center gap-3 mb-4">
-        <span className="text-3xl">🚢</span>
+        <span className="text-3xl">{isProduct ? "🛍️" : "🚢"}</span>
         <div>
           <h1 className="text-lg font-bold text-slate-800">{order.orderNumber}</h1>
           <p className="text-xs text-slate-400 mt-0.5">
@@ -131,7 +133,7 @@ function OrderCard({ order }: { order: OrderInfo }) {
       </div>
 
       <div className="space-y-0.5">
-        <DetailRow label="Tipe Layanan" value={order.serviceType || "—"} />
+        <DetailRow label="Tipe Layanan" value={isProduct ? "Produk" : (order.serviceType || null)} />
         {hasRoute && (
           <div className="flex justify-between gap-2 py-1 border-b border-slate-50">
             <span className="text-xs text-slate-400 shrink-0">Rute</span>

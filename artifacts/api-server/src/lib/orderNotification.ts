@@ -27,6 +27,7 @@ export interface LogisticOrderData {
   jumlahKoli?: number | null;
   grandTotal: number;
   serviceList: string;
+  orderItems?: Array<{ name: string; qty?: number | null; subtotal?: number | null }> | null;
   requiredDate?: string | null;
   notes?: string | null;
   jamOrder?: string | null;
@@ -84,7 +85,8 @@ function formatJamOrder(jam: string): string {
 // ─── WA Template Engine ────────────────────────────────────────────────────────
 
 /** Map shipmentType text → service type key used in {{#if X}} blocks */
-export function deriveServiceType(shipmentType: string): string {
+export function deriveServiceType(shipmentType: string, orderType?: string): string {
+  if (orderType === "product") return "product";
   const t = (shipmentType ?? "").toLowerCase();
   if (t.includes("trucking") || t.includes("truk")) return "trucking";
   if (t.includes("sea") || t.includes("laut") || t.includes("fcl") || t.includes("lcl")) return "freight_sea";
@@ -140,6 +142,23 @@ function buildOrderVars(
   const jam = order.jamOrder
     ? formatJamOrder(order.jamOrder)
     : order.createdAt ? formatJam(order.createdAt) : null;
+
+  const isProduct = order.orderType === "product";
+
+  const route = (order.origin && order.destination)
+    ? `${order.origin} → ${order.destination}`
+    : order.origin || order.destination || null;
+
+  const productList: string | null = (() => {
+    if (order.orderItems?.length) {
+      return order.orderItems.map(i => `• ${i.name}`).join("\n");
+    }
+    if (isProduct && order.serviceList) {
+      return order.serviceList;
+    }
+    return null;
+  })();
+
   return {
     orderNumber: order.orderNumber,
     tanggal: tgl,
@@ -150,17 +169,18 @@ function buildOrderVars(
     companyName: order.companyName ?? null,
     email: order.email,
     phone: order.phone,
-    serviceType: deriveServiceType(order.shipmentType),
-    shipmentType: order.shipmentType,
-    route: `${order.origin} → ${order.destination}`,
-    origin: order.origin,
-    destination: order.destination,
+    serviceType: deriveServiceType(order.shipmentType, order.orderType),
+    shipmentType: isProduct ? null : (order.shipmentType || null),
+    route,
+    origin: order.origin || null,
+    destination: order.destination || null,
     commodity: order.commodity ?? null,
     cargoDescription: order.cargoDescription ?? null,
-    grossWeightDisplay: order.grossWeight ? `${order.grossWeight} kg` : null,
-    volumeDisplay: order.volumeCbm ? `${order.volumeCbm} CBM` : null,
-    jumlahKoliDisplay: order.jumlahKoli ? `${order.jumlahKoli} koli` : null,
-    serviceList: order.serviceList,
+    grossWeightDisplay: (!isProduct && order.grossWeight) ? `${order.grossWeight} kg` : null,
+    volumeDisplay: (!isProduct && order.volumeCbm) ? `${order.volumeCbm} CBM` : null,
+    jumlahKoliDisplay: (!isProduct && order.jumlahKoli) ? `${order.jumlahKoli} koli` : null,
+    serviceList: isProduct ? null : order.serviceList,
+    productList,
     totalEst: formatRupiah(order.grandTotal),
     requiredDate: order.requiredDate ?? null,
     notes: order.notes ?? null,
@@ -248,7 +268,7 @@ function buildAdminWaMessage(
   tplBody: string,
   adminActionShortUrl?: string,
 ): string {
-  const svcType = deriveServiceType(order.shipmentType);
+  const svcType = deriveServiceType(order.shipmentType, order.orderType);
   return renderTemplate(tplBody, buildOrderVars(order, { adminActionUrl: adminActionShortUrl ?? null }), svcType);
 }
 
@@ -259,7 +279,7 @@ function buildVendorWaMessage(
   extras: Record<string, string | null | undefined> = {},
 ): string {
   const responseUrl = getVendorResponseUrl(order.orderNumber);
-  const svcType = deriveServiceType(order.shipmentType);
+  const svcType = deriveServiceType(order.shipmentType, order.orderType);
   return renderTemplate(tplBody, buildOrderVars(order, { vendorName, responseUrl, ...extras }), svcType);
 }
 
@@ -291,12 +311,12 @@ function buildAdminGroupWaMessage(
   const domain = getPreferredDomain() || "cstlogistic.co.id";
   const fallbackUrl = `https://${domain}/bizportal/logistics/orders/${order.id}`;
   const actionUrl = adminActionShortUrl || fallbackUrl;
-  const svcType = deriveServiceType(order.shipmentType);
+  const svcType = deriveServiceType(order.shipmentType, order.orderType);
   return renderTemplate(tplBody, buildOrderVars(order, { adminActionUrl: actionUrl }), svcType);
 }
 
 function buildCustomerWaMessage(order: LogisticOrderData, tplBody: string): string {
-  const svcType = deriveServiceType(order.shipmentType);
+  const svcType = deriveServiceType(order.shipmentType, order.orderType);
   return renderTemplate(tplBody, buildOrderVars(order), svcType);
 }
 
@@ -340,7 +360,7 @@ function buildEmailHtml(title: string, intro: string, rows: [string, string][], 
 // ─── Default template bodies (fallback jika belum dikustomisasi di DB) ────────
 const DEFAULT_TPL = {
   admin_personal: {
-    order_new: ["🚢 *ORDER LOGISTIK BARU*","━━━━━━━━━━━━━━━━━━","No. Order       : `{{orderNumber}}`","Tanggal         : {{tanggal}}","Jam             : {{jam}}","Customer        : {{customerDisplay}}","Email           : {{email}}","HP              : {{phone}}","Jenis           : {{shipmentType}}","Rute            : {{route}}","Kategori Barang : {{commodity}}","Deskripsi       : {{cargoDescription}}","Berat           : {{grossWeightDisplay}}","Volume          : {{volumeDisplay}}","Jumlah Koli     : {{jumlahKoliDisplay}}","Layanan         :","{{serviceList}}","Total Est.      : Rp {{totalEst}}","Tgl Kirim       : {{requiredDate}}","Catatan         : {{notes}}","━━━━━━━━━━━━━━━━━━","⚡ *Aksi Cepat Admin (tanpa login):*","🔭 Review & Blast Vendor → {{adminActionUrl}}","_Dikirim: {{timestamp}}_"].join("\n"),
+    order_new: ["🚢 *ORDER LOGISTIK BARU*","━━━━━━━━━━━━━━━━━━","No. Order       : `{{orderNumber}}`","Tanggal         : {{tanggal}}","Jam             : {{jam}}","Customer        : {{customerDisplay}}","Email           : {{email}}","HP              : {{phone}}","Jenis           : {{shipmentType}}","Rute            : {{route}}","Kategori Barang : {{commodity}}","Deskripsi       : {{cargoDescription}}","Berat           : {{grossWeightDisplay}}","Volume          : {{volumeDisplay}}","Jumlah Koli     : {{jumlahKoliDisplay}}","{{#if product}}","📦 Produk       :","{{productList}}","{{/if}}","Layanan         : {{serviceList}}","Total Est.      : Rp {{totalEst}}","Tgl Kirim       : {{requiredDate}}","Catatan         : {{notes}}","━━━━━━━━━━━━━━━━━━","⚡ *Aksi Cepat Admin (tanpa login):*","🔭 Review & Blast Vendor → {{adminActionUrl}}","_Dikirim: {{timestamp}}_"].join("\n"),
     vendor_submission: ["📩 *PENAWARAN VENDOR DITERIMA — {{orderNumber}}*","━━━━━━━━━━━━━━━━━━","No. RFQ     : {{rfqNumber}}","No. Order   : {{orderNumber}}","Vendor      : *{{vendorName}}*{{quotePosition}}","Harga       : *{{vendorPrice}}*","ETA Pickup  : {{estimatedPickup}}","ETA Delivery: {{estimatedDelivery}}","Est. Hari   : {{estimatedDays}} hari","Catatan     : {{vendorNotes}}","━━━━━━━━━━━━━━━━━━","✅ Approve & Kirim ke Customer:","{{approveUrl}}","","Segera review dan kirim ke customer.","_{{timestamp}}_"].join("\n"),
     vendor_confirmed: ["🔔 *VENDOR CONFIRMED — {{orderNumber}}*","━━━━━━━━━━━━━━━━━━","Vendor      : *{{vendorName}}*","No. Order   : {{orderNumber}}","Harga Dasar : {{vendorPrice}}","Markup      : {{markup}}","Harga Final : {{finalCustomerPrice}}","━━━━━━━━━━━━━━━━━━","✅ Review & Approve:","{{approveUrl}}","_{{timestamp}}_"].join("\n"),
     vendor_rejected: ["🔴 *VENDOR REJECTED — {{orderNumber}}*","━━━━━━━━━━━━━━━━━━","Vendor *{{vendorName}}* menolak order ini.","","📋 Cek & pilih vendor lain:","{{approveUrl}}","_{{timestamp}}_"].join("\n"),
@@ -355,7 +375,7 @@ const DEFAULT_TPL = {
     delivery_completed: ["🏁 *PENGIRIMAN SELESAI — {{orderNumber}}*","Customer: {{customerName}}","Rute: {{route}}","_{{timestamp}}_"].join("\n"),
   },
   admin_group: {
-    order_new: ["🔔 *[ORDER MASUK] {{orderNumber}}*","━━━━━━━━━━━━━━━━━━","🏷️ No. Tracking  : `{{orderNumber}}`","📆 Tanggal       : {{tanggal}}","👤 Customer      : *{{customerDisplay}}*","📞 HP            : {{phone}}","📧 Email         : {{email}}","━━━━━━━━━━━━━━━━━━","🚢 Jenis         : {{shipmentType}}","📍 Rute          : {{route}}","📦 Komoditi      : {{commodity}}","📋 Deskripsi     : {{cargoDescription}}","⚖️ Berat         : {{grossWeightDisplay}}","📐 Volume        : {{volumeDisplay}}","📅 Tgl Kirim     : {{requiredDate}}","📝 Catatan       : {{notes}}","━━━━━━━━━━━━━━━━━━","💰 Total Est.    : *Rp {{totalEst}}*","🔵 Status        : Menunggu Konfirmasi","━━━━━━━━━━━━━━━━━━","⚡ *Aksi Cepat (tanpa login):*","🚀 Review & Blast Vendor → {{adminActionUrl}}","","_Harap segera diproses. Dikirim: {{timestamp}}_"].join("\n"),
+    order_new: ["🔔 *[ORDER MASUK] {{orderNumber}}*","━━━━━━━━━━━━━━━━━━","🏷️ No. Tracking  : `{{orderNumber}}`","📆 Tanggal       : {{tanggal}}","👤 Customer      : *{{customerDisplay}}*","📞 HP            : {{phone}}","📧 Email         : {{email}}","━━━━━━━━━━━━━━━━━━","🚢 Jenis         : {{shipmentType}}","📍 Rute          : {{route}}","📦 Komoditi      : {{commodity}}","📋 Deskripsi     : {{cargoDescription}}","⚖️ Berat         : {{grossWeightDisplay}}","📐 Volume        : {{volumeDisplay}}","{{#if product}}","🛍️ Produk        :","{{productList}}","{{/if}}","📅 Tgl Kirim     : {{requiredDate}}","📝 Catatan       : {{notes}}","━━━━━━━━━━━━━━━━━━","💰 Total Est.    : *Rp {{totalEst}}*","🔵 Status        : Menunggu Konfirmasi","━━━━━━━━━━━━━━━━━━","⚡ *Aksi Cepat (tanpa login):*","🚀 Review & Blast Vendor → {{adminActionUrl}}","","_Harap segera diproses. Dikirim: {{timestamp}}_"].join("\n"),
     vendor_submission: ["📩 *VENDOR SUBMIT — {{orderNumber}}*","RFQ: {{rfqNumber}} | Vendor *{{vendorName}}*{{quotePosition}}","💰 Harga: {{vendorPrice}}","ETA: {{estimatedPickup}} → {{estimatedDelivery}}","Segera review!","_{{timestamp}}_"].join("\n"),
     vendor_confirmed: ["🔔 *VENDOR CONFIRMED — {{orderNumber}}*","Vendor: *{{vendorName}}* | Harga Final: {{finalCustomerPrice}}","{{approveUrl}}","_{{timestamp}}_"].join("\n"),
     vendor_rejected: ["🔴 *VENDOR REJECTED — {{orderNumber}}*","Vendor *{{vendorName}}* menolak. Pilih vendor lain:","{{approveUrl}}","_{{timestamp}}_"].join("\n"),
@@ -870,7 +890,7 @@ function renderWf(
   order: LogisticOrderData,
   extras: Record<string, string | null | undefined> = {},
 ): string {
-  const svcType = deriveServiceType(order.shipmentType);
+  const svcType = deriveServiceType(order.shipmentType, order.orderType);
   return renderTemplate(tplBody, buildOrderVars(order, extras), svcType);
 }
 

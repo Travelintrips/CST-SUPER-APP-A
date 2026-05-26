@@ -1,0 +1,213 @@
+Masalah:
+Pada notifikasi WhatsApp dan Mini Form, produk yang dipesan customer tidak tampil.
+Yang tampil justru route/layanan shipment, padahal customer memilih produk dan tidak memilih layanan shipment.
+
+Tolong audit dan fix mapping order product vs shipment.
+
+FOKUS MASALAH:
+1. Order produk harus menampilkan daftar produk yang dipesan.
+2. Jangan selalu tampilkan route jika order bukan shipment.
+3. Jangan paksa shipmentType/serviceType jika order adalah product order.
+4. WhatsApp template dan Mini Form harus membaca data dari order_items, bukan hanya order header.
+
+==================================================
+1. AUDIT ORDER TYPE LOGIC
+==================================================
+
+Cek semua logic yang menentukan:
+- serviceType
+- shipmentType
+- route
+- commodity
+- serviceList
+- cargoDescription
+- product list
+
+Cari kemungkinan fallback salah seperti:
+- shipmentType || destination
+- route always generated
+- serviceType default ke shipment
+- commodity diisi dari cargo, bukan product
+- product order tetap dianggap logistics/shipment
+
+Jika order berasal dari produk/katalog, set:
+orderType = "product"
+serviceType = "product"
+shipmentType = ""
+route = ""
+routeDisplay = ""
+commodity = productNames
+serviceList = product list
+
+==================================================
+2. PRODUCT DATA MAPPING
+==================================================
+
+Untuk order produk, ambil data dari order_items.
+
+Buat variable khusus:
+{{productList}}
+{{productName}}
+{{productQty}}
+{{productUnit}}
+{{productPrice}}
+{{productTotal}}
+{{productSummary}}
+
+Format productList:
+- Kopi Arabika Grade 1 x 1 = Rp 177.600
+
+Jika multiple product:
+- Produk A x 2 = Rp xxx
+- Produk B x 1 = Rp xxx
+
+==================================================
+3. WHATSAPP TEMPLATE FIX
+==================================================
+
+Pada WA notification, jika serviceType = product:
+
+Tampilkan:
+Produk:
+{{productList}}
+
+Total:
+{{currency}} {{totalEst}}
+
+Jangan tampilkan:
+- Route
+- Shipment Type
+- Gross Weight
+- Volume
+kecuali memang ada data shipment.
+
+Gunakan conditional block:
+
+{{#if product}}
+📦 Produk:
+{{productList}}
+{{/if}}
+
+{{#if shipment}}
+🚚 Route:
+{{route}}
+{{/if}}
+
+==================================================
+4. MINI FORM FIX
+==================================================
+
+Pada halaman Review Order & Blast Vendor:
+
+Jika orderType/product:
+- Judul info: Order Produk
+- tampilkan daftar produk yang dipesan
+- jangan tampilkan Tipe Layanan kosong
+- jangan tampilkan Route kosong
+- vendor yang ditampilkan adalah vendor produk/katalog
+- RFQ mini form harus membawa productList/productItems
+
+Jika shipment/logistik:
+- tampilkan route
+- tampilkan shipmentType
+- tampilkan commodity/cargo
+
+==================================================
+5. VARIABLE BUILDER FIX
+==================================================
+
+Update buildVariables(context) agar membedakan:
+
+A. Product order:
+- serviceType = "product"
+- productList dari order_items
+- commodity = product names
+- route = ""
+- shipmentType = ""
+
+B. Shipment order:
+- serviceType dari layanan
+- route dari origin-destination
+- commodity dari cargo
+- productList = ""
+
+C. Mixed order:
+- tampilkan keduanya:
+  - productList
+  - serviceList
+  - route jika ada shipment
+
+==================================================
+6. EMPTY LINE REMOVAL
+==================================================
+
+Jika route kosong, seluruh baris ini harus hilang:
+Route : {{route}}
+
+Jika shipmentType kosong, seluruh baris ini harus hilang:
+Jenis / Layanan : {{shipmentType}}
+
+Jangan tampilkan:
+Route : →
+Tipe Layanan : —
+Layanan :
+dengan kosong.
+
+==================================================
+7. DATABASE / PAYLOAD CHECK
+==================================================
+
+Cek apakah order product tersimpan di:
+- orders
+- order_items
+- products
+- cart_items
+- order_demostik_kargo
+atau table lain yang digunakan aplikasi.
+
+Pastikan notification builder mengambil dari source yang benar.
+
+==================================================
+8. TEST CASE
+==================================================
+
+Test dengan order:
+Customer: Dewi Rahayu
+Product: Kopi Arabika Grade 1
+Total: Rp 177.600
+Tidak ada shipment.
+
+Expected WA:
+📦 ORDER PRODUK BARU
+
+No. Order: LOG-260526-12086
+Customer: Dewi Rahayu
+Produk:
+- Kopi Arabika Grade 1
+Total Est.: Rp 177.600
+
+Aksi Cepat Admin:
+Review & Blast Vendor → {{adminActionUrl}}
+
+Tidak boleh tampil:
+- Route
+- Shipment Type
+- Gross Weight
+- Volume
+
+Expected Mini Form:
+Review Order & Blast Vendor:
+- tampil Produk: Kopi Arabika Grade 1
+- tidak tampil Tipe Layanan kosong
+- tidak tampil Route kosong
+
+==================================================
+9. OUTPUT SETELAH FIX
+==================================================
+
+Laporkan:
+1. File mana yang salah mapping
+2. Variable apa yang diperbaiki
+3. Data produk diambil dari table mana
+4. Kenapa route sebelumnya selalu tampil
+5. Screenshot hasil WA dan Mini Form setelah fix
