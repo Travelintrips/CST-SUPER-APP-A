@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2, Search, Package, FlaskConical, Tag } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Package, FlaskConical, Tag, Settings2, Check, X } from "lucide-react";
 
 const UNITS = ["pcs", "gram", "kg", "ml", "liter", "sachet", "kaleng", "botol", "bungkus", "porsi", "cup", "lusin"];
 const NEW_CATEGORY_VALUE = "__new__";
@@ -283,6 +283,141 @@ function RawMaterialDialog({
   );
 }
 
+// ── Manajemen Kategori Dialog ─────────────────────────────────────────────────
+
+function CategoryManagerDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [editingName, setEditingName] = useState<string | null>(null);
+  const [editVal, setEditVal] = useState("");
+
+  const { data: categories = [], isLoading } = useQuery<string[]>({
+    queryKey: ["bom-categories"],
+    queryFn: () => apiFetch("/bom/categories"),
+    enabled: open,
+  });
+
+  const { data: products = [] } = useQuery<Product[]>({
+    queryKey: ["bom-products"],
+    queryFn: () => apiFetch("/bom/products"),
+    enabled: open,
+  });
+
+  const countByCategory = (cat: string) =>
+    products.filter(p => p.subcategory === cat).length;
+
+  const rename = useMutation({
+    mutationFn: ({ oldName, newName }: { oldName: string; newName: string }) =>
+      apiFetch(`/bom/categories/${encodeURIComponent(oldName)}`, {
+        method: "PUT",
+        body: JSON.stringify({ newName }),
+      }),
+    onSuccess: (_, { oldName, newName }) => {
+      toast({ title: `Kategori "${oldName}" diubah jadi "${newName}"` });
+      qc.invalidateQueries({ queryKey: ["bom-categories"] });
+      qc.invalidateQueries({ queryKey: ["bom-products"] });
+      setEditingName(null);
+    },
+    onError: (e: Error) => toast({ title: "Gagal", description: e.message, variant: "destructive" }),
+  });
+
+  const remove = useMutation({
+    mutationFn: (name: string) =>
+      apiFetch(`/bom/categories/${encodeURIComponent(name)}`, { method: "DELETE" }),
+    onSuccess: (_, name) => {
+      toast({ title: `Kategori "${name}" dihapus dari semua produk` });
+      qc.invalidateQueries({ queryKey: ["bom-categories"] });
+      qc.invalidateQueries({ queryKey: ["bom-products"] });
+    },
+    onError: (e: Error) => toast({ title: "Gagal", description: e.message, variant: "destructive" }),
+  });
+
+  const startEdit = (cat: string) => { setEditingName(cat); setEditVal(cat); };
+  const cancelEdit = () => { setEditingName(null); setEditVal(""); };
+  const commitRename = (oldName: string) => {
+    if (!editVal.trim() || editVal.trim() === oldName) { cancelEdit(); return; }
+    rename.mutate({ oldName, newName: editVal.trim() });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Settings2 className="w-4 h-4" /> Kelola Kategori Produk
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="py-2 space-y-1 min-h-[120px]">
+          {isLoading ? (
+            <p className="text-sm text-gray-400 text-center py-8">Memuat...</p>
+          ) : categories.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-8">
+              Belum ada kategori. Tambahkan melalui form edit produk.
+            </p>
+          ) : categories.map(cat => (
+            <div key={cat} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-50 group">
+              <Tag className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+
+              {editingName === cat ? (
+                <Input
+                  autoFocus
+                  className="h-7 text-sm flex-1"
+                  value={editVal}
+                  onChange={e => setEditVal(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter") commitRename(cat);
+                    if (e.key === "Escape") cancelEdit();
+                  }}
+                />
+              ) : (
+                <span className="flex-1 text-sm font-medium">{cat}</span>
+              )}
+
+              <span className="text-xs text-gray-400 shrink-0">
+                {countByCategory(cat)} produk
+              </span>
+
+              {editingName === cat ? (
+                <div className="flex gap-1 shrink-0">
+                  <Button size="icon" variant="ghost" className="h-6 w-6 text-green-600 hover:text-green-700"
+                    onClick={() => commitRename(cat)} disabled={rename.isPending}>
+                    <Check className="w-3.5 h-3.5" />
+                  </Button>
+                  <Button size="icon" variant="ghost" className="h-6 w-6 text-gray-400"
+                    onClick={cancelEdit}>
+                    <X className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Button size="icon" variant="ghost" className="h-6 w-6"
+                    onClick={() => startEdit(cat)}>
+                    <Pencil className="w-3 h-3" />
+                  </Button>
+                  <Button size="icon" variant="ghost" className="h-6 w-6 text-red-400 hover:text-red-600"
+                    onClick={() => {
+                      const n = countByCategory(cat);
+                      if (confirm(`Hapus kategori "${cat}"? Kategori ini akan dihapus dari ${n} produk.`))
+                        remove.mutate(cat);
+                    }}
+                    disabled={remove.isPending}>
+                    <Trash2 className="w-3 h-3" />
+                  </Button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Tutup</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 type Tab = "products" | "raw-materials";
@@ -296,6 +431,7 @@ export default function ProductItemsPage() {
   const [editProd, setEditProd] = useState<Product | null>(null);
   const [rmDialog, setRmDialog] = useState(false);
   const [editRm, setEditRm] = useState<RawMaterial | null>(null);
+  const [catMgrDialog, setCatMgrDialog] = useState(false);
 
   const { data: products = [], isLoading: prodLoading } = useQuery<Product[]>({
     queryKey: ["bom-products"],
@@ -335,15 +471,22 @@ export default function ProductItemsPage() {
             <h1 className="text-2xl font-bold text-gray-900">Master Produk & Bahan Baku</h1>
             <p className="text-sm text-gray-500 mt-0.5">Kelola produk jual dan bahan baku untuk Recipe/BOM</p>
           </div>
-          {tab === "products" ? (
-            <Button onClick={() => { setEditProd(null); setProdDialog(true); }}>
-              <Plus className="w-4 h-4 mr-1" /> Tambah Produk
-            </Button>
-          ) : (
-            <Button onClick={() => { setEditRm(null); setRmDialog(true); }}>
-              <Plus className="w-4 h-4 mr-1" /> Tambah Bahan Baku
-            </Button>
-          )}
+          <div className="flex gap-2">
+            {tab === "products" && (
+              <Button variant="outline" onClick={() => setCatMgrDialog(true)}>
+                <Settings2 className="w-4 h-4 mr-1" /> Kelola Kategori
+              </Button>
+            )}
+            {tab === "products" ? (
+              <Button onClick={() => { setEditProd(null); setProdDialog(true); }}>
+                <Plus className="w-4 h-4 mr-1" /> Tambah Produk
+              </Button>
+            ) : (
+              <Button onClick={() => { setEditRm(null); setRmDialog(true); }}>
+                <Plus className="w-4 h-4 mr-1" /> Tambah Bahan Baku
+              </Button>
+            )}
+          </div>
         </div>
 
         {/* Tabs */}
@@ -514,6 +657,12 @@ export default function ProductItemsPage() {
             onClose={() => setRmDialog(false)}
             editing={editRm}
             onSaved={() => qc.invalidateQueries({ queryKey: ["bom-raw-materials"] })}
+          />
+        )}
+        {catMgrDialog && (
+          <CategoryManagerDialog
+            open={catMgrDialog}
+            onClose={() => setCatMgrDialog(false)}
           />
         )}
       </div>
