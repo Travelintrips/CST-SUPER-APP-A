@@ -756,6 +756,72 @@ logisticOrdersRouter.post("/:id/resend-wa-group", async (req: Request, res: Resp
   return res.json({ ok: true, message: "Notifikasi WA dikirim ke Admin Group" });
 });
 
+// ─── Vendor WA notification on status change ──────────────────────────────────
+const VENDOR_NOTIFY_STATUSES = new Set([
+  "Confirmed", "In Progress", "Completed", "Cancelled",
+]);
+
+const VENDOR_STATUS_LABELS: Record<string, string> = {
+  "Confirmed":   "Dikonfirmasi ✅",
+  "In Progress": "Sedang Diproses 🔄",
+  "Completed":   "Selesai 🎉",
+  "Cancelled":   "Dibatalkan ❌",
+};
+
+const VENDOR_STATUS_NOTES: Record<string, string> = {
+  "Confirmed":
+    "Customer telah mengkonfirmasi order. Silakan lanjutkan proses pengiriman sesuai rencana.",
+  "In Progress":
+    "Order kini berstatus In Progress. Pastikan semua berjalan sesuai jadwal dan SOP.",
+  "Completed":
+    "Order telah diselesaikan oleh tim CST Logistics. Terima kasih atas kerja sama Anda.",
+  "Cancelled":
+    "⚠️ Order ini telah DIBATALKAN. Mohon hentikan semua proses terkait order ini segera.",
+};
+
+async function notifyVendorStatusChange(
+  order: { orderNumber: string; customerName: string | null; origin: string | null; destination: string | null; approvedVendorId: number | null },
+  status: string,
+) {
+  if (!VENDOR_NOTIFY_STATUSES.has(status)) return;
+  if (!order.approvedVendorId) return;
+
+  try {
+    const [vendor] = await db
+      .select({ name: suppliersTable.name, phone: suppliersTable.phone })
+      .from(suppliersTable)
+      .where(eq(suppliersTable.id, order.approvedVendorId));
+
+    if (!vendor?.phone) return;
+
+    const { normalizePhone } = await import("../lib/phoneUtils.js");
+    const phone = normalizePhone(vendor.phone);
+    if (!phone) return;
+
+    const label = VENDOR_STATUS_LABELS[status] ?? status;
+    const note  = VENDOR_STATUS_NOTES[status] ?? "";
+    const route = order.origin && order.destination
+      ? `${order.origin} → ${order.destination}`
+      : "—";
+
+    const msg =
+      `🔔 *Update Status Order — CST Logistics*\n` +
+      `━━━━━━━━━━━━━━━━━━\n` +
+      `No. Order  : \`${order.orderNumber}\`\n` +
+      `Customer   : ${order.customerName ?? "—"}\n` +
+      `Rute       : ${route}\n` +
+      `Vendor     : *${vendor.name ?? "—"}*\n` +
+      `Status     : *${label}*\n` +
+      `━━━━━━━━━━━━━━━━━━\n` +
+      `${note}\n\n` +
+      `_CST Logistics — Notifikasi Otomatis_`;
+
+    sendWhatsApp(phone, msg).catch(() => undefined);
+  } catch {
+    // fire-and-forget, never block the response
+  }
+}
+
 // PUT /api/logistic/orders/:id/status — update status (admin)
 logisticOrdersRouter.put("/:id/status", async (req: Request, res: Response) => {
   const paramsParsed = UpdateLogisticOrderStatusParams.safeParse({
@@ -798,6 +864,9 @@ logisticOrdersRouter.put("/:id/status", async (req: Request, res: Response) => {
       `Terima kasih telah menggunakan layanan kami. Hubungi kami jika ada pertanyaan.`;
     sendWhatsApp(updated.phone, msg).catch(() => undefined);
   }
+
+  // Notify vendor via WhatsApp (fire-and-forget)
+  notifyVendorStatusChange(updated, status).catch(() => undefined);
 
   saveAndBroadcast("logistic_order_status_changed", {
     type: "logistic_status",
