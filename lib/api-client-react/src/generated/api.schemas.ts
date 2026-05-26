@@ -2213,6 +2213,7 @@ export interface CreateLogisticOrderBody {
   customerName: string;
   email: string;
   phone: string;
+  orderType?: string | null;
   shipmentType: string;
   origin: string;
   destination: string;

@@ -4676,6 +4676,7 @@ export const CreateLogisticOrderBody = zod.object({
   customerName: zod.string(),
   email: zod.string(),
   phone: zod.string(),
+  orderType: zod.string().nullish(),
   shipmentType: zod.string(),
   origin: zod.string(),
   destination: zod.string(),

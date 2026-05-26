@@ -206,7 +206,7 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
       ? await db.insert(logisticOrderItemsTable).values(itemValues).returning()
       : [];
 
-  const isProductOrder = ((body as any).orderType ?? "shipment") === "product";
+  const isProductOrder = (body.orderType ?? "shipment") === "product";
   const serviceList = !isProductOrder
     ? body.items.map((i) => `• ${i.serviceName}`).join("\n")
     : "";
@@ -227,7 +227,7 @@ sendLogisticOrderNotification({
     companyName: body.companyName,
     email: body.email,
     phone: body.phone,
-    orderType: (body as any).orderType ?? "shipment",
+    orderType: body.orderType ?? "shipment",
     shipmentType: body.shipmentType ?? "",
     origin: body.origin ?? "",
     destination: body.destination ?? "",
@@ -259,7 +259,7 @@ sendLogisticOrderNotification({
     orderNumber,
     customerName: body.customerName,
     companyName: body.companyName ?? null,
-    orderType: (body as any).orderType ?? "shipment",
+    orderType: body.orderType ?? "shipment",
     shipmentType: body.shipmentType ?? "",
     origin: body.origin ?? "",
     destination: body.destination ?? "",
