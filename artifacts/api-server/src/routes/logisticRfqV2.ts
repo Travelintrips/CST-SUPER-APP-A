@@ -651,7 +651,14 @@ logisticRfqV2Router.post("/vendor-form/:token", async (req: Request, res: Respon
   const isUpdate = !!link.submittedAt;
   await db.update(rfqVendorLinksTable).set({
     status: newStatus,
-    offeredPrice: action === "accept" ? link.basicPrice : (offeredPrice ? String(offeredPrice) : null),
+    offeredPrice: action === "accept"
+      ? (link.basicPrice ?? (await (async () => {
+          const items = await db.select({ subtotal: logisticOrderItemsTable.subtotal })
+            .from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, rfq.orderId));
+          const sum = items.reduce((s, i) => s + (i.subtotal ? parseFloat(i.subtotal) : 0), 0);
+          return sum > 0 ? String(Math.round(sum)) : null;
+        })()))
+      : (offeredPrice ? String(offeredPrice) : null),
     eta: eta ?? null,
     notes: notes ?? null,
     attachmentUrl: attachmentUrl ?? link.attachmentUrl,
@@ -946,6 +953,14 @@ logisticRfqV2Router.get("/rfq/:rfqId/comparison", async (req: Request, res: Resp
     .where(eq(rfqActivityLogsTable.rfqId, rfqId))
     .orderBy(sql`created_at DESC`).limit(50);
 
+  // Compute order items subtotal — fallback basicPrice ketika link.basic_price null
+  const orderItemsForComp = await db.select({ subtotal: logisticOrderItemsTable.subtotal })
+    .from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, rfq.orderId));
+  const orderItemsSubtotal = orderItemsForComp.reduce(
+    (s, i) => s + (i.subtotal ? parseFloat(i.subtotal) : 0), 0
+  );
+  const fallbackBasicPrice = orderItemsSubtotal > 0 ? orderItemsSubtotal : null;
+
   const vendorRows = links
     .sort((a, b) => {
       if (a.status === "rejected" && b.status !== "rejected") return 1;
@@ -956,15 +971,21 @@ logisticRfqV2Router.get("/rfq/:rfqId/comparison", async (req: Request, res: Resp
       const pb = Number(b.offeredPrice ?? b.basicPrice ?? 9e9);
       return pa - pb;
     })
-    .map((l) => ({
+    .map((l) => {
+      const dbBasic = l.basicPrice ? Number(l.basicPrice) : null;
+      const effectiveBasic = dbBasic ?? fallbackBasicPrice;
+      const dbOffered = l.offeredPrice ? Number(l.offeredPrice) : null;
+      // Jika vendor "terima harga" tapi offeredPrice null (basicPrice null saat blast), pakai effectiveBasic
+      const effectiveOffered = dbOffered ?? (l.status === "accepted_basic_price" ? effectiveBasic : null);
+      return ({
       linkId: l.id,
       vendorId: l.vendorId,
       vendorName: vendorMap.get(l.vendorId)?.name ?? `Vendor #${l.vendorId}`,
       phone: vendorMap.get(l.vendorId)?.phone ?? null,
       markup: vendorMap.get(l.vendorId)?.markup ? Number(vendorMap.get(l.vendorId)!.markup) : null,
       status: l.status,
-      basicPrice: l.basicPrice ? Number(l.basicPrice) : null,
-      offeredPrice: l.offeredPrice ? Number(l.offeredPrice) : null,
+      basicPrice: effectiveBasic,
+      offeredPrice: effectiveOffered,
       eta: l.eta ?? null,
       notes: l.notes ?? null,
       attachmentUrl: l.attachmentUrl ?? null,
@@ -974,7 +995,8 @@ logisticRfqV2Router.get("/rfq/:rfqId/comparison", async (req: Request, res: Resp
       lastUpdatedAt: l.lastUpdatedAt?.toISOString() ?? null,
       expiredAt: l.expiredAt?.toISOString() ?? null,
       formUrl: getVendorFormUrl(l.token),
-    }));
+    });
+  });
 
   const stats = {
     total: links.length,
