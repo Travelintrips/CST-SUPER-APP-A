@@ -94,11 +94,13 @@ async function listByType(type: string) {
 
 // GET /api/portal/services  — item_type = 'jasa' (active only, public)
 router.get("/services", async (_req, res) => {
+  res.setHeader("Cache-Control", "no-store");
   return res.json(await listByType("jasa"));
 });
 
 // GET /api/portal/products  — item_type = 'barang'
 router.get("/products", async (_req, res) => {
+  res.setHeader("Cache-Control", "no-store");
   return res.json(await listByType("barang"));
 });
 

@@ -513,8 +513,10 @@ export default function Products() {
     queryKey: ["portal-products"],
     queryFn: () => fetch("/api/portal/products").then((r) => r.json()),
     staleTime: 0,
+    gcTime: 0,
     refetchOnWindowFocus: true,
     refetchOnMount: true,
+    refetchInterval: 30_000,
   });
 
   const products = Array.isArray(productsData) ? productsData : [];
