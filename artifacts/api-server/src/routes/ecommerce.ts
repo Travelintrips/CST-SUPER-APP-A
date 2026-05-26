@@ -6,6 +6,7 @@ import { postEcommerceOrder } from "../lib/accounting.js";
 import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa } from "../lib/adminWa.js";
 import { saveAndBroadcast } from "../lib/notificationStore.js";
+import { registerPortalConnection, unregisterPortalConnection, broadcastToPortal } from "../lib/sseManager.js";
 
 const router = Router();
 const objectStorageService = new ObjectStorageService();
@@ -599,6 +600,34 @@ router.delete("/orders/:id", async (req, res) => {
   const id = Number(req.params.id);
   await db.delete(ordersTable).where(eq(ordersTable.id, id));
   return res.json({ message: "Order deleted" });
+});
+
+// GET /api/ecommerce/events — SSE stream for customer portal (live price sync)
+router.get("/events", (req, res) => {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+
+  res.write(": connected\n\n");
+
+  const keepAlive = setInterval(() => {
+    try { res.write(": ping\n\n"); } catch { clearInterval(keepAlive); }
+  }, 25_000);
+
+  registerPortalConnection(res);
+
+  req.on("close", () => {
+    clearInterval(keepAlive);
+    unregisterPortalConnection(res);
+  });
+});
+
+// POST /api/ecommerce/sync-prices — broadcast price_sync to all portal tabs
+router.post("/sync-prices", (req, res) => {
+  broadcastToPortal("price_sync", { ts: Date.now() });
+  return res.json({ ok: true, message: "Price sync broadcasted to all portal tabs" });
 });
 
 export default router;

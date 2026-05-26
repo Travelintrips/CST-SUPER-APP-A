@@ -36,7 +36,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2, Search, Package, Wrench, FlaskConical, Building, ExternalLink, BookOpen, ShoppingBag, Globe, X, ArrowRight, Tag } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Package, Wrench, FlaskConical, Building, ExternalLink, BookOpen, ShoppingBag, Globe, X, ArrowRight, Tag, RefreshCw } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 const fmt = (n: number) =>
@@ -81,6 +81,36 @@ function SummaryCard({ icon: Icon, label, count, color }: {
         <p className="text-xl font-bold">{count}</p>
       </div>
     </div>
+  );
+}
+
+// ── SYNC HARGA BUTTON ─────────────────────────────────────────────────────────
+
+function SyncHargaButton() {
+  const { toast } = useToast();
+  const [syncing, setSyncing] = useState(false);
+
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      await fetch("/api/ecommerce/sync-prices", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+      });
+      toast({ title: "Harga disinkronisasi", description: "Semua tab customer portal telah diperbarui." });
+    } catch {
+      toast({ title: "Gagal sinkronisasi", variant: "destructive" });
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  return (
+    <Button variant="outline" size="sm" onClick={handleSync} disabled={syncing}>
+      <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${syncing ? "animate-spin" : ""}`} />
+      Sinkronisasi Harga
+    </Button>
   );
 }
 
@@ -197,6 +227,7 @@ function MasterItemTab({ initialSearch = "" }: { initialSearch?: string }) {
           <Button variant="outline" size="sm" asChild>
             <Link href="/sales/items"><ExternalLink className="h-3.5 w-3.5 mr-1.5" />Halaman Lengkap</Link>
           </Button>
+          <SyncHargaButton />
           <Button size="sm" onClick={openCreate}><Plus className="h-4 w-4 mr-1" />Tambah Item</Button>
         </div>
       </div>

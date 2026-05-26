@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -508,6 +508,15 @@ export default function Products() {
   const [selectedCategory, setSelectedCategory] = useState<string>("");
   const { t } = useLanguage();
   const usdIdrRate = useUsdIdrRate();
+  const qc = useQueryClient();
+
+  useEffect(() => {
+    const es = new EventSource("/api/ecommerce/events");
+    es.addEventListener("price_sync", () => {
+      qc.invalidateQueries({ queryKey: ["portal-products"] });
+    });
+    return () => es.close();
+  }, [qc]);
 
   const { data: productsData, isLoading } = useQuery<Product[]>({
     queryKey: ["portal-products"],

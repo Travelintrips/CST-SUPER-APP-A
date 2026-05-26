@@ -2,6 +2,7 @@ import type { Response } from "express";
 
 const driverConnections = new Map<number, Set<Response>>();
 const adminConnections = new Set<Response>();
+const portalConnections = new Set<Response>();
 
 export function registerDriverConnection(driverId: number, res: Response): void {
   if (!driverConnections.has(driverId)) {
@@ -51,9 +52,30 @@ export function broadcastToAdmins(event: string, data: unknown): void {
   }
 }
 
+export function registerPortalConnection(res: Response): void {
+  portalConnections.add(res);
+}
+
+export function unregisterPortalConnection(res: Response): void {
+  portalConnections.delete(res);
+}
+
+export function broadcastToPortal(event: string, data: unknown): void {
+  if (portalConnections.size === 0) return;
+  const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  for (const res of portalConnections) {
+    try {
+      res.write(payload);
+    } catch {
+      portalConnections.delete(res);
+    }
+  }
+}
+
 export function getStats() {
   return {
     connectedDrivers: driverConnections.size,
     adminConnections: adminConnections.size,
+    portalConnections: portalConnections.size,
   };
 }
