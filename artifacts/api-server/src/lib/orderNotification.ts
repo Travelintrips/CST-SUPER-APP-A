@@ -375,7 +375,7 @@ const DEFAULT_TPL = {
     delivery_completed: ["🏁 *PENGIRIMAN SELESAI — {{orderNumber}}*","Customer: {{customerName}}","Rute: {{route}}","_{{timestamp}}_"].join("\n"),
   },
   admin_group: {
-    order_new: ["🔔 *[ORDER MASUK] {{orderNumber}}*","━━━━━━━━━━━━━━━━━━","🏷️ No. Tracking  : `{{orderNumber}}`","📆 Tanggal       : {{tanggal}}","👤 Customer      : *{{customerDisplay}}*","📞 HP            : {{phone}}","📧 Email         : {{email}}","━━━━━━━━━━━━━━━━━━","🚢 Jenis         : {{shipmentType}}","📍 Rute          : {{route}}","📦 Komoditi      : {{commodity}}","📋 Deskripsi     : {{cargoDescription}}","⚖️ Berat         : {{grossWeightDisplay}}","📐 Volume        : {{volumeDisplay}}","{{#if product}}","🛍️ Produk        :","{{productList}}","{{/if}}","📅 Tgl Kirim     : {{requiredDate}}","📝 Catatan       : {{notes}}","━━━━━━━━━━━━━━━━━━","💰 Total Est.    : *Rp {{totalEst}}*","🔵 Status        : Menunggu Konfirmasi","━━━━━━━━━━━━━━━━━━","⚡ *Aksi Cepat (tanpa login):*","🚀 Review & Blast Vendor → {{adminActionUrl}}","","_Harap segera diproses. Dikirim: {{timestamp}}_"].join("\n"),
+    order_new: ["🔔 *[ORDER MASUK] {{orderNumber}}*","━━━━━━━━━━━━━━━━━━","🏷️ No. Order     : `{{orderNumber}}`","📆 Tanggal       : {{tanggal}}","🕐 Jam           : {{jam}}","👤 Customer      : *{{customerDisplay}}*","📞 HP            : {{phone}}","━━━━━━━━━━━━━━━━━━","🚢 Jenis         : {{shipmentType}}","📍 Rute          : {{route}}","📦 Komoditi      : {{commodity}}","📋 Deskripsi     : {{cargoDescription}}","⚖️ Berat         : {{grossWeightDisplay}}","📐 Volume        : {{volumeDisplay}}","{{#if product}}","🛍️ Produk        :","{{productList}}","{{/if}}","📅 Tgl Kirim     : {{requiredDate}}","📝 Catatan       : {{notes}}","━━━━━━━━━━━━━━━━━━","💰 Total Est.    : *Rp {{totalEst}}*","🔵 Status        : Menunggu Konfirmasi","━━━━━━━━━━━━━━━━━━","⚡ *Review & Proses Order (tanpa login):*","👉 {{adminActionUrl}}","","_Dikirim: {{timestamp}}_"].join("\n"),
     vendor_submission: ["📩 *VENDOR SUBMIT — {{orderNumber}}*","RFQ: {{rfqNumber}} | Vendor *{{vendorName}}*{{quotePosition}}","💰 Harga: {{vendorPrice}}","ETA: {{estimatedPickup}} → {{estimatedDelivery}}","Segera review!","_{{timestamp}}_"].join("\n"),
     vendor_confirmed: ["🔔 *VENDOR CONFIRMED — {{orderNumber}}*","Vendor: *{{vendorName}}* | Harga Final: {{finalCustomerPrice}}","{{approveUrl}}","_{{timestamp}}_"].join("\n"),
     vendor_rejected: ["🔴 *VENDOR REJECTED — {{orderNumber}}*","Vendor *{{vendorName}}* menolak. Pilih vendor lain:","{{approveUrl}}","_{{timestamp}}_"].join("\n"),
@@ -591,35 +591,11 @@ async function notifyAdmin(order: LogisticOrderData): Promise<void> {
   // Generate admin review link upfront — used in both WA and email
   const adminReviewUrl = await createAdminReviewLink(order.id).catch(() => "");
 
-  const [adminWa, tplAdminPersonal, tplAdminGroup] = await Promise.all([
-    getAdminWa(),
-    getWaTemplateConfig("admin_personal", "order_new", DEFAULT_TPL.admin_personal.order_new),
+  // order_new → hanya kirim ke Admin Group (bukan Admin Pribadi)
+  const [tplAdminGroup, adminGroupWa] = await Promise.all([
     getWaTemplateConfig("admin_group", "order_new", DEFAULT_TPL.admin_group.order_new),
+    getAdminGroupWa(),
   ]);
-  if (adminWa) {
-    logger.info({ phone: adminWa, orderNumber: order.orderNumber }, "Sending admin WA notification");
-    let adminActionShortUrl: string | undefined;
-    if (order.publicRfqToken) {
-      const domain = getPreferredDomain() || "cstlogistic.co.id";
-      const longUrl = `https://${domain}/admin-action/${order.publicRfqToken}`;
-      adminActionShortUrl = await generateShortLink(longUrl, {
-        context: "admin_action",
-        refType: "order",
-        refId: order.orderNumber,
-      }).catch((err: unknown) => {
-        logger.warn({ err }, "admin WA: failed to generate short link, using long URL");
-        return longUrl;
-      });
-    }
-    sendWhatsApp(adminWa, buildAdminWaMessage(order, tplAdminPersonal, adminActionShortUrl)).catch((err: unknown) =>
-      logger.error({ err }, "WA admin notification failed")
-    );
-  } else {
-    logger.warn("Admin WA target not configured — skipping (set FONNTE_ADMIN_WA or configure via admin panel)");
-  }
-
-  // Send to admin WhatsApp group if configured
-  const adminGroupWa = await getAdminGroupWa();
   if (adminGroupWa) {
     logger.info({ groupId: adminGroupWa, orderNumber: order.orderNumber }, "Sending group WA notification");
     let groupActionUrl: string | undefined;
@@ -630,7 +606,10 @@ async function notifyAdmin(order: LogisticOrderData): Promise<void> {
         context: "admin_action",
         refType: "order",
         refId: order.orderNumber,
-      }).catch(() => longUrl);
+      }).catch((err: unknown) => {
+        logger.warn({ err }, "group WA: failed to generate short link, using long URL");
+        return longUrl;
+      });
     }
     sendWhatsApp(adminGroupWa, buildAdminGroupWaMessage(order, tplAdminGroup, groupActionUrl)).catch((err: unknown) =>
       logger.error({ err }, "WA group notification failed")
@@ -1208,19 +1187,12 @@ export async function sendProductOrderWaNotification(order: ProductOrderData): P
     timestamp: nowWIB(),
   };
 
-  const [tplAdminPersonal, tplAdminGroup, tplCustomer, adminWa, adminGroupWa] = await Promise.all([
-    getWaTemplateConfig("admin_personal", "product_order_new", DEFAULT_TPL.product_order.admin_personal),
+  // product_order_new → hanya kirim ke Admin Group (bukan Admin Pribadi)
+  const [tplAdminGroup, tplCustomer, adminGroupWa] = await Promise.all([
     getWaTemplateConfig("admin_group", "product_order_new", DEFAULT_TPL.product_order.admin_group),
     getWaTemplateConfig("customer", "product_order_new", DEFAULT_TPL.product_order.customer),
-    getAdminWa(),
     getAdminGroupWa(),
   ]);
-
-  if (adminWa) {
-    sendWhatsApp(adminWa, renderTemplate(tplAdminPersonal, vars)).catch((err: unknown) =>
-      logger.error({ err }, "WA product_order_new (admin) failed"),
-    );
-  }
 
   if (adminGroupWa) {
     sendWhatsApp(adminGroupWa, renderTemplate(tplAdminGroup, vars)).catch((err: unknown) =>
