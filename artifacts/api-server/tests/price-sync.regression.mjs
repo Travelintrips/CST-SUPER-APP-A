@@ -148,6 +148,69 @@ async function getFirstCategory() {
   return (Array.isArray(arr) && arr[0]?.name) ? arr[0].name : "Furniture";
 }
 
+/**
+ * Login via dev-login dan kembalikan nilai sid cookie untuk dipakai
+ * di header "Cookie: sid=xxx" pada request admin berikutnya.
+ */
+function getAdminCookie() {
+  return new Promise((resolve, reject) => {
+    // Harus pakai email admin yang dikenal agar role = "admin" (bukan "ecommerce" default)
+    const body = JSON.stringify({ email: "admcst001@gmail.com" });
+    const req = http.request(
+      {
+        hostname: BASE_HOST,
+        port: BASE_PORT,
+        path: "/api/dev-login",
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(body),
+        },
+      },
+      (res) => {
+        // Extract Set-Cookie header
+        const setCookie = res.headers["set-cookie"] ?? [];
+        const sidEntry = setCookie.find((c) => c.startsWith("sid="));
+        if (!sidEntry) { reject(new Error("No sid cookie in dev-login response")); return; }
+        const sid = sidEntry.split(";")[0]; // "sid=xxx"
+        res.resume(); // drain body
+        resolve(sid);
+      }
+    );
+    req.on("error", reject);
+    req.write(body);
+    req.end();
+  });
+}
+
+/** Like httpJson but adds Cookie header for admin auth. */
+function httpJsonAuth(method, path, cookie, body) {
+  return new Promise((resolve, reject) => {
+    const payload = body ? JSON.stringify(body) : null;
+    const opts = {
+      hostname: BASE_HOST,
+      port: BASE_PORT,
+      path,
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: cookie,
+        ...(payload ? { "Content-Length": Buffer.byteLength(payload) } : {}),
+      },
+    };
+    const req = http.request(opts, (res) => {
+      let data = "";
+      res.on("data", (c) => (data += c));
+      res.on("end", () => {
+        try { resolve(JSON.parse(data)); } catch { resolve(data); }
+      });
+    });
+    req.on("error", reject);
+    if (payload) req.write(payload);
+    req.end();
+  });
+}
+
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 async function testProductPriceUpdate() {
@@ -217,6 +280,92 @@ async function testBulkImport() {
   });
 }
 
+async function testOrderPriceSnapshot() {
+  const label = "T5: harga order lama tidak berubah setelah price sync (snapshot)";
+
+  // Ambil produk pertama sebagai bahan order
+  const product = await getFirstProduct();
+  if (!product) {
+    log(label, "FAIL", "Tidak ada produk di database");
+    failed++;
+    return;
+  }
+
+  const origPrice = Number(product.price);
+  const orderPrice = origPrice; // harga yang akan di-snapshot ke order
+
+  // 1. Buat order baru via endpoint publik (tidak perlu auth)
+  const created = await httpJson("POST", "/api/portal-product/orders", {
+    customerName: "Regression Test",
+    email: "regression@test.local",
+    phone: "08000000000",
+    shippingAddress: "Jl. Test No. 1",
+    notes: "Regression test — hapus jika perlu",
+    items: [
+      {
+        productId: product.id,
+        productName: product.name,
+        productSku: product.sku ?? null,
+        unit: product.unit ?? "pcs",
+        unitPrice: orderPrice,
+        qty: 1,
+        subtotal: orderPrice,
+      },
+    ],
+  });
+
+  if (!created?.id) {
+    log(label, "FAIL", `Gagal membuat order: ${JSON.stringify(created).substring(0, 120)}`);
+    failed++;
+    return;
+  }
+
+  const orderId = created.id;
+  const snapshotPrice = created.items?.[0]?.unitPrice;
+
+  // 2. Update harga produk ke nilai berbeda
+  const newPrice = origPrice + 99999;
+  await httpJson("PUT", `/api/ecommerce/products/${product.id}`, { price: newPrice });
+
+  // 3. Ambil order via admin endpoint (butuh session cookie)
+  let cookie;
+  try {
+    cookie = await getAdminCookie();
+  } catch (err) {
+    log(label, "FAIL", `getAdminCookie error: ${err.message}`);
+    failed++;
+    await httpJson("PUT", `/api/ecommerce/products/${product.id}`, { price: origPrice });
+    return;
+  }
+
+  const fetched = await httpJsonAuth("GET", `/api/portal-product/orders/${orderId}`, cookie);
+  const fetchedPrice = fetched?.items?.[0]?.unitPrice;
+
+  // 4. Restore harga produk
+  await httpJson("PUT", `/api/ecommerce/products/${product.id}`, { price: origPrice });
+
+  // 5. Verifikasi snapshot tidak berubah
+  if (fetchedPrice === undefined || fetchedPrice === null) {
+    log(label, "FAIL", `Tidak bisa membaca unitPrice dari order. Response: ${JSON.stringify(fetched).substring(0, 120)}`);
+    failed++;
+    return;
+  }
+
+  if (Number(fetchedPrice) === Number(snapshotPrice) && Number(fetchedPrice) !== newPrice) {
+    log(label, "PASS",
+      `unitPrice order tetap ${fetchedPrice} (snapshot saat buat) ` +
+      `meski harga produk diubah ke ${newPrice}`
+    );
+    passed++;
+  } else {
+    log(label, "FAIL",
+      `unitPrice berubah! snapshot=${snapshotPrice} → fetched=${fetchedPrice}, ` +
+      `produk diubah ke ${newPrice}. Order seharusnya tidak terpengaruh.`
+    );
+    failed++;
+  }
+}
+
 // ─── Runner ──────────────────────────────────────────────────────────────────
 
 async function run() {
@@ -228,6 +377,7 @@ async function run() {
   await testServicePriceUpdate();
   await testCalculatorRatesUpdate();
   await testBulkImport();
+  await testOrderPriceSnapshot();
 
   console.log(`\n${"─".repeat(50)}`);
   console.log(`Hasil: ${passed} PASS  |  ${failed} FAIL`);
