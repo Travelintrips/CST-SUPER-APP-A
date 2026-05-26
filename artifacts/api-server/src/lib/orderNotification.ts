@@ -411,6 +411,54 @@ const DEFAULT_TPL = {
     customs_update: ["🏛️ *UPDATE KEPABEANAN — {{orderNumber}}*","━━━━━━━━━━━━━━━━━━","Halo *{{customerName}}*,","","Update status kepabeanan order *{{orderNumber}}*:","","{{#if ppjk}}","📋 No. Aju: {{ajuNumber}}","📄 BC Type: {{bcType}}","✅ SPPB: {{sppbNumber}}","{{/if}}","","Terima kasih 🙏"].join("\n"),
     delivery_completed: ["🏁 *PENGIRIMAN SELESAI — {{orderNumber}}*","━━━━━━━━━━━━━━━━━━","Halo *{{customerName}}*,","","Pengiriman order *{{orderNumber}}* telah selesai! ✅","Rute: {{route}}","","Terima kasih telah menggunakan CST Logistics!","","📞 Feedback: (021) 6241234","_Dikirim: {{timestamp}}_"].join("\n"),
   },
+  product_order: {
+    admin_personal: [
+      "🛒 *PESANAN PRODUK BARU*",
+      "━━━━━━━━━━━━━━━━━━",
+      "No. Order   : `{{orderNumber}}`",
+      "Customer    : {{customerName}}",
+      "Email       : {{email}}",
+      "HP          : {{phone}}",
+      "Alamat      : {{shippingAddress}}",
+      "Produk      :",
+      "{{itemList}}",
+      "Total       : Rp {{grandTotal}}",
+      "Catatan     : {{notes}}",
+      "━━━━━━━━━━━━━━━━━━",
+      "🔗 Lihat di BizPortal:",
+      "{{orderUrl}}",
+      "",
+      "📋 *Form vendor (forward ke vendor):*",
+      "{{vendorFormUrl}}",
+      "",
+      "_Dikirim: {{timestamp}}_",
+    ].join("\n"),
+    admin_group: [
+      "🛒 *[PESANAN PRODUK] {{orderNumber}}*",
+      "━━━━━━━━━━━━━━━━━━",
+      "👤 Customer : *{{customerName}}*",
+      "📞 HP       : {{phone}}",
+      "📧 Email    : {{email}}",
+      "📦 Produk   :",
+      "{{itemList}}",
+      "💰 Total    : *Rp {{grandTotal}}*",
+      "Catatan     : {{notes}}",
+      "━━━━━━━━━━━━━━━━━━",
+      "📋 Form vendor → {{vendorFormUrl}}",
+      "",
+      "_Dikirim: {{timestamp}}_",
+    ].join("\n"),
+    customer: [
+      "✅ *Pesanan Anda Berhasil Diterima!*",
+      "No. Order: *{{orderNumber}}*",
+      "",
+      "{{itemList}}",
+      "",
+      "Total: Rp {{grandTotal}}",
+      "",
+      "Tim kami akan segera menghubungi Anda untuk konfirmasi. Terima kasih! 🙏",
+    ].join("\n"),
+  },
   vendor: {
     order_new: ["📦 *PERMINTAAN ORDER BARU — CST LOGISTICS*","━━━━━━━━━━━━━━━━━━━━","Kepada Yth. *{{vendorName}}*,","","No. Order       : *{{orderNumber}}*","Tanggal         : {{tanggal}}","Jenis           : {{shipmentType}}","Rute            : {{route}}","Kategori Barang : {{commodity}}","Deskripsi       : {{cargoDescription}}","Berat           : {{grossWeightDisplay}}","Volume          : {{volumeDisplay}}","Jumlah Koli     : {{jumlahKoliDisplay}}","Tgl Butuh       : {{requiredDate}}","Layanan         :","{{serviceList}}","Catatan         : {{notes}}","━━━━━━━━━━━━━━━━━━━━","🔗 *Aksi Cepat (klik link):*","✅ Terima  → {{responseUrl}}?action=accept","❌ Tolak   → {{responseUrl}}?action=reject","💬 Form    → {{responseUrl}}","","✏️ *Atau balas WA dengan format:*","📌 Harga: `{{orderNumber}} [HARGA] [TGL_PICKUP]`","📌 Terima: `TERIMA {{orderNumber}}`","📌 Tolak:  `TOLAK {{orderNumber}}`","","Terima kasih 🙏","_Dikirim: {{timestamp}}_"].join("\n"),
     vendor_request: ["📦 *PERMINTAAN PENAWARAN VENDOR*","━━━━━━━━━━━━━━━━━━","Kepada Yth. *{{vendorName}}*,","","No. RFQ    : *{{rfqNumber}}*","No. Order  : {{orderNumber}}","Tanggal    : {{tanggal}}","Jam        : {{jam}}","Jenis      : {{shipmentType}}","Rute       : {{route}}","Komoditi   : {{commodity}}","Deskripsi  : {{cargoDescription}}","Berat      : {{grossWeightDisplay}}","Volume     : {{volumeDisplay}}","Tgl Butuh  : {{requiredDate}}","Catatan    : {{notes}}","","📝 Silakan isi penawaran melalui link berikut:","","🔗 *[ ISI PENAWARAN VENDOR ]*","👉 {{vendorMiniFormLink}}","","━━━━━━━━━━━━━━━━━━","Terima kasih atas kerja sama Anda 🙏","_CST Logistics_"].join("\n"),
@@ -969,6 +1017,74 @@ export async function sendDeliveryCompletedNotification(
   if (adminGroupWa) {
     sendWhatsApp(adminGroupWa, renderWf(groupTpl, order)).catch((e: unknown) =>
       logger.error({ e }, "WA delivery_completed (group) failed"),
+    );
+  }
+}
+
+// ─── Product Order WA Notification ───────────────────────────────────────────
+
+export interface ProductOrderItem {
+  productName: string;
+  qty: number;
+  unit?: string | null;
+  subtotal: number;
+}
+
+export interface ProductOrderData {
+  orderNumber: string;
+  customerName: string;
+  email: string;
+  phone: string;
+  shippingAddress: string;
+  notes?: string | null;
+  grandTotal: number;
+  items: ProductOrderItem[];
+  orderUrl?: string;
+  vendorFormUrl?: string;
+}
+
+export async function sendProductOrderWaNotification(order: ProductOrderData): Promise<void> {
+  const itemList = order.items
+    .map((i) => `• ${i.productName} × ${i.qty} (${i.unit ?? "pcs"}) — Rp ${formatRupiah(i.subtotal)}`)
+    .join("\n");
+
+  const vars: Record<string, string | null | undefined> = {
+    orderNumber: order.orderNumber,
+    customerName: order.customerName,
+    email: order.email,
+    phone: order.phone,
+    shippingAddress: order.shippingAddress,
+    itemList,
+    grandTotal: formatRupiah(order.grandTotal),
+    notes: order.notes ?? null,
+    orderUrl: order.orderUrl ?? null,
+    vendorFormUrl: order.vendorFormUrl ?? null,
+    timestamp: nowWIB(),
+  };
+
+  const [tplAdminPersonal, tplAdminGroup, tplCustomer, adminWa, adminGroupWa] = await Promise.all([
+    getWaTemplateConfig("admin_personal", "product_order_new", DEFAULT_TPL.product_order.admin_personal),
+    getWaTemplateConfig("admin_group", "product_order_new", DEFAULT_TPL.product_order.admin_group),
+    getWaTemplateConfig("customer", "product_order_new", DEFAULT_TPL.product_order.customer),
+    getAdminWa(),
+    getAdminGroupWa(),
+  ]);
+
+  if (adminWa) {
+    sendWhatsApp(adminWa, renderTemplate(tplAdminPersonal, vars)).catch((err: unknown) =>
+      logger.error({ err }, "WA product_order_new (admin) failed"),
+    );
+  }
+
+  if (adminGroupWa) {
+    sendWhatsApp(adminGroupWa, renderTemplate(tplAdminGroup, vars)).catch((err: unknown) =>
+      logger.error({ err }, "WA product_order_new (admin_group) failed"),
+    );
+  }
+
+  if (order.phone) {
+    sendWhatsApp(order.phone, renderTemplate(tplCustomer, vars)).catch((err: unknown) =>
+      logger.error({ err }, "WA product_order_new (customer) failed"),
     );
   }
 }

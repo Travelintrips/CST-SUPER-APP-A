@@ -7,9 +7,8 @@ import {
 } from "@workspace/db";
 import { eq, ilike, and, or, sql } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin.js";
-import { sendWhatsApp } from "../lib/fonnte";
-import { getAdminWa, getAdminGroupWa } from "../lib/adminWa";
 import { getPreferredDomain } from "../lib/domain";
+import { sendProductOrderWaNotification } from "../lib/orderNotification";
 import { sendMail, isSmtpConfigured } from "../lib/mailer";
 import { logger } from "../lib/logger";
 import { saveAndBroadcast } from "../lib/notificationStore";
@@ -77,43 +76,27 @@ function formatRupiah(amount: number): string {
 
 async function sendProductOrderNotification(order: ReturnType<typeof toOrder>, items: ReturnType<typeof toItem>[]) {
   const domain = getPreferredDomain();
-  const orderUrl = domain ? `https://${domain}/bizportal/logistics/portal-orders` : "";
+  const orderUrl = domain ? `https://${domain}/bizportal/logistics/portal-orders` : undefined;
   const vendorToken = signVendorResponseToken(order.orderNumber);
-  const vendorFormUrl = domain ? `https://${domain}/vendor-product-approval/${order.orderNumber}?t=${vendorToken}` : "";
+  const vendorFormUrl = domain ? `https://${domain}/vendor-product-approval/${order.orderNumber}?t=${vendorToken}` : undefined;
 
-  const itemList = items.map((i) => `• ${i.productName} × ${i.qty} (${i.unit ?? "pcs"}) — Rp ${formatRupiah(i.subtotal)}`).join("\n");
-
-  const waMsg =
-    `🛒 *PESANAN PRODUK BARU*\n` +
-    `━━━━━━━━━━━━━━━━━━\n` +
-    `No. Order   : \`${order.orderNumber}\`\n` +
-    `Customer    : ${order.customerName}\n` +
-    `Email       : ${order.email}\n` +
-    `HP          : ${order.phone}\n` +
-    `Alamat      : ${order.shippingAddress}\n` +
-    `Produk      :\n${itemList}\n` +
-    `Total       : Rp ${formatRupiah(order.grandTotal)}\n` +
-    (order.notes ? `Catatan     : ${order.notes}\n` : ``) +
-    `━━━━━━━━━━━━━━━━━━\n` +
-    (orderUrl ? `🔗 Lihat di BizPortal:\n${orderUrl}\n` : ``) +
-    (vendorFormUrl ? `\n📋 *Form untuk vendor (forward ke vendor):*\n${vendorFormUrl}\n` : ``);
-
-  try {
-    const adminWa = await getAdminWa();
-    if (adminWa) await sendWhatsApp(adminWa, waMsg);
-  } catch (err) {
-    logger.error({ err }, "Failed to send admin WA for product order");
-  }
-
-  if (order.phone) {
-    const customerMsg =
-      `✅ *Pesanan Anda Berhasil Diterima!*\n` +
-      `No. Order: *${order.orderNumber}*\n\n` +
-      `${itemList}\n\n` +
-      `Total: Rp ${formatRupiah(order.grandTotal)}\n\n` +
-      `Tim kami akan segera menghubungi Anda untuk konfirmasi. Terima kasih! 🙏`;
-    sendWhatsApp(order.phone, customerMsg).catch(() => undefined);
-  }
+  sendProductOrderWaNotification({
+    orderNumber: order.orderNumber,
+    customerName: order.customerName,
+    email: order.email,
+    phone: order.phone,
+    shippingAddress: order.shippingAddress,
+    notes: order.notes ?? null,
+    grandTotal: order.grandTotal,
+    items: items.map((i) => ({
+      productName: i.productName,
+      qty: i.qty,
+      unit: i.unit,
+      subtotal: i.subtotal,
+    })),
+    orderUrl,
+    vendorFormUrl,
+  }).catch((err: unknown) => logger.error({ err }, "WA product order notification failed"));
 
   if (isSmtpConfigured() && order.email) {
     sendMail({
