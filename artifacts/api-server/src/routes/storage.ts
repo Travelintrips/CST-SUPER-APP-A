@@ -9,6 +9,26 @@ import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage.
 import { ObjectPermission } from "../lib/objectAcl.js";
 import { requireAdmin, requireClerkUser } from "../lib/requireAdmin.js";
 
+// Allowed MIME types for presigned URL uploads (staff BizPortal).
+// Excludes executables, scripts, and server-side code formats.
+const PRESIGNED_ALLOWED_MIME_TYPES = new Set([
+  // Images
+  "image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif",
+  "image/tiff", "image/bmp", "image/heic", "image/heif", "image/svg+xml",
+  // Documents
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  // Text
+  "text/plain", "text/csv",
+  // Archives
+  "application/zip", "application/x-zip-compressed",
+]);
+
 // Per-user rate limit for presigned URL generation: 50 per user per hour.
 // Keyed by authenticated user ID (Clerk session) so it cannot be bypassed by
 // rotating IPs or forging x-forwarded-for headers.
@@ -164,6 +184,13 @@ router.post("/storage/uploads/request-url", async (req: Request, res: Response) 
 
   try {
     const { name, size, contentType } = parsed.data;
+
+    // MIME type whitelist — reject executable/script types before issuing a presigned URL.
+    if (contentType && !PRESIGNED_ALLOWED_MIME_TYPES.has(contentType.toLowerCase())) {
+      res.status(415).json({ error: `Tipe file tidak didukung: ${contentType}. Hanya dokumen, gambar, dan arsip yang diperbolehkan.` });
+      return;
+    }
+
     const uploadURL = await objectStorageService.getObjectEntityUploadURL();
     const objectPath = objectStorageService.normalizeObjectEntityPath(uploadURL);
 

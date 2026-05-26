@@ -3,11 +3,14 @@ import { db, freightShipmentsTable, freightRfqsTable, freightQuotesTable, freigh
 import { eq, desc, inArray, sum, and, sql } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { saveAndBroadcast } from "../lib/notificationStore.js";
+import { ObjectStorageService } from "../lib/objectStorage.js";
 import {
   sendShipmentUpdateNotification,
   sendDeliveryCompletedNotification,
   type LogisticOrderData,
 } from "../lib/orderNotification.js";
+
+const _freightObjectStorage = new ObjectStorageService();
 
 function resolveUserDisplay(user: { id: string; firstName?: string | null; lastName?: string | null; email?: string | null }): { name: string; id: string } {
   const name = [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || user.email || user.id;
@@ -700,6 +703,23 @@ router.post("/freight-shipments/:shipmentId/attachments", async (req, res) => {
   }
   const [existing] = await db.select({ id: freightShipmentsTable.id }).from(freightShipmentsTable).where(eq(freightShipmentsTable.id, shipmentId));
   if (!existing) return res.status(404).json({ message: "Shipment tidak ditemukan" });
+
+  // Duplicate guard: reject if the same objectPath is already linked to this shipment
+  const [dup] = await db.select({ id: freightAttachmentsTable.id })
+    .from(freightAttachmentsTable)
+    .where(and(eq(freightAttachmentsTable.shipmentId, shipmentId), eq(freightAttachmentsTable.objectPath, String(objectPath))))
+    .limit(1);
+  if (dup) return res.status(409).json({ message: "File ini sudah terlampir ke shipment ini" });
+
+  // Verify objectPath actually exists in storage before persisting the link
+  if (String(objectPath).startsWith("/objects/")) {
+    try {
+      await _freightObjectStorage.getObjectEntityFile(String(objectPath));
+    } catch {
+      return res.status(422).json({ message: "File tidak ditemukan di storage. Pastikan upload berhasil sebelum melampirkan." });
+    }
+  }
+
   const [attachment] = await db.insert(freightAttachmentsTable).values({
     shipmentId, objectPath, fileName, contentType,
     fileType: fileType as "photo" | "document",
@@ -737,11 +757,16 @@ router.delete("/freight-shipments/:shipmentId/attachments/:attachmentId", async 
   const shipmentId = Number(req.params.shipmentId);
   const attachmentId = Number(req.params.attachmentId);
   if (!Number.isInteger(shipmentId) || !Number.isInteger(attachmentId)) return res.status(400).json({ message: "Invalid id" });
+  // Filter by BOTH id AND shipmentId to prevent IDOR (deleting another shipment's attachment)
   const [deleted] = await db
     .delete(freightAttachmentsTable)
-    .where(eq(freightAttachmentsTable.id, attachmentId))
+    .where(and(eq(freightAttachmentsTable.id, attachmentId), eq(freightAttachmentsTable.shipmentId, shipmentId)))
     .returning();
   if (!deleted) return res.status(404).json({ message: "Attachment tidak ditemukan" });
+  // Delete the underlying GCS object (non-fatal — DB record already removed)
+  if (deleted.objectPath) {
+    _freightObjectStorage.tryDeletePrivateEntity(deleted.objectPath).catch(() => {});
+  }
   return res.json({ message: "Deleted" });
 });
 
