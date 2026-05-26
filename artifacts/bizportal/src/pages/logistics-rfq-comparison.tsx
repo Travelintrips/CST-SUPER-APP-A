@@ -568,7 +568,9 @@ export default function LogisticsRfqComparisonPage() {
                   hasSelected={hasSelected}
                   onSelect={() => {
                     setSelectDialog({ linkId: v.linkId, vendorName: v.vendorName, price: v.offeredPrice ?? v.basicPrice });
-                    setSellingPrice(v.offeredPrice ? String(Math.round(v.offeredPrice * 1.2)) : "");
+                    const _vp = v.offeredPrice ?? v.basicPrice;
+                    const _mkp = v.markup ?? 20;
+                    setSellingPrice(_vp ? String(Math.round(_vp * (1 + _mkp / 100))) : "");
                   }}
                   onRevision={() => { setRevisionDialog({ linkId: v.linkId, vendorName: v.vendorName }); setRevisionMsg(""); }}
                   onReject={() => actionMut.mutate({ linkId: v.linkId, action: "reject" })}
