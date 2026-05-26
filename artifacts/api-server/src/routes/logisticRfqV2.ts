@@ -15,7 +15,7 @@ import {
 } from "@workspace/db";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { sendWhatsApp } from "../lib/fonnte.js";
-import { getAdminGroupWa, getAdminWa } from "../lib/adminWa.js";
+import { getAdminGroupWa } from "../lib/adminWa.js";
 import { getPreferredDomain } from "../lib/domain.js";
 import { logger } from "../lib/logger.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
@@ -217,9 +217,7 @@ async function logActivity(
 }
 
 async function sendAdminRecapWa(rfqId: number, rfq: { rfqNumber: string; orderId: number }) {
-  const adminGroup = await getAdminGroupWa();
-  const adminIndividual = await getAdminWa();
-  const adminTarget = adminGroup || adminIndividual;
+  const adminTarget = await getAdminGroupWa();
   if (!adminTarget) return;
 
   const [order] = await db.select({

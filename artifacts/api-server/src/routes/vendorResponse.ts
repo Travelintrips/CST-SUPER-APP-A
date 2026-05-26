@@ -13,7 +13,7 @@ import {
 import { sendWhatsApp } from "../lib/fonnte";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { verifyVendorResponseToken } from "../lib/vendorResponseToken";
-import { getAdminWa, getAdminGroupWa } from "../lib/adminWa";
+import { getAdminGroupWa } from "../lib/adminWa";
 import { getPreferredDomain } from "../lib/domain";
 
 const router: IRouter = Router();
@@ -254,19 +254,13 @@ router.post("/:orderNumber", async (req: Request, res: Response) => {
     }
 
     const waMsg = formatWaAdminNotification({ ...payload });
-    const [adminWa, adminGroupWa] = await Promise.all([getAdminWa(), getAdminGroupWa()]);
-    if (adminWa) {
-      sendWhatsApp(adminWa, waMsg).catch((err) =>
-        req.log?.error({ err }, "vendor-response admin individual WA send failed")
-      );
-    }
+    const adminGroupWa = await getAdminGroupWa();
     if (adminGroupWa) {
       sendWhatsApp(adminGroupWa, waMsg).catch((err) =>
         req.log?.error({ err }, "vendor-response admin group WA send failed")
       );
-    }
-    if (!adminWa && !adminGroupWa) {
-      req.log?.warn("Admin WA not configured — skipping vendor response notification");
+    } else {
+      req.log?.warn("Admin WA group not configured — skipping vendor response notification");
     }
 
     res.json({ success: true, message: "Response berhasil dikirim" });

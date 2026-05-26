@@ -1,7 +1,7 @@
 import { db, suppliersTable, vendorCatalogItemsTable, portalContentTable, waTemplateConfigsTable } from "@workspace/db";
 import { eq, and, ilike } from "drizzle-orm";
 import { sendWhatsApp } from "./fonnte";
-import { getAdminWa, getAdminGroupWa } from "./adminWa";
+import { getAdminGroupWa } from "./adminWa";
 import { getPreferredDomain } from "./domain";
 import { sendMail, isSmtpConfigured } from "./mailer";
 import { logger } from "./logger";
@@ -841,7 +841,7 @@ function buildExpiredLinkRefreshMessage(refId: string, newShortUrl: string): str
 }
 
 /**
- * Kirim notifikasi WhatsApp ke admin (personal + group) bahwa link admin
+ * Kirim notifikasi WhatsApp ke admin group bahwa link admin
  * yang expired sudah diperbarui otomatis dengan link baru.
  */
 export async function sendAdminLinkRefreshedNotification(
@@ -849,12 +849,7 @@ export async function sendAdminLinkRefreshedNotification(
   newShortUrl: string,
 ): Promise<void> {
   const msg = buildExpiredLinkRefreshMessage(refId, newShortUrl);
-  const [adminWa, adminGroupWa] = await Promise.all([getAdminWa(), getAdminGroupWa()]);
-  if (adminWa) {
-    sendWhatsApp(adminWa, msg).catch((err: unknown) =>
-      logger.error({ err }, "WA expired link refresh (admin) failed")
-    );
-  }
+  const adminGroupWa = await getAdminGroupWa();
   if (adminGroupWa) {
     sendWhatsApp(adminGroupWa, msg).catch((err: unknown) =>
       logger.error({ err }, "WA expired link refresh (group) failed")
@@ -891,13 +886,11 @@ export async function sendVendorSubmissionNotification(
   vendorName: string,
   vendorPrice: string,
 ): Promise<void> {
-  const [tplP, tplG] = await Promise.all([
-    getWaTemplateConfig("admin_personal", "vendor_submission", DEFAULT_TPL.admin_personal.vendor_submission),
+  const [tplG, group] = await Promise.all([
     getWaTemplateConfig("admin_group", "vendor_submission", DEFAULT_TPL.admin_group.vendor_submission),
+    getAdminGroupWa(),
   ]);
   const extras = { vendorName, vendorPrice };
-  const [wa, group] = await Promise.all([getAdminWa(), getAdminGroupWa()]);
-  if (wa) sendWhatsApp(wa, renderWf(tplP, order, extras)).catch((e: unknown) => logger.error({ e }, "WA vendor_submission (admin) failed"));
   if (group) sendWhatsApp(group, renderWf(tplG, order, extras)).catch((e: unknown) => logger.error({ e }, "WA vendor_submission (group) failed"));
 }
 
@@ -930,14 +923,11 @@ export async function sendCustomerApprovalNotification(
 export async function sendCustomerApprovedNotification(
   order: LogisticOrderData,
 ): Promise<void> {
-  const [tplP, tplG, custTpl, wa, group] = await Promise.all([
-    getWaTemplateConfig("admin_personal", "customer_approved", DEFAULT_TPL.admin_personal.customer_approved),
+  const [tplG, custTpl, group] = await Promise.all([
     getWaTemplateConfig("admin_group", "customer_approved", DEFAULT_TPL.admin_group.customer_approved),
     getWaTemplateConfig("customer", "customer_approved", DEFAULT_TPL.customer.customer_approved),
-    getAdminWa(),
     getAdminGroupWa(),
   ]);
-  if (wa) sendWhatsApp(wa, renderWf(tplP, order)).catch((e: unknown) => logger.error({ e }, "WA customer_approved (admin) failed"));
   if (group) sendWhatsApp(group, renderWf(tplG, order)).catch((e: unknown) => logger.error({ e }, "WA customer_approved (group) failed"));
   if (order.phone) sendWhatsApp(order.phone, renderWf(custTpl, order)).catch((e: unknown) => logger.error({ e }, "WA customer_approved (customer) failed"));
 }
@@ -960,22 +950,15 @@ export async function sendOpRequestNotification(
   vendorPhone: string,
   operationalFormLink: string,
 ): Promise<void> {
-  const [vendorTpl, adminTpl, groupTpl, adminWa, adminGroupWa] = await Promise.all([
+  const [vendorTpl, groupTpl, adminGroupWa] = await Promise.all([
     getWaTemplateConfig("vendor", "op_request", DEFAULT_TPL.vendor.op_request),
-    getWaTemplateConfig("admin_personal", "op_request", DEFAULT_TPL.admin_personal.op_request),
     getWaTemplateConfig("admin_group", "op_request", DEFAULT_TPL.admin_group.op_request),
-    getAdminWa(),
     getAdminGroupWa(),
   ]);
   const extras = { vendorName, vendorPhone, operationalFormLink };
   sendWhatsApp(vendorPhone, renderWf(vendorTpl, order, extras)).catch((e: unknown) =>
     logger.error({ e, vendorName }, "WA op_request (vendor) failed"),
   );
-  if (adminWa) {
-    sendWhatsApp(adminWa, renderWf(adminTpl, order, extras)).catch((e: unknown) =>
-      logger.error({ e }, "WA op_request (admin) failed"),
-    );
-  }
   if (adminGroupWa) {
     sendWhatsApp(adminGroupWa, renderWf(groupTpl, order, extras)).catch((e: unknown) =>
       logger.error({ e }, "WA op_request (group) failed"),
@@ -991,22 +974,15 @@ export async function sendDriverAssignedNotification(
   plateNumber: string,
   vehicleType: string,
 ): Promise<void> {
-  const [custTpl, adminTpl, groupTpl, adminWa, adminGroupWa] = await Promise.all([
+  const [custTpl, groupTpl, adminGroupWa] = await Promise.all([
     getWaTemplateConfig("customer", "driver_assigned", DEFAULT_TPL.customer.driver_assigned),
-    getWaTemplateConfig("admin_personal", "driver_assigned", DEFAULT_TPL.admin_personal.driver_assigned),
     getWaTemplateConfig("admin_group", "driver_assigned", DEFAULT_TPL.admin_group.driver_assigned),
-    getAdminWa(),
     getAdminGroupWa(),
   ]);
   const extras = { driverName, driverPhone, plateNumber, vehicleType };
   if (order.phone) {
     sendWhatsApp(order.phone, renderWf(custTpl, order, extras)).catch((e: unknown) =>
       logger.error({ e }, "WA driver_assigned (customer) failed"),
-    );
-  }
-  if (adminWa) {
-    sendWhatsApp(adminWa, renderWf(adminTpl, order, extras)).catch((e: unknown) =>
-      logger.error({ e }, "WA driver_assigned (admin) failed"),
     );
   }
   if (adminGroupWa) {
@@ -1024,21 +1000,14 @@ export async function sendShipmentUpdateNotification(
     airline?: string; awbNumber?: string; flightNumber?: string;
   } = {},
 ): Promise<void> {
-  const [custTpl, adminTpl, groupTpl, adminWa, adminGroupWa] = await Promise.all([
+  const [custTpl, groupTpl, adminGroupWa] = await Promise.all([
     getWaTemplateConfig("customer", "shipment_update", DEFAULT_TPL.customer.shipment_update),
-    getWaTemplateConfig("admin_personal", "shipment_update", DEFAULT_TPL.admin_personal.shipment_update),
     getWaTemplateConfig("admin_group", "shipment_update", DEFAULT_TPL.admin_group.shipment_update),
-    getAdminWa(),
     getAdminGroupWa(),
   ]);
   if (order.phone) {
     sendWhatsApp(order.phone, renderWf(custTpl, order, extras)).catch((e: unknown) =>
       logger.error({ e }, "WA shipment_update (customer) failed"),
-    );
-  }
-  if (adminWa) {
-    sendWhatsApp(adminWa, renderWf(adminTpl, order, extras)).catch((e: unknown) =>
-      logger.error({ e }, "WA shipment_update (admin) failed"),
     );
   }
   if (adminGroupWa) {
@@ -1053,21 +1022,14 @@ export async function sendCustomsUpdateNotification(
   order: LogisticOrderData,
   extras: { ajuNumber?: string; bcType?: string; sppbNumber?: string } = {},
 ): Promise<void> {
-  const [custTpl, adminTpl, groupTpl, adminWa, adminGroupWa] = await Promise.all([
+  const [custTpl, groupTpl, adminGroupWa] = await Promise.all([
     getWaTemplateConfig("customer", "customs_update", DEFAULT_TPL.customer.customs_update),
-    getWaTemplateConfig("admin_personal", "customs_update", DEFAULT_TPL.admin_personal.customs_update),
     getWaTemplateConfig("admin_group", "customs_update", DEFAULT_TPL.admin_group.customs_update),
-    getAdminWa(),
     getAdminGroupWa(),
   ]);
   if (order.phone) {
     sendWhatsApp(order.phone, renderWf(custTpl, order, extras)).catch((e: unknown) =>
       logger.error({ e }, "WA customs_update (customer) failed"),
-    );
-  }
-  if (adminWa) {
-    sendWhatsApp(adminWa, renderWf(adminTpl, order, extras)).catch((e: unknown) =>
-      logger.error({ e }, "WA customs_update (admin) failed"),
     );
   }
   if (adminGroupWa) {
@@ -1081,21 +1043,14 @@ export async function sendCustomsUpdateNotification(
 export async function sendDeliveryCompletedNotification(
   order: LogisticOrderData,
 ): Promise<void> {
-  const [custTpl, adminTpl, groupTpl, adminWa, adminGroupWa] = await Promise.all([
+  const [custTpl, groupTpl, adminGroupWa] = await Promise.all([
     getWaTemplateConfig("customer", "delivery_completed", DEFAULT_TPL.customer.delivery_completed),
-    getWaTemplateConfig("admin_personal", "delivery_completed", DEFAULT_TPL.admin_personal.delivery_completed),
     getWaTemplateConfig("admin_group", "delivery_completed", DEFAULT_TPL.admin_group.delivery_completed),
-    getAdminWa(),
     getAdminGroupWa(),
   ]);
   if (order.phone) {
     sendWhatsApp(order.phone, renderWf(custTpl, order)).catch((e: unknown) =>
       logger.error({ e }, "WA delivery_completed (customer) failed"),
-    );
-  }
-  if (adminWa) {
-    sendWhatsApp(adminWa, renderWf(adminTpl, order)).catch((e: unknown) =>
-      logger.error({ e }, "WA delivery_completed (admin) failed"),
     );
   }
   if (adminGroupWa) {
@@ -1143,19 +1098,12 @@ export async function sendProductOrderStatusUpdateWa(order: ProductOrderStatusDa
     timestamp: nowWIB(),
   };
 
-  const [tplAdminPersonal, tplAdminGroup, tplCustomer, adminWa, adminGroupWa] = await Promise.all([
-    getWaTemplateConfig("admin_personal", "product_order_status_update", DEFAULT_TPL.product_order_status.admin_personal),
+  const [tplAdminGroup, tplCustomer, adminGroupWa] = await Promise.all([
     getWaTemplateConfig("admin_group", "product_order_status_update", DEFAULT_TPL.product_order_status.admin_group),
     getWaTemplateConfig("customer", "product_order_status_update", DEFAULT_TPL.product_order_status.customer),
-    getAdminWa(),
     getAdminGroupWa(),
   ]);
 
-  if (adminWa) {
-    sendWhatsApp(adminWa, renderTemplate(tplAdminPersonal, vars)).catch((err: unknown) =>
-      logger.error({ err }, "WA product_order_status_update (admin) failed"),
-    );
-  }
   if (adminGroupWa) {
     sendWhatsApp(adminGroupWa, renderTemplate(tplAdminGroup, vars)).catch((err: unknown) =>
       logger.error({ err }, "WA product_order_status_update (admin_group) failed"),

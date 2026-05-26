@@ -18,7 +18,7 @@ import {
 } from "@workspace/db";
 import { requireClerkUser } from "../lib/requireAdmin";
 import { sendWhatsApp } from "../lib/fonnte.js";
-import { getAdminWa } from "../lib/adminWa.js";
+import { getAdminGroupWa } from "../lib/adminWa.js";
 import { createSalesOrderFromVmfApproval } from "../lib/vmfSoIntegration.js";
 import {
   sendCustomerApprovedNotification,
@@ -812,8 +812,8 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
             sendVendorSubmissionNotification(buildOrderDataFromRow(orderRow), vendorLabel, priceStr).catch(() => {});
           }).catch(() => {});
       } else if (link.mode === "order_based" && link.orderNumber) {
-        getAdminWa().then(async (adminWa) => {
-          if (!adminWa) return;
+        getAdminGroupWa().then(async (adminGroupWa) => {
+          if (!adminGroupWa) return;
           const allSubs = await db
             .select({ vendorName: vendorMiniFormSubmissionsTable.vendorName, vendorPrice: vendorMiniFormSubmissionsTable.vendorPrice, currency: vendorMiniFormSubmissionsTable.currency, eta: vendorMiniFormSubmissionsTable.eta })
             .from(vendorMiniFormSubmissionsTable)
@@ -823,7 +823,7 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
             const p = s.vendorPrice ? `${s.currency ?? "IDR"} ${Number(s.vendorPrice).toLocaleString("id-ID")}` : "-";
             return `${i + 1}. *${s.vendorName ?? "Vendor"}* - ${p}${s.eta ? ` - ETA ${s.eta}` : ""}`;
           });
-          sendVendorSubmissionSummaryNotification(adminWa, {
+          sendVendorSubmissionSummaryNotification(adminGroupWa, {
             vendorLabel,
             picLabel,
             contactPhone: contactPhone?.trim() ?? null,
@@ -834,9 +834,9 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
           }, String(link.id)).catch(() => {});
         }).catch(() => {});
       } else {
-        getAdminWa().then((adminWa) => {
-          if (!adminWa) return;
-          sendVendorSubmissionSummaryNotification(adminWa, {
+        getAdminGroupWa().then((adminGroupWa) => {
+          if (!adminGroupWa) return;
+          sendVendorSubmissionSummaryNotification(adminGroupWa, {
             vendorLabel,
             picLabel,
             contactPhone: contactPhone?.trim() ?? null,
@@ -1074,9 +1074,9 @@ vendorMiniFormRouter.post("/customer-approval/:token", async (req: Request, res:
               sendSoCreatedNotification(orderData, sellingPriceStr).catch(() => {});
             }
           } else {
-            getAdminWa().then((adminWa) => {
-              if (!adminWa) return;
-              sendCustomerRejectionAdminNotification(adminWa, { orderNumber: orderNumber ?? null, customerName: customerName ?? null, notes: notes ?? null }, token).catch(() => {});
+            getAdminGroupWa().then((adminGroupWa) => {
+              if (!adminGroupWa) return;
+              sendCustomerRejectionAdminNotification(adminGroupWa, { orderNumber: orderNumber ?? null, customerName: customerName ?? null, notes: notes ?? null }, token).catch(() => {});
             }).catch(() => {});
           }
         }).catch(() => {});
@@ -1138,9 +1138,9 @@ vendorMiniFormRouter.post("/op-confirm/:token", async (req: Request, res: Respon
     await logActivity("op_confirm", conf.id, "op_submitted", "vendor",
       `Data operasional diisi oleh ${conf.vendorName ?? "vendor"}`, { orderNumber: conf.orderNumber, serviceType: conf.serviceType });
 
-    getAdminWa().then((adminWa) => {
-      if (!adminWa) return;
-      sendOpConfirmSubmittedNotification(adminWa, {
+    getAdminGroupWa().then((adminGroupWa) => {
+      if (!adminGroupWa) return;
+      sendOpConfirmSubmittedNotification(adminGroupWa, {
         orderNumber: conf.orderNumber ?? null,
         vendorName: conf.vendorName ?? null,
         serviceLabel: SERVICE_SCHEMAS[conf.serviceType]?.label ?? conf.serviceType,
