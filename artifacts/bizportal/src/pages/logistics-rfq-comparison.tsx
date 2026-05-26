@@ -62,6 +62,7 @@ interface VendorRow {
   vendorId: number;
   vendorName: string;
   phone: string | null;
+  markup: number | null;
   status: string;
   basicPrice: number | null;
   offeredPrice: number | null;
@@ -315,11 +316,12 @@ export default function LogisticsRfqComparisonPage() {
 
   const selectedVendorForFreight = data.vendors.find((v) => v.status === "selected");
 
-  // Pre-fill harga jual saat buka dialog
+  // Pre-fill harga jual saat buka dialog — pakai markup dari data vendor di BizPortal
   const openQuoteDialog = () => {
     const selectedVendor = data.vendors.find((v) => v.status === "selected");
     const vendorPrice = selectedVendor ? (selectedVendor.offeredPrice ?? selectedVendor.basicPrice) : null;
-    const suggested = vendorPrice ? Math.round(vendorPrice * 1.2) : (data.finalSellingPrice ?? 0);
+    const markupPct = selectedVendor?.markup ?? 20;
+    const suggested = vendorPrice ? Math.round(vendorPrice * (1 + markupPct / 100)) : (data.finalSellingPrice ?? 0);
     setQuotePrice(data.quotedPrice ? String(data.quotedPrice) : String(suggested));
     setQuoteNotes(data.quoteNotes ?? "");
     setQuoteSendWa(true);
@@ -782,12 +784,17 @@ export default function LogisticsRfqComparisonPage() {
             {(() => {
               const sv = data.vendors.find((v) => v.status === "selected");
               if (!sv) return null;
+              const vp = sv.offeredPrice ?? sv.basicPrice;
+              const markupPct = sv.markup ?? 20;
+              const autoPrice = vp ? Math.round(vp * (1 + markupPct / 100)) : null;
               return (
                 <div className="bg-teal-50 border border-teal-200 rounded-lg p-3 text-xs space-y-1">
                   <p className="font-semibold text-teal-800 text-sm">Vendor Terpilih: {sv.vendorName}</p>
                   <div className="text-teal-700 grid grid-cols-2 gap-x-4">
-                    <span>Harga Vendor: <strong>{idr(sv.offeredPrice ?? sv.basicPrice)}</strong></span>
+                    <span>Harga Vendor: <strong>{idr(vp)}</strong></span>
                     {sv.eta && <span>ETA: {sv.eta}</span>}
+                    <span>Markup: <strong>{markupPct}%</strong></span>
+                    {autoPrice && <span>Harga Otomatis: <strong>{idr(autoPrice)}</strong></span>}
                   </div>
                 </div>
               );

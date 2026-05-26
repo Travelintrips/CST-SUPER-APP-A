@@ -920,7 +920,7 @@ logisticRfqV2Router.get("/rfq/:rfqId/comparison", async (req: Request, res: Resp
 
   const vendorIds = links.map((l) => l.vendorId);
   const vendors = vendorIds.length
-    ? await db.select({ id: suppliersTable.id, name: suppliersTable.name, phone: suppliersTable.phone })
+    ? await db.select({ id: suppliersTable.id, name: suppliersTable.name, phone: suppliersTable.phone, markup: suppliersTable.markup })
         .from(suppliersTable).where(inArray(suppliersTable.id, vendorIds))
     : [];
   const vendorMap = new Map(vendors.map((v) => [v.id, v]));
@@ -944,6 +944,7 @@ logisticRfqV2Router.get("/rfq/:rfqId/comparison", async (req: Request, res: Resp
       vendorId: l.vendorId,
       vendorName: vendorMap.get(l.vendorId)?.name ?? `Vendor #${l.vendorId}`,
       phone: vendorMap.get(l.vendorId)?.phone ?? null,
+      markup: vendorMap.get(l.vendorId)?.markup ? Number(vendorMap.get(l.vendorId)!.markup) : null,
       status: l.status,
       basicPrice: l.basicPrice ? Number(l.basicPrice) : null,
       offeredPrice: l.offeredPrice ? Number(l.offeredPrice) : null,
