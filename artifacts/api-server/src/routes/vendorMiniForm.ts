@@ -2,6 +2,8 @@ import { Router, type Request, type Response } from "express";
 import { rateLimit } from "express-rate-limit";
 import { eq, desc, inArray, and, count, isNull, ne } from "drizzle-orm";
 import { randomBytes } from "crypto";
+import multer from "multer";
+import { ObjectStorageService } from "../lib/objectStorage.js";
 import { db } from "@workspace/db";
 import {
   vendorMiniFormLinksTable,
@@ -607,6 +609,38 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
   }
 });
 
+// ── PUBLIC: POST /api/vendor-form/upload/:token ───────────────────────────────
+const _vmfUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+const _vmfStorage = new ObjectStorageService();
+const _vmfUploadRateLimit = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false });
+
+vendorMiniFormRouter.post("/upload/:token", _vmfUploadRateLimit, _vmfUpload.single("file"), async (req: Request, res: Response) => {
+  const { token } = req.params as { token: string };
+  if (token === "admin") return res.status(404).json({ error: "Not found" });
+  try {
+    const [link] = await db.select({ id: vendorMiniFormLinksTable.id, isActive: vendorMiniFormLinksTable.isActive, expiresAt: vendorMiniFormLinksTable.expiresAt })
+      .from(vendorMiniFormLinksTable)
+      .where(eq(vendorMiniFormLinksTable.token, token));
+    if (!link) return res.status(404).json({ error: "Link tidak ditemukan" });
+    if (!link.isActive) return res.status(410).json({ error: "Link sudah dinonaktifkan" });
+    if (link.expiresAt && link.expiresAt < new Date()) return res.status(410).json({ error: "Link sudah kadaluarsa" });
+    if (!req.file) return res.status(400).json({ error: "File diperlukan" });
+
+    const allowed = ["application/pdf", "image/jpeg", "image/png", "image/webp", "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"];
+    if (!allowed.includes(req.file.mimetype)) {
+      return res.status(400).json({ error: "Tipe file tidak didukung. Gunakan PDF, gambar, atau dokumen Office." });
+    }
+
+    const objectPath = await _vmfStorage.uploadPrivateEntity(req.file.buffer, req.file.mimetype);
+    return res.json({ objectPath });
+  } catch (err) {
+    req.log?.error({ err }, "vmf upload error");
+    return res.status(500).json({ error: "Upload gagal" });
+  }
+});
+
 // ── PUBLIC: POST /api/vendor-form/:token ──────────────────────────────────────
 
 vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
@@ -637,11 +671,11 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
       if (!link.resubmitAllowed) return res.status(409).json({ error: "Penawaran sudah pernah dikirim. Hubungi admin untuk izin revisi." });
     }
 
-    const { vendorName, contactPerson, contactPhone, formData, responseStatus, vendorPrice, currency, eta, validUntil } = req.body as {
+    const { vendorName, contactPerson, contactPhone, formData, responseStatus, vendorPrice, currency, eta, validUntil, attachmentUrl } = req.body as {
       vendorName?: string; contactPerson?: string; contactPhone?: string;
       formData?: Record<string, unknown>;
       responseStatus?: string; vendorPrice?: number; currency?: string;
-      eta?: string; validUntil?: string;
+      eta?: string; validUntil?: string; attachmentUrl?: string;
     };
 
     if (!formData || typeof formData !== "object") return res.status(400).json({ error: "formData diperlukan" });
@@ -706,6 +740,7 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
           contactPerson: contactPerson ?? undefined, contactPhone: contactPhone ?? undefined,
           responseStatus: "resubmitted", vendorPrice: vendorPrice ? String(vendorPrice) : undefined,
           currency: currency ?? undefined, eta: eta ?? undefined, validUntil: validUntil ?? undefined,
+          attachmentUrl: attachmentUrl ?? undefined,
           submittedIp, submittedUa,
           revisionCount: (prev?.revisionCount ?? 0) + 1,
         })
@@ -745,6 +780,7 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
           vendorPrice: vendorPrice ? String(vendorPrice) : null,
           currency: currency ?? "IDR",
           eta: eta ?? null, validUntil: validUntil ?? null,
+          attachmentUrl: attachmentUrl ?? null,
           orderId: link.orderId ?? null,
           orderItemId: link.orderItemId ?? null,
           submittedIp, submittedUa,

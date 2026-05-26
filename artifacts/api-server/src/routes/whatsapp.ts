@@ -9,6 +9,20 @@ import { getWaTemplateConfig, renderTemplate } from "../lib/orderNotification.js
 
 export const whatsappRouter = Router();
 
+const DEFAULT_MANUAL_QUOTE_TPL =
+  `Halo {{customerName}},\n\n` +
+  `Berikut quotation layanan CST Logistics:\n\n` +
+  `No. RFQ       : {{rfqId}}\n` +
+  `Layanan       : {{serviceType}}\n` +
+  `Rute          : {{route}}\n` +
+  `Estimasi Pickup   : {{pickupDate}}\n` +
+  `Estimasi Delivery : {{deliveryDate}}\n` +
+  `Harga Final   : {{finalPrice}}\n` +
+  `Status        : {{status}}\n` +
+  `\nCatatan:\n{{notes}}\n` +
+  `\nSilakan konfirmasi apabila quotation ini disetujui.\n\n` +
+  `Terima kasih,\nCST Logistics`;
+
 function calcFinalPrice(vendorPrice: number, markupType: string, markupValue: number): number {
   if (markupType === "percentage") {
     return vendorPrice + (vendorPrice * markupValue / 100);
@@ -52,6 +66,31 @@ const DEFAULT_QUOTATION_ADMIN_TPL = [
   "━━━━━━━━━━━━━━━━━━",
   "_Dikirim via Mini Form BizPortal_",
 ].join("\n");
+async function buildCustomerMessage(data: {
+  customerName: string;
+  rfqId: string;
+  serviceType: string;
+  route: string;
+  pickupDate: string;
+  deliveryDate: string;
+  finalPrice: number;
+  status: string;
+  notes: string;
+}): Promise<string> {
+  const fmt = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
+  const tplBody = await getWaTemplateConfig("customer", "manual_quote", DEFAULT_MANUAL_QUOTE_TPL);
+  return renderTemplate(tplBody, {
+    customerName: data.customerName || "-",
+    rfqId: data.rfqId || "-",
+    serviceType: data.serviceType || "-",
+    route: data.route || "-",
+    pickupDate: data.pickupDate || null,
+    deliveryDate: data.deliveryDate || null,
+    finalPrice: fmt(data.finalPrice),
+    status: data.status || "Ready",
+    notes: data.notes || null,
+  }, data.serviceType);
+}
 
 // POST /api/whatsapp/send-quotation
 whatsappRouter.post("/send-quotation", async (req: Request, res: Response) => {
@@ -75,6 +114,8 @@ whatsappRouter.post("/send-quotation", async (req: Request, res: Response) => {
   }
 
   const vars: Record<string, string> = {
+
+  const messageBody = await buildCustomerMessage({
     customerName: String(customerName),
     rfqId: rfqId ? String(rfqId) : "-",
     serviceType: serviceType ? String(serviceType) : "-",

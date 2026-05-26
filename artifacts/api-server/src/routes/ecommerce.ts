@@ -141,6 +141,7 @@ router.delete("/product-categories/:id", async (req, res) => {
     return res.status(409).json({ message: `Kategori ini digunakan oleh ${usageCount} produk. Ubah kategori produk tersebut terlebih dahulu.` });
   }
   await db.delete(productCategoriesTable).where(eq(productCategoriesTable.id, id));
+  broadcastToPortal("price_sync", { ts: Date.now() });
   return res.json({ message: "Category deleted" });
 });
 
@@ -396,6 +397,10 @@ router.put("/products/:id", async (req, res) => {
 router.delete("/products/:id", async (req, res) => {
   const id = Number(req.params.id);
   await db.delete(productsTable).where(eq(productsTable.id, id));
+  // Notify Customer Portal: produk dihapus — hapus dari listing.
+  // Listener: products.tsx (invalidates ["portal-products"]),
+  //           jasa.tsx (invalidates ["listPortalServicesJasa"])
+  broadcastToPortal("price_sync", { ts: Date.now() });
   return res.json({ message: "Product deleted" });
 });
 
