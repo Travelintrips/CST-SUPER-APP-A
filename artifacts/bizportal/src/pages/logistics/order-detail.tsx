@@ -19,7 +19,7 @@ import { Switch } from "@/components/ui/switch";
 import {
   ArrowLeft, Loader2, Copy, ExternalLink, Plus, RefreshCw, Send,
   Package, Truck, User, ClipboardList, Clock, ShieldAlert, Ship,
-  ClipboardCheck, CheckCircle2, XCircle, MapPin,
+  ClipboardCheck, CheckCircle2, XCircle, MapPin, MessageCircle,
 } from "lucide-react";
 import { Link } from "wouter";
 import GpsTrackingPanel from "@/components/logistics/GpsTrackingPanel";
@@ -886,6 +886,12 @@ export default function LogisticOrderDetailPage() {
     onError: (e: Error) => toast({ title: "Gagal", description: e.message, variant: "destructive" }),
   });
 
+  const resendWaGroup = useMutation({
+    mutationFn: () => apiFetch<{ ok: boolean; message: string }>(`/api/logistic/orders/${orderId}/resend-wa-group`, { method: "POST" }),
+    onSuccess: (r) => toast({ title: "✅ " + r.message }),
+    onError: (e: Error) => toast({ title: "Gagal kirim WA", description: e.message, variant: "destructive" }),
+  });
+
   const { data: fulfillmentData, refetch: refetchFulfillment } = useQuery<{ links: FulfillmentLink[]; submissions: FulfillmentSubmission[] }>({
     queryKey: ["order-fulfillment", orderId],
     queryFn: () => apiFetch(`/api/logistic/orders/${orderId}/fulfillment`),
@@ -950,6 +956,18 @@ export default function LogisticOrderDetailPage() {
             />
             <Button variant="outline" size="sm" onClick={() => createCustomerLink.mutate()} disabled={createCustomerLink.isPending}>
               <Plus className="w-4 h-4 mr-1" /> Tracking Link
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => resendWaGroup.mutate()}
+              disabled={resendWaGroup.isPending}
+              title="Kirim ulang notifikasi order ke Admin Group WhatsApp"
+            >
+              {resendWaGroup.isPending
+                ? <Loader2 className="w-4 h-4 animate-spin mr-1" />
+                : <MessageCircle className="w-4 h-4 mr-1" />}
+              Resend WA Grup
             </Button>
           </div>
         </div>

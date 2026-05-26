@@ -695,6 +695,63 @@ logisticOrdersRouter.get("/:id", async (req: Request, res: Response) => {
   });
 });
 
+// POST /api/logistic/orders/:id/resend-wa-group — resend order_new notif ke Admin Group
+logisticOrdersRouter.post("/:id/resend-wa-group", async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params["id"] ?? ""));
+  if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+
+  const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, id));
+  if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+  const items = await db.select().from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, id));
+
+  const orderType = (order as any).orderType ?? "shipment";
+  const isProduct = orderType === "product";
+
+  const serviceList = !isProduct
+    ? items.map(i => `• ${i.serviceName}`).join("\n")
+    : "";
+
+  const orderItems = items.map(i => ({
+    name: i.serviceName,
+    qty: null as number | null,
+    subtotal: i.subtotal != null ? parseFloat(String(i.subtotal)) : null,
+  }));
+
+  const vehicleType =
+    (items.find(i => i.calculatorType === "trucking")?.inputData as Record<string, unknown> | undefined)
+      ?.vehicleType as string ?? null;
+
+  sendLogisticOrderNotification({
+    id: order.id,
+    orderNumber: order.orderNumber,
+    customerName: order.customerName,
+    companyName: order.companyName,
+    email: order.email,
+    phone: order.phone,
+    orderType,
+    shipmentType: order.shipmentType ?? "",
+    origin: order.origin ?? "",
+    destination: order.destination ?? "",
+    commodity: order.commodity ?? null,
+    cargoDescription: order.cargoDescription ?? null,
+    grossWeight: !isProduct && order.grossWeight ? parseFloat(String(order.grossWeight)) : null,
+    volumeCbm: !isProduct && order.volumeCbm ? parseFloat(String(order.volumeCbm)) : null,
+    jumlahKoli: !isProduct && order.jumlahKoli ? order.jumlahKoli : null,
+    grandTotal: parseFloat(String(order.grandTotal)),
+    serviceList,
+    orderItems,
+    requiredDate: order.requiredDate ?? null,
+    notes: order.notes ?? null,
+    jamOrder: order.jamOrder ?? null,
+    vehicleType,
+    createdAt: order.createdAt,
+    publicRfqToken: order.publicRfqToken ?? null,
+  }).catch((err: unknown) => req.log.error({ err }, "resend-wa-group failed"));
+
+  return res.json({ ok: true, message: "Notifikasi WA dikirim ke Admin Group" });
+});
+
 // PUT /api/logistic/orders/:id/status — update status (admin)
 logisticOrdersRouter.put("/:id/status", async (req: Request, res: Response) => {
   const paramsParsed = UpdateLogisticOrderStatusParams.safeParse({
