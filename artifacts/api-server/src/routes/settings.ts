@@ -288,6 +288,7 @@ router.put("/wa-template-configs", async (req: Request, res: Response) => {
     "order_new", "vendor_request", "vendor_submission", "vendor_revision",
     "customer_approval", "customer_approved", "so_created", "op_request",
     "driver_assigned", "shipment_update", "customs_update", "delivery_completed",
+    "product_order_new",
   ];
   if (!VALID_RECIPIENTS.includes(recipient)) return res.status(400).json({ message: "recipient tidak valid" });
   if (!VALID_WORKFLOWS.includes(workflow)) return res.status(400).json({ message: "workflow tidak valid" });
