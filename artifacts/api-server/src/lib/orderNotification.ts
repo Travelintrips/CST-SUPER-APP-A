@@ -1,4 +1,4 @@
-import { db, suppliersTable, vendorCatalogItemsTable, portalContentTable, waTemplateConfigsTable } from "@workspace/db";
+import { db, suppliersTable, vendorCatalogItemsTable, waTemplateConfigsTable } from "@workspace/db";
 import { eq, and, ilike, sql } from "drizzle-orm";
 import { sendWhatsApp } from "./fonnte";
 import { getAdminGroupWa } from "./adminWa";
@@ -204,17 +204,12 @@ function buildOrderVars(
   };
 }
 
-// 5-minute in-memory cache for WA templates
-let _waTemplateCache: Record<string, string> | null = null;
-let _waTemplateCacheAt = 0;
+// Workflow-based template cache (wa_template_configs table)
 const WA_TEMPLATE_TTL = 5 * 60 * 1000;
-
-// Workflow-based template cache (new table: whatsapp_template_configs)
 let _wfTemplateCache: Map<string, string> | null = null;
 let _wfTemplateCacheAt = 0;
 
 export function invalidateWaTemplateCache() {
-  _waTemplateCache = null;
   _wfTemplateCache = null;
 }
 
@@ -233,22 +228,6 @@ export async function getWaTemplateConfig(
     } catch { /* use defaults */ }
   }
   return _wfTemplateCache.get(`${recipient}__${workflow}`) ?? defaultBody;
-}
-
-async function getWaTemplates(): Promise<Record<string, string>> {
-  if (_waTemplateCache && Date.now() - _waTemplateCacheAt < WA_TEMPLATE_TTL) {
-    return _waTemplateCache;
-  }
-  try {
-    const { DEFAULT_WA_TEMPLATES } = await import("../routes/settings.js");
-    const [row] = await db.select().from(portalContentTable).where(eq(portalContentTable.key, "wa_templates"));
-    const stored: Record<string, string> = row ? JSON.parse(row.value) as Record<string, string> : {};
-    _waTemplateCache = { ...DEFAULT_WA_TEMPLATES, ...stored };
-    _waTemplateCacheAt = Date.now();
-    return _waTemplateCache;
-  } catch {
-    return {};
-  }
 }
 
 function getApproveFormUrl(orderNumber: string): string {

@@ -1230,6 +1230,15 @@ function getDefaultBody(recipient: RecipientKey, workflow: WorkflowKey): string 
   return DEFAULT_BODY[recipient]?.[workflow] || "";
 }
 
+async function fetchWaTemplateConfigs(): Promise<{ configs: Record<string, string>; savedKeys: Set<string> } | null> {
+  try {
+    const res = await fetch("/api/settings/wa-template-configs", { credentials: "include" });
+    if (!res.ok) return null;
+    const data = await res.json() as { configs: Record<string, string>; savedKeys: string[] };
+    return { configs: data.configs ?? {}, savedKeys: new Set(data.savedKeys ?? []) };
+  } catch { return null; }
+}
+
 function WaTemplatesCard() {
   const { toast } = useToast();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -1263,17 +1272,10 @@ function WaTemplatesCard() {
   }
 
   useEffect(() => {
-    void (async () => {
-      try {
-        const res = await fetch("/api/settings/wa-template-configs", { credentials: "include" });
-        if (res.ok) {
-          const data = await res.json() as { configs: Record<string, string>; savedKeys: string[] };
-          setConfigs(data.configs ?? {});
-          setSavedKeys(new Set(data.savedKeys ?? []));
-        }
-      } catch { /* ignore */ }
-      finally { setLoading(false); }
-    })();
+    void fetchWaTemplateConfigs().then(data => {
+      if (data) { setConfigs(data.configs); setSavedKeys(data.savedKeys); }
+      setLoading(false);
+    });
   }, []);
 
   const setBody = (body: string) =>
@@ -1297,7 +1299,8 @@ function WaTemplatesCard() {
         body: JSON.stringify({ recipient: effectiveRecipient, workflow, body }),
       });
       if (!res.ok) throw new Error(await res.text());
-      setSavedKeys(prev => new Set([...prev, cfgKey(effectiveRecipient, workflow)]));
+      const fresh = await fetchWaTemplateConfigs();
+      if (fresh) { setConfigs(fresh.configs); setSavedKeys(fresh.savedKeys); }
       toast({ title: "Template tersimpan" });
     } catch (e) {
       toast({ title: "Gagal menyimpan", description: String(e), variant: "destructive" });
@@ -1311,9 +1314,8 @@ function WaTemplatesCard() {
         method: "DELETE", credentials: "include",
       });
       if (!res.ok) throw new Error(await res.text());
-      const key = cfgKey(effectiveRecipient, workflow);
-      setConfigs(prev => { const n = { ...prev }; delete n[key]; return n; });
-      setSavedKeys(prev => { const n = new Set(prev); n.delete(key); return n; });
+      const fresh = await fetchWaTemplateConfigs();
+      if (fresh) { setConfigs(fresh.configs); setSavedKeys(fresh.savedKeys); }
       toast({ title: "Template direset ke default" });
     } catch (e) {
       toast({ title: "Gagal reset", description: String(e), variant: "destructive" });
