@@ -152,7 +152,7 @@ router.get("/suppliers/:id/catalog", async (req, res) => {
 router.post("/suppliers/:id/catalog", async (req, res) => {
   const vendorId = Number(req.params.id);
   if (Number.isNaN(vendorId)) return res.status(400).json({ message: "Invalid id" });
-  const { type, name, description, unit, priceBase, markupPct, isActive, isCommodityTag, sortOrder } = req.body;
+  const { type, name, description, unit, subcategory, priceBase, markupPct, isActive, isCommodityTag, sortOrder } = req.body;
   if (!name || typeof name !== "string")
     return res.status(400).json({ message: "name required" });
   const [item] = await db.insert(vendorCatalogItemsTable).values({
@@ -161,6 +161,7 @@ router.post("/suppliers/:id/catalog", async (req, res) => {
     name,
     description: description ?? null,
     unit: unit ?? null,
+    subcategory: subcategory ?? null,
     priceBase: String(parseFloat(String(priceBase ?? 0)) || 0),
     markupPct: String(parseFloat(String(markupPct ?? 0)) || 0),
     isActive: isActive !== undefined ? Boolean(isActive) : true,
@@ -174,12 +175,13 @@ router.post("/suppliers/:id/catalog", async (req, res) => {
 router.put("/suppliers/catalog/:itemId", async (req, res) => {
   const itemId = Number(req.params.itemId);
   if (Number.isNaN(itemId)) return res.status(400).json({ message: "Invalid id" });
-  const { type, name, description, unit, priceBase, markupPct, isActive, isCommodityTag, sortOrder } = req.body;
+  const { type, name, description, unit, subcategory, priceBase, markupPct, isActive, isCommodityTag, sortOrder } = req.body;
   const patch: Record<string, unknown> = {};
   if (type !== undefined) patch["type"] = type;
   if (typeof name === "string") patch["name"] = name;
   if (description !== undefined) patch["description"] = description || null;
   if (unit !== undefined) patch["unit"] = unit || null;
+  if (subcategory !== undefined) patch["subcategory"] = subcategory || null;
   if (priceBase !== undefined) patch["priceBase"] = String(parseFloat(String(priceBase)) || 0);
   if (markupPct !== undefined) patch["markupPct"] = String(parseFloat(String(markupPct)) || 0);
   if (isActive !== undefined) patch["isActive"] = Boolean(isActive);

@@ -4030,11 +4030,16 @@ components:
         unit:
           type: string
           nullable: true
+        subcategory:
+          type: string
+          nullable: true
         priceBase:
           type: number
         markupPct:
           type: number
         isActive:
+          type: boolean
+        isCommodityTag:
           type: boolean
         sortOrder:
           type: integer
@@ -4055,11 +4060,16 @@ components:
         unit:
           type: string
           nullable: true
+        subcategory:
+          type: string
+          nullable: true
         priceBase:
           type: number
         markupPct:
           type: number
         isActive:
+          type: boolean
+        isCommodityTag:
           type: boolean
         sortOrder:
           type: integer

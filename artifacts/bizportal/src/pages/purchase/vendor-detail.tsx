@@ -46,8 +46,8 @@ import {
   useListProducts,
 } from "@workspace/api-client-react";
 import type { Supplier, VendorCatalogItem } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Pencil, Plus, Trash2, Upload, X } from "lucide-react";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
+import { ArrowLeft, Pencil, Plus, Tag, Trash2, Upload, X } from "lucide-react";
 import { useUpload } from "@workspace/object-storage-web";
 
 const SERVICE_TYPES = [
@@ -84,11 +84,52 @@ function LogoDisplay({ logo, size = "sm" }: { logo: string | null | undefined; s
 
 const fmt = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
 
+async function apiFetch(path: string, opts?: RequestInit) {
+  const res = await fetch(`/api${path}`, { headers: { "Content-Type": "application/json" }, ...opts });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+function CatalogCategorySelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [isNew, setIsNew] = useState(false);
+  const [newVal, setNewVal] = useState("");
+  const { data: categories = [] } = useQuery<string[]>({
+    queryKey: ["bom-categories"],
+    queryFn: () => apiFetch("/bom/categories"),
+  });
+  const allCategories = categories.includes(value) || !value ? categories : [...categories, value];
+  const selectValue = isNew ? "__new__" : (value || "__none__");
+  return (
+    <div className="space-y-1.5">
+      <Select value={selectValue} onValueChange={(v) => {
+        if (v === "__new__") { setIsNew(true); setNewVal(""); onChange(""); }
+        else { setIsNew(false); onChange(v === "__none__" ? "" : v); }
+      }}>
+        <SelectTrigger><SelectValue placeholder="Pilih kategori..." /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value="__none__"><span className="text-muted-foreground italic">— Tidak ada —</span></SelectItem>
+          {allCategories.map((c) => (
+            <SelectItem key={c} value={c}>
+              <div className="flex items-center gap-1.5"><Tag className="w-3 h-3 text-muted-foreground" />{c}</div>
+            </SelectItem>
+          ))}
+          <SelectItem value="__new__"><span className="text-blue-600 font-medium">+ Kategori baru...</span></SelectItem>
+        </SelectContent>
+      </Select>
+      {isNew && (
+        <Input autoFocus placeholder="Nama kategori baru" value={newVal}
+          onChange={(e) => { setNewVal(e.target.value); onChange(e.target.value); }} />
+      )}
+    </div>
+  );
+}
+
 type CatalogForm = {
   type: string;
   name: string;
   description: string;
   unit: string;
+  subcategory: string;
   priceBase: string;
   markupPct: string;
   isActive: boolean;
@@ -101,6 +142,7 @@ const emptyCatalogForm = (): CatalogForm => ({
   name: "",
   description: "",
   unit: "",
+  subcategory: "",
   priceBase: "0",
   markupPct: "0",
   isActive: true,
@@ -204,6 +246,7 @@ export default function VendorDetailPage() {
       name: item.name,
       description: item.description ?? "",
       unit: item.unit ?? "",
+      subcategory: (item as any).subcategory ?? "",
       priceBase: String(item.priceBase),
       markupPct: String(item.markupPct),
       isActive: item.isActive,
@@ -223,6 +266,7 @@ export default function VendorDetailPage() {
       name: itemForm.name.trim(),
       description: itemForm.description || null,
       unit: itemForm.unit || null,
+      subcategory: itemForm.subcategory || null,
       priceBase: parseFloat(itemForm.priceBase) || 0,
       markupPct: parseFloat(itemForm.markupPct) || 0,
       isActive: itemForm.isActive,
@@ -405,6 +449,7 @@ export default function VendorDetailPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Nama</TableHead>
+                    <TableHead>Kategori</TableHead>
                     <TableHead>Tipe</TableHead>
                     <TableHead>Satuan</TableHead>
                     <TableHead className="text-right">Harga Dasar</TableHead>
@@ -427,6 +472,11 @@ export default function VendorDetailPage() {
                           {item.description && (
                             <p className="text-xs text-muted-foreground">{item.description}</p>
                           )}
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {(item as any).subcategory
+                            ? <span className="flex items-center gap-1 text-muted-foreground"><Tag className="h-3 w-3" />{(item as any).subcategory}</span>
+                            : <span className="text-muted-foreground">—</span>}
                         </TableCell>
                         <TableCell>
                           <Badge variant="outline" className="text-xs capitalize">{item.type}</Badge>
@@ -493,6 +543,7 @@ export default function VendorDetailPage() {
                   if (match) {
                     setI("unit", match.unit);
                     if (match.price > 0) setI("priceBase", String(match.price));
+                    if ((match as any).subcategory) setI("subcategory", (match as any).subcategory);
                   }
                 }}
                 placeholder="Ketik atau pilih dari daftar item..."
@@ -546,6 +597,13 @@ export default function VendorDetailPage() {
                   />
                 )}
               </div>
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Kategori</Label>
+              <CatalogCategorySelect
+                value={itemForm.subcategory}
+                onChange={(v) => setI("subcategory", v)}
+              />
             </div>
             <div className="grid gap-1.5">
               <Label>Deskripsi</Label>
