@@ -9,6 +9,7 @@ import {
   useDeleteProduct,
   useListStocks,
   useListSuppliers,
+  useListProductCategories,
   useCreateStockItem,
   useUpdateStockItem,
   useDeleteStockItem,
@@ -98,9 +99,10 @@ function MasterItemTab({ initialSearch = "" }: { initialSearch?: string }) {
   const [editingItem, setEditingItem] = useState<{ id: number; name: string; sku: string; itemType: string; subcategory: string | null; unit: string; price: number; isActive: boolean; description: string | null } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; name: string } | null>(null);
 
-  const [form, setForm] = useState({ name: "", sku: "", itemType: "barang", subcategory: "", unit: "pcs", price: "0", isActive: true, description: "" });
+  const [form, setForm] = useState({ name: "", sku: "", itemType: "barang", kategori: "", subcategory: "", unit: "pcs", price: "0", isActive: true, description: "" });
 
   const { data: products = [], isLoading } = useListProducts({}, { query: { queryKey: getListProductsQueryKey({}) } });
+  const { data: productCategories = [] } = useListProductCategories();
   const createMut = useCreateProduct();
   const updateMut = useUpdateProduct();
   const deleteMut = useDeleteProduct();
@@ -116,15 +118,18 @@ function MasterItemTab({ initialSearch = "" }: { initialSearch?: string }) {
     return true;
   }), [products, filterType, filterActive, search]);
 
+  const DEFAULT_SUBCATEGORIES = ["Udara", "Laut", "Darat", "Pabean", "Handling", "Trucking", "Container", "Freight Forwarding", "Lainnya"];
+
   const openCreate = () => {
     setEditingItem(null);
-    setForm({ name: "", sku: "", itemType: "barang", subcategory: "", unit: "pcs", price: "0", isActive: true, description: "" });
+    setForm({ name: "", sku: "", itemType: "barang", kategori: "", subcategory: "", unit: "pcs", price: "0", isActive: true, description: "" });
     setDialogOpen(true);
   };
 
   const openEdit = (p: typeof products[0]) => {
     setEditingItem({ id: p.id, name: p.name, sku: p.sku, itemType: p.itemType, subcategory: p.subcategory ?? null, unit: p.unit, price: p.price, isActive: p.isActive, description: p.description ?? null });
-    setForm({ name: p.name, sku: p.sku, itemType: p.itemType, subcategory: p.subcategory ?? "", unit: p.unit, price: String(p.price), isActive: p.isActive, description: p.description ?? "" });
+    const existingKategori = (p.categories as string[] | undefined)?.[0] ?? "";
+    setForm({ name: p.name, sku: p.sku, itemType: p.itemType, kategori: existingKategori, subcategory: p.subcategory ?? "", unit: p.unit, price: String(p.price), isActive: p.isActive, description: p.description ?? "" });
     setDialogOpen(true);
   };
 
@@ -133,7 +138,9 @@ function MasterItemTab({ initialSearch = "" }: { initialSearch?: string }) {
       toast({ title: "Nama dan SKU wajib diisi", variant: "destructive" });
       return;
     }
-    const body = { name: form.name.trim(), sku: form.sku.trim(), itemType: form.itemType as "barang" | "jasa", subcategory: form.subcategory || null, unit: form.unit, price: Number(form.price) || 0, isActive: form.isActive, description: form.description || null, categories: form.subcategory ? [form.subcategory] : [], stock: 0, unitOptions: [] };
+    const kategoriVal = (form.kategori && form.kategori !== "_none") ? form.kategori : null;
+    const subcategoryVal = (form.subcategory && form.subcategory !== "_none") ? form.subcategory : null;
+    const body = { name: form.name.trim(), sku: form.sku.trim(), itemType: form.itemType as "barang" | "jasa", subcategory: subcategoryVal, unit: form.unit, price: Number(form.price) || 0, isActive: form.isActive, description: form.description || null, categories: kategoriVal ? [kategoriVal] : [], stock: 0, unitOptions: [] };
     try {
       if (editingItem) {
         await updateMut.mutateAsync({ id: editingItem.id, data: body });
@@ -282,8 +289,28 @@ function MasterItemTab({ initialSearch = "" }: { initialSearch?: string }) {
               </Select>
             </div>
             <div className="space-y-1">
+              <Label>Kategori</Label>
+              <Select value={form.kategori} onValueChange={(v) => setForm(f => ({ ...f, kategori: v }))}>
+                <SelectTrigger><SelectValue placeholder="Pilih kategori..." /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_none">— Tidak ada —</SelectItem>
+                  {productCategories.map((c) => (
+                    <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
               <Label>Sub-kategori</Label>
-              <Input value={form.subcategory} onChange={(e) => setForm(f => ({ ...f, subcategory: e.target.value }))} placeholder="Udara, Laut, Darat..." />
+              <Select value={form.subcategory} onValueChange={(v) => setForm(f => ({ ...f, subcategory: v === "_none" ? "" : v }))}>
+                <SelectTrigger><SelectValue placeholder="Pilih sub-kategori..." /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_none">— Tidak ada —</SelectItem>
+                  {DEFAULT_SUBCATEGORIES.map((s) => (
+                    <SelectItem key={s} value={s}>{s}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1">
               <Label>Satuan</Label>
