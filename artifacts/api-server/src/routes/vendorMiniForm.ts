@@ -974,7 +974,7 @@ vendorMiniFormRouter.post("/customer-approval/:token", async (req: Request, res:
 
       if (action === "approve") {
         const dateStr = now.getFullYear().toString() + String(now.getMonth() + 1).padStart(2, "0");
-        const randomSuffix = randomBytes(2).toString("hex").toUpperCase();
+        const randomSuffix = randomBytes(4).toString("hex").toUpperCase();
         soNumber = `SO/${dateStr}/${String(0).padStart(4, "0")}${randomSuffix}`; // placeholder, diupdate setelah dapat id
 
         // Atomic update: hanya berhasil jika status = 'pending'
