@@ -41,8 +41,8 @@ outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "fuser -k 3000/tcp 2>/dev/null; sleep 0.3; cd artifacts/bizportal && PORT=3000 BASE_PATH=/bizportal/ node_modules/.bin/vite --config vite.config.ts --host 0.0.0.0"
-waitForPort = 3000
+args = "fuser -k 18442/tcp 2>/dev/null; sleep 0.3; cd artifacts/bizportal && PORT=18442 BASE_PATH=/bizportal/ node_modules/.bin/vite --config vite.config.ts --host 0.0.0.0"
+waitForPort = 18442
 
 [[workflows.workflow]]
 name = "API Server"

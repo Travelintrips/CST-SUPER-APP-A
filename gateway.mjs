@@ -36,7 +36,7 @@ const ROUTES = [
   { prefix: "/api",          upstream: { host: "localhost", port: API_PORT } },
   { prefix: "/pos-images",   upstream: { host: "localhost", port: API_PORT } },
   { prefix: "/q",            upstream: { host: "localhost", port: API_PORT } },
-  { prefix: "/bizportal",    upstream: { host: "localhost", port: 18442 } },
+  { prefix: "/bizportal",    upstream: { host: "localhost", port: 3000 } },
   { prefix: "/sport-center", upstream: { host: "localhost", port: 3002 } },
 ];
 const DEFAULT_UPSTREAM = { host: "localhost", port: 3001 };
