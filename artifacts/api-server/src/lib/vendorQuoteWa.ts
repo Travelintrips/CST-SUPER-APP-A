@@ -68,7 +68,10 @@ export function generateVendorQuoteMessage(input: VendorQuoteMessageInput): stri
   // Produk/layanan yang dipesan customer dari web
   const itemsBlock = input.orderItems && input.orderItems.length > 0
     ? `\n🛒 *Produk Dipesan:*\n` +
-      input.orderItems.map((it) => `   • ${it.serviceName}`).join("\n") + "\n"
+      input.orderItems.map((it) => {
+        const price = it.subtotal != null && it.subtotal > 0 ? ` — ${fmtRp(it.subtotal)}` : "";
+        return `   • ${it.serviceName}${price}`;
+      }).join("\n") + "\n"
     : "";
 
   // Untuk trucking: tampilkan tanggal & jam order customer

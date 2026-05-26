@@ -39,6 +39,7 @@ import { runGeofenceMigration } from "./lib/geofenceMigration";
 import { runOrderFulfillmentMigration } from "./routes/orderFulfillment.js";
 import { runTrustedDevicesMigration } from "./lib/trustedDevicesMigration.js";
 import { runAuditReportsMigration } from "./lib/auditReportsMigration.js";
+import { runWaTemplateMigration } from "./lib/orderNotification.js";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 
@@ -234,6 +235,7 @@ async function startServer() {
     .then(() => runWithRetry("Order fulfillment migration", runOrderFulfillmentMigration))
     .then(() => runWithRetry("Trusted devices migration", runTrustedDevicesMigration))
     .then(() => runWithRetry("ERP audit reports migration", runAuditReportsMigration))
+    .then(() => runWithRetry("WA template migration", runWaTemplateMigration))
     .then(() => enableRealtimeTables().catch((err) => {
       logger.warn({ err }, "Supabase Realtime table enable failed (non-fatal)");
     }))

@@ -1360,3 +1360,49 @@ export async function sendVendorSubmissionSummaryNotification(
 export async function getRfqVendorRecapTemplate(): Promise<string> {
   return getWaTemplateConfig("admin_personal", "rfq_vendor_recap", DEFAULT_TPL.admin_personal_extra.rfq_vendor_recap);
 }
+
+// ── runWaTemplateMigration ─────────────────────────────────────────────────────
+// Upgrade stale DB templates that are missing {{productList}} conditional block.
+// Safe to run on every startup — only updates rows that are actually outdated.
+export async function runWaTemplateMigration(): Promise<void> {
+  // Map of (recipient, workflow) → required marker in body
+  const required: Array<[string, string, string]> = [
+    ["vendor", "vendor_request", "{{productList}}"],
+    ["vendor", "order_new", "{{productList}}"],
+    ["admin_personal", "order_new", "{{productList}}"],
+    ["admin_group", "order_new", "{{productList}}"],
+    ["customer", "order_new", "{{productList}}"],
+  ];
+
+  // Map to the current DEFAULT_TPL body for each pair
+  const tplMap: Record<string, string> = {
+    "vendor__vendor_request": DEFAULT_TPL.vendor.vendor_request,
+    "vendor__order_new": DEFAULT_TPL.vendor.order_new,
+    "admin_personal__order_new": DEFAULT_TPL.admin_personal.order_new,
+    "admin_group__order_new": DEFAULT_TPL.admin_group.order_new,
+    "customer__order_new": DEFAULT_TPL.customer.order_new,
+  };
+
+  try {
+    const rows = await db.select().from(waTemplateConfigsTable);
+    for (const [recipient, workflow, marker] of required) {
+      const row = rows.find((r) => r.recipient === recipient && r.workflow === workflow);
+      if (row && !row.body.includes(marker)) {
+        const newBody = tplMap[`${recipient}__${workflow}`];
+        if (newBody) {
+          await db.update(waTemplateConfigsTable)
+            .set({ body: newBody, updatedAt: new Date() })
+            .where(and(
+              eq(waTemplateConfigsTable.recipient, recipient),
+              eq(waTemplateConfigsTable.workflow, workflow),
+            ));
+          logger.info({ recipient, workflow }, "WA template migration: upgraded stale template");
+        }
+      }
+    }
+    // Invalidate cache so next send picks up fresh templates
+    invalidateWaTemplateCache();
+  } catch (err) {
+    logger.warn({ err }, "WA template migration failed (non-fatal)");
+  }
+}
