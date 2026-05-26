@@ -94,8 +94,6 @@ type CatalogForm = {
   unit: string;
   kategori: string;
   subcategory: string;
-  priceBase: string;
-  markupPct: string;
   isActive: boolean;
   isCommodityTag: boolean;
   sortOrder: string;
@@ -109,8 +107,6 @@ const emptyCatalogForm = (): CatalogForm => ({
   unit: "",
   kategori: "",
   subcategory: "",
-  priceBase: "0",
-  markupPct: "0",
   isActive: true,
   isCommodityTag: false,
   sortOrder: "0",
@@ -247,8 +243,6 @@ export default function VendorDetailPage() {
       unit: item.unit ?? "",
       kategori: (item as any).kategori ?? "",
       subcategory: (item as any).subcategory ?? "",
-      priceBase: String(item.priceBase),
-      markupPct: String(item.markupPct),
       isActive: item.isActive,
       isCommodityTag: (item as any).isCommodityTag ?? false,
       sortOrder: String(item.sortOrder),
@@ -268,8 +262,6 @@ export default function VendorDetailPage() {
       return;
     }
     const body: Record<string, unknown> = {
-      priceBase: parseFloat(itemForm.priceBase) || 0,
-      markupPct: parseFloat(itemForm.markupPct) || 0,
       isActive: itemForm.isActive,
       isCommodityTag: itemForm.isCommodityTag,
       sortOrder: parseInt(itemForm.sortOrder) || 0,
@@ -514,9 +506,7 @@ export default function VendorDetailPage() {
                     <TableHead>Kategori</TableHead>
                     <TableHead>Tipe</TableHead>
                     <TableHead>Satuan</TableHead>
-                    <TableHead className="text-right">Harga Dasar</TableHead>
-                    <TableHead className="text-right">Markup (%)</TableHead>
-                    <TableHead className="text-right">Harga Jual</TableHead>
+                    <TableHead className="text-right">Harga</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Tag</TableHead>
                     <TableHead className="w-[90px] text-right">Aksi</TableHead>
@@ -524,9 +514,7 @@ export default function VendorDetailPage() {
                 </TableHeader>
                 <TableBody>
                   {filteredCatalog.map((item) => {
-                    const base = Number(item.priceBase ?? 0);
-                    const markup = Number(item.markupPct ?? 0);
-                    const sell = base * (1 + markup / 100);
+                    const price = Number(item.priceBase ?? 0);
                     return (
                       <TableRow key={item.id}>
                         <TableCell>
@@ -547,14 +535,8 @@ export default function VendorDetailPage() {
                           <Badge variant="outline" className="text-xs capitalize">{item.type}</Badge>
                         </TableCell>
                         <TableCell className="text-sm">{item.unit ?? "-"}</TableCell>
-                        <TableCell className="text-right font-mono text-sm">
-                          {base > 0 ? fmt(base) : "-"}
-                        </TableCell>
-                        <TableCell className="text-right text-sm">
-                          {markup > 0 ? `${markup}%` : "-"}
-                        </TableCell>
                         <TableCell className="text-right font-mono text-sm font-semibold text-primary">
-                          {base > 0 ? fmt(sell) : "-"}
+                          {price > 0 ? fmt(price) : "-"}
                         </TableCell>
                         <TableCell>
                           {item.isActive
@@ -596,7 +578,7 @@ export default function VendorDetailPage() {
       <Dialog open={catalogOpen} onOpenChange={(v) => { setCatalogOpen(v); if (!v) setEditingItem(null); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{editingItem ? "Edit Harga Etalase" : "Tambah Item ke Etalase"}</DialogTitle>
+            <DialogTitle>{editingItem ? "Edit Item Etalase" : "Tambah Item ke Etalase"}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-3">
 
@@ -661,7 +643,6 @@ export default function VendorDetailPage() {
                             className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors border-b last:border-b-0"
                             onClick={() => {
                               setI("masterItemId", p.id);
-                              if (p.price > 0) setI("priceBase", String(p.price));
                             }}
                           >
                             <p className="font-medium">{p.name}</p>
@@ -721,39 +702,6 @@ export default function VendorDetailPage() {
               </>
             )}
 
-            {/* ── Harga — selalu tampil ── */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="grid gap-1.5">
-                <Label>Harga Dasar (Rp)</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  value={itemForm.priceBase}
-                  onChange={(e) => setI("priceBase", e.target.value)}
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <Label>Markup (%)</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={itemForm.markupPct}
-                  onChange={(e) => setI("markupPct", e.target.value)}
-                  placeholder="cth. 20"
-                />
-              </div>
-            </div>
-            {(() => {
-              const base = parseFloat(itemForm.priceBase) || 0;
-              const pct = parseFloat(itemForm.markupPct) || 0;
-              if (base <= 0) return null;
-              return (
-                <p className="text-xs text-muted-foreground -mt-1">
-                  Harga jual: <span className="font-semibold text-foreground">{fmt(base * (1 + pct / 100))}</span>
-                </p>
-              );
-            })()}
             <div className="grid grid-cols-2 gap-3">
               <div className="grid gap-1.5">
                 <Label>Urutan Tampil</Label>

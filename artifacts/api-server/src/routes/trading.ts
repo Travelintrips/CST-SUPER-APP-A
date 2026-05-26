@@ -179,7 +179,7 @@ router.post("/suppliers/:id/catalog", async (req, res) => {
   if (existing)
     return res.status(409).json({ message: "Item ini sudah ada di etalase vendor ini" });
 
-  const { priceBase, markupPct, isActive, isCommodityTag, sortOrder } = req.body;
+  const { isActive, isCommodityTag, sortOrder } = req.body;
 
   // Ambil kategori pertama dari master item
   const categoryMap = await db
@@ -198,8 +198,8 @@ router.post("/suppliers/:id/catalog", async (req, res) => {
     unit: masterItem.unit ?? null,
     kategori,
     subcategory: masterItem.subcategory ?? null,
-    priceBase: String(parseFloat(String(priceBase ?? masterItem.price ?? 0)) || 0),
-    markupPct: String(parseFloat(String(markupPct ?? 0)) || 0),
+    priceBase: String(parseFloat(String(masterItem.price ?? 0)) || 0),
+    markupPct: "0",
     isActive: isActive !== undefined ? Boolean(isActive) : true,
     isCommodityTag: isCommodityTag !== undefined ? Boolean(isCommodityTag) : false,
     sortOrder: sortOrder !== undefined ? Number(sortOrder) : 0,
@@ -208,7 +208,7 @@ router.post("/suppliers/:id/catalog", async (req, res) => {
 });
 
 // PUT /api/trading/suppliers/catalog/:itemId
-// Jika item terhubung ke masterItemId, hanya priceBase/markupPct/isActive/isCommodityTag/sortOrder yang boleh diubah
+// Hanya isActive/isCommodityTag/sortOrder yang boleh diubah; harga dikunci dari Master Item
 router.put("/suppliers/catalog/:itemId", async (req, res) => {
   const itemId = Number(req.params.itemId);
   if (Number.isNaN(itemId)) return res.status(400).json({ message: "Invalid id" });
@@ -219,12 +219,11 @@ router.put("/suppliers/catalog/:itemId", async (req, res) => {
     .where(eq(vendorCatalogItemsTable.id, itemId));
   if (!current) return res.status(404).json({ message: "Item not found" });
 
-  const { priceBase, markupPct, isActive, isCommodityTag, sortOrder } = req.body;
+  const { isActive, isCommodityTag, sortOrder } = req.body;
   const patch: Record<string, unknown> = {};
 
-  // Field yang dikunci jika item berasal dari Master Item
+  // Item lama (legacy) tanpa masterItemId — boleh edit field deskriptif
   if (!current.masterItemId) {
-    // Item lama (legacy) — boleh edit semua field
     const { type, name, description, unit, kategori, subcategory } = req.body;
     if (type !== undefined) patch["type"] = type;
     if (typeof name === "string") patch["name"] = name;
@@ -234,9 +233,7 @@ router.put("/suppliers/catalog/:itemId", async (req, res) => {
     if (subcategory !== undefined) patch["subcategory"] = subcategory || null;
   }
 
-  // Field harga & status — selalu boleh diedit
-  if (priceBase !== undefined) patch["priceBase"] = String(parseFloat(String(priceBase)) || 0);
-  if (markupPct !== undefined) patch["markupPct"] = String(parseFloat(String(markupPct)) || 0);
+  // Status & urutan — selalu boleh diedit; harga dikunci dari Master Item
   if (isActive !== undefined) patch["isActive"] = Boolean(isActive);
   if (isCommodityTag !== undefined) patch["isCommodityTag"] = Boolean(isCommodityTag);
   if (sortOrder !== undefined) patch["sortOrder"] = Number(sortOrder);
