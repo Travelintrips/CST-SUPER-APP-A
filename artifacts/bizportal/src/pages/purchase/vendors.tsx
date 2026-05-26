@@ -530,7 +530,8 @@ export default function VendorsPage() {
           <CardHeader>
             <CardTitle>Daftar Vendor</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -549,7 +550,7 @@ export default function VendorsPage() {
                   <TableHead className="text-right">Markup (%)</TableHead>
                   <TableHead className="text-right">Setelah Markup</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead className="w-[100px] text-right">Aksi</TableHead>
+                  <TableHead className="w-[100px] text-right sticky right-0 bg-card z-10">Aksi</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -593,14 +594,14 @@ export default function VendorsPage() {
                           ? <Badge className="bg-green-100 text-green-800 hover:bg-green-100 text-xs">Aktif</Badge>
                           : <Badge variant="outline" className="text-xs text-muted-foreground">Nonaktif</Badge>}
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-right sticky right-0 bg-card z-10">
                         <Button size="icon" variant="ghost" title="Etalase" onClick={() => navigate(`/purchase/vendors/${v.id}`)}>
                           <Store className="h-4 w-4 text-primary" />
                         </Button>
-                        <Button size="icon" variant="ghost" onClick={() => startEdit(v)} data-testid={`button-edit-vendor-${v.id}`}>
+                        <Button size="icon" variant="ghost" title="Edit" onClick={() => startEdit(v)} data-testid={`button-edit-vendor-${v.id}`}>
                           <Pencil className="h-4 w-4" />
                         </Button>
-                        <Button size="icon" variant="ghost" onClick={() => remove(v.id)} data-testid={`button-delete-vendor-${v.id}`}>
+                        <Button size="icon" variant="ghost" title="Hapus" onClick={() => remove(v.id)} data-testid={`button-delete-vendor-${v.id}`}>
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </TableCell>
@@ -616,6 +617,7 @@ export default function VendorsPage() {
                 )}
               </TableBody>
             </Table>
+            </div>
           </CardContent>
         </Card>
       </div>
