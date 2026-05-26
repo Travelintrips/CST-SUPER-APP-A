@@ -24,5 +24,12 @@ export async function runNotificationLogMigration(): Promise<void> {
   await db.execute(sql`CREATE INDEX IF NOT EXISTS notif_logs_context_idx  ON notification_logs (context)`);
   await db.execute(sql`CREATE INDEX IF NOT EXISTS notif_logs_created_idx  ON notification_logs (created_at)`);
 
+  // Composite index untuk deduplication query (context + ref_id + created_at + status)
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS notif_logs_dedup_idx
+    ON notification_logs (channel, context, ref_id, status, created_at)
+    WHERE ref_id IS NOT NULL
+  `);
+
   logger.info("Notification log migration: selesai (notification_logs table ready)");
 }
