@@ -216,6 +216,40 @@ const WA_TEMPLATE_META: Record<WaTemplateType, { label: string; icon: string; co
   vendor_operational: { label: "Vendor Operasional", icon: "⚙️", color: "text-orange-700", bg: "bg-orange-50", border: "border-orange-200", headerBg: "bg-orange-50" },
 };
 
+const WA_TEMPLATE_WORKFLOW: Record<WaTemplateType, { recipient: string; workflow: string }> = {
+  vendor_quotation:   { recipient: "vendor",   workflow: "vendor_request" },
+  customer_approval:  { recipient: "customer", workflow: "customer_approval" },
+  vendor_operational: { recipient: "vendor",   workflow: "op_request" },
+};
+
+function renderWaTemplate(body: string, cfg: WaTemplateConfig): string {
+  const svcLabel = cfg.serviceType ? (SERVICE_META[cfg.serviceType]?.label ?? cfg.serviceType) : "";
+  const fmtExpiry = cfg.expiresAt
+    ? new Date(cfg.expiresAt).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })
+    : null;
+  const vars: Record<string, string | null> = {
+    vendorName: cfg.vendorName ?? null,
+    customerName: cfg.customerName ?? null,
+    orderNumber: cfg.orderNumber ?? null,
+    vendorMiniFormLink: cfg.formLink ?? null,
+    customerApprovalLink: cfg.approvalLink ?? null,
+    operationalFormLink: cfg.opLink ?? null,
+    shipmentType: svcLabel || null,
+    serviceType: svcLabel || null,
+    expiresAt: fmtExpiry,
+    timestamp: new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" }),
+  };
+  // Remove {{#if ...}} / {{/if}} condition blocks (not evaluated on frontend)
+  let processed = body.replace(/\{\{#if \w+\}\}[\s\S]*?\{\{\/if\}\}/g, "").trim();
+  return processed.split("\n").filter(line => {
+    const matches = [...line.matchAll(/\{\{(\w+)\}\}/g)];
+    if (matches.length === 0) return true;
+    return matches.every(m => vars[m[1]] != null && vars[m[1]] !== "");
+  }).map(line => {
+    return line.replace(/\{\{(\w+)\}\}/g, (_, key: string) => vars[key] ?? "");
+  }).join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 function buildWaTemplate(type: WaTemplateType, cfg: WaTemplateConfig): string {
   const svcLabel = cfg.serviceType ? (SERVICE_META[cfg.serviceType]?.label ?? cfg.serviceType) : "";
   const fmtExpiry = cfg.expiresAt
@@ -272,12 +306,26 @@ function WaTemplateDialog({
   const [customMsg, setCustomMsg] = useState("");
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [settingsTemplate, setSettingsTemplate] = useState<string | null>(null);
   const { toast } = useToast();
 
-  useEffect(() => { if (open) { setPhone(defaultPhone ?? ""); setCustomMsg(""); setCopied(false); } }, [open, defaultPhone]);
+  useEffect(() => {
+    if (open) {
+      setPhone(defaultPhone ?? "");
+      setCustomMsg("");
+      setCopied(false);
+      const { recipient, workflow } = WA_TEMPLATE_WORKFLOW[type];
+      fetch(`/api/settings/wa-template-configs?recipient=${recipient}&workflow=${workflow}`, { credentials: "include" })
+        .then(r => r.ok ? r.json() : null)
+        .then((data: { body?: string } | null) => {
+          setSettingsTemplate(data?.body ?? null);
+        })
+        .catch(() => setSettingsTemplate(null));
+    }
+  }, [open, defaultPhone, type]);
 
   const tmeta = WA_TEMPLATE_META[type];
-  const templateMsg = buildWaTemplate(type, config);
+  const templateMsg = settingsTemplate ? renderWaTemplate(settingsTemplate, config) : buildWaTemplate(type, config);
   const finalMsg = customMsg.trim() || templateMsg;
 
   const handleCopy = () => {

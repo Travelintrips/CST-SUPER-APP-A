@@ -834,14 +834,19 @@ function PageContentCard() {
 type RecipientKey = "admin_personal" | "admin_group" | "customer" | "vendor";
 type WorkflowKey =
   | "order_new" | "vendor_request" | "vendor_submission" | "vendor_revision"
+  | "vendor_submit_confirm" | "vendor_rfq_forward" | "vendor_submission_summary"
   | "customer_approval" | "customer_approved" | "so_created" | "op_request"
   | "driver_assigned" | "shipment_update" | "customs_update" | "delivery_completed"
+  | "rfq_vendor_recap"
   | "product_order_new" | "product_order_status_update";
-  | "product_order_new";
 type ServiceTypeSim = "trucking" | "freight_sea" | "freight_air" | "ppjk" | "product" | "handling" | "";
 
 const WORKFLOW_VALID_RECIPIENTS: Partial<Record<WorkflowKey, RecipientKey[]>> = {
-  product_order_new: ["admin_personal", "admin_group", "customer"],
+  product_order_new:         ["admin_personal", "admin_group", "customer"],
+  vendor_submit_confirm:     ["vendor"],
+  vendor_rfq_forward:        ["vendor"],
+  vendor_submission_summary: ["admin_personal"],
+  rfq_vendor_recap:          ["admin_personal"],
 };
 
 const RECIPIENT_META: Record<RecipientKey, { label: string; icon: string }> = {
@@ -863,15 +868,13 @@ const WORKFLOW_META: Record<WorkflowKey, { label: string; icon: string; desc: st
   driver_assigned:    { label: "Driver Ditugaskan",   icon: "🚚", desc: "Notifikasi customer saat driver ditugaskan" },
   shipment_update:    { label: "Update Shipment",     icon: "🚢", desc: "Update status pengiriman ke customer" },
   customs_update:     { label: "Update Kepabeanan",   icon: "🏛️", desc: "Update status bea cukai ke customer" },
-  delivery_completed:         { label: "Pengiriman Selesai",      icon: "🏁", desc: "Notifikasi penyelesaian pengiriman" },
-  product_order_new:          { label: "Pesanan Produk Baru",     icon: "🛒", desc: "Notifikasi saat order produk baru masuk dari customer portal" },
-  product_order_status_update:{ label: "Update Status Produk",    icon: "📦", desc: "Notifikasi saat admin mengubah status order produk" },
-};
-
-const VAR_GROUPS: Array<{ label: string; color: string; vars: string[] }> = [
-  { label: "Dasar",    color: "bg-slate-100 text-slate-700 border-slate-300",   vars: ["orderNumber","tanggal","jam","timestamp","statusLabel"] },
-  delivery_completed: { label: "Pengiriman Selesai",  icon: "🏁", desc: "Notifikasi penyelesaian pengiriman" },
-  product_order_new:  { label: "Order Produk Baru",  icon: "🛒", desc: "Notifikasi saat order produk baru masuk dari Customer Portal (tanpa vendor)" },
+  delivery_completed:           { label: "Pengiriman Selesai",      icon: "🏁", desc: "Notifikasi penyelesaian pengiriman" },
+  product_order_new:            { label: "Pesanan Produk Baru",     icon: "🛒", desc: "Notifikasi saat order produk baru masuk dari customer portal" },
+  product_order_status_update:  { label: "Update Status Produk",    icon: "📦", desc: "Notifikasi saat admin mengubah status order produk" },
+  vendor_submit_confirm:        { label: "Konfirmasi Vendor",        icon: "✉️", desc: "Notifikasi balik ke vendor setelah mereka submit form penawaran" },
+  vendor_rfq_forward:           { label: "RFQ Forward ke Vendor",   icon: "📤", desc: "Notifikasi ke vendor saat admin forward RFQ beserta detail permintaan" },
+  vendor_submission_summary:    { label: "Ringkasan Penawaran",     icon: "📋", desc: "Ringkasan submission form vendor yang dikirim ke admin" },
+  rfq_vendor_recap:             { label: "Rekap Penawaran RFQ",     icon: "🔔", desc: "Rekap semua penawaran vendor untuk satu RFQ, dikirim ke admin" },
 };
 
 const VAR_GROUPS: Array<{ label: string; color: string; vars: string[]; onlyWorkflows?: WorkflowKey[] }> = [
@@ -928,7 +931,7 @@ const SAMPLE_DATA: Record<string, Record<string, string>> = {
     orderUrl: "https://cst.app/bizportal/product-orders/123",
     vendorFormUrl: "https://cst.app/vendor-form/product/123",
     statusLabel: "Sedang Diproses",
-  product:     { serviceType: "Product",     shipmentType: "Domestik" },
+  },
   product_order_new: {
     orderNumber: "PRD-260526-12345",
     customerName: "PT. Maju Sejahtera", email: "info@majusejahtera.com", phone: "6281234567890",

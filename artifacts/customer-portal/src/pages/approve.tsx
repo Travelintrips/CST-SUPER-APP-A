@@ -11,15 +11,11 @@ interface Quote {
   id: number;
   vendorId: number;
   vendorName: string;
-  vendorPrice: number;
   estimatedPickup: string | null;
   estimatedDelivery: string | null;
   estimatedDays: number | null;
   vendorNotes: string | null;
-  markupType: string;
-  markupPercentage: number;
-  fixedSellingPrice: number | null;
-  sellingPrice: number | null;
+  sellingPrice: number;
   quoteStatus: string;
   replySource: string | null;
 }
@@ -60,9 +56,7 @@ function fmt(n: number) {
 }
 
 function calcSuggested(q: Quote): number {
-  if (q.markupType === "fixed_price" && q.fixedSellingPrice != null) return q.fixedSellingPrice;
-  if (q.sellingPrice != null) return q.sellingPrice;
-  return q.vendorPrice + (q.vendorPrice * q.markupPercentage / 100);
+  return q.sellingPrice;
 }
 
 export default function ApprovePage() {

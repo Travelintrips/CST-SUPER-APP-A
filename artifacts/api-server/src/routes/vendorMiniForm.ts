@@ -28,6 +28,9 @@ import {
   sendCustomerApprovalNotification,
   sendVendorRevisionNotification,
   sendVendorSubmissionNotification,
+  sendVendorSubmitConfirmNotification,
+  sendVendorRfqForwardNotification,
+  sendVendorSubmissionSummaryNotification,
   type LogisticOrderData,
 } from "../lib/orderNotification.js";
 
@@ -749,16 +752,13 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
 
     // Confirm WA to vendor
     if (contactPhone?.trim()) {
-      const msgVendor =
-        `Halo *${picLabel}* dari *${vendorLabel}*,\n\n` +
-        `Terima kasih! Penawaran Anda telah kami terima dan akan segera diproses oleh tim CST Logistics.\n\n` +
-        (link.orderNumber ? `Order Ref: *${link.orderNumber}*\n\n` : "") +
-        `_Pesan ini dikirim otomatis, mohon tidak dibalas._`;
-      sendWhatsApp(contactPhone.trim(), msgVendor, {
-        context: "vendor-mini-form-confirm",
-        refType: "vendor_mini_form",
-        refId: token,
-      }).catch(() => {});
+      sendVendorSubmitConfirmNotification(
+        contactPhone.trim(),
+        picLabel,
+        vendorLabel,
+        link.orderNumber ?? null,
+        token,
+      ).catch(() => {});
     }
 
     // WA to vendor for admin_rfq_forward: notify vendor about the RFQ details
@@ -771,38 +771,26 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
         if (vendorPhoneNorm) {
           const { getPreferredDomain } = await import("../lib/domain.js");
           const domain = getPreferredDomain();
-          // Build a vendor response link (standard vendor-form link from the same token)
           const vendorFormUrl = domain ? `https://${domain}/vendor-mini-form/${token}` : `/vendor-mini-form/${token}`;
-          const rfqRef = (fd["rfq_ref"] as string | undefined)?.trim();
-          const customerName = (fd["customer_name"] as string | undefined)?.trim();
-          const serviceNeeded = (fd["service_needed"] as string | undefined)?.trim();
-          const origin = (fd["origin"] as string | undefined)?.trim();
-          const destination = (fd["destination"] as string | undefined)?.trim();
-          const weightVolume = (fd["weight_volume"] as string | undefined)?.trim();
-          const cargoDesc = (fd["cargo_desc"] as string | undefined)?.trim();
-          const targetDeliveryDate = (fd["target_delivery_date"] as string | undefined)?.trim();
-          const quoteDeadline = (fd["quote_deadline"] as string | undefined)?.trim();
-          const notesToVendor = (fd["notes_to_vendor"] as string | undefined)?.trim();
           const vendorLabelRfq = link.vendorName?.trim() || vendorLabel;
-          const msg =
-            `Halo *${vendorLabelRfq}*,\n\n` +
-            `Anda menerima permintaan penawaran (RFQ) dari *CST Logistics*.\n\n` +
-            (rfqRef ? `📌 *Ref: ${rfqRef}*\n` : "") +
-            (customerName ? `👤 Customer: ${customerName}\n` : "") +
-            (serviceNeeded ? `🚚 Layanan: ${serviceNeeded}\n` : "") +
-            (origin && destination ? `📍 Rute: ${origin} → ${destination}\n` : "") +
-            (weightVolume ? `⚖️ Berat/Volume: ${weightVolume}\n` : "") +
-            (cargoDesc ? `📦 Barang: ${cargoDesc}\n` : "") +
-            (targetDeliveryDate ? `📅 Target Pengiriman: ${targetDeliveryDate}\n` : "") +
-            (quoteDeadline ? `⏰ *Batas Penawaran: ${quoteDeadline}*\n` : "") +
-            (notesToVendor ? `\n📝 Pesan dari CST: ${notesToVendor}\n` : "") +
-            `\nMohon submit penawaran Anda melalui link berikut:\n${vendorFormUrl}\n\n` +
-            `_Pesan ini dikirim otomatis oleh sistem CST Logistics._`;
-          sendWhatsApp(vendorPhoneNorm, msg, {
-            context: "admin-rfq-forward-vendor-notif",
-            refType: "vendor_mini_form",
-            refId: token,
-          }).catch(() => {});
+          sendVendorRfqForwardNotification(
+            vendorPhoneNorm,
+            vendorLabelRfq,
+            {
+              rfqRef: (fd["rfq_ref"] as string | undefined)?.trim() ?? null,
+              customerName: (fd["customer_name"] as string | undefined)?.trim() ?? null,
+              serviceNeeded: (fd["service_needed"] as string | undefined)?.trim() ?? null,
+              origin: (fd["origin"] as string | undefined)?.trim() ?? null,
+              destination: (fd["destination"] as string | undefined)?.trim() ?? null,
+              weightVolume: (fd["weight_volume"] as string | undefined)?.trim() ?? null,
+              cargoDesc: (fd["cargo_desc"] as string | undefined)?.trim() ?? null,
+              targetDeliveryDate: (fd["target_delivery_date"] as string | undefined)?.trim() ?? null,
+              quoteDeadline: (fd["quote_deadline"] as string | undefined)?.trim() ?? null,
+              notesToVendor: (fd["notes_to_vendor"] as string | undefined)?.trim() ?? null,
+              vendorFormUrl,
+            },
+            token,
+          ).catch(() => {});
         }
       }
     }
@@ -821,7 +809,6 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
             sendVendorSubmissionNotification(buildOrderDataFromRow(orderRow), vendorLabel, priceStr).catch(() => {});
           }).catch(() => {});
       } else if (link.mode === "order_based" && link.orderNumber) {
-        // order_based tanpa orderId — fallback ke summary hardcoded
         getAdminWa().then(async (adminWa) => {
           if (!adminWa) return;
           const allSubs = await db
@@ -829,32 +816,32 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
             .from(vendorMiniFormSubmissionsTable)
             .where(eq(vendorMiniFormSubmissionsTable.linkId, link.id))
             .orderBy(desc(vendorMiniFormSubmissionsTable.submittedAt));
-          const { getPreferredDomain } = await import("../lib/domain.js");
-          const domain = getPreferredDomain();
-          const adminReviewLink = domain ? `https://${domain}/bizportal/purchase/vendor-forms` : "/bizportal/purchase/vendor-forms";
           const lines = allSubs.map((s, i) => {
             const p = s.vendorPrice ? `${s.currency ?? "IDR"} ${Number(s.vendorPrice).toLocaleString("id-ID")}` : "-";
             return `${i + 1}. *${s.vendorName ?? "Vendor"}* - ${p}${s.eta ? ` - ETA ${s.eta}` : ""}`;
           });
-          sendWhatsApp(adminWa, `📊 *Update Penawaran Vendor untuk Order #${link.orderNumber}*\n${lines.join("\n")}\n\nReview: ${adminReviewLink}`, {
-            context: "vendor-mini-form-summary", refType: "vendor_mini_form_link", refId: String(link.id),
-          }).catch(() => {});
+          sendVendorSubmissionSummaryNotification(adminWa, {
+            vendorLabel,
+            picLabel,
+            contactPhone: contactPhone?.trim() ?? null,
+            orderNumber: link.orderNumber ?? null,
+            serviceLabel: `Order #${link.orderNumber}`,
+            priceStr: lines.join("\n") || priceStr,
+            statusStr: isRevision ? `REVISI (Rev-${(submission as { revisionCount?: number }).revisionCount ?? 1})` : (responseStatus ?? "submitted"),
+          }, String(link.id)).catch(() => {});
         }).catch(() => {});
       } else {
-        // rate_collection / no order — hardcoded
         getAdminWa().then((adminWa) => {
           if (!adminWa) return;
-          const msgAdmin =
-            `📋 *Submission Form Vendor*\n` +
-            `Vendor: *${vendorLabel}*\n` +
-            `PIC: ${picLabel} · ${contactPhone?.trim() || "-"}\n` +
-            (link.orderNumber ? `Order: ${link.orderNumber}\n` : "") +
-            `Service: ${SERVICE_SCHEMAS[link.serviceType]?.label ?? link.serviceType}\n` +
-            `Harga: ${priceStr}\n` +
-            (isRevision ? `Status: *REVISI* (Rev-${(submission as { revisionCount?: number }).revisionCount ?? 1})` : `Status: ${responseStatus ?? "submitted"}`);
-          sendWhatsApp(adminWa, msgAdmin, {
-            context: "vendor-mini-form-admin-notif", refType: "vendor_mini_form", refId: token,
-          }).catch(() => {});
+          sendVendorSubmissionSummaryNotification(adminWa, {
+            vendorLabel,
+            picLabel,
+            contactPhone: contactPhone?.trim() ?? null,
+            orderNumber: link.orderNumber ?? null,
+            serviceLabel: SERVICE_SCHEMAS[link.serviceType]?.label ?? link.serviceType,
+            priceStr,
+            statusStr: isRevision ? `REVISI (Rev-${(submission as { revisionCount?: number }).revisionCount ?? 1})` : (responseStatus ?? "submitted"),
+          }, token).catch(() => {});
         }).catch(() => {});
       }
     })();

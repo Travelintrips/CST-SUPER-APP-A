@@ -24,6 +24,8 @@ import {
   sendVendorSubmissionNotification,
   sendVendorRevisionNotification,
   sendCustomerApprovalNotification,
+  getRfqVendorRecapTemplate,
+  renderTemplate,
   type LogisticOrderData,
 } from "../lib/orderNotification.js";
 
@@ -275,14 +277,18 @@ async function sendAdminRecapWa(rfqId: number, rfq: { rfqNumber: string; orderId
     }
   }
 
-  const msg =
-    `🔔 *Update Penawaran Vendor*\n\n` +
-    `RFQ: ${rfq.rfqNumber}\n` +
-    `Layanan: ${order?.shipmentType ?? "—"}\n` +
-    `Rute: ${order?.origin ?? "—"} → ${order?.destination ?? "—"}\n\n` +
-    (listStr ? `📋 *Daftar penawaran:*\n${listStr}\n` : "") +
-    (waitingStr ? `⏳ *Belum jawab:*\n${waitingStr}\n` : "") +
-    `🔗 Bandingkan & pilih vendor:\n${compareAdminLink}`;
+  const tplRfqRecap = await getRfqVendorRecapTemplate();
+  const vendorListWithHeader = listStr ? `📋 *Daftar penawaran:*\n${listStr.trimEnd()}` : null;
+  const waitingListWithHeader = waitingStr ? `⏳ *Belum jawab:*\n${waitingStr.trimEnd()}` : null;
+  const msg = renderTemplate(tplRfqRecap, {
+    rfqNumber: rfq.rfqNumber,
+    shipmentType: order?.shipmentType ?? "—",
+    route: order ? `${order.origin} → ${order.destination}` : "—",
+    vendorListWithHeader,
+    waitingListWithHeader,
+    compareLink: compareAdminLink,
+    timestamp: new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" }),
+  });
 
   sendWhatsApp(adminTarget, msg).catch((e: unknown) =>
     logger.error({ e }, "sendAdminRecapWa failed")
