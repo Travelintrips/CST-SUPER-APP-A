@@ -365,7 +365,7 @@ export default function Services() {
                 </CardHeader>
                 <CardContent className="mt-auto pt-0 space-y-3">
                   <div className="bg-gray-50 rounded-lg p-4 flex items-center justify-between">
-                    <span className="text-sm font-medium text-muted-foreground">{t("services.price")}</span>
+                    <span className="text-sm font-medium text-muted-foreground">Harga Jual</span>
                     {service.price > 0 ? (
                       <span className="font-bold text-lg text-primary">{formatIDR(service.price)}</span>
                     ) : (
@@ -439,7 +439,7 @@ export default function Services() {
                   )}
                   <div className="flex items-center justify-between mt-3">
                     <div>
-                      <span className="text-xs text-slate-400 block">{t("services.price")}</span>
+                      <span className="text-xs text-slate-400 block">Harga Jual</span>
                       {service.price > 0 ? (
                         <span className="font-bold text-primary">{formatIDR(service.price)}</span>
                       ) : (

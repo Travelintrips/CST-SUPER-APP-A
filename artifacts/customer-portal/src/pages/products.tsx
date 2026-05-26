@@ -381,6 +381,7 @@ function ProductModal({ product, onClose }: { product: Product; onClose: () => v
 
           {/* Price */}
           <div className="bg-primary/5 rounded-xl px-4 py-3 border border-primary/10">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1">Harga Jual</p>
             {product.price > 0 ? (
               <div>
                 {isUsdProduct(product) ? (
@@ -818,6 +819,7 @@ export default function Products() {
 
                   {/* Price */}
                   <div className="mb-2">
+                    <span className="text-[9px] font-semibold text-slate-400 uppercase tracking-widest block mb-0.5">Harga Jual</span>
                     {product.price > 0 ? (
                       <>
                         <div className="flex items-baseline gap-1.5">
