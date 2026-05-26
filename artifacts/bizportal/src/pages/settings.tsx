@@ -837,7 +837,12 @@ type WorkflowKey =
   | "customer_approval" | "customer_approved" | "so_created" | "op_request"
   | "driver_assigned" | "shipment_update" | "customs_update" | "delivery_completed"
   | "product_order_new" | "product_order_status_update";
+  | "product_order_new";
 type ServiceTypeSim = "trucking" | "freight_sea" | "freight_air" | "ppjk" | "product" | "handling" | "";
+
+const WORKFLOW_VALID_RECIPIENTS: Partial<Record<WorkflowKey, RecipientKey[]>> = {
+  product_order_new: ["admin_personal", "admin_group", "customer"],
+};
 
 const RECIPIENT_META: Record<RecipientKey, { label: string; icon: string }> = {
   admin_personal: { label: "Admin Pribadi", icon: "👤" },
@@ -865,11 +870,18 @@ const WORKFLOW_META: Record<WorkflowKey, { label: string; icon: string; desc: st
 
 const VAR_GROUPS: Array<{ label: string; color: string; vars: string[] }> = [
   { label: "Dasar",    color: "bg-slate-100 text-slate-700 border-slate-300",   vars: ["orderNumber","tanggal","jam","timestamp","statusLabel"] },
+  delivery_completed: { label: "Pengiriman Selesai",  icon: "🏁", desc: "Notifikasi penyelesaian pengiriman" },
+  product_order_new:  { label: "Order Produk Baru",  icon: "🛒", desc: "Notifikasi saat order produk baru masuk dari Customer Portal (tanpa vendor)" },
+};
+
+const VAR_GROUPS: Array<{ label: string; color: string; vars: string[]; onlyWorkflows?: WorkflowKey[] }> = [
+  { label: "Dasar",    color: "bg-slate-100 text-slate-700 border-slate-300",   vars: ["orderNumber","tanggal","jam","timestamp"] },
   { label: "Order",    color: "bg-blue-50 text-blue-700 border-blue-200",       vars: ["serviceType","shipmentType","route","commodity","cargoDescription","grossWeightDisplay","volumeDisplay","jumlahKoliDisplay","requiredDate","totalEst","serviceList","notes"] },
   { label: "Customer", color: "bg-green-50 text-green-700 border-green-200",    vars: ["customerName","customerDisplay","customerPhone","email","phone"] },
   { label: "Vendor",   color: "bg-purple-50 text-purple-700 border-purple-200", vars: ["vendorName","vendorPhone"] },
   { label: "Harga",    color: "bg-amber-50 text-amber-700 border-amber-200",    vars: ["vendorPrice","sellingPrice","currency","margin"] },
   { label: "Link",     color: "bg-indigo-50 text-indigo-700 border-indigo-200", vars: ["vendorMiniFormLink","customerApprovalLink","operationalFormLink","adminActionUrl","responseUrl"] },
+  { label: "🛒 Produk", color: "bg-emerald-50 text-emerald-700 border-emerald-200", vars: ["itemList","shippingAddress","grandTotal","orderUrl","vendorFormUrl"], onlyWorkflows: ["product_order_new"] },
   { label: "🚛 Trk",   color: "bg-orange-50 text-orange-700 border-orange-200", vars: ["driverName","driverPhone","plateNumber","vehicleType"] },
   { label: "🚢 Sea",   color: "bg-cyan-50 text-cyan-700 border-cyan-200",       vars: ["vessel","voyage","containerNumber","blNumber"] },
   { label: "✈️ Air",   color: "bg-sky-50 text-sky-700 border-sky-200",          vars: ["airline","awbNumber","flightNumber"] },
@@ -916,16 +928,26 @@ const SAMPLE_DATA: Record<string, Record<string, string>> = {
     orderUrl: "https://cst.app/bizportal/product-orders/123",
     vendorFormUrl: "https://cst.app/vendor-form/product/123",
     statusLabel: "Sedang Diproses",
-  },
+  product:     { serviceType: "Product",     shipmentType: "Domestik" },
+  product_order_new: {
+    orderNumber: "PRD-260526-12345",
+    customerName: "PT. Maju Sejahtera", email: "info@majusejahtera.com", phone: "6281234567890",
+    shippingAddress: "Jl. Sudirman No. 45, Jakarta Pusat",
+    itemList: "• Green Bean Arabica × 50 (kg) — Rp 5.000.000\n• Kopi Robusta × 30 (kg) — Rp 2.400.000",
+    grandTotal: "7.400.000", notes: "Kirim sebelum jam 12",
+    orderUrl: "https://cst.app/bizportal/logistics/portal-orders",
+    vendorFormUrl: "https://cst.app/vendor-product-approval/PRD-260526-12345?t=xxxxx",
+    timestamp: "26 Mei 2026, 09:00 WIB",  },
 };
 
-function renderWaPreview(body: string, svcType: ServiceTypeSim): string {
+function renderWaPreview(body: string, svcType: ServiceTypeSim, workflow?: WorkflowKey): string {
   let result = body.replace(/\{\{#if\s+(\w+)\}\}([\s\S]*?)\{\{\/if\}\}/g, (_m, cond, content: string) =>
     svcType ? (cond === svcType ? content : "") : `‹${cond.toUpperCase()}›${content.trim()}‹/${cond.toUpperCase()}›`
   );
   const base = SAMPLE_DATA[""] ?? {};
   const svc  = svcType ? (SAMPLE_DATA[svcType] ?? {}) : {};
-  const data  = { ...base, ...svc };
+  const wf   = workflow ? (SAMPLE_DATA[workflow] ?? {}) : {};
+  const data  = { ...base, ...svc, ...wf };
   result = result.replace(/\{\{(\w+)\}\}/g, (_m, k) => data[k] ?? `{{${k}}}`);
   const lines = result.split("\n").filter(line => !line.includes("{{") || line.trim() === "");
   return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
@@ -1123,58 +1145,59 @@ const DEFAULT_BODY: Partial<Record<RecipientKey, Partial<Record<WorkflowKey, str
       "Terima kasih telah berbelanja di CST Logistics. Hubungi kami jika ada pertanyaan. 🙏",
     ].join("\n"),
   },
-  vendor: {
-    order_new: [
-      "📦 *PERMINTAAN ORDER BARU — CST LOGISTICS*","━━━━━━━━━━━━━━━━━━━━","Kepada Yth. *{{vendorName}}*,","",
-      "No. Order       : *{{orderNumber}}*","Tanggal         : {{tanggal}}","Jam             : {{jam}}",
-      "Jenis           : {{shipmentType}}","Rute            : {{route}}","Kategori Barang : {{commodity}}",
-      "Deskripsi       : {{cargoDescription}}","Berat           : {{grossWeightDisplay}}","Volume          : {{volumeDisplay}}",
-      "Jumlah Koli     : {{jumlahKoliDisplay}}","Tgl Butuh       : {{requiredDate}}","Layanan         :","{{serviceList}}","Catatan         : {{notes}}","━━━━━━━━━━━━━━━━━━━━",
-      "🔗 *Aksi Cepat (klik link):*","✅ Terima  → {{responseUrl}}?action=accept",
-      "❌ Tolak   → {{responseUrl}}?action=reject","💬 Form    → {{responseUrl}}","",
-      "✏️ *Atau balas WA dengan format:*","📌 Harga: `{{orderNumber}} [HARGA] [TGL_PICKUP]`",
-      "📌 Terima: `TERIMA {{orderNumber}}`","📌 Tolak:  `TOLAK {{orderNumber}}`","","Terima kasih 🙏","_Dikirim: {{timestamp}}_",
-    ].join("\n"),
-    vendor_request: [
-      "Halo {{vendorName}},","",
-      "Kami ingin meminta penawaran untuk layanan berikut:","",
-      "No. Order          : {{orderNumber}}","Customer           : {{customerName}}","Layanan            : {{serviceType}}",
-      "Route              : {{route}}","Komoditi           : {{commodity}}","Berat              : {{grossWeightDisplay}}",
-      "Volume             : {{volumeDisplay}}","Kebutuhan Tanggal  : {{requiredDate}}","",
-      "Silakan isi penawaran melalui link berikut:","{{vendorMiniFormLink}}","",
-      "Catatan:","{{notes}}","",
-      "Terima kasih.",
-    ].join("\n"),
-    vendor_revision: ["↩️ *REVISI PENAWARAN — {{orderNumber}}*","━━━━━━━━━━━━━━━━━━","Kepada Yth. *{{vendorName}}*,","","Kami memerlukan revisi harga untuk order *{{orderNumber}}*.","Harga saat ini: {{vendorPrice}}","","Mohon kirim penawaran terbaik Anda kembali:","🔗 {{vendorMiniFormLink}}","","Terima kasih 🙏"].join("\n"),
-    op_request: [
-      "Halo {{vendorName}},","",
-      "Customer sudah menyetujui penawaran untuk order berikut:","",
-      "No. Order : {{orderNumber}}","Layanan   : {{serviceType}}","Route     : {{route}}",
-      "Komoditi  : {{commodity}}","",
-      "Mohon lengkapi data operasional melalui link berikut:","{{operationalFormLink}}","",
-      "{{#if trucking}}",
-      "Data yang dibutuhkan:","- Nama driver","- No HP driver","- Plat nomor","- Jenis kendaraan",
-      "{{/if}}","",
-      "{{#if freight_sea}}",
-      "Data yang dibutuhkan:","- Vessel","- Voyage","- Container number","- BL number",
-      "{{/if}}","",
-      "{{#if freight_air}}",
-      "Data yang dibutuhkan:","- Airline","- Flight number","- AWB number",
-      "{{/if}}","",
-      "{{#if ppjk}}",
-      "Data yang dibutuhkan:","- Nomor aju","- Jenis BC","- Status dokumen","- SPPB jika sudah terbit",
-      "{{/if}}","",
-      "Terima kasih.",
-    ].join("\n"),
-    delivery_completed: [
-      "🏁 *ORDER SELESAI — {{orderNumber}}*","━━━━━━━━━━━━━━━━━━","Kepada Yth. *{{vendorName}}*,","",
-      "Order *{{orderNumber}}* telah selesai diantarkan.","Rute    : {{route}}","Layanan : {{serviceType}}","",
-      "Terima kasih atas kerja sama Anda bersama CST Logistics.","Sampai jumpa di order berikutnya 🙏","","_{{timestamp}}_",
-    ].join("\n"),
-  },
+};
+
+const DEFAULT_BODY_PRODUCT: Partial<Record<RecipientKey, string>> = {
+  admin_personal: [
+    "🛒 *PESANAN PRODUK BARU*",
+    "━━━━━━━━━━━━━━━━━━",
+    "No. Order   : `{{orderNumber}}`",
+    "Customer    : {{customerName}}",
+    "Email       : {{email}}",
+    "HP          : {{phone}}",
+    "Alamat      : {{shippingAddress}}",
+    "Produk      :",
+    "{{itemList}}",
+    "Total       : Rp {{grandTotal}}",
+    "Catatan     : {{notes}}",
+    "━━━━━━━━━━━━━━━━━━",
+    "🔗 Lihat di BizPortal:",
+    "{{orderUrl}}",
+    "",
+    "📋 *Form vendor (forward ke vendor):*",
+    "{{vendorFormUrl}}",
+    "",
+    "_Dikirim: {{timestamp}}_",
+  ].join("\n"),
+  admin_group: [
+    "🛒 *[PESANAN PRODUK] {{orderNumber}}*",
+    "━━━━━━━━━━━━━━━━━━",
+    "👤 Customer : *{{customerName}}*",
+    "📞 HP       : {{phone}}",
+    "📧 Email    : {{email}}",
+    "📦 Produk   :",
+    "{{itemList}}",
+    "💰 Total    : *Rp {{grandTotal}}*",
+    "Catatan     : {{notes}}",
+    "━━━━━━━━━━━━━━━━━━",
+    "📋 Form vendor → {{vendorFormUrl}}",
+    "",
+    "_Dikirim: {{timestamp}}_",
+  ].join("\n"),
+  customer: [
+    "✅ *Pesanan Anda Berhasil Diterima!*",
+    "No. Order: *{{orderNumber}}*",
+    "",
+    "{{itemList}}",
+    "",
+    "Total: Rp {{grandTotal}}",
+    "",
+    "Tim kami akan segera menghubungi Anda untuk konfirmasi. Terima kasih! 🙏",
+  ].join("\n"),
 };
 
 function getDefaultBody(recipient: RecipientKey, workflow: WorkflowKey): string {
+  if (workflow === "product_order_new") return DEFAULT_BODY_PRODUCT[recipient] ?? "";
   return DEFAULT_BODY[recipient]?.[workflow] || "";
 }
 
@@ -1192,8 +1215,11 @@ function WaTemplatesCard() {
   const [simSvc, setSimSvc] = useState<ServiceTypeSim>("");
 
   const cfgKey = (r: RecipientKey, w: WorkflowKey) => `${r}__${w}`;
-  const currentBody = configs[cfgKey(recipient, workflow)] || getDefaultBody(recipient, workflow);
-  const isSaved = savedKeys.has(cfgKey(recipient, workflow));
+  const validRecipients = WORKFLOW_VALID_RECIPIENTS[workflow] ?? (Object.keys(RECIPIENT_META) as RecipientKey[]);
+  const effectiveRecipient = validRecipients.includes(recipient) ? recipient : validRecipients[0]!;
+  const currentBody = configs[cfgKey(effectiveRecipient, workflow)] || getDefaultBody(effectiveRecipient, workflow);
+  const isSaved = savedKeys.has(cfgKey(effectiveRecipient, workflow));
+  const visibleVarGroups = VAR_GROUPS.filter(g => !g.onlyWorkflows || g.onlyWorkflows.includes(workflow));
 
   useEffect(() => {
     void (async () => {
@@ -1210,7 +1236,7 @@ function WaTemplatesCard() {
   }, []);
 
   const setBody = (body: string) =>
-    setConfigs(prev => ({ ...prev, [cfgKey(recipient, workflow)]: body }));
+    setConfigs(prev => ({ ...prev, [cfgKey(effectiveRecipient, workflow)]: body }));
 
   function insertAtCursor(text: string) {
     const el = textareaRef.current;
@@ -1224,13 +1250,13 @@ function WaTemplatesCard() {
   async function handleSave() {
     setSaving(true);
     try {
-      const body = configs[cfgKey(recipient, workflow)] ?? getDefaultBody(recipient, workflow);
+      const body = configs[cfgKey(effectiveRecipient, workflow)] ?? getDefaultBody(effectiveRecipient, workflow);
       const res = await fetch("/api/settings/wa-template-configs", {
         method: "PUT", headers: { "Content-Type": "application/json" }, credentials: "include",
-        body: JSON.stringify({ recipient, workflow, body }),
+        body: JSON.stringify({ recipient: effectiveRecipient, workflow, body }),
       });
       if (!res.ok) throw new Error(await res.text());
-      setSavedKeys(prev => new Set([...prev, cfgKey(recipient, workflow)]));
+      setSavedKeys(prev => new Set([...prev, cfgKey(effectiveRecipient, workflow)]));
       toast({ title: "Template tersimpan" });
     } catch (e) {
       toast({ title: "Gagal menyimpan", description: String(e), variant: "destructive" });
@@ -1240,11 +1266,11 @@ function WaTemplatesCard() {
   async function handleReset() {
     setResetting(true);
     try {
-      const res = await fetch(`/api/settings/wa-template-configs/${recipient}/${workflow}`, {
+      const res = await fetch(`/api/settings/wa-template-configs/${effectiveRecipient}/${workflow}`, {
         method: "DELETE", credentials: "include",
       });
       if (!res.ok) throw new Error(await res.text());
-      const key = cfgKey(recipient, workflow);
+      const key = cfgKey(effectiveRecipient, workflow);
       setConfigs(prev => { const n = { ...prev }; delete n[key]; return n; });
       setSavedKeys(prev => { const n = new Set(prev); n.delete(key); return n; });
       toast({ title: "Template direset ke default" });
@@ -1253,7 +1279,7 @@ function WaTemplatesCard() {
     } finally { setResetting(false); }
   }
 
-  const preview = renderWaPreview(currentBody, simSvc);
+  const preview = renderWaPreview(currentBody, simSvc, workflow);
 
   return (
     <Card className="col-span-1 md:col-span-3 bg-card border-border">
@@ -1276,13 +1302,17 @@ function WaTemplatesCard() {
           <div className="space-y-5">
 
             {/* ── Recipient Tabs ── */}
-            <Tabs value={recipient} onValueChange={v => setRecipient(v as RecipientKey)}>
+            <Tabs value={effectiveRecipient} onValueChange={v => setRecipient(v as RecipientKey)}>
               <TabsList className="flex flex-wrap h-auto gap-1 bg-muted/50">
-                {(Object.keys(RECIPIENT_META) as RecipientKey[]).map(k => (
-                  <TabsTrigger key={k} value={k} className="text-xs gap-1">
-                    <span>{RECIPIENT_META[k].icon}</span> {RECIPIENT_META[k].label}
-                  </TabsTrigger>
-                ))}
+                {(Object.keys(RECIPIENT_META) as RecipientKey[]).map(k => {
+                  const disabled = !validRecipients.includes(k);
+                  return (
+                    <TabsTrigger key={k} value={k} disabled={disabled} className={`text-xs gap-1 ${disabled ? "opacity-40 cursor-not-allowed" : ""}`}>
+                      <span>{RECIPIENT_META[k].icon}</span> {RECIPIENT_META[k].label}
+                      {disabled && <span className="text-[9px] ml-0.5">(N/A)</span>}
+                    </TabsTrigger>
+                  );
+                })}
               </TabsList>
             </Tabs>
 
@@ -1293,7 +1323,7 @@ function WaTemplatesCard() {
                 {(Object.keys(WORKFLOW_META) as WorkflowKey[]).map(w => {
                   const m = WORKFLOW_META[w];
                   const isActive = w === workflow;
-                  const hasSaved = savedKeys.has(cfgKey(recipient, w));
+                  const hasSaved = savedKeys.has(cfgKey(effectiveRecipient, w));
                   return (
                     <button
                       key={w}
@@ -1318,22 +1348,27 @@ function WaTemplatesCard() {
             {/* ── Workflow Info Banner ── */}
             <div className="bg-muted/40 border rounded-lg p-3 flex items-start gap-3">
               <span className="text-xl mt-0.5">{WORKFLOW_META[workflow].icon}</span>
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold">{WORKFLOW_META[workflow].label}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">{WORKFLOW_META[workflow].desc}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Penerima: <span className="font-medium text-foreground">{RECIPIENT_META[recipient].icon} {RECIPIENT_META[recipient].label}</span>
+                  Penerima: <span className="font-medium text-foreground">{RECIPIENT_META[effectiveRecipient].icon} {RECIPIENT_META[effectiveRecipient].label}</span>
                   {isSaved
                     ? <span className="ml-2 text-amber-600 font-medium">● Dikustomisasi</span>
                     : <span className="ml-2 text-muted-foreground">○ Default</span>}
                 </p>
+                {workflow === "product_order_new" && (
+                  <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-2 py-1 mt-2 inline-block">
+                    🛒 Workflow ini hanya berlaku untuk <strong>Admin Pribadi</strong>, <strong>Grup Admin</strong>, dan <strong>Customer</strong>. Tidak ada notifikasi vendor untuk order produk.
+                  </p>
+                )}
               </div>
             </div>
 
             {/* ── Variable Chips (grouped) ── */}
             <div className="space-y-2.5">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Variabel (klik untuk insert ke cursor):</p>
-              {VAR_GROUPS.map(g => (
+              {visibleVarGroups.map(g => (
                 <div key={g.label} className="flex flex-wrap items-center gap-1">
                   <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground w-12 shrink-0 text-right pr-1">{g.label}</span>
                   {g.vars.map(v => (
@@ -1382,7 +1417,7 @@ function WaTemplatesCard() {
                 className="font-mono text-xs min-h-[280px] resize-y border-primary/40 focus:border-primary leading-relaxed"
                 value={currentBody}
                 onChange={e => setBody(e.target.value)}
-                placeholder={`Template kosong — tulis pesan untuk workflow "${WORKFLOW_META[workflow].label}" penerima "${RECIPIENT_META[recipient].label}"…`}
+                placeholder={`Template kosong — tulis pesan untuk workflow "${WORKFLOW_META[workflow].label}" penerima "${RECIPIENT_META[effectiveRecipient].label}"…`}
                 spellCheck={false}
               />
             </div>

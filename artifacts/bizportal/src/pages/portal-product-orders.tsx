@@ -20,20 +20,62 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-import { Search, RefreshCw, Package, Trash2 } from "lucide-react";
+import {
+  Search, RefreshCw, Package, Trash2, CheckCircle2, Circle,
+  Clock, Truck, XCircle, ChevronRight, AlertTriangle, User,
+  Mail, Phone, MapPin, StickyNote, Loader2,
+} from "lucide-react";
 
-const STATUS_OPTIONS = ["New Order", "Confirmed", "Processing", "Shipped", "Completed", "Cancelled"];
+/* ─────────────────────────────────────────────── constants ─── */
 
-const STATUS_COLORS: Record<string, string> = {
-  "New Order":   "bg-yellow-100 text-yellow-800 border-yellow-200",
-  "Confirmed":   "bg-blue-100 text-blue-800 border-blue-200",
-  "Processing":  "bg-orange-100 text-orange-800 border-orange-200",
-  "Shipped":     "bg-purple-100 text-purple-800 border-purple-200",
-  "Completed":   "bg-green-100 text-green-800 border-green-200",
-  "Cancelled":   "bg-red-100 text-red-800 border-red-200",
+const STATUS_OPTIONS = ["New Order", "Confirmed", "Processing", "Shipped", "Completed", "Cancelled"] as const;
+type OrderStatus = typeof STATUS_OPTIONS[number];
+
+const STATUS_FLOW: OrderStatus[] = ["New Order", "Confirmed", "Processing", "Shipped", "Completed"];
+
+const NEXT_STATUS: Partial<Record<OrderStatus, OrderStatus>> = {
+  "New Order":  "Confirmed",
+  "Confirmed":  "Processing",
+  "Processing": "Shipped",
+  "Shipped":    "Completed",
 };
+
+const NEXT_LABEL: Partial<Record<OrderStatus, string>> = {
+  "New Order":  "Konfirmasi Order",
+  "Confirmed":  "Mulai Proses",
+  "Processing": "Tandai Dikirim",
+  "Shipped":    "Selesaikan",
+};
+
+const STATUS_COLORS: Record<OrderStatus, string> = {
+  "New Order":  "bg-yellow-100 text-yellow-800 border-yellow-200",
+  "Confirmed":  "bg-blue-100 text-blue-800 border-blue-200",
+  "Processing": "bg-orange-100 text-orange-800 border-orange-200",
+  "Shipped":    "bg-purple-100 text-purple-800 border-purple-200",
+  "Completed":  "bg-green-100 text-green-800 border-green-200",
+  "Cancelled":  "bg-red-100 text-red-800 border-red-200",
+};
+
+const STATUS_ICONS: Record<OrderStatus, React.ReactNode> = {
+  "New Order":  <Clock className="w-3.5 h-3.5" />,
+  "Confirmed":  <CheckCircle2 className="w-3.5 h-3.5" />,
+  "Processing": <Loader2 className="w-3.5 h-3.5" />,
+  "Shipped":    <Truck className="w-3.5 h-3.5" />,
+  "Completed":  <CheckCircle2 className="w-3.5 h-3.5" />,
+  "Cancelled":  <XCircle className="w-3.5 h-3.5" />,
+};
+
+const STATS_LIST: { status: OrderStatus; label: string }[] = [
+  { status: "New Order",  label: "Pesanan Baru" },
+  { status: "Confirmed",  label: "Dikonfirmasi" },
+  { status: "Processing", label: "Diproses" },
+  { status: "Shipped",    label: "Dikirim" },
+  { status: "Completed",  label: "Selesai" },
+  { status: "Cancelled",  label: "Dibatalkan" },
+];
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
@@ -41,8 +83,133 @@ const idr = (n: number) =>
 const BULAN_ID = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agt","Sep","Okt","Nov","Des"];
 function formatTanggal(iso: string) {
   const d = new Date(iso);
-  return `${String(d.getDate()).padStart(2,"0")}-${BULAN_ID[d.getMonth()]}-${d.getFullYear()}, ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+  return `${String(d.getDate()).padStart(2,"0")} ${BULAN_ID[d.getMonth()]} ${d.getFullYear()}, ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
 }
+
+/* ─────────────────────────────────────────────── StatusTimeline ─── */
+
+function StatusTimeline({ status }: { status: string }) {
+  const isCancelled = status === "Cancelled";
+  const currentIdx = STATUS_FLOW.indexOf(status as OrderStatus);
+
+  if (isCancelled) {
+    return (
+      <div className="flex items-center gap-2 px-1 py-3">
+        <XCircle className="w-5 h-5 text-red-500 shrink-0" />
+        <span className="text-sm font-medium text-red-600">Pesanan Dibatalkan</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative">
+      {/* connector line */}
+      <div className="absolute top-[18px] left-[18px] right-[18px] h-0.5 bg-muted" />
+      <div className="flex justify-between relative">
+        {STATUS_FLOW.map((s, idx) => {
+          const done = idx < currentIdx;
+          const active = idx === currentIdx;
+          const pending = idx > currentIdx;
+          return (
+            <div key={s} className="flex flex-col items-center gap-1.5 flex-1">
+              <div
+                className={`w-9 h-9 rounded-full border-2 flex items-center justify-center z-10 transition-all ${
+                  done   ? "bg-primary border-primary text-primary-foreground shadow-sm" :
+                  active ? "bg-primary/10 border-primary text-primary shadow-sm ring-2 ring-primary/20" :
+                           "bg-background border-muted-foreground/30 text-muted-foreground/40"
+                }`}
+              >
+                {done ? (
+                  <CheckCircle2 className="w-4 h-4" />
+                ) : active ? (
+                  <Circle className="w-4 h-4 fill-primary/30" />
+                ) : (
+                  <Circle className="w-4 h-4" />
+                )}
+              </div>
+              <span className={`text-[10px] text-center leading-tight max-w-[60px] ${
+                done || active ? "font-semibold text-foreground" : "text-muted-foreground"
+              }`}>
+                {s === "New Order" ? "Pesanan\nBaru" :
+                 s === "Confirmed" ? "Konfirmasi" :
+                 s === "Processing" ? "Diproses" :
+                 s === "Shipped" ? "Dikirim" : "Selesai"}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────── QuickActions ─── */
+
+function QuickActions({
+  order,
+  updating,
+  onStatus,
+}: {
+  order: PortalProductOrder;
+  updating: boolean;
+  onStatus: (status: string) => void;
+}) {
+  const status = order.status as OrderStatus;
+  const next = NEXT_STATUS[status];
+  const nextLabel = NEXT_LABEL[status];
+  const canCancel = status !== "Completed" && status !== "Cancelled";
+
+  if (status === "Completed") {
+    return (
+      <div className="flex items-center gap-2 text-sm text-green-600 font-medium">
+        <CheckCircle2 className="w-4 h-4" />
+        Pesanan telah selesai
+      </div>
+    );
+  }
+
+  if (status === "Cancelled") {
+    return (
+      <Button variant="outline" size="sm" disabled={updating} onClick={() => onStatus("New Order")}>
+        Aktifkan Kembali
+      </Button>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      {next && nextLabel && (
+        <Button
+          size="sm"
+          disabled={updating}
+          onClick={() => onStatus(next)}
+          className="gap-1.5"
+        >
+          {updating ? <Loader2 className="w-4 h-4 animate-spin" /> : <ChevronRight className="w-4 h-4" />}
+          {nextLabel}
+        </Button>
+      )}
+      {canCancel && (
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={updating}
+          onClick={() => {
+            if (confirm(`Batalkan pesanan ${order.orderNumber}? Notifikasi WA akan dikirim ke customer.`)) {
+              onStatus("Cancelled");
+            }
+          }}
+          className="gap-1.5 text-destructive hover:text-destructive border-destructive/30 hover:bg-destructive/5"
+        >
+          <XCircle className="w-4 h-4" />
+          Batalkan
+        </Button>
+      )}
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────── Main Page ─── */
 
 export default function PortalProductOrdersPage() {
   const queryClient = useQueryClient();
@@ -93,11 +260,8 @@ export default function PortalProductOrdersPage() {
   const allSelected = filtered.length > 0 && filtered.every((o) => selectedIds.has(o.id));
 
   const toggleAll = () => {
-    if (allSelected) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(filtered.map((o) => o.id)));
-    }
+    if (allSelected) setSelectedIds(new Set());
+    else setSelectedIds(new Set(filtered.map((o) => o.id)));
   };
 
   const toggleSelect = (id: number) => {
@@ -113,8 +277,8 @@ export default function PortalProductOrdersPage() {
     try {
       await updateStatus.mutateAsync({ id, data: { status } });
       invalidate();
-      toast({ title: "Status berhasil diperbarui" });
       if (detailOrderId === id) queryClient.invalidateQueries({ queryKey: [`portal-product-order-${id}`] });
+      toast({ title: `Status diperbarui: ${status}` });
     } catch {
       toast({ title: "Gagal memperbarui status", variant: "destructive" });
     } finally {
@@ -169,25 +333,30 @@ export default function PortalProductOrdersPage() {
   return (
     <AppShell>
       <div className="space-y-6">
+        {/* Header */}
         <div>
           <h1 className="text-2xl font-bold">Portal Order Produk</h1>
-          <p className="text-muted-foreground text-sm mt-1">Pesanan produk yang masuk dari Customer Portal</p>
+          <p className="text-muted-foreground text-sm mt-1">Kelola pesanan produk dari Customer Portal — konfirmasi, proses, dan selesaikan</p>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          {(["New Order", "Confirmed", "Completed", "Cancelled"] as const).map((s) => (
-            <Card
-              key={s}
-              className={`cursor-pointer hover:border-primary transition-colors ${statusFilter === s ? "border-primary bg-primary/5" : ""}`}
-              onClick={() => setStatusFilter(s === statusFilter ? "all" : s)}
-            >
-              <CardContent className="p-4">
-                <p className="text-xs text-muted-foreground">{s}</p>
-                <p className="text-2xl font-bold">{orders.filter((o) => o.status === s).length}</p>
-              </CardContent>
-            </Card>
-          ))}
+        {/* Stats Grid */}
+        <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
+          {STATS_LIST.map(({ status, label }) => {
+            const count = orders.filter((o) => o.status === status).length;
+            const isActive = statusFilter === status;
+            return (
+              <Card
+                key={status}
+                className={`cursor-pointer hover:border-primary/50 transition-all ${isActive ? "border-primary bg-primary/5 shadow-sm" : ""}`}
+                onClick={() => setStatusFilter(isActive ? "all" : status)}
+              >
+                <CardContent className="p-3 text-center">
+                  <p className="text-[11px] text-muted-foreground leading-tight mb-1">{label}</p>
+                  <p className={`text-xl font-bold ${isActive ? "text-primary" : ""}`}>{count}</p>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
 
         {/* Bulk action bar */}
@@ -202,10 +371,11 @@ export default function PortalProductOrdersPage() {
           </div>
         )}
 
+        {/* Table Card */}
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Package className="w-5 h-5" />
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Package className="w-4 h-4" />
               Daftar Pesanan
             </CardTitle>
           </CardHeader>
@@ -237,7 +407,10 @@ export default function PortalProductOrdersPage() {
             </div>
 
             {isLoading ? (
-              <div className="py-12 text-center text-muted-foreground">Memuat...</div>
+              <div className="py-12 text-center text-muted-foreground">
+                <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 opacity-40" />
+                Memuat...
+              </div>
             ) : filtered.length === 0 ? (
               <div className="py-12 text-center text-muted-foreground">
                 <Package className="w-10 h-10 mx-auto mb-2 opacity-30" />
@@ -256,64 +429,71 @@ export default function PortalProductOrdersPage() {
                       <TableHead>Total</TableHead>
                       <TableHead>Tanggal</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead className="w-10"></TableHead>
+                      <TableHead className="w-16">Aksi</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filtered.map((order) => (
-                      <TableRow
-                        key={order.id}
-                        className="cursor-pointer hover:bg-muted/50"
-                        onClick={() => setDetailOrderId(order.id)}
-                        {...prefetchHover(getGetPortalProductOrderQueryOptions(order.id))}
-                      >
-                        <TableCell onClick={(e) => e.stopPropagation()}>
-                          <Checkbox
-                            checked={selectedIds.has(order.id)}
-                            onCheckedChange={() => toggleSelect(order.id)}
-                            aria-label={`Pilih ${order.orderNumber}`}
-                          />
-                        </TableCell>
-                        <TableCell className="font-mono text-sm font-semibold">{order.orderNumber}</TableCell>
-                        <TableCell>
-                          <div>
-                            <p className="font-medium text-sm">{order.customerName}</p>
-                            <p className="text-xs text-muted-foreground">{order.email}</p>
-                          </div>
-                        </TableCell>
-                        <TableCell className="font-semibold">{idr(order.grandTotal)}</TableCell>
-                        <TableCell className="text-sm text-muted-foreground">{formatTanggal(order.createdAt)}</TableCell>
-                        <TableCell onClick={(e) => e.stopPropagation()}>
-                          <Select
-                            value={order.status}
-                            onValueChange={(v) => handleStatusChange(order.id, v)}
-                            disabled={updatingId === order.id}
-                          >
-                            <SelectTrigger className="h-7 w-36 text-xs border-0 p-1">
-                              <Badge className={`text-xs ${STATUS_COLORS[order.status] ?? "bg-gray-100 text-gray-700"}`}>
-                                {order.status}
-                              </Badge>
-                            </SelectTrigger>
-                            <SelectContent>
-                              {STATUS_OPTIONS.map((s) => (
-                                <SelectItem key={s} value={s} className="text-xs">{s}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-                        <TableCell onClick={(e) => e.stopPropagation()}>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                            title="Hapus"
-                            onClick={() => handleDelete(order.id)}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {filtered.map((order) => {
+                      const isUpdating = updatingId === order.id;
+                      const next = NEXT_STATUS[order.status as OrderStatus];
+                      const nextLabel = NEXT_LABEL[order.status as OrderStatus];
+                      return (
+                        <TableRow
+                          key={order.id}
+                          className="cursor-pointer hover:bg-muted/50"
+                          onClick={() => setDetailOrderId(order.id)}
+                          {...prefetchHover(getGetPortalProductOrderQueryOptions(order.id))}
+                        >
+                          <TableCell onClick={(e) => e.stopPropagation()}>
+                            <Checkbox
+                              checked={selectedIds.has(order.id)}
+                              onCheckedChange={() => toggleSelect(order.id)}
+                              aria-label={`Pilih ${order.orderNumber}`}
+                            />
+                          </TableCell>
+                          <TableCell className="font-mono text-xs font-semibold">{order.orderNumber}</TableCell>
+                          <TableCell>
+                            <div>
+                              <p className="font-medium text-sm">{order.customerName}</p>
+                              <p className="text-xs text-muted-foreground">{order.email}</p>
+                            </div>
+                          </TableCell>
+                          <TableCell className="font-semibold text-sm">{idr(order.grandTotal)}</TableCell>
+                          <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{formatTanggal(order.createdAt)}</TableCell>
+                          <TableCell>
+                            <Badge className={`text-xs gap-1 ${STATUS_COLORS[order.status as OrderStatus] ?? "bg-gray-100 text-gray-700"}`}>
+                              {STATUS_ICONS[order.status as OrderStatus]}
+                              {order.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center gap-1">
+                              {next && nextLabel && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 text-xs px-2 whitespace-nowrap"
+                                  disabled={isUpdating}
+                                  title={nextLabel}
+                                  onClick={() => handleStatusChange(order.id, next)}
+                                >
+                                  {isUpdating ? <Loader2 className="h-3 w-3 animate-spin" /> : <ChevronRight className="h-3 w-3" />}
+                                </Button>
+                              )}
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                title="Hapus"
+                                onClick={() => handleDelete(order.id)}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </div>
@@ -322,136 +502,197 @@ export default function PortalProductOrdersPage() {
         </Card>
       </div>
 
-      {/* Detail Dialog */}
+      {/* ── Detail Dialog ── */}
       {detailOrderId && detailOrder && (
         <Dialog open onOpenChange={() => setDetailOrderId(null)}>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Detail Pesanan — {detailOrder.orderNumber}</DialogTitle>
+              <DialogTitle className="flex items-center gap-2 text-base">
+                <Package className="w-4 h-4 text-primary" />
+                Pesanan {detailOrder.orderNumber}
+                <Badge className={`ml-1 text-xs gap-1 ${STATUS_COLORS[detailOrder.status as OrderStatus] ?? "bg-gray-100"}`}>
+                  {STATUS_ICONS[detailOrder.status as OrderStatus]}
+                  {detailOrder.status}
+                </Badge>
+              </DialogTitle>
             </DialogHeader>
 
             <div className="space-y-5 text-sm">
-              {/* Info Customer */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <p className="text-muted-foreground text-xs mb-0.5">Customer</p>
-                  <p className="font-medium">{detailOrder.customerName}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground text-xs mb-0.5">Status</p>
-                  <Badge className={`text-xs ${STATUS_COLORS[detailOrder.status] ?? "bg-gray-100"}`}>{detailOrder.status}</Badge>
-                </div>
-                <div>
-                  <p className="text-muted-foreground text-xs mb-0.5">Email</p>
-                  <p>{detailOrder.email}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground text-xs mb-0.5">WhatsApp</p>
-                  <p>{detailOrder.phone}</p>
-                </div>
-                <div className="col-span-2">
-                  <p className="text-muted-foreground text-xs mb-0.5">Alamat Pengiriman</p>
-                  <p>{detailOrder.shippingAddress}</p>
-                </div>
-                {detailOrder.notes && (
-                  <div className="col-span-2">
-                    <p className="text-muted-foreground text-xs mb-0.5">Catatan</p>
-                    <p>{detailOrder.notes}</p>
-                  </div>
-                )}
+
+              {/* Status Timeline */}
+              <div className="bg-muted/30 border rounded-xl p-4">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-4">Progress Status</p>
+                <StatusTimeline status={detailOrder.status} />
               </div>
+
+              {/* Quick Actions */}
+              <div className="flex items-center justify-between flex-wrap gap-3 px-1">
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Tindakan Cepat</p>
+                  <QuickActions
+                    order={detailOrder}
+                    updating={updatingId === detailOrder.id}
+                    onStatus={(s) => handleStatusChange(detailOrder.id, s)}
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <p className="text-xs text-muted-foreground">Atau pilih status:</p>
+                  <Select
+                    value={detailOrder.status}
+                    onValueChange={(v) => handleStatusChange(detailOrder.id, v)}
+                    disabled={updatingId === detailOrder.id}
+                  >
+                    <SelectTrigger className="h-8 w-40 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {STATUS_OPTIONS.map((s) => (
+                        <SelectItem key={s} value={s} className="text-xs">{s}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Info Customer */}
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Informasi Customer</p>
+                <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+                  <div className="flex items-start gap-2">
+                    <User className="w-3.5 h-3.5 text-muted-foreground mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">Customer</p>
+                      <p className="font-medium">{detailOrder.customerName}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <Mail className="w-3.5 h-3.5 text-muted-foreground mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">Email</p>
+                      <p className="break-all">{detailOrder.email}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <Phone className="w-3.5 h-3.5 text-muted-foreground mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">WhatsApp</p>
+                      <p>{detailOrder.phone}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <Clock className="w-3.5 h-3.5 text-muted-foreground mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">Tanggal Order</p>
+                      <p>{formatTanggal(detailOrder.createdAt)}</p>
+                    </div>
+                  </div>
+                  <div className="col-span-2 flex items-start gap-2">
+                    <MapPin className="w-3.5 h-3.5 text-muted-foreground mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">Alamat Pengiriman</p>
+                      <p>{detailOrder.shippingAddress}</p>
+                    </div>
+                  </div>
+                  {detailOrder.notes && (
+                    <div className="col-span-2 flex items-start gap-2">
+                      <StickyNote className="w-3.5 h-3.5 text-muted-foreground mt-0.5 shrink-0" />
+                      <div>
+                        <p className="text-[10px] text-muted-foreground">Catatan</p>
+                        <p className="text-muted-foreground italic">{detailOrder.notes}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <Separator />
 
               {/* Item Table */}
               <div>
-                <p className="font-semibold mb-2">Item Pesanan</p>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Item Pesanan</p>
                 {detail?.items ? (
-                  <div className="border rounded-lg overflow-hidden">
-                    <table className="w-full text-xs">
-                      <thead className="bg-muted">
-                        <tr>
-                          <th className="text-left px-3 py-2">Produk (dari Portal)</th>
-                          <th className="text-left px-3 py-2 w-48">Master Item</th>
-                          <th className="text-center px-3 py-2 w-16">Qty</th>
-                          <th className="text-right px-3 py-2 w-28">Harga</th>
-                          <th className="text-right px-3 py-2 w-28">Subtotal</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {detail.items.map((item) => (
-                          <tr key={item.id} className="border-t align-top">
-                            <td className="px-3 py-2">
-                              <p className="font-medium">{item.productName}</p>
-                              {item.productSku && <p className="text-muted-foreground">{item.productSku}</p>}
-                            </td>
-                            <td className="px-3 py-2">
-                              <Select
-                                value={item.productId?.toString() ?? ""}
-                                onValueChange={(v) => handleLinkItem(item.id, parseInt(v, 10))}
-                                disabled={linkingItemId === item.id}
-                              >
-                                <SelectTrigger className="h-7 text-xs w-full">
-                                  <SelectValue placeholder="Pilih master item..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {masterProducts.map((p) => (
-                                    <SelectItem key={p.id} value={p.id.toString()} className="text-xs">
-                                      {p.name} {p.sku ? `(${p.sku})` : ""}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                              {item.productId && (
-                                <p className="text-[10px] text-green-600 mt-0.5">✓ Terhubung ke master</p>
-                              )}
-                              {!item.productId && (
-                                <p className="text-[10px] text-amber-500 mt-0.5">⚠ Belum terhubung</p>
-                              )}
-                            </td>
-                            <td className="px-3 py-2 text-center">{item.qty} {item.unit ?? "pcs"}</td>
-                            <td className="px-3 py-2 text-right">{idr(item.unitPrice)}</td>
-                            <td className="px-3 py-2 text-right font-semibold">{idr(item.subtotal)}</td>
+                  detail.items.length === 0 ? (
+                    <p className="text-muted-foreground text-xs py-3">Tidak ada item</p>
+                  ) : (
+                    <div className="border rounded-lg overflow-hidden">
+                      <table className="w-full text-xs">
+                        <thead className="bg-muted">
+                          <tr>
+                            <th className="text-left px-3 py-2">Produk (dari Portal)</th>
+                            <th className="text-left px-3 py-2 w-44">Link Master Item</th>
+                            <th className="text-center px-3 py-2 w-16">Qty</th>
+                            <th className="text-right px-3 py-2 w-24">Harga</th>
+                            <th className="text-right px-3 py-2 w-24">Subtotal</th>
                           </tr>
-                        ))}
-                      </tbody>
-                      <tfoot className="bg-muted/50">
-                        <tr>
-                          <td colSpan={4} className="px-3 py-2 text-right font-bold">Total</td>
-                          <td className="px-3 py-2 text-right font-bold text-primary">{idr(detailOrder.grandTotal)}</td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
+                        </thead>
+                        <tbody>
+                          {detail.items.map((item) => (
+                            <tr key={item.id} className="border-t align-top">
+                              <td className="px-3 py-2">
+                                <p className="font-medium">{item.productName}</p>
+                                {item.productSku && <p className="text-muted-foreground">{item.productSku}</p>}
+                              </td>
+                              <td className="px-3 py-2">
+                                <Select
+                                  value={item.productId?.toString() ?? ""}
+                                  onValueChange={(v) => handleLinkItem(item.id, parseInt(v, 10))}
+                                  disabled={linkingItemId === item.id}
+                                >
+                                  <SelectTrigger className="h-7 text-xs w-full">
+                                    <SelectValue placeholder="Pilih master..." />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {masterProducts.map((p) => (
+                                      <SelectItem key={p.id} value={p.id.toString()} className="text-xs">
+                                        {p.name} {p.sku ? `(${p.sku})` : ""}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                {item.productId
+                                  ? <p className="text-[10px] text-green-600 mt-0.5">✓ Terhubung ke master</p>
+                                  : <p className="text-[10px] text-amber-500 mt-0.5 flex items-center gap-0.5"><AlertTriangle className="w-2.5 h-2.5" /> Belum terhubung</p>
+                                }
+                              </td>
+                              <td className="px-3 py-2 text-center">{item.qty} {item.unit ?? "pcs"}</td>
+                              <td className="px-3 py-2 text-right">{idr(item.unitPrice)}</td>
+                              <td className="px-3 py-2 text-right font-semibold">{idr(item.subtotal)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot className="bg-muted/50">
+                          <tr>
+                            <td colSpan={4} className="px-3 py-2 text-right font-bold">Grand Total</td>
+                            <td className="px-3 py-2 text-right font-bold text-primary">{idr(detailOrder.grandTotal)}</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  )
                 ) : (
-                  <div className="text-muted-foreground text-xs py-4 text-center">Memuat detail...</div>
+                  <div className="text-muted-foreground text-xs py-4 text-center flex items-center justify-center gap-2">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Memuat detail...
+                  </div>
                 )}
               </div>
-            </div>
 
-            <DialogFooter className="flex-col sm:flex-row gap-2">
-              <Select
-                value={detailOrder.status}
-                onValueChange={(v) => handleStatusChange(detailOrder.id, v)}
-                disabled={updatingId === detailOrder.id}
-              >
-                <SelectTrigger className="w-48">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {STATUS_OPTIONS.map((s) => (
-                    <SelectItem key={s} value={s}>{s}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => { handleDelete(detailOrder.id); }}
-              >
-                <Trash2 className="h-4 w-4 mr-1.5" />
-                Hapus Pesanan
-              </Button>
-              <Button variant="outline" onClick={() => setDetailOrderId(null)}>Tutup</Button>
-            </DialogFooter>
+              {/* Danger zone */}
+              <Separator />
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-muted-foreground">Pesanan {detailOrder.orderNumber}</p>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive hover:text-destructive hover:bg-destructive/10 gap-1.5"
+                  onClick={() => handleDelete(detailOrder.id)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Hapus Pesanan
+                </Button>
+              </div>
+            </div>
           </DialogContent>
         </Dialog>
       )}
