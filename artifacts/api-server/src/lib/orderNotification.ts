@@ -98,9 +98,10 @@ export function deriveServiceType(shipmentType: string, orderType?: string): str
 }
 
 /** Resolve {{#if serviceTypeKey}}...{{/if}} conditional blocks */
-export function resolveCondBlocks(body: string, serviceType: string): string {
+export function resolveCondBlocks(body: string, serviceType: string | string[]): string {
+  const types = Array.isArray(serviceType) ? serviceType : [serviceType];
   return body.replace(/\{\{#if\s+(\w+)\}\}([\s\S]*?)\{\{\/if\}\}/g, (_m, cond, content: string) =>
-    serviceType && cond === serviceType ? content : ""
+    types.some(t => t && cond === t) ? content : ""
   );
 }
 
@@ -113,7 +114,7 @@ export function resolveCondBlocks(body: string, serviceType: string): string {
 export function renderTemplate(
   template: string,
   vars: Record<string, string | null | undefined>,
-  serviceType = "",
+  serviceType: string | string[] = "",
 ): string {
   const resolved = resolveCondBlocks(template, serviceType);
   const lines = resolved.split("\n");
@@ -870,7 +871,11 @@ function renderWf(
   extras: Record<string, string | null | undefined> = {},
 ): string {
   const svcType = deriveServiceType(order.shipmentType, order.orderType);
-  return renderTemplate(tplBody, buildOrderVars(order, extras), svcType);
+  const conditions: string[] = svcType ? [svcType] : [];
+  if (order.orderItems?.length && !conditions.includes("product")) {
+    conditions.push("product");
+  }
+  return renderTemplate(tplBody, buildOrderVars(order, extras), conditions);
 }
 
 // ── Vendor Request (kirim mini form link ke vendor untuk pengisian penawaran) ──
