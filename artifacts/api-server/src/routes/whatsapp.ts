@@ -5,8 +5,23 @@ import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa } from "../lib/adminWa.js";
 import { logger } from "../lib/logger.js";
 import { normalizePhone } from "../lib/phoneUtils.js";
+import { getWaTemplateConfig, renderTemplate } from "../lib/orderNotification.js";
 
 export const whatsappRouter = Router();
+
+const DEFAULT_MANUAL_QUOTE_TPL =
+  `Halo {{customerName}},\n\n` +
+  `Berikut quotation layanan CST Logistics:\n\n` +
+  `No. RFQ       : {{rfqId}}\n` +
+  `Layanan       : {{serviceType}}\n` +
+  `Rute          : {{route}}\n` +
+  `Estimasi Pickup   : {{pickupDate}}\n` +
+  `Estimasi Delivery : {{deliveryDate}}\n` +
+  `Harga Final   : {{finalPrice}}\n` +
+  `Status        : {{status}}\n` +
+  `\nCatatan:\n{{notes}}\n` +
+  `\nSilakan konfirmasi apabila quotation ini disetujui.\n\n` +
+  `Terima kasih,\nCST Logistics`;
 
 function calcFinalPrice(vendorPrice: number, markupType: string, markupValue: number): number {
   if (markupType === "percentage") {
@@ -15,7 +30,7 @@ function calcFinalPrice(vendorPrice: number, markupType: string, markupValue: nu
   return vendorPrice + markupValue;
 }
 
-function buildCustomerMessage(data: {
+async function buildCustomerMessage(data: {
   customerName: string;
   rfqId: string;
   serviceType: string;
@@ -25,22 +40,20 @@ function buildCustomerMessage(data: {
   finalPrice: number;
   status: string;
   notes: string;
-}): string {
+}): Promise<string> {
   const fmt = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
-  return (
-    `Halo ${data.customerName},\n\n` +
-    `Berikut quotation layanan CST Logistics:\n\n` +
-    `No. RFQ       : ${data.rfqId || "-"}\n` +
-    `Layanan       : ${data.serviceType || "-"}\n` +
-    `Rute          : ${data.route || "-"}\n` +
-    (data.pickupDate ? `Estimasi Pickup   : ${data.pickupDate}\n` : "") +
-    (data.deliveryDate ? `Estimasi Delivery : ${data.deliveryDate}\n` : "") +
-    `Harga Final   : ${fmt(data.finalPrice)}\n` +
-    `Status        : ${data.status}\n` +
-    (data.notes ? `\nCatatan:\n${data.notes}\n` : "") +
-    `\nSilakan konfirmasi apabila quotation ini disetujui.\n\n` +
-    `Terima kasih,\nCST Logistics`
-  );
+  const tplBody = await getWaTemplateConfig("customer", "manual_quote", DEFAULT_MANUAL_QUOTE_TPL);
+  return renderTemplate(tplBody, {
+    customerName: data.customerName || "-",
+    rfqId: data.rfqId || "-",
+    serviceType: data.serviceType || "-",
+    route: data.route || "-",
+    pickupDate: data.pickupDate || null,
+    deliveryDate: data.deliveryDate || null,
+    finalPrice: fmt(data.finalPrice),
+    status: data.status || "Ready",
+    notes: data.notes || null,
+  }, data.serviceType);
 }
 
 // POST /api/whatsapp/send-quotation
@@ -64,7 +77,7 @@ whatsappRouter.post("/send-quotation", async (req: Request, res: Response) => {
     return res.status(400).json({ message: "finalPrice tidak valid" });
   }
 
-  const messageBody = buildCustomerMessage({
+  const messageBody = await buildCustomerMessage({
     customerName: String(customerName),
     rfqId: rfqId ? String(rfqId) : "",
     serviceType: serviceType ? String(serviceType) : "",
