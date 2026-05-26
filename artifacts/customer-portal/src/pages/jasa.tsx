@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -57,9 +58,18 @@ export default function Jasa() {
   const { t, locale } = useLanguage();
   const [activeCategory, setActiveCategory] = useState<string>("__all__");
   const [failedImages, setFailedImages] = useState<Set<number>>(new Set());
+  const qc = useQueryClient();
+
+  useEffect(() => {
+    const es = new EventSource("/api/ecommerce/events");
+    es.addEventListener("price_sync", () => {
+      qc.invalidateQueries({ queryKey: ["listPortalServicesJasa"] });
+    });
+    return () => es.close();
+  }, [qc]);
 
   const { data: servicesRaw, isLoading } = useListPortalServices({
-    query: { queryKey: ["listPortalServicesJasa"] },
+    query: { queryKey: ["listPortalServicesJasa"], staleTime: 0, gcTime: 0, refetchOnWindowFocus: true },
   });
 
   const services = Array.isArray(servicesRaw) ? servicesRaw : [];

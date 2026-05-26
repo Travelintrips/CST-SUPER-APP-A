@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { getAdminWa, setAdminWa, getAdminGroupWa, setAdminGroupWa } from "../lib/adminWa.js";
 import { db, portalContentTable } from "@workspace/db";
+import { broadcastToPortal } from "../lib/sseManager.js";
 import { shortLinksTable, waTemplateConfigsTable, notificationLogsTable } from "@workspace/db/schema";
 import { eq, desc, ilike, or, sql, and } from "drizzle-orm";
 import { getAiIntakeSettings, saveAiIntakeSettings, type VendorFilterMode } from "../lib/aiOrderIntake.js";
@@ -66,6 +67,7 @@ router.put("/calculator-rates", async (req: Request, res: Response) => {
       target: portalContentTable.key,
       set: { value: JSON.stringify(rates), updatedAt: new Date() },
     });
+  broadcastToPortal("price_sync", { ts: Date.now() });
   return res.json({ ok: true });
 });
 

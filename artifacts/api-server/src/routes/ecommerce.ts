@@ -305,6 +305,7 @@ router.post("/products/bulk-import", async (req, res) => {
     }
   }
 
+  broadcastToPortal("price_sync", { ts: Date.now() });
   return res.json({ results });
 });
 
@@ -380,6 +381,7 @@ router.put("/products/:id", async (req, res) => {
   });
 
   if (!product) return res.status(404).json({ message: "Product not found" });
+  broadcastToPortal("price_sync", { ts: Date.now() });
   return res.json(serializeProduct(product, categoryNames));
 });
 
