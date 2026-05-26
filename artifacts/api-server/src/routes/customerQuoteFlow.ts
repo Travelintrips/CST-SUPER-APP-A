@@ -117,13 +117,20 @@ customerQuoteAdminRouter.post("/rfq/:rfqId/send-customer-quote", async (req: Req
         `Harga: {{sellingPrice}}\nETA: {{etaFinal}}\nValid s/d: {{validUntil}}\n\n` +
         `Silakan review dan konfirmasi:\n{{customerApprovalLink}}`;
       const tplBody = await getWaTemplateConfig("customer", "customer_approval", defaultTpl);
-      const svcType = deriveServiceType(order.shipmentType ?? "");
+      const svcType = deriveServiceType(order.shipmentType ?? "", (order as any).orderType ?? undefined);
+      const origin = order.origin || null;
+      const destination = order.destination || null;
       const waMsg = renderTemplate(tplBody, {
         customerName: order.customerName ?? "Customer",
         rfqNumber: rfq.rfqNumber,
         orderNumber: order.orderNumber,
-        shipmentType: order.shipmentType,
-        route: `${order.origin} → ${order.destination}`,
+        shipmentType: order.shipmentType || null,
+        serviceType: svcType || null,
+        origin,
+        destination,
+        commodity: order.commodity ?? null,
+        cargoDescription: order.cargoDescription ?? null,
+        route: (origin && destination) ? `${origin} → ${destination}` : (origin || destination || null),
         sellingPrice: fmtRp(customerPrice),
         etaFinal: etaFinal ?? null,
         validUntil: validUntil.toLocaleDateString("id-ID"),
@@ -405,20 +412,25 @@ customerQuotePublicRouter.get("/:token", async (req: Request, res: Response) => 
     const isExpired = link.validUntil && link.validUntil < new Date();
     const isResponded = ["approved", "revision_requested", "rejected"].includes(link.status);
 
+    const [rfqRow] = link.rfqId
+      ? await db.select().from(logisticOrderRfqsTable).where(eq(logisticOrderRfqsTable.id, link.rfqId))
+      : [null];
+
     return res.json({
       token,
       status: link.status,
       isExpired,
       isResponded,
-      rfqNumber: order.orderNumber,
-      serviceType: order.shipmentType,
-      origin: order.origin,
-      destination: order.destination,
+      rfqNumber: rfqRow?.rfqNumber ?? order.orderNumber,
+      quotationNumber: (order as any).quotationNumber ?? null,
+      serviceType: order.shipmentType || null,
+      origin: order.origin || null,
+      destination: order.destination || null,
       cargoDetail: [
         order.commodity, order.cargoDescription,
         order.grossWeight ? `${order.grossWeight} kg` : null,
         order.volumeCbm ? `${order.volumeCbm} cbm` : null,
-      ].filter(Boolean).join(" · ") || "—",
+      ].filter(Boolean).join(" · ") || null,
       finalCustomerPrice: link.finalCustomerPrice ? Number(link.finalCustomerPrice) : null,
       etaFinal: link.etaFinal,
       termsConditions: link.termsConditions,
