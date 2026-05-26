@@ -151,7 +151,12 @@ function buildOrderVars(
 
   const productList: string | null = (() => {
     if (order.orderItems?.length) {
-      return order.orderItems.map(i => `• ${i.name}`).join("\n");
+      return order.orderItems.map(i => {
+        const price = (i.subtotal != null && i.subtotal > 0)
+          ? ` — Rp ${i.subtotal.toLocaleString("id-ID")}`
+          : "";
+        return `• ${i.name}${price}`;
+      }).join("\n");
     }
     if (isProduct && order.serviceList) {
       return order.serviceList;
