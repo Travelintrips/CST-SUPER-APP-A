@@ -411,6 +411,30 @@ const DEFAULT_TPL = {
     customs_update: ["🏛️ *UPDATE KEPABEANAN — {{orderNumber}}*","━━━━━━━━━━━━━━━━━━","Halo *{{customerName}}*,","","Update status kepabeanan order *{{orderNumber}}*:","","{{#if ppjk}}","📋 No. Aju: {{ajuNumber}}","📄 BC Type: {{bcType}}","✅ SPPB: {{sppbNumber}}","{{/if}}","","Terima kasih 🙏"].join("\n"),
     delivery_completed: ["🏁 *PENGIRIMAN SELESAI — {{orderNumber}}*","━━━━━━━━━━━━━━━━━━","Halo *{{customerName}}*,","","Pengiriman order *{{orderNumber}}* telah selesai! ✅","Rute: {{route}}","","Terima kasih telah menggunakan CST Logistics!","","📞 Feedback: (021) 6241234","_Dikirim: {{timestamp}}_"].join("\n"),
   },
+  product_order_status: {
+    admin_personal: [
+      "🔔 *[UPDATE STATUS PRODUK]*",
+      "No. Order : {{orderNumber}}",
+      "Customer  : {{customerName}}",
+      "HP        : {{phone}}",
+      "Status    : *{{statusLabel}}*",
+      "_{{timestamp}}_",
+    ].join("\n"),
+    admin_group: [
+      "🔔 *[STATUS ORDER PRODUK DIPERBARUI]*",
+      "No. Order : {{orderNumber}} | Customer: {{customerName}}",
+      "Status    : *{{statusLabel}}*",
+      "_{{timestamp}}_",
+    ].join("\n"),
+    customer: [
+      "📦 *Update Status Pesanan Anda*",
+      "No. Order: {{orderNumber}}",
+      "Customer: {{customerName}}",
+      "Status: *{{statusLabel}}*",
+      "",
+      "Terima kasih telah berbelanja di CST Logistics. Hubungi kami jika ada pertanyaan. 🙏",
+    ].join("\n"),
+  },
   product_order: {
     admin_personal: [
       "🛒 *PESANAN PRODUK BARU*",
@@ -1041,6 +1065,47 @@ export interface ProductOrderData {
   items: ProductOrderItem[];
   orderUrl?: string;
   vendorFormUrl?: string;
+}
+
+export interface ProductOrderStatusData {
+  orderNumber: string;
+  customerName: string;
+  phone?: string | null;
+  statusLabel: string;
+}
+
+export async function sendProductOrderStatusUpdateWa(order: ProductOrderStatusData): Promise<void> {
+  const vars: Record<string, string | null | undefined> = {
+    orderNumber: order.orderNumber,
+    customerName: order.customerName,
+    phone: order.phone ?? null,
+    statusLabel: order.statusLabel,
+    timestamp: nowWIB(),
+  };
+
+  const [tplAdminPersonal, tplAdminGroup, tplCustomer, adminWa, adminGroupWa] = await Promise.all([
+    getWaTemplateConfig("admin_personal", "product_order_status_update", DEFAULT_TPL.product_order_status.admin_personal),
+    getWaTemplateConfig("admin_group", "product_order_status_update", DEFAULT_TPL.product_order_status.admin_group),
+    getWaTemplateConfig("customer", "product_order_status_update", DEFAULT_TPL.product_order_status.customer),
+    getAdminWa(),
+    getAdminGroupWa(),
+  ]);
+
+  if (adminWa) {
+    sendWhatsApp(adminWa, renderTemplate(tplAdminPersonal, vars)).catch((err: unknown) =>
+      logger.error({ err }, "WA product_order_status_update (admin) failed"),
+    );
+  }
+  if (adminGroupWa) {
+    sendWhatsApp(adminGroupWa, renderTemplate(tplAdminGroup, vars)).catch((err: unknown) =>
+      logger.error({ err }, "WA product_order_status_update (admin_group) failed"),
+    );
+  }
+  if (order.phone) {
+    sendWhatsApp(order.phone, renderTemplate(tplCustomer, vars)).catch((err: unknown) =>
+      logger.error({ err }, "WA product_order_status_update (customer) failed"),
+    );
+  }
 }
 
 export async function sendProductOrderWaNotification(order: ProductOrderData): Promise<void> {

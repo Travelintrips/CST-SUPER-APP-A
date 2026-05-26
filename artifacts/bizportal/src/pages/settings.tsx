@@ -835,7 +835,8 @@ type RecipientKey = "admin_personal" | "admin_group" | "customer" | "vendor";
 type WorkflowKey =
   | "order_new" | "vendor_request" | "vendor_submission" | "vendor_revision"
   | "customer_approval" | "customer_approved" | "so_created" | "op_request"
-  | "driver_assigned" | "shipment_update" | "customs_update" | "delivery_completed";
+  | "driver_assigned" | "shipment_update" | "customs_update" | "delivery_completed"
+  | "product_order_new" | "product_order_status_update";
 type ServiceTypeSim = "trucking" | "freight_sea" | "freight_air" | "ppjk" | "product" | "handling" | "";
 
 const RECIPIENT_META: Record<RecipientKey, { label: string; icon: string }> = {
@@ -857,11 +858,13 @@ const WORKFLOW_META: Record<WorkflowKey, { label: string; icon: string; desc: st
   driver_assigned:    { label: "Driver Ditugaskan",   icon: "🚚", desc: "Notifikasi customer saat driver ditugaskan" },
   shipment_update:    { label: "Update Shipment",     icon: "🚢", desc: "Update status pengiriman ke customer" },
   customs_update:     { label: "Update Kepabeanan",   icon: "🏛️", desc: "Update status bea cukai ke customer" },
-  delivery_completed: { label: "Pengiriman Selesai",  icon: "🏁", desc: "Notifikasi penyelesaian pengiriman" },
+  delivery_completed:         { label: "Pengiriman Selesai",      icon: "🏁", desc: "Notifikasi penyelesaian pengiriman" },
+  product_order_new:          { label: "Pesanan Produk Baru",     icon: "🛒", desc: "Notifikasi saat order produk baru masuk dari customer portal" },
+  product_order_status_update:{ label: "Update Status Produk",    icon: "📦", desc: "Notifikasi saat admin mengubah status order produk" },
 };
 
 const VAR_GROUPS: Array<{ label: string; color: string; vars: string[] }> = [
-  { label: "Dasar",    color: "bg-slate-100 text-slate-700 border-slate-300",   vars: ["orderNumber","tanggal","jam","timestamp"] },
+  { label: "Dasar",    color: "bg-slate-100 text-slate-700 border-slate-300",   vars: ["orderNumber","tanggal","jam","timestamp","statusLabel"] },
   { label: "Order",    color: "bg-blue-50 text-blue-700 border-blue-200",       vars: ["serviceType","shipmentType","route","commodity","cargoDescription","grossWeightDisplay","volumeDisplay","jumlahKoliDisplay","requiredDate","totalEst","serviceList","notes"] },
   { label: "Customer", color: "bg-green-50 text-green-700 border-green-200",    vars: ["customerName","customerDisplay","customerPhone","email","phone"] },
   { label: "Vendor",   color: "bg-purple-50 text-purple-700 border-purple-200", vars: ["vendorName","vendorPhone"] },
@@ -871,6 +874,7 @@ const VAR_GROUPS: Array<{ label: string; color: string; vars: string[] }> = [
   { label: "🚢 Sea",   color: "bg-cyan-50 text-cyan-700 border-cyan-200",       vars: ["vessel","voyage","containerNumber","blNumber"] },
   { label: "✈️ Air",   color: "bg-sky-50 text-sky-700 border-sky-200",          vars: ["airline","awbNumber","flightNumber"] },
   { label: "🏛️ PPJ",  color: "bg-rose-50 text-rose-700 border-rose-200",       vars: ["ajuNumber","bcType","sppbNumber"] },
+  { label: "🛒 Prd",  color: "bg-teal-50 text-teal-700 border-teal-200",       vars: ["itemList","grandTotal","shippingAddress","orderUrl","vendorFormUrl","statusLabel"] },
 ];
 
 const COND_BLOCKS = [
@@ -906,7 +910,13 @@ const SAMPLE_DATA: Record<string, Record<string, string>> = {
   freight_sea: { serviceType: "Sea Freight", shipmentType: "Import",   route: "Shanghai → Jakarta", vessel: "MV Ever Given", voyage: "V.025E", containerNumber: "MSCU1234567", blNumber: "MSCUA123456" },
   freight_air: { serviceType: "Air Freight", shipmentType: "Export",   route: "Jakarta → Singapore", airline: "Garuda Indonesia", awbNumber: "126-12345678", flightNumber: "GA-888" },
   ppjk:        { serviceType: "PPJK",        shipmentType: "Import",   ajuNumber: "090100-2025-000123", bcType: "BC 2.0", sppbNumber: "SPPB-2025-000456" },
-  product:     { serviceType: "Product",     shipmentType: "Domestik" },
+  product:     { serviceType: "Product",     shipmentType: "Domestik",
+    itemList: "- Baju Kaos (2 pcs) @ Rp 150.000\n- Celana Panjang (1 pcs) @ Rp 250.000",
+    grandTotal: "550.000", shippingAddress: "Jl. Merdeka No. 10, Jakarta Pusat",
+    orderUrl: "https://cst.app/bizportal/product-orders/123",
+    vendorFormUrl: "https://cst.app/vendor-form/product/123",
+    statusLabel: "Sedang Diproses",
+  },
 };
 
 function renderWaPreview(body: string, svcType: ServiceTypeSim): string {
@@ -1022,6 +1032,18 @@ const DEFAULT_BODY: Partial<Record<RecipientKey, Partial<Record<WorkflowKey, str
       "🏁 *PENGIRIMAN SELESAI — {{orderNumber}}*","",
       "Order *{{orderNumber}}* telah selesai.","Customer : {{customerName}}","Rute     : {{route}}","","_{{timestamp}}_",
     ].join("\n"),
+    product_order_new: [
+      "🛒 *PESANAN PRODUK BARU*","━━━━━━━━━━━━━━━━━━",
+      "No. Order   : `{{orderNumber}}`","Customer    : {{customerName}}","Email       : {{email}}","HP          : {{phone}}",
+      "Alamat      : {{shippingAddress}}","Produk      :","{{itemList}}","Total       : Rp {{grandTotal}}","Catatan     : {{notes}}",
+      "━━━━━━━━━━━━━━━━━━","🔗 Lihat di BizPortal:","{{orderUrl}}","","📋 *Form vendor (forward ke vendor):*","{{vendorFormUrl}}","",
+      "_Dikirim: {{timestamp}}_",
+    ].join("\n"),
+    product_order_status_update: [
+      "🔔 *[UPDATE STATUS PRODUK]*",
+      "No. Order : {{orderNumber}}","Customer  : {{customerName}}","HP        : {{phone}}","Status    : *{{statusLabel}}*",
+      "_{{timestamp}}_",
+    ].join("\n"),
   },
   admin_group: {
     order_new: [
@@ -1054,6 +1076,16 @@ const DEFAULT_BODY: Partial<Record<RecipientKey, Partial<Record<WorkflowKey, str
       "{{#if ppjk}}","Aju: {{ajuNumber}} | SPPB: {{sppbNumber}}","{{/if}}","_{{timestamp}}_",
     ].join("\n"),
     delivery_completed: ["🏁 *PENGIRIMAN SELESAI — {{orderNumber}}*","Customer: {{customerName}} | Rute: {{route}}","_{{timestamp}}_"].join("\n"),
+    product_order_new: [
+      "🛒 *[PESANAN PRODUK] {{orderNumber}}*","━━━━━━━━━━━━━━━━━━",
+      "👤 Customer : *{{customerName}}*","📞 HP       : {{phone}}","📧 Email    : {{email}}",
+      "📦 Produk   :","{{itemList}}","💰 Total    : *Rp {{grandTotal}}*","Catatan     : {{notes}}",
+      "━━━━━━━━━━━━━━━━━━","📋 Form vendor → {{vendorFormUrl}}","","_Dikirim: {{timestamp}}_",
+    ].join("\n"),
+    product_order_status_update: [
+      "🔔 *[STATUS ORDER PRODUK DIPERBARUI]*",
+      "No. Order : {{orderNumber}} | Customer: {{customerName}}","Status    : *{{statusLabel}}*","_{{timestamp}}_",
+    ].join("\n"),
   },
   customer: {
     order_new: [
@@ -1081,6 +1113,15 @@ const DEFAULT_BODY: Partial<Record<RecipientKey, Partial<Record<WorkflowKey, str
     shipment_update: ["📦 *UPDATE PENGIRIMAN — {{orderNumber}}*","━━━━━━━━━━━━━━━━━━","Halo *{{customerName}}*,","","Update status pengiriman order *{{orderNumber}}*:","Rute: {{route}}","","{{#if freight_sea}}","🚢 Kapal: {{vessel}} / Voyage: {{voyage}}","📦 Container: {{containerNumber}}","📃 BL No: {{blNumber}}","{{/if}}","","{{#if freight_air}}","✈️ Airline: {{airline}}","📋 AWB: {{awbNumber}}","🛫 Flight: {{flightNumber}}","{{/if}}","","Terima kasih 🙏","_Dikirim: {{timestamp}}_"].join("\n"),
     customs_update: ["🏛️ *UPDATE KEPABEANAN — {{orderNumber}}*","━━━━━━━━━━━━━━━━━━","Halo *{{customerName}}*,","","Update status kepabeanan order *{{orderNumber}}*:","","{{#if ppjk}}","📋 No. Aju: {{ajuNumber}}","📄 BC Type: {{bcType}}","✅ SPPB: {{sppbNumber}}","{{/if}}","","Terima kasih 🙏"].join("\n"),
     delivery_completed: ["🏁 *PENGIRIMAN SELESAI — {{orderNumber}}*","━━━━━━━━━━━━━━━━━━","Halo *{{customerName}}*,","","Pengiriman order *{{orderNumber}}* telah selesai! ✅","Rute: {{route}}","","Terima kasih telah menggunakan CST Logistics!","Kami harap pelayanan kami memuaskan.","","📞 Feedback: (021) 6241234","_Dikirim: {{timestamp}}_"].join("\n"),
+    product_order_new: [
+      "✅ *Pesanan Anda Berhasil Diterima!*","No. Order: *{{orderNumber}}*","",
+      "{{itemList}}","","Total: Rp {{grandTotal}}","",
+      "Tim kami akan segera menghubungi Anda untuk konfirmasi. Terima kasih! 🙏",
+    ].join("\n"),
+    product_order_status_update: [
+      "📦 *Update Status Pesanan Anda*","No. Order: {{orderNumber}}","Customer: {{customerName}}","Status: *{{statusLabel}}*","",
+      "Terima kasih telah berbelanja di CST Logistics. Hubungi kami jika ada pertanyaan. 🙏",
+    ].join("\n"),
   },
   vendor: {
     order_new: [

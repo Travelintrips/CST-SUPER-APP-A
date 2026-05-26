@@ -8,7 +8,7 @@ import {
 import { eq, ilike, and, or, sql } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { getPreferredDomain } from "../lib/domain";
-import { sendProductOrderWaNotification } from "../lib/orderNotification";
+import { sendProductOrderWaNotification, sendProductOrderStatusUpdateWa } from "../lib/orderNotification";
 import { sendMail, isSmtpConfigured } from "../lib/mailer";
 import { logger } from "../lib/logger";
 import { saveAndBroadcast } from "../lib/notificationStore";
@@ -328,28 +328,12 @@ portalProductOrdersRouter.put("/orders/:id/status", async (req: Request, res: Re
   };
   const label = statusLabels[status.trim()] ?? status.trim();
 
-  // Notif WA ke customer
-  if (updated.phone) {
-    const custMsg =
-      `📦 *Update Status Pesanan Anda*\n` +
-      `No. Order: ${updated.orderNumber}\n` +
-      `Customer: ${updated.customerName}\n` +
-      `Status: *${label}*\n\n` +
-      `Terima kasih telah berbelanja di CST Logistics. Hubungi kami jika ada pertanyaan. 🙏`;
-    sendWhatsApp(updated.phone, custMsg).catch(() => undefined);
-  }
-
-  // Notif WA ke admin
-  getAdminWa().then((adminWa) => {
-    if (!adminWa) return;
-    const adminMsg =
-      `🔔 *Status Order Produk Diperbarui*\n` +
-      `No. Order : ${updated.orderNumber}\n` +
-      `Customer  : ${updated.customerName}\n` +
-      `HP        : ${updated.phone}\n` +
-      `Status    : *${label}*`;
-    return sendWhatsApp(adminWa, adminMsg);
-  }).catch(() => undefined);
+  sendProductOrderStatusUpdateWa({
+    orderNumber: updated.orderNumber,
+    customerName: updated.customerName,
+    phone: updated.phone ?? null,
+    statusLabel: label,
+  }).catch((err: unknown) => logger.error({ err }, "WA product status update failed"));
 
   return res.json(toOrder(updated));
 });
