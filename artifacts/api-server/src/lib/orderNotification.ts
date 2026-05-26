@@ -552,8 +552,6 @@ const DEFAULT_TPL = {
       "",
       "{{vendorListWithHeader}}",
       "{{waitingListWithHeader}}",
-      "🔗 Bandingkan & pilih vendor:",
-      "{{compareLink}}",
       "_{{timestamp}}_",
     ].join("\n"),
     customer_rejection: [

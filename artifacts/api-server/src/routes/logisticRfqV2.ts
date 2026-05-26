@@ -674,13 +674,13 @@ logisticRfqV2Router.post("/vendor-form/:token", async (req: Request, res: Respon
   db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, rfq.orderId)).limit(1)
     .then(([orderRow]) => {
       if (!orderRow) return;
-      const finalPrice = action === "accept"
-        ? (link.basicPrice ? Number(link.basicPrice) : 0)
-        : (offeredPrice ? Number(offeredPrice) : 0);
+      const priceNum = action === "accept"
+        ? (link.basicPrice ? Number(link.basicPrice) : null)
+        : (offeredPrice ? Number(offeredPrice) : null);
       sendVendorSubmissionNotification(
         buildOrderData(orderRow),
         vendorName,
-        fmtRp(finalPrice),
+        priceNum != null ? fmtRp(priceNum) : "—",
       ).catch((e: unknown) => logger.error({ e }, "sendVendorSubmissionNotification failed"));
     }).catch(() => {});
 
