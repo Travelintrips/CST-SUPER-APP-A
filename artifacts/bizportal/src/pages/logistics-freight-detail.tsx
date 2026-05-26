@@ -166,11 +166,21 @@ export default function LogisticsFreightDetailPage() {
   const upsertStage = useUpsertShipmentStage();
   // Subset dari ShipmentStageType (@workspace/db) — hanya 4 stage yang ditampilkan di UI ini
   type StageType = "booking" | "trucking" | "handling" | "customs";
+  const { data: stageLabelsData } = useQuery({
+    queryKey: ["freight-stage-labels"],
+    queryFn: async () => {
+      const r = await fetch("/api/settings/freight-stage-labels");
+      if (!r.ok) return { labels: {} as Record<string, string> };
+      return r.json() as Promise<{ labels: Record<string, string> }>;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+  const _sl = stageLabelsData?.labels ?? {};
   const STAGE_DEFS: { type: StageType; label: string }[] = [
-    { type: "booking", label: "Booking" },
-    { type: "trucking", label: "Trucking" },
-    { type: "handling", label: "Handling" },
-    { type: "customs", label: "Customs Clearance" },
+    { type: "booking",  label: _sl.booking  ?? "Booking" },
+    { type: "trucking", label: _sl.trucking ?? "Trucking" },
+    { type: "handling", label: _sl.handling ?? "Handling" },
+    { type: "customs",  label: _sl.customs  ?? "Customs Clearance" },
   ];
   const [stageForms, setStageForms] = useState<Record<StageType, { vendorName: string; date: string; status: string; notes: string }>>({
     booking:  { vendorName: "", date: "", status: "pending", notes: "" },

@@ -504,4 +504,41 @@ router.put("/page-content", async (req: Request, res: Response) => {
   return res.json({ ok: true });
 });
 
+// ── Freight Stage Labels ──────────────────────────────────────────────────────
+const FREIGHT_STAGE_LABELS_KEY = "freight_stage_labels";
+
+export const DEFAULT_FREIGHT_STAGE_LABELS: Record<string, string> = {
+  booking: "Booking",
+  trucking: "Trucking",
+  handling: "Handling",
+  customs: "Customs Clearance",
+};
+
+// GET /api/settings/freight-stage-labels — no auth required (used by authenticated BizPortal pages)
+router.get("/freight-stage-labels", async (_req: Request, res: Response) => {
+  try {
+    const [row] = await db.select().from(portalContentTable).where(eq(portalContentTable.key, FREIGHT_STAGE_LABELS_KEY));
+    const stored: Record<string, string> = row ? JSON.parse(row.value) as Record<string, string> : {};
+    return res.json({ labels: { ...DEFAULT_FREIGHT_STAGE_LABELS, ...stored } });
+  } catch {
+    return res.json({ labels: DEFAULT_FREIGHT_STAGE_LABELS });
+  }
+});
+
+// PUT /api/settings/freight-stage-labels — admin only
+router.put("/freight-stage-labels", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const { labels } = req.body as { labels?: Record<string, string> };
+  if (!labels || typeof labels !== "object") return res.status(400).json({ message: "Invalid payload" });
+  const filtered: Record<string, string> = {};
+  for (const k of Object.keys(DEFAULT_FREIGHT_STAGE_LABELS)) {
+    if (typeof labels[k] === "string" && labels[k].trim()) filtered[k] = labels[k].trim();
+  }
+  await db
+    .insert(portalContentTable)
+    .values({ key: FREIGHT_STAGE_LABELS_KEY, value: JSON.stringify(filtered), updatedAt: new Date() })
+    .onConflictDoUpdate({ target: portalContentTable.key, set: { value: JSON.stringify(filtered), updatedAt: new Date() } });
+  return res.json({ ok: true, labels: { ...DEFAULT_FREIGHT_STAGE_LABELS, ...filtered } });
+});
+
 export default router;

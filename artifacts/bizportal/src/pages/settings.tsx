@@ -830,6 +830,102 @@ function PageContentCard() {
   );
 }
 
+// ── Freight Stage Labels ──────────────────────────────────────────────────────
+
+const DEFAULT_STAGE_LABELS = { booking: "Booking", trucking: "Trucking", handling: "Handling", customs: "Customs Clearance" };
+type StageLabelKey = keyof typeof DEFAULT_STAGE_LABELS;
+
+function FreightStageLabelsCard() {
+  const { toast } = useToast();
+  const [labels, setLabels] = useState({ ...DEFAULT_STAGE_LABELS });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch("/api/settings/freight-stage-labels", { credentials: "include" });
+        if (res.ok) {
+          const data = await res.json() as { labels: typeof DEFAULT_STAGE_LABELS };
+          if (data.labels) setLabels(prev => ({ ...prev, ...data.labels }));
+        }
+      } catch { /* ignore */ }
+      finally { setLoading(false); }
+    })();
+  }, []);
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/settings/freight-stage-labels", {
+        method: "PUT", headers: { "Content-Type": "application/json" }, credentials: "include",
+        body: JSON.stringify({ labels }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      toast({ title: "Label stage tersimpan" });
+    } catch (e) {
+      toast({ title: "Gagal menyimpan", description: String(e), variant: "destructive" });
+    } finally { setSaving(false); }
+  }
+
+  function handleReset() {
+    setLabels({ ...DEFAULT_STAGE_LABELS });
+    toast({ title: "Direset ke default" });
+  }
+
+  const stageMeta: { key: StageLabelKey; desc: string }[] = [
+    { key: "booking",  desc: "Stage pertama — pemesanan ruang/slot pengiriman" },
+    { key: "trucking", desc: "Stage angkutan darat / trucking" },
+    { key: "handling", desc: "Stage handling / bongkar muat di gudang/pelabuhan" },
+    { key: "customs",  desc: "Stage kepabeanan / customs clearance" },
+  ];
+
+  return (
+    <Card className="col-span-1 md:col-span-3 bg-card border-border">
+      <CardHeader>
+        <CardTitle className="text-xl flex items-center gap-2">
+          <Package className="h-5 w-5 text-primary" />
+          Label Stage Operasional Freight
+        </CardTitle>
+        <CardDescription>
+          Ubah nama tampilan tiap tahapan di halaman detail freight shipment. Perubahan berlaku langsung tanpa deploy ulang.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {loading ? (
+          <div className="space-y-3">{[1,2,3,4].map(i => <div key={i} className="h-10 bg-muted rounded animate-pulse" />)}</div>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {stageMeta.map(({ key, desc }) => (
+                <div key={key} className="space-y-1.5">
+                  <Label className="text-sm font-medium capitalize">{key}</Label>
+                  <p className="text-xs text-muted-foreground">{desc}</p>
+                  <Input
+                    value={labels[key]}
+                    onChange={e => setLabels(prev => ({ ...prev, [key]: e.target.value }))}
+                    placeholder={DEFAULT_STAGE_LABELS[key]}
+                    className="bg-background border-border"
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-between items-center pt-2 border-t border-border">
+              <Button variant="ghost" size="sm" onClick={handleReset} className="gap-2 text-muted-foreground">
+                <RotateCcw className="h-4 w-4" /> Reset Default
+              </Button>
+              <Button onClick={handleSave} disabled={saving} size="sm" className="gap-2">
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                Simpan
+              </Button>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ── WA Template Editor (Upgraded GB1) ─────────────────────────────────────────
 type RecipientKey = "admin_personal" | "admin_group" | "customer" | "vendor";
 type WorkflowKey =
@@ -1913,6 +2009,7 @@ export default function SettingsPage() {
           {isAdmin && <CalculatorRatesCard />}
           {isAdmin && <VendorMiniFormCard />}
           {isAdmin && <PageContentCard />}
+          {isAdmin && <FreightStageLabelsCard />}
           {isAdmin && <WaTemplatesCard />}
           {isAdmin && <WaLogsCard />}
 
