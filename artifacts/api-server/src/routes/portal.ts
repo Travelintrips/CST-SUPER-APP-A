@@ -1,4 +1,5 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
+import { rateLimit } from "express-rate-limit";
 import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, portalContentTable, accountingSettingsTable, salesDocumentsTable, salesDocumentLinesTable, customersTable, logisticOrdersTable, suppliersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, quoteRequestsTable, userProfilesTable, identityDocumentsTable, ocrResultsTable, vendorProfilesTable, driverProfilesTable, employeeProfilesTable, onboardingApprovalsTable, waOtpCodesTable, trustedDevicesTable, vendorMiniFormLinksTable, vendorMiniFormSubmissionsTable } from "@workspace/db";
 import { invalidateTokenCache, SERVICE_SCHEMAS } from "./vendorMiniForm";
 import { eq, inArray, and, sql, desc, gte, lte, ilike, or } from "drizzle-orm";
@@ -2105,8 +2106,22 @@ router.get("/onboarding/status", requirePortalAuth, async (req, res): Promise<vo
   });
 });
 
+// Rate limit KTP OCR: max 5 calls per customer per hour (gpt-4o is expensive)
+const _ktpOcrRateLimit = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { ok: false, error: "Terlalu banyak permintaan OCR. Coba lagi dalam 1 jam." },
+  keyGenerator: (req) =>
+    (req as PortalAuthReq).portalCustomerId?.toString() ??
+    (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ??
+    req.socket.remoteAddress ??
+    "unknown",
+});
+
 // POST /api/portal/onboarding/ktp-ocr — upload KTP image → OCR
-router.post("/onboarding/ktp-ocr", requirePortalAuth, onboardingUpload.single("file"), async (req, res): Promise<void> => {
+router.post("/onboarding/ktp-ocr", requirePortalAuth, _ktpOcrRateLimit, onboardingUpload.single("file"), async (req, res): Promise<void> => {
   const customerId = (req as PortalAuthReq).portalCustomerId;
   if (!req.file) { res.status(400).json({ ok: false, error: "File tidak ditemukan." }); return; }
 
