@@ -42,7 +42,7 @@ function ItemCombobox({ value, onChange, disabled }: {
 
   const { data: products = [] } = useQuery<Product[]>({
     queryKey: ["/api/ecommerce/products/search", search],
-    queryFn: () => apiFetch(`/ecommerce/products?search=${encodeURIComponent(search)}&isActive=true`).then(r => r.json()),
+    queryFn: () => apiFetch(`/ecommerce/products?search=${encodeURIComponent(search)}&isActive=true&limit=50`).then(r => r.json()).then((res: { data: Product[] }) => res.data),
     enabled: open,
     staleTime: 10_000,
   });

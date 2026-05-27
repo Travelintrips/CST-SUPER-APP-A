@@ -219,7 +219,13 @@ router.get("/documents", async (req, res) => {
     )!);
   }
   const where = conds.length === 1 ? conds[0] : and(...conds);
-  const rows = await db.select().from(salesDocumentsTable).where(where).orderBy(desc(salesDocumentsTable.createdAt));
+
+  const page = Math.max(1, parseInt(String(req.query["page"] ?? "1"), 10) || 1);
+  const limit = Math.min(500, Math.max(1, parseInt(String(req.query["limit"] ?? "50"), 10) || 50));
+  const offset = (page - 1) * limit;
+
+  const [{ total }] = await db.select({ total: count() }).from(salesDocumentsTable).where(where);
+  const rows = await db.select().from(salesDocumentsTable).where(where).orderBy(desc(salesDocumentsTable.createdAt)).limit(limit).offset(offset);
 
   const customerIds = [...new Set(rows.map((r) => r.customerId).filter((id): id is number => id != null))];
   const customerMap = new Map<number, string | null>();
@@ -228,7 +234,10 @@ router.get("/documents", async (req, res) => {
     for (const c of customers) customerMap.set(c.id, c.address ?? null);
   }
 
-  return res.json(rows.map((r) => ({ ...serializeDoc(r), customerAddress: r.customerId != null ? (customerMap.get(r.customerId) ?? null) : null })));
+  return res.json({
+    data: rows.map((r) => ({ ...serializeDoc(r), customerAddress: r.customerId != null ? (customerMap.get(r.customerId) ?? null) : null })),
+    pagination: { page, limit, total: Number(total), totalPages: Math.ceil(Number(total) / limit) },
+  });
 });
 
 async function loadDocWithLines(id: number) {

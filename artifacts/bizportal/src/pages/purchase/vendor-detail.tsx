@@ -138,7 +138,8 @@ export default function VendorDetailPage() {
 
   const { data: allVendors } = useListSuppliers({ query: { queryKey: getListSuppliersQueryKey() } });
   const { data: taxes } = useListTaxes();
-  const { data: products = [] } = useListProducts();
+  const { data: _productsPaginated } = useListProducts({ limit: 500 });
+  const products = _productsPaginated?.data ?? [];
   const { data: productCategories = [] } = useListProductCategories();
   const vendor = (allVendors ?? []).find((v) => v.id === vendorId) as Supplier | undefined;
 

@@ -121,40 +121,54 @@ export const GetDashboardSummaryResponse = zod.object({
 /**
  * @summary List all products / master items
  */
+export const listProductsQueryPageDefault = 1;
+export const listProductsQueryLimitDefault = 50;
+
 export const ListProductsQueryParams = zod.object({
   search: zod.coerce.string().optional(),
   itemType: zod.coerce.string().optional(),
   subcategory: zod.coerce.string().optional(),
   isActive: zod.coerce.string().optional(),
+  page: zod.coerce.number().default(listProductsQueryPageDefault),
+  limit: zod.coerce.number().default(listProductsQueryLimitDefault),
 });
 
-export const ListProductsResponseItem = zod.object({
-  id: zod.number(),
-  name: zod.string(),
-  sku: zod.string(),
-  price: zod.number(),
-  stock: zod.number(),
-  categories: zod.array(zod.string()),
-  description: zod.string().nullish(),
-  imageUrl: zod.string().nullish(),
-  mediaItems: zod
-    .array(
-      zod.object({
-        type: zod.enum(["image", "video"]),
-        url: zod.string(),
-      }),
-    )
-    .optional(),
-  defaultSalesTaxId: zod.number().nullish(),
-  defaultPurchaseTaxId: zod.number().nullish(),
-  itemType: zod.enum(["barang", "jasa"]),
-  unit: zod.string(),
-  unitOptions: zod.array(zod.string()).optional(),
-  subcategory: zod.string().nullish(),
-  isActive: zod.boolean(),
-  createdAt: zod.string(),
+export const ListProductsResponse = zod.object({
+  data: zod.array(
+    zod.object({
+      id: zod.number(),
+      name: zod.string(),
+      sku: zod.string(),
+      price: zod.number(),
+      stock: zod.number(),
+      categories: zod.array(zod.string()),
+      description: zod.string().nullish(),
+      imageUrl: zod.string().nullish(),
+      mediaItems: zod
+        .array(
+          zod.object({
+            type: zod.enum(["image", "video"]),
+            url: zod.string(),
+          }),
+        )
+        .optional(),
+      defaultSalesTaxId: zod.number().nullish(),
+      defaultPurchaseTaxId: zod.number().nullish(),
+      itemType: zod.enum(["barang", "jasa"]),
+      unit: zod.string(),
+      unitOptions: zod.array(zod.string()).optional(),
+      subcategory: zod.string().nullish(),
+      isActive: zod.boolean(),
+      createdAt: zod.string(),
+    }),
+  ),
+  pagination: zod.object({
+    page: zod.number(),
+    limit: zod.number(),
+    total: zod.number(),
+    totalPages: zod.number(),
+  }),
 });
-export const ListProductsResponse = zod.array(ListProductsResponseItem);
 
 /**
  * @summary Create a product
@@ -729,25 +743,42 @@ export const DeleteSupplierResponse = zod.object({
 /**
  * @summary List all shipments
  */
-export const ListShipmentsResponseItem = zod.object({
-  id: zod.number(),
-  orderId: zod.number().optional(),
-  trackingNumber: zod.string(),
-  carrier: zod.string(),
-  status: zod.enum([
-    "pending",
-    "picked_up",
-    "in_transit",
-    "out_for_delivery",
-    "delivered",
-    "failed",
-  ]),
-  origin: zod.string(),
-  destination: zod.string(),
-  estimatedDelivery: zod.string().optional(),
-  createdAt: zod.string(),
+export const listShipmentsQueryPageDefault = 1;
+export const listShipmentsQueryLimitDefault = 50;
+
+export const ListShipmentsQueryParams = zod.object({
+  page: zod.coerce.number().default(listShipmentsQueryPageDefault),
+  limit: zod.coerce.number().default(listShipmentsQueryLimitDefault),
 });
-export const ListShipmentsResponse = zod.array(ListShipmentsResponseItem);
+
+export const ListShipmentsResponse = zod.object({
+  data: zod.array(
+    zod.object({
+      id: zod.number(),
+      orderId: zod.number().optional(),
+      trackingNumber: zod.string(),
+      carrier: zod.string(),
+      status: zod.enum([
+        "pending",
+        "picked_up",
+        "in_transit",
+        "out_for_delivery",
+        "delivered",
+        "failed",
+      ]),
+      origin: zod.string(),
+      destination: zod.string(),
+      estimatedDelivery: zod.string().optional(),
+      createdAt: zod.string(),
+    }),
+  ),
+  pagination: zod.object({
+    page: zod.number(),
+    limit: zod.number(),
+    total: zod.number(),
+    totalPages: zod.number(),
+  }),
+});
 
 /**
  * @summary Create a shipment
@@ -1666,6 +1697,9 @@ export const DeleteCustomerResponse = zod.object({
 /**
  * @summary List sales documents (quotations and orders)
  */
+export const listSalesDocumentsQueryPageDefault = 1;
+export const listSalesDocumentsQueryLimitDefault = 50;
+
 export const ListSalesDocumentsQueryParams = zod.object({
   kind: zod.enum(["quote", "order"]).optional(),
   status: zod
@@ -1674,42 +1708,51 @@ export const ListSalesDocumentsQueryParams = zod.object({
   invoiceStatus: zod.enum(["none", "to_invoice", "invoiced"]).optional(),
   paymentStatus: zod.enum(["unpaid", "partial", "paid"]).optional(),
   search: zod.coerce.string().optional(),
+  page: zod.coerce.number().default(listSalesDocumentsQueryPageDefault),
+  limit: zod.coerce.number().default(listSalesDocumentsQueryLimitDefault),
 });
 
-export const ListSalesDocumentsResponseItem = zod.object({
-  id: zod.number(),
-  docNumber: zod.string(),
-  kind: zod.enum(["quote", "order"]),
-  status: zod.enum(["draft", "sent", "confirmed", "done", "cancelled"]),
-  invoiceStatus: zod.enum(["none", "to_invoice", "invoiced"]),
-  deliveryStatus: zod.enum(["none", "to_deliver", "delivered"]),
-  customerId: zod.number().nullish(),
-  customerName: zod.string(),
-  totalAmount: zod.number(),
-  taxRateId: zod.number().nullish(),
-  taxAmount: zod.number(),
-  grandTotal: zod.number(),
-  origin: zod.string().nullish(),
-  destination: zod.string().nullish(),
-  transportMode: zod.enum(["sea", "air", "land", "multimodal"]).nullish(),
-  etd: zod.string().nullish(),
-  eta: zod.string().nullish(),
-  validUntil: zod.string().nullish(),
-  expectedDate: zod.string().nullish(),
-  notes: zod.string().nullish(),
-  confirmedAt: zod.string().nullish(),
-  customerAddress: zod.string().nullish(),
-  paymentStatus: zod.enum(["unpaid", "partial", "paid"]),
-  amountPaid: zod.number(),
-  createdAt: zod.string(),
-  updatedAt: zod.string(),
-  aiGenerated: zod.boolean().optional(),
-  aiSourceWaPhone: zod.string().nullish(),
-  aiSourceCorrespondenceId: zod.number().nullish(),
+export const ListSalesDocumentsResponse = zod.object({
+  data: zod.array(
+    zod.object({
+      id: zod.number(),
+      docNumber: zod.string(),
+      kind: zod.enum(["quote", "order"]),
+      status: zod.enum(["draft", "sent", "confirmed", "done", "cancelled"]),
+      invoiceStatus: zod.enum(["none", "to_invoice", "invoiced"]),
+      deliveryStatus: zod.enum(["none", "to_deliver", "delivered"]),
+      customerId: zod.number().nullish(),
+      customerName: zod.string(),
+      totalAmount: zod.number(),
+      taxRateId: zod.number().nullish(),
+      taxAmount: zod.number(),
+      grandTotal: zod.number(),
+      origin: zod.string().nullish(),
+      destination: zod.string().nullish(),
+      transportMode: zod.enum(["sea", "air", "land", "multimodal"]).nullish(),
+      etd: zod.string().nullish(),
+      eta: zod.string().nullish(),
+      validUntil: zod.string().nullish(),
+      expectedDate: zod.string().nullish(),
+      notes: zod.string().nullish(),
+      confirmedAt: zod.string().nullish(),
+      customerAddress: zod.string().nullish(),
+      paymentStatus: zod.enum(["unpaid", "partial", "paid"]),
+      amountPaid: zod.number(),
+      createdAt: zod.string(),
+      updatedAt: zod.string(),
+      aiGenerated: zod.boolean().optional(),
+      aiSourceWaPhone: zod.string().nullish(),
+      aiSourceCorrespondenceId: zod.number().nullish(),
+    }),
+  ),
+  pagination: zod.object({
+    page: zod.number(),
+    limit: zod.number(),
+    total: zod.number(),
+    totalPages: zod.number(),
+  }),
 });
-export const ListSalesDocumentsResponse = zod.array(
-  ListSalesDocumentsResponseItem,
-);
 
 /**
  * @summary Create a sales document (quotation or order)

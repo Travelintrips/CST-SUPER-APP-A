@@ -248,7 +248,8 @@ export default function LogisticsFreightPage() {
   };
 
   const deleteShipment = useDeleteFreightShipment();
-  const { data: salesDocs = [] } = useListSalesDocuments({ kind: "order" });
+  const { data: _salesDocsPaginated } = useListSalesDocuments({ kind: "order", limit: 500 });
+  const salesDocs = _salesDocsPaginated?.data ?? [];
   const soMap = Object.fromEntries(salesDocs.map((sd) => [sd.id, sd.docNumber]));
 
   void location;

@@ -16,9 +16,8 @@ const idr = (n: number) =>
 export default function SalesDashboardPage() {
   const { t } = useLanguage();
   const { data: summary } = useGetSalesSummary();
-  const { data: recentDocs } = useListSalesDocuments();
-
-  const recent = (recentDocs ?? []).slice(0, 8);
+  const { data: _recentPaginated } = useListSalesDocuments({ limit: 8 });
+  const recent = _recentPaginated?.data ?? [];
 
   return (
     <AppShell>

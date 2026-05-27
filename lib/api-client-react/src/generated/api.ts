@@ -120,6 +120,7 @@ import type {
   ListProductsParams,
   ListPurchaseDocumentsParams,
   ListSalesDocumentsParams,
+  ListShipmentsParams,
   LoginParams,
   LogisticOrder,
   LogisticOrderDetail,
@@ -130,6 +131,9 @@ import type {
   LogoutMobileSessionResponse,
   MessageResponse,
   Order,
+  PaginatedProducts,
+  PaginatedSalesDocuments,
+  PaginatedShipments,
   PartnerBalances,
   Payment,
   PaymentLinkResponse,
@@ -1071,8 +1075,8 @@ export const getListProductsUrl = (params?: ListProductsParams) => {
 export const listProducts = async (
   params?: ListProductsParams,
   options?: RequestInit,
-): Promise<Product[]> => {
-  return customFetch<Product[]>(getListProductsUrl(params), {
+): Promise<PaginatedProducts> => {
+  return customFetch<PaginatedProducts>(getListProductsUrl(params), {
     ...options,
     method: "GET",
   });
@@ -3165,41 +3169,57 @@ export const useDeleteSupplier = <
 /**
  * @summary List all shipments
  */
-export const getListShipmentsUrl = () => {
-  return `/api/logistics/shipments`;
+export const getListShipmentsUrl = (params?: ListShipmentsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/logistics/shipments?${stringifiedParams}`
+    : `/api/logistics/shipments`;
 };
 
 export const listShipments = async (
+  params?: ListShipmentsParams,
   options?: RequestInit,
-): Promise<Shipment[]> => {
-  return customFetch<Shipment[]>(getListShipmentsUrl(), {
+): Promise<PaginatedShipments> => {
+  return customFetch<PaginatedShipments>(getListShipmentsUrl(params), {
     ...options,
     method: "GET",
   });
 };
 
-export const getListShipmentsQueryKey = () => {
-  return [`/api/logistics/shipments`] as const;
+export const getListShipmentsQueryKey = (params?: ListShipmentsParams) => {
+  return [`/api/logistics/shipments`, ...(params ? [params] : [])] as const;
 };
 
 export const getListShipmentsQueryOptions = <
   TData = Awaited<ReturnType<typeof listShipments>>,
   TError = ErrorType<unknown>,
->(options?: {
-  query?: UseQueryOptions<
-    Awaited<ReturnType<typeof listShipments>>,
-    TError,
-    TData
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}) => {
+>(
+  params?: ListShipmentsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listShipments>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
-  const queryKey = queryOptions?.queryKey ?? getListShipmentsQueryKey();
+  const queryKey = queryOptions?.queryKey ?? getListShipmentsQueryKey(params);
 
   const queryFn: QueryFunction<Awaited<ReturnType<typeof listShipments>>> = ({
     signal,
-  }) => listShipments({ signal, ...requestOptions });
+  }) => listShipments(params, { signal, ...requestOptions });
 
   return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof listShipments>>,
@@ -3220,15 +3240,18 @@ export type ListShipmentsQueryError = ErrorType<unknown>;
 export function useListShipments<
   TData = Awaited<ReturnType<typeof listShipments>>,
   TError = ErrorType<unknown>,
->(options?: {
-  query?: UseQueryOptions<
-    Awaited<ReturnType<typeof listShipments>>,
-    TError,
-    TData
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getListShipmentsQueryOptions(options);
+>(
+  params?: ListShipmentsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listShipments>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListShipmentsQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;
@@ -6337,11 +6360,14 @@ export const getListSalesDocumentsUrl = (params?: ListSalesDocumentsParams) => {
 export const listSalesDocuments = async (
   params?: ListSalesDocumentsParams,
   options?: RequestInit,
-): Promise<SalesDocument[]> => {
-  return customFetch<SalesDocument[]>(getListSalesDocumentsUrl(params), {
-    ...options,
-    method: "GET",
-  });
+): Promise<PaginatedSalesDocuments> => {
+  return customFetch<PaginatedSalesDocuments>(
+    getListSalesDocumentsUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
 };
 
 export const getListSalesDocumentsQueryKey = (

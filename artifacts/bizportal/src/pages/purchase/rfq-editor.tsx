@@ -117,7 +117,8 @@ export default function PurchaseDocumentEditorPage() {
     },
   });
   const { data: vendors } = useListSuppliers();
-  const { data: products } = useListProducts();
+  const { data: _productsPaginated } = useListProducts({ limit: 500 });
+  const products = _productsPaginated?.data;
   const { data: taxes } = useListTaxes();
   const { data: acctSettings } = useGetAccountingSettings();
   const createMut = useCreatePurchaseDocument();

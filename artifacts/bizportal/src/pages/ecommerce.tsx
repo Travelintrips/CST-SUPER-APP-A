@@ -215,9 +215,10 @@ export default function EcommercePage() {
     syncUrl({ tab: value, categories: filterCategories });
   };
 
-  const { data: products, isLoading: isLoadingProducts } = useListProducts(undefined, {
+  const { data: _productsPaginated, isLoading: isLoadingProducts } = useListProducts({ limit: 500 }, {
     query: { queryKey: getListProductsQueryKey() }
   });
+  const products = _productsPaginated?.data;
 
   const { data: productCategories = [] as ProductCategory[], isLoading: isLoadingCategories } = useListProductCategories({
     query: { queryKey: getListProductCategoriesQueryKey() }

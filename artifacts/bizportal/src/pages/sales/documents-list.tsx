@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { useLocation } from "wouter";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,7 +24,7 @@ import type { SalesDocument } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { usePrefetchOnHover } from "@/hooks/use-prefetch-on-hover";
-import { Plus, Trash2, X, Search, RefreshCw, FileText } from "lucide-react";
+import { Plus, Trash2, X, Search, RefreshCw, FileText, ChevronLeft, ChevronRight } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 const idr = (n: number) =>
@@ -86,6 +86,8 @@ function isOverdue(doc: SalesDocument): boolean {
 
 interface Props { kind?: "quote" | "order" }
 
+const PAGE_SIZE = 50;
+
 export default function SalesDocumentsListPage({ kind = "quote" }: Props) {
   const isQuote = kind === "quote";
   const [, navigate] = useLocation();
@@ -97,6 +99,7 @@ export default function SalesDocumentsListPage({ kind = "quote" }: Props) {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>("all");
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [quickViewDoc, setQuickViewDoc] = useState<SalesDocument | null>(null);
@@ -104,37 +107,31 @@ export default function SalesDocumentsListPage({ kind = "quote" }: Props) {
   const deleteMut = useDeleteSalesDocument();
   const actionMut = useSalesDocumentAction();
 
-  // Fetch all docs (no filter) for counts; then filter client-side
-  const { data: allDocs = [], refetch } = useListSalesDocuments({ kind });
+  const apiParams = {
+    kind,
+    ...(statusFilter !== "all" ? { status: statusFilter as SalesDocument["status"] } : {}),
+    ...(paymentFilter !== "all" ? { paymentStatus: paymentFilter } : {}),
+    ...(search.trim() ? { search: search.trim() } : {}),
+    page,
+    limit: PAGE_SIZE,
+  };
 
-  const filtered = useMemo(() => {
-    let result = allDocs;
-    if (statusFilter !== "all")
-      result = result.filter((d) => d.status === statusFilter);
-    if (!isQuote && paymentFilter !== "all")
-      result = result.filter((d) => d.paymentStatus === paymentFilter);
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      result = result.filter(
-        (d) =>
-          d.docNumber.toLowerCase().includes(q) ||
-          d.customerName.toLowerCase().includes(q),
-      );
-    }
-    return result;
-  }, [allDocs, statusFilter, paymentFilter, search, isQuote]);
+  const { data: result, refetch } = useListSalesDocuments(apiParams);
+  const filtered = result?.data ?? [];
+  const pagination = result?.pagination;
 
-  const counts = useMemo(() => ({
-    total: allDocs.length,
-    draft: allDocs.filter((d) => d.status === "draft").length,
-    sent: allDocs.filter((d) => d.status === "sent").length,
-    confirmed: allDocs.filter((d) => d.status === "confirmed").length,
-    done: allDocs.filter((d) => d.status === "done").length,
-    cancelled: allDocs.filter((d) => d.status === "cancelled").length,
-    // for orders
-    unpaid: allDocs.filter((d) => d.paymentStatus === "unpaid").length,
-    toDeliver: allDocs.filter((d) => d.deliveryStatus === "to_deliver").length,
-  }), [allDocs]);
+  const handleFilterChange = (fn: () => void) => { fn(); setPage(1); setSelectedIds(new Set()); };
+
+  const counts = {
+    total: pagination?.total ?? 0,
+    draft: statusFilter === "draft" ? (pagination?.total ?? 0) : 0,
+    sent: statusFilter === "sent" ? (pagination?.total ?? 0) : 0,
+    confirmed: statusFilter === "confirmed" ? (pagination?.total ?? 0) : 0,
+    done: statusFilter === "done" ? (pagination?.total ?? 0) : 0,
+    cancelled: statusFilter === "cancelled" ? (pagination?.total ?? 0) : 0,
+    unpaid: paymentFilter === "unpaid" ? (pagination?.total ?? 0) : 0,
+    toDeliver: 0,
+  };
 
   const title = isQuote ? "Quotations" : "Sales Orders";
   const desc = isQuote ? "Penawaran ke pelanggan." : "Pesanan penjualan terkonfirmasi.";
@@ -236,11 +233,9 @@ export default function SalesDocumentsListPage({ kind = "quote" }: Props) {
               }`}
               onClick={() => {
                 if (s.key === "unpaid_pay") {
-                  setStatusFilter("all");
-                  setPaymentFilter(paymentFilter === "unpaid" ? "all" : "unpaid");
+                  handleFilterChange(() => { setStatusFilter("all"); setPaymentFilter(paymentFilter === "unpaid" ? "all" : "unpaid"); });
                 } else {
-                  setPaymentFilter("all");
-                  setStatusFilter(s.key === statusFilter ? "all" : s.key);
+                  handleFilterChange(() => { setPaymentFilter("all"); setStatusFilter(s.key === statusFilter ? "all" : s.key); });
                 }
               }}
             >
@@ -260,11 +255,11 @@ export default function SalesDocumentsListPage({ kind = "quote" }: Props) {
               placeholder={`Cari nomor ${isQuote ? "penawaran" : "order"}, customer...`}
               className={`pl-9 ${search ? "pr-9" : ""}`}
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => handleFilterChange(() => setSearch(e.target.value))}
             />
             {search && (
               <button
-                onClick={() => setSearch("")}
+                onClick={() => handleFilterChange(() => setSearch(""))}
                 className="absolute right-2.5 top-2.5 text-muted-foreground hover:text-foreground"
                 aria-label="Hapus pencarian"
               >
@@ -272,7 +267,7 @@ export default function SalesDocumentsListPage({ kind = "quote" }: Props) {
               </button>
             )}
           </div>
-          <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPaymentFilter("all"); }}>
+          <Select value={statusFilter} onValueChange={(v) => handleFilterChange(() => { setStatusFilter(v); setPaymentFilter("all"); })}>
             <SelectTrigger className="w-44" data-testid="status-filter">
               <SelectValue placeholder="Semua Status" />
             </SelectTrigger>
@@ -292,7 +287,7 @@ export default function SalesDocumentsListPage({ kind = "quote" }: Props) {
               <button
                 key={f}
                 type="button"
-                onClick={() => { setPaymentFilter(f); if (f !== "all") setStatusFilter("all"); }}
+                onClick={() => handleFilterChange(() => { setPaymentFilter(f); if (f !== "all") setStatusFilter("all"); })}
                 data-testid={`filter-payment-${f}`}
                 className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${
                   paymentFilter === f
@@ -301,10 +296,8 @@ export default function SalesDocumentsListPage({ kind = "quote" }: Props) {
                 }`}
               >
                 {PAYMENT_LABELS[f]}
-                {f !== "all" && (
-                  <span className="ml-1.5 opacity-70">
-                    {allDocs.filter((d) => d.paymentStatus === f).length}
-                  </span>
+                {f !== "all" && paymentFilter === f && (
+                  <span className="ml-1.5 opacity-70">{pagination?.total ?? 0}</span>
                 )}
               </button>
             ))}
@@ -327,10 +320,11 @@ export default function SalesDocumentsListPage({ kind = "quote" }: Props) {
         <Card>
           <CardHeader className="pb-3 pt-4 px-4">
             <CardTitle className="text-sm text-muted-foreground">
-              {filtered.length} {isQuote ? "penawaran" : "order"}
+              {pagination ? `${pagination.total} ` : ""}{isQuote ? "penawaran" : "order"}
               {statusFilter !== "all" ? ` · ${STATUS_LABELS[statusFilter] ?? statusFilter}` : ""}
               {!isQuote && paymentFilter !== "all" ? ` · ${PAYMENT_LABELS[paymentFilter]}` : ""}
               {search ? ` · "${search}"` : ""}
+              {pagination && pagination.totalPages > 1 ? ` · hal. ${pagination.page}/${pagination.totalPages}` : ""}
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
@@ -440,6 +434,32 @@ export default function SalesDocumentsListPage({ kind = "quote" }: Props) {
               </TableBody>
             </Table>
           </CardContent>
+
+          {/* Pagination controls */}
+          {pagination && pagination.totalPages > 1 && (
+            <div className="flex items-center justify-between px-4 py-3 border-t">
+              <span className="text-xs text-muted-foreground">
+                {(pagination.page - 1) * pagination.limit + 1}–{Math.min(pagination.page * pagination.limit, pagination.total)} dari {pagination.total}
+              </span>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline" size="sm"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={pagination.page <= 1}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <span className="text-xs px-2">{pagination.page} / {pagination.totalPages}</span>
+                <Button
+                  variant="outline" size="sm"
+                  onClick={() => setPage((p) => Math.min(pagination.totalPages, p + 1))}
+                  disabled={pagination.page >= pagination.totalPages}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </Card>
       </div>
 

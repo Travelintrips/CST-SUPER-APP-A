@@ -455,7 +455,8 @@ export default function SalesDocumentEditorPage({ kind: propKind }: EditorProps 
     }
   };
   const { data: customers } = useListCustomers();
-  const { data: products } = useListProducts();
+  const { data: _productsPaginated } = useListProducts({ limit: 500 });
+  const products = _productsPaginated?.data;
   const { data: taxes } = useListTaxes();
   const { data: acctSettings } = useGetAccountingSettings();
   const { data: uomList = [] } = useQuery<UomRow[]>({

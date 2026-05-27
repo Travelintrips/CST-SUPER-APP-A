@@ -173,13 +173,24 @@ router.get("/products", async (req, res) => {
   if (activeFilter === "true") conds.push(eq(productsTable.isActive, true));
   if (activeFilter === "false") conds.push(eq(productsTable.isActive, false));
 
+  const page = Math.max(1, parseInt(String(req.query["page"] ?? "1"), 10) || 1);
+  const limit = Math.min(500, Math.max(1, parseInt(String(req.query["limit"] ?? "50"), 10) || 50));
+  const offset = (page - 1) * limit;
+  const where = conds.length ? and(...conds) : undefined;
+
+  const [{ total }] = await db.select({ total: count() }).from(productsTable).where(where);
   const products = await db
     .select()
     .from(productsTable)
-    .where(conds.length ? and(...conds) : undefined)
-    .orderBy(productsTable.name);
+    .where(where)
+    .orderBy(productsTable.name)
+    .limit(limit)
+    .offset(offset);
   const categoryMap = await getProductCategories(products.map((p) => p.id));
-  return res.json(products.map((p) => serializeProduct(p, resolveCategories(p, categoryMap))));
+  return res.json({
+    data: products.map((p) => serializeProduct(p, resolveCategories(p, categoryMap))),
+    pagination: { page, limit, total: Number(total), totalPages: Math.ceil(Number(total) / limit) },
+  });
 });
 
 // POST /api/ecommerce/products

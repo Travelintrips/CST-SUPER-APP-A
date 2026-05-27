@@ -131,7 +131,8 @@ function MasterItemTab({ initialSearch = "" }: { initialSearch?: string }) {
 
   const [form, setForm] = useState({ name: "", sku: "", itemType: "barang", kategori: "", subcategory: "", unit: "pcs", price: "0", isActive: true, description: "" });
 
-  const { data: products = [], isLoading } = useListProducts({}, { query: { queryKey: getListProductsQueryKey({}) } });
+  const { data: _productsPaginated, isLoading } = useListProducts({ limit: 500 }, { query: { queryKey: getListProductsQueryKey({}) } });
+  const products = _productsPaginated?.data ?? [];
   const { data: productCategories = [] } = useListProductCategories();
   const createMut = useCreateProduct();
   const updateMut = useUpdateProduct();
@@ -1172,7 +1173,8 @@ function GlobalSearchResults({
 // ── MAIN PAGE ─────────────────────────────────────────────────────────────────
 
 export default function KatalogTerpaduPage() {
-  const { data: products = [] } = useListProducts({}, { query: { queryKey: getListProductsQueryKey({}) } });
+  const { data: _productsPaginatedMain } = useListProducts({ limit: 500 }, { query: { queryKey: getListProductsQueryKey({}) } });
+  const products = _productsPaginatedMain?.data ?? [];
   const { data: stocks = [] } = useListStocks();
   const { data: suppliers = [] } = useListSuppliers({ query: { queryKey: getListSuppliersQueryKey() } });
   const { data: bomProducts = [] } = useQuery<BomProduct[]>({ queryKey: ["bom-products"], queryFn: () => apiFetch("/bom/products") });

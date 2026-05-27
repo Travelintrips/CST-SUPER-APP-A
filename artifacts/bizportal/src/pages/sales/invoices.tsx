@@ -63,7 +63,8 @@ export default function SalesInvoicesPage() {
   const { toast } = useToast();
   const { t } = useLanguage();
   const [filter, setFilter] = useState<"all" | "to_invoice" | "invoiced">("all");
-  const { data: docs } = useListSalesDocuments({ kind: "order" });
+  const { data: _docsPaginated } = useListSalesDocuments({ kind: "order", limit: 500 });
+  const docs = _docsPaginated?.data;
   const { data: journals = [] } = useListJournals();
   const bankCashJournals = journals.filter((j) => j.type === "bank" || j.type === "cash");
 

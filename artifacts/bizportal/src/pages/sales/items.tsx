@@ -224,10 +224,11 @@ export default function SalesItemsPage() {
   const [filterSubcat, setFilterSubcat] = useState<string>("all");
   const [filterActive, setFilterActive] = useState<"all" | "active" | "inactive">("active");
 
-  const { data: products = [], isLoading } = useListProducts(
-    {},
+  const { data: _productsPaginated, isLoading } = useListProducts(
+    { limit: 500 },
     { query: { queryKey: getListProductsQueryKey({}) } }
   );
+  const products = _productsPaginated?.data ?? [];
   const { data: categories = [] } = useListProductCategories();
   const { data: taxes = [] } = useListTaxes();
 
