@@ -184,6 +184,15 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
     if (!order) return res.status(404).json({ error: "Order tidak ditemukan" });
 
     const actionType = link?.actionType ?? "review_order";
+
+    // Fetch order items untuk ditampilkan di OrderCard (nama produk/layanan yang dipesan)
+    const orderItemRows = await db.select({
+      serviceName: logisticOrderItemsTable.serviceName,
+      category: logisticOrderItemsTable.category,
+      subtotal: logisticOrderItemsTable.subtotal,
+    }).from(logisticOrderItemsTable)
+      .where(eq(logisticOrderItemsTable.orderId, order.id));
+
     const base = {
       token,
       actionType,
@@ -210,6 +219,11 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
         paymentType: (order as any).paymentType ?? null,
         grandTotal: order.grandTotal ? String(order.grandTotal) : null,
         status: order.status,
+        items: orderItemRows.map((it) => ({
+          serviceName: it.serviceName ?? "",
+          category: it.category ?? "",
+          subtotal: it.subtotal != null ? String(it.subtotal) : null,
+        })),
       },
     };
 
@@ -251,17 +265,11 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
             ))
         : [];
 
-      // Fetch order items to derive product keywords (commodity sering kosong)
-      const orderItems = await db.select({
-        category: logisticOrderItemsTable.category,
-        serviceName: logisticOrderItemsTable.serviceName,
-      }).from(logisticOrderItemsTable)
-        .where(eq(logisticOrderItemsTable.orderId, order.id));
-
       // Build sets: vendor dengan commodity match & vendor yang punya item PRODUK di etalase
+      // Derive keywords dari order.commodity + serviceName/category tiap item order
       const commodityKeyword = (order.commodity ?? "").toLowerCase().trim();
       const itemKwSet = new Set<string>();
-      for (const it of orderItems) {
+      for (const it of orderItemRows) {
         for (const src of [it.serviceName ?? "", it.category ?? ""]) {
           for (const w of src.toLowerCase().split(/[\s,/()\-]+/)) {
             if (w.length > 2) itemKwSet.add(w);
@@ -275,24 +283,32 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
       const hasOrderKeywords = commodityKwParts.length > 0 || commodityKeyword.length > 0;
       const vendorIdsWithCommodity   = new Set<number>();
       const vendorIdsWithProductItem = new Set<number>(); // hanya type='product'
-      // Map vendorId → priceBase item pertama yang aktif (prefer product type)
+      // Map vendorId → priceBase: PREFER item yang match dengan order; fallback ke item product pertama
       const vendorPriceBaseMap = new Map<number, number | null>();
+      const vendorMatchedItemName = new Map<number, string>();
 
       for (const item of catalogItems) {
         if (item.type === "product") {
           vendorIdsWithProductItem.add(item.vendorId);
-          if (!vendorPriceBaseMap.has(item.vendorId)) {
-            vendorPriceBaseMap.set(item.vendorId, item.priceBase != null ? Number(item.priceBase) : null);
-          }
-        } else if (!vendorPriceBaseMap.has(item.vendorId)) {
-          vendorPriceBaseMap.set(item.vendorId, item.priceBase != null ? Number(item.priceBase) : null);
         }
 
-        if (hasOrderKeywords) {
-          const itemName = item.name.toLowerCase();
-          const nameMatches = (commodityKeyword && itemName.includes(commodityKeyword)) ||
-            commodityKwParts.some((kw: string) => itemName.includes(kw));
-          if (nameMatches) vendorIdsWithCommodity.add(item.vendorId);
+        const itemName = item.name.toLowerCase();
+        const nameMatches = hasOrderKeywords && (
+          (commodityKeyword && itemName.includes(commodityKeyword)) ||
+          commodityKwParts.some((kw: string) => itemName.includes(kw))
+        );
+
+        if (nameMatches) {
+          vendorIdsWithCommodity.add(item.vendorId);
+          // Item yang match selalu menang untuk priceBase
+          if (!vendorMatchedItemName.has(item.vendorId)) {
+            vendorPriceBaseMap.set(item.vendorId, item.priceBase != null ? Number(item.priceBase) : null);
+            vendorMatchedItemName.set(item.vendorId, item.name);
+          }
+        } else if (!vendorPriceBaseMap.has(item.vendorId) && item.type === "product") {
+          vendorPriceBaseMap.set(item.vendorId, item.priceBase != null ? Number(item.priceBase) : null);
+        } else if (!vendorPriceBaseMap.has(item.vendorId)) {
+          vendorPriceBaseMap.set(item.vendorId, item.priceBase != null ? Number(item.priceBase) : null);
         }
       }
 

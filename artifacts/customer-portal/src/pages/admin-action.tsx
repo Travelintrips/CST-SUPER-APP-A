@@ -24,6 +24,7 @@ type OrderInfo = {
   paymentType: string | null;
   grandTotal: string | null;
   status: string;
+  items?: Array<{ serviceName: string; category: string; subtotal: string | null }>;
 };
 
 type Vendor = {
@@ -156,6 +157,19 @@ function OrderCard({ order }: { order: OrderInfo }) {
             </span>
           </div>
         )}
+        {order.items && order.items.length > 0 && (
+          <div className="py-2 border-b border-slate-50">
+            <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide mb-1">{isProduct ? "Produk Dipesan" : "Layanan / Item"}</p>
+            <ul className="space-y-1">
+              {order.items.map((it, i) => (
+                <li key={i} className="flex justify-between gap-2 text-xs">
+                  <span className="text-slate-700">• {it.serviceName}</span>
+                  <span className="text-slate-500 shrink-0">{idr(it.subtotal) ?? ""}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         <DetailRow label="Tanggal Diperlukan" value={order.requiredDate} />
         <DetailRow label="Pembayaran" value={order.paymentType} />
         <DetailRow label="Total" value={idr(order.grandTotal)} />
@@ -269,12 +283,21 @@ function ReviewOrderView({ token, data }: { token: string; data: ReviewData }) {
               ℹ️ Tidak ada vendor yang cocok dengan "<strong>{data.shipmentType}</strong>" — menampilkan semua vendor aktif.
             </div>
           )}
-          {/* Kasus: shipmentType kosong, ada commodity, ada vendor etalase match */}
-          {filterMode === "commodity" && (
-            <div className="mb-3 px-3 py-2 rounded-lg bg-green-50 border border-green-200 text-xs text-green-700">
-              ✅ Menampilkan vendor yang menjual "<strong>{data.commodity}</strong>" di etalase.
-            </div>
-          )}
+          {/* Kasus: shipmentType kosong, ada commodity / item produk */}
+          {filterMode === "commodity" && (() => {
+            const label = (data.commodity && data.commodity.trim())
+              || (data.order.items && data.order.items[0]?.serviceName)
+              || "";
+            return data.vendors.length > 0 ? (
+              <div className="mb-3 px-3 py-2 rounded-lg bg-green-50 border border-green-200 text-xs text-green-700">
+                ✅ Menampilkan vendor yang menjual "<strong>{label}</strong>" di etalase.
+              </div>
+            ) : (
+              <div className="mb-3 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-700">
+                ⚠️ Belum ada vendor yang punya "<strong>{label}</strong>" di etalase. Tambahkan item ke katalog vendor terlebih dahulu.
+              </div>
+            );
+          })()}
           {/* Kasus: shipmentType kosong, menampilkan hanya vendor yg punya etalase */}
           {filterMode === "etalase" && (
             <div className="mb-3 px-3 py-2 rounded-lg bg-blue-50 border border-blue-200 text-xs text-blue-700">
