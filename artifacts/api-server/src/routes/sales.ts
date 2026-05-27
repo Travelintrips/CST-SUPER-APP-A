@@ -13,7 +13,7 @@ import {
 import { eq, sql, desc, and, count, inArray, or, ilike, type SQL } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { streamInvoicePdf, buildInvoicePdfBuffer } from "../lib/pdfInvoice.js";
-import { postSalesInvoice, postSalesCogs, postSalesCogsReturn } from "../lib/accounting.js";
+import { postSalesInvoice, postSalesCogs, postSalesCogsReturn, postSalesInvoiceReversal } from "../lib/accounting.js";
 import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
 import { ensureAccountingSettings } from "../lib/accountingSeed.js";
 import { sendWhatsApp } from "../lib/fonnte.js";
@@ -554,6 +554,16 @@ router.post("/documents/:id/action", async (req, res) => {
   }
 
   await db.update(salesDocumentsTable).set(patch).where(eq(salesDocumentsTable.id, id));
+
+  // Auto-reverse journal entry when a confirmed/invoiced SO is cancelled
+  if (action === "cancel" && (doc.status === "confirmed" || doc.invoiceStatus === "invoiced" || doc.invoiceStatus === "to_invoice")) {
+    void postSalesInvoiceReversal({
+      salesDocId: doc.id,
+      docNumber: doc.docNumber,
+      customerName: doc.customerName,
+      companyId: doc.companyId ?? null,
+    });
+  }
 
   // T005: When SO is delivered, deduct stock (awaited — pre-flight already passed)
   if (action === "mark_delivered" && doc.deliveryStatus !== "delivered") {
