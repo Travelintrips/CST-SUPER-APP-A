@@ -474,11 +474,13 @@ function AutoRefreshBar({
   isFetching,
   lastRefreshed,
   onRefresh,
+  sseConnected,
 }: {
   isTerminal: boolean;
   isFetching: boolean;
   lastRefreshed: Date | null;
   onRefresh: () => void;
+  sseConnected: boolean;
 }) {
   const intervalSec = isTerminal ? TERMINAL_INTERVAL : ACTIVE_INTERVAL;
   const [countdown, setCountdown] = useState(intervalSec);
@@ -502,10 +504,14 @@ function AutoRefreshBar({
           <RefreshCw className="w-3 h-3 animate-spin text-primary" />
         ) : isTerminal ? (
           <CheckCircle2 className="w-3 h-3 text-green-500" />
-        ) : (
+        ) : sseConnected ? (
           <span className="relative flex h-2 w-2">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
             <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+          </span>
+        ) : (
+          <span className="relative flex h-2 w-2">
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-gray-400" />
           </span>
         )}
         <span>
@@ -513,7 +519,9 @@ function AutoRefreshBar({
             ? "Memperbarui..."
             : isTerminal
               ? "Order selesai — tracking dihentikan"
-              : `Live tracking aktif — refresh dalam ${countdown}d`}
+              : sseConnected
+                ? `Live · SSE aktif — refresh dalam ${countdown}d`
+                : `Menghubungkan ulang... — refresh dalam ${countdown}d`}
         </span>
       </div>
       {!isTerminal && (
@@ -535,6 +543,8 @@ export default function TrackPage() {
   const [input, setInput] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
+  const [sseConnected, setSseConnected] = useState(false);
+  const sseReconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const prevStatusRef = useRef<string | null>(null);
   const prevDriverStatusRef = useRef<string | null>(null);
@@ -546,20 +556,46 @@ export default function TrackPage() {
     if (o) { setInput(o); setSearchTerm(o.toUpperCase().trim()); }
   }, []);
 
-  // Real-time: refresh data tracking saat admin mengubah status order atau vendor submit penawaran
+  // Real-time: SSE dengan auto-reconnect + connection state tracking
   useEffect(() => {
-    const es = new EventSource("/api/ecommerce/events");
-    const invalidateIfMatch = (e: MessageEvent) => {
-      try {
-        const data = JSON.parse(e.data);
-        if (searchTerm && data.orderNumber === searchTerm) {
-          qc.invalidateQueries({ queryKey: ["tracking", searchTerm] });
-        }
-      } catch { }
+    let mounted = true;
+
+    function connect() {
+      const es = new EventSource("/api/ecommerce/events");
+
+      es.onopen = () => { if (mounted) setSseConnected(true); };
+      es.onerror = () => {
+        if (!mounted) return;
+        setSseConnected(false);
+        es.close();
+        // Auto-reconnect setelah 5 detik
+        sseReconnectRef.current = setTimeout(() => {
+          if (mounted) connect();
+        }, 5000);
+      };
+
+      const invalidateIfMatch = (e: MessageEvent) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (searchTerm && data.orderNumber === searchTerm) {
+            qc.invalidateQueries({ queryKey: ["tracking", searchTerm] });
+          }
+        } catch { }
+      };
+      es.addEventListener("logistic_order_status_changed", invalidateIfMatch);
+      es.addEventListener("vendor_quote_received", invalidateIfMatch);
+
+      return es;
+    }
+
+    const es = connect();
+
+    return () => {
+      mounted = false;
+      setSseConnected(false);
+      if (sseReconnectRef.current) clearTimeout(sseReconnectRef.current);
+      es.close();
     };
-    es.addEventListener("logistic_order_status_changed", invalidateIfMatch);
-    es.addEventListener("vendor_quote_received", invalidateIfMatch);
-    return () => es.close();
   }, [searchTerm, qc]);
 
   const isTerminal = !!(lastRefreshed && prevStatusRef.current && isTerminalStatus(prevStatusRef.current));
@@ -665,6 +701,7 @@ export default function TrackPage() {
               isFetching={isFetching}
               lastRefreshed={lastRefreshed}
               onRefresh={handleRefresh}
+              sseConnected={sseConnected}
             />
 
             {/* Penawaran harga */}
