@@ -107,6 +107,24 @@ export async function runEnterpriseMigration(): Promise<void> {
       END $$;
     `);
 
+    // 10. Optimistic locking: version column on logistic_orders
+    await db.execute(sql`
+      ALTER TABLE logistic_orders
+        ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1;
+    `);
+
+    // 9. Race-condition / idempotency unique constraints
+    //    - logistic_order_quotes: one vendor may submit at most one quote per RFQ
+    //    - vendor_responses: one READY/NOT_READY row per order number (upsert target)
+    await db.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS liq_rfq_vendor_uidx
+        ON logistic_order_quotes (rfq_id, vendor_id);
+    `);
+    await db.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS vendor_responses_order_uidx
+        ON vendor_responses (order_number);
+    `);
+
     logger.info("Enterprise migration completed successfully");
   } catch (err) {
     logger.error({ err }, "Enterprise migration failed");

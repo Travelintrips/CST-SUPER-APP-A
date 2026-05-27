@@ -405,7 +405,6 @@ logisticRfqRouter.post("/vendor-confirm", rfqRateLimit, async (req: Request, res
   const [quote] = await db.select().from(logisticOrderQuotesTable)
     .where(and(eq(logisticOrderQuotesTable.orderId, orderId), eq(logisticOrderQuotesTable.vendorConfirmToken as any, token)));
   if (!quote) return res.status(404).json({ message: "Token tidak valid" });
-  if (quote.quoteStatus !== "pending") return res.status(409).json({ message: "Konfirmasi sudah pernah dikirimkan" });
 
   const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
   if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
@@ -424,14 +423,24 @@ logisticRfqRouter.post("/vendor-confirm", rfqRateLimit, async (req: Request, res
       ? submittedVendorPrice
       : null;
 
-  await db.update(logisticOrderQuotesTable)
+  // Atomic update: WHERE quoteStatus='pending' ensures only one concurrent request wins.
+  // If the status was already changed (double-click / network retry), returning() is empty → 409.
+  const [updatedQuote] = await db.update(logisticOrderQuotesTable)
     .set({
       quoteStatus: newQuoteStatus,
       replyTimestamp: new Date(),
       replySource: "vendor_confirm",
       ...(updatedPrice != null ? { vendorPrice: String(updatedPrice) } : {}),
     } as any)
-    .where(eq(logisticOrderQuotesTable.id, quote.id));
+    .where(and(
+      eq(logisticOrderQuotesTable.id, quote.id),
+      eq(logisticOrderQuotesTable.quoteStatus, "pending"),
+    ))
+    .returning();
+
+  if (!updatedQuote) {
+    return res.status(409).json({ message: "Konfirmasi sudah pernah dikirimkan" });
+  }
 
   const fmtRp = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
   const basePrice = updatedPrice ?? Number(quote.vendorPrice);
@@ -637,23 +646,36 @@ logisticRfqRouter.post("/vendor-quote", rfqRateLimit, async (req: Request, res: 
   const vendorMarkupPct = matchedItem ? Number(matchedItem.markupPct ?? 0) : 0;
   const computedSellingPrice = vp * (1 + vendorMarkupPct / 100);
 
-  const [quote] = await db.insert(logisticOrderQuotesTable).values({
-    rfqId: rfq.id,
-    orderId: rfq.orderId,
-    vendorId: Number(vendorId),
-    vendorPrice: String(vp),
-    estimatedPickup: estimatedPickup?.trim() || null,
-    estimatedDelivery: estimatedDelivery?.trim() || null,
-    estimatedDays: estimatedDays != null ? Number(estimatedDays) : null,
-    vendorNotes: notes?.trim() || null,
-    markupType: "percentage",
-    markupPercentage: String(vendorMarkupPct),
-    fixedSellingPrice: null,
-    sellingPrice: String(computedSellingPrice),
-    quoteStatus: "pending",
-    replySource: "vendor_form",
-    replyTimestamp: new Date(),
-  }).returning();
+  // INSERT with unique constraint (liq_rfq_vendor_uidx on rfq_id+vendor_id).
+  // If a concurrent request already inserted a row, PostgreSQL raises code 23505 → 409.
+  let quote: (typeof logisticOrderQuotesTable.$inferSelect) | undefined;
+  try {
+    const rows = await db.insert(logisticOrderQuotesTable).values({
+      rfqId: rfq.id,
+      orderId: rfq.orderId,
+      vendorId: Number(vendorId),
+      vendorPrice: String(vp),
+      estimatedPickup: estimatedPickup?.trim() || null,
+      estimatedDelivery: estimatedDelivery?.trim() || null,
+      estimatedDays: estimatedDays != null ? Number(estimatedDays) : null,
+      vendorNotes: notes?.trim() || null,
+      markupType: "percentage",
+      markupPercentage: String(vendorMarkupPct),
+      fixedSellingPrice: null,
+      sellingPrice: String(computedSellingPrice),
+      quoteStatus: "pending",
+      replySource: "vendor_form",
+      replyTimestamp: new Date(),
+    }).returning();
+    quote = rows[0];
+  } catch (err: unknown) {
+    const pgErr = err as { code?: string };
+    if (pgErr?.code === "23505") {
+      return res.status(409).json({ error: "Quote already submitted" });
+    }
+    throw err;
+  }
+  if (!quote) return res.status(500).json({ error: "Insert failed" });
 
   const [adminWa, adminGroupWa] = await Promise.all([getAdminWa(), getAdminGroupWa()]);
   const allQuotes = (adminWa || adminGroupWa)

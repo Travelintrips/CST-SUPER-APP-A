@@ -221,19 +221,18 @@ router.post("/:orderNumber", async (req: Request, res: Response) => {
       submittedAt: new Date(),
     };
 
-    const [existing] = await db
-      .select({ id: vendorResponsesTable.id })
-      .from(vendorResponsesTable)
-      .where(eq(vendorResponsesTable.orderNumber, orderNumber));
-
-    if (existing) {
-      await db
-        .update(vendorResponsesTable)
-        .set(payload)
-        .where(eq(vendorResponsesTable.orderNumber, orderNumber));
-    } else {
-      await db.insert(vendorResponsesTable).values(payload);
-    }
+    // Atomic upsert — INSERT on first submit, UPDATE on re-submit.
+    // The unique index on order_number (vendor_responses_order_uidx) prevents
+    // duplicate rows even under concurrent requests (no TOCTOU window).
+    const { id: _id, ...updatePayload } = payload as typeof payload & { id?: unknown };
+    void _id;
+    await db
+      .insert(vendorResponsesTable)
+      .values(payload)
+      .onConflictDoUpdate({
+        target: vendorResponsesTable.orderNumber,
+        set: updatePayload,
+      });
 
     const waMsg = formatWaAdminNotification({ ...payload });
     const adminGroupWa = await getAdminGroupWa();

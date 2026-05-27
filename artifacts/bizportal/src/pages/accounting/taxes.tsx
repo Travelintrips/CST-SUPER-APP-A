@@ -196,7 +196,9 @@ export default function TaxesPage() {
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => { setOpen(false); reset(); }}>Batal</Button>
-                <Button onClick={submit} data-testid="button-save-tax">Simpan</Button>
+                <Button onClick={submit} disabled={createMut.isPending || updateMut.isPending} data-testid="button-save-tax">
+                  {(createMut.isPending || updateMut.isPending) ? "Menyimpan..." : "Simpan"}
+                </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
