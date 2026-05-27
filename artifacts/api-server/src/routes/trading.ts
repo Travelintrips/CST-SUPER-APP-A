@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, stocksTable, suppliersTable, vendorCatalogItemsTable, productsTable, productCategoryMapTable, productCategoriesTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { postStockReceived } from "../lib/accounting.js";
 import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { requireClerkUser, requireAdmin } from "../lib/requireAdmin.js";
@@ -168,12 +168,53 @@ router.delete("/suppliers/:id", async (req, res) => {
 router.get("/suppliers/:id/catalog", async (req, res) => {
   const vendorId = Number(req.params.id);
   if (Number.isNaN(vendorId)) return res.status(400).json({ message: "Invalid id" });
-  const items = await db
-    .select()
+  const rows = await db
+    .select({
+      id: vendorCatalogItemsTable.id,
+      vendorId: vendorCatalogItemsTable.vendorId,
+      masterItemId: vendorCatalogItemsTable.masterItemId,
+      type: vendorCatalogItemsTable.type,
+      name: vendorCatalogItemsTable.name,
+      description: vendorCatalogItemsTable.description,
+      unit: vendorCatalogItemsTable.unit,
+      kategori: vendorCatalogItemsTable.kategori,
+      subcategory: vendorCatalogItemsTable.subcategory,
+      priceBase: vendorCatalogItemsTable.priceBase,
+      markupPct: vendorCatalogItemsTable.markupPct,
+      isActive: vendorCatalogItemsTable.isActive,
+      isCommodityTag: vendorCatalogItemsTable.isCommodityTag,
+      sortOrder: vendorCatalogItemsTable.sortOrder,
+      createdAt: vendorCatalogItemsTable.createdAt,
+      masterPrice: productsTable.price,
+    })
     .from(vendorCatalogItemsTable)
+    .leftJoin(productsTable, eq(vendorCatalogItemsTable.masterItemId, productsTable.id))
     .where(eq(vendorCatalogItemsTable.vendorId, vendorId))
     .orderBy(vendorCatalogItemsTable.sortOrder, vendorCatalogItemsTable.createdAt);
-  return res.json(items.map(toItem));
+  return res.json(rows.map((row) => {
+    const priceBase = Number(row.priceBase ?? 0);
+    const priceSell = row.masterPrice != null ? Number(row.masterPrice) : null;
+    const profit = priceSell != null ? priceSell - priceBase : null;
+    return {
+      id: row.id,
+      vendorId: row.vendorId,
+      masterItemId: row.masterItemId ?? null,
+      type: row.type,
+      name: row.name,
+      description: row.description ?? null,
+      unit: row.unit ?? null,
+      kategori: row.kategori ?? null,
+      subcategory: row.subcategory ?? null,
+      priceBase,
+      markupPct: Number(row.markupPct ?? 0),
+      isActive: row.isActive,
+      isCommodityTag: row.isCommodityTag,
+      sortOrder: row.sortOrder,
+      createdAt: row.createdAt.toISOString(),
+      priceSell,
+      profit,
+    };
+  }));
 });
 
 // POST /api/trading/suppliers/:id/catalog
@@ -207,6 +248,8 @@ router.post("/suppliers/:id/catalog", async (req, res) => {
     return res.status(409).json({ message: "Item ini sudah ada di etalase vendor ini" });
 
   const { isActive, isCommodityTag, sortOrder } = req.body;
+  // priceBase = Harga Dasar = harga yang vendor charge ke kita (manual input, default 0)
+  const priceBase = req.body.priceBase != null ? String(parseFloat(String(req.body.priceBase)) || 0) : "0";
 
   // Ambil kategori pertama dari master item
   const categoryMap = await db
@@ -225,7 +268,7 @@ router.post("/suppliers/:id/catalog", async (req, res) => {
     unit: masterItem.unit ?? null,
     kategori,
     subcategory: masterItem.subcategory ?? null,
-    priceBase: String(parseFloat(String(masterItem.price ?? 0)) || 0),
+    priceBase,
     markupPct: "0",
     isActive: isActive !== undefined ? Boolean(isActive) : true,
     isCommodityTag: isCommodityTag !== undefined ? Boolean(isCommodityTag) : false,
@@ -235,7 +278,8 @@ router.post("/suppliers/:id/catalog", async (req, res) => {
 });
 
 // PUT /api/trading/suppliers/catalog/:itemId
-// Hanya isActive/isCommodityTag/sortOrder yang boleh diubah; harga dikunci dari Master Item
+// Master-linked items: boleh edit priceBase (Harga Dasar) + isActive/isCommodityTag/sortOrder
+// Legacy items (tanpa masterItemId): boleh edit semua field termasuk deskriptif
 router.put("/suppliers/catalog/:itemId", async (req, res) => {
   if (!(await requireAdmin(req, res))) return;
   const itemId = Number(req.params.itemId);
@@ -261,7 +305,12 @@ router.put("/suppliers/catalog/:itemId", async (req, res) => {
     if (subcategory !== undefined) patch["subcategory"] = subcategory || null;
   }
 
-  // Status & urutan — selalu boleh diedit; harga dikunci dari Master Item
+  // Harga Dasar (priceBase) — selalu boleh diedit, untuk semua item termasuk yang linked ke master
+  if (req.body.priceBase !== undefined) {
+    patch["priceBase"] = String(parseFloat(String(req.body.priceBase)) || 0);
+  }
+
+  // Status & urutan — selalu boleh diedit
   if (isActive !== undefined) patch["isActive"] = Boolean(isActive);
   if (isCommodityTag !== undefined) patch["isCommodityTag"] = Boolean(isCommodityTag);
   if (sortOrder !== undefined) patch["sortOrder"] = Number(sortOrder);

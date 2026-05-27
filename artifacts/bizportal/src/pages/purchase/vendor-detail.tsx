@@ -94,6 +94,7 @@ type CatalogForm = {
   unit: string;
   kategori: string;
   subcategory: string;
+  priceBase: string;
   isActive: boolean;
   isCommodityTag: boolean;
   sortOrder: string;
@@ -107,6 +108,7 @@ const emptyCatalogForm = (): CatalogForm => ({
   unit: "",
   kategori: "",
   subcategory: "",
+  priceBase: "0",
   isActive: true,
   isCommodityTag: false,
   sortOrder: "0",
@@ -244,6 +246,7 @@ export default function VendorDetailPage() {
       unit: item.unit ?? "",
       kategori: (item as any).kategori ?? "",
       subcategory: (item as any).subcategory ?? "",
+      priceBase: String(Number(item.priceBase ?? 0)),
       isActive: item.isActive,
       isCommodityTag: (item as any).isCommodityTag ?? false,
       sortOrder: String(item.sortOrder),
@@ -263,6 +266,7 @@ export default function VendorDetailPage() {
       return;
     }
     const body: Record<string, unknown> = {
+      priceBase: parseFloat(itemForm.priceBase) || 0,
       isActive: itemForm.isActive,
       isCommodityTag: itemForm.isCommodityTag,
       sortOrder: parseInt(itemForm.sortOrder) || 0,
@@ -507,7 +511,9 @@ export default function VendorDetailPage() {
                     <TableHead>Kategori</TableHead>
                     <TableHead>Tipe</TableHead>
                     <TableHead>Satuan</TableHead>
-                    <TableHead className="text-right">Harga</TableHead>
+                    <TableHead className="text-right">Harga Dasar</TableHead>
+                    <TableHead className="text-right">Harga Jual</TableHead>
+                    <TableHead className="text-right">Profit</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Tag</TableHead>
                     <TableHead className="w-[90px] text-right">Aksi</TableHead>
@@ -515,7 +521,9 @@ export default function VendorDetailPage() {
                 </TableHeader>
                 <TableBody>
                   {filteredCatalog.map((item) => {
-                    const price = Number(item.priceBase ?? 0);
+                    const priceBase = Number(item.priceBase ?? 0);
+                    const priceSell = (item as any).priceSell as number | null;
+                    const profit = (item as any).profit as number | null;
                     return (
                       <TableRow key={item.id}>
                         <TableCell>
@@ -536,8 +544,16 @@ export default function VendorDetailPage() {
                           <Badge variant="outline" className="text-xs capitalize">{item.type}</Badge>
                         </TableCell>
                         <TableCell className="text-sm">{item.unit ?? "-"}</TableCell>
+                        <TableCell className="text-right font-mono text-sm text-muted-foreground">
+                          {priceBase > 0 ? fmt(priceBase) : "-"}
+                        </TableCell>
                         <TableCell className="text-right font-mono text-sm font-semibold text-primary">
-                          {price > 0 ? fmt(price) : "-"}
+                          {priceSell != null && priceSell > 0 ? fmt(priceSell) : "-"}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-sm font-semibold">
+                          {profit != null
+                            ? <span className={profit >= 0 ? "text-green-600" : "text-destructive"}>{fmt(profit)}</span>
+                            : "-"}
                         </TableCell>
                         <TableCell>
                           {item.isActive
@@ -702,6 +718,22 @@ export default function VendorDetailPage() {
                 </div>
               </>
             )}
+
+            {/* ── Harga Dasar — editable untuk semua item ── */}
+            <div className="grid gap-1.5">
+              <Label>Harga Dasar (Rp)</Label>
+              <Input
+                type="number"
+                min="0"
+                step="1000"
+                value={itemForm.priceBase}
+                onChange={(e) => setI("priceBase", e.target.value)}
+                placeholder="Harga yang vendor charge ke kita"
+              />
+              <p className="text-xs text-muted-foreground">
+                Harga beli / biaya vendor. Dipakai untuk RFQ blast. Profit = Harga Jual (master) − Harga Dasar.
+              </p>
+            </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div className="grid gap-1.5">
