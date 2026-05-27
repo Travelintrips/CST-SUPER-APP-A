@@ -74,6 +74,8 @@ export const logisticOrdersTable = pgTable("logistic_orders", {
   publicRfqToken: text("public_rfq_token").unique(),
   geofenceEnabled: boolean("geofence_enabled").default(true).notNull(),
   geofenceRadiusKm: integer("geofence_radius_km").default(75).notNull(),
+  // Optimistic locking — incremented on every write; client must echo back current value to detect concurrent edits
+  version: integer("version").notNull().default(1),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (t) => [
   index("logistic_orders_company_idx").on(t.companyId),

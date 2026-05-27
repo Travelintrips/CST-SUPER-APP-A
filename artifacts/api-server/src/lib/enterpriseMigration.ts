@@ -107,6 +107,12 @@ export async function runEnterpriseMigration(): Promise<void> {
       END $$;
     `);
 
+    // 10. Optimistic locking: version column on logistic_orders
+    await db.execute(sql`
+      ALTER TABLE logistic_orders
+        ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1;
+    `);
+
     // 9. Race-condition / idempotency unique constraints
     //    - logistic_order_quotes: one vendor may submit at most one quote per RFQ
     //    - vendor_responses: one READY/NOT_READY row per order number (upsert target)

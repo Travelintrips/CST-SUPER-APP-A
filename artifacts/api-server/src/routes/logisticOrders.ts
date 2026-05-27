@@ -83,6 +83,7 @@ function toOrder(row: typeof logisticOrdersTable.$inferSelect, approvedVendorNam
     approvedVendorName: approvedVendorName ?? null,
     finalSellingPrice: row.finalSellingPrice ? parseFloat(row.finalSellingPrice) : null,
     quotationSentAt: row.quotationSentAt?.toISOString() ?? null,
+    version: (row as any).version ?? 1,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -856,14 +857,25 @@ logisticOrdersRouter.put("/:id/status", async (req: Request, res: Response) => {
 
   const { id } = paramsParsed.data;
   const { status } = bodyParsed.data;
+  const clientVersion: number | undefined =
+    typeof req.body.version === "number" ? req.body.version : undefined;
+
+  const whereClause =
+    clientVersion !== undefined
+      ? and(eq(logisticOrdersTable.id, id), eq(logisticOrdersTable.version, clientVersion))
+      : eq(logisticOrdersTable.id, id);
 
   const [updated] = await db
     .update(logisticOrdersTable)
-    .set({ status })
-    .where(eq(logisticOrdersTable.id, id))
+    .set({ status, version: sql`${logisticOrdersTable.version} + 1` } as any)
+    .where(whereClause)
     .returning();
 
-  if (!updated) return res.status(404).json({ message: "Order tidak ditemukan" });
+  if (!updated) {
+    const [exists] = await db.select({ id: logisticOrdersTable.id }).from(logisticOrdersTable).where(eq(logisticOrdersTable.id, id));
+    if (!exists) return res.status(404).json({ message: "Order tidak ditemukan" });
+    return res.status(409).json({ message: "Data sudah diubah oleh pengguna lain. Refresh halaman dan coba lagi." });
+  }
 
   const adminName = (req.user as { name?: string } | undefined)?.name ?? "Admin";
   const adminId   = (req.user as { id?: string } | undefined)?.id ?? null;
@@ -966,12 +978,24 @@ logisticOrdersRouter.patch("/:id/details", async (req: Request, res: Response) =
   if (Object.keys(patch).length === 0)
     return res.status(400).json({ message: "Tidak ada field yang diupdate" });
 
+  const detailsClientVersion: number | undefined =
+    typeof req.body.version === "number" ? req.body.version : undefined;
+  const detailsWhereClause =
+    detailsClientVersion !== undefined
+      ? and(eq(logisticOrdersTable.id, id), eq(logisticOrdersTable.version, detailsClientVersion))
+      : eq(logisticOrdersTable.id, id);
+
   const [updated] = await db
     .update(logisticOrdersTable)
-    .set(patch as any)
-    .where(eq(logisticOrdersTable.id, id))
+    .set({ ...patch, version: sql`${logisticOrdersTable.version} + 1` } as any)
+    .where(detailsWhereClause)
     .returning();
-  if (!updated) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+  if (!updated) {
+    const [exists] = await db.select({ id: logisticOrdersTable.id }).from(logisticOrdersTable).where(eq(logisticOrdersTable.id, id));
+    if (!exists) return res.status(404).json({ message: "Order tidak ditemukan" });
+    return res.status(409).json({ message: "Data sudah diubah oleh pengguna lain. Refresh halaman dan coba lagi." });
+  }
 
   logActivity({
     orderId: updated.id,
@@ -991,15 +1015,27 @@ logisticOrdersRouter.patch("/:id/details", async (req: Request, res: Response) =
 logisticOrdersRouter.patch("/:id/type", async (req: Request, res: Response) => {
   const id = parseInt(String(req.params["id"] ?? ""), 10);
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
-  const { shipmentType } = req.body as { shipmentType?: unknown };
+  const { shipmentType, version: typeVersion } = req.body as { shipmentType?: unknown; version?: unknown };
   if (!shipmentType || typeof shipmentType !== "string" || shipmentType.trim() === "")
     return res.status(400).json({ message: "shipmentType wajib diisi" });
+
+  const typeClientVersion: number | undefined = typeof typeVersion === "number" ? typeVersion : undefined;
+  const typeWhereClause =
+    typeClientVersion !== undefined
+      ? and(eq(logisticOrdersTable.id, id), eq(logisticOrdersTable.version, typeClientVersion))
+      : eq(logisticOrdersTable.id, id);
+
   const [updated] = await db
     .update(logisticOrdersTable)
-    .set({ shipmentType: shipmentType.trim() })
-    .where(eq(logisticOrdersTable.id, id))
+    .set({ shipmentType: shipmentType.trim(), version: sql`${logisticOrdersTable.version} + 1` } as any)
+    .where(typeWhereClause)
     .returning();
-  if (!updated) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+  if (!updated) {
+    const [exists] = await db.select({ id: logisticOrdersTable.id }).from(logisticOrdersTable).where(eq(logisticOrdersTable.id, id));
+    if (!exists) return res.status(404).json({ message: "Order tidak ditemukan" });
+    return res.status(409).json({ message: "Data sudah diubah oleh pengguna lain. Refresh halaman dan coba lagi." });
+  }
 
   logActivity({
     orderId: updated.id,
