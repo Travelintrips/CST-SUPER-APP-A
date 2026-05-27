@@ -1,0 +1,140 @@
+Mulai jalankan BATCH 6 — FRONTEND CACHE / REALTIME / REFETCH AUDIT.
+
+Jangan fix dulu. Audit saja.
+
+Tujuan:
+Pastikan semua halaman BizPortal dan Customer Portal selalu membaca data terbaru dari Supabase/API, tidak memakai stale cache, localStorage, dummy data, atau state lama.
+
+Area yang wajib dicek:
+
+1. Query Key Consistency
+Audit semua React Query / TanStack Query:
+- queryKey yang dipakai untuk fetch
+- queryKey yang di-invalidate setelah mutation
+- apakah key sama atau beda
+- apakah ada typo query key
+- apakah ada query yang tidak pernah invalidated
+
+2. Mutation After-Action Refetch
+Cek setelah action:
+- create order
+- update order status
+- approve order
+- create vendor mini form
+- vendor submit quotation
+- admin select vendor
+- customer approve/reject
+- create SO
+- update product/service
+- update template WA
+- upload attachment
+- update operational data
+
+Pastikan UI:
+- invalidateQueries
+- refetch
+- atau update cache dari response Supabase/API yang valid
+
+3. Realtime / SSE Audit
+Cek semua EventSource/SSE:
+- price_sync
+- order_update
+- vendor_submission
+- customer_approval
+- notification_update
+- timeline_update
+- template_update
+
+Pastikan:
+- listener hanya dibuat sekali
+- cleanup pakai es.close()
+- tidak duplicate listener saat pindah halaman
+- event name konsisten backend/frontend
+- payload cukup untuk invalidate query tepat
+
+4. Supabase Realtime Audit
+Jika memakai Supabase Realtime:
+- channel name konsisten
+- unsubscribe saat unmount
+- filter table/id benar
+- tidak subscribe terlalu luas
+- tidak menyebabkan memory leak
+
+5. LocalStorage / SessionStorage Audit
+Cari:
+- localStorage
+- sessionStorage
+- mockData
+- dummyData
+- sampleData
+- static array
+- useState([...])
+- fallbackData
+
+Pastikan tidak ada data production penting yang masih berasal dari localStorage/dummy.
+
+6. Stale Cache Audit
+Cek:
+- staleTime terlalu lama
+- cacheTime/gcTime terlalu lama
+- enabled condition salah
+- query tidak refetch saat parameter berubah
+- query tidak refetch saat tab focus jika perlu
+- order detail masih menampilkan data lama
+
+7. Cross-Portal Sync Audit
+Pastikan perubahan dari BizPortal terbaca di Customer Portal:
+- status order
+- harga aktif
+- product/service aktif/inactive
+- template WA
+- customer approval
+- vendor submission
+- operational update
+
+8. Refresh Persistence Audit
+Test:
+- lakukan action
+- refresh halaman
+- logout/login
+- buka di tab baru
+- data tetap benar dari Supabase/API
+
+9. Error & Loading State Audit
+Pastikan:
+- loading state jelas
+- error state jelas
+- retry aman
+- no silent fail
+- no stale data masking error
+
+Output wajib:
+
+A. QUERY KEY MATRIX
+Feature | Fetch Query Key | Mutation | Invalidated Query Key | Match? | Status
+
+B. REALTIME/SSE MATRIX
+Event | Backend Source | Frontend Listener | Query Invalidated | Cleanup Exists? | Status
+
+C. LOCAL/DUMMY DATA FOUND
+File | Variable | Used For | Risk | Replace With
+
+D. STALE CACHE FINDINGS
+Feature | Current Cache Behavior | Risk | Recommendation
+
+E. CROSS-PORTAL SYNC FINDINGS
+Data Type | BizPortal Update | Customer Portal Read | Auto Sync? | Status
+
+F. REFRESH PERSISTENCE CHECK
+Feature | Refresh Safe? | Login Safe? | Tab Safe? | Status
+
+G. PRIORITY FIX PLAN
+Critical / High / Medium / Low
+
+H. FINAL VERDICT
+- Cache correctness score
+- Realtime readiness score
+- Cross-portal sync score
+- Production readiness score
+
+Jangan implement fix sampai saya minta.
