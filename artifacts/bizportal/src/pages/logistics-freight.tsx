@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, RefreshCw, Ship, Trash2, Eye, Filter, X, Clock, ShoppingCart, TrendingUp, TrendingDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, RefreshCw, Ship, Trash2, Eye, Filter, X, Clock, ShoppingCart, TrendingUp, TrendingDown, ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
 import {
@@ -283,6 +283,7 @@ export default function LogisticsFreightPage() {
   const [customDateTo, setCustomDateToState] = useState<string>(initial.to);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
+  const [search, setSearch] = useState("");
 
   const syncStateFromUrl = useCallback(() => {
     const parsed = parseParamsFromSearch(window.location.search);
@@ -353,6 +354,8 @@ export default function LogisticsFreightPage() {
     : null;
   const isCustomRangeInvalid = !!(customFrom && customTo && customFrom > customTo);
 
+  const searchLower = search.trim().toLowerCase();
+
   const filteredShipments = (shipments ?? []).filter((s) => {
     if (statusFilter) {
       if (statusFilter === "active") {
@@ -374,6 +377,18 @@ export default function LogisticsFreightPage() {
     }
 
     if (blReadyFilter && !hasBLData(s)) return false;
+
+    if (searchLower) {
+      const hay = [
+        s.shipmentNumber,
+        s.shipperName,
+        s.consigneeName,
+        s.commodity,
+        s.origin,
+        s.destination,
+      ].filter(Boolean).join(" ").toLowerCase();
+      if (!hay.includes(searchLower)) return false;
+    }
 
     return true;
   });
@@ -406,17 +421,19 @@ export default function LogisticsFreightPage() {
     );
   };
 
-  const isFiltered = statusFilter !== null || datePreset !== "all" || blReadyFilter;
+  const isFiltered = statusFilter !== null || datePreset !== "all" || blReadyFilter || !!searchLower;
 
   const clearFilters = () => {
     setStatusFilterState(null);
     setBlReadyFilter(false);
     setDatePreset("all");
+    setSearch("");
     setPage(1);
     try { localStorage.removeItem(FREIGHT_BL_LS_KEY); } catch {}
   };
 
   const activeFilterParts: string[] = [];
+  if (searchLower) activeFilterParts.push(`"${search.trim()}"`);
   if (statusFilter) {
     const label = STATUS_FILTERS.find((f) => f.value === statusFilter)?.label ?? statusFilter;
     activeFilterParts.push(`Status: ${label}`);
@@ -555,6 +572,24 @@ export default function LogisticsFreightPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Cari no. shipment, shipper, consignee..."
+              className={`pl-9 h-8 text-sm w-72 ${search ? "pr-8" : ""}`}
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            />
+            {search && (
+              <button
+                onClick={() => { setSearch(""); setPage(1); }}
+                className="absolute right-2.5 top-2 text-muted-foreground hover:text-foreground"
+                aria-label="Hapus pencarian"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
           <Select
             value={datePreset}
             onValueChange={(v) => setDatePreset(v as DatePreset)}
