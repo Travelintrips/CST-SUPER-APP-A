@@ -44,6 +44,7 @@ import { runWaTemplateMigration } from "./lib/orderNotification.js";
 import { runRlsMigration } from "./lib/rlsMigration.js";
 import { migratePushSubscriptions } from "./lib/webPush.js";
 import { runPgTrgmMigration } from "./lib/pgTrgmMigration.js";
+import { startDbBackupScheduler } from "./lib/dbBackup.js";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 
@@ -201,6 +202,7 @@ async function startServer() {
   startImapPoller(3 * 60 * 1000);
   startOcrTempCleanup();
   startVmfGapNotifier();
+  startDbBackupScheduler();
 
   // Run all migrations + seeds in the background with a small initial delay
   // to prevent a DB connection storm on cold starts.

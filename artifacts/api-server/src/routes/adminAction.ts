@@ -13,7 +13,8 @@ import {
   customerQuoteLinksTable,
   orderUpdatesTable,
 } from "@workspace/db";
-import { requireClerkUser } from "../lib/requireAdmin.js";
+import { requireClerkUser, requireAdmin } from "../lib/requireAdmin.js";
+import { runDbBackup } from "../lib/dbBackup.js";
 import { getPreferredDomain } from "../lib/domain.js";
 import { logger } from "../lib/logger.js";
 import { sendWhatsApp } from "../lib/fonnte.js";
@@ -95,6 +96,13 @@ export function getAdminActionUrl(token: string): string {
   const domain = getPreferredDomain() || "cstlogistic.co.id";
   return `https://${domain}/admin-review/${token}`;
 }
+
+// ─── Admin: POST /api/admin-action/db-backup — manual DB backup trigger ──────
+adminActionAdminRouter.post("/db-backup", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const result = await runDbBackup();
+  return res.status(result.ok ? 200 : 500).json(result);
+});
 
 // ─── Admin: POST /api/admin-action/create ────────────────────────────────────
 adminActionAdminRouter.post("/create", async (req: Request, res: Response) => {
