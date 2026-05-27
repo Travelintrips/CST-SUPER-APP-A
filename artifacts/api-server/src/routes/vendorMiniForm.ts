@@ -1121,9 +1121,7 @@ vendorMiniFormRouter.post("/customer-approval/:token", async (req: Request, res:
     if (action === "approve") {
       await logActivity("customer_approval", locked?.id ?? 0, "approved", "customer",
         `Customer ${customerName ?? "-"} menyetujui penawaran. SO: ${soNumber}`,
-                        
-        { soNumber, salesDocId, orderId }).catch?.(() => {});
-      // G-3: order_updates entry untuk persetujuan customer
+        { soNumber, salesDocId, orderId, approvalId: locked?.id }).catch?.(() => {});
       if (orderId) {
         await logOrderUpdate(
           orderId,
@@ -1133,10 +1131,14 @@ vendorMiniFormRouter.post("/customer-approval/:token", async (req: Request, res:
           true,
         ).catch(() => {});
       }
+      if (salesDocId && soNumber) {
+        await logActivity("sales_order", salesDocId, "so_created", "system",
+          `SO ${soNumber} dibuat otomatis dari persetujuan customer VMF${customerName ? ` (${customerName})` : ""}`,
+          { docNumber: soNumber, approvalId: locked?.id, orderId }).catch?.(() => {});
+      }
     } else {
       await logActivity("customer_approval", locked?.id ?? 0, "rejected", "customer",
-        `Customer ${customerName ?? "-"} menolak penawaran`, { orderId }).catch?.(() => {});
-      // G-3: order_updates entry untuk penolakan customer
+        `Customer ${customerName ?? "-"} menolak penawaran`, { orderId, approvalId: locked?.id }).catch?.(() => {});
       if (orderId) {
         await logOrderUpdate(
           orderId,
@@ -1146,15 +1148,6 @@ vendorMiniFormRouter.post("/customer-approval/:token", async (req: Request, res:
           false,
         ).catch(() => {});
       }
-        { soNumber, salesDocId, orderId, approvalId: locked?.id }).catch?.(() => {});
-      if (salesDocId && soNumber) {
-        await logActivity("sales_order", salesDocId, "so_created", "system",
-          `SO ${soNumber} dibuat otomatis dari persetujuan customer VMF${customerName ? ` (${customerName})` : ""}`,
-          { docNumber: soNumber, approvalId: locked?.id, orderId }).catch?.(() => {});
-      }
-    } else {
-      await logActivity("customer_approval", locked?.id ?? 0, "rejected", "customer",
-        `Customer ${customerName ?? "-"} menolak penawaran`, { orderId, approvalId: locked?.id }).catch?.(() => {});
     }
 
     // Notify via WA templates (fire-and-forget)
@@ -1789,6 +1782,47 @@ vendorMiniFormRouter.get("/admin/activity-log/gaps", async (req: Request, res: R
   }
 });
 
+// ── ADMIN: GET /api/vendor-form/admin/gap-config ─────────────────────────────
+
+vendorMiniFormRouter.get("/admin/gap-config", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  try {
+    const { getThresholdDays, getNotifierEnabled } = await import("../lib/vmfGapNotifier.js");
+    const [thresholdDays, enabled] = await Promise.all([getThresholdDays(), getNotifierEnabled()]);
+    return res.json({ thresholdDays, enabled });
+  } catch (err) {
+    req.log?.error({ err }, "gap-config GET error");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── ADMIN: POST /api/vendor-form/admin/gap-config ────────────────────────────
+
+vendorMiniFormRouter.post("/admin/gap-config", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  try {
+    const { thresholdDays, enabled } = req.body as { thresholdDays?: unknown; enabled?: unknown };
+    const { setThresholdDays, setNotifierEnabled } = await import("../lib/vmfGapNotifier.js");
+
+    const updates: string[] = [];
+    if (thresholdDays !== undefined) {
+      const n = Number(thresholdDays);
+      if (isNaN(n) || n < 1 || n > 365) return res.status(400).json({ error: "thresholdDays harus antara 1–365" });
+      await setThresholdDays(Math.round(n));
+      updates.push(`thresholdDays=${Math.round(n)}`);
+    }
+    if (enabled !== undefined) {
+      await setNotifierEnabled(Boolean(enabled));
+      updates.push(`enabled=${Boolean(enabled)}`);
+    }
+    if (updates.length === 0) return res.status(400).json({ error: "Tidak ada field yang diupdate" });
+    return res.json({ ok: true, updated: updates });
+  } catch (err) {
+    req.log?.error({ err }, "gap-config POST error");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // ── ADMIN: POST /api/vendor-form/admin/activity-log/gaps/trigger ─────────────
 // Manually triggers a VMF gap check and WA digest right now.
 
@@ -2275,8 +2309,6 @@ vendorMiniFormRouter.post("/admin/customer-approvals/:id/send-wa", async (req: R
 
     await sendWhatsApp(target, msg, { context: "customer-approval-send", refType: "customer_approval", refId: String(approval.id) });
 
-    const userId2bFb = (req.user as { id: string } | undefined)?.id ?? "admin";
-    await logActivity("customer_approval", id, "sent_wa", userId2bFb,
     const actorId = (req.user as { id: string } | undefined)?.id ?? "admin";
     await logActivity("customer_approval", id, "sent_wa", actorId,
       `WA penawaran dikirim ke customer ${approval.customerName ?? "-"}`, { phone: target });
@@ -2290,7 +2322,7 @@ vendorMiniFormRouter.post("/admin/customer-approvals/:id/send-wa", async (req: R
         approval.orderId,
         "Penawaran Dikirim ke Customer",
         `WA penawaran harga ${priceStr} dikirim ke ${approval.customerName ?? "customer"} (${target}).`,
-        userId2bFb,
+        actorId,
       ).catch(() => {});
     }
 

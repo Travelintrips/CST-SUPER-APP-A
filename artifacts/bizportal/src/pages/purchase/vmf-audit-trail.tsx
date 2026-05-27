@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,11 +13,11 @@ import {
 } from "@/components/ui/table";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useMutation } from "@tanstack/react-query";
+import { Switch } from "@/components/ui/switch";
 import {
   ClipboardList, Search, Download, ChevronDown, ChevronRight,
   Link2, Send, FileCheck, Wrench, CheckCircle, XCircle,
-  Clock, AlertCircle, AlertTriangle, BellRing, Loader2,
+  Clock, AlertCircle, AlertTriangle, BellRing, Loader2, Settings2,
 } from "lucide-react";
 
 const BASE = "/api";
@@ -540,6 +540,124 @@ function AuditLogTab() {
 
 // ── Tab: Gap Detection ────────────────────────────────────────────────────────
 
+function GapConfigCard() {
+  const qc = useQueryClient();
+  const { data: cfg, isLoading: cfgLoading } = useQuery<{ thresholdDays: number; enabled: boolean }>({
+    queryKey: ["vmf-gap-config"],
+    queryFn: () => apiFetch(`${BASE}/vendor-form/admin/gap-config`),
+  });
+
+  const [days, setDays] = useState<string>("");
+  const [enabled, setEnabled] = useState<boolean>(true);
+  const [saveMsg, setSaveMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (cfg) {
+      setDays(String(cfg.thresholdDays));
+      setEnabled(cfg.enabled);
+    }
+  }, [cfg]);
+
+  const saveMutation = useMutation({
+    mutationFn: (payload: { thresholdDays?: number; enabled?: boolean }) =>
+      fetch(`${BASE}/vendor-form/admin/gap-config`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }).then(r => r.json()),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["vmf-gap-config"] });
+      setSaveMsg("Konfigurasi disimpan.");
+      setTimeout(() => setSaveMsg(null), 4000);
+    },
+  });
+
+  const daysNum = parseInt(days, 10);
+  const daysValid = !isNaN(daysNum) && daysNum >= 1 && daysNum <= 365;
+
+  function save() {
+    const payload: { thresholdDays?: number; enabled?: boolean } = {};
+    if (daysValid) payload.thresholdDays = daysNum;
+    payload.enabled = enabled;
+    saveMutation.mutate(payload);
+  }
+
+  return (
+    <Card className="border-blue-100 bg-blue-50/40">
+      <CardHeader className="pb-2 pt-3 px-4">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <Settings2 size={14} className="text-blue-600" />
+          Konfigurasi Alert Otomatis
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="px-4 pb-4">
+        {cfgLoading ? (
+          <div className="text-xs text-gray-400 py-2">Memuat konfigurasi…</div>
+        ) : (
+          <div className="flex flex-wrap items-end gap-4">
+            {/* Enabled toggle */}
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={enabled}
+                onCheckedChange={v => setEnabled(v)}
+                id="gap-enabled"
+              />
+              <label htmlFor="gap-enabled" className="text-sm font-medium cursor-pointer">
+                Alert WA aktif
+              </label>
+              <span className={`text-xs px-1.5 py-0.5 rounded ${enabled ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500"}`}>
+                {enabled ? "ON" : "OFF"}
+              </span>
+            </div>
+
+            {/* Threshold days */}
+            <div className="flex items-center gap-2">
+              <Label className="text-xs text-gray-500 whitespace-nowrap">Threshold stuck</Label>
+              <div className="flex items-center gap-1">
+                <Input
+                  type="number"
+                  min={1}
+                  max={365}
+                  value={days}
+                  onChange={e => setDays(e.target.value)}
+                  className={`h-8 w-20 text-sm text-center ${!daysValid && days !== "" ? "border-red-400" : ""}`}
+                />
+                <span className="text-xs text-gray-500">hari</span>
+              </div>
+              {!daysValid && days !== "" && (
+                <span className="text-xs text-red-500">1–365</span>
+              )}
+            </div>
+
+            <Button
+              size="sm"
+              onClick={save}
+              disabled={saveMutation.isPending || (!daysValid && days !== "")}
+              className="gap-1"
+            >
+              {saveMutation.isPending
+                ? <><Loader2 size={12} className="animate-spin" /> Menyimpan…</>
+                : "Simpan"
+              }
+            </Button>
+
+            {saveMsg && (
+              <span className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-1 rounded">
+                ✓ {saveMsg}
+              </span>
+            )}
+
+            <span className="text-xs text-gray-400 ml-auto">
+              Alert dikirim harian ke grup admin WA untuk order stuck lebih dari threshold.
+            </span>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function GapsTab() {
   const [filters, setFilters] = useState<FilterState>({ from: "", to: "", entityType: "", action: "", orderNumber: "", actor: "" });
   const [applied, setApplied] = useState(filters);
@@ -670,13 +788,7 @@ function GapsTab() {
         </CardContent>
       </Card>
 
-      {/* Scheduler info */}
-      <div className="text-xs text-gray-400 bg-gray-50 border rounded px-3 py-2 flex items-center gap-2">
-        <BellRing size={12} className="shrink-0" />
-        Alert otomatis dikirim setiap hari ke grup admin WA untuk order yang stuck &gt;
-        <code className="font-mono bg-white border px-1 rounded">VMF_GAP_NOTIFY_DAYS</code>
-        hari (default 2 hari). Gunakan tombol di atas untuk trigger manual.
-      </div>
+      <GapConfigCard />
 
       {isLoading && <div className="p-10 text-center text-gray-400 text-sm">Menganalisis gap…</div>}
       {error && <div className="p-8 text-center text-red-500 text-sm">{String(error)}</div>}

@@ -13,7 +13,7 @@
  * last 23 hours are skipped so we never send the same order twice in one day.
  */
 
-import { db, vmfActivityLogTable } from "@workspace/db";
+import { db, vmfActivityLogTable, portalContentTable } from "@workspace/db";
 import { sql, and, eq, gte } from "drizzle-orm";
 import { sendWhatsApp } from "./fonnte.js";
 import { getAdminGroupWa } from "./adminWa.js";
@@ -44,11 +44,61 @@ const NEXT_ACTION: Record<CriticalAction, string> = {
   op_confirm_sent: "→ selesai",
 };
 
-// How many days since last event before an order is considered "stalled".
-function getThresholdDays(): number {
+// ── Config key in portal_content ─────────────────────────────────────────────
+const CFG_THRESHOLD_KEY   = "vmf_gap_notify_days";
+const CFG_ENABLED_KEY     = "vmf_gap_notify_enabled";
+
+/** Read threshold from DB, fallback to env var, fallback to 2 days. */
+export async function getThresholdDays(): Promise<number> {
+  try {
+    const [row] = await db
+      .select({ value: portalContentTable.value })
+      .from(portalContentTable)
+      .where(eq(portalContentTable.key, CFG_THRESHOLD_KEY))
+      .limit(1);
+    if (row?.value) {
+      const n = parseInt(row.value, 10);
+      if (!isNaN(n) && n >= 1) return n;
+    }
+  } catch { /* ignore */ }
   const raw = process.env["VMF_GAP_NOTIFY_DAYS"];
   const n = raw ? parseInt(raw, 10) : 2;
   return isNaN(n) || n < 1 ? 2 : n;
+}
+
+/** Read enabled flag from DB (default: true). */
+export async function getNotifierEnabled(): Promise<boolean> {
+  try {
+    const [row] = await db
+      .select({ value: portalContentTable.value })
+      .from(portalContentTable)
+      .where(eq(portalContentTable.key, CFG_ENABLED_KEY))
+      .limit(1);
+    if (row?.value) return row.value !== "false";
+  } catch { /* ignore */ }
+  return true;
+}
+
+/** Persist threshold to DB. */
+export async function setThresholdDays(days: number): Promise<void> {
+  await db
+    .insert(portalContentTable)
+    .values({ key: CFG_THRESHOLD_KEY, value: String(days), updatedAt: new Date() })
+    .onConflictDoUpdate({
+      target: portalContentTable.key,
+      set: { value: String(days), updatedAt: new Date() },
+    });
+}
+
+/** Persist enabled flag to DB. */
+export async function setNotifierEnabled(enabled: boolean): Promise<void> {
+  await db
+    .insert(portalContentTable)
+    .values({ key: CFG_ENABLED_KEY, value: enabled ? "true" : "false", updatedAt: new Date() })
+    .onConflictDoUpdate({
+      target: portalContentTable.key,
+      set: { value: enabled ? "true" : "false", updatedAt: new Date() },
+    });
 }
 
 // ── Core gap query ────────────────────────────────────────────────────────────
@@ -177,7 +227,11 @@ function buildWaMessage(orders: GapOrder[], thresholdDays: number): string {
 // ── Main check function ───────────────────────────────────────────────────────
 
 export async function runVmfGapCheck(): Promise<void> {
-  const thresholdDays = getThresholdDays();
+  const [enabled, thresholdDays] = await Promise.all([getNotifierEnabled(), getThresholdDays()]);
+  if (!enabled) {
+    logger.info("VMF gap check: notifier disabled — skipping");
+    return;
+  }
   logger.info({ thresholdDays }, "VMF gap check: starting");
 
   try {
