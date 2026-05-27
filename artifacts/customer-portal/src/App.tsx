@@ -69,6 +69,7 @@ const VendorJobPage             = lazy(() => import("@/pages/vendor-job"));
 const OrderTrackPage            = lazy(() => import("@/pages/order-track"));
 const CustomerInvoicePage       = lazy(() => import("@/pages/customer-invoice"));
 const AccountSecurity           = lazy(() => import("@/pages/account-security"));
+const VendorPoAcceptPage        = lazy(() => import("@/pages/vendor-po-accept"));
 const NotFound                  = lazy(() => import("@/pages/not-found"));
 
 const queryClient = new QueryClient();
@@ -88,6 +89,7 @@ const NO_SHELL_PREFIXES = [
   "/customer-quote", "/order-task", "/customer-order", "/admin-action",
   "/vendor-fulfillment", "/vendor-job", "/order-track",
   "/customer-approval", "/op-confirm", "/customer-invoice",
+  "/vendor-po-accept",
   "/q/",
 ];
 
@@ -100,6 +102,7 @@ const NO_AUTH_CHECK_PREFIXES = [
   "/admin-action", "/admin-review", "/order-track", "/fulfillment", "/q/",
   "/privacy-policy", "/contact",
   "/customer-approval", "/op-confirm", "/customer-invoice",
+  "/vendor-po-accept",
 ];
 
 const BASE_PREFIX = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -233,6 +236,7 @@ function AppShell() {
         <Route path="/order-track/:trackToken" component={OrderTrackPage} />
         <Route path="/customer-invoice/:token" component={CustomerInvoicePage} />
         <Route path="/account-security" component={AccountSecurity} />
+        <Route path="/vendor-po-accept/:token" component={VendorPoAcceptPage} />
         <Route component={NotFound} />
       </Switch>
     </Suspense>

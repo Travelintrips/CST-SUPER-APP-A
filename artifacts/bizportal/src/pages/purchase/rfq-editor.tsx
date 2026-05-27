@@ -59,7 +59,7 @@ import {
 } from "@workspace/api-client-react";
 
 import { useQueryClient, useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Plus, Send, Check, X, FileText, Truck, Trash2, FileEdit, Save, Printer, CreditCard, Wallet, ScanLine, Mail, MessageSquare, SquareArrowOutUpRight } from "lucide-react";
+import { ArrowLeft, Plus, Send, Check, X, FileText, Truck, Trash2, FileEdit, Save, Printer, CreditCard, Wallet, ScanLine, Mail, MessageSquare, SquareArrowOutUpRight, Link2, CheckCircle2, Circle, ClipboardCopy } from "lucide-react";
 import { CorrespondenceTab } from "@/components/CorrespondenceTab";
 
 const idr = (n: number) =>
@@ -460,6 +460,27 @@ export default function PurchaseDocumentEditorPage() {
 
   const [scanOpen, setScanOpen] = useState(false);
   const [emailOpen, setEmailOpen] = useState(false);
+  const [vendorAcceptLink, setVendorAcceptLink] = useState<string | null>(null);
+  const [vendorAcceptCopied, setVendorAcceptCopied] = useState(false);
+
+  const generateVendorTokenMut = {
+    isPending: false,
+    mutate: async () => {
+      if (!id) return;
+      try {
+        const r = await fetch(`/api/purchase/documents/${id}/generate-vendor-token`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" } });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.message ?? "error");
+        setVendorAcceptLink(data.url);
+        await navigator.clipboard.writeText(data.url);
+        setVendorAcceptCopied(true);
+        toast({ title: "Link berhasil disalin!", description: "Kirimkan link ini ke vendor via WA atau email." });
+        setTimeout(() => setVendorAcceptCopied(false), 3000);
+      } catch (e: unknown) {
+        toast({ title: "Gagal membuat link", variant: "destructive" });
+      }
+    },
+  };
 
   const handleScannedData = (data: ScannedDocumentData) => {
     if (data.partyName) {
@@ -568,8 +589,83 @@ export default function PurchaseDocumentEditorPage() {
                 <Mail className="mr-2 h-4 w-4" /> Kirim Email
               </Button>
             )}
+            {!isNew && doc?.kind === "order" && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  if (vendorAcceptLink) {
+                    navigator.clipboard.writeText(vendorAcceptLink);
+                    setVendorAcceptCopied(true);
+                    toast({ title: "Link disalin!", description: "Kirimkan ke vendor via WA atau email." });
+                    setTimeout(() => setVendorAcceptCopied(false), 3000);
+                  } else {
+                    generateVendorTokenMut.mutate();
+                  }
+                }}
+                data-testid="button-vendor-accept-link"
+              >
+                {vendorAcceptCopied ? <CheckCircle2 className="mr-2 h-4 w-4 text-green-500" /> : <Link2 className="mr-2 h-4 w-4" />}
+                {vendorAcceptLink ? (vendorAcceptCopied ? "Tersalin!" : "Salin Link Vendor Accept") : "Buat Link Vendor Accept"}
+              </Button>
+            )}
           </div>
+          {vendorAcceptLink && (
+            <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded px-3 py-1.5">
+              <Link2 className="h-3 w-3 shrink-0" />
+              <span className="truncate font-mono">{vendorAcceptLink}</span>
+              <Button size="sm" variant="ghost" className="h-6 px-2 shrink-0" onClick={() => { navigator.clipboard.writeText(vendorAcceptLink); setVendorAcceptCopied(true); setTimeout(() => setVendorAcceptCopied(false), 3000); }}>
+                <ClipboardCopy className="h-3 w-3" />
+              </Button>
+            </div>
+          )}
+          {!isNew && doc?.kind === "order" && (doc as any).vendor_accepted_at && (
+            <div className="mt-1 flex items-center gap-1.5 text-xs text-green-600">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              <span>Vendor telah konfirmasi PO pada {new Date((doc as any).vendor_accepted_at).toLocaleString("id-ID")}</span>
+              {(doc as any).vendor_accept_notes && <span className="text-muted-foreground">— {(doc as any).vendor_accept_notes}</span>}
+            </div>
+          )}
         </div>
+
+        {isOrderView && doc && (
+          <Card>
+            <CardHeader><CardTitle className="text-sm font-medium text-muted-foreground">Alur Purchase Order (10 Tahap)</CardTitle></CardHeader>
+            <CardContent>
+              {(() => {
+                const d = doc as any;
+                const steps = [
+                  { label: "Purchase Request", done: true },
+                  { label: "RFQ", done: true },
+                  { label: "Penawaran Vendor", done: true },
+                  { label: "Perbandingan Vendor", done: true },
+                  { label: "PO Dibuat", done: doc.status !== "draft" },
+                  { label: "Vendor Konfirmasi PO", done: !!d.vendor_accepted_at },
+                  { label: "Pengiriman / Servis", done: doc.receiveStatus !== "none" },
+                  { label: "Terima & Verifikasi", done: doc.receiveStatus === "received" },
+                  { label: "Invoice Vendor", done: doc.billStatus === "billed" },
+                  { label: "Pembayaran & Tutup", done: doc.paymentStatus === "paid" || doc.status === "done" },
+                ];
+                const currentStep = steps.findIndex((s) => !s.done);
+                return (
+                  <div className="flex flex-wrap gap-1">
+                    {steps.map((step, i) => {
+                      const isCurrent = i === currentStep;
+                      return (
+                        <div key={i} className="flex items-center gap-1">
+                          <div className={`flex items-center gap-1 text-xs px-2 py-1 rounded-full ${step.done ? "bg-green-500/20 text-green-500" : isCurrent ? "bg-blue-500/20 text-blue-400 ring-1 ring-blue-400/50" : "bg-muted text-muted-foreground"}`}>
+                            {step.done ? <CheckCircle2 className="h-3 w-3" /> : <Circle className="h-3 w-3" />}
+                            <span>{step.label}</span>
+                          </div>
+                          {i < steps.length - 1 && <span className="text-muted-foreground/40 text-xs">›</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader><CardTitle>Informasi Vendor</CardTitle></CardHeader>
@@ -796,9 +892,12 @@ export default function PurchaseDocumentEditorPage() {
                 )}
               </div>
               <div className="text-right space-y-1">
-                <div className="text-sm text-muted-foreground">Subtotal: <span className="font-mono ml-2" data-testid="text-subtotal">{idr(subtotal)}</span></div>
-                {selectedTax && <div className="text-sm text-muted-foreground">{selectedTax.name}: <span className="font-mono ml-2" data-testid="text-tax-amount">{idr(taxAmount)}</span></div>}
-                <div className="text-sm text-muted-foreground">Grand Total</div>
+                <div className="text-sm text-muted-foreground">Subtotal <span className="text-xs">(Harga Dasar, belum PPN)</span>: <span className="font-mono ml-2" data-testid="text-subtotal">{idr(subtotal)}</span></div>
+                {selectedTax
+                  ? <div className="text-sm text-muted-foreground">PPN {selectedTax.rate}% ({selectedTax.name}): <span className="font-mono ml-2" data-testid="text-tax-amount">{idr(taxAmount)}</span></div>
+                  : <div className="text-xs text-muted-foreground italic">Tidak ada PPN</div>
+                }
+                <div className="text-xs text-muted-foreground">Total <span className="text-xs">(termasuk PPN)</span></div>
                 <div className="text-2xl font-bold" data-testid="text-total">{idr(grandTotal)}</div>
               </div>
             </div>

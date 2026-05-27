@@ -1,4 +1,5 @@
 import { Router, type Request } from "express";
+import { randomBytes } from "crypto";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { resolveCompanyId } from "../lib/resolveCompany.js";
 import { streamInvoicePdf, buildInvoicePdfBuffer } from "../lib/pdfInvoice.js";
@@ -44,6 +45,52 @@ async function computeTax(subtotal: number, taxRateId: number | null | undefined
   return { taxAmount, grandTotal: subtotal + taxAmount };
 }
 
+// ── Public router: vendor PO accept (no auth required) ────────────────────
+export const purchasePublicRouter = Router();
+
+purchasePublicRouter.get("/vendor-accept/:token", async (req, res) => {
+  const token = req.params.token;
+  const result = await db.execute(sql`
+    SELECT pd.id, pd.doc_number, pd.supplier_name, pd.grand_total, pd.total_amount, pd.tax_amount,
+           pd.status, pd.kind, pd.vendor_accepted_at, pd.vendor_accept_notes, pd.expected_date,
+           pd.notes, pd.created_at
+    FROM purchase_documents pd
+    WHERE pd.vendor_accept_token = ${token} AND pd.kind = 'order'
+    LIMIT 1
+  `);
+  const doc = (result as any).rows?.[0] ?? (Array.isArray(result) ? result[0] : null);
+  if (!doc) return res.status(404).json({ message: "Link tidak valid atau sudah kadaluarsa" });
+
+  const lines = await db.execute(sql`
+    SELECT name, description, quantity, unit_cost, subtotal
+    FROM purchase_document_lines WHERE document_id = ${doc.id} ORDER BY id
+  `);
+
+  return res.json({ ...doc, lines: (lines as any).rows ?? lines });
+});
+
+purchasePublicRouter.post("/vendor-accept/:token", async (req, res) => {
+  const token = req.params.token;
+  const { notes } = req.body ?? {};
+
+  const result = await db.execute(sql`
+    SELECT id, vendor_accepted_at FROM purchase_documents
+    WHERE vendor_accept_token = ${token} AND kind = 'order' LIMIT 1
+  `);
+  const doc = (result as any).rows?.[0] ?? (Array.isArray(result) ? result[0] : null);
+  if (!doc) return res.status(404).json({ message: "Link tidak valid atau sudah kadaluarsa" });
+  if (doc.vendor_accepted_at) return res.status(409).json({ message: "PO ini sudah dikonfirmasi sebelumnya", alreadyAccepted: true });
+
+  await db.execute(sql`
+    UPDATE purchase_documents
+    SET vendor_accepted_at = NOW(), vendor_accept_notes = ${notes ?? null}
+    WHERE id = ${doc.id}
+  `);
+
+  return res.json({ ok: true, acceptedAt: new Date().toISOString() });
+});
+
+// ── Authenticated router ─────────────────────────────────────────────────────
 const router = Router();
 
 router.use(async (req, res, next) => {
@@ -702,6 +749,27 @@ router.post("/documents/:id/email", async (req, res): Promise<void> => {
   });
 
   res.json({ message: "Email berhasil dikirim", to, filename });
+});
+
+router.post("/documents/:id/generate-vendor-token", async (req, res) => {
+  const id = Number(req.params.id);
+  if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+
+  const [doc] = await db.select().from(purchaseDocumentsTable).where(eq(purchaseDocumentsTable.id, id));
+  if (!doc) return res.status(404).json({ message: "Document not found" });
+  if (doc.kind !== "order") return res.status(400).json({ message: "Hanya PO yang bisa dibuat link vendor accept" });
+
+  const existingToken = (doc as any).vendor_accept_token as string | null | undefined;
+  if (existingToken) {
+    const baseUrl = process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : `http://localhost:5000`;
+    return res.json({ token: existingToken, url: `${baseUrl}/vendor-po-accept/${existingToken}` });
+  }
+
+  const token = randomBytes(24).toString("hex");
+  await db.execute(sql`UPDATE purchase_documents SET vendor_accept_token = ${token} WHERE id = ${id}`);
+
+  const baseUrl = process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : `http://localhost:5000`;
+  return res.json({ token, url: `${baseUrl}/vendor-po-accept/${token}` });
 });
 
 router.get("/po-detail/:id", async (req, res) => {

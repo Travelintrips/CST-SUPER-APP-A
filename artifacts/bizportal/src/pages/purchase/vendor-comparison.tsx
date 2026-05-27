@@ -20,7 +20,7 @@ export default function VendorComparisonPage() {
   const [, navigate] = useLocation();
   const qcClient = useQueryClient();
   const [showAddForm, setShowAddForm] = useState(false);
-  const [newVQ, setNewVQ] = useState({ supplierName: "", deliveryDays: "", paymentTermDays: "30", notes: "", lines: [{ name: "", quantity: "1", unit: "pcs", unitCost: "0" }] });
+  const [newVQ, setNewVQ] = useState({ supplierName: "", deliveryDays: "", paymentTermDays: "30", notes: "", ppnRate: "11", lines: [{ name: "", quantity: "1", unit: "pcs", unitCost: "0" }] });
 
   const { data: quotations = [], isLoading, refetch } = useQuery({
     queryKey: ["/api/purchase-workflow/vq/compare", rfqId],
@@ -37,7 +37,10 @@ export default function VendorComparisonPage() {
   const addQuoteMut = useMutation({
     mutationFn: async () => {
       const totalAmount = newVQ.lines.reduce((s, l) => s + Number(l.quantity) * Number(l.unitCost), 0);
-      const payload = { rfqId: Number(rfqId), supplierName: newVQ.supplierName, deliveryDays: newVQ.deliveryDays ? Number(newVQ.deliveryDays) : undefined, paymentTermDays: Number(newVQ.paymentTermDays), notes: newVQ.notes, totalAmount: String(totalAmount), grandTotal: String(totalAmount), taxAmount: "0", lines: newVQ.lines };
+      const ppnPct = Number(newVQ.ppnRate) || 0;
+      const taxAmount = Math.round(totalAmount * ppnPct) / 100;
+      const grandTotal = totalAmount + taxAmount;
+      const payload = { rfqId: Number(rfqId), supplierName: newVQ.supplierName, deliveryDays: newVQ.deliveryDays ? Number(newVQ.deliveryDays) : undefined, paymentTermDays: Number(newVQ.paymentTermDays), notes: newVQ.notes, totalAmount: String(totalAmount), taxAmount: String(taxAmount), grandTotal: String(grandTotal), lines: newVQ.lines };
       const r = await apiFetch("/purchase-workflow/vq", { method: "POST", body: JSON.stringify(payload) });
       if (!r.ok) throw new Error();
       return r.json();
@@ -81,8 +84,20 @@ export default function VendorComparisonPage() {
                 <div><Label>Nama Vendor</Label><Input value={newVQ.supplierName} onChange={e => setNewVQ(v => ({ ...v, supplierName: e.target.value }))} /></div>
                 <div><Label>Lead Time (hari)</Label><Input type="number" value={newVQ.deliveryDays} onChange={e => setNewVQ(v => ({ ...v, deliveryDays: e.target.value }))} /></div>
                 <div><Label>Term Bayar (hari)</Label><Input type="number" value={newVQ.paymentTermDays} onChange={e => setNewVQ(v => ({ ...v, paymentTermDays: e.target.value }))} /></div>
-                <div><Label>Catatan</Label><Input value={newVQ.notes} onChange={e => setNewVQ(v => ({ ...v, notes: e.target.value }))} /></div>
+                <div><Label>PPN (%)</Label><Input type="number" value={newVQ.ppnRate} onChange={e => setNewVQ(v => ({ ...v, ppnRate: e.target.value }))} placeholder="0 = tidak ada PPN" /></div>
+                <div className="col-span-2"><Label>Catatan</Label><Input value={newVQ.notes} onChange={e => setNewVQ(v => ({ ...v, notes: e.target.value }))} /></div>
               </div>
+              {(() => {
+                const sub = newVQ.lines.reduce((s, l) => s + Number(l.quantity) * Number(l.unitCost), 0);
+                const ppn = Math.round(sub * (Number(newVQ.ppnRate) || 0)) / 100;
+                return sub > 0 ? (
+                  <div className="text-sm text-right text-muted-foreground space-y-0.5 border rounded p-3 bg-muted/20">
+                    <div>Subtotal (Harga Dasar, belum PPN): <span className="font-mono font-medium text-foreground ml-2">{idr(sub)}</span></div>
+                    {ppn > 0 && <div>PPN {newVQ.ppnRate}%: <span className="font-mono font-medium text-foreground ml-2">{idr(ppn)}</span></div>}
+                    <div className="font-semibold border-t pt-1 mt-1">Total (termasuk PPN): <span className="font-mono font-bold text-foreground ml-2">{idr(sub + ppn)}</span></div>
+                  </div>
+                ) : null;
+              })()}
               <div>
                 <Label>Item & Harga</Label>
                 <div className="space-y-1 mt-1">
@@ -99,7 +114,7 @@ export default function VendorComparisonPage() {
               </div>
               <div className="flex gap-2">
                 <Button onClick={() => addQuoteMut.mutate()} disabled={addQuoteMut.isPending || !newVQ.supplierName}>Simpan Quotation</Button>
-                <Button variant="outline" onClick={() => setShowAddForm(false)}>Batal</Button>
+                <Button variant="outline" onClick={() => { setShowAddForm(false); setNewVQ({ supplierName: "", deliveryDays: "", paymentTermDays: "30", notes: "", ppnRate: "11", lines: [{ name: "", quantity: "1", unit: "pcs", unitCost: "0" }] }); }}>Batal</Button>
               </div>
             </CardContent>
           </Card>
@@ -137,9 +152,32 @@ export default function VendorComparisonPage() {
                     })}
                   </tr>
                 ))}
+                {/* Subtotal row */}
+                <tr className="border-t bg-muted/20">
+                  <td className="py-2 px-4 text-muted-foreground text-xs">Subtotal (Harga Dasar, belum PPN)</td>
+                  {quotations.map((q: Record<string, unknown>) => (
+                    <td key={String(q.id)} className="py-2 px-4 text-center font-mono text-sm text-muted-foreground">
+                      {idr(Number(q.totalAmount ?? 0))}
+                    </td>
+                  ))}
+                </tr>
+                {/* PPN row */}
+                <tr className="border-t bg-muted/20">
+                  <td className="py-2 px-4 text-muted-foreground text-xs">PPN</td>
+                  {quotations.map((q: Record<string, unknown>) => {
+                    const tax = Number(q.taxAmount ?? 0);
+                    const sub = Number(q.totalAmount ?? 0);
+                    const pct = sub > 0 ? Math.round(tax / sub * 100) : 0;
+                    return (
+                      <td key={String(q.id)} className="py-2 px-4 text-center font-mono text-sm text-muted-foreground">
+                        {tax > 0 ? <>{idr(tax)} <span className="text-xs">({pct}%)</span></> : <span className="text-xs">—</span>}
+                      </td>
+                    );
+                  })}
+                </tr>
                 {/* Grand total row */}
                 <tr className="border-t bg-muted/30 font-bold">
-                  <td className="py-3 px-4">Grand Total</td>
+                  <td className="py-3 px-4">Total (termasuk PPN)</td>
                   {quotations.map((q: Record<string, unknown>) => {
                     const isLowest = Number(q.grandTotal) === minTotal;
                     return (

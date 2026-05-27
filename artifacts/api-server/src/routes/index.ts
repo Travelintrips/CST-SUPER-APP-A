@@ -9,7 +9,7 @@ import tradingRouter from "./trading";
 // import logisticsRouter from "./logistics";
 import freightRouter from "./freight";
 import salesRouter from "./sales";
-import purchaseRouter from "./purchase";
+import purchaseRouter, { purchasePublicRouter } from "./purchase";
 import reportsRouter from "./reports";
 import paymentsRouter from "./payments";
 import accountingRouter from "./accounting";
@@ -90,6 +90,7 @@ router.use("/logistics", freightRouter);
 // pos.ts (LAMA) dinonaktifkan — lihat komentar import di atas.
 // router.use("/pos", posRouter);
 router.use("/sales", salesRouter);
+router.use("/purchase", purchasePublicRouter);
 router.use("/purchase", purchaseRouter);
 router.use("/reports", reportsRouter);
 router.use("/payments", paymentsRouter);

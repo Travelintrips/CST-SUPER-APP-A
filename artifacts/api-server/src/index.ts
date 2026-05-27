@@ -174,6 +174,32 @@ async function runCriticalPreStartMigrations() {
       END IF;
     END $$;
   `);
+
+  // Add vendor_accept_token and vendor_accepted_at to purchase_documents (Vendor PO Accept feature)
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'purchase_documents') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'purchase_documents' AND column_name = 'vendor_accept_token'
+        ) THEN
+          ALTER TABLE purchase_documents ADD COLUMN vendor_accept_token TEXT UNIQUE;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'purchase_documents' AND column_name = 'vendor_accepted_at'
+        ) THEN
+          ALTER TABLE purchase_documents ADD COLUMN vendor_accepted_at TIMESTAMP;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'purchase_documents' AND column_name = 'vendor_accept_notes'
+        ) THEN
+          ALTER TABLE purchase_documents ADD COLUMN vendor_accept_notes TEXT;
+        END IF;
+      END IF;
+    END $$;
+  `);
 }
 
 async function startServer() {
