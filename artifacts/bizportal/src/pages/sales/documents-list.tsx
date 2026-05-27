@@ -24,7 +24,7 @@ import type { SalesDocument } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { usePrefetchOnHover } from "@/hooks/use-prefetch-on-hover";
-import { Plus, Trash2, X, Search, RefreshCw, FileText, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Trash2, X, Search, RefreshCw, FileText, ChevronLeft, ChevronRight, Download } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 const idr = (n: number) =>
@@ -195,6 +195,67 @@ export default function SalesDocumentsListPage({ kind = "quote" }: Props) {
     }
   };
 
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExport = async () => {
+    setIsExporting(true);
+    try {
+      const params = new URLSearchParams();
+      params.set("kind", kind);
+      params.set("limit", "5000");
+      if (statusFilter !== "all") params.set("status", statusFilter);
+      if (paymentFilter !== "all") params.set("paymentStatus", paymentFilter);
+      if (search.trim()) params.set("search", search.trim());
+
+      const res = await fetch(`/api/sales/documents?${params.toString()}`);
+      if (!res.ok) throw new Error("Gagal mengambil data");
+      const json = await res.json() as { data: SalesDocument[] };
+      const rows = json.data;
+
+      const headers = isQuote
+        ? ["No. Dokumen", "Customer", "Status", "Valid Sampai", "Total (IDR)", "Tanggal Dibuat"]
+        : ["No. Dokumen", "Customer", "Status", "Pembayaran", "Jatuh Tempo", "Total (IDR)", "Origin", "Tujuan", "Tanggal Dibuat"];
+
+      const escape = (v: string | null | undefined) => {
+        if (v == null) return "";
+        const s = String(v);
+        return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s;
+      };
+
+      const lines = [
+        headers.join(","),
+        ...rows.map((d) =>
+          isQuote
+            ? [d.docNumber, d.customerName, STATUS_LABELS[d.status] ?? d.status,
+                d.validUntil ? new Date(d.validUntil).toLocaleDateString("id-ID") : "",
+                d.grandTotal != null ? String(d.grandTotal) : "",
+                new Date(d.createdAt).toLocaleDateString("id-ID")]
+              .map(escape).join(",")
+            : [d.docNumber, d.customerName, STATUS_LABELS[d.status] ?? d.status,
+                PAYMENT_LABELS[d.paymentStatus as PaymentFilter] ?? d.paymentStatus ?? "",
+                d.expectedDate ? new Date(d.expectedDate).toLocaleDateString("id-ID") : "",
+                d.grandTotal != null ? String(d.grandTotal) : "",
+                d.origin ?? "", d.destination ?? "",
+                new Date(d.createdAt).toLocaleDateString("id-ID")]
+              .map(escape).join(",")
+        ),
+      ];
+
+      const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const ts = new Date().toISOString().slice(0, 10);
+      a.href = url;
+      a.download = `${isQuote ? "quotations" : "sales-orders"}-${ts}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast({ title: "Export gagal", variant: "destructive" });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const colCount = isQuote ? 7 : 10;
 
   return (
@@ -212,6 +273,17 @@ export default function SalesDocumentsListPage({ kind = "quote" }: Props) {
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-2">
               <RefreshCw className="h-4 w-4" /> Refresh
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExport}
+              disabled={isExporting}
+              className="gap-2"
+              title={`Export ${isQuote ? "quotations" : "sales orders"} ke CSV`}
+            >
+              <Download className="h-4 w-4" />
+              {isExporting ? "Mengexport..." : "Export CSV"}
             </Button>
             {isQuote && (
               <Button onClick={() => navigate("/sales/quotations/new")} data-testid="button-new-quote">
