@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db, usersTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import { invalidateUserCtxCache } from "../middlewares/authMiddleware.js";
+import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 
 const router = Router();
 
@@ -222,9 +223,11 @@ router.post("/", async (req, res) => {
 router.delete("/:id", async (req, res) => {
   if (!(await requireAdmin(req, res))) return;
   const { id } = req.params;
+  const [user] = await db.select({ profileImageUrl: usersTable.profileImageUrl }).from(usersTable).where(eq(usersTable.id, id));
   const deleted = await db.delete(usersTable).where(eq(usersTable.id, id)).returning();
   if (deleted.length === 0) return res.status(404).json({ message: "User tidak ditemukan" });
   invalidateUserCtxCache(id);
+  if (user?.profileImageUrl) deleteFromSupabase(user.profileImageUrl).catch(() => {});
   return res.json({ ok: true });
 });
 
