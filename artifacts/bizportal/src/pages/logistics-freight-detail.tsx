@@ -124,6 +124,9 @@ export default function LogisticsFreightDetailPage() {
       return res.json() as Promise<AuditLog[]>;
     },
     enabled: !!id,
+    // H5: polling fallback — re-fetches every 30s so audit log stays fresh
+    // even if the SSE connection drops (SSE is the primary trigger via lastFreightEventAt).
+    refetchInterval: 30_000,
   });
   const idr = (n: number) =>
     new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);

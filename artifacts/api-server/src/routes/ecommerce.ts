@@ -645,4 +645,30 @@ router.post("/sync-prices", async (req, res) => {
   return res.json({ ok: true, message: "Price sync broadcasted to all portal tabs" });
 });
 
+// ── USD/IDR exchange rate — server-side cache (H6) ────────────────────────
+// Fetches from open.er-api.com and caches for 5 minutes so the browser
+// never calls external APIs directly and stale localStorage values are avoided.
+const _USD_IDR_FALLBACK = 16_300;
+const _USD_IDR_CACHE_MS = 5 * 60 * 1000;
+let _usdIdrCache: { rate: number; fetchedAt: number } | null = null;
+
+// GET /api/ecommerce/usd-idr-rate — public (used by customer portal)
+router.get("/usd-idr-rate", async (_req, res) => {
+  const now = Date.now();
+  if (_usdIdrCache && now - _usdIdrCache.fetchedAt < _USD_IDR_CACHE_MS) {
+    return res.json({ rate: _usdIdrCache.rate, source: "cache" });
+  }
+  try {
+    const resp = await fetch("https://open.er-api.com/v6/latest/USD");
+    const data = await resp.json() as { rates?: { IDR?: number } };
+    const idr = data?.rates?.IDR;
+    if (idr && idr > 1000) {
+      _usdIdrCache = { rate: idr, fetchedAt: now };
+      return res.json({ rate: idr, source: "live" });
+    }
+  } catch { /* fall through to cached/fallback */ }
+  const rate = _usdIdrCache?.rate ?? _USD_IDR_FALLBACK;
+  return res.json({ rate, source: "fallback" });
+});
+
 export default router;

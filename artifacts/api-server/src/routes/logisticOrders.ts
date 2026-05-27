@@ -423,12 +423,12 @@ logisticOrdersRouter.get(
       .orderBy(desc(logisticOrderRfqsTable.createdAt))
       .limit(1);
 
+    // Security: quotedPrice is financial/margin data — never expose on public tracking endpoint.
+    // Only status and timing info is safe for unauthenticated callers.
     const rfqQuote = latestRfq ? {
       rfqId: latestRfq.id,
       rfqStatus: latestRfq.status,
-      quotedPrice: latestRfq.quotedPrice ? parseFloat(latestRfq.quotedPrice) : null,
       quotedAt: latestRfq.quotedAt?.toISOString() ?? null,
-      quoteNotes: latestRfq.quoteNotes ?? null,
       customerResponseNotes: (latestRfq as any).customerResponseNotes ?? null,
       customerRespondedAt: (latestRfq as any).customerRespondedAt
         ? new Date((latestRfq as any).customerRespondedAt).toISOString() : null,
@@ -857,9 +857,31 @@ logisticOrdersRouter.put("/:id/status", async (req: Request, res: Response) => {
   const { id } = paramsParsed.data;
   const { status } = bodyParsed.data;
 
+  // H3 — Optimistic locking: if client sends clientUpdatedAt, verify it matches
+  // the current DB updatedAt to detect concurrent edits before committing.
+  const clientUpdatedAt = typeof (req.body as Record<string, unknown>).clientUpdatedAt === "string"
+    ? new Date((req.body as Record<string, unknown>).clientUpdatedAt as string)
+    : null;
+  if (clientUpdatedAt) {
+    const [current] = await db
+      .select({ updatedAt: logisticOrdersTable.updatedAt })
+      .from(logisticOrdersTable)
+      .where(eq(logisticOrdersTable.id, id));
+    if (!current) return res.status(404).json({ message: "Order tidak ditemukan" });
+    const dbMs = new Date(current.updatedAt).getTime();
+    const clientMs = clientUpdatedAt.getTime();
+    if (Math.abs(dbMs - clientMs) > 1000) {
+      return res.status(409).json({
+        message: "Order telah diubah oleh pengguna lain. Muat ulang halaman untuk mendapatkan data terbaru.",
+        conflict: true,
+        serverUpdatedAt: current.updatedAt,
+      });
+    }
+  }
+
   const [updated] = await db
     .update(logisticOrdersTable)
-    .set({ status })
+    .set({ status, updatedAt: new Date() })
     .where(eq(logisticOrdersTable.id, id))
     .returning();
 

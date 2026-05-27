@@ -561,7 +561,8 @@ logisticRfqV2Router.get("/vendor-form/:token", async (req: Request, res: Respons
     grossWeight,
     volumeCbm,
     requiredDate: order.requiredDate ?? null,
-    basicPrice,
+    // Security: basicPrice is an internal cost estimate — never expose to vendors.
+    // Vendors should quote based on their own pricing, not our target/margin.
     responseDeadline: link.expiredAt?.toISOString() ?? rfqResponseDeadline?.toISOString() ?? null,
     alreadySubmitted: !!link.submittedAt,
     currentStatus: link.status,
@@ -610,6 +611,11 @@ logisticRfqV2Router.post("/vendor-form/:token", async (req: Request, res: Respon
     return res.status(410).json({ message: "Link sudah kadaluarsa" });
   }
   if (link.status === "expired") return res.status(410).json({ message: "Link sudah kadaluarsa" });
+
+  // H4 guard: block vendor from changing a quote that has already been selected by admin
+  if (link.status === "selected") {
+    return res.status(409).json({ message: "Penawaran Anda sudah dipilih oleh admin. Tidak dapat mengubah penawaran." });
+  }
 
   const [rfq] = await db.select().from(logisticOrderRfqsTable)
     .where(eq(logisticOrderRfqsTable.id, link.rfqId));

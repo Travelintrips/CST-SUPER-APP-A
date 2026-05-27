@@ -42,35 +42,18 @@ function isUsdProduct(product: Product): boolean {
   return product.subcategory === "Green Bean";
 }
 
-// ── USD/IDR exchange rate — cached in localStorage for 6 h ─────────────────
-const _USD_IDR_KEY = "cst_usd_idr_rate";
-const _USD_IDR_TTL = 6 * 60 * 60 * 1000;
+// ── USD/IDR exchange rate — fetched from server (H6 fix) ────────────────────
+// Rate is fetched from our own API server (which caches it for 5 min server-side).
+// This avoids direct external API calls from the browser and stale 6-hour localStorage.
 const _USD_IDR_FALLBACK = 16_300;
 
-function _readCachedRate(): { rate: number; fresh: boolean } {
-  try {
-    const raw = localStorage.getItem(_USD_IDR_KEY);
-    if (raw) {
-      const { rate, ts } = JSON.parse(raw) as { rate: number; ts: number };
-      if (rate > 1000) return { rate, fresh: Date.now() - ts < _USD_IDR_TTL };
-    }
-  } catch { /* ignore */ }
-  return { rate: _USD_IDR_FALLBACK, fresh: false };
-}
-
 function useUsdIdrRate(): number {
-  const [rate, setRate] = useState<number>(() => _readCachedRate().rate);
+  const [rate, setRate] = useState<number>(_USD_IDR_FALLBACK);
   useEffect(() => {
-    const { fresh } = _readCachedRate();
-    if (fresh) return;
-    fetch("https://open.er-api.com/v6/latest/USD")
+    fetch("/api/ecommerce/usd-idr-rate")
       .then((r) => r.json())
-      .then((data) => {
-        const idr = (data?.rates?.IDR as number) ?? 0;
-        if (idr > 1000) {
-          localStorage.setItem(_USD_IDR_KEY, JSON.stringify({ rate: idr, ts: Date.now() }));
-          setRate(idr);
-        }
+      .then((data: { rate?: number }) => {
+        if (data?.rate && data.rate > 1000) setRate(data.rate);
       })
       .catch(() => { /* keep fallback */ });
   }, []);
