@@ -14,6 +14,7 @@ import { shortLinkRedirectRouter } from "./routes/shortLinkRedirect";
 import { adminActionRouter } from "./routes/adminAction";
 import { authMiddleware } from "./middlewares/authMiddleware";
 import { bearerRateLimiter } from "./middlewares/bearerRateLimiter";
+import { correlationIdMiddleware } from "./middlewares/correlationId";
 import { logger } from "./lib/logger";
 import { recordResponseTime } from "./lib/responseTimeLog";
 
@@ -23,6 +24,9 @@ const app: Express = express();
 // This makes req.ip reflect the real client IP from X-Forwarded-For instead
 // of the proxy's internal address, which is required for IP-based rate limiting.
 app.set("trust proxy", 1);
+
+// ── Correlation ID — assign / echo X-Request-ID on every request ─────────────
+app.use(correlationIdMiddleware);
 
 // ── Gzip compression ─────────────────────────────────────────────────────────
 app.use(compression());
@@ -118,6 +122,9 @@ app.use((req, res, next) => {
 app.use(
   pinoHttp({
     logger,
+    // Reuse the correlation ID already set by correlationIdMiddleware so every
+    // pino-http log line carries the same reqId as the X-Request-ID header.
+    genReqId: (req) => (req as IncomingMessage & { id?: string }).id,
     serializers: {
       req(req: IncomingMessage & { id?: string }) {
         return {
@@ -328,8 +335,10 @@ if (fs.existsSync(CUSTOMER_PORTAL_DIST)) {
 
 // Global error handler — logs unhandled errors and returns JSON
 app.use((err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  const reqId = (req as express.Request & { id?: string }).id;
   logger.error(
     {
+      reqId,
       err: { message: err.message, stack: err.stack, name: err.name },
       method: req.method,
       url: req.url,
@@ -340,6 +349,7 @@ app.use((err: Error, req: express.Request, res: express.Response, _next: express
   const isProd = process.env["NODE_ENV"] === "production";
   res.status(500).json({
     message: "Internal Server Error",
+    reqId,
     ...(isProd ? {} : { error: err.message }),
   });
 });
