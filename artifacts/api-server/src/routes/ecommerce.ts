@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db, productsTable, ordersTable, productCategoriesTable, productCategoryMapTable } from "@workspace/db";
 import { eq, ne, count, inArray, and, ilike, or, type SQL } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage";
+import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { postEcommerceOrder } from "../lib/accounting.js";
 import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa } from "../lib/adminWa.js";
@@ -407,7 +408,18 @@ router.put("/products/:id", async (req, res) => {
 // DELETE /api/ecommerce/products/:id
 router.delete("/products/:id", async (req, res) => {
   const id = Number(req.params.id);
+  const [product] = await db.select().from(productsTable).where(eq(productsTable.id, id));
   await db.delete(productsTable).where(eq(productsTable.id, id));
+  // Cascade storage cleanup — imageUrl + mediaItems
+  if (product) {
+    const urls: string[] = [];
+    if (product.imageUrl) urls.push(product.imageUrl);
+    try {
+      const items: Array<{ url?: string }> = JSON.parse(product.mediaItems ?? "[]");
+      for (const item of items) { if (item.url) urls.push(item.url); }
+    } catch { /* ignore */ }
+    for (const url of urls) deleteFromSupabase(url).catch(() => {});
+  }
   // Notify Customer Portal: produk dihapus — hapus dari listing.
   // Listener: products.tsx (invalidates ["portal-products"]),
   //           jasa.tsx (invalidates ["listPortalServicesJasa"])

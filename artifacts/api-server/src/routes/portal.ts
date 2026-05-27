@@ -1,6 +1,7 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { rateLimit } from "express-rate-limit";
 import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, portalContentTable, accountingSettingsTable, salesDocumentsTable, salesDocumentLinesTable, customersTable, logisticOrdersTable, suppliersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, quoteRequestsTable, userProfilesTable, identityDocumentsTable, ocrResultsTable, vendorProfilesTable, driverProfilesTable, employeeProfilesTable, onboardingApprovalsTable, waOtpCodesTable, trustedDevicesTable, vendorMiniFormLinksTable, vendorMiniFormSubmissionsTable } from "@workspace/db";
+import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { invalidateTokenCache, SERVICE_SCHEMAS } from "./vendorMiniForm";
 import { eq, inArray, and, sql, desc, gte, lte, ilike, or } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage.js";
@@ -173,7 +174,17 @@ router.put("/logistic-admin/services/:id", requirePortalAdmin, async (req, res) 
 // DELETE /api/portal/logistic-admin/services/:id
 router.delete("/logistic-admin/services/:id", requirePortalAdmin, async (req, res) => {
   const id = Number(req.params.id);
+  const [product] = await db.select().from(productsTable).where(eq(productsTable.id, id));
   await db.delete(productsTable).where(eq(productsTable.id, id));
+  if (product) {
+    const urls: string[] = [];
+    if (product.imageUrl) urls.push(product.imageUrl);
+    try {
+      const items: Array<{ url?: string }> = JSON.parse(product.mediaItems ?? "[]");
+      for (const item of items) { if (item.url) urls.push(item.url); }
+    } catch { /* ignore */ }
+    for (const url of urls) deleteFromSupabase(url).catch(() => {});
+  }
   return res.json({ ok: true });
 });
 
@@ -1155,7 +1166,17 @@ router.post("/admin/services", requirePortalAdmin, async (req, res) => {
 router.delete("/admin/services/:id", requirePortalAdmin, async (req, res) => {
   const id = parseInt(String(req.params.id), 10);
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+  const [product] = await db.select().from(productsTable).where(eq(productsTable.id, id));
   await db.delete(productsTable).where(eq(productsTable.id, id));
+  if (product) {
+    const urls: string[] = [];
+    if (product.imageUrl) urls.push(product.imageUrl);
+    try {
+      const items: Array<{ url?: string }> = JSON.parse(product.mediaItems ?? "[]");
+      for (const item of items) { if (item.url) urls.push(item.url); }
+    } catch { /* ignore */ }
+    for (const url of urls) deleteFromSupabase(url).catch(() => {});
+  }
   return res.json({ ok: true });
 });
 
@@ -1287,7 +1308,17 @@ router.put("/admin/products/:id", requirePortalAdmin, async (req, res) => {
 router.delete("/admin/products/:id", requirePortalAdmin, async (req, res) => {
   const id = parseInt(String(req.params.id), 10);
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+  const [product] = await db.select().from(productsTable).where(eq(productsTable.id, id));
   await db.delete(productsTable).where(eq(productsTable.id, id));
+  if (product) {
+    const urls: string[] = [];
+    if (product.imageUrl) urls.push(product.imageUrl);
+    try {
+      const items: Array<{ url?: string }> = JSON.parse(product.mediaItems ?? "[]");
+      for (const item of items) { if (item.url) urls.push(item.url); }
+    } catch { /* ignore */ }
+    for (const url of urls) deleteFromSupabase(url).catch(() => {});
+  }
   return res.json({ ok: true });
 });
 
