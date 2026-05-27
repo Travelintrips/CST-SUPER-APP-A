@@ -12,7 +12,9 @@ import {
   logisticOrderRfqsTable,
   driverLocationsTable,
   orderUpdatesTable,
+  vendorResponsesTable,
 } from "@workspace/db";
+import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { eq, ilike, and, gte, lte, or, sql, desc, inArray, isNotNull } from "drizzle-orm";
 import { salesDocumentsTable } from "@workspace/db";
 import { requireClerkUser } from "../lib/requireAdmin.js";
@@ -690,6 +692,10 @@ logisticOrdersRouter.delete("/vendors/:id", async (req: Request, res: Response) 
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
   const [deleted] = await db.delete(suppliersTable).where(eq(suppliersTable.id, id)).returning();
   if (!deleted) return res.status(404).json({ message: "Vendor tidak ditemukan" });
+  // Cascade storage cleanup — logo (hanya jika berupa URL, bukan emoji)
+  if (deleted.logo && (deleted.logo.startsWith("http") || deleted.logo.startsWith("/api/storage"))) {
+    deleteFromSupabase(deleted.logo).catch(() => {});
+  }
   return res.json({ success: true });
 });
 
@@ -1136,11 +1142,41 @@ logisticOrdersRouter.put("/bulk-status", async (req: Request, res: Response) => 
   return res.json({ message: "Updated", updatedIds: updated.map((r) => r.id), count: updated.length });
 });
 
+// Helper: hapus file storage terkait logistic order (driver photos + vendor unit photos)
+async function cleanupLogisticOrderStorage(orderIds: number[]): Promise<void> {
+  if (orderIds.length === 0) return;
+  try {
+    // 1. Cari driver jobs terkait order, lalu hapus foto-foto driver
+    const jobs = await db
+      .select({ id: driverJobsTable.id })
+      .from(driverJobsTable)
+      .where(inArray(driverJobsTable.logisticOrderId, orderIds));
+    if (jobs.length > 0) {
+      const jobIds = jobs.map((j) => j.id);
+      const photos = await db
+        .select({ url: driverPhotosTable.url })
+        .from(driverPhotosTable)
+        .where(inArray(driverPhotosTable.driverJobId, jobIds));
+      for (const p of photos) deleteFromSupabase(p.url).catch(() => {});
+    }
+    // 2. Hapus unit photo dari vendor response
+    const responses = await db
+      .select({ unitPhotoUrl: vendorResponsesTable.unitPhotoUrl })
+      .from(vendorResponsesTable)
+      .where(inArray(vendorResponsesTable.orderId, orderIds));
+    for (const r of responses) {
+      if (r.unitPhotoUrl) deleteFromSupabase(r.unitPhotoUrl).catch(() => {});
+    }
+  } catch { /* non-fatal */ }
+}
+
 // DELETE /api/logistic/orders/bulk — hapus banyak order sekaligus
 logisticOrdersRouter.delete("/bulk", async (req: Request, res: Response) => {
   const parsed = z.object({ ids: z.array(z.number().int().positive()).min(1) }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ message: "ids harus array angka yang valid" });
   const { ids } = parsed.data;
+  // Cleanup storage dulu sebelum delete DB
+  await cleanupLogisticOrderStorage(ids);
   const deleted = await db
     .delete(logisticOrdersTable)
     .where(inArray(logisticOrdersTable.id, ids))
@@ -1152,6 +1188,8 @@ logisticOrdersRouter.delete("/bulk", async (req: Request, res: Response) => {
 logisticOrdersRouter.delete("/:id", async (req: Request, res: Response) => {
   const id = parseInt(String(req.params["id"] ?? ""));
   if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+  // Cleanup storage dulu sebelum delete DB
+  await cleanupLogisticOrderStorage([id]);
   const [deleted] = await db
     .delete(logisticOrdersTable)
     .where(eq(logisticOrdersTable.id, id))

@@ -164,6 +164,22 @@ router.get("/:orderNumber", async (req: Request, res: Response) => {
   }
 });
 
+const ALLOWED_PHOTO_MIME = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+
+// Magic-byte prefixes for allowed image types (client MIME cannot be trusted)
+function isAllowedImageMagicBytes(buf: Buffer): boolean {
+  // JPEG: FF D8 FF
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return true;
+  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return true;
+  // WebP: RIFF????WEBP
+  if (buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 &&
+      buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50) return true;
+  // GIF: GIF8
+  if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x38) return true;
+  return false;
+}
+
 router.post("/:orderNumber/photo", upload.single("photo") as any, async (req: Request, res: Response) => {
   const orderNumberPhoto = req.params["orderNumber"] as string;
   const tokenPhoto = String(req.query.t ?? req.body?.t ?? "").trim();
@@ -183,6 +199,18 @@ router.post("/:orderNumber/photo", upload.single("photo") as any, async (req: Re
     res.status(415).json({ error: "Hanya file gambar (JPEG, PNG, WEBP) yang diizinkan." });
     return;
   }
+
+  // MIME whitelist: reject non-image types
+  if (!ALLOWED_PHOTO_MIME.has(req.file.mimetype)) {
+    res.status(400).json({ error: "Hanya file gambar (JPG, PNG, WebP, GIF) yang diizinkan." });
+    return;
+  }
+  // Magic-byte validation: confirm file content matches claimed type
+  if (!isAllowedImageMagicBytes(req.file.buffer)) {
+    res.status(400).json({ error: "File tidak valid — konten tidak sesuai tipe gambar." });
+    return;
+  }
+
   try {
     const objectId = randomUUID();
     const storagePath = `public/vendor-photos/${objectId}`;
@@ -229,6 +257,22 @@ router.post("/:orderNumber", async (req: Request, res: Response) => {
     if (!order) {
       res.status(404).json({ error: "Order tidak ditemukan" });
       return;
+    }
+
+    // Resubmit guard: block rapid re-submissions (within 5 minutes)
+    // Prevents vendors from spamming updates and overwriting accepted responses.
+    const [existingForGuard] = await db
+      .select({ submittedAt: vendorResponsesTable.submittedAt })
+      .from(vendorResponsesTable)
+      .where(eq(vendorResponsesTable.orderNumber, orderNumber));
+    if (existingForGuard?.submittedAt) {
+      const ageMs = Date.now() - new Date(existingForGuard.submittedAt).getTime();
+      if (ageMs < 5 * 60 * 1000) {
+        res.status(429).json({
+          error: "Response baru saja dikirim. Tunggu 5 menit sebelum mengirim ulang.",
+        });
+        return;
+      }
     }
 
     const payload = {

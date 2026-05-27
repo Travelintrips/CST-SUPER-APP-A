@@ -1,5 +1,7 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
+import { rateLimit } from "express-rate-limit";
 import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, portalContentTable, accountingSettingsTable, salesDocumentsTable, salesDocumentLinesTable, customersTable, logisticOrdersTable, suppliersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, quoteRequestsTable, userProfilesTable, identityDocumentsTable, ocrResultsTable, vendorProfilesTable, driverProfilesTable, employeeProfilesTable, onboardingApprovalsTable, waOtpCodesTable, trustedDevicesTable, vendorMiniFormLinksTable, vendorMiniFormSubmissionsTable } from "@workspace/db";
+import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { invalidateTokenCache, SERVICE_SCHEMAS } from "./vendorMiniForm";
 import { eq, inArray, and, sql, desc, gte, lte, ilike, or } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage.js";
@@ -172,7 +174,17 @@ router.put("/logistic-admin/services/:id", requirePortalAdmin, async (req, res) 
 // DELETE /api/portal/logistic-admin/services/:id
 router.delete("/logistic-admin/services/:id", requirePortalAdmin, async (req, res) => {
   const id = Number(req.params.id);
+  const [product] = await db.select().from(productsTable).where(eq(productsTable.id, id));
   await db.delete(productsTable).where(eq(productsTable.id, id));
+  if (product) {
+    const urls: string[] = [];
+    if (product.imageUrl) urls.push(product.imageUrl);
+    try {
+      const items: Array<{ url?: string }> = JSON.parse(product.mediaItems ?? "[]");
+      for (const item of items) { if (item.url) urls.push(item.url); }
+    } catch { /* ignore */ }
+    for (const url of urls) deleteFromSupabase(url).catch(() => {});
+  }
   return res.json({ ok: true });
 });
 
@@ -1154,7 +1166,17 @@ router.post("/admin/services", requirePortalAdmin, async (req, res) => {
 router.delete("/admin/services/:id", requirePortalAdmin, async (req, res) => {
   const id = parseInt(String(req.params.id), 10);
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+  const [product] = await db.select().from(productsTable).where(eq(productsTable.id, id));
   await db.delete(productsTable).where(eq(productsTable.id, id));
+  if (product) {
+    const urls: string[] = [];
+    if (product.imageUrl) urls.push(product.imageUrl);
+    try {
+      const items: Array<{ url?: string }> = JSON.parse(product.mediaItems ?? "[]");
+      for (const item of items) { if (item.url) urls.push(item.url); }
+    } catch { /* ignore */ }
+    for (const url of urls) deleteFromSupabase(url).catch(() => {});
+  }
   return res.json({ ok: true });
 });
 
@@ -1286,7 +1308,17 @@ router.put("/admin/products/:id", requirePortalAdmin, async (req, res) => {
 router.delete("/admin/products/:id", requirePortalAdmin, async (req, res) => {
   const id = parseInt(String(req.params.id), 10);
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+  const [product] = await db.select().from(productsTable).where(eq(productsTable.id, id));
   await db.delete(productsTable).where(eq(productsTable.id, id));
+  if (product) {
+    const urls: string[] = [];
+    if (product.imageUrl) urls.push(product.imageUrl);
+    try {
+      const items: Array<{ url?: string }> = JSON.parse(product.mediaItems ?? "[]");
+      for (const item of items) { if (item.url) urls.push(item.url); }
+    } catch { /* ignore */ }
+    for (const url of urls) deleteFromSupabase(url).catch(() => {});
+  }
   return res.json({ ok: true });
 });
 
@@ -1751,7 +1783,11 @@ router.put("/admin/delivery-vendors/:id", requirePortalAdmin, async (req, res) =
 router.delete("/admin/delivery-vendors/:id", requirePortalAdmin, async (req, res) => {
   const id = parseInt(String(req.params.id), 10);
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
-  await db.delete(suppliersTable).where(eq(suppliersTable.id, id));
+  const [deleted] = await db.delete(suppliersTable).where(eq(suppliersTable.id, id)).returning();
+  // Cascade storage cleanup — logo (hanya jika berupa URL, bukan emoji)
+  if (deleted?.logo && (deleted.logo.startsWith("http") || deleted.logo.startsWith("/api/storage"))) {
+    deleteFromSupabase(deleted.logo).catch(() => {});
+  }
   return res.json({ ok: true });
 });
 
@@ -2111,8 +2147,22 @@ router.get("/onboarding/status", requirePortalAuth, async (req, res): Promise<vo
   });
 });
 
+// Rate limit KTP OCR: max 5 calls per customer per hour (gpt-4o is expensive)
+const _ktpOcrRateLimit = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { ok: false, error: "Terlalu banyak permintaan OCR. Coba lagi dalam 1 jam." },
+  keyGenerator: (req) =>
+    (req as PortalAuthReq).portalCustomerId?.toString() ??
+    (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ??
+    req.socket.remoteAddress ??
+    "unknown",
+});
+
 // POST /api/portal/onboarding/ktp-ocr — upload KTP image → OCR
-router.post("/onboarding/ktp-ocr", requirePortalAuth, onboardingUpload.single("file"), async (req, res): Promise<void> => {
+router.post("/onboarding/ktp-ocr", requirePortalAuth, _ktpOcrRateLimit, onboardingUpload.single("file"), async (req, res): Promise<void> => {
   const customerId = (req as PortalAuthReq).portalCustomerId;
   if (!req.file) { res.status(400).json({ ok: false, error: "File tidak ditemukan." }); return; }
 
@@ -2203,7 +2253,17 @@ router.post("/onboarding/upload-doc", requirePortalAuth, onboardingUpload.single
     const objectPath = await storage.uploadPrivateEntity(buf, req.file.mimetype);
     // Serving URL via authenticated route /api/storage/objects/...
     const url = `/api/storage${objectPath}`;
-    // Record in identity_documents
+    const url = await storage.uploadPublic(key, buf, req.file.mimetype);
+    // Hapus doc lama (docType sama) dari storage + DB sebelum insert baru
+    const [oldDoc] = await db
+      .select({ id: identityDocumentsTable.id, url: identityDocumentsTable.url })
+      .from(identityDocumentsTable)
+      .where(and(eq(identityDocumentsTable.customerId, customerId), eq(identityDocumentsTable.docType, docType)))
+      .limit(1);
+    if (oldDoc) {
+      await db.delete(identityDocumentsTable).where(eq(identityDocumentsTable.id, oldDoc.id));
+      deleteFromSupabase(oldDoc.url).catch(() => {});
+    }    // Record in identity_documents
     await db.insert(identityDocumentsTable).values({ customerId, docType, url, fileName: req.file.originalname });
     res.json({ ok: true, url, objectPath });
   } catch (err) {
@@ -2225,6 +2285,12 @@ router.post("/onboarding/complete", requirePortalAuth, async (req, res): Promise
   const isCustomer = accountType === "customer";
   const status = isCustomer ? "active" : "pending";
   const now = new Date();
+
+  // Fetch ktpUrl lama sebelum upsert (untuk cleanup storage jika berubah)
+  const [existingProfile] = await db
+    .select({ ktpUrl: userProfilesTable.ktpUrl })
+    .from(userProfilesTable)
+    .where(eq(userProfilesTable.customerId, customerId));
 
   // Upsert user_profiles
   await db.insert(userProfilesTable).values({
@@ -2251,6 +2317,12 @@ router.post("/onboarding/complete", requirePortalAuth, async (req, res): Promise
     },
   });
 
+  // Hapus file KTP lama dari storage jika diganti dengan URL baru
+  const newKtpUrl = ktpUrl ? String(ktpUrl) : null;
+  if (existingProfile?.ktpUrl && existingProfile.ktpUrl !== newKtpUrl) {
+    deleteFromSupabase(existingProfile.ktpUrl).catch(() => {});
+  }
+
   // Update portal_customers role + phone
   try {
     await db.update(portalCustomersTable).set({
@@ -2273,6 +2345,11 @@ router.post("/onboarding/complete", requirePortalAuth, async (req, res): Promise
 
   // Upsert vendor profile
   if (accountType === "vendor" && vendor) {
+    const [existingVendorProfile] = await db
+      .select({ legalityDocUrl: vendorProfilesTable.legalityDocUrl })
+      .from(vendorProfilesTable)
+      .where(eq(vendorProfilesTable.customerId, customerId));
+
     await db.insert(vendorProfilesTable).values({
       customerId,
       companyName: vendor.companyName ?? null,
@@ -2292,10 +2369,21 @@ router.post("/onboarding/complete", requirePortalAuth, async (req, res): Promise
         updatedAt: now,
       },
     });
+
+    // Hapus file legality lama dari storage jika diganti
+    const newLegalityUrl = vendor.legalityDocUrl ?? null;
+    if (existingVendorProfile?.legalityDocUrl && existingVendorProfile.legalityDocUrl !== newLegalityUrl) {
+      deleteFromSupabase(existingVendorProfile.legalityDocUrl).catch(() => {});
+    }
   }
 
   // Upsert driver profile
   if (accountType === "driver" && driver) {
+    const [existingDriverProfile] = await db
+      .select({ simUrl: driverProfilesTable.simUrl, stnkUrl: driverProfilesTable.stnkUrl })
+      .from(driverProfilesTable)
+      .where(eq(driverProfilesTable.customerId, customerId));
+
     await db.insert(driverProfilesTable).values({
       customerId,
       licenseNumber: driver.licenseNumber ?? null,
@@ -2315,6 +2403,14 @@ router.post("/onboarding/complete", requirePortalAuth, async (req, res): Promise
         updatedAt: now,
       },
     });
+
+    // Hapus file SIM/STNK lama dari storage jika diganti
+    if (existingDriverProfile?.simUrl && existingDriverProfile.simUrl !== (driver.simUrl ?? null)) {
+      deleteFromSupabase(existingDriverProfile.simUrl).catch(() => {});
+    }
+    if (existingDriverProfile?.stnkUrl && existingDriverProfile.stnkUrl !== (driver.stnkUrl ?? null)) {
+      deleteFromSupabase(existingDriverProfile.stnkUrl).catch(() => {});
+    }
   }
 
   // Upsert employee profile

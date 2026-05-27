@@ -281,16 +281,19 @@ router.post("/webhook/fonnte", async (req: Request, res: Response) => {
   // Set FONNTE_WEBHOOK_SECRET and configure Fonnte to append ?token=SECRET
   // (or send X-Fonnte-Token header) so only Fonnte can trigger this endpoint.
   const webhookSecret = process.env.FONNTE_WEBHOOK_SECRET;
-  if (webhookSecret) {
-    const provided =
-      String(req.query["token"] ?? req.headers["x-fonnte-token"] ?? "").trim();
-    if (provided !== webhookSecret) {
-      logger.warn({ ip: req.ip }, "Fonnte webhook: invalid or missing token — rejected");
-      res.status(401).json({ status: false, error: "Unauthorized" });
-      return;
-    }
-  } else {
-    logger.warn("FONNTE_WEBHOOK_SECRET not set — webhook is open to spoofing. Set this env var.");
+  if (!webhookSecret) {
+    // Fail closed: without a configured secret we cannot verify webhook origin.
+    // Set FONNTE_WEBHOOK_SECRET and configure Fonnte to append ?token=SECRET.
+    logger.error({ ip: req.ip }, "Fonnte webhook: FONNTE_WEBHOOK_SECRET not set — rejecting request. Configure this env var to enable webhook processing.");
+    res.status(503).json({ status: false, error: "Webhook not configured" });
+    return;
+  }
+  const provided =
+    String(req.query["token"] ?? req.headers["x-fonnte-token"] ?? "").trim();
+  if (provided !== webhookSecret) {
+    logger.warn({ ip: req.ip }, "Fonnte webhook: invalid or missing token — rejected");
+    res.status(401).json({ status: false, error: "Unauthorized" });
+    return;
   }
 
   res.status(200).json({ status: true });

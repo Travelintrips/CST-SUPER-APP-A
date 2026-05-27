@@ -57,7 +57,9 @@ function resolveBranchScope(req: Request): number | null {
   const user = getUser(req);
   if (isAdminOrOwner(req)) return req.query.branchId ? Number(req.query.branchId) : null;
   if (role === "manager") return req.query.branchId ? Number(req.query.branchId) : (user.branchId ?? null);
-  return user.branchId ?? (req.query.branchId ? Number(req.query.branchId) : null);
+  // Kasir & gudang: ALWAYS use branch from DB session, never from query params.
+  // This prevents cross-branch data access via query string tampering.
+  return user.branchId ?? null;
 }
 
 /** Resolve warehouse scope */

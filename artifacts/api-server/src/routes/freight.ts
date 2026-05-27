@@ -412,7 +412,16 @@ router.delete("/freight-shipments/:id", async (req, res) => {
   if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ message: "Invalid id" });
   const [existing] = await db.select().from(freightShipmentsTable).where(eq(freightShipmentsTable.id, id));
   if (!existing) return res.status(404).json({ message: "Shipment not found" });
+  // Ambil semua objectPath attachment sebelum DB cascade menghapus recordnya
+  const attachments = await db
+    .select({ objectPath: freightAttachmentsTable.objectPath })
+    .from(freightAttachmentsTable)
+    .where(eq(freightAttachmentsTable.shipmentId, id));
   await db.delete(freightShipmentsTable).where(eq(freightShipmentsTable.id, id));
+  // Cascade storage cleanup — hapus file fisik (non-fatal)
+  for (const a of attachments) {
+    if (a.objectPath) _freightObjectStorage.tryDeletePrivateEntity(a.objectPath).catch(() => {});
+  }
   return res.json({ message: "Berhasil dihapus" });
 });
 

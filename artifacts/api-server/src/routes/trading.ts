@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db, stocksTable, suppliersTable, vendorCatalogItemsTable, productsTable, productCategoryMapTable, productCategoriesTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { postStockReceived } from "../lib/accounting.js";
+import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 
 const router = Router();
 
@@ -133,6 +134,10 @@ router.delete("/suppliers/:id", async (req, res) => {
   if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
   const [deleted] = await db.delete(suppliersTable).where(eq(suppliersTable.id, id)).returning();
   if (!deleted) return res.status(404).json({ message: "Supplier not found" });
+  // Cascade storage cleanup — logo (hanya jika berupa URL, bukan emoji)
+  if (deleted.logo && (deleted.logo.startsWith("http") || deleted.logo.startsWith("/api/storage"))) {
+    deleteFromSupabase(deleted.logo).catch(() => {});
+  }
   return res.json({ message: "Deleted", id });
 });
 
