@@ -14,6 +14,7 @@ import {
   orderUpdatesTable,
   vendorResponsesTable,
   podOcrResultsTable,
+  rfqVendorLinksTable,
 } from "@workspace/db";
 import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { eq, ilike, and, gte, lte, or, sql, desc, inArray, isNotNull } from "drizzle-orm";
@@ -1175,6 +1176,21 @@ async function cleanupLogisticOrderStorage(orderIds: number[]): Promise<void> {
       .where(inArray(podOcrResultsTable.orderId, orderIds));
     for (const p of podOcrRows) {
       if (p.imageUrl) deleteFromSupabase(p.imageUrl).catch(() => {});
+    }
+    // 4. Hapus RFQ vendor link attachments (cascade delete: order → rfqs → rfq_vendor_links)
+    const rfqs = await db
+      .select({ id: logisticOrderRfqsTable.id })
+      .from(logisticOrderRfqsTable)
+      .where(inArray(logisticOrderRfqsTable.orderId, orderIds));
+    if (rfqs.length > 0) {
+      const rfqIds = rfqs.map((r) => r.id);
+      const vendorLinks = await db
+        .select({ attachmentUrl: rfqVendorLinksTable.attachmentUrl })
+        .from(rfqVendorLinksTable)
+        .where(inArray(rfqVendorLinksTable.rfqId, rfqIds));
+      for (const vl of vendorLinks) {
+        if (vl.attachmentUrl) deleteFromSupabase(vl.attachmentUrl).catch(() => {});
+      }
     }
   } catch { /* non-fatal */ }
 }
