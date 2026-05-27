@@ -222,7 +222,7 @@ export default function VendorFormPage() {
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white font-bold text-lg">
-              CST
+              RFQ
             </div>
             <div>
               <p className="text-xs text-gray-400 uppercase tracking-wide">Request For Quotation</p>
@@ -333,9 +333,12 @@ export default function VendorFormPage() {
             )}
 
             {data.basicPrice && (
-              <div className="flex justify-between items-center pt-3 border-t border-gray-100">
-                <span className="text-sm text-gray-500">Harga Dasar (Referensi)</span>
-                <span className="font-bold text-blue-600 text-base">{idr(data.basicPrice)}</span>
+              <div className="flex flex-col gap-1 pt-3 border-t border-gray-100">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-500 font-medium">HARGA DASAR <span className="text-xs text-gray-400">(belum PPN)</span></span>
+                  <span className="font-bold text-blue-600 text-base">{idr(data.basicPrice)}</span>
+                </div>
+                <p className="text-xs text-blue-500">* Harga referensi dari etalase vendor. Belum termasuk margin & PPN.</p>
               </div>
             )}
           </div>
@@ -346,7 +349,7 @@ export default function VendorFormPage() {
           <div className="bg-red-50 border border-red-300 rounded-2xl p-5 text-center">
             <p className="text-2xl mb-2">⛔</p>
             <p className="font-bold text-red-700 mb-1">Batas Waktu Telah Berakhir</p>
-            <p className="text-sm text-red-600">RFQ ini sudah tidak dapat direspon. Silakan hubungi tim CST Logistics jika ada pertanyaan.</p>
+            <p className="text-sm text-red-600">RFQ ini sudah tidak dapat direspon. Silakan hubungi tim kami jika ada pertanyaan.</p>
           </div>
         )}
 
@@ -466,7 +469,7 @@ export default function VendorFormPage() {
         )}
 
         <p className="text-center text-xs text-gray-400 pb-4">
-          CST Logistics — Mohon balas sebelum batas waktu yang ditentukan
+          Mohon balas sebelum batas waktu yang ditentukan
         </p>
       </div>
     </div>

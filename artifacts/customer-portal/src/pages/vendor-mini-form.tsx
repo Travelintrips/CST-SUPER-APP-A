@@ -291,9 +291,10 @@ export default function VendorMiniFormPage() {
           {/* Order-based: harga penawaran */}
           {isOrderBased && (
             <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-              <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-4">💰 Penawaran Harga</h2>
+              <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">💰 Penawaran Harga Dasar</h2>
+              <p className="text-xs text-slate-400 mb-4">Isi harga dasar Anda (belum termasuk margin & PPN).</p>
               <div className="space-y-4">
-                <FormField label="Harga Penawaran" required>
+                <FormField label="Harga Dasar (belum PPN)" required>
                   <div className="flex gap-2">
                     <select
                       value={currency} onChange={e => setCurrency(e.target.value)}

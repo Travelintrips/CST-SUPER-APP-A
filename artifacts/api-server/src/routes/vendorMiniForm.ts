@@ -1001,12 +1001,20 @@ vendorMiniFormRouter.get("/customer-approval/:token", async (req: Request, res: 
     const [approval] = await db.select().from(customerApprovalsTable).where(eq(customerApprovalsTable.token, token));
     if (!approval) return res.status(404).json({ error: "Link tidak ditemukan" });
     if (approval.expiresAt && approval.expiresAt < new Date()) return res.status(410).json({ error: "Link penawaran sudah kadaluarsa" });
+    const ppnPct = approval.ppnPct ? Number(approval.ppnPct) : 11;
+    const sellingNum = approval.sellingPrice ? Number(approval.sellingPrice) : null;
+    const ppnNominal = approval.ppnNominal ? Number(approval.ppnNominal) : (sellingNum ? Math.round(sellingNum * ppnPct / (100 + ppnPct)) : null);
+    const subtotalBeforePpn = sellingNum && ppnNominal ? sellingNum - ppnNominal : sellingNum;
     return res.json({
       token: approval.token, orderNumber: approval.orderNumber,
       customerName: approval.customerName,
       offerSummary: sanitizeOfferSummary(approval.offerSummary),
       sellingPrice: approval.sellingPrice, currency: approval.currency,
       termsNotes: approval.termsNotes, status: approval.status, soNumber: approval.soNumber,
+      taxRate: ppnPct,
+      taxAmount: ppnNominal,
+      subtotal: subtotalBeforePpn,
+      grandTotal: sellingNum,
     });
   } catch (err) {
     req.log?.error({ err }, "customer-approval GET error");
