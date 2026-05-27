@@ -1,8 +1,9 @@
 import { rateLimit, ipKeyGenerator } from "express-rate-limit";
 import type { Request, Response, NextFunction } from "express";
 
+const IS_DEV = process.env.NODE_ENV !== "production";
 const WINDOW_MS = 60 * 1000;
-const MAX_PER_WINDOW = 60;
+const MAX_PER_WINDOW = IS_DEV ? 1000 : 300;
 
 const limiter = rateLimit({
   windowMs: WINDOW_MS,
