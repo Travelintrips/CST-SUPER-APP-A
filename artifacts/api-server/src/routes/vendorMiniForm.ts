@@ -17,6 +17,7 @@ import {
   logisticOrdersTable,
   logisticOrderItemsTable,
   salesDocumentsTable,
+  orderUpdatesTable,
 } from "@workspace/db";
 import { requireClerkUser } from "../lib/requireAdmin";
 import { sendWhatsApp } from "../lib/fonnte.js";
@@ -94,6 +95,28 @@ async function logActivity(
     await db.insert(vmfActivityLogTable).values({
       entityType, entityId, action, actor: actor ?? "system",
       note: note ?? null, data: data ?? {},
+    });
+  } catch { /* non-fatal */ }
+}
+
+// ── Order updates helper (persists to order_updates timeline) ──────────────────
+
+async function logOrderUpdate(
+  orderId: number,
+  status: string,
+  notes: string,
+  actorId?: string | null,
+  isPublic = false,
+) {
+  try {
+    await db.insert(orderUpdatesTable).values({
+      orderId,
+      actorType: "admin",
+      actorId: actorId ?? null,
+      actorName: "Admin",
+      status,
+      notes,
+      isPublic,
     });
   } catch { /* non-fatal */ }
 }
@@ -1055,24 +1078,64 @@ vendorMiniFormRouter.post("/customer-approval/:token", async (req: Request, res:
           await db.update(customerApprovalsTable)
             .set({ soNumber: soResult.docNumber })
             .where(eq(customerApprovalsTable.token, token));
+          // G-3: persist SO creation success ke order_updates
+          if (orderId) {
+            await logOrderUpdate(
+              orderId,
+              "SO Dibuat",
+              `Sales Order ${soResult.docNumber} berhasil dibuat dari persetujuan customer.`,
+              "system",
+              false,
+            ).catch(() => {});
+          }
         } else if (soResult.reason === "already_exists") {
           soNumber = soResult.docNumber;
           salesDocId = soResult.docId;
         } else {
-          // SO creation gagal — log saja, jangan gagalkan approval
+          // G-3: persist SO creation failure ke order_updates (sebelumnya hanya req.log.warn)
           req.log?.warn({ reason: soResult.message }, "VMF SO creation failed — approval tetap valid");
+          if (orderId) {
+            await logOrderUpdate(
+              orderId,
+              "Gagal Buat SO",
+              `Pembuatan Sales Order gagal: ${soResult.message}`,
+              "system",
+              false,
+            ).catch(() => {});
+          }
         }
       }
     }
 
     // Activity log (non-fatal, di luar transaksi)
+    // G-3 FIX: gunakan locked?.id (bukan 0) sebagai entityId
     if (action === "approve") {
-      await logActivity("customer_approval", 0, "approved", "customer",
+      await logActivity("customer_approval", locked?.id ?? 0, "approved", "customer",
         `Customer ${customerName ?? "-"} menyetujui penawaran. SO: ${soNumber}`,
         { soNumber, salesDocId, orderId }).catch?.(() => {});
+      // G-3: order_updates entry untuk persetujuan customer
+      if (orderId) {
+        await logOrderUpdate(
+          orderId,
+          "Customer Approved",
+          `Customer ${customerName ?? "-"} menyetujui penawaran.${soNumber ? ` SO: ${soNumber}` : ""}`,
+          "system",
+          true,
+        ).catch(() => {});
+      }
     } else {
-      await logActivity("customer_approval", 0, "rejected", "customer",
+      await logActivity("customer_approval", locked?.id ?? 0, "rejected", "customer",
         `Customer ${customerName ?? "-"} menolak penawaran`, { orderId }).catch?.(() => {});
+      // G-3: order_updates entry untuk penolakan customer
+      if (orderId) {
+        await logOrderUpdate(
+          orderId,
+          "Customer Rejected",
+          `Customer ${customerName ?? "-"} menolak penawaran.`,
+          "system",
+          false,
+        ).catch(() => {});
+      }
     }
 
     // Notify via WA templates (fire-and-forget)
@@ -1299,6 +1362,16 @@ vendorMiniFormRouter.post("/admin/links", async (req: Request, res: Response) =>
     await logActivity("link", link.id, "created", userId,
       `Link dibuat untuk ${serviceType} (mode: ${mode ?? "rate_collection"})`,
       { serviceType, orderId, orderNumber, mode });
+
+    // G-1: tambahkan entry ke order_updates timeline
+    if (orderId) {
+      await logOrderUpdate(
+        orderId,
+        "VMF Link Dibuat",
+        `Link form vendor dibuat untuk layanan ${serviceType}${vendorName ? ` (${vendorName})` : ""}`,
+        userId,
+      );
+    }
 
     return res.status(201).json({ ...link, expiresAt: link.expiresAt?.toISOString() ?? null, createdAt: link.createdAt.toISOString(), deactivatedCount });
   } catch (err) {
@@ -1615,6 +1688,19 @@ vendorMiniFormRouter.post("/admin/customer-approvals", async (req: Request, res:
       `Link approval dibuat untuk ${customerName ?? "customer"}`,
       { orderNumber, sellingPrice, currency, vendorCost, markupPct });
 
+    // G-2: tambahkan entry ke order_updates timeline
+    if (orderId) {
+      const priceLabel = sellingPrice
+        ? `${currency ?? "IDR"} ${Number(sellingPrice).toLocaleString("id-ID")}`
+        : "-";
+      await logOrderUpdate(
+        orderId,
+        "Penawaran Dibuat",
+        `Link persetujuan customer dibuat. Harga: ${priceLabel}`,
+        userId,
+      );
+    }
+
     // Update link itemStatus if orderId matches
     if (orderId) {
       await db.update(vendorMiniFormLinksTable)
@@ -1678,8 +1764,19 @@ vendorMiniFormRouter.post("/admin/op-confirms", async (req: Request, res: Respon
       instruction: instruction ?? null, status: "pending",
     }).returning();
 
-    await logActivity("op_confirm", conf.id, "created", (req.user as { id: string } | undefined)?.id ?? "admin",
+    const userId4a = (req.user as { id: string } | undefined)?.id ?? "admin";
+    await logActivity("op_confirm", conf.id, "created", userId4a,
       `Link konfirmasi operasional dibuat untuk ${vendorName ?? "vendor"}`, { orderNumber, serviceType });
+
+    // G-4: tambahkan entry ke order_updates timeline
+    if (orderId) {
+      await logOrderUpdate(
+        orderId,
+        "Konfirmasi Operasional Diminta",
+        `Link konfirmasi operasional dikirim ke ${vendorName ?? "vendor"} (${serviceType}).`,
+        userId4a,
+      ).catch(() => {});
+    }
 
     return res.status(201).json({ ...conf, createdAt: conf.createdAt.toISOString() });
   } catch (err) {
@@ -1959,8 +2056,18 @@ vendorMiniFormRouter.post("/admin/customer-approvals/:id/send-wa", async (req: R
         .where(eq(logisticOrdersTable.id, approval.orderId)).limit(1);
       if (orderRow) {
         await sendCustomerApprovalNotification(buildOrderDataFromRow(orderRow), priceStr, approvalUrl);
-        await logActivity("customer_approval", id, "sent_wa", (req.user as { id: string } | undefined)?.id ?? "admin",
+        const userId2b = (req.user as { id: string } | undefined)?.id ?? "admin";
+        await logActivity("customer_approval", id, "sent_wa", userId2b,
           `WA penawaran dikirim ke customer ${approval.customerName ?? "-"}`, { phone: target });
+        // G-2b: order_updates entry saat WA approval dikirim ke customer
+        if (approval.orderId) {
+          await logOrderUpdate(
+            approval.orderId,
+            "Penawaran Dikirim ke Customer",
+            `WA penawaran harga ${priceStr} dikirim ke ${approval.customerName ?? "customer"} (${target}).`,
+            userId2b,
+          ).catch(() => {});
+        }
         return res.json({ success: true, message: "Pesan WA ke customer berhasil dikirim" });
       }
     }
@@ -1974,8 +2081,19 @@ vendorMiniFormRouter.post("/admin/customer-approvals/:id/send-wa", async (req: R
 
     await sendWhatsApp(target, msg, { context: "customer-approval-send", refType: "customer_approval", refId: String(approval.id) });
 
-    await logActivity("customer_approval", id, "sent_wa", (req.user as { id: string } | undefined)?.id ?? "admin",
+    const userId2bFb = (req.user as { id: string } | undefined)?.id ?? "admin";
+    await logActivity("customer_approval", id, "sent_wa", userId2bFb,
       `WA penawaran dikirim ke customer ${approval.customerName ?? "-"}`, { phone: target });
+
+    // G-2b: order_updates entry (fallback path)
+    if (approval.orderId) {
+      await logOrderUpdate(
+        approval.orderId,
+        "Penawaran Dikirim ke Customer",
+        `WA penawaran harga ${priceStr} dikirim ke ${approval.customerName ?? "customer"} (${target}).`,
+        userId2bFb,
+      ).catch(() => {});
+    }
 
     return res.json({ success: true, message: "Pesan WA ke customer berhasil dikirim" });
   } catch (err) {
@@ -2056,8 +2174,19 @@ vendorMiniFormRouter.post("/admin/op-confirms/:id/send-wa", async (req: Request,
       await sendWhatsApp(phone.trim(), msg, { context: "op-confirm-send", refType: "vendor_op_confirm", refId: String(conf.id) });
     }
 
-    await logActivity("op_confirm", id, "sent_wa", (req.user as { id: string } | undefined)?.id ?? "admin",
+    const userId4b = (req.user as { id: string } | undefined)?.id ?? "admin";
+    await logActivity("op_confirm", id, "sent_wa", userId4b,
       `WA op-confirm dikirim ke ${conf.vendorName ?? "vendor"}`, { phone });
+
+    // G-4b: order_updates entry saat WA op-confirm dikirim ke vendor
+    if (conf.orderId) {
+      await logOrderUpdate(
+        conf.orderId,
+        "Op-Confirm WA Dikirim",
+        `WA konfirmasi operasional dikirim ke ${conf.vendorName ?? "vendor"} (${SERVICE_SCHEMAS[conf.serviceType]?.label ?? conf.serviceType}).`,
+        userId4b,
+      ).catch(() => {});
+    }
 
     return res.json({ success: true, message: "Pesan WA ke vendor berhasil dikirim" });
   } catch (err) {
