@@ -28,6 +28,10 @@ args = "API Server"
 task = "workflow.run"
 args = "Customer Portal"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Logistic Order"
+
 [[workflows.workflow]]
 name = "BizPortal"
 author = "agent"
@@ -63,6 +67,18 @@ outputType = "webview"
 task = "shell.exec"
 args = "cd artifacts/customer-portal && PORT=5000 BASE_PATH=/ pnpm exec vite --config vite.config.ts --host 0.0.0.0 --port 5000"
 waitForPort = 5000
+
+[[workflows.workflow]]
+name = "Logistic Order"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/logistic-order && PORT=3001 BASE_PATH=/logistic-order/ pnpm run dev"
+waitForPort = 3001
+
+[workflows.workflow.metadata]
+outputType = "console"
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
@@ -111,11 +127,11 @@ defaultBucketID = "replit-objstore-e357cc66-19c3-4d73-9ca9-3069d78355d1"
 
 [[ports]]
 localPort = 3000
-externalPort = 3000
+externalPort = 3001
 
 [[ports]]
-localPort = 3002
-externalPort = 5173
+localPort = 3001
+externalPort = 3001
 
 [[ports]]
 localPort = 3003
@@ -134,6 +150,18 @@ localPort = 5000
 externalPort = 80
 
 [[ports]]
+localPort = 8080
+externalPort = 8080
+
+[[ports]]
+localPort = 18443
+externalPort = 6800
+
+[[ports]]
+localPort = 18444
+externalPort = 3000
+
+[[ports]]
 localPort = 19368
 externalPort = 4200
 
@@ -144,7 +172,3 @@ externalPort = 6000
 [[ports]]
 localPort = 23434
 externalPort = 3003
-
-[[ports]]
-localPort = 8080
-externalPort = 8080

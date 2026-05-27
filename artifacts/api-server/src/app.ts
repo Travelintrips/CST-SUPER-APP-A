@@ -258,6 +258,26 @@ if (fs.existsSync(BIZPORTAL_DIST)) {
   });
 }
 
+// ─── Logistic Order Static Serving ───────────────────────────────────────────
+// logistic-order is built with base="/logistic-order/" — serves as redirect shim
+// pointing to customer portal routes (/book, /track, /logistic-admin).
+
+const LOGISTIC_ORDER_DIST = path.resolve(
+  ARTIFACTS_DIR,
+  "logistic-order/dist/public",
+);
+
+if (fs.existsSync(LOGISTIC_ORDER_DIST)) {
+  app.use(
+    "/logistic-order",
+    express.static(LOGISTIC_ORDER_DIST, { index: "index.html" }),
+  );
+
+  app.use("/logistic-order/{*path}", (_req: Request, res: Response) => {
+    res.sendFile(path.join(LOGISTIC_ORDER_DIST, "index.html"));
+  });
+}
+
 // ─── Custom domain: serve BizPortal at root "/" ───────────────────────────────
 // When accessed via bizportal.cstlogistic.co.id, requests for "/" should show
 // BizPortal. The HTML will load assets from /bizportal/assets/... which are
