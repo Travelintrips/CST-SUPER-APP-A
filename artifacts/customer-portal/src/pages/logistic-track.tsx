@@ -546,6 +546,21 @@ export default function TrackPage() {
     if (o) { setInput(o); setSearchTerm(o.toUpperCase().trim()); }
   }, []);
 
+  // Real-time: refresh data tracking saat admin mengubah status order
+  useEffect(() => {
+    const es = new EventSource("/api/ecommerce/events");
+    es.addEventListener("logistic_order_status_changed", (e: MessageEvent) => {
+      try {
+        const data = JSON.parse(e.data);
+        // Hanya invalidate jika order yang sedang dilacak adalah order yang berubah
+        if (searchTerm && data.orderNumber === searchTerm) {
+          qc.invalidateQueries({ queryKey: ["tracking", searchTerm] });
+        }
+      } catch { }
+    });
+    return () => es.close();
+  }, [searchTerm, qc]);
+
   const isTerminal = !!(lastRefreshed && prevStatusRef.current && isTerminalStatus(prevStatusRef.current));
 
   const {
