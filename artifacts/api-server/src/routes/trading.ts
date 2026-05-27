@@ -352,6 +352,9 @@ router.put("/suppliers/catalog/:itemId", async (req, res) => {
   if (isCommodityTag !== undefined) patch["isCommodityTag"] = Boolean(isCommodityTag);
   if (sortOrder !== undefined) patch["sortOrder"] = Number(sortOrder);
 
+  if (Object.keys(patch).length === 0) {
+    return res.json(toItem(current));
+  }
   const [updated] = await db
     .update(vendorCatalogItemsTable)
     .set(patch)
