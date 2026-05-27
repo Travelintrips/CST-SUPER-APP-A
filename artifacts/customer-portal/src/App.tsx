@@ -206,7 +206,7 @@ function AppShell() {
         <Route path="/vendor-product-approval/:orderNumber" component={VendorProductApprovalPage} />
         <Route path="/vendor-quote" component={VendorQuoteFormPage} />
         <Route path="/vendor-confirm" component={VendorConfirmPage} />
-        <Route path="/vendor-form/:token" component={VendorFormPage} />
+        <Route path="/vendor-form/:token" component={VendorMiniFormPage} />
         <Route path="/choose-option/:token" component={ChooseOptionPage} />
         <Route path="/onboarding" component={OnboardingPage} />
         <Route path="/pending-approval" component={PendingApprovalPage} />
