@@ -19,6 +19,7 @@ import {
   salesDocumentsTable,
 } from "@workspace/db";
 import { requireClerkUser } from "../lib/requireAdmin";
+import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminGroupWa } from "../lib/adminWa.js";
 import { createSalesOrderFromVmfApproval } from "../lib/vmfSoIntegration.js";
@@ -1852,6 +1853,7 @@ vendorMiniFormRouter.delete("/admin/submissions/:id", async (req: Request, res: 
     await logActivity("submission", id, "deleted", userId,
       `Submission dari ${deleted.vendorName ?? "vendor"} dihapus oleh admin`,
       { vendorPrice: deleted.vendorPrice, responseStatus: deleted.responseStatus });
+    if (deleted.attachmentUrl) deleteFromSupabase(deleted.attachmentUrl).catch(() => {});
     return res.json({ success: true });
   } catch (err) {
     req.log?.error({ err }, "vendor-mini-form DELETE submission error");
