@@ -74,6 +74,7 @@ import AccountingTrialBalancePage from "@/pages/accounting/reports/trial-balance
 import AccountingGeneralLedgerPage from "@/pages/accounting/reports/general-ledger";
 import AccountingProfitLossPage from "@/pages/accounting/reports/profit-loss";
 import AccountingBalanceSheetPage from "@/pages/accounting/reports/balance-sheet";
+import AccountingFreightProfitabilityPage from "@/pages/accounting/reports/freight-profitability";
 import AccountingReconciliationPage from "@/pages/accounting/reconciliation";
 import HoldingPage from "@/pages/HoldingPage";
 import HoldingDashboardPage from "@/pages/accounting/holding-dashboard";
@@ -259,6 +260,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/accounting/reports/general-ledger" component={PR(AccountingGeneralLedgerPage)} />
       <Route path="/accounting/reports/profit-loss" component={PR(AccountingProfitLossPage)} />
       <Route path="/accounting/reports/balance-sheet" component={PR(AccountingBalanceSheetPage)} />
+      <Route path="/accounting/reports/freight-profitability" component={PR(AccountingFreightProfitabilityPage)} />
       <Route path="/holding/groups/:id" component={PR(HoldingGroupDetailPage)} />
       <Route path="/holding/dashboard" component={PR(HoldingDashboardPage)} />
       <Route path="/holding/pl-report" component={PR(HoldingPLReportPage)} />

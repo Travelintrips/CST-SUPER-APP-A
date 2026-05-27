@@ -1618,6 +1618,105 @@ router.get("/reports/balance-sheet", async (req, res) => {
   });
 });
 
+// ============ Freight Profitability Report ============
+
+/**
+ * GET /accounting/reports/freight-profitability
+ * Laporan profitabilitas per shipment VMF:
+ * Revenue (SO.grand_total) vs Biaya Vendor (approved quote vendor_price) = Gross Margin
+ */
+router.get("/reports/freight-profitability", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+
+  const fromStr = req.query.from as string | undefined;
+  const toStr   = req.query.to   as string | undefined;
+  const companyParam = req.query.company as string | undefined;
+
+  const fromDate = fromStr ? new Date(fromStr) : null;
+  const toDate   = toStr   ? new Date(toStr)   : null;
+
+  // Build dynamic WHERE clauses
+  const conditions: string[] = [
+    "sd.logistic_order_id IS NOT NULL",
+    "sd.status != 'cancelled'",
+  ];
+  if (fromDate && !isNaN(fromDate.getTime())) conditions.push(`sd.created_at >= '${fromDate.toISOString()}'`);
+  if (toDate   && !isNaN(toDate.getTime()))   conditions.push(`sd.created_at <= '${toDate.toISOString()}'`);
+  if (companyParam && companyParam !== "all" && !isNaN(Number(companyParam))) {
+    conditions.push(`sd.company_id = ${Number(companyParam)}`);
+  }
+
+  const where = conditions.join(" AND ");
+
+  const rows = await db.execute(sql.raw(`
+    SELECT
+      sd.id                                        AS so_id,
+      sd.doc_number                                AS so_number,
+      sd.status                                    AS so_status,
+      sd.customer_name,
+      sd.grand_total                               AS revenue,
+      sd.created_at,
+      lo.order_number,
+      lo.origin,
+      lo.destination,
+      lo.shipment_type,
+      lo.transport_mode,
+      COALESCE(loq.vendor_price, 0)                AS vendor_cost,
+      s.name                                       AS vendor_name
+    FROM sales_documents sd
+    JOIN logistic_orders lo ON lo.id = sd.logistic_order_id
+    LEFT JOIN logistic_order_quotes loq ON loq.id = lo.approved_quote_id
+    LEFT JOIN suppliers s ON s.id = loq.vendor_id
+    WHERE ${where}
+    ORDER BY sd.created_at DESC
+    LIMIT 500
+  `));
+
+  type Row = {
+    so_id: number; so_number: string; so_status: string;
+    customer_name: string; revenue: string; created_at: string;
+    order_number: string; origin: string; destination: string;
+    shipment_type: string; transport_mode: string | null;
+    vendor_cost: string; vendor_name: string | null;
+  };
+
+  const items = (rows.rows as Row[]).map((r) => {
+    const revenue    = Math.round(Number(r.revenue    ?? 0) * 100) / 100;
+    const vendorCost = Math.round(Number(r.vendor_cost ?? 0) * 100) / 100;
+    const margin     = Math.round((revenue - vendorCost) * 100) / 100;
+    const marginPct  = revenue > 0 ? Math.round((margin / revenue) * 10000) / 100 : 0;
+    return {
+      soId: Number(r.so_id),
+      soNumber: r.so_number,
+      soStatus: r.so_status,
+      customerName: r.customer_name,
+      orderNumber: r.order_number,
+      origin: r.origin,
+      destination: r.destination,
+      shipmentType: r.shipment_type,
+      transportMode: r.transport_mode ?? null,
+      vendorName: r.vendor_name ?? null,
+      revenue,
+      vendorCost,
+      margin,
+      marginPct,
+      createdAt: r.created_at,
+    };
+  });
+
+  const totalRevenue    = Math.round(items.reduce((s, r) => s + r.revenue,    0) * 100) / 100;
+  const totalVendorCost = Math.round(items.reduce((s, r) => s + r.vendorCost, 0) * 100) / 100;
+  const totalMargin     = Math.round((totalRevenue - totalVendorCost) * 100) / 100;
+  const totalMarginPct  = totalRevenue > 0 ? Math.round((totalMargin / totalRevenue) * 10000) / 100 : 0;
+
+  return res.json({
+    from: fromDate?.toISOString() ?? null,
+    to:   toDate?.toISOString()   ?? null,
+    summary: { totalRevenue, totalVendorCost, totalMargin, totalMarginPct, count: items.length },
+    items,
+  });
+});
+
 // ============ Holding / Consolidated View ============
 
 /** GET /accounting/holding/groups — daftar holding group beserta member companies */

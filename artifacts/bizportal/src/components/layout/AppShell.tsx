@@ -290,6 +290,7 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "generalLedger", href: "/accounting/reports/general-ledger", icon: BookOpen },
         { titleKey: "profitLoss", href: "/accounting/reports/profit-loss", icon: TrendingUp },
         { titleKey: "balanceSheet", href: "/accounting/reports/balance-sheet", icon: Wallet },
+        { titleKey: "Profitabilitas Freight", href: "/accounting/reports/freight-profitability", icon: Ship },
         { titleKey: "reconciliation", href: "/accounting/reconciliation", icon: GitMerge },
         { titleKey: "accountingSettings", href: "/accounting/settings", icon: Settings },
       ],

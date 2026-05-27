@@ -71,6 +71,7 @@ const COMMANDS: CommandEntry[] = [
   { title: "General Ledger", href: "/accounting/reports/general-ledger", icon: BookOpen, group: "Accounting" },
   { title: "Profit & Loss", href: "/accounting/reports/profit-loss", icon: TrendingUp, group: "Accounting" },
   { title: "Balance Sheet", href: "/accounting/reports/balance-sheet", icon: Wallet, group: "Accounting" },
+  { title: "Profitabilitas Freight", href: "/accounting/reports/freight-profitability", icon: Ship, group: "Accounting" },
   { title: "Rekonsiliasi", href: "/accounting/reconciliation", icon: GitMerge, group: "Accounting" },
   { title: "Accounting Settings", href: "/accounting/settings", icon: Settings, group: "Accounting" },
 
