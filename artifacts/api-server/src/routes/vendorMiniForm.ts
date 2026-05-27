@@ -1176,6 +1176,8 @@ vendorMiniFormRouter.post("/customer-approval/:token", vmfApprovalLimiter, async
         ).catch(() => {});
       }
     }
+    }
+    // ↑ tutup if (action === "approve") untuk activity log section
 
     // Notify via WA templates (fire-and-forget)
     if (orderId) {

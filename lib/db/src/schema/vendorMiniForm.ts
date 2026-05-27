@@ -1,4 +1,5 @@
-import { pgTable, serial, integer, text, boolean, timestamp, jsonb, numeric } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, text, boolean, timestamp, jsonb, numeric, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { suppliersTable } from "./suppliers";
 
 export const vendorMiniFormLinksTable = pgTable("vendor_mini_form_links", {
@@ -63,7 +64,13 @@ export const vendorMiniFormSubmissionsTable = pgTable("vendor_mini_form_submissi
   // Lock after customer approve
   locked: boolean("locked").default(false),
   unlockReason: text("unlock_reason"),
-});
+}, (t) => [
+  // Mencegah vendor yang sama (supplier_id tidak null) submit 2x untuk link yang sama.
+  // Vendor anonim (supplier_id IS NULL) dikecualikan karena diidentifikasi via token unik.
+  uniqueIndex("vmf_submissions_link_supplier_uidx")
+    .on(t.linkId, t.supplierId)
+    .where(sql`${t.supplierId} IS NOT NULL`),
+]);
 
 export const customerApprovalsTable = pgTable("customer_approvals", {
   id: serial("id").primaryKey(),
