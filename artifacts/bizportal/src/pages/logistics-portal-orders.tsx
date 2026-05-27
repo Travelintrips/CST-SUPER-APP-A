@@ -253,6 +253,7 @@ export default function LogisticsPortalOrdersPage() {
       if (!res.ok) throw new Error("Failed");
       return res.json() as Promise<VendorRow[]>;
     },
+    staleTime: 5 * 60 * 1000,
   });
   const activeVendors = vendors.filter((v) => v.isActive !== false);
 

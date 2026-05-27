@@ -65,10 +65,10 @@ function useUsdRate(): number {
   useEffect(() => {
     const { fresh } = _readBpRate();
     if (fresh) return;
-    fetch("https://open.er-api.com/v6/latest/USD")
+    fetch("/api/ecommerce/usd-idr-rate")
       .then((r) => r.json())
-      .then((data) => {
-        const idrRate = (data?.rates?.IDR as number) ?? 0;
+      .then((data: { rate: number }) => {
+        const idrRate = data?.rate ?? 0;
         if (idrRate > 1000) {
           localStorage.setItem(_BP_USD_KEY, JSON.stringify({ rate: idrRate, ts: Date.now() }));
           setRate(idrRate);

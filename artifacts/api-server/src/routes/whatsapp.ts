@@ -10,6 +10,22 @@ import { getWaTemplateConfig, renderTemplate } from "../lib/orderNotification.js
 
 export const whatsappRouter = Router();
 
+// Simple in-memory rate limiter for public webhook (keyed by IP)
+const _webhookRateMap = new Map<string, { count: number; resetAt: number }>();
+const WEBHOOK_WINDOW_MS = 60_000; // 1 minute
+const WEBHOOK_MAX = 60;           // max 60 calls/min per IP
+
+function checkWebhookRate(ip: string): boolean {
+  const now = Date.now();
+  const entry = _webhookRateMap.get(ip);
+  if (!entry || now > entry.resetAt) {
+    _webhookRateMap.set(ip, { count: 1, resetAt: now + WEBHOOK_WINDOW_MS });
+    return true;
+  }
+  entry.count += 1;
+  return entry.count <= WEBHOOK_MAX;
+}
+
 const DEFAULT_MANUAL_QUOTE_TPL =
   `Halo {{customerName}},\n\n` +
   `Berikut quotation layanan CST Logistics:\n\n` +
@@ -214,6 +230,10 @@ whatsappRouter.get("/quotation-logs", async (_req: Request, res: Response) => {
 // POST /api/whatsapp/webhook  — dipanggil oleh Fonnte saat ada pesan masuk
 // Fonnte mengirim form-urlencoded atau JSON dengan field: sender, message, name, device, type
 whatsappRouter.post("/webhook", async (req: Request, res: Response) => {
+  const clientIp = String(req.headers["x-forwarded-for"] ?? req.socket.remoteAddress ?? "unknown").split(",")[0].trim();
+  if (!checkWebhookRate(clientIp)) {
+    return res.status(429).json({ ok: false, error: "Too many requests" });
+  }
   try {
     const body = req.body as Record<string, unknown>;
     const sender = String(body.sender ?? body.from ?? "");
