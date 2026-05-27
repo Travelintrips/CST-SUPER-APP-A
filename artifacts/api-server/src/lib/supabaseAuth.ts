@@ -5,10 +5,10 @@ import { verifySupabaseToken } from "./supabaseAdmin";
 import { verifyPortalJwt } from "./portalJwt";
 import { createHmac } from "crypto";
 
-// No default: if DEV_PORTAL_SECRET is not explicitly set, dev tokens are inoperable.
-const DEV_SECRET = process.env.DEV_PORTAL_SECRET ?? "";
 const IS_PROD =
   process.env.REPLIT_DEPLOYMENT === "1" || process.env.NODE_ENV === "production";
+// Fallback ke hardcoded secret di non-production agar dev-login bekerja tanpa konfigurasi tambahan.
+const DEV_SECRET = process.env.DEV_PORTAL_SECRET ?? (IS_PROD ? "" : "cst-dev-portal-fallback-2025");
 
 export function signDevToken(payload: object): string {
   const b64 = Buffer.from(JSON.stringify(payload)).toString("base64url");
