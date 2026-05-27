@@ -89,7 +89,6 @@ whatsappRouter.post("/send-quotation", async (req: Request, res: Response) => {
     return res.status(400).json({ message: "finalPrice tidak valid" });
   }
 
-  const vars: Record<string, string> = {
   const vars: Record<string, string | null> = {
     customerName: String(customerName),
     rfqId: rfqId ? String(rfqId) : "-",

@@ -8,6 +8,7 @@ import {
   timestamp,
   boolean,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { suppliersTable } from "./suppliers";
@@ -134,7 +135,10 @@ export const logisticOrderQuotesTable = pgTable("logistic_order_quotes", {
   rankScore: numeric("rank_score", { precision: 6, scale: 2 }),
   rankBadges: text("rank_badges").array().default([]),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (t) => ({
+  // Prevent duplicate vendor quote submission for same RFQ (race condition guard)
+  rfqVendorUidx: uniqueIndex("liq_rfq_vendor_uidx").on(t.rfqId, t.vendorId),
+}));
 
 export const vendorOffersTable = pgTable("vendor_offers", {
   id: serial("id").primaryKey(),
@@ -191,7 +195,8 @@ export const logisticOrderQuotesRelations = relations(logisticOrderQuotesTable, 
 
 export const vendorResponsesTable = pgTable("vendor_responses", {
   id: serial("id").primaryKey(),
-  orderNumber: text("order_number").notNull(),
+  // unique: one vendor response record per order (upsert target)
+  orderNumber: text("order_number").notNull().unique(),
   orderId: integer("order_id").references(() => logisticOrdersTable.id, { onDelete: "set null" }),
   vendorName: text("vendor_name"),
   status: text("status").notNull(),
