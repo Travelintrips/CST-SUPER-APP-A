@@ -11,6 +11,7 @@ import {
   vendorMiniFormLinksTable,
   vendorMiniFormSubmissionsTable,
   customerApprovalsTable,
+  customerInvoiceLinksTable,
   vendorOperationalConfirmationsTable,
   vendorPriceHistoryTable,
   vmfActivityLogTable,
@@ -19,6 +20,7 @@ import {
   logisticOrdersTable,
   logisticOrderItemsTable,
   salesDocumentsTable,
+  salesDocumentLinesTable,
   orderUpdatesTable,
 } from "@workspace/db";
 import { requireClerkUser } from "../lib/requireAdmin";
@@ -2514,6 +2516,227 @@ vendorMiniFormRouter.post("/admin/op-confirms/:id/send-wa", async (req: Request,
     return res.json({ success: true, message: "Pesan WA ke vendor berhasil dikirim" });
   } catch (err) {
     req.log?.error({ err }, "send-wa op-confirm error");
+    return res.status(500).json({ error: "Gagal mengirim WA" });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CUSTOMER INVOICE LINKS — Public mini form untuk tahap 10 (Invoice & Close)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── PUBLIC: GET /api/vendor-form/customer-invoice/:token ──────────────────────
+vendorMiniFormRouter.get("/customer-invoice/:token", async (req: Request, res: Response) => {
+  const { token } = req.params as { token: string };
+  try {
+    const [link] = await db.select().from(customerInvoiceLinksTable)
+      .where(eq(customerInvoiceLinksTable.token, token));
+    if (!link) return res.status(404).json({ error: "Link invoice tidak ditemukan" });
+    if (link.expiresAt && link.expiresAt < new Date()) return res.status(410).json({ error: "Link invoice sudah kadaluarsa" });
+
+    // Tandai viewed_at jika belum pernah dibuka
+    if (!link.viewedAt) {
+      await db.update(customerInvoiceLinksTable)
+        .set({ viewedAt: new Date() })
+        .where(eq(customerInvoiceLinksTable.token, token));
+    }
+
+    return res.json({
+      token: link.token,
+      orderNumber: link.orderNumber,
+      invoiceNumber: link.invoiceNumber,
+      customerName: link.customerName,
+      currency: link.currency,
+      subtotal: link.subtotal ? Number(link.subtotal) : null,
+      taxRate: link.taxRate ? Number(link.taxRate) : 11,
+      taxAmount: link.taxAmount ? Number(link.taxAmount) : null,
+      grandTotal: link.grandTotal ? Number(link.grandTotal) : null,
+      amountPaid: link.amountPaid ? Number(link.amountPaid) : 0,
+      paymentStatus: link.paymentStatus,
+      paymentMethod: link.paymentMethod,
+      dueDate: link.dueDate,
+      notes: link.notes,
+      lineItems: link.lineItems ?? [],
+      acknowledgedAt: link.acknowledgedAt,
+      status: link.status,
+    });
+  } catch (err) {
+    req.log?.error({ err }, "customer-invoice GET error");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── PUBLIC: POST /api/vendor-form/customer-invoice/:token ─────────────────────
+// Customer mengakui penerimaan invoice (acknowledgement)
+vendorMiniFormRouter.post("/customer-invoice/:token", async (req: Request, res: Response) => {
+  const { token } = req.params as { token: string };
+  try {
+    const [link] = await db.select().from(customerInvoiceLinksTable)
+      .where(eq(customerInvoiceLinksTable.token, token));
+    if (!link) return res.status(404).json({ error: "Link invoice tidak ditemukan" });
+    if (link.acknowledgedAt) return res.status(409).json({ error: "Invoice sudah dikonfirmasi sebelumnya" });
+
+    await db.update(customerInvoiceLinksTable)
+      .set({ acknowledgedAt: new Date() })
+      .where(eq(customerInvoiceLinksTable.token, token));
+
+    // Notif admin
+    const adminGroupWa = await getAdminGroupWa();
+    if (adminGroupWa && link.orderNumber) {
+      const msg = `✅ *Invoice Dikonfirmasi Customer*\n\nNo. Invoice: ${link.invoiceNumber ?? "—"}\nOrder: ${link.orderNumber}\nCustomer: ${link.customerName ?? "—"}\nTotal: ${link.currency ?? "IDR"} ${Number(link.grandTotal ?? 0).toLocaleString("id-ID")}\n\nCustomer telah mengkonfirmasi penerimaan invoice.`;
+      sendWhatsApp(adminGroupWa, msg, { context: "customer-invoice-ack", refType: "customer_invoice", refId: String(link.id) }).catch(() => {});
+    }
+
+    return res.json({ ok: true, message: "Terima kasih! Invoice telah Anda konfirmasi." });
+  } catch (err) {
+    req.log?.error({ err }, "customer-invoice POST error");
+    return res.status(500).json({ error: "Gagal menyimpan konfirmasi" });
+  }
+});
+
+// ── ADMIN: POST /api/vendor-form/admin/customer-invoices ──────────────────────
+// Buat link invoice publik + kirim WA ke customer
+vendorMiniFormRouter.post("/admin/customer-invoices", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const {
+    salesDocId, orderId, orderNumber, invoiceNumber, customerName, customerPhone,
+    currency, dueDate, notes, sendWa,
+  } = req.body as {
+    salesDocId?: number; orderId?: number; orderNumber?: string;
+    invoiceNumber?: string; customerName?: string; customerPhone?: string;
+    currency?: string; dueDate?: string; notes?: string; sendWa?: boolean;
+  };
+
+  try {
+    let subtotal: number | null = null;
+    let taxRate = 11;
+    let taxAmount: number | null = null;
+    let grandTotal: number | null = null;
+    let lineItems: unknown[] = [];
+
+    // Ambil data dari sales_documents jika ada salesDocId
+    if (salesDocId) {
+      const [doc] = await db.select().from(salesDocumentsTable)
+        .where(eq(salesDocumentsTable.id, salesDocId));
+      if (doc) {
+        subtotal = Number(doc.totalAmount);
+        taxAmount = Number(doc.taxAmount);
+        grandTotal = Number(doc.grandTotal);
+        // Hitung tax rate dari data
+        if (subtotal > 0 && taxAmount > 0) {
+          taxRate = Math.round((taxAmount / subtotal) * 100);
+        }
+        // Ambil line items
+        const lines = await db.select().from(salesDocumentLinesTable)
+          .where(eq(salesDocumentLinesTable.documentId, salesDocId));
+        lineItems = lines.map(l => ({
+          description: l.name,
+          qty: Number(l.quantity),
+          unit: "",
+          unitPrice: Number(l.unitPrice),
+          subtotal: Number(l.subtotal),
+        }));
+      }
+    }
+
+    const token = randomBytes(24).toString("hex");
+    const expiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 hari
+    const createdBy = (req.user as { id?: string } | undefined)?.id ?? "admin";
+
+    const [link] = await db.insert(customerInvoiceLinksTable).values({
+      token,
+      salesDocId: salesDocId ?? null,
+      orderId: orderId ?? null,
+      orderNumber: orderNumber ?? null,
+      invoiceNumber: invoiceNumber ?? null,
+      customerName: customerName ?? null,
+      customerPhone: customerPhone ?? null,
+      currency: currency ?? "IDR",
+      subtotal: subtotal ? String(subtotal) : null,
+      taxRate: String(taxRate),
+      taxAmount: taxAmount ? String(taxAmount) : null,
+      grandTotal: grandTotal ? String(grandTotal) : null,
+      notes: notes ?? null,
+      lineItems,
+      dueDate: dueDate ? new Date(dueDate) : null,
+      expiresAt: expiry,
+      createdBy,
+    } as any).returning();
+
+    const { getPreferredDomain } = await import("../lib/domain.js");
+    const domain = getPreferredDomain();
+    const invoiceUrl = domain ? `https://${domain}/customer-invoice/${token}` : `/customer-invoice/${token}`;
+
+    // Kirim WA ke customer jika diminta
+    if (sendWa && customerPhone) {
+      const invoiceNumLabel = invoiceNumber ? `No. Invoice: *${invoiceNumber}*\n` : "";
+      const orderNumLabel = orderNumber ? `No. Order: *${orderNumber}*\n` : "";
+      const dueDateLabel = dueDate ? `Jatuh Tempo: *${new Date(dueDate).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}*\n` : "";
+      const totalLabel = grandTotal ? `Total: *${currency ?? "IDR"} ${Math.round(grandTotal).toLocaleString("id-ID")}*\n` : "";
+      const waMsg = `📄 *Invoice Pembayaran*\n\n` +
+        `Kepada Yth. ${customerName ?? "Customer"},\n\n` +
+        invoiceNumLabel + orderNumLabel + totalLabel + dueDateLabel +
+        `\nSilakan lihat detail invoice dan konfirmasi penerimaan melalui link berikut:\n${invoiceUrl}` +
+        (notes ? `\n\n📝 Catatan: ${notes}` : "") +
+        `\n\nTerima kasih atas kepercayaan Anda.`;
+      await sendWhatsApp(customerPhone, waMsg, { context: "customer-invoice-send", refType: "customer_invoice", refId: String(link.id) });
+    }
+
+    return res.json({ success: true, token, url: invoiceUrl, id: link.id });
+  } catch (err) {
+    req.log?.error({ err }, "create customer-invoice error");
+    return res.status(500).json({ error: "Gagal membuat link invoice" });
+  }
+});
+
+// ── ADMIN: GET /api/vendor-form/admin/customer-invoices ───────────────────────
+vendorMiniFormRouter.get("/admin/customer-invoices", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const orderIdFilter = req.query["orderId"] ? Number(req.query["orderId"]) : null;
+  try {
+    const query = db.select().from(customerInvoiceLinksTable).orderBy(desc(customerInvoiceLinksTable.createdAt));
+    const rows = orderIdFilter
+      ? await query.where(eq(customerInvoiceLinksTable.orderId, orderIdFilter))
+      : await query.limit(100);
+    return res.json(rows);
+  } catch (err) {
+    req.log?.error({ err }, "get customer-invoices error");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── ADMIN: POST /api/vendor-form/admin/customer-invoices/:id/send-wa ──────────
+vendorMiniFormRouter.post("/admin/customer-invoices/:id/send-wa", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const id = Number(req.params["id"]);
+  if (isNaN(id)) return res.status(400).json({ error: "ID tidak valid" });
+  try {
+    const [link] = await db.select().from(customerInvoiceLinksTable)
+      .where(eq(customerInvoiceLinksTable.id, id));
+    if (!link) return res.status(404).json({ error: "Invoice link tidak ditemukan" });
+
+    const phone = req.body.phone ?? link.customerPhone;
+    if (!phone) return res.status(400).json({ error: "Nomor telepon customer tidak tersedia" });
+
+    const { getPreferredDomain } = await import("../lib/domain.js");
+    const domain = getPreferredDomain();
+    const invoiceUrl = domain ? `https://${domain}/customer-invoice/${link.token}` : `/customer-invoice/${link.token}`;
+
+    const invoiceNumLabel = link.invoiceNumber ? `No. Invoice: *${link.invoiceNumber}*\n` : "";
+    const orderNumLabel = link.orderNumber ? `No. Order: *${link.orderNumber}*\n` : "";
+    const totalLabel = link.grandTotal ? `Total: *${link.currency ?? "IDR"} ${Math.round(Number(link.grandTotal)).toLocaleString("id-ID")}*\n` : "";
+    const dueDateLabel = link.dueDate ? `Jatuh Tempo: *${new Date(link.dueDate).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}*\n` : "";
+
+    const waMsg = `📄 *Invoice Pembayaran*\n\n` +
+      `Kepada Yth. ${link.customerName ?? "Customer"},\n\n` +
+      invoiceNumLabel + orderNumLabel + totalLabel + dueDateLabel +
+      `\nSilakan lihat detail invoice dan konfirmasi penerimaan melalui link berikut:\n${invoiceUrl}` +
+      (link.notes ? `\n\n📝 Catatan: ${link.notes}` : "") +
+      `\n\nTerima kasih atas kepercayaan Anda.`;
+
+    await sendWhatsApp(phone, waMsg, { context: "customer-invoice-send", refType: "customer_invoice", refId: String(link.id) });
+    return res.json({ success: true });
+  } catch (err) {
+    req.log?.error({ err }, "send-wa customer-invoice error");
     return res.status(500).json({ error: "Gagal mengirim WA" });
   }
 });
