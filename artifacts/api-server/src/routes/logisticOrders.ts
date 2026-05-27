@@ -1198,6 +1198,37 @@ logisticOrdersRouter.delete("/:id", async (req: Request, res: Response) => {
   return res.json({ message: "Deleted", id });
 });
 
+// POST /api/logistic/orders/:id/updates — tambah catatan manual ke timeline
+logisticOrdersRouter.post("/:id/updates", requireClerkUser, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params["id"] ?? ""));
+  if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+
+  const [order] = await db.select({ id: logisticOrdersTable.id }).from(logisticOrdersTable).where(eq(logisticOrdersTable.id, id));
+  if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+  const notes = String(req.body?.notes ?? "").trim();
+  const status = req.body?.status ? String(req.body.status).trim() : null;
+  const isPublic = req.body?.isPublic === true || req.body?.isPublic === "true";
+
+  if (!notes && !status) return res.status(400).json({ message: "notes atau status wajib diisi" });
+
+  const actorName = (req as any).user?.fullName ?? (req as any).user?.name ?? "Admin";
+  const actorId = (req as any).user?.id ?? null;
+
+  const [inserted] = await db.insert(orderUpdatesTable).values({
+    orderId: id,
+    actorType: "admin",
+    actorId: actorId ? String(actorId) : null,
+    actorName,
+    status: status || null,
+    notes: notes || null,
+    isPublic,
+    createdAt: new Date(),
+  }).returning();
+
+  return res.status(201).json({ ok: true, update: inserted });
+});
+
 // GET /api/logistic/orders/:id/locations — GPS history for an order (admin)
 logisticOrdersRouter.get("/:id/locations", async (req: Request, res: Response) => {
   const id = parseInt(String(req.params["id"] ?? ""));
