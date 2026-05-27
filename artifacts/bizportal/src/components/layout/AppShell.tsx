@@ -189,6 +189,15 @@ export function AppShell({ children }: AppShellProps) {
       roles: ["admin", "owner"],
     },
 
+    // ── AI APPROVAL QUEUE ─────────────────────────────────────────────
+    {
+      type: "flat",
+      titleKey: "AI Approval Queue",
+      href: "/ai-approvals",
+      icon: ShieldCheck,
+      roles: ["admin", "owner"],
+    },
+
     // ── 3. PRODUK & RECIPE/BOM ────────────────────────────────────────
     {
       type: "group",
