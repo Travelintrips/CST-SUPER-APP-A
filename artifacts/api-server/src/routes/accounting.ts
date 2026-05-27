@@ -23,6 +23,7 @@ import {
   lte,
   sql,
   inArray,
+  ilike,
   type SQL,
 } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
@@ -634,11 +635,18 @@ router.get("/payments", async (req, res) => {
   const sourceDocIdFilter = req.query["sourceDocId"]
     ? Number(req.query["sourceDocId"])
     : null;
+  const refDocNumberFilter =
+    typeof req.query["refDocNumber"] === "string" && req.query["refDocNumber"].trim()
+      ? req.query["refDocNumber"].trim()
+      : null;
   if (sourceTypeFilter) {
     conds.push(eq(accountingPaymentsTable.sourceType, sourceTypeFilter));
   }
   if (sourceDocIdFilter && !Number.isNaN(sourceDocIdFilter)) {
     conds.push(eq(accountingPaymentsTable.sourceDocId, sourceDocIdFilter));
+  }
+  if (refDocNumberFilter) {
+    conds.push(ilike(accountingPaymentsTable.ref, `%${refDocNumberFilter}%`));
   }
   const rows = await db
     .select()
