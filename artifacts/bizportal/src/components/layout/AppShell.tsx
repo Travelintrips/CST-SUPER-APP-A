@@ -97,6 +97,7 @@ import { CompanySwitcher } from "@/components/CompanySwitcher";
 import { useCompany } from "@/contexts/CompanyContext";
 import { cn } from "@/lib/utils";
 import { useNavPreferences } from "@/hooks/useNavPreferences";
+import { useAlertWebSocket } from "@/hooks/useAlertWebSocket";
 import {
   DndContext,
   closestCenter,
@@ -157,6 +158,8 @@ export function AppShell({ children }: AppShellProps) {
     },
   });
   const { unreadCount, dbUnreadTotal } = useOrderNotificationsContext();
+
+  useAlertWebSocket();
 
   const getInitials = (name?: string) => {
     if (!name) return "U";

@@ -24,6 +24,7 @@ import { sendWhatsApp } from "./fonnte.js";
 import { getAdminGroupWa } from "./adminWa.js";
 import { wasRecentlyNotified } from "./notificationLog.js";
 import { logger } from "./logger.js";
+import { broadcastNewAlert } from "./alertsBroadcast.js";
 
 const POLL_INTERVAL_MS = 5 * 60 * 1000;  // 5 minutes
 const INITIAL_DELAY_MS = 3 * 60 * 1000;  // 3 min after boot
@@ -130,7 +131,7 @@ async function createAlert(data: {
 
   if (existing.length > 0) return;
 
-  await db.insert(intelligenceAlertsTable).values({
+  const inserted = await db.insert(intelligenceAlertsTable).values({
     companyId: data.companyId ?? null,
     alertType: data.alertType,
     entityType: data.entityType,
@@ -140,7 +141,21 @@ async function createAlert(data: {
     title: data.title,
     message: data.message,
     contextJson: data.contextJson ?? {},
-  });
+  }).returning();
+
+  if (inserted[0]) {
+    broadcastNewAlert({
+      id: inserted[0].id,
+      alertType: inserted[0].alertType,
+      entityType: inserted[0].entityType,
+      entityId: inserted[0].entityId,
+      entityRef: inserted[0].entityRef,
+      severity: inserted[0].severity as "critical" | "warning" | "info",
+      title: inserted[0].title,
+      message: inserted[0].message,
+      createdAt: (inserted[0].createdAt ?? new Date()).toISOString(),
+    });
+  }
 }
 
 // ── TASK 1 & 2: Vendor RFQ no-response ───────────────────────────────────────

@@ -50,6 +50,7 @@ import { runIntelligenceAlertSettingsMigration } from "./lib/intelligenceAlertSe
 import { runAiGovernanceMigration } from "./lib/aiGovernanceMigration.js";
 import { expireStaleApprovals } from "./lib/aiGovernance.js";
 import { startDbBackupScheduler } from "./lib/dbBackup.js";
+import { initAlertsBroadcast } from "./lib/alertsBroadcast.js";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 
@@ -186,6 +187,9 @@ async function startServer() {
 
     logger.info({ port }, "Server listening");
   });
+
+  // Attach WebSocket server for real-time Intelligence Alerts
+  initAlertsBroadcast(server);
 
   // Also bind on port 18444 (gateway routing port) if not already the main port
   const GATEWAY_PORT = 18444;
