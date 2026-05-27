@@ -2,8 +2,9 @@ import { Router, type Request, type Response } from "express";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { getAdminWa, setAdminWa, getAdminGroupWa, setAdminGroupWa } from "../lib/adminWa.js";
 import { db, portalContentTable } from "@workspace/db";
-import { shortLinksTable } from "@workspace/db/schema";
-import { eq, desc, ilike, or, sql } from "drizzle-orm";
+import { broadcastToPortal } from "../lib/sseManager.js";
+import { shortLinksTable, waTemplateConfigsTable, notificationLogsTable } from "@workspace/db/schema";
+import { eq, desc, ilike, or, sql, and } from "drizzle-orm";
 import { getAiIntakeSettings, saveAiIntakeSettings, type VendorFilterMode } from "../lib/aiOrderIntake.js";
 
 const router = Router();
@@ -66,6 +67,9 @@ router.put("/calculator-rates", async (req: Request, res: Response) => {
       target: portalContentTable.key,
       set: { value: JSON.stringify(rates), updatedAt: new Date() },
     });
+  // Notify Customer Portal: tarif kalkulator diperbarui oleh admin.
+  // Listener: calculator.tsx (invalidates ["portal-calculator-rates"])
+  broadcastToPortal("price_sync", { ts: Date.now() });
   return res.json({ ok: true });
 });
 
@@ -79,6 +83,80 @@ router.get("/cargo-types", async (req: Request, res: Response) => {
   } catch {
     return res.json(DEFAULT_CARGO_TYPES);
   }
+});
+
+// ── WA Template Configs (workflow-based) ──────────────────────────────────────
+
+// GET /api/settings/wa-template-configs — fetch all saved workflow templates
+router.get("/wa-template-configs", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  try {
+    const rows = await db.select().from(waTemplateConfigsTable);
+    const configs: Record<string, string> = {};
+    const savedKeys: string[] = [];
+    for (const row of rows) {
+      const key = `${row.recipient}__${row.workflow}`;
+      configs[key] = row.body;
+      savedKeys.push(key);
+    }
+    return res.json({ configs, savedKeys });
+  } catch {
+    return res.json({ configs: {}, savedKeys: [] });
+  }
+});
+
+// PUT /api/settings/wa-template-configs — save/update one workflow template
+router.put("/wa-template-configs", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const { recipient, workflow, body } = req.body as { recipient?: string; workflow?: string; body?: string };
+  if (!recipient || !workflow || typeof body !== "string") {
+    return res.status(400).json({ message: "Payload harus berupa { recipient, workflow, body }" });
+  }
+  const VALID_RECIPIENTS = ["admin_personal", "admin_group", "customer", "vendor"];
+  const VALID_WORKFLOWS = [
+    "order_new", "vendor_request", "vendor_submission", "vendor_revision",
+    "vendor_confirmed", "vendor_rejected",
+    "vendor_submit_confirm", "vendor_rfq_forward", "vendor_submission_summary", "revision_fallback",
+    "customer_approval", "customer_approved", "customer_options",
+    "customer_revised", "customer_rejected",
+    "so_created", "op_request", "task_link", "task_update",
+    "driver_assigned", "shipment_update", "customs_update",
+    "operational_update", "delivery_completed",
+    "rfq_vendor_recap", "customer_rejection", "op_confirm_submitted", "customer_rfq_response",
+    "product_order_new",
+    "product_order_status_update",
+  ];
+  if (!VALID_RECIPIENTS.includes(recipient)) return res.status(400).json({ message: "recipient tidak valid" });
+  if (!VALID_WORKFLOWS.includes(workflow)) return res.status(400).json({ message: "workflow tidak valid" });
+
+  await db.insert(waTemplateConfigsTable)
+    .values({ recipient, workflow, body, updatedAt: new Date() })
+    .onConflictDoUpdate({
+      target: [waTemplateConfigsTable.recipient, waTemplateConfigsTable.workflow],
+      set: { body, updatedAt: new Date() },
+    });
+
+  try {
+    const { invalidateWaTemplateCache } = await import("../lib/orderNotification.js");
+    invalidateWaTemplateCache();
+  } catch { /* non-fatal */ }
+
+  return res.json({ ok: true });
+});
+
+// DELETE /api/settings/wa-template-configs/:recipient/:workflow — reset to default
+router.delete("/wa-template-configs/:recipient/:workflow", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const { recipient, workflow } = req.params as { recipient: string; workflow: string };
+  try {
+    await db.delete(waTemplateConfigsTable).where(
+      and(
+        eq(waTemplateConfigsTable.recipient, recipient),
+        eq(waTemplateConfigsTable.workflow, workflow),
+      )
+    );
+  } catch { /* ignore */ }
+  return res.json({ ok: true });
 });
 
 // PUT /api/settings/cargo-types — update cargo types list (admin)
@@ -158,6 +236,151 @@ router.put("/nav-company-config", async (req: Request, res: Response) => {
 });
 
 // ── Short Links Management (admin) ─────────────────────────────────────────
+
+// GET /api/settings/wa-logs?page=1&pageSize=30&status=&search=
+router.get("/wa-logs", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const page     = Math.max(1, Number(req.query.page) || 1);
+  const pageSize = Math.min(100, Math.max(1, Number(req.query.pageSize) || 30));
+  const status   = String(req.query.status ?? "").trim();
+  const search   = String(req.query.search  ?? "").trim();
+  const offset   = (page - 1) * pageSize;
+  try {
+    const conditions: ReturnType<typeof eq>[] = [eq(notificationLogsTable.channel, "wa")];
+    if (status === "sent" || status === "failed") conditions.push(eq(notificationLogsTable.status, status));
+    if (search) {
+      conditions.push(
+        or(
+          ilike(notificationLogsTable.recipient, `%${search}%`),
+          ilike(notificationLogsTable.refId,     `%${search}%`),
+          ilike(notificationLogsTable.context,   `%${search}%`),
+        ) as ReturnType<typeof eq>,
+      );
+    }
+    const where = conditions.length === 1 ? conditions[0] : and(...conditions);
+    const [rows, countResult] = await Promise.all([
+      db.select({
+        id: notificationLogsTable.id,
+        recipient: notificationLogsTable.recipient,
+        message: notificationLogsTable.message,
+        status: notificationLogsTable.status,
+        errorMsg: notificationLogsTable.errorMsg,
+        context: notificationLogsTable.context,
+        refType: notificationLogsTable.refType,
+        refId: notificationLogsTable.refId,
+        createdAt: notificationLogsTable.createdAt,
+      }).from(notificationLogsTable).where(where).orderBy(desc(notificationLogsTable.createdAt)).limit(pageSize).offset(offset),
+      db.select({ count: sql<number>`count(*)::int` }).from(notificationLogsTable).where(where),
+    ]);
+    return res.json({ data: rows, total: countResult[0]?.count ?? 0, page, pageSize });
+  } catch (err) {
+    req.log?.error({ err }, "wa-logs list error");
+    return res.status(500).json({ message: "Gagal memuat log WA" });
+  }
+});
+
+// GET /api/settings/wa-logs/stats — summary counts for 7d and 30d
+router.get("/wa-logs/stats", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  try {
+    const now = new Date();
+    const d7  = new Date(now.getTime() - 7  * 24 * 60 * 60 * 1000);
+    const d30 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    const [rows7, rows30, rowsAll] = await Promise.all([
+      db.select({
+        status: notificationLogsTable.status,
+        count: sql<number>`count(*)::int`,
+      }).from(notificationLogsTable)
+        .where(and(eq(notificationLogsTable.channel, "wa"), sql`${notificationLogsTable.createdAt} >= ${d7}`))
+        .groupBy(notificationLogsTable.status),
+      db.select({
+        status: notificationLogsTable.status,
+        count: sql<number>`count(*)::int`,
+      }).from(notificationLogsTable)
+        .where(and(eq(notificationLogsTable.channel, "wa"), sql`${notificationLogsTable.createdAt} >= ${d30}`))
+        .groupBy(notificationLogsTable.status),
+      db.select({
+        status: notificationLogsTable.status,
+        count: sql<number>`count(*)::int`,
+      }).from(notificationLogsTable)
+        .where(eq(notificationLogsTable.channel, "wa"))
+        .groupBy(notificationLogsTable.status),
+    ]);
+
+    const tally = (rows: { status: string; count: number }[]) => ({
+      sent:   rows.find(r => r.status === "sent")?.count   ?? 0,
+      failed: rows.find(r => r.status === "failed")?.count ?? 0,
+    });
+
+    return res.json({ d7: tally(rows7), d30: tally(rows30), all: tally(rowsAll) });
+  } catch (err) {
+    req.log?.error({ err }, "wa-logs stats error");
+    return res.status(500).json({ message: "Gagal memuat statistik WA" });
+  }
+});
+
+// GET /api/settings/wa-logs/export?status=&search= — download as CSV
+router.get("/wa-logs/export", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const status = String(req.query.status ?? "").trim();
+  const search = String(req.query.search  ?? "").trim();
+  try {
+    const conditions: ReturnType<typeof eq>[] = [eq(notificationLogsTable.channel, "wa")];
+    if (status === "sent" || status === "failed") conditions.push(eq(notificationLogsTable.status, status));
+    if (search) {
+      conditions.push(
+        or(
+          ilike(notificationLogsTable.recipient, `%${search}%`),
+          ilike(notificationLogsTable.refId,     `%${search}%`),
+          ilike(notificationLogsTable.context,   `%${search}%`),
+        ) as ReturnType<typeof eq>,
+      );
+    }
+    const where = conditions.length === 1 ? conditions[0] : and(...conditions);
+    const rows = await db.select({
+      id: notificationLogsTable.id,
+      recipient: notificationLogsTable.recipient,
+      status: notificationLogsTable.status,
+      errorMsg: notificationLogsTable.errorMsg,
+      context: notificationLogsTable.context,
+      refType: notificationLogsTable.refType,
+      refId: notificationLogsTable.refId,
+      message: notificationLogsTable.message,
+      createdAt: notificationLogsTable.createdAt,
+    }).from(notificationLogsTable).where(where).orderBy(desc(notificationLogsTable.createdAt)).limit(5000);
+
+    const escape = (v: unknown) => {
+      if (v == null) return "";
+      const s = String(v).replace(/"/g, '""');
+      return /[",\n\r]/.test(s) ? `"${s}"` : s;
+    };
+    const header = ["id", "tanggal", "penerima", "status", "error", "context", "refType", "refId", "pesan"];
+    const csvRows = [
+      header.join(","),
+      ...rows.map(r => [
+        r.id,
+        new Date(r.createdAt).toLocaleString("id-ID"),
+        escape(r.recipient),
+        escape(r.status),
+        escape(r.errorMsg),
+        escape(r.context),
+        escape(r.refType),
+        escape(r.refId),
+        escape(r.message),
+      ].join(",")),
+    ];
+    const csv = csvRows.join("\r\n");
+    const filename = `wa-log-${new Date().toISOString().slice(0,10)}.csv`;
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Cache-Control", "no-cache");
+    return res.send("\uFEFF" + csv); // BOM for Excel UTF-8
+  } catch (err) {
+    req.log?.error({ err }, "wa-logs export error");
+    return res.status(500).json({ message: "Gagal export log WA" });
+  }
+});
 
 // GET /api/settings/short-links?page=1&pageSize=20&search=xxx
 router.get("/short-links", async (req: Request, res: Response) => {
@@ -242,6 +465,84 @@ router.patch("/short-links/:id/reactivate", async (req: Request, res: Response) 
     req.log?.error({ err }, "short-link reactivate error");
     return res.status(500).json({ message: "Gagal mengaktifkan kembali" });
   }
+});
+
+// ── Page Content (konten teks halaman publik) ────────────────────────────────
+const PAGE_CONTENT_KEY = "page_content";
+
+export const DEFAULT_PAGE_CONTENT = {
+  admin_review: {
+    pageTitle: "Review & Blast Vendor",
+    pageSubtitle: "CST Logistics — Admin Panel",
+    deadlineLabel: "Batas Waktu Respon Vendor",
+    vendorSectionTitle: "Pilih Vendor",
+    blastHint: "Vendor akan menerima WA dengan link form penawaran",
+  },
+};
+
+// GET /api/settings/page-content — public (dipakai customer portal)
+router.get("/page-content", async (req: Request, res: Response) => {
+  try {
+    const [row] = await db.select().from(portalContentTable).where(eq(portalContentTable.key, PAGE_CONTENT_KEY));
+    const content = row ? JSON.parse(row.value) : DEFAULT_PAGE_CONTENT;
+    return res.json({ ...DEFAULT_PAGE_CONTENT, ...content });
+  } catch {
+    return res.json(DEFAULT_PAGE_CONTENT);
+  }
+});
+
+// PUT /api/settings/page-content — admin only
+router.put("/page-content", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const content = req.body;
+  if (!content || typeof content !== "object") {
+    return res.status(400).json({ message: "Invalid payload" });
+  }
+  await db
+    .insert(portalContentTable)
+    .values({ key: PAGE_CONTENT_KEY, value: JSON.stringify(content), updatedAt: new Date() })
+    .onConflictDoUpdate({
+      target: portalContentTable.key,
+      set: { value: JSON.stringify(content), updatedAt: new Date() },
+    });
+  return res.json({ ok: true });
+});
+
+// ── Freight Stage Labels ──────────────────────────────────────────────────────
+const FREIGHT_STAGE_LABELS_KEY = "freight_stage_labels";
+
+export const DEFAULT_FREIGHT_STAGE_LABELS: Record<string, string> = {
+  booking: "Booking",
+  trucking: "Trucking",
+  handling: "Handling",
+  customs: "Customs Clearance",
+};
+
+// GET /api/settings/freight-stage-labels — no auth required (used by authenticated BizPortal pages)
+router.get("/freight-stage-labels", async (_req: Request, res: Response) => {
+  try {
+    const [row] = await db.select().from(portalContentTable).where(eq(portalContentTable.key, FREIGHT_STAGE_LABELS_KEY));
+    const stored: Record<string, string> = row ? JSON.parse(row.value) as Record<string, string> : {};
+    return res.json({ labels: { ...DEFAULT_FREIGHT_STAGE_LABELS, ...stored } });
+  } catch {
+    return res.json({ labels: DEFAULT_FREIGHT_STAGE_LABELS });
+  }
+});
+
+// PUT /api/settings/freight-stage-labels — admin only
+router.put("/freight-stage-labels", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const { labels } = req.body as { labels?: Record<string, string> };
+  if (!labels || typeof labels !== "object") return res.status(400).json({ message: "Invalid payload" });
+  const filtered: Record<string, string> = {};
+  for (const k of Object.keys(DEFAULT_FREIGHT_STAGE_LABELS)) {
+    if (typeof labels[k] === "string" && labels[k].trim()) filtered[k] = labels[k].trim();
+  }
+  await db
+    .insert(portalContentTable)
+    .values({ key: FREIGHT_STAGE_LABELS_KEY, value: JSON.stringify(filtered), updatedAt: new Date() })
+    .onConflictDoUpdate({ target: portalContentTable.key, set: { value: JSON.stringify(filtered), updatedAt: new Date() } });
+  return res.json({ ok: true, labels: { ...DEFAULT_FREIGHT_STAGE_LABELS, ...filtered } });
 });
 
 export default router;

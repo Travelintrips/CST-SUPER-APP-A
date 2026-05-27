@@ -8,12 +8,11 @@ import {
   logisticOrdersTable,
   logisticOrderItemsTable,
   suppliersTable,
-  vendorCatalogItemsTable,
 } from "@workspace/db";
 import { sendWhatsApp } from "../lib/fonnte";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { verifyVendorResponseToken } from "../lib/vendorResponseToken";
-import { getAdminWa, getAdminGroupWa } from "../lib/adminWa";
+import { getAdminGroupWa } from "../lib/adminWa";
 import { getPreferredDomain } from "../lib/domain";
 
 const router: IRouter = Router();
@@ -116,8 +115,7 @@ router.get("/:orderNumber", async (req: Request, res: Response) => {
       .from(vendorResponsesTable)
       .where(eq(vendorResponsesTable.orderNumber, orderNumber));
 
-    // Fetch vendor base price from catalog if vendorId provided
-    let vendorBasePrice: number | null = null;
+    // Fetch vendor name from DB if vendorId provided (base price not exposed to protect margin)
     let vendorNameFromDb: string | null = null;
     if (vendorId && !isNaN(vendorId)) {
       const [vendor] = await db
@@ -125,21 +123,6 @@ router.get("/:orderNumber", async (req: Request, res: Response) => {
         .from(suppliersTable)
         .where(eq(suppliersTable.id, vendorId));
       if (vendor) vendorNameFromDb = vendor.name;
-
-      const catalogItems = await db
-        .select()
-        .from(vendorCatalogItemsTable)
-        .where(and(
-          eq(vendorCatalogItemsTable.vendorId, vendorId),
-          eq(vendorCatalogItemsTable.isActive, true)
-        ));
-
-      const matchingItem = vehicleType
-        ? catalogItems.find((c) => c.name.toLowerCase().includes(vehicleType.toLowerCase()))
-        : null;
-      vendorBasePrice = matchingItem
-        ? Number(matchingItem.priceBase)
-        : (catalogItems[0] ? Number(catalogItems[0].priceBase) : null);
     }
 
     res.json({
@@ -154,7 +137,6 @@ router.get("/:orderNumber", async (req: Request, res: Response) => {
       requiredDate: order.requiredDate,
       jamOrder: order.jamOrder,
       shipmentType: order.shipmentType,
-      vendorBasePrice,
       vendorNameFromDb,
       alreadySubmitted: !!existing,
     });
@@ -239,34 +221,27 @@ router.post("/:orderNumber", async (req: Request, res: Response) => {
       submittedAt: new Date(),
     };
 
-    const [existing] = await db
-      .select({ id: vendorResponsesTable.id })
-      .from(vendorResponsesTable)
-      .where(eq(vendorResponsesTable.orderNumber, orderNumber));
-
-    if (existing) {
-      await db
-        .update(vendorResponsesTable)
-        .set(payload)
-        .where(eq(vendorResponsesTable.orderNumber, orderNumber));
-    } else {
-      await db.insert(vendorResponsesTable).values(payload);
-    }
+    // Atomic upsert — INSERT on first submit, UPDATE on re-submit.
+    // The unique index on order_number (vendor_responses_order_uidx) prevents
+    // duplicate rows even under concurrent requests (no TOCTOU window).
+    const { id: _id, ...updatePayload } = payload as typeof payload & { id?: unknown };
+    void _id;
+    await db
+      .insert(vendorResponsesTable)
+      .values(payload)
+      .onConflictDoUpdate({
+        target: vendorResponsesTable.orderNumber,
+        set: updatePayload,
+      });
 
     const waMsg = formatWaAdminNotification({ ...payload });
-    const [adminWa, adminGroupWa] = await Promise.all([getAdminWa(), getAdminGroupWa()]);
-    if (adminWa) {
-      sendWhatsApp(adminWa, waMsg).catch((err) =>
-        req.log?.error({ err }, "vendor-response admin individual WA send failed")
-      );
-    }
+    const adminGroupWa = await getAdminGroupWa();
     if (adminGroupWa) {
       sendWhatsApp(adminGroupWa, waMsg).catch((err) =>
         req.log?.error({ err }, "vendor-response admin group WA send failed")
       );
-    }
-    if (!adminWa && !adminGroupWa) {
-      req.log?.warn("Admin WA not configured — skipping vendor response notification");
+    } else {
+      req.log?.warn("Admin WA group not configured — skipping vendor response notification");
     }
 
     res.json({ success: true, message: "Response berhasil dikirim" });

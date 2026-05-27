@@ -591,9 +591,11 @@ export const ListVendorCatalogResponseItem = zod.object({
   name: zod.string(),
   description: zod.string().nullish(),
   unit: zod.string().nullish(),
+  subcategory: zod.string().nullish(),
   priceBase: zod.number(),
   markupPct: zod.number(),
   isActive: zod.boolean(),
+  isCommodityTag: zod.boolean().optional(),
   sortOrder: zod.number(),
   createdAt: zod.string(),
 });
@@ -613,9 +615,11 @@ export const CreateVendorCatalogItemBody = zod.object({
   name: zod.string(),
   description: zod.string().nullish(),
   unit: zod.string().nullish(),
+  subcategory: zod.string().nullish(),
   priceBase: zod.number().optional(),
   markupPct: zod.number().optional(),
   isActive: zod.boolean().optional(),
+  isCommodityTag: zod.boolean().optional(),
   sortOrder: zod.number().optional(),
 });
 
@@ -631,9 +635,11 @@ export const UpdateVendorCatalogItemBody = zod.object({
   name: zod.string(),
   description: zod.string().nullish(),
   unit: zod.string().nullish(),
+  subcategory: zod.string().nullish(),
   priceBase: zod.number().optional(),
   markupPct: zod.number().optional(),
   isActive: zod.boolean().optional(),
+  isCommodityTag: zod.boolean().optional(),
   sortOrder: zod.number().optional(),
 });
 
@@ -644,9 +650,11 @@ export const UpdateVendorCatalogItemResponse = zod.object({
   name: zod.string(),
   description: zod.string().nullish(),
   unit: zod.string().nullish(),
+  subcategory: zod.string().nullish(),
   priceBase: zod.number(),
   markupPct: zod.number(),
   isActive: zod.boolean(),
+  isCommodityTag: zod.boolean().optional(),
   sortOrder: zod.number(),
   createdAt: zod.string(),
 });
@@ -4676,6 +4684,7 @@ export const CreateLogisticOrderBody = zod.object({
   customerName: zod.string(),
   email: zod.string(),
   phone: zod.string(),
+  orderType: zod.string().nullish(),
   shipmentType: zod.string(),
   origin: zod.string(),
   destination: zod.string(),

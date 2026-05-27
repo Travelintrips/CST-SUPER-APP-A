@@ -277,6 +277,22 @@ router.get("/webhook/fonnte", (_req: Request, res: Response) => {
 });
 
 router.post("/webhook/fonnte", async (req: Request, res: Response) => {
+  // ── Webhook origin verification ────────────────────────────────────────────
+  // Set FONNTE_WEBHOOK_SECRET and configure Fonnte to append ?token=SECRET
+  // (or send X-Fonnte-Token header) so only Fonnte can trigger this endpoint.
+  const webhookSecret = process.env.FONNTE_WEBHOOK_SECRET;
+  if (webhookSecret) {
+    const provided =
+      String(req.query["token"] ?? req.headers["x-fonnte-token"] ?? "").trim();
+    if (provided !== webhookSecret) {
+      logger.warn({ ip: req.ip }, "Fonnte webhook: invalid or missing token — rejected");
+      res.status(401).json({ status: false, error: "Unauthorized" });
+      return;
+    }
+  } else {
+    logger.warn("FONNTE_WEBHOOK_SECRET not set — webhook is open to spoofing. Set this env var.");
+  }
+
   res.status(200).json({ status: true });
 
   try {

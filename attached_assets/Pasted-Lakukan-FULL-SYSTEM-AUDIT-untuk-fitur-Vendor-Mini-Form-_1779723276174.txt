@@ -1,0 +1,232 @@
+Lakukan FULL SYSTEM AUDIT untuk fitur Vendor Mini Form dan Order Workflow.
+
+Saya tidak ingin audit superficial.
+Audit harus benar-benar mengecek:
+- alur bisnis
+- database
+- UI/UX
+- logic backend
+- security
+- edge case
+- race condition
+- duplicate issue
+- workflow issue
+- WhatsApp flow
+- status flow
+- form validation
+- order consistency
+- SO generation
+- vendor/customer access control
+- mobile responsiveness
+- public form security
+- performance
+
+AUDIT YANG HARUS DICEK:
+
+==================================================
+1. FLOW AUDIT
+==================================================
+
+Cek apakah flow ini benar-benar berjalan:
+
+Customer Request
+→ Admin Review
+→ Admin Generate Vendor Mini Form
+→ Vendor Submit Harga
+→ Admin Compare Vendor
+→ Admin Send Penawaran ke Customer
+→ Customer Approve
+→ Auto Create SO
+→ Admin Send Operational Form
+→ Vendor Submit Operational Data
+→ Order Ready
+
+Pastikan:
+- tidak ada step yang loncat
+- tidak ada status conflict
+- tidak ada dead flow
+- tidak ada loop error
+
+==================================================
+2. SERVICE TYPE AUDIT
+==================================================
+
+Cek apakah setiap service type memiliki field berbeda:
+
+- Product
+- Trucking
+- Freight Sea
+- Freight Air
+- PPJK
+- Warehouse
+- Additional Service
+
+Pastikan:
+- field tidak tercampur
+- payload_json benar
+- form render dinamis
+- validation sesuai tipe
+
+==================================================
+3. DATABASE AUDIT
+==================================================
+
+Audit:
+- relational consistency
+- foreign key
+- nullable issue
+- duplicate risk
+- indexing
+- payload_json structure
+- migration compatibility
+
+Pastikan:
+- order_id konsisten
+- order_item_id konsisten
+- vendor_id tidak null saat order mode
+- SO tidak duplicate
+- submission tidak overwrite
+
+==================================================
+4. SECURITY AUDIT
+==================================================
+
+Audit public mini form:
+- token validation
+- expired link
+- duplicate submission
+- brute force risk
+- unauthorized access
+- vendor melihat data vendor lain atau tidak
+- customer melihat harga modal atau tidak
+
+Pastikan:
+- vendor hanya lihat data sendiri
+- customer hanya lihat harga final
+- token random secure
+- no predictable URL
+
+==================================================
+5. STATUS FLOW AUDIT
+==================================================
+
+Audit semua status:
+
+Vendor:
+- pending
+- submitted
+- revised_price
+- rejected
+- selected
+
+Order:
+- waiting_vendor
+- vendor_submitted
+- sent_to_customer
+- customer_approved
+- so_created
+- operational_completed
+
+Pastikan:
+- status tidak bentrok
+- status tidak stuck
+- status update otomatis benar
+
+==================================================
+6. SO AUTOMATION AUDIT
+==================================================
+
+Pastikan:
+- customer approve → otomatis create SO
+- SO number unique
+- duplicate approve tidak create SO kedua
+- rollback aman jika gagal
+
+==================================================
+7. WHATSAPP FLOW AUDIT
+==================================================
+
+Audit:
+- WA link generator
+- mobile responsiveness
+- open directly from WhatsApp
+- no login required
+- copy link function
+- send WA button
+
+==================================================
+8. UI/UX AUDIT
+==================================================
+
+Audit:
+- mobile friendly
+- button consistency
+- loading state
+- empty state
+- success state
+- expired page
+- error message clarity
+
+==================================================
+9. PERFORMANCE AUDIT
+==================================================
+
+Audit:
+- duplicate query
+- unnecessary rerender
+- slow loading
+- heavy payload
+- repeated API call
+- memory leak
+- form lag
+
+==================================================
+10. EDGE CASE AUDIT
+==================================================
+
+Test:
+- vendor buka expired link
+- vendor submit dua kali
+- customer approve dua kali
+- admin delete vendor
+- vendor revise after approved
+- no internet interruption
+- partial submit
+- attachment gagal upload
+- vendor tidak isi mandatory field
+
+==================================================
+11. FINAL OUTPUT YANG SAYA MAU
+==================================================
+
+Saya ingin output audit dalam format:
+
+A. ISSUE FOUND
+- daftar semua masalah
+
+B. RISK LEVEL
+- low
+- medium
+- high
+- critical
+
+C. ROOT CAUSE
+- penyebab masalah
+
+D. SOLUTION
+- solusi teknis
+
+E. FILE LOCATION
+- file mana yang bermasalah
+
+F. SAFE FIX PLAN
+- langkah fix tanpa merusak fitur existing
+
+G. FINAL SCORE
+- architecture score
+- security score
+- scalability score
+- production readiness score
+
+Jangan hanya kasih summary.
+Lakukan audit detail seperti senior system architect dan QA enterprise.

@@ -8,18 +8,73 @@ import {
   rfqActivityLogsTable,
   logisticOrderRfqsTable,
   logisticOrdersTable,
+  logisticOrderItemsTable,
   suppliersTable,
   vendorCatalogItemsTable,
   freightShipmentsTable,
 } from "@workspace/db";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { sendWhatsApp } from "../lib/fonnte.js";
-import { getAdminGroupWa, getAdminWa } from "../lib/adminWa.js";
+import { getAdminGroupWa } from "../lib/adminWa.js";
 import { getPreferredDomain } from "../lib/domain.js";
 import { logger } from "../lib/logger.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
+import {
+  sendVendorRequestNotification,
+  sendVendorSubmissionNotification,
+  sendVendorRevisionNotification,
+  sendVendorRevisionFallbackNotification,
+  sendCustomerRfqResponseAdminNotification,
+  sendCustomerApprovalNotification,
+  getRfqVendorRecapTemplate,
+  renderTemplate,
+  type LogisticOrderData,
+} from "../lib/orderNotification.js";
 
 export const logisticRfqV2Router = Router();
+
+function buildOrderData(order: typeof logisticOrdersTable.$inferSelect): LogisticOrderData {
+  return {
+    id: order.id,
+    orderNumber: order.orderNumber,
+    customerName: order.customerName,
+    companyName: order.companyName ?? "",
+    email: order.email,
+    phone: order.phone,
+    orderType: order.orderType ?? undefined,
+    shipmentType: order.shipmentType,
+    origin: order.origin,
+    destination: order.destination,
+    commodity: order.commodity ?? null,
+    cargoDescription: order.cargoDescription ?? null,
+    grossWeight: order.grossWeight ? Number(order.grossWeight) : null,
+    volumeCbm: order.volumeCbm ? Number(order.volumeCbm) : null,
+    jumlahKoli: order.jumlahKoli ?? null,
+    grandTotal: order.grandTotal ? Number(order.grandTotal) : 0,
+    serviceList: order.shipmentType,
+    requiredDate: order.requiredDate ?? null,
+    notes: order.notes ?? null,
+    jamOrder: order.jamOrder ?? null,
+    vehicleType: order.truckType ?? null,
+    createdAt: order.createdAt ?? null,
+    publicRfqToken: order.publicRfqToken ?? null,
+  };
+}
+
+async function buildOrderDataWithItems(order: typeof logisticOrdersTable.$inferSelect): Promise<LogisticOrderData> {
+  const base = buildOrderData(order);
+  try {
+    const items = await db.select({
+      name: logisticOrderItemsTable.serviceName,
+      subtotal: logisticOrderItemsTable.subtotal,
+    }).from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, order.id));
+    base.orderItems = items.map(i => ({
+      name: i.name,
+      subtotal: i.subtotal ? parseFloat(i.subtotal) : null,
+    }));
+  } catch { /* non-critical, skip */ }
+  return base;
+}
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 const objectStorage = new ObjectStorageService();
@@ -177,9 +232,7 @@ async function logActivity(
 }
 
 async function sendAdminRecapWa(rfqId: number, rfq: { rfqNumber: string; orderId: number }) {
-  const adminGroup = await getAdminGroupWa();
-  const adminIndividual = await getAdminWa();
-  const adminTarget = adminGroup || adminIndividual;
+  const adminTarget = await getAdminGroupWa();
   if (!adminTarget) return;
 
   const [order] = await db.select({
@@ -239,14 +292,18 @@ async function sendAdminRecapWa(rfqId: number, rfq: { rfqNumber: string; orderId
     }
   }
 
-  const msg =
-    `🔔 *Update Penawaran Vendor*\n\n` +
-    `RFQ: ${rfq.rfqNumber}\n` +
-    `Layanan: ${order?.shipmentType ?? "—"}\n` +
-    `Rute: ${order?.origin ?? "—"} → ${order?.destination ?? "—"}\n\n` +
-    (listStr ? `📋 *Daftar penawaran:*\n${listStr}\n` : "") +
-    (waitingStr ? `⏳ *Belum jawab:*\n${waitingStr}\n` : "") +
-    `🔗 Bandingkan & pilih vendor:\n${compareAdminLink}`;
+  const tplRfqRecap = await getRfqVendorRecapTemplate();
+  const vendorListWithHeader = listStr ? `📋 *Daftar penawaran:*\n${listStr.trimEnd()}` : null;
+  const waitingListWithHeader = waitingStr ? `⏳ *Belum jawab:*\n${waitingStr.trimEnd()}` : null;
+  const msg = renderTemplate(tplRfqRecap, {
+    rfqNumber: rfq.rfqNumber,
+    shipmentType: order?.shipmentType ?? "—",
+    route: order ? `${order.origin} → ${order.destination}` : "—",
+    vendorListWithHeader,
+    waitingListWithHeader,
+    compareLink: compareAdminLink,
+    timestamp: new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" }),
+  });
 
   sendWhatsApp(adminTarget, msg).catch((e: unknown) =>
     logger.error({ e }, "sendAdminRecapWa failed")
@@ -391,43 +448,132 @@ logisticRfqV2Router.get("/vendor-form/:token", async (req: Request, res: Respons
       .where(eq(rfqVendorLinksTable.id, link.id)).catch(() => {});
   }
 
-  const [rfq] = await db.select().from(logisticOrderRfqsTable)
-    .where(eq(logisticOrderRfqsTable.id, link.rfqId));
-  if (!rfq) return res.status(404).json({ message: "RFQ tidak ditemukan" });
+  // Use raw SQL to include freight_shipment_id (added via migration, not in Drizzle schema)
+  const rfqRows = await db.execute(sql`
+    SELECT *, freight_shipment_id FROM logistic_order_rfqs WHERE id = ${link.rfqId}
+  `);
+  const rfqRaw = rfqRows.rows?.[0] as Record<string, unknown> | undefined;
+  if (!rfqRaw) return res.status(404).json({ message: "RFQ tidak ditemukan" });
+
+  const rfqId = Number(rfqRaw.id);
+  const rfqNumber = String(rfqRaw.rfq_number ?? "");
+  const orderId = Number(rfqRaw.order_id);
+  const freightShipmentId: number | null = rfqRaw.freight_shipment_id
+    ? Number(rfqRaw.freight_shipment_id) : null;
+  const rfqResponseDeadline = rfqRaw.response_deadline
+    ? new Date(rfqRaw.response_deadline as string) : null;
 
   const [order] = await db.select().from(logisticOrdersTable)
-    .where(eq(logisticOrdersTable.id, rfq.orderId));
+    .where(eq(logisticOrdersTable.id, orderId));
   if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
 
   const [vendor] = await db.select({ name: suppliersTable.name })
     .from(suppliersTable).where(eq(suppliersTable.id, link.vendorId));
 
-  let basicPrice = link.basicPrice ? Number(link.basicPrice) : null;
+  // Fetch order items for additional context
+  const orderItems = await db.select({
+    serviceName: logisticOrderItemsTable.serviceName,
+    category: logisticOrderItemsTable.category,
+    calculatorType: logisticOrderItemsTable.calculatorType,
+    inputData: logisticOrderItemsTable.inputData,
+    subtotal: logisticOrderItemsTable.subtotal,
+  }).from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, orderId));
+
+  // Prefer order items subtotal sum as reference price (most accurate)
+  const orderSubtotal = orderItems.reduce(
+    (sum, i) => sum + (i.subtotal ? parseFloat(i.subtotal) : 0), 0
+  );
+  let basicPrice: number | null = orderSubtotal > 0 ? orderSubtotal : null;
+  if (basicPrice == null) {
+    basicPrice = link.basicPrice ? Number(link.basicPrice) : null;
+  }
   if (basicPrice == null) {
     const catalog = await db.select().from(vendorCatalogItemsTable)
       .where(and(eq(vendorCatalogItemsTable.vendorId, link.vendorId), eq(vendorCatalogItemsTable.isActive, true)));
     basicPrice = catalog[0] ? Number(catalog[0].priceBase) : null;
   }
 
+  // Fallback to freight shipment data when order fields are empty
+  let serviceType = order.shipmentType ?? "";
+  let origin = order.origin ?? "";
+  let destination = order.destination ?? "";
+  let commodity = order.commodity ?? null;
+  let cargoDescription = order.cargoDescription ?? null;
+  let grossWeight = order.grossWeight ? parseFloat(order.grossWeight) : null;
+  let volumeCbm = order.volumeCbm ? parseFloat(order.volumeCbm) : null;
+
+  if (freightShipmentId && (!origin || !destination || !serviceType)) {
+    const [shipment] = await db.select().from(freightShipmentsTable)
+      .where(eq(freightShipmentsTable.id, freightShipmentId));
+    if (shipment) {
+      if (!origin) origin = shipment.origin ?? "";
+      if (!destination) destination = shipment.destination ?? "";
+      if (!serviceType) serviceType = shipment.transportMode ?? shipment.cargoType ?? "Freight";
+      if (!commodity) commodity = shipment.commodity ?? null;
+      if (!cargoDescription) cargoDescription = shipment.packingType ?? null;
+      if (grossWeight == null && shipment.grossWeight) grossWeight = parseFloat(shipment.grossWeight);
+    }
+  }
+
+  // Derive serviceType from order items if still empty
+  if (!serviceType && orderItems.length > 0) {
+    const uniqueCategories = [...new Set(orderItems.map((i) => i.category).filter(Boolean))];
+    serviceType = uniqueCategories.join(", ");
+  }
+
+  // Extract origin/destination from item inputData for trucking items
+  if ((!origin || !destination) && orderItems.length > 0) {
+    for (const item of orderItems) {
+      const input = item.inputData as Record<string, unknown> | null;
+      if (!origin && input?.origin) origin = String(input.origin);
+      if (!destination && input?.destination) destination = String(input.destination);
+      if (origin && destination) break;
+    }
+  }
+
   return res.json({
     linkId: link.id,
-    rfqNumber: rfq.rfqNumber,
+    rfqNumber,
     vendorName: vendor?.name ?? `Vendor #${link.vendorId}`,
-    serviceType: order.shipmentType ?? "",
-    origin: order.origin,
-    destination: order.destination,
-    commodity: order.commodity ?? null,
-    cargoDescription: order.cargoDescription ?? null,
-    grossWeight: order.grossWeight ? parseFloat(order.grossWeight) : null,
-    volumeCbm: order.volumeCbm ? parseFloat(order.volumeCbm) : null,
+    orderType: (() => {
+      if (order.orderType) return order.orderType;
+      // Derive dari orderItems jika order.orderType null (order lama)
+      const hasProduct = orderItems.some(
+        (i) => i.calculatorType === "product" ||
+               i.category?.toLowerCase().includes("produk") ||
+               i.category?.toLowerCase().includes("product")
+      );
+      if (hasProduct) return "product";
+      const hasService = orderItems.some(
+        (i) => i.calculatorType === "service" ||
+               i.category?.toLowerCase().includes("servis") ||
+               i.category?.toLowerCase().includes("service") ||
+               i.category?.toLowerCase().includes("jasa")
+      );
+      if (hasService) return "service";
+      return "shipment";
+    })(),
+    serviceType,
+    origin,
+    destination,
+    commodity,
+    cargoDescription,
+    grossWeight,
+    volumeCbm,
     requiredDate: order.requiredDate ?? null,
     basicPrice,
-    responseDeadline: link.expiredAt?.toISOString() ?? null,
+    responseDeadline: link.expiredAt?.toISOString() ?? rfqResponseDeadline?.toISOString() ?? null,
     alreadySubmitted: !!link.submittedAt,
     currentStatus: link.status,
     currentOfferedPrice: link.offeredPrice ? Number(link.offeredPrice) : null,
     currentEta: link.eta ?? null,
     currentNotes: link.notes ?? null,
+    orderItems: orderItems.map((i) => ({
+      serviceName: i.serviceName,
+      category: i.category,
+      calculatorType: i.calculatorType,
+      subtotal: i.subtotal ? parseFloat(i.subtotal) : null,
+    })),
   });
 });
 
@@ -505,7 +651,14 @@ logisticRfqV2Router.post("/vendor-form/:token", async (req: Request, res: Respon
   const isUpdate = !!link.submittedAt;
   await db.update(rfqVendorLinksTable).set({
     status: newStatus,
-    offeredPrice: action === "accept" ? link.basicPrice : (offeredPrice ? String(offeredPrice) : null),
+    offeredPrice: action === "accept"
+      ? (link.basicPrice ?? (await (async () => {
+          const items = await db.select({ subtotal: logisticOrderItemsTable.subtotal })
+            .from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, rfq.orderId));
+          const sum = items.reduce((s, i) => s + (i.subtotal ? parseFloat(i.subtotal) : 0), 0);
+          return sum > 0 ? String(Math.round(sum)) : null;
+        })()))
+      : (offeredPrice ? String(offeredPrice) : null),
     eta: eta ?? null,
     notes: notes ?? null,
     attachmentUrl: attachmentUrl ?? link.attachmentUrl,
@@ -523,6 +676,20 @@ logisticRfqV2Router.post("/vendor-form/:token", async (req: Request, res: Respon
   await logActivity(link.rfqId, "vendor", vendorName, isUpdate ? "vendor_update" : "vendor_submit", actDesc);
 
   await sendAdminRecapWa(link.rfqId, rfq);
+
+  // Notifikasi template ke admin saat vendor submit penawaran
+  db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, rfq.orderId)).limit(1)
+    .then(([orderRow]) => {
+      if (!orderRow) return;
+      const priceNum = action === "accept"
+        ? (link.basicPrice ? Number(link.basicPrice) : null)
+        : (offeredPrice ? Number(offeredPrice) : null);
+      sendVendorSubmissionNotification(
+        buildOrderData(orderRow),
+        vendorName,
+        priceNum != null ? fmtRp(priceNum) : "—",
+      ).catch((e: unknown) => logger.error({ e }, "sendVendorSubmissionNotification failed"));
+    }).catch(() => {});
 
   return res.json({ success: true, message: "Penawaran berhasil dikirim", isUpdate });
 });
@@ -575,15 +742,27 @@ logisticRfqV2Router.post("/orders/:orderId/rfq-blast", async (req: Request, res:
   const existingLinks = await db.select().from(rfqVendorLinksTable).where(eq(rfqVendorLinksTable.rfqId, rfqId));
   const results: { vendorId: number; vendorName: string; sent: boolean }[] = [];
 
+  // Compute basicPrice from order items subtotal sum (preferred) or catalog fallback
+  const orderItemsForPrice = await db.select({ subtotal: logisticOrderItemsTable.subtotal })
+    .from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, orderId));
+  const orderSubtotalSum = orderItemsForPrice.reduce(
+    (sum, i) => sum + (i.subtotal ? parseFloat(i.subtotal) : 0), 0
+  );
+
   for (const vendor of eligible) {
     let linkToken: string;
     const existingLink = existingLinks.find((l) => l.vendorId === vendor.id);
     if (existingLink) {
       linkToken = existingLink.token;
     } else {
-      const catalogItems = await db.select().from(vendorCatalogItemsTable)
-        .where(and(eq(vendorCatalogItemsTable.vendorId, vendor.id), eq(vendorCatalogItemsTable.isActive, true)));
-      const basicPrice = catalogItems[0] ? String(catalogItems[0].priceBase) : null;
+      let basicPrice: string | null = null;
+      if (orderSubtotalSum > 0) {
+        basicPrice = String(Math.round(orderSubtotalSum));
+      } else {
+        const catalogItems = await db.select().from(vendorCatalogItemsTable)
+          .where(and(eq(vendorCatalogItemsTable.vendorId, vendor.id), eq(vendorCatalogItemsTable.isActive, true)));
+        basicPrice = catalogItems[0] ? String(catalogItems[0].priceBase) : null;
+      }
       linkToken = randomUUID();
       await db.insert(rfqVendorLinksTable).values({
         rfqId,
@@ -600,24 +779,8 @@ logisticRfqV2Router.post("/orders/:orderId/rfq-blast", async (req: Request, res:
     const basicPriceNum = existingLinkRow?.basicPrice ?? null;
     const fmtBasic = basicPriceNum ? ` (Harga Dasar: ${fmtRp(basicPriceNum)})` : "";
 
-    const msg =
-      `📋 *REQUEST FOR QUOTATION — CST LOGISTICS*\n` +
-      `━━━━━━━━━━━━━━━━━━\n` +
-      `Kepada Yth. *${vendor.name}*,\n\n` +
-      `Mohon penawaran harga untuk:\n\n` +
-      `No. RFQ     : *${rfq.rfqNumber}*\n` +
-      `Layanan     : ${order.shipmentType ?? "—"}\n` +
-      `Rute        : ${order.origin} → ${order.destination}\n` +
-      (order.commodity ? `Komoditi    : ${order.commodity}\n` : "") +
-      (order.grossWeight ? `Berat       : ${parseFloat(order.grossWeight)} kg\n` : "") +
-      (order.requiredDate ? `Tgl Butuh   : ${order.requiredDate}\n` : "") +
-      fmtBasic + `\n` +
-      `━━━━━━━━━━━━━━━━━━\n` +
-      `📱 *Isi penawaran di sini:*\n${formUrl}\n\n` +
-      `⏰ Batas waktu: ${deadlineHours} jam\n\nTerima kasih 🙏`;
-
     try {
-      await sendWhatsApp(vendor.phone!, msg);
+      await sendVendorRequestNotification(await buildOrderDataWithItems(order), vendor.name, vendor.phone!, formUrl);
       results.push({ vendorId: vendor.id, vendorName: vendor.name, sent: true });
     } catch (e) {
       logger.error({ e, vendorId: vendor.id }, "rfq-blast WA failed");
@@ -679,6 +842,13 @@ logisticRfqV2Router.post("/rfq/:rfqId/blast", async (req: Request, res: Response
     .where(eq(rfqVendorLinksTable.rfqId, rfqId));
   const existingVendorIds = new Set(existingLinks.map((l) => l.vendorId));
 
+  // Compute basicPrice from order items subtotal sum (preferred) or catalog fallback
+  const orderItemsForPrice2 = await db.select({ subtotal: logisticOrderItemsTable.subtotal })
+    .from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, rfq.orderId));
+  const orderSubtotalSum2 = orderItemsForPrice2.reduce(
+    (sum, i) => sum + (i.subtotal ? parseFloat(i.subtotal) : 0), 0
+  );
+
   const results: { vendorId: number; vendorName: string; token: string; sent: boolean }[] = [];
 
   for (const vendor of eligible) {
@@ -690,9 +860,14 @@ logisticRfqV2Router.post("/rfq/:rfqId/blast", async (req: Request, res: Response
       linkToken = existingLink.token;
       linkId = existingLink.id;
     } else {
-      const catalogItems = await db.select().from(vendorCatalogItemsTable)
-        .where(and(eq(vendorCatalogItemsTable.vendorId, vendor.id), eq(vendorCatalogItemsTable.isActive, true)));
-      const basicPrice = catalogItems[0] ? String(catalogItems[0].priceBase) : null;
+      let basicPrice: string | null = null;
+      if (orderSubtotalSum2 > 0) {
+        basicPrice = String(Math.round(orderSubtotalSum2));
+      } else {
+        const catalogItems = await db.select().from(vendorCatalogItemsTable)
+          .where(and(eq(vendorCatalogItemsTable.vendorId, vendor.id), eq(vendorCatalogItemsTable.isActive, true)));
+        basicPrice = catalogItems[0] ? String(catalogItems[0].priceBase) : null;
+      }
       linkToken = randomUUID();
       const [inserted] = await db.insert(rfqVendorLinksTable).values({
         rfqId,
@@ -709,24 +884,8 @@ logisticRfqV2Router.post("/rfq/:rfqId/blast", async (req: Request, res: Response
     const basicPriceNum = existingLink?.basicPrice ?? null;
     const fmtBasic = basicPriceNum ? ` (Harga Dasar: ${fmtRp(basicPriceNum)})` : "";
 
-    const msg =
-      `📋 *REQUEST FOR QUOTATION — CST LOGISTICS*\n` +
-      `━━━━━━━━━━━━━━━━━━\n` +
-      `Kepada Yth. *${vendor.name}*,\n\n` +
-      `Mohon penawaran harga untuk:\n\n` +
-      `No. RFQ     : *${rfq.rfqNumber}*\n` +
-      `Layanan     : ${order.shipmentType ?? "—"}\n` +
-      `Rute        : ${order.origin} → ${order.destination}\n` +
-      (order.commodity ? `Komoditi    : ${order.commodity}\n` : "") +
-      (order.grossWeight ? `Berat       : ${parseFloat(order.grossWeight)} kg\n` : "") +
-      (order.requiredDate ? `Tgl Butuh   : ${order.requiredDate}\n` : "") +
-      fmtBasic + `\n` +
-      `━━━━━━━━━━━━━━━━━━\n` +
-      `📱 *Isi penawaran di sini:*\n${formUrl}\n\n` +
-      `⏰ Batas waktu: ${deadlineHours} jam\n\nTerima kasih 🙏`;
-
     try {
-      await sendWhatsApp(vendor.phone!, msg);
+      await sendVendorRequestNotification(await buildOrderDataWithItems(order), vendor.name, vendor.phone!, formUrl);
       results.push({ vendorId: vendor.id, vendorName: vendor.name, token: linkToken, sent: true });
     } catch (e) {
       logger.error({ e, vendorId: vendor.id }, "blast WA vendor failed");
@@ -785,7 +944,7 @@ logisticRfqV2Router.get("/rfq/:rfqId/comparison", async (req: Request, res: Resp
 
   const vendorIds = links.map((l) => l.vendorId);
   const vendors = vendorIds.length
-    ? await db.select({ id: suppliersTable.id, name: suppliersTable.name, phone: suppliersTable.phone })
+    ? await db.select({ id: suppliersTable.id, name: suppliersTable.name, phone: suppliersTable.phone, markup: suppliersTable.markup })
         .from(suppliersTable).where(inArray(suppliersTable.id, vendorIds))
     : [];
   const vendorMap = new Map(vendors.map((v) => [v.id, v]));
@@ -793,6 +952,14 @@ logisticRfqV2Router.get("/rfq/:rfqId/comparison", async (req: Request, res: Resp
   const activities = await db.select().from(rfqActivityLogsTable)
     .where(eq(rfqActivityLogsTable.rfqId, rfqId))
     .orderBy(sql`created_at DESC`).limit(50);
+
+  // Compute order items subtotal — fallback basicPrice ketika link.basic_price null
+  const orderItemsForComp = await db.select({ subtotal: logisticOrderItemsTable.subtotal })
+    .from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, rfq.orderId));
+  const orderItemsSubtotal = orderItemsForComp.reduce(
+    (s, i) => s + (i.subtotal ? parseFloat(i.subtotal) : 0), 0
+  );
+  const fallbackBasicPrice = orderItemsSubtotal > 0 ? orderItemsSubtotal : null;
 
   const vendorRows = links
     .sort((a, b) => {
@@ -804,14 +971,21 @@ logisticRfqV2Router.get("/rfq/:rfqId/comparison", async (req: Request, res: Resp
       const pb = Number(b.offeredPrice ?? b.basicPrice ?? 9e9);
       return pa - pb;
     })
-    .map((l) => ({
+    .map((l) => {
+      const dbBasic = l.basicPrice ? Number(l.basicPrice) : null;
+      const effectiveBasic = dbBasic ?? fallbackBasicPrice;
+      const dbOffered = l.offeredPrice ? Number(l.offeredPrice) : null;
+      // Jika vendor "terima harga" tapi offeredPrice null (basicPrice null saat blast), pakai effectiveBasic
+      const effectiveOffered = dbOffered ?? (l.status === "accepted_basic_price" ? effectiveBasic : null);
+      return ({
       linkId: l.id,
       vendorId: l.vendorId,
       vendorName: vendorMap.get(l.vendorId)?.name ?? `Vendor #${l.vendorId}`,
       phone: vendorMap.get(l.vendorId)?.phone ?? null,
+      markup: vendorMap.get(l.vendorId)?.markup ? Number(vendorMap.get(l.vendorId)!.markup) : null,
       status: l.status,
-      basicPrice: l.basicPrice ? Number(l.basicPrice) : null,
-      offeredPrice: l.offeredPrice ? Number(l.offeredPrice) : null,
+      basicPrice: effectiveBasic,
+      offeredPrice: effectiveOffered,
       eta: l.eta ?? null,
       notes: l.notes ?? null,
       attachmentUrl: l.attachmentUrl ?? null,
@@ -821,7 +995,8 @@ logisticRfqV2Router.get("/rfq/:rfqId/comparison", async (req: Request, res: Resp
       lastUpdatedAt: l.lastUpdatedAt?.toISOString() ?? null,
       expiredAt: l.expiredAt?.toISOString() ?? null,
       formUrl: getVendorFormUrl(l.token),
-    }));
+    });
+  });
 
   const stats = {
     total: links.length,
@@ -1051,17 +1226,32 @@ logisticRfqV2Router.post("/rfq/:rfqId/vendor-link/:linkId/action", async (req: R
   }
 
   if (action === "request_revision") {
-    if (vendor?.phone && actionMsg) {
-      const [rfq] = await db.select({ rfqNumber: logisticOrderRfqsTable.rfqNumber })
+    if (vendor?.phone) {
+      const [rfq] = await db.select({ rfqNumber: logisticOrderRfqsTable.rfqNumber, orderId: logisticOrderRfqsTable.orderId })
         .from(logisticOrderRfqsTable).where(eq(logisticOrderRfqsTable.id, rfqId));
       const formUrl = getVendorFormUrl(link.token);
-      const waMsg =
-        `📝 *Permintaan Revisi Penawaran*\n\n` +
-        `RFQ: ${rfq?.rfqNumber ?? ""}\n` +
-        `Vendor: ${vendorName}\n\n` +
-        `Catatan Admin: ${actionMsg}\n\n` +
-        `Silakan perbarui penawaran:\n${formUrl}`;
-      sendWhatsApp(vendor.phone, waMsg).catch(() => {});
+      const currentPrice = link.offeredPrice ?? link.basicPrice;
+      const [order] = rfq?.orderId
+        ? await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, rfq.orderId))
+        : [];
+      if (order) {
+        sendVendorRevisionNotification(
+          buildOrderData(order),
+          vendorName,
+          vendor.phone,
+          currentPrice ? fmtRp(currentPrice) : "-",
+          formUrl,
+        ).catch(() => {});
+      } else if (actionMsg) {
+        sendVendorRevisionFallbackNotification(
+          vendor.phone,
+          vendorName,
+          rfq?.rfqNumber ?? null,
+          actionMsg,
+          formUrl,
+          String(rfqId),
+        ).catch(() => {});
+      }
     }
     await logActivity(rfqId, "admin", "Admin", "admin_request_revision",
       `Admin minta revisi dari ${vendorName}: ${actionMsg ?? ""}`);
@@ -1128,21 +1318,18 @@ logisticRfqV2Router.post("/rfq/:rfqId/send-customer-quote", async (req: Request,
     .set({ finalSellingPrice: String(sellingPrice) })
     .where(eq(logisticOrdersTable.id, rfq.orderId));
 
-  // Kirim WA ke customer
+  // Kirim WA ke customer via template
   let waSent = false;
   if (doSendWa && order.phone) {
-    const eta = selectedLink?.eta ? `\n⏱ *Estimasi:* ${selectedLink.eta}` : "";
-    const notes = quoteNotes ? `\n\n📝 *Catatan:* ${quoteNotes}` : "";
-    const waMsg =
-      `✅ *Penawaran Freight Anda Telah Siap*\n\n` +
-      `Halo *${order.customerName}*,\n\n` +
-      `Kami telah mendapatkan penawaran terbaik untuk pengiriman Anda:\n\n` +
-      `📦 *Layanan:* ${order.shipmentType}\n` +
-      `🗺 *Rute:* ${order.origin} → ${order.destination}\n` +
-      `💰 *Harga Penawaran:* ${fmtRp(sellingPrice)}${eta}` +
-      notes +
-      `\n\nSilakan hubungi tim kami untuk konfirmasi.\nNo. Order: *${order.orderNumber}*`;
-    await sendWhatsApp(order.phone, waMsg).then(() => { waSent = true; }).catch(() => {});
+    const domain = getPreferredDomain();
+    const customerApprovalLink = domain
+      ? `https://${domain}/approve/${order.orderNumber}`
+      : `/approve/${order.orderNumber}`;
+    sendCustomerApprovalNotification(
+      buildOrderData(order),
+      fmtRp(sellingPrice),
+      customerApprovalLink,
+    ).then(() => { waSent = true; }).catch(() => {});
   }
 
   await logActivity(rfqId, "admin", "Admin", "admin_send_customer_quote",
@@ -1209,19 +1396,16 @@ logisticRfqV2Router.post("/rfq/quote-respond", async (req: Request, res: Respons
   // Notif WA ke admin group
   const adminWa = await getAdminGroupWa().catch(() => null);
   if (adminWa) {
-    const emoji = response === "approved" ? "✅" : response === "revision_requested" ? "🔄" : "❌";
-    const label = response === "approved" ? "MENYETUJUI" :
-      response === "revision_requested" ? "MINTA REVISI" : "MENOLAK";
-    const priceInfo = rfq.quotedPrice ? `\n💰 Penawaran: ${fmtRp(rfq.quotedPrice)}` : "";
-    const notesInfo = notes ? `\n📝 Catatan: ${notes}` : "";
-    const msg =
-      `${emoji} *Customer ${label} Penawaran*\n\n` +
-      `👤 Customer: *${order.customerName}*\n` +
-      `📄 Order: *${order.orderNumber}*\n` +
-      `🚚 ${order.shipmentType}: ${order.origin} → ${order.destination}` +
-      priceInfo + notesInfo +
-      `\n\nSilakan cek BizPortal › RFQ untuk tindak lanjut.`;
-    sendWhatsApp(adminWa, msg).catch(() => {});
+    sendCustomerRfqResponseAdminNotification(adminWa, {
+      response,
+      customerName: order.customerName,
+      orderNumber: order.orderNumber,
+      shipmentType: order.shipmentType,
+      origin: order.origin,
+      destination: order.destination,
+      quotedPrice: rfq.quotedPrice ? fmtRp(rfq.quotedPrice) : null,
+      notes: notes ?? null,
+    }).catch(() => {});
   }
 
   await logActivity(rfq.id, "customer", order.customerName, `customer_${response}`,

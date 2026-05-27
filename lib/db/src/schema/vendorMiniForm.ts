@@ -26,6 +26,8 @@ export const vendorMiniFormLinksTable = pgTable("vendor_mini_form_links", {
   resubmitAllowed: boolean("resubmit_allowed").default(false),
   // Internal
   adminNotes: text("admin_notes"),
+  // Target audience: vendor | customer | admin
+  formTarget: text("form_target").notNull().default("vendor"),
 });
 
 export const vendorMiniFormSubmissionsTable = pgTable("vendor_mini_form_submissions", {

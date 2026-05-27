@@ -5,6 +5,7 @@ import {
   db,
   adminActionLinksTable,
   logisticOrdersTable,
+  logisticOrderItemsTable,
   logisticOrderRfqsTable,
   rfqVendorLinksTable,
   suppliersTable,
@@ -17,6 +18,7 @@ import { getPreferredDomain } from "../lib/domain.js";
 import { logger } from "../lib/logger.js";
 import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa } from "../lib/adminWa.js";
+import { sendVendorRequestNotification, type LogisticOrderData } from "../lib/orderNotification.js";
 import { generateShortLink } from "../lib/shortLink.js";
 
 export const adminActionRouter: Router = Router();
@@ -130,13 +132,23 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
       customerName: logisticOrdersTable.customerName,
       email: logisticOrdersTable.email,
       phone: logisticOrdersTable.phone,
+      orderType: logisticOrdersTable.orderType,
       shipmentType: logisticOrdersTable.shipmentType,
       origin: logisticOrdersTable.origin,
       destination: logisticOrdersTable.destination,
       commodity: logisticOrdersTable.commodity,
+      cargoDescription: logisticOrdersTable.cargoDescription,
+      grossWeight: logisticOrdersTable.grossWeight,
+      volumeCbm: logisticOrdersTable.volumeCbm,
+      jumlahKoli: logisticOrdersTable.jumlahKoli,
+      requiredDate: logisticOrdersTable.requiredDate,
+      jamOrder: logisticOrdersTable.jamOrder,
+      notes: logisticOrdersTable.notes,
+      paymentType: logisticOrdersTable.paymentType,
       status: logisticOrdersTable.status,
       publicRfqToken: logisticOrdersTable.publicRfqToken,
       grandTotal: logisticOrdersTable.grandTotal,
+      createdAt: logisticOrdersTable.createdAt,
     };
 
     // Fallback: token mungkin adalah publicRfqToken dari logistic_orders
@@ -168,10 +180,22 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
         id: order.id,
         orderNumber: order.orderNumber,
         customerName: order.customerName,
+        companyName: order.companyName ?? null,
+        email: order.email ?? null,
+        phone: (order as any).phone ?? null,
+        orderType: (order as any).orderType ?? null,
         serviceType: order.shipmentType,
         origin: order.origin,
         destination: order.destination,
         commodity: order.commodity ?? null,
+        cargoDescription: order.cargoDescription ?? null,
+        grossWeight: order.grossWeight ? String(order.grossWeight) : null,
+        volumeCbm: order.volumeCbm ? String(order.volumeCbm) : null,
+        jumlahKoli: (order as any).jumlahKoli ?? null,
+        requiredDate: (order as any).requiredDate ?? null,
+        notes: (order as any).notes ?? null,
+        paymentType: (order as any).paymentType ?? null,
+        grandTotal: order.grandTotal ? String(order.grandTotal) : null,
         status: order.status,
       },
     };
@@ -191,8 +215,12 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
         .where(eq(suppliersTable.isActive, true))
         .orderBy(suppliersTable.name);
 
-      const shipKeyword = (order.shipmentType ?? "").toLowerCase().split(" ")[0];
-      const allWithPhone = allVendors.filter((v) => v.phone && v.serviceType);
+      // Normalize shipment type for matching (check all words, not just first)
+      const shipType = (order.shipmentType ?? "").toLowerCase().trim();
+      const shipKeywords = shipType.split(/[\s,]+/).filter((k) => k.length > 1);
+
+      // Vendor harus punya phone.
+      const allWithPhone = allVendors.filter((v) => !!v.phone);
 
       // Fetch catalog items for all vendors in one query to check commodity match
       const vendorIdList = allWithPhone.map((v) => v.id);
@@ -200,6 +228,7 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
         ? await db.select({
             vendorId: vendorCatalogItemsTable.vendorId,
             name: vendorCatalogItemsTable.name,
+            type: vendorCatalogItemsTable.type,
             isCommodityTag: vendorCatalogItemsTable.isCommodityTag,
           }).from(vendorCatalogItemsTable)
             .where(and(
@@ -208,14 +237,18 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
             ))
         : [];
 
-      // Build set of vendor IDs whose catalog contains the order's commodity.
-      // Priority: items explicitly tagged as "komoditi yang ditangani" (isCommodityTag=true)
-      // are matched first. Name-based keyword matching is the fallback.
+      // Build sets: vendor dengan commodity match & vendor yang punya item PRODUK di etalase
       const commodityKeyword = (order.commodity ?? "").toLowerCase().trim();
-      const vendorIdsWithCommodity = new Set<number>();
-      if (commodityKeyword) {
-        const kwParts = commodityKeyword.split(/\s+/).filter((k: string) => k.length > 2);
-        for (const item of catalogItems) {
+      const vendorIdsWithCommodity   = new Set<number>();
+      const vendorIdsWithProductItem = new Set<number>(); // hanya type='product'
+
+      for (const item of catalogItems) {
+        if (item.type === "product") {
+          vendorIdsWithProductItem.add(item.vendorId);
+        }
+
+        if (commodityKeyword) {
+          const kwParts = commodityKeyword.split(/\s+/).filter((k: string) => k.length > 2);
           const isTagged = item.isCommodityTag === true;
           const itemName = item.name.toLowerCase();
           const nameMatches = itemName.includes(commodityKeyword) ||
@@ -224,22 +257,58 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
         }
       }
 
+      // Service type matching: vendor's serviceType must contain at least one of the ship keywords
+      const isServiceMatch = (vendorServiceType: string | null): boolean => {
+        if (!vendorServiceType || shipKeywords.length === 0) return false;
+        const vst = vendorServiceType.toLowerCase();
+        return shipKeywords.some((kw) => vst.includes(kw));
+      };
+
       const allWithFlag = allWithPhone.map((v) => ({
         ...v,
-        isMatching: !!(v.serviceType && shipKeyword &&
-          v.serviceType.toLowerCase().includes(shipKeyword)),
+        isMatching: isServiceMatch(v.serviceType),
         hasCommodityMatch: vendorIdsWithCommodity.has(v.id),
+        hasProductItem: vendorIdsWithProductItem.has(v.id),
       }));
 
-      // Priority:
-      //   1. Vendors with the commodity in their catalog  (most relevant)
-      //   2. Vendors whose serviceType matches the order  (service-type fit)
-      //   3. All active vendors with phone               (fallback)
-      const commodityMatched = allWithFlag.filter((v) => v.hasCommodityMatch);
-      const serviceMatched   = allWithFlag.filter((v) => v.isMatching && !v.hasCommodityMatch);
-      const vendors = (commodityMatched.length > 0 || serviceMatched.length > 0)
-        ? [...commodityMatched, ...serviceMatched]
-        : allWithFlag;
+      const commodityMatched  = allWithFlag.filter((v) => v.hasCommodityMatch);
+      const serviceMatched    = allWithFlag.filter((v) => v.isMatching && !v.hasCommodityMatch);
+      const productVendors    = allWithFlag.filter((v) => v.hasProductItem);
+
+      // ── Filter strategy ──────────────────────────────────────────────────
+      // 1. shipmentType ada + ada match → hanya vendor yg match (service + commodity)
+      // 2. shipmentType ada + tak ada match → semua vendor berserviceType + warning
+      // 3. shipmentType kosong + commodity ada + ada commodity match → hanya vendor dg commodity match
+      // 4. shipmentType kosong + commodity ada + tak ada match → vendor yg punya etalase apapun
+      // 5. shipmentType kosong + commodity kosong + ada etalase → hanya vendor yg punya etalase
+      // 6. shipmentType kosong + commodity kosong + tak ada etalase → vendor berserviceType (fallback)
+      let vendors: typeof allWithFlag;
+      let vendorFilterApplied = false;
+      let filterMode: "service" | "commodity" | "etalase" | "none" = "none";
+
+      if (shipType) {
+        const hasMatch = commodityMatched.length > 0 || serviceMatched.length > 0;
+        if (hasMatch) {
+          vendors = [...commodityMatched, ...serviceMatched];
+          vendorFilterApplied = true;
+          filterMode = "service";
+        } else {
+          vendors = allWithFlag.filter((v) => !!(v.serviceType && v.serviceType.trim()));
+        }
+      } else if (commodityKeyword && commodityMatched.length > 0) {
+        // Ada commodity + ada vendor yg punya produk itu di etalase
+        vendors = commodityMatched;
+        vendorFilterApplied = true;
+        filterMode = "commodity";
+      } else if (productVendors.length > 0) {
+        // Tidak ada shipmentType → hanya tampilkan vendor yang punya item PRODUK di etalase
+        vendors = productVendors;
+        vendorFilterApplied = true;
+        filterMode = "etalase";
+      } else {
+        // Tidak ada vendor dengan produk di etalase → fallback ke vendor berserviceType
+        vendors = allWithFlag.filter((v) => !!(v.serviceType && v.serviceType.trim()));
+      }
 
       // Get existing RFQs for this order
       const rfqs = await db.select({
@@ -251,7 +320,15 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
         .where(eq(logisticOrderRfqsTable.orderId, order.id))
         .orderBy(desc(logisticOrderRfqsTable.createdAt));
 
-      return res.json({ ...base, vendors, rfqs });
+      return res.json({
+        ...base,
+        vendors,
+        rfqs,
+        vendorFilterApplied,
+        filterMode,
+        shipmentType: order.shipmentType,
+        commodity: order.commodity,
+      });
     }
 
     // compare_vendors: show vendor quotes for an RFQ
@@ -446,22 +523,53 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
         const formUrl = `https://${domain}/vendor-form/${linkToken}`;
         const shortUrl = await generateShortLink(formUrl, { context: "vendor_rfq", refType: "rfq", refId: String(rfq.id) });
 
-        const msg =
-          `📋 *REQUEST FOR QUOTATION — CST LOGISTICS*\n` +
-          `━━━━━━━━━━━━━━━━━━\n` +
-          `Kepada Yth. *${vendor.name}*,\n\n` +
-          `No. RFQ     : *${rfq.rfqNumber}*\n` +
-          `Layanan     : ${order.shipmentType ?? "—"}\n` +
-          `Rute        : ${order.origin} → ${order.destination}\n` +
-          (order.commodity ? `Komoditi    : ${order.commodity}\n` : "") +
-          `━━━━━━━━━━━━━━━━━━\n` +
-          `📱 *Isi penawaran di sini:*\n${shortUrl}\n\n` +
-          `⏰ Batas waktu: ${deadlineHours} jam\n\nTerima kasih 🙏`;
+        const rawItems = await db.select({
+          serviceName: logisticOrderItemsTable.serviceName,
+          subtotal: logisticOrderItemsTable.subtotal,
+        }).from(logisticOrderItemsTable)
+          .where(eq(logisticOrderItemsTable.orderId, order.id));
+
+        const isProductOrder = (order.orderType ?? "") === "product";
+        const serviceList = rawItems.length
+          ? rawItems.map(i => `• ${i.serviceName}`).join("\n")
+          : "";
+        const orderItems = rawItems.length
+          ? rawItems.map(i => ({
+              name: i.serviceName ?? "",
+              subtotal: i.subtotal != null ? parseFloat(String(i.subtotal)) : null,
+            }))
+          : undefined;
+
+        const orderData: LogisticOrderData = {
+          id: order.id,
+          orderNumber: order.orderNumber,
+          customerName: order.customerName ?? "",
+          companyName: order.companyName ?? "",
+          email: order.email ?? "",
+          phone: order.phone ?? "",
+          orderType: order.orderType ?? undefined,
+          shipmentType: order.shipmentType ?? "",
+          origin: order.origin ?? "",
+          destination: order.destination ?? "",
+          commodity: order.commodity,
+          cargoDescription: order.cargoDescription,
+          grossWeight: !isProductOrder && order.grossWeight != null ? parseFloat(String(order.grossWeight)) : null,
+          volumeCbm: !isProductOrder && order.volumeCbm != null ? parseFloat(String(order.volumeCbm)) : null,
+          jumlahKoli: !isProductOrder ? (order.jumlahKoli ?? null) : null,
+          grandTotal: order.grandTotal != null ? parseFloat(String(order.grandTotal)) : 0,
+          serviceList,
+          orderItems,
+          requiredDate: order.requiredDate ?? null,
+          notes: order.notes,
+          jamOrder: order.jamOrder ?? null,
+          createdAt: order.createdAt,
+          publicRfqToken: order.publicRfqToken,
+        };
 
         try {
-          await sendWhatsApp(vendor.phone!, msg);
+          await sendVendorRequestNotification(orderData, vendor.name!, vendor.phone!, shortUrl);
           results.push({ vendorId: vendor.id, vendorName: vendor.name, sent: true });
-        } catch {
+        } catch (_e) {
           results.push({ vendorId: vendor.id, vendorName: vendor.name, sent: false });
         }
       }

@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -381,6 +382,7 @@ function ProductModal({ product, onClose }: { product: Product; onClose: () => v
 
           {/* Price */}
           <div className="bg-primary/5 rounded-xl px-4 py-3 border border-primary/10">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1">Harga Jual</p>
             {product.price > 0 ? (
               <div>
                 {isUsdProduct(product) ? (
@@ -502,20 +504,31 @@ const PRODUCT_HERO_BG = `${import.meta.env.BASE_URL}images/product-hero-brand.pn
 // ── Main page ──────────────────────────────────────────────────────────────
 export default function Products() {
   const [searchQuery, setSearchQuery] = useState("");
-  const [products, setProducts] = useState<Product[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>("");
   const { t } = useLanguage();
   const usdIdrRate = useUsdIdrRate();
+  const qc = useQueryClient();
 
   useEffect(() => {
-    fetch("/api/portal/products")
-      .then((r) => r.json())
-      .then((data) => setProducts(Array.isArray(data) ? data : []))
-      .catch(() => setProducts([]))
-      .finally(() => setIsLoading(false));
-  }, []);
+    const es = new EventSource("/api/ecommerce/events");
+    es.addEventListener("price_sync", () => {
+      qc.invalidateQueries({ queryKey: ["portal-products"] });
+    });
+    return () => es.close();
+  }, [qc]);
+
+  const { data: productsData, isLoading } = useQuery<Product[]>({
+    queryKey: ["portal-products"],
+    queryFn: () => fetch("/api/portal/products").then((r) => r.json()),
+    staleTime: 0,
+    gcTime: 0,
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+    refetchInterval: 30_000,
+  });
+
+  const products = Array.isArray(productsData) ? productsData : [];
 
   const allCategories = Array.from(new Set(products.flatMap((p) => p.categories)));
 
@@ -818,6 +831,7 @@ export default function Products() {
 
                   {/* Price */}
                   <div className="mb-2">
+                    <span className="text-[9px] font-semibold text-slate-400 uppercase tracking-widest block mb-0.5">Harga Jual</span>
                     {product.price > 0 ? (
                       <>
                         <div className="flex items-baseline gap-1.5">

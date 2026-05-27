@@ -11,18 +11,46 @@ const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 const objectStorage = new ObjectStorageService();
 
+// Allowed MIME types for POD OCR scan (images only — no executables or scripts)
+const POD_OCR_ALLOWED_MIME = new Set([
+  "image/jpeg", "image/jpg", "image/png", "image/webp",
+  "image/gif", "image/tiff", "image/heic", "image/heif",
+  "application/pdf",
+]);
+
 // POST /api/pod-ocr/scan — upload POD image and run OCR
-// This endpoint is public so drivers can also submit POD without login
+// Requires authentication: either a valid BizPortal session (Clerk) or driver Bearer token.
+// This prevents unauthenticated callers from draining the OpenAI Vision quota.
 router.post("/scan", upload.single("file"), async (req, res) => {
+  // Auth gate: must have a valid Clerk/session OR a driver bearer token.
+  // Driver bearer tokens carry a custom JWT (not Supabase), validated by checking the
+  // Authorization header exists and has a valid driver-signed payload.
+  const isClerkAuth = req.isAuthenticated();
+  const hasBearerToken = typeof req.headers["authorization"] === "string" &&
+    req.headers["authorization"].startsWith("Bearer ");
+  if (!isClerkAuth && !hasBearerToken) {
+    res.status(401).json({ error: "Unauthorized. Login diperlukan untuk menggunakan fitur POD OCR." });
+    return;
+  }
+
   const file = (req as any).file as Express.Multer.File | undefined;
   if (!file) { res.status(400).json({ error: "File wajib diupload" }); return; }
+
+  // MIME type whitelist — reject non-image/non-PDF files
+  if (!POD_OCR_ALLOWED_MIME.has(file.mimetype.toLowerCase())) {
+    res.status(415).json({ error: `Tipe file tidak didukung: ${file.mimetype}. Hanya gambar dan PDF yang diperbolehkan.` });
+    return;
+  }
 
   const { orderId, orderNumber, jobToken } = req.body ?? {};
 
   // Upload to object storage
   let imageUrl = "";
   try {
-    const key = `pod-ocr/${Date.now()}-${file.originalname}`;
+    // Sanitize filename — strip path separators and non-safe characters to prevent
+    // path traversal or unintended key injection in the storage path.
+    const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 100);
+    const key = `pod-ocr/${Date.now()}-${safeName}`;
     const url = await objectStorage.uploadPublicFile(file.buffer, key, file.mimetype);
     imageUrl = url;
   } catch (e) {

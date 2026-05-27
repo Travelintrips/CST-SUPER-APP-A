@@ -4,7 +4,8 @@ import multer from "multer";
 import { db, mediaAssetsTable } from "@workspace/db";
 import { eq, desc, sql, inArray } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin";
-import { uploadToSupabase, downloadFromSupabase, isSupabaseUrl } from "../lib/supabaseStorage";
+import { uploadToSupabase, downloadFromSupabase, isSupabaseUrl, deleteFromSupabase } from "../lib/supabaseStorage";
+import { logStorageEvent, getRequestIp, getActor } from "../lib/storageAuditLog";
 import { compressImageBuffer, isCompressibleImage } from "../lib/imageCompress";
 
 const router = Router();
@@ -132,7 +133,33 @@ router.post("/bulk-move", async (req, res): Promise<void> => {
 router.post("/bulk-delete", async (req, res): Promise<void> => {
   const ids = (req.body.ids as number[]) ?? [];
   if (!ids.length) { res.status(400).json({ error: "ids wajib diisi" }); return; }
+  // Lookup storage paths before deletion so we can clean up GCS objects
+  const assets = await db
+    .select({ id: mediaAssetsTable.id, objectPath: mediaAssetsTable.objectPath, publicUrl: mediaAssetsTable.publicUrl })
+    .from(mediaAssetsTable)
+    .where(inArray(mediaAssetsTable.id, ids));
   const result = await db.delete(mediaAssetsTable).where(inArray(mediaAssetsTable.id, ids));
+  // Delete from GCS (non-fatal) after DB record is removed
+  const actor = getActor(req);
+  const ip = getRequestIp(req);
+  for (const asset of assets) {
+    if (asset.objectPath) {
+      deleteFromSupabase(asset.objectPath).catch(() => {});
+    }
+    if (asset.publicUrl && asset.publicUrl !== asset.objectPath) {
+      deleteFromSupabase(asset.publicUrl).catch(() => {});
+    }
+    logStorageEvent({
+      action: "delete",
+      entityType: "media_asset",
+      entityId: asset.id,
+      objectPath: asset.objectPath,
+      actorId: actor.actorId,
+      actorType: actor.actorType,
+      ipAddress: ip,
+      details: "bulk-delete",
+    });
+  }
   res.json({ ok: true, affected: (result as any).rowCount ?? 0 });
 });
 
@@ -199,11 +226,35 @@ router.post("/:id/copy-public", async (req, res): Promise<void> => {
   }
 });
 
-// DELETE /api/media/:id — hapus metadata dari DB
+// DELETE /api/media/:id — hapus metadata dari DB dan file dari storage
 router.delete("/:id", async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (!id) { res.status(400).json({ error: "ID tidak valid" }); return; }
+  // Lookup storage paths before deletion so we can clean up GCS objects
+  const [asset] = await db
+    .select({ objectPath: mediaAssetsTable.objectPath, publicUrl: mediaAssetsTable.publicUrl })
+    .from(mediaAssetsTable)
+    .where(eq(mediaAssetsTable.id, id));
   await db.delete(mediaAssetsTable).where(eq(mediaAssetsTable.id, id));
+  // Delete from GCS (non-fatal) after DB record is removed
+  if (asset?.objectPath) {
+    deleteFromSupabase(asset.objectPath).catch(() => {});
+  }
+  if (asset?.publicUrl && asset.publicUrl !== asset.objectPath) {
+    deleteFromSupabase(asset.publicUrl).catch(() => {});
+  }
+  if (asset) {
+    const actor = getActor(req);
+    logStorageEvent({
+      action: "delete",
+      entityType: "media_asset",
+      entityId: id,
+      objectPath: asset.objectPath,
+      actorId: actor.actorId,
+      actorType: actor.actorType,
+      ipAddress: getRequestIp(req),
+    });
+  }
   res.json({ ok: true });
 });
 

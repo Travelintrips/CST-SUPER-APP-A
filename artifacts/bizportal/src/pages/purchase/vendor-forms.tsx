@@ -58,6 +58,7 @@ type CustomerApproval = {
   offerSummary: Record<string, unknown>; sellingPrice: string | null;
   currency: string | null; termsNotes: string | null; status: string;
   approvedAt: string | null; rejectedAt: string | null; soNumber: string | null;
+  salesDocId: number | null;
   createdAt: string; expiresAt: string | null;
   submissionId: number | null; vendorCost: string | null;
   markupPct: string | null; markupNominal: string | null;
@@ -194,30 +195,163 @@ function CopyBtn({ text, label }: { text: string; label?: string }) {
   );
 }
 
-// ── Send WA dialog ────────────────────────────────────────────────────────────
+// ── WA Template Card Dialog ───────────────────────────────────────────────────
 
-function SendWaDialog({
-  title, defaultPhone, onSend, trigger,
+type WaTemplateType = "vendor_quotation" | "customer_approval" | "vendor_operational";
+
+interface WaTemplateConfig {
+  vendorName?: string | null;
+  customerName?: string | null;
+  serviceType?: string | null;
+  orderNumber?: string | null;
+  formLink?: string;
+  approvalLink?: string;
+  opLink?: string;
+  expiresAt?: string | null;
+}
+
+const WA_TEMPLATE_META: Record<WaTemplateType, { label: string; icon: string; color: string; bg: string; border: string; headerBg: string }> = {
+  vendor_quotation:   { label: "Vendor Quotation",   icon: "🏭", color: "text-blue-700",   bg: "bg-blue-50",   border: "border-blue-200",   headerBg: "bg-blue-50" },
+  customer_approval:  { label: "Customer Approval",  icon: "👤", color: "text-green-700",  bg: "bg-green-50",  border: "border-green-200",  headerBg: "bg-green-50" },
+  vendor_operational: { label: "Vendor Operasional", icon: "⚙️", color: "text-orange-700", bg: "bg-orange-50", border: "border-orange-200", headerBg: "bg-orange-50" },
+};
+
+const WA_TEMPLATE_WORKFLOW: Record<WaTemplateType, { recipient: string; workflow: string }> = {
+  vendor_quotation:   { recipient: "vendor",   workflow: "vendor_request" },
+  customer_approval:  { recipient: "customer", workflow: "customer_approval" },
+  vendor_operational: { recipient: "vendor",   workflow: "op_request" },
+};
+
+function renderWaTemplate(body: string, cfg: WaTemplateConfig): string {
+  const svcLabel = cfg.serviceType ? (SERVICE_META[cfg.serviceType]?.label ?? cfg.serviceType) : "";
+  const fmtExpiry = cfg.expiresAt
+    ? new Date(cfg.expiresAt).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })
+    : null;
+  const vars: Record<string, string | null> = {
+    vendorName: cfg.vendorName ?? null,
+    customerName: cfg.customerName ?? null,
+    orderNumber: cfg.orderNumber ?? null,
+    vendorMiniFormLink: cfg.formLink ?? null,
+    customerApprovalLink: cfg.approvalLink ?? null,
+    operationalFormLink: cfg.opLink ?? null,
+    shipmentType: svcLabel || null,
+    serviceType: svcLabel || null,
+    expiresAt: fmtExpiry,
+    timestamp: new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" }),
+  };
+  // Remove {{#if ...}} / {{/if}} condition blocks (not evaluated on frontend)
+  let processed = body.replace(/\{\{#if \w+\}\}[\s\S]*?\{\{\/if\}\}/g, "").trim();
+  return processed.split("\n").filter(line => {
+    const matches = [...line.matchAll(/\{\{(\w+)\}\}/g)];
+    if (matches.length === 0) return true;
+    return matches.every(m => vars[m[1]] != null && vars[m[1]] !== "");
+  }).map(line => {
+    return line.replace(/\{\{(\w+)\}\}/g, (_, key: string) => vars[key] ?? "");
+  }).join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function buildWaTemplate(type: WaTemplateType, cfg: WaTemplateConfig): string {
+  const svcLabel = cfg.serviceType ? (SERVICE_META[cfg.serviceType]?.label ?? cfg.serviceType) : "";
+  const fmtExpiry = cfg.expiresAt
+    ? new Date(cfg.expiresAt).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })
+    : null;
+
+  if (type === "vendor_quotation") {
+    return [
+      `Halo ${cfg.vendorName ?? "[Nama Vendor]"},`,
+      ``,
+      `Kami mohon bantuannya untuk mengisi penawaran layanan *${svcLabel || "[Service Type]"}*${cfg.orderNumber ? ` untuk order *${cfg.orderNumber}*` : ""}.`,
+      ``,
+      `Silakan isi melalui link berikut:`,
+      cfg.formLink ?? "[Mini Form Link]",
+      fmtExpiry ? `\nLink valid hingga: ${fmtExpiry}` : ``,
+      ``,
+      `Terima kasih atas kerjasamanya 🙏`,
+    ].join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  }
+  if (type === "customer_approval") {
+    return [
+      `Halo ${cfg.customerName ?? "[Customer]"},`,
+      ``,
+      `Berikut penawaran untuk request Anda${cfg.orderNumber ? ` *(${cfg.orderNumber})*` : ""}. Silakan review dan konfirmasi melalui link berikut:`,
+      ``,
+      cfg.approvalLink ?? "[Customer Approval Link]",
+      ``,
+      `Terima kasih telah menggunakan layanan CST Logistics 🙏`,
+    ].join("\n").trim();
+  }
+  // vendor_operational
+  return [
+    `Halo ${cfg.vendorName ?? "[Nama Vendor]"},`,
+    ``,
+    `Customer sudah menyetujui penawaran${cfg.orderNumber ? ` untuk order *${cfg.orderNumber}*` : ""}. Mohon lengkapi data operasional untuk layanan *${svcLabel || "[Service Type]"}* melalui link berikut:`,
+    ``,
+    cfg.opLink ?? "[Operational Confirmation Link]",
+    ``,
+    `Terima kasih atas kerjasamanya 🙏`,
+  ].join("\n").trim();
+}
+
+function WaTemplateDialog({
+  type, config, defaultPhone, onSend, trigger,
 }: {
-  title: string; defaultPhone?: string | null;
-  onSend: (phone: string, msg: string) => Promise<void>;
+  type: WaTemplateType;
+  config: WaTemplateConfig;
+  defaultPhone?: string | null;
+  onSend?: (phone: string, msg: string) => Promise<void>;
   trigger: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [phone, setPhone] = useState(defaultPhone ?? "");
-  const [msg, setMsg] = useState("");
+  const [customMsg, setCustomMsg] = useState("");
   const [loading, setLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [settingsTemplate, setSettingsTemplate] = useState<string | null>(null);
   const { toast } = useToast();
 
-  useEffect(() => { if (open) setPhone(defaultPhone ?? ""); }, [open, defaultPhone]);
+  useEffect(() => {
+    if (open) {
+      setPhone(defaultPhone ?? "");
+      setCustomMsg("");
+      setCopied(false);
+      const { recipient, workflow } = WA_TEMPLATE_WORKFLOW[type];
+      fetch(`/api/settings/wa-template-configs?recipient=${recipient}&workflow=${workflow}`, { credentials: "include" })
+        .then(r => r.ok ? r.json() : null)
+        .then((data: { body?: string } | null) => {
+          setSettingsTemplate(data?.body ?? null);
+        })
+        .catch(() => setSettingsTemplate(null));
+    }
+  }, [open, defaultPhone, type]);
 
-  const handleSend = async () => {
+  const tmeta = WA_TEMPLATE_META[type];
+  const templateMsg = settingsTemplate ? renderWaTemplate(settingsTemplate, config) : buildWaTemplate(type, config);
+  const finalMsg = customMsg.trim() || templateMsg;
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(finalMsg).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+      toast({ title: "Pesan disalin ke clipboard!" });
+    });
+  };
+
+  const handleOpenWa = () => {
+    const num = phone.trim().replace(/^0/, "62").replace(/\D/g, "");
+    const url = num
+      ? `https://wa.me/${num}?text=${encodeURIComponent(finalMsg)}`
+      : `https://wa.me/?text=${encodeURIComponent(finalMsg)}`;
+    window.open(url, "_blank", "noopener");
+  };
+
+  const handleSendApi = async () => {
+    if (!onSend) return;
     if (!phone.trim()) { toast({ title: "Masukkan nomor WhatsApp", variant: "destructive" }); return; }
     setLoading(true);
     try {
-      await onSend(phone.trim(), msg.trim());
+      await onSend(phone.trim(), finalMsg);
       toast({ title: "Pesan WA berhasil dikirim!" });
-      setOpen(false); setMsg("");
+      setOpen(false);
     } catch (e: unknown) {
       toast({ title: "Gagal kirim WA", description: (e as Error).message, variant: "destructive" });
     } finally { setLoading(false); }
@@ -226,25 +360,77 @@ function SendWaDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent className="max-w-md">
-        <DialogHeader><DialogTitle>{title}</DialogTitle></DialogHeader>
-        <div className="space-y-4 py-2">
-          <div className="space-y-1.5">
-            <Label>Nomor WhatsApp <span className="text-red-500">*</span></Label>
-            <Input value={phone} onChange={e => setPhone(e.target.value)} placeholder="62812xxxx" />
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <span>{tmeta.icon}</span> Template Pesan WhatsApp
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-1">
+          {/* Badge tipe */}
+          <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border ${tmeta.color} ${tmeta.bg} ${tmeta.border}`}>
+            <span>{tmeta.icon}</span> {tmeta.label}
+          </span>
+
+          {/* Preview card */}
+          <div className={`rounded-xl border ${tmeta.border} overflow-hidden`}>
+            <div className={`px-3 py-2 border-b ${tmeta.border} ${tmeta.headerBg} flex items-center justify-between`}>
+              <span className={`text-xs font-semibold ${tmeta.color}`}>Preview Pesan</span>
+              <Button
+                type="button" variant="ghost" size="sm"
+                className={`h-6 text-xs gap-1 px-2 ${tmeta.color} hover:${tmeta.bg}`}
+                onClick={handleCopy}
+              >
+                {copied ? <CheckCircle className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                {copied ? "Disalin!" : "Copy"}
+              </Button>
+            </div>
+            <pre className={`px-4 py-3 text-xs ${tmeta.color} whitespace-pre-wrap font-sans leading-relaxed ${tmeta.bg}`}>
+              {customMsg.trim() || templateMsg}
+            </pre>
           </div>
+
+          {/* Custom message override */}
           <div className="space-y-1.5">
-            <Label>Pesan Kustom (opsional)</Label>
-            <Textarea value={msg} onChange={e => setMsg(e.target.value)} rows={4} placeholder="Kosongkan untuk menggunakan pesan default..." />
+            <Label className="text-xs text-slate-500">Edit Pesan (opsional — kosongkan untuk pakai template)</Label>
+            <Textarea
+              value={customMsg}
+              onChange={e => setCustomMsg(e.target.value)}
+              rows={4}
+              placeholder="Ketik di sini untuk mengubah pesan..."
+              className="text-xs resize-none font-mono"
+            />
+          </div>
+
+          {/* Phone */}
+          <div className="space-y-1.5">
+            <Label>Nomor WhatsApp Tujuan</Label>
+            <Input value={phone} onChange={e => setPhone(e.target.value)} placeholder="Contoh: 628123456789" />
+            <p className="text-xs text-slate-400">Format: 628xxxxxxxxx (tanpa + atau spasi)</p>
+          </div>
+
+          {/* Action buttons */}
+          <div className="flex gap-2 pt-1">
+            <Button
+              type="button" variant="outline"
+              className="flex-1 gap-1.5 border-green-300 text-green-700 hover:bg-green-50 hover:border-green-400"
+              onClick={handleOpenWa}
+            >
+              <MessageCircle className="h-4 w-4" /> Buka WhatsApp
+            </Button>
+            {onSend && (
+              <Button
+                type="button"
+                className="flex-1 gap-1.5 bg-green-600 hover:bg-green-700 text-white"
+                onClick={handleSendApi}
+                disabled={loading || !phone.trim()}
+              >
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <SendHorizonal className="h-4 w-4" />}
+                Kirim via API
+              </Button>
+            )}
           </div>
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>Batal</Button>
-          <Button onClick={handleSend} disabled={loading}>
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageCircle className="h-4 w-4 mr-1" />}
-            Kirim WA
-          </Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -291,7 +477,7 @@ function CreateLinkDialog({ suppliers, onCreated }: { suppliers: Supplier[]; onC
     if (mode === "order_based" && !orderId) { toast({ title: "Pilih order dulu", variant: "destructive" }); return; }
     setLoading(true);
     try {
-      await apiFetch("/api/vendor-form/admin/links", {
+      const result = await apiFetch<{ deactivatedCount?: number }>("/api/vendor-form/admin/links", {
         method: "POST",
         body: JSON.stringify({
           serviceType, supplierId: supplierId ? Number(supplierId) : undefined,
@@ -302,7 +488,13 @@ function CreateLinkDialog({ suppliers, onCreated }: { suppliers: Supplier[]; onC
           maxSubmissions: maxSubmissions ? Number(maxSubmissions) : undefined,
         }),
       });
-      toast({ title: "Link berhasil dibuat" });
+      const deactivated = result?.deactivatedCount ?? 0;
+      toast({
+        title: "Link berhasil dibuat",
+        description: deactivated > 0
+          ? `${deactivated} link lama untuk order ini dinonaktifkan otomatis.`
+          : undefined,
+      });
       onCreated(); setOpen(false); reset();
     } catch (e: unknown) {
       toast({ title: "Gagal membuat link", description: (e as Error).message, variant: "destructive" });
@@ -328,7 +520,9 @@ function CreateLinkDialog({ suppliers, onCreated }: { suppliers: Supplier[]; onC
               </SelectContent>
             </Select>
             <p className="text-xs text-slate-400">
-              {mode === "rate_collection" ? "Form penawaran umum — vendor isi rate tanpa konteks order spesifik." : "Form terkait order — vendor isi penawaran untuk order/item tertentu."}
+              {mode === "rate_collection"
+                ? "Form penawaran umum — vendor isi rate tanpa konteks order spesifik."
+                : "Form terkait order — vendor isi penawaran untuk order/item tertentu. Link lama untuk order yang sama akan dinonaktifkan otomatis."}
             </p>
           </div>
 
@@ -1264,6 +1458,11 @@ function LinkDetailSheet({
             <Badge variant={link.isActive && !expired ? "default" : "secondary"} className="text-xs">
               {link.isActive && !expired ? "Aktif" : "Nonaktif"}
             </Badge>
+            {!link.isActive && link.adminNotes?.includes("[auto-replaced]") && (
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-700 border border-amber-200">
+                ↩ Digantikan
+              </span>
+            )}
             {link.mode === "order_based" && <ItemStatusBadge status={link.itemStatus} />}
             <Badge variant="secondary" className="text-xs">{linkSubs.length} submission</Badge>
           </div>
@@ -1300,11 +1499,18 @@ function LinkDetailSheet({
             <a href={formUrl} target="_blank" rel="noreferrer">
               <Button variant="ghost" size="icon" className="h-7 w-7"><ExternalLink className="h-3.5 w-3.5" /></Button>
             </a>
-            <SendWaDialog
-              title="Kirim Link Form ke Vendor via WA"
+            <WaTemplateDialog
+              type="vendor_quotation"
+              config={{
+                vendorName: link.vendorName,
+                serviceType: link.serviceType,
+                orderNumber: link.orderNumber,
+                formLink: formUrl,
+                expiresAt: link.expiresAt,
+              }}
               onSend={handleSendWa}
               trigger={
-                <Button variant="ghost" size="icon" className="h-7 w-7 text-green-600">
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-green-600" title="Kirim WA ke vendor">
                   <MessageCircle className="h-3.5 w-3.5" />
                 </Button>
               }
@@ -1355,6 +1561,8 @@ export default function VendorFormsPage() {
   const [compareOpen, setCompareOpen] = useState(false);
   const [searchLinks, setSearchLinks] = useState("");
   const [filterMode, setFilterMode] = useState("all");
+  const [approvalSearch, setApprovalSearch] = useState("");
+  const [approvalStatusFilter, setApprovalStatusFilter] = useState("all");
 
   // ── Queries ──
   const { data: links = [], isLoading: linksLoading } = useQuery<FormLink[]>({
@@ -1372,6 +1580,30 @@ export default function VendorFormsPage() {
     queryFn: () => apiFetch<CustomerApproval[]>("/api/vendor-form/admin/customer-approvals"),
     refetchInterval: 30_000,
   });
+  const filteredApprovals = useMemo(() => {
+    const q = approvalSearch.trim().toLowerCase();
+    return approvals.filter(a => {
+      if (approvalStatusFilter !== "all" && a.status !== approvalStatusFilter) return false;
+      if (!q) return true;
+      return (
+        a.customerName?.toLowerCase().includes(q) ||
+        a.orderNumber?.toLowerCase().includes(q) ||
+        a.customerPhone?.toLowerCase().includes(q) ||
+        a.soNumber?.toLowerCase().includes(q)
+      );
+    });
+  }, [approvals, approvalSearch, approvalStatusFilter]);
+
+  const approvalStats = useMemo(() => {
+    const approved = approvals.filter(a => a.status === "approved");
+    const totalRevenue = approved.reduce((s, a) => s + Number(a.sellingPrice ?? 0), 0);
+    const totalCost    = approved.reduce((s, a) => s + Number(a.vendorCost ?? 0), 0);
+    const totalProfit  = totalRevenue - totalCost;
+    const marginPct    = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : null;
+    const pending      = approvals.filter(a => a.status === "pending").length;
+    return { count: approved.length, pending, totalRevenue, totalCost, totalProfit, marginPct };
+  }, [approvals]);
+
   const { data: opConfirms = [], isLoading: opLoading } = useQuery<OpConfirm[]>({
     queryKey: ["vmf-op-confirms"],
     queryFn: () => apiFetch<OpConfirm[]>("/api/vendor-form/admin/op-confirms"),
@@ -1577,6 +1809,11 @@ export default function VendorFormsPage() {
                                 </button>
                                 <span className="text-xs text-slate-500">{link.isActive && !expired ? "Aktif" : "Nonaktif"}</span>
                               </div>
+                              {!link.isActive && link.adminNotes?.includes("[auto-replaced]") && (
+                                <span className="inline-flex items-center gap-0.5 mt-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-700 border border-amber-200">
+                                  ↩ Digantikan
+                                </span>
+                              )}
                               {link.expiresAt && (
                                 <p className={`text-xs mt-0.5 ${expired ? "text-red-500" : "text-slate-400"}`}>
                                   {expired ? "⚠️ " : ""}{new Date(link.expiresAt).toLocaleDateString("id-ID")}
@@ -1717,6 +1954,84 @@ export default function VendorFormsPage() {
             <div className="flex justify-end">
               <CreateApprovalDialog onCreated={() => queryClient.invalidateQueries({ queryKey: ["vmf-approvals"] })} />
             </div>
+
+            {/* ── Summary Cards ── */}
+            {!approvalsLoading && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <Card className="bg-indigo-50 border-indigo-200">
+                  <CardContent className="p-4">
+                    <p className="text-xs text-indigo-500 font-medium mb-1">Total Revenue</p>
+                    <p className="text-lg font-bold text-indigo-700">
+                      {approvalStats.totalRevenue.toLocaleString("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 })}
+                    </p>
+                    <p className="text-xs text-indigo-400 mt-0.5">{approvalStats.count} disetujui</p>
+                  </CardContent>
+                </Card>
+                <Card className="bg-slate-50 border-slate-200">
+                  <CardContent className="p-4">
+                    <p className="text-xs text-slate-500 font-medium mb-1">Total Biaya Vendor</p>
+                    <p className="text-lg font-bold text-slate-700">
+                      {approvalStats.totalCost.toLocaleString("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 })}
+                    </p>
+                    <p className="text-xs text-slate-400 mt-0.5">{approvalStats.pending} masih pending</p>
+                  </CardContent>
+                </Card>
+                <Card className={approvalStats.totalProfit >= 0 ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}>
+                  <CardContent className="p-4">
+                    <p className={`text-xs font-medium mb-1 ${approvalStats.totalProfit >= 0 ? "text-emerald-600" : "text-red-500"}`}>Total Profit</p>
+                    <p className={`text-lg font-bold flex items-center gap-1 ${approvalStats.totalProfit >= 0 ? "text-emerald-700" : "text-red-600"}`}>
+                      {approvalStats.totalProfit >= 0
+                        ? <TrendingUp className="h-4 w-4" />
+                        : <TrendingDown className="h-4 w-4" />}
+                      {Math.abs(approvalStats.totalProfit).toLocaleString("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 })}
+                    </p>
+                    <p className={`text-xs mt-0.5 ${approvalStats.totalProfit >= 0 ? "text-emerald-500" : "text-red-400"}`}>
+                      {approvalStats.marginPct !== null ? `Margin ${approvalStats.marginPct.toFixed(1)}%` : "Belum ada data biaya"}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card className="bg-amber-50 border-amber-200">
+                  <CardContent className="p-4">
+                    <p className="text-xs text-amber-600 font-medium mb-1">Rata-rata Margin</p>
+                    <p className="text-lg font-bold text-amber-700 flex items-center gap-1">
+                      {approvalStats.marginPct !== null
+                        ? <><BarChart2 className="h-4 w-4" />{approvalStats.marginPct.toFixed(1)}%</>
+                        : <><Minus className="h-4 w-4" />—</>}
+                    </p>
+                    <p className="text-xs text-amber-500 mt-0.5">dari {approvalStats.count} approval disetujui</p>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
+            {/* ── Filter Bar ── */}
+            {!approvalsLoading && (
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Input
+                  placeholder="Cari nama customer, no. order, no. SO..."
+                  value={approvalSearch}
+                  onChange={e => setApprovalSearch(e.target.value)}
+                  className="sm:max-w-xs h-8 text-sm"
+                />
+                <div className="flex gap-1.5 flex-wrap">
+                  {(["all","pending","approved","rejected"] as const).map(s => (
+                    <Button
+                      key={s}
+                      size="sm"
+                      variant={approvalStatusFilter === s ? "default" : "outline"}
+                      className="h-8 text-xs capitalize"
+                      onClick={() => setApprovalStatusFilter(s)}
+                    >
+                      {s === "all" ? "Semua" : s === "pending" ? "Pending" : s === "approved" ? "Disetujui" : "Ditolak"}
+                      <span className="ml-1 opacity-60">
+                        ({s === "all" ? approvals.length : approvals.filter(a => a.status === s).length})
+                      </span>
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {approvalsLoading ? (
               <div className="flex items-center justify-center py-12 text-slate-400"><Loader2 className="h-5 w-5 animate-spin mr-2" />Memuat...</div>
             ) : (
@@ -1726,7 +2041,8 @@ export default function VendorFormsPage() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Order / Customer</TableHead>
-                        <TableHead>Harga</TableHead>
+                        <TableHead>Harga Jual</TableHead>
+                        <TableHead>Profit Margin</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>SO Number</TableHead>
                         <TableHead>Link</TableHead>
@@ -1735,11 +2051,21 @@ export default function VendorFormsPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {approvals.length === 0 ? (
+                      {filteredApprovals.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={7} className="text-center py-10 text-slate-400 text-sm">Belum ada link approval. Klik "Buat Link Approval Customer" untuk memulai.</TableCell>
+                          <TableCell colSpan={8} className="text-center py-10 text-slate-400 text-sm">
+                            {approvals.length === 0
+                              ? "Belum ada link approval. Klik \"Buat Link Approval Customer\" untuk memulai."
+                              : "Tidak ada data yang cocok dengan filter."}
+                          </TableCell>
                         </TableRow>
-                      ) : approvals.map(a => (
+                      ) : filteredApprovals.map(a => {
+                        const sell = Number(a.sellingPrice ?? 0);
+                        const cost = Number(a.vendorCost ?? 0);
+                        const margin = sell - cost;
+                        const marginPct = sell > 0 ? (margin / sell) * 100 : null;
+                        const marginColor = margin > 0 ? "text-emerald-700" : margin < 0 ? "text-red-600" : "text-slate-500";
+                        return (
                         <TableRow key={a.id}>
                           <TableCell>
                             <p className="font-medium text-sm">{a.orderNumber ?? "—"}</p>
@@ -1749,10 +2075,31 @@ export default function VendorFormsPage() {
                           <TableCell>
                             <p className="font-semibold text-sm text-indigo-700">{fmtPrice(a.sellingPrice, a.currency)}</p>
                           </TableCell>
+                          <TableCell>
+                            {a.vendorCost ? (
+                              <div>
+                                <p className={`font-semibold text-sm ${marginColor}`}>{fmtPrice(String(margin), a.currency)}</p>
+                                {marginPct !== null && (
+                                  <p className={`text-xs ${marginColor}`}>{marginPct.toFixed(1)}%</p>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-xs text-slate-400">—</span>
+                            )}
+                          </TableCell>
                           <TableCell><ApprovalStatusBadge status={a.status} /></TableCell>
                           <TableCell>
                             {a.soNumber ? (
-                              <span className="text-xs font-mono bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded">{a.soNumber}</span>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs font-mono bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded">{a.soNumber}</span>
+                                {a.salesDocId && (
+                                  <a href={`/sales/orders/${a.salesDocId}`} target="_blank" rel="noreferrer" title="Buka Sales Order">
+                                    <Button variant="ghost" size="icon" className="h-6 w-6 text-green-700 hover:text-green-900 hover:bg-green-100">
+                                      <ExternalLink className="h-3 w-3" />
+                                    </Button>
+                                  </a>
+                                )}
+                              </div>
                             ) : <span className="text-xs text-slate-400">—</span>}
                           </TableCell>
                           <TableCell>
@@ -1767,8 +2114,13 @@ export default function VendorFormsPage() {
                             <p className="text-xs text-slate-500">{new Date(a.createdAt).toLocaleDateString("id-ID")}</p>
                           </TableCell>
                           <TableCell>
-                            <SendWaDialog
-                              title="Kirim Link Approval ke Customer"
+                            <WaTemplateDialog
+                              type="customer_approval"
+                              config={{
+                                customerName: a.customerName,
+                                orderNumber: a.orderNumber,
+                                approvalLink: buildApprovalUrl(a.token),
+                              }}
                               defaultPhone={a.customerPhone}
                               onSend={async (phone, msg) => {
                                 await apiFetch(`/api/vendor-form/admin/customer-approvals/${a.id}/send-wa`, {
@@ -1783,7 +2135,8 @@ export default function VendorFormsPage() {
                             />
                           </TableCell>
                         </TableRow>
-                      ))}
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </CardContent>
@@ -1852,15 +2205,21 @@ export default function VendorFormsPage() {
                               <p className="text-xs text-slate-500">{new Date(c.createdAt).toLocaleDateString("id-ID")}</p>
                             </TableCell>
                             <TableCell>
-                              <SendWaDialog
-                                title="Kirim Link Konfirmasi Operasional ke Vendor"
+                              <WaTemplateDialog
+                                type="vendor_operational"
+                                config={{
+                                  vendorName: c.vendorName,
+                                  serviceType: c.serviceType,
+                                  orderNumber: c.orderNumber,
+                                  opLink: buildOpConfirmUrl(c.token),
+                                }}
                                 onSend={async (phone, msg) => {
                                   await apiFetch(`/api/vendor-form/admin/op-confirms/${c.id}/send-wa`, {
                                     method: "POST", body: JSON.stringify({ phone, customMessage: msg || undefined }),
                                   });
                                 }}
                                 trigger={
-                                  <Button variant="ghost" size="icon" className="h-7 w-7 text-green-600" title="Kirim WA ke vendor">
+                                  <Button variant="ghost" size="icon" className="h-7 w-7 text-orange-600" title="Kirim WA konfirmasi operasional">
                                     <MessageCircle className="h-3.5 w-3.5" />
                                   </Button>
                                 }

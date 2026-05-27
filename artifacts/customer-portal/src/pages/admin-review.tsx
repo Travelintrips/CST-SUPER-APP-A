@@ -7,6 +7,7 @@ type OrderInfo = {
   id: number;
   orderNumber: string;
   customerName: string;
+  orderType: string | null;
   serviceType: string | null;
   origin: string;
   destination: string;
@@ -123,6 +124,48 @@ type BlastResponse = {
   compareUrl: string;
 };
 
+// ── Page Content ──────────────────────────────────────────────────────────────
+
+interface AdminReviewContent {
+  pageTitle: string;
+  pageSubtitle: string;
+  deadlineLabel: string;
+  vendorSectionTitle: string;
+  blastHint: string;
+}
+
+interface PageContent {
+  admin_review: AdminReviewContent;
+}
+
+const DEFAULT_PAGE_CONTENT: PageContent = {
+  admin_review: {
+    pageTitle: "Review & Blast Vendor",
+    pageSubtitle: "CST Logistics — Admin Panel",
+    deadlineLabel: "Batas Waktu Respon Vendor",
+    vendorSectionTitle: "Pilih Vendor",
+    blastHint: "Vendor akan menerima WA dengan link form penawaran",
+  },
+};
+
+function usePageContent(): PageContent {
+  const [content, setContent] = useState<PageContent>(DEFAULT_PAGE_CONTENT);
+  useEffect(() => {
+    fetch("/api/settings/page-content")
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (data?.admin_review) {
+          setContent((prev) => ({
+            ...prev,
+            admin_review: { ...prev.admin_review, ...data.admin_review },
+          }));
+        }
+      })
+      .catch(() => {});
+  }, []);
+  return content;
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const idr = (n: number | string | null | undefined) =>
@@ -180,6 +223,11 @@ function ErrorScreen({ message }: { message: string }) {
 }
 
 function OrderCard({ order, label = "Order" }: { order: OrderInfo; label?: string }) {
+  const isProduct = order.orderType === "product";
+  const hasRoute = !isProduct && (order.origin || order.destination);
+  const serviceLabel = isProduct ? "Tipe Order" : "Layanan";
+  const serviceValue = isProduct ? "Produk" : (order.serviceType ?? "—");
+
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
       <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-5 py-4">
@@ -202,15 +250,17 @@ function OrderCard({ order, label = "Order" }: { order: OrderInfo; label?: strin
             <p className="font-semibold text-slate-800">{order.customerName}</p>
           </div>
           <div>
-            <p className="text-slate-400 text-xs">Layanan</p>
-            <p className="font-semibold text-slate-800">{order.serviceType ?? "—"}</p>
+            <p className="text-slate-400 text-xs">{serviceLabel}</p>
+            <p className="font-semibold text-slate-800">{serviceValue}</p>
           </div>
-          <div className="col-span-2">
-            <p className="text-slate-400 text-xs">Rute</p>
-            <p className="font-semibold text-slate-800">
-              {order.origin || "—"} → {order.destination || "—"}
-            </p>
-          </div>
+          {hasRoute && (
+            <div className="col-span-2">
+              <p className="text-slate-400 text-xs">Rute</p>
+              <p className="font-semibold text-slate-800">
+                {order.origin || "—"} → {order.destination || "—"}
+              </p>
+            </div>
+          )}
           {order.commodity && (
             <div className="col-span-2">
               <p className="text-slate-400 text-xs">Komoditi</p>
@@ -684,6 +734,7 @@ function QuoteList({
 
 function ReviewOrderView({ data, token }: { data: ReviewData; token: string }) {
   const { order, vendors = [], rfqs = [] } = data;
+  const pc = usePageContent().admin_review;
   const commodityMatched = vendors.filter((v) => v.hasCommodityMatch);
   const serviceMatched   = vendors.filter((v) => v.isMatching && !v.hasCommodityMatch);
   const others           = vendors.filter((v) => !v.isMatching && !v.hasCommodityMatch);
@@ -695,6 +746,7 @@ function ReviewOrderView({ data, token }: { data: ReviewData; token: string }) {
   );
   const [deadlineHours, setDeadlineHours] = useState(48);
   const [showAll, setShowAll] = useState(false);
+  const [showOthers, setShowOthers] = useState(false);
   const [blasting, setBlasting] = useState(false);
   const [blastResult, setBlastResult] = useState<BlastResponse | null>(null);
 
@@ -787,8 +839,8 @@ function ReviewOrderView({ data, token }: { data: ReviewData; token: string }) {
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
           <span className="text-2xl">🚀</span>
           <div>
-            <h1 className="text-base font-bold text-slate-800 leading-tight">Review & Blast Vendor</h1>
-            <p className="text-xs text-slate-400">CST Logistics — Admin Panel</p>
+            <h1 className="text-base font-bold text-slate-800 leading-tight">{pc.pageTitle}</h1>
+            <p className="text-xs text-slate-400">{pc.pageSubtitle}</p>
           </div>
         </div>
       </div>
@@ -814,7 +866,7 @@ function ReviewOrderView({ data, token }: { data: ReviewData; token: string }) {
 
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 px-5 py-4">
           <label className="block text-sm font-semibold text-slate-700 mb-2">
-            ⏰ Batas Waktu Respon Vendor
+            ⏰ {pc.deadlineLabel}
           </label>
           <div className="flex items-center gap-3">
             {[24, 48, 72].map((h) => (
@@ -847,7 +899,7 @@ function ReviewOrderView({ data, token }: { data: ReviewData; token: string }) {
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
             <div>
-              <h2 className="text-sm font-bold text-slate-800">Pilih Vendor</h2>
+              <h2 className="text-sm font-bold text-slate-800">{pc.vendorSectionTitle}</h2>
               <p className="text-xs text-slate-400 mt-0.5">
                 {selected.size} vendor dipilih · {vendors.length} total aktif
               </p>
@@ -901,25 +953,33 @@ function ReviewOrderView({ data, token }: { data: ReviewData; token: string }) {
 
           {others.length > 0 && (
             <div>
-              <div className="px-5 py-2 bg-slate-50 border-b border-slate-100 border-t border-slate-100">
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                  Vendor Lain ({others.length})
+              <button
+                onClick={() => setShowOthers((p) => !p)}
+                className="w-full px-5 py-2.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between hover:bg-slate-100 transition-colors"
+              >
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+                  Vendor Lain ({others.length}) — tidak sesuai tipe layanan
                 </p>
-              </div>
-              <div className="divide-y divide-slate-50">
-                {visibleOthers.map((v) => (
-                  <VendorRow key={v.id} vendor={v} checked={selected.has(v.id)} onChange={() => toggleVendor(v.id)} />
-                ))}
-              </div>
-              {others.length > 5 && (
-                <div className="px-5 py-3 border-t border-slate-100">
-                  <button
-                    onClick={() => setShowAll((p) => !p)}
-                    className="text-xs text-blue-600 hover:underline font-medium"
-                  >
-                    {showAll ? "Tampilkan lebih sedikit ▲" : `Tampilkan ${others.length - 5} vendor lainnya ▼`}
-                  </button>
-                </div>
+                <span className="text-xs text-slate-400">{showOthers ? "▲ Sembunyikan" : "▼ Tampilkan"}</span>
+              </button>
+              {showOthers && (
+                <>
+                  <div className="divide-y divide-slate-50">
+                    {(showAll ? others : others.slice(0, 5)).map((v) => (
+                      <VendorRow key={v.id} vendor={v} checked={selected.has(v.id)} onChange={() => toggleVendor(v.id)} />
+                    ))}
+                  </div>
+                  {others.length > 5 && (
+                    <div className="px-5 py-3 border-t border-slate-100">
+                      <button
+                        onClick={() => setShowAll((p) => !p)}
+                        className="text-xs text-blue-600 hover:underline font-medium"
+                      >
+                        {showAll ? "Tampilkan lebih sedikit ▲" : `Tampilkan ${others.length - 5} vendor lainnya ▼`}
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}
@@ -951,7 +1011,7 @@ function ReviewOrderView({ data, token }: { data: ReviewData; token: string }) {
         </button>
 
         <p className="text-center text-xs text-slate-400 pb-8">
-          Vendor akan menerima WA dengan link form penawaran · {deadlineHours} jam batas waktu
+          {pc.blastHint} · {deadlineHours} jam batas waktu
         </p>
       </div>
     </div>
@@ -971,13 +1031,50 @@ const SERVICE_TYPE_OPTIONS = [
   "Less Container Load (LCL)",
 ];
 
+function deriveServiceType(serviceType: string | null, orderType: string | null): { serviceType: string; customService: string } {
+  const val = (serviceType ?? "").trim();
+
+  if (!val) {
+    if ((orderType ?? "").toLowerCase() === "product") {
+      return { serviceType: "Warehousing", customService: "" };
+    }
+    return { serviceType: "", customService: "" };
+  }
+
+  if (SERVICE_TYPE_OPTIONS.includes(val)) return { serviceType: val, customService: "" };
+
+  const ciMatch = SERVICE_TYPE_OPTIONS.find((o) => o.toLowerCase() === val.toLowerCase());
+  if (ciMatch) return { serviceType: ciMatch, customService: "" };
+
+  const lower = val.toLowerCase();
+  if (lower.includes("sea") || lower.includes("laut") || lower.includes("kapal"))
+    return { serviceType: "Sea Freight", customService: "" };
+  if (lower.includes("air") || lower.includes("udara") || lower.includes("pesawat"))
+    return { serviceType: "Air Freight", customService: "" };
+  if (lower.includes("land") || lower.includes("darat") || lower.includes("truck"))
+    return { serviceType: "Land Freight", customService: "" };
+  if (lower.includes("custom") || lower.includes("bea") || lower.includes("cukai") || lower.includes("pabean"))
+    return { serviceType: "Custom Clearance", customService: "" };
+  if (lower.includes("warehouse") || lower.includes("gudang") || lower.includes("storage"))
+    return { serviceType: "Warehousing", customService: "" };
+  if (lower.includes("door") || lower.includes("d2d") || lower.includes("d-to-d"))
+    return { serviceType: "Door to Door", customService: "" };
+  if (lower.includes("fcl") || lower.includes("full container"))
+    return { serviceType: "Full Container Load (FCL)", customService: "" };
+  if (lower.includes("lcl") || lower.includes("less container"))
+    return { serviceType: "Less Container Load (LCL)", customService: "" };
+
+  return { serviceType: "__custom__", customService: val };
+}
+
 function ForwardVendorView({ data, token }: { data: ForwardVendorData; token: string }) {
   const { order, rfq, selectedVendor, selectedVendorLink } = data;
 
   const price = selectedVendorLink?.offeredPrice ?? selectedVendorLink?.basicPrice;
 
-  const [serviceType, setServiceType] = useState(order.serviceType ?? "");
-  const [customService, setCustomService] = useState("");
+  const derived = deriveServiceType(order.serviceType, order.orderType);
+  const [serviceType, setServiceType] = useState(derived.serviceType);
+  const [customService, setCustomService] = useState(derived.customService);
   const [expiresInHours, setExpiresInHours] = useState(72);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<ForwardResult | null>(null);

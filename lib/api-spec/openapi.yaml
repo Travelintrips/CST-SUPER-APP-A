@@ -4030,11 +4030,16 @@ components:
         unit:
           type: string
           nullable: true
+        subcategory:
+          type: string
+          nullable: true
         priceBase:
           type: number
         markupPct:
           type: number
         isActive:
+          type: boolean
+        isCommodityTag:
           type: boolean
         sortOrder:
           type: integer
@@ -4055,11 +4060,16 @@ components:
         unit:
           type: string
           nullable: true
+        subcategory:
+          type: string
+          nullable: true
         priceBase:
           type: number
         markupPct:
           type: number
         isActive:
+          type: boolean
+        isCommodityTag:
           type: boolean
         sortOrder:
           type: integer
@@ -5916,6 +5926,7 @@ components:
         customerName: { type: string }
         email: { type: string }
         phone: { type: string }
+        orderType: { type: string, nullable: true }
         shipmentType: { type: string }
         origin: { type: string }
         destination: { type: string }

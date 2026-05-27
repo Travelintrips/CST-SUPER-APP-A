@@ -1,24 +1,21 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
-const isDev = process.env.NODE_ENV !== "production";
-
 function normalizeSupabaseUrl(raw: string): string {
   if (!raw) return "";
   if (raw.startsWith("https://") || raw.startsWith("http://")) return raw;
   return `https://${raw}.supabase.co`;
 }
 
-// In development, prefer _DEV credentials; fall back to shared/prod if not set.
+// Always use the same project as the frontend (VITE_SUPABASE_URL / SUPABASE_URL).
+// SUPABASE_URL_DEV is intentionally ignored here — it was a different test project
+// that doesn't share JWT secrets with the frontend client, causing token verification
+// to fail silently. Both dev and prod must verify tokens against the same project.
 const url = normalizeSupabaseUrl(
-  (isDev ? process.env.SUPABASE_URL_DEV : undefined) ??
-  process.env.SUPABASE_URL ??
   process.env.VITE_SUPABASE_URL ??
+  process.env.SUPABASE_URL ??
   ""
 );
-const key =
-  (isDev ? process.env.SUPABASE_SERVICE_ROLE_KEY_DEV : undefined) ??
-  process.env.SUPABASE_SERVICE_ROLE_KEY ??
-  "";
+const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
 let _client: SupabaseClient | null = null;
 

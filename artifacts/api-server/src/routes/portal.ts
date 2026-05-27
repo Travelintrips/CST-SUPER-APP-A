@@ -8,7 +8,7 @@ import { getAdminWa } from "../lib/adminWa.js";
 import { sendMail, isSmtpConfigured } from "../lib/mailer";
 import { requirePortalAuth, requirePortalAdmin, type PortalAuthReq } from "../lib/supabaseAuth";
 import { requireClerkUser } from "../lib/requireAdmin";
-import { broadcastToAdmins } from "../lib/sseManager";
+import { broadcastToAdmins, broadcastToPortal } from "../lib/sseManager";
 import { saveAndBroadcast } from "../lib/notificationStore";
 import multer from "multer";
 import { randomUUID } from "crypto";
@@ -94,11 +94,13 @@ async function listByType(type: string) {
 
 // GET /api/portal/services  — item_type = 'jasa' (active only, public)
 router.get("/services", async (_req, res) => {
+  res.setHeader("Cache-Control", "no-store");
   return res.json(await listByType("jasa"));
 });
 
 // GET /api/portal/products  — item_type = 'barang'
 router.get("/products", async (_req, res) => {
+  res.setHeader("Cache-Control", "no-store");
   return res.json(await listByType("barang"));
 });
 
@@ -161,6 +163,9 @@ router.put("/logistic-admin/services/:id", requirePortalAdmin, async (req, res) 
   if (Object.keys(updates).length === 0) return res.status(400).json({ message: "Tidak ada data yang diupdate" });
   const [updated] = await db.update(productsTable).set(updates).where(eq(productsTable.id, id)).returning();
   if (!updated) return res.status(404).json({ message: "Jasa tidak ditemukan" });
+  // Notify Customer Portal: harga/data jasa diperbarui via logistic-admin portal.
+  // Listener: jasa.tsx (invalidates ["listPortalServicesJasa"])
+  broadcastToPortal("price_sync", { ts: Date.now() });
   return res.json(updated);
 });
 
@@ -1033,15 +1038,48 @@ router.get("/content", async (_req, res) => {
 
 // ── PORTAL ADMIN ENDPOINTS ─────────────────────────────────────────────────
 const PORTAL_ADMIN_KEY = process.env.PORTAL_ADMIN_KEY ?? "";
+const MIN_ADMIN_KEY_LEN = 16;
+
+// Rate limiter: max 5 claim attempts per IP per hour
+const _claimAttempts = new Map<string, { count: number; resetAt: number }>();
+function _claimRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const entry = _claimAttempts.get(ip);
+  if (!entry || now > entry.resetAt) {
+    _claimAttempts.set(ip, { count: 1, resetAt: now + 3_600_000 });
+    return true;
+  }
+  if (entry.count >= 5) return false;
+  entry.count++;
+  return true;
+}
 
 // POST /api/portal/admin/claim  — claim admin role using secret key
 router.post("/admin/claim", requirePortalAuth, async (req, res) => {
+  const ip =
+    (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ??
+    req.socket.remoteAddress ??
+    "unknown";
+
+  if (!_claimRateLimit(ip)) {
+    return res.status(429).json({ message: "Terlalu banyak percobaan. Coba lagi dalam 1 jam." });
+  }
+
+  if (!PORTAL_ADMIN_KEY || PORTAL_ADMIN_KEY.length < MIN_ADMIN_KEY_LEN) {
+    return res.status(503).json({ message: "Admin claim belum dikonfigurasi dengan benar." });
+  }
+
   const { key } = req.body ?? {};
-  if (!PORTAL_ADMIN_KEY || String(key) !== PORTAL_ADMIN_KEY) {
+  const customerId = (req as PortalAuthReq).portalCustomerId;
+
+  if (String(key) !== PORTAL_ADMIN_KEY) {
+    console.warn(`[SECURITY] admin/claim FAILED — ip=${ip} customerId=${customerId}`);
     return res.status(403).json({ message: "Kunci admin tidak valid" });
   }
-  const customerId = (req as PortalAuthReq).portalCustomerId;
+
   await db.update(portalCustomersTable).set({ role: "admin" }).where(eq(portalCustomersTable.id, customerId));
+  console.warn(`[SECURITY] admin/claim SUCCESS — ip=${ip} customerId=${customerId}`);
+  _claimAttempts.delete(ip);
   return res.json({ role: "admin" });
 });
 
@@ -1080,6 +1118,9 @@ router.put("/admin/services/:id", requirePortalAdmin, async (req, res) => {
   if (mediaItems !== undefined) updates.mediaItems = JSON.stringify(Array.isArray(mediaItems) ? mediaItems : []);
   if (Object.keys(updates).length === 0) return res.status(400).json({ message: "Tidak ada field yang diubah" });
   const [updated] = await db.update(productsTable).set(updates).where(eq(productsTable.id, id)).returning();
+  // Notify Customer Portal: harga/data produk diperbarui via portal admin (JWT).
+  // Listener: products.tsx (invalidates ["portal-products"])
+  broadcastToPortal("price_sync", { ts: Date.now() });
   return res.json(updated);
 });
 
@@ -1235,6 +1276,9 @@ router.put("/admin/products/:id", requirePortalAdmin, async (req, res) => {
     const catMap = await getProductCategories([id]);
     return { ...updated, categories: catMap[id] ?? [] };
   });
+  // Notify Customer Portal: harga/kategori/data produk diperbarui via portal admin (JWT).
+  // Listener: products.tsx (invalidates ["portal-products"])
+  broadcastToPortal("price_sync", { ts: Date.now() });
   return res.json(result);
 });
 
@@ -1758,6 +1802,7 @@ router.put("/admin/trucking-rates", requirePortalAdmin, async (req, res) => {
   const rates = req.body as Record<string, { ratePerKm: number; loadingFee: number }>;
   if (!rates || typeof rates !== "object") return res.status(400).json({ message: "Format tidak valid" });
   await setPricingKey(TRUCKING_RATES_KEY, rates);
+  broadcastToPortal("price_sync", { ts: Date.now(), type: "trucking_rates" });
   return res.json({ ok: true });
 });
 
@@ -1771,6 +1816,7 @@ router.get("/admin/freight-rates", requirePortalAdmin, async (_req, res) => {
 router.put("/admin/freight-rates", requirePortalAdmin, async (req, res) => {
   if (!req.body || typeof req.body !== "object") return res.status(400).json({ message: "Format tidak valid" });
   await setPricingKey(FREIGHT_RATES_KEY, req.body);
+  broadcastToPortal("price_sync", { ts: Date.now(), type: "freight_rates" });
   return res.json({ ok: true });
 });
 
@@ -2504,11 +2550,13 @@ router.get("/admin/customers/stats", requirePortalAdmin, async (_req, res): Prom
 // VENDOR MINI FORM — portal admin routes
 // ════════════════════════════════════════════════════════════════════════════
 
-router.get("/admin/vendor-form/links", requirePortalAdmin, async (_req, res) => {
+router.get("/admin/vendor-form/links", requirePortalAdmin, async (req, res) => {
   try {
+    const formTarget = (req.query["formTarget"] as string) || "vendor";
     const links = await db
       .select()
       .from(vendorMiniFormLinksTable)
+      .where(eq(vendorMiniFormLinksTable.formTarget, formTarget))
       .orderBy(desc(vendorMiniFormLinksTable.createdAt));
     const vendorIds = links.map(l => l.supplierId).filter(Boolean) as number[];
     let vendorMap: Record<number, string> = {};
@@ -2533,7 +2581,7 @@ router.get("/admin/vendor-form/schemas", requirePortalAdmin, async (_req, res) =
 
 router.post("/admin/vendor-form/links", requirePortalAdmin, async (req, res) => {
   try {
-    const { serviceType, title, notes, expiresInDays, mode, vendorName, maxSubmissions } = req.body as {
+    const { serviceType, title, notes, expiresInDays, mode, vendorName, maxSubmissions, formTarget } = req.body as {
       serviceType: string;
       title?: string;
       notes?: string;
@@ -2541,6 +2589,7 @@ router.post("/admin/vendor-form/links", requirePortalAdmin, async (req, res) => 
       mode?: "rate_collection" | "operational_update";
       vendorName?: string;
       maxSubmissions?: number;
+      formTarget?: string;
     };
     if (!serviceType || !SERVICE_SCHEMAS[serviceType]) {
       return res.status(400).json({ error: "serviceType tidak valid" });
@@ -2560,6 +2609,7 @@ router.post("/admin/vendor-form/links", requirePortalAdmin, async (req, res) => 
         mode: mode ?? "rate_collection",
         vendorName: vendorName ?? null,
         maxSubmissions: maxSubmissions ?? null,
+        formTarget: (formTarget ?? "vendor") as string,
       })
       .returning();
     return res.status(201).json({ ...link, expiresAt: link.expiresAt?.toISOString() ?? null, createdAt: link.createdAt.toISOString() });

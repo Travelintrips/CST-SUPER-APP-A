@@ -1,6 +1,7 @@
 import { sendWhatsApp } from "./fonnte.js";
 import { generateShortLink } from "./shortLink.js";
 import { logger } from "./logger.js";
+import { getWaTemplateConfig, renderTemplate, deriveServiceType } from "./orderNotification.js";
 
 const TZ = "Asia/Jakarta";
 
@@ -38,8 +39,9 @@ export interface VendorQuoteMessageInput {
   createdAt?: Date | string | null;
   jamOrder?: string | null;
   shortLinkUrl: string;
-  orderItems?: Array<{ serviceName: string; category: string }> | null;
+  orderItems?: Array<{ serviceName: string; category: string; subtotal?: number | null }> | null;
   isTrucking?: boolean;
+  orderType?: string | null;
 }
 
 /**
@@ -66,7 +68,10 @@ export function generateVendorQuoteMessage(input: VendorQuoteMessageInput): stri
   // Produk/layanan yang dipesan customer dari web
   const itemsBlock = input.orderItems && input.orderItems.length > 0
     ? `\n🛒 *Produk Dipesan:*\n` +
-      input.orderItems.map((it) => `   • ${it.serviceName}`).join("\n") + "\n"
+      input.orderItems.map((it) => {
+        const price = it.subtotal != null && it.subtotal > 0 ? ` — ${fmtRp(it.subtotal)}` : "";
+        return `   • ${it.serviceName}${price}`;
+      }).join("\n") + "\n"
     : "";
 
   // Untuk trucking: tampilkan tanggal & jam order customer
@@ -121,14 +126,15 @@ export interface SendVendorWhatsAppInput {
   vendorBasePrice?: number | null;
   createdAt?: Date | string | null;
   jamOrder?: string | null;
-  orderItems?: Array<{ serviceName: string; category: string }> | null;
+  orderItems?: Array<{ serviceName: string; category: string; subtotal?: number | null }> | null;
   isTrucking?: boolean;
+  orderType?: string | null;
 }
 
 /**
  * Reusable end-to-end helper:
  *   1. shortens the long vendor-quote URL into /q/<code>
- *   2. builds the modern mini-card message
+ *   2. renders vendor_request template from Settings (DB) or default
  *   3. sends via Fonnte (with notification log)
  */
 export async function sendVendorWhatsApp(input: SendVendorWhatsAppInput): Promise<void> {
@@ -141,10 +147,66 @@ export async function sendVendorWhatsApp(input: SendVendorWhatsAppInput): Promis
     refType: "rfq",
     refId: input.rfqNumber,
   });
-  const message = generateVendorQuoteMessage({
-    ...input,
-    shortLinkUrl,
-  });
+
+  // Build default template (legacy mini-card — used only if Settings not configured)
+  const defaultTpl = generateVendorQuoteMessage({ ...input, shortLinkUrl });
+
+  // Fetch user-configured template (or default fallback)
+  const tplBody = await getWaTemplateConfig("vendor", "vendor_request", defaultTpl);
+
+  const svcType = deriveServiceType(
+    input.vehicleType ?? input.orderItems?.[0]?.category ?? "",
+    input.orderType ?? undefined,
+  );
+  const tgl = input.createdAt ? formatTanggal(input.createdAt) : null;
+  const jam = input.jamOrder ?? (input.createdAt ? formatJam(input.createdAt) : null);
+
+  const productList: string | null = (() => {
+    if (!input.orderItems?.length) return null;
+    // For product orders, show ALL items. For other types, filter by category.
+    const items = svcType === "product"
+      ? input.orderItems
+      : input.orderItems.filter((it) => {
+          const cat = (it.category ?? "").toLowerCase();
+          return cat.includes("product") || cat.includes("produk");
+        });
+    if (!items.length) return null;
+    return items
+      .map((it) => {
+        const price = it.subtotal != null && it.subtotal > 0 ? ` — ${fmtRp(it.subtotal)}` : "";
+        return `• ${it.serviceName}${price}`;
+      })
+      .join("\n");
+  })();
+
+  // Build conditions: always include svcType; add "product" if we have a productList to render
+  const conditions: string[] = svcType ? [svcType] : [];
+  if (productList && !conditions.includes("product")) conditions.push("product");
+
+  const vars: Record<string, string | null | undefined> = {
+    rfqNumber: input.rfqNumber,
+    orderNumber: input.orderNumber,
+    vendorName: input.vendorName,
+    route: input.origin && input.destination ? `${input.origin} → ${input.destination}` : null,
+    origin: input.origin ?? null,
+    destination: input.destination ?? null,
+    shipmentType: input.vehicleType ?? null,
+    vehicleType: input.vehicleType ?? null,
+    commodity: input.commodity ?? null,
+    cargoDescription: null,
+    grossWeightDisplay: input.grossWeight ? `${input.grossWeight} kg` : null,
+    volumeDisplay: input.volumeCbm ? `${input.volumeCbm} CBM` : null,
+    requiredDate: input.requiredDate ?? null,
+    notes: input.notes ?? null,
+    vendorMiniFormLink: shortLinkUrl,
+    vendorBasePrice: input.vendorBasePrice != null ? fmtRp(input.vendorBasePrice) : null,
+    productList,
+    tanggal: tgl,
+    jam,
+    timestamp: new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" }),
+  };
+
+  const message = renderTemplate(tplBody, vars, conditions);
   await sendWhatsApp(input.vendorPhone, message, {
     context: "vendor_quote",
     refType: "rfq",

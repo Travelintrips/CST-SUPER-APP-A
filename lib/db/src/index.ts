@@ -5,10 +5,12 @@ import * as schema from "./schema";
 const { Pool } = pg;
 
 function resolveConnectionString(): string {
-  // Prefer Supabase: it holds the canonical application data.
-  // DATABASE_URL is only used as fallback (e.g. local dev with embedded pg).
+  const isDev = process.env.NODE_ENV !== "production";
+
+  // In development, prefer DEV credentials; fall back to shared/prod if not set.
   const candidates = [
     process.env.SUPABASE_PG_URL,
+    isDev ? process.env.SUPABASE_DATABASE_URL_DEV : undefined,
     process.env.SUPABASE_DATABASE_URL,
     process.env.DATABASE_URL,
   ];

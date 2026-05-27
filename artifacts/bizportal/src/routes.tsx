@@ -2,6 +2,7 @@ import React from "react";
 import { Switch, Route, Redirect } from "wouter";
 import NotFound from "@/pages/not-found";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import AuthCallbackPage from "@/pages/auth-callback";
 import DashboardPage from "@/pages/dashboard";
 import EcommercePage from "@/pages/ecommerce";
 import TradingPage from "@/pages/trading";
@@ -126,6 +127,7 @@ import VendorPerformancePage from "@/pages/logistics/vendor-performance";
 import InternalTasksPage from "@/pages/logistics/internal-tasks";
 // Misc
 import NotificationsPage from "@/pages/notifications";
+import WaNotificationHistoryPage from "@/pages/wa-notification-history";
 import AnalyticsDashboardPage from "@/pages/analytics-dashboard";
 import POOrdersPage from "@/pages/purchase/po-orders";
 import VendorFormsPage from "@/pages/purchase/vendor-forms";
@@ -136,6 +138,9 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
   return (
     <Switch>
       {rootGuard && <Route path="/" component={rootGuard} />}
+
+      {/* ── Auth callback (Supabase OAuth popup) ───────────────────────── */}
+      <Route path="/auth/callback" component={AuthCallbackPage} />
 
       {/* ── Welcome / Dashboard ────────────────────────────────────────── */}
       <Route path="/welcome" component={WelcomePage} />
@@ -271,6 +276,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       {/* ── Correspondence ─────────────────────────────────────────────── */}
       <Route path="/correspondences" component={PR(CorrespondencesPage)} />
       <Route path="/email-inbox" component={PR(EmailInboxPage)} />
+      <Route path="/notification-history" component={PR(WaNotificationHistoryPage)} />
 
       {/* ── Settings ───────────────────────────────────────────────────── */}
       <Route path="/settings/nav-company-config" component={PR(NavCompanyConfigPage)} />

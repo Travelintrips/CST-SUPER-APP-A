@@ -1,0 +1,252 @@
+Lakukan FULL AUDIT khusus untuk WhatsApp Template Integration.
+
+Masalah utama:
+Semua alur WhatsApp harus memakai Template WA dari Settings, bukan hardcoded di React.
+
+Jangan audit secara umum.
+Fokus hanya pada integrasi template WA.
+
+==================================================
+1. AUDIT HARDCODED WHATSAPP
+==================================================
+
+Cari di seluruh project keyword berikut:
+- wa.me
+- whatsapp
+- WhatsApp
+- encodeURIComponent
+- window.open
+- sendWhatsApp
+- handleWhatsApp
+- handleSend
+- message =
+- const message
+- text=
+- adminActionUrl
+- vendorMiniFormLink
+- customerApprovalLink
+- operationalFormLink
+
+Laporkan semua file yang masih membuat pesan WA manual.
+
+==================================================
+2. AUDIT TEMPLATE SETTINGS
+==================================================
+
+Cek apakah Settings → Template Pesan WhatsApp benar-benar menjadi sumber utama untuk semua pesan.
+
+Pastikan:
+- template user tersimpan
+- template bisa dibaca ulang
+- template dipakai saat kirim WA
+- default template hanya fallback
+- textarea kosong tidak menyebabkan hardcoded lama dipakai
+
+==================================================
+3. AUDIT SEMUA WORKFLOW WA
+==================================================
+
+Pastikan workflow ini sudah memakai template dari Settings:
+
+- Order Baru → Admin Pribadi
+- Order Baru → Grup Admin
+- Vendor Request → Vendor
+- Vendor Submission → Admin
+- Vendor Price Revision → Admin
+- Customer Approval → Customer
+- Customer Approved → Admin
+- SO Created → Admin
+- Operational Request → Vendor
+- Driver Assigned → Customer/Admin
+- Shipment Update → Customer
+- Customs Update → Customer
+- Delivery Completed → Customer/Admin
+
+Untuk setiap workflow, laporkan:
+- status: connected / not connected / partial
+- file location
+- template key yang dipakai
+- recipient yang dipakai
+- variable yang dikirim
+
+==================================================
+4. AUDIT CENTRALIZED SERVICE
+==================================================
+
+Cek apakah sudah ada centralized helper/service seperti:
+- whatsappTemplateService
+- getTemplate()
+- renderTemplate()
+- buildVariables()
+- renderConditionalBlocks()
+- removeEmptyLines()
+- buildWhatsAppUrl()
+- openWhatsApp()
+
+Pastikan tidak ada component React yang membuat isi pesan sendiri.
+
+==================================================
+5. AUDIT VARIABLE MAPPING
+==================================================
+
+Cek apakah variable ini terisi benar:
+
+ORDER:
+{{orderNumber}}
+{{tanggal}}
+{{jam}}
+{{timestamp}}
+{{serviceType}}
+{{shipmentType}}
+{{route}}
+{{commodity}}
+{{cargoDescription}}
+{{grossWeightDisplay}}
+{{volumeDisplay}}
+{{jumlahKoliDisplay}}
+{{requiredDate}}
+{{notes}}
+
+CUSTOMER:
+{{customerName}}
+{{customerDisplay}}
+{{customerPhone}}
+{{email}}
+{{phone}}
+
+VENDOR:
+{{vendorName}}
+{{vendorPhone}}
+
+PRICE:
+{{vendorPrice}}
+{{sellingPrice}}
+{{currency}}
+{{margin}}
+
+LINK:
+{{vendorMiniFormLink}}
+{{customerApprovalLink}}
+{{operationalFormLink}}
+{{adminActionUrl}}
+{{responseUrl}}
+
+TRUCKING:
+{{driverName}}
+{{driverPhone}}
+{{plateNumber}}
+{{vehicleType}}
+
+SEA:
+{{vessel}}
+{{voyage}}
+{{containerNumber}}
+{{blNumber}}
+
+AIR:
+{{airline}}
+{{awbNumber}}
+{{flightNumber}}
+
+PPJK:
+{{ajuNumber}}
+{{bcType}}
+{{sppbNumber}}
+
+Pastikan tidak ada variable undefined/null yang muncul di pesan.
+
+==================================================
+6. AUDIT SECURITY & DATA LEAK
+==================================================
+
+Pastikan:
+- customer tidak menerima vendorPrice
+- customer tidak menerima margin
+- vendor tidak melihat harga jual customer jika tidak perlu
+- vendor tidak melihat data vendor lain
+- admin boleh lihat semua
+- token link tidak predictable
+
+==================================================
+7. AUDIT CONDITIONAL BLOCK
+==================================================
+
+Test conditional block:
+{{#if trucking}}
+...
+{{/if}}
+
+{{#if freight_sea}}
+...
+{{/if}}
+
+{{#if freight_air}}
+...
+{{/if}}
+
+{{#if ppjk}}
+...
+{{/if}}
+
+{{#if product}}
+...
+{{/if}}
+
+Pastikan:
+- block muncul hanya jika service type cocok
+- block hilang jika tidak cocok
+- baris kosong ikut hilang
+
+==================================================
+8. AUDIT UI TEST
+==================================================
+
+Test dari UI:
+1. Edit template Vendor Request di Settings.
+2. Save.
+3. Kirim RFQ ke vendor.
+4. Pastikan isi WA sama dengan template Settings.
+
+Lakukan juga untuk:
+- Customer Approval
+- Operational Request
+- Order Baru ke Grup Admin
+- Driver Assigned
+- Shipment Update
+
+==================================================
+9. OUTPUT AUDIT WAJIB
+==================================================
+
+Berikan hasil dalam format:
+
+A. HARD_CODED MESSAGE FOUND
+- file
+- line/function
+- isi masalah
+
+B. WORKFLOW CONNECTION MATRIX
+Format tabel:
+Workflow | Recipient | Connected to Settings? | File | Status
+
+C. VARIABLE ISSUE
+- variable kosong
+- variable salah mapping
+- variable bocor ke role yang salah
+
+D. SECURITY ISSUE
+- potensi leak harga/modal/margin
+- token issue
+- role issue
+
+E. FIX PLAN
+- step by step fix aman
+- file yang harus diubah
+- fungsi yang harus dibuat/diganti
+
+F. FINAL VERDICT
+- Fully connected / Partial / Not connected
+- Production ready atau belum
+
+Jangan hanya kasih summary.
+Audit harus seperti senior QA + senior system architect.

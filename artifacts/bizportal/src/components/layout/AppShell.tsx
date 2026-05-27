@@ -352,6 +352,7 @@ export function AppShell({ children }: AppShellProps) {
       children: [
         { titleKey: "correspondences", href: "/correspondences", icon: Mail },
         { titleKey: "emailInbox", href: "/email-inbox", icon: MessageCircle },
+        { titleKey: "Riwayat Notifikasi", href: "/notification-history", icon: MessageCircle },
       ],
     },
 

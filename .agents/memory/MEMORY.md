@@ -1,2 +1,4 @@
 - [Vendor Mini Form order-based](vendor-mini-form-order-based.md) — system dua mode (rate_collection + order_based) dengan flow multi-fase hingga SO creation + op confirmation
 - [Vendor Mini Form Features](vmf-features.md) — anti-duplicate, resubmit flow, lock-on-approve, markup calc, WA summary, activity log, price versioning architecture decisions.
+- [VMF Security & Race Condition Fixes](vmf-security-fixes.md) — transaction isolation, rate limiting, SO number random suffix, offerSummary whitelist, server-side validation, pagination.
+- [VMF → Sales Order Integration](vmf-so-integration.md) — SO nyata dibuat di sales_documents saat customer approve VMF; idempoten via logisticOrderId; helper di lib/vmfSoIntegration.ts.

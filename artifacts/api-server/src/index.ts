@@ -39,6 +39,8 @@ import { runGeofenceMigration } from "./lib/geofenceMigration";
 import { runOrderFulfillmentMigration } from "./routes/orderFulfillment.js";
 import { runTrustedDevicesMigration } from "./lib/trustedDevicesMigration.js";
 import { runAuditReportsMigration } from "./lib/auditReportsMigration.js";
+import { runWaTemplateMigration } from "./lib/orderNotification.js";
+import { runRlsMigration } from "./lib/rlsMigration.js";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 
@@ -176,6 +178,14 @@ async function startServer() {
     logger.info({ port }, "Server listening");
   });
 
+  // Also bind on port 18444 (gateway routing port) if not already the main port
+  const GATEWAY_PORT = 18444;
+  if (port !== GATEWAY_PORT) {
+    app.listen(GATEWAY_PORT, (err?: Error) => {
+      if (!err) logger.info({ port: GATEWAY_PORT }, "Also listening on gateway port");
+    });
+  }
+
   // Graceful shutdown on SIGTERM / SIGINT
   const shutdown = () => {
     server.close(() => process.exit(0));
@@ -226,6 +236,8 @@ async function startServer() {
     .then(() => runWithRetry("Order fulfillment migration", runOrderFulfillmentMigration))
     .then(() => runWithRetry("Trusted devices migration", runTrustedDevicesMigration))
     .then(() => runWithRetry("ERP audit reports migration", runAuditReportsMigration))
+    .then(() => runWithRetry("WA template migration", runWaTemplateMigration))
+    .then(() => runWithRetry("RLS migration", runRlsMigration))
     .then(() => enableRealtimeTables().catch((err) => {
       logger.warn({ err }, "Supabase Realtime table enable failed (non-fatal)");
     }))

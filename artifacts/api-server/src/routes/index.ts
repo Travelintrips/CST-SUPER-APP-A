@@ -58,6 +58,7 @@ import {
   customerOrderPublicRouter,
 } from "./customerQuoteFlow";
 
+import storageAuditLogRouter from "./storageAuditLog.js";
 import { vendorPerformanceRouter } from "./vendorPerformance";
 import { internalTasksRouter } from "./internalTasks";
 import { podOcrRouter } from "./podOcr";
@@ -131,11 +132,14 @@ router.use("/approval-rules", approvalRulesRouter);
 router.use("/bom", productBomRouter);
 router.use("/audit-logs", auditLogRouter);
 router.use("/erp-audits", auditReportsRouter);
+router.use("/storage-audit", storageAuditLogRouter);
 
 router.use("/notifications", notificationsRouter);
 router.use("/nav-preferences", navPreferencesRouter);
 
 router.use("/vendor-form", vendorMiniFormRouter);
+router.use("/customer-form", vendorMiniFormRouter);
+router.use("/admin-form", vendorMiniFormRouter);
 router.use("/logistic", customerQuoteAdminRouter);
 router.use("/customer-quote", customerQuotePublicRouter);
 router.use("/order-task", orderTaskPublicRouter);

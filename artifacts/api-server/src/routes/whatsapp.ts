@@ -1,12 +1,28 @@
 import { Router, type Request, type Response } from "express";
 import { db, quotationReplyLogsTable, waIncomingMessagesTable } from "@workspace/db";
-import { desc, eq } from "drizzle-orm";
+import { notificationLogsTable } from "@workspace/db/schema";
+import { desc, eq, and, gte, lte, sql } from "drizzle-orm";
 import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa } from "../lib/adminWa.js";
 import { logger } from "../lib/logger.js";
 import { normalizePhone } from "../lib/phoneUtils.js";
+import { getWaTemplateConfig, renderTemplate } from "../lib/orderNotification.js";
 
 export const whatsappRouter = Router();
+
+const DEFAULT_MANUAL_QUOTE_TPL =
+  `Halo {{customerName}},\n\n` +
+  `Berikut quotation layanan CST Logistics:\n\n` +
+  `No. RFQ       : {{rfqId}}\n` +
+  `Layanan       : {{serviceType}}\n` +
+  `Rute          : {{route}}\n` +
+  `Estimasi Pickup   : {{pickupDate}}\n` +
+  `Estimasi Delivery : {{deliveryDate}}\n` +
+  `Harga Final   : {{finalPrice}}\n` +
+  `Status        : {{status}}\n` +
+  `\nCatatan:\n{{notes}}\n` +
+  `\nSilakan konfirmasi apabila quotation ini disetujui.\n\n` +
+  `Terima kasih,\nCST Logistics`;
 
 function calcFinalPrice(vendorPrice: number, markupType: string, markupValue: number): number {
   if (markupType === "percentage") {
@@ -15,33 +31,42 @@ function calcFinalPrice(vendorPrice: number, markupType: string, markupValue: nu
   return vendorPrice + markupValue;
 }
 
-function buildCustomerMessage(data: {
-  customerName: string;
-  rfqId: string;
-  serviceType: string;
-  route: string;
-  pickupDate: string;
-  deliveryDate: string;
-  finalPrice: number;
-  status: string;
-  notes: string;
-}): string {
-  const fmt = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
-  return (
-    `Halo ${data.customerName},\n\n` +
-    `Berikut quotation layanan CST Logistics:\n\n` +
-    `No. RFQ       : ${data.rfqId || "-"}\n` +
-    `Layanan       : ${data.serviceType || "-"}\n` +
-    `Rute          : ${data.route || "-"}\n` +
-    (data.pickupDate ? `Estimasi Pickup   : ${data.pickupDate}\n` : "") +
-    (data.deliveryDate ? `Estimasi Delivery : ${data.deliveryDate}\n` : "") +
-    `Harga Final   : ${fmt(data.finalPrice)}\n` +
-    `Status        : ${data.status}\n` +
-    (data.notes ? `\nCatatan:\n${data.notes}\n` : "") +
-    `\nSilakan konfirmasi apabila quotation ini disetujui.\n\n` +
-    `Terima kasih,\nCST Logistics`
-  );
-}
+const fmt = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
+
+const DEFAULT_QUOTATION_CUSTOMER_TPL = [
+  "Halo {{customerName}},",
+  "",
+  "Berikut quotation layanan CST Logistics:",
+  "",
+  "No. RFQ       : {{rfqId}}",
+  "Layanan       : {{serviceType}}",
+  "Rute          : {{route}}",
+  "Estimasi Pickup   : {{pickupDate}}",
+  "Estimasi Delivery : {{deliveryDate}}",
+  "Harga Final   : {{finalPrice}}",
+  "Status        : {{status}}",
+  "Catatan       : {{notes}}",
+  "",
+  "Silakan konfirmasi apabila quotation ini disetujui.",
+  "",
+  "Terima kasih,",
+  "CST Logistics",
+].join("\n");
+
+const DEFAULT_QUOTATION_ADMIN_TPL = [
+  "📋 *QUOTATION DIKIRIM KE CUSTOMER*",
+  "━━━━━━━━━━━━━━━━━━",
+  "Customer   : {{customerName}}",
+  "No. HP     : {{customerPhone}}",
+  "No. RFQ    : {{rfqId}}",
+  "Layanan    : {{serviceType}}",
+  "Rute       : {{route}}",
+  "Vendor     : {{vendorName}}",
+  "Harga Final: {{finalPrice}}",
+  "Status     : {{status}}",
+  "━━━━━━━━━━━━━━━━━━",
+  "_Dikirim via Mini Form BizPortal_",
+].join("\n");
 
 // POST /api/whatsapp/send-quotation
 whatsappRouter.post("/send-quotation", async (req: Request, res: Response) => {
@@ -64,17 +89,26 @@ whatsappRouter.post("/send-quotation", async (req: Request, res: Response) => {
     return res.status(400).json({ message: "finalPrice tidak valid" });
   }
 
-  const messageBody = buildCustomerMessage({
+  const vars: Record<string, string | null> = {
     customerName: String(customerName),
-    rfqId: rfqId ? String(rfqId) : "",
-    serviceType: serviceType ? String(serviceType) : "",
-    route: route ? String(route) : "",
-    pickupDate: pickupDate ? String(pickupDate) : "",
-    deliveryDate: deliveryDate ? String(deliveryDate) : "",
-    finalPrice: fp,
+    rfqId: rfqId ? String(rfqId) : "-",
+    serviceType: serviceType ? String(serviceType) : "-",
+    route: route ? String(route) : "-",
+    pickupDate: pickupDate ? String(pickupDate) : "-",
+    deliveryDate: deliveryDate ? String(deliveryDate) : "-",
+    finalPrice: fmt(fp),
     status: status ? String(status) : "Ready",
-    notes: notes ? String(notes) : "",
-  });
+    notes: notes ? String(notes) : "-",
+    customerPhone: normalizePhone(String(customerPhone)),
+    vendorName: vendorName ? String(vendorName) : "-",
+  };
+
+  const [customerTplBody, adminTplBody] = await Promise.all([
+    getWaTemplateConfig("customer", "quotation_send", DEFAULT_QUOTATION_CUSTOMER_TPL),
+    getWaTemplateConfig("admin_group", "quotation_send", DEFAULT_QUOTATION_ADMIN_TPL),
+  ]);
+
+  const messageBody = renderTemplate(customerTplBody, vars);
 
   const normalizedPhone = normalizePhone(String(customerPhone));
   let fonnteResponse: unknown = null;
@@ -105,20 +139,7 @@ whatsappRouter.post("/send-quotation", async (req: Request, res: Response) => {
       try {
         const adminWa = await getAdminWa();
         if (adminWa) {
-          const fmtIdr = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
-          const adminMsg =
-            `📋 *QUOTATION DIKIRIM KE CUSTOMER*\n` +
-            `━━━━━━━━━━━━━━━━━━\n` +
-            `Customer   : ${customerName}\n` +
-            `No. HP     : ${normalizedPhone}\n` +
-            `No. RFQ    : ${rfqId || "-"}\n` +
-            `Layanan    : ${serviceType || "-"}\n` +
-            `Rute       : ${route || "-"}\n` +
-            (vendorName ? `Vendor     : ${vendorName}\n` : "") +
-            `Harga Final: ${fmtIdr(fp)}\n` +
-            `Status     : ${status || "Ready"}\n` +
-            `━━━━━━━━━━━━━━━━━━\n` +
-            `_Dikirim via Mini Form BizPortal_`;
+          const adminMsg = renderTemplate(adminTplBody, vars);
           await sendWhatsApp(adminWa, adminMsg);
           sentToAdmin = true;
         }
@@ -311,4 +332,75 @@ whatsappRouter.post("/inbox/:id/reply", async (req: Request, res: Response) => {
     .where(eq(waIncomingMessagesTable.id, id));
 
   return res.json({ ok: true, sentStatus });
+});
+
+// GET /api/whatsapp/notification-logs — admin: lihat riwayat WA + email + dedup status
+// Query params: channel (wa|email), status (sent|failed|deduped), context, refId,
+//               from (ISO date), to (ISO date), limit (max 200), offset
+whatsappRouter.get("/notification-logs", async (req: Request, res: Response) => {
+  const channel  = String(req.query.channel ?? "").trim() || null;
+  const status   = String(req.query.status  ?? "").trim() || null;
+  const context  = String(req.query.context ?? "").trim() || null;
+  const refId    = String(req.query.refId   ?? "").trim() || null;
+  const from     = req.query.from ? new Date(String(req.query.from)) : null;
+  const to       = req.query.to   ? new Date(String(req.query.to))   : null;
+  const limit    = Math.min(parseInt(String(req.query.limit  ?? "50"),  10), 200);
+  const offset   = Math.max(parseInt(String(req.query.offset ?? "0"),   10), 0);
+
+  const conditions: ReturnType<typeof eq>[] = [];
+  if (channel && (channel === "wa" || channel === "email"))
+    conditions.push(eq(notificationLogsTable.channel, channel));
+  if (status)
+    conditions.push(eq(notificationLogsTable.status, status));
+  if (context)
+    conditions.push(eq(notificationLogsTable.context, context));
+  if (refId)
+    conditions.push(eq(notificationLogsTable.refId, refId));
+  if (from && !isNaN(from.getTime()))
+    conditions.push(gte(notificationLogsTable.createdAt, from));
+  if (to && !isNaN(to.getTime()))
+    conditions.push(lte(notificationLogsTable.createdAt, to));
+
+  const [rows, [{ total }]] = await Promise.all([
+    db
+      .select({
+        id:        notificationLogsTable.id,
+        channel:   notificationLogsTable.channel,
+        recipient: notificationLogsTable.recipient,
+        subject:   notificationLogsTable.subject,
+        status:    notificationLogsTable.status,
+        context:   notificationLogsTable.context,
+        refType:   notificationLogsTable.refType,
+        refId:     notificationLogsTable.refId,
+        errorMsg:  notificationLogsTable.errorMsg,
+        createdAt: notificationLogsTable.createdAt,
+        // message omitted — can be large; use /notification-logs/:id for full body
+      })
+      .from(notificationLogsTable)
+      .where(conditions.length ? and(...(conditions as [ReturnType<typeof eq>, ...ReturnType<typeof eq>[]])) : undefined)
+      .orderBy(desc(notificationLogsTable.createdAt))
+      .limit(limit)
+      .offset(offset),
+    db
+      .select({ total: sql<number>`COUNT(*)::int` })
+      .from(notificationLogsTable)
+      .where(conditions.length ? and(...(conditions as [ReturnType<typeof eq>, ...ReturnType<typeof eq>[]])) : undefined),
+  ]);
+
+  return res.json({ total, limit, offset, rows });
+});
+
+// GET /api/whatsapp/notification-logs/:id — admin: full message body for one log entry
+whatsappRouter.get("/notification-logs/:id", async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+
+  const [row] = await db
+    .select()
+    .from(notificationLogsTable)
+    .where(eq(notificationLogsTable.id, id))
+    .limit(1);
+
+  if (!row) return res.status(404).json({ message: "Log tidak ditemukan" });
+  return res.json(row);
 });

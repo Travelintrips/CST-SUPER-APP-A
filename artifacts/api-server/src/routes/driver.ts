@@ -4,12 +4,17 @@ import bcrypt from "bcryptjs";
 import { randomUUID } from "crypto";
 import { createHmac } from "crypto";
 import { compressImageBuffer } from "../lib/imageCompress";
-import { db, driversTable, driverJobsTable, driverJobLogsTable, driverPhotosTable, freightShipmentsTable, driverLocationsTable } from "@workspace/db";
+import { db, driversTable, driverJobsTable, driverJobLogsTable, driverPhotosTable, freightShipmentsTable, driverLocationsTable, logisticOrdersTable } from "@workspace/db";
 import { eq, and, desc, ne } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { sendWhatsApp } from "../lib/fonnte";
 import { getPreferredDomain } from "../lib/domain";
+import {
+  sendDriverAssignedNotification,
+  sendDeliveryCompletedNotification,
+  type LogisticOrderData,
+} from "../lib/orderNotification";
 import {
   registerDriverConnection, unregisterDriverConnection, pushToDriver,
   registerAdminConnection, unregisterAdminConnection, broadcastToAdmins,
@@ -22,9 +27,9 @@ const adminRouter = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
 const objectStorageService = new ObjectStorageService();
 
-const JWT_SECRET = process.env.SESSION_SECRET;
+const JWT_SECRET = process.env.DRIVER_JWT_SECRET ?? process.env.SESSION_SECRET;
 if (!JWT_SECRET) {
-  throw new Error("SESSION_SECRET environment variable is required for driver auth");
+  throw new Error("DRIVER_JWT_SECRET (or SESSION_SECRET) environment variable is required for driver auth");
 }
 
 const BCRYPT_ROUNDS = 12;
@@ -119,6 +124,37 @@ function nextJobNumber(): string {
   const yr = new Date().getFullYear();
   const seq = Date.now().toString().slice(-6);
   return `TRK/${yr}/${seq}`;
+}
+
+async function fetchOrderData(logisticOrderId: number | null | undefined): Promise<LogisticOrderData | null> {
+  if (!logisticOrderId) return null;
+  const [row] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, logisticOrderId)).limit(1);
+  if (!row) return null;
+  return {
+    id: row.id,
+    orderNumber: row.orderNumber,
+    customerName: row.customerName,
+    companyName: row.companyName ?? "",
+    email: row.email,
+    phone: row.phone,
+    orderType: row.orderType ?? undefined,
+    shipmentType: row.shipmentType,
+    origin: row.origin,
+    destination: row.destination,
+    commodity: row.commodity ?? null,
+    cargoDescription: row.cargoDescription ?? null,
+    grossWeight: row.grossWeight ? Number(row.grossWeight) : null,
+    volumeCbm: row.volumeCbm ? Number(row.volumeCbm) : null,
+    jumlahKoli: row.jumlahKoli ?? null,
+    grandTotal: row.grandTotal ? Number(row.grandTotal) : 0,
+    serviceList: row.shipmentType,
+    requiredDate: row.requiredDate ?? null,
+    notes: row.notes ?? null,
+    jamOrder: row.jamOrder ?? null,
+    vehicleType: row.truckType ?? null,
+    createdAt: row.createdAt ?? null,
+    publicRfqToken: row.publicRfqToken ?? null,
+  };
 }
 
 async function uploadPhotoToStorage(buffer: Buffer, mimetype: string, jobId: number): Promise<string> {
@@ -344,6 +380,14 @@ router.post("/jobs/:jobId/pod", requireDriverAuth, async (req, res) => {
   });
 
   await syncParentFreightStatus(job.freightShipmentId, "DELIVERED");
+
+  // Notifikasi delivery completed ke customer
+  if (job.logisticOrderId) {
+    fetchOrderData(job.logisticOrderId).then((orderData) => {
+      if (!orderData) return;
+      sendDeliveryCompletedNotification(orderData).catch(() => {});
+    }).catch(() => {});
+  }
 
   res.json({ ...serializeJob(updated), validNextStatuses: VALID_TRANSITIONS["DELIVERED"] });
 });
@@ -800,6 +844,20 @@ adminRouter.post("/jobs", async (req, res) => {
     sendWhatsApp(driver.phone, msg).catch((err: unknown) => {
       req.log.error({ err, driverId: driver.id, phone: driver.phone }, "sendWhatsApp failed for job assignment");
     });
+  }
+
+  // Notifikasi template ke customer jika job terhubung ke logistic order
+  if (job.logisticOrderId) {
+    fetchOrderData(job.logisticOrderId).then((orderData) => {
+      if (!orderData) return;
+      sendDriverAssignedNotification(
+        orderData,
+        driver.name,
+        driver.phone ?? "",
+        job.truckPlate ?? "-",
+        job.vehicleType ?? "-",
+      ).catch((err: unknown) => req.log.error({ err }, "sendDriverAssignedNotification failed"));
+    }).catch(() => {});
   }
 
   res.status(201).json(serializeJob(job));

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useMemo } from "react";
 import { useParams, Link } from "wouter";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -44,10 +44,11 @@ import {
   getListSuppliersQueryKey,
   useListTaxes,
   useListProducts,
+  useListProductCategories,
 } from "@workspace/api-client-react";
 import type { Supplier, VendorCatalogItem } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Pencil, Plus, Trash2, Upload, X } from "lucide-react";
+import { ArrowLeft, Pencil, Plus, Search, Tag, Trash2, Upload, X } from "lucide-react";
 import { useUpload } from "@workspace/object-storage-web";
 
 const SERVICE_TYPES = [
@@ -84,25 +85,28 @@ function LogoDisplay({ logo, size = "sm" }: { logo: string | null | undefined; s
 
 const fmt = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
 
+
 type CatalogForm = {
+  masterItemId: number | null;
   type: string;
   name: string;
   description: string;
   unit: string;
-  priceBase: string;
-  markupPct: string;
+  kategori: string;
+  subcategory: string;
   isActive: boolean;
   isCommodityTag: boolean;
   sortOrder: string;
 };
 
 const emptyCatalogForm = (): CatalogForm => ({
+  masterItemId: null,
   type: "service",
   name: "",
   description: "",
   unit: "",
-  priceBase: "0",
-  markupPct: "0",
+  kategori: "",
+  subcategory: "",
   isActive: true,
   isCommodityTag: false,
   sortOrder: "0",
@@ -135,6 +139,7 @@ export default function VendorDetailPage() {
   const { data: allVendors } = useListSuppliers({ query: { queryKey: getListSuppliersQueryKey() } });
   const { data: taxes } = useListTaxes();
   const { data: products = [] } = useListProducts();
+  const { data: productCategories = [] } = useListProductCategories();
   const vendor = (allVendors ?? []).find((v) => v.id === vendorId) as Supplier | undefined;
 
   const { data: catalog, isLoading: catalogLoading } = useListVendorCatalog(vendorId, {
@@ -148,9 +153,39 @@ export default function VendorDetailPage() {
 
   const purchaseTaxes = (taxes ?? []).filter((t) => t.kind === "purchase" && t.isActive);
 
+  const allSubcategories = Array.from(new Set(
+    (catalog ?? []).map((i) => (i as any).subcategory).filter((s): s is string => !!s)
+  )).sort();
+
+  const allKategoriCatalog = Array.from(new Set(
+    (catalog ?? []).map((i) => (i as any).kategori).filter((s): s is string => !!s)
+  )).sort();
+
+  const [catalogSearch, setCatalogSearch] = useState("");
+  const [filterKategoriCatalog, setFilterKategoriCatalog] = useState("all");
+  const [filterSubcatCatalog, setFilterSubcatCatalog] = useState("all");
+
+  const filteredCatalog = useMemo(() => {
+    return (catalog ?? []).filter((item) => {
+      if (filterKategoriCatalog !== "all" && (item as any).kategori !== filterKategoriCatalog) return false;
+      if (filterSubcatCatalog !== "all" && (item as any).subcategory !== filterSubcatCatalog) return false;
+      if (catalogSearch) {
+        const q = catalogSearch.toLowerCase();
+        return (
+          item.name.toLowerCase().includes(q) ||
+          (item.description ?? "").toLowerCase().includes(q) ||
+          ((item as any).kategori ?? "").toLowerCase().includes(q) ||
+          ((item as any).subcategory ?? "").toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+  }, [catalog, filterKategoriCatalog, filterSubcatCatalog, catalogSearch]);
+
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<VendorCatalogItem | null>(null);
   const [itemForm, setItemForm] = useState<CatalogForm>(emptyCatalogForm());
+  const [masterItemSearch, setMasterItemSearch] = useState("");
 
   const [vendorEditOpen, setVendorEditOpen] = useState(false);
   const [vendorForm, setVendorForm] = useState<VendorForm | null>(null);
@@ -194,41 +229,56 @@ export default function VendorDetailPage() {
   const openNewItem = () => {
     setEditingItem(null);
     setItemForm(emptyCatalogForm());
+    setMasterItemSearch("");
     setCatalogOpen(true);
   };
 
   const openEditItem = (item: VendorCatalogItem) => {
     setEditingItem(item);
     setItemForm({
+      masterItemId: (item as any).masterItemId ?? null,
       type: item.type,
       name: item.name,
       description: item.description ?? "",
       unit: item.unit ?? "",
-      priceBase: String(item.priceBase),
-      markupPct: String(item.markupPct),
+      kategori: (item as any).kategori ?? "",
+      subcategory: (item as any).subcategory ?? "",
       isActive: item.isActive,
       isCommodityTag: (item as any).isCommodityTag ?? false,
       sortOrder: String(item.sortOrder),
     });
+    setMasterItemSearch("");
     setCatalogOpen(true);
   };
 
   const submitItem = async () => {
-    if (!itemForm.name.trim()) {
+    if (!editingItem && !itemForm.masterItemId) {
+      toast({ title: "Pilih item dari Master Item terlebih dahulu", variant: "destructive" });
+      return;
+    }
+    // Item lama (legacy) tanpa masterItemId wajib punya nama
+    if (editingItem && !(editingItem as any).masterItemId && !itemForm.name.trim()) {
       toast({ title: t.common.error, variant: "destructive" });
       return;
     }
-    const body = {
-      type: itemForm.type,
-      name: itemForm.name.trim(),
-      description: itemForm.description || null,
-      unit: itemForm.unit || null,
-      priceBase: parseFloat(itemForm.priceBase) || 0,
-      markupPct: parseFloat(itemForm.markupPct) || 0,
+    const body: Record<string, unknown> = {
       isActive: itemForm.isActive,
       isCommodityTag: itemForm.isCommodityTag,
       sortOrder: parseInt(itemForm.sortOrder) || 0,
     };
+    // Tambah masterItemId hanya saat create baru
+    if (!editingItem) {
+      body.masterItemId = itemForm.masterItemId;
+    }
+    // Legacy item: sertakan field manual
+    if (editingItem && !(editingItem as any).masterItemId) {
+      body.type = itemForm.type;
+      body.name = itemForm.name.trim();
+      body.description = itemForm.description || null;
+      body.unit = itemForm.unit || null;
+      body.kategori = itemForm.kategori || null;
+      body.subcategory = itemForm.subcategory || null;
+    }
     try {
       if (editingItem) {
         const updated = await updateItem.mutateAsync({ itemId: editingItem.id, data: body });
@@ -396,6 +446,54 @@ export default function VendorDetailPage() {
                 <Plus className="h-4 w-4 mr-1" /> Tambah Item
               </Button>
             </div>
+            <div className="flex flex-wrap gap-2 mt-3">
+              <div className="relative flex-1 min-w-[160px]">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                <Input
+                  value={catalogSearch}
+                  onChange={(e) => setCatalogSearch(e.target.value)}
+                  placeholder="Cari nama, deskripsi..."
+                  className="pl-8 h-8 text-sm"
+                />
+                {catalogSearch && (
+                  <button onClick={() => setCatalogSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+              <Select value={filterKategoriCatalog} onValueChange={setFilterKategoriCatalog}>
+                <SelectTrigger className="h-8 text-sm w-[150px]">
+                  <SelectValue placeholder="Kategori" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Semua Kategori</SelectItem>
+                  {allKategoriCatalog.map((k) => (
+                    <SelectItem key={k} value={k}>{k}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={filterSubcatCatalog} onValueChange={setFilterSubcatCatalog}>
+                <SelectTrigger className="h-8 text-sm w-[160px]">
+                  <SelectValue placeholder="Sub-kategori" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Semua Sub-kategori</SelectItem>
+                  {allSubcategories.map((s) => (
+                    <SelectItem key={s} value={s}>{s}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {(catalogSearch || filterKategoriCatalog !== "all" || filterSubcatCatalog !== "all") && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 text-xs text-muted-foreground"
+                  onClick={() => { setCatalogSearch(""); setFilterKategoriCatalog("all"); setFilterSubcatCatalog("all"); }}
+                >
+                  <X className="h-3 w-3 mr-1" /> Reset
+                </Button>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             {catalogLoading ? (
@@ -405,21 +503,18 @@ export default function VendorDetailPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Nama</TableHead>
+                    <TableHead>Kategori</TableHead>
                     <TableHead>Tipe</TableHead>
                     <TableHead>Satuan</TableHead>
-                    <TableHead className="text-right">Harga Dasar</TableHead>
-                    <TableHead className="text-right">Markup (%)</TableHead>
-                    <TableHead className="text-right">Harga Jual</TableHead>
+                    <TableHead className="text-right">Harga</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Tag</TableHead>
                     <TableHead className="w-[90px] text-right">Aksi</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(catalog ?? []).map((item) => {
-                    const base = Number(item.priceBase ?? 0);
-                    const markup = Number(item.markupPct ?? 0);
-                    const sell = base * (1 + markup / 100);
+                  {filteredCatalog.map((item) => {
+                    const price = Number(item.priceBase ?? 0);
                     return (
                       <TableRow key={item.id}>
                         <TableCell>
@@ -428,18 +523,20 @@ export default function VendorDetailPage() {
                             <p className="text-xs text-muted-foreground">{item.description}</p>
                           )}
                         </TableCell>
+                        <TableCell className="text-sm">
+                          {(item as any).kategori
+                            ? <span className="flex items-center gap-1 text-muted-foreground"><Tag className="h-3 w-3" />{(item as any).kategori}</span>
+                            : <span className="text-muted-foreground">—</span>}
+                          {(item as any).subcategory && (
+                            <p className="text-xs text-muted-foreground mt-0.5">{(item as any).subcategory}</p>
+                          )}
+                        </TableCell>
                         <TableCell>
                           <Badge variant="outline" className="text-xs capitalize">{item.type}</Badge>
                         </TableCell>
                         <TableCell className="text-sm">{item.unit ?? "-"}</TableCell>
-                        <TableCell className="text-right font-mono text-sm">
-                          {base > 0 ? fmt(base) : "-"}
-                        </TableCell>
-                        <TableCell className="text-right text-sm">
-                          {markup > 0 ? `${markup}%` : "-"}
-                        </TableCell>
                         <TableCell className="text-right font-mono text-sm font-semibold text-primary">
-                          {base > 0 ? fmt(sell) : "-"}
+                          {price > 0 ? fmt(price) : "-"}
                         </TableCell>
                         <TableCell>
                           {item.isActive
@@ -462,10 +559,12 @@ export default function VendorDetailPage() {
                       </TableRow>
                     );
                   })}
-                  {(!catalog || catalog.length === 0) && (
+                  {filteredCatalog.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center text-muted-foreground py-10">
-                        Belum ada item. Klik <strong>Tambah Item</strong> untuk mulai mengisi etalase.
+                      <TableCell colSpan={10} className="text-center text-muted-foreground py-10">
+                        {(catalogSearch || filterKategoriCatalog !== "all" || filterSubcatCatalog !== "all")
+                          ? "Tidak ada item yang cocok dengan filter."
+                          : <>Belum ada item. Klik <strong>Tambah Item</strong> untuk mulai mengisi etalase.</>}
                       </TableCell>
                     </TableRow>
                   )}
@@ -479,115 +578,130 @@ export default function VendorDetailPage() {
       <Dialog open={catalogOpen} onOpenChange={(v) => { setCatalogOpen(v); if (!v) setEditingItem(null); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{editingItem ? "Edit Item" : "Tambah Item Etalase"}</DialogTitle>
+            <DialogTitle>{editingItem ? "Edit Item Etalase" : "Tambah Item ke Etalase"}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-3">
-            <div className="grid gap-1.5">
-              <Label>Nama Item *</Label>
-              <Input
-                list="catalog-product-names"
-                value={itemForm.name}
-                onChange={(e) => {
-                  setI("name", e.target.value);
-                  const match = products.find((p) => p.name === e.target.value);
-                  if (match) {
-                    setI("unit", match.unit);
-                    if (match.price > 0) setI("priceBase", String(match.price));
-                  }
-                }}
-                placeholder="Ketik atau pilih dari daftar item..."
-              />
-              <datalist id="catalog-product-names">
-                {products.map((p) => (
-                  <option key={p.id} value={p.name} />
-                ))}
-              </datalist>
-              <p className="text-xs text-muted-foreground">
-                Pilih dari item yang sudah ada untuk auto-isi satuan & harga, atau ketik nama baru.
-              </p>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
+
+            {/* ── Pilih Master Item (hanya saat tambah baru) ── */}
+            {!editingItem && (
               <div className="grid gap-1.5">
-                <Label>Tipe</Label>
-                <Select value={itemForm.type} onValueChange={(v) => setI("type", v)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="service">Layanan</SelectItem>
-                    <SelectItem value="product">Produk</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-1.5">
-                <Label>Satuan</Label>
-                <Select
-                  value={UNITS.includes(itemForm.unit) ? itemForm.unit : (itemForm.unit ? "__custom__" : "__none__")}
-                  onValueChange={(v) => {
-                    if (v === "__none__") setI("unit", "");
-                    else if (v !== "__custom__") setI("unit", v);
-                  }}
-                >
-                  <SelectTrigger><SelectValue placeholder="Pilih satuan..." /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">— Pilih satuan —</SelectItem>
-                    {UNITS.map((u) => (
-                      <SelectItem key={u} value={u}>{u}</SelectItem>
-                    ))}
-                    {itemForm.unit && !UNITS.includes(itemForm.unit) && (
-                      <SelectItem value="__custom__">{itemForm.unit} (kustom)</SelectItem>
-                    )}
-                  </SelectContent>
-                </Select>
-                {(!UNITS.includes(itemForm.unit) && itemForm.unit) && (
-                  <Input
-                    value={itemForm.unit}
-                    onChange={(e) => setI("unit", e.target.value)}
-                    placeholder="Satuan kustom..."
-                    className="mt-1"
-                  />
+                <Label>Master Item *</Label>
+                {itemForm.masterItemId ? (
+                  // Item sudah dipilih — tampilkan info + tombol ganti
+                  (() => {
+                    const sel = products.find((p) => p.id === itemForm.masterItemId);
+                    return (
+                      <div className="flex items-center gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-sm truncate">{sel?.name ?? "—"}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {sel?.itemType === "jasa" ? "Layanan" : "Produk"} · {sel?.unit ?? "-"}
+                            {(sel?.categories as string[] | undefined)?.[0] && (
+                              <> · <Tag className="inline h-3 w-3" /> {(sel.categories as string[])[0]}</>
+                            )}
+                          </p>
+                        </div>
+                        <Button size="sm" variant="ghost" className="shrink-0 h-7 px-2 text-xs"
+                          onClick={() => { setI("masterItemId", null); setMasterItemSearch(""); }}>
+                          <X className="h-3 w-3 mr-1" /> Ganti
+                        </Button>
+                      </div>
+                    );
+                  })()
+                ) : (
+                  // Picker — search + scrollable list
+                  <div className="grid gap-1.5">
+                    <div className="relative">
+                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                      <Input
+                        value={masterItemSearch}
+                        onChange={(e) => setMasterItemSearch(e.target.value)}
+                        placeholder="Cari nama item..."
+                        className="pl-8 h-8 text-sm"
+                        autoFocus
+                      />
+                    </div>
+                    <div className="border rounded-md overflow-y-auto max-h-44">
+                      {(() => {
+                        const q = masterItemSearch.toLowerCase();
+                        const linkedIds = new Set((catalog ?? []).map((i) => (i as any).masterItemId).filter(Boolean));
+                        const filtered = products.filter((p) =>
+                          !linkedIds.has(p.id) &&
+                          (p.name.toLowerCase().includes(q) || p.sku?.toLowerCase().includes(q))
+                        );
+                        if (filtered.length === 0) {
+                          return (
+                            <p className="text-center text-xs text-muted-foreground py-4">
+                              {q ? "Tidak ada item yang cocok." : "Semua item sudah ditambahkan ke etalase ini."}
+                            </p>
+                          );
+                        }
+                        return filtered.map((p) => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors border-b last:border-b-0"
+                            onClick={() => {
+                              setI("masterItemId", p.id);
+                            }}
+                          >
+                            <p className="font-medium">{p.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {p.itemType === "jasa" ? "Layanan" : "Produk"} · {p.unit}
+                              {(p.categories as string[] | undefined)?.[0] && <> · {(p.categories as string[])[0]}</>}
+                            </p>
+                          </button>
+                        ));
+                      })()}
+                    </div>
+                    <p className="text-xs text-muted-foreground">Produk dan layanan diambil dari <strong>Katalog &gt; Master Item</strong>.</p>
+                  </div>
                 )}
               </div>
-            </div>
-            <div className="grid gap-1.5">
-              <Label>Deskripsi</Label>
-              <Textarea
-                value={itemForm.description}
-                onChange={(e) => setI("description", e.target.value)}
-                rows={2}
-                placeholder="Keterangan tambahan (opsional)"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="grid gap-1.5">
-                <Label>Harga Dasar (Rp)</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  value={itemForm.priceBase}
-                  onChange={(e) => setI("priceBase", e.target.value)}
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <Label>Markup (%)</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={itemForm.markupPct}
-                  onChange={(e) => setI("markupPct", e.target.value)}
-                  placeholder="cth. 20"
-                />
-              </div>
-            </div>
-            {(() => {
-              const base = parseFloat(itemForm.priceBase) || 0;
-              const pct = parseFloat(itemForm.markupPct) || 0;
-              if (base <= 0) return null;
-              return (
-                <p className="text-xs text-muted-foreground -mt-1">
-                  Harga jual: <span className="font-semibold text-foreground">{fmt(base * (1 + pct / 100))}</span>
+            )}
+
+            {/* ── Edit mode: tampilkan nama master item sebagai read-only ── */}
+            {editingItem && (editingItem as any).masterItemId && (
+              <div className="rounded-md border bg-muted/40 px-3 py-2">
+                <p className="text-xs text-muted-foreground mb-0.5">Item dari Master Item</p>
+                <p className="font-medium text-sm">{editingItem.name}</p>
+                <p className="text-xs text-muted-foreground">
+                  {editingItem.type === "service" ? "Layanan" : "Produk"} · {editingItem.unit ?? "-"}
+                  {(editingItem as any).kategori && <> · <Tag className="inline h-3 w-3" /> {(editingItem as any).kategori}</>}
                 </p>
-              );
-            })()}
+              </div>
+            )}
+
+            {/* ── Legacy item: tetap bisa edit semua field ── */}
+            {editingItem && !(editingItem as any).masterItemId && (
+              <>
+                <div className="grid gap-1.5">
+                  <Label>Nama Item *</Label>
+                  <Input value={itemForm.name} onChange={(e) => setI("name", e.target.value)} />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="grid gap-1.5">
+                    <Label>Tipe</Label>
+                    <Select value={itemForm.type} onValueChange={(v) => setI("type", v)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="service">Layanan</SelectItem>
+                        <SelectItem value="product">Produk</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label>Satuan</Label>
+                    <Input value={itemForm.unit} onChange={(e) => setI("unit", e.target.value)} placeholder="pcs, kg, dll" />
+                  </div>
+                </div>
+                <div className="grid gap-1.5">
+                  <Label>Deskripsi</Label>
+                  <Textarea value={itemForm.description} onChange={(e) => setI("description", e.target.value)} rows={2} />
+                </div>
+              </>
+            )}
+
             <div className="grid grid-cols-2 gap-3">
               <div className="grid gap-1.5">
                 <Label>Urutan Tampil</Label>

@@ -296,9 +296,11 @@ export interface VendorCatalogItem {
   name: string;
   description?: string | null;
   unit?: string | null;
+  subcategory?: string | null;
   priceBase: number;
   markupPct: number;
   isActive: boolean;
+  isCommodityTag?: boolean;
   sortOrder: number;
   createdAt: string;
 }
@@ -308,9 +310,11 @@ export interface CreateVendorCatalogItemBody {
   name: string;
   description?: string | null;
   unit?: string | null;
+  subcategory?: string | null;
   priceBase?: number;
   markupPct?: number;
   isActive?: boolean;
+  isCommodityTag?: boolean;
   sortOrder?: number;
 }
 
@@ -2213,6 +2217,7 @@ export interface CreateLogisticOrderBody {
   customerName: string;
   email: string;
   phone: string;
+  orderType?: string | null;
   shipmentType: string;
   origin: string;
   destination: string;

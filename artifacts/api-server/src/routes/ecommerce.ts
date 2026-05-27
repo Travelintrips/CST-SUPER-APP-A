@@ -6,6 +6,8 @@ import { postEcommerceOrder } from "../lib/accounting.js";
 import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa } from "../lib/adminWa.js";
 import { saveAndBroadcast } from "../lib/notificationStore.js";
+import { registerPortalConnection, unregisterPortalConnection, broadcastToPortal } from "../lib/sseManager.js";
+import { requireClerkUser } from "../lib/requireAdmin.js";
 
 const router = Router();
 const objectStorageService = new ObjectStorageService();
@@ -139,6 +141,7 @@ router.delete("/product-categories/:id", async (req, res) => {
     return res.status(409).json({ message: `Kategori ini digunakan oleh ${usageCount} produk. Ubah kategori produk tersebut terlebih dahulu.` });
   }
   await db.delete(productCategoriesTable).where(eq(productCategoriesTable.id, id));
+  broadcastToPortal("price_sync", { ts: Date.now() });
   return res.json({ message: "Category deleted" });
 });
 
@@ -304,6 +307,10 @@ router.post("/products/bulk-import", async (req, res) => {
     }
   }
 
+  // Notify Customer Portal: satu atau lebih produk baru/diperbarui via bulk-import.
+  // Listener: products.tsx (invalidates ["portal-products"]),
+  //           jasa.tsx (invalidates ["listPortalServicesJasa"])
+  broadcastToPortal("price_sync", { ts: Date.now() });
   return res.json({ results });
 });
 
@@ -324,16 +331,29 @@ router.put("/products/:id", async (req, res) => {
     defaultSalesTaxId, defaultPurchaseTaxId,
     itemType, unit, unitOptions, subcategory, isActive,
   } = req.body;
-  const categoryNames: string[] = Array.isArray(categories) ? categories.map(String) : [];
-  if (categoryNames.length === 0) return res.status(400).json({ message: "Produk harus memiliki setidaknya satu kategori" });
+  const requestedNames: string[] = Array.isArray(categories) ? categories.map(String).filter(Boolean) : [];
 
+  // If categories not provided or empty, preserve the existing categories from DB
+  let categoryNames: string[] = requestedNames;
   let validCats: { id: number; name: string; createdAt: Date }[] = [];
-  if (categoryNames.length > 0) {
+
+  if (requestedNames.length === 0) {
+    // Preserve existing categories
+    const existing = await db
+      .select({ name: productCategoriesTable.name })
+      .from(productCategoryMapTable)
+      .innerJoin(productCategoriesTable, eq(productCategoryMapTable.categoryId, productCategoriesTable.id))
+      .where(eq(productCategoryMapTable.productId, id));
+    categoryNames = existing.map((r) => r.name);
+    if (categoryNames.length > 0) {
+      validCats = await db.select().from(productCategoriesTable).where(inArray(productCategoriesTable.name, categoryNames));
+    }
+  } else {
     validCats = await db
       .select()
       .from(productCategoriesTable)
-      .where(inArray(productCategoriesTable.name, categoryNames));
-    if (validCats.length !== categoryNames.length) {
+      .where(inArray(productCategoriesTable.name, requestedNames));
+    if (validCats.length !== requestedNames.length) {
       return res.status(400).json({ message: "One or more categories do not exist in the predefined list" });
     }
   }
@@ -353,16 +373,23 @@ router.put("/products/:id", async (req, res) => {
       isActive: isActive !== undefined ? Boolean(isActive) : true,
     }).where(eq(productsTable.id, id)).returning();
     if (!p) return null;
-    await tx.delete(productCategoryMapTable).where(eq(productCategoryMapTable.productId, id));
-    if (validCats.length > 0) {
-      await tx.insert(productCategoryMapTable).values(
-        validCats.map((c) => ({ productId: id, categoryId: c.id }))
-      );
+    if (requestedNames.length > 0) {
+      // Only update category map if caller explicitly sent categories
+      await tx.delete(productCategoryMapTable).where(eq(productCategoryMapTable.productId, id));
+      if (validCats.length > 0) {
+        await tx.insert(productCategoryMapTable).values(
+          validCats.map((c) => ({ productId: id, categoryId: c.id }))
+        );
+      }
     }
     return p;
   });
 
   if (!product) return res.status(404).json({ message: "Product not found" });
+  // Notify Customer Portal: harga/data produk berubah via BizPortal admin.
+  // Listener: products.tsx (invalidates ["portal-products"]),
+  //           jasa.tsx (invalidates ["listPortalServicesJasa"])
+  broadcastToPortal("price_sync", { ts: Date.now() });
   return res.json(serializeProduct(product, categoryNames));
 });
 
@@ -370,6 +397,10 @@ router.put("/products/:id", async (req, res) => {
 router.delete("/products/:id", async (req, res) => {
   const id = Number(req.params.id);
   await db.delete(productsTable).where(eq(productsTable.id, id));
+  // Notify Customer Portal: produk dihapus — hapus dari listing.
+  // Listener: products.tsx (invalidates ["portal-products"]),
+  //           jasa.tsx (invalidates ["listPortalServicesJasa"])
+  broadcastToPortal("price_sync", { ts: Date.now() });
   return res.json({ message: "Product deleted" });
 });
 
@@ -583,6 +614,35 @@ router.delete("/orders/:id", async (req, res) => {
   const id = Number(req.params.id);
   await db.delete(ordersTable).where(eq(ordersTable.id, id));
   return res.json({ message: "Order deleted" });
+});
+
+// GET /api/ecommerce/events — SSE stream for customer portal (live price sync)
+router.get("/events", (req, res) => {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+
+  res.write(": connected\n\n");
+
+  const keepAlive = setInterval(() => {
+    try { res.write(": ping\n\n"); } catch { clearInterval(keepAlive); }
+  }, 25_000);
+
+  registerPortalConnection(res);
+
+  req.on("close", () => {
+    clearInterval(keepAlive);
+    unregisterPortalConnection(res);
+  });
+});
+
+// POST /api/ecommerce/sync-prices — broadcast price_sync to all portal tabs (staff only)
+router.post("/sync-prices", async (req, res) => {
+  if (!(await requireClerkUser(req, res))) return;
+  broadcastToPortal("price_sync", { ts: Date.now() });
+  return res.json({ ok: true, message: "Price sync broadcasted to all portal tabs" });
 });
 
 export default router;

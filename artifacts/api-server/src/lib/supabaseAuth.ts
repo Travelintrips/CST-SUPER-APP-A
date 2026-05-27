@@ -5,8 +5,10 @@ import { verifySupabaseToken } from "./supabaseAdmin";
 import { verifyPortalJwt } from "./portalJwt";
 import { createHmac } from "crypto";
 
-const DEV_SECRET = process.env.DEV_PORTAL_SECRET ?? "dev-portal-secret-local-only";
-const IS_PROD = process.env.REPLIT_DEPLOYMENT === "1";
+// No default: if DEV_PORTAL_SECRET is not explicitly set, dev tokens are inoperable.
+const DEV_SECRET = process.env.DEV_PORTAL_SECRET ?? "";
+const IS_PROD =
+  process.env.REPLIT_DEPLOYMENT === "1" || process.env.NODE_ENV === "production";
 
 export function signDevToken(payload: object): string {
   const b64 = Buffer.from(JSON.stringify(payload)).toString("base64url");
@@ -16,6 +18,7 @@ export function signDevToken(payload: object): string {
 
 function verifyDevToken(token: string): { id: number; email: string; role: string } | null {
   if (IS_PROD) return null;
+  if (!DEV_SECRET) return null; // explicitly unset → dev bypass disabled
   if (!token.startsWith("devportal.")) return null;
   const parts = token.split(".");
   if (parts.length !== 3) return null;

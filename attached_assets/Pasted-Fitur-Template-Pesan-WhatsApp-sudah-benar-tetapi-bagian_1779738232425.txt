@@ -1,0 +1,210 @@
+Fitur Template Pesan WhatsApp sudah benar, tetapi bagian "Edit Template" masih kosong.
+
+Tolong isi DEFAULT TEMPLATE / PRESET untuk setiap workflow dan role penerima.
+
+Jangan ubah UI besar.
+Jangan ubah Mini Form.
+Fokus hanya isi template default agar saat user pilih workflow seperti "Vendor Request", textarea tidak kosong.
+
+Untuk workflow "Vendor Request" dengan penerima "Admin Pribadi", isi default template berikut:
+
+📋 *VENDOR REQUEST DIKIRIM*
+
+No. Order : {{orderNumber}}
+Tanggal : {{tanggal}}
+Customer : {{customerName}}
+Layanan : {{serviceType}}
+Route : {{route}}
+Komoditi : {{commodity}}
+
+Vendor : {{vendorName}}
+No. Vendor : {{vendorPhone}}
+
+Harga Vendor : {{vendorPrice}}
+Mata Uang : {{currency}}
+Valid Until : {{requiredDate}}
+
+🔗 Link Mini Form Vendor:
+{{vendorMiniFormLink}}
+
+Catatan:
+{{notes}}
+
+{{#if trucking}}
+🚚 *Detail Trucking*
+Jenis Armada : {{vehicleType}}
+Driver : {{driverName}}
+No. Driver : {{driverPhone}}
+Plat Nomor : {{plateNumber}}
+{{/if}}
+
+{{#if freight_sea}}
+🚢 *Detail Freight Sea*
+Vessel : {{vessel}}
+Voyage : {{voyage}}
+Container : {{containerNumber}}
+BL Number : {{blNumber}}
+{{/if}}
+
+{{#if freight_air}}
+✈️ *Detail Freight Air*
+Airline : {{airline}}
+Flight Number : {{flightNumber}}
+AWB Number : {{awbNumber}}
+{{/if}}
+
+{{#if ppjk}}
+🏛️ *Detail PPJK*
+Nomor Aju : {{ajuNumber}}
+Jenis BC : {{bcType}}
+SPPB : {{sppbNumber}}
+{{/if}}
+
+{{#if product}}
+📦 *Detail Produk*
+Produk / Komoditi : {{commodity}}
+Jumlah Koli : {{jumlahKoliDisplay}}
+Berat : {{grossWeightDisplay}}
+Volume : {{volumeDisplay}}
+{{/if}}
+
+Mohon follow up vendor dan cek status penawaran melalui link admin:
+{{adminActionUrl}}
+
+==================================================
+
+Tambahkan juga preset default untuk role Vendor pada workflow "Vendor Request":
+
+Halo {{vendorName}},
+
+Kami ingin meminta penawaran untuk layanan berikut:
+
+No. Order : {{orderNumber}}
+Customer : {{customerName}}
+Layanan : {{serviceType}}
+Route : {{route}}
+Komoditi : {{commodity}}
+Berat : {{grossWeightDisplay}}
+Volume : {{volumeDisplay}}
+Kebutuhan Tanggal : {{requiredDate}}
+
+Silakan isi penawaran melalui link berikut:
+{{vendorMiniFormLink}}
+
+Catatan:
+{{notes}}
+
+Terima kasih.
+
+==================================================
+
+Tambahkan preset default untuk workflow "Customer Approval":
+
+Halo {{customerName}},
+
+Berikut penawaran untuk request Anda:
+
+No. Order : {{orderNumber}}
+Layanan : {{serviceType}}
+Route : {{route}}
+Komoditi : {{commodity}}
+
+Total Penawaran : {{currency}} {{sellingPrice}}
+
+Silakan review dan konfirmasi melalui link berikut:
+{{customerApprovalLink}}
+
+Terima kasih.
+
+==================================================
+
+Tambahkan preset default untuk workflow "Customer Approved":
+
+✅ *CUSTOMER APPROVED*
+
+No. Order : {{orderNumber}}
+Customer : {{customerName}}
+Layanan : {{serviceType}}
+Route : {{route}}
+Total : {{currency}} {{sellingPrice}}
+
+Status: Customer sudah menyetujui penawaran.
+Silakan lanjutkan proses pembuatan SO.
+
+Link Admin:
+{{adminActionUrl}}
+
+==================================================
+
+Tambahkan preset default untuk workflow "SO Created":
+
+✅ *SALES ORDER CREATED*
+
+No. Order : {{orderNumber}}
+Customer : {{customerName}}
+Layanan : {{serviceType}}
+Route : {{route}}
+Total : {{currency}} {{sellingPrice}}
+
+SO sudah berhasil dibuat.
+Silakan lanjutkan instruksi ke vendor.
+
+==================================================
+
+Tambahkan preset default untuk workflow "Operational Request" role Vendor:
+
+Halo {{vendorName}},
+
+Customer sudah menyetujui penawaran untuk order berikut:
+
+No. Order : {{orderNumber}}
+Layanan : {{serviceType}}
+Route : {{route}}
+Komoditi : {{commodity}}
+
+Mohon lengkapi data operasional melalui link berikut:
+{{operationalFormLink}}
+
+{{#if trucking}}
+Data yang dibutuhkan:
+- Nama driver
+- No HP driver
+- Plat nomor
+- Jenis kendaraan
+{{/if}}
+
+{{#if freight_sea}}
+Data yang dibutuhkan:
+- Vessel
+- Voyage
+- Container number
+- BL number
+{{/if}}
+
+{{#if freight_air}}
+Data yang dibutuhkan:
+- Airline
+- Flight number
+- AWB number
+{{/if}}
+
+{{#if ppjk}}
+Data yang dibutuhkan:
+- Nomor aju
+- Jenis BC
+- Status dokumen
+- SPPB jika sudah terbit
+{{/if}}
+
+Terima kasih.
+
+==================================================
+
+TECHNICAL REQUIREMENT:
+1. Buat seed/default data untuk semua template di database atau constants file.
+2. Jika template belum pernah disimpan user, tampilkan default preset.
+3. Jika user sudah edit dan save template, gunakan template user.
+4. Tambahkan tombol "Reset ke Default Template".
+5. Jangan biarkan textarea kosong untuk workflow utama.
+6. Pastikan preview langsung menampilkan template default.
+7. Pastikan conditional block tetap bisa dirender.

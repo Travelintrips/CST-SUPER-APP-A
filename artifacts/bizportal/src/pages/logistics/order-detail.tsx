@@ -19,7 +19,7 @@ import { Switch } from "@/components/ui/switch";
 import {
   ArrowLeft, Loader2, Copy, ExternalLink, Plus, RefreshCw, Send,
   Package, Truck, User, ClipboardList, Clock, ShieldAlert, Ship,
-  ClipboardCheck, CheckCircle2, XCircle, MapPin,
+  ClipboardCheck, CheckCircle2, XCircle, MapPin, MessageCircle,
 } from "lucide-react";
 import { Link } from "wouter";
 import GpsTrackingPanel from "@/components/logistics/GpsTrackingPanel";
@@ -44,6 +44,7 @@ type Order = {
   customerQuoteStatus: string | null;
   etaFinal: string | null; termsConditions: string | null; quoteNotes: string | null;
   vendorCost: string | null; orderMargin: string | null;
+  version?: number;
   createdAt: string;
 };
 
@@ -799,7 +800,7 @@ function JobOrderPanel({ orderId }: { orderId: number }) {
 
 // ── Update Status Dialog ───────────────────────────────────────────────────────
 
-function UpdateStatusDialog({ orderId, currentStatus, onUpdated }: { orderId: number; currentStatus: string; onUpdated: () => void }) {
+function UpdateStatusDialog({ orderId, currentStatus, currentVersion, onUpdated }: { orderId: number; currentStatus: string; currentVersion?: number; onUpdated: () => void }) {
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState(currentStatus);
   const [notes, setNotes] = useState("");
@@ -811,13 +812,28 @@ function UpdateStatusDialog({ orderId, currentStatus, onUpdated }: { orderId: nu
     try {
       await apiFetch(`/api/logistic/orders/${orderId}/status`, {
         method: "PATCH",
-        body: JSON.stringify({ status, notes }),
+        body: JSON.stringify({
+          status,
+          notes,
+          ...(currentVersion !== undefined ? { version: currentVersion } : {}),
+        }),
       });
       toast({ title: "Status diperbarui" });
       setOpen(false);
       onUpdated();
     } catch (e: unknown) {
-      toast({ title: "Gagal", description: (e as Error).message, variant: "destructive" });
+      const err = e as { status?: number; message?: string };
+      if (err?.status === 409) {
+        toast({
+          title: "Konflik perubahan",
+          description: "Data sudah diubah oleh pengguna lain. Refresh halaman dan coba lagi.",
+          variant: "destructive",
+        });
+        setOpen(false);
+        onUpdated();
+      } else {
+        toast({ title: "Gagal", description: (e as Error).message, variant: "destructive" });
+      }
     } finally {
       setLoading(false);
     }
@@ -886,6 +902,12 @@ export default function LogisticOrderDetailPage() {
     onError: (e: Error) => toast({ title: "Gagal", description: e.message, variant: "destructive" }),
   });
 
+  const resendWaGroup = useMutation({
+    mutationFn: () => apiFetch<{ ok: boolean; message: string }>(`/api/logistic/orders/${orderId}/resend-wa-group`, { method: "POST" }),
+    onSuccess: (r) => toast({ title: "✅ " + r.message }),
+    onError: (e: Error) => toast({ title: "Gagal kirim WA", description: e.message, variant: "destructive" }),
+  });
+
   const { data: fulfillmentData, refetch: refetchFulfillment } = useQuery<{ links: FulfillmentLink[]; submissions: FulfillmentSubmission[] }>({
     queryKey: ["order-fulfillment", orderId],
     queryFn: () => apiFetch(`/api/logistic/orders/${orderId}/fulfillment`),
@@ -936,7 +958,7 @@ export default function LogisticOrderDetailPage() {
             <Button variant="outline" size="sm" onClick={() => refetch()}>
               <RefreshCw className="w-4 h-4" />
             </Button>
-            <UpdateStatusDialog orderId={orderId} currentStatus={order.status} onUpdated={() => qc.invalidateQueries({ queryKey: ["order-detail", orderId] })} />
+            <UpdateStatusDialog orderId={orderId} currentStatus={order.status} currentVersion={order.version} onUpdated={() => qc.invalidateQueries({ queryKey: ["order-detail", orderId] })} />
             <CreateTaskLinkDialog orderId={orderId} vendorId={order.approvedVendorId} onCreated={() => qc.invalidateQueries({ queryKey: ["order-detail", orderId] })} />
             {hasVendorSelected && (
               <SendQuoteDialog order={order} rfqId={activeRfqId} onSent={() => qc.invalidateQueries({ queryKey: ["order-detail", orderId] })} />
@@ -950,6 +972,18 @@ export default function LogisticOrderDetailPage() {
             />
             <Button variant="outline" size="sm" onClick={() => createCustomerLink.mutate()} disabled={createCustomerLink.isPending}>
               <Plus className="w-4 h-4 mr-1" /> Tracking Link
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => resendWaGroup.mutate()}
+              disabled={resendWaGroup.isPending}
+              title="Kirim ulang notifikasi order ke Admin Group WhatsApp"
+            >
+              {resendWaGroup.isPending
+                ? <Loader2 className="w-4 h-4 animate-spin mr-1" />
+                : <MessageCircle className="w-4 h-4 mr-1" />}
+              Resend WA Grup
             </Button>
           </div>
         </div>

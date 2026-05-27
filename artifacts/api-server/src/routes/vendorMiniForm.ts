@@ -1,6 +1,9 @@
 import { Router, type Request, type Response } from "express";
-import { eq, desc, inArray, and, count } from "drizzle-orm";
+import { rateLimit } from "express-rate-limit";
+import { eq, desc, inArray, and, count, isNull, ne } from "drizzle-orm";
 import { randomBytes } from "crypto";
+import multer from "multer";
+import { ObjectStorageService } from "../lib/objectStorage.js";
 import { db } from "@workspace/db";
 import {
   vendorMiniFormLinksTable,
@@ -13,10 +16,71 @@ import {
   suppliersTable,
   logisticOrdersTable,
   logisticOrderItemsTable,
+  salesDocumentsTable,
 } from "@workspace/db";
 import { requireClerkUser } from "../lib/requireAdmin";
 import { sendWhatsApp } from "../lib/fonnte.js";
-import { getAdminWa } from "../lib/adminWa.js";
+import { getAdminGroupWa } from "../lib/adminWa.js";
+import { createSalesOrderFromVmfApproval } from "../lib/vmfSoIntegration.js";
+import {
+  sendCustomerApprovedNotification,
+  sendSoCreatedNotification,
+  sendOpRequestNotification,
+  sendVendorRequestNotification,
+  sendCustomerApprovalNotification,
+  sendVendorRevisionNotification,
+  sendVendorRevisionFallbackNotification,
+  sendVendorSubmissionNotification,
+  sendVendorSubmitConfirmNotification,
+  sendVendorRfqForwardNotification,
+  sendVendorSubmissionSummaryNotification,
+  sendCustomerRejectionAdminNotification,
+  sendOpConfirmSubmittedNotification,
+  type LogisticOrderData,
+} from "../lib/orderNotification.js";
+
+function buildOrderDataFromRow(row: typeof logisticOrdersTable.$inferSelect): LogisticOrderData {
+  return {
+    id: row.id,
+    orderNumber: row.orderNumber,
+    customerName: row.customerName,
+    companyName: row.companyName ?? "",
+    email: row.email,
+    phone: row.phone,
+    orderType: row.orderType ?? undefined,
+    shipmentType: row.shipmentType,
+    origin: row.origin,
+    destination: row.destination,
+    commodity: row.commodity ?? null,
+    cargoDescription: row.cargoDescription ?? null,
+    grossWeight: row.grossWeight ? Number(row.grossWeight) : null,
+    volumeCbm: row.volumeCbm ? Number(row.volumeCbm) : null,
+    jumlahKoli: row.jumlahKoli ?? null,
+    grandTotal: row.grandTotal ? Number(row.grandTotal) : 0,
+    serviceList: row.shipmentType,
+    requiredDate: row.requiredDate ?? null,
+    notes: row.notes ?? null,
+    jamOrder: row.jamOrder ?? null,
+    vehicleType: row.truckType ?? null,
+    createdAt: row.createdAt ?? null,
+    publicRfqToken: row.publicRfqToken ?? null,
+  };
+}
+
+async function buildOrderDataFromRowWithItems(row: typeof logisticOrdersTable.$inferSelect): Promise<LogisticOrderData> {
+  const base = buildOrderDataFromRow(row);
+  try {
+    const items = await db.select({
+      name: logisticOrderItemsTable.serviceName,
+      subtotal: logisticOrderItemsTable.subtotal,
+    }).from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, row.id));
+    base.orderItems = items.map(i => ({
+      name: i.name,
+      subtotal: i.subtotal ? parseFloat(i.subtotal) : null,
+    }));
+  } catch { /* non-critical, skip */ }
+  return base;
+}
 
 const PUBLIC_CACHE = "public, max-age=300, stale-while-revalidate=600";
 
@@ -42,8 +106,15 @@ type CachedForm = {
   isActive: boolean; expiresAt: Date | null; mode: string;
   orderId: number | null; orderNumber: string | null; orderItemId: number | null;
   phase: string | null; maxSubmissions: number | null; resubmitAllowed: boolean | null;
+  formTarget: string;
   expiresCache: number;
 };
+
+function getExpectedTarget(baseUrl: string): string {
+  if (baseUrl.includes("customer-form")) return "customer";
+  if (baseUrl.includes("admin-form")) return "admin";
+  return "vendor";
+}
 const TOKEN_CACHE = new Map<string, CachedForm>();
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
@@ -61,6 +132,32 @@ export function invalidateTokenCache(token: string) {
 }
 
 export const vendorMiniFormRouter = Router();
+
+// ── Rate limiter untuk public endpoints ───────────────────────────────────────
+
+const vmfGetLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Terlalu banyak permintaan, coba lagi dalam 15 menit" },
+  skip: (req) => req.path.startsWith("/admin"),
+});
+
+const vmfPostLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Terlalu banyak pengiriman form, coba lagi dalam 15 menit" },
+  skip: (req) => req.path.startsWith("/admin"),
+});
+
+vendorMiniFormRouter.use((req, res, next) => {
+  if (req.method === "GET") return vmfGetLimiter(req, res, next);
+  if (req.method === "POST") return vmfPostLimiter(req, res, next);
+  next();
+});
 
 // ── Service schemas ────────────────────────────────────────────────────────────
 
@@ -249,6 +346,143 @@ export const SERVICE_SCHEMAS: Record<string, {
       { key: "op_notes", label: "Catatan Operasional", type: "textarea", section: "operational" },
     ],
   },
+
+  // ── Customer-facing schemas ─────────────────────────────────────────────────
+  customer_shipment: {
+    label: "Permintaan Pengiriman", emoji: "📦",
+    fields: [
+      { key: "cargo_name", label: "Nama / Jenis Barang", type: "text", required: true, section: "quotation" },
+      { key: "origin", label: "Kota / Negara Asal", type: "text", required: true, section: "quotation" },
+      { key: "destination", label: "Kota / Negara Tujuan", type: "text", required: true, section: "quotation" },
+      { key: "weight", label: "Berat Perkiraan (kg)", type: "number", section: "quotation" },
+      { key: "volume", label: "Volume / Dimensi (m³ atau cm)", type: "text", section: "quotation" },
+      { key: "qty", label: "Jumlah", type: "number", section: "quotation" },
+      { key: "unit", label: "Satuan", type: "select", options: ["pcs", "kg", "ton", "box", "palet", "kontainer"], section: "quotation" },
+      { key: "service_pref", label: "Layanan yang Diinginkan", type: "select", options: ["Sea Freight", "Air Freight", "Trucking", "Customs Clearance", "Door to Door", "Lainnya"], section: "quotation" },
+      { key: "preferred_date", label: "Tanggal Pengiriman yang Diinginkan", type: "date", section: "quotation" },
+      { key: "incoterms", label: "Incoterms (jika ada)", type: "select", options: ["EXW", "FOB", "CIF", "DAP", "DDP", "Tidak tahu"], section: "quotation" },
+      { key: "special_req", label: "Persyaratan Khusus", type: "textarea", section: "quotation" },
+      { key: "notes", label: "Catatan Tambahan", type: "textarea", section: "quotation" },
+    ],
+  },
+  customer_quote: {
+    label: "Permintaan Penawaran Harga", emoji: "💼",
+    fields: [
+      { key: "service_type", label: "Layanan yang Dibutuhkan", type: "select", required: true, options: ["Freight Forwarding", "Custom Clearance", "Trucking", "Warehousing", "Exim Consulting", "Full Logistics", "Lainnya"], section: "quotation" },
+      { key: "cargo_desc", label: "Deskripsi Barang / Komoditi", type: "textarea", required: true, section: "quotation" },
+      { key: "origin_country", label: "Negara / Kota Asal", type: "text", required: true, section: "quotation" },
+      { key: "dest_country", label: "Negara / Kota Tujuan", type: "text", required: true, section: "quotation" },
+      { key: "weight_volume", label: "Berat / Volume Perkiraan", type: "text", section: "quotation" },
+      { key: "frequency", label: "Frekuensi Pengiriman", type: "select", options: ["Sekali", "Mingguan", "2x/bulan", "Bulanan", "Berkala (proyek)"], section: "quotation" },
+      { key: "budget", label: "Budget Perkiraan", type: "text", section: "quotation" },
+      { key: "timeline", label: "Target Tanggal Pengiriman Pertama", type: "date", section: "quotation" },
+      { key: "notes", label: "Informasi Tambahan", type: "textarea", section: "quotation" },
+    ],
+  },
+  customer_document: {
+    label: "Pengiriman Dokumen", emoji: "📋",
+    fields: [
+      { key: "doc_type", label: "Jenis Dokumen", type: "select", required: true, options: ["Invoice", "Packing List", "Bill of Lading", "AWB", "COO", "MSDS", "Phytosanitary", "Fumigation", "Lainnya"], section: "quotation" },
+      { key: "doc_reference", label: "Nomor Referensi / PO", type: "text", section: "quotation" },
+      { key: "issued_by", label: "Diterbitkan Oleh", type: "text", section: "quotation" },
+      { key: "issued_date", label: "Tanggal Terbit", type: "date", section: "quotation" },
+      { key: "related_shipment", label: "Terkait Shipment / Order", type: "text", section: "quotation" },
+      { key: "notes", label: "Keterangan", type: "textarea", section: "quotation" },
+    ],
+  },
+  customer_complaint: {
+    label: "Keluhan / Klaim", emoji: "⚠️",
+    fields: [
+      { key: "order_ref", label: "Nomor Order / Shipment", type: "text", required: true, section: "quotation" },
+      { key: "complaint_type", label: "Jenis Keluhan", type: "select", required: true, options: ["Keterlambatan", "Kerusakan Barang", "Kehilangan Barang", "Dokumen Salah", "Overcharge", "Pelayanan", "Lainnya"], section: "quotation" },
+      { key: "incident_date", label: "Tanggal Kejadian", type: "date", section: "quotation" },
+      { key: "description", label: "Deskripsi Masalah", type: "textarea", required: true, section: "quotation" },
+      { key: "claimed_amount", label: "Nilai Klaim (Rp)", type: "number", section: "quotation" },
+      { key: "expected_resolution", label: "Penyelesaian yang Diharapkan", type: "textarea", section: "quotation" },
+    ],
+  },
+  customer_product: {
+    label: "Pemesanan Produk", emoji: "🛒",
+    fields: [
+      { key: "product_name", label: "Nama / Jenis Produk", type: "text", required: true, section: "quotation", placeholder: "Contoh: Green Bean Arabica Grade 1" },
+      { key: "brand_spec", label: "Brand / Spesifikasi", type: "text", section: "quotation", placeholder: "Contoh: Grade A, moisture max 12%" },
+      { key: "qty", label: "Jumlah yang Dipesan", type: "number", required: true, section: "quotation" },
+      { key: "unit", label: "Satuan", type: "select", required: true, options: ["pcs", "kg", "ton", "box", "karton", "sak", "lusin", "unit", "lainnya"], section: "quotation" },
+      { key: "target_price", label: "Target Harga (Rp)", type: "number", section: "quotation", placeholder: "Kosongkan jika tidak ada target" },
+      { key: "currency", label: "Mata Uang", type: "select", options: ["IDR", "USD", "SGD", "EUR"], section: "quotation" },
+      { key: "delivery_address", label: "Alamat Pengiriman", type: "textarea", required: true, section: "quotation" },
+      { key: "preferred_delivery_date", label: "Tanggal Pengiriman yang Diinginkan", type: "date", section: "quotation" },
+      { key: "payment_terms", label: "Cara Pembayaran", type: "select", options: ["Cash", "Transfer 50% DP", "Transfer Lunas", "Credit 30 hari", "Credit 45 hari", "Lainnya"], section: "quotation" },
+      { key: "notes", label: "Catatan Tambahan", type: "textarea", section: "quotation", placeholder: "Persyaratan khusus, kemasan, dokumen, dll." },
+    ],
+  },
+
+  // ── Admin / Internal schemas ────────────────────────────────────────────────
+  admin_checklist: {
+    label: "Checklist Proses", emoji: "✅",
+    fields: [
+      { key: "process_name", label: "Nama Proses / Pekerjaan", type: "text", required: true, section: "quotation" },
+      { key: "order_ref", label: "Nomor Order / Referensi", type: "text", section: "quotation" },
+      { key: "responsible", label: "Penanggung Jawab", type: "text", required: true, section: "quotation" },
+      { key: "check_date", label: "Tanggal Pengecekan", type: "date", section: "quotation" },
+      { key: "item_1", label: "Checklist Item 1", type: "select", options: ["✅ Selesai", "⏳ Proses", "❌ Belum"], section: "quotation" },
+      { key: "item_2", label: "Checklist Item 2", type: "select", options: ["✅ Selesai", "⏳ Proses", "❌ Belum"], section: "quotation" },
+      { key: "item_3", label: "Checklist Item 3", type: "select", options: ["✅ Selesai", "⏳ Proses", "❌ Belum"], section: "quotation" },
+      { key: "overall_status", label: "Status Keseluruhan", type: "select", required: true, options: ["Completed", "In Progress", "Blocked", "Cancelled"], section: "quotation" },
+      { key: "issues", label: "Kendala / Issues", type: "textarea", section: "quotation" },
+      { key: "next_action", label: "Tindakan Selanjutnya", type: "textarea", section: "quotation" },
+      { key: "notes", label: "Catatan", type: "textarea", section: "quotation" },
+    ],
+  },
+  admin_handover: {
+    label: "Serah Terima Pekerjaan", emoji: "🤝",
+    fields: [
+      { key: "job_ref", label: "Nomor Job / Order", type: "text", required: true, section: "quotation" },
+      { key: "from_staff", label: "Diserahkan Oleh", type: "text", required: true, section: "quotation" },
+      { key: "to_staff", label: "Diterima Oleh", type: "text", required: true, section: "quotation" },
+      { key: "handover_date", label: "Tanggal Serah Terima", type: "date", required: true, section: "quotation" },
+      { key: "job_description", label: "Deskripsi Pekerjaan", type: "textarea", required: true, section: "quotation" },
+      { key: "current_status", label: "Status Saat Ini", type: "select", required: true, options: ["Baru Mulai", "Sedang Berjalan", "Menunggu Dokumen", "Menunggu Vendor", "Menunggu Customer", "Hampir Selesai"], section: "quotation" },
+      { key: "pending_items", label: "Item yang Belum Selesai", type: "textarea", section: "quotation" },
+      { key: "important_contacts", label: "Kontak Penting", type: "textarea", section: "quotation" },
+      { key: "notes", label: "Catatan Tambahan", type: "textarea", section: "quotation" },
+    ],
+  },
+  admin_inspection: {
+    label: "Laporan Inspeksi", emoji: "🔍",
+    fields: [
+      { key: "inspection_ref", label: "Nomor Inspeksi / Referensi", type: "text", required: true, section: "quotation" },
+      { key: "location", label: "Lokasi Inspeksi", type: "text", required: true, section: "quotation" },
+      { key: "inspection_date", label: "Tanggal Inspeksi", type: "date", required: true, section: "quotation" },
+      { key: "inspector", label: "Nama Inspektor", type: "text", required: true, section: "quotation" },
+      { key: "goods_desc", label: "Deskripsi Barang / Aset", type: "textarea", required: true, section: "quotation" },
+      { key: "qty_checked", label: "Jumlah Diperiksa", type: "number", section: "quotation" },
+      { key: "qty_ok", label: "Jumlah OK", type: "number", section: "quotation" },
+      { key: "qty_rejected", label: "Jumlah Ditolak / Rusak", type: "number", section: "quotation" },
+      { key: "condition", label: "Kondisi Umum", type: "select", required: true, options: ["Baik", "Cukup Baik", "Ada Kerusakan Minor", "Kerusakan Signifikan", "Ditolak"], section: "quotation" },
+      { key: "findings", label: "Temuan / Catatan", type: "textarea", section: "quotation" },
+      { key: "recommendation", label: "Rekomendasi", type: "textarea", section: "quotation" },
+    ],
+  },
+  admin_rfq_forward: {
+    label: "Forward RFQ Customer ke Vendor", emoji: "📨",
+    fields: [
+      { key: "customer_name", label: "Nama Customer / Perusahaan", type: "text", required: true, section: "quotation", placeholder: "Contoh: PT Maju Bersama" },
+      { key: "rfq_ref", label: "Nomor RFQ / Referensi Internal", type: "text", section: "quotation", placeholder: "Contoh: RFQ/2025/001" },
+      { key: "service_needed", label: "Layanan yang Dibutuhkan", type: "select", required: true, options: ["Sea Freight", "Air Freight", "Trucking", "Customs Clearance", "Warehousing", "Exim Full Service", "Door to Door", "Lainnya"], section: "quotation" },
+      { key: "cargo_desc", label: "Deskripsi Barang / Komoditi", type: "textarea", required: true, section: "quotation", placeholder: "Jenis barang, HS code, kondisi khusus, dll." },
+      { key: "origin", label: "Asal (Kota / Negara)", type: "text", required: true, section: "quotation" },
+      { key: "destination", label: "Tujuan (Kota / Negara)", type: "text", required: true, section: "quotation" },
+      { key: "weight_volume", label: "Berat / Volume", type: "text", section: "quotation", placeholder: "Contoh: 500 kg / 2 CBM" },
+      { key: "incoterms", label: "Incoterms", type: "select", options: ["EXW", "FOB", "CIF", "DAP", "DDP", "FCA", "Tidak ditentukan"], section: "quotation" },
+      { key: "target_delivery_date", label: "Target Tanggal Pengiriman", type: "date", section: "quotation" },
+      { key: "customer_budget", label: "Budget Customer (Rp / USD)", type: "text", section: "quotation", placeholder: "Kosongkan jika tidak diketahui" },
+      { key: "special_req", label: "Persyaratan Khusus dari Customer", type: "textarea", section: "quotation", placeholder: "Contoh: butuh insurance, dokumen tertentu, dll." },
+      { key: "quote_deadline", label: "Batas Waktu Penawaran dari Vendor", type: "date", required: true, section: "quotation" },
+      { key: "vendor_phone", label: "No. WhatsApp Vendor (untuk notifikasi otomatis)", type: "text", section: "quotation", placeholder: "Contoh: 628123456789" },
+      { key: "notes_to_vendor", label: "Pesan / Instruksi ke Vendor", type: "textarea", section: "quotation", placeholder: "Tambahan informasi yang perlu diketahui vendor" },
+    ],
+  },
 };
 
 // ── PUBLIC: GET /api/vendor-form/:token ───────────────────────────────────────
@@ -274,6 +508,7 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
           phase: vendorMiniFormLinksTable.phase,
           maxSubmissions: vendorMiniFormLinksTable.maxSubmissions,
           resubmitAllowed: vendorMiniFormLinksTable.resubmitAllowed,
+          formTarget: vendorMiniFormLinksTable.formTarget,
           vendorName: suppliersTable.name,
           vendorPhone: suppliersTable.phone,
           vendorContactPerson: suppliersTable.contactPerson,
@@ -298,6 +533,7 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
         phase: dbRow.phase ?? "quotation",
         maxSubmissions: dbRow.maxSubmissions ?? null,
         resubmitAllowed: dbRow.resubmitAllowed ?? false,
+        formTarget: dbRow.formTarget ?? "vendor",
         vendorName: dbRow.linkVendorName ?? dbRow.vendorName ?? null,
         vendorPhone: dbRow.vendorPhone ?? null,
         vendorContactPerson: dbRow.vendorContactPerson ?? null,
@@ -308,6 +544,10 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
       }
     }
     if (!row) return res.status(404).json({ error: "Link tidak ditemukan atau sudah tidak valid" });
+    const expectedTarget = getExpectedTarget(req.baseUrl);
+    if ((row.formTarget ?? "vendor") !== expectedTarget) {
+      return res.status(404).json({ error: "Link tidak ditemukan atau sudah tidak valid" });
+    }
     if (!row.isActive) return res.status(410).json({ error: "Link ini sudah dinonaktifkan" });
     if (row.expiresAt && row.expiresAt < new Date()) {
       invalidateTokenCache(token);
@@ -369,6 +609,38 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
   }
 });
 
+// ── PUBLIC: POST /api/vendor-form/upload/:token ───────────────────────────────
+const _vmfUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+const _vmfStorage = new ObjectStorageService();
+const _vmfUploadRateLimit = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false });
+
+vendorMiniFormRouter.post("/upload/:token", _vmfUploadRateLimit, _vmfUpload.single("file"), async (req: Request, res: Response) => {
+  const { token } = req.params as { token: string };
+  if (token === "admin") return res.status(404).json({ error: "Not found" });
+  try {
+    const [link] = await db.select({ id: vendorMiniFormLinksTable.id, isActive: vendorMiniFormLinksTable.isActive, expiresAt: vendorMiniFormLinksTable.expiresAt })
+      .from(vendorMiniFormLinksTable)
+      .where(eq(vendorMiniFormLinksTable.token, token));
+    if (!link) return res.status(404).json({ error: "Link tidak ditemukan" });
+    if (!link.isActive) return res.status(410).json({ error: "Link sudah dinonaktifkan" });
+    if (link.expiresAt && link.expiresAt < new Date()) return res.status(410).json({ error: "Link sudah kadaluarsa" });
+    if (!req.file) return res.status(400).json({ error: "File diperlukan" });
+
+    const allowed = ["application/pdf", "image/jpeg", "image/png", "image/webp", "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"];
+    if (!allowed.includes(req.file.mimetype)) {
+      return res.status(400).json({ error: "Tipe file tidak didukung. Gunakan PDF, gambar, atau dokumen Office." });
+    }
+
+    const objectPath = await _vmfStorage.uploadPrivateEntity(req.file.buffer, req.file.mimetype);
+    return res.json({ objectPath });
+  } catch (err) {
+    req.log?.error({ err }, "vmf upload error");
+    return res.status(500).json({ error: "Upload gagal" });
+  }
+});
+
 // ── PUBLIC: POST /api/vendor-form/:token ──────────────────────────────────────
 
 vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
@@ -380,6 +652,10 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
       .from(vendorMiniFormLinksTable)
       .where(eq(vendorMiniFormLinksTable.token, token));
     if (!link) return res.status(404).json({ error: "Link tidak ditemukan" });
+    const expectedTargetPost = getExpectedTarget(req.baseUrl);
+    if ((link.formTarget ?? "vendor") !== expectedTargetPost) {
+      return res.status(404).json({ error: "Link tidak ditemukan" });
+    }
     if (!link.isActive) return res.status(410).json({ error: "Link ini sudah dinonaktifkan" });
     if (link.expiresAt && link.expiresAt < new Date()) return res.status(410).json({ error: "Link sudah kadaluarsa" });
 
@@ -395,25 +671,33 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
       if (!link.resubmitAllowed) return res.status(409).json({ error: "Penawaran sudah pernah dikirim. Hubungi admin untuk izin revisi." });
     }
 
-    // Max submissions check
-    if (link.maxSubmissions !== null) {
-      const [cntRow] = await db
-        .select({ cnt: count() })
-        .from(vendorMiniFormSubmissionsTable)
-        .where(eq(vendorMiniFormSubmissionsTable.token, token));
-      if (Number(cntRow?.cnt ?? 0) >= link.maxSubmissions) {
-        return res.status(410).json({ error: "Kuota submission sudah penuh" });
-      }
-    }
-
-    const { vendorName, contactPerson, contactPhone, formData, responseStatus, vendorPrice, currency, eta, validUntil } = req.body as {
+    const { vendorName, contactPerson, contactPhone, formData, responseStatus, vendorPrice, currency, eta, validUntil, attachmentUrl } = req.body as {
       vendorName?: string; contactPerson?: string; contactPhone?: string;
       formData?: Record<string, unknown>;
       responseStatus?: string; vendorPrice?: number; currency?: string;
-      eta?: string; validUntil?: string;
+      eta?: string; validUntil?: string; attachmentUrl?: string;
     };
 
     if (!formData || typeof formData !== "object") return res.status(400).json({ error: "formData diperlukan" });
+
+    // Validasi server-side untuk field required berdasarkan SERVICE_SCHEMAS
+    const schema = SERVICE_SCHEMAS[link.serviceType];
+    if (schema) {
+      const activePhase = link.phase ?? "quotation";
+      const requiredKeys = schema.fields
+        .filter(f => f.required && (!f.section || f.section === activePhase || f.section === "both"))
+        .map(f => f.key);
+      const missingFields = requiredKeys.filter(k => {
+        const val = (formData as Record<string, unknown>)[k];
+        return val === undefined || val === null || String(val).trim() === "";
+      });
+      if (missingFields.length > 0) {
+        return res.status(400).json({
+          error: `Field wajib belum diisi: ${missingFields.join(", ")}`,
+          missingFields,
+        });
+      }
+    }
 
     // Capture IP and UA
     const submittedIp = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()
@@ -456,6 +740,7 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
           contactPerson: contactPerson ?? undefined, contactPhone: contactPhone ?? undefined,
           responseStatus: "resubmitted", vendorPrice: vendorPrice ? String(vendorPrice) : undefined,
           currency: currency ?? undefined, eta: eta ?? undefined, validUntil: validUntil ?? undefined,
+          attachmentUrl: attachmentUrl ?? undefined,
           submittedIp, submittedUa,
           revisionCount: (prev?.revisionCount ?? 0) + 1,
         })
@@ -473,21 +758,35 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
         `Revisi penawaran oleh ${vendorName ?? link.vendorName ?? "vendor"}`,
         { vendorPrice, currency, eta });
     } else {
-      const [inserted] = await db.insert(vendorMiniFormSubmissionsTable).values({
-        linkId: link.id, token,
-        supplierId: link.supplierId,
-        serviceType: link.serviceType,
-        vendorName: vendorName ?? link.vendorName ?? null,
-        contactPerson: contactPerson ?? null, contactPhone: contactPhone ?? null,
-        formData,
-        responseStatus: responseStatus ?? "submitted",
-        vendorPrice: vendorPrice ? String(vendorPrice) : null,
-        currency: currency ?? "IDR",
-        eta: eta ?? null, validUntil: validUntil ?? null,
-        orderId: link.orderId ?? null,
-        orderItemId: link.orderItemId ?? null,
-        submittedIp, submittedUa,
-      }).returning();
+      // Wrap count-check + insert dalam transaksi agar maxSubmissions tidak bisa di-race
+      const inserted = await db.transaction(async (tx) => {
+        if (link.maxSubmissions !== null) {
+          const [cntRow] = await tx
+            .select({ cnt: count() })
+            .from(vendorMiniFormSubmissionsTable)
+            .where(eq(vendorMiniFormSubmissionsTable.linkId, link.id));
+          if (Number(cntRow?.cnt ?? 0) >= link.maxSubmissions) {
+            throw Object.assign(new Error("QUOTA_EXCEEDED"), {});
+          }
+        }
+        const [row] = await tx.insert(vendorMiniFormSubmissionsTable).values({
+          linkId: link.id, token,
+          supplierId: link.supplierId,
+          serviceType: link.serviceType,
+          vendorName: vendorName ?? link.vendorName ?? null,
+          contactPerson: contactPerson ?? null, contactPhone: contactPhone ?? null,
+          formData,
+          responseStatus: responseStatus ?? "submitted",
+          vendorPrice: vendorPrice ? String(vendorPrice) : null,
+          currency: currency ?? "IDR",
+          eta: eta ?? null, validUntil: validUntil ?? null,
+          attachmentUrl: attachmentUrl ?? null,
+          orderId: link.orderId ?? null,
+          orderItemId: link.orderItemId ?? null,
+          submittedIp, submittedUa,
+        }).returning();
+        return row;
+      });
 
       submission = inserted;
       await logActivity("submission", inserted.id, "submitted", "vendor",
@@ -507,74 +806,124 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
 
     // Confirm WA to vendor
     if (contactPhone?.trim()) {
-      const msgVendor =
-        `Halo *${picLabel}* dari *${vendorLabel}*,\n\n` +
-        `Terima kasih! Penawaran Anda telah kami terima dan akan segera diproses oleh tim CST Logistics.\n\n` +
-        (link.orderNumber ? `Order Ref: *${link.orderNumber}*\n\n` : "") +
-        `_Pesan ini dikirim otomatis, mohon tidak dibalas._`;
-      sendWhatsApp(contactPhone.trim(), msgVendor, {
-        context: "vendor-mini-form-confirm",
-        refType: "vendor_mini_form",
-        refId: token,
-      }).catch(() => {});
+      sendVendorSubmitConfirmNotification(
+        contactPhone.trim(),
+        picLabel,
+        vendorLabel,
+        link.orderNumber ?? null,
+        token,
+      ).catch(() => {});
+    }
+
+    // WA to vendor for admin_rfq_forward: notify vendor about the RFQ details
+    if (link.serviceType === "admin_rfq_forward" && formData) {
+      const fd = formData as Record<string, unknown>;
+      const vendorPhoneRaw = (fd["vendor_phone"] as string | undefined)?.trim();
+      if (vendorPhoneRaw) {
+        const { normalizePhone } = await import("../lib/phoneUtils.js");
+        const vendorPhoneNorm = normalizePhone(vendorPhoneRaw);
+        if (vendorPhoneNorm) {
+          const { getPreferredDomain } = await import("../lib/domain.js");
+          const domain = getPreferredDomain();
+          const vendorFormUrl = domain ? `https://${domain}/vendor-mini-form/${token}` : `/vendor-mini-form/${token}`;
+          const vendorLabelRfq = link.vendorName?.trim() || vendorLabel;
+          sendVendorRfqForwardNotification(
+            vendorPhoneNorm,
+            vendorLabelRfq,
+            {
+              rfqRef: (fd["rfq_ref"] as string | undefined)?.trim() ?? null,
+              customerName: (fd["customer_name"] as string | undefined)?.trim() ?? null,
+              serviceNeeded: (fd["service_needed"] as string | undefined)?.trim() ?? null,
+              origin: (fd["origin"] as string | undefined)?.trim() ?? null,
+              destination: (fd["destination"] as string | undefined)?.trim() ?? null,
+              weightVolume: (fd["weight_volume"] as string | undefined)?.trim() ?? null,
+              cargoDesc: (fd["cargo_desc"] as string | undefined)?.trim() ?? null,
+              targetDeliveryDate: (fd["target_delivery_date"] as string | undefined)?.trim() ?? null,
+              quoteDeadline: (fd["quote_deadline"] as string | undefined)?.trim() ?? null,
+              notesToVendor: (fd["notes_to_vendor"] as string | undefined)?.trim() ?? null,
+              vendorFormUrl,
+            },
+            token,
+          ).catch(() => {});
+        }
+      }
     }
 
     // WA Summary to admin (especially useful for order-based: show all competing offers)
-    getAdminWa().then(async (adminWa) => {
-      if (!adminWa) return;
+    (() => {
       const priceStr = vendorPrice ? `${currency ?? "IDR"} ${Number(vendorPrice).toLocaleString("id-ID")}` : "-";
 
-      if (link.mode === "order_based" && link.orderNumber) {
-        // Gather all existing submissions for this link for summary
-        const allSubs = await db
-          .select({ vendorName: vendorMiniFormSubmissionsTable.vendorName, vendorPrice: vendorMiniFormSubmissionsTable.vendorPrice, currency: vendorMiniFormSubmissionsTable.currency, eta: vendorMiniFormSubmissionsTable.eta })
-          .from(vendorMiniFormSubmissionsTable)
-          .where(eq(vendorMiniFormSubmissionsTable.linkId, link.id))
-          .orderBy(desc(vendorMiniFormSubmissionsTable.submittedAt));
-
-        const { getPreferredDomain } = await import("../lib/domain.js");
-        const domain = getPreferredDomain();
-        const adminReviewLink = domain ? `https://${domain}/bizportal/purchase/vendor-forms` : "/bizportal/purchase/vendor-forms";
-
-        const lines = allSubs.map((s, i) => {
-          const p = s.vendorPrice ? `${s.currency ?? "IDR"} ${Number(s.vendorPrice).toLocaleString("id-ID")}` : "-";
-          const etaStr = s.eta ? ` - ETA ${s.eta}` : "";
-          return `${i + 1}. *${s.vendorName ?? "Vendor"}* - ${p}${etaStr}`;
-        });
-
-        const msgAdmin =
-          `📊 *Update Penawaran Vendor untuk Order #${link.orderNumber}*\n` +
-          `${lines.join("\n")}\n\n` +
-          `Review: ${adminReviewLink}`;
-        sendWhatsApp(adminWa, msgAdmin, {
-          context: "vendor-mini-form-summary",
-          refType: "vendor_mini_form_link",
-          refId: String(link.id),
+      if (link.mode === "order_based" && link.orderId) {
+        // Pakai template sendVendorSubmissionNotification
+        db.select().from(logisticOrdersTable)
+          .where(eq(logisticOrdersTable.id, link.orderId))
+          .limit(1)
+          .then(([orderRow]) => {
+            if (!orderRow) return;
+            sendVendorSubmissionNotification(buildOrderDataFromRow(orderRow), vendorLabel, priceStr).catch(() => {});
+          }).catch(() => {});
+      } else if (link.mode === "order_based" && link.orderNumber) {
+        getAdminGroupWa().then(async (adminGroupWa) => {
+          if (!adminGroupWa) return;
+          const allSubs = await db
+            .select({ vendorName: vendorMiniFormSubmissionsTable.vendorName, vendorPrice: vendorMiniFormSubmissionsTable.vendorPrice, currency: vendorMiniFormSubmissionsTable.currency, eta: vendorMiniFormSubmissionsTable.eta })
+            .from(vendorMiniFormSubmissionsTable)
+            .where(eq(vendorMiniFormSubmissionsTable.linkId, link.id))
+            .orderBy(desc(vendorMiniFormSubmissionsTable.submittedAt));
+          const lines = allSubs.map((s, i) => {
+            const p = s.vendorPrice ? `${s.currency ?? "IDR"} ${Number(s.vendorPrice).toLocaleString("id-ID")}` : "-";
+            return `${i + 1}. *${s.vendorName ?? "Vendor"}* - ${p}${s.eta ? ` - ETA ${s.eta}` : ""}`;
+          });
+          sendVendorSubmissionSummaryNotification(adminGroupWa, {
+            vendorLabel,
+            picLabel,
+            contactPhone: contactPhone?.trim() ?? null,
+            orderNumber: link.orderNumber ?? null,
+            serviceLabel: `Order #${link.orderNumber}`,
+            priceStr: lines.join("\n") || priceStr,
+            statusStr: isRevision ? `REVISI (Rev-${(submission as { revisionCount?: number }).revisionCount ?? 1})` : (responseStatus ?? "submitted"),
+          }, String(link.id)).catch(() => {});
         }).catch(() => {});
       } else {
-        // Simple notification for rate_collection
-        const msgAdmin =
-          `📋 *Submission Form Vendor*\n` +
-          `Vendor: *${vendorLabel}*\n` +
-          `PIC: ${picLabel} · ${contactPhone?.trim() || "-"}\n` +
-          (link.orderNumber ? `Order: ${link.orderNumber}\n` : "") +
-          `Service: ${SERVICE_SCHEMAS[link.serviceType]?.label ?? link.serviceType}\n` +
-          `Harga: ${priceStr}\n` +
-          (isRevision ? `Status: *REVISI* (Rev-${(submission as { revisionCount?: number }).revisionCount ?? 1})` : `Status: ${responseStatus ?? "submitted"}`);
-        sendWhatsApp(adminWa, msgAdmin, {
-          context: "vendor-mini-form-admin-notif",
-          refType: "vendor_mini_form",
-          refId: token,
+        getAdminGroupWa().then((adminGroupWa) => {
+          if (!adminGroupWa) return;
+          sendVendorSubmissionSummaryNotification(adminGroupWa, {
+            vendorLabel,
+            picLabel,
+            contactPhone: contactPhone?.trim() ?? null,
+            orderNumber: link.orderNumber ?? null,
+            serviceLabel: SERVICE_SCHEMAS[link.serviceType]?.label ?? link.serviceType,
+            priceStr,
+            statusStr: isRevision ? `REVISI (Rev-${(submission as { revisionCount?: number }).revisionCount ?? 1})` : (responseStatus ?? "submitted"),
+          }, token).catch(() => {});
         }).catch(() => {});
       }
-    }).catch(() => {});
+    })();
 
     return res.json({ success: true, submissionId: submission.id, message: "Penawaran berhasil dikirim, terima kasih!" });
-  } catch (err) {
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message === "QUOTA_EXCEEDED") {
+      return res.status(410).json({ error: "Kuota submission sudah penuh" });
+    }
     req.log?.error({ err }, "vendor-mini-form POST error");
     return res.status(500).json({ error: "Gagal menyimpan data" });
   }
 });
+
+// Kolom yang aman dikirim ke customer — vendor cost tidak boleh bocor
+const SAFE_OFFER_SUMMARY_KEYS = [
+  "serviceType", "origin", "destination", "weight", "volume", "commodity",
+  "incoterms", "eta", "notes", "items", "services",
+];
+
+function sanitizeOfferSummary(raw: unknown): Record<string, unknown> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  return Object.fromEntries(
+    Object.entries(raw as Record<string, unknown>).filter(([k]) =>
+      SAFE_OFFER_SUMMARY_KEYS.includes(k),
+    ),
+  );
+}
 
 // ── PUBLIC: GET /api/vendor-form/customer-approval/:token ─────────────────────
 
@@ -586,7 +935,8 @@ vendorMiniFormRouter.get("/customer-approval/:token", async (req: Request, res: 
     if (approval.expiresAt && approval.expiresAt < new Date()) return res.status(410).json({ error: "Link penawaran sudah kadaluarsa" });
     return res.json({
       token: approval.token, orderNumber: approval.orderNumber,
-      customerName: approval.customerName, offerSummary: approval.offerSummary,
+      customerName: approval.customerName,
+      offerSummary: sanitizeOfferSummary(approval.offerSummary),
       sellingPrice: approval.sellingPrice, currency: approval.currency,
       termsNotes: approval.termsNotes, status: approval.status, soNumber: approval.soNumber,
     });
@@ -601,84 +951,198 @@ vendorMiniFormRouter.get("/customer-approval/:token", async (req: Request, res: 
 vendorMiniFormRouter.post("/customer-approval/:token", async (req: Request, res: Response) => {
   const { token } = req.params as { token: string };
   try {
-    const [approval] = await db.select().from(customerApprovalsTable).where(eq(customerApprovalsTable.token, token));
-    if (!approval) return res.status(404).json({ error: "Link tidak ditemukan" });
-    if (approval.status !== "pending") return res.status(409).json({ error: "Penawaran ini sudah direspons sebelumnya", status: approval.status });
-    if (approval.expiresAt && approval.expiresAt < new Date()) return res.status(410).json({ error: "Link penawaran sudah kadaluarsa" });
+    // Cek awal sebelum masuk transaksi (fast-fail untuk expired/not found)
+    const [preCheck] = await db.select({ expiresAt: customerApprovalsTable.expiresAt, status: customerApprovalsTable.status })
+      .from(customerApprovalsTable).where(eq(customerApprovalsTable.token, token));
+    if (!preCheck) return res.status(404).json({ error: "Link tidak ditemukan" });
+    if (preCheck.expiresAt && preCheck.expiresAt < new Date()) return res.status(410).json({ error: "Link penawaran sudah kadaluarsa" });
+    if (preCheck.status !== "pending") return res.status(409).json({ error: "Penawaran ini sudah direspons sebelumnya", status: preCheck.status });
 
     const { action, notes } = req.body as { action: "approve" | "reject"; notes?: string };
     if (!["approve", "reject"].includes(action)) return res.status(400).json({ error: "action harus approve atau reject" });
 
     const now = new Date();
     let soNumber: string | null = null;
+    let orderId: number | null = null;
+    let orderNumber: string | null = null;
+    let customerName: string | null = null;
 
+    // Semua operasi dalam satu transaksi atomik
+    await db.transaction(async (tx) => {
+      // Atomic lock: UPDATE hanya jika status masih 'pending' — mencegah double-approve
+      let locked: typeof customerApprovalsTable.$inferSelect | undefined;
+
+      if (action === "approve") {
+        const dateStr = now.getFullYear().toString() + String(now.getMonth() + 1).padStart(2, "0");
+        const randomSuffix = randomBytes(4).toString("hex").toUpperCase();
+        soNumber = `SO/${dateStr}/${String(0).padStart(4, "0")}${randomSuffix}`; // placeholder, diupdate setelah dapat id
+
+        // Atomic update: hanya berhasil jika status = 'pending'
+        const rows = await tx.update(customerApprovalsTable)
+          .set({ status: "approved", approvedAt: now, notes: notes ?? null, locked: true })
+          .where(and(eq(customerApprovalsTable.token, token), eq(customerApprovalsTable.status, "pending")))
+          .returning();
+        locked = rows[0];
+        if (!locked) throw new Error("ALREADY_RESPONDED");
+
+        // Generate SO number dengan approval.id yang sudah diketahui
+        soNumber = `SO/${dateStr}/${String(locked.id).padStart(4, "0")}${randomSuffix}`;
+        await tx.update(customerApprovalsTable)
+          .set({ soNumber })
+          .where(eq(customerApprovalsTable.id, locked.id));
+
+        orderId = locked.orderId;
+        orderNumber = locked.orderNumber;
+        customerName = locked.customerName;
+
+        // Lock submissions
+        if (locked.submissionId) {
+          await tx.update(vendorMiniFormSubmissionsTable)
+            .set({ locked: true, responseStatus: "customer_approved" })
+            .where(eq(vendorMiniFormSubmissionsTable.id, locked.submissionId));
+        } else if (locked.orderId) {
+          await tx.update(vendorMiniFormSubmissionsTable)
+            .set({ locked: true, responseStatus: "customer_approved" })
+            .where(and(
+              eq(vendorMiniFormSubmissionsTable.orderId, locked.orderId),
+              eq(vendorMiniFormSubmissionsTable.selectedByAdmin, true),
+            ));
+        }
+
+        // Update logistic order status
+        if (locked.orderId) {
+          await tx.update(logisticOrdersTable)
+            .set({ customerConfirmStatus: "confirmed", customerConfirmedAt: now, status: "Customer Approved" })
+            .where(eq(logisticOrdersTable.id, locked.orderId));
+
+          // Update itemStatus di VMF links menjadi customer_approved
+          await tx.update(vendorMiniFormLinksTable)
+            .set({ itemStatus: "customer_approved" })
+            .where(and(
+              eq(vendorMiniFormLinksTable.orderId, locked.orderId),
+              eq(vendorMiniFormLinksTable.mode, "order_based"),
+            ));
+        }
+      } else {
+        // Reject — atomic update
+        const rows = await tx.update(customerApprovalsTable)
+          .set({ status: "rejected", rejectedAt: now, notes: notes ?? null })
+          .where(and(eq(customerApprovalsTable.token, token), eq(customerApprovalsTable.status, "pending")))
+          .returning();
+        locked = rows[0];
+        if (!locked) throw new Error("ALREADY_RESPONDED");
+
+        orderId = locked.orderId;
+        orderNumber = locked.orderNumber;
+        customerName = locked.customerName;
+
+        if (locked.orderId) {
+          await tx.update(logisticOrdersTable)
+            .set({ customerConfirmStatus: "rejected", status: "Customer Rejected" })
+            .where(eq(logisticOrdersTable.id, locked.orderId));
+        }
+      }
+    });
+
+    // ── Buat Sales Order nyata di sales_documents (hanya saat approve) ────
+    let salesDocId: number | null = null;
     if (action === "approve") {
-      const dateStr = now.getFullYear().toString() + String(now.getMonth() + 1).padStart(2, "0");
-      soNumber = `SO/${dateStr}/${String(approval.id).padStart(5, "0")}`;
+      // Re-fetch approval row yang sudah di-update supaya helper punya data lengkap
+      const [freshApproval] = await db
+        .select()
+        .from(customerApprovalsTable)
+        .where(eq(customerApprovalsTable.token, token))
+        .limit(1);
 
-      await db.update(customerApprovalsTable)
-        .set({ status: "approved", approvedAt: now, notes: notes ?? null, soNumber, locked: true })
-        .where(eq(customerApprovalsTable.token, token));
-
-      // Lock selected submissions if submissionId is known
-      if (approval.submissionId) {
-        await db.update(vendorMiniFormSubmissionsTable)
-          .set({ locked: true, responseStatus: "customer_approved" })
-          .where(eq(vendorMiniFormSubmissionsTable.id, approval.submissionId));
-      } else if (approval.orderId) {
-        // Lock all selected submissions for this order
-        await db.update(vendorMiniFormSubmissionsTable)
-          .set({ locked: true, responseStatus: "customer_approved" })
-          .where(and(
-            eq(vendorMiniFormSubmissionsTable.orderId, approval.orderId),
-            eq(vendorMiniFormSubmissionsTable.selectedByAdmin, true),
-          ));
+      if (freshApproval) {
+        const soResult = await createSalesOrderFromVmfApproval(freshApproval);
+        if (soResult.ok) {
+          // Gunakan doc_number dari sales_documents sebagai SO number canonical
+          soNumber = soResult.docNumber;
+          salesDocId = soResult.docId;
+          // Update customer_approvals.so_number dengan nomor SO yang benar
+          await db.update(customerApprovalsTable)
+            .set({ soNumber: soResult.docNumber })
+            .where(eq(customerApprovalsTable.token, token));
+        } else if (soResult.reason === "already_exists") {
+          soNumber = soResult.docNumber;
+          salesDocId = soResult.docId;
+        } else {
+          // SO creation gagal — log saja, jangan gagalkan approval
+          req.log?.warn({ reason: soResult.message }, "VMF SO creation failed — approval tetap valid");
+        }
       }
-
-      // Update logistic order status
-      if (approval.orderId) {
-        await db.update(logisticOrdersTable)
-          .set({ customerConfirmStatus: "confirmed", customerConfirmedAt: now, status: "Customer Approved" })
-          .where(eq(logisticOrdersTable.id, approval.orderId));
-      }
-
-      await logActivity("customer_approval", approval.id, "approved", "customer",
-        `Customer ${approval.customerName ?? "-"} menyetujui penawaran. SO: ${soNumber}`,
-        { soNumber, orderId: approval.orderId });
-    } else {
-      await db.update(customerApprovalsTable)
-        .set({ status: "rejected", rejectedAt: now, notes: notes ?? null })
-        .where(eq(customerApprovalsTable.token, token));
-
-      if (approval.orderId) {
-        await db.update(logisticOrdersTable)
-          .set({ customerConfirmStatus: "rejected", status: "Customer Rejected" })
-          .where(eq(logisticOrdersTable.id, approval.orderId));
-      }
-
-      await logActivity("customer_approval", approval.id, "rejected", "customer",
-        `Customer ${approval.customerName ?? "-"} menolak penawaran`, { orderId: approval.orderId });
     }
 
-    // Notify admin
-    getAdminWa().then((adminWa) => {
-      if (!adminWa) return;
-      const emoji = action === "approve" ? "✅" : "❌";
-      const msg = `${emoji} *Customer ${action === "approve" ? "Setuju" : "Tolak"} Penawaran*\n` +
-        `Order: ${approval.orderNumber ?? "-"}\n` +
-        `Customer: ${approval.customerName ?? "-"}\n` +
-        (soNumber ? `SO: ${soNumber}\n` : "") +
-        (notes ? `Catatan: ${notes}` : "");
-      sendWhatsApp(adminWa, msg, { context: "customer-approval", refType: "customer_approval", refId: token }).catch(() => {});
-    }).catch(() => {});
+    // Activity log (non-fatal, di luar transaksi)
+    if (action === "approve") {
+      await logActivity("customer_approval", 0, "approved", "customer",
+        `Customer ${customerName ?? "-"} menyetujui penawaran. SO: ${soNumber}`,
+        { soNumber, salesDocId, orderId }).catch?.(() => {});
+    } else {
+      await logActivity("customer_approval", 0, "rejected", "customer",
+        `Customer ${customerName ?? "-"} menolak penawaran`, { orderId }).catch?.(() => {});
+    }
+
+    // Notify via WA templates (fire-and-forget)
+    if (orderId) {
+      db.select().from(logisticOrdersTable)
+        .where(eq(logisticOrdersTable.id, orderId))
+        .limit(1)
+        .then(([orderRow]) => {
+          if (!orderRow) return;
+          const orderData: LogisticOrderData = {
+            id: orderRow.id,
+            orderNumber: orderRow.orderNumber,
+            customerName: orderRow.customerName,
+            companyName: orderRow.companyName ?? "",
+            email: orderRow.email,
+            phone: orderRow.phone,
+            orderType: orderRow.orderType ?? undefined,
+            shipmentType: orderRow.shipmentType,
+            origin: orderRow.origin,
+            destination: orderRow.destination,
+            commodity: orderRow.commodity ?? null,
+            cargoDescription: orderRow.cargoDescription ?? null,
+            grossWeight: orderRow.grossWeight ? Number(orderRow.grossWeight) : null,
+            volumeCbm: orderRow.volumeCbm ? Number(orderRow.volumeCbm) : null,
+            jumlahKoli: orderRow.jumlahKoli ?? null,
+            grandTotal: orderRow.grandTotal ? Number(orderRow.grandTotal) : 0,
+            serviceList: orderRow.shipmentType,
+            requiredDate: orderRow.requiredDate ?? null,
+            notes: orderRow.notes ?? null,
+            jamOrder: orderRow.jamOrder ?? null,
+            vehicleType: orderRow.truckType ?? null,
+            createdAt: orderRow.createdAt ?? null,
+            publicRfqToken: orderRow.publicRfqToken ?? null,
+          };
+          if (action === "approve") {
+            sendCustomerApprovedNotification(orderData).catch(() => {});
+            if (soNumber) {
+              const sellingPriceStr = orderRow.finalSellingPrice
+                ? `Rp ${Number(orderRow.finalSellingPrice).toLocaleString("id-ID")}`
+                : "-";
+              sendSoCreatedNotification(orderData, sellingPriceStr).catch(() => {});
+            }
+          } else {
+            getAdminGroupWa().then((adminGroupWa) => {
+              if (!adminGroupWa) return;
+              sendCustomerRejectionAdminNotification(adminGroupWa, { orderNumber: orderNumber ?? null, customerName: customerName ?? null, notes: notes ?? null }, token).catch(() => {});
+            }).catch(() => {});
+          }
+        }).catch(() => {});
+    }
 
     return res.json({
-      success: true, action, soNumber,
+      success: true, action, soNumber, salesDocId,
       message: action === "approve"
         ? `Terima kasih! Persetujuan Anda telah kami catat. Sales Order ${soNumber} telah dibuat.`
         : "Penolakan Anda telah kami catat. Tim kami akan segera menghubungi Anda.",
     });
-  } catch (err) {
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message === "ALREADY_RESPONDED") {
+      return res.status(409).json({ error: "Penawaran ini sudah direspons sebelumnya" });
+    }
     req.log?.error({ err }, "customer-approval POST error");
     return res.status(500).json({ error: "Internal server error" });
   }
@@ -722,17 +1186,31 @@ vendorMiniFormRouter.post("/op-confirm/:token", async (req: Request, res: Respon
       .set({ payload, status: "submitted", submittedAt: new Date() })
       .where(eq(vendorOperationalConfirmationsTable.token, token));
 
+    // BF-2 FIX: Auto-advance order status to "In Progress" when vendor submits
+    // operational data. Only transitions from Customer Approved / Confirmed states
+    // to avoid overwriting terminal statuses (Completed, Cancelled).
+    if (conf.orderId) {
+      await db.update(logisticOrdersTable)
+        .set({ status: "In Progress" })
+        .where(
+          and(
+            eq(logisticOrdersTable.id, conf.orderId),
+            inArray(logisticOrdersTable.status as any, ["Customer Approved", "Confirmed"]),
+          ),
+        )
+        .catch((e: unknown) => req.log?.error({ e }, "BF-2: auto-update order status to In Progress failed"));
+    }
+
     await logActivity("op_confirm", conf.id, "op_submitted", "vendor",
       `Data operasional diisi oleh ${conf.vendorName ?? "vendor"}`, { orderNumber: conf.orderNumber, serviceType: conf.serviceType });
 
-    getAdminWa().then((adminWa) => {
-      if (!adminWa) return;
-      const msg = `🚚 *Data Operasional Vendor*\n` +
-        `Order: ${conf.orderNumber ?? "-"}\n` +
-        `Vendor: ${conf.vendorName ?? "-"}\n` +
-        `Service: ${SERVICE_SCHEMAS[conf.serviceType]?.label ?? conf.serviceType}\n` +
-        `Status: Data operasional sudah diisi.`;
-      sendWhatsApp(adminWa, msg, { context: "op-confirm", refType: "vendor_op_confirm", refId: token }).catch(() => {});
+    getAdminGroupWa().then((adminGroupWa) => {
+      if (!adminGroupWa) return;
+      sendOpConfirmSubmittedNotification(adminGroupWa, {
+        orderNumber: conf.orderNumber ?? null,
+        vendorName: conf.vendorName ?? null,
+        serviceLabel: SERVICE_SCHEMAS[conf.serviceType]?.label ?? conf.serviceType,
+      }, token).catch(() => {});
     }).catch(() => {});
 
     return res.json({ success: true, message: "Data operasional berhasil dikirim, terima kasih!" });
@@ -790,6 +1268,27 @@ vendorMiniFormRouter.post("/admin/links", async (req: Request, res: Response) =>
     const expiresAt = expiresInDays ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000) : null;
     const userId = (req.user as { id: string } | undefined)?.id ?? null;
 
+    // Auto-deactivate existing active links for the same order (order_based mode only)
+    let deactivatedCount = 0;
+    if ((mode ?? "rate_collection") === "order_based" && orderId) {
+      const conditions = [
+        eq(vendorMiniFormLinksTable.orderId, orderId),
+        eq(vendorMiniFormLinksTable.isActive, true),
+      ];
+      if (orderItemId) conditions.push(eq(vendorMiniFormLinksTable.orderItemId, orderItemId));
+      const deactivated = await db
+        .update(vendorMiniFormLinksTable)
+        .set({ isActive: false, adminNotes: "[auto-replaced] Dinonaktifkan otomatis karena ada link baru untuk order yang sama." })
+        .where(and(...conditions))
+        .returning({ id: vendorMiniFormLinksTable.id });
+      deactivatedCount = deactivated.length;
+      if (deactivatedCount > 0) {
+        await logActivity("link", 0, "bulk_deactivated", userId,
+          `${deactivatedCount} link lama dinonaktifkan otomatis saat membuat link baru untuk order ${orderNumber ?? orderId}`,
+          { orderId, orderItemId, deactivatedIds: deactivated.map(d => d.id) });
+      }
+    }
+
     const [link] = await db.insert(vendorMiniFormLinksTable).values({
       token, supplierId: supplierId ?? null, serviceType,
       title: title ?? null, notes: notes ?? null,
@@ -808,7 +1307,7 @@ vendorMiniFormRouter.post("/admin/links", async (req: Request, res: Response) =>
       `Link dibuat untuk ${serviceType} (mode: ${mode ?? "rate_collection"})`,
       { serviceType, orderId, orderNumber, mode });
 
-    return res.status(201).json({ ...link, expiresAt: link.expiresAt?.toISOString() ?? null, createdAt: link.createdAt.toISOString() });
+    return res.status(201).json({ ...link, expiresAt: link.expiresAt?.toISOString() ?? null, createdAt: link.createdAt.toISOString(), deactivatedCount });
   } catch (err) {
     req.log?.error({ err }, "vendor-mini-form admin POST links error");
     return res.status(500).json({ error: "Gagal membuat link" });
@@ -867,7 +1366,11 @@ vendorMiniFormRouter.delete("/admin/links/:id", async (req: Request, res: Respon
 vendorMiniFormRouter.get("/admin/submissions", async (req: Request, res: Response) => {
   if (!(await requireClerkUser(req, res))) return;
   try {
-    const submissions = await db.select().from(vendorMiniFormSubmissionsTable).orderBy(desc(vendorMiniFormSubmissionsTable.submittedAt));
+    const limitParam = Math.min(Number(req.query["limit"] ?? 100), 500);
+    const offsetParam = Math.max(Number(req.query["offset"] ?? 0), 0);
+    const submissions = await db.select().from(vendorMiniFormSubmissionsTable)
+      .orderBy(desc(vendorMiniFormSubmissionsTable.submittedAt))
+      .limit(limitParam).offset(offsetParam);
     const tokens = submissions.map(s => s.token);
     let waMap: Record<string, { status: string; recipient: string; createdAt: string }> = {};
     if (tokens.length > 0) {
@@ -907,27 +1410,34 @@ vendorMiniFormRouter.post("/admin/submissions/:id/select", async (req: Request, 
     const [sub] = await db.select().from(vendorMiniFormSubmissionsTable).where(eq(vendorMiniFormSubmissionsTable.id, id));
     if (!sub) return res.status(404).json({ error: "Submission tidak ditemukan" });
 
-    if (sub.linkId) {
-      await db.update(vendorMiniFormSubmissionsTable)
-        .set({ selectedByAdmin: false, selectedAt: null })
-        .where(eq(vendorMiniFormSubmissionsTable.linkId, sub.linkId));
-    }
-    const [updated] = await db.update(vendorMiniFormSubmissionsTable)
-      .set({ selectedByAdmin: true, selectedAt: new Date(), responseStatus: "selected" })
-      .where(eq(vendorMiniFormSubmissionsTable.id, id))
-      .returning();
+    // RC-2 FIX: Wrap deselect-all + select-one in a single transaction to prevent
+    // race condition when two admins select different submissions simultaneously
+    let updated: typeof vendorMiniFormSubmissionsTable.$inferSelect;
+    await db.transaction(async (tx) => {
+      if (sub.linkId) {
+        await tx.update(vendorMiniFormSubmissionsTable)
+          .set({ selectedByAdmin: false, selectedAt: null })
+          .where(eq(vendorMiniFormSubmissionsTable.linkId, sub.linkId));
+      }
+      const [row] = await tx.update(vendorMiniFormSubmissionsTable)
+        .set({ selectedByAdmin: true, selectedAt: new Date(), responseStatus: "selected" })
+        .where(eq(vendorMiniFormSubmissionsTable.id, id))
+        .returning();
+      if (!row) throw new Error("Submission tidak ditemukan dalam transaksi");
+      updated = row;
 
-    if (sub.linkId) {
-      await db.update(vendorMiniFormLinksTable)
-        .set({ itemStatus: "admin_review" })
-        .where(eq(vendorMiniFormLinksTable.id, sub.linkId));
-    }
+      if (sub.linkId) {
+        await tx.update(vendorMiniFormLinksTable)
+          .set({ itemStatus: "admin_review" })
+          .where(eq(vendorMiniFormLinksTable.id, sub.linkId));
+      }
+    });
 
     await logActivity("submission", id, "selected", userId,
       `Vendor ${sub.vendorName ?? "-"} dipilih oleh admin`,
       { vendorPrice: sub.vendorPrice, currency: sub.currency, linkId: sub.linkId });
 
-    return res.json({ ...updated, selectedAt: updated.selectedAt?.toISOString() ?? null, submittedAt: updated.submittedAt.toISOString() });
+    return res.json({ ...updated!, selectedAt: updated!.selectedAt?.toISOString() ?? null, submittedAt: updated!.submittedAt.toISOString() });
   } catch (err) {
     req.log?.error({ err }, "select submission error");
     return res.status(500).json({ error: "Gagal memilih submission" });
@@ -973,15 +1483,33 @@ vendorMiniFormRouter.post("/admin/submissions/:id/request-revision", async (req:
         const { getPreferredDomain } = await import("../lib/domain.js");
         const domain = getPreferredDomain();
         const formUrl = linkRow.shortUrl ?? (domain ? `https://${domain}/vendor-mini-form/${linkRow.token}` : `/vendor-mini-form/${linkRow.token}`);
-        const msg = `Halo *${sub.vendorName ?? "Vendor"}*, kami mohon revisi harga penawaran Anda` +
-          (linkRow.orderNumber ? ` untuk Order *${linkRow.orderNumber}*` : "") +
-          (reason ? `.\n\nAlasan: ${reason}` : "") +
-          `.\n\nSilakan update penawaran melalui:\n${formUrl}`;
-        sendWhatsApp(sub.contactPhone, msg, {
-          context: "revision-request",
-          refType: "vendor_mini_form",
-          refId: String(sub.linkId ?? sub.id),
-        }).catch(() => {});
+
+        if (linkRow.orderId) {
+          // Pakai template vendor_revision
+          const [orderRow] = await db.select().from(logisticOrdersTable)
+            .where(eq(logisticOrdersTable.id, linkRow.orderId)).limit(1);
+          if (orderRow) {
+            const currentPrice = sub.vendorPrice
+              ? `${sub.currency ?? "IDR"} ${Number(sub.vendorPrice).toLocaleString("id-ID")}`
+              : "-";
+            sendVendorRevisionNotification(
+              buildOrderDataFromRow(orderRow),
+              sub.vendorName ?? "Vendor",
+              sub.contactPhone,
+              currentPrice,
+              formUrl,
+            ).catch(() => {});
+          }
+        } else {
+          sendVendorRevisionFallbackNotification(
+            sub.contactPhone,
+            sub.vendorName ?? "Vendor",
+            linkRow.orderNumber ?? null,
+            reason ?? null,
+            formUrl,
+            String(sub.linkId ?? sub.id),
+          ).catch(() => {});
+        }
       }
     }
 
@@ -1045,6 +1573,22 @@ vendorMiniFormRouter.post("/admin/customer-approvals", async (req: Request, res:
       ppnPct?: number; ppnNominal?: number; profitMarginPct?: number; adminNotes?: string;
     };
 
+    // DA-1 FIX: Prevent duplicate pending approvals for the same order.
+    // Admin must expire/cancel the existing pending approval before creating a new one.
+    if (orderId) {
+      const [existingPending] = await db
+        .select({ id: customerApprovalsTable.id, orderNumber: customerApprovalsTable.orderNumber })
+        .from(customerApprovalsTable)
+        .where(and(eq(customerApprovalsTable.orderId, orderId), eq(customerApprovalsTable.status, "pending")))
+        .limit(1);
+      if (existingPending) {
+        return res.status(409).json({
+          error: `Order ini sudah memiliki link approval pending (ID: ${existingPending.id}). Batalkan atau tunggu link lama expired sebelum membuat yang baru.`,
+          existingApprovalId: existingPending.id,
+        });
+      }
+    }
+
     const token = randomBytes(20).toString("hex");
     const userId = (req.user as { id: string } | undefined)?.id ?? null;
     const expiresAt = expiresInDays ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000) : null;
@@ -1089,9 +1633,20 @@ vendorMiniFormRouter.post("/admin/customer-approvals", async (req: Request, res:
 vendorMiniFormRouter.get("/admin/customer-approvals", async (req: Request, res: Response) => {
   if (!(await requireClerkUser(req, res))) return;
   try {
-    const approvals = await db.select().from(customerApprovalsTable).orderBy(desc(customerApprovalsTable.createdAt));
-    return res.json(approvals.map(a => ({
+    const approvals = await db
+      .select({
+        approval: customerApprovalsTable,
+        salesDocId: salesDocumentsTable.id,
+      })
+      .from(customerApprovalsTable)
+      .leftJoin(
+        salesDocumentsTable,
+        eq(salesDocumentsTable.docNumber, customerApprovalsTable.soNumber),
+      )
+      .orderBy(desc(customerApprovalsTable.createdAt));
+    return res.json(approvals.map(({ approval: a, salesDocId }) => ({
       ...a,
+      salesDocId: salesDocId ?? null,
       createdAt: a.createdAt.toISOString(),
       approvedAt: a.approvedAt?.toISOString() ?? null,
       rejectedAt: a.rejectedAt?.toISOString() ?? null,
@@ -1240,6 +1795,10 @@ vendorMiniFormRouter.delete("/admin/submissions/:id", async (req: Request, res: 
   try {
     const [deleted] = await db.delete(vendorMiniFormSubmissionsTable).where(eq(vendorMiniFormSubmissionsTable.id, id)).returning();
     if (!deleted) return res.status(404).json({ error: "Submission tidak ditemukan" });
+    const userId = (req.user as { id: string } | undefined)?.id ?? "admin";
+    await logActivity("submission", id, "deleted", userId,
+      `Submission dari ${deleted.vendorName ?? "vendor"} dihapus oleh admin`,
+      { vendorPrice: deleted.vendorPrice, responseStatus: deleted.responseStatus });
     return res.json({ success: true });
   } catch (err) {
     req.log?.error({ err }, "vendor-mini-form DELETE submission error");
@@ -1310,6 +1869,19 @@ vendorMiniFormRouter.post("/admin/links/:id/send-wa", async (req: Request, res: 
     const domain = getPreferredDomain();
     const formUrl = link.shortUrl ?? (domain ? `https://${domain}/vendor-mini-form/${link.token}` : `/vendor-mini-form/${link.token}`);
     const svcLabel = SERVICE_SCHEMAS[link.serviceType]?.label ?? link.serviceType;
+
+    if (!customMessage?.trim() && link.orderId && link.vendorName) {
+      // Pakai template vendor_request
+      const [orderRow] = await db.select().from(logisticOrdersTable)
+        .where(eq(logisticOrdersTable.id, link.orderId)).limit(1);
+      if (orderRow) {
+        await sendVendorRequestNotification(await buildOrderDataFromRowWithItems(orderRow), link.vendorName, phone.trim(), formUrl);
+        await logActivity("link", id, "sent_wa", (req.user as { id: string } | undefined)?.id ?? "admin", `WA dikirim ke ${phone}`, { phone });
+        return res.json({ success: true, message: "Pesan WA berhasil dikirim" });
+      }
+    }
+
+    // Fallback: customMessage atau tidak ada order
     const msg = customMessage?.trim() ||
       `Halo${link.vendorName ? ` *${link.vendorName}*` : ""}, kami mohon bantuannya untuk mengisi penawaran layanan *${svcLabel}*` +
       (link.orderNumber ? ` untuk order *${link.orderNumber}*` : "") +
@@ -1346,6 +1918,20 @@ vendorMiniFormRouter.post("/admin/customer-approvals/:id/send-wa", async (req: R
     const domain = getPreferredDomain();
     const approvalUrl = domain ? `https://${domain}/customer-approval/${approval.token}` : `/customer-approval/${approval.token}`;
     const priceStr = approval.sellingPrice ? `${approval.currency ?? "IDR"} ${Number(approval.sellingPrice).toLocaleString("id-ID")}` : "-";
+
+    if (!customMessage?.trim() && approval.orderId) {
+      // Pakai template customer_approval
+      const [orderRow] = await db.select().from(logisticOrdersTable)
+        .where(eq(logisticOrdersTable.id, approval.orderId)).limit(1);
+      if (orderRow) {
+        await sendCustomerApprovalNotification(buildOrderDataFromRow(orderRow), priceStr, approvalUrl);
+        await logActivity("customer_approval", id, "sent_wa", (req.user as { id: string } | undefined)?.id ?? "admin",
+          `WA penawaran dikirim ke customer ${approval.customerName ?? "-"}`, { phone: target });
+        return res.json({ success: true, message: "Pesan WA ke customer berhasil dikirim" });
+      }
+    }
+
+    // Fallback: customMessage atau tidak ada order
     const msg = customMessage?.trim() ||
       `Halo${approval.customerName ? ` *${approval.customerName}*` : ""}, berikut penawaran kami untuk request Anda.\n\n` +
       (approval.orderNumber ? `Order Ref: *${approval.orderNumber}*\n` : "") +
@@ -1380,15 +1966,61 @@ vendorMiniFormRouter.post("/admin/op-confirms/:id/send-wa", async (req: Request,
     const { getPreferredDomain } = await import("../lib/domain.js");
     const domain = getPreferredDomain();
     const confirmUrl = domain ? `https://${domain}/op-confirm/${conf.token}` : `/op-confirm/${conf.token}`;
-    const svcLabel = SERVICE_SCHEMAS[conf.serviceType]?.label ?? conf.serviceType;
-    const msg = customMessage?.trim() ||
-      `Halo${conf.vendorName ? ` *${conf.vendorName}*` : ""}, customer sudah menyetujui penawaran.\n\n` +
-      `Mohon lengkapi data operasional untuk layanan *${svcLabel}*` +
-      (conf.orderNumber ? ` (Order: ${conf.orderNumber})` : "") +
-      ` melalui link berikut:\n${confirmUrl}` +
-      (conf.instruction ? `\n\nInstruksi: ${conf.instruction}` : "");
 
-    await sendWhatsApp(phone.trim(), msg, { context: "op-confirm-send", refType: "vendor_op_confirm", refId: String(conf.id) });
+    if (customMessage?.trim()) {
+      // Custom message override — kirim langsung
+      await sendWhatsApp(phone.trim(), customMessage.trim(), { context: "op-confirm-send", refType: "vendor_op_confirm", refId: String(conf.id) });
+    } else if (conf.orderId) {
+      // Ada order — pakai template sendOpRequestNotification
+      const [orderRow] = await db.select().from(logisticOrdersTable)
+        .where(eq(logisticOrdersTable.id, conf.orderId)).limit(1);
+      if (orderRow) {
+        const orderData: LogisticOrderData = {
+          id: orderRow.id,
+          orderNumber: orderRow.orderNumber,
+          customerName: orderRow.customerName,
+          companyName: orderRow.companyName ?? "",
+          email: orderRow.email,
+          phone: orderRow.phone,
+          orderType: orderRow.orderType ?? undefined,
+          shipmentType: orderRow.shipmentType,
+          origin: orderRow.origin,
+          destination: orderRow.destination,
+          commodity: orderRow.commodity ?? null,
+          cargoDescription: orderRow.cargoDescription ?? null,
+          grossWeight: orderRow.grossWeight ? Number(orderRow.grossWeight) : null,
+          volumeCbm: orderRow.volumeCbm ? Number(orderRow.volumeCbm) : null,
+          jumlahKoli: orderRow.jumlahKoli ?? null,
+          grandTotal: orderRow.grandTotal ? Number(orderRow.grandTotal) : 0,
+          serviceList: orderRow.shipmentType,
+          requiredDate: orderRow.requiredDate ?? null,
+          notes: orderRow.notes ?? null,
+          jamOrder: orderRow.jamOrder ?? null,
+          vehicleType: orderRow.truckType ?? null,
+          createdAt: orderRow.createdAt ?? null,
+          publicRfqToken: orderRow.publicRfqToken ?? null,
+        };
+        await sendOpRequestNotification(orderData, conf.vendorName ?? "Vendor", phone.trim(), confirmUrl);
+      } else {
+        // Order tidak ditemukan — fallback ke hardcoded
+        const svcLabel = SERVICE_SCHEMAS[conf.serviceType]?.label ?? conf.serviceType;
+        const msg = `Halo${conf.vendorName ? ` *${conf.vendorName}*` : ""}, customer sudah menyetujui penawaran.\n\n` +
+          `Mohon lengkapi data operasional untuk layanan *${svcLabel}*` +
+          (conf.orderNumber ? ` (Order: ${conf.orderNumber})` : "") +
+          ` melalui link berikut:\n${confirmUrl}` +
+          (conf.instruction ? `\n\nInstruksi: ${conf.instruction}` : "");
+        await sendWhatsApp(phone.trim(), msg, { context: "op-confirm-send", refType: "vendor_op_confirm", refId: String(conf.id) });
+      }
+    } else {
+      // Tidak ada orderId — fallback ke hardcoded
+      const svcLabel = SERVICE_SCHEMAS[conf.serviceType]?.label ?? conf.serviceType;
+      const msg = `Halo${conf.vendorName ? ` *${conf.vendorName}*` : ""}, customer sudah menyetujui penawaran.\n\n` +
+        `Mohon lengkapi data operasional untuk layanan *${svcLabel}*` +
+        (conf.orderNumber ? ` (Order: ${conf.orderNumber})` : "") +
+        ` melalui link berikut:\n${confirmUrl}` +
+        (conf.instruction ? `\n\nInstruksi: ${conf.instruction}` : "");
+      await sendWhatsApp(phone.trim(), msg, { context: "op-confirm-send", refType: "vendor_op_confirm", refId: String(conf.id) });
+    }
 
     await logActivity("op_confirm", id, "sent_wa", (req.user as { id: string } | undefined)?.id ?? "admin",
       `WA op-confirm dikirim ke ${conf.vendorName ?? "vendor"}`, { phone });

@@ -98,6 +98,64 @@ export default function LogisticsPortalOrderDetailPage() {
   const [selectedVendors, setSelectedVendors] = useState<number[]>([]);
   const [rfqNotes, setRfqNotes] = useState("");
 
+  // ── Edit Order Detail dialog ────────────────────────────────────────────────
+  const [editDetailDialog, setEditDetailDialog] = useState(false);
+  const [editDetailForm, setEditDetailForm] = useState({
+    shipmentType: "", origin: "", destination: "", commodity: "",
+    cargoDescription: "", grossWeight: "", volumeCbm: "",
+    jumlahKoli: "", requiredDate: "", notes: "",
+  });
+  const [editDetailSaving, setEditDetailSaving] = useState(false);
+
+  function openEditDetail() {
+    if (!order) return;
+    setEditDetailForm({
+      shipmentType:    order.shipmentType ?? "",
+      origin:          order.origin ?? "",
+      destination:     order.destination ?? "",
+      commodity:       order.commodity ?? "",
+      cargoDescription: order.cargoDescription ?? "",
+      grossWeight:     order.grossWeight != null ? String(order.grossWeight) : "",
+      volumeCbm:       order.volumeCbm != null ? String(order.volumeCbm) : "",
+      jumlahKoli:      order.jumlahKoli != null ? String(order.jumlahKoli) : "",
+      requiredDate:    order.requiredDate ?? "",
+      notes:           order.notes ?? "",
+    });
+    setEditDetailDialog(true);
+  }
+
+  async function saveEditDetail() {
+    if (!order) return;
+    setEditDetailSaving(true);
+    try {
+      const res = await fetch(`/api/logistic/orders/${orderId}/details`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          shipmentType:     editDetailForm.shipmentType,
+          origin:           editDetailForm.origin,
+          destination:      editDetailForm.destination,
+          commodity:        editDetailForm.commodity,
+          cargoDescription: editDetailForm.cargoDescription,
+          grossWeight:      editDetailForm.grossWeight,
+          volumeCbm:        editDetailForm.volumeCbm,
+          jumlahKoli:       editDetailForm.jumlahKoli ? parseInt(editDetailForm.jumlahKoli) : undefined,
+          requiredDate:     editDetailForm.requiredDate,
+          notes:            editDetailForm.notes,
+        }),
+      });
+      if (!res.ok) throw new Error(((await res.json()) as { message?: string }).message ?? "Gagal");
+      queryClient.invalidateQueries({ queryKey: getGetLogisticOrderQueryKey(orderId) });
+      setEditDetailDialog(false);
+      toast({ title: "Detail order diperbarui" });
+    } catch (e) {
+      toast({ title: "Gagal simpan", description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setEditDetailSaving(false);
+    }
+  }
+
   // ── Vendor Tracker & Lihat Link Form dialog ────────────────────────────────
   interface VendorTrackerEntry {
     vendorId: number;
@@ -687,10 +745,17 @@ export default function LogisticsPortalOrderDetailPage() {
           <TabsContent value="detail" className="space-y-4 mt-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Card>
-                <CardHeader className="pb-2"><CardTitle className="text-sm">Info Pengiriman</CardTitle></CardHeader>
+                <CardHeader className="pb-2">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-sm">Info Pengiriman</CardTitle>
+                    <Button size="sm" variant="ghost" className="h-7 px-2 text-xs gap-1" onClick={openEditDetail}>
+                      <Edit className="w-3 h-3" /> Edit
+                    </Button>
+                  </div>
+                </CardHeader>
                 <CardContent className="space-y-2 text-sm">
-                  <InfoRow label="Tipe" value={order.shipmentType} />
-                  <InfoRow label="Rute" value={`${order.origin} → ${order.destination}`} />
+                  <InfoRow label="Tipe" value={order.shipmentType || <span className="text-slate-400 italic">kosong</span>} />
+                  <InfoRow label="Rute" value={order.origin || order.destination ? `${order.origin || "—"} → ${order.destination || "—"}` : <span className="text-slate-400 italic">kosong</span>} />
                   {order.commodity && <InfoRow label="Komoditi" value={order.commodity} />}
                   {order.cargoDescription && <InfoRow label="Kargo" value={order.cargoDescription} />}
                   {order.grossWeight != null && <InfoRow label="Berat" value={`${order.grossWeight} kg`} />}
@@ -2004,6 +2069,63 @@ export default function LogisticsPortalOrderDetailPage() {
               }}
             >
               {blastingV2 ? <><Loader2 className="h-4 w-4 animate-spin mr-1" /> Mengirim...</> : <><Send className="h-4 w-4 mr-1" /> Blast</>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialog Edit Detail Order ── */}
+      <Dialog open={editDetailDialog} onOpenChange={setEditDetailDialog}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Detail Order</DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-3 py-2">
+            <div className="col-span-2">
+              <Label className="text-xs">Tipe Layanan</Label>
+              <Input value={editDetailForm.shipmentType} onChange={e => setEditDetailForm(f => ({ ...f, shipmentType: e.target.value }))} placeholder="Trucking, Sea Freight, ..." />
+            </div>
+            <div>
+              <Label className="text-xs">Origin (Asal)</Label>
+              <Input value={editDetailForm.origin} onChange={e => setEditDetailForm(f => ({ ...f, origin: e.target.value }))} placeholder="Kota asal" />
+            </div>
+            <div>
+              <Label className="text-xs">Destination (Tujuan)</Label>
+              <Input value={editDetailForm.destination} onChange={e => setEditDetailForm(f => ({ ...f, destination: e.target.value }))} placeholder="Kota tujuan" />
+            </div>
+            <div className="col-span-2">
+              <Label className="text-xs">Komoditi</Label>
+              <Input value={editDetailForm.commodity} onChange={e => setEditDetailForm(f => ({ ...f, commodity: e.target.value }))} placeholder="Kopi, Elektronik, dll" />
+            </div>
+            <div className="col-span-2">
+              <Label className="text-xs">Deskripsi Kargo</Label>
+              <Input value={editDetailForm.cargoDescription} onChange={e => setEditDetailForm(f => ({ ...f, cargoDescription: e.target.value }))} placeholder="Deskripsi muatan" />
+            </div>
+            <div>
+              <Label className="text-xs">Berat (kg)</Label>
+              <Input type="number" value={editDetailForm.grossWeight} onChange={e => setEditDetailForm(f => ({ ...f, grossWeight: e.target.value }))} placeholder="0" />
+            </div>
+            <div>
+              <Label className="text-xs">Volume (CBM)</Label>
+              <Input type="number" value={editDetailForm.volumeCbm} onChange={e => setEditDetailForm(f => ({ ...f, volumeCbm: e.target.value }))} placeholder="0" />
+            </div>
+            <div>
+              <Label className="text-xs">Jumlah Koli</Label>
+              <Input type="number" value={editDetailForm.jumlahKoli} onChange={e => setEditDetailForm(f => ({ ...f, jumlahKoli: e.target.value }))} placeholder="0" />
+            </div>
+            <div>
+              <Label className="text-xs">Tanggal Dibutuhkan</Label>
+              <Input type="date" value={editDetailForm.requiredDate} onChange={e => setEditDetailForm(f => ({ ...f, requiredDate: e.target.value }))} />
+            </div>
+            <div className="col-span-2">
+              <Label className="text-xs">Catatan</Label>
+              <Input value={editDetailForm.notes} onChange={e => setEditDetailForm(f => ({ ...f, notes: e.target.value }))} placeholder="Catatan tambahan" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditDetailDialog(false)}>Batal</Button>
+            <Button onClick={saveEditDetail} disabled={editDetailSaving}>
+              {editDetailSaving ? <><Loader2 className="h-4 w-4 animate-spin mr-1" />Menyimpan...</> : "Simpan"}
             </Button>
           </DialogFooter>
         </DialogContent>

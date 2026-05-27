@@ -11,6 +11,48 @@ router.use(async (req: Request, res: Response, next) => {
   next();
 });
 
+// ── KATEGORI PRODUK ───────────────────────────────────────────────────────────
+
+router.get("/categories", async (req: Request, res: Response) => {
+  const companyId = resolveCompanyId(req);
+  const rows = await db.execute(sql`
+    SELECT DISTINCT subcategory
+    FROM products
+    WHERE company_id = ${companyId}
+      AND subcategory IS NOT NULL
+      AND subcategory <> ''
+    ORDER BY subcategory ASC
+  `);
+  const categories = rows.rows.map((r: Record<string, unknown>) => r.subcategory as string);
+  res.json(categories);
+});
+
+router.put("/categories/:name", async (req: Request, res: Response) => {
+  const companyId = resolveCompanyId(req);
+  const oldName = decodeURIComponent(req.params.name);
+  const { newName } = req.body as { newName?: string };
+  if (!newName || !newName.trim()) {
+    res.status(400).json({ message: "newName wajib diisi" }); return;
+  }
+  const result = await db.execute(sql`
+    UPDATE products
+    SET subcategory = ${newName.trim()}
+    WHERE company_id = ${companyId} AND subcategory = ${oldName}
+  `);
+  res.json({ updated: result.rowCount ?? 0 });
+});
+
+router.delete("/categories/:name", async (req: Request, res: Response) => {
+  const companyId = resolveCompanyId(req);
+  const name = decodeURIComponent(req.params.name);
+  const result = await db.execute(sql`
+    UPDATE products
+    SET subcategory = NULL
+    WHERE company_id = ${companyId} AND subcategory = ${name}
+  `);
+  res.json({ updated: result.rowCount ?? 0 });
+});
+
 // ── PRODUK JUAL (dari tabel products) ────────────────────────────────────────
 
 router.get("/products", async (req: Request, res: Response) => {

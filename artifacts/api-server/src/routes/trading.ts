@@ -1,12 +1,14 @@
 import { Router } from "express";
-import { db, stocksTable, suppliersTable, vendorCatalogItemsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, stocksTable, suppliersTable, vendorCatalogItemsTable, productsTable, productCategoryMapTable, productCategoriesTable } from "@workspace/db";
+import { eq, and } from "drizzle-orm";
 import { postStockReceived } from "../lib/accounting.js";
 
 const router = Router();
 
 const toItem = (i: typeof vendorCatalogItemsTable.$inferSelect) => ({
   ...i,
+  masterItemId: i.masterItemId ?? null,
+  kategori: i.kategori ?? null,
   priceBase: Number(i.priceBase ?? 0),
   markupPct: Number(i.markupPct ?? 0),
   createdAt: i.createdAt.toISOString(),
@@ -149,20 +151,55 @@ router.get("/suppliers/:id/catalog", async (req, res) => {
 });
 
 // POST /api/trading/suppliers/:id/catalog
+// Wajib menyertakan masterItemId — nama, tipe, satuan, deskripsi diambil otomatis dari Master Item
 router.post("/suppliers/:id/catalog", async (req, res) => {
   const vendorId = Number(req.params.id);
   if (Number.isNaN(vendorId)) return res.status(400).json({ message: "Invalid id" });
-  const { type, name, description, unit, priceBase, markupPct, isActive, isCommodityTag, sortOrder } = req.body;
-  if (!name || typeof name !== "string")
-    return res.status(400).json({ message: "name required" });
+
+  const masterItemId = req.body.masterItemId != null ? Number(req.body.masterItemId) : null;
+  if (!masterItemId || Number.isNaN(masterItemId))
+    return res.status(400).json({ message: "masterItemId wajib diisi — pilih item dari Master Item" });
+
+  // Cek master item ada
+  const [masterItem] = await db
+    .select()
+    .from(productsTable)
+    .where(eq(productsTable.id, masterItemId));
+  if (!masterItem)
+    return res.status(404).json({ message: "Master Item tidak ditemukan" });
+
+  // Cegah duplikat: satu vendor tidak boleh punya master item yang sama dua kali
+  const [existing] = await db
+    .select({ id: vendorCatalogItemsTable.id })
+    .from(vendorCatalogItemsTable)
+    .where(and(
+      eq(vendorCatalogItemsTable.vendorId, vendorId),
+      eq(vendorCatalogItemsTable.masterItemId, masterItemId),
+    ));
+  if (existing)
+    return res.status(409).json({ message: "Item ini sudah ada di etalase vendor ini" });
+
+  const { isActive, isCommodityTag, sortOrder } = req.body;
+
+  // Ambil kategori pertama dari master item
+  const categoryMap = await db
+    .select({ name: productCategoriesTable.name })
+    .from(productCategoryMapTable)
+    .innerJoin(productCategoriesTable, eq(productCategoryMapTable.categoryId, productCategoriesTable.id))
+    .where(eq(productCategoryMapTable.productId, masterItemId));
+  const kategori = categoryMap[0]?.name ?? null;
+
   const [item] = await db.insert(vendorCatalogItemsTable).values({
     vendorId,
-    type: type ?? "service",
-    name,
-    description: description ?? null,
-    unit: unit ?? null,
-    priceBase: String(parseFloat(String(priceBase ?? 0)) || 0),
-    markupPct: String(parseFloat(String(markupPct ?? 0)) || 0),
+    masterItemId,
+    type: masterItem.itemType === "jasa" ? "service" : "product",
+    name: masterItem.name,
+    description: masterItem.description ?? null,
+    unit: masterItem.unit ?? null,
+    kategori,
+    subcategory: masterItem.subcategory ?? null,
+    priceBase: String(parseFloat(String(masterItem.price ?? 0)) || 0),
+    markupPct: "0",
     isActive: isActive !== undefined ? Boolean(isActive) : true,
     isCommodityTag: isCommodityTag !== undefined ? Boolean(isCommodityTag) : false,
     sortOrder: sortOrder !== undefined ? Number(sortOrder) : 0,
@@ -171,20 +208,36 @@ router.post("/suppliers/:id/catalog", async (req, res) => {
 });
 
 // PUT /api/trading/suppliers/catalog/:itemId
+// Hanya isActive/isCommodityTag/sortOrder yang boleh diubah; harga dikunci dari Master Item
 router.put("/suppliers/catalog/:itemId", async (req, res) => {
   const itemId = Number(req.params.itemId);
   if (Number.isNaN(itemId)) return res.status(400).json({ message: "Invalid id" });
-  const { type, name, description, unit, priceBase, markupPct, isActive, isCommodityTag, sortOrder } = req.body;
+
+  const [current] = await db
+    .select()
+    .from(vendorCatalogItemsTable)
+    .where(eq(vendorCatalogItemsTable.id, itemId));
+  if (!current) return res.status(404).json({ message: "Item not found" });
+
+  const { isActive, isCommodityTag, sortOrder } = req.body;
   const patch: Record<string, unknown> = {};
-  if (type !== undefined) patch["type"] = type;
-  if (typeof name === "string") patch["name"] = name;
-  if (description !== undefined) patch["description"] = description || null;
-  if (unit !== undefined) patch["unit"] = unit || null;
-  if (priceBase !== undefined) patch["priceBase"] = String(parseFloat(String(priceBase)) || 0);
-  if (markupPct !== undefined) patch["markupPct"] = String(parseFloat(String(markupPct)) || 0);
+
+  // Item lama (legacy) tanpa masterItemId — boleh edit field deskriptif
+  if (!current.masterItemId) {
+    const { type, name, description, unit, kategori, subcategory } = req.body;
+    if (type !== undefined) patch["type"] = type;
+    if (typeof name === "string") patch["name"] = name;
+    if (description !== undefined) patch["description"] = description || null;
+    if (unit !== undefined) patch["unit"] = unit || null;
+    if (kategori !== undefined) patch["kategori"] = kategori || null;
+    if (subcategory !== undefined) patch["subcategory"] = subcategory || null;
+  }
+
+  // Status & urutan — selalu boleh diedit; harga dikunci dari Master Item
   if (isActive !== undefined) patch["isActive"] = Boolean(isActive);
   if (isCommodityTag !== undefined) patch["isCommodityTag"] = Boolean(isCommodityTag);
   if (sortOrder !== undefined) patch["sortOrder"] = Number(sortOrder);
+
   const [updated] = await db
     .update(vendorCatalogItemsTable)
     .set(patch)

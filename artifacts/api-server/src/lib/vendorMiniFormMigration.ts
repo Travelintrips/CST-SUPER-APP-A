@@ -173,6 +173,17 @@ export async function runVendorMiniFormMigration(): Promise<void> {
     await db.execute(sql`CREATE INDEX IF NOT EXISTS val_entity_idx ON vmf_activity_log(entity_type, entity_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS val_created_idx ON vmf_activity_log(created_at);`);
 
+    // ── form_target column (vendor | customer | admin) ────────────────────────
+    await db.execute(sql`ALTER TABLE vendor_mini_form_links ADD COLUMN IF NOT EXISTS form_target TEXT DEFAULT 'vendor';`);
+    await db.execute(sql`UPDATE vendor_mini_form_links SET form_target = 'vendor' WHERE form_target IS NULL;`);
+
+    // ── RC-1 FIX: UNIQUE constraint on vendor_mini_form_submissions.token ─────
+    // Prevents race-condition duplicate submissions when vendor double-clicks submit
+    await db.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS vmf_submissions_token_uidx
+      ON vendor_mini_form_submissions(token)
+    `);
+
     logger.info("Vendor mini form migration: ok");
   } catch (err) {
     logger.error({ err }, "Vendor mini form migration failed");
