@@ -619,12 +619,13 @@ logisticRfqRouter.get("/vendor-form", rfqRateLimit, async (req: Request, res: Re
 
 // POST /api/logistic/orders/vendor-quote — public vendor submits quote via form
 logisticRfqRouter.post("/vendor-quote", rfqRateLimit, async (req: Request, res: Response) => {
-  const { rfqNumber, vendorId, vendorPrice, estimatedPickup, estimatedDelivery, estimatedDays, notes, token } =
+  const { rfqNumber, vendorId, vendorPrice, currency, estimatedPickup, estimatedDelivery, estimatedDays, notes, token } =
     req.body as {
-      rfqNumber: string; vendorId: number; vendorPrice: number;
+      rfqNumber: string; vendorId: number; vendorPrice: number; currency?: string;
       estimatedPickup?: string; estimatedDelivery?: string;
       estimatedDays?: number; notes?: string; token?: string;
     };
+  const normalizedCurrency = (currency ?? "IDR").toUpperCase().trim() || "IDR";
 
   if (!rfqNumber || !vendorId || vendorPrice == null || !token) {
     return res.status(404).json({ error: "Not found" });
@@ -697,6 +698,7 @@ logisticRfqRouter.post("/vendor-quote", rfqRateLimit, async (req: Request, res: 
       orderId: rfq.orderId,
       vendorId: Number(vendorId),
       vendorPrice: String(vp),
+      currency: normalizedCurrency,
       estimatedPickup: estimatedPickup?.trim() || null,
       estimatedDelivery: estimatedDelivery?.trim() || null,
       estimatedDays: estimatedDays != null ? Number(estimatedDays) : null,

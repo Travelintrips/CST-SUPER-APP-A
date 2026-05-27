@@ -129,6 +129,7 @@ export const logisticOrderQuotesTable = pgTable("logistic_order_quotes", {
   orderId: integer("order_id").notNull().references(() => logisticOrdersTable.id, { onDelete: "cascade" }),
   vendorId: integer("vendor_id").notNull().references(() => suppliersTable.id, { onDelete: "cascade" }),
   vendorPrice: numeric("vendor_price", { precision: 14, scale: 2 }).notNull().default("0"),
+  currency: text("currency").notNull().default("IDR"),
   estimatedPickup: text("estimated_pickup"),
   estimatedDelivery: text("estimated_delivery"),
   estimatedDays: integer("estimated_days"),
