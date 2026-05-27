@@ -89,7 +89,7 @@ if (h.indexOf('access_token') !== -1 || h.indexOf('error=') !== -1 ||
   },
   server: {
     port,
-    strictPort: false,
+    strictPort: true,
     host: "0.0.0.0",
     allowedHosts: true,
     hmr: process.env.REPLIT_DEV_DOMAIN ? false : { overlay: false },

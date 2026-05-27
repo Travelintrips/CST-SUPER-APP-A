@@ -43,7 +43,7 @@ const DEFAULT_UPSTREAM = { host: "localhost", port: 3001 };
 
 const SERVICE_NAMES = {
   18444: "API Server",
-  18442: "BizPortal",
+  3000:  "BizPortal",
   3001:  "Customer Portal",
   3002:  "Sport Center",
 };
