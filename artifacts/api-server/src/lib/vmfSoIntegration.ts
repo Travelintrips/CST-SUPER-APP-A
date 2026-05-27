@@ -9,6 +9,8 @@
 
 import { db, salesDocumentsTable, salesDocumentLinesTable, customerApprovalsTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
+import { postSalesInvoice } from "./accounting.js";
+import { logger } from "./logger.js";
 
 type Approval = typeof customerApprovalsTable.$inferSelect;
 
@@ -117,6 +119,19 @@ export async function createSalesOrderFromVmfApproval(
       quantity: "1",
       unitPrice: String(grandTotal),
       subtotal: String(grandTotal),
+    });
+
+    // ── Auto-post journal entry: Debit AR / Credit Revenue ────────────────
+    void postSalesInvoice({
+      salesDocId: doc.id,
+      docNumber,
+      customerName: approval.customerName ?? "Customer",
+      netAmount: grandTotal,
+      taxAmount: 0,
+      taxAccountId: null,
+      companyId,
+    }).catch((err) => {
+      logger.error({ err, soId: doc!.id, docNumber }, "VMF SO: gagal auto-post jurnal penjualan");
     });
 
     return { ok: true, docId: doc.id, docNumber };
