@@ -1439,10 +1439,39 @@ vendorMiniFormRouter.post("/admin/submissions/:id/select", async (req: Request, 
     const [sub] = await db.select().from(vendorMiniFormSubmissionsTable).where(eq(vendorMiniFormSubmissionsTable.id, id));
     if (!sub) return res.status(404).json({ error: "Submission tidak ditemukan" });
 
-    // RC-2 FIX: Wrap deselect-all + select-one in a single transaction to prevent
-    // race condition when two admins select different submissions simultaneously
+    // Wrap deselect-all + select-one dalam transaksi dengan SELECT FOR UPDATE
+    // pada link row agar dua admin concurrent harus antri — mencegah race condition
+    // di mana dua submission berbeda terpilih bersamaan.
     let updated: typeof vendorMiniFormSubmissionsTable.$inferSelect;
+    let conflictError: string | null = null;
     await db.transaction(async (tx) => {
+      // Lock link row terlebih dahulu — semua tx concurrent pada link ini harus antri
+      if (sub.linkId) {
+        await tx
+          .select({ id: vendorMiniFormLinksTable.id })
+          .from(vendorMiniFormLinksTable)
+          .where(eq(vendorMiniFormLinksTable.id, sub.linkId))
+          .for("update");
+
+        // Setelah lock diperoleh, cek apakah ada submission lain yang sudah di-lock
+        // oleh customer approval — jika iya, select admin tidak boleh mengganggunya
+        const [lockedOther] = await tx
+          .select({ id: vendorMiniFormSubmissionsTable.id, vendorName: vendorMiniFormSubmissionsTable.vendorName })
+          .from(vendorMiniFormSubmissionsTable)
+          .where(
+            and(
+              eq(vendorMiniFormSubmissionsTable.linkId, sub.linkId),
+              eq(vendorMiniFormSubmissionsTable.locked, true),
+              ne(vendorMiniFormSubmissionsTable.id, id)
+            )
+          )
+          .limit(1);
+        if (lockedOther) {
+          conflictError = `Vendor ${lockedOther.vendorName ?? "-"} sudah dikunci oleh customer approval, tidak bisa diganti`;
+          return;
+        }
+      }
+
       if (sub.linkId) {
         await tx.update(vendorMiniFormSubmissionsTable)
           .set({ selectedByAdmin: false, selectedAt: null })
@@ -1468,6 +1497,10 @@ vendorMiniFormRouter.post("/admin/submissions/:id/select", async (req: Request, 
           .where(eq(logisticOrdersTable.id, sub.orderId));
       }
     });
+
+    if (conflictError) {
+      return res.status(409).json({ error: conflictError });
+    }
 
     await logActivity("submission", id, "selected", userId,
       `Vendor ${sub.vendorName ?? "-"} dipilih oleh admin`,
