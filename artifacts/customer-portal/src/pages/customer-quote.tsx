@@ -324,7 +324,7 @@ export default function CustomerQuotePage() {
         )}
 
         <p className="text-center text-xs text-slate-400 pb-4">
-          CST Logistics · Pertanyaan? Hubungi tim kami.
+Pertanyaan? Hubungi tim kami.
         </p>
       </div>
     </div>

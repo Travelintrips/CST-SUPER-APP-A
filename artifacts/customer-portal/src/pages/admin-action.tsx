@@ -375,7 +375,6 @@ function ReviewOrderView({ token, data }: { token: string; data: ReviewData }) {
           {submitting ? "Mengirim..." : `🚀 Blast RFQ ke ${selectedIds.length} Vendor`}
         </button>
 
-        <p className="text-center text-xs text-slate-400 pb-4">CST Logistics · Admin Action</p>
       </div>
     </div>
   );
@@ -528,7 +527,6 @@ function CompareVendorsView({ token, data }: { token: string; data: CompareData 
           {submitting ? "Memproses..." : "✅ Konfirmasi Pilihan Vendor"}
         </button>
 
-        <p className="text-center text-xs text-slate-400 pb-4">CST Logistics · Admin Action</p>
       </div>
     </div>
   );
@@ -640,7 +638,6 @@ function ForwardVendorView({ token, data }: { token: string; data: ForwardData }
           {submitting ? "Mengirim..." : "📨 Kirim Link Fulfillment ke Vendor"}
         </button>
 
-        <p className="text-center text-xs text-slate-400 pb-4">CST Logistics · Admin Action</p>
       </div>
     </div>
   );

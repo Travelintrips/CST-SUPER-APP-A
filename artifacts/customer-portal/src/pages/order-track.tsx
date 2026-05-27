@@ -147,7 +147,7 @@ export default function OrderTrackPage() {
         <div className="text-5xl mb-4">⚠️</div>
         <h2 className="text-lg font-semibold text-slate-800 mb-2">Link Tidak Valid</h2>
         <p className="text-sm text-slate-500">{error}</p>
-        <p className="text-xs text-slate-400 mt-3">Hubungi tim CST Logistics untuk informasi lebih lanjut.</p>
+        <p className="text-xs text-slate-400 mt-3">Hubungi tim kami untuk informasi lebih lanjut.</p>
       </div>
     </div>
   );
@@ -267,7 +267,6 @@ export default function OrderTrackPage() {
           </div>
         )}
 
-        <p className="text-center text-xs text-slate-400 pb-4">CST Logistics · Order Tracking</p>
       </div>
     </div>
   );

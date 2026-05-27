@@ -151,7 +151,7 @@ export default function VendorQuoteFormPage() {
           </div>
           <div>
             <h2 className="font-bold text-lg text-white">Penawaran Terkirim!</h2>
-            <p className="text-sm text-slate-400 mt-1">Tim CST Logistics akan segera memproses penawaran Anda</p>
+            <p className="text-sm text-slate-400 mt-1">Tim admin akan segera memproses penawaran Anda</p>
           </div>
           <div className="bg-slate-700 rounded-xl p-4 text-left space-y-2 text-sm">
             <div className="flex justify-between">
@@ -424,7 +424,7 @@ export default function VendorQuoteFormPage() {
         </form>
 
         <p className="text-center text-xs text-slate-500 pb-4">
-          CST Logistics · Form ini hanya untuk vendor yang mendapat undangan RFQ
+          Form ini hanya untuk vendor yang mendapat undangan RFQ
         </p>
       </div>
     </div>

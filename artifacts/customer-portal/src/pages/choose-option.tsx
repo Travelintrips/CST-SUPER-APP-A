@@ -144,7 +144,7 @@ export default function ChooseOptionPage() {
         <div className="text-center space-y-2">
           <div className="inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-full text-sm font-semibold">
             <ModeIcon className="h-4 w-4" />
-            CST Logistics — {modeLabel}
+{modeLabel}
           </div>
           <h1 className="text-xl font-bold text-slate-800">Penawaran untuk Anda</h1>
           <p className="text-sm text-slate-500">Pilih satu opsi terbaik yang sesuai kebutuhan Anda</p>
@@ -291,7 +291,7 @@ export default function ChooseOptionPage() {
 
         <p className="text-center text-xs text-slate-400 pb-4">
           Setelah memilih, tim kami akan menghubungi Anda untuk konfirmasi akhir.
-          <br />Harga sudah termasuk pajak & biaya administrasi CST Logistics.
+          <br />Harga sudah termasuk pajak & biaya administrasi.
         </p>
       </div>
     </div>

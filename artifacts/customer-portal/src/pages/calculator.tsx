@@ -936,7 +936,7 @@ export default function CalculatorPage() {
                 ))}
               </div>
               <div className="mt-3.5 pt-3 border-t text-[10.5px] text-slate-500" style={{ borderColor:"rgba(255,255,255,0.08)" }}>
-                Tarif dikonfigurasi oleh admin CST Logistics
+                Tarif dikonfigurasi oleh admin
               </div>
             </div>
 

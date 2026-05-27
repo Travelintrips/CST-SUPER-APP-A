@@ -97,7 +97,7 @@ function ErrorCard({ message }: { message: string }) {
         <h2 className="text-lg font-semibold text-slate-800 mb-2">Link Tidak Valid</h2>
         <p className="text-sm text-slate-600">{message}</p>
         <p className="text-xs text-slate-400 mt-3">
-          Jika Anda merasa ini keliru, hubungi tim CST Logistics.
+          Jika Anda merasa ini keliru, hubungi tim admin.
         </p>
       </div>
     </div>
@@ -169,7 +169,7 @@ function SubmittedReview({
           </h1>
           <p className="text-sm text-slate-500 mb-4">
             {justSubmitted
-              ? "Terima kasih. Tim CST Logistics akan segera memprosesnya."
+              ? "Terima kasih. Tim kami akan segera memprosesnya."
               : "Data di bawah adalah isian yang telah dikirimkan untuk order ini."}
           </p>
           <div className="inline-flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-full px-4 py-1.5 text-xs font-semibold text-emerald-700">
@@ -267,9 +267,6 @@ function SubmittedReview({
           </div>
         )}
 
-        <p className="text-center text-xs text-slate-400 pb-4">
-          CST Logistics — Formulir Vendor Fulfillment
-        </p>
       </div>
     </div>
   );
@@ -472,9 +469,6 @@ export default function VendorFulfillmentPage() {
             {submitting ? "Mengirim..." : "Kirim Data Fulfillment"}
           </button>
 
-          <p className="text-center text-xs text-slate-400 pb-4">
-            CST Logistics - Formulir Vendor Fulfillment
-          </p>
         </div>
       </form>
     </div>
