@@ -50,7 +50,8 @@ function _checkPublicOrderRate(ip: string): boolean {
   if (!entry || now > entry.resetAt) {
     entry = { count: 0, resetAt: now + 60 * 60 * 1000 }; // 1-hour window
   }
-  if (entry.count >= 10) return false;
+  const cap = process.env.NODE_ENV === "production" ? 10 : 1000;
+  if (entry.count >= cap) return false;
   entry.count++;
   _publicOrderRateMap.set(ip, entry);
   return true;
@@ -105,7 +106,7 @@ function toOrder(row: typeof logisticOrdersTable.$inferSelect, approvedVendorNam
     quotationSentAt: row.quotationSentAt?.toISOString() ?? null,
     version: (row as any).version ?? 1,
     createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
+    updatedAt: ((row as any).updatedAt ?? row.createdAt).toISOString(),
   };
 }
 

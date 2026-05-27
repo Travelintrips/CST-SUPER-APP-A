@@ -47,6 +47,8 @@ import { runRlsMigration } from "./lib/rlsMigration.js";
 import { migratePushSubscriptions } from "./lib/webPush.js";
 import { runPgTrgmMigration } from "./lib/pgTrgmMigration.js";
 import { runIntelligenceAlertSettingsMigration } from "./lib/intelligenceAlertSettingsMigration.js";
+import { runAiGovernanceMigration } from "./lib/aiGovernanceMigration.js";
+import { expireStaleApprovals } from "./lib/aiGovernance.js";
 import { startDbBackupScheduler } from "./lib/dbBackup.js";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
@@ -208,6 +210,13 @@ async function startServer() {
   startWorkflowWorker();
   startDbBackupScheduler();
 
+  // AI Governance: expire stale approvals & auto-approve setiap 5 menit
+  setInterval(() => {
+    expireStaleApprovals().catch((err: unknown) => {
+      logger.warn({ err }, "expireStaleApprovals background tick failed (non-fatal)");
+    });
+  }, 5 * 60 * 1000).unref();
+
   // Run all migrations + seeds in the background with a small initial delay
   // to prevent a DB connection storm on cold starts.
   sleep(2_000)
@@ -252,6 +261,7 @@ async function startServer() {
     .then(() => runWithRetry("Push subscriptions migration", migratePushSubscriptions))
     .then(() => runWithRetry("pg_trgm indexes migration", runPgTrgmMigration))
     .then(() => runWithRetry("Intelligence alert settings migration", runIntelligenceAlertSettingsMigration))
+    .then(() => runWithRetry("AI governance migration", runAiGovernanceMigration))
     .then(() => enableRealtimeTables().catch((err) => {
       logger.warn({ err }, "Supabase Realtime table enable failed (non-fatal)");
     }))

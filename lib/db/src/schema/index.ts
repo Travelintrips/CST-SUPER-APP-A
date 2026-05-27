@@ -74,3 +74,4 @@ export * from "./workflowEvents";
 export * from "./intelligenceAlerts";
 export * from "./intelligenceAlertSettings";
 export * from "./orderStageLogs";
+export * from "./aiGovernance";

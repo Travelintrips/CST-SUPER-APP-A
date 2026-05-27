@@ -138,6 +138,139 @@ router.get("/", async (req, res) => {
   res.json(withBadges);
 });
 
+// GET /api/vendor-performance/scores-bulk
+// Query: ?vendorIds=1,2,3&origin=Jakarta&destination=Surabaya&shipmentType=FCL
+// Returns per-vendor AI Score blending global recommendation_score + route-specific Decision Memory.
+router.get("/scores-bulk", async (req, res) => {
+  const { vendorIds: vendorIdsStr, origin, destination, shipmentType } = req.query as Record<string, string>;
+  const vendorIds = (vendorIdsStr ?? "").split(",").map(Number).filter(n => !isNaN(n) && n > 0);
+  if (vendorIds.length === 0) { res.json([]); return; }
+
+  // 1. Global performance data from vendor_performance table
+  const perfRows = await db
+    .select({ vendor: suppliersTable, perf: vendorPerformanceTable })
+    .from(suppliersTable)
+    .leftJoin(vendorPerformanceTable, eq(suppliersTable.id, vendorPerformanceTable.vendorId))
+    .where(inArray(suppliersTable.id, vendorIds));
+
+  // 2. Route-specific stats from Decision Memory
+  // Build safe parametrized query by appending conditions
+  let baseQuery = sql`
+    SELECT
+      chosen_entity_id AS vendor_id,
+      COUNT(*)::int AS route_orders,
+      COUNT(*) FILTER (WHERE on_time_delivery = true)::int AS route_on_time,
+      COALESCE(AVG(delay_days) FILTER (WHERE delay_days > 0), 0)::numeric(6,2) AS avg_delay_days
+    FROM ai_decision_memory
+    WHERE decision_type = 'vendor_assignment'
+      AND chosen_entity_id = ANY(${vendorIds})
+      AND outcome IS NOT NULL
+  `;
+  if (origin) {
+    const o = `%${origin}%`;
+    baseQuery = sql`${baseQuery} AND origin ILIKE ${o}`;
+  }
+  if (destination) {
+    const d = `%${destination}%`;
+    baseQuery = sql`${baseQuery} AND destination ILIKE ${d}`;
+  }
+  if (shipmentType) {
+    baseQuery = sql`${baseQuery} AND shipment_type = ${shipmentType}`;
+  }
+  baseQuery = sql`${baseQuery} GROUP BY chosen_entity_id`;
+
+  let routeRows: { rows: unknown[] } = { rows: [] };
+  try {
+    routeRows = await db.execute(baseQuery);
+  } catch {
+    // ai_decision_memory might not exist yet — gracefully degrade to global score only
+  }
+
+  const routeMap: Record<number, { routeOrders: number; routeOnTime: number; avgDelayDays: number }> = {};
+  for (const r of routeRows.rows as Record<string, unknown>[]) {
+    const vid = Number(r["vendor_id"]);
+    routeMap[vid] = {
+      routeOrders: Number(r["route_orders"] ?? 0),
+      routeOnTime: Number(r["route_on_time"] ?? 0),
+      avgDelayDays: Number(r["avg_delay_days"] ?? 0),
+    };
+  }
+
+  // 3. Compute AI Score per vendor
+  const scores = perfRows.map(({ vendor, perf }) => {
+    const globalScore = perf ? Number(perf.recommendationScore ?? 50) : 50;
+    const route = routeMap[vendor.id];
+    const routeOrders = route?.routeOrders ?? 0;
+    const routeOnTime = route?.routeOnTime ?? 0;
+    const avgDelayDays = route?.avgDelayDays ?? 0;
+    const routeOnTimePct = routeOrders > 0 ? (routeOnTime / routeOrders) * 100 : null;
+
+    // Blend: more route data → more weight on route-specific performance
+    let aiScore: number;
+    let dataConfidence: "high" | "medium" | "low" | "none";
+    if (routeOrders >= 5) {
+      aiScore = (routeOnTimePct! * 0.65) + (globalScore * 0.35);
+      dataConfidence = "high";
+    } else if (routeOrders >= 2) {
+      aiScore = (routeOnTimePct! * 0.40) + (globalScore * 0.60);
+      dataConfidence = "medium";
+    } else if (routeOrders >= 1) {
+      aiScore = (routeOnTimePct! * 0.20) + (globalScore * 0.80);
+      dataConfidence = "low";
+    } else {
+      aiScore = globalScore;
+      dataConfidence = "none";
+    }
+
+    // Tier classification
+    const hasAnyData = !!(perf || routeOrders > 0);
+    const tier: "top" | "good" | "moderate" | "new" =
+      !hasAnyData ? "new" :
+      aiScore >= 80 ? "top" :
+      aiScore >= 65 ? "good" :
+      aiScore >= 50 ? "moderate" : "new";
+
+    // Human-readable score bullets
+    const bullets: string[] = [];
+    if (routeOrders > 0 && routeOnTimePct !== null) {
+      bullets.push(`${routeOnTime}/${routeOrders} on-time rute ini (${routeOnTimePct.toFixed(0)}%)`);
+      if (avgDelayDays > 0) bullets.push(`Rata-rata delay ${avgDelayDays.toFixed(1)} hari`);
+    }
+    if (perf) {
+      const gOt = Number(perf.ontimePercentage ?? 0);
+      if (gOt > 0) bullets.push(`On-time global: ${gOt.toFixed(0)}%`);
+      const respMin = Number(perf.averageResponseMinutes ?? 0);
+      if (respMin > 0 && respMin <= 120) bullets.push(`Respon rata-rata ${respMin.toFixed(0)} menit`);
+      if (Number(perf.totalOrders ?? 0) > 0) bullets.push(`${perf.totalOrders} total order`);
+    }
+    if (bullets.length === 0) bullets.push("Belum ada data historis");
+
+    // Performance badges
+    const badges: string[] = [];
+    if (routeOrders >= 3 && routeOnTimePct !== null && routeOnTimePct >= 80) badges.push("Route Expert");
+    if (perf && Number(perf.ontimePercentage ?? 0) >= 90) badges.push("Top Vendor");
+    if (perf && Number(perf.averageResponseMinutes ?? 0) > 0 && Number(perf.averageResponseMinutes) <= 30) badges.push("Fast Response");
+    if (perf && Number(perf.totalOrders ?? 0) >= 20 && Number(perf.cancelRate ?? 100) <= 5) badges.push("Trusted");
+
+    return {
+      vendorId: vendor.id,
+      vendorName: vendor.name,
+      aiScore: Math.round(aiScore * 10) / 10,
+      tier,
+      globalScore: Math.round(globalScore * 10) / 10,
+      routeOrderCount: routeOrders,
+      routeOnTimePct: routeOnTimePct !== null ? Math.round(routeOnTimePct * 10) / 10 : null,
+      avgDelayDays: Math.round(avgDelayDays * 10) / 10,
+      dataConfidence,
+      scoreBullets: bullets,
+      badges,
+    };
+  });
+
+  scores.sort((a, b) => b.aiScore - a.aiScore);
+  res.json(scores);
+});
+
 // GET /api/vendor-performance/:vendorId
 router.get("/:vendorId", async (req, res) => {
   const vendorId = Number(req.params.vendorId);

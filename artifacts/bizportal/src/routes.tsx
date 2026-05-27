@@ -130,6 +130,9 @@ import InternalTasksPage from "@/pages/logistics/internal-tasks";
 // Misc
 import NotificationsPage from "@/pages/notifications";
 import IntelligenceAlertsPage from "@/pages/intelligence-alerts";
+import AiApprovalsPage from "@/pages/ai-approvals";
+import OperationalContextPage from "@/pages/operational-context";
+import AiDecisionMemoryPage from "@/pages/ai-decision-memory";
 import WaNotificationHistoryPage from "@/pages/wa-notification-history";
 import AnalyticsDashboardPage from "@/pages/analytics-dashboard";
 import POOrdersPage from "@/pages/purchase/po-orders";
@@ -149,6 +152,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       {/* ── Welcome / Dashboard ────────────────────────────────────────── */}
       <Route path="/welcome" component={WelcomePage} />
       <Route path="/dashboard" component={PR(DashboardPage)} />
+      <Route path="/ai/decision-memory" component={PR(AiDecisionMemoryPage)} />
       <Route path="/approvals" component={PR(ApprovalsPage)} />
       <Route path="/ecommerce" component={PR(EcommercePage)} />
       <Route path="/trading" component={PR(TradingPage)} />
@@ -318,6 +322,8 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       {/* ── Notifications & Analytics ──────────────────────────────────── */}
       <Route path="/notifications" component={PR(NotificationsPage)} />
       <Route path="/intelligence-alerts" component={PR(IntelligenceAlertsPage)} />
+      <Route path="/ai-approvals" component={PR(AiApprovalsPage)} />
+      <Route path="/operational-context" component={PR(OperationalContextPage)} />
       <Route path="/analytics" component={PR(AnalyticsDashboardPage)} />
 
       {/* ── Audit ERP ──────────────────────────────────────────────────── */}

@@ -23,6 +23,7 @@ import { Separator } from "@/components/ui/separator";
 import {
   ArrowLeft, Send, RefreshCw, Package, MapPin, Users, Clock,
   Copy, Check, Loader2, ExternalLink, AlertCircle, BarChart2, Truck,
+  Brain, TrendingUp, TrendingDown, Minus,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -57,6 +58,47 @@ interface Vendor {
   phone: string | null;
   serviceType: string | null;
   isActive: boolean;
+}
+
+interface VendorAiScore {
+  vendorId: number;
+  vendorName: string;
+  aiScore: number;
+  tier: "top" | "good" | "moderate" | "new";
+  globalScore: number;
+  routeOrderCount: number;
+  routeOnTimePct: number | null;
+  avgDelayDays: number;
+  dataConfidence: "high" | "medium" | "low" | "none";
+  scoreBullets: string[];
+  badges: string[];
+}
+
+const TIER_CONFIG = {
+  top:      { label: "Top",      bg: "bg-green-100",  text: "text-green-700",  border: "border-green-200" },
+  good:     { label: "Good",     bg: "bg-blue-100",   text: "text-blue-700",   border: "border-blue-200"  },
+  moderate: { label: "OK",       bg: "bg-yellow-100", text: "text-yellow-700", border: "border-yellow-200"},
+  new:      { label: "Baru",     bg: "bg-gray-100",   text: "text-gray-500",   border: "border-gray-200"  },
+};
+
+function AiScorePill({ score }: { score: VendorAiScore }) {
+  const cfg = TIER_CONFIG[score.tier];
+  const Icon = score.tier === "top" ? TrendingUp : score.tier === "new" ? Minus : TrendingDown;
+  const tooltip = score.scoreBullets.join(" · ");
+  return (
+    <span
+      title={tooltip}
+      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-semibold border cursor-help ${cfg.bg} ${cfg.text} ${cfg.border}`}
+    >
+      <Brain className="h-2.5 w-2.5" />
+      {score.aiScore.toFixed(0)}
+      {score.dataConfidence !== "none" && (
+        <span className="opacity-60">
+          {score.dataConfidence === "high" ? "★★" : score.dataConfidence === "medium" ? "★" : "·"}
+        </span>
+      )}
+    </span>
+  );
 }
 
 interface RfqDetail {
@@ -124,6 +166,26 @@ export default function LogisticsRfqDetailPage() {
     },
   });
 
+  // AI Vendor Score Engine — blends global performance + route-specific Decision Memory
+  const { data: vendorScores = [] } = useQuery<VendorAiScore[]>({
+    queryKey: ["vendor-scores-bulk", rfq?.origin, rfq?.destination, rfq?.serviceType, vendors.map(v => v.id).join(",")],
+    queryFn: async () => {
+      if (!rfq || vendors.length === 0) return [];
+      const ids = vendors.map(v => v.id).join(",");
+      const params = new URLSearchParams({ vendorIds: ids });
+      if (rfq.origin) params.set("origin", rfq.origin);
+      if (rfq.destination) params.set("destination", rfq.destination);
+      if (rfq.serviceType) params.set("shipmentType", rfq.serviceType);
+      const r = await fetch(`/api/vendor-performance/scores-bulk?${params.toString()}`);
+      if (!r.ok) return [];
+      return r.json();
+    },
+    enabled: !!rfq && vendors.length > 0,
+    staleTime: 60_000,
+  });
+
+  const scoreMap = new Map(vendorScores.map(s => [s.vendorId, s]));
+
   const blastMutation = useMutation({
     mutationFn: async () => {
       if (selectedVendorIds.size === 0) throw new Error("Pilih minimal 1 vendor");
@@ -159,11 +221,18 @@ export default function LogisticsRfqDetailPage() {
     });
   }, []);
 
-  const filteredVendors = vendors.filter((v) =>
-    !vendorSearch ||
-    v.name.toLowerCase().includes(vendorSearch.toLowerCase()) ||
-    (v.serviceType ?? "").toLowerCase().includes(vendorSearch.toLowerCase())
-  );
+  const filteredVendors = vendors
+    .filter((v) =>
+      !vendorSearch ||
+      v.name.toLowerCase().includes(vendorSearch.toLowerCase()) ||
+      (v.serviceType ?? "").toLowerCase().includes(vendorSearch.toLowerCase())
+    )
+    .sort((a, b) => {
+      // Sort by AI Score descending; vendors without score go to bottom
+      const sa = scoreMap.get(a.id)?.aiScore ?? -1;
+      const sb = scoreMap.get(b.id)?.aiScore ?? -1;
+      return sb - sa;
+    });
 
   if (rfqLoading) {
     return (
@@ -352,32 +421,53 @@ export default function LogisticsRfqDetailPage() {
               ) : filteredVendors.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-4">Tidak ada vendor aktif ditemukan</p>
               ) : (
-                <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
-                  {filteredVendors.map((v) => (
-                    <div
-                      key={v.id}
-                      className={`flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer transition-colors ${
-                        selectedVendorIds.has(v.id) ? "border-primary bg-primary/5" : "border-border hover:bg-muted/40"
-                      }`}
-                      onClick={() => toggleVendor(v.id)}
-                    >
-                      <Checkbox
-                        checked={selectedVendorIds.has(v.id)}
-                        onCheckedChange={() => toggleVendor(v.id)}
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium">{v.name}</div>
-                        <div className="text-xs text-muted-foreground">{v.serviceType || "—"}</div>
-                      </div>
-                      {v.phone ? (
-                        <span className="text-xs text-green-700 font-mono">{v.phone}</span>
-                      ) : (
-                        <span className="text-xs text-red-500">No WA tidak ada</span>
-                      )}
+                <>
+                  {vendorScores.length > 0 && (
+                    <div className="mb-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <Brain className="h-3 w-3 text-violet-500" />
+                      <span>Diurutkan berdasarkan AI Score untuk rute <strong>{rfq?.origin} → {rfq?.destination}</strong></span>
                     </div>
-                  ))}
-                </div>
+                  )}
+                  <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
+                    {filteredVendors.map((v) => {
+                      const vs = scoreMap.get(v.id);
+                      return (
+                        <div
+                          key={v.id}
+                          className={`flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer transition-colors ${
+                            selectedVendorIds.has(v.id) ? "border-primary bg-primary/5" : "border-border hover:bg-muted/40"
+                          }`}
+                          onClick={() => toggleVendor(v.id)}
+                        >
+                          <Checkbox
+                            checked={selectedVendorIds.has(v.id)}
+                            onCheckedChange={() => toggleVendor(v.id)}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-sm font-medium">{v.name}</span>
+                              {vs && <AiScorePill score={vs} />}
+                            </div>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <span className="text-xs text-muted-foreground">{v.serviceType || "—"}</span>
+                              {vs && vs.routeOrderCount > 0 && (
+                                <span className="text-xs text-violet-600">
+                                  {vs.routeOrderCount}x rute ini
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          {v.phone ? (
+                            <span className="text-xs text-green-700 font-mono shrink-0">{v.phone}</span>
+                          ) : (
+                            <span className="text-xs text-red-500 shrink-0">No WA tidak ada</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
               )}
 
               <Separator className="my-4" />

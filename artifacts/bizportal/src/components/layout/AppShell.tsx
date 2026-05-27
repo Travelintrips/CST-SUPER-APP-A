@@ -64,6 +64,7 @@ import {
   SlidersHorizontal,
   Send,
   Link2,
+  Brain,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -186,6 +187,33 @@ export function AppShell({ children }: AppShellProps) {
       titleKey: "Intelligence Alerts",
       href: "/intelligence-alerts",
       icon: ShieldAlert,
+      roles: ["admin", "owner"],
+    },
+
+    // ── AI APPROVAL QUEUE ─────────────────────────────────────────────
+    {
+      type: "flat",
+      titleKey: "AI Approval Queue",
+      href: "/ai-approvals",
+      icon: ShieldCheck,
+      roles: ["admin", "owner"],
+    },
+
+    // ── AI DECISION MEMORY ────────────────────────────────────────────
+    {
+      type: "flat",
+      titleKey: "Decision Memory",
+      href: "/ai/decision-memory",
+      icon: Brain,
+      roles: ["admin", "owner"],
+    },
+
+    // ── OPERATIONAL CONTEXT ───────────────────────────────────────────
+    {
+      type: "flat",
+      titleKey: "Operational Context",
+      href: "/operational-context",
+      icon: Layers,
       roles: ["admin", "owner"],
     },
 
