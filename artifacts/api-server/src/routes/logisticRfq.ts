@@ -1076,8 +1076,9 @@ logisticRfqRouter.get("/rfq-form", rfqRateLimit, async (req: Request, res: Respo
   });
 });
 
-// GET /api/logistic/orders/logistic-vendors — list active logistic vendors (public, for approve page)
-logisticRfqRouter.get("/logistic-vendors", async (_req: Request, res: Response) => {
+// GET /api/logistic/orders/logistic-vendors — list active logistic vendors [H1-FIX: requireClerkUser]
+logisticRfqRouter.get("/logistic-vendors", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
   const vendors = await db
     .select({ id: suppliersTable.id, name: suppliersTable.name, serviceType: suppliersTable.serviceType, phone: suppliersTable.phone })
     .from(suppliersTable)

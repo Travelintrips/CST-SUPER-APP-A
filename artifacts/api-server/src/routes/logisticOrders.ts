@@ -500,19 +500,18 @@ logisticOrdersRouter.get(
   }
 );
 
-// GET /api/logistic/orders/trucking-rates — public
-logisticOrdersRouter.get("/trucking-rates", async (_req: Request, res: Response) => {
+// GET /api/logistic/orders/trucking-rates — [H2-FIX] internal pricing, requires staff session
+// Note: customer portal uses /api/portal/trucking-rates (separate public endpoint)
+logisticOrdersRouter.get("/trucking-rates", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
   const rates = await getTruckingRates();
   return res.json(rates);
 });
 
-// GET /api/logistic/orders/vendors — admin & logistics staff
+// GET /api/logistic/orders/vendors — [H2-FIX] admin, owner & logistics staff only
 logisticOrdersRouter.get("/vendors", async (req: Request, res: Response) => {
-  const user = (req as any).user;
-  const allowed = ["admin", "owner", "logistics"];
-  if (!user || !allowed.includes(user.role)) {
-    return res.status(403).json({ error: "Forbidden" });
-  }
+  if (!(await requireClerkUser(req, res))) return;
+  if (!(await requireRole(req, res, ["admin", "owner", "logistics"]))) return;
   const rows = await db.select().from(suppliersTable).orderBy(suppliersTable.sortOrder);
   return res.json(rows.map((v) => ({ ...v, fee: Number(v.fee ?? 0), email: v.contactEmail })));
 });
@@ -1323,8 +1322,9 @@ logisticOrdersRouter.post("/:id/updates", requireClerkUser, async (req: Request,
   return res.status(201).json({ ok: true, update: inserted });
 });
 
-// GET /api/logistic/orders/:id/locations — GPS history for an order (admin)
+// GET /api/logistic/orders/:id/locations — GPS history for an order [H2-FIX: admin/owner/logistics only]
 logisticOrdersRouter.get("/:id/locations", async (req: Request, res: Response) => {
+  if (!(await requireRole(req, res, ["admin", "owner", "logistics"]))) return;
   const id = parseInt(String(req.params["id"] ?? ""));
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
   const limit = Math.min(parseInt(String(req.query["limit"] ?? "200"), 10), 500);
