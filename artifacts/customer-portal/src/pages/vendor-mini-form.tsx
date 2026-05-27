@@ -139,7 +139,10 @@ export default function VendorMiniFormPage() {
   const [contactPerson, setContactPerson] = useState("");
   const [contactPhone, setContactPhone] = useState("");
   // Order-based specific price fields
-  const [vendorPrice, setVendorPrice] = useState("");
+  const [vendorDesc, setVendorDesc] = useState("");
+  const [vendorQty, setVendorQty] = useState("1");
+  const [vendorUnit, setVendorUnit] = useState("Ls");
+  const [vendorUnitPrice, setVendorUnitPrice] = useState("");
   const [currency, setCurrency] = useState("IDR");
   const [eta, setEta] = useState("");
   const [validUntil, setValidUntil] = useState("");
@@ -179,8 +182,8 @@ export default function VendorMiniFormPage() {
       .filter(f => f.required && !values[f.key]?.trim())
       .map(f => f.label);
     if (missing.length) { setSubmitError(`Field wajib belum diisi: ${missing.join(", ")}`); return; }
-    if (meta.mode === "order_based" && !vendorPrice) {
-      setSubmitError("Harga penawaran wajib diisi"); return;
+    if (meta.mode === "order_based" && (!vendorUnitPrice || Number(vendorUnitPrice) <= 0)) {
+      setSubmitError("Harga satuan dasar wajib diisi"); return;
     }
 
     setSubmitting(true);
@@ -198,15 +201,26 @@ export default function VendorMiniFormPage() {
         attachmentUrl = upData.objectPath;
       }
 
+      const qty = Math.max(1, Number(vendorQty) || 1);
+      const unitPrice = Number(vendorUnitPrice) || 0;
+      const subtotal = qty * unitPrice;
       const body: Record<string, unknown> = {
         vendorName: vendorName.trim() || null,
         contactPerson: contactPerson.trim() || null,
         contactPhone: contactPhone.trim() || null,
-        formData: values,
+        formData: {
+          ...values,
+          ...(meta.mode === "order_based" ? {
+            _deskripsi: vendorDesc.trim() || undefined,
+            _qty: vendorQty,
+            _satuan: vendorUnit,
+            _hargaSatuan: vendorUnitPrice,
+          } : {}),
+        },
         attachmentUrl,
       };
       if (meta.mode === "order_based") {
-        body["vendorPrice"] = vendorPrice ? Number(vendorPrice) : undefined;
+        body["vendorPrice"] = subtotal > 0 ? subtotal : undefined;
         body["currency"] = currency;
         body["eta"] = eta.trim() || undefined;
         body["validUntil"] = validUntil || undefined;
@@ -289,41 +303,90 @@ export default function VendorMiniFormPage() {
           </div>
 
           {/* Order-based: harga penawaran */}
-          {isOrderBased && (
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-              <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">💰 Penawaran Harga Dasar</h2>
-              <p className="text-xs text-slate-400 mb-4">Isi harga dasar Anda (belum termasuk margin & PPN).</p>
-              <div className="space-y-4">
-                <FormField label="Harga Dasar (belum PPN)" required>
-                  <div className="flex gap-2">
-                    <select
-                      value={currency} onChange={e => setCurrency(e.target.value)}
-                      className="rounded-lg border border-slate-200 px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white w-24"
-                    >
-                      {["IDR", "USD", "SGD", "EUR"].map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                    <input
-                      type="number" value={vendorPrice} onChange={e => setVendorPrice(e.target.value)}
-                      required placeholder="Contoh: 5000000" className={`${INPUT_CLS} flex-1`}
-                    />
+          {isOrderBased && (() => {
+            const qty = Math.max(1, Number(vendorQty) || 1);
+            const unitPrice = Number(vendorUnitPrice) || 0;
+            const subtotal = qty * unitPrice;
+            const ppn = Math.round(subtotal * 0.11 * 100) / 100;
+            const total = subtotal + ppn;
+            const fmtIDR = (n: number) => n.toLocaleString("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 });
+            return (
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+                <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">💰 Rincian Harga Dasar</h2>
+                <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">
+                  Isi <strong>Harga Dasar</strong> Anda — belum termasuk margin & PPN. Harga jual ke customer ditentukan oleh admin.
+                </p>
+                <div className="space-y-4">
+                  <FormField label="Deskripsi Layanan / Produk">
+                    <input type="text" value={vendorDesc} onChange={e => setVendorDesc(e.target.value)}
+                      placeholder="Contoh: Jasa angkutan laut FCL Jakarta–Singapura" className={INPUT_CLS} />
+                  </FormField>
+                  <div className="grid grid-cols-2 gap-3">
+                    <FormField label="Qty">
+                      <input type="number" min="1" step="any" value={vendorQty}
+                        onChange={e => setVendorQty(e.target.value)}
+                        placeholder="1" className={INPUT_CLS} />
+                    </FormField>
+                    <FormField label="Satuan">
+                      <input type="text" value={vendorUnit} onChange={e => setVendorUnit(e.target.value)}
+                        placeholder="Ls / kg / CBM / unit" className={INPUT_CLS} />
+                    </FormField>
                   </div>
-                  {vendorPrice && currency === "IDR" && (
-                    <p className="text-xs text-slate-400 mt-1">
-                      {Number(vendorPrice).toLocaleString("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 })}
-                    </p>
+                  <FormField label="Harga Satuan Dasar (belum PPN)" required>
+                    <div className="flex gap-2">
+                      <select
+                        value={currency} onChange={e => setCurrency(e.target.value)}
+                        className="rounded-lg border border-slate-200 px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white w-24"
+                      >
+                        {["IDR", "USD", "SGD", "EUR"].map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                      <input
+                        type="number" min="0" step="any"
+                        value={vendorUnitPrice} onChange={e => setVendorUnitPrice(e.target.value)}
+                        required placeholder="Contoh: 5000000" className={`${INPUT_CLS} flex-1`}
+                      />
+                    </div>
+                  </FormField>
+
+                  {/* Kalkulasi otomatis PPN */}
+                  {subtotal > 0 && (
+                    <div className="rounded-xl border border-indigo-100 bg-indigo-50 p-4 space-y-2 text-sm">
+                      <p className="text-xs font-semibold text-indigo-700 uppercase tracking-wide mb-2">Ringkasan Harga Dasar</p>
+                      <div className="flex justify-between text-slate-600">
+                        <span>{vendorQty || 1} {vendorUnit || "Ls"} × {currency === "IDR" ? fmtIDR(unitPrice) : unitPrice.toLocaleString()}</span>
+                        <span className="font-medium">{currency === "IDR" ? fmtIDR(subtotal) : subtotal.toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between text-slate-500 text-xs">
+                        <span>Subtotal (Harga Dasar, belum PPN)</span>
+                        <span>{currency === "IDR" ? fmtIDR(subtotal) : subtotal.toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between text-slate-500 text-xs">
+                        <span>PPN 11%</span>
+                        <span>{currency === "IDR" ? fmtIDR(ppn) : ppn.toLocaleString()}</span>
+                      </div>
+                      <div className="h-px bg-indigo-200 my-1" />
+                      <div className="flex justify-between font-semibold text-indigo-800">
+                        <span>Total (dengan PPN 11%)</span>
+                        <span>{currency === "IDR" ? fmtIDR(total) : total.toLocaleString()}</span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-1">
+                        * Yang Anda kirimkan adalah <strong>Harga Dasar (Subtotal: {currency === "IDR" ? fmtIDR(subtotal) : subtotal.toLocaleString()})</strong>. Harga jual ke customer akan ditentukan oleh admin.
+                      </p>
+                    </div>
                   )}
-                </FormField>
-                <FormField label="Estimasi Pengiriman / Lead Time">
-                  <input type="text" value={eta} onChange={e => setEta(e.target.value)}
-                    placeholder="Contoh: H+2, 3 hari kerja, 15 Jan 2026" className={INPUT_CLS} />
-                </FormField>
-                <FormField label="Harga Berlaku Sampai">
-                  <input type="date" value={validUntil} onChange={e => setValidUntil(e.target.value)}
-                    className={INPUT_CLS} />
-                </FormField>
+
+                  <FormField label="Estimasi Pengiriman / Lead Time">
+                    <input type="text" value={eta} onChange={e => setEta(e.target.value)}
+                      placeholder="Contoh: H+2, 3 hari kerja, 15 Jan 2026" className={INPUT_CLS} />
+                  </FormField>
+                  <FormField label="Harga Berlaku Sampai">
+                    <input type="date" value={validUntil} onChange={e => setValidUntil(e.target.value)}
+                      className={INPUT_CLS} />
+                  </FormField>
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Dynamic service fields */}
           {schema.fields.length > 0 && (
