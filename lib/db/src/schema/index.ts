@@ -73,3 +73,4 @@ export * from "./storageAuditLog";
 export * from "./workflowEvents";
 export * from "./intelligenceAlerts";
 export * from "./orderStageLogs";
+export * from "./aiGovernance";
