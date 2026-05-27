@@ -1,0 +1,135 @@
+Pasted-Mulai-jalankan-BATCH-5-DUPLICATE-RACE-CONDITION-AUDIT-J_1779879492341.txt
+Mulai jalankan BATCH 5 — DUPLICATE & RACE CONDITION AUDIT.
+
+Jangan fix dulu. Audit saja.
+
+Tujuan:
+Pastikan sistem aman dari:
+- double click
+- duplicate submit
+- duplicate SO
+- race condition multi-user
+- SSE duplicate event
+- stale overwrite
+- optimistic update corruption
+
+Area yang wajib dicek:
+
+1. Customer Action Duplicate
+Test:
+- customer klik approve 2x cepat
+- customer refresh saat approve
+- customer buka approval link di 2 tab
+- customer spam request
+
+Pastikan:
+- approval hanya diproses sekali
+- SO tidak duplicate
+- status tidak conflict
+
+2. Vendor Submission Duplicate
+Test:
+- vendor submit quotation 2x
+- vendor double click submit
+- vendor refresh saat submit
+- vendor revise saat admin memilih vendor
+
+Pastikan:
+- duplicate quotation tidak corrupt
+- versioning aman
+- selected vendor tidak berubah diam-diam
+
+3. Admin Action Race Condition
+Test:
+- 2 admin edit order bersamaan
+- 2 admin create SO bersamaan
+- 2 admin pilih vendor berbeda bersamaan
+- admin approve saat vendor revise harga
+
+Pastikan:
+- last-write conflict terdeteksi
+- status tidak corrupt
+- duplicate SO tidak terjadi
+
+4. SSE / Realtime Duplicate Event
+Cek:
+- EventSource subscribe dobel
+- invalidate query berkali-kali
+- duplicate notification
+- duplicate timeline
+- duplicate WA send
+
+5. Database Constraint Audit
+Cek:
+- unique constraint
+- foreign key
+- transaction safety
+- atomic update
+- rollback jika gagal
+- idempotency key jika perlu
+
+Table penting:
+- customer_approvals
+- sales_orders
+- vendor_mini_form_submissions
+- orders
+- order_items
+- notification_logs
+- whatsapp_logs
+- operational_confirmations
+
+6. Frontend Button Protection
+Cek:
+- loading state disable button
+- debounce/throttle
+- prevent double submit
+- optimistic UI rollback
+
+7. Retry / Refresh Safety
+Test:
+- internet putus saat submit
+- refresh saat loading
+- retry request
+- duplicate fetch
+- stale cache overwrite
+
+8. Background Event Audit
+Cek:
+- SSE reconnect
+- duplicate listener
+- memory leak
+- duplicate invalidateQueries
+- repeated EventSource mount
+
+Output wajib:
+
+A. DUPLICATE RISK MATRIX
+Action | Duplicate Risk | Protection Exists? | File/API | Risk Level
+
+B. RACE CONDITION MATRIX
+Scenario | Tables Affected | Current Behavior | Risk | Recommendation
+
+C. DATABASE SAFETY CHECK
+Table | Unique Constraint | Transaction Safe | Atomic | Status
+
+D. FRONTEND PROTECTION CHECK
+Feature | Button Lock | Loading State | Debounce | Status
+
+E. SSE / REALTIME FINDINGS
+Listener/File | Duplicate Risk | Cleanup Exists? | Status
+
+F. CRITICAL FINDINGS
+- root cause
+- affected flow
+- production impact
+
+G. PRIORITY FIX PLAN
+Critical / High / Medium / Low
+
+H. FINAL VERDICT
+- Duplicate safety score
+- Race condition readiness score
+- Multi-user safety score
+- Production readiness score
+
+Jangan implement fix sampai saya minta.
