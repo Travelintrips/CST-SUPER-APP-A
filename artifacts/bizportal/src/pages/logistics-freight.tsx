@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, RefreshCw, Ship, Trash2, Eye, Filter, X, Clock, ShoppingCart, TrendingUp, TrendingDown } from "lucide-react";
+import { Plus, RefreshCw, Ship, Trash2, Eye, Filter, X, Clock, ShoppingCart, TrendingUp, TrendingDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
 import {
@@ -281,6 +281,8 @@ export default function LogisticsFreightPage() {
   const [datePreset, setDatePresetState] = useState<DatePreset>(initial.preset);
   const [customDateFrom, setCustomDateFromState] = useState<string>(initial.from);
   const [customDateTo, setCustomDateToState] = useState<string>(initial.to);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
 
   const syncStateFromUrl = useCallback(() => {
     const parsed = parseParamsFromSearch(window.location.search);
@@ -331,6 +333,7 @@ export default function LogisticsFreightPage() {
 
   const setStatusFilter = (value: string | null) => {
     setStatusFilterState(value);
+    setPage(1);
   };
 
   const setDatePreset = (preset: DatePreset) => {
@@ -339,6 +342,7 @@ export default function LogisticsFreightPage() {
       setCustomDateToState("");
     }
     setDatePresetState(preset);
+    setPage(1);
   };
 
   const customFrom = customDateFrom
@@ -383,6 +387,9 @@ export default function LogisticsFreightPage() {
     return shipments.filter((s) => s.status === value).length;
   };
 
+  const totalPages = Math.ceil(filteredShipments.length / pageSize);
+  const pagedShipments = filteredShipments.slice((page - 1) * pageSize, page * pageSize);
+
   const handleDelete = (id: number, shipmentNumber: string) => {
     if (!confirm(`Hapus shipment ${shipmentNumber}?`)) return;
     deleteShipment.mutate(
@@ -405,6 +412,7 @@ export default function LogisticsFreightPage() {
     setStatusFilterState(null);
     setBlReadyFilter(false);
     setDatePreset("all");
+    setPage(1);
     try { localStorage.removeItem(FREIGHT_BL_LS_KEY); } catch {}
   };
 
@@ -532,7 +540,7 @@ export default function LogisticsFreightPage() {
           <Button
             variant={blReadyFilter ? "default" : "outline"}
             size="sm"
-            onClick={() => setBlReadyFilter((v) => !v)}
+            onClick={() => { setBlReadyFilter((v) => !v); setPage(1); }}
             className="gap-1.5"
           >
             B/L Siap
@@ -587,7 +595,7 @@ export default function LogisticsFreightPage() {
 
           {isFiltered && (
             <p className="text-xs text-muted-foreground">
-              Menampilkan {filteredShipments.length} shipment
+              {filteredShipments.length} shipment ditemukan
             </p>
           )}
         </div>
@@ -627,7 +635,7 @@ export default function LogisticsFreightPage() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredShipments.map((s) => (
+                  pagedShipments.map((s) => (
                     <TableRow key={s.id}>
                       <TableCell>
                         <div className="font-mono text-sm font-semibold">{s.shipmentNumber}</div>
@@ -692,6 +700,33 @@ export default function LogisticsFreightPage() {
               </TableBody>
             </Table>
           </CardContent>
+
+          {/* Desktop pagination controls */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between px-4 py-3 border-t">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Per halaman:</span>
+                <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setPage(1); }}>
+                  <SelectTrigger className="h-7 w-16 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {[20, 50, 100].map((n) => <SelectItem key={n} value={String(n)} className="text-xs">{n}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <span className="text-xs text-muted-foreground">
+                  {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, filteredShipments.length)} dari {filteredShipments.length}
+                </span>
+              </div>
+              <div className="flex items-center gap-1">
+                <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <span className="text-xs px-2">{page} / {totalPages}</span>
+                <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages}>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </Card>
 
         {/* Mobile card list — hidden on md+ */}
@@ -721,7 +756,7 @@ export default function LogisticsFreightPage() {
               </CardContent>
             </Card>
           ) : (
-            filteredShipments.map((s) => (
+            pagedShipments.map((s) => (
               <Card
                 key={s.id}
                 data-testid={`card-shipment-${s.id}`}
@@ -800,6 +835,24 @@ export default function LogisticsFreightPage() {
                 </CardContent>
               </Card>
             ))
+          )}
+
+          {/* Mobile pagination controls */}
+          {!isLoading && totalPages > 1 && (
+            <div className="flex items-center justify-between py-2">
+              <span className="text-xs text-muted-foreground">
+                {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, filteredShipments.length)} dari {filteredShipments.length}
+              </span>
+              <div className="flex items-center gap-1">
+                <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <span className="text-xs px-1">{page}/{totalPages}</span>
+                <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages}>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
           )}
         </div>
       </div>
