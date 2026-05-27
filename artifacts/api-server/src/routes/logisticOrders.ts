@@ -426,31 +426,30 @@ logisticOrdersRouter.get(
 
     if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
 
-    const items = await db
-      .select()
-      .from(logisticOrderItemsTable)
-      .where(eq(logisticOrderItemsTable.orderId, order.id));
-
-    const [driverJob] = await db
-      .select()
-      .from(driverJobsTable)
-      .where(eq(driverJobsTable.logisticOrderId, order.id))
-      .orderBy(desc(driverJobsTable.assignedAt))
-      .limit(1);
+    // Run all independent queries in parallel — eliminates N+1 sequential awaits
+    const [items, [driverJob], [latestRfq]] = await Promise.all([
+      db.select().from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, order.id)),
+      db.select().from(driverJobsTable)
+        .where(eq(driverJobsTable.logisticOrderId, order.id))
+        .orderBy(desc(driverJobsTable.assignedAt))
+        .limit(1),
+      db.select().from(logisticOrderRfqsTable)
+        .where(eq(logisticOrderRfqsTable.orderId, order.id))
+        .orderBy(desc(logisticOrderRfqsTable.createdAt))
+        .limit(1),
+    ]);
 
     let driverJobData = null;
     if (driverJob) {
-      const logs = await db
-        .select()
-        .from(driverJobLogsTable)
-        .where(eq(driverJobLogsTable.driverJobId, driverJob.id))
-        .orderBy(desc(driverJobLogsTable.timestamp));
-
-      const photos = await db
-        .select()
-        .from(driverPhotosTable)
-        .where(eq(driverPhotosTable.driverJobId, driverJob.id))
-        .orderBy(desc(driverPhotosTable.takenAt));
+      // Run driver logs + photos in parallel once we know the job ID
+      const [logs, photos] = await Promise.all([
+        db.select().from(driverJobLogsTable)
+          .where(eq(driverJobLogsTable.driverJobId, driverJob.id))
+          .orderBy(desc(driverJobLogsTable.timestamp)),
+        db.select().from(driverPhotosTable)
+          .where(eq(driverPhotosTable.driverJobId, driverJob.id))
+          .orderBy(desc(driverPhotosTable.takenAt)),
+      ]);
 
       driverJobData = {
         id: driverJob.id,
@@ -471,14 +470,6 @@ logisticOrdersRouter.get(
         })),
       };
     }
-
-    // RFQ quote info untuk customer portal
-    const [latestRfq] = await db
-      .select()
-      .from(logisticOrderRfqsTable)
-      .where(eq(logisticOrderRfqsTable.orderId, order.id))
-      .orderBy(desc(logisticOrderRfqsTable.createdAt))
-      .limit(1);
 
     // Security: quotedPrice is financial/margin data — never expose on public tracking endpoint.
     // Only status and timing info is safe for unauthenticated callers.
@@ -512,7 +503,9 @@ logisticOrdersRouter.get("/trucking-rates", async (req: Request, res: Response) 
 logisticOrdersRouter.get("/vendors", async (req: Request, res: Response) => {
   if (!(await requireClerkUser(req, res))) return;
   if (!(await requireRole(req, res, ["admin", "owner", "logistics"]))) return;
-  const rows = await db.select().from(suppliersTable).orderBy(suppliersTable.sortOrder);
+  const limit = Math.min(Number(req.query["limit"] ?? 500), 1000);
+  const offset = Math.max(Number(req.query["offset"] ?? 0), 0);
+  const rows = await db.select().from(suppliersTable).orderBy(suppliersTable.sortOrder).limit(limit).offset(offset);
   return res.json(rows.map((v) => ({ ...v, fee: Number(v.fee ?? 0), email: v.contactEmail })));
 });
 
@@ -529,6 +522,10 @@ logisticOrdersRouter.use(async (req, res, next) => {
 logisticOrdersRouter.get("/", async (req: Request, res: Response) => {
   const parsed = ListLogisticOrdersQueryParams.safeParse(req.query);
   const q = parsed.success ? parsed.data : {};
+
+  // Pagination — default 100 per page, max 500
+  const limit = Math.min(Number(req.query["limit"] ?? 100), 500);
+  const offset = Math.max(Number(req.query["offset"] ?? 0), 0);
 
   const rawCompany = req.query["company"] ?? req.query["companyId"];
   const isConsolidated = rawCompany === "0" || rawCompany === "all" || rawCompany === undefined;
@@ -559,10 +556,14 @@ logisticOrdersRouter.get("/", async (req: Request, res: Response) => {
           .from(logisticOrdersTable)
           .where(and(...conditions))
           .orderBy(sql`${logisticOrdersTable.createdAt} DESC`)
+          .limit(limit)
+          .offset(offset)
       : await db
           .select()
           .from(logisticOrdersTable)
-          .orderBy(sql`${logisticOrdersTable.createdAt} DESC`);
+          .orderBy(sql`${logisticOrdersTable.createdAt} DESC`)
+          .limit(limit)
+          .offset(offset);
 
   // Attach linked sales doc info for each order
   const orderIds = rows.map((r) => r.id);

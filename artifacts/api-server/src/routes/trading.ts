@@ -24,9 +24,14 @@ const toItem = (i: typeof vendorCatalogItemsTable.$inferSelect) => ({
 });
 
 // GET /api/trading/stocks
-router.get("/stocks", async (_req, res) => {
-  const stocks = await db.select().from(stocksTable).orderBy(stocksTable.createdAt);
-  const suppliers = await db.select().from(suppliersTable);
+router.get("/stocks", async (req, res) => {
+  const limit = Math.min(Number(req.query["limit"] ?? 100), 500);
+  const offset = Math.max(Number(req.query["offset"] ?? 0), 0);
+
+  const [stocks, suppliers] = await Promise.all([
+    db.select().from(stocksTable).orderBy(stocksTable.createdAt).limit(limit).offset(offset),
+    db.select({ id: suppliersTable.id, name: suppliersTable.name }).from(suppliersTable),
+  ]);
   const supplierMap = Object.fromEntries(suppliers.map(s => [s.id, s.name]));
 
   return res.json(stocks.map(s => ({
@@ -84,8 +89,10 @@ router.delete("/stocks/:id", async (req, res) => {
 });
 
 // GET /api/trading/suppliers
-router.get("/suppliers", async (_req, res) => {
-  const suppliers = await db.select().from(suppliersTable).orderBy(suppliersTable.createdAt);
+router.get("/suppliers", async (req, res) => {
+  const limit = Math.min(Number(req.query["limit"] ?? 200), 1000);
+  const offset = Math.max(Number(req.query["offset"] ?? 0), 0);
+  const suppliers = await db.select().from(suppliersTable).orderBy(suppliersTable.createdAt).limit(limit).offset(offset);
   return res.json(suppliers.map(s => ({ ...s, fee: Number(s.fee ?? 0), markup: Number(s.markup ?? 0), createdAt: s.createdAt.toISOString() })));
 });
 
