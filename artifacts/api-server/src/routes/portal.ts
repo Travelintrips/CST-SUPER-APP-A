@@ -7,6 +7,7 @@ import { eq, inArray, and, sql, desc, gte, lte, ilike, or } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { sendWhatsApp } from "../lib/fonnte";
 import { getAdminWa } from "../lib/adminWa.js";
+import { getWaTemplateConfig, renderTemplate } from "../lib/orderNotification.js";
 import { sendMail, isSmtpConfigured } from "../lib/mailer";
 import { requirePortalAuth, requirePortalAdmin, type PortalAuthReq } from "../lib/supabaseAuth";
 import { requireClerkUser } from "../lib/requireAdmin";
@@ -1559,19 +1560,30 @@ router.post("/orders", requirePortalAuth, async (req, res) => {
   const totalFmt = Number(doc!.grandTotal ?? 0).toLocaleString("id-ID");
   const itemList = orderItems.map((i) => `• ${i.name} (${i.quantity}x)`).join("\n");
 
-  // Notify customer via WhatsApp (fire-and-forget)
+  // [HIGH-C] Notify customer via WhatsApp — uses DB template, fallback to default
   if (portalCustomer.phone) {
-    const customerMsg =
-      `🎉 *Pesanan Diterima!*\n` +
-      `No. Pesanan: *${doc!.docNumber}*\n\n` +
-      `Halo ${portalCustomer.name},\n` +
-      `Pesanan Anda telah kami terima dan sedang diproses.\n\n` +
-      `🛒 *Detail Pesanan:*\n` +
-      `${itemList}\n` +
-      `Total: Rp ${totalFmt}\n\n` +
-      `Tim kami akan segera menghubungi Anda untuk konfirmasi lebih lanjut.\n` +
-      `Terima kasih telah menggunakan layanan CST Logistics. 🚢`;
-    sendWhatsApp(portalCustomer.phone, customerMsg).catch((err: unknown) => {
+    void getWaTemplateConfig("customer", "portal_order_customer", [
+      `🎉 *Pesanan Diterima!*`,
+      `No. Pesanan: *{{orderNumber}}*`,
+      ``,
+      `Halo {{customerName}},`,
+      `Pesanan Anda telah kami terima dan sedang diproses.`,
+      ``,
+      `🛒 *Detail Pesanan:*`,
+      `{{itemList}}`,
+      `Total: Rp {{totalFmt}}`,
+      ``,
+      `Tim kami akan segera menghubungi Anda untuk konfirmasi lebih lanjut.`,
+      `Terima kasih telah menggunakan layanan CST Logistics. 🚢`,
+    ]).then((tplBody) => {
+      const msg = renderTemplate(tplBody, {
+        orderNumber: doc!.docNumber,
+        customerName: portalCustomer.name,
+        itemList,
+        totalFmt,
+      });
+      return sendWhatsApp(portalCustomer.phone!, msg);
+    }).catch((err: unknown) => {
       req.log.error({ err, phone: portalCustomer.phone }, "sendWhatsApp to customer failed (portal order)");
     });
   }
@@ -1588,16 +1600,27 @@ router.post("/orders", requirePortalAuth, async (req, res) => {
     createdAt: (doc!.createdAt as Date).toISOString(),
   }).catch(() => {});
 
-  // Notify admin via WhatsApp (fire-and-forget)
-  getAdminWa().then((adminWa) => {
+  // [HIGH-C] Notify admin via WhatsApp — uses DB template, fallback to default
+  void getWaTemplateConfig("admin_group", "portal_order_admin", [
+    `🛒 *Order Portal Baru*`,
+    `No: {{orderNumber}}`,
+    `Customer: {{customerLine}}`,
+    `Email: {{customerEmail}}`,
+    `Total: Rp {{totalFmt}}`,
+    `Item: {{itemCount}} produk/jasa`,
+  ]).then(async (tplBody) => {
+    const adminWa = await getAdminWa();
     if (!adminWa) return;
-    const msg =
-      `🛒 *Order Portal Baru*\n` +
-      `No: ${doc!.docNumber}\n` +
-      `Customer: ${portalCustomer.name}${portalCustomer.company ? ` (${portalCustomer.company})` : ""}\n` +
-      `Email: ${portalCustomer.email}\n` +
-      `Total: Rp ${totalFmt}\n` +
-      `Item: ${orderItems.length} produk/jasa`;
+    const customerLine = portalCustomer.company
+      ? `${portalCustomer.name} (${portalCustomer.company})`
+      : portalCustomer.name;
+    const msg = renderTemplate(tplBody, {
+      orderNumber: doc!.docNumber,
+      customerLine,
+      customerEmail: portalCustomer.email ?? "-",
+      totalFmt,
+      itemCount: String(orderItems.length),
+    });
     return sendWhatsApp(adminWa, msg);
   }).catch(() => undefined);
 
@@ -1964,25 +1987,31 @@ router.post("/request-quote", async (req, res) => {
     errors.push("WA-admin: " + String(err));
   }
 
-  // WhatsApp konfirmasi ke customer
+  // [HIGH-C] WhatsApp konfirmasi ke customer — uses DB template, fallback to default
   try {
     if (whatsapp?.trim()) {
-      const confirmLines = [
-        `✅ *Halo ${name}!*`,
+      const tplBody = await getWaTemplateConfig("customer", "portal_inquiry_customer", [
+        `✅ *Halo {{customerName}}!*`,
         ``,
         `Terima kasih telah menghubungi *CST Logistics*.`,
         `Tim kami telah menerima permintaan penawaran Anda:`,
         ``,
-        `📦 *Layanan:* ${svcLabel}`,
-        `🌍 *Rute:* ${origin} → ${destination}`,
-        result?.total ? `💰 *Estimasi:* ${fmt(result.total)}` : null,
+        `📦 *Layanan:* {{serviceLabel}}`,
+        `🌍 *Rute:* {{route}}`,
+        `💰 *Estimasi:* {{estimatedTotal}}`,
         ``,
         `Kami akan menghubungi Anda dalam *1×24 jam kerja* untuk konfirmasi dan penawaran resmi.`,
         ``,
         `_Salam,_`,
         `_Tim CST Logistics 🚢_`,
-      ].filter(Boolean).join("\n");
-      await sendWhatsApp(whatsapp, confirmLines);
+      ]);
+      const msg = renderTemplate(tplBody, {
+        customerName: name,
+        serviceLabel: svcLabel,
+        route: `${origin} → ${destination}`,
+        estimatedTotal: result?.total ? fmt(result.total) : null,
+      });
+      await sendWhatsApp(whatsapp, msg);
     }
   } catch (err) {
     errors.push("WA-customer: " + String(err));
@@ -2444,22 +2473,29 @@ router.post("/onboarding/complete", requirePortalAuth, async (req, res): Promise
       updatedAt: now,
     }).onConflictDoNothing();
 
-    // Notify admin via WA
+    // [HIGH-C] Notify admin via WA — uses DB template, fallback to default
     void (async () => {
       try {
         const adminWa = await getAdminWa();
         if (adminWa) {
           const [customer] = await db.select().from(portalCustomersTable).where(eq(portalCustomersTable.id, customerId));
-          const msg = [
-            "🔔 *Permohonan Akun Baru*",
-            `👤 Nama   : ${fullName}`,
-            `📧 Email  : ${customer?.email ?? "-"}`,
-            `📱 HP     : ${phone}`,
-            `🏷️ Tipe   : ${accountType}`,
-            `🕐 Waktu  : ${new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })} WIB`,
+          const tplBody = await getWaTemplateConfig("admin_group", "portal_onboarding_admin", [
+            `🔔 *Permohonan Akun Baru*`,
+            `👤 Nama   : {{customerName}}`,
+            `📧 Email  : {{customerEmail}}`,
+            `📱 HP     : {{phone}}`,
+            `🏷️ Tipe   : {{accountType}}`,
+            `🕐 Waktu  : {{timestamp}}`,
             ``,
             `Tinjau di panel admin portal.`,
-          ].join("\n");
+          ]);
+          const msg = renderTemplate(tplBody, {
+            customerName: fullName,
+            customerEmail: customer?.email ?? "-",
+            phone,
+            accountType,
+            timestamp: new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" }) + " WIB",
+          });
           await sendWhatsApp(adminWa, msg);
         }
       } catch (e) { console.error("[onboarding-notif-wa]", e); }
@@ -2550,16 +2586,37 @@ router.patch("/admin/approvals/:id", requirePortalAdmin, async (req, res): Promi
       .where(eq(portalCustomersTable.id, approval.customerId));
   }
 
-  // Notify user via WA
+  // [HIGH-C + BUG FIX] Notify customer via WA — was incorrectly sent to adminWa, fixed to customer.phone
+  // Uses DB template, fallback to default
   void (async () => {
     try {
       const [customer] = await db.select().from(portalCustomersTable).where(eq(portalCustomersTable.id, approval.customerId));
-      const adminWa = await getAdminWa();
-      if (adminWa && customer) {
-        const msg = status === "approved"
-          ? `✅ *Akun Anda Disetujui!*\n\nHai ${customer.name}, akun ${approval.accountType} Anda di CST Logistics telah disetujui.\n\nSilakan login kembali untuk mengakses sistem.`
-          : `❌ *Akun Anda Ditolak*\n\nHai ${customer.name}, permintaan akun ${approval.accountType} Anda tidak dapat kami setujui.\n\nAlasan: ${adminNote ?? "Tidak memenuhi syarat"}\n\nHubungi kami untuk informasi lebih lanjut.`;
-        await sendWhatsApp(adminWa, msg);
+      if (customer?.phone) {
+        const workflow = status === "approved" ? "portal_account_approved" : "portal_account_rejected";
+        const defaultTpl = status === "approved"
+          ? [
+              `✅ *Akun Anda Disetujui!*`,
+              ``,
+              `Hai {{customerName}}, akun {{accountType}} Anda di CST Logistics telah disetujui.`,
+              ``,
+              `Silakan login kembali untuk mengakses sistem.`,
+            ]
+          : [
+              `❌ *Akun Anda Ditolak*`,
+              ``,
+              `Hai {{customerName}}, permintaan akun {{accountType}} Anda tidak dapat kami setujui.`,
+              ``,
+              `Alasan: {{rejectionReason}}`,
+              ``,
+              `Hubungi kami untuk informasi lebih lanjut.`,
+            ];
+        const tplBody = await getWaTemplateConfig("customer", workflow, defaultTpl);
+        const msg = renderTemplate(tplBody, {
+          customerName: customer.name,
+          accountType: approval.accountType,
+          rejectionReason: adminNote ?? "Tidak memenuhi syarat",
+        });
+        await sendWhatsApp(customer.phone, msg);
       }
     } catch (e) { console.error("[approval-notif-wa]", e); }
   })();
