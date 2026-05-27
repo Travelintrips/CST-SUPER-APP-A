@@ -33,7 +33,7 @@ export const vendorMiniFormLinksTable = pgTable("vendor_mini_form_links", {
 export const vendorMiniFormSubmissionsTable = pgTable("vendor_mini_form_submissions", {
   id: serial("id").primaryKey(),
   linkId: integer("link_id").references(() => vendorMiniFormLinksTable.id, { onDelete: "set null" }),
-  token: text("token").notNull(),
+  token: text("token").notNull().unique(),
   supplierId: integer("supplier_id").references(() => suppliersTable.id, { onDelete: "set null" }),
   serviceType: text("service_type").notNull(),
   vendorName: text("vendor_name"),
