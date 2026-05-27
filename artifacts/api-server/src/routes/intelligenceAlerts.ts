@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from "express";
-import { db, intelligenceAlertsTable } from "@workspace/db";
+import { db, intelligenceAlertsTable, intelligenceAlertSettingsTable } from "@workspace/db";
 import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
 
@@ -162,5 +162,95 @@ intelligenceAlertsRouter.put("/:id/resolve", async (req: Request, res: Response)
     res.json({ success: true });
   } catch {
     res.status(500).json({ error: "Gagal resolve alert" });
+  }
+});
+
+// GET /api/intelligence-alerts/settings
+intelligenceAlertsRouter.get("/settings", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  try {
+    const rows = await db
+      .select()
+      .from(intelligenceAlertSettingsTable)
+      .where(isNull(intelligenceAlertSettingsTable.companyId))
+      .limit(1);
+
+    if (rows.length > 0) {
+      res.json(rows[0]);
+    } else {
+      // Return defaults if no settings row yet
+      res.json({
+        id: null,
+        companyId: null,
+        masterEnabled: true,
+        rfqAlertEnabled: true,
+        rfqWarningHours: 24,
+        rfqCriticalHours: 48,
+        marginAlertEnabled: true,
+        marginMinPct: "5.00",
+        etaAlertEnabled: true,
+        quoteExpiredAlertEnabled: true,
+        alertWindowStart: "00:00",
+        alertWindowEnd: "23:59",
+        updatedAt: null,
+        updatedBy: null,
+      });
+    }
+  } catch {
+    res.status(500).json({ error: "Gagal mengambil pengaturan alert" });
+  }
+});
+
+// PUT /api/intelligence-alerts/settings
+intelligenceAlertsRouter.put("/settings", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  try {
+    const actor = (req as any).user?.name ?? (req as any).user?.email ?? "admin";
+    const {
+      masterEnabled,
+      rfqAlertEnabled,
+      rfqWarningHours,
+      rfqCriticalHours,
+      marginAlertEnabled,
+      marginMinPct,
+      etaAlertEnabled,
+      quoteExpiredAlertEnabled,
+      alertWindowStart,
+      alertWindowEnd,
+    } = req.body as Record<string, unknown>;
+
+    const payload = {
+      masterEnabled: Boolean(masterEnabled),
+      rfqAlertEnabled: Boolean(rfqAlertEnabled),
+      rfqWarningHours: Math.max(1, parseInt(String(rfqWarningHours ?? 24), 10)),
+      rfqCriticalHours: Math.max(1, parseInt(String(rfqCriticalHours ?? 48), 10)),
+      marginAlertEnabled: Boolean(marginAlertEnabled),
+      marginMinPct: String(parseFloat(String(marginMinPct ?? "5")).toFixed(2)),
+      etaAlertEnabled: Boolean(etaAlertEnabled),
+      quoteExpiredAlertEnabled: Boolean(quoteExpiredAlertEnabled),
+      alertWindowStart: String(alertWindowStart ?? "00:00"),
+      alertWindowEnd: String(alertWindowEnd ?? "23:59"),
+      updatedAt: new Date(),
+      updatedBy: actor,
+    };
+
+    const existing = await db
+      .select({ id: intelligenceAlertSettingsTable.id })
+      .from(intelligenceAlertSettingsTable)
+      .where(isNull(intelligenceAlertSettingsTable.companyId))
+      .limit(1);
+
+    if (existing.length > 0) {
+      await db
+        .update(intelligenceAlertSettingsTable)
+        .set(payload)
+        .where(eq(intelligenceAlertSettingsTable.id, existing[0]!.id));
+    } else {
+      await db.insert(intelligenceAlertSettingsTable).values({ ...payload, companyId: null });
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Gagal menyimpan pengaturan alert" });
   }
 });

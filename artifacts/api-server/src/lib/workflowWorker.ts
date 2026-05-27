@@ -3,8 +3,8 @@
  *
  * Polls every 5 minutes and executes time-based automation:
  *
- *  TASK 1 — Vendor RFQ no-response (T+24h):  WA digest to admin group
- *  TASK 2 — Vendor RFQ no-response (T+48h):  Escalate + create intelligence_alert (critical)
+ *  TASK 1 — Vendor RFQ no-response (T+warningHours):  WA digest to admin group
+ *  TASK 2 — Vendor RFQ no-response (T+criticalHours): Escalate + create intelligence_alert (critical)
  *  TASK 3 — Customer quote reminder (T+3d):   WA reminder to customer
  *  TASK 4 — Customer quote expire  (T+7d or validUntil past): mark expired + alert admin
  *  TASK 5 — Late order (ETA breach): create intelligence_alert (critical)
@@ -17,6 +17,7 @@ import {
   logisticOrdersTable,
   customerQuoteLinksTable,
   intelligenceAlertsTable,
+  intelligenceAlertSettingsTable,
 } from "@workspace/db";
 import { and, eq, lt, lte, notInArray, inArray, ne, isNull } from "drizzle-orm";
 import { sendWhatsApp } from "./fonnte.js";
@@ -28,6 +29,71 @@ const POLL_INTERVAL_MS = 5 * 60 * 1000;  // 5 minutes
 const INITIAL_DELAY_MS = 3 * 60 * 1000;  // 3 min after boot
 
 const DEDUP_23H = 23 * 60 * 60 * 1000;
+
+// ── Settings cache (refresh every poll) ───────────────────────────────────────
+
+interface AlertSettings {
+  masterEnabled: boolean;
+  rfqAlertEnabled: boolean;
+  rfqWarningHours: number;
+  rfqCriticalHours: number;
+  marginAlertEnabled: boolean;
+  marginMinPct: number;
+  etaAlertEnabled: boolean;
+  quoteExpiredAlertEnabled: boolean;
+  alertWindowStart: string; // "HH:MM"
+  alertWindowEnd: string;   // "HH:MM"
+}
+
+const DEFAULT_SETTINGS: AlertSettings = {
+  masterEnabled: true,
+  rfqAlertEnabled: true,
+  rfqWarningHours: 24,
+  rfqCriticalHours: 48,
+  marginAlertEnabled: true,
+  marginMinPct: 5,
+  etaAlertEnabled: true,
+  quoteExpiredAlertEnabled: true,
+  alertWindowStart: "00:00",
+  alertWindowEnd: "23:59",
+};
+
+async function loadSettings(): Promise<AlertSettings> {
+  try {
+    const rows = await db
+      .select()
+      .from(intelligenceAlertSettingsTable)
+      .where(isNull(intelligenceAlertSettingsTable.companyId))
+      .limit(1);
+
+    if (rows.length === 0) return DEFAULT_SETTINGS;
+    const r = rows[0]!;
+    return {
+      masterEnabled: r.masterEnabled,
+      rfqAlertEnabled: r.rfqAlertEnabled,
+      rfqWarningHours: r.rfqWarningHours,
+      rfqCriticalHours: r.rfqCriticalHours,
+      marginAlertEnabled: r.marginAlertEnabled,
+      marginMinPct: parseFloat(String(r.marginMinPct ?? "5")),
+      etaAlertEnabled: r.etaAlertEnabled,
+      quoteExpiredAlertEnabled: r.quoteExpiredAlertEnabled,
+      alertWindowStart: r.alertWindowStart,
+      alertWindowEnd: r.alertWindowEnd,
+    };
+  } catch {
+    return DEFAULT_SETTINGS;
+  }
+}
+
+/** Returns true if current WIB time is within the configured alert window */
+function isWithinAlertWindow(settings: AlertSettings): boolean {
+  const now = new Date();
+  // Use server local time (assumes server is in WIB or UTC — compare HH:MM string)
+  const hh = now.getHours().toString().padStart(2, "0");
+  const mm = now.getMinutes().toString().padStart(2, "0");
+  const current = `${hh}:${mm}`;
+  return current >= settings.alertWindowStart && current <= settings.alertWindowEnd;
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -79,12 +145,14 @@ async function createAlert(data: {
 
 // ── TASK 1 & 2: Vendor RFQ no-response ───────────────────────────────────────
 
-async function checkVendorRfqNoResponse(): Promise<void> {
-  const now = new Date();
-  const h24 = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-  const h48 = new Date(now.getTime() - 48 * 60 * 60 * 1000);
+async function checkVendorRfqNoResponse(settings: AlertSettings): Promise<void> {
+  if (!settings.rfqAlertEnabled) return;
 
-  // RFQs older than 24h that are still open
+  const now = new Date();
+  const hWarn = new Date(now.getTime() - settings.rfqWarningHours * 60 * 60 * 1000);
+  const hCrit = new Date(now.getTime() - settings.rfqCriticalHours * 60 * 60 * 1000);
+
+  // RFQs older than warning threshold that are still open
   const staleRfqs = await db
     .select({
       id: logisticOrderRfqsTable.id,
@@ -98,7 +166,7 @@ async function checkVendorRfqNoResponse(): Promise<void> {
     .innerJoin(logisticOrdersTable, eq(logisticOrderRfqsTable.orderId, logisticOrdersTable.id))
     .where(
       and(
-        lte(logisticOrderRfqsTable.createdAt, h24),
+        lte(logisticOrderRfqsTable.createdAt, hWarn),
         notInArray(logisticOrderRfqsTable.status, ["closed", "completed", "cancelled"]),
       )
     );
@@ -125,16 +193,18 @@ async function checkVendorRfqNoResponse(): Promise<void> {
   const adminGroupWa = await getAdminGroupWa();
 
   for (const rfq of noResponseRfqs) {
-    const isOver48h = rfq.createdAt <= h48;
-    const context = isOver48h ? "rfq_no_response_48h" : "rfq_no_response_24h";
+    const isOverCritical = rfq.createdAt <= hCrit;
+    const context = isOverCritical
+      ? `rfq_no_response_${settings.rfqCriticalHours}h`
+      : `rfq_no_response_${settings.rfqWarningHours}h`;
     const refId = rfq.rfqNumber;
 
     if (await waAlreadySent(context, refId)) continue;
 
     const hours = Math.floor((now.getTime() - rfq.createdAt.getTime()) / 3_600_000);
 
-    if (isOver48h) {
-      // TASK 2: Escalation
+    if (isOverCritical) {
+      // TASK 2: Escalation alert
       await createAlert({
         companyId: rfq.companyId,
         alertType: "rfq_no_response",
@@ -147,7 +217,7 @@ async function checkVendorRfqNoResponse(): Promise<void> {
         contextJson: { rfqNumber: rfq.rfqNumber, orderNumber: rfq.orderNumber, hoursElapsed: hours },
       });
 
-      if (adminGroupWa) {
+      if (adminGroupWa && isWithinAlertWindow(settings)) {
         const msg =
           `🚨 *ESKALASI RFQ — Tidak Ada Response*\n\n` +
           `RFQ: *${rfq.rfqNumber}*\n` +
@@ -157,8 +227,8 @@ async function checkVendorRfqNoResponse(): Promise<void> {
         await sendWhatsApp(adminGroupWa, msg, { context, refType: "rfq", refId });
       }
     } else {
-      // TASK 1: T+24h reminder to admin group
-      if (adminGroupWa) {
+      // TASK 1: Warning reminder to admin group
+      if (adminGroupWa && isWithinAlertWindow(settings)) {
         const msg =
           `⏰ *Reminder RFQ — Belum Ada Response*\n\n` +
           `RFQ: *${rfq.rfqNumber}*\n` +
@@ -173,7 +243,9 @@ async function checkVendorRfqNoResponse(): Promise<void> {
 
 // ── TASK 3 & 4: Customer quote reminder & expiry ──────────────────────────────
 
-async function checkCustomerQuoteReminders(): Promise<void> {
+async function checkCustomerQuoteReminders(settings: AlertSettings): Promise<void> {
+  if (!settings.quoteExpiredAlertEnabled) return;
+
   const now = new Date();
   const d3 = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
   const d7 = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -224,7 +296,7 @@ async function checkCustomerQuoteReminders(): Promise<void> {
         contextJson: { orderNumber: q.orderNumber, customerName: q.customerName, token: q.token },
       });
 
-      if (adminGroupWa) {
+      if (adminGroupWa && isWithinAlertWindow(settings)) {
         const msg =
           `⚠️ *Quote Expired*\n\n` +
           `Order: *${q.orderNumber}*\n` +
@@ -246,7 +318,7 @@ async function checkCustomerQuoteReminders(): Promise<void> {
 
       const days = Math.floor((now.getTime() - sentAt.getTime()) / 86_400_000);
 
-      if (q.phone) {
+      if (q.phone && isWithinAlertWindow(settings)) {
         const msg =
           `Halo *${q.customerName}*,\n\n` +
           `Kami ingin mengingatkan bahwa *penawaran harga* untuk order Anda (${q.orderNumber}) masih menunggu konfirmasi Anda.\n\n` +
@@ -260,7 +332,9 @@ async function checkCustomerQuoteReminders(): Promise<void> {
 
 // ── TASK 5: Late order ETA breach ────────────────────────────────────────────
 
-async function checkLateOrders(): Promise<void> {
+async function checkLateOrders(settings: AlertSettings): Promise<void> {
+  if (!settings.etaAlertEnabled) return;
+
   const now = new Date();
 
   const lateOrders = await db
@@ -303,10 +377,21 @@ async function checkLateOrders(): Promise<void> {
 
 async function runWorkflowWorker(): Promise<void> {
   try {
+    const settings = await loadSettings();
+
+    if (!settings.masterEnabled) {
+      logger.debug("WorkflowWorker: master alert disabled, skipping all checks");
+      return;
+    }
+
+    if (!isWithinAlertWindow(settings)) {
+      logger.debug({ window: `${settings.alertWindowStart}–${settings.alertWindowEnd}` }, "WorkflowWorker: outside alert window, skipping WA notifications");
+    }
+
     await Promise.allSettled([
-      checkVendorRfqNoResponse(),
-      checkCustomerQuoteReminders(),
-      checkLateOrders(),
+      checkVendorRfqNoResponse(settings),
+      checkCustomerQuoteReminders(settings),
+      checkLateOrders(settings),
     ]);
   } catch (err) {
     logger.error({ err }, "WorkflowWorker: unexpected error");
@@ -328,6 +413,6 @@ export function startWorkflowWorker(): void {
 
   logger.info(
     { intervalMin: POLL_INTERVAL_MS / 60_000, initialDelayMin: INITIAL_DELAY_MS / 60_000 },
-    "WorkflowWorker started (L1 reminders: RFQ T+24h/48h, quote T+3d/7d, ETA breach)"
+    "WorkflowWorker started (L1 reminders: RFQ configurable threshold, quote T+3d/7d, ETA breach)"
   );
 }
