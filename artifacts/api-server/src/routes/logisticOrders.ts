@@ -13,6 +13,7 @@ import {
   driverLocationsTable,
   orderUpdatesTable,
   vendorResponsesTable,
+  podOcrResultsTable,
 } from "@workspace/db";
 import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { eq, ilike, and, gte, lte, or, sql, desc, inArray, isNotNull } from "drizzle-orm";
@@ -1166,6 +1167,14 @@ async function cleanupLogisticOrderStorage(orderIds: number[]): Promise<void> {
       .where(inArray(vendorResponsesTable.orderId, orderIds));
     for (const r of responses) {
       if (r.unitPhotoUrl) deleteFromSupabase(r.unitPhotoUrl).catch(() => {});
+    }
+    // 3. Hapus POD OCR images (orderId jadi null setelah delete, jadi fetch sekarang)
+    const podOcrRows = await db
+      .select({ imageUrl: podOcrResultsTable.imageUrl })
+      .from(podOcrResultsTable)
+      .where(inArray(podOcrResultsTable.orderId, orderIds));
+    for (const p of podOcrRows) {
+      if (p.imageUrl) deleteFromSupabase(p.imageUrl).catch(() => {});
     }
   } catch { /* non-fatal */ }
 }
