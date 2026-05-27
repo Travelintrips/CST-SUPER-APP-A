@@ -973,23 +973,14 @@ vendorMiniFormRouter.post("/customer-approval/:token", async (req: Request, res:
       let locked: typeof customerApprovalsTable.$inferSelect | undefined;
 
       if (action === "approve") {
-        const dateStr = now.getFullYear().toString() + String(now.getMonth() + 1).padStart(2, "0");
-        const randomSuffix = randomBytes(4).toString("hex").toUpperCase();
-        soNumber = `SO/${dateStr}/${String(0).padStart(4, "0")}${randomSuffix}`; // placeholder, diupdate setelah dapat id
-
         // Atomic update: hanya berhasil jika status = 'pending'
+        // soNumber TIDAK di-set di sini — satu jalur kanonik via vmfSoIntegration setelah transaksi
         const rows = await tx.update(customerApprovalsTable)
           .set({ status: "approved", approvedAt: now, notes: notes ?? null, locked: true })
           .where(and(eq(customerApprovalsTable.token, token), eq(customerApprovalsTable.status, "pending")))
           .returning();
         locked = rows[0];
         if (!locked) throw new Error("ALREADY_RESPONDED");
-
-        // Generate SO number dengan approval.id yang sudah diketahui
-        soNumber = `SO/${dateStr}/${String(locked.id).padStart(4, "0")}${randomSuffix}`;
-        await tx.update(customerApprovalsTable)
-          .set({ soNumber })
-          .where(eq(customerApprovalsTable.id, locked.id));
 
         orderId = locked.orderId;
         orderNumber = locked.orderNumber;
@@ -1136,7 +1127,9 @@ vendorMiniFormRouter.post("/customer-approval/:token", async (req: Request, res:
     return res.json({
       success: true, action, soNumber, salesDocId,
       message: action === "approve"
-        ? `Terima kasih! Persetujuan Anda telah kami catat. Sales Order ${soNumber} telah dibuat.`
+        ? soNumber
+          ? `Terima kasih! Persetujuan Anda telah kami catat. Sales Order ${soNumber} telah dibuat.`
+          : "Terima kasih! Persetujuan Anda telah kami catat. Tim kami akan segera memproses pesanan Anda."
         : "Penolakan Anda telah kami catat. Tim kami akan segera menghubungi Anda.",
     });
   } catch (err: unknown) {
@@ -1431,6 +1424,13 @@ vendorMiniFormRouter.post("/admin/submissions/:id/select", async (req: Request, 
           .set({ itemStatus: "admin_review" })
           .where(eq(vendorMiniFormLinksTable.id, sub.linkId));
       }
+
+      // Update logistic_orders.status agar admin bisa filter "Vendor Selected"
+      if (sub.orderId) {
+        await tx.update(logisticOrdersTable)
+          .set({ status: "Vendor Selected" })
+          .where(eq(logisticOrdersTable.id, sub.orderId));
+      }
     });
 
     await logActivity("submission", id, "selected", userId,
@@ -1591,7 +1591,8 @@ vendorMiniFormRouter.post("/admin/customer-approvals", async (req: Request, res:
 
     const token = randomBytes(20).toString("hex");
     const userId = (req.user as { id: string } | undefined)?.id ?? null;
-    const expiresAt = expiresInDays ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000) : null;
+    const effectiveExpiry = expiresInDays ?? 7;
+    const expiresAt = new Date(Date.now() + effectiveExpiry * 24 * 60 * 60 * 1000);
 
     const [approval] = await db.insert(customerApprovalsTable).values({
       token, orderId: orderId ?? null, orderNumber: orderNumber ?? null,
@@ -1897,6 +1898,39 @@ vendorMiniFormRouter.post("/admin/links/:id/send-wa", async (req: Request, res: 
   } catch (err) {
     req.log?.error({ err }, "send-wa error");
     return res.status(500).json({ error: "Gagal mengirim WA" });
+  }
+});
+
+// ── ADMIN: POST /api/vendor-form/admin/customer-approvals/:id/retry-so ─────────
+
+vendorMiniFormRouter.post("/admin/customer-approvals/:id/retry-so", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const id = Number(req.params["id"]);
+  if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+  try {
+    const [approval] = await db.select().from(customerApprovalsTable).where(eq(customerApprovalsTable.id, id));
+    if (!approval) return res.status(404).json({ error: "Approval tidak ditemukan" });
+    if (approval.status !== "approved") return res.status(409).json({ error: "Approval belum disetujui customer" });
+
+    const soResult = await createSalesOrderFromVmfApproval(approval);
+    if (soResult.ok) {
+      await db.update(customerApprovalsTable)
+        .set({ soNumber: soResult.docNumber })
+        .where(eq(customerApprovalsTable.id, id));
+      return res.json({ ok: true, docId: soResult.docId, docNumber: soResult.docNumber });
+    } else if (soResult.reason === "already_exists") {
+      if (!approval.soNumber) {
+        await db.update(customerApprovalsTable)
+          .set({ soNumber: soResult.docNumber })
+          .where(eq(customerApprovalsTable.id, id));
+      }
+      return res.json({ ok: true, already: true, docId: soResult.docId, docNumber: soResult.docNumber });
+    } else {
+      return res.status(500).json({ error: soResult.message });
+    }
+  } catch (err) {
+    req.log?.error({ err }, "retry-so error");
+    return res.status(500).json({ error: "Gagal membuat SO" });
   }
 });
 

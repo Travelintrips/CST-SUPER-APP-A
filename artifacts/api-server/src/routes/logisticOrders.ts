@@ -147,6 +147,23 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
   }
   const body = parsed.data;
 
+  // Anti-duplicate: tolak jika email yang sama sudah membuat order dalam 60 detik terakhir
+  const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
+  const [recentDuplicate] = await db
+    .select({ id: logisticOrdersTable.id, orderNumber: logisticOrdersTable.orderNumber })
+    .from(logisticOrdersTable)
+    .where(and(
+      eq(logisticOrdersTable.email, body.email),
+      gte(logisticOrdersTable.createdAt, oneMinuteAgo),
+    ))
+    .limit(1);
+  if (recentDuplicate) {
+    return res.status(429).json({
+      message: "Pesanan sudah dikirim baru-baru ini. Mohon tunggu sebentar atau cek email konfirmasi Anda.",
+      orderNumber: recentDuplicate.orderNumber,
+    });
+  }
+
   const orderNumber = generateOrderNumber();
 
   const [order] = await db
@@ -186,7 +203,7 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
       incoterm: body.incoterm ?? null,
       etd: body.etd ? new Date(body.etd) : null,
       eta: body.eta ? new Date(body.eta) : null,
-      source: "manual",
+      source: "portal",
       subtotal: String(body.subtotal),
       tax: String(body.tax),
       grandTotal: String(body.grandTotal),

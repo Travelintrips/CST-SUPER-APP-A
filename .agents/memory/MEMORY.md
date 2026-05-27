@@ -2,3 +2,4 @@
 - [Vendor Mini Form Features](vmf-features.md) — anti-duplicate, resubmit flow, lock-on-approve, markup calc, WA summary, activity log, price versioning architecture decisions.
 - [VMF Security & Race Condition Fixes](vmf-security-fixes.md) — transaction isolation, rate limiting, SO number random suffix, offerSummary whitelist, server-side validation, pagination.
 - [VMF → Sales Order Integration](vmf-so-integration.md) — SO nyata dibuat di sales_documents saat customer approve VMF; idempoten via logisticOrderId; helper di lib/vmfSoIntegration.ts.
+- [Order Lifecycle Sync Fixes](order-lifecycle-fixes.md) — 7 critical/high fixes: duplicate order guard, source field, unified SO number, vendor-selected status, approval expiry default, retry-SO endpoint.
