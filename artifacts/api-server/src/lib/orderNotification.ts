@@ -639,7 +639,9 @@ async function notifyAdmin(order: LogisticOrderData): Promise<void> {
         return longUrl;
       });
     }
-    sendWhatsApp(adminGroupWa, buildAdminGroupWaMessage(order, tplAdminGroup, groupActionUrl)).catch((err: unknown) =>
+    // Wrap URL dengan italic markdown WA (`_..._`) — mencegah link preview card tapi tetap clickable
+    const wrappedActionUrl = groupActionUrl ? `_${groupActionUrl}_` : groupActionUrl;
+    sendWhatsApp(adminGroupWa, buildAdminGroupWaMessage(order, tplAdminGroup, wrappedActionUrl)).catch((err: unknown) =>
       logger.error({ err }, "WA group notification failed")
     );
   } else {

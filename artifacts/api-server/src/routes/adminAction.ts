@@ -251,9 +251,28 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
             ))
         : [];
 
+      // Fetch order items to derive product keywords (commodity sering kosong)
+      const orderItems = await db.select({
+        category: logisticOrderItemsTable.category,
+        serviceName: logisticOrderItemsTable.serviceName,
+      }).from(logisticOrderItemsTable)
+        .where(eq(logisticOrderItemsTable.orderId, order.id));
+
       // Build sets: vendor dengan commodity match & vendor yang punya item PRODUK di etalase
       const commodityKeyword = (order.commodity ?? "").toLowerCase().trim();
-      const commodityKwParts = commodityKeyword.split(/\s+/).filter((k: string) => k.length > 2);
+      const itemKwSet = new Set<string>();
+      for (const it of orderItems) {
+        for (const src of [it.serviceName ?? "", it.category ?? ""]) {
+          for (const w of src.toLowerCase().split(/[\s,/()\-]+/)) {
+            if (w.length > 2) itemKwSet.add(w);
+          }
+        }
+      }
+      const commodityKwParts = Array.from(new Set([
+        ...commodityKeyword.split(/\s+/).filter((k: string) => k.length > 2),
+        ...itemKwSet,
+      ]));
+      const hasOrderKeywords = commodityKwParts.length > 0 || commodityKeyword.length > 0;
       const vendorIdsWithCommodity   = new Set<number>();
       const vendorIdsWithProductItem = new Set<number>(); // hanya type='product'
       // Map vendorId → priceBase item pertama yang aktif (prefer product type)
@@ -269,12 +288,11 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
           vendorPriceBaseMap.set(item.vendorId, item.priceBase != null ? Number(item.priceBase) : null);
         }
 
-        if (commodityKeyword) {
-          const isTagged = item.isCommodityTag === true;
+        if (hasOrderKeywords) {
           const itemName = item.name.toLowerCase();
-          const nameMatches = itemName.includes(commodityKeyword) ||
+          const nameMatches = (commodityKeyword && itemName.includes(commodityKeyword)) ||
             commodityKwParts.some((kw: string) => itemName.includes(kw));
-          if (isTagged || nameMatches) vendorIdsWithCommodity.add(item.vendorId);
+          if (nameMatches) vendorIdsWithCommodity.add(item.vendorId);
         }
       }
 
@@ -317,25 +335,19 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
         } else {
           vendors = allWithFlag.filter((v) => !!(v.serviceType && v.serviceType.trim()));
         }
-      } else if (commodityKeyword && commodityMatched.length > 0) {
-        // Ada commodity + ada vendor yg punya produk itu di etalase
+      } else if (hasOrderKeywords && commodityMatched.length > 0) {
+        // Ada keyword order + ada vendor yg punya item matching di etalase
         vendors = commodityMatched;
         vendorFilterApplied = true;
         filterMode = "commodity";
+      } else if (hasOrderKeywords) {
+        // Ada keyword order tapi tidak ada vendor yang relevan → JANGAN tampilkan vendor tidak relevan
+        vendors = [];
+        vendorFilterApplied = true;
+        filterMode = "commodity";
       } else if (productVendors.length > 0) {
-        // Ada product vendors di etalase
-        // Jika ada commodity, filter hanya product vendor yang punya item matching commodity
-        if (commodityKeyword) {
-          const relevantProductVendors = productVendors.filter((v) => v.hasCommodityMatch);
-          if (relevantProductVendors.length > 0) {
-            vendors = relevantProductVendors;
-          } else {
-            // Tidak ada product vendor yang punya item matching → tampilkan semua product vendor (fallback)
-            vendors = productVendors;
-          }
-        } else {
-          vendors = productVendors;
-        }
+        // Tidak ada keyword order, tampilkan semua vendor yg punya etalase produk
+        vendors = productVendors;
         vendorFilterApplied = true;
         filterMode = "etalase";
       } else {
