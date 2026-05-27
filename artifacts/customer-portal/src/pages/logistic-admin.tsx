@@ -390,6 +390,22 @@ export default function AdminPage() {
     return () => clearTimeout(t);
   }, [search]);
 
+  // Real-time: order baru masuk → refresh daftar & summary otomatis
+  useEffect(() => {
+    if (!authed) return;
+    const es = new EventSource("/api/ecommerce/events");
+    es.addEventListener("new_logistic_order", (e: MessageEvent) => {
+      try {
+        const data = JSON.parse(e.data);
+        queryClient.invalidateQueries({ queryKey: getListLogisticOrdersQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getGetLogisticOrderSummaryQueryKey() });
+        queryClient.invalidateQueries({ queryKey: ["listPortalLogisticOrders"] });
+        toast({ title: `Order baru masuk: ${data.orderNumber ?? ""}`, description: `${data.customerName ?? ""} — ${data.shipmentType ?? ""}` });
+      } catch { }
+    });
+    return () => es.close();
+  }, [authed, queryClient, toast]);
+
   const params = {
     status: statusFilter || undefined,
     shipmentType: typeFilter || undefined,

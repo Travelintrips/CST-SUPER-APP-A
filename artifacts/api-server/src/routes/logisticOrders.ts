@@ -295,6 +295,18 @@ sendLogisticOrderNotification({
     createdAt: order.createdAt.toISOString(),
   }).catch(() => {});
 
+  // Broadcast ke Customer Portal agar logistic-admin page auto-refresh
+  broadcastToPortal("new_logistic_order", {
+    orderId: order.id,
+    orderNumber,
+    customerName: body.customerName,
+    companyName: body.companyName ?? null,
+    shipmentType: body.shipmentType ?? "",
+    origin: body.origin ?? "",
+    destination: body.destination ?? "",
+    createdAt: order.createdAt.toISOString(),
+  });
+
   logActivity({
     orderId: order.id,
     actorType: "customer",
