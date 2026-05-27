@@ -359,3 +359,9 @@ id = "FC_DhFUrroPGE55ks_PeV"
 uri = "file://AI_COGNITIVE_ENTERPRISE_ROADMAP.md"
 type = "text"
 title = "Cognitive Enterprise OS — Strategic Roadmap"
+
+[[outputs]]
+id = "rVh149sxoAxM3iYh_M-Aj"
+uri = "file://ADAPTIVE_ENTERPRISE_INTELLIGENCE_ROADMAP.md"
+type = "text"
+title = "Adaptive Enterprise Intelligence Network — Strategic Roadmap"
