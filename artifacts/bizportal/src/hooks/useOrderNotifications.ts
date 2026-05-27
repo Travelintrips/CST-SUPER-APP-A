@@ -177,6 +177,7 @@ export function useOrderNotifications() {
   const esRef = useRef<EventSource | null>(null);
   const onNewOrderRef = useRef<((n: OrderNotification) => void) | null>(null);
   const initializedRef = useRef(false);
+  const seenDbIds = useRef(new Set<number>());
 
   const unreadCount = notifications.filter((n) => n.readAt === null).length;
 
@@ -204,7 +205,11 @@ export function useOrderNotifications() {
       .then((r) => r.ok ? r.json() : null)
       .then((json) => {
         if (json?.data && Array.isArray(json.data)) {
-          setNotifications(json.data.map(dbRowToNotif));
+          const notifs = json.data.map(dbRowToNotif);
+          for (const n of notifs) {
+            if (n.dbId != null) seenDbIds.current.add(n.dbId);
+          }
+          setNotifications(notifs);
         }
         if (typeof json?.unreadTotal === "number") {
           setDbUnreadTotal(json.unreadTotal);
@@ -262,10 +267,6 @@ export function useOrderNotifications() {
   }, []);
 
   const markSingleRead = useCallback((dbId: number) => {
-    setNotifications((prev) =>
-      prev.map((n) => (n.dbId === dbId && n.readAt === null ? { ...n, readAt: Date.now() } : n))
-    );
-    setDbUnreadTotal((prev) => Math.max(0, prev - 1));
     setNotifications((prev) => {
       const wasUnread = prev.some((n) => n.dbId === dbId && n.readAt === null);
       if (wasUnread) setDbUnreadTotal((t) => Math.max(0, t - 1));
@@ -280,6 +281,7 @@ export function useOrderNotifications() {
   const clearAll = useCallback(() => {
     setNotifications([]);
     setDbUnreadTotal(0);
+    seenDbIds.current.clear();
   }, []);
 
   const setOnNewOrder = useCallback((fn: (n: OrderNotification) => void) => {
@@ -298,11 +300,12 @@ export function useOrderNotifications() {
   }, []);
 
   function pushNotification(notification: OrderNotification) {
-    setNotifications((prev) =>
-      [notification, ...prev].slice(0, MAX_NOTIFICATIONS)
-    );
+    // Dedup: jika notifikasi dengan dbId yang sama sudah ada (SSE + polling overlap), skip
+    if (notification.dbId != null && seenDbIds.current.has(notification.dbId)) return;
+    if (notification.dbId != null) seenDbIds.current.add(notification.dbId);
+
+    setNotifications((prev) => [notification, ...prev].slice(0, MAX_NOTIFICATIONS));
     setDbUnreadTotal((prev) => prev + 1);
-    setDbUnreadTotal((t) => t + 1);
     if (FREIGHT_TYPES.includes(notification.type)) {
       setLastFreightEventAt(Date.now());
     }

@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from "express";
-import { rateLimit } from "express-rate-limit";
+import { rateLimit, ipKeyGenerator } from "express-rate-limit";
 import { eq, desc, inArray, and, count, isNull, ne } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import multer from "multer";
@@ -152,6 +152,21 @@ const vmfPostLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: "Terlalu banyak pengiriman form, coba lagi dalam 15 menit" },
   skip: (req) => req.path.startsWith("/admin"),
+});
+
+// Stricter rate-limit khusus customer-approval: 5 req / 10 menit per token
+// Melindungi dari spam yang memicu WA notification & activity log berulang
+const vmfApprovalLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 5,
+  keyGenerator: (req) => {
+    const token = (req.params as { token?: string }).token;
+    if (token) return `approval:${token}`;
+    return ipKeyGenerator(req);
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Terlalu banyak percobaan, coba lagi dalam 10 menit" },
 });
 
 vendorMiniFormRouter.use((req, res, next) => {
@@ -767,9 +782,16 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
         `Revisi penawaran oleh ${vendorName ?? link.vendorName ?? "vendor"}`,
         { vendorPrice, currency, eta });
     } else {
-      // Wrap count-check + insert dalam transaksi agar maxSubmissions tidak bisa di-race
+      // Wrap count-check + insert dalam transaksi dengan SELECT FOR UPDATE
+      // Mengunci row link agar concurrent submissions tidak lolos quota check bersamaan
       const inserted = await db.transaction(async (tx) => {
         if (link.maxSubmissions !== null) {
+          // Lock link row dulu agar transaksi concurrent harus antri di sini
+          await tx
+            .select({ id: vendorMiniFormLinksTable.id })
+            .from(vendorMiniFormLinksTable)
+            .where(eq(vendorMiniFormLinksTable.id, link.id))
+            .for("update");
           const [cntRow] = await tx
             .select({ cnt: count() })
             .from(vendorMiniFormSubmissionsTable)
@@ -957,7 +979,7 @@ vendorMiniFormRouter.get("/customer-approval/:token", async (req: Request, res: 
 
 // ── PUBLIC: POST /api/vendor-form/customer-approval/:token ────────────────────
 
-vendorMiniFormRouter.post("/customer-approval/:token", async (req: Request, res: Response) => {
+vendorMiniFormRouter.post("/customer-approval/:token", vmfApprovalLimiter, async (req: Request, res: Response) => {
   const { token } = req.params as { token: string };
   try {
     // Cek awal sebelum masuk transaksi (fast-fail untuk expired/not found)
