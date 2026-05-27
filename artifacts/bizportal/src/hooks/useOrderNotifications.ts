@@ -1,6 +1,19 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
+import {
+  getListLogisticOrdersQueryKey,
+  getGetLogisticOrderQueryKey,
+  getListFreightShipmentsQueryKey,
+  getGetFreightShipmentQueryKey,
+  getListSalesDocumentsQueryKey,
+  getGetSalesDocumentQueryKey,
+  getListPurchaseDocumentsQueryKey,
+  getListOrdersQueryKey,
+  getListLogisticOrderRfqsQueryKey,
+  getListLogisticOrderQuotesQueryKey,
+} from "@workspace/api-client-react";
 
 function playNotificationChime() {
   try {
@@ -164,6 +177,7 @@ function dbRowToNotif(row: Record<string, unknown>): OrderNotification {
 
 export function useOrderNotifications() {
   const { isAuthenticated } = useSupabaseAuth();
+  const queryClient = useQueryClient();
   const [notifications, setNotifications] = useState<OrderNotification[]>([]);
   const [connected, setConnected] = useState(false);
   const [lastFreightEventAt, setLastFreightEventAt] = useState<number | null>(null);
@@ -370,6 +384,7 @@ export function useOrderNotifications() {
             createdAt: data.createdAt ?? new Date().toISOString(),
             readAt: null,
           });
+          queryClient.invalidateQueries({ queryKey: getListLogisticOrdersQueryKey() });
         } catch { }
       });
 
@@ -389,6 +404,10 @@ export function useOrderNotifications() {
             createdAt: data.updatedAt ?? new Date().toISOString(),
             readAt: null,
           });
+          queryClient.invalidateQueries({ queryKey: getListLogisticOrdersQueryKey() });
+          if (data.orderId) {
+            queryClient.invalidateQueries({ queryKey: getGetLogisticOrderQueryKey(data.orderId) });
+          }
         } catch { }
       });
 
@@ -409,6 +428,10 @@ export function useOrderNotifications() {
             createdAt: data.updatedAt ?? new Date().toISOString(),
             readAt: null,
           });
+          queryClient.invalidateQueries({ queryKey: getListSalesDocumentsQueryKey() });
+          if (data.orderId ?? data.docId) {
+            queryClient.invalidateQueries({ queryKey: getGetSalesDocumentQueryKey(data.orderId ?? data.docId) });
+          }
         } catch { }
       });
 
@@ -431,6 +454,7 @@ export function useOrderNotifications() {
             createdAt: data.createdAt ?? new Date().toISOString(),
             readAt: null,
           });
+          queryClient.invalidateQueries({ queryKey: getListFreightShipmentsQueryKey() });
         } catch { }
       });
 
@@ -452,6 +476,10 @@ export function useOrderNotifications() {
             createdAt: data.updatedAt ?? new Date().toISOString(),
             readAt: null,
           });
+          queryClient.invalidateQueries({ queryKey: getListFreightShipmentsQueryKey() });
+          if (data.shipmentId) {
+            queryClient.invalidateQueries({ queryKey: getGetFreightShipmentQueryKey(data.shipmentId) });
+          }
         } catch { }
       });
 
@@ -473,6 +501,9 @@ export function useOrderNotifications() {
             createdAt: data.updatedAt ?? new Date().toISOString(),
             readAt: null,
           });
+          if (data.shipmentId) {
+            queryClient.invalidateQueries({ queryKey: getGetFreightShipmentQueryKey(data.shipmentId) });
+          }
         } catch { }
       });
 
@@ -516,6 +547,7 @@ export function useOrderNotifications() {
             createdAt: data.createdAt ?? new Date().toISOString(),
             readAt: null,
           });
+          queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
         } catch { }
       });
 
@@ -536,6 +568,7 @@ export function useOrderNotifications() {
             createdAt: data.createdAt ?? new Date().toISOString(),
             readAt: null,
           });
+          queryClient.invalidateQueries({ queryKey: getListSalesDocumentsQueryKey() });
         } catch { }
       });
 
@@ -555,6 +588,7 @@ export function useOrderNotifications() {
             createdAt: data.createdAt ?? new Date().toISOString(),
             readAt: null,
           });
+          queryClient.invalidateQueries({ queryKey: getListPurchaseDocumentsQueryKey() });
         } catch { }
       });
 
@@ -574,6 +608,7 @@ export function useOrderNotifications() {
             createdAt: data.createdAt ?? new Date().toISOString(),
             readAt: null,
           });
+          queryClient.invalidateQueries({ queryKey: getListPurchaseDocumentsQueryKey() });
         } catch { }
       });
 
@@ -595,6 +630,12 @@ export function useOrderNotifications() {
             createdAt: data.createdAt ?? new Date().toISOString(),
             readAt: null,
           });
+          if (data.orderId) {
+            queryClient.invalidateQueries({ queryKey: getListLogisticOrderRfqsQueryKey(data.orderId) });
+            queryClient.invalidateQueries({ queryKey: getListLogisticOrderQuotesQueryKey(data.orderId) });
+            queryClient.invalidateQueries({ queryKey: getGetLogisticOrderQueryKey(data.orderId) });
+            queryClient.invalidateQueries({ queryKey: ["vendor-offers", data.orderId] });
+          }
         } catch { }
       });
 

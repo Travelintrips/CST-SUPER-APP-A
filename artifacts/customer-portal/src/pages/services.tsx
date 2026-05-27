@@ -12,7 +12,8 @@ import { Search, ShoppingCart, Truck, ChevronRight, X, Container, ArrowLeft } fr
 import { useLocation } from "wouter";
 import { resolveImageUrl } from "@/lib/utils";
 import { getServiceFallbackImage } from "@/lib/categoryImages";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useLanguage } from "@/i18n/LanguageContext";
 import { translateServiceName, translateCategory } from "@/i18n/serviceData";
 
@@ -63,10 +64,19 @@ export default function Services() {
   const [truckingOpen, setTruckingOpen] = useState(false);
   const { t, locale } = useLanguage();
   const [, setLocation] = useLocation();
+  const qc = useQueryClient();
 
   const { data: servicesData, isLoading } = useListPortalServices({
     query: { queryKey: ["listPortalServices"] }
   });
+
+  useEffect(() => {
+    const es = new EventSource("/api/ecommerce/events");
+    es.addEventListener("price_sync", () => {
+      qc.invalidateQueries({ queryKey: ["listPortalServices"] });
+    });
+    return () => es.close();
+  }, [qc]);
 
   const allServices: Service[] = Array.isArray(servicesData)
     ? (servicesData as Service[]).map((s) => ({ ...s, description: s.description ?? undefined }))

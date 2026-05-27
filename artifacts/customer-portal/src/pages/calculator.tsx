@@ -72,7 +72,7 @@ export default function CalculatorPage() {
   const { data: cargoTypesData } = useQuery<string[]>({
     queryKey: ["portal-cargo-types"],
     queryFn: () => fetch("/api/portal/cargo-types").then((r) => r.ok ? r.json() : []),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 60 * 1000,
   });
   const cargoTypes = cargoTypesData ?? [];
 
@@ -80,6 +80,7 @@ export default function CalculatorPage() {
     const es = new EventSource("/api/ecommerce/events");
     es.addEventListener("price_sync", () => {
       qc.invalidateQueries({ queryKey: ["portal-calculator-rates"] });
+      qc.invalidateQueries({ queryKey: ["portal-cargo-types"] });
     });
     return () => es.close();
   }, [qc]);

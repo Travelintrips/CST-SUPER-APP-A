@@ -232,7 +232,7 @@ export default function DashboardPage() {
   const companyBreakdown = summary?.companyBreakdown ?? [];
 
   const { data: portalOrders = [], isLoading: portalLoading, refetch: refetchPortal } = useListLogisticOrders(undefined, {
-    query: { queryKey: ["dashboard-portal-orders"], refetchInterval },
+    query: { queryKey: getListLogisticOrdersQueryKey(), refetchInterval },
   });
 
   interface DashDriver { id: number; name: string; phone: string | null; vehiclePlate: string | null; vehicleType: string | null; isActive: boolean; }

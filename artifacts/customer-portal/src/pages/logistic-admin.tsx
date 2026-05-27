@@ -417,6 +417,8 @@ export default function AdminPage() {
           toast({ title: `Status diperbarui: ${status}` });
           queryClient.invalidateQueries({ queryKey: getListLogisticOrdersQueryKey() });
           queryClient.invalidateQueries({ queryKey: getGetLogisticOrderSummaryQueryKey() });
+          // Invalidate customer-facing portal orders (orders.tsx uses different hook/key)
+          queryClient.invalidateQueries({ queryKey: ["listPortalLogisticOrders"] });
         },
         onError: () => toast({ title: "Gagal memperbarui status", variant: "destructive" }),
       }

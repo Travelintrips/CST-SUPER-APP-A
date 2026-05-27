@@ -29,6 +29,7 @@ import { logActivity } from "../lib/activityLog.js";
 // import { autoCreateRfqAndNotifyVendors } from "./logisticRfq";
 import { sendWhatsApp } from "../lib/fonnte";
 import { saveAndBroadcast } from "../lib/notificationStore";
+import { broadcastToPortal } from "../lib/sseManager.js";
 import {
   CreateLogisticOrderBody,
   ListLogisticOrdersQueryParams,
@@ -992,6 +993,14 @@ logisticOrdersRouter.put("/:id/status", async (req: Request, res: Response) => {
     status: updated.status,
     updatedAt: new Date().toISOString(),
   }).catch(() => {});
+
+  // Broadcast ke Customer Portal agar orders page auto-refresh
+  broadcastToPortal("logistic_order_status_changed", {
+    orderId: updated.id,
+    orderNumber: updated.orderNumber,
+    status: updated.status,
+    updatedAt: new Date().toISOString(),
+  });
 
   return res.json(toOrder(updated));
 });
