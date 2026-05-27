@@ -911,7 +911,7 @@ router.post("/payments", async (req, res) => {
           );
       } else if (validSourceType === "purchase_order") {
         const [doc] = await db
-          .select({ grandTotal: purchaseDocumentsTable.grandTotal })
+          .select({ grandTotal: purchaseDocumentsTable.grandTotal, docNumber: purchaseDocumentsTable.docNumber })
           .from(purchaseDocumentsTable)
           .where(eq(purchaseDocumentsTable.id, parsedSourceDocId));
         const grandTotal = Number(doc?.grandTotal ?? 0);
@@ -929,6 +929,41 @@ router.post("/payments", async (req, res) => {
             updatedAt: new Date(),
           })
           .where(eq(purchaseDocumentsTable.id, parsedSourceDocId));
+
+        // WA notification to admin — fire-and-forget
+        const fmtIdr = (n: number) =>
+          `Rp ${Math.round(n).toLocaleString("id-ID")}`;
+        const statusLabel =
+          newStatus === "paid"
+            ? "✅ *LUNAS*"
+            : `⏳ Sebagian (sisa ${fmtIdr(Math.max(0, grandTotal - totalPaid))})`;
+        const waMsg = [
+          `🏦 *Pembayaran Keluar Dicatat*`,
+          ``,
+          `No: ${payment!.paymentNumber}`,
+          `PO: ${doc?.docNumber ?? `#${parsedSourceDocId}`}`,
+          `Vendor: ${partner}`,
+          `Jumlah: ${fmtIdr(amt)}`,
+          ref ? `Ref: ${ref}` : null,
+          `Tanggal: ${String(dateStr)}`,
+          `Status: ${statusLabel}`,
+        ]
+          .filter((l) => l !== null)
+          .join("\n");
+        getAdminWa()
+          .then((adminWa) => {
+            if (adminWa)
+              sendWhatsApp(adminWa, waMsg, {
+                context: "payment_recorded",
+                refType: "purchase_order",
+                refId: doc?.docNumber ?? String(parsedSourceDocId),
+              }).catch((e: unknown) =>
+                logger.error({ e }, "WA admin purchase payment notif failed"),
+              );
+          })
+          .catch((e: unknown) =>
+            logger.error({ e }, "getAdminWa purchase payment notif failed"),
+          );
       }
     }
 
