@@ -183,7 +183,23 @@ const ORDER_STATUSES = [
   "payment_pending", "paid", "completed", "cancelled",
 ];
 
+// ── Status badge color map ──────────────────────────────────────────────────────
+// Covers both logistic_orders.status values and quote/customer status values.
+// Unknown statuses fall back to "bg-slate-100 text-slate-700" (neutral grey).
+// Keep this in sync with the status enum in the backend schema.
 const STATUS_COLOR: Record<string, string> = {
+  // Order lifecycle statuses
+  "New Order":           "bg-yellow-100 text-yellow-800",
+  "Under Review":        "bg-blue-100 text-blue-700",
+  "Vendor Confirmed":    "bg-indigo-100 text-indigo-800",
+  "Vendor Rejected":     "bg-red-100 text-red-800",
+  "Quotation Sent":      "bg-purple-100 text-purple-800",
+  "Customer Approved":   "bg-emerald-100 text-emerald-800",
+  "In Progress":         "bg-indigo-100 text-indigo-800",
+  "Completed":           "bg-green-200 text-green-900",
+  "Cancelled":           "bg-red-100 text-red-800",
+  "Done":                "bg-green-200 text-green-900",
+  // Legacy / internal status keys
   order_confirmed: "bg-green-100 text-green-800",
   assigned_to_vendor: "bg-blue-100 text-blue-800",
   waiting_pickup: "bg-yellow-100 text-yellow-800",
@@ -193,7 +209,7 @@ const STATUS_COLOR: Record<string, string> = {
   completed: "bg-green-200 text-green-900",
   cancelled: "bg-red-100 text-red-800",
   customer_quoted: "bg-purple-100 text-purple-800",
-  customer_approved: "bg-green-100 text-green-800",
+  customer_approved: "bg-emerald-100 text-emerald-800",
   customer_rejected: "bg-red-100 text-red-800",
   customer_revision_requested: "bg-amber-100 text-amber-800",
 };
@@ -502,6 +518,10 @@ function AssignVendorDialog({ orderId, onAssigned }: { orderId: number; onAssign
         });
       setResult({ jobUrl: r.jobUrl, trackingUrl: r.trackingUrl, waMessage: r.waMessage, vendorPhone: r.vendorPhone });
       toast({ title: "Vendor berhasil ditugaskan!", description: "Job order telah dibuat." });
+      // Invalidate both order-detail (status/price section) and order-job (driver panel).
+      // All mutations in this file use ["order-detail", orderId] as the primary cache key.
+      // Additional keys (order-job, order-fulfillment, order-approvals) are invalidated
+      // only where the mutation specifically affects those panels.
       qc.invalidateQueries({ queryKey: ["order-detail", orderId] });
       qc.invalidateQueries({ queryKey: ["order-job", orderId] });
       onAssigned();

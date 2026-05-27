@@ -1694,10 +1694,14 @@ logisticRfqRouter.post("/confirm/:token", async (req: Request, res: Response) =>
     .where(eq(logisticOrdersTable.id, order.id));
 
   // ── Auto-create Sales Order saat customer konfirmasi setuju ─────────────────
+  // SO creation is NON-BLOCKING: failure is logged but does not cause HTTP 4xx/5xx.
+  // This ensures the customer confirmation succeeds even if the sales module has an issue.
   let createdSoNumber: string | null = null;
   if (action === "confirmed") {
     try {
-      // Idempotency: cek apakah SO sudah pernah dibuat untuk logistic order ini
+      // Idempotency guard: check whether an SO already exists for this logistic order.
+      // This prevents duplicate SOs if the customer confirm endpoint is called more than once
+      // (e.g., retry after timeout, or a race between two simultaneous confirm requests).
       const [existingSo] = await db
         .select({ id: salesDocumentsTable.id, docNumber: salesDocumentsTable.docNumber })
         .from(salesDocumentsTable)

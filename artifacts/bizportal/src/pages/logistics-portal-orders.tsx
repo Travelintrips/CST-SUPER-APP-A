@@ -725,8 +725,12 @@ export default function LogisticsPortalOrdersPage() {
                   </TableRow>
                 ) : filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={12} className="text-center py-8 text-muted-foreground">
-                      Tidak ada pesanan
+                    <TableCell colSpan={12} className="text-center py-10 text-muted-foreground">
+                      <div className="flex flex-col items-center gap-1.5">
+                        <span className="text-2xl">📭</span>
+                        <span className="text-sm font-medium">Tidak ada pesanan ditemukan</span>
+                        <span className="text-xs">Coba ubah filter atau kata kunci pencarian</span>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ) : filtered.map((o) => (

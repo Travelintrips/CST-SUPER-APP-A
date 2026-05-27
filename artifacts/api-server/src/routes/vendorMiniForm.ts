@@ -125,6 +125,16 @@ async function logOrderUpdate(
 }
 
 // ── Token cache ────────────────────────────────────────────────────────────────
+// In-process cache for vendor_mini_form_links rows, keyed by token string.
+// TTL: CACHE_TTL_MS (5 min). Reduces DB load on high-frequency GET requests.
+//
+// IMPORTANT: invalidateTokenCache(token) MUST be called whenever the link row
+// is mutated (isActive toggled, link expired, submission locked, etc.) to prevent
+// stale data being served. This is done automatically in all write endpoints below.
+//
+// formTarget validation: each router (vendor-form / customer-form / admin-form)
+// checks that link.formTarget matches the expected target derived from the request
+// base URL. This prevents a vendor from using a customer-only or admin-only link.
 
 type CachedForm = {
   id: number; serviceType: string; title: string | null; notes: string | null;
@@ -154,6 +164,8 @@ function setCached(token: string, row: CachedForm) {
   TOKEN_CACHE.set(token, { ...row, expiresCache: Date.now() + CACHE_TTL_MS });
 }
 export function invalidateTokenCache(token: string) {
+  // Remove cached entry so the next GET re-fetches from DB.
+  // Call this after any mutation to the link or its submission.
   TOKEN_CACHE.delete(token);
 }
 

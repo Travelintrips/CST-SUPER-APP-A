@@ -86,6 +86,19 @@ function formatJamOrder(jam: string): string {
 
 // ─── WA Template Engine ────────────────────────────────────────────────────────
 
+// ── WA Template Rendering ──────────────────────────────────────────────────────
+//
+// Template bodies are stored in wa_template_configs (recipient × workflow key).
+// Falls back to DEFAULT_TPL if no DB record exists.
+//
+// Rendering pipeline:
+//   1. resolveCondBlocks()  — removes {{#if X}}...{{/if}} blocks that don't match serviceType
+//   2. renderTemplate()     — substitutes {{variable}} values; omits lines with null/empty vars
+//   3. Collapse triple-newlines created by removed conditional blocks
+//
+// serviceType keys (from deriveServiceType):
+//   "trucking" | "freight_sea" | "freight_air" | "ppjk" | "product" | "handling" | ""
+
 /** Map shipmentType text → service type key used in {{#if X}} blocks */
 export function deriveServiceType(shipmentType: string, orderType?: string): string {
   if (orderType === "product") return "product";
@@ -99,7 +112,8 @@ export function deriveServiceType(shipmentType: string, orderType?: string): str
   return "";
 }
 
-/** Resolve {{#if serviceTypeKey}}...{{/if}} conditional blocks */
+/** Resolve {{#if serviceTypeKey}}...{{/if}} conditional blocks.
+ *  Blocks whose key matches serviceType are kept (content only); others are removed entirely. */
 export function resolveCondBlocks(body: string, serviceType: string | string[]): string {
   const types = Array.isArray(serviceType) ? serviceType : [serviceType];
   return body.replace(/\{\{#if\s+(\w+)\}\}([\s\S]*?)\{\{\/if\}\}/g, (_m, cond, content: string) =>
@@ -112,28 +126,36 @@ export function resolveCondBlocks(body: string, serviceType: string | string[]):
  * empty/null are omitted from the output (optional-field pattern).
  * Empty lines (no variables) are always kept.
  * Supports {{#if serviceType}}...{{/if}} conditional blocks (resolved before var substitution).
+ *
+ * Example:
+ *   template:  "Harga: {{price}}\nRute: {{route}}"
+ *   vars:      { price: null, route: "JKT → SBY" }
+ *   result:    "Rute: JKT → SBY"   ← "Harga" line omitted because price is null
  */
 export function renderTemplate(
   template: string,
   vars: Record<string, string | null | undefined>,
   serviceType: string | string[] = "",
 ): string {
+  // Step 1: Remove {{#if X}}...{{/if}} blocks that don't match serviceType
   const resolved = resolveCondBlocks(template, serviceType);
   const lines = resolved.split("\n");
   const result: string[] = [];
   for (const line of lines) {
     const matches = [...line.matchAll(/\{\{(\w+)\}\}/g)];
+    // Lines with no variables are always kept (static text / section headers)
     if (matches.length === 0) { result.push(line); continue; }
     let skip = false;
     let rendered = line;
     for (const m of matches) {
       const val = vars[m[1]];
+      // If any variable in the line is null/empty → omit the entire line
       if (val == null || val === "") { skip = true; break; }
       rendered = rendered.replaceAll(`{{${m[1]}}}`, val);
     }
     if (!skip) result.push(rendered);
   }
-  // Collapse triple-newlines left by removed conditional blocks
+  // Step 2: Collapse triple-newlines left by removed conditional blocks
   return result.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
@@ -204,7 +226,10 @@ function buildOrderVars(
   };
 }
 
-// Workflow-based template cache (wa_template_configs table)
+// ── Template DB Cache (wa_template_configs) ────────────────────────────────────
+// All templates are cached in-process for WA_TEMPLATE_TTL (5 min) to avoid
+// DB round-trips on every WA send. Cache key: "<recipient>__<workflow>".
+// Invalidated by invalidateWaTemplateCache() after any admin template update.
 const WA_TEMPLATE_TTL = 5 * 60 * 1000;
 let _wfTemplateCache: Map<string, string> | null = null;
 let _wfTemplateCacheAt = 0;
@@ -213,7 +238,9 @@ export function invalidateWaTemplateCache() {
   _wfTemplateCache = null;
 }
 
-/** Fetch template body for a (recipient × workflow) pair from new DB table; falls back to defaultBody. */
+/** Fetch template body for a (recipient × workflow) pair from wa_template_configs;
+ *  falls back to hardcoded defaultBody if no DB record exists.
+ *  Cache TTL: 5 minutes (WA_TEMPLATE_TTL). */
 export async function getWaTemplateConfig(
   recipient: string,
   workflow: string,
@@ -225,7 +252,7 @@ export async function getWaTemplateConfig(
     try {
       const rows = await db.select().from(waTemplateConfigsTable);
       for (const row of rows) _wfTemplateCache.set(`${row.recipient}__${row.workflow}`, row.body);
-    } catch { /* use defaults */ }
+    } catch { /* use hardcoded defaults if DB unavailable */ }
   }
   return _wfTemplateCache.get(`${recipient}__${workflow}`) ?? defaultBody;
 }
