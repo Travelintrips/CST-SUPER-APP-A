@@ -88,6 +88,7 @@ const NO_SHELL_PREFIXES = [
   "/customer-quote", "/order-task", "/customer-order", "/admin-action",
   "/vendor-fulfillment", "/vendor-job", "/order-track",
   "/customer-approval", "/op-confirm", "/customer-invoice",
+  "/q/",
 ];
 
 // Routes that should skip the Supabase auth check entirely (public/standalone pages)

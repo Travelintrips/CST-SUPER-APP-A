@@ -176,7 +176,13 @@ router.get("/q/:code", async (req: Request, res: Response) => {
   if (!target) {
     return res.status(404).json({ error: "Link tidak ditemukan atau sudah kedaluwarsa." });
   }
-  return res.json({ targetUrl: target });
+  // Normalisasi: kembalikan path saja agar domain lama/salah di DB tidak jadi masalah
+  let targetUrl = target;
+  try {
+    const parsed = new URL(target);
+    targetUrl = parsed.pathname + parsed.search + parsed.hash;
+  } catch { /* sudah relative */ }
+  return res.json({ targetUrl });
 });
 
 export default router;
