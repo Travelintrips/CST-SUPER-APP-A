@@ -40,6 +40,20 @@ const CRITICAL_TABLES = [
   "driver_jobs",
   "short_links",
   "custom_roles",
+  // --- Added in security audit batch 2 ---
+  // PII: customer data, contact info, order details
+  "orders",
+  // Vendor form data: active tokens + vendor pricing
+  "vendor_mini_form_links",
+  "vendor_mini_form_submissions",
+  // Customer approval tokens
+  "customer_approvals",
+  // KYC / identity data
+  "user_profiles",
+  "identity_documents",
+  "ocr_results",
+  // Product cost prices (harga modal)
+  "products",
 ];
 
 export async function runRlsMigration(): Promise<void> {

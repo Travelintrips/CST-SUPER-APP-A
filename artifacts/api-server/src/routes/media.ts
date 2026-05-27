@@ -3,7 +3,7 @@ import multer from "multer";
 
 import { db, mediaAssetsTable } from "@workspace/db";
 import { eq, desc, sql, inArray } from "drizzle-orm";
-import { requireClerkUser } from "../lib/requireAdmin";
+import { requireClerkUser, requireAdmin } from "../lib/requireAdmin";
 import { uploadToSupabase, downloadFromSupabase, isSupabaseUrl, deleteFromSupabase } from "../lib/supabaseStorage";
 import { logStorageEvent, getRequestIp, getActor } from "../lib/storageAuditLog";
 import { compressImageBuffer, isCompressibleImage } from "../lib/imageCompress";
@@ -169,6 +169,20 @@ router.patch("/:id/folder", async (req, res): Promise<void> => {
   if (!id) { res.status(400).json({ error: "ID tidak valid" }); return; }
   const folder = (req.body.folder as string)?.trim();
   if (!folder) { res.status(400).json({ error: "Nama folder wajib diisi" }); return; }
+
+  // Ownership guard: only owner or admin may move an asset
+  const [asset] = await db
+    .select({ uploadedBy: mediaAssetsTable.uploadedBy })
+    .from(mediaAssetsTable)
+    .where(eq(mediaAssetsTable.id, id));
+  if (!asset) { res.status(404).json({ error: "Asset tidak ditemukan" }); return; }
+  const currentUserEmail = (req as any).user?.email ?? null;
+  const isOwner = asset.uploadedBy && currentUserEmail && asset.uploadedBy === currentUserEmail;
+  if (!isOwner) {
+    const isAdm = await requireAdmin(req, res);
+    if (!isAdm) return;
+  }
+
   const [updated] = await db
     .update(mediaAssetsTable)
     .set({ folder })
@@ -232,9 +246,19 @@ router.delete("/:id", async (req, res): Promise<void> => {
   if (!id) { res.status(400).json({ error: "ID tidak valid" }); return; }
   // Lookup storage paths before deletion so we can clean up GCS objects
   const [asset] = await db
-    .select({ objectPath: mediaAssetsTable.objectPath, publicUrl: mediaAssetsTable.publicUrl })
+    .select({ objectPath: mediaAssetsTable.objectPath, publicUrl: mediaAssetsTable.publicUrl, uploadedBy: mediaAssetsTable.uploadedBy })
     .from(mediaAssetsTable)
     .where(eq(mediaAssetsTable.id, id));
+  if (!asset) { res.status(404).json({ error: "Asset tidak ditemukan" }); return; }
+
+  // Ownership guard: only owner or admin may delete an asset
+  const currentUserEmail = (req as any).user?.email ?? null;
+  const isOwner = asset.uploadedBy && currentUserEmail && asset.uploadedBy === currentUserEmail;
+  if (!isOwner) {
+    const isAdm = await requireAdmin(req, res);
+    if (!isAdm) return;
+  }
+
   await db.delete(mediaAssetsTable).where(eq(mediaAssetsTable.id, id));
   // Delete from GCS (non-fatal) after DB record is removed
   if (asset?.objectPath) {

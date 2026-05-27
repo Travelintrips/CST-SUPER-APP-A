@@ -261,6 +261,9 @@ router.get("/documents/:id", async (req, res) => {
   if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
   const doc = await loadDocWithLines(id);
   if (!doc) return res.status(404).json({ message: "Document not found" });
+  // IDOR guard: ensure document belongs to the requesting user's company
+  const companyId = resolveCompanyId(req);
+  if (doc.companyId !== companyId) return res.status(404).json({ message: "Document not found" });
   return res.json(doc);
 });
 
