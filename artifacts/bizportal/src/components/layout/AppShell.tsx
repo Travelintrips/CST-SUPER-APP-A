@@ -55,6 +55,7 @@ import {
   ShieldCheck,
   Shield,
   Calendar,
+  ShieldAlert,
 
   Search,
   Bell,
@@ -176,6 +177,15 @@ export function AppShell({ children }: AppShellProps) {
       titleKey: "Notifikasi",
       href: "/notifications",
       icon: Bell,
+      roles: ["admin", "owner"],
+    },
+
+    // ── INTELLIGENCE ALERTS ───────────────────────────────────────────
+    {
+      type: "flat",
+      titleKey: "Intelligence Alerts",
+      href: "/intelligence-alerts",
+      icon: ShieldAlert,
       roles: ["admin", "owner"],
     },
 

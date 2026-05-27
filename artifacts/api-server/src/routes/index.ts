@@ -69,6 +69,7 @@ import { fulfillmentAdminRouter, fulfillmentPublicRouter } from "./orderFulfillm
 import { vendorJobAdminRouter, vendorJobPublicRouter, orderTrackingPublicRouter } from "./vendorJobOrder.js";
 import { resolveShortLink } from "../lib/shortLink.js";
 import pushRouter from "./push.js";
+import { intelligenceAlertsRouter } from "./intelligenceAlerts.js";
 import type { Request, Response } from "express";
 
 const router: IRouter = Router();
@@ -158,6 +159,7 @@ router.use("/logistic", vendorJobAdminRouter);
 router.use("/vendor-job", vendorJobPublicRouter);
 router.use("/order-track", orderTrackingPublicRouter);
 router.use("/push", pushRouter);
+router.use("/intelligence-alerts", intelligenceAlertsRouter);
 
 router.get("/q/:code", async (req: Request, res: Response) => {
   const code = String(req.params.code ?? "").trim();

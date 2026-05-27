@@ -7,6 +7,8 @@ import { seedDemoData, seedDemoDrivers } from "./lib/seedDemoData";
 import { startImapPoller } from "./lib/imapPoller";
 import { startOcrTempCleanup } from "./lib/ocrTempCleanup";
 import { startVmfGapNotifier, runVmfGapCheck } from "./lib/vmfGapNotifier";
+import { runPhase1Migration } from "./lib/phase1Migration";
+import { startWorkflowWorker } from "./lib/workflowWorker";
 import { remediateOrphanProducts } from "./lib/remediateOrphanProducts";
 import { runPortalMigration } from "./lib/portalMigration";
 import { runAccountingMigration } from "./lib/accountingMigration";
@@ -200,6 +202,7 @@ async function startServer() {
   startImapPoller(3 * 60 * 1000);
   startOcrTempCleanup();
   startVmfGapNotifier();
+  startWorkflowWorker();
 
   // Run all migrations + seeds in the background with a small initial delay
   // to prevent a DB connection storm on cold starts.
@@ -241,6 +244,7 @@ async function startServer() {
     .then(() => runWithRetry("ERP audit reports migration", runAuditReportsMigration))
     .then(() => runWithRetry("WA template migration", runWaTemplateMigration))
     .then(() => runWithRetry("RLS migration", runRlsMigration))
+    .then(() => runWithRetry("Phase 1 migration", runPhase1Migration))
     .then(() => runWithRetry("Push subscriptions migration", migratePushSubscriptions))
     .then(() => enableRealtimeTables().catch((err) => {
       logger.warn({ err }, "Supabase Realtime table enable failed (non-fatal)");

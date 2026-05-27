@@ -129,6 +129,7 @@ import VendorPerformancePage from "@/pages/logistics/vendor-performance";
 import InternalTasksPage from "@/pages/logistics/internal-tasks";
 // Misc
 import NotificationsPage from "@/pages/notifications";
+import IntelligenceAlertsPage from "@/pages/intelligence-alerts";
 import WaNotificationHistoryPage from "@/pages/wa-notification-history";
 import AnalyticsDashboardPage from "@/pages/analytics-dashboard";
 import POOrdersPage from "@/pages/purchase/po-orders";
@@ -316,6 +317,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
 
       {/* ── Notifications & Analytics ──────────────────────────────────── */}
       <Route path="/notifications" component={PR(NotificationsPage)} />
+      <Route path="/intelligence-alerts" component={PR(IntelligenceAlertsPage)} />
       <Route path="/analytics" component={PR(AnalyticsDashboardPage)} />
 
       {/* ── Audit ERP ──────────────────────────────────────────────────── */}
