@@ -347,3 +347,9 @@ id = "ZzwiO8d2gt_Q6_szPankd"
 uri = "file://docs/operational-intelligence-roadmap.md"
 type = "text"
 title = "Operational Intelligence & Autonomous Workflow Roadmap"
+
+[[outputs]]
+id = "3yask6p_ScBQycr6wTjis"
+uri = "file://AI_ENTERPRISE_ROADMAP.md"
+type = "text"
+title = "BizPortal — AI-Native Enterprise Execution Roadmap"
