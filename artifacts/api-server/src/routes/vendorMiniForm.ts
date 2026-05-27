@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { rateLimit } from "express-rate-limit";
-import { eq, desc, inArray, and, count, isNull, ne } from "drizzle-orm";
+import { eq, desc, inArray, and, count, isNull, ne, sql } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import multer from "multer";
 import { ObjectStorageService } from "../lib/objectStorage.js";
@@ -1605,6 +1605,108 @@ vendorMiniFormRouter.get("/admin/activity-log", async (req: Request, res: Respon
     });
   } catch (err) {
     req.log?.error({ err }, "activity-log error");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── ADMIN: GET /api/vendor-form/admin/activity-log/gaps ───────────────────────
+// Returns orders where at least one critical VMF step is missing.
+// Critical flow: link_generated → approval_sent → so_created → op_confirm_sent
+
+vendorMiniFormRouter.get("/admin/activity-log/gaps", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  try {
+    const { from, to, orderNumber, gapAfter } = req.query as Record<string, string | undefined>;
+
+    const fromDate = from ? new Date(from) : null;
+    const toDate   = to   ? (() => { const d = new Date(to); d.setHours(23, 59, 59, 999); return d; })() : null;
+
+    const extraConds = sql.join(
+      [
+        fromDate && !isNaN(fromDate.getTime()) ? sql`AND ${vmfActivityLogTable.createdAt} >= ${fromDate}` : null,
+        toDate   && !isNaN(toDate.getTime())   ? sql`AND ${vmfActivityLogTable.createdAt} <= ${toDate}`   : null,
+        orderNumber ? sql`AND ${vmfActivityLogTable.data}->>'orderNumber' = ${orderNumber}` : null,
+      ].filter(Boolean) as ReturnType<typeof sql>[],
+      sql` `,
+    );
+
+    const result = await db.execute(sql`
+      SELECT
+        ${vmfActivityLogTable.data}->>'orderNumber'          AS order_number,
+        bool_or(${vmfActivityLogTable.action} = 'link_generated')   AS has_link_generated,
+        bool_or(${vmfActivityLogTable.action} = 'approval_sent')    AS has_approval_sent,
+        bool_or(${vmfActivityLogTable.action} = 'so_created')       AS has_so_created,
+        bool_or(${vmfActivityLogTable.action} = 'op_confirm_sent')  AS has_op_confirm_sent,
+        MIN(${vmfActivityLogTable.createdAt})  AS first_event,
+        MAX(${vmfActivityLogTable.createdAt})  AS last_event,
+        COUNT(*)::int                          AS total_events
+      FROM ${vmfActivityLogTable}
+      WHERE ${vmfActivityLogTable.data}->>'orderNumber' IS NOT NULL
+        AND ${vmfActivityLogTable.action} IN ('link_generated','approval_sent','so_created','op_confirm_sent')
+        ${extraConds}
+      GROUP BY ${vmfActivityLogTable.data}->>'orderNumber'
+      ORDER BY MIN(${vmfActivityLogTable.createdAt}) DESC
+    `);
+
+    type DbRow = {
+      order_number: string;
+      has_link_generated: boolean;
+      has_approval_sent: boolean;
+      has_so_created: boolean;
+      has_op_confirm_sent: boolean;
+      first_event: string;
+      last_event: string;
+      total_events: number;
+    };
+
+    const allOrders = (result.rows as unknown as DbRow[]);
+
+    const CRITICAL = ["link_generated", "approval_sent", "so_created", "op_confirm_sent"] as const;
+    type CriticalKey = typeof CRITICAL[number];
+    const hasMap: Record<CriticalKey, keyof DbRow> = {
+      link_generated:  "has_link_generated",
+      approval_sent:   "has_approval_sent",
+      so_created:      "has_so_created",
+      op_confirm_sent: "has_op_confirm_sent",
+    };
+
+    const gapRows = allOrders
+      .map(row => {
+        const present = CRITICAL.filter(a => row[hasMap[a]]);
+        const missing = CRITICAL.filter(a => !row[hasMap[a]]);
+        const lastPresentIdx = Math.max(-1, ...present.map(a => CRITICAL.indexOf(a)));
+        // Gap = has made some progress but is missing a subsequent step
+        const hasGap = lastPresentIdx >= 0 && missing.some(a => CRITICAL.indexOf(a) <= lastPresentIdx + 2);
+        return {
+          orderNumber: row.order_number,
+          present,
+          missing,
+          hasGap,
+          firstEvent: row.first_event,
+          lastEvent: row.last_event,
+          totalEvents: Number(row.total_events),
+        };
+      })
+      .filter(r => {
+        if (r.present.length === 0) return false;
+        if (gapAfter && !r.present.includes(gapAfter as CriticalKey)) return false;
+        return r.hasGap;
+      });
+
+    return res.json({
+      rows: gapRows,
+      total: gapRows.length,
+      summary: {
+        total_orders:           allOrders.length,
+        orders_with_gap:        gapRows.length,
+        missing_link_generated:  allOrders.filter(r => !r.has_link_generated).length,
+        missing_approval_sent:   allOrders.filter(r => !r.has_approval_sent).length,
+        missing_so_created:      allOrders.filter(r => !r.has_so_created).length,
+        missing_op_confirm_sent: allOrders.filter(r => !r.has_op_confirm_sent).length,
+      },
+    });
+  } catch (err) {
+    req.log?.error({ err }, "activity-log/gaps error");
     return res.status(500).json({ error: "Internal server error" });
   }
 });

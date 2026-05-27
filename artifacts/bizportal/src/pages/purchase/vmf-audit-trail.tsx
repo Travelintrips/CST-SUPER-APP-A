@@ -12,10 +12,11 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   ClipboardList, Search, Download, ChevronDown, ChevronRight,
   Link2, Send, FileCheck, Wrench, CheckCircle, XCircle,
-  Clock, AlertCircle,
+  Clock, AlertCircle, AlertTriangle,
 } from "lucide-react";
 
 const BASE = "/api";
@@ -36,22 +37,22 @@ type ActionConfig = {
 };
 
 const ACTION_CONFIG: Record<string, ActionConfig> = {
-  link_generated:  { label: "Link Generated",    color: "bg-blue-100 text-blue-800 border-blue-200",      icon: Link2,       critical: true },
-  approval_sent:   { label: "Approval Sent",      color: "bg-violet-100 text-violet-800 border-violet-200", icon: Send,        critical: true },
-  so_created:      { label: "SO Created",         color: "bg-emerald-100 text-emerald-800 border-emerald-200", icon: FileCheck, critical: true },
-  op_confirm_sent: { label: "Op-Confirm Sent",    color: "bg-orange-100 text-orange-800 border-orange-200", icon: Wrench,      critical: true },
-  created:         { label: "Created",            color: "bg-sky-100 text-sky-800 border-sky-200",          icon: Clock },
-  submitted:       { label: "Submitted",          color: "bg-teal-100 text-teal-800 border-teal-200",       icon: Send },
-  resubmitted:     { label: "Resubmitted",        color: "bg-cyan-100 text-cyan-800 border-cyan-200",       icon: Send },
-  selected:        { label: "Selected",           color: "bg-indigo-100 text-indigo-800 border-indigo-200", icon: CheckCircle },
-  approved:        { label: "Approved",           color: "bg-green-100 text-green-800 border-green-200",    icon: CheckCircle },
-  rejected:        { label: "Rejected",           color: "bg-red-100 text-red-800 border-red-200",          icon: XCircle },
-  op_submitted:    { label: "Op Submitted",       color: "bg-amber-100 text-amber-800 border-amber-200",    icon: Wrench },
-  sent_wa:         { label: "WA Sent",            color: "bg-green-50 text-green-700 border-green-100",     icon: Send },
-  revision_requested: { label: "Revision",        color: "bg-yellow-100 text-yellow-800 border-yellow-200", icon: AlertCircle },
-  deleted:         { label: "Deleted",            color: "bg-red-50 text-red-700 border-red-100",           icon: XCircle },
-  price_updated:   { label: "Price Updated",      color: "bg-gray-100 text-gray-700 border-gray-200",       icon: Clock },
-  bulk_deactivated:{ label: "Bulk Deactivated",   color: "bg-gray-100 text-gray-600 border-gray-200",       icon: Clock },
+  link_generated:     { label: "Link Generated",    color: "bg-blue-100 text-blue-800 border-blue-200",        icon: Link2,       critical: true },
+  approval_sent:      { label: "Approval Sent",      color: "bg-violet-100 text-violet-800 border-violet-200",  icon: Send,        critical: true },
+  so_created:         { label: "SO Created",         color: "bg-emerald-100 text-emerald-800 border-emerald-200", icon: FileCheck,  critical: true },
+  op_confirm_sent:    { label: "Op-Confirm Sent",    color: "bg-orange-100 text-orange-800 border-orange-200",  icon: Wrench,      critical: true },
+  created:            { label: "Created",            color: "bg-sky-100 text-sky-800 border-sky-200",            icon: Clock },
+  submitted:          { label: "Submitted",          color: "bg-teal-100 text-teal-800 border-teal-200",         icon: Send },
+  resubmitted:        { label: "Resubmitted",        color: "bg-cyan-100 text-cyan-800 border-cyan-200",         icon: Send },
+  selected:           { label: "Selected",           color: "bg-indigo-100 text-indigo-800 border-indigo-200",   icon: CheckCircle },
+  approved:           { label: "Approved",           color: "bg-green-100 text-green-800 border-green-200",      icon: CheckCircle },
+  rejected:           { label: "Rejected",           color: "bg-red-100 text-red-800 border-red-200",            icon: XCircle },
+  op_submitted:       { label: "Op Submitted",       color: "bg-amber-100 text-amber-800 border-amber-200",      icon: Wrench },
+  sent_wa:            { label: "WA Sent",            color: "bg-green-50 text-green-700 border-green-100",       icon: Send },
+  revision_requested: { label: "Revision",           color: "bg-yellow-100 text-yellow-800 border-yellow-200",  icon: AlertCircle },
+  deleted:            { label: "Deleted",            color: "bg-red-50 text-red-700 border-red-100",             icon: XCircle },
+  price_updated:      { label: "Price Updated",      color: "bg-gray-100 text-gray-700 border-gray-200",         icon: Clock },
+  bulk_deactivated:   { label: "Bulk Deactivated",   color: "bg-gray-100 text-gray-600 border-gray-200",         icon: Clock },
 };
 
 const ENTITY_LABELS: Record<string, string> = {
@@ -62,9 +63,10 @@ const ENTITY_LABELS: Record<string, string> = {
   sales_order: "Sales Order",
 };
 
-const CRITICAL_ACTIONS = ["link_generated", "approval_sent", "so_created", "op_confirm_sent"];
+const CRITICAL_ACTIONS = ["link_generated", "approval_sent", "so_created", "op_confirm_sent"] as const;
+type CriticalAction = typeof CRITICAL_ACTIONS[number];
 
-// ── Components ────────────────────────────────────────────────────────────────
+// ── Shared badge components ───────────────────────────────────────────────────
 
 function ActionBadge({ action }: { action: string }) {
   const cfg = ACTION_CONFIG[action] ?? { label: action, color: "bg-gray-100 text-gray-700 border-gray-200", icon: Clock };
@@ -108,7 +110,7 @@ function DataCell({ data }: { data: unknown }) {
   );
 }
 
-// ── Timeline view for a single order ─────────────────────────────────────────
+// ── Timeline per order ────────────────────────────────────────────────────────
 
 type LogRow = {
   id: number;
@@ -160,10 +162,9 @@ function OrderTimeline({ orderNumber, rows }: { orderNumber: string; rows: LogRo
       {open && (
         <div className="border-t bg-gray-50 px-4 py-3">
           <div className="relative">
-            {/* Vertical line */}
             <div className="absolute left-[11px] top-0 bottom-0 w-0.5 bg-gray-200" />
             <div className="space-y-3">
-              {sorted.map((row, i) => {
+              {sorted.map(row => {
                 const cfg = ACTION_CONFIG[row.action] ?? { label: row.action, color: "bg-gray-100 text-gray-700", icon: Clock, critical: false };
                 const Icon = cfg.icon;
                 return (
@@ -197,7 +198,86 @@ function OrderTimeline({ orderNumber, rows }: { orderNumber: string; rows: LogRo
   );
 }
 
-// ── Stats ─────────────────────────────────────────────────────────────────────
+// ── Gap indicator row ─────────────────────────────────────────────────────────
+
+type GapEntry = {
+  orderNumber: string;
+  present: CriticalAction[];
+  missing: CriticalAction[];
+  hasGap: boolean;
+  firstEvent: string;
+  lastEvent: string;
+  totalEvents: number;
+};
+
+const GAP_NEXT_STEP: Record<CriticalAction, string> = {
+  link_generated:  "Kirim link approval ke customer",
+  approval_sent:   "Tunggu customer approve → SO dibuat",
+  so_created:      "Kirim link op-confirm ke vendor",
+  op_confirm_sent: "Selesai",
+};
+
+function GapRow({ row }: { row: GapEntry }) {
+  const lastPresent = [...row.present].reverse()[0];
+  const nextMissing = row.missing[0];
+  const daysSinceLastEvent = Math.floor(
+    (Date.now() - new Date(row.lastEvent).getTime()) / 86_400_000
+  );
+  const isStale = daysSinceLastEvent >= 3;
+
+  return (
+    <div className={`border rounded-lg p-3 flex flex-col gap-2 ${isStale ? "border-red-200 bg-red-50/30" : "border-amber-200 bg-amber-50/20"}`}>
+      <div className="flex items-center gap-2 flex-wrap">
+        <AlertTriangle size={14} className={isStale ? "text-red-500 shrink-0" : "text-amber-500 shrink-0"} />
+        <span className="font-mono text-sm font-semibold">{row.orderNumber}</span>
+        {isStale && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 text-red-700 border border-red-200 font-semibold">
+            Stuck {daysSinceLastEvent}h
+          </span>
+        )}
+        <span className="ml-auto text-[10px] text-gray-400">
+          Terakhir: {new Date(row.lastEvent).toLocaleString("id-ID", { dateStyle: "short", timeStyle: "short" })}
+        </span>
+      </div>
+
+      {/* Progress bar */}
+      <div className="flex gap-1 items-center">
+        {CRITICAL_ACTIONS.map((a, i) => {
+          const isDone = row.present.includes(a);
+          const cfg = ACTION_CONFIG[a];
+          const Icon = cfg?.icon ?? Clock;
+          return (
+            <div key={a} className="flex items-center gap-1">
+              {i > 0 && <div className={`w-4 h-0.5 ${isDone ? "bg-emerald-400" : "bg-gray-200"}`} />}
+              <div className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-semibold border ${
+                isDone
+                  ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+                  : a === nextMissing
+                    ? "bg-amber-50 border-amber-300 text-amber-700 ring-1 ring-amber-300"
+                    : "bg-gray-50 border-gray-200 text-gray-400"
+              }`}>
+                <Icon size={10} />
+                {cfg?.label}
+                {isDone && <CheckCircle size={9} className="text-emerald-500" />}
+                {!isDone && a === nextMissing && <span className="text-amber-600">←</span>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Next action hint */}
+      {nextMissing && lastPresent && (
+        <div className="text-xs text-gray-600 flex items-center gap-1.5">
+          <span className="font-medium text-amber-700">Tindakan berikutnya:</span>
+          {GAP_NEXT_STEP[lastPresent]}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Stats card ────────────────────────────────────────────────────────────────
 
 function CriticalStat({ action, count, total }: { action: string; count: number; total: number }) {
   const cfg = ACTION_CONFIG[action];
@@ -215,7 +295,7 @@ function CriticalStat({ action, count, total }: { action: string; count: number;
   );
 }
 
-// ── Main page ─────────────────────────────────────────────────────────────────
+// ── Filter bar ────────────────────────────────────────────────────────────────
 
 const ENTITY_TYPES = ["", "link", "submission", "customer_approval", "op_confirm", "sales_order"];
 const ALL_ACTIONS = [
@@ -224,121 +304,40 @@ const ALL_ACTIONS = [
   "op_submitted", "sent_wa", "revision_requested", "deleted", "price_updated",
 ];
 
-export default function VmfAuditTrailPage() {
-  const today = new Date().toISOString().split("T")[0]!;
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
-  const [entityType, setEntityType] = useState("");
-  const [action, setAction] = useState("");
-  const [orderNumber, setOrderNumber] = useState("");
-  const [actor, setActor] = useState("");
-  const [viewMode, setViewMode] = useState<"timeline" | "table">("timeline");
-  const [page, setPage] = useState(0);
-  const limit = 100;
+type FilterState = {
+  from: string; to: string;
+  entityType: string; action: string;
+  orderNumber: string; actor: string;
+};
 
-  const params = new URLSearchParams({
-    limit: String(limit),
-    offset: String(page * limit),
-    ...(entityType ? { entityType } : {}),
-    ...(action ? { action } : {}),
-    ...(orderNumber.trim() ? { orderNumber: orderNumber.trim() } : {}),
-    ...(actor.trim() ? { actor: actor.trim() } : {}),
-    ...(from ? { from } : {}),
-    ...(to ? { to } : {}),
-  });
-
-  const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ["vmf-audit-trail", entityType, action, orderNumber, actor, from, to, page],
-    queryFn: () => apiFetch(`${BASE}/vendor-form/admin/activity-log?${params}`),
-  });
-
-  const rows: LogRow[] = data?.rows ?? [];
-  const total: number = data?.total ?? 0;
-
-  // Group by orderNumber for timeline view
-  const grouped = new Map<string, LogRow[]>();
-  for (const row of rows) {
-    const key = (row.data as Record<string, unknown>)?.orderNumber as string | undefined ?? `entity:${row.entityType}#${row.entityId}`;
-    if (!grouped.has(key)) grouped.set(key, []);
-    grouped.get(key)!.push(row);
-  }
-
-  // Stats by critical action
-  const actionCounts = CRITICAL_ACTIONS.map(a => ({
-    action: a,
-    count: rows.filter(r => r.action === a).length,
-  }));
-
-  function exportCsv() {
-    if (!rows.length) return;
-    const cols = ["id", "createdAt", "entityType", "entityId", "action", "actor", "note"];
-    const header = cols.join(",");
-    const body = rows.map(r =>
-      cols.map(c => JSON.stringify((r as Record<string, unknown>)[c] ?? "")).join(",")
-    ).join("\n");
-    const blob = new Blob([header + "\n" + body], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `vmf-audit-trail-${today}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
+function FilterBar({
+  filters, onChange, onSearch, onExport, showActionFilter = true,
+}: {
+  filters: FilterState;
+  onChange: (k: keyof FilterState, v: string) => void;
+  onSearch: () => void;
+  onExport?: () => void;
+  showActionFilter?: boolean;
+}) {
   return (
-    <div className="space-y-4 p-4">
-      {/* Header */}
-      <div className="flex items-center gap-2">
-        <ClipboardList className="text-blue-600" size={22} />
-        <h1 className="text-xl font-bold">Audit Trail VMF</h1>
-        <span className="text-sm text-gray-500 ml-2">Rekam jejak alur Vendor Mini Form</span>
-        <div className="ml-auto flex gap-2">
-          <Button
-            size="sm" variant={viewMode === "timeline" ? "default" : "outline"}
-            onClick={() => setViewMode("timeline")}
-          >Timeline</Button>
-          <Button
-            size="sm" variant={viewMode === "table" ? "default" : "outline"}
-            onClick={() => setViewMode("table")}
-          >Tabel</Button>
-        </div>
-      </div>
-
-      {/* Critical steps legend */}
-      <div className="flex flex-wrap gap-2 items-center">
-        <span className="text-xs text-gray-500 font-medium">4 Step Kritis:</span>
-        {CRITICAL_ACTIONS.map(a => <ActionBadge key={a} action={a} />)}
-        <span className="text-xs text-gray-400 ml-1">★ = step kritis tercatat</span>
-        <span className="text-xs text-gray-400">? = step kritis belum tercatat di filter saat ini</span>
-      </div>
-
-      {/* Stats */}
-      {rows.length > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {actionCounts.map(({ action: a, count }) => (
-            <CriticalStat key={a} action={a} count={count} total={rows.length} />
-          ))}
-        </div>
-      )}
-
-      {/* Filter */}
-      <Card>
-        <CardHeader className="pb-2 pt-3 px-4">
-          <CardTitle className="text-sm">Filter</CardTitle>
-        </CardHeader>
-        <CardContent className="px-4 pb-3">
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-            <div>
-              <Label className="text-xs">Dari</Label>
-              <Input type="date" value={from} onChange={e => { setFrom(e.target.value); setPage(0); }} className="h-8 text-sm" />
-            </div>
-            <div>
-              <Label className="text-xs">Sampai</Label>
-              <Input type="date" value={to} onChange={e => { setTo(e.target.value); setPage(0); }} className="h-8 text-sm" />
-            </div>
+    <Card>
+      <CardHeader className="pb-2 pt-3 px-4">
+        <CardTitle className="text-sm">Filter</CardTitle>
+      </CardHeader>
+      <CardContent className="px-4 pb-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div>
+            <Label className="text-xs">Dari</Label>
+            <Input type="date" value={filters.from} onChange={e => onChange("from", e.target.value)} className="h-8 text-sm" />
+          </div>
+          <div>
+            <Label className="text-xs">Sampai</Label>
+            <Input type="date" value={filters.to} onChange={e => onChange("to", e.target.value)} className="h-8 text-sm" />
+          </div>
+          {showActionFilter && (
             <div>
               <Label className="text-xs">Tipe Entity</Label>
-              <Select value={entityType || "_all"} onValueChange={v => { setEntityType(v === "_all" ? "" : v); setPage(0); }}>
+              <Select value={filters.entityType || "_all"} onValueChange={v => onChange("entityType", v === "_all" ? "" : v)}>
                 <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Semua" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="_all">Semua</SelectItem>
@@ -348,64 +347,128 @@ export default function VmfAuditTrailPage() {
                 </SelectContent>
               </Select>
             </div>
+          )}
+          {showActionFilter && (
             <div>
               <Label className="text-xs">Aksi</Label>
-              <Select value={action || "_all"} onValueChange={v => { setAction(v === "_all" ? "" : v); setPage(0); }}>
+              <Select value={filters.action || "_all"} onValueChange={v => onChange("action", v === "_all" ? "" : v)}>
                 <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Semua aksi" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="_all">Semua aksi</SelectItem>
                   {ALL_ACTIONS.filter(Boolean).map(a => (
                     <SelectItem key={a} value={a}>
                       {ACTION_CONFIG[a]?.label ?? a}
-                      {CRITICAL_ACTIONS.includes(a) ? " ★" : ""}
+                      {CRITICAL_ACTIONS.includes(a as CriticalAction) ? " ★" : ""}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-            <div>
-              <Label className="text-xs">No. Order</Label>
-              <Input
-                value={orderNumber}
-                onChange={e => { setOrderNumber(e.target.value); setPage(0); }}
-                placeholder="ORD/2025/..."
-                className="h-8 text-sm"
-              />
-            </div>
+          )}
+          <div>
+            <Label className="text-xs">No. Order</Label>
+            <Input value={filters.orderNumber} onChange={e => onChange("orderNumber", e.target.value)} placeholder="ORD/2025/…" className="h-8 text-sm" />
+          </div>
+          {showActionFilter && (
             <div>
               <Label className="text-xs">Actor</Label>
-              <Input
-                value={actor}
-                onChange={e => { setActor(e.target.value); setPage(0); }}
-                placeholder="admin / vendor / customer"
-                className="h-8 text-sm"
-              />
+              <Input value={filters.actor} onChange={e => onChange("actor", e.target.value)} placeholder="admin / vendor" className="h-8 text-sm" />
             </div>
-          </div>
-          <div className="mt-3 flex gap-2">
-            <Button size="sm" onClick={() => refetch()} className="gap-1"><Search size={14} /> Cari</Button>
-            <Button size="sm" variant="outline" onClick={exportCsv} className="gap-1"><Download size={14} /> Export CSV</Button>
-          </div>
-        </CardContent>
-      </Card>
+          )}
+        </div>
+        <div className="mt-3 flex gap-2">
+          <Button size="sm" onClick={onSearch} className="gap-1"><Search size={14} /> Cari</Button>
+          {onExport && (
+            <Button size="sm" variant="outline" onClick={onExport} className="gap-1"><Download size={14} /> Export CSV</Button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
-      {/* Loading / Error */}
-      {isLoading && <div className="p-10 text-center text-gray-400 text-sm">Memuat data audit trail…</div>}
+// ── Tab: Timeline / Table ─────────────────────────────────────────────────────
+
+function AuditLogTab() {
+  const today = new Date().toISOString().split("T")[0]!;
+  const [filters, setFilters] = useState<FilterState>({ from: "", to: "", entityType: "", action: "", orderNumber: "", actor: "" });
+  const [applied, setApplied] = useState(filters);
+  const [viewMode, setViewMode] = useState<"timeline" | "table">("timeline");
+  const [page, setPage] = useState(0);
+  const limit = 100;
+
+  const params = new URLSearchParams({
+    limit: String(limit), offset: String(page * limit),
+    ...(applied.entityType ? { entityType: applied.entityType } : {}),
+    ...(applied.action ? { action: applied.action } : {}),
+    ...(applied.orderNumber.trim() ? { orderNumber: applied.orderNumber.trim() } : {}),
+    ...(applied.actor.trim() ? { actor: applied.actor.trim() } : {}),
+    ...(applied.from ? { from: applied.from } : {}),
+    ...(applied.to ? { to: applied.to } : {}),
+  });
+
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ["vmf-audit-log", applied, page],
+    queryFn: () => apiFetch(`${BASE}/vendor-form/admin/activity-log?${params}`),
+  });
+
+  const rows: LogRow[] = data?.rows ?? [];
+  const total: number = data?.total ?? 0;
+
+  const grouped = new Map<string, LogRow[]>();
+  for (const row of rows) {
+    const key = (row.data as Record<string, unknown>)?.orderNumber as string | undefined ?? `entity:${row.entityType}#${row.entityId}`;
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key)!.push(row);
+  }
+
+  const actionCounts = CRITICAL_ACTIONS.map(a => ({ action: a, count: rows.filter(r => r.action === a).length }));
+
+  function exportCsv() {
+    if (!rows.length) return;
+    const cols = ["id", "createdAt", "entityType", "entityId", "action", "actor", "note"];
+    const header = cols.join(",");
+    const body = rows.map(r => cols.map(c => JSON.stringify((r as Record<string, unknown>)[c] ?? "")).join(",")).join("\n");
+    const blob = new Blob([header + "\n" + body], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `vmf-audit-trail-${today}.csv`; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2 justify-end">
+        <Button size="sm" variant={viewMode === "timeline" ? "default" : "outline"} onClick={() => setViewMode("timeline")}>Timeline</Button>
+        <Button size="sm" variant={viewMode === "table" ? "default" : "outline"} onClick={() => setViewMode("table")}>Tabel</Button>
+      </div>
+
+      {rows.length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {actionCounts.map(({ action, count }) => (
+            <CriticalStat key={action} action={action} count={count} total={rows.length} />
+          ))}
+        </div>
+      )}
+
+      <FilterBar
+        filters={filters}
+        onChange={(k, v) => { setFilters(f => ({ ...f, [k]: v })); setPage(0); }}
+        onSearch={() => { setApplied(filters); setPage(0); refetch(); }}
+        onExport={exportCsv}
+      />
+
+      {isLoading && <div className="p-10 text-center text-gray-400 text-sm">Memuat data…</div>}
       {error && <div className="p-8 text-center text-red-500 text-sm">{String(error)}</div>}
 
       {!isLoading && !error && (
         <>
-          <div className="text-xs text-gray-400 px-1">
-            {total} entri ditemukan{page > 0 ? ` · halaman ${page + 1}` : ""}
-          </div>
+          <div className="text-xs text-gray-400 px-1">{total} entri{page > 0 ? ` · halaman ${page + 1}` : ""}</div>
 
-          {/* ── Timeline view ── */}
           {viewMode === "timeline" && (
             <div className="space-y-2">
               {grouped.size === 0 && (
-                <div className="text-center text-gray-400 text-sm py-12 border rounded-lg bg-white">
-                  Tidak ada data untuk filter ini
-                </div>
+                <div className="text-center text-gray-400 text-sm py-12 border rounded-lg bg-white">Tidak ada data</div>
               )}
               {[...grouped.entries()].map(([key, orderRows]) => (
                 <OrderTimeline key={key} orderNumber={key} rows={orderRows} />
@@ -413,7 +476,6 @@ export default function VmfAuditTrailPage() {
             </div>
           )}
 
-          {/* ── Table view ── */}
           {viewMode === "table" && (
             <Card>
               <CardContent className="p-0">
@@ -425,7 +487,7 @@ export default function VmfAuditTrailPage() {
                         <TableHead>Waktu</TableHead>
                         <TableHead>Aksi</TableHead>
                         <TableHead>Entity</TableHead>
-                        <TableHead>Entity ID</TableHead>
+                        <TableHead>ID</TableHead>
                         <TableHead>Actor</TableHead>
                         <TableHead>Catatan</TableHead>
                         <TableHead>Data</TableHead>
@@ -433,17 +495,10 @@ export default function VmfAuditTrailPage() {
                     </TableHeader>
                     <TableBody>
                       {rows.length === 0 && (
-                        <TableRow>
-                          <TableCell colSpan={8} className="text-center text-gray-400 text-sm py-10">
-                            Tidak ada data untuk filter ini
-                          </TableCell>
-                        </TableRow>
+                        <TableRow><TableCell colSpan={8} className="text-center text-gray-400 py-10 text-sm">Tidak ada data</TableCell></TableRow>
                       )}
                       {rows.map(row => (
-                        <TableRow
-                          key={row.id}
-                          className={`text-xs align-top ${CRITICAL_ACTIONS.includes(row.action) ? "bg-blue-50/40" : ""}`}
-                        >
+                        <TableRow key={row.id} className={`text-xs align-top ${CRITICAL_ACTIONS.includes(row.action as CriticalAction) ? "bg-blue-50/40" : ""}`}>
                           <TableCell className="text-gray-400 font-mono">{row.id}</TableCell>
                           <TableCell className="whitespace-nowrap text-gray-600">
                             {new Date(row.createdAt).toLocaleString("id-ID", { dateStyle: "short", timeStyle: "medium" })}
@@ -457,16 +512,12 @@ export default function VmfAuditTrailPage() {
                               : row.actor === "customer" ? "bg-purple-50 text-purple-700"
                               : row.actor === "vendor" ? "bg-teal-50 text-teal-700"
                               : "bg-blue-50 text-blue-700"
-                            }`}>
-                              {row.actor ?? "—"}
-                            </span>
+                            }`}>{row.actor ?? "—"}</span>
                           </TableCell>
-                          <TableCell className="max-w-[220px]">
-                            <p className="text-xs text-gray-600 leading-snug line-clamp-2">{row.note ?? "—"}</p>
+                          <TableCell className="max-w-[200px]">
+                            <p className="text-xs text-gray-600 line-clamp-2">{row.note ?? "—"}</p>
                           </TableCell>
-                          <TableCell className="min-w-[160px]">
-                            <DataCell data={row.data} />
-                          </TableCell>
+                          <TableCell className="min-w-[150px]"><DataCell data={row.data} /></TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -476,13 +527,178 @@ export default function VmfAuditTrailPage() {
             </Card>
           )}
 
-          {/* Pagination */}
           <div className="flex gap-2 justify-end">
             <Button size="sm" variant="outline" disabled={page === 0} onClick={() => setPage(p => p - 1)}>← Prev</Button>
             <Button size="sm" variant="outline" disabled={(page + 1) * limit >= total} onClick={() => setPage(p => p + 1)}>Next →</Button>
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+// ── Tab: Gap Detection ────────────────────────────────────────────────────────
+
+function GapsTab() {
+  const [filters, setFilters] = useState<FilterState>({ from: "", to: "", entityType: "", action: "", orderNumber: "", actor: "" });
+  const [applied, setApplied] = useState(filters);
+  const [gapAfter, setGapAfter] = useState<string>("");
+
+  const params = new URLSearchParams({
+    ...(applied.from ? { from: applied.from } : {}),
+    ...(applied.to ? { to: applied.to } : {}),
+    ...(applied.orderNumber.trim() ? { orderNumber: applied.orderNumber.trim() } : {}),
+    ...(gapAfter ? { gapAfter } : {}),
+  });
+
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ["vmf-gaps", applied, gapAfter],
+    queryFn: () => apiFetch(`${BASE}/vendor-form/admin/activity-log/gaps?${params}`),
+  });
+
+  const rows: GapEntry[] = data?.rows ?? [];
+  const summary = data?.summary;
+
+  function exportCsv() {
+    if (!rows.length) return;
+    const header = "orderNumber,present,missing,firstEvent,lastEvent,totalEvents";
+    const body = rows.map(r =>
+      [r.orderNumber, r.present.join("|"), r.missing.join("|"), r.firstEvent, r.lastEvent, r.totalEvents]
+        .map(v => JSON.stringify(v)).join(",")
+    ).join("\n");
+    const blob = new Blob([header + "\n" + body], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `vmf-gaps-${new Date().toISOString().split("T")[0]}.csv`; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Summary stats */}
+      {summary && (
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <Card className="p-3 col-span-1">
+            <div className="text-xs text-gray-500 mb-1">Total Order</div>
+            <div className="text-2xl font-bold">{summary.total_orders}</div>
+          </Card>
+          <Card className={`p-3 ${summary.orders_with_gap > 0 ? "border-amber-300 bg-amber-50" : ""}`}>
+            <div className="text-xs text-gray-500 mb-1 flex items-center gap-1">
+              <AlertTriangle size={11} className="text-amber-500" /> Ada Gap
+            </div>
+            <div className="text-2xl font-bold text-amber-700">{summary.orders_with_gap}</div>
+          </Card>
+          {(["link_generated", "approval_sent", "so_created", "op_confirm_sent"] as const).map(a => (
+            <Card key={a} className="p-3">
+              <div className="text-xs text-gray-500 mb-1 flex items-center gap-1">
+                {(() => { const Icon = ACTION_CONFIG[a]?.icon ?? Clock; return <Icon size={11} />; })()}
+                Tanpa {ACTION_CONFIG[a]?.label}
+              </div>
+              <div className="text-xl font-bold">{(summary as Record<string, number>)[`missing_${a}`]}</div>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Filters */}
+      <Card>
+        <CardHeader className="pb-2 pt-3 px-4"><CardTitle className="text-sm">Filter Gap</CardTitle></CardHeader>
+        <CardContent className="px-4 pb-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div>
+              <Label className="text-xs">Dari</Label>
+              <Input type="date" value={filters.from} onChange={e => setFilters(f => ({ ...f, from: e.target.value }))} className="h-8 text-sm" />
+            </div>
+            <div>
+              <Label className="text-xs">Sampai</Label>
+              <Input type="date" value={filters.to} onChange={e => setFilters(f => ({ ...f, to: e.target.value }))} className="h-8 text-sm" />
+            </div>
+            <div>
+              <Label className="text-xs">No. Order</Label>
+              <Input value={filters.orderNumber} onChange={e => setFilters(f => ({ ...f, orderNumber: e.target.value }))} placeholder="ORD/2025/…" className="h-8 text-sm" />
+            </div>
+            <div>
+              <Label className="text-xs">Gap setelah step</Label>
+              <Select value={gapAfter || "_all"} onValueChange={v => setGapAfter(v === "_all" ? "" : v)}>
+                <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Semua gap" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_all">Semua gap</SelectItem>
+                  {CRITICAL_ACTIONS.map(a => (
+                    <SelectItem key={a} value={a}>Setelah {ACTION_CONFIG[a]?.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="mt-3 flex gap-2">
+            <Button size="sm" onClick={() => { setApplied(filters); refetch(); }} className="gap-1"><Search size={14} /> Cari</Button>
+            <Button size="sm" variant="outline" onClick={exportCsv} className="gap-1"><Download size={14} /> Export CSV</Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {isLoading && <div className="p-10 text-center text-gray-400 text-sm">Menganalisis gap…</div>}
+      {error && <div className="p-8 text-center text-red-500 text-sm">{String(error)}</div>}
+
+      {!isLoading && !error && (
+        <>
+          {rows.length === 0 ? (
+            <div className="text-center py-14 border rounded-lg bg-white text-gray-400 text-sm">
+              <CheckCircle className="mx-auto mb-2 text-emerald-400" size={32} />
+              Tidak ada gap terdeteksi — semua order sudah lengkap step kritisnya!
+            </div>
+          ) : (
+            <>
+              <div className="text-xs text-gray-500 px-1">
+                <span className="font-semibold text-amber-700">{rows.length} order</span> memiliki gap alur VMF
+              </div>
+              <div className="space-y-2">
+                {rows.map(row => <GapRow key={row.orderNumber} row={row} />)}
+              </div>
+            </>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
+
+export default function VmfAuditTrailPage() {
+  return (
+    <div className="space-y-4 p-4">
+      {/* Header */}
+      <div className="flex items-center gap-2">
+        <ClipboardList className="text-blue-600" size={22} />
+        <h1 className="text-xl font-bold">Audit Trail VMF</h1>
+        <span className="text-sm text-gray-500 ml-2">Rekam jejak alur Vendor Mini Form</span>
+      </div>
+
+      {/* Critical steps legend */}
+      <div className="flex flex-wrap gap-2 items-center">
+        <span className="text-xs text-gray-500 font-medium">4 Step Kritis:</span>
+        {CRITICAL_ACTIONS.map(a => <ActionBadge key={a} action={a} />)}
+        <span className="text-xs text-gray-400 ml-1">★ = tercatat &nbsp;·&nbsp; ? = belum tercatat</span>
+      </div>
+
+      <Tabs defaultValue="timeline">
+        <TabsList>
+          <TabsTrigger value="timeline">Timeline &amp; Log</TabsTrigger>
+          <TabsTrigger value="gaps" className="flex items-center gap-1.5">
+            <AlertTriangle size={13} className="text-amber-500" />
+            Gap Detection
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="timeline" className="mt-4">
+          <AuditLogTab />
+        </TabsContent>
+
+        <TabsContent value="gaps" className="mt-4">
+          <GapsTab />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
