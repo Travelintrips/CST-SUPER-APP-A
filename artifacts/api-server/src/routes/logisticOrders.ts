@@ -30,6 +30,7 @@ import { logActivity } from "../lib/activityLog.js";
 import { sendWhatsApp } from "../lib/fonnte";
 import { saveAndBroadcast } from "../lib/notificationStore";
 import { broadcastToPortal } from "../lib/sseManager.js";
+import { sendPushToOrder } from "../lib/webPush.js";
 import {
   CreateLogisticOrderBody,
   ListLogisticOrdersQueryParams,
@@ -995,6 +996,19 @@ logisticOrdersRouter.put("/:id/status", async (req: Request, res: Response) => {
 
   // Notify vendor via WhatsApp (fire-and-forget)
   notifyVendorStatusChange(updated, status).catch(() => undefined);
+
+  // Web Push ke subscriber halaman tracking (fire-and-forget)
+  const statusLabelsForPush: Record<string, string> = {
+    "New Order": "Order Baru", "Under Review": "Sedang Ditinjau",
+    "Quotation Sent": "Penawaran Dikirim", "Confirmed": "Dikonfirmasi",
+    "In Progress": "Sedang Diproses", "Completed": "Selesai", "Cancelled": "Dibatalkan",
+  };
+  sendPushToOrder(updated.orderNumber, {
+    title: "Update Status Order",
+    body: `Order ${updated.orderNumber}: ${statusLabelsForPush[status] ?? status}`,
+    url: `/logistic-track?order=${encodeURIComponent(updated.orderNumber)}`,
+    tag: `order-${updated.orderNumber}`,
+  } as { title: string; body: string; url?: string }).catch(() => undefined);
 
   saveAndBroadcast("logistic_order_status_changed", {
     type: "logistic_status",

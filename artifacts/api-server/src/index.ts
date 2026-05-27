@@ -42,6 +42,7 @@ import { runTrustedDevicesMigration } from "./lib/trustedDevicesMigration.js";
 import { runAuditReportsMigration } from "./lib/auditReportsMigration.js";
 import { runWaTemplateMigration } from "./lib/orderNotification.js";
 import { runRlsMigration } from "./lib/rlsMigration.js";
+import { migratePushSubscriptions } from "./lib/webPush.js";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 
@@ -240,6 +241,7 @@ async function startServer() {
     .then(() => runWithRetry("ERP audit reports migration", runAuditReportsMigration))
     .then(() => runWithRetry("WA template migration", runWaTemplateMigration))
     .then(() => runWithRetry("RLS migration", runRlsMigration))
+    .then(() => runWithRetry("Push subscriptions migration", migratePushSubscriptions))
     .then(() => enableRealtimeTables().catch((err) => {
       logger.warn({ err }, "Supabase Realtime table enable failed (non-fatal)");
     }))

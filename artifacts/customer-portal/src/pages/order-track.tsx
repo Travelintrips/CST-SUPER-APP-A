@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams } from "wouter";
+import { usePushNotification } from "@/hooks/usePushNotification";
 
 type ProgressEntry = {
   id: number;
@@ -81,6 +82,30 @@ function formatDate(s: string) {
   return new Date(s).toLocaleString("id-ID", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
+function PushToggleSimple({ orderNumber }: { orderNumber: string | null }) {
+  const { state, subscribe, unsubscribe } = usePushNotification(orderNumber);
+  if (state === "unsupported" || !orderNumber) return null;
+  if (state === "denied") {
+    return (
+      <div className="mt-3 text-xs text-slate-500 flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-50 border border-slate-200">
+        🔕 Notifikasi diblokir — aktifkan di pengaturan browser
+      </div>
+    );
+  }
+  if (state === "subscribed") {
+    return (
+      <button onClick={unsubscribe} className="mt-3 w-full flex items-center justify-center gap-2 text-xs text-blue-700 font-medium px-3 py-2 rounded-lg bg-blue-50 border border-blue-200 hover:bg-blue-100 transition-colors">
+        🔔 Notifikasi aktif — klik untuk matikan
+      </button>
+    );
+  }
+  return (
+    <button onClick={subscribe} disabled={state === "loading"} className="mt-3 w-full flex items-center justify-center gap-2 text-xs text-slate-600 font-medium px-3 py-2 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors disabled:opacity-50">
+      {state === "loading" ? "⏳ Mengaktifkan..." : "🔔 Aktifkan notifikasi browser"}
+    </button>
+  );
+}
+
 export default function OrderTrackPage() {
   const { trackToken } = useParams<{ trackToken: string }>();
   const [data, setData] = useState<TrackData | null>(null);
@@ -152,6 +177,8 @@ export default function OrderTrackPage() {
             {data.vendor && <InfoRow label="Vendor" value={<span className="text-blue-700">{data.vendor.name}</span>} />}
             <InfoRow label="Order Dibuat" value={formatDate(data.order.createdAt)} />
           </div>
+
+          <PushToggleSimple orderNumber={data.order.orderNumber} />
         </div>
 
         {/* Status stepper */}

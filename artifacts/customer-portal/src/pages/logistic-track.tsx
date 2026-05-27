@@ -10,8 +10,9 @@ import {
   ArrowLeft, Search, Ship, Truck, CheckCircle2, Clock,
   MapPin, Package, RefreshCw, AlertCircle, FileText,
   Circle, ArrowRight, Loader2, ThumbsUp, ThumbsDown, RotateCcw, Tag,
-  Bell,
+  Bell, BellOff,
 } from "lucide-react";
+import { usePushNotification } from "@/hooks/usePushNotification";
 import { formatDate } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 
@@ -538,6 +539,47 @@ function AutoRefreshBar({
   );
 }
 
+// ── Push Notification Toggle ──────────────────────────────────────────────────
+function PushToggle({ orderNumber }: { orderNumber: string | null }) {
+  const { state, subscribe, unsubscribe } = usePushNotification(orderNumber);
+
+  if (state === "unsupported" || !orderNumber) return null;
+
+  if (state === "denied") {
+    return (
+      <div className="text-xs text-muted-foreground flex items-center gap-1.5 px-3 py-2 rounded-lg bg-muted/60">
+        <BellOff className="w-3.5 h-3.5 flex-shrink-0" />
+        Notifikasi diblokir — aktifkan di pengaturan browser
+      </div>
+    );
+  }
+
+  if (state === "subscribed") {
+    return (
+      <button
+        onClick={unsubscribe}
+        className="flex items-center gap-2 text-xs text-primary font-medium px-3 py-2 rounded-lg bg-primary/10 hover:bg-primary/20 transition-colors"
+      >
+        <Bell className="w-3.5 h-3.5 fill-primary" />
+        Notifikasi aktif — klik untuk matikan
+      </button>
+    );
+  }
+
+  return (
+    <button
+      onClick={subscribe}
+      disabled={state === "loading"}
+      className="flex items-center gap-2 text-xs text-muted-foreground font-medium px-3 py-2 rounded-lg border border-border hover:bg-muted/60 transition-colors disabled:opacity-50"
+    >
+      {state === "loading"
+        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+        : <Bell className="w-3.5 h-3.5" />}
+      Aktifkan notifikasi browser
+    </button>
+  );
+}
+
 export default function TrackPage() {
   const [, setLocation] = useLocation();
   const [input, setInput] = useState("");
@@ -703,6 +745,9 @@ export default function TrackPage() {
               onRefresh={handleRefresh}
               sseConnected={sseConnected}
             />
+
+            {/* Push notification toggle */}
+            <PushToggle orderNumber={searchTerm || null} />
 
             {/* Penawaran harga */}
             {tracking.rfqQuote && ["customer_quoted", "customer_approved", "customer_rejected", "customer_revision_requested"].includes(tracking.rfqQuote.rfqStatus) && (

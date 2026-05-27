@@ -43,7 +43,8 @@
     "pino": "^9",
     "pino-http": "^10",
     "resend": "^6.12.3",
-    "sharp": "^0.34.5"
+    "sharp": "^0.34.5",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@types/compression": "^1.8.1",
