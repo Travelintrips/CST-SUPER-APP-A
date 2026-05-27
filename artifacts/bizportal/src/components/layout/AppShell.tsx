@@ -198,6 +198,15 @@ export function AppShell({ children }: AppShellProps) {
       roles: ["admin", "owner"],
     },
 
+    // ── OPERATIONAL CONTEXT ───────────────────────────────────────────
+    {
+      type: "flat",
+      titleKey: "Operational Context",
+      href: "/operational-context",
+      icon: Layers,
+      roles: ["admin", "owner"],
+    },
+
     // ── 3. PRODUK & RECIPE/BOM ────────────────────────────────────────
     {
       type: "group",

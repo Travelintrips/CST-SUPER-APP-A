@@ -131,6 +131,7 @@ import InternalTasksPage from "@/pages/logistics/internal-tasks";
 import NotificationsPage from "@/pages/notifications";
 import IntelligenceAlertsPage from "@/pages/intelligence-alerts";
 import AiApprovalsPage from "@/pages/ai-approvals";
+import OperationalContextPage from "@/pages/operational-context";
 import WaNotificationHistoryPage from "@/pages/wa-notification-history";
 import AnalyticsDashboardPage from "@/pages/analytics-dashboard";
 import POOrdersPage from "@/pages/purchase/po-orders";
@@ -320,6 +321,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/notifications" component={PR(NotificationsPage)} />
       <Route path="/intelligence-alerts" component={PR(IntelligenceAlertsPage)} />
       <Route path="/ai-approvals" component={PR(AiApprovalsPage)} />
+      <Route path="/operational-context" component={PR(OperationalContextPage)} />
       <Route path="/analytics" component={PR(AnalyticsDashboardPage)} />
 
       {/* ── Audit ERP ──────────────────────────────────────────────────── */}
