@@ -76,6 +76,7 @@ async function buildAll() {
       "@sentry/profiling-node",
       "@tree-sitter/*",
       "aws-sdk",
+      "web-push",
       "classic-level",
       "dd-trace",
       "ffi-napi",
