@@ -240,60 +240,49 @@ export default function NotificationsPage() {
   useEffect(() => { setPage(0); }, [typeFilter, readFilter, search]);
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  // ── SSE auto-refresh ──
+  // ── Polling auto-refresh (30 detik) ──
+  // Tidak pakai EventSource sendiri di sini karena useOrderNotifications di layout
+  // sudah subscribe ke endpoint yang sama — dua listener aktif menyebabkan event
+  // diproses ganda dan invalidateQueries dipanggil 2x.
   useEffect(() => {
-    let es: EventSource | null = null;
-    let retryTimer: ReturnType<typeof setTimeout> | null = null;
-    let retryDelay = 2000;
     let unmounted = false;
+    const POLL_MS = 30_000;
 
-    function connect() {
+    function poll() {
       if (unmounted) return;
-      es = new EventSource("/api/drivers/events", { withCredentials: true });
-
-      function onNotif() {
-        if (unmounted) return;
-        if (pageRef.current === 0) {
-          // On first page: silently refresh list
-          setLoading(true);
-          const params = new URLSearchParams({ type: "all", read: "all", limit: String(PAGE_SIZE), offset: "0" });
-          fetch(`/api/notifications?${params}`, { credentials: "include" })
-            .then((r) => r.ok ? r.json() : null)
-            .then((json) => {
-              if (!json) return;
-              setData(json.data ?? []);
-              setTotal(json.total ?? 0);
-              setUnreadTotal(json.unreadTotal ?? 0);
-              setNewArrived(0);
-            })
-            .finally(() => setLoading(false));
-        } else {
-          // On deeper pages: show banner
-          setNewArrived((n) => n + 1);
-          setUnreadTotal((n) => n + 1);
-        }
+      if (pageRef.current === 0) {
+        setLoading(true);
+        const params = new URLSearchParams({ type: "all", read: "all", limit: String(PAGE_SIZE), offset: "0" });
+        fetch(`/api/notifications?${params}`, { credentials: "include" })
+          .then((r) => r.ok ? r.json() : null)
+          .then((json) => {
+            if (!json || unmounted) return;
+            setData(json.data ?? []);
+            setTotal(json.total ?? 0);
+            setUnreadTotal(json.unreadTotal ?? 0);
+            setNewArrived(0);
+          })
+          .finally(() => { if (!unmounted) setLoading(false); });
+      } else {
+        // Halaman > 0: cek saja apakah ada yang baru tanpa replace data
+        const params = new URLSearchParams({ type: "all", read: "unread", limit: "1", offset: "0" });
+        fetch(`/api/notifications?${params}`, { credentials: "include" })
+          .then((r) => r.ok ? r.json() : null)
+          .then((json) => {
+            if (!json || unmounted) return;
+            const serverUnread = json.unreadTotal ?? 0;
+            setUnreadTotal((prev) => {
+              if (serverUnread > prev) setNewArrived((n) => n + (serverUnread - prev));
+              return serverUnread;
+            });
+          });
       }
-
-      SSE_EVENTS.forEach((evt) => es!.addEventListener(evt, onNotif));
-
-      es.onerror = () => {
-        es?.close();
-        if (!unmounted) {
-          retryTimer = setTimeout(() => {
-            retryDelay = Math.min(retryDelay * 2, 30_000);
-            connect();
-          }, retryDelay);
-        }
-      };
-
-      es.onopen = () => { retryDelay = 2000; };
     }
 
-    connect();
+    const timer = setInterval(poll, POLL_MS);
     return () => {
       unmounted = true;
-      if (retryTimer) clearTimeout(retryTimer);
-      es?.close();
+      clearInterval(timer);
     };
   }, []);
 

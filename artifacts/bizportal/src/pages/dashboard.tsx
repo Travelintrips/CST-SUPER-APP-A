@@ -282,8 +282,9 @@ export default function DashboardPage() {
 
   function handlePortalStatusChange(id: number, status: string) {
     setUpdatingId(id);
+    const order = portalOrders.find((o) => o.id === id);
     updateStatus.mutate(
-      { id, data: { status } },
+      { id, data: { status, clientUpdatedAt: order?.updatedAt } },
       {
         onSuccess: () => {
           toast({ title: t.common.success });

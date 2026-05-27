@@ -7,7 +7,7 @@
  * SO ini akan muncul di modul Sales/Accounting BizPortal dan bisa di-invoice.
  */
 
-import { db, salesDocumentsTable, salesDocumentLinesTable, customerApprovalsTable } from "@workspace/db";
+import { db, salesDocumentsTable, salesDocumentLinesTable, customerApprovalsTable, vmfActivityLogTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import { postSalesInvoice } from "./accounting.js";
 import { logger } from "./logger.js";
@@ -122,6 +122,8 @@ export async function createSalesOrderFromVmfApproval(
     });
 
     // ── Auto-post journal entry: Debit AR / Credit Revenue ────────────────
+    // Fire-and-forget agar response tidak lambat; kegagalan dicatat di activity log
+    // sehingga admin bisa melihat dan memicu ulang dari BizPortal.
     void postSalesInvoice({
       salesDocId: doc.id,
       docNumber,
@@ -132,6 +134,17 @@ export async function createSalesOrderFromVmfApproval(
       companyId,
     }).catch((err) => {
       logger.error({ err, soId: doc!.id, docNumber }, "VMF SO: gagal auto-post jurnal penjualan");
+      // Catat kegagalan ke vmf_activity_log agar terlihat di admin UI
+      db.insert(vmfActivityLogTable).values({
+        entityType: "customer_approval",
+        entityId: approval.id,
+        action: "accounting_failed",
+        actor: "system",
+        note: `Jurnal akuntansi gagal dibuat untuk SO ${docNumber}. Error: ${err instanceof Error ? err.message : String(err)}`,
+        data: { soId: doc!.id, docNumber, error: String(err) },
+      }).catch((logErr) => {
+        logger.error({ logErr }, "VMF SO: gagal mencatat accounting_failed ke activity log");
+      });
     });
 
     return { ok: true, docId: doc.id, docNumber };

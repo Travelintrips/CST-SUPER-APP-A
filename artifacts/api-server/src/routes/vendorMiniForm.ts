@@ -1,6 +1,8 @@
 import { Router, type Request, type Response } from "express";
 import { rateLimit, ipKeyGenerator } from "express-rate-limit";
 import { eq, desc, inArray, and, count, isNull, ne } from "drizzle-orm";
+import { rateLimit } from "express-rate-limit";
+import { eq, desc, inArray, and, count, isNull, ne, sql } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import multer from "multer";
 import { ObjectStorageService } from "../lib/objectStorage.js";
@@ -17,6 +19,7 @@ import {
   logisticOrdersTable,
   logisticOrderItemsTable,
   salesDocumentsTable,
+  orderUpdatesTable,
 } from "@workspace/db";
 import { requireClerkUser } from "../lib/requireAdmin";
 import { deleteFromSupabase } from "../lib/supabaseStorage.js";
@@ -95,6 +98,28 @@ async function logActivity(
     await db.insert(vmfActivityLogTable).values({
       entityType, entityId, action, actor: actor ?? "system",
       note: note ?? null, data: data ?? {},
+    });
+  } catch { /* non-fatal */ }
+}
+
+// ── Order updates helper (persists to order_updates timeline) ──────────────────
+
+async function logOrderUpdate(
+  orderId: number,
+  status: string,
+  notes: string,
+  actorId?: string | null,
+  isPublic = false,
+) {
+  try {
+    await db.insert(orderUpdatesTable).values({
+      orderId,
+      actorType: "admin",
+      actorId: actorId ?? null,
+      actorName: "Admin",
+      status,
+      notes,
+      isPublic,
     });
   } catch { /* non-fatal */ }
 }
@@ -982,12 +1007,13 @@ vendorMiniFormRouter.get("/customer-approval/:token", async (req: Request, res: 
 vendorMiniFormRouter.post("/customer-approval/:token", vmfApprovalLimiter, async (req: Request, res: Response) => {
   const { token } = req.params as { token: string };
   try {
-    // Cek awal sebelum masuk transaksi (fast-fail untuk expired/not found)
+    // Cek awal sebelum masuk transaksi: hanya fast-fail untuk not found & expired.
+    // Status check TIDAK dilakukan di sini untuk menghindari TOCTOU — perlindungan
+    // double-approve dilakukan secara atomik via UPDATE WHERE status='pending' di dalam transaksi.
     const [preCheck] = await db.select({ expiresAt: customerApprovalsTable.expiresAt, status: customerApprovalsTable.status })
       .from(customerApprovalsTable).where(eq(customerApprovalsTable.token, token));
     if (!preCheck) return res.status(404).json({ error: "Link tidak ditemukan" });
     if (preCheck.expiresAt && preCheck.expiresAt < new Date()) return res.status(410).json({ error: "Link penawaran sudah kadaluarsa" });
-    if (preCheck.status !== "pending") return res.status(409).json({ error: "Penawaran ini sudah direspons sebelumnya", status: preCheck.status });
 
     const { action, notes } = req.body as { action: "approve" | "reject"; notes?: string };
     if (!["approve", "reject"].includes(action)) return res.status(400).json({ error: "action harus approve atau reject" });
@@ -1086,12 +1112,31 @@ vendorMiniFormRouter.post("/customer-approval/:token", vmfApprovalLimiter, async
           await db.update(customerApprovalsTable)
             .set({ soNumber: soResult.docNumber })
             .where(eq(customerApprovalsTable.token, token));
+          // G-3: persist SO creation success ke order_updates
+          if (orderId) {
+            await logOrderUpdate(
+              orderId,
+              "SO Dibuat",
+              `Sales Order ${soResult.docNumber} berhasil dibuat dari persetujuan customer.`,
+              "system",
+              false,
+            ).catch(() => {});
+          }
         } else if (soResult.reason === "already_exists") {
           soNumber = soResult.docNumber;
           salesDocId = soResult.docId;
         } else {
-          // SO creation gagal — log saja, jangan gagalkan approval
+          // G-3: persist SO creation failure ke order_updates (sebelumnya hanya req.log.warn)
           req.log?.warn({ reason: soResult.message }, "VMF SO creation failed — approval tetap valid");
+          if (orderId) {
+            await logOrderUpdate(
+              orderId,
+              "Gagal Buat SO",
+              `Pembuatan Sales Order gagal: ${soResult.message}`,
+              "system",
+              false,
+            ).catch(() => {});
+          }
         }
       }
     }
@@ -1100,7 +1145,18 @@ vendorMiniFormRouter.post("/customer-approval/:token", vmfApprovalLimiter, async
     if (action === "approve") {
       await logActivity("customer_approval", locked?.id ?? 0, "approved", "customer",
         `Customer ${customerName ?? "-"} menyetujui penawaran. SO: ${soNumber}`,
-        { soNumber, salesDocId, orderId, approvalId: locked?.id }).catch?.(() => {});
+        { soNumber, salesDocId, orderId, approvalId: locked?.id }).catch?.(() => {})
+      // order_updates entry untuk persetujuan customer
+      if (orderId) {
+        await logOrderUpdate(
+          orderId,
+          "Customer Approved",
+          `Customer ${customerName ?? "-"} menyetujui penawaran.${soNumber ? ` SO: ${soNumber}` : ""}`,
+          "system",
+          true,
+        ).catch(() => {});
+      // Log SO creation activity jika SO berhasil dibuat
+
       if (salesDocId && soNumber) {
         await logActivity("sales_order", salesDocId, "so_created", "system",
           `SO ${soNumber} dibuat otomatis dari persetujuan customer VMF${customerName ? ` (${customerName})` : ""}`,
@@ -1109,6 +1165,16 @@ vendorMiniFormRouter.post("/customer-approval/:token", vmfApprovalLimiter, async
     } else {
       await logActivity("customer_approval", locked?.id ?? 0, "rejected", "customer",
         `Customer ${customerName ?? "-"} menolak penawaran`, { orderId, approvalId: locked?.id }).catch?.(() => {});
+      // order_updates entry untuk penolakan customer
+      if (orderId) {
+        await logOrderUpdate(
+          orderId,
+          "Customer Rejected",
+          `Customer ${customerName ?? "-"} menolak penawaran.`,
+          "system",
+          false,
+        ).catch(() => {});
+      }
     }
 
     // Notify via WA templates (fire-and-forget)
@@ -1335,6 +1401,16 @@ vendorMiniFormRouter.post("/admin/links", async (req: Request, res: Response) =>
     await logActivity("link", link.id, "created", userId,
       `Link dibuat untuk ${serviceType} (mode: ${mode ?? "rate_collection"})`,
       { serviceType, orderId, orderNumber, mode });
+
+    // G-1: tambahkan entry ke order_updates timeline
+    if (orderId) {
+      await logOrderUpdate(
+        orderId,
+        "VMF Link Dibuat",
+        `Link form vendor dibuat untuk layanan ${serviceType}${vendorName ? ` (${vendorName})` : ""}`,
+        userId,
+      );
+    }
 
     return res.status(201).json({ ...link, expiresAt: link.expiresAt?.toISOString() ?? null, createdAt: link.createdAt.toISOString(), deactivatedCount });
   } catch (err) {
@@ -1664,6 +1740,167 @@ vendorMiniFormRouter.get("/admin/activity-log", async (req: Request, res: Respon
   }
 });
 
+// ── ADMIN: GET /api/vendor-form/admin/activity-log/gaps ───────────────────────
+// Returns orders where at least one critical VMF step is missing.
+// Critical flow: link_generated → approval_sent → so_created → op_confirm_sent
+
+vendorMiniFormRouter.get("/admin/activity-log/gaps", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  try {
+    const { from, to, orderNumber, gapAfter } = req.query as Record<string, string | undefined>;
+
+    const fromDate = from ? new Date(from) : null;
+    const toDate   = to   ? (() => { const d = new Date(to); d.setHours(23, 59, 59, 999); return d; })() : null;
+
+    const extraConds = sql.join(
+      [
+        fromDate && !isNaN(fromDate.getTime()) ? sql`AND ${vmfActivityLogTable.createdAt} >= ${fromDate}` : null,
+        toDate   && !isNaN(toDate.getTime())   ? sql`AND ${vmfActivityLogTable.createdAt} <= ${toDate}`   : null,
+        orderNumber ? sql`AND ${vmfActivityLogTable.data}->>'orderNumber' = ${orderNumber}` : null,
+      ].filter(Boolean) as ReturnType<typeof sql>[],
+      sql` `,
+    );
+
+    const result = await db.execute(sql`
+      SELECT
+        ${vmfActivityLogTable.data}->>'orderNumber'          AS order_number,
+        bool_or(${vmfActivityLogTable.action} = 'link_generated')   AS has_link_generated,
+        bool_or(${vmfActivityLogTable.action} = 'approval_sent')    AS has_approval_sent,
+        bool_or(${vmfActivityLogTable.action} = 'so_created')       AS has_so_created,
+        bool_or(${vmfActivityLogTable.action} = 'op_confirm_sent')  AS has_op_confirm_sent,
+        MIN(${vmfActivityLogTable.createdAt})  AS first_event,
+        MAX(${vmfActivityLogTable.createdAt})  AS last_event,
+        COUNT(*)::int                          AS total_events
+      FROM ${vmfActivityLogTable}
+      WHERE ${vmfActivityLogTable.data}->>'orderNumber' IS NOT NULL
+        AND ${vmfActivityLogTable.action} IN ('link_generated','approval_sent','so_created','op_confirm_sent')
+        ${extraConds}
+      GROUP BY ${vmfActivityLogTable.data}->>'orderNumber'
+      ORDER BY MIN(${vmfActivityLogTable.createdAt}) DESC
+    `);
+
+    type DbRow = {
+      order_number: string;
+      has_link_generated: boolean;
+      has_approval_sent: boolean;
+      has_so_created: boolean;
+      has_op_confirm_sent: boolean;
+      first_event: string;
+      last_event: string;
+      total_events: number;
+    };
+
+    const allOrders = (result.rows as unknown as DbRow[]);
+
+    const CRITICAL = ["link_generated", "approval_sent", "so_created", "op_confirm_sent"] as const;
+    type CriticalKey = typeof CRITICAL[number];
+    const hasMap: Record<CriticalKey, keyof DbRow> = {
+      link_generated:  "has_link_generated",
+      approval_sent:   "has_approval_sent",
+      so_created:      "has_so_created",
+      op_confirm_sent: "has_op_confirm_sent",
+    };
+
+    const gapRows = allOrders
+      .map(row => {
+        const present = CRITICAL.filter(a => row[hasMap[a]]);
+        const missing = CRITICAL.filter(a => !row[hasMap[a]]);
+        const lastPresentIdx = Math.max(-1, ...present.map(a => CRITICAL.indexOf(a)));
+        // Gap = has made some progress but is missing a subsequent step
+        const hasGap = lastPresentIdx >= 0 && missing.some(a => CRITICAL.indexOf(a) <= lastPresentIdx + 2);
+        return {
+          orderNumber: row.order_number,
+          present,
+          missing,
+          hasGap,
+          firstEvent: row.first_event,
+          lastEvent: row.last_event,
+          totalEvents: Number(row.total_events),
+        };
+      })
+      .filter(r => {
+        if (r.present.length === 0) return false;
+        if (gapAfter && !r.present.includes(gapAfter as CriticalKey)) return false;
+        return r.hasGap;
+      });
+
+    return res.json({
+      rows: gapRows,
+      total: gapRows.length,
+      summary: {
+        total_orders:           allOrders.length,
+        orders_with_gap:        gapRows.length,
+        missing_link_generated:  allOrders.filter(r => !r.has_link_generated).length,
+        missing_approval_sent:   allOrders.filter(r => !r.has_approval_sent).length,
+        missing_so_created:      allOrders.filter(r => !r.has_so_created).length,
+        missing_op_confirm_sent: allOrders.filter(r => !r.has_op_confirm_sent).length,
+      },
+    });
+  } catch (err) {
+    req.log?.error({ err }, "activity-log/gaps error");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── ADMIN: GET /api/vendor-form/admin/gap-config ─────────────────────────────
+
+vendorMiniFormRouter.get("/admin/gap-config", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  try {
+    const { getThresholdDays, getNotifierEnabled } = await import("../lib/vmfGapNotifier.js");
+    const [thresholdDays, enabled] = await Promise.all([getThresholdDays(), getNotifierEnabled()]);
+    return res.json({ thresholdDays, enabled });
+  } catch (err) {
+    req.log?.error({ err }, "gap-config GET error");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── ADMIN: POST /api/vendor-form/admin/gap-config ────────────────────────────
+
+vendorMiniFormRouter.post("/admin/gap-config", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  try {
+    const { thresholdDays, enabled } = req.body as { thresholdDays?: unknown; enabled?: unknown };
+    const { setThresholdDays, setNotifierEnabled } = await import("../lib/vmfGapNotifier.js");
+
+    const updates: string[] = [];
+    if (thresholdDays !== undefined) {
+      const n = Number(thresholdDays);
+      if (isNaN(n) || n < 1 || n > 365) return res.status(400).json({ error: "thresholdDays harus antara 1–365" });
+      await setThresholdDays(Math.round(n));
+      updates.push(`thresholdDays=${Math.round(n)}`);
+    }
+    if (enabled !== undefined) {
+      await setNotifierEnabled(Boolean(enabled));
+      updates.push(`enabled=${Boolean(enabled)}`);
+    }
+    if (updates.length === 0) return res.status(400).json({ error: "Tidak ada field yang diupdate" });
+    return res.json({ ok: true, updated: updates });
+  } catch (err) {
+    req.log?.error({ err }, "gap-config POST error");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── ADMIN: POST /api/vendor-form/admin/activity-log/gaps/trigger ─────────────
+// Manually triggers a VMF gap check and WA digest right now.
+
+vendorMiniFormRouter.post("/admin/activity-log/gaps/trigger", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  try {
+    const { runVmfGapCheck } = await import("../lib/vmfGapNotifier.js");
+    // Run in background — return immediately
+    runVmfGapCheck().catch((err: unknown) => {
+      req.log?.warn({ err }, "manual VMF gap check error");
+    });
+    return res.json({ ok: true, message: "Gap check dimulai. Notifikasi WA akan dikirim jika ada order yang stuck." });
+  } catch (err) {
+    req.log?.error({ err }, "gap trigger error");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // ── ADMIN: POST /api/vendor-form/admin/customer-approvals ────────────────────
 
 vendorMiniFormRouter.post("/admin/customer-approvals", async (req: Request, res: Response) => {
@@ -1722,6 +1959,19 @@ vendorMiniFormRouter.post("/admin/customer-approvals", async (req: Request, res:
     await logActivity("customer_approval", approval.id, "created", userId,
       `Link approval dibuat untuk ${customerName ?? "customer"}`,
       { orderNumber, sellingPrice, currency, vendorCost, markupPct });
+
+    // G-2: tambahkan entry ke order_updates timeline
+    if (orderId) {
+      const priceLabel = sellingPrice
+        ? `${currency ?? "IDR"} ${Number(sellingPrice).toLocaleString("id-ID")}`
+        : "-";
+      await logOrderUpdate(
+        orderId,
+        "Penawaran Dibuat",
+        `Link persetujuan customer dibuat. Harga: ${priceLabel}`,
+        userId,
+      );
+    }
 
     // Update link itemStatus if orderId matches
     if (orderId) {
@@ -1786,8 +2036,19 @@ vendorMiniFormRouter.post("/admin/op-confirms", async (req: Request, res: Respon
       instruction: instruction ?? null, status: "pending",
     }).returning();
 
-    await logActivity("op_confirm", conf.id, "created", (req.user as { id: string } | undefined)?.id ?? "admin",
+    const userId4a = (req.user as { id: string } | undefined)?.id ?? "admin";
+    await logActivity("op_confirm", conf.id, "created", userId4a,
       `Link konfirmasi operasional dibuat untuk ${vendorName ?? "vendor"}`, { orderNumber, serviceType });
+
+    // G-4: tambahkan entry ke order_updates timeline
+    if (orderId) {
+      await logOrderUpdate(
+        orderId,
+        "Konfirmasi Operasional Diminta",
+        `Link konfirmasi operasional dikirim ke ${vendorName ?? "vendor"} (${serviceType}).`,
+        userId4a,
+      ).catch(() => {});
+    }
 
     return res.status(201).json({ ...conf, createdAt: conf.createdAt.toISOString() });
   } catch (err) {
@@ -2077,6 +2338,18 @@ vendorMiniFormRouter.post("/admin/customer-approvals/:id/send-wa", async (req: R
         .where(eq(logisticOrdersTable.id, approval.orderId)).limit(1);
       if (orderRow) {
         await sendCustomerApprovalNotification(buildOrderDataFromRow(orderRow), priceStr, approvalUrl);
+        const userId2b = (req.user as { id: string } | undefined)?.id ?? "admin";
+        await logActivity("customer_approval", id, "sent_wa", userId2b,
+          `WA penawaran dikirim ke customer ${approval.customerName ?? "-"}`, { phone: target });
+        // G-2b: order_updates entry saat WA approval dikirim ke customer
+        if (approval.orderId) {
+          await logOrderUpdate(
+            approval.orderId,
+            "Penawaran Dikirim ke Customer",
+            `WA penawaran harga ${priceStr} dikirim ke ${approval.customerName ?? "customer"} (${target}).`,
+            userId2b,
+          ).catch(() => {});
+        }
         const actorId = (req.user as { id: string } | undefined)?.id ?? "admin";
         await logActivity("customer_approval", id, "sent_wa", actorId,
           `WA penawaran dikirim ke customer ${approval.customerName ?? "-"}`, { phone: target });
@@ -2102,6 +2375,16 @@ vendorMiniFormRouter.post("/admin/customer-approvals/:id/send-wa", async (req: R
     await logActivity("customer_approval", id, "approval_sent", actorId,
       `Link approval dikirim ke customer ${approval.customerName ?? "-"} via WhatsApp${approval.orderNumber ? ` (Order: ${approval.orderNumber})` : ""}`,
       { phone: target, channel: "whatsapp", orderNumber: approval.orderNumber, sellingPrice: approval.sellingPrice });
+
+    // order_updates entry
+    if (approval.orderId) {
+      await logOrderUpdate(
+        approval.orderId,
+        "Penawaran Dikirim ke Customer",
+        `WA penawaran harga ${priceStr} dikirim ke ${approval.customerName ?? "customer"} (${target}).`,
+        actorId,
+      ).catch(() => {});
+    }
 
     return res.json({ success: true, message: "Pesan WA ke customer berhasil dikirim" });
   } catch (err) {
@@ -2182,12 +2465,23 @@ vendorMiniFormRouter.post("/admin/op-confirms/:id/send-wa", async (req: Request,
       await sendWhatsApp(phone.trim(), msg, { context: "op-confirm-send", refType: "vendor_op_confirm", refId: String(conf.id) });
     }
 
+    const userId4b = (req.user as { id: string } | undefined)?.id ?? "admin";
     const opActorId = (req.user as { id: string } | undefined)?.id ?? "admin";
     await logActivity("op_confirm", id, "sent_wa", opActorId,
       `WA op-confirm dikirim ke ${conf.vendorName ?? "vendor"}`, { phone });
     await logActivity("op_confirm", id, "op_confirm_sent", opActorId,
       `Link konfirmasi operasional dikirim ke ${conf.vendorName ?? "vendor"} via WhatsApp${conf.orderNumber ? ` (Order: ${conf.orderNumber})` : ""}`,
       { phone, channel: "whatsapp", orderNumber: conf.orderNumber, serviceType: conf.serviceType });
+
+    // G-4b: order_updates entry saat WA op-confirm dikirim ke vendor
+    if (conf.orderId) {
+      await logOrderUpdate(
+        conf.orderId,
+        "Op-Confirm WA Dikirim",
+        `WA konfirmasi operasional dikirim ke ${conf.vendorName ?? "vendor"} (${SERVICE_SCHEMAS[conf.serviceType]?.label ?? conf.serviceType}).`,
+        userId4b,
+      ).catch(() => {});
+    }
 
     return res.json({ success: true, message: "Pesan WA ke vendor berhasil dikirim" });
   } catch (err) {

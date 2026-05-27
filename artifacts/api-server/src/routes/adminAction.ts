@@ -25,6 +25,11 @@ export const adminActionRouter: Router = Router();
 export const adminActionPublicRouter = Router();
 export const adminActionAdminRouter = Router();
 
+// ── Blast guard: mencegah 2 admin blast RFQ bersamaan ke order yang sama ──────
+// In-memory Set; cukup untuk single-process. Jika scale ke multi-process,
+// ganti dengan advisory lock atau Redis key dengan TTL.
+const blastInProgress = new Set<number>();
+
 /**
  * GET /admin-action/:token
  *
@@ -422,6 +427,7 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
   const { token } = req.params as { token: string };
   await ensureTables();
 
+  let _blastGuardOrderId: number | null = null;
   try {
     let link = (await db.select().from(adminActionLinksTable)
       .where(eq(adminActionLinksTable.token, token)))[0] ?? null;
@@ -472,6 +478,19 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
         deadlineHours?: number;
       };
       if (!vendorIds?.length) return res.status(400).json({ error: "vendorIds wajib diisi" });
+
+      // Guard: tolak jika blast untuk order yang sama sedang berlangsung
+      // (mencegah 2 admin klik blast bersamaan → vendor terima WA ganda)
+      if (blastInProgress.has(order.id)) {
+        return res.status(409).json({
+          error: "Blast RFQ untuk order ini sedang diproses. Tunggu beberapa detik lalu coba lagi.",
+          code: "BLAST_IN_PROGRESS",
+        });
+      }
+      blastInProgress.add(order.id);
+      _blastGuardOrderId = order.id;
+      // Auto-release setelah 60 detik sebagai safety net jika proses error
+      const blastTimer = setTimeout(() => { blastInProgress.delete(order.id); _blastGuardOrderId = null; }, 60_000);
 
       // Create or reuse RFQ
       let rfq = await db.select().from(logisticOrderRfqsTable)
@@ -610,6 +629,10 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
           `Bandingkan penawaran vendor:\n${compareShort}`
         ).catch(() => {});
       }
+
+      // Release blast guard
+      clearTimeout(blastTimer);
+      blastInProgress.delete(order.id);
 
       return res.json({ ok: true, rfqId: rfq.id, rfqNumber: rfq.rfqNumber, results, compareUrl: compareShort });
     }
@@ -814,6 +837,8 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
 
     return res.status(400).json({ error: "actionType tidak dikenal" });
   } catch (err) {
+    // Pastikan blast guard dilepas jika terjadi error di tengah proses
+    if (_blastGuardOrderId !== null) blastInProgress.delete(_blastGuardOrderId);
     logger.error({ err }, "admin-action POST error");
     return res.status(500).json({ error: "Gagal memproses aksi" });
   }

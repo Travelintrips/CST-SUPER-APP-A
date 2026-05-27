@@ -20,6 +20,7 @@ import {
   ArrowLeft, Loader2, Copy, ExternalLink, Plus, RefreshCw, Send,
   Package, Truck, User, ClipboardList, Clock, ShieldAlert, Ship,
   ClipboardCheck, CheckCircle2, XCircle, MapPin, MessageCircle,
+  Link2, FileText, AlertTriangle, Eye, EyeOff, StickyNote, Globe,
 } from "lucide-react";
 import { Link } from "wouter";
 import GpsTrackingPanel from "@/components/logistics/GpsTrackingPanel";
@@ -876,6 +877,98 @@ function UpdateStatusDialog({ orderId, currentStatus, currentVersion, onUpdated 
   );
 }
 
+// ── Timeline helpers ───────────────────────────────────────────────────────────
+
+function timelineIcon(status: string | null): React.ReactNode {
+  const s = (status ?? "").toLowerCase();
+  if (s.includes("vmf") || s.includes("link")) return <Link2 className="w-3.5 h-3.5 text-violet-500" />;
+  if (s.includes("so dibuat") || s.includes("sales order") || s.includes("so ")) return <FileText className="w-3.5 h-3.5 text-blue-500" />;
+  if (s.includes("gagal") || s.includes("error") || s.includes("reject") || s.includes("tolak")) return <AlertTriangle className="w-3.5 h-3.5 text-red-500" />;
+  if (s.includes("approv") || s.includes("setuju") || s.includes("confirm") || s.includes("completed")) return <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />;
+  if (s.includes("customer") || s.includes("quotat") || s.includes("quote") || s.includes("penawaran")) return <User className="w-3.5 h-3.5 text-purple-500" />;
+  if (s.includes("vendor") || s.includes("rfq")) return <Truck className="w-3.5 h-3.5 text-blue-500" />;
+  if (s.includes("wa") || s.includes("whatsapp") || s.includes("notif")) return <MessageCircle className="w-3.5 h-3.5 text-green-500" />;
+  if (s.includes("op-confirm") || s.includes("op confirm") || s.includes("operational")) return <ClipboardCheck className="w-3.5 h-3.5 text-orange-500" />;
+  if (s.includes("status")) return <ClipboardList className="w-3.5 h-3.5 text-slate-500" />;
+  return <StickyNote className="w-3.5 h-3.5 text-slate-400" />;
+}
+
+function timelineDotColor(u: OrderUpdate): string {
+  const s = (u.status ?? "").toLowerCase();
+  if (s.includes("gagal") || s.includes("error") || s.includes("reject")) return "bg-red-400";
+  if (s.includes("approv") || s.includes("setuju") || s.includes("confirm") || s.includes("completed")) return "bg-emerald-400";
+  if (u.isPublic) return "bg-teal-400";
+  return "bg-blue-400";
+}
+
+// ── Add Timeline Note Dialog ───────────────────────────────────────────────────
+
+function AddTimelineNoteDialog({ orderId, onAdded }: { orderId: number; onAdded: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [notes, setNotes] = useState("");
+  const [isPublic, setIsPublic] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const { toast } = useToast();
+
+  const handleSubmit = async () => {
+    if (!notes.trim()) { toast({ title: "Catatan tidak boleh kosong", variant: "destructive" }); return; }
+    setLoading(true);
+    try {
+      await apiFetch(`/api/logistic/orders/${orderId}/updates`, {
+        method: "POST",
+        body: JSON.stringify({ notes: notes.trim(), isPublic }),
+      });
+      toast({ title: "Catatan berhasil ditambahkan" });
+      setNotes("");
+      setIsPublic(false);
+      setOpen(false);
+      onAdded();
+    } catch (e: unknown) {
+      toast({ title: "Gagal", description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <>
+      <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-slate-500 hover:text-slate-800" onClick={() => setOpen(true)}>
+        <Plus className="w-3 h-3 mr-1" /> Tambah Catatan
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Tambah Catatan ke Timeline</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label>Catatan <span className="text-red-500">*</span></Label>
+              <Textarea
+                value={notes}
+                onChange={e => setNotes(e.target.value)}
+                rows={3}
+                placeholder="Tulis catatan internal atau update untuk customer..."
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch id="isPublic" checked={isPublic} onCheckedChange={setIsPublic} />
+              <Label htmlFor="isPublic" className="cursor-pointer flex items-center gap-1">
+                {isPublic ? <Globe className="w-3.5 h-3.5 text-teal-500" /> : <EyeOff className="w-3.5 h-3.5 text-slate-400" />}
+                {isPublic ? "Tampil ke Customer (Publik)" : "Internal (Tidak Tampil ke Customer)"}
+              </Label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)}>Batal</Button>
+            <Button onClick={handleSubmit} disabled={loading}>
+              {loading ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Plus className="w-4 h-4 mr-1" />}
+              Simpan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 // ── Main Page ──────────────────────────────────────────────────────────────────
 
 export default function LogisticOrderDetailPage() {
@@ -1271,30 +1364,65 @@ export default function LogisticOrderDetailPage() {
           {/* Right: Timeline */}
           <div className="space-y-4">
             <Card className="sticky top-6">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-semibold text-slate-600 uppercase tracking-wide flex items-center gap-1.5">
-                  <Clock className="w-4 h-4" /> Timeline Aktivitas
-                </CardTitle>
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm font-semibold text-slate-600 uppercase tracking-wide flex items-center gap-1.5">
+                    <Clock className="w-4 h-4" /> Timeline Aktivitas
+                    <span className="ml-1 text-xs font-normal normal-case text-slate-400">({updates.length})</span>
+                  </CardTitle>
+                  <AddTimelineNoteDialog
+                    orderId={orderId}
+                    onAdded={() => qc.invalidateQueries({ queryKey: ["order-detail", orderId] })}
+                  />
+                </div>
+                <div className="flex gap-2 text-xs text-slate-400 mt-1">
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-teal-400 inline-block" />Publik</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-400 inline-block" />Internal</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400 inline-block" />Error</span>
+                </div>
               </CardHeader>
-              <CardContent className="max-h-[550px] overflow-y-auto">
+              <CardContent className="max-h-[600px] overflow-y-auto pt-2">
                 {updates.length === 0 ? (
-                  <p className="text-sm text-slate-400 text-center py-4">Belum ada aktivitas</p>
+                  <p className="text-sm text-slate-400 text-center py-6">Belum ada aktivitas</p>
                 ) : (
-                  <div className="relative pl-4">
-                    <div className="absolute left-1 top-0 bottom-0 w-0.5 bg-slate-100" />
+                  <div className="relative pl-5">
+                    <div className="absolute left-2 top-0 bottom-0 w-0.5 bg-slate-100" />
                     <div className="space-y-4">
                       {updates.map(u => (
-                        <div key={u.id} className="relative text-sm">
-                          <div className={`absolute -left-[13px] top-1 w-2.5 h-2.5 rounded-full border-2 border-white ${u.isPublic ? "bg-teal-400" : "bg-blue-400"}`} />
-                          <div>
+                        <div key={u.id} className="relative text-sm group">
+                          {/* Dot + icon */}
+                          <div className={`absolute -left-[17px] top-0.5 w-3.5 h-3.5 rounded-full border-2 border-white flex items-center justify-center ${timelineDotColor(u)}`} />
+                          <div className="absolute -left-[28px] top-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                            {timelineIcon(u.status)}
+                          </div>
+                          <div className="bg-white rounded-lg border border-slate-100 px-3 py-2 shadow-sm hover:border-slate-200 transition-colors">
+                            {/* Status badge */}
                             {u.status && (
-                              <span className={`text-xs font-medium rounded-full px-2 py-0.5 ${STATUS_COLOR[u.status] ?? "bg-slate-100 text-slate-600"}`}>
-                                {u.status}
-                              </span>
+                              <div className="flex items-center gap-1.5 mb-1">
+                                {timelineIcon(u.status)}
+                                <span className={`text-xs font-semibold rounded-full px-2 py-0.5 ${STATUS_COLOR[u.status] ?? "bg-slate-100 text-slate-700"}`}>
+                                  {u.status}
+                                </span>
+                                {u.isPublic && (
+                                  <span title="Tampil ke customer" className="ml-auto">
+                                    <Eye className="w-3 h-3 text-teal-500" />
+                                  </span>
+                                )}
+                              </div>
                             )}
-                            {u.notes && <p className="text-slate-700 mt-1">{u.notes}</p>}
-                            <p className="text-xs text-slate-400 mt-0.5">
-                              {u.actorName ?? u.actorType} · {dt(u.createdAt)}
+                            {/* Notes */}
+                            {u.notes && (
+                              <p className="text-slate-700 text-xs leading-relaxed">{u.notes}</p>
+                            )}
+                            {/* Meta */}
+                            <p className="text-xs text-slate-400 mt-1 flex items-center gap-1">
+                              <User className="w-3 h-3" />
+                              {u.actorName ?? u.actorType}
+                              <span className="text-slate-300">·</span>
+                              {dt(u.createdAt)}
+                              {u.isPublic && !u.status && (
+                                <span className="ml-auto"><Eye className="w-3 h-3 text-teal-500" /></span>
+                              )}
                             </p>
                           </div>
                         </div>
