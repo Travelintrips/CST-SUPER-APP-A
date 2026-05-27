@@ -1777,7 +1777,11 @@ router.put("/admin/delivery-vendors/:id", requirePortalAdmin, async (req, res) =
 router.delete("/admin/delivery-vendors/:id", requirePortalAdmin, async (req, res) => {
   const id = parseInt(String(req.params.id), 10);
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
-  await db.delete(suppliersTable).where(eq(suppliersTable.id, id));
+  const [deleted] = await db.delete(suppliersTable).where(eq(suppliersTable.id, id)).returning();
+  // Cascade storage cleanup — logo (hanya jika berupa URL, bukan emoji)
+  if (deleted?.logo && (deleted.logo.startsWith("http") || deleted.logo.startsWith("/api/storage"))) {
+    deleteFromSupabase(deleted.logo).catch(() => {});
+  }
   return res.json({ ok: true });
 });
 
@@ -2228,6 +2232,16 @@ router.post("/onboarding/upload-doc", requirePortalAuth, onboardingUpload.single
       try { const c = await compressImageBuffer(buf, req.file.mimetype); buf = c.buffer; } catch { /* use original */ }
     }
     const url = await storage.uploadPublic(key, buf, req.file.mimetype);
+    // Hapus doc lama (docType sama) dari storage + DB sebelum insert baru
+    const [oldDoc] = await db
+      .select({ id: identityDocumentsTable.id, url: identityDocumentsTable.url })
+      .from(identityDocumentsTable)
+      .where(and(eq(identityDocumentsTable.customerId, customerId), eq(identityDocumentsTable.docType, docType)))
+      .limit(1);
+    if (oldDoc) {
+      await db.delete(identityDocumentsTable).where(eq(identityDocumentsTable.id, oldDoc.id));
+      deleteFromSupabase(oldDoc.url).catch(() => {});
+    }
     // Record in identity_documents
     await db.insert(identityDocumentsTable).values({ customerId, docType, url, fileName: req.file.originalname });
     res.json({ ok: true, url });
@@ -2250,6 +2264,12 @@ router.post("/onboarding/complete", requirePortalAuth, async (req, res): Promise
   const isCustomer = accountType === "customer";
   const status = isCustomer ? "active" : "pending";
   const now = new Date();
+
+  // Fetch ktpUrl lama sebelum upsert (untuk cleanup storage jika berubah)
+  const [existingProfile] = await db
+    .select({ ktpUrl: userProfilesTable.ktpUrl })
+    .from(userProfilesTable)
+    .where(eq(userProfilesTable.customerId, customerId));
 
   // Upsert user_profiles
   await db.insert(userProfilesTable).values({
@@ -2276,6 +2296,12 @@ router.post("/onboarding/complete", requirePortalAuth, async (req, res): Promise
     },
   });
 
+  // Hapus file KTP lama dari storage jika diganti dengan URL baru
+  const newKtpUrl = ktpUrl ? String(ktpUrl) : null;
+  if (existingProfile?.ktpUrl && existingProfile.ktpUrl !== newKtpUrl) {
+    deleteFromSupabase(existingProfile.ktpUrl).catch(() => {});
+  }
+
   // Update portal_customers role + phone
   try {
     await db.update(portalCustomersTable).set({
@@ -2298,6 +2324,11 @@ router.post("/onboarding/complete", requirePortalAuth, async (req, res): Promise
 
   // Upsert vendor profile
   if (accountType === "vendor" && vendor) {
+    const [existingVendorProfile] = await db
+      .select({ legalityDocUrl: vendorProfilesTable.legalityDocUrl })
+      .from(vendorProfilesTable)
+      .where(eq(vendorProfilesTable.customerId, customerId));
+
     await db.insert(vendorProfilesTable).values({
       customerId,
       companyName: vendor.companyName ?? null,
@@ -2317,10 +2348,21 @@ router.post("/onboarding/complete", requirePortalAuth, async (req, res): Promise
         updatedAt: now,
       },
     });
+
+    // Hapus file legality lama dari storage jika diganti
+    const newLegalityUrl = vendor.legalityDocUrl ?? null;
+    if (existingVendorProfile?.legalityDocUrl && existingVendorProfile.legalityDocUrl !== newLegalityUrl) {
+      deleteFromSupabase(existingVendorProfile.legalityDocUrl).catch(() => {});
+    }
   }
 
   // Upsert driver profile
   if (accountType === "driver" && driver) {
+    const [existingDriverProfile] = await db
+      .select({ simUrl: driverProfilesTable.simUrl, stnkUrl: driverProfilesTable.stnkUrl })
+      .from(driverProfilesTable)
+      .where(eq(driverProfilesTable.customerId, customerId));
+
     await db.insert(driverProfilesTable).values({
       customerId,
       licenseNumber: driver.licenseNumber ?? null,
@@ -2340,6 +2382,14 @@ router.post("/onboarding/complete", requirePortalAuth, async (req, res): Promise
         updatedAt: now,
       },
     });
+
+    // Hapus file SIM/STNK lama dari storage jika diganti
+    if (existingDriverProfile?.simUrl && existingDriverProfile.simUrl !== (driver.simUrl ?? null)) {
+      deleteFromSupabase(existingDriverProfile.simUrl).catch(() => {});
+    }
+    if (existingDriverProfile?.stnkUrl && existingDriverProfile.stnkUrl !== (driver.stnkUrl ?? null)) {
+      deleteFromSupabase(existingDriverProfile.stnkUrl).catch(() => {});
+    }
   }
 
   // Upsert employee profile
