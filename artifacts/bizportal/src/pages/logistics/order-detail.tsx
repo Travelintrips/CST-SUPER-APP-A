@@ -917,6 +917,359 @@ function JobOrderPanel({ orderId }: { orderId: number }) {
   );
 }
 
+// ── Customer Invoice Panel (Tahap 10) ─────────────────────────────────────────
+
+type InvoiceLink = {
+  id: number; token: string; invoiceNumber: string | null;
+  customerName: string | null; grandTotal: string | null;
+  currency: string | null; dueDate: string | null;
+  paymentStatus: string | null; acknowledgedAt: string | null;
+  viewedAt: string | null; status: string; createdAt: string;
+};
+
+function CustomerInvoicePanel({
+  orderId, order, salesDocId,
+}: {
+  orderId: number;
+  order: Order;
+  salesDocId: number | null | undefined;
+}) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [resending, setResending] = useState<number | null>(null);
+
+  const today = new Date().toISOString().slice(0, 10);
+  const defaultDue = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
+
+  const [form, setForm] = useState({
+    phone: order.phone ?? "",
+    invoiceNumber: "",
+    notes: "",
+    dueDate: defaultDue,
+    sendWa: true,
+  });
+  const [result, setResult] = useState<{ url: string; token: string } | null>(null);
+
+  const { data: links = [], refetch } = useQuery<InvoiceLink[]>({
+    queryKey: ["customer-invoice-links", orderId],
+    queryFn: () => apiFetch(`/api/vendor-form/admin/customer-invoices?orderId=${orderId}`),
+    enabled: open,
+    staleTime: 15000,
+  });
+
+  const openDialog = () => {
+    setForm({ phone: order.phone ?? "", invoiceNumber: "", notes: "", dueDate: defaultDue, sendWa: true });
+    setResult(null);
+    setDialogOpen(true);
+  };
+
+  const handleCreate = async () => {
+    setSending(true);
+    try {
+      const body: Record<string, unknown> = {
+        orderId,
+        orderNumber: order.orderNumber,
+        customerName: order.customerName,
+        customerPhone: form.phone || undefined,
+        invoiceNumber: form.invoiceNumber || undefined,
+        dueDate: form.dueDate || undefined,
+        notes: form.notes || undefined,
+        currency: "IDR",
+        sendWa: form.sendWa && !!form.phone,
+      };
+      if (salesDocId) body.salesDocId = salesDocId;
+      const res = await fetch("/api/vendor-form/admin/customer-invoices", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(body),
+      });
+      const d = await res.json() as { success?: boolean; url?: string; token?: string; error?: string };
+      if (!res.ok) throw new Error(d.error ?? "Gagal");
+      setResult({ url: d.url ?? "", token: d.token ?? "" });
+      toast({ title: "✅ Link invoice dibuat", description: form.sendWa && form.phone ? "WA terkirim ke customer" : "Salin link di bawah" });
+      void refetch();
+    } catch (e: unknown) {
+      toast({ title: "Error", description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleResendWa = async (linkId: number, phone: string) => {
+    const p = prompt("No. WhatsApp customer (format: 628...):", phone);
+    if (!p) return;
+    setResending(linkId);
+    try {
+      const res = await fetch(`/api/vendor-form/admin/customer-invoices/${linkId}/send-wa`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ phone: p }),
+      });
+      const d = await res.json() as { ok?: boolean; error?: string };
+      if (!res.ok) throw new Error(d.error ?? "Gagal");
+      toast({ title: "✅ WA terkirim ulang" });
+    } catch (e: unknown) {
+      toast({ title: "Gagal kirim WA", description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setResending(null);
+    }
+  };
+
+  const copyLink = (url: string) => {
+    navigator.clipboard.writeText(url);
+    toast({ title: "Link disalin!" });
+  };
+
+  const fmtMoney = (v: string | null) =>
+    v == null ? "—" : `Rp ${Math.round(Number(v)).toLocaleString("id-ID")}`;
+
+  const payBadge = (s: string | null) => {
+    if (s === "paid") return <span className="text-[10px] font-semibold text-green-700 bg-green-100 px-1.5 py-0.5 rounded-full">Lunas</span>;
+    if (s === "partial") return <span className="text-[10px] font-semibold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full">Sebagian</span>;
+    return <span className="text-[10px] font-semibold text-red-700 bg-red-100 px-1.5 py-0.5 rounded-full">Belum Bayar</span>;
+  };
+
+  return (
+    <>
+      <Card className="border-emerald-200">
+        <CardHeader
+          className="pb-2 cursor-pointer select-none"
+          onClick={() => setOpen(v => !v)}
+        >
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm font-semibold text-emerald-700 uppercase tracking-wide flex items-center gap-1.5">
+              <FileText className="w-4 h-4" />
+              Invoice & Pembayaran
+              <span className="ml-1 text-[10px] font-normal normal-case text-slate-400 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full">
+                Tahap 10
+              </span>
+              {links.length > 0 && (
+                <span className="text-xs font-normal normal-case text-slate-400">({links.length})</span>
+              )}
+            </CardTitle>
+            <div className="flex items-center gap-2">
+              {open && (
+                <button
+                  onClick={e => { e.stopPropagation(); void refetch(); }}
+                  className="text-slate-400 hover:text-slate-600"
+                  title="Refresh"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                </button>
+              )}
+              {open ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+            </div>
+          </div>
+        </CardHeader>
+
+        {open && (
+          <CardContent className="pt-0 space-y-3">
+            {/* Existing links */}
+            {links.length === 0 ? (
+              <p className="text-xs text-slate-400 text-center py-3">Belum ada link invoice untuk order ini</p>
+            ) : (
+              <div className="space-y-2">
+                {links.map(lnk => (
+                  <div
+                    key={lnk.id}
+                    className={`rounded-lg border px-3 py-2.5 space-y-2 ${lnk.acknowledgedAt ? "border-green-200 bg-green-50/40" : "border-slate-100"}`}
+                  >
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {lnk.invoiceNumber && (
+                          <span className="text-xs font-mono font-semibold text-emerald-800">{lnk.invoiceNumber}</span>
+                        )}
+                        {payBadge(lnk.paymentStatus)}
+                        {lnk.acknowledgedAt && (
+                          <span className="text-[10px] text-green-600 font-medium">✅ Dikonfirmasi customer</span>
+                        )}
+                        {lnk.viewedAt && !lnk.acknowledgedAt && (
+                          <span className="text-[10px] text-blue-500">👁 Sudah dilihat</span>
+                        )}
+                      </div>
+                      <div className="flex gap-1">
+                        <Button
+                          variant="ghost" size="icon" className="h-6 w-6"
+                          title="Kirim ulang WA"
+                          disabled={resending === lnk.id}
+                          onClick={() => void handleResendWa(lnk.id, order.phone ?? "")}
+                        >
+                          {resending === lnk.id
+                            ? <Loader2 className="h-3 w-3 animate-spin" />
+                            : <Send className="h-3 w-3 text-green-600" />}
+                        </Button>
+                        <Button
+                          variant="ghost" size="icon" className="h-6 w-6"
+                          title="Salin link"
+                          onClick={() => copyLink(`${window.location.origin}/customer-invoice/${lnk.token}`)}
+                        >
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                        <a
+                          href={`/customer-invoice/${lnk.token}`}
+                          target="_blank" rel="noopener noreferrer"
+                        >
+                          <Button variant="ghost" size="icon" className="h-6 w-6" title="Buka link">
+                            <ExternalLink className="h-3 w-3" />
+                          </Button>
+                        </a>
+                      </div>
+                    </div>
+                    <div className="flex gap-x-4 gap-y-0.5 flex-wrap text-[11px] text-slate-500">
+                      {lnk.grandTotal && <span>Total: <strong>{fmtMoney(lnk.grandTotal)}</strong></span>}
+                      {lnk.dueDate && (
+                        <span className={new Date(lnk.dueDate) < new Date() && lnk.paymentStatus !== "paid" ? "text-red-500 font-medium" : ""}>
+                          Jatuh tempo: {new Date(lnk.dueDate).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
+                        </span>
+                      )}
+                      <span className="text-slate-400">
+                        Dibuat: {new Date(lnk.createdAt).toLocaleString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Create button */}
+            <Button
+              size="sm" className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+              onClick={openDialog}
+            >
+              <Plus className="w-3.5 h-3.5 mr-1" />
+              Buat & Kirim Link Invoice
+            </Button>
+          </CardContent>
+        )}
+      </Card>
+
+      {/* Create Invoice Dialog */}
+      <Dialog open={dialogOpen} onOpenChange={v => { if (!sending) { setDialogOpen(v); if (!v) setResult(null); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="w-4 h-4 text-emerald-600" />
+              Buat Link Invoice Customer
+            </DialogTitle>
+          </DialogHeader>
+
+          {result ? (
+            <div className="space-y-4 py-2">
+              <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
+                <p className="text-2xl mb-1">✅</p>
+                <p className="font-semibold text-green-700 text-sm">Link Invoice Berhasil Dibuat</p>
+                {form.sendWa && form.phone && (
+                  <p className="text-xs text-green-600 mt-1">WA terkirim ke customer</p>
+                )}
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-slate-500">Link Invoice (untuk customer)</Label>
+                <div className="flex gap-2">
+                  <input
+                    readOnly
+                    value={`${window.location.origin}/customer-invoice/${result.token}`}
+                    className="flex-1 text-xs rounded-lg border border-slate-200 px-2 py-1.5 bg-slate-50 font-mono truncate"
+                  />
+                  <Button
+                    size="sm" variant="outline"
+                    onClick={() => copyLink(`${window.location.origin}/customer-invoice/${result.token}`)}
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              </div>
+              <Button
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+                onClick={() => { setDialogOpen(false); setResult(null); }}
+              >
+                Selesai
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-4 py-2">
+              <div className="bg-slate-50 rounded-lg px-3 py-2 text-sm space-y-0.5">
+                <p><span className="text-slate-400 text-xs">Order:</span> <span className="font-mono font-semibold">{order.orderNumber}</span></p>
+                <p><span className="text-slate-400 text-xs">Customer:</span> {order.customerName}</p>
+                {salesDocId && (
+                  <p className="text-xs text-emerald-600">✓ Data rincian harga dari Sales Order akan diambil otomatis</p>
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs">No. Invoice <span className="text-slate-400">(opsional)</span></Label>
+                <Input
+                  value={form.invoiceNumber}
+                  onChange={e => setForm(f => ({ ...f, invoiceNumber: e.target.value }))}
+                  placeholder="INV/2026/001"
+                  className="h-9 text-sm"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs">No. WhatsApp Customer</Label>
+                <Input
+                  value={form.phone}
+                  onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+                  placeholder="6281234567890"
+                  className="h-9 text-sm font-mono"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs">Jatuh Tempo Pembayaran</Label>
+                <Input
+                  type="date"
+                  value={form.dueDate}
+                  min={today}
+                  onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))}
+                  className="h-9 text-sm"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs">Catatan <span className="text-slate-400">(opsional)</span></Label>
+                <Textarea
+                  value={form.notes}
+                  onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                  placeholder="Catatan pembayaran, cara transfer, rekening bank, dll."
+                  rows={3}
+                  className="text-sm resize-none"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="sendWa"
+                  checked={form.sendWa}
+                  onCheckedChange={v => setForm(f => ({ ...f, sendWa: v }))}
+                />
+                <Label htmlFor="sendWa" className="text-sm cursor-pointer">
+                  Kirim link via WhatsApp ke customer
+                </Label>
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={sending}>Batal</Button>
+                <Button
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                  onClick={() => void handleCreate()}
+                  disabled={sending}
+                >
+                  {sending ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Membuat...</> : <><Send className="w-3.5 h-3.5 mr-1.5" />Buat & Kirim</>}
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 // ── Update Status Dialog ───────────────────────────────────────────────────────
 
 function UpdateStatusDialog({ orderId, currentStatus, currentVersion, onUpdated }: { orderId: number; currentStatus: string; currentVersion?: number; onUpdated: () => void }) {
@@ -1599,6 +1952,13 @@ export default function LogisticOrderDetailPage() {
                 </CardContent>
               </Card>
             )}
+
+            {/* Invoice & Payment — Tahap 10 */}
+            <CustomerInvoicePanel
+              orderId={orderId}
+              order={order}
+              salesDocId={approvalData?.find(a => a.salesDocId != null)?.salesDocId}
+            />
           </div>
 
           {/* Right: Timeline + WA Log */}
