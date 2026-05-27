@@ -1994,7 +1994,9 @@ vendorMiniFormRouter.post("/admin/customer-approvals", async (req: Request, res:
 vendorMiniFormRouter.get("/admin/customer-approvals", async (req: Request, res: Response) => {
   if (!(await requireClerkUser(req, res))) return;
   try {
-    const approvals = await db
+    const orderIdFilter = req.query["orderId"] ? Number(req.query["orderId"]) : null;
+
+    const query = db
       .select({
         approval: customerApprovalsTable,
         salesDocId: salesDocumentsTable.id,
@@ -2003,9 +2005,13 @@ vendorMiniFormRouter.get("/admin/customer-approvals", async (req: Request, res: 
       .leftJoin(
         salesDocumentsTable,
         eq(salesDocumentsTable.docNumber, customerApprovalsTable.soNumber),
-      )
-      .orderBy(desc(customerApprovalsTable.createdAt));
-    return res.json(approvals.map(({ approval: a, salesDocId }) => ({
+      );
+
+    const rows = orderIdFilter
+      ? await query.where(eq(customerApprovalsTable.orderId, orderIdFilter)).orderBy(desc(customerApprovalsTable.createdAt))
+      : await query.orderBy(desc(customerApprovalsTable.createdAt));
+
+    return res.json(rows.map(({ approval: a, salesDocId }) => ({
       ...a,
       salesDocId: salesDocId ?? null,
       createdAt: a.createdAt.toISOString(),

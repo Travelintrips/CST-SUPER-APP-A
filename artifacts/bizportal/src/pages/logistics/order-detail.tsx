@@ -21,6 +21,7 @@ import {
   Package, Truck, User, ClipboardList, Clock, ShieldAlert, Ship,
   ClipboardCheck, CheckCircle2, XCircle, MapPin, MessageCircle,
   Link2, FileText, AlertTriangle, Eye, EyeOff, StickyNote, Globe,
+  RotateCcw,
 } from "lucide-react";
 import { Link } from "wouter";
 import GpsTrackingPanel from "@/components/logistics/GpsTrackingPanel";
@@ -68,6 +69,16 @@ type FreightShipmentLink = {
   origin: string; destination: string; shipperName: string;
   approvedVendorName: string | null; createdAt: string;
   rfqId: number; rfqNumber: string;
+};
+
+type CustomerApproval = {
+  id: number; token: string; status: string;
+  customerName: string | null; customerPhone: string | null;
+  sellingPrice: string | null; currency: string | null;
+  soNumber: string | null; salesDocId: number | null;
+  approvedAt: string | null; rejectedAt: string | null;
+  expiresAt: string | null; createdAt: string;
+  orderId: number | null; orderNumber: string | null;
 };
 
 type DetailData = {
@@ -1008,6 +1019,30 @@ export default function LogisticOrderDetailPage() {
     refetchInterval: 15000,
   });
 
+  const { data: approvalData, refetch: refetchApprovals } = useQuery<CustomerApproval[]>({
+    queryKey: ["order-approvals", orderId],
+    queryFn: () => apiFetch(`/api/vendor-form/admin/customer-approvals?orderId=${orderId}`),
+    enabled: !isNaN(orderId),
+    refetchInterval: 30000,
+  });
+
+  const retrySoMut = useMutation({
+    mutationFn: (approvalId: number) =>
+      apiFetch<{ ok: boolean; docNumber: string; already?: boolean }>(
+        `/api/vendor-form/admin/customer-approvals/${approvalId}/retry-so`,
+        { method: "POST" }
+      ),
+    onSuccess: (r, approvalId) => {
+      toast({
+        title: r.already ? "SO sudah ada" : "✅ Sales Order berhasil dibuat",
+        description: `Nomor SO: ${r.docNumber}`,
+      });
+      void refetchApprovals();
+      qc.invalidateQueries({ queryKey: ["order-detail", orderId] });
+    },
+    onError: (e: Error) => toast({ title: "Gagal buat SO", description: e.message, variant: "destructive" }),
+  });
+
   const copyUrl = (url: string) => {
     navigator.clipboard.writeText(url);
     toast({ title: "Link disalin!" });
@@ -1161,6 +1196,104 @@ export default function LogisticOrderDetailPage() {
                       </div>
                     </div>
                   ))}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Customer Approval & SO */}
+            {(approvalData?.length ?? 0) > 0 && (
+              <Card className="border-violet-200">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-semibold text-violet-700 uppercase tracking-wide flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4" /> Persetujuan Customer &amp; Sales Order
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {approvalData!.map(a => {
+                    const APPROVAL_COLOR: Record<string, string> = {
+                      pending: "bg-amber-100 text-amber-700",
+                      approved: "bg-emerald-100 text-emerald-800",
+                      rejected: "bg-red-100 text-red-700",
+                    };
+                    const needsRetrySo = a.status === "approved" && !a.soNumber;
+                    const approvalUrl = `${window.location.origin}/vendor-form/customer-approval/${a.token}`;
+                    return (
+                      <div key={a.id} className={`rounded-lg border px-3 py-3 space-y-2.5 ${a.status === "approved" ? "border-emerald-200 bg-emerald-50/40" : a.status === "rejected" ? "border-red-100" : "border-amber-100"}`}>
+                        {/* Status row */}
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <Badge className={APPROVAL_COLOR[a.status] ?? "bg-slate-100 text-slate-600"}>
+                              {a.status === "approved" ? "✅ Disetujui" : a.status === "rejected" ? "❌ Ditolak" : "⏳ Menunggu"}
+                            </Badge>
+                            {a.customerName && <span className="text-sm font-medium text-slate-700">{a.customerName}</span>}
+                            {a.sellingPrice && (
+                              <span className="text-xs text-slate-500">{idr(a.sellingPrice)} {a.currency ?? "IDR"}</span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Button variant="ghost" size="icon" className="h-7 w-7" title="Salin link approval" onClick={() => { navigator.clipboard.writeText(approvalUrl); toast({ title: "Link disalin!" }); }}>
+                              <Copy className="h-3.5 w-3.5" />
+                            </Button>
+                            <a href={approvalUrl} target="_blank" rel="noopener noreferrer">
+                              <Button variant="ghost" size="icon" className="h-7 w-7" title="Buka halaman approval">
+                                <ExternalLink className="h-3.5 w-3.5" />
+                              </Button>
+                            </a>
+                          </div>
+                        </div>
+
+                        {/* SO Number row */}
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 text-sm">
+                            <FileText className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                            {a.soNumber ? (
+                              <>
+                                <span className="text-slate-500 text-xs">SO:</span>
+                                {a.salesDocId ? (
+                                  <Link href={`/sales/documents/${a.salesDocId}`}>
+                                    <span className="font-mono font-semibold text-blue-700 hover:underline cursor-pointer">{a.soNumber}</span>
+                                  </Link>
+                                ) : (
+                                  <span className="font-mono font-semibold text-blue-700">{a.soNumber}</span>
+                                )}
+                              </>
+                            ) : (
+                              <span className="text-xs text-slate-400 italic">
+                                {a.status === "approved" ? "SO belum terbuat" : "—"}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Retry SO button — hanya muncul saat approved tapi SO belum ada */}
+                          {needsRetrySo && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs border-blue-300 text-blue-700 hover:bg-blue-50 shrink-0"
+                              disabled={retrySoMut.isPending}
+                              onClick={() => retrySoMut.mutate(a.id)}
+                              title="Buat ulang Sales Order dari approval ini"
+                            >
+                              {retrySoMut.isPending
+                                ? <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                                : <RotateCcw className="h-3 w-3 mr-1" />}
+                              Buat SO
+                            </Button>
+                          )}
+                        </div>
+
+                        {/* Timestamps */}
+                        <div className="text-[10px] text-slate-400 flex gap-3 flex-wrap">
+                          <span>Dibuat: {dt(a.createdAt)}</span>
+                          {a.approvedAt && <span>Disetujui: {dt(a.approvedAt)}</span>}
+                          {a.rejectedAt && <span>Ditolak: {dt(a.rejectedAt)}</span>}
+                          {a.expiresAt && new Date(a.expiresAt) > new Date() && (
+                            <span>Exp: {dt(a.expiresAt)}</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </CardContent>
               </Card>
             )}
