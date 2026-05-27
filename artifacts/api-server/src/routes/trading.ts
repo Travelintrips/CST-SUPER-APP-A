@@ -3,8 +3,16 @@ import { db, stocksTable, suppliersTable, vendorCatalogItemsTable, productsTable
 import { eq, and } from "drizzle-orm";
 import { postStockReceived } from "../lib/accounting.js";
 import { deleteFromSupabase } from "../lib/supabaseStorage.js";
+import { requireClerkUser, requireAdmin } from "../lib/requireAdmin.js";
 
 const router = Router();
+
+// [C1-FIX] All trading routes require authenticated internal BizPortal staff.
+// Portal/mobile bearer-token users (isInternalSession=false) are rejected.
+router.use(async (req, res, next) => {
+  if (!(await requireClerkUser(req, res))) return;
+  next();
+});
 
 const toItem = (i: typeof vendorCatalogItemsTable.$inferSelect) => ({
   ...i,
@@ -31,6 +39,7 @@ router.get("/stocks", async (_req, res) => {
 
 // POST /api/trading/stocks
 router.post("/stocks", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
   const { productName, sku, quantity, unit, costPrice, supplierId, hsCode } = req.body;
   const [stock] = await db.insert(stocksTable).values({
     productName, sku, quantity, unit, costPrice: String(costPrice), supplierId, hsCode
@@ -46,6 +55,7 @@ router.post("/stocks", async (req, res) => {
 
 // PUT /api/trading/stocks/:id
 router.put("/stocks/:id", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
   const id = Number(req.params.id);
   if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
   const { productName, sku, quantity, unit, costPrice, supplierId, hsCode } = req.body;
@@ -65,6 +75,7 @@ router.put("/stocks/:id", async (req, res) => {
 
 // DELETE /api/trading/stocks/:id
 router.delete("/stocks/:id", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
   const id = Number(req.params.id);
   if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
   const [deleted] = await db.delete(stocksTable).where(eq(stocksTable.id, id)).returning();
@@ -80,6 +91,7 @@ router.get("/suppliers", async (_req, res) => {
 
 // POST /api/trading/suppliers
 router.post("/suppliers", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
   const { name, country, contactEmail, contactPerson, phone, address, taxId, defaultPurchaseTaxId,
     serviceType, isActive, logo, eta, fee, markup, note, sortOrder } = req.body;
   const [supplier] = await db.insert(suppliersTable).values({
@@ -101,6 +113,7 @@ router.post("/suppliers", async (req, res) => {
 
 // PUT /api/trading/suppliers/:id
 router.put("/suppliers/:id", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
   const id = Number(req.params.id);
   if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
   const { name, country, contactEmail, contactPerson, phone, address, taxId, defaultPurchaseTaxId,
@@ -130,6 +143,7 @@ router.put("/suppliers/:id", async (req, res) => {
 
 // DELETE /api/trading/suppliers/:id
 router.delete("/suppliers/:id", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
   const id = Number(req.params.id);
   if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
   const [deleted] = await db.delete(suppliersTable).where(eq(suppliersTable.id, id)).returning();
@@ -158,6 +172,7 @@ router.get("/suppliers/:id/catalog", async (req, res) => {
 // POST /api/trading/suppliers/:id/catalog
 // Wajib menyertakan masterItemId — nama, tipe, satuan, deskripsi diambil otomatis dari Master Item
 router.post("/suppliers/:id/catalog", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
   const vendorId = Number(req.params.id);
   if (Number.isNaN(vendorId)) return res.status(400).json({ message: "Invalid id" });
 
@@ -215,6 +230,7 @@ router.post("/suppliers/:id/catalog", async (req, res) => {
 // PUT /api/trading/suppliers/catalog/:itemId
 // Hanya isActive/isCommodityTag/sortOrder yang boleh diubah; harga dikunci dari Master Item
 router.put("/suppliers/catalog/:itemId", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
   const itemId = Number(req.params.itemId);
   if (Number.isNaN(itemId)) return res.status(400).json({ message: "Invalid id" });
 
@@ -254,6 +270,7 @@ router.put("/suppliers/catalog/:itemId", async (req, res) => {
 
 // DELETE /api/trading/suppliers/catalog/:itemId
 router.delete("/suppliers/catalog/:itemId", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
   const itemId = Number(req.params.itemId);
   if (Number.isNaN(itemId)) return res.status(400).json({ message: "Invalid id" });
   const [deleted] = await db

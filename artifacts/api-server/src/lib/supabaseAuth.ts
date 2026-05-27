@@ -182,8 +182,9 @@ export async function requirePortalAdmin(req: Request, res: Response, next: Next
   }
 
   const emailLower = supabaseUser.email.toLowerCase();
-  const adminListConfigured = PORTAL_ADMIN_EMAILS.length > 0;
-  if (adminListConfigured && !PORTAL_ADMIN_EMAILS.includes(emailLower)) {
+  // [C10-FIX] Always enforce email allowlist — remove conditional that could bypass the check
+  // when adminListConfigured=false. PORTAL_ADMIN_EMAILS always has at least hardcoded entries.
+  if (!PORTAL_ADMIN_EMAILS.includes(emailLower)) {
     res.status(403).json({ message: "Akses admin diperlukan" });
     return;
   }

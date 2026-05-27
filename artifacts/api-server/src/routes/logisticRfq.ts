@@ -424,37 +424,53 @@ logisticRfqRouter.post("/vendor-confirm", rfqRateLimit, async (req: Request, res
       ? submittedVendorPrice
       : null;
 
-  // Atomic update: WHERE quoteStatus='pending' ensures only one concurrent request wins.
-  // If the status was already changed (double-click / network retry), returning() is empty → 409.
-  const [updatedQuote] = await db.update(logisticOrderQuotesTable)
-    .set({
-      quoteStatus: newQuoteStatus,
-      replyTimestamp: new Date(),
-      replySource: "vendor_confirm",
-      ...(updatedPrice != null ? { vendorPrice: String(updatedPrice) } : {}),
-    } as any)
-    .where(and(
-      eq(logisticOrderQuotesTable.id, quote.id),
-      eq(logisticOrderQuotesTable.quoteStatus, "pending"),
-    ))
-    .returning();
-
-  if (!updatedQuote) {
-    return res.status(409).json({ message: "Konfirmasi sudah pernah dikirimkan" });
-  }
-
   const fmtRp = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
   const basePrice = updatedPrice ?? Number(quote.vendorPrice);
   const markupPct = Number(quote.markupPercentage) || 20;
   const finalPrice = basePrice * (1 + markupPct / 100);
 
+  // [C7-FIX] Wrap both DB updates in a single transaction to prevent race condition:
+  // two vendors accepting simultaneously both pass their individual atomic quoteStatus
+  // updates (different rows), then both try to overwrite logisticOrdersTable.finalPrice.
+  // The NOT IN guard on order status ensures the second accept does not corrupt data.
+  const updatedQuote = await db.transaction(async (tx) => {
+    const [q] = await tx.update(logisticOrderQuotesTable)
+      .set({
+        quoteStatus: newQuoteStatus,
+        replyTimestamp: new Date(),
+        replySource: "vendor_confirm",
+        ...(updatedPrice != null ? { vendorPrice: String(updatedPrice) } : {}),
+      } as any)
+      .where(and(
+        eq(logisticOrderQuotesTable.id, quote.id),
+        eq(logisticOrderQuotesTable.quoteStatus, "pending"),
+      ))
+      .returning();
+
+    if (!q) return null;
+
+    if (action === "accept") {
+      await tx.update(logisticOrdersTable).set({
+        status: newOrderStatus,
+        markupPercent: String(markupPct),
+        finalPrice: String(finalPrice),
+      } as any).where(and(
+        eq(logisticOrdersTable.id, orderId),
+        sql`${logisticOrdersTable.status} NOT IN ('Vendor Confirmed', 'Customer Confirmed', 'Completed', 'Done')`,
+      ));
+    } else {
+      await tx.update(logisticOrdersTable)
+        .set({ status: newOrderStatus } as any)
+        .where(eq(logisticOrdersTable.id, orderId));
+    }
+    return q;
+  });
+
+  if (!updatedQuote) {
+    return res.status(409).json({ message: "Konfirmasi sudah pernah dikirimkan" });
+  }
+
   if (action === "accept") {
-    // [TRUCKING-FIX] Save final_price and markup to order, update status
-    await db.update(logisticOrdersTable).set({
-      status: newOrderStatus,
-      markupPercent: String(markupPct),
-      finalPrice: String(finalPrice),
-    } as any).where(eq(logisticOrdersTable.id, orderId));
     console.log(`[TRUCKING-FLOW] State: Under Review → Vendor Confirmed (order ${orderId}, vendor ${vendor?.name})`);
 
     // Notify admin: vendor confirmed + pricing info + approve link
@@ -470,7 +486,6 @@ logisticRfqRouter.post("/vendor-confirm", rfqRateLimit, async (req: Request, res
     const adminWa = await getAdminWa();
     if (adminWa) sendWhatsApp(adminWa, adminMsg, { context: "vendor_confirmed", refType: "order", refId: order.orderNumber }).catch((e: unknown) => logger.error({ e }, "Admin notify vendor confirmed failed"));
   } else {
-    await db.update(logisticOrdersTable).set({ status: newOrderStatus } as any).where(eq(logisticOrdersTable.id, orderId));
     console.log(`[TRUCKING-FLOW] State: Under Review → Vendor Rejected (order ${orderId})`);
 
     // Notify admin: vendor rejected
@@ -834,8 +849,9 @@ logisticRfqRouter.post("/:id/rfq", async (req: Request, res: Response) => {
   });
 });
 
-// GET /api/logistic/orders/:id/rfq — list RFQs for order
+// GET /api/logistic/orders/:id/rfq — list RFQs for order [C6-FIX]
 logisticRfqRouter.get("/:id/rfq", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
   const orderId = parseInt(String(req.params.id), 10);
   if (isNaN(orderId)) return res.status(400).json({ message: "ID tidak valid" });
   const rfqs = await db.select().from(logisticOrderRfqsTable)
@@ -848,8 +864,9 @@ logisticRfqRouter.get("/:id/rfq", async (req: Request, res: Response) => {
   })));
 });
 
-// GET /api/logistic/orders/:id/quotes — list quotes with comparison
+// GET /api/logistic/orders/:id/quotes — list quotes with comparison [C6-FIX]
 logisticRfqRouter.get("/:id/quotes", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
   const orderId = parseInt(String(req.params.id), 10);
   if (isNaN(orderId)) return res.status(400).json({ message: "ID tidak valid" });
 

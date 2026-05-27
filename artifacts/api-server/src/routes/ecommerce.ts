@@ -13,6 +13,20 @@ import { requireClerkUser } from "../lib/requireAdmin.js";
 const router = Router();
 const objectStorageService = new ObjectStorageService();
 
+// [C3-FIX] In-memory rate limiter: max 3 order creation per IP per minute (prevents double-click duplicates)
+const _orderCreateRateMap = new Map<string, { count: number; resetAt: number }>();
+function _checkOrderCreateRate(ip: string): boolean {
+  const now = Date.now();
+  let entry = _orderCreateRateMap.get(ip);
+  if (!entry || now > entry.resetAt) {
+    entry = { count: 0, resetAt: now + 60_000 };
+  }
+  if (entry.count >= 3) return false;
+  entry.count++;
+  _orderCreateRateMap.set(ip, entry);
+  return true;
+}
+
 function normalizeImage(value: unknown): string | null {
   if (value === null || value === undefined || value === "") return null;
   if (typeof value !== "string") return null;
@@ -497,14 +511,20 @@ function serializeOrder(o: typeof ordersTable.$inferSelect) {
   };
 }
 
-// GET /api/ecommerce/orders
-router.get("/orders", async (_req, res) => {
+// GET /api/ecommerce/orders — [C2-FIX] requires internal staff session
+router.get("/orders", async (req, res) => {
+  if (!(await requireClerkUser(req, res))) return;
   const orders = await db.select().from(ordersTable).orderBy(ordersTable.createdAt);
   return res.json(orders.map(serializeOrder));
 });
 
-// POST /api/ecommerce/orders
+// POST /api/ecommerce/orders — public checkout endpoint
 router.post("/orders", async (req, res) => {
+  // [C3-FIX] IP-based rate limit: prevent rapid double-submission / bot flooding
+  const clientIp = (req.ip ?? req.socket?.remoteAddress ?? "unknown").replace(/^::ffff:/, "");
+  if (!_checkOrderCreateRate(clientIp)) {
+    return res.status(429).json({ message: "Terlalu banyak permintaan. Coba lagi dalam 1 menit." });
+  }
   const { customerName, customerEmail, customerPhone, items, lineItems, totalAmount, taxAmount: rawTax } = req.body;
   const parsedLineItems: Array<{ name: string; qty: number; unitPrice: number }> | null =
     Array.isArray(lineItems) && lineItems.length > 0 ? lineItems : null;
@@ -557,8 +577,9 @@ router.post("/orders", async (req, res) => {
   return res.status(201).json(serializeOrder(order));
 });
 
-// PUT /api/ecommerce/orders/:id
+// PUT /api/ecommerce/orders/:id — [C2-FIX] requires internal staff session (triggers accounting)
 router.put("/orders/:id", async (req, res) => {
+  if (!(await requireClerkUser(req, res))) return;
   const id = Number(req.params.id);
   const [existing] = await db.select().from(ordersTable).where(eq(ordersTable.id, id));
   if (!existing) return res.status(404).json({ message: "Order not found" });

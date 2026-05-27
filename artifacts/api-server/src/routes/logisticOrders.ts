@@ -19,7 +19,7 @@ import {
 import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { eq, ilike, and, gte, lte, or, sql, desc, inArray, isNotNull } from "drizzle-orm";
 import { salesDocumentsTable } from "@workspace/db";
-import { requireClerkUser } from "../lib/requireAdmin.js";
+import { requireClerkUser, requireRole } from "../lib/requireAdmin.js";
 import { resolveCompanyId } from "../lib/resolveCompany.js";
 import { requirePortalAdmin } from "../lib/supabaseAuth.js";
 import { sendLogisticOrderNotification } from "../lib/orderNotification";
@@ -41,6 +41,20 @@ import {
 } from "@workspace/api-zod";
 
 export const logisticOrdersRouter = Router();
+
+// [C4-FIX] IP-based rate limit for public order creation: max 10 orders per IP per hour
+const _publicOrderRateMap = new Map<string, { count: number; resetAt: number }>();
+function _checkPublicOrderRate(ip: string): boolean {
+  const now = Date.now();
+  let entry = _publicOrderRateMap.get(ip);
+  if (!entry || now > entry.resetAt) {
+    entry = { count: 0, resetAt: now + 60 * 60 * 1000 }; // 1-hour window
+  }
+  if (entry.count >= 10) return false;
+  entry.count++;
+  _publicOrderRateMap.set(ip, entry);
+  return true;
+}
 
 function generateOrderNumber(): string {
   const date = new Date();
@@ -145,8 +159,14 @@ async function getTruckingRates() {
 
 // ─── PUBLIC ROUTES (no auth required) ────────────────────────────────────────
 
-// POST /api/logistic/orders — create order (public)
+// POST /api/logistic/orders — create order (public customer portal endpoint)
 logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
+  // [C4-FIX] IP-based rate limit: prevent bot flooding
+  const clientIp = ((req.ip ?? req.socket?.remoteAddress) || "unknown").replace(/^::ffff:/, "");
+  if (!_checkPublicOrderRate(clientIp)) {
+    return res.status(429).json({ message: "Terlalu banyak permintaan. Coba lagi dalam 1 jam." });
+  }
+
   const parsed = CreateLogisticOrderBody.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ message: "Data tidak valid", errors: parsed.error.errors });
@@ -658,8 +678,9 @@ logisticOrdersRouter.put("/trucking-rates", requirePortalAdmin, async (req: Requ
 
 // ─── Delivery Vendors CRUD (for BizPortal) ───────────────────────────────────
 
-// POST /api/logistic/orders/vendors
+// POST /api/logistic/orders/vendors — [C9-FIX] requires admin or owner role
 logisticOrdersRouter.post("/vendors", async (req: Request, res: Response) => {
+  if (!(await requireRole(req, res, ["admin", "owner"]))) return;
   const { name, logo, eta, fee, note, phone, email, serviceType } = req.body as Record<string, unknown>;
   if (!name || typeof name !== "string" || !name.trim())
     return res.status(400).json({ message: "Nama vendor harus diisi" });
@@ -680,8 +701,9 @@ logisticOrdersRouter.post("/vendors", async (req: Request, res: Response) => {
   return res.status(201).json({ ...created, fee: Number(created.fee ?? 0), email: created.contactEmail });
 });
 
-// PUT /api/logistic/orders/vendors/:id
+// PUT /api/logistic/orders/vendors/:id — [C9-FIX] requires admin or owner role
 logisticOrdersRouter.put("/vendors/:id", async (req: Request, res: Response) => {
+  if (!(await requireRole(req, res, ["admin", "owner"]))) return;
   const id = parseInt(String(req.params.id), 10);
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
   const { name, logo, eta, fee, note, phone, email, serviceType, isActive, sortOrder } = req.body as Record<string, unknown>;
@@ -702,8 +724,9 @@ logisticOrdersRouter.put("/vendors/:id", async (req: Request, res: Response) => 
   return res.json({ ...updated, fee: Number(updated.fee ?? 0), email: updated.contactEmail });
 });
 
-// DELETE /api/logistic/orders/vendors/:id
+// DELETE /api/logistic/orders/vendors/:id — [C9-FIX] requires admin or owner role
 logisticOrdersRouter.delete("/vendors/:id", async (req: Request, res: Response) => {
+  if (!(await requireRole(req, res, ["admin", "owner"]))) return;
   const id = parseInt(String(req.params.id), 10);
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
   const [deleted] = await db.delete(suppliersTable).where(eq(suppliersTable.id, id)).returning();
@@ -730,6 +753,13 @@ logisticOrdersRouter.get("/:id", async (req: Request, res: Response) => {
     .where(eq(logisticOrdersTable.id, id));
 
   if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+  // [C5-FIX] Cross-company data leak prevention: non-admin/owner users can only access their company's orders
+  const u = req.user as { role?: string | null; companyId?: number | null } | undefined;
+  const isAdminOrOwner = u?.role === "admin" || u?.role === "owner";
+  if (!isAdminOrOwner && order.companyId !== null && order.companyId !== (u?.companyId ?? null)) {
+    return res.status(403).json({ message: "Akses ditolak: order ini bukan milik perusahaan Anda" });
+  }
 
   const [items, linkedDocRows] = await Promise.all([
     db.select().from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, id)),
