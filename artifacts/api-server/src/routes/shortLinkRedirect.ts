@@ -14,6 +14,25 @@ shortLinkRedirectRouter.get("/q/:code", async (req: Request, res: Response) => {
   // Happy path: link valid dan belum expired
   const target = await resolveShortLink(code);
   if (target) {
+    // Deteksi WhatsApp / social-media bot agar tidak membaca OG tags dari SPA
+    const ua = req.headers["user-agent"] ?? "";
+    const isBot = /whatsapp|facebookexternalhit|twitterbot|linkedinbot|slackbot|telegrambot|discordbot/i.test(ua);
+    if (isBot) {
+      // Sajikan halaman HTML minimal tanpa branding CST agar link preview bersih
+      const safeTarget = target.replace(/"/g, "&quot;");
+      return res
+        .set("Content-Type", "text/html; charset=utf-8")
+        .set("X-Robots-Tag", "noindex,nofollow")
+        .send(
+          `<!DOCTYPE html><html><head><meta charset="UTF-8">` +
+          `<title>Form Penawaran Vendor</title>` +
+          `<meta property="og:title" content="Form Penawaran Vendor">` +
+          `<meta property="og:description" content="Klik link untuk mengisi penawaran harga.">` +
+          `<meta name="robots" content="noindex,nofollow">` +
+          `<meta http-equiv="refresh" content="0;url=${safeTarget}">` +
+          `</head><body><p><a href="${safeTarget}">Klik untuk melanjutkan</a></p></body></html>`
+        );
+    }
     return res.redirect(302, target);
   }
 

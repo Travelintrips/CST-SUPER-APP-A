@@ -470,28 +470,18 @@ logisticRfqV2Router.get("/vendor-form/:token", async (req: Request, res: Respons
   const [vendor] = await db.select({ name: suppliersTable.name })
     .from(suppliersTable).where(eq(suppliersTable.id, link.vendorId));
 
-  // Fetch order items for additional context
-  const orderItems = await db.select({
-    serviceName: logisticOrderItemsTable.serviceName,
-    category: logisticOrderItemsTable.category,
-    calculatorType: logisticOrderItemsTable.calculatorType,
-    inputData: logisticOrderItemsTable.inputData,
-    subtotal: logisticOrderItemsTable.subtotal,
-  }).from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, orderId));
-
-  // Prefer order items subtotal sum as reference price (most accurate)
-  const orderSubtotal = orderItems.reduce(
-    (sum, i) => sum + (i.subtotal ? parseFloat(i.subtotal) : 0), 0
-  );
-  let basicPrice: number | null = orderSubtotal > 0 ? orderSubtotal : null;
-  if (basicPrice == null) {
-    basicPrice = link.basicPrice ? Number(link.basicPrice) : null;
-  }
-  if (basicPrice == null) {
-    const catalog = await db.select().from(vendorCatalogItemsTable)
-      .where(and(eq(vendorCatalogItemsTable.vendorId, link.vendorId), eq(vendorCatalogItemsTable.isActive, true)));
-    basicPrice = catalog[0] ? Number(catalog[0].priceBase) : null;
-  }
+  // Fetch order items + vendor's own catalog items (for price reference per etalase)
+  const [orderItems, vendorCatalog] = await Promise.all([
+    db.select({
+      serviceName: logisticOrderItemsTable.serviceName,
+      category: logisticOrderItemsTable.category,
+      calculatorType: logisticOrderItemsTable.calculatorType,
+      inputData: logisticOrderItemsTable.inputData,
+      subtotal: logisticOrderItemsTable.subtotal,
+    }).from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, orderId)),
+    db.select().from(vendorCatalogItemsTable)
+      .where(and(eq(vendorCatalogItemsTable.vendorId, link.vendorId), eq(vendorCatalogItemsTable.isActive, true))),
+  ]);
 
   // Fallback to freight shipment data when order fields are empty
   let serviceType = order.shipmentType ?? "";
@@ -531,6 +521,31 @@ logisticRfqV2Router.get("/vendor-form/:token", async (req: Request, res: Respons
     }
   }
 
+  // Hitung basicPrice dari katalog vendor (harga etalase vendor itu sendiri)
+  const basicPrice: number | null = (() => {
+    if (vendorCatalog.length === 0) return null;
+    const svcMatch = serviceType
+      ? vendorCatalog.find((c) => {
+          const cn = c.name.toLowerCase();
+          const st = serviceType.toLowerCase();
+          return cn.includes(st) || st.includes(cn);
+        })
+      : null;
+    return svcMatch ? Number(svcMatch.priceBase) : Number(vendorCatalog[0].priceBase);
+  })();
+
+  // Helper: cocokkan item order dengan katalog vendor berdasarkan nama
+  function matchCatalogItem(name: string) {
+    if (!name || vendorCatalog.length === 0) return null;
+    const n = name.toLowerCase().trim();
+    return (
+      vendorCatalog.find((c) => {
+        const cn = c.name.toLowerCase();
+        return cn === n || cn.includes(n) || n.includes(cn);
+      }) ?? null
+    );
+  }
+
   return res.json({
     linkId: link.id,
     rfqNumber,
@@ -561,20 +576,23 @@ logisticRfqV2Router.get("/vendor-form/:token", async (req: Request, res: Respons
     grossWeight,
     volumeCbm,
     requiredDate: order.requiredDate ?? null,
-    // Security: basicPrice is an internal cost estimate — never expose to vendors.
-    // Vendors should quote based on their own pricing, not our target/margin.
+    basicPrice,
     responseDeadline: link.expiredAt?.toISOString() ?? rfqResponseDeadline?.toISOString() ?? null,
     alreadySubmitted: !!link.submittedAt,
     currentStatus: link.status,
     currentOfferedPrice: link.offeredPrice ? Number(link.offeredPrice) : null,
     currentEta: link.eta ?? null,
     currentNotes: link.notes ?? null,
-    orderItems: orderItems.map((i) => ({
-      serviceName: i.serviceName,
-      category: i.category,
-      calculatorType: i.calculatorType,
-      subtotal: i.subtotal ? parseFloat(i.subtotal) : null,
-    })),
+    orderItems: orderItems.map((i) => {
+      const itemName = (i.serviceName || i.category || "").trim();
+      const catalogMatch = matchCatalogItem(itemName);
+      return {
+        serviceName: i.serviceName,
+        category: i.category,
+        calculatorType: i.calculatorType,
+        subtotal: catalogMatch ? Number(catalogMatch.priceBase) : null,
+      };
+    }),
   });
 });
 
