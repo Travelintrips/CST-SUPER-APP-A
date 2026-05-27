@@ -459,9 +459,14 @@ logisticRfqRouter.post("/vendor-confirm", rfqRateLimit, async (req: Request, res
         sql`${logisticOrdersTable.status} NOT IN ('Vendor Confirmed', 'Customer Confirmed', 'Completed', 'Done')`,
       ));
     } else {
+      // [CRITICAL-D] Reject action must also guard against terminal statuses.
+      // Without this guard, a late vendor-reject could overwrite "Customer Approved" with "Vendor Rejected".
       await tx.update(logisticOrdersTable)
         .set({ status: newOrderStatus } as any)
-        .where(eq(logisticOrdersTable.id, orderId));
+        .where(and(
+          eq(logisticOrdersTable.id, orderId),
+          sql`${logisticOrdersTable.status} NOT IN ('Customer Confirmed', 'Customer Approved', 'Completed', 'Done')`,
+        ));
     }
     return q;
   });
@@ -630,6 +635,17 @@ logisticRfqRouter.post("/vendor-quote", rfqRateLimit, async (req: Request, res: 
 
   if (!order.publicRfqToken || order.publicRfqToken !== token) {
     return res.status(404).json({ error: "Not found" });
+  }
+
+  // [CRITICAL-B] Block vendor quote submission on terminal orders.
+  // Once order is Customer Approved / Completed / Cancelled, no new quotes should be accepted.
+  const TERMINAL_ORDER_STATUSES = ["Customer Approved", "Customer Confirmed", "Completed", "Done", "Cancelled"];
+  if (TERMINAL_ORDER_STATUSES.includes(order.status)) {
+    return res.status(409).json({ error: "Order sudah selesai. Tidak dapat mengirim penawaran baru." });
+  }
+  // Block on closed/expired RFQ
+  if (rfq.status === "closed" || rfq.status === "expired") {
+    return res.status(409).json({ error: "RFQ sudah ditutup. Tidak dapat mengirim penawaran." });
   }
 
   const [existingQuote] = await db.select().from(logisticOrderQuotesTable)

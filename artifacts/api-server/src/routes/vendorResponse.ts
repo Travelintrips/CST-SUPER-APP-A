@@ -250,12 +250,20 @@ router.post("/:orderNumber", async (req: Request, res: Response) => {
 
   try {
     const [order] = await db
-      .select({ id: logisticOrdersTable.id, orderNumber: logisticOrdersTable.orderNumber })
+      .select({ id: logisticOrdersTable.id, orderNumber: logisticOrdersTable.orderNumber, status: logisticOrdersTable.status })
       .from(logisticOrdersTable)
       .where(eq(logisticOrdersTable.orderNumber, orderNumber));
 
     if (!order) {
       res.status(404).json({ error: "Order tidak ditemukan" });
+      return;
+    }
+
+    // [CRITICAL-B] Block submission on terminal orders: vendor must not overwrite
+    // data after the order has been confirmed/completed/cancelled.
+    const TERMINAL_STATUSES = ["Customer Approved", "Customer Confirmed", "Completed", "Done", "Cancelled"];
+    if (TERMINAL_STATUSES.includes(order.status)) {
+      res.status(409).json({ error: "Order sudah dalam status final. Response tidak dapat diubah." });
       return;
     }
 
