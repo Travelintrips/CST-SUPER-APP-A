@@ -1075,12 +1075,17 @@ vendorMiniFormRouter.post("/customer-approval/:token", async (req: Request, res:
 
     // Activity log (non-fatal, di luar transaksi)
     if (action === "approve") {
-      await logActivity("customer_approval", 0, "approved", "customer",
+      await logActivity("customer_approval", locked?.id ?? 0, "approved", "customer",
         `Customer ${customerName ?? "-"} menyetujui penawaran. SO: ${soNumber}`,
-        { soNumber, salesDocId, orderId }).catch?.(() => {});
+        { soNumber, salesDocId, orderId, approvalId: locked?.id }).catch?.(() => {});
+      if (salesDocId && soNumber) {
+        await logActivity("sales_order", salesDocId, "so_created", "system",
+          `SO ${soNumber} dibuat otomatis dari persetujuan customer VMF${customerName ? ` (${customerName})` : ""}`,
+          { docNumber: soNumber, approvalId: locked?.id, orderId }).catch?.(() => {});
+      }
     } else {
-      await logActivity("customer_approval", 0, "rejected", "customer",
-        `Customer ${customerName ?? "-"} menolak penawaran`, { orderId }).catch?.(() => {});
+      await logActivity("customer_approval", locked?.id ?? 0, "rejected", "customer",
+        `Customer ${customerName ?? "-"} menolak penawaran`, { orderId, approvalId: locked?.id }).catch?.(() => {});
     }
 
     // Notify via WA templates (fire-and-forget)
@@ -1832,6 +1837,9 @@ vendorMiniFormRouter.post("/admin/links/:id/short-link", async (req: Request, re
     const longUrl = domain ? `https://${domain}/vendor-mini-form/${link.token}` : `/vendor-mini-form/${link.token}`;
     const shortUrl = await generateShortLink(longUrl, { context: "vendor_mini_form", refType: "vendor_mini_form_link", refId: String(link.id) });
     await db.update(vendorMiniFormLinksTable).set({ shortUrl }).where(eq(vendorMiniFormLinksTable.id, id));
+    await logActivity("link", id, "link_generated", (req.user as { id: string } | undefined)?.id ?? "admin",
+      `Short link di-generate untuk ${link.serviceType}${link.orderNumber ? ` (Order: ${link.orderNumber})` : ""}`,
+      { shortUrl, serviceType: link.serviceType, orderNumber: link.orderNumber });
     return res.json({ shortUrl, cached: false });
   } catch (err) {
     req.log?.error({ err }, "vendor-mini-form short-link error");
@@ -1854,6 +1862,9 @@ vendorMiniFormRouter.post("/admin/links/:id/reset-short-link", async (req: Reque
     const longUrl = domain ? `https://${domain}/vendor-mini-form/${link.token}` : `/vendor-mini-form/${link.token}`;
     const shortUrl = await generateShortLink(longUrl, { context: "vendor_mini_form", refType: "vendor_mini_form_link", refId: String(link.id) });
     await db.update(vendorMiniFormLinksTable).set({ shortUrl }).where(eq(vendorMiniFormLinksTable.id, id));
+    await logActivity("link", id, "link_generated", (req.user as { id: string } | undefined)?.id ?? "admin",
+      `Short link di-reset untuk ${link.serviceType}${link.orderNumber ? ` (Order: ${link.orderNumber})` : ""}`,
+      { shortUrl, serviceType: link.serviceType, orderNumber: link.orderNumber });
     return res.json({ shortUrl });
   } catch (err) {
     req.log?.error({ err }, "vendor-mini-form reset-short-link error");
@@ -1925,6 +1936,9 @@ vendorMiniFormRouter.post("/admin/customer-approvals/:id/retry-so", async (req: 
       await db.update(customerApprovalsTable)
         .set({ soNumber: soResult.docNumber })
         .where(eq(customerApprovalsTable.id, id));
+      await logActivity("sales_order", soResult.docId, "so_created", (req.user as { id: string } | undefined)?.id ?? "admin",
+        `SO ${soResult.docNumber} dibuat ulang via retry untuk approval ID ${id}${approval.customerName ? ` (${approval.customerName})` : ""}`,
+        { docNumber: soResult.docNumber, approvalId: id, orderId: approval.orderId, orderNumber: approval.orderNumber });
       return res.json({ ok: true, docId: soResult.docId, docNumber: soResult.docNumber });
     } else if (soResult.reason === "already_exists") {
       if (!approval.soNumber) {
@@ -1967,8 +1981,12 @@ vendorMiniFormRouter.post("/admin/customer-approvals/:id/send-wa", async (req: R
         .where(eq(logisticOrdersTable.id, approval.orderId)).limit(1);
       if (orderRow) {
         await sendCustomerApprovalNotification(buildOrderDataFromRow(orderRow), priceStr, approvalUrl);
-        await logActivity("customer_approval", id, "sent_wa", (req.user as { id: string } | undefined)?.id ?? "admin",
+        const actorId = (req.user as { id: string } | undefined)?.id ?? "admin";
+        await logActivity("customer_approval", id, "sent_wa", actorId,
           `WA penawaran dikirim ke customer ${approval.customerName ?? "-"}`, { phone: target });
+        await logActivity("customer_approval", id, "approval_sent", actorId,
+          `Link approval dikirim ke customer ${approval.customerName ?? "-"} via WhatsApp${approval.orderNumber ? ` (Order: ${approval.orderNumber})` : ""}`,
+          { phone: target, channel: "whatsapp", orderNumber: approval.orderNumber, sellingPrice: approval.sellingPrice });
         return res.json({ success: true, message: "Pesan WA ke customer berhasil dikirim" });
       }
     }
@@ -1982,8 +2000,12 @@ vendorMiniFormRouter.post("/admin/customer-approvals/:id/send-wa", async (req: R
 
     await sendWhatsApp(target, msg, { context: "customer-approval-send", refType: "customer_approval", refId: String(approval.id) });
 
-    await logActivity("customer_approval", id, "sent_wa", (req.user as { id: string } | undefined)?.id ?? "admin",
+    const actorId = (req.user as { id: string } | undefined)?.id ?? "admin";
+    await logActivity("customer_approval", id, "sent_wa", actorId,
       `WA penawaran dikirim ke customer ${approval.customerName ?? "-"}`, { phone: target });
+    await logActivity("customer_approval", id, "approval_sent", actorId,
+      `Link approval dikirim ke customer ${approval.customerName ?? "-"} via WhatsApp${approval.orderNumber ? ` (Order: ${approval.orderNumber})` : ""}`,
+      { phone: target, channel: "whatsapp", orderNumber: approval.orderNumber, sellingPrice: approval.sellingPrice });
 
     return res.json({ success: true, message: "Pesan WA ke customer berhasil dikirim" });
   } catch (err) {
@@ -2064,8 +2086,12 @@ vendorMiniFormRouter.post("/admin/op-confirms/:id/send-wa", async (req: Request,
       await sendWhatsApp(phone.trim(), msg, { context: "op-confirm-send", refType: "vendor_op_confirm", refId: String(conf.id) });
     }
 
-    await logActivity("op_confirm", id, "sent_wa", (req.user as { id: string } | undefined)?.id ?? "admin",
+    const opActorId = (req.user as { id: string } | undefined)?.id ?? "admin";
+    await logActivity("op_confirm", id, "sent_wa", opActorId,
       `WA op-confirm dikirim ke ${conf.vendorName ?? "vendor"}`, { phone });
+    await logActivity("op_confirm", id, "op_confirm_sent", opActorId,
+      `Link konfirmasi operasional dikirim ke ${conf.vendorName ?? "vendor"} via WhatsApp${conf.orderNumber ? ` (Order: ${conf.orderNumber})` : ""}`,
+      { phone, channel: "whatsapp", orderNumber: conf.orderNumber, serviceType: conf.serviceType });
 
     return res.json({ success: true, message: "Pesan WA ke vendor berhasil dikirim" });
   } catch (err) {
