@@ -72,6 +72,7 @@ import pushRouter from "./push.js";
 import { intelligenceAlertsRouter } from "./intelligenceAlerts.js";
 import { aiApprovalsRouter } from "./aiApprovals.js";
 import { operationalContextRouter } from "./operationalContext.js";
+import { aiDecisionMemoryRouter } from "./aiDecisionMemory.js";
 import type { Request, Response } from "express";
 
 const router: IRouter = Router();
@@ -164,6 +165,7 @@ router.use("/push", pushRouter);
 router.use("/intelligence-alerts", intelligenceAlertsRouter);
 router.use("/ai-approvals", aiApprovalsRouter);
 router.use("/operational-context", operationalContextRouter);
+router.use("/ai/decision-memory", aiDecisionMemoryRouter);
 
 router.get("/q/:code", async (req: Request, res: Response) => {
   const code = String(req.params.code ?? "").trim();
