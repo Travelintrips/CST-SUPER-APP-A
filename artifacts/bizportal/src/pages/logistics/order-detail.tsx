@@ -1279,12 +1279,18 @@ type SalesDocSummary = {
   lines: { id: number; name: string; quantity: number; unitPrice: number; subtotal: number }[];
 };
 
+type Journal = { id: number; name: string; type: string; code: string };
+
 function PaymentSummaryPanel({
   salesDocId, soNumber,
 }: {
   salesDocId: number | null | undefined;
   soNumber: string | null | undefined;
 }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const today = new Date().toISOString().slice(0, 10);
+
   const { data: doc, isLoading, isError, refetch } = useQuery<SalesDocSummary>({
     queryKey: ["sales-doc-summary", salesDocId],
     queryFn: () => apiFetch(`/api/sales/documents/${salesDocId}`),
@@ -1292,8 +1298,71 @@ function PaymentSummaryPanel({
     staleTime: 30000,
   });
 
+  const { data: allJournals = [] } = useQuery<Journal[]>({
+    queryKey: ["accounting-journals"],
+    queryFn: () => apiFetch("/api/accounting/journals"),
+    staleTime: 60000,
+  });
+  const bankCashJournals = allJournals.filter(j => j.type === "bank" || j.type === "cash");
+
+  const [payOpen, setPayOpen] = useState(false);
+  const [paying, setPaying] = useState(false);
+  const [payForm, setPayForm] = useState({
+    journalId: "",
+    date: today,
+    ref: "",
+    memo: "",
+    amount: "",
+  });
+
   const outstanding = doc ? Math.max(0, doc.grandTotal - doc.amountPaid) : 0;
   const pctPaid = doc && doc.grandTotal > 0 ? Math.round((doc.amountPaid / doc.grandTotal) * 100) : 0;
+
+  const openPayDialog = () => {
+    setPayForm({
+      journalId: bankCashJournals.length > 0 ? String(bankCashJournals[0]!.id) : "",
+      date: today,
+      ref: doc?.docNumber ?? soNumber ?? "",
+      memo: `Pembayaran ${doc?.docNumber ?? soNumber ?? "SO"}`,
+      amount: String(Math.round(outstanding)),
+    });
+    setPayOpen(true);
+  };
+
+  const submitPayment = async () => {
+    if (!payForm.journalId || !payForm.date || !payForm.amount) {
+      toast({ title: "Lengkapi data pembayaran", variant: "destructive" }); return;
+    }
+    const amt = Number(payForm.amount);
+    if (Number.isNaN(amt) || amt <= 0) {
+      toast({ title: "Jumlah harus lebih dari 0", variant: "destructive" }); return;
+    }
+    setPaying(true);
+    try {
+      await apiFetch("/api/accounting/payments", {
+        method: "POST",
+        body: JSON.stringify({
+          paymentType: "inbound",
+          amount: amt,
+          journalId: Number(payForm.journalId),
+          partnerName: doc?.customerName ?? "",
+          date: payForm.date,
+          ref: payForm.ref || undefined,
+          memo: payForm.memo || undefined,
+          sourceType: "sales_order",
+          sourceDocId: salesDocId,
+        }),
+      });
+      toast({ title: "✅ Pembayaran dicatat", description: `${idr(amt)} berhasil direkam ke jurnal` });
+      setPayOpen(false);
+      void refetch();
+      void qc.invalidateQueries({ queryKey: ["sales-doc-summary", salesDocId] });
+    } catch (e: unknown) {
+      toast({ title: "Gagal catat pembayaran", description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setPaying(false);
+    }
+  };
 
   const invoiceBadge = (s: string) => {
     if (s === "invoiced") return <span className="text-[10px] font-semibold text-green-700 bg-green-100 px-1.5 py-0.5 rounded-full">Invoiced</span>;
@@ -1330,123 +1399,250 @@ function PaymentSummaryPanel({
   }
 
   return (
-    <Card className="border-indigo-200">
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-semibold text-indigo-700 uppercase tracking-wide flex items-center gap-1.5">
-            <ClipboardList className="w-4 h-4" />
-            Ringkasan Pembayaran SO
-          </CardTitle>
-          <div className="flex items-center gap-1.5">
-            {doc && statusBadge(doc.status)}
-            {doc && invoiceBadge(doc.invoiceStatus)}
-            <button
-              onClick={() => void refetch()}
-              className="text-slate-400 hover:text-slate-600"
-              title="Refresh"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-            </button>
+    <>
+      <Card className="border-indigo-200">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm font-semibold text-indigo-700 uppercase tracking-wide flex items-center gap-1.5">
+              <ClipboardList className="w-4 h-4" />
+              Ringkasan Pembayaran SO
+            </CardTitle>
+            <div className="flex items-center gap-1.5">
+              {doc && statusBadge(doc.status)}
+              {doc && invoiceBadge(doc.invoiceStatus)}
+              <button
+                onClick={() => void refetch()}
+                className="text-slate-400 hover:text-slate-600"
+                title="Refresh"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
-        </div>
-        {(doc?.docNumber ?? soNumber) && (
-          <div className="flex items-center gap-2 mt-0.5">
-            <span className="font-mono text-xs text-slate-500">{doc?.docNumber ?? soNumber}</span>
-            <Link href={`/sales/documents/${salesDocId}`}>
-              <ExternalLink className="w-3 h-3 text-indigo-400 hover:text-indigo-600 cursor-pointer" />
-            </Link>
-          </div>
-        )}
-      </CardHeader>
+          {(doc?.docNumber ?? soNumber) && (
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className="font-mono text-xs text-slate-500">{doc?.docNumber ?? soNumber}</span>
+              <Link href={`/sales/documents/${salesDocId}`}>
+                <ExternalLink className="w-3 h-3 text-indigo-400 hover:text-indigo-600 cursor-pointer" />
+              </Link>
+            </div>
+          )}
+        </CardHeader>
 
-      <CardContent className="pt-0 space-y-3">
-        {isLoading ? (
-          <div className="flex justify-center py-4">
-            <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
-          </div>
-        ) : isError ? (
-          <p className="text-xs text-red-500 text-center py-2">Gagal memuat data SO</p>
-        ) : doc ? (
-          <>
-            {/* Line items */}
-            {doc.lines.length > 0 && (
-              <div className="rounded-lg border border-slate-100 overflow-hidden">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-100">
-                      <th className="text-left px-3 py-1.5 text-slate-500 font-medium">Item</th>
-                      <th className="text-right px-3 py-1.5 text-slate-500 font-medium">Qty</th>
-                      <th className="text-right px-3 py-1.5 text-slate-500 font-medium">Subtotal</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {doc.lines.map(l => (
-                      <tr key={l.id} className="border-b border-slate-50 last:border-0">
-                        <td className="px-3 py-1.5 text-slate-700">{l.name}</td>
-                        <td className="px-3 py-1.5 text-right text-slate-500">{l.quantity}</td>
-                        <td className="px-3 py-1.5 text-right font-mono text-slate-700">
-                          {idr(l.subtotal)}
-                        </td>
+        <CardContent className="pt-0 space-y-3">
+          {isLoading ? (
+            <div className="flex justify-center py-4">
+              <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
+            </div>
+          ) : isError ? (
+            <p className="text-xs text-red-500 text-center py-2">Gagal memuat data SO</p>
+          ) : doc ? (
+            <>
+              {/* Line items */}
+              {doc.lines.length > 0 && (
+                <div className="rounded-lg border border-slate-100 overflow-hidden">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-100">
+                        <th className="text-left px-3 py-1.5 text-slate-500 font-medium">Item</th>
+                        <th className="text-right px-3 py-1.5 text-slate-500 font-medium">Qty</th>
+                        <th className="text-right px-3 py-1.5 text-slate-500 font-medium">Subtotal</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {/* Totals */}
-            <div className="rounded-lg bg-indigo-50/60 border border-indigo-100 px-3 py-2.5 space-y-1.5 text-sm">
-              <div className="flex justify-between text-xs text-slate-500">
-                <span>Subtotal</span>
-                <span className="font-mono">{idr(doc.totalAmount)}</span>
-              </div>
-              {doc.taxAmount > 0 && (
-                <div className="flex justify-between text-xs text-slate-500">
-                  <span>PPN</span>
-                  <span className="font-mono">{idr(doc.taxAmount)}</span>
+                    </thead>
+                    <tbody>
+                      {doc.lines.map(l => (
+                        <tr key={l.id} className="border-b border-slate-50 last:border-0">
+                          <td className="px-3 py-1.5 text-slate-700">{l.name}</td>
+                          <td className="px-3 py-1.5 text-right text-slate-500">{l.quantity}</td>
+                          <td className="px-3 py-1.5 text-right font-mono text-slate-700">
+                            {idr(l.subtotal)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
-              <div className="flex justify-between font-semibold text-slate-800 border-t border-indigo-100 pt-1.5">
-                <span className="text-xs">Total Tagihan</span>
-                <span className="font-mono text-indigo-800">{idr(doc.grandTotal)}</span>
+
+              {/* Totals */}
+              <div className="rounded-lg bg-indigo-50/60 border border-indigo-100 px-3 py-2.5 space-y-1.5 text-sm">
+                <div className="flex justify-between text-xs text-slate-500">
+                  <span>Subtotal</span>
+                  <span className="font-mono">{idr(doc.totalAmount)}</span>
+                </div>
+                {doc.taxAmount > 0 && (
+                  <div className="flex justify-between text-xs text-slate-500">
+                    <span>PPN</span>
+                    <span className="font-mono">{idr(doc.taxAmount)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between font-semibold text-slate-800 border-t border-indigo-100 pt-1.5">
+                  <span className="text-xs">Total Tagihan</span>
+                  <span className="font-mono text-indigo-800">{idr(doc.grandTotal)}</span>
+                </div>
+                <div className="flex justify-between text-xs text-emerald-600">
+                  <span>Sudah Dibayar</span>
+                  <span className="font-mono font-semibold">{idr(doc.amountPaid)}</span>
+                </div>
+                <div className={`flex justify-between text-xs font-semibold ${outstanding > 0 ? "text-red-600" : "text-emerald-600"}`}>
+                  <span>Sisa Outstanding</span>
+                  <span className="font-mono">{outstanding > 0 ? idr(outstanding) : "✓ Lunas"}</span>
+                </div>
               </div>
-              <div className="flex justify-between text-xs text-emerald-600">
-                <span>Sudah Dibayar</span>
-                <span className="font-mono font-semibold">{idr(doc.amountPaid)}</span>
+
+              {/* Progress bar */}
+              {doc.grandTotal > 0 && (
+                <div className="space-y-1">
+                  <div className="flex justify-between text-[10px] text-slate-400">
+                    <span>Progress Pembayaran</span>
+                    <span>{pctPaid}%</span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${pctPaid >= 100 ? "bg-emerald-500" : pctPaid > 0 ? "bg-indigo-400" : "bg-slate-200"}`}
+                      style={{ width: `${Math.min(pctPaid, 100)}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Action buttons */}
+              <div className="flex gap-2">
+                {outstanding > 0 && (
+                  <Button
+                    size="sm"
+                    className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white text-xs"
+                    onClick={openPayDialog}
+                  >
+                    <Plus className="w-3.5 h-3.5 mr-1" />
+                    Catat Pembayaran
+                  </Button>
+                )}
+                <Link href={`/sales/documents/${salesDocId}`} className={outstanding > 0 ? "" : "flex-1"}>
+                  <Button
+                    variant="outline" size="sm"
+                    className={`text-xs border-indigo-200 text-indigo-600 hover:bg-indigo-50 ${outstanding > 0 ? "" : "w-full"}`}
+                  >
+                    <ExternalLink className="w-3 h-3 mr-1.5" />
+                    Buka Detail SO
+                  </Button>
+                </Link>
               </div>
-              <div className={`flex justify-between text-xs font-semibold ${outstanding > 0 ? "text-red-600" : "text-emerald-600"}`}>
-                <span>Sisa Outstanding</span>
-                <span className="font-mono">{outstanding > 0 ? idr(outstanding) : "✓ Lunas"}</span>
-              </div>
+            </>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      {/* Catat Pembayaran Dialog */}
+      <Dialog open={payOpen} onOpenChange={v => { if (!paying) setPayOpen(v); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ClipboardList className="w-4 h-4 text-indigo-600" />
+              Catat Pembayaran Masuk
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-3 py-1">
+            {/* SO info */}
+            <div className="bg-indigo-50 rounded-lg px-3 py-2 text-xs space-y-0.5">
+              <p><span className="text-slate-400">SO:</span> <span className="font-mono font-semibold">{doc?.docNumber ?? soNumber}</span></p>
+              <p><span className="text-slate-400">Customer:</span> {doc?.customerName}</p>
+              <p>
+                <span className="text-slate-400">Outstanding:</span>{" "}
+                <span className="font-semibold text-red-600">{idr(outstanding)}</span>
+              </p>
             </div>
 
-            {/* Progress bar */}
-            {doc.grandTotal > 0 && (
-              <div className="space-y-1">
-                <div className="flex justify-between text-[10px] text-slate-400">
-                  <span>Progress Pembayaran</span>
-                  <span>{pctPaid}%</span>
-                </div>
-                <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all ${pctPaid >= 100 ? "bg-emerald-500" : pctPaid > 0 ? "bg-indigo-400" : "bg-slate-200"}`}
-                    style={{ width: `${Math.min(pctPaid, 100)}%` }}
-                  />
-                </div>
-              </div>
-            )}
+            {/* Jurnal */}
+            <div className="space-y-1.5">
+              <Label className="text-xs">Jurnal Kas/Bank <span className="text-red-500">*</span></Label>
+              {bankCashJournals.length === 0 ? (
+                <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  Belum ada jurnal Kas/Bank. Buat dulu di menu Akuntansi → Jurnal.
+                </p>
+              ) : (
+                <Select value={payForm.journalId} onValueChange={v => setPayForm(f => ({ ...f, journalId: v }))}>
+                  <SelectTrigger className="h-9 text-sm">
+                    <SelectValue placeholder="Pilih jurnal..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {bankCashJournals.map(j => (
+                      <SelectItem key={j.id} value={String(j.id)}>
+                        [{j.code}] {j.name} ({j.type === "bank" ? "Bank" : "Kas"})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
 
-            {/* Link ke detail SO */}
-            <Link href={`/sales/documents/${salesDocId}`}>
-              <Button variant="outline" size="sm" className="w-full text-xs border-indigo-200 text-indigo-600 hover:bg-indigo-50">
-                <ExternalLink className="w-3 h-3 mr-1.5" />
-                Buka Detail Sales Order
-              </Button>
-            </Link>
-          </>
-        ) : null}
-      </CardContent>
-    </Card>
+            {/* Tanggal */}
+            <div className="space-y-1.5">
+              <Label className="text-xs">Tanggal Pembayaran <span className="text-red-500">*</span></Label>
+              <Input
+                type="date"
+                value={payForm.date}
+                onChange={e => setPayForm(f => ({ ...f, date: e.target.value }))}
+                className="h-9 text-sm"
+              />
+            </div>
+
+            {/* Jumlah */}
+            <div className="space-y-1.5">
+              <Label className="text-xs">Jumlah Diterima (IDR) <span className="text-red-500">*</span></Label>
+              <Input
+                type="number"
+                value={payForm.amount}
+                onChange={e => setPayForm(f => ({ ...f, amount: e.target.value }))}
+                placeholder="0"
+                min={1}
+                className="h-9 text-sm font-mono"
+              />
+              {outstanding > 0 && Number(payForm.amount) > 0 && Number(payForm.amount) < outstanding && (
+                <p className="text-[10px] text-amber-600">
+                  Pembayaran sebagian — sisa {idr(outstanding - Number(payForm.amount))}
+                </p>
+              )}
+            </div>
+
+            {/* Referensi */}
+            <div className="space-y-1.5">
+              <Label className="text-xs">Referensi <span className="text-slate-400">(opsional)</span></Label>
+              <Input
+                value={payForm.ref}
+                onChange={e => setPayForm(f => ({ ...f, ref: e.target.value }))}
+                placeholder="No. transfer / cek / bukti"
+                className="h-9 text-sm"
+              />
+            </div>
+
+            {/* Memo */}
+            <div className="space-y-1.5">
+              <Label className="text-xs">Memo <span className="text-slate-400">(opsional)</span></Label>
+              <Input
+                value={payForm.memo}
+                onChange={e => setPayForm(f => ({ ...f, memo: e.target.value }))}
+                className="h-9 text-sm"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPayOpen(false)} disabled={paying}>Batal</Button>
+            <Button
+              className="bg-indigo-600 hover:bg-indigo-700 text-white"
+              onClick={() => void submitPayment()}
+              disabled={paying || !payForm.journalId}
+            >
+              {paying
+                ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Menyimpan...</>
+                : <><CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />Catat Pembayaran</>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
