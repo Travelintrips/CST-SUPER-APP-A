@@ -3,6 +3,7 @@ import { db, companiesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
+import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 
 const router = Router();
 
@@ -138,7 +139,9 @@ router.delete("/:id", async (req, res) => {
   if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
   // Prevent deleting core companies 1-4
   if (id <= 4) return res.status(403).json({ message: "Tidak dapat menghapus perusahaan inti (id 1-4)" });
+  const [company] = await db.select({ logoUrl: companiesTable.logoUrl }).from(companiesTable).where(eq(companiesTable.id, id));
   await db.delete(companiesTable).where(eq(companiesTable.id, id));
+  if (company?.logoUrl) deleteFromSupabase(company.logoUrl).catch(() => {});
   return res.json({ success: true });
 });
 

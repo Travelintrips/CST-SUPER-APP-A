@@ -132,6 +132,7 @@ import WaNotificationHistoryPage from "@/pages/wa-notification-history";
 import AnalyticsDashboardPage from "@/pages/analytics-dashboard";
 import POOrdersPage from "@/pages/purchase/po-orders";
 import VendorFormsPage from "@/pages/purchase/vendor-forms";
+import VmfAuditTrailPage from "@/pages/purchase/vmf-audit-trail";
 
 const PR = (C: React.ComponentType) => () => <ProtectedRoute component={C} />;
 
@@ -212,6 +213,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/purchase/orders/:id" component={PR(PurchaseDocumentEditorPage)} />
       <Route path="/purchase/orders" component={PR(POOrdersPage)} />
       <Route path="/purchase/vendor-forms" component={PR(VendorFormsPage)} />
+      <Route path="/purchase/vmf-audit-trail" component={PR(VmfAuditTrailPage)} />
       <Route path="/purchase/vendors/:id" component={PR(VendorDetailPage)} />
       <Route path="/purchase/vendors" component={PR(VendorsPage)} />
       <Route path="/purchase/bills" component={PR(PurchaseBillsPage)} />

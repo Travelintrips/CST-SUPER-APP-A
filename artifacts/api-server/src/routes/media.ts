@@ -53,6 +53,16 @@ router.get("/", async (req, res) => {
   res.json({ items });
 });
 
+const MEDIA_ALLOWED_MIME = new Set([
+  "image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif",
+  "image/tiff", "image/bmp", "image/heic", "image/heif", "image/svg+xml",
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+]);
+
 // POST /api/media/upload — upload dan kompres gambar, simpan ke Supabase Storage
 router.post("/upload", upload.single("file"), async (req, res): Promise<void> => {
   try {
@@ -61,6 +71,11 @@ router.post("/upload", upload.single("file"), async (req, res): Promise<void> =>
     }
 
     const { mimetype, originalname } = req.file;
+
+    if (!MEDIA_ALLOWED_MIME.has(mimetype)) {
+      res.status(415).json({ error: `Tipe file tidak didukung: ${mimetype}. Gunakan gambar, PDF, atau dokumen Office.` }); return;
+    }
+
     const folder = (req.body.folder as string)?.trim() || "Umum";
     let buffer = req.file.buffer;
     let finalContentType = mimetype;

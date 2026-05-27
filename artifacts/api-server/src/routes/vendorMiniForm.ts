@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { rateLimit } from "express-rate-limit";
-import { eq, desc, inArray, and, count, isNull, ne } from "drizzle-orm";
+import { eq, desc, inArray, and, count, isNull, ne, sql } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import multer from "multer";
 import { ObjectStorageService } from "../lib/objectStorage.js";
@@ -20,6 +20,7 @@ import {
   orderUpdatesTable,
 } from "@workspace/db";
 import { requireClerkUser } from "../lib/requireAdmin";
+import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminGroupWa } from "../lib/adminWa.js";
 import { createSalesOrderFromVmfApproval } from "../lib/vmfSoIntegration.js";
@@ -703,6 +704,14 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
 
     if (!formData || typeof formData !== "object") return res.status(400).json({ error: "formData diperlukan" });
 
+    // Validasi attachmentUrl: hanya boleh objectPath dari private storage (/objects/...)
+    // Tolak URL arbitrary (http://, https://, dll) untuk mencegah SSRF/XSS.
+    if (attachmentUrl !== undefined && attachmentUrl !== null && attachmentUrl !== "") {
+      if (!attachmentUrl.startsWith("/objects/")) {
+        return res.status(400).json({ error: "attachmentUrl tidak valid. Gunakan endpoint upload terlebih dahulu." });
+      }
+    }
+
     // Validasi server-side untuk field required berdasarkan SERVICE_SCHEMAS
     const schema = SERVICE_SCHEMAS[link.serviceType];
     if (schema) {
@@ -1112,6 +1121,7 @@ vendorMiniFormRouter.post("/customer-approval/:token", async (req: Request, res:
     if (action === "approve") {
       await logActivity("customer_approval", locked?.id ?? 0, "approved", "customer",
         `Customer ${customerName ?? "-"} menyetujui penawaran. SO: ${soNumber}`,
+                        
         { soNumber, salesDocId, orderId }).catch?.(() => {});
       // G-3: order_updates entry untuk persetujuan customer
       if (orderId) {
@@ -1136,6 +1146,15 @@ vendorMiniFormRouter.post("/customer-approval/:token", async (req: Request, res:
           false,
         ).catch(() => {});
       }
+        { soNumber, salesDocId, orderId, approvalId: locked?.id }).catch?.(() => {});
+      if (salesDocId && soNumber) {
+        await logActivity("sales_order", salesDocId, "so_created", "system",
+          `SO ${soNumber} dibuat otomatis dari persetujuan customer VMF${customerName ? ` (${customerName})` : ""}`,
+          { docNumber: soNumber, approvalId: locked?.id, orderId }).catch?.(() => {});
+      }
+    } else {
+      await logActivity("customer_approval", locked?.id ?? 0, "rejected", "customer",
+        `Customer ${customerName ?? "-"} menolak penawaran`, { orderId, approvalId: locked?.id }).catch?.(() => {});
     }
 
     // Notify via WA templates (fire-and-forget)
@@ -1617,14 +1636,155 @@ vendorMiniFormRouter.get("/admin/submissions/:id/price-history", async (req: Req
 vendorMiniFormRouter.get("/admin/activity-log", async (req: Request, res: Response) => {
   if (!(await requireClerkUser(req, res))) return;
   try {
-    const logs = await db
-      .select()
-      .from(vmfActivityLogTable)
-      .orderBy(desc(vmfActivityLogTable.createdAt))
-      .limit(200);
-    return res.json(logs.map(l => ({ ...l, createdAt: l.createdAt.toISOString() })));
+    const {
+      entityType, action, orderNumber, actor,
+      from, to,
+      limit: limitQ, offset: offsetQ,
+    } = req.query as Record<string, string | undefined>;
+
+    const limit = Math.min(Number(limitQ) || 200, 500);
+    const offset = Number(offsetQ) || 0;
+
+    const conditions = [];
+    if (entityType) conditions.push(eq(vmfActivityLogTable.entityType, entityType));
+    if (action) conditions.push(eq(vmfActivityLogTable.action, action));
+    if (actor) conditions.push(eq(vmfActivityLogTable.actor, actor));
+    if (from) {
+      const fromDate = new Date(from);
+      if (!isNaN(fromDate.getTime())) {
+        conditions.push(sql`${vmfActivityLogTable.createdAt} >= ${fromDate}`);
+      }
+    }
+    if (to) {
+      const toDate = new Date(to);
+      if (!isNaN(toDate.getTime())) {
+        toDate.setHours(23, 59, 59, 999);
+        conditions.push(sql`${vmfActivityLogTable.createdAt} <= ${toDate}`);
+      }
+    }
+    if (orderNumber) {
+      conditions.push(sql`${vmfActivityLogTable.data}->>'orderNumber' = ${orderNumber}`);
+    }
+
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const [logs, countResult] = await Promise.all([
+      db.select().from(vmfActivityLogTable)
+        .where(where)
+        .orderBy(desc(vmfActivityLogTable.createdAt))
+        .limit(limit)
+        .offset(offset),
+      db.select({ total: count() }).from(vmfActivityLogTable).where(where),
+    ]);
+
+    return res.json({
+      rows: logs.map(l => ({ ...l, createdAt: l.createdAt.toISOString() })),
+      total: countResult[0]?.total ?? 0,
+    });
   } catch (err) {
     req.log?.error({ err }, "activity-log error");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── ADMIN: GET /api/vendor-form/admin/activity-log/gaps ───────────────────────
+// Returns orders where at least one critical VMF step is missing.
+// Critical flow: link_generated → approval_sent → so_created → op_confirm_sent
+
+vendorMiniFormRouter.get("/admin/activity-log/gaps", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  try {
+    const { from, to, orderNumber, gapAfter } = req.query as Record<string, string | undefined>;
+
+    const fromDate = from ? new Date(from) : null;
+    const toDate   = to   ? (() => { const d = new Date(to); d.setHours(23, 59, 59, 999); return d; })() : null;
+
+    const extraConds = sql.join(
+      [
+        fromDate && !isNaN(fromDate.getTime()) ? sql`AND ${vmfActivityLogTable.createdAt} >= ${fromDate}` : null,
+        toDate   && !isNaN(toDate.getTime())   ? sql`AND ${vmfActivityLogTable.createdAt} <= ${toDate}`   : null,
+        orderNumber ? sql`AND ${vmfActivityLogTable.data}->>'orderNumber' = ${orderNumber}` : null,
+      ].filter(Boolean) as ReturnType<typeof sql>[],
+      sql` `,
+    );
+
+    const result = await db.execute(sql`
+      SELECT
+        ${vmfActivityLogTable.data}->>'orderNumber'          AS order_number,
+        bool_or(${vmfActivityLogTable.action} = 'link_generated')   AS has_link_generated,
+        bool_or(${vmfActivityLogTable.action} = 'approval_sent')    AS has_approval_sent,
+        bool_or(${vmfActivityLogTable.action} = 'so_created')       AS has_so_created,
+        bool_or(${vmfActivityLogTable.action} = 'op_confirm_sent')  AS has_op_confirm_sent,
+        MIN(${vmfActivityLogTable.createdAt})  AS first_event,
+        MAX(${vmfActivityLogTable.createdAt})  AS last_event,
+        COUNT(*)::int                          AS total_events
+      FROM ${vmfActivityLogTable}
+      WHERE ${vmfActivityLogTable.data}->>'orderNumber' IS NOT NULL
+        AND ${vmfActivityLogTable.action} IN ('link_generated','approval_sent','so_created','op_confirm_sent')
+        ${extraConds}
+      GROUP BY ${vmfActivityLogTable.data}->>'orderNumber'
+      ORDER BY MIN(${vmfActivityLogTable.createdAt}) DESC
+    `);
+
+    type DbRow = {
+      order_number: string;
+      has_link_generated: boolean;
+      has_approval_sent: boolean;
+      has_so_created: boolean;
+      has_op_confirm_sent: boolean;
+      first_event: string;
+      last_event: string;
+      total_events: number;
+    };
+
+    const allOrders = (result.rows as unknown as DbRow[]);
+
+    const CRITICAL = ["link_generated", "approval_sent", "so_created", "op_confirm_sent"] as const;
+    type CriticalKey = typeof CRITICAL[number];
+    const hasMap: Record<CriticalKey, keyof DbRow> = {
+      link_generated:  "has_link_generated",
+      approval_sent:   "has_approval_sent",
+      so_created:      "has_so_created",
+      op_confirm_sent: "has_op_confirm_sent",
+    };
+
+    const gapRows = allOrders
+      .map(row => {
+        const present = CRITICAL.filter(a => row[hasMap[a]]);
+        const missing = CRITICAL.filter(a => !row[hasMap[a]]);
+        const lastPresentIdx = Math.max(-1, ...present.map(a => CRITICAL.indexOf(a)));
+        // Gap = has made some progress but is missing a subsequent step
+        const hasGap = lastPresentIdx >= 0 && missing.some(a => CRITICAL.indexOf(a) <= lastPresentIdx + 2);
+        return {
+          orderNumber: row.order_number,
+          present,
+          missing,
+          hasGap,
+          firstEvent: row.first_event,
+          lastEvent: row.last_event,
+          totalEvents: Number(row.total_events),
+        };
+      })
+      .filter(r => {
+        if (r.present.length === 0) return false;
+        if (gapAfter && !r.present.includes(gapAfter as CriticalKey)) return false;
+        return r.hasGap;
+      });
+
+    return res.json({
+      rows: gapRows,
+      total: gapRows.length,
+      summary: {
+        total_orders:           allOrders.length,
+        orders_with_gap:        gapRows.length,
+        missing_link_generated:  allOrders.filter(r => !r.has_link_generated).length,
+        missing_approval_sent:   allOrders.filter(r => !r.has_approval_sent).length,
+        missing_so_created:      allOrders.filter(r => !r.has_so_created).length,
+        missing_op_confirm_sent: allOrders.filter(r => !r.has_op_confirm_sent).length,
+      },
+    });
+  } catch (err) {
+    req.log?.error({ err }, "activity-log/gaps error");
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1897,6 +2057,7 @@ vendorMiniFormRouter.delete("/admin/submissions/:id", async (req: Request, res: 
     await logActivity("submission", id, "deleted", userId,
       `Submission dari ${deleted.vendorName ?? "vendor"} dihapus oleh admin`,
       { vendorPrice: deleted.vendorPrice, responseStatus: deleted.responseStatus });
+    if (deleted.attachmentUrl) deleteFromSupabase(deleted.attachmentUrl).catch(() => {});
     return res.json({ success: true });
   } catch (err) {
     req.log?.error({ err }, "vendor-mini-form DELETE submission error");
@@ -1921,6 +2082,9 @@ vendorMiniFormRouter.post("/admin/links/:id/short-link", async (req: Request, re
     const longUrl = domain ? `https://${domain}/vendor-mini-form/${link.token}` : `/vendor-mini-form/${link.token}`;
     const shortUrl = await generateShortLink(longUrl, { context: "vendor_mini_form", refType: "vendor_mini_form_link", refId: String(link.id) });
     await db.update(vendorMiniFormLinksTable).set({ shortUrl }).where(eq(vendorMiniFormLinksTable.id, id));
+    await logActivity("link", id, "link_generated", (req.user as { id: string } | undefined)?.id ?? "admin",
+      `Short link di-generate untuk ${link.serviceType}${link.orderNumber ? ` (Order: ${link.orderNumber})` : ""}`,
+      { shortUrl, serviceType: link.serviceType, orderNumber: link.orderNumber });
     return res.json({ shortUrl, cached: false });
   } catch (err) {
     req.log?.error({ err }, "vendor-mini-form short-link error");
@@ -1943,6 +2107,9 @@ vendorMiniFormRouter.post("/admin/links/:id/reset-short-link", async (req: Reque
     const longUrl = domain ? `https://${domain}/vendor-mini-form/${link.token}` : `/vendor-mini-form/${link.token}`;
     const shortUrl = await generateShortLink(longUrl, { context: "vendor_mini_form", refType: "vendor_mini_form_link", refId: String(link.id) });
     await db.update(vendorMiniFormLinksTable).set({ shortUrl }).where(eq(vendorMiniFormLinksTable.id, id));
+    await logActivity("link", id, "link_generated", (req.user as { id: string } | undefined)?.id ?? "admin",
+      `Short link di-reset untuk ${link.serviceType}${link.orderNumber ? ` (Order: ${link.orderNumber})` : ""}`,
+      { shortUrl, serviceType: link.serviceType, orderNumber: link.orderNumber });
     return res.json({ shortUrl });
   } catch (err) {
     req.log?.error({ err }, "vendor-mini-form reset-short-link error");
@@ -2014,6 +2181,9 @@ vendorMiniFormRouter.post("/admin/customer-approvals/:id/retry-so", async (req: 
       await db.update(customerApprovalsTable)
         .set({ soNumber: soResult.docNumber })
         .where(eq(customerApprovalsTable.id, id));
+      await logActivity("sales_order", soResult.docId, "so_created", (req.user as { id: string } | undefined)?.id ?? "admin",
+        `SO ${soResult.docNumber} dibuat ulang via retry untuk approval ID ${id}${approval.customerName ? ` (${approval.customerName})` : ""}`,
+        { docNumber: soResult.docNumber, approvalId: id, orderId: approval.orderId, orderNumber: approval.orderNumber });
       return res.json({ ok: true, docId: soResult.docId, docNumber: soResult.docNumber });
     } else if (soResult.reason === "already_exists") {
       if (!approval.soNumber) {
@@ -2068,6 +2238,12 @@ vendorMiniFormRouter.post("/admin/customer-approvals/:id/send-wa", async (req: R
             userId2b,
           ).catch(() => {});
         }
+        const actorId = (req.user as { id: string } | undefined)?.id ?? "admin";
+        await logActivity("customer_approval", id, "sent_wa", actorId,
+          `WA penawaran dikirim ke customer ${approval.customerName ?? "-"}`, { phone: target });
+        await logActivity("customer_approval", id, "approval_sent", actorId,
+          `Link approval dikirim ke customer ${approval.customerName ?? "-"} via WhatsApp${approval.orderNumber ? ` (Order: ${approval.orderNumber})` : ""}`,
+          { phone: target, channel: "whatsapp", orderNumber: approval.orderNumber, sellingPrice: approval.sellingPrice });
         return res.json({ success: true, message: "Pesan WA ke customer berhasil dikirim" });
       }
     }
@@ -2083,7 +2259,12 @@ vendorMiniFormRouter.post("/admin/customer-approvals/:id/send-wa", async (req: R
 
     const userId2bFb = (req.user as { id: string } | undefined)?.id ?? "admin";
     await logActivity("customer_approval", id, "sent_wa", userId2bFb,
+    const actorId = (req.user as { id: string } | undefined)?.id ?? "admin";
+    await logActivity("customer_approval", id, "sent_wa", actorId,
       `WA penawaran dikirim ke customer ${approval.customerName ?? "-"}`, { phone: target });
+    await logActivity("customer_approval", id, "approval_sent", actorId,
+      `Link approval dikirim ke customer ${approval.customerName ?? "-"} via WhatsApp${approval.orderNumber ? ` (Order: ${approval.orderNumber})` : ""}`,
+      { phone: target, channel: "whatsapp", orderNumber: approval.orderNumber, sellingPrice: approval.sellingPrice });
 
     // G-2b: order_updates entry (fallback path)
     if (approval.orderId) {
@@ -2175,8 +2356,12 @@ vendorMiniFormRouter.post("/admin/op-confirms/:id/send-wa", async (req: Request,
     }
 
     const userId4b = (req.user as { id: string } | undefined)?.id ?? "admin";
-    await logActivity("op_confirm", id, "sent_wa", userId4b,
+    const opActorId = (req.user as { id: string } | undefined)?.id ?? "admin";
+    await logActivity("op_confirm", id, "sent_wa", opActorId,
       `WA op-confirm dikirim ke ${conf.vendorName ?? "vendor"}`, { phone });
+    await logActivity("op_confirm", id, "op_confirm_sent", opActorId,
+      `Link konfirmasi operasional dikirim ke ${conf.vendorName ?? "vendor"} via WhatsApp${conf.orderNumber ? ` (Order: ${conf.orderNumber})` : ""}`,
+      { phone, channel: "whatsapp", orderNumber: conf.orderNumber, serviceType: conf.serviceType });
 
     // G-4b: order_updates entry saat WA op-confirm dikirim ke vendor
     if (conf.orderId) {
