@@ -26,7 +26,7 @@ const limiter = rateLimit({
 
 const failureLimiter = rateLimit({
   windowMs: 5 * 60 * 1000,
-  max: 10,
+  max: IS_DEV ? 500 : 50,
   standardHeaders: "draft-7",
   legacyHeaders: false,
   skipSuccessfulRequests: true,
