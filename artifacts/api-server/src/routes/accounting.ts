@@ -33,6 +33,8 @@ import {
 } from "../lib/accountingSeed.js";
 import { logger } from "../lib/logger.js";
 import { postEntry, type PostingLine } from "../lib/accounting.js";
+import { sendWhatsApp } from "../lib/fonnte.js";
+import { getAdminWa } from "../lib/adminWa.js";
 
 function serializeCompany(c: typeof companiesTable.$inferSelect) {
   return { ...c, createdAt: c.createdAt.toISOString() };
@@ -854,7 +856,7 @@ router.post("/payments", async (req, res) => {
 
       if (validSourceType === "sales_order") {
         const [doc] = await db
-          .select({ grandTotal: salesDocumentsTable.grandTotal })
+          .select({ grandTotal: salesDocumentsTable.grandTotal, docNumber: salesDocumentsTable.docNumber })
           .from(salesDocumentsTable)
           .where(eq(salesDocumentsTable.id, parsedSourceDocId));
         const grandTotal = Number(doc?.grandTotal ?? 0);
@@ -872,6 +874,41 @@ router.post("/payments", async (req, res) => {
             updatedAt: new Date(),
           })
           .where(eq(salesDocumentsTable.id, parsedSourceDocId));
+
+        // WA notification to admin — fire-and-forget
+        const fmtIdr = (n: number) =>
+          `Rp ${Math.round(n).toLocaleString("id-ID")}`;
+        const statusLabel =
+          newStatus === "paid"
+            ? "✅ *LUNAS*"
+            : `⏳ Sebagian (sisa ${fmtIdr(Math.max(0, grandTotal - totalPaid))})`;
+        const waMsg = [
+          `💰 *Pembayaran Masuk Dicatat*`,
+          ``,
+          `No: ${payment!.paymentNumber}`,
+          `SO: ${doc?.docNumber ?? `#${parsedSourceDocId}`}`,
+          `Customer: ${partner}`,
+          `Jumlah: ${fmtIdr(amt)}`,
+          ref ? `Ref: ${ref}` : null,
+          `Tanggal: ${String(dateStr)}`,
+          `Status: ${statusLabel}`,
+        ]
+          .filter((l) => l !== null)
+          .join("\n");
+        getAdminWa()
+          .then((adminWa) => {
+            if (adminWa)
+              sendWhatsApp(adminWa, waMsg, {
+                context: "payment_recorded",
+                refType: "sales_order",
+                refId: doc?.docNumber ?? String(parsedSourceDocId),
+              }).catch((e: unknown) =>
+                logger.error({ e }, "WA admin payment notif failed"),
+              );
+          })
+          .catch((e: unknown) =>
+            logger.error({ e }, "getAdminWa payment notif failed"),
+          );
       } else if (validSourceType === "purchase_order") {
         const [doc] = await db
           .select({ grandTotal: purchaseDocumentsTable.grandTotal })
