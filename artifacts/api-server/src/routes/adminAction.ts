@@ -243,6 +243,7 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
             name: vendorCatalogItemsTable.name,
             type: vendorCatalogItemsTable.type,
             isCommodityTag: vendorCatalogItemsTable.isCommodityTag,
+            priceBase: vendorCatalogItemsTable.priceBase,
           }).from(vendorCatalogItemsTable)
             .where(and(
               inArray(vendorCatalogItemsTable.vendorId, vendorIdList),
@@ -252,20 +253,27 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
 
       // Build sets: vendor dengan commodity match & vendor yang punya item PRODUK di etalase
       const commodityKeyword = (order.commodity ?? "").toLowerCase().trim();
+      const commodityKwParts = commodityKeyword.split(/\s+/).filter((k: string) => k.length > 2);
       const vendorIdsWithCommodity   = new Set<number>();
       const vendorIdsWithProductItem = new Set<number>(); // hanya type='product'
+      // Map vendorId → priceBase item pertama yang aktif (prefer product type)
+      const vendorPriceBaseMap = new Map<number, number | null>();
 
       for (const item of catalogItems) {
         if (item.type === "product") {
           vendorIdsWithProductItem.add(item.vendorId);
+          if (!vendorPriceBaseMap.has(item.vendorId)) {
+            vendorPriceBaseMap.set(item.vendorId, item.priceBase != null ? Number(item.priceBase) : null);
+          }
+        } else if (!vendorPriceBaseMap.has(item.vendorId)) {
+          vendorPriceBaseMap.set(item.vendorId, item.priceBase != null ? Number(item.priceBase) : null);
         }
 
         if (commodityKeyword) {
-          const kwParts = commodityKeyword.split(/\s+/).filter((k: string) => k.length > 2);
           const isTagged = item.isCommodityTag === true;
           const itemName = item.name.toLowerCase();
           const nameMatches = itemName.includes(commodityKeyword) ||
-            kwParts.some((kw: string) => itemName.includes(kw));
+            commodityKwParts.some((kw: string) => itemName.includes(kw));
           if (isTagged || nameMatches) vendorIdsWithCommodity.add(item.vendorId);
         }
       }
@@ -282,6 +290,7 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
         isMatching: isServiceMatch(v.serviceType),
         hasCommodityMatch: vendorIdsWithCommodity.has(v.id),
         hasProductItem: vendorIdsWithProductItem.has(v.id),
+        priceBase: vendorPriceBaseMap.get(v.id) ?? null,
       }));
 
       const commodityMatched  = allWithFlag.filter((v) => v.hasCommodityMatch);
@@ -292,7 +301,7 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
       // 1. shipmentType ada + ada match → hanya vendor yg match (service + commodity)
       // 2. shipmentType ada + tak ada match → semua vendor berserviceType + warning
       // 3. shipmentType kosong + commodity ada + ada commodity match → hanya vendor dg commodity match
-      // 4. shipmentType kosong + commodity ada + tak ada match → vendor yg punya etalase apapun
+      // 4. shipmentType kosong + commodity ada + ada product vendors → filter product vendors by commodity
       // 5. shipmentType kosong + commodity kosong + ada etalase → hanya vendor yg punya etalase
       // 6. shipmentType kosong + commodity kosong + tak ada etalase → vendor berserviceType (fallback)
       let vendors: typeof allWithFlag;
@@ -314,8 +323,19 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
         vendorFilterApplied = true;
         filterMode = "commodity";
       } else if (productVendors.length > 0) {
-        // Tidak ada shipmentType → hanya tampilkan vendor yang punya item PRODUK di etalase
-        vendors = productVendors;
+        // Ada product vendors di etalase
+        // Jika ada commodity, filter hanya product vendor yang punya item matching commodity
+        if (commodityKeyword) {
+          const relevantProductVendors = productVendors.filter((v) => v.hasCommodityMatch);
+          if (relevantProductVendors.length > 0) {
+            vendors = relevantProductVendors;
+          } else {
+            // Tidak ada product vendor yang punya item matching → tampilkan semua product vendor (fallback)
+            vendors = productVendors;
+          }
+        } else {
+          vendors = productVendors;
+        }
         vendorFilterApplied = true;
         filterMode = "etalase";
       } else {
