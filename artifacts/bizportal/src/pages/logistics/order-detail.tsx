@@ -1280,6 +1280,11 @@ type SalesDocSummary = {
 };
 
 type Journal = { id: number; name: string; type: string; code: string };
+type Payment = {
+  id: number; paymentType: string; amount: number; date: string;
+  ref: string | null; memo: string | null; partnerName: string | null;
+  journalId: number; status: string; voidReason: string | null; createdAt: string;
+};
 
 function PaymentSummaryPanel({
   salesDocId, soNumber,
@@ -1304,6 +1309,14 @@ function PaymentSummaryPanel({
     staleTime: 60000,
   });
   const bankCashJournals = allJournals.filter(j => j.type === "bank" || j.type === "cash");
+
+  const { data: payments = [], refetch: refetchPayments } = useQuery<Payment[]>({
+    queryKey: ["so-payments", salesDocId],
+    queryFn: () => apiFetch(`/api/accounting/payments?sourceType=sales_order&sourceDocId=${salesDocId}`),
+    enabled: salesDocId != null,
+    staleTime: 30000,
+  });
+  const journalMap = Object.fromEntries(allJournals.map(j => [j.id, j]));
 
   const [payOpen, setPayOpen] = useState(false);
   const [paying, setPaying] = useState(false);
@@ -1356,7 +1369,9 @@ function PaymentSummaryPanel({
       toast({ title: "✅ Pembayaran dicatat", description: `${idr(amt)} berhasil direkam ke jurnal` });
       setPayOpen(false);
       void refetch();
+      void refetchPayments();
       void qc.invalidateQueries({ queryKey: ["sales-doc-summary", salesDocId] });
+      void qc.invalidateQueries({ queryKey: ["so-payments", salesDocId] });
     } catch (e: unknown) {
       toast({ title: "Gagal catat pembayaran", description: (e as Error).message, variant: "destructive" });
     } finally {
@@ -1502,6 +1517,55 @@ function PaymentSummaryPanel({
                       className={`h-full rounded-full transition-all ${pctPaid >= 100 ? "bg-emerald-500" : pctPaid > 0 ? "bg-indigo-400" : "bg-slate-200"}`}
                       style={{ width: `${Math.min(pctPaid, 100)}%` }}
                     />
+                  </div>
+                </div>
+              )}
+
+              {/* Riwayat Pembayaran */}
+              {payments.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
+                    Riwayat Pembayaran ({payments.length})
+                  </p>
+                  <div className="space-y-1 max-h-40 overflow-y-auto">
+                    {payments.map(p => {
+                      const isVoided = p.status === "void";
+                      const jrnl = journalMap[p.journalId];
+                      return (
+                        <div
+                          key={p.id}
+                          className={`rounded-lg border px-3 py-2 text-xs ${isVoided ? "border-slate-100 bg-slate-50 opacity-60" : "border-emerald-100 bg-emerald-50/50"}`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className={`font-mono font-semibold ${isVoided ? "line-through text-slate-400" : "text-emerald-700"}`}>
+                              {idr(p.amount)}
+                            </span>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {isVoided && (
+                                <span className="text-[9px] font-bold text-red-500 bg-red-50 border border-red-200 px-1 py-0.5 rounded">VOID</span>
+                              )}
+                              <span className="text-slate-400">
+                                {new Date(p.date).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                            {jrnl && (
+                              <span className="text-slate-400">{jrnl.name}</span>
+                            )}
+                            {p.ref && (
+                              <span className="text-slate-500 font-medium">#{p.ref}</span>
+                            )}
+                            {p.memo && (
+                              <span className="text-slate-400 truncate">{p.memo}</span>
+                            )}
+                          </div>
+                          {isVoided && p.voidReason && (
+                            <p className="text-[10px] text-red-400 mt-0.5">Void: {p.voidReason}</p>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
