@@ -174,7 +174,19 @@ export default function PaymentsPage() {
     to?: string;
     sourceType?: string;
     refDocNumber?: string;
-  }>({});
+  }>(() => {
+    try {
+      const p = new URLSearchParams(window.location.search);
+      const refDocNumber = p.get("refDocNumber");
+      const sourceType = p.get("sourceType");
+      return {
+        ...(refDocNumber ? { refDocNumber } : {}),
+        ...(sourceType ? { sourceType } : {}),
+      };
+    } catch {
+      return {};
+    }
+  });
   const [refSearch, setRefSearch] = useState("");
 
   const { activeCompanyId, isConsolidated } = useCompany();

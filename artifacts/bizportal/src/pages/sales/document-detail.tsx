@@ -36,7 +36,7 @@ import {
   ArrowLeft, FileEdit, Printer, CheckCircle, Send, XCircle,
   Truck, Receipt, User, Calendar, MapPin, Package, FileText,
   Clock, Loader2, Trash2, ExternalLink, PlusCircle, Ban,
-  CreditCard, AlertCircle, History, CircleDot,
+  CreditCard, AlertCircle, History, CircleDot, SquareArrowOutUpRight,
 } from "lucide-react";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -348,12 +348,14 @@ function VoidDialog({
 
 function PaymentHistoryTab({
   docId,
+  docNumber,
   customerName,
   grandTotal,
   amountPaid,
   isOrder,
 }: {
   docId: number;
+  docNumber?: string | null;
   customerName: string;
   grandTotal: number;
   amountPaid: number;
@@ -407,13 +409,20 @@ function PaymentHistoryTab({
       </div>
 
       {/* Add button */}
-      {isOrder && (
-        <div className="flex justify-end">
+      <div className="flex items-center justify-between">
+        {docNumber ? (
+          <Link href={`/accounting/payments?refDocNumber=${encodeURIComponent(docNumber)}`}>
+            <Button size="sm" variant="ghost" className="gap-1.5 text-xs text-muted-foreground hover:text-foreground">
+              <SquareArrowOutUpRight className="h-3.5 w-3.5" /> Lihat di Akuntansi
+            </Button>
+          </Link>
+        ) : <span />}
+        {isOrder && (
           <Button size="sm" className="gap-2" onClick={() => setShowAdd(true)}>
             <PlusCircle className="h-3.5 w-3.5" /> Tambah Pembayaran
           </Button>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Payment list */}
       {(payments ?? []).length === 0 ? (
@@ -1112,6 +1121,7 @@ export default function SalesDocumentDetailPage() {
           <TabsContent value="pembayaran" className="mt-4">
             <PaymentHistoryTab
               docId={docId}
+              docNumber={doc.docNumber}
               customerName={doc.customerName ?? ""}
               grandTotal={grandTotal}
               amountPaid={amountPaid}

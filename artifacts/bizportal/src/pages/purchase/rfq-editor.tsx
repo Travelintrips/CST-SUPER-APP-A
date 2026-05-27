@@ -59,7 +59,7 @@ import {
 } from "@workspace/api-client-react";
 
 import { useQueryClient, useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Plus, Send, Check, X, FileText, Truck, Trash2, FileEdit, Save, Printer, CreditCard, Wallet, ScanLine, Mail, MessageSquare } from "lucide-react";
+import { ArrowLeft, Plus, Send, Check, X, FileText, Truck, Trash2, FileEdit, Save, Printer, CreditCard, Wallet, ScanLine, Mail, MessageSquare, SquareArrowOutUpRight } from "lucide-react";
 import { CorrespondenceTab } from "@/components/CorrespondenceTab";
 
 const idr = (n: number) =>
@@ -811,18 +811,27 @@ export default function PurchaseDocumentEditorPage() {
               <CardTitle className="flex items-center gap-2">
                 <Wallet className="h-4 w-4" /> Pembayaran
               </CardTitle>
-              {doc?.kind === "order" &&
-                doc?.billStatus === "billed" &&
-                Math.max(0, Number(doc?.grandTotal ?? 0) - Number(doc?.amountPaid ?? 0)) > 0 && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={openPayDialog}
-                  data-testid="button-record-payment"
-                >
-                  <CreditCard className="mr-2 h-4 w-4" /> Bayar
-                </Button>
-              )}
+              <div className="flex items-center gap-2">
+                {doc?.docNumber && (
+                  <Link href={`/accounting/payments?refDocNumber=${encodeURIComponent(doc.docNumber)}&sourceType=purchase_order`}>
+                    <Button size="sm" variant="ghost" className="gap-1.5 text-xs text-slate-400 hover:text-slate-200">
+                      <SquareArrowOutUpRight className="h-3.5 w-3.5" /> Lihat di Akuntansi
+                    </Button>
+                  </Link>
+                )}
+                {doc?.kind === "order" &&
+                  doc?.billStatus === "billed" &&
+                  Math.max(0, Number(doc?.grandTotal ?? 0) - Number(doc?.amountPaid ?? 0)) > 0 && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={openPayDialog}
+                    data-testid="button-record-payment"
+                  >
+                    <CreditCard className="mr-2 h-4 w-4" /> Bayar
+                  </Button>
+                )}
+              </div>
             </CardHeader>
             <CardContent>
               {paymentsLoading ? (
