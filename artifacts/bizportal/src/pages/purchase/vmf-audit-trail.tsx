@@ -13,10 +13,11 @@ import {
 } from "@/components/ui/table";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useMutation } from "@tanstack/react-query";
 import {
   ClipboardList, Search, Download, ChevronDown, ChevronRight,
   Link2, Send, FileCheck, Wrench, CheckCircle, XCircle,
-  Clock, AlertCircle, AlertTriangle,
+  Clock, AlertCircle, AlertTriangle, BellRing, Loader2,
 } from "lucide-react";
 
 const BASE = "/api";
@@ -543,6 +544,19 @@ function GapsTab() {
   const [filters, setFilters] = useState<FilterState>({ from: "", to: "", entityType: "", action: "", orderNumber: "", actor: "" });
   const [applied, setApplied] = useState(filters);
   const [gapAfter, setGapAfter] = useState<string>("");
+  const [triggerMsg, setTriggerMsg] = useState<string | null>(null);
+
+  const triggerMutation = useMutation({
+    mutationFn: () =>
+      fetch(`${BASE}/vendor-form/admin/activity-log/gaps/trigger`, {
+        method: "POST",
+        credentials: "include",
+      }).then(r => r.json()),
+    onSuccess: (data: { message?: string }) => {
+      setTriggerMsg(data.message ?? "Gap check dimulai.");
+      setTimeout(() => setTriggerMsg(null), 6000);
+    },
+  });
 
   const params = new URLSearchParams({
     ...(applied.from ? { from: applied.from } : {}),
@@ -630,12 +644,39 @@ function GapsTab() {
               </Select>
             </div>
           </div>
-          <div className="mt-3 flex gap-2">
+          <div className="mt-3 flex flex-wrap gap-2 items-center">
             <Button size="sm" onClick={() => { setApplied(filters); refetch(); }} className="gap-1"><Search size={14} /> Cari</Button>
             <Button size="sm" variant="outline" onClick={exportCsv} className="gap-1"><Download size={14} /> Export CSV</Button>
+            <div className="ml-auto flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5 border-amber-300 text-amber-700 hover:bg-amber-50"
+                disabled={triggerMutation.isPending}
+                onClick={() => triggerMutation.mutate()}
+              >
+                {triggerMutation.isPending
+                  ? <><Loader2 size={13} className="animate-spin" /> Mengirim…</>
+                  : <><BellRing size={13} /> Kirim Alert WA Sekarang</>
+                }
+              </Button>
+              {triggerMsg && (
+                <span className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-1 rounded">
+                  ✓ {triggerMsg}
+                </span>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>
+
+      {/* Scheduler info */}
+      <div className="text-xs text-gray-400 bg-gray-50 border rounded px-3 py-2 flex items-center gap-2">
+        <BellRing size={12} className="shrink-0" />
+        Alert otomatis dikirim setiap hari ke grup admin WA untuk order yang stuck &gt;
+        <code className="font-mono bg-white border px-1 rounded">VMF_GAP_NOTIFY_DAYS</code>
+        hari (default 2 hari). Gunakan tombol di atas untuk trigger manual.
+      </div>
 
       {isLoading && <div className="p-10 text-center text-gray-400 text-sm">Menganalisis gap…</div>}
       {error && <div className="p-8 text-center text-red-500 text-sm">{String(error)}</div>}

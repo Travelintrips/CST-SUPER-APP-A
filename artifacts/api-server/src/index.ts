@@ -6,6 +6,7 @@ import { seedCatalogProducts } from "./lib/seedCatalogProducts";
 import { seedDemoData, seedDemoDrivers } from "./lib/seedDemoData";
 import { startImapPoller } from "./lib/imapPoller";
 import { startOcrTempCleanup } from "./lib/ocrTempCleanup";
+import { startVmfGapNotifier, runVmfGapCheck } from "./lib/vmfGapNotifier";
 import { remediateOrphanProducts } from "./lib/remediateOrphanProducts";
 import { runPortalMigration } from "./lib/portalMigration";
 import { runAccountingMigration } from "./lib/accountingMigration";
@@ -197,6 +198,7 @@ async function startServer() {
   // Start background services immediately
   startImapPoller(3 * 60 * 1000);
   startOcrTempCleanup();
+  startVmfGapNotifier();
 
   // Run all migrations + seeds in the background with a small initial delay
   // to prevent a DB connection storm on cold starts.

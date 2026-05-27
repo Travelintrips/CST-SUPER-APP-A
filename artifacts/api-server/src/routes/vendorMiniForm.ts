@@ -1789,6 +1789,24 @@ vendorMiniFormRouter.get("/admin/activity-log/gaps", async (req: Request, res: R
   }
 });
 
+// ── ADMIN: POST /api/vendor-form/admin/activity-log/gaps/trigger ─────────────
+// Manually triggers a VMF gap check and WA digest right now.
+
+vendorMiniFormRouter.post("/admin/activity-log/gaps/trigger", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  try {
+    const { runVmfGapCheck } = await import("../lib/vmfGapNotifier.js");
+    // Run in background — return immediately
+    runVmfGapCheck().catch((err: unknown) => {
+      req.log?.warn({ err }, "manual VMF gap check error");
+    });
+    return res.json({ ok: true, message: "Gap check dimulai. Notifikasi WA akan dikirim jika ada order yang stuck." });
+  } catch (err) {
+    req.log?.error({ err }, "gap trigger error");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // ── ADMIN: POST /api/vendor-form/admin/customer-approvals ────────────────────
 
 vendorMiniFormRouter.post("/admin/customer-approvals", async (req: Request, res: Response) => {
