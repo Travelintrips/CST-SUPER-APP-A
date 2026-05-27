@@ -1121,7 +1121,7 @@ vendorMiniFormRouter.post("/customer-approval/:token", async (req: Request, res:
     if (action === "approve") {
       await logActivity("customer_approval", locked?.id ?? 0, "approved", "customer",
         `Customer ${customerName ?? "-"} menyetujui penawaran. SO: ${soNumber}`,
-        { soNumber, salesDocId, orderId, approvalId: locked?.id }).catch?.(() => {});
+        { soNumber, salesDocId, orderId, approvalId: locked?.id }).catch?.(() => {})
       // order_updates entry untuk persetujuan customer
       if (orderId) {
         await logOrderUpdate(
@@ -1131,8 +1131,8 @@ vendorMiniFormRouter.post("/customer-approval/:token", async (req: Request, res:
           "system",
           true,
         ).catch(() => {});
-      }
       // Log SO creation activity jika SO berhasil dibuat
+
       if (salesDocId && soNumber) {
         await logActivity("sales_order", salesDocId, "so_created", "system",
           `SO ${soNumber} dibuat otomatis dari persetujuan customer VMF${customerName ? ` (${customerName})` : ""}`,
@@ -1781,6 +1781,65 @@ vendorMiniFormRouter.get("/admin/activity-log/gaps", async (req: Request, res: R
     });
   } catch (err) {
     req.log?.error({ err }, "activity-log/gaps error");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── ADMIN: GET /api/vendor-form/admin/gap-config ─────────────────────────────
+
+vendorMiniFormRouter.get("/admin/gap-config", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  try {
+    const { getThresholdDays, getNotifierEnabled } = await import("../lib/vmfGapNotifier.js");
+    const [thresholdDays, enabled] = await Promise.all([getThresholdDays(), getNotifierEnabled()]);
+    return res.json({ thresholdDays, enabled });
+  } catch (err) {
+    req.log?.error({ err }, "gap-config GET error");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── ADMIN: POST /api/vendor-form/admin/gap-config ────────────────────────────
+
+vendorMiniFormRouter.post("/admin/gap-config", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  try {
+    const { thresholdDays, enabled } = req.body as { thresholdDays?: unknown; enabled?: unknown };
+    const { setThresholdDays, setNotifierEnabled } = await import("../lib/vmfGapNotifier.js");
+
+    const updates: string[] = [];
+    if (thresholdDays !== undefined) {
+      const n = Number(thresholdDays);
+      if (isNaN(n) || n < 1 || n > 365) return res.status(400).json({ error: "thresholdDays harus antara 1–365" });
+      await setThresholdDays(Math.round(n));
+      updates.push(`thresholdDays=${Math.round(n)}`);
+    }
+    if (enabled !== undefined) {
+      await setNotifierEnabled(Boolean(enabled));
+      updates.push(`enabled=${Boolean(enabled)}`);
+    }
+    if (updates.length === 0) return res.status(400).json({ error: "Tidak ada field yang diupdate" });
+    return res.json({ ok: true, updated: updates });
+  } catch (err) {
+    req.log?.error({ err }, "gap-config POST error");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── ADMIN: POST /api/vendor-form/admin/activity-log/gaps/trigger ─────────────
+// Manually triggers a VMF gap check and WA digest right now.
+
+vendorMiniFormRouter.post("/admin/activity-log/gaps/trigger", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  try {
+    const { runVmfGapCheck } = await import("../lib/vmfGapNotifier.js");
+    // Run in background — return immediately
+    runVmfGapCheck().catch((err: unknown) => {
+      req.log?.warn({ err }, "manual VMF gap check error");
+    });
+    return res.json({ ok: true, message: "Gap check dimulai. Notifikasi WA akan dikirim jika ada order yang stuck." });
+  } catch (err) {
+    req.log?.error({ err }, "gap trigger error");
     return res.status(500).json({ error: "Internal server error" });
   }
 });
