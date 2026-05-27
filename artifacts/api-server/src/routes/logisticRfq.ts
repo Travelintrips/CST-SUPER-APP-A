@@ -5,6 +5,7 @@ import { db, suppliersTable, logisticOrdersTable, logisticOrderRfqsTable, logist
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { sendWhatsApp } from "../lib/fonnte.js";
 import { saveAndBroadcast } from "../lib/notificationStore.js";
+import { broadcastToPortal } from "../lib/sseManager.js";
 import { getAdminWa, getAdminGroupWa } from "../lib/adminWa.js";
 import { logger } from "../lib/logger.js";
 import { getPreferredDomain } from "../lib/domain.js";
@@ -707,6 +708,14 @@ logisticRfqRouter.post("/vendor-quote", rfqRateLimit, async (req: Request, res: 
     vendorPrice: vp,
     quotePosition,
   } as Parameters<typeof saveAndBroadcast>[1] & { rfqNumber: string; vendorPrice: number; quotePosition?: number }).catch(() => {});
+
+  // Broadcast ke Customer Portal agar tracking page auto-refresh penawaran terbaru
+  broadcastToPortal("vendor_quote_received", {
+    orderId: rfq.orderId,
+    orderNumber: order.orderNumber,
+    rfqNumber: rfq.rfqNumber,
+    vendorPrice: vp,
+  });
 
   logger.info({ rfqNumber, vendorId, vendorPrice: vp }, "Vendor submitted quote via form");
 

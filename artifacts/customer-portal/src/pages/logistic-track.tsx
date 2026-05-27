@@ -546,18 +546,19 @@ export default function TrackPage() {
     if (o) { setInput(o); setSearchTerm(o.toUpperCase().trim()); }
   }, []);
 
-  // Real-time: refresh data tracking saat admin mengubah status order
+  // Real-time: refresh data tracking saat admin mengubah status order atau vendor submit penawaran
   useEffect(() => {
     const es = new EventSource("/api/ecommerce/events");
-    es.addEventListener("logistic_order_status_changed", (e: MessageEvent) => {
+    const invalidateIfMatch = (e: MessageEvent) => {
       try {
         const data = JSON.parse(e.data);
-        // Hanya invalidate jika order yang sedang dilacak adalah order yang berubah
         if (searchTerm && data.orderNumber === searchTerm) {
           qc.invalidateQueries({ queryKey: ["tracking", searchTerm] });
         }
       } catch { }
-    });
+    };
+    es.addEventListener("logistic_order_status_changed", invalidateIfMatch);
+    es.addEventListener("vendor_quote_received", invalidateIfMatch);
     return () => es.close();
   }, [searchTerm, qc]);
 
