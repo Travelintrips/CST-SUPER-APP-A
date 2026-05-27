@@ -2253,7 +2253,6 @@ router.post("/onboarding/upload-doc", requirePortalAuth, onboardingUpload.single
     const objectPath = await storage.uploadPrivateEntity(buf, req.file.mimetype);
     // Serving URL via authenticated route /api/storage/objects/...
     const url = `/api/storage${objectPath}`;
-    const url = await storage.uploadPublic(key, buf, req.file.mimetype);
     // Hapus doc lama (docType sama) dari storage + DB sebelum insert baru
     const [oldDoc] = await db
       .select({ id: identityDocumentsTable.id, url: identityDocumentsTable.url })
