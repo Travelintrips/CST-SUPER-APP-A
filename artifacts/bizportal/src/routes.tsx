@@ -29,6 +29,7 @@ import PortalProductOrdersPage from "@/pages/portal-product-orders";
 import SalesDashboardPage from "@/pages/sales/dashboard";
 import SalesDocumentsListPage from "@/pages/sales/documents-list";
 import SalesDocumentEditorPage from "@/pages/sales/quotation-editor";
+import SalesDocumentDetailPage from "@/pages/sales/document-detail";
 import AiDraftsPage from "@/pages/sales/ai-drafts";
 import CustomersPage from "@/pages/sales/customers";
 import SalesInvoicesPage from "@/pages/sales/invoices";
@@ -183,14 +184,14 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       {/* ── Sales ──────────────────────────────────────────────────────── */}
       <Route path="/sales/documents/new" component={PR(SalesDocumentEditorPage)} />
       <Route path="/sales/documents/:id/edit" component={PR(SalesDocumentEditorPage)} />
-      <Route path="/sales/documents/:id" component={PR(SalesDocumentEditorPage)} />
+      <Route path="/sales/documents/:id" component={PR(SalesDocumentDetailPage)} />
       <Route path="/sales/documents" component={PR(SalesDocumentsListPage)} />
       <Route path="/sales/quotations/new" component={PR(SalesDocumentEditorPage)} />
       <Route path="/sales/quotations/:id/edit" component={PR(SalesDocumentEditorPage)} />
-      <Route path="/sales/quotations/:id" component={PR(SalesDocumentEditorPage)} />
+      <Route path="/sales/quotations/:id" component={PR(SalesDocumentDetailPage)} />
       <Route path="/sales/quotations" component={PR(SalesDocumentsListPage)} />
       <Route path="/sales/orders/new" component={() => <ProtectedRoute component={() => <SalesDocumentEditorPage kind="order" />} />} />
-      <Route path="/sales/orders/:id" component={() => <ProtectedRoute component={() => <SalesDocumentEditorPage kind="order" />} />} />
+      <Route path="/sales/orders/:id" component={PR(SalesDocumentDetailPage)} />
       <Route path="/sales/orders" component={() => <ProtectedRoute component={() => <SalesDocumentsListPage kind="order" />} />} />
       <Route path="/sales/ai-drafts" component={PR(AiDraftsPage)} />
       <Route path="/sales/customers" component={PR(CustomersPage)} />
