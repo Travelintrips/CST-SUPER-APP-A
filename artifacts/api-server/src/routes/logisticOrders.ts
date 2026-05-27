@@ -106,7 +106,7 @@ function toOrder(row: typeof logisticOrdersTable.$inferSelect, approvedVendorNam
     quotationSentAt: row.quotationSentAt?.toISOString() ?? null,
     version: (row as any).version ?? 1,
     createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
+    updatedAt: ((row as any).updatedAt ?? row.createdAt).toISOString(),
   };
 }
 
