@@ -335,3 +335,9 @@ id = "TwVLJNKT88c54a7air1bp"
 uri = "file://erp-audit-checklist.md"
 type = "text"
 title = "Checklist Audit ERP — BizPortal CST Logistics"
+
+[[outputs]]
+id = "XllxKUad3jl7852xYOFpV"
+uri = "file://docs/ai-automation-roadmap.md"
+type = "text"
+title = "AI & Automation Architecture Roadmap"
