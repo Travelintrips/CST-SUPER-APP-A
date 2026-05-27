@@ -65,6 +65,7 @@ import {
   Send,
   Link2,
   Brain,
+  Trophy,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -179,6 +180,15 @@ export function AppShell({ children }: AppShellProps) {
       href: "/notifications",
       icon: Bell,
       roles: ["admin", "owner"],
+    },
+
+    // ── VENDOR LEADERBOARD ────────────────────────────────────────────
+    {
+      type: "flat",
+      titleKey: "Vendor Leaderboard",
+      href: "/vendors",
+      icon: Trophy,
+      roles: ["admin", "owner", "manager"],
     },
 
     // ── INTELLIGENCE ALERTS ───────────────────────────────────────────

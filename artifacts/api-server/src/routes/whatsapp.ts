@@ -361,6 +361,50 @@ whatsappRouter.post("/inbox/:id/reply", async (req: Request, res: Response) => {
   return res.json({ ok: true, sentStatus });
 });
 
+// GET /api/whatsapp/notification-logs/stats — summary counts for dashboard cards
+whatsappRouter.get("/notification-logs/stats", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  try {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const [allTime, today] = await Promise.all([
+      db.select({
+        channel: notificationLogsTable.channel,
+        status:  notificationLogsTable.status,
+        count:   sql<number>`COUNT(*)::int`,
+      })
+      .from(notificationLogsTable)
+      .groupBy(notificationLogsTable.channel, notificationLogsTable.status),
+
+      db.select({
+        channel: notificationLogsTable.channel,
+        status:  notificationLogsTable.status,
+        count:   sql<number>`COUNT(*)::int`,
+      })
+      .from(notificationLogsTable)
+      .where(gte(notificationLogsTable.createdAt, todayStart))
+      .groupBy(notificationLogsTable.channel, notificationLogsTable.status),
+    ]);
+
+    function agg(rows: { channel: string; status: string; count: number }[]) {
+      const r = { waSent: 0, waFailed: 0, waDeduped: 0, emailSent: 0, emailFailed: 0 };
+      for (const row of rows) {
+        if (row.channel === "wa"    && row.status === "sent")    r.waSent    += row.count;
+        if (row.channel === "wa"    && row.status === "failed")  r.waFailed  += row.count;
+        if (row.channel === "wa"    && row.status === "deduped") r.waDeduped += row.count;
+        if (row.channel === "email" && row.status === "sent")    r.emailSent    += row.count;
+        if (row.channel === "email" && row.status === "failed")  r.emailFailed  += row.count;
+      }
+      return r;
+    }
+
+    return res.json({ allTime: agg(allTime), today: agg(today) });
+  } catch {
+    return res.status(500).json({ error: "Gagal memuat stats" });
+  }
+});
+
 // GET /api/whatsapp/notification-logs — admin: lihat riwayat WA + email + dedup status
 // Query params: channel (wa|email), status (sent|failed|deduped), context, refId,
 //               from (ISO date), to (ISO date), limit (max 200), offset

@@ -379,4 +379,74 @@ router.get("/rfq/:rfqId/recommend", async (req, res) => {
   res.json({ recommendation: top, scores: scored });
 });
 
+// GET /api/vendor-performance/trend/:vendorId
+// Returns last 12 months of monthly performance data for a single vendor
+router.get("/trend/:vendorId", async (req, res) => {
+  const vendorId = Number(req.params.vendorId);
+  if (!vendorId) { res.status(400).json({ error: "Invalid vendorId" }); return; }
+
+  try {
+    // Monthly order stats for this vendor
+    const orderTrend = await db.execute(sql`
+      SELECT
+        TO_CHAR(DATE_TRUNC('month', created_at), 'YYYY-MM') AS month,
+        COUNT(*)::int                                          AS total_orders,
+        COUNT(*) FILTER (WHERE status ILIKE '%completed%' OR status ILIKE '%delivered%')::int AS completed,
+        COUNT(*) FILTER (WHERE status ILIKE '%cancel%')::int  AS cancelled
+      FROM logistic_orders
+      WHERE approved_vendor_id = ${vendorId}
+        AND created_at >= NOW() - INTERVAL '12 months'
+      GROUP BY DATE_TRUNC('month', created_at)
+      ORDER BY DATE_TRUNC('month', created_at) ASC
+    `);
+
+    // Monthly avg response time (from RFQ vendor links)
+    const responseTrend = await db.execute(sql`
+      SELECT
+        TO_CHAR(DATE_TRUNC('month', rvl.created_at), 'YYYY-MM') AS month,
+        AVG(EXTRACT(EPOCH FROM (rvl.submitted_at - rvl.created_at)) / 60)::numeric(8,1) AS avg_response_min
+      FROM rfq_vendor_links rvl
+      WHERE rvl.vendor_id = ${vendorId}
+        AND rvl.submitted_at IS NOT NULL
+        AND rvl.created_at >= NOW() - INTERVAL '12 months'
+      GROUP BY DATE_TRUNC('month', rvl.created_at)
+      ORDER BY DATE_TRUNC('month', rvl.created_at) ASC
+    `);
+
+    const responseMap: Record<string, number> = {};
+    for (const r of responseTrend.rows as Record<string, unknown>[]) {
+      responseMap[String(r["month"])] = Number(r["avg_response_min"] ?? 0);
+    }
+
+    const trend = (orderTrend.rows as Record<string, unknown>[]).map(r => {
+      const month = String(r["month"]);
+      const total = Number(r["total_orders"] ?? 0);
+      const completed = Number(r["completed"] ?? 0);
+      const cancelled = Number(r["cancelled"] ?? 0);
+      const successRate = total > 0 ? (completed / total) * 100 : 0;
+      const cancelRate = total > 0 ? (cancelled / total) * 100 : 0;
+      const ontimePct = Math.max(0, successRate - cancelRate / 2);
+      const avgResponseMin = responseMap[month] ?? 0;
+      const aiScore =
+        (ontimePct * 0.3) +
+        (Math.max(0, 100 - Math.min(avgResponseMin, 120)) * 0.2) +
+        (successRate * 0.5);
+
+      return {
+        month,
+        totalOrders: total,
+        completedOrders: completed,
+        ontimePct: Math.round(ontimePct * 10) / 10,
+        successRate: Math.round(successRate * 10) / 10,
+        avgResponseMin: Math.round(avgResponseMin * 10) / 10,
+        aiScore: Math.round(aiScore * 10) / 10,
+      };
+    });
+
+    res.json(trend);
+  } catch (err) {
+    res.status(500).json({ error: "Gagal memuat trend data" });
+  }
+});
+
 export { router as vendorPerformanceRouter, recalcVendorPerformance };

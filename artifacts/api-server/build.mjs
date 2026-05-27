@@ -51,6 +51,7 @@ async function buildAll() {
       "pg-native",
       "oracledb",
       "mongodb-client-encryption",
+      "ws",
       "nodemailer",
       "imapflow",
       "mailparser",
