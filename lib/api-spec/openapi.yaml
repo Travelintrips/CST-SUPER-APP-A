@@ -5882,7 +5882,8 @@ components:
         finalSellingPrice: { type: number, nullable: true }
         quotationSentAt: { type: string, nullable: true }
         createdAt: { type: string }
-      required: [id, orderNumber, companyName, customerName, email, phone, shipmentType, origin, destination, source, subtotal, tax, grandTotal, status, createdAt]
+        updatedAt: { type: string }
+      required: [id, orderNumber, companyName, customerName, email, phone, shipmentType, origin, destination, source, subtotal, tax, grandTotal, status, createdAt, updatedAt]
 
     LogisticOrderItem:
       type: object
@@ -5954,6 +5955,7 @@ components:
       type: object
       properties:
         status: { type: string }
+        clientUpdatedAt: { type: string }
       required: [status]
 
     LogisticOrderSummary:

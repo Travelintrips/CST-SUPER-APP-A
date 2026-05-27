@@ -294,14 +294,18 @@ export default function LogisticsPortalOrdersPage() {
 
   function handleStatusChange(id: number, status: string) {
     setUpdatingId(id);
+    const order = orders.find((o) => o.id === id);
     updateStatus.mutate(
-      { id, data: { status } },
+      { id, data: { status, clientUpdatedAt: order?.updatedAt } },
       {
         onSuccess: () => {
           toast({ title: t.common.success, description: status });
           queryClient.invalidateQueries({ queryKey: getListLogisticOrdersQueryKey() });
         },
-        onError: () => toast({ title: t.common.error, variant: "destructive" }),
+        onError: (err: any) => {
+          const msg = err?.response?.data?.error ?? t.common.error;
+          toast({ title: msg, variant: "destructive" });
+        },
         onSettled: () => setUpdatingId(null),
       },
     );

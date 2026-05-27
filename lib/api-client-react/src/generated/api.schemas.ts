@@ -2185,6 +2185,7 @@ export interface LogisticOrder {
   finalSellingPrice?: number | null;
   quotationSentAt?: string | null;
   createdAt: string;
+  updatedAt: string;
 }
 
 export interface LogisticOrderItem {
@@ -2241,6 +2242,7 @@ export interface CreateLogisticOrderBody {
 
 export interface UpdateLogisticOrderStatusBody {
   status: string;
+  clientUpdatedAt?: string;
 }
 
 export interface LogisticOrderSummary {

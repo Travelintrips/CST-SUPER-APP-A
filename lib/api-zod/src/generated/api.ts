@@ -4762,6 +4762,7 @@ export const ListLogisticOrdersResponseItem = zod.object({
   finalSellingPrice: zod.number().nullish(),
   quotationSentAt: zod.string().nullish(),
   createdAt: zod.string(),
+  updatedAt: zod.string(),
 });
 export const ListLogisticOrdersResponse = zod.array(
   ListLogisticOrdersResponseItem,
@@ -4826,6 +4827,7 @@ export const GetLogisticOrderByNumberResponse = zod
     finalSellingPrice: zod.number().nullish(),
     quotationSentAt: zod.string().nullish(),
     createdAt: zod.string(),
+    updatedAt: zod.string(),
   })
   .and(
     zod.object({
@@ -4889,6 +4891,7 @@ export const GetLogisticOrderResponse = zod
     finalSellingPrice: zod.number().nullish(),
     quotationSentAt: zod.string().nullish(),
     createdAt: zod.string(),
+    updatedAt: zod.string(),
   })
   .and(
     zod.object({
@@ -5145,6 +5148,7 @@ export const ApproveLogisticOrderQuoteResponse = zod.object({
   finalSellingPrice: zod.number().nullish(),
   quotationSentAt: zod.string().nullish(),
   createdAt: zod.string(),
+  updatedAt: zod.string(),
 });
 
 /**
@@ -5156,6 +5160,7 @@ export const UpdateLogisticOrderStatusParams = zod.object({
 
 export const UpdateLogisticOrderStatusBody = zod.object({
   status: zod.string(),
+  clientUpdatedAt: zod.string().optional(),
 });
 
 export const UpdateLogisticOrderStatusResponse = zod.object({
@@ -5194,6 +5199,7 @@ export const UpdateLogisticOrderStatusResponse = zod.object({
   finalSellingPrice: zod.number().nullish(),
   quotationSentAt: zod.string().nullish(),
   createdAt: zod.string(),
+  updatedAt: zod.string(),
 });
 
 /**
@@ -5243,6 +5249,7 @@ export const UpdateLogisticOrderTypeResponse = zod.object({
   finalSellingPrice: zod.number().nullish(),
   quotationSentAt: zod.string().nullish(),
   createdAt: zod.string(),
+  updatedAt: zod.string(),
 });
 
 /**
