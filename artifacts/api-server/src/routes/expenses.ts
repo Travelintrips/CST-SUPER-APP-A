@@ -432,8 +432,17 @@ router.delete("/:id", async (req, res) => {
   if (existing.status !== "draft" && existing.status !== "rejected") {
     return res.status(400).json({ message: "Hanya expense dengan status Draft atau Rejected yang bisa dihapus." });
   }
+  // Ambil objectPath semua attachment sebelum dihapus dari DB
+  const attachments = await db
+    .select({ objectPath: expenseAttachmentsTable.objectPath })
+    .from(expenseAttachmentsTable)
+    .where(eq(expenseAttachmentsTable.expenseId, id));
   await db.delete(expenseAttachmentsTable).where(eq(expenseAttachmentsTable.expenseId, id));
   await db.delete(expensesTable).where(eq(expensesTable.id, id));
+  // Cascade storage cleanup — hapus file fisik (non-fatal)
+  for (const a of attachments) {
+    if (a.objectPath) _expenseObjectStorage.tryDeletePrivateEntity(a.objectPath).catch(() => {});
+  }
   return res.json({ message: "Deleted" });
 });
 
