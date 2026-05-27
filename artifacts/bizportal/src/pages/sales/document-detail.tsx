@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useParams, useLocation, Link } from "wouter";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -36,7 +36,7 @@ import {
   ArrowLeft, FileEdit, Printer, CheckCircle, Send, XCircle,
   Truck, Receipt, User, Calendar, MapPin, Package, FileText,
   Clock, Loader2, Trash2, ExternalLink, PlusCircle, Ban,
-  CreditCard, AlertCircle,
+  CreditCard, AlertCircle, History, CircleDot,
 } from "lucide-react";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -516,6 +516,134 @@ function PaymentHistoryTab({
   );
 }
 
+// ── Activity Log Tab ──────────────────────────────────────────────────────────
+
+interface AuditEntry {
+  id: number;
+  user_email: string | null;
+  action: string;
+  new_data: Record<string, unknown> | null;
+  old_data: Record<string, unknown> | null;
+  created_at: string;
+}
+
+const ACTION_META: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
+  create:          { label: "Dokumen Dibuat",           color: "bg-emerald-500", icon: <FileText className="h-3 w-3 text-white" /> },
+  update:          { label: "Dokumen Diperbarui",       color: "bg-blue-500",    icon: <FileEdit className="h-3 w-3 text-white" /> },
+  delete:          { label: "Dokumen Dihapus",          color: "bg-red-500",     icon: <Trash2 className="h-3 w-3 text-white" /> },
+  send:            { label: "Dikirim ke Customer",      color: "bg-blue-500",    icon: <Send className="h-3 w-3 text-white" /> },
+  confirm:         { label: "Dikonfirmasi",             color: "bg-emerald-600", icon: <CheckCircle className="h-3 w-3 text-white" /> },
+  cancel:          { label: "Dibatalkan",               color: "bg-red-500",     icon: <XCircle className="h-3 w-3 text-white" /> },
+  draft:           { label: "Dikembalikan ke Draft",    color: "bg-slate-400",   icon: <CircleDot className="h-3 w-3 text-white" /> },
+  mark_delivered:  { label: "Tandai Terkirim",          color: "bg-indigo-500",  icon: <Truck className="h-3 w-3 text-white" /> },
+  mark_invoiced:   { label: "Invoice Dibuat",           color: "bg-orange-500",  icon: <Receipt className="h-3 w-3 text-white" /> },
+  cancel_invoice:  { label: "Invoice Dibatalkan",       color: "bg-red-400",     icon: <XCircle className="h-3 w-3 text-white" /> },
+};
+
+function ActivityLogTab({ docId }: { docId: number }) {
+  const { data: entries, isLoading } = useQuery<AuditEntry[]>({
+    queryKey: ["sales-audit-log", docId],
+    queryFn: async () => {
+      const res = await fetch(`/api/sales/documents/${docId}/audit-log`);
+      if (!res.ok) throw new Error("Gagal memuat riwayat");
+      return res.json() as Promise<AuditEntry[]>;
+    },
+    refetchInterval: 30_000,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="flex gap-3">
+            <Skeleton className="h-7 w-7 rounded-full shrink-0" />
+            <div className="space-y-1.5 flex-1">
+              <Skeleton className="h-4 w-48" />
+              <Skeleton className="h-3 w-32" />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (!entries || entries.length === 0) {
+    return (
+      <div className="rounded-lg border border-dashed py-12 flex flex-col items-center gap-2 text-muted-foreground">
+        <History className="h-8 w-8 opacity-30" />
+        <p className="text-sm">Belum ada aktivitas tercatat</p>
+        <p className="text-xs opacity-60">Aktivitas baru akan muncul setelah ada perubahan pada dokumen ini</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative">
+      {/* Vertical line */}
+      <div className="absolute left-[13px] top-3 bottom-3 w-px bg-border" />
+
+      <div className="space-y-0">
+        {entries.map((entry, idx) => {
+          const meta = ACTION_META[entry.action] ?? {
+            label: entry.action,
+            color: "bg-slate-400",
+            icon: <CircleDot className="h-3 w-3 text-white" />,
+          };
+          const nd = entry.new_data;
+          const isLast = idx === entries.length - 1;
+
+          return (
+            <div key={entry.id} className={`flex gap-4 ${isLast ? "" : "pb-5"}`}>
+              {/* Icon dot */}
+              <div className={`relative z-10 h-7 w-7 rounded-full ${meta.color} flex items-center justify-center shrink-0 shadow-sm`}>
+                {meta.icon}
+              </div>
+
+              {/* Content */}
+              <div className="flex-1 pt-0.5 pb-1">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-semibold leading-tight">{meta.label}</p>
+                    {entry.user_email && (
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        oleh <span className="font-medium">{entry.user_email}</span>
+                      </p>
+                    )}
+                    {/* Extra detail from new_data */}
+                    {nd && entry.action === "create" && nd.docNumber && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Nomor dokumen: <span className="font-mono font-medium">{String(nd.docNumber)}</span>
+                      </p>
+                    )}
+                    {nd && (entry.action === "confirm" || entry.action === "send" || entry.action === "cancel" || entry.action === "draft") && nd.fromStatus && nd.toStatus && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Status: <span className="line-through opacity-60">{String(nd.fromStatus)}</span>
+                        {" → "}
+                        <span className="font-medium">{String(nd.toStatus)}</span>
+                      </p>
+                    )}
+                    {nd && entry.action === "mark_invoiced" && nd.invoiceNumber && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Invoice: <span className="font-mono font-medium">{String(nd.invoiceNumber)}</span>
+                      </p>
+                    )}
+                  </div>
+                  <time className="text-[11px] text-muted-foreground shrink-0 mt-0.5" dateTime={entry.created_at}>
+                    {new Date(entry.created_at).toLocaleString("id-ID", {
+                      day: "numeric", month: "short", year: "numeric",
+                      hour: "2-digit", minute: "2-digit",
+                    })}
+                  </time>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ── Main Component ─────────────────────────────────────────────────────────────
 
 export default function SalesDocumentDetailPage() {
@@ -766,6 +894,9 @@ export default function SalesDocumentDetailPage() {
                 </span>
               )}
             </TabsTrigger>
+            <TabsTrigger value="aktivitas" className="gap-2">
+              <History className="h-3.5 w-3.5" /> Aktivitas
+            </TabsTrigger>
           </TabsList>
 
           {/* ── Detail Tab ─────────────────────────────────────────────────────── */}
@@ -986,6 +1117,11 @@ export default function SalesDocumentDetailPage() {
               amountPaid={amountPaid}
               isOrder={isOrder}
             />
+          </TabsContent>
+
+          {/* ── Activity Tab ───────────────────────────────────────────────────── */}
+          <TabsContent value="aktivitas" className="mt-4">
+            <ActivityLogTab docId={docId} />
           </TabsContent>
         </Tabs>
 

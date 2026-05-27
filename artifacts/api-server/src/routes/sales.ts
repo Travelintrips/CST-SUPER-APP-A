@@ -12,6 +12,7 @@ import {
 } from "@workspace/db";
 import { eq, sql, desc, and, count, inArray, or, ilike, type SQL } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
+import { auditFromReq } from "../lib/auditLog.js";
 import { streamInvoicePdf, buildInvoicePdfBuffer } from "../lib/pdfInvoice.js";
 import { postSalesInvoice, postSalesCogs, postSalesCogsReturn, postSalesInvoiceReversal } from "../lib/accounting.js";
 import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
@@ -356,6 +357,13 @@ router.post("/documents", async (req, res) => {
   );
   await db.insert(salesDocumentLinesTable).values(lineValues);
 
+  auditFromReq(req, {
+    action: "create",
+    module: "sales",
+    referenceId: String(doc.id),
+    newData: { docNumber, customerName, kind: docKind, grandTotal: String(grandTotal) },
+  });
+
   const detail = await loadDocWithLines(doc.id);
 
   // Notify admin via WhatsApp (fire-and-forget)
@@ -454,6 +462,12 @@ router.delete("/documents/:id", async (req, res) => {
     .where(eq(salesDocumentsTable.id, id))
     .returning();
   if (!deleted) return res.status(404).json({ message: "Document not found" });
+  auditFromReq(req, {
+    action: "delete",
+    module: "sales",
+    referenceId: String(id),
+    oldData: { docNumber: deleted.docNumber, customerName: deleted.customerName, kind: deleted.kind },
+  });
   return res.json({ message: "Deleted", id });
 });
 
@@ -857,6 +871,19 @@ router.post("/documents/:id/action", async (req, res) => {
     updatedAt: new Date().toISOString(),
   }).catch(() => {});
 
+  auditFromReq(req, {
+    action,
+    module: "sales",
+    referenceId: String(id),
+    newData: {
+      docNumber: doc.docNumber,
+      customerName: doc.customerName,
+      fromStatus: doc.status,
+      toStatus: (patch["status"] as string | undefined) ?? doc.status,
+      ...(patch["invoiceNumber"] ? { invoiceNumber: patch["invoiceNumber"] } : {}),
+    },
+  });
+
   return res.json(detail);
 });
 
@@ -1118,6 +1145,25 @@ router.post("/documents/:id/email", async (req, res): Promise<void> => {
   });
 
   res.json({ message: "Email berhasil dikirim", to, filename });
+});
+
+// GET /api/sales/documents/:id/audit-log — riwayat aktivitas dokumen
+router.get("/documents/:id/audit-log", async (req, res) => {
+  const id = Number(req.params.id);
+  if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+  const rows = await db.execute(sql`
+    SELECT
+      id, user_id, user_email,
+      action, module, reference_id,
+      new_data, old_data,
+      created_at
+    FROM erp_audit_logs
+    WHERE module = 'sales'
+      AND reference_id = ${String(id)}
+    ORDER BY created_at DESC
+    LIMIT 200
+  `);
+  return res.json(rows.rows);
 });
 
 // GET /api/sales/ai-drafts — list AI-generated draft quotations
