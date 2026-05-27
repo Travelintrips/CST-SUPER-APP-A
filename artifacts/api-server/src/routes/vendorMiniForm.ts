@@ -983,12 +983,13 @@ vendorMiniFormRouter.get("/customer-approval/:token", async (req: Request, res: 
 vendorMiniFormRouter.post("/customer-approval/:token", async (req: Request, res: Response) => {
   const { token } = req.params as { token: string };
   try {
-    // Cek awal sebelum masuk transaksi (fast-fail untuk expired/not found)
+    // Cek awal sebelum masuk transaksi: hanya fast-fail untuk not found & expired.
+    // Status check TIDAK dilakukan di sini untuk menghindari TOCTOU — perlindungan
+    // double-approve dilakukan secara atomik via UPDATE WHERE status='pending' di dalam transaksi.
     const [preCheck] = await db.select({ expiresAt: customerApprovalsTable.expiresAt, status: customerApprovalsTable.status })
       .from(customerApprovalsTable).where(eq(customerApprovalsTable.token, token));
     if (!preCheck) return res.status(404).json({ error: "Link tidak ditemukan" });
     if (preCheck.expiresAt && preCheck.expiresAt < new Date()) return res.status(410).json({ error: "Link penawaran sudah kadaluarsa" });
-    if (preCheck.status !== "pending") return res.status(409).json({ error: "Penawaran ini sudah direspons sebelumnya", status: preCheck.status });
 
     const { action, notes } = req.body as { action: "approve" | "reject"; notes?: string };
     if (!["approve", "reject"].includes(action)) return res.status(400).json({ error: "action harus approve atau reject" });
@@ -1117,13 +1118,11 @@ vendorMiniFormRouter.post("/customer-approval/:token", async (req: Request, res:
     }
 
     // Activity log (non-fatal, di luar transaksi)
-    // G-3 FIX: gunakan locked?.id (bukan 0) sebagai entityId
     if (action === "approve") {
       await logActivity("customer_approval", locked?.id ?? 0, "approved", "customer",
         `Customer ${customerName ?? "-"} menyetujui penawaran. SO: ${soNumber}`,
-                        
-        { soNumber, salesDocId, orderId }).catch?.(() => {});
-      // G-3: order_updates entry untuk persetujuan customer
+        { soNumber, salesDocId, orderId, approvalId: locked?.id }).catch?.(() => {});
+      // order_updates entry untuk persetujuan customer
       if (orderId) {
         await logOrderUpdate(
           orderId,
@@ -1133,10 +1132,16 @@ vendorMiniFormRouter.post("/customer-approval/:token", async (req: Request, res:
           true,
         ).catch(() => {});
       }
+      // Log SO creation activity jika SO berhasil dibuat
+      if (salesDocId && soNumber) {
+        await logActivity("sales_order", salesDocId, "so_created", "system",
+          `SO ${soNumber} dibuat otomatis dari persetujuan customer VMF${customerName ? ` (${customerName})` : ""}`,
+          { docNumber: soNumber, approvalId: locked?.id, orderId }).catch?.(() => {});
+      }
     } else {
       await logActivity("customer_approval", locked?.id ?? 0, "rejected", "customer",
-        `Customer ${customerName ?? "-"} menolak penawaran`, { orderId }).catch?.(() => {});
-      // G-3: order_updates entry untuk penolakan customer
+        `Customer ${customerName ?? "-"} menolak penawaran`, { orderId, approvalId: locked?.id }).catch?.(() => {});
+      // order_updates entry untuk penolakan customer
       if (orderId) {
         await logOrderUpdate(
           orderId,
@@ -1146,15 +1151,6 @@ vendorMiniFormRouter.post("/customer-approval/:token", async (req: Request, res:
           false,
         ).catch(() => {});
       }
-        { soNumber, salesDocId, orderId, approvalId: locked?.id }).catch?.(() => {});
-      if (salesDocId && soNumber) {
-        await logActivity("sales_order", salesDocId, "so_created", "system",
-          `SO ${soNumber} dibuat otomatis dari persetujuan customer VMF${customerName ? ` (${customerName})` : ""}`,
-          { docNumber: soNumber, approvalId: locked?.id, orderId }).catch?.(() => {});
-      }
-    } else {
-      await logActivity("customer_approval", locked?.id ?? 0, "rejected", "customer",
-        `Customer ${customerName ?? "-"} menolak penawaran`, { orderId, approvalId: locked?.id }).catch?.(() => {});
     }
 
     // Notify via WA templates (fire-and-forget)
@@ -2257,8 +2253,6 @@ vendorMiniFormRouter.post("/admin/customer-approvals/:id/send-wa", async (req: R
 
     await sendWhatsApp(target, msg, { context: "customer-approval-send", refType: "customer_approval", refId: String(approval.id) });
 
-    const userId2bFb = (req.user as { id: string } | undefined)?.id ?? "admin";
-    await logActivity("customer_approval", id, "sent_wa", userId2bFb,
     const actorId = (req.user as { id: string } | undefined)?.id ?? "admin";
     await logActivity("customer_approval", id, "sent_wa", actorId,
       `WA penawaran dikirim ke customer ${approval.customerName ?? "-"}`, { phone: target });
@@ -2266,13 +2260,13 @@ vendorMiniFormRouter.post("/admin/customer-approvals/:id/send-wa", async (req: R
       `Link approval dikirim ke customer ${approval.customerName ?? "-"} via WhatsApp${approval.orderNumber ? ` (Order: ${approval.orderNumber})` : ""}`,
       { phone: target, channel: "whatsapp", orderNumber: approval.orderNumber, sellingPrice: approval.sellingPrice });
 
-    // G-2b: order_updates entry (fallback path)
+    // order_updates entry
     if (approval.orderId) {
       await logOrderUpdate(
         approval.orderId,
         "Penawaran Dikirim ke Customer",
         `WA penawaran harga ${priceStr} dikirim ke ${approval.customerName ?? "customer"} (${target}).`,
-        userId2bFb,
+        actorId,
       ).catch(() => {});
     }
 
