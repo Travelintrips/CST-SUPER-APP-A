@@ -885,17 +885,23 @@ logisticOrdersRouter.put("/:id/status", async (req: Request, res: Response) => {
   const { status } = bodyParsed.data;
   const clientVersion: number | undefined =
     typeof req.body.version === "number" ? req.body.version : undefined;
+  const clientUpdatedAt = typeof (req.body as Record<string, unknown>).clientUpdatedAt === "string"
+    ? new Date((req.body as Record<string, unknown>).clientUpdatedAt as string)
+    : null;
+
+  // Optimistic locking enforcement: setidaknya salah satu harus dikirim agar
+  // concurrent-edit conflict dapat terdeteksi. Tolak jika tidak ada keduanya.
+  if (clientVersion === undefined && clientUpdatedAt === null) {
+    return res.status(400).json({
+      message: "Permintaan tidak valid: sertakan 'version' atau 'clientUpdatedAt' untuk mencegah konflik perubahan bersamaan.",
+      code: "OPTIMISTIC_LOCK_REQUIRED",
+    });
+  }
 
   const whereClause =
     clientVersion !== undefined
       ? and(eq(logisticOrdersTable.id, id), eq(logisticOrdersTable.version, clientVersion))
       : eq(logisticOrdersTable.id, id);
-
-  // H3 — Optimistic locking: if client sends clientUpdatedAt, verify it matches
-  // the current DB updatedAt to detect concurrent edits before committing.
-  const clientUpdatedAt = typeof (req.body as Record<string, unknown>).clientUpdatedAt === "string"
-    ? new Date((req.body as Record<string, unknown>).clientUpdatedAt as string)
-    : null;
   if (clientUpdatedAt) {
     const [current] = await db
       .select({ updatedAt: logisticOrdersTable.updatedAt })
@@ -915,9 +921,7 @@ logisticOrdersRouter.put("/:id/status", async (req: Request, res: Response) => {
 
   const [updated] = await db
     .update(logisticOrdersTable)
-    .set({ status, updatedAt: new Date() })
-    .where(eq(logisticOrdersTable.id, id))
-    .set({ status, version: sql`${logisticOrdersTable.version} + 1` } as any)
+    .set({ status, updatedAt: new Date(), version: sql`${logisticOrdersTable.version} + 1` } as any)
     .where(whereClause)
     .returning();
 
