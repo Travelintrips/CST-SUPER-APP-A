@@ -13,6 +13,7 @@ import { sendVendorWhatsApp } from "../lib/vendorQuoteWa.js";
 import { generateShortLink } from "../lib/shortLink.js";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
+import { logActivity } from "../lib/activityLog.js";
 
 function getConfirmFormUrl(token: string): string {
   const domain = getPreferredDomain();
@@ -505,6 +506,15 @@ logisticRfqRouter.post("/vendor-confirm", rfqRateLimit, async (req: Request, res
     if (adminWa) sendWhatsApp(adminWa, adminMsg, { context: "vendor_rejected", refType: "order", refId: order.orderNumber }).catch((e: unknown) => logger.error({ e }, "Admin notify vendor rejected failed"));
   }
 
+  logActivity({
+    orderId,
+    actorType: "vendor",
+    actorName: vendor?.name ?? "Vendor",
+    action: action === "accept" ? "vendor_confirmed" : "vendor_rejected",
+    description: `Vendor ${vendor?.name ?? "-"} ${action === "accept" ? "menerima" : "menolak"} order ${order.orderNumber}`,
+    newValue: { action, vendorPrice: updatedPrice ?? Number(quote.vendorPrice) },
+  }).catch(() => {});
+
   logger.info({ orderId, action, vendorId: quote.vendorId }, `[TRUCKING-FIX] Vendor ${action} order`);
   return res.json({ message: action === "accept" ? "Konfirmasi diterima. Terima kasih!" : "Order ditolak." });
 });
@@ -852,6 +862,14 @@ logisticRfqRouter.post("/:id/rfq", async (req: Request, res: Response) => {
     }
   }
 
+  logActivity({
+    orderId,
+    actorType: "admin",
+    action: "rfq_blasted",
+    description: `RFQ ${rfqNumber} dikirim ke ${vendors.length} vendor untuk order ${order.orderNumber}`,
+    newValue: { rfqNumber, vendorCount: vendors.length, vendorIds },
+  }).catch(() => {});
+
   logger.info({ rfqNumber, orderId, vendorCount: vendors.length }, "RFQ created and sent to vendors");
 
   return res.status(201).json({
@@ -1198,6 +1216,14 @@ logisticRfqRouter.post("/:id/manual-rfq", async (req: Request, res: Response) =>
       logger.error({ err, vendorId: vendor.id }, "manualRFQ WA vendor failed")
     );
   }
+
+  logActivity({
+    orderId,
+    actorType: "admin",
+    action: "rfq_blasted",
+    description: `Manual RFQ ${rfqNumber} dikirim ke ${eligible.length} vendor untuk order ${order.orderNumber}`,
+    newValue: { rfqNumber, vendorCount: eligible.length, vendorIds: eligible.map((v) => v.id) },
+  }).catch(() => {});
 
   logger.info({ rfqNumber, orderId, vendorCount: eligible.length }, "Manual RFQ created and sent to vendors");
   return res.json({ ok: true, rfqNumber, vendorCount: eligible.length });
@@ -1566,6 +1592,14 @@ logisticRfqRouter.post("/:id/approve", async (req: Request, res: Response) => {
     }).catch((e: unknown) => logger.error({ e }, "Email customer quotation failed"));
   }
 
+  logActivity({
+    orderId,
+    actorType: "admin",
+    action: "vendor_selected",
+    description: `Admin memilih vendor ${vendor?.name ?? "-"} dan mengirim penawaran ke customer ${updatedOrder.customerName} — Harga: Rp ${Math.round(sellingPrice).toLocaleString("id-ID")}`,
+    newValue: { vendorId: quote.vendorId, vendorName: vendor?.name, sellingPrice, quoteId },
+  }).catch(() => {});
+
   logger.info({ orderId, quoteId, sellingPrice, vendorId: quote.vendorId }, "Quote approved, quotation sent to customer via WA + email");
 
   return res.json({
@@ -1765,6 +1799,25 @@ logisticRfqRouter.post("/confirm/:token", async (req: Request, res: Response) =>
       logger.error({ e }, "WA admin customer confirm notif failed")
     );
     if (action === "confirmed") console.log(`[TRUCKING-FLOW] State: Confirmed → SO_CREATED:${createdSoNumber} (order ${order.id})`);
+  }
+
+  logActivity({
+    orderId: order.id,
+    actorType: "customer",
+    actorName: order.customerName,
+    action: action === "confirmed" ? "customer_approved" : "customer_rejected",
+    description: `Customer ${order.customerName} ${action === "confirmed" ? "menyetujui" : "menolak"} penawaran untuk order ${order.orderNumber}`,
+    newValue: { action, ...(createdSoNumber ? { salesOrderNumber: createdSoNumber } : {}) },
+  }).catch(() => {});
+
+  if (action === "confirmed" && createdSoNumber) {
+    logActivity({
+      orderId: order.id,
+      actorType: "system",
+      action: "so_created",
+      description: `Sales Order ${createdSoNumber} dibuat otomatis setelah customer menyetujui penawaran`,
+      newValue: { salesOrderNumber: createdSoNumber },
+    }).catch(() => {});
   }
 
   logger.info({ orderId: order.id, action, orderNumber: order.orderNumber, soNumber: createdSoNumber }, "Customer confirmation received");

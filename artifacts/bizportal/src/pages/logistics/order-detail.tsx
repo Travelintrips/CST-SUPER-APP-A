@@ -21,7 +21,7 @@ import {
   Package, Truck, User, ClipboardList, Clock, ShieldAlert, Ship,
   ClipboardCheck, CheckCircle2, XCircle, MapPin, MessageCircle,
   Link2, FileText, AlertTriangle, Eye, EyeOff, StickyNote, Globe,
-  RotateCcw,
+  RotateCcw, Bell, ChevronDown, ChevronUp,
 } from "lucide-react";
 import { Link } from "wouter";
 import GpsTrackingPanel from "@/components/logistics/GpsTrackingPanel";
@@ -88,6 +88,93 @@ type DetailData = {
   rfqs: { id: number; rfqNumber: string; status: string }[];
   freightShipments: FreightShipmentLink[];
 };
+
+type WaLog = {
+  id: number;
+  channel: string;
+  recipient: string | null;
+  subject: string | null;
+  status: string;
+  context: string | null;
+  refType: string | null;
+  refId: string | null;
+  errorMsg: string | null;
+  createdAt: string;
+};
+
+function WaNotificationLogPanel({ orderNumber }: { orderNumber: string }) {
+  const [open, setOpen] = useState(false);
+  const { data: logData, isLoading, refetch } = useQuery<{ total: number; rows: WaLog[] }>({
+    queryKey: ["wa-logs", orderNumber],
+    queryFn: () => apiFetch(`/api/whatsapp/notification-logs?refId=${encodeURIComponent(orderNumber)}&limit=50`),
+    enabled: open,
+    staleTime: 30000,
+  });
+  const logs = logData?.rows ?? [];
+
+  const fmtStatus = (s: string) => {
+    if (s === "sent") return <span className="text-xs text-green-600 font-medium">✓ Terkirim</span>;
+    if (s === "failed") return <span className="text-xs text-red-500 font-medium">✗ Gagal</span>;
+    if (s === "deduped") return <span className="text-xs text-slate-400 font-medium">↩ Duplikat</span>;
+    return <span className="text-xs text-slate-500">{s}</span>;
+  };
+
+  const fmtChannel = (c: string) => c === "wa" ? "WhatsApp" : c === "email" ? "Email" : c;
+
+  return (
+    <Card className="border-slate-100">
+      <CardHeader
+        className="pb-2 cursor-pointer select-none"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-semibold text-slate-600 uppercase tracking-wide flex items-center gap-1.5">
+            <Bell className="w-4 h-4" /> Log Notifikasi WA/Email
+            {logData && <span className="ml-1 text-xs font-normal normal-case text-slate-400">({logData.total})</span>}
+          </CardTitle>
+          <div className="flex items-center gap-2">
+            {open && (
+              <button
+                onClick={(e) => { e.stopPropagation(); void refetch(); }}
+                className="text-slate-400 hover:text-slate-600 transition-colors"
+                title="Refresh log"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+              </button>
+            )}
+            {open ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+          </div>
+        </div>
+      </CardHeader>
+      {open && (
+        <CardContent className="pt-0">
+          {isLoading ? (
+            <div className="flex justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-slate-400" /></div>
+          ) : !logs || logs.length === 0 ? (
+            <p className="text-sm text-slate-400 text-center py-4">Belum ada log notifikasi</p>
+          ) : (
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {logs.map((log) => (
+                <div key={log.id} className={`rounded border px-3 py-2 text-xs ${log.status === "failed" ? "border-red-200 bg-red-50" : log.status === "deduped" ? "border-slate-100 bg-slate-50" : "border-green-100 bg-green-50"}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium text-slate-700">{fmtChannel(log.channel)}</span>
+                    {fmtStatus(log.status)}
+                  </div>
+                  {log.context && <p className="text-slate-500 mt-0.5">{log.context}</p>}
+                  {log.recipient && <p className="text-slate-400 truncate">→ {log.recipient}</p>}
+                  {log.errorMsg && <p className="text-red-500 mt-1 text-xs">{log.errorMsg}</p>}
+                  <p className="text-slate-400 mt-1">
+                    {new Date(log.createdAt).toLocaleString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      )}
+    </Card>
+  );
+}
 
 const ORDER_STATUSES = [
   "New Order", "Pending Vendor", "Vendor Confirmed", "Quotation Sent",
@@ -1494,8 +1581,9 @@ export default function LogisticOrderDetailPage() {
             )}
           </div>
 
-          {/* Right: Timeline */}
+          {/* Right: Timeline + WA Log */}
           <div className="space-y-4">
+            <WaNotificationLogPanel orderNumber={order.orderNumber} />
             <Card className="sticky top-6">
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
