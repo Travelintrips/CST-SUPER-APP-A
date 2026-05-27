@@ -45,6 +45,8 @@ import { runAuditReportsMigration } from "./lib/auditReportsMigration.js";
 import { runWaTemplateMigration } from "./lib/orderNotification.js";
 import { runRlsMigration } from "./lib/rlsMigration.js";
 import { migratePushSubscriptions } from "./lib/webPush.js";
+import { runPgTrgmMigration } from "./lib/pgTrgmMigration.js";
+import { startDbBackupScheduler } from "./lib/dbBackup.js";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 
@@ -203,6 +205,7 @@ async function startServer() {
   startOcrTempCleanup();
   startVmfGapNotifier();
   startWorkflowWorker();
+  startDbBackupScheduler();
 
   // Run all migrations + seeds in the background with a small initial delay
   // to prevent a DB connection storm on cold starts.
@@ -246,6 +249,7 @@ async function startServer() {
     .then(() => runWithRetry("RLS migration", runRlsMigration))
     .then(() => runWithRetry("Phase 1 migration", runPhase1Migration))
     .then(() => runWithRetry("Push subscriptions migration", migratePushSubscriptions))
+    .then(() => runWithRetry("pg_trgm indexes migration", runPgTrgmMigration))
     .then(() => enableRealtimeTables().catch((err) => {
       logger.warn({ err }, "Supabase Realtime table enable failed (non-fatal)");
     }))

@@ -6,10 +6,18 @@ import { eq, or } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { logger } from "../lib/logger.js";
+import { createTwoTierRateLimiter, extractRateLimitKey } from "../lib/userRateLimiter.js";
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 const objectStorage = new ObjectStorageService();
+
+// Per-user OCR rate limit: burst 5/minute + 20/hour.
+// Prevents one account/driver from draining OpenAI Vision quota.
+const ocrScanLimiter = createTwoTierRateLimiter(
+  { windowMs: 60_000, limit: 5 },       // 5 per minute
+  { windowMs: 60 * 60_000, limit: 20 }, // 20 per hour
+);
 
 // Allowed MIME types for POD OCR scan (images only — no executables or scripts)
 const POD_OCR_ALLOWED_MIME = new Set([
@@ -128,6 +136,13 @@ router.post("/scan", upload.single("file"), async (req, res) => {
     req.headers["authorization"].startsWith("Bearer ");
   if (!isClerkAuth && !hasBearerToken) {
     res.status(401).json({ error: "Unauthorized. Login diperlukan untuk menggunakan fitur POD OCR." });
+    return;
+  }
+
+  // Per-user/per-token OCR rate limit — applied after auth so key is stable
+  const rlKey = extractRateLimitKey(req);
+  if (!ocrScanLimiter.check(rlKey)) {
+    res.status(429).json({ error: "Terlalu banyak scan OCR. Batas: 5/menit dan 20/jam per akun." });
     return;
   }
 
