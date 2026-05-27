@@ -341,3 +341,9 @@ id = "XllxKUad3jl7852xYOFpV"
 uri = "file://docs/ai-automation-roadmap.md"
 type = "text"
 title = "AI & Automation Architecture Roadmap"
+
+[[outputs]]
+id = "ZzwiO8d2gt_Q6_szPankd"
+uri = "file://docs/operational-intelligence-roadmap.md"
+type = "text"
+title = "Operational Intelligence & Autonomous Workflow Roadmap"
