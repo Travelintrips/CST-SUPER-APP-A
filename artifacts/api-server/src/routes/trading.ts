@@ -291,6 +291,43 @@ router.put("/suppliers/catalog/:itemId", async (req, res) => {
     .where(eq(vendorCatalogItemsTable.id, itemId));
   if (!current) return res.status(404).json({ message: "Item not found" });
 
+  // ── Khusus: Link legacy item ke master item ───────────────────────────────
+  if (req.body.linkMasterItemId != null && !current.masterItemId) {
+    const newMasterId = Number(req.body.linkMasterItemId);
+    if (Number.isNaN(newMasterId)) return res.status(400).json({ message: "linkMasterItemId tidak valid" });
+
+    const [masterItem] = await db.select().from(productsTable).where(eq(productsTable.id, newMasterId));
+    if (!masterItem) return res.status(404).json({ message: "Master Item tidak ditemukan" });
+
+    const [dup] = await db
+      .select({ id: vendorCatalogItemsTable.id })
+      .from(vendorCatalogItemsTable)
+      .where(and(
+        eq(vendorCatalogItemsTable.vendorId, current.vendorId),
+        eq(vendorCatalogItemsTable.masterItemId, newMasterId),
+      ));
+    if (dup) return res.status(409).json({ message: "Item ini sudah ada di etalase vendor ini" });
+
+    const categoryMap = await db
+      .select({ name: productCategoriesTable.name })
+      .from(productCategoryMapTable)
+      .innerJoin(productCategoriesTable, eq(productCategoryMapTable.categoryId, productCategoriesTable.id))
+      .where(eq(productCategoryMapTable.productId, newMasterId));
+    const kategori = categoryMap[0]?.name ?? null;
+
+    const [linked] = await db.update(vendorCatalogItemsTable).set({
+      masterItemId: newMasterId,
+      name: masterItem.name,
+      type: masterItem.itemType === "jasa" ? "service" : "product",
+      unit: masterItem.unit ?? null,
+      description: masterItem.description ?? null,
+      kategori,
+      subcategory: masterItem.subcategory ?? null,
+    }).where(eq(vendorCatalogItemsTable.id, itemId)).returning();
+
+    return res.json(toItem(linked));
+  }
+
   const { isActive, isCommodityTag, sortOrder } = req.body;
   const patch: Record<string, unknown> = {};
 
