@@ -185,6 +185,33 @@ export default function VendorDetailPage() {
     });
   }, [catalog, filterKategoriCatalog, filterSubcatCatalog, catalogSearch]);
 
+  const catalogSummary = useMemo(() => {
+    const all = catalog ?? [];
+    const activeItems = all.filter((i) => i.isActive);
+    const inactiveItems = all.filter((i) => !i.isActive);
+    const linkedItems = all.filter((i) => (i as any).masterItemId != null);
+    const withSell = all.filter((i) => (i as any).priceSell != null);
+
+    const totalPriceBase = activeItems.reduce((sum, i) => sum + Number(i.priceBase ?? 0), 0);
+
+    const avgMarginPct = withSell.length > 0
+      ? withSell.reduce((sum, i) => {
+          const sell = Number((i as any).priceSell ?? 0);
+          const base = Number(i.priceBase ?? 0);
+          return sum + (sell > 0 ? ((sell - base) / sell) * 100 : 0);
+        }, 0) / withSell.length
+      : null;
+
+    return {
+      totalPriceBase,
+      avgMarginPct,
+      activeCount: activeItems.length,
+      inactiveCount: inactiveItems.length,
+      linkedCount: linkedItems.length,
+      totalCount: all.length,
+    };
+  }, [catalog]);
+
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<VendorCatalogItem | null>(null);
   const [itemForm, setItemForm] = useState<CatalogForm>(emptyCatalogForm());
@@ -443,6 +470,53 @@ export default function VendorDetailPage() {
           </Card>
         )}
 
+        {/* ── Summary Cards ── */}
+        {!catalogLoading && (catalog ?? []).length > 0 && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <Card>
+              <CardContent className="pt-4 pb-3">
+                <p className="text-xs text-muted-foreground">Total Item</p>
+                <p className="text-2xl font-bold mt-0.5">{catalogSummary.totalCount}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  <span className="text-green-600 font-medium">{catalogSummary.activeCount} aktif</span>
+                  {catalogSummary.inactiveCount > 0 && <> · {catalogSummary.inactiveCount} nonaktif</>}
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4 pb-3">
+                <p className="text-xs text-muted-foreground">Total Harga Dasar (Aktif)</p>
+                <p className="text-lg font-bold mt-0.5 font-mono">
+                  {catalogSummary.totalPriceBase > 0 ? fmt(catalogSummary.totalPriceBase) : "—"}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">Sum priceBase item aktif</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4 pb-3">
+                <p className="text-xs text-muted-foreground">Rata-rata Margin</p>
+                <p className="text-2xl font-bold mt-0.5">
+                  {catalogSummary.avgMarginPct != null
+                    ? <span className={catalogSummary.avgMarginPct >= 0 ? "text-green-600" : "text-destructive"}>{catalogSummary.avgMarginPct.toFixed(1)}%</span>
+                    : <span className="text-muted-foreground text-base">—</span>}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">Dari item terhubung master</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4 pb-3">
+                <p className="text-xs text-muted-foreground">Link Master Item</p>
+                <p className="text-2xl font-bold mt-0.5">{catalogSummary.linkedCount}<span className="text-base font-normal text-muted-foreground">/{catalogSummary.totalCount}</span></p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {catalogSummary.linkedCount < catalogSummary.totalCount
+                    ? <span className="text-amber-600">{catalogSummary.totalCount - catalogSummary.linkedCount} item belum terhubung</span>
+                    : <span className="text-green-600">Semua terhubung</span>}
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -545,15 +619,17 @@ export default function VendorDetailPage() {
                         </TableCell>
                         <TableCell className="text-sm">{item.unit ?? "-"}</TableCell>
                         <TableCell className="text-right font-mono text-sm text-muted-foreground">
-                          {priceBase > 0 ? fmt(priceBase) : "-"}
+                          {priceBase > 0 ? fmt(priceBase) : <span className="text-muted-foreground/50">—</span>}
                         </TableCell>
                         <TableCell className="text-right font-mono text-sm font-semibold text-primary">
-                          {priceSell != null && priceSell > 0 ? fmt(priceSell) : "-"}
+                          {priceSell != null
+                            ? fmt(priceSell)
+                            : <span className="text-xs text-amber-500 font-normal">Belum linked</span>}
                         </TableCell>
                         <TableCell className="text-right font-mono text-sm font-semibold">
                           {profit != null
                             ? <span className={profit >= 0 ? "text-green-600" : "text-destructive"}>{fmt(profit)}</span>
-                            : "-"}
+                            : <span className="text-muted-foreground/40">—</span>}
                         </TableCell>
                         <TableCell>
                           {item.isActive
