@@ -7,6 +7,7 @@ import { getAdminWa } from "../lib/adminWa.js";
 import { logger } from "../lib/logger.js";
 import { normalizePhone } from "../lib/phoneUtils.js";
 import { getWaTemplateConfig, renderTemplate } from "../lib/orderNotification.js";
+import { requireAdmin } from "../lib/requireAdmin.js";
 
 export const whatsappRouter = Router();
 
@@ -86,6 +87,7 @@ const DEFAULT_QUOTATION_ADMIN_TPL = [
 
 // POST /api/whatsapp/send-quotation
 whatsappRouter.post("/send-quotation", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
   const {
     rfqId, orderId, customerName, customerPhone, vendorName, vendorPhone,
     serviceType, route, vendorPrice, markupType, markupValue, finalPrice,
@@ -199,7 +201,9 @@ whatsappRouter.post("/send-quotation", async (req: Request, res: Response) => {
 });
 
 // GET /api/whatsapp/quotation-logs
-whatsappRouter.get("/quotation-logs", async (_req: Request, res: Response) => {
+whatsappRouter.get("/quotation-logs", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const _req = req;
   const logs = await db
     .select()
     .from(quotationReplyLogsTable)
@@ -265,6 +269,7 @@ whatsappRouter.post("/webhook", async (req: Request, res: Response) => {
 
 // GET /api/whatsapp/inbox — daftar pesan masuk dari vendor/customer
 whatsappRouter.get("/inbox", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
   const unreadOnly = req.query.unread === "true";
   let query = db
     .select()
@@ -303,6 +308,7 @@ function mapIncoming(r: typeof waIncomingMessagesTable.$inferSelect) {
 
 // PATCH /api/whatsapp/inbox/:id/read — tandai sudah dibaca
 whatsappRouter.patch("/inbox/:id/read", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
   const id = parseInt(req.params["id"] as string);
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
 
@@ -316,6 +322,7 @@ whatsappRouter.patch("/inbox/:id/read", async (req: Request, res: Response) => {
 
 // POST /api/whatsapp/inbox/:id/reply — balas pesan masuk
 whatsappRouter.post("/inbox/:id/reply", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
   const id = parseInt(req.params["id"] as string);
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
 
@@ -358,6 +365,7 @@ whatsappRouter.post("/inbox/:id/reply", async (req: Request, res: Response) => {
 // Query params: channel (wa|email), status (sent|failed|deduped), context, refId,
 //               from (ISO date), to (ISO date), limit (max 200), offset
 whatsappRouter.get("/notification-logs", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
   const channel  = String(req.query.channel ?? "").trim() || null;
   const status   = String(req.query.status  ?? "").trim() || null;
   const context  = String(req.query.context ?? "").trim() || null;
@@ -412,6 +420,7 @@ whatsappRouter.get("/notification-logs", async (req: Request, res: Response) => 
 
 // GET /api/whatsapp/notification-logs/:id — admin: full message body for one log entry
 whatsappRouter.get("/notification-logs/:id", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
   const id = parseInt(String(req.params.id ?? ""), 10);
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
 
