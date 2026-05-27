@@ -1372,6 +1372,12 @@ router.post("/order-upload", requirePortalAuth, (req, res, next) => {
 
   try {
     const objectPath = await _objectStorage.uploadPrivateEntity(req.file.buffer, mime);
+    // Set ACL ownership agar customer bisa download file sendiri via /api/storage/objects/*
+    // Non-fatal: jika gagal, file tetap tersimpan dan admin bisa akses sebagai fallback.
+    _objectStorage.trySetObjectEntityAclPolicy(objectPath, {
+      owner: String(customerId),
+      visibility: "private",
+    }).catch(() => {});
     return res.json({ objectPath });
   } catch (_err) {
     return res.status(500).json({ message: "Gagal mengunggah file" });
@@ -2167,24 +2173,39 @@ Isi string kosong jika field tidak terbaca.`,
   }
 });
 
-// POST /api/portal/onboarding/upload-doc — upload any document to object storage
+const _ONBOARDING_DOC_ALLOWED_MIME = new Set([
+  "application/pdf",
+  "image/jpeg", "image/jpg", "image/png", "image/webp", "image/heic", "image/heif",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+]);
+
+// POST /api/portal/onboarding/upload-doc — upload any document to object storage (PRIVATE)
+// Dokumen identitas (KTP, SIM, STNK, legality) disimpan di private bucket,
+// bukan public, karena mengandung data sensitif pelanggan.
 router.post("/onboarding/upload-doc", requirePortalAuth, onboardingUpload.single("file"), async (req, res): Promise<void> => {
   const customerId = (req as PortalAuthReq).portalCustomerId;
   if (!req.file) { res.status(400).json({ ok: false, error: "File tidak ditemukan." }); return; }
+
+  if (!_ONBOARDING_DOC_ALLOWED_MIME.has(req.file.mimetype)) {
+    res.status(415).json({ ok: false, error: "Tipe file tidak diizinkan. Gunakan PDF atau gambar (JPEG, PNG, WEBP)." }); return;
+  }
+
   const docType = String(req.body?.docType ?? "doc");
 
   try {
-    const ext = req.file.originalname.split(".").pop() ?? "bin";
-    const key = `portal/onboarding/${customerId}/${docType}-${randomUUID()}.${ext}`;
     const storage = new ObjectStorageService();
     let buf = req.file.buffer;
     if (req.file.mimetype.startsWith("image/")) {
-      try { const c = await compressImageBuffer(buf, req.file.mimetype); buf = c.buffer; } catch { /* use original */ }
+      try { const c = await compressImageBuffer(buf, req.file.mimetype); buf = c.buffer; } catch { /* gunakan original */ }
     }
-    const url = await storage.uploadPublic(key, buf, req.file.mimetype);
+    // Upload ke private bucket — dokumen identitas tidak boleh public
+    const objectPath = await storage.uploadPrivateEntity(buf, req.file.mimetype);
+    // Serving URL via authenticated route /api/storage/objects/...
+    const url = `/api/storage${objectPath}`;
     // Record in identity_documents
     await db.insert(identityDocumentsTable).values({ customerId, docType, url, fileName: req.file.originalname });
-    res.json({ ok: true, url });
+    res.json({ ok: true, url, objectPath });
   } catch (err) {
     console.error("[upload-doc]", err);
     res.status(500).json({ ok: false, error: "Gagal upload file." });

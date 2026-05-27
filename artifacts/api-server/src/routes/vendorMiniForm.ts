@@ -680,6 +680,14 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
 
     if (!formData || typeof formData !== "object") return res.status(400).json({ error: "formData diperlukan" });
 
+    // Validasi attachmentUrl: hanya boleh objectPath dari private storage (/objects/...)
+    // Tolak URL arbitrary (http://, https://, dll) untuk mencegah SSRF/XSS.
+    if (attachmentUrl !== undefined && attachmentUrl !== null && attachmentUrl !== "") {
+      if (!attachmentUrl.startsWith("/objects/")) {
+        return res.status(400).json({ error: "attachmentUrl tidak valid. Gunakan endpoint upload terlebih dahulu." });
+      }
+    }
+
     // Validasi server-side untuk field required berdasarkan SERVICE_SCHEMAS
     const schema = SERVICE_SCHEMAS[link.serviceType];
     if (schema) {
