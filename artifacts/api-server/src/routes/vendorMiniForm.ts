@@ -1557,12 +1557,51 @@ vendorMiniFormRouter.get("/admin/submissions/:id/price-history", async (req: Req
 vendorMiniFormRouter.get("/admin/activity-log", async (req: Request, res: Response) => {
   if (!(await requireClerkUser(req, res))) return;
   try {
-    const logs = await db
-      .select()
-      .from(vmfActivityLogTable)
-      .orderBy(desc(vmfActivityLogTable.createdAt))
-      .limit(200);
-    return res.json(logs.map(l => ({ ...l, createdAt: l.createdAt.toISOString() })));
+    const {
+      entityType, action, orderNumber, actor,
+      from, to,
+      limit: limitQ, offset: offsetQ,
+    } = req.query as Record<string, string | undefined>;
+
+    const limit = Math.min(Number(limitQ) || 200, 500);
+    const offset = Number(offsetQ) || 0;
+
+    const conditions = [];
+    if (entityType) conditions.push(eq(vmfActivityLogTable.entityType, entityType));
+    if (action) conditions.push(eq(vmfActivityLogTable.action, action));
+    if (actor) conditions.push(eq(vmfActivityLogTable.actor, actor));
+    if (from) {
+      const fromDate = new Date(from);
+      if (!isNaN(fromDate.getTime())) {
+        conditions.push(sql`${vmfActivityLogTable.createdAt} >= ${fromDate}`);
+      }
+    }
+    if (to) {
+      const toDate = new Date(to);
+      if (!isNaN(toDate.getTime())) {
+        toDate.setHours(23, 59, 59, 999);
+        conditions.push(sql`${vmfActivityLogTable.createdAt} <= ${toDate}`);
+      }
+    }
+    if (orderNumber) {
+      conditions.push(sql`${vmfActivityLogTable.data}->>'orderNumber' = ${orderNumber}`);
+    }
+
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const [logs, countResult] = await Promise.all([
+      db.select().from(vmfActivityLogTable)
+        .where(where)
+        .orderBy(desc(vmfActivityLogTable.createdAt))
+        .limit(limit)
+        .offset(offset),
+      db.select({ total: count() }).from(vmfActivityLogTable).where(where),
+    ]);
+
+    return res.json({
+      rows: logs.map(l => ({ ...l, createdAt: l.createdAt.toISOString() })),
+      total: countResult[0]?.total ?? 0,
+    });
   } catch (err) {
     req.log?.error({ err }, "activity-log error");
     return res.status(500).json({ error: "Internal server error" });
