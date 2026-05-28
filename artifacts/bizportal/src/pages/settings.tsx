@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { User, Mail, Briefcase, Shield, MessageCircle, Save, Loader2, CheckCircle, Calculator, ChevronDown, ChevronUp, Package, Plus, X, Bot, Link2, RotateCcw, History, RefreshCw, Download } from "lucide-react";
+import { User, Mail, Briefcase, Shield, MessageCircle, Save, Loader2, CheckCircle, Calculator, ChevronDown, ChevronUp, Package, Plus, X, Bot, Link2, RotateCcw, History, RefreshCw, Download, Layers } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -2012,6 +2012,26 @@ export default function SettingsPage() {
           {isAdmin && <FreightStageLabelsCard />}
           {isAdmin && <WaTemplatesCard />}
           {isAdmin && <WaLogsCard />}
+
+          {isAdmin && (
+            <Card className="col-span-1 md:col-span-3 bg-card border-border">
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-primary" /> Product Templates
+                </CardTitle>
+                <CardDescription>
+                  Kelola template komoditas — custom fields, dokumen wajib, checklist, dan aturan validasi per kategori.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <a href="/bizportal/settings/product-templates">
+                  <Button variant="outline" size="sm">
+                    <Layers className="w-4 h-4 mr-2" /> Kelola Product Templates
+                  </Button>
+                </a>
+              </CardContent>
+            </Card>
+          )}
 
           <Card className="col-span-1 md:col-span-3 bg-card border-border">
             <CardHeader>
