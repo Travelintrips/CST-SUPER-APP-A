@@ -42,6 +42,19 @@ import {
   Search,
   Info,
   Eye,
+  LayoutDashboard,
+  ShoppingCart,
+  Package,
+  BookOpen,
+  Receipt,
+  BarChart2,
+  Mail,
+  Store,
+  Users,
+  Building2,
+  ClipboardList,
+  Wallet,
+  ArrowUpRight,
 } from "lucide-react";
 import { inCodeTemplates } from "@workspace/product-templates";
 import type { ProductTemplate } from "@workspace/product-templates";
@@ -2970,6 +2983,10 @@ export default function AdminPage() {
                   <Layers className="h-4 w-4" />
                   Product Templates
                 </TabsTrigger>
+                <TabsTrigger value="bizportal-erp" className="gap-2">
+                  <Building2 className="h-4 w-4" />
+                  BizPortal ERP
+                </TabsTrigger>
               </>
             )}
             <TabsTrigger value="claim" className="gap-2">
@@ -3097,6 +3114,134 @@ export default function AdminPage() {
                     <PortalProductTemplateEngine />
                   </CardContent>
                 </Card>
+              </TabsContent>
+
+              <TabsContent value="bizportal-erp">
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-xl font-semibold">BizPortal ERP</h2>
+                      <p className="text-sm text-muted-foreground mt-1">Akses cepat ke semua modul ERP internal. Klik modul untuk membuka BizPortal.</p>
+                    </div>
+                    <a
+                      href="/bizportal/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium transition-colors"
+                    >
+                      <Building2 className="h-4 w-4" />
+                      Buka BizPortal
+                      <ArrowUpRight className="h-4 w-4" />
+                    </a>
+                  </div>
+
+                  {[
+                    {
+                      label: "Dashboard & Utama",
+                      color: "bg-slate-50 border-slate-200",
+                      iconColor: "text-slate-600",
+                      items: [
+                        { icon: LayoutDashboard, label: "Dashboard", path: "/bizportal/dashboard" },
+                        { icon: ClipboardList, label: "Approvals", path: "/bizportal/approvals" },
+                        { icon: Building2, label: "Holding / Grup", path: "/bizportal/holding" },
+                      ],
+                    },
+                    {
+                      label: "Logistik",
+                      color: "bg-blue-50 border-blue-200",
+                      iconColor: "text-blue-600",
+                      items: [
+                        { icon: Ship, label: "Freight Shipments", path: "/bizportal/logistics/freight" },
+                        { icon: ClipboardList, label: "Portal Orders", path: "/bizportal/logistics/portal-orders" },
+                        { icon: Truck, label: "Drivers", path: "/bizportal/logistics/drivers" },
+                        { icon: FileText, label: "RFQ Logistik", path: "/bizportal/logistics/rfq" },
+                        { icon: Tag, label: "Quote Requests", path: "/bizportal/logistics/quote-requests" },
+                        { icon: BarChart2, label: "Margin Rules", path: "/bizportal/logistics/margin-rules" },
+                      ],
+                    },
+                    {
+                      label: "Sales",
+                      color: "bg-green-50 border-green-200",
+                      iconColor: "text-green-600",
+                      items: [
+                        { icon: FileText, label: "Quotations", path: "/bizportal/sales/quotations" },
+                        { icon: ShoppingCart, label: "Sales Orders", path: "/bizportal/sales/orders" },
+                        { icon: Receipt, label: "Invoices", path: "/bizportal/sales/documents" },
+                        { icon: Users, label: "Pelanggan Portal", path: "/bizportal/portal/customers" },
+                        { icon: Store, label: "E-commerce", path: "/bizportal/ecommerce" },
+                        { icon: Package, label: "Portal Product Orders", path: "/bizportal/portal-product-orders" },
+                      ],
+                    },
+                    {
+                      label: "Purchase",
+                      color: "bg-orange-50 border-orange-200",
+                      iconColor: "text-orange-600",
+                      items: [
+                        { icon: ClipboardList, label: "Purchase Requests", path: "/bizportal/purchase/pr" },
+                        { icon: FileText, label: "RFQ Purchase", path: "/bizportal/purchase/rfq" },
+                        { icon: ShoppingCart, label: "Purchase Orders", path: "/bizportal/purchase/orders" },
+                        { icon: PackageCheck, label: "Goods Receipt", path: "/bizportal/purchase/gr" },
+                        { icon: Users, label: "Vendors", path: "/bizportal/purchase/vendors" },
+                        { icon: Receipt, label: "Bills", path: "/bizportal/purchase/bills" },
+                      ],
+                    },
+                    {
+                      label: "Accounting",
+                      color: "bg-purple-50 border-purple-200",
+                      iconColor: "text-purple-600",
+                      items: [
+                        { icon: BookOpen, label: "Chart of Accounts", path: "/bizportal/accounting/accounts" },
+                        { icon: FileText, label: "Journal Entries", path: "/bizportal/accounting/entries" },
+                        { icon: Wallet, label: "Payments", path: "/bizportal/accounting/payments" },
+                        { icon: BarChart2, label: "Trial Balance", path: "/bizportal/accounting/reports/trial-balance" },
+                        { icon: BarChart2, label: "Profit & Loss", path: "/bizportal/accounting/reports/profit-loss" },
+                        { icon: BarChart2, label: "Balance Sheet", path: "/bizportal/accounting/reports/balance-sheet" },
+                      ],
+                    },
+                    {
+                      label: "Expenses & Reports",
+                      color: "bg-rose-50 border-rose-200",
+                      iconColor: "text-rose-600",
+                      items: [
+                        { icon: Receipt, label: "Expense", path: "/bizportal/expense" },
+                        { icon: BarChart2, label: "Laporan Sales", path: "/bizportal/reports/sales" },
+                        { icon: BarChart2, label: "Laporan Purchase", path: "/bizportal/reports/purchase" },
+                        { icon: BarChart2, label: "AR Aging", path: "/bizportal/reports/ar-aging" },
+                        { icon: BarChart2, label: "AP Aging", path: "/bizportal/reports/ap-aging" },
+                        { icon: ClipboardList, label: "Audit Log", path: "/bizportal/reports/audit-log" },
+                      ],
+                    },
+                    {
+                      label: "Lainnya",
+                      color: "bg-amber-50 border-amber-200",
+                      iconColor: "text-amber-600",
+                      items: [
+                        { icon: Mail, label: "Correspondences", path: "/bizportal/correspondences" },
+                        { icon: Package, label: "Trading", path: "/bizportal/trading" },
+                        { icon: Store, label: "Katalog Terpadu", path: "/bizportal/katalog-terpadu" },
+                        { icon: Settings, label: "Org & HR", path: "/bizportal/org" },
+                      ],
+                    },
+                  ].map((section) => (
+                    <div key={section.label} className={`rounded-xl border p-4 ${section.color}`}>
+                      <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">{section.label}</h3>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                        {section.items.map(({ icon: Icon, label, path }) => (
+                          <a
+                            key={path}
+                            href={path}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex flex-col items-center gap-2 p-3 rounded-lg bg-white border border-white/80 hover:border-indigo-200 hover:shadow-sm transition-all group cursor-pointer"
+                          >
+                            <Icon className={`h-5 w-5 ${section.iconColor} group-hover:scale-110 transition-transform`} />
+                            <span className="text-xs text-center font-medium text-gray-700 leading-tight">{label}</span>
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </TabsContent>
             </>
           )}
