@@ -7,7 +7,7 @@ import {
   productTemplatesTable,
 } from "@workspace/db";
 import { eq, ilike, and, or, sql } from "drizzle-orm";
-import { resolveTemplate, validateTemplatePayload, CATEGORY_LABELS } from "@workspace/product-templates";
+import { resolveTemplate, resolveAllTemplates, validateTemplatePayload, CATEGORY_LABELS } from "@workspace/product-templates";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { getPreferredDomain } from "../lib/domain";
 import { sendProductOrderWaNotification, sendProductOrderStatusUpdateWa } from "../lib/orderNotification";
@@ -149,6 +149,36 @@ ${order.notes ? `<p>Catatan: ${order.notes}</p>` : ""}
     }).catch(() => undefined);
   }
 }
+
+// GET /api/portal-product/templates — resolved templates for category dropdown (public)
+portalProductOrdersRouter.get("/templates", async (req: Request, res: Response) => {
+  try {
+    const rows = await db
+      .select()
+      .from(productTemplatesTable)
+      .where(eq(productTemplatesTable.isActive, true));
+
+    const overrides = rows.map((row) => ({
+      categoryKey: row.categoryKey,
+      label: row.label,
+      version: row.version,
+      isActive: row.isActive,
+      requiredDocuments: row.requiredDocuments as never,
+      checklist: row.checklist as never,
+      customFields: row.customFields as never,
+      packagingInstructions: row.packagingInstructions ?? null,
+      conditionalRules: row.conditionalRules as never,
+      validationRules: row.validationRules as never,
+    }));
+
+    const resolved = resolveAllTemplates(overrides);
+
+    res.setHeader("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
+    return res.json(resolved);
+  } catch (err) {
+    return res.status(500).json({ message: String(err) });
+  }
+});
 
 // GET /api/portal-product/products — list active products (public)
 portalProductOrdersRouter.get("/products", async (req: Request, res: Response) => {

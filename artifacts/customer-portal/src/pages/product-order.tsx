@@ -98,8 +98,7 @@ export default function ProductOrderPage() {
 
   // ── Fetch templates from DB on mount ──
   useEffect(() => {
-    // Backend returns RESOLVED ProductTemplate[] (in-code + DB overrides merged).
-    fetch(`${BASE}/api/product-templates`)
+    fetch(`${BASE}/api/portal-product/templates`)
       .then((r) => r.ok ? r.json() : Promise.reject())
       .then((templates: ProductTemplate[]) => {
         setAllTemplates(templates.length > 0 ? templates : getAllLocalTemplates());
