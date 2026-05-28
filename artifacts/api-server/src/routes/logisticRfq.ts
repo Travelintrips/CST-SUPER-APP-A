@@ -4,6 +4,17 @@ import { rfqRateLimit } from "../middlewares/rfqRateLimit.js";
 import { db, suppliersTable, logisticOrdersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, logisticOrderItemsTable, vendorCatalogItemsTable, vendorOffersTable, vendorRatesTable, salesDocumentsTable, salesDocumentLinesTable } from "@workspace/db";
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
+import {
+  sendAdminQuoteNotification,
+  sendTruckingVendorConfirmedAdminNotification,
+  sendTruckingVendorRejectedAdminNotification,
+  sendQuotationSentCustomerNotification,
+  sendRfqCustomerConfirmedAdminNotification,
+  sendRfqCustomerRejectedAdminNotification,
+  sendMultiModeOptionsSentNotification,
+  sendCustomerChoseOptionAdminNotification,
+  sendLogisticOperationalStatusNotification,
+} from "../lib/orderNotification.js";
 import { saveAndBroadcast } from "../lib/notificationStore.js";
 import { broadcastToPortal } from "../lib/sseManager.js";
 import { getAdminWa, getAdminGroupWa } from "../lib/adminWa.js";
@@ -308,32 +319,7 @@ function buildTruckingRfqWaMessage(order: {
   );
 }
 
-function buildAdminQuoteNotif(rfqNumber: string, orderNumber: string, vendorName: string, orderId: number, quote: {
-  vendorPrice: number; estimatedPickup?: string | null; estimatedDelivery?: string | null;
-  estimatedDays?: number | null; vendorNotes?: string | null;
-}, quotePosition?: number): string {
-  const fmt = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
-  const approveUrl = getApproveFormUrl(orderNumber);
-  const posLabel = quotePosition != null ? ` (vendor ke-${quotePosition})` : "";
-  return (
-    `💰 *PENAWARAN VENDOR DITERIMA (Portal)*\n` +
-    `━━━━━━━━━━━━━━━━━━\n` +
-    `No. RFQ     : \`${rfqNumber}\`\n` +
-    `No. Order   : \`${orderNumber}\`\n` +
-    `Vendor      : *${vendorName}*${posLabel}\n` +
-    `Harga       : *${fmt(quote.vendorPrice)}*\n` +
-    (quote.estimatedPickup ? `ETA Pickup  : ${quote.estimatedPickup}\n` : "") +
-    (quote.estimatedDelivery ? `ETA Delivery: ${quote.estimatedDelivery}\n` : "") +
-    (quote.estimatedDays ? `Est. Hari   : ${quote.estimatedDays} hari\n` : "") +
-    (quote.vendorNotes ? `Catatan     : ${quote.vendorNotes}\n` : "") +
-    `━━━━━━━━━━━━━━━━━━\n` +
-    (approveUrl
-      ? `✅ *Approve & Kirim ke Customer:*\n${approveUrl}\n\n`
-      : ``) +
-    `📋 Lihat semua penawaran:\n\`QUOTES ${orderNumber}\`\n\n` +
-    `_Atau ketik: \`APPROVE ${orderNumber} ${quotePosition ?? 1}\`_`
-  );
-}
+// buildAdminQuoteNotif migrated to sendAdminQuoteNotification (orderNotification.ts)
 
 const toQuote = (q: typeof logisticOrderQuotesTable.$inferSelect, vendorName: string) => {
   const vp = Number(q.vendorPrice);
@@ -478,32 +464,18 @@ logisticRfqRouter.post("/vendor-confirm", rfqRateLimit, async (req: Request, res
 
   if (action === "accept") {
     console.log(`[TRUCKING-FLOW] State: Under Review → Vendor Confirmed (order ${orderId}, vendor ${vendor?.name})`);
-
-    // Notify admin: vendor confirmed + pricing info + approve link
-    const approveUrl = getApproveFormUrl(order.orderNumber);
-    const adminMsg =
-      `🔔 *VENDOR CONFIRMED*\n` +
-      `📦 Order: ${order.orderNumber}\n` +
-      `🏢 Vendor: ${vendor?.name ?? "Unknown"}\n` +
-      `💰 Harga Dasar: ${fmtRp(basePrice)}\n` +
-      `💵 Harga ke Customer (Markup ${markupPct}%): ${fmtRp(finalPrice)}\n\n` +
-      (approveUrl ? `✅ Review & Approve: ${approveUrl}` : ``);
-
     const adminWa = await getAdminWa();
-    if (adminWa) sendWhatsApp(adminWa, adminMsg, { context: "vendor_confirmed", refType: "order", refId: order.orderNumber }).catch((e: unknown) => logger.error({ e }, "Admin notify vendor confirmed failed"));
+    sendTruckingVendorConfirmedAdminNotification(
+      order.orderNumber, vendor?.name ?? "Unknown", basePrice, finalPrice,
+      getApproveFormUrl(order.orderNumber), adminWa,
+    );
   } else {
     console.log(`[TRUCKING-FLOW] State: Under Review → Vendor Rejected (order ${orderId})`);
-
-    // Notify admin: vendor rejected
-    const approveUrl = getApproveFormUrl(order.orderNumber);
-    const adminMsg =
-      `🔔 *VENDOR REJECTED*\n` +
-      `📦 Order: ${order.orderNumber}\n` +
-      `🏢 Vendor: ${vendor?.name ?? "Unknown"} menolak order ini.\n\n` +
-      (approveUrl ? `📋 Cek & pilih vendor lain: ${approveUrl}` : ``);
-
     const adminWa = await getAdminWa();
-    if (adminWa) sendWhatsApp(adminWa, adminMsg, { context: "vendor_rejected", refType: "order", refId: order.orderNumber }).catch((e: unknown) => logger.error({ e }, "Admin notify vendor rejected failed"));
+    sendTruckingVendorRejectedAdminNotification(
+      order.orderNumber, vendor?.name ?? "Unknown",
+      getApproveFormUrl(order.orderNumber), adminWa,
+    );
   }
 
   logActivity({
@@ -728,18 +700,15 @@ logisticRfqRouter.post("/vendor-quote", rfqRateLimit, async (req: Request, res: 
         .orderBy(logisticOrderQuotesTable.createdAt)
     : [];
   const quotePosition = allQuotes.findIndex((q) => q.id === quote.id) + 1 || undefined;
-  const quoteNotifMsg = buildAdminQuoteNotif(
-    rfq.rfqNumber, order.orderNumber, vendor?.name ?? `#${vendorId}`, rfq.orderId,
+  const notifyAdminQuote = (waPhone: string) => sendAdminQuoteNotification(
+    rfq.rfqNumber, order.orderNumber, vendor?.name ?? `#${vendorId}`,
+    getApproveFormUrl(order.orderNumber),
     { vendorPrice: vp, estimatedPickup: quote.estimatedPickup, estimatedDelivery: quote.estimatedDelivery,
       estimatedDays: quote.estimatedDays, vendorNotes: quote.vendorNotes },
-    quotePosition
+    quotePosition, waPhone,
   );
-  if (adminWa) {
-    sendWhatsApp(adminWa, quoteNotifMsg, { context: "vendor_quote_submitted", refType: "rfq", refId: rfq.rfqNumber }).catch((e: unknown) => logger.error({ e }, "WA admin vendor-form quote notif failed"));
-  }
-  if (adminGroupWa) {
-    sendWhatsApp(adminGroupWa, quoteNotifMsg, { context: "vendor_quote_submitted", refType: "rfq", refId: rfq.rfqNumber }).catch((e: unknown) => logger.error({ e }, "WA admin group vendor-form quote notif failed"));
-  }
+  if (adminWa) notifyAdminQuote(adminWa);
+  if (adminGroupWa) notifyAdminQuote(adminGroupWa);
 
   saveAndBroadcast("vendor_quote_received", {
     type: "vendor_quote",
@@ -980,10 +949,13 @@ logisticRfqRouter.post("/:id/quotes", async (req: Request, res: Response) => {
         .where(and(eq(logisticOrderQuotesTable.orderId, orderId), eq(logisticOrderQuotesTable.quoteStatus, "pending")))
         .orderBy(logisticOrderQuotesTable.createdAt);
       const quotePosition = orderQuotes.findIndex((q) => q.id === quote.id) + 1 || undefined;
-      sendWhatsApp(adminWa, buildAdminQuoteNotif(rfq.rfqNumber, order.orderNumber, vendor?.name ?? `#${vendorId}`, orderId, {
-        vendorPrice: vp, estimatedPickup: quote.estimatedPickup, estimatedDelivery: quote.estimatedDelivery,
-        estimatedDays: quote.estimatedDays, vendorNotes: quote.vendorNotes,
-      }, quotePosition), { context: "vendor_quote_submitted", refType: "rfq", refId: rfq.rfqNumber }).catch((e: unknown) => logger.error({ e }, "WA admin quote notif failed"));
+      sendAdminQuoteNotification(
+        rfq.rfqNumber, order.orderNumber, vendor?.name ?? `#${vendorId}`,
+        getApproveFormUrl(order.orderNumber),
+        { vendorPrice: vp, estimatedPickup: quote.estimatedPickup, estimatedDelivery: quote.estimatedDelivery,
+          estimatedDays: quote.estimatedDays, vendorNotes: quote.vendorNotes },
+        quotePosition, adminWa,
+      );
     }
   }
 
@@ -1493,7 +1465,6 @@ logisticRfqRouter.post("/:id/approve", async (req: Request, res: Response) => {
   if (!updatedOrder) return res.status(500).json({ message: "Gagal update order" });
 
   const [vendor] = await db.select().from(suppliersTable).where(eq(suppliersTable.id, quote.vendorId));
-  const fmt = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
 
   const confirmUrl = getConfirmFormUrl(confirmToken);
 
@@ -1504,50 +1475,23 @@ logisticRfqRouter.post("/:id/approve", async (req: Request, res: Response) => {
   const pickupTime = orderAny.pickupTime ?? null;
   const isTrucking = !!(truckType || (updatedOrder as any).vehicleType);
 
-  const customerMsg = isTrucking
-    ? (
-        `✅ *PENAWARAN TRUCKING - CST Logistics*\n` +
-        `📦 Order: ${updatedOrder.orderNumber}\n\n` +
-        `━━━━━━━━━━━━━━━━━━\n` +
-        `📍 Rute: ${updatedOrder.origin} → ${updatedOrder.destination}\n` +
-        (pickupDate ? `📅 Pickup: ${formatISODate(pickupDate)}${pickupTime ? ` ${pickupTime} WIB` : ""}\n` : "") +
-        `🚚 Unit: ${truckType ?? "-"} | ${updatedOrder.commodity ?? "Umum"}\n\n` +
-        `💰 TOTAL BIAYA: ${fmt(sellingPrice)}\n` +
-        `━━━━━━━━━━━━━━━━━━\n\n` +
-        (confirmUrl ? `✅ Setuju & lanjutkan: ${confirmUrl}\n` : "") +
-        (confirmUrl ? `❌ Batalkan: ${confirmUrl}?cancel=1\n` : "") +
-        `⏳ Berlaku: 3 hari`
-      )
-    : (
-        `✅ *PENAWARAN HARGA ANDA TELAH SIAP*\n` +
-        `━━━━━━━━━━━━━━━━━━\n` +
-        `Halo *${updatedOrder.customerName}*,\n\n` +
-        `Kami telah memproses permintaan Anda dan menyiapkan penawaran terbaik.\n\n` +
-        `No. Order   : \`${updatedOrder.orderNumber}\`\n` +
-        `Jenis       : ${updatedOrder.shipmentType}\n` +
-        `Rute        : ${updatedOrder.origin} → ${updatedOrder.destination}\n` +
-        (updatedOrder.commodity ? `Komoditi    : ${updatedOrder.commodity}\n` : "") +
-        (quote.estimatedPickup ? `ETA Pickup  : ${quote.estimatedPickup}\n` : "") +
-        (quote.estimatedDelivery ? `ETA Kirim   : ${quote.estimatedDelivery}\n` : "") +
-        `━━━━━━━━━━━━━━━━━━\n` +
-        `💰 *Total Harga  : ${fmt(sellingPrice)}*\n` +
-        `━━━━━━━━━━━━━━━━━━\n` +
-        (confirmUrl ? `📋 *Konfirmasi persetujuan Anda di sini:*\n${confirmUrl}\n\n` : "") +
-        `Atau balas pesan ini / hubungi kami:\n` +
-        `📞 Jakarta: (021) 6241234`
-      );
-
   if (isTrucking) console.log(`[TRUCKING-FLOW] State: Vendor Confirmed → Waiting Customer (order ${orderId})`);
 
-  if (updatedOrder.phone) {
-    sendWhatsApp(updatedOrder.phone, customerMsg, {
-      context: "quotation_sent_customer",
-      refType: "order",
-      refId: updatedOrder.orderNumber,
-    }).catch((e: unknown) =>
-      logger.error({ e }, "WA customer quotation failed")
-    );
-  }
+  sendQuotationSentCustomerNotification({
+    orderNumber: updatedOrder.orderNumber,
+    customerName: updatedOrder.customerName ?? "—",
+    serviceType: isTrucking ? "TRUCKING" : (updatedOrder.shipmentType ?? "LOGISTIK"),
+    route: `${updatedOrder.origin} → ${updatedOrder.destination}`,
+    sellingPrice,
+    isTrucking,
+    pickupDate: pickupDate ? formatISODate(pickupDate) : null,
+    pickupTime: pickupTime ?? null,
+    truckType: truckType ?? null,
+    commodity: updatedOrder.commodity ?? null,
+    estimatedPickup: isTrucking ? null : (quote.estimatedPickup ?? null),
+    estimatedDelivery: isTrucking ? null : (quote.estimatedDelivery ?? null),
+    confirmUrl: confirmUrl || "",
+  }, updatedOrder.phone ?? null);
 
   // Email ke customer saat quote diapprove
   if (isSmtpConfigured() && updatedOrder.email) {
@@ -1773,7 +1717,6 @@ logisticRfqRouter.post("/confirm/:token", async (req: Request, res: Response) =>
   // Notify admin via WA
   const adminWa = await getAdminWa();
   if (adminWa) {
-    const fmtRp = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
     const sp = order.finalSellingPrice != null ? Number(order.finalSellingPrice) : 0;
     const orderUrl = getOrderUrl(order.id);
     const orderAny3 = order as any;
@@ -1782,28 +1725,27 @@ logisticRfqRouter.post("/confirm/:token", async (req: Request, res: Response) =>
     const pickupTime = orderAny3.pickupTime ?? null;
     const isTrucking = !!truckType;
 
-    const adminMsg = action === "confirmed"
-      ? `✅ *CUSTOMER SETUJU — ${order.orderNumber}*\n\n` +
-        `Customer *${order.customerName}* menyetujui penawaran:\n` +
-        `💰 *${fmtRp(sp)}*\n\n` +
-        `📍 Rute: ${order.origin} → ${order.destination}\n` +
-        (isTrucking && pickupDate ? `📅 Pickup: ${pickupDate}${pickupTime ? ` ${pickupTime} WIB` : ""}\n` : "") +
-        (truckType ? `🚚 Unit: ${truckType}\n` : "") +
-        (createdSoNumber ? `\n📄 *Sales Order dibuat: ${createdSoNumber}*\n` : "") +
-        `\n🔗 Detail order:\n${orderUrl}`
-      : `❌ *CUSTOMER TOLAK — ${order.orderNumber}*\n\n` +
-        `Customer *${order.customerName}* menolak penawaran:\n` +
-        `💰 *${fmtRp(sp)}*\n\n` +
-        `📍 Rute: ${order.origin} → ${order.destination}\n` +
-        `Silakan hubungi customer untuk negosiasi lebih lanjut.\n\n` +
-        (orderUrl ? `🔗 Detail order:\n${orderUrl}` : "");
-    sendWhatsApp(adminWa, adminMsg, {
-      context: "customer_confirmation",
-      refType: "order",
-      refId: order.orderNumber,
-    }).catch((e: unknown) =>
-      logger.error({ e }, "WA admin customer confirm notif failed")
-    );
+    if (action === "confirmed") {
+      sendRfqCustomerConfirmedAdminNotification({
+        orderNumber: order.orderNumber,
+        customerName: order.customerName,
+        sellingPrice: sp,
+        route: `${order.origin} → ${order.destination}`,
+        pickupDate: isTrucking ? pickupDate : null,
+        pickupTime: isTrucking ? pickupTime : null,
+        truckType: isTrucking ? truckType : null,
+        soInfo: createdSoNumber ? `📄 Sales Order dibuat: ${createdSoNumber}` : null,
+        orderUrl,
+      }, adminWa);
+    } else {
+      sendRfqCustomerRejectedAdminNotification({
+        orderNumber: order.orderNumber,
+        customerName: order.customerName,
+        sellingPrice: sp,
+        route: `${order.origin} → ${order.destination}`,
+        orderUrl,
+      }, adminWa);
+    }
     if (action === "confirmed") console.log(`[TRUCKING-FLOW] State: Confirmed → SO_CREATED:${createdSoNumber} (order ${order.id})`);
   }
 
@@ -1984,25 +1926,7 @@ logisticRfqRouter.post("/:id/send-customer-options", async (req: Request, res: R
     ? `📅 Pickup: ${formatISODate(orderAny.pickupDate)}${orderAny.pickupTime ? ` ${orderAny.pickupTime}` : ""}\n`
     : "";
 
-  const waMsg =
-    `✅ PENAWARAN ${modeLabel} - CST Logistics\n` +
-    `📦 Order: ${order.orderNumber}\n` +
-    `📍 ${order.origin} → ${order.destination}\n` +
-    pickupLine +
-    `━━━━━━━━━━━━━━\n` +
-    optLines +
-    `━━━━━━━━━━━━━━\n` +
-    `👉 Pilih opsi Anda:\n${optionUrl}`;
-
-  if (order.phone) {
-    sendWhatsApp(order.phone, waMsg, {
-      context: "multi_mode_options_sent",
-      refType: "order",
-      refId: order.orderNumber,
-    }).catch((e: unknown) =>
-      logger.error({ e }, "[MULTI-MODE] WA send-options to customer failed")
-    );
-  }
+  sendMultiModeOptionsSentNotification(order, modeLabel, optLines, pickupLine, optionUrl);
 
   logger.info({ orderId, optionCount: offers.length }, "[MULTI-MODE] Options sent to customer");
   return res.json({ ok: true, optionUrl, optionCount: offers.length });
@@ -2102,7 +2026,6 @@ logisticRfqRouter.post("/choose-option", async (req: Request, res: Response) => 
     customerConfirmToken: confirmToken,
   }).where(eq(logisticOrdersTable.id, order.id));
 
-  const fmtRp = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
   const orderUrl = getOrderUrl(order.id);
   const orderAny = order as any;
   const isTrucking = !!(orderAny.truckType || orderAny.transportMode === "TRUCKING");
@@ -2111,24 +2034,18 @@ logisticRfqRouter.post("/choose-option", async (req: Request, res: Response) => 
 
   // Notify admin via WA with SO link
   const adminWa = await getAdminWa();
-  if (adminWa) {
-    const adminMsg =
-      `✅ *CUSTOMER MEMILIH OPSI — ${order.orderNumber}*\n\n` +
-      `Customer *${order.customerName}* memilih: *${chosen.optionLabel ?? "Opsi"}*\n` +
-      `💰 *${fmtRp(chosenPrice)}*\n\n` +
-      `📍 Rute: ${order.origin} → ${order.destination}\n` +
-      (isTrucking && pickupDate ? `📅 Pickup: ${pickupDate}${pickupTime ? ` ${pickupTime} WIB` : ""}\n` : "") +
-      (orderAny.truckType ? `🚚 Unit: ${orderAny.truckType}\n` : "") +
-      (chosen.vehicleYear ? `📅 Tahun Unit: ${chosen.vehicleYear}\n` : "") +
-      `\n🔗 *Buat Sales Order:*\n${orderUrl}`;
-    sendWhatsApp(adminWa, adminMsg, {
-      context: "customer_chose_option",
-      refType: "order",
-      refId: order.orderNumber,
-    }).catch((e: unknown) =>
-      logger.error({ e }, "[MULTI-MODE] WA admin choose-option failed")
-    );
-  }
+  sendCustomerChoseOptionAdminNotification({
+    orderNumber: order.orderNumber,
+    customerName: order.customerName,
+    chosenLabel: chosen.optionLabel ?? "Opsi",
+    sellingPrice: chosenPrice,
+    route: `${order.origin} → ${order.destination}`,
+    pickupDate: isTrucking ? pickupDate : null,
+    pickupTime: isTrucking ? pickupTime : null,
+    truckType: isTrucking ? (orderAny.truckType ?? null) : null,
+    vehicleYear: chosen.vehicleYear ? String(chosen.vehicleYear) : null,
+    orderUrl,
+  }, adminWa);
 
   console.log(`[MULTI-MODE] State: Options Sent → Confirmed (order ${order.id}, chose offer ${chosen.id})`);
   logger.info({ orderId: order.id, offerId: chosen.id, price: chosenPrice }, "[MULTI-MODE] Customer chose option");
@@ -2359,30 +2276,8 @@ logisticRfqRouter.put("/:id/operational-status", async (req: Request, res: Respo
       };
       const label = OP_LABEL[operationalStatus] ?? operationalStatus;
       const emoji = operationalStatus === "delivered" ? "✅" : operationalStatus === "cancelled" ? "❌" : operationalStatus === "in_transit" ? "🚚" : operationalStatus === "picking_up" ? "📦" : "🕐";
-      const msg =
-        `${emoji} *Update Status Pengiriman*\n\n` +
-        `No. Order: *${order.order_number}*\n` +
-        `Customer: ${order.customer_name}${order.company_name ? ` (${order.company_name})` : ""}\n` +
-        `Status Operasional: *${label}*\n\n` +
-        `CST Logistics — Terima kasih telah menggunakan layanan kami.`;
-
-      if (order.phone) {
-        sendWhatsApp(order.phone, msg, {
-          context: "operational_status_update",
-          refType: "order",
-          refId: order.order_number,
-        }).catch((err: unknown) =>
-          logger.error({ err }, "WA milestone notification to customer failed")
-        );
-      }
-
       const adminWa = await getAdminWa();
-      if (adminWa) {
-        sendWhatsApp(adminWa,
-          `${emoji} *Status Update* — ${order.order_number}\nCustomer: ${order.customer_name}\nStatus: *${label}*`,
-          { context: "operational_status_update_admin", refType: "order", refId: order.order_number }
-        ).catch(() => {});
-      }
+      sendLogisticOperationalStatusNotification(order, label, emoji, adminWa ?? null);
     }
 
     return res.json({ ok: true });

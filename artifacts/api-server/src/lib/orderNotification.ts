@@ -496,6 +496,71 @@ const DEFAULT_TPL = {
       "Jatuh tempo: {{dueStr}}",
       "_{{timestamp}}_",
     ].join("\n"),
+    vendor_quote_received: [
+      "💰 *PENAWARAN VENDOR DITERIMA*",
+      "━━━━━━━━━━━━━━━━━━",
+      "No. RFQ     : `{{rfqNumber}}`",
+      "No. Order   : `{{orderNumber}}`",
+      "Vendor      : *{{vendorName}}*{{quotePosition}}",
+      "Harga       : *{{vendorPrice}}*",
+      "ETA Pickup  : {{estimatedPickup}}",
+      "ETA Kirim   : {{estimatedDelivery}}",
+      "Est. Hari   : {{estimatedDays}} hari",
+      "Catatan     : {{vendorNotes}}",
+      "━━━━━━━━━━━━━━━━━━",
+      "✅ Approve & Kirim ke Customer:",
+      "{{approveUrl}}",
+      "_{{timestamp}}_",
+    ].join("\n"),
+    rfq_customer_confirmed: [
+      "✅ *CUSTOMER SETUJU — {{orderNumber}}*",
+      "",
+      "Customer *{{customerName}}* menyetujui penawaran:",
+      "💰 *{{sellingPrice}}*",
+      "",
+      "📍 Rute: {{route}}",
+      "{{pickupInfo}}",
+      "{{truckUnit}}",
+      "{{soInfo}}",
+      "",
+      "🔗 Detail order:",
+      "{{orderUrl}}",
+      "_{{timestamp}}_",
+    ].join("\n"),
+    rfq_customer_rejected: [
+      "❌ *CUSTOMER TOLAK — {{orderNumber}}*",
+      "",
+      "Customer *{{customerName}}* menolak penawaran:",
+      "💰 *{{sellingPrice}}*",
+      "",
+      "📍 Rute: {{route}}",
+      "Silakan hubungi customer untuk negosiasi lebih lanjut.",
+      "",
+      "🔗 Detail order:",
+      "{{orderUrl}}",
+      "_{{timestamp}}_",
+    ].join("\n"),
+    customer_chose_option: [
+      "✅ *CUSTOMER MEMILIH OPSI — {{orderNumber}}*",
+      "",
+      "Customer *{{customerName}}* memilih: *{{chosenLabel}}*",
+      "💰 *{{sellingPrice}}*",
+      "",
+      "📍 Rute: {{route}}",
+      "{{pickupInfo}}",
+      "{{truckUnit}}",
+      "{{vehicleYear}}",
+      "",
+      "🔗 *Buat Sales Order:*",
+      "{{orderUrl}}",
+      "_{{timestamp}}_",
+    ].join("\n"),
+    logistic_operational_status_admin: [
+      "{{emoji}} *Status Update* — {{orderNumber}}",
+      "Customer: {{customerName}}",
+      "Status: *{{statusLabel}}*",
+      "_{{timestamp}}_",
+    ].join("\n"),
   },
   admin_group: {
     order_new: ["🔔 *[ORDER MASUK] {{orderNumber}}*","━━━━━━━━━━━━━━━━━━","🏷️ No. Order     : `{{orderNumber}}`","📆 Tanggal       : {{tanggal}}","🕐 Jam           : {{jam}}","👤 Customer      : *{{customerDisplay}}*","📞 HP            : {{phone}}","━━━━━━━━━━━━━━━━━━","🚢 Jenis         : {{shipmentType}}","📍 Rute          : {{route}}","📦 Komoditi      : {{commodity}}","📋 Deskripsi     : {{cargoDescription}}","⚖️ Berat         : {{grossWeightDisplay}}","📐 Volume        : {{volumeDisplay}}","{{#if product}}","🛍️ Nama Produk   :","{{productList}}","{{/if}}","📅 Tgl Kirim     : {{requiredDate}}","📝 Catatan       : {{notes}}","━━━━━━━━━━━━━━━━━━","💵 Subtotal      : Rp {{subtotalEst}}","🧾 {{taxLabel}}  : Rp {{taxEst}}","💰 Total Est.    : *Rp {{totalEst}}*","🔵 Status        : Menunggu Konfirmasi","━━━━━━━━━━━━━━━━━━","⚡ *Review & Proses Order (tanpa login):*","👉 {{adminActionUrl}}","","_Dikirim: {{timestamp}}_"].join("\n"),
@@ -607,6 +672,43 @@ const DEFAULT_TPL = {
       "Jatuh tempo: {{dueStr}}",
       "",
       "Silakan hubungi kami untuk informasi pembayaran. Terima kasih!",
+      "_{{timestamp}}_",
+    ].join("\n"),
+    logistic_order_status: [
+      "📦 *Update Status Order Anda*",
+      "No Order: {{orderNumber}}",
+      "Status: *{{statusLabel}}*",
+      "",
+      "Terima kasih telah menggunakan layanan kami. Hubungi kami jika ada pertanyaan.",
+      "_{{timestamp}}_",
+    ].join("\n"),
+    quotation_sent_customer: [
+      "✅ *PENAWARAN {{serviceType}} — CST Logistics*",
+      "━━━━━━━━━━━━━━━━━━",
+      "Halo *{{customerName}}*,",
+      "",
+      "No. Order   : `{{orderNumber}}`",
+      "Rute        : {{route}}",
+      "{{pickupInfo}}",
+      "{{truckUnit}}",
+      "Komoditi    : {{commodity}}",
+      "ETA Pickup  : {{estimatedPickup}}",
+      "ETA Kirim   : {{estimatedDelivery}}",
+      "━━━━━━━━━━━━━━━━━━",
+      "💰 *Total Biaya: {{sellingPrice}}*",
+      "━━━━━━━━━━━━━━━━━━",
+      "{{confirmLine}}",
+      "{{footerLine}}",
+      "_{{timestamp}}_",
+    ].join("\n"),
+    logistic_operational_status: [
+      "{{emoji}} *Update Status Pengiriman*",
+      "",
+      "No. Order: *{{orderNumber}}*",
+      "Customer: {{customerName}}",
+      "Status Operasional: *{{statusLabel}}*",
+      "",
+      "CST Logistics — Terima kasih telah menggunakan layanan kami.",
       "_{{timestamp}}_",
     ].join("\n"),
   },
@@ -740,6 +842,19 @@ const DEFAULT_TPL = {
       "{{jobUrl}}",
       "",
       "_Link berlaku 7 hari. Hubungi admin jika ada kendala._",
+    ].join("\n"),
+    vendor_order_status_change: [
+      "🔔 *Update Status Order — CST Logistics*",
+      "━━━━━━━━━━━━━━━━━━",
+      "No. Order  : `{{orderNumber}}`",
+      "Customer   : {{customerName}}",
+      "Rute       : {{route}}",
+      "Vendor     : *{{vendorName}}*",
+      "Status     : *{{statusLabel}}*",
+      "━━━━━━━━━━━━━━━━━━",
+      "{{statusNote}}",
+      "",
+      "_CST Logistics — Notifikasi Otomatis_",
     ].join("\n"),
   },
   admin_personal_extra: {
@@ -883,6 +998,11 @@ export function getWaDefaultTemplatesFlatMap(): Record<string, string> {
   add("admin_personal", "sales_order_confirmed", ap.sales_order_confirmed);
   add("admin_personal", "sales_order_delivered", ap.sales_order_delivered);
   add("admin_personal", "invoice_issued", ap.invoice_issued);
+  add("admin_personal", "vendor_quote_received", ap.vendor_quote_received);
+  add("admin_personal", "rfq_customer_confirmed", ap.rfq_customer_confirmed);
+  add("admin_personal", "rfq_customer_rejected", ap.rfq_customer_rejected);
+  add("admin_personal", "customer_chose_option", ap.customer_chose_option);
+  add("admin_personal", "logistic_operational_status_admin", ap.logistic_operational_status_admin);
 
   // admin_personal_extra (same recipient)
   const ape = DEFAULT_TPL.admin_personal_extra;
@@ -926,6 +1046,9 @@ export function getWaDefaultTemplatesFlatMap(): Record<string, string> {
   add("customer", "sales_order_confirmed", cu.sales_order_confirmed);
   add("customer", "sales_order_delivered", cu.sales_order_delivered);
   add("customer", "invoice_issued", cu.invoice_issued);
+  add("customer", "logistic_order_status", cu.logistic_order_status);
+  add("customer", "quotation_sent_customer", cu.quotation_sent_customer);
+  add("customer", "logistic_operational_status", cu.logistic_operational_status);
 
   // vendor
   const v = DEFAULT_TPL.vendor;
@@ -938,6 +1061,7 @@ export function getWaDefaultTemplatesFlatMap(): Record<string, string> {
   add("vendor", "vendor_rfq_forward", v.vendor_rfq_forward);
   add("vendor", "revision_fallback", v.revision_fallback);
   add("vendor", "vendor_assignment", v.vendor_assignment);
+  add("vendor", "vendor_order_status_change", v.vendor_order_status_change);
 
   // product_order → workflow key: product_order_new
   const po = DEFAULT_TPL.product_order;
@@ -2047,6 +2171,324 @@ export async function sendOrderCompletedNotification(
     timestamp: nowWIB(),
   });
   sendWhatsApp(customerPhone, msg).catch((e: unknown) => logger.error({ e }, "WA order_completed failed"));
+}
+
+// ── Logistic: Vendor Status Change ────────────────────────────────────────────
+export async function sendVendorOrderStatusChangeNotification(
+  order: { orderNumber: string; customerName: string | null; origin: string | null; destination: string | null },
+  statusLabel: string,
+  statusNote: string,
+  vendorName: string,
+  vendorPhone: string,
+): Promise<void> {
+  const tpl = await getWaTemplateConfig("vendor", "vendor_order_status_change", DEFAULT_TPL.vendor.vendor_order_status_change);
+  const route = order.origin && order.destination ? `${order.origin} → ${order.destination}` : "—";
+  const vars: Record<string, string | null | undefined> = {
+    orderNumber: order.orderNumber,
+    customerName: order.customerName || "—",
+    route,
+    vendorName,
+    statusLabel,
+    statusNote: statusNote || null,
+    timestamp: nowWIB(),
+  };
+  const msg = renderTemplate(tpl, vars);
+  sendWhatsApp(vendorPhone, msg).catch((e: unknown) => logger.error({ e }, "WA vendor_order_status_change failed"));
+}
+
+// ── Logistic: Customer Order Status Change ────────────────────────────────────
+export async function sendLogisticOrderStatusCustomerNotification(
+  orderNumber: string,
+  statusLabel: string,
+  customerPhone: string,
+): Promise<void> {
+  const tpl = await getWaTemplateConfig("customer", "logistic_order_status", DEFAULT_TPL.customer.logistic_order_status);
+  const vars: Record<string, string | null | undefined> = {
+    orderNumber,
+    statusLabel,
+    timestamp: nowWIB(),
+  };
+  const msg = renderTemplate(tpl, vars);
+  sendWhatsApp(customerPhone, msg).catch((e: unknown) => logger.error({ e }, "WA logistic_order_status customer failed"));
+}
+
+// ── Logistic RFQ: Admin Quote Notification (replaces buildAdminQuoteNotif) ────
+export async function sendAdminQuoteNotification(
+  rfqNumber: string,
+  orderNumber: string,
+  vendorName: string,
+  approveUrl: string | null,
+  quote: {
+    vendorPrice: number;
+    estimatedPickup?: string | null;
+    estimatedDelivery?: string | null;
+    estimatedDays?: number | null;
+    vendorNotes?: string | null;
+  },
+  quotePosition: number | undefined,
+  adminWaPhone: string | null | undefined,
+): Promise<void> {
+  if (!adminWaPhone) return;
+  const tpl = await getWaTemplateConfig("admin_personal", "vendor_quote_received", DEFAULT_TPL.admin_personal.vendor_quote_received);
+  const fmtRp = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
+  const vars: Record<string, string | null | undefined> = {
+    rfqNumber,
+    orderNumber,
+    vendorName,
+    quotePosition: quotePosition != null ? ` (vendor ke-${quotePosition})` : null,
+    vendorPrice: fmtRp(quote.vendorPrice),
+    estimatedPickup: quote.estimatedPickup || null,
+    estimatedDelivery: quote.estimatedDelivery || null,
+    estimatedDays: quote.estimatedDays != null ? String(quote.estimatedDays) : null,
+    vendorNotes: quote.vendorNotes || null,
+    approveUrl: approveUrl || null,
+    timestamp: nowWIB(),
+  };
+  const msg = renderTemplate(tpl, vars);
+  sendWhatsApp(adminWaPhone, msg).catch((e: unknown) => logger.error({ e }, "WA vendor_quote_received failed"));
+}
+
+// ── Logistic RFQ: Trucking Vendor Confirmed → Admin ──────────────────────────
+export async function sendTruckingVendorConfirmedAdminNotification(
+  orderNumber: string,
+  vendorName: string,
+  basePrice: number,
+  finalPrice: number,
+  approveUrl: string | null,
+  adminWaPhone: string | null | undefined,
+): Promise<void> {
+  if (!adminWaPhone) return;
+  const tpl = await getWaTemplateConfig("admin_personal", "vendor_confirmed", DEFAULT_TPL.admin_personal.vendor_confirmed);
+  const fmtRp = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
+  const vars: Record<string, string | null | undefined> = {
+    orderNumber,
+    vendorName,
+    vendorPrice: fmtRp(basePrice),
+    finalCustomerPrice: fmtRp(finalPrice),
+    approveUrl: approveUrl || null,
+    timestamp: nowWIB(),
+  };
+  const msg = renderTemplate(tpl, vars);
+  sendWhatsApp(adminWaPhone, msg).catch((e: unknown) => logger.error({ e }, "WA trucking vendor_confirmed admin failed"));
+}
+
+// ── Logistic RFQ: Trucking Vendor Rejected → Admin ───────────────────────────
+export async function sendTruckingVendorRejectedAdminNotification(
+  orderNumber: string,
+  vendorName: string,
+  approveUrl: string | null,
+  adminWaPhone: string | null | undefined,
+): Promise<void> {
+  if (!adminWaPhone) return;
+  const tpl = await getWaTemplateConfig("admin_personal", "vendor_rejected", DEFAULT_TPL.admin_personal.vendor_rejected);
+  const vars: Record<string, string | null | undefined> = {
+    orderNumber,
+    vendorName,
+    approveUrl: approveUrl || null,
+    timestamp: nowWIB(),
+  };
+  const msg = renderTemplate(tpl, vars);
+  sendWhatsApp(adminWaPhone, msg).catch((e: unknown) => logger.error({ e }, "WA trucking vendor_rejected admin failed"));
+}
+
+// ── Logistic RFQ: Quotation Sent to Customer ──────────────────────────────────
+export async function sendQuotationSentCustomerNotification(params: {
+  orderNumber: string;
+  customerName: string;
+  serviceType: string;
+  route: string;
+  sellingPrice: number;
+  isTrucking: boolean;
+  pickupDate?: string | null;
+  pickupTime?: string | null;
+  truckType?: string | null;
+  commodity?: string | null;
+  estimatedPickup?: string | null;
+  estimatedDelivery?: string | null;
+  confirmUrl: string;
+}, customerPhone: string | null | undefined): Promise<void> {
+  if (!customerPhone) return;
+  const tpl = await getWaTemplateConfig("customer", "quotation_sent_customer", DEFAULT_TPL.customer.quotation_sent_customer);
+  const fmtRp = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
+  const pickupInfo = params.isTrucking && params.pickupDate
+    ? `📅 Pickup: ${params.pickupDate}${params.pickupTime ? ` ${params.pickupTime} WIB` : ""}`
+    : null;
+  const truckUnit = params.isTrucking && params.truckType
+    ? `🚚 Unit: ${params.truckType} | ${params.commodity ?? "Umum"}`
+    : null;
+  const confirmLine = params.isTrucking
+    ? `✅ Setuju & lanjutkan: ${params.confirmUrl}\n❌ Batalkan: ${params.confirmUrl}?cancel=1`
+    : (params.confirmUrl ? `📋 *Konfirmasi persetujuan Anda di sini:*\n${params.confirmUrl}` : null);
+  const footerLine = params.isTrucking
+    ? "⏳ Berlaku: 3 hari"
+    : "Atau balas pesan ini / hubungi kami:\n📞 Jakarta: (021) 6241234";
+  const vars: Record<string, string | null | undefined> = {
+    orderNumber: params.orderNumber,
+    customerName: params.customerName,
+    serviceType: params.serviceType,
+    route: params.route,
+    pickupInfo,
+    truckUnit,
+    commodity: !params.isTrucking ? (params.commodity || null) : null,
+    estimatedPickup: !params.isTrucking ? (params.estimatedPickup || null) : null,
+    estimatedDelivery: !params.isTrucking ? (params.estimatedDelivery || null) : null,
+    sellingPrice: fmtRp(params.sellingPrice),
+    confirmLine,
+    footerLine,
+    timestamp: nowWIB(),
+  };
+  const msg = renderTemplate(tpl, vars);
+  sendWhatsApp(customerPhone, msg).catch((e: unknown) => logger.error({ e }, "WA quotation_sent_customer failed"));
+}
+
+// ── Logistic RFQ: Customer Confirmed/Rejected → Admin ────────────────────────
+export async function sendRfqCustomerConfirmedAdminNotification(params: {
+  orderNumber: string;
+  customerName: string;
+  sellingPrice: number;
+  route: string;
+  pickupDate?: string | null;
+  pickupTime?: string | null;
+  truckType?: string | null;
+  soInfo?: string | null;
+  orderUrl: string;
+}, adminWaPhone: string | null | undefined): Promise<void> {
+  if (!adminWaPhone) return;
+  const tpl = await getWaTemplateConfig("admin_personal", "rfq_customer_confirmed", DEFAULT_TPL.admin_personal.rfq_customer_confirmed);
+  const fmtRp = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
+  const pickupInfo = params.pickupDate
+    ? `📅 Pickup: ${params.pickupDate}${params.pickupTime ? ` ${params.pickupTime} WIB` : ""}`
+    : null;
+  const truckUnit = params.truckType ? `🚚 Unit: ${params.truckType}` : null;
+  const vars: Record<string, string | null | undefined> = {
+    orderNumber: params.orderNumber,
+    customerName: params.customerName,
+    sellingPrice: fmtRp(params.sellingPrice),
+    route: params.route,
+    pickupInfo,
+    truckUnit,
+    soInfo: params.soInfo || null,
+    orderUrl: params.orderUrl || null,
+    timestamp: nowWIB(),
+  };
+  const msg = renderTemplate(tpl, vars);
+  sendWhatsApp(adminWaPhone, msg).catch((e: unknown) => logger.error({ e }, "WA rfq_customer_confirmed admin failed"));
+}
+
+export async function sendRfqCustomerRejectedAdminNotification(params: {
+  orderNumber: string;
+  customerName: string;
+  sellingPrice: number;
+  route: string;
+  orderUrl: string;
+}, adminWaPhone: string | null | undefined): Promise<void> {
+  if (!adminWaPhone) return;
+  const tpl = await getWaTemplateConfig("admin_personal", "rfq_customer_rejected", DEFAULT_TPL.admin_personal.rfq_customer_rejected);
+  const fmtRp = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
+  const vars: Record<string, string | null | undefined> = {
+    orderNumber: params.orderNumber,
+    customerName: params.customerName,
+    sellingPrice: fmtRp(params.sellingPrice),
+    route: params.route,
+    orderUrl: params.orderUrl || null,
+    timestamp: nowWIB(),
+  };
+  const msg = renderTemplate(tpl, vars);
+  sendWhatsApp(adminWaPhone, msg).catch((e: unknown) => logger.error({ e }, "WA rfq_customer_rejected admin failed"));
+}
+
+// ── Logistic RFQ: Multi-Mode Options Sent to Customer ────────────────────────
+export async function sendMultiModeOptionsSentNotification(
+  order: { orderNumber: string; origin: string | null; destination: string | null; phone?: string | null },
+  shipmentType: string,
+  optionSummary: string,
+  pickupInfo: string,
+  optionUrl: string,
+): Promise<void> {
+  if (!order.phone) return;
+  const tpl = await getWaTemplateConfig("customer", "customer_options", DEFAULT_TPL.customer.customer_options);
+  const vars: Record<string, string | null | undefined> = {
+    shipmentType,
+    orderNumber: order.orderNumber,
+    route: order.origin && order.destination ? `${order.origin} → ${order.destination}` : "—",
+    pickupInfo: pickupInfo.trim() || null,
+    optionSummary: optionSummary.trim() || null,
+    optionUrl,
+    timestamp: nowWIB(),
+  };
+  const msg = renderTemplate(tpl, vars);
+  sendWhatsApp(order.phone, msg).catch((e: unknown) => logger.error({ e }, "WA multi_mode options_sent customer failed"));
+}
+
+// ── Logistic RFQ: Customer Chose Option → Admin ───────────────────────────────
+export async function sendCustomerChoseOptionAdminNotification(params: {
+  orderNumber: string;
+  customerName: string;
+  chosenLabel: string;
+  sellingPrice: number;
+  route: string;
+  pickupDate?: string | null;
+  pickupTime?: string | null;
+  truckType?: string | null;
+  vehicleYear?: string | null;
+  orderUrl: string;
+}, adminWaPhone: string | null | undefined): Promise<void> {
+  if (!adminWaPhone) return;
+  const tpl = await getWaTemplateConfig("admin_personal", "customer_chose_option", DEFAULT_TPL.admin_personal.customer_chose_option);
+  const fmtRp = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
+  const pickupInfo = params.pickupDate
+    ? `📅 Pickup: ${params.pickupDate}${params.pickupTime ? ` ${params.pickupTime} WIB` : ""}`
+    : null;
+  const truckUnit = params.truckType ? `🚚 Unit: ${params.truckType}` : null;
+  const vars: Record<string, string | null | undefined> = {
+    orderNumber: params.orderNumber,
+    customerName: params.customerName,
+    chosenLabel: params.chosenLabel,
+    sellingPrice: fmtRp(params.sellingPrice),
+    route: params.route,
+    pickupInfo,
+    truckUnit,
+    vehicleYear: params.vehicleYear ? `📅 Tahun Unit: ${params.vehicleYear}` : null,
+    orderUrl: params.orderUrl || null,
+    timestamp: nowWIB(),
+  };
+  const msg = renderTemplate(tpl, vars);
+  sendWhatsApp(adminWaPhone, msg).catch((e: unknown) => logger.error({ e }, "WA customer_chose_option admin failed"));
+}
+
+// ── Logistic RFQ: Operational Status → Customer + Admin ──────────────────────
+export async function sendLogisticOperationalStatusNotification(
+  order: { order_number: string; customer_name: string; company_name?: string | null; phone?: string | null },
+  statusLabel: string,
+  emoji: string,
+  adminWaPhone: string | null | undefined,
+): Promise<void> {
+  const customerName = order.customer_name
+    + (order.company_name ? ` (${order.company_name})` : "");
+  if (order.phone) {
+    const tpl = await getWaTemplateConfig("customer", "logistic_operational_status", DEFAULT_TPL.customer.logistic_operational_status);
+    const vars: Record<string, string | null | undefined> = {
+      emoji,
+      orderNumber: order.order_number,
+      customerName,
+      statusLabel,
+      timestamp: nowWIB(),
+    };
+    const msg = renderTemplate(tpl, vars);
+    sendWhatsApp(order.phone, msg).catch((e: unknown) => logger.error({ e }, "WA logistic_operational_status customer failed"));
+  }
+  if (adminWaPhone) {
+    const tpl = await getWaTemplateConfig("admin_personal", "logistic_operational_status_admin", DEFAULT_TPL.admin_personal.logistic_operational_status_admin);
+    const vars: Record<string, string | null | undefined> = {
+      emoji,
+      orderNumber: order.order_number,
+      customerName,
+      statusLabel,
+      timestamp: nowWIB(),
+    };
+    const msg = renderTemplate(tpl, vars);
+    sendWhatsApp(adminWaPhone, msg).catch((e: unknown) => logger.error({ e }, "WA logistic_operational_status admin failed"));
+  }
 }
 
 // ── Sales: SO/Quotation Dibuat → Admin ────────────────────────────────────────

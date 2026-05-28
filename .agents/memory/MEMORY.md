@@ -7,3 +7,4 @@
 - [New Route Table Creation Pattern](new-route-table-creation.md) — drizzle-kit push alone is not enough; new route files must include inline CREATE TABLE IF NOT EXISTS.
 - [JSX regex-in-expression pitfall](jsx-regex-pitfall.md) — bare `}` inside regex char class `[^}]` in a JSX expression can confuse esbuild JSX depth tracker; move regex to a const outside JSX.
 - [Unclosed stub function cascades](unclosed-stub-function.md) — a stub function without its closing `}` makes every top-level declaration after it appear inside its body; "Unexpected export" far from the real bug line is the symptom.
+- [WA Template Migration](wa-template-migration.md) — pattern & progress migrating hardcoded WA flows to Settings → Template WA via `whatsappTemplateService`

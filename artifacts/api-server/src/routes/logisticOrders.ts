@@ -22,7 +22,11 @@ import { salesDocumentsTable } from "@workspace/db";
 import { requireClerkUser, requireRole } from "../lib/requireAdmin.js";
 import { resolveCompanyId } from "../lib/resolveCompany.js";
 import { requirePortalAdmin } from "../lib/supabaseAuth.js";
-import { sendLogisticOrderNotification } from "../lib/orderNotification";
+import {
+  sendLogisticOrderNotification,
+  sendVendorOrderStatusChangeNotification,
+  sendLogisticOrderStatusCustomerNotification,
+} from "../lib/orderNotification";
 import { generateShortLink } from "../lib/shortLink.js";
 import { getPreferredDomain } from "../lib/domain.js";
 import { logActivity } from "../lib/activityLog.js";
@@ -903,27 +907,7 @@ async function notifyVendorStatusChange(
 
     const label = VENDOR_STATUS_LABELS[status] ?? status;
     const note  = VENDOR_STATUS_NOTES[status] ?? "";
-    const route = order.origin && order.destination
-      ? `${order.origin} → ${order.destination}`
-      : "—";
-
-    const msg =
-      `🔔 *Update Status Order — CST Logistics*\n` +
-      `━━━━━━━━━━━━━━━━━━\n` +
-      `No. Order  : \`${order.orderNumber}\`\n` +
-      `Customer   : ${order.customerName ?? "—"}\n` +
-      `Rute       : ${route}\n` +
-      `Vendor     : *${vendor.name ?? "—"}*\n` +
-      `Status     : *${label}*\n` +
-      `━━━━━━━━━━━━━━━━━━\n` +
-      `${note}\n\n` +
-      `_CST Logistics — Notifikasi Otomatis_`;
-
-    sendWhatsApp(phone, msg, {
-      context: "vendor_status_change",
-      refType: "order",
-      refId: order.orderNumber,
-    }).catch(() => undefined);
+    sendVendorOrderStatusChangeNotification(order, label, note, vendor.name ?? "—", phone);
   } catch {
     // fire-and-forget, never block the response
   }
@@ -1028,16 +1012,7 @@ logisticOrdersRouter.put("/:id/status", async (req: Request, res: Response) => {
       "Cancelled": "Dibatalkan",
     };
     const label = statusLabels[status] ?? status;
-    const msg =
-      `📦 *Update Status Order Anda*\n` +
-      `No Order: ${updated.orderNumber}\n` +
-      `Status: *${label}*\n\n` +
-      `Terima kasih telah menggunakan layanan kami. Hubungi kami jika ada pertanyaan.`;
-    sendWhatsApp(updated.phone, msg, {
-      context: "order_status_change",
-      refType: "order",
-      refId: updated.orderNumber,
-    }).catch(() => undefined);
+    sendLogisticOrderStatusCustomerNotification(updated.orderNumber, label, updated.phone);
   }
 
   // Notify vendor via WhatsApp (fire-and-forget)
