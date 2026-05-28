@@ -36,6 +36,7 @@ import {
   Bot,
   ScanLine,
   MessageCircle,
+  MessageSquare,
   Layers,
   Network,
   ImageIcon,
@@ -406,6 +407,8 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "correspondences", href: "/correspondences", icon: Mail },
         { titleKey: "emailInbox", href: "/email-inbox", icon: MessageCircle },
         { titleKey: "Riwayat Notifikasi", href: "/notification-history", icon: MessageCircle },
+        { titleKey: "WA Templates Logistik", href: "/settings/wa-templates", icon: MessageCircle },
+        { titleKey: "Enterprise WA Templates", href: "/settings/enterprise-wa-templates", icon: MessageSquare },
       ],
     },
 
