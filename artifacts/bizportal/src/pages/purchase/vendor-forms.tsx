@@ -30,7 +30,13 @@ import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
 } from "@/components/ui/sheet";
 import { inCodeTemplates } from "@workspace/product-templates";
-import type { ProductTemplate } from "@workspace/product-templates";
+import type { ProductTemplate, DynamicFormValues } from "@workspace/product-templates";
+import {
+  TemplateFieldRenderer,
+  TemplateDocumentRenderer,
+  TemplateChecklistRenderer,
+  TemplateInstructionRenderer,
+} from "@/components/template";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -1514,6 +1520,184 @@ function LinkDetailSheet({
   );
 }
 
+// ── Form Preview Sheet ────────────────────────────────────────────────────────
+
+const EMPTY_TEMPLATE_VALUES: DynamicFormValues = {
+  customFieldValues: {},
+  uploadedDocuments: [],
+  checklistStatus: {},
+  packagingNotes: "",
+  conditionalFlags: {},
+};
+
+function FormPreviewSheet({
+  template, open, onOpenChange,
+}: {
+  template: ProductTemplate | null;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
+  const [values, setValues] = useState<DynamicFormValues>(EMPTY_TEMPLATE_VALUES);
+
+  useEffect(() => {
+    if (open) setValues(EMPTY_TEMPLATE_VALUES);
+  }, [open, template]);
+
+  if (!template) return null;
+  const emoji = COMMODITY_EMOJIS[template.category] ?? "📦";
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent
+        side="right"
+        className="w-full sm:max-w-2xl flex flex-col p-0 overflow-hidden"
+      >
+        {/* Header */}
+        <SheetHeader className="px-6 pt-5 pb-4 shrink-0 border-b bg-gradient-to-r from-violet-50 to-indigo-50">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-white border border-slate-200 shadow-sm flex items-center justify-center text-xl shrink-0">
+              {emoji}
+            </div>
+            <div className="flex-1 min-w-0">
+              <SheetTitle className="text-base">Preview Form — {template.label}</SheetTitle>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Simulasi interaktif tampilan form vendor · data tidak tersimpan
+              </p>
+            </div>
+            <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-full bg-violet-100 text-violet-700 border border-violet-200">
+              👁️ PREVIEW
+            </span>
+          </div>
+          <div className="mt-2 flex gap-4 text-xs text-slate-500">
+            <span className="flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 inline-block" />
+              {template.customFields.length} custom field
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-red-400 inline-block" />
+              {template.requiredDocuments.filter(d => d.required).length} dokumen wajib
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
+              {template.checklist.length} checklist
+            </span>
+          </div>
+        </SheetHeader>
+
+        {/* Scrollable form body */}
+        <div className="flex-1 overflow-y-auto">
+          {/* Mock vendor form — mirrors admin-mini-form layout */}
+          <div className="bg-slate-50 min-h-full p-5 space-y-4">
+            {/* Form header card */}
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+              <div className="flex items-center gap-3 mb-2">
+                <span className="text-3xl leading-none">{emoji}</span>
+                <div>
+                  <h1 className="text-lg font-bold text-slate-800">Form Template — {template.label}</h1>
+                  <p className="text-sm text-slate-500">Untuk: [Nama Vendor]</p>
+                </div>
+              </div>
+              <div className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium bg-violet-50 text-violet-700 border border-violet-200 px-3 py-1.5 rounded-lg">
+                🔐 Form Internal — hanya untuk penggunaan staf
+              </div>
+              <div className="mt-3 text-sm text-slate-600 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+                Komoditas: {template.label} — mohon isi form sesuai spesifikasi komoditas ini.
+              </div>
+            </div>
+
+            {/* Identity section */}
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+              <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-4">Data Pengisi</h2>
+              <div className="space-y-3">
+                {[
+                  { label: "Nama Lengkap", placeholder: "Nama Anda", required: true },
+                  { label: "Jabatan / Divisi", placeholder: "Contoh: Staff Operasional, Manager Logistik" },
+                  { label: "Nomor HP / WhatsApp", placeholder: "Contoh: 0812xxxx" },
+                ].map(f => (
+                  <div key={f.label}>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      {f.label}{f.required && <span className="text-red-500 ml-0.5">*</span>}
+                    </label>
+                    <input
+                      type="text"
+                      placeholder={f.placeholder}
+                      disabled
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-400 cursor-not-allowed"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Template custom fields — INTERACTIVE */}
+            {template.customFields.length > 0 && (
+              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+                <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-4">
+                  {emoji} Spesifikasi {template.label}
+                </h2>
+                <TemplateFieldRenderer
+                  template={template}
+                  values={values}
+                  onChange={setValues}
+                />
+              </div>
+            )}
+
+            {/* Documents */}
+            {template.requiredDocuments.length > 0 && (
+              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+                <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-4">
+                  📎 Dokumen
+                </h2>
+                <TemplateDocumentRenderer
+                  documents={template.requiredDocuments}
+                  values={values.uploadedDocuments}
+                  onChange={docs => setValues(v => ({ ...v, uploadedDocuments: docs }))}
+                />
+              </div>
+            )}
+
+            {/* Checklist */}
+            {template.checklist.length > 0 && (
+              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+                <TemplateChecklistRenderer
+                  checklist={template.checklist}
+                  values={values.checklistStatus}
+                  onChange={(key, checked) =>
+                    setValues(v => ({ ...v, checklistStatus: { ...v.checklistStatus, [key]: checked } }))
+                  }
+                />
+              </div>
+            )}
+
+            {/* Packaging instructions */}
+            {template.packagingInstructions && (
+              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+                <TemplateInstructionRenderer
+                  instructions={template.packagingInstructions}
+                  notes={values.packagingNotes}
+                  onNotesChange={notes => setValues(v => ({ ...v, packagingNotes: notes }))}
+                />
+              </div>
+            )}
+
+            {/* Submit button (disabled) */}
+            <button
+              disabled
+              className="w-full rounded-xl bg-violet-300 text-white font-semibold py-3.5 text-sm cursor-not-allowed"
+            >
+              ✉️ Kirim Data
+            </button>
+            <p className="text-center text-xs text-slate-400 pb-4">
+              Mode preview — form tidak dapat disubmit
+            </p>
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 // ── Create Link From Template Dialog ─────────────────────────────────────────
 
 function CreateLinkFromTemplateDialog({
@@ -1862,6 +2046,8 @@ function ProductTemplateEngine() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [linkTemplate, setLinkTemplate] = useState<ProductTemplate | null>(null);
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
+  const [previewTemplate, setPreviewTemplate] = useState<ProductTemplate | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   const { data: suppliers = [] } = useQuery<Supplier[]>({
     queryKey: ["suppliers-simple"],
@@ -1888,6 +2074,12 @@ function ProductTemplateEngine() {
     e.stopPropagation();
     setLinkTemplate(t);
     setLinkDialogOpen(true);
+  };
+
+  const openPreview = (e: React.MouseEvent, t: ProductTemplate) => {
+    e.stopPropagation();
+    setPreviewTemplate(t);
+    setPreviewOpen(true);
   };
 
   return (
@@ -1982,15 +2174,24 @@ function ProductTemplateEngine() {
                 )}
               </button>
 
-              <div className="mt-3 pt-3 border-t border-slate-100">
+              <div className="mt-3 pt-3 border-t border-slate-100 flex gap-2">
                 <Button
                   size="sm"
                   variant="outline"
-                  className="w-full h-7 text-xs gap-1.5 text-indigo-600 border-indigo-200 hover:bg-indigo-50"
+                  className="flex-1 h-7 text-xs gap-1 text-slate-600 border-slate-200 hover:bg-slate-50"
+                  onClick={e => openPreview(e, t)}
+                >
+                  <Eye className="h-3 w-3" />
+                  Preview
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="flex-1 h-7 text-xs gap-1 text-indigo-600 border-indigo-200 hover:bg-indigo-50"
                   onClick={e => openLinkDialog(e, t)}
                 >
                   <Plus className="h-3 w-3" />
-                  Buat Form Link
+                  Buat Link
                 </Button>
               </div>
             </div>
@@ -2008,6 +2209,11 @@ function ProductTemplateEngine() {
         template={selectedTemplate}
         open={sheetOpen}
         onOpenChange={setSheetOpen}
+      />
+      <FormPreviewSheet
+        template={previewTemplate}
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
       />
       <CreateLinkFromTemplateDialog
         template={linkTemplate}
