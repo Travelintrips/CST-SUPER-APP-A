@@ -416,6 +416,48 @@ const DEFAULT_TPL = {
     shipment_update: ["🚢 *SHIPMENT UPDATE DIKIRIM — {{orderNumber}}*","","Update pengiriman sudah dikirim ke customer *{{customerName}}*.","Layanan : {{serviceType}}","Rute    : {{route}}","","{{#if freight_sea}}","🚢 Kapal     : {{vessel}} / {{voyage}}","📦 Container : {{containerNumber}}","📃 BL No     : {{blNumber}}","{{/if}}","","{{#if freight_air}}","✈️ Airline   : {{airline}}","📋 AWB       : {{awbNumber}}","🛫 Flight    : {{flightNumber}}","{{/if}}","","_{{timestamp}}_"].join("\n"),
     customs_update: ["🏛️ *KEPABEANAN UPDATE DIKIRIM — {{orderNumber}}*","","Update kepabeanan sudah dikirim ke customer *{{customerName}}*.","Layanan : {{serviceType}}","","{{#if ppjk}}","📋 No. Aju : {{ajuNumber}}","📄 BC Type : {{bcType}}","✅ SPPB    : {{sppbNumber}}","{{/if}}","","_{{timestamp}}_"].join("\n"),
     delivery_completed: ["🏁 *PENGIRIMAN SELESAI — {{orderNumber}}*","Customer: {{customerName}}","Rute: {{route}}","_{{timestamp}}_"].join("\n"),
+    vendor_job_accepted: [
+      "✅ *Vendor Menerima Job Order*",
+      "",
+      "Order   : {{orderNumber}}",
+      "Vendor  : {{vendorName}}",
+      "Rute    : {{origin}} → {{destination}}",
+      "Driver  : {{driverName}} | Plat: {{vehiclePlate}}",
+      "Pickup  : {{pickupTime}}",
+      "Carrier : {{carrier}}",
+      "Catatan : {{notes}}",
+      "",
+      "_{{timestamp}}_",
+    ].join("\n"),
+    vendor_job_rejected: [
+      "❌ *Vendor Menolak Job Order*",
+      "",
+      "Order  : {{orderNumber}}",
+      "Vendor : {{vendorName}}",
+      "Alasan : {{reason}}",
+      "",
+      "_{{timestamp}}_",
+    ].join("\n"),
+    vendor_progress_update: [
+      "📍 *Update Progress Order*",
+      "",
+      "Order  : {{orderNumber}}",
+      "Vendor : {{vendorName}}",
+      "Status : {{status}}",
+      "Catatan: {{notes}}",
+      "",
+      "_{{timestamp}}_",
+    ].join("\n"),
+    vendor_pod_uploaded: [
+      "📎 *Vendor Upload POD*",
+      "",
+      "Order         : {{orderNumber}}",
+      "Vendor        : {{vendorName}}",
+      "File diunggah : {{fileCount}}",
+      "Catatan       : {{completionNotes}}",
+      "",
+      "_{{timestamp}}_",
+    ].join("\n"),
   },
   admin_group: {
     order_new: ["🔔 *[ORDER MASUK] {{orderNumber}}*","━━━━━━━━━━━━━━━━━━","🏷️ No. Order     : `{{orderNumber}}`","📆 Tanggal       : {{tanggal}}","🕐 Jam           : {{jam}}","👤 Customer      : *{{customerDisplay}}*","📞 HP            : {{phone}}","━━━━━━━━━━━━━━━━━━","🚢 Jenis         : {{shipmentType}}","📍 Rute          : {{route}}","📦 Komoditi      : {{commodity}}","📋 Deskripsi     : {{cargoDescription}}","⚖️ Berat         : {{grossWeightDisplay}}","📐 Volume        : {{volumeDisplay}}","{{#if product}}","🛍️ Nama Produk   :","{{productList}}","{{/if}}","📅 Tgl Kirim     : {{requiredDate}}","📝 Catatan       : {{notes}}","━━━━━━━━━━━━━━━━━━","💵 Subtotal      : Rp {{subtotalEst}}","🧾 {{taxLabel}}  : Rp {{taxEst}}","💰 Total Est.    : *Rp {{totalEst}}*","🔵 Status        : Menunggu Konfirmasi","━━━━━━━━━━━━━━━━━━","⚡ *Review & Proses Order (tanpa login):*","👉 {{adminActionUrl}}","","_Dikirim: {{timestamp}}_"].join("\n"),
@@ -442,6 +484,46 @@ const DEFAULT_TPL = {
     shipment_update: ["📦 *UPDATE PENGIRIMAN — {{orderNumber}}*","━━━━━━━━━━━━━━━━━━","Halo *{{customerName}}*,","","Update status pengiriman order *{{orderNumber}}*:","Rute: {{route}}","","{{#if freight_sea}}","🚢 Kapal: {{vessel}} / Voyage: {{voyage}}","📦 Container: {{containerNumber}}","📃 BL No: {{blNumber}}","{{/if}}","","{{#if freight_air}}","✈️ Airline: {{airline}}","📋 AWB: {{awbNumber}}","🛫 Flight: {{flightNumber}}","{{/if}}","","Terima kasih 🙏","_Dikirim: {{timestamp}}_"].join("\n"),
     customs_update: ["🏛️ *UPDATE KEPABEANAN — {{orderNumber}}*","━━━━━━━━━━━━━━━━━━","Halo *{{customerName}}*,","","Update status kepabeanan order *{{orderNumber}}*:","","{{#if ppjk}}","📋 No. Aju: {{ajuNumber}}","📄 BC Type: {{bcType}}","✅ SPPB: {{sppbNumber}}","{{/if}}","","Terima kasih 🙏"].join("\n"),
     delivery_completed: ["🏁 *PENGIRIMAN SELESAI — {{orderNumber}}*","━━━━━━━━━━━━━━━━━━","Halo *{{customerName}}*,","","Pengiriman order *{{orderNumber}}* telah selesai! ✅","Rute: {{route}}","","Terima kasih telah menggunakan CST Logistics!","","📞 Feedback: (021) 6241234","_Dikirim: {{timestamp}}_"].join("\n"),
+    customer_progress_update: [
+      "📦 *Update Status Pengiriman Anda*",
+      "",
+      "Order : *{{orderNumber}}*",
+      "Status: *{{statusLabel}}*",
+      "Keterangan: {{notes}}",
+      "",
+      "🔗 Pantau progress real-time:",
+      "{{trackingUrl}}",
+      "",
+      "_CST Logistics — kami informasikan setiap perubahan status._",
+    ].join("\n"),
+    customer_pod_uploaded: [
+      "✅ *Pengiriman Selesai!*",
+      "",
+      "Order: *{{orderNumber}}*",
+      "Vendor *{{vendorName}}* telah mengunggah dokumen bukti pengiriman (POD).",
+      "Catatan: {{completionNotes}}",
+      "",
+      "Mohon konfirmasi penerimaan barang kepada tim CST Logistics jika diperlukan.",
+      "",
+      "🔗 Detail tracking:",
+      "{{trackingUrl}}",
+      "",
+      "_CST Logistics_",
+    ].join("\n"),
+    order_completed: [
+      "✅ *Order Anda Telah Selesai — CST Logistics*",
+      "",
+      "Order: *{{orderNumber}}*",
+      "Rute : {{origin}} → {{destination}}",
+      "",
+      "Order Anda telah berhasil diselesaikan.",
+      "Catatan: {{adminNotes}}",
+      "",
+      "Lihat detail & dokumen di:",
+      "{{trackingUrl}}",
+      "",
+      "Terima kasih telah mempercayakan pengiriman Anda kepada CST Logistics! 🙏",
+    ].join("\n"),
   },
   product_order_status: {
     admin_personal: [
@@ -558,6 +640,21 @@ const DEFAULT_TPL = {
       "",
       "Silakan update penawaran melalui:",
       "{{vendorFormUrl}}",
+    ].join("\n"),
+    vendor_assignment: [
+      "🚚 *Job Order — CST Logistics*",
+      "",
+      "Order  : *{{orderNumber}}*",
+      "Layanan: {{shipmentType}}",
+      "Rute   : {{origin}} → {{destination}}",
+      "Catatan Admin: {{adminNote}}",
+      "",
+      "✅ Anda telah dipilih sebagai vendor untuk order ini.",
+      "",
+      "Silakan buka link berikut untuk menerima atau menolak job, dan mengisi detail operasional:",
+      "{{jobUrl}}",
+      "",
+      "_Link berlaku 7 hari. Hubungi admin jika ada kendala._",
     ].join("\n"),
   },
   admin_personal_extra: {
@@ -692,6 +789,10 @@ export function getWaDefaultTemplatesFlatMap(): Record<string, string> {
   add("admin_personal", "shipment_update", ap.shipment_update);
   add("admin_personal", "customs_update", ap.customs_update);
   add("admin_personal", "delivery_completed", ap.delivery_completed);
+  add("admin_personal", "vendor_job_accepted", ap.vendor_job_accepted);
+  add("admin_personal", "vendor_job_rejected", ap.vendor_job_rejected);
+  add("admin_personal", "vendor_progress_update", ap.vendor_progress_update);
+  add("admin_personal", "vendor_pod_uploaded", ap.vendor_pod_uploaded);
 
   // admin_personal_extra (same recipient)
   const ape = DEFAULT_TPL.admin_personal_extra;
@@ -728,6 +829,9 @@ export function getWaDefaultTemplatesFlatMap(): Record<string, string> {
   add("customer", "shipment_update", cu.shipment_update);
   add("customer", "customs_update", cu.customs_update);
   add("customer", "delivery_completed", cu.delivery_completed);
+  add("customer", "customer_progress_update", cu.customer_progress_update);
+  add("customer", "customer_pod_uploaded", cu.customer_pod_uploaded);
+  add("customer", "order_completed", cu.order_completed);
 
   // vendor
   const v = DEFAULT_TPL.vendor;
@@ -739,6 +843,7 @@ export function getWaDefaultTemplatesFlatMap(): Record<string, string> {
   add("vendor", "vendor_submit_confirm", v.vendor_submit_confirm);
   add("vendor", "vendor_rfq_forward", v.vendor_rfq_forward);
   add("vendor", "revision_fallback", v.revision_fallback);
+  add("vendor", "vendor_assignment", v.vendor_assignment);
 
   // product_order → workflow key: product_order_new
   const po = DEFAULT_TPL.product_order;
@@ -1691,6 +1796,163 @@ export async function sendVendorSelectedAdminWa(data: VendorSelectedAdminData): 
   sendWhatsApp(adminTarget, msg).catch((e: unknown) =>
     logger.error({ e }, "sendVendorSelectedAdminWa failed"),
   );
+}
+
+// ── Vendor Assignment (kirim job order ke vendor, kembalikan pesan untuk preview API) ──
+export async function sendVendorAssignmentNotification(
+  orderNumber: string,
+  origin: string,
+  destination: string,
+  shipmentType: string,
+  jobUrl: string,
+  vendorPhone: string | null | undefined,
+  adminNote?: string,
+): Promise<string> {
+  const tpl = await getWaTemplateConfig("vendor", "vendor_assignment", DEFAULT_TPL.vendor.vendor_assignment);
+  const vars: Record<string, string | null | undefined> = {
+    orderNumber, origin, destination, shipmentType, jobUrl,
+    adminNote: adminNote || null,
+    timestamp: nowWIB(),
+  };
+  const msg = renderTemplate(tpl, vars);
+  if (vendorPhone) {
+    sendWhatsApp(vendorPhone, msg).catch((e: unknown) => logger.error({ e }, "WA vendor_assignment failed"));
+  }
+  return msg;
+}
+
+// ── Vendor Job Accepted (notif admin saat vendor terima job) ──────────────────
+export async function sendVendorJobAcceptedNotification(
+  orderNumber: string,
+  vendorName: string,
+  origin: string,
+  destination: string,
+  adminWaPhone: string,
+  extras?: {
+    driverName?: string;
+    vehiclePlate?: string;
+    pickupTime?: string;
+    carrier?: string;
+    notes?: string;
+  },
+): Promise<void> {
+  const tpl = await getWaTemplateConfig("admin_personal", "vendor_job_accepted", DEFAULT_TPL.admin_personal.vendor_job_accepted);
+  const msg = renderTemplate(tpl, {
+    orderNumber, vendorName, origin, destination,
+    driverName: extras?.driverName || null,
+    vehiclePlate: extras?.vehiclePlate || null,
+    pickupTime: extras?.pickupTime || null,
+    carrier: extras?.carrier || null,
+    notes: extras?.notes || null,
+    timestamp: nowWIB(),
+  });
+  sendWhatsApp(adminWaPhone, msg).catch((e: unknown) => logger.error({ e }, "WA vendor_job_accepted failed"));
+}
+
+// ── Vendor Job Rejected (notif admin saat vendor tolak job) ──────────────────
+export async function sendVendorJobRejectedNotification(
+  orderNumber: string,
+  vendorName: string,
+  adminWaPhone: string,
+  reason?: string,
+): Promise<void> {
+  const tpl = await getWaTemplateConfig("admin_personal", "vendor_job_rejected", DEFAULT_TPL.admin_personal.vendor_job_rejected);
+  const msg = renderTemplate(tpl, {
+    orderNumber, vendorName,
+    reason: reason || null,
+    timestamp: nowWIB(),
+  });
+  sendWhatsApp(adminWaPhone, msg).catch((e: unknown) => logger.error({ e }, "WA vendor_job_rejected failed"));
+}
+
+// ── Vendor Progress Update (notif admin saat vendor update progress) ──────────
+export async function sendVendorProgressUpdateNotification(
+  orderNumber: string,
+  vendorName: string,
+  status: string,
+  adminWaPhone: string,
+  notes?: string,
+): Promise<void> {
+  const tpl = await getWaTemplateConfig("admin_personal", "vendor_progress_update", DEFAULT_TPL.admin_personal.vendor_progress_update);
+  const msg = renderTemplate(tpl, {
+    orderNumber, vendorName, status,
+    notes: notes || null,
+    timestamp: nowWIB(),
+  });
+  sendWhatsApp(adminWaPhone, msg).catch((e: unknown) => logger.error({ e }, "WA vendor_progress_update failed"));
+}
+
+// ── Vendor POD Uploaded (notif admin saat vendor upload POD) ─────────────────
+export async function sendVendorPodUploadedNotification(
+  orderNumber: string,
+  vendorName: string,
+  fileCount: number,
+  adminWaPhone: string,
+  completionNotes?: string,
+): Promise<void> {
+  const tpl = await getWaTemplateConfig("admin_personal", "vendor_pod_uploaded", DEFAULT_TPL.admin_personal.vendor_pod_uploaded);
+  const msg = renderTemplate(tpl, {
+    orderNumber, vendorName,
+    fileCount: String(fileCount),
+    completionNotes: completionNotes || null,
+    timestamp: nowWIB(),
+  });
+  sendWhatsApp(adminWaPhone, msg).catch((e: unknown) => logger.error({ e }, "WA vendor_pod_uploaded failed"));
+}
+
+// ── Customer Progress Update (notif customer saat ada update progress) ────────
+export async function sendCustomerProgressUpdateNotification(
+  orderNumber: string,
+  customerPhone: string,
+  statusLabel: string,
+  trackingUrl: string,
+  notes?: string,
+): Promise<void> {
+  const tpl = await getWaTemplateConfig("customer", "customer_progress_update", DEFAULT_TPL.customer.customer_progress_update);
+  const msg = renderTemplate(tpl, {
+    orderNumber, statusLabel,
+    notes: notes || null,
+    trackingUrl: trackingUrl || null,
+    timestamp: nowWIB(),
+  });
+  sendWhatsApp(customerPhone, msg).catch((e: unknown) => logger.error({ e }, "WA customer_progress_update failed"));
+}
+
+// ── Customer POD Uploaded (notif customer saat vendor upload POD) ─────────────
+export async function sendCustomerPodUploadedNotification(
+  orderNumber: string,
+  vendorName: string,
+  customerPhone: string,
+  trackingUrl: string,
+  completionNotes?: string,
+): Promise<void> {
+  const tpl = await getWaTemplateConfig("customer", "customer_pod_uploaded", DEFAULT_TPL.customer.customer_pod_uploaded);
+  const msg = renderTemplate(tpl, {
+    orderNumber, vendorName,
+    completionNotes: completionNotes || null,
+    trackingUrl: trackingUrl || null,
+    timestamp: nowWIB(),
+  });
+  sendWhatsApp(customerPhone, msg).catch((e: unknown) => logger.error({ e }, "WA customer_pod_uploaded failed"));
+}
+
+// ── Order Completed (notif customer saat admin konfirmasi order selesai) ──────
+export async function sendOrderCompletedNotification(
+  orderNumber: string,
+  origin: string,
+  destination: string,
+  customerPhone: string,
+  trackingUrl: string,
+  adminNotes?: string,
+): Promise<void> {
+  const tpl = await getWaTemplateConfig("customer", "order_completed", DEFAULT_TPL.customer.order_completed);
+  const msg = renderTemplate(tpl, {
+    orderNumber, origin, destination,
+    adminNotes: adminNotes || null,
+    trackingUrl: trackingUrl || null,
+    timestamp: nowWIB(),
+  });
+  sendWhatsApp(customerPhone, msg).catch((e: unknown) => logger.error({ e }, "WA order_completed failed"));
 }
 
 // ── runWaTemplateMigration ─────────────────────────────────────────────────────
