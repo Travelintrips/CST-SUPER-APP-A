@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { User, Mail, Briefcase, Shield, MessageCircle, Save, Loader2, CheckCircle, Calculator, ChevronDown, ChevronUp, Package, Plus, X, Bot, Link2, RotateCcw, History, RefreshCw, Download, Layers } from "lucide-react";
+import { User, Mail, Briefcase, Shield, MessageCircle, Save, Loader2, CheckCircle, Calculator, ChevronDown, ChevronUp, Package, Plus, X, Bot, Link2, RotateCcw, History, RefreshCw, Download, Layers, ExternalLink } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -1914,6 +1914,11 @@ function WaLogsCard() {
             <Button size="sm" variant="outline" className="gap-1.5 text-xs" asChild>
               <a href={`/api/settings/wa-logs/export${statusFilter || search ? `?${new URLSearchParams([...(statusFilter ? [["status", statusFilter]] : []), ...(search ? [["search", search]] : [])]).toString()}` : ""}`} download>
                 <Download className="h-3.5 w-3.5" /> Export CSV
+              </a>
+            </Button>
+            <Button size="sm" variant="default" className="gap-1.5 text-xs" asChild>
+              <a href="/bizportal/notification-history">
+                <ExternalLink className="h-3.5 w-3.5" /> Halaman Penuh
               </a>
             </Button>
           </div>
