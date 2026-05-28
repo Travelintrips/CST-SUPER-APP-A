@@ -220,8 +220,10 @@ async function startServer() {
   initAlertsBroadcast(server);
 
   // Also bind on port 18444 (gateway routing port) if not already the main port
+  // Set SKIP_GATEWAY=1 to disable this secondary binding (e.g. when a dedicated
+  // artifact workflow already handles port 18444).
   const GATEWAY_PORT = 18444;
-  if (port !== GATEWAY_PORT) {
+  if (port !== GATEWAY_PORT && !process.env.SKIP_GATEWAY) {
     app.listen(GATEWAY_PORT, (err?: Error) => {
       if (!err) logger.info({ port: GATEWAY_PORT }, "Also listening on gateway port");
     });

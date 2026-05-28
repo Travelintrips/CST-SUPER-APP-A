@@ -56,7 +56,7 @@ db.execute(sql`
 // ─────────────────────────────────────────────
 // SEED DATA — derived dari @workspace/product-templates (single source of truth)
 // ─────────────────────────────────────────────
-const SEED_TEMPLATES = [
+const _LEGACY_SEED_TEMPLATES = [
   {
     categoryKey: "coal", label: "Batubara", version: "1.0.0",
     requiredDocuments: [
