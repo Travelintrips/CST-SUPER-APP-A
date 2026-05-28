@@ -2913,13 +2913,34 @@ function MiniFormTab({ formTarget }: { formTarget: "vendor" | "customer" | "admi
   );
 }
 
+type ErpStats = {
+  portalOrdersThisMonth: number;
+  activeCustomers: number;
+  pendingRfqs: number;
+  salesRevenueThisMonth: number;
+  activeFreightShipments: number;
+  inTransitShipments: number;
+};
+
 export default function AdminPage() {
   const [, setLocation] = useLocation();
+  const [erpStats, setErpStats] = useState<ErpStats | null>(null);
+  const [erpStatsLoading, setErpStatsLoading] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated()) {
       setLocation("/login");
     }
+  }, []);
+
+  useEffect(() => {
+    if (!isPortalAdmin()) return;
+    setErpStatsLoading(true);
+    fetch("/api/portal/admin/erp-stats", { headers: getAuthHeaders() })
+      .then((r) => r.ok ? r.json() as Promise<ErpStats> : null)
+      .then((d) => { if (d) setErpStats(d); })
+      .catch(() => {})
+      .finally(() => setErpStatsLoading(false));
   }, []);
 
   if (!isAuthenticated()) return null;
@@ -3133,6 +3154,85 @@ export default function AdminPage() {
                       Buka BizPortal
                       <ArrowUpRight className="h-4 w-4" />
                     </a>
+                  </div>
+
+                  {/* Quick Stats */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                    {[
+                      {
+                        label: "Order Portal (bulan ini)",
+                        value: erpStats?.portalOrdersThisMonth,
+                        icon: ClipboardList,
+                        color: "text-blue-600",
+                        bg: "bg-blue-50",
+                        href: "/bizportal/logistics/portal-orders",
+                      },
+                      {
+                        label: "Freight Aktif",
+                        value: erpStats?.activeFreightShipments,
+                        icon: Ship,
+                        color: "text-indigo-600",
+                        bg: "bg-indigo-50",
+                        href: "/bizportal/logistics/freight",
+                      },
+                      {
+                        label: "Dalam Pengiriman",
+                        value: erpStats?.inTransitShipments,
+                        icon: Truck,
+                        color: "text-cyan-600",
+                        bg: "bg-cyan-50",
+                        href: "/bizportal/logistics/freight",
+                      },
+                      {
+                        label: "RFQ Pending",
+                        value: erpStats?.pendingRfqs,
+                        icon: FileText,
+                        color: "text-orange-600",
+                        bg: "bg-orange-50",
+                        href: "/bizportal/logistics/rfq",
+                      },
+                      {
+                        label: "Revenue Bulan Ini",
+                        value: erpStats?.salesRevenueThisMonth,
+                        isRupiah: true,
+                        icon: BarChart2,
+                        color: "text-green-600",
+                        bg: "bg-green-50",
+                        href: "/bizportal/reports/sales",
+                      },
+                      {
+                        label: "Pelanggan Portal",
+                        value: erpStats?.activeCustomers,
+                        icon: Users,
+                        color: "text-purple-600",
+                        bg: "bg-purple-50",
+                        href: "/bizportal/portal/customers",
+                      },
+                    ].map(({ label, value, isRupiah, icon: Icon, color, bg, href }) => (
+                      <a
+                        key={label}
+                        href={href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex flex-col gap-2 p-4 rounded-xl border bg-white hover:shadow-md transition-all group"
+                      >
+                        <div className={`w-8 h-8 rounded-lg ${bg} flex items-center justify-center`}>
+                          <Icon className={`h-4 w-4 ${color}`} />
+                        </div>
+                        <div>
+                          {erpStatsLoading ? (
+                            <div className="h-6 w-12 bg-muted animate-pulse rounded" />
+                          ) : (
+                            <p className="text-xl font-bold text-gray-900">
+                              {value === undefined ? "—" : isRupiah
+                                ? new Intl.NumberFormat("id-ID", { notation: "compact", maximumFractionDigits: 1 }).format(value)
+                                : value.toLocaleString("id-ID")}
+                            </p>
+                          )}
+                          <p className="text-xs text-muted-foreground leading-tight mt-0.5">{label}</p>
+                        </div>
+                      </a>
+                    ))}
                   </div>
 
                   {[
