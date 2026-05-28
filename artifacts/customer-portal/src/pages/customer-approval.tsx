@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams } from "wouter";
+import { PriceBreakdown } from "@/components/PriceBreakdown";
 
 type OfferItem = { label: string; value: string };
 
@@ -245,7 +246,15 @@ export default function CustomerApprovalPage() {
           <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Total Harga Jual</p>
             <p className="text-3xl font-bold text-indigo-700">{fmt(meta.sellingPrice, meta.currency)}</p>
-            <p className="mt-1 text-xs text-indigo-600 font-medium">* Sudah termasuk PPN {meta.taxRate ?? 11}%</p>
+            <PriceBreakdown
+              grandTotal={meta.grandTotal ?? (meta.sellingPrice ? Number(meta.sellingPrice) : null)}
+              subtotal={meta.subtotal}
+              taxRate={meta.taxRate ?? 11}
+              taxAmount={meta.taxAmount}
+              currency={meta.currency ?? "IDR"}
+              grandTotalLabel="Grand Total (termasuk PPN)"
+              className="mt-3"
+            />
           </div>
         )}
 

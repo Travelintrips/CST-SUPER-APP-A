@@ -193,6 +193,22 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
     }).from(logisticOrderItemsTable)
       .where(eq(logisticOrderItemsTable.orderId, order.id));
 
+    // Compute tax breakdown — source of truth for all views
+    const _itemsSubtotal = orderItemRows.reduce((sum, it) => {
+      return sum + (it.subtotal != null ? parseFloat(String(it.subtotal)) : 0);
+    }, 0);
+    const _grandTotalNum = order.grandTotal ? parseFloat(String(order.grandTotal)) : null;
+    const _TAX_RATE = 11;
+    let _subtotalBeforeTax: number | null = null;
+    let _taxAmount: number | null = null;
+    if (_itemsSubtotal > 0 && _grandTotalNum != null) {
+      _subtotalBeforeTax = _itemsSubtotal;
+      _taxAmount = Math.round(_grandTotalNum - _itemsSubtotal);
+    } else if (_grandTotalNum != null && _grandTotalNum > 0) {
+      _subtotalBeforeTax = Math.round(_grandTotalNum * 100 / (100 + _TAX_RATE));
+      _taxAmount = _grandTotalNum - _subtotalBeforeTax;
+    }
+
     const base = {
       token,
       actionType,
@@ -218,6 +234,9 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
         notes: (order as any).notes ?? null,
         paymentType: (order as any).paymentType ?? null,
         grandTotal: order.grandTotal ? String(order.grandTotal) : null,
+        subtotalBeforeTax: _subtotalBeforeTax != null ? String(_subtotalBeforeTax) : null,
+        taxRate: _TAX_RATE,
+        taxAmount: _taxAmount != null ? String(_taxAmount) : null,
         status: order.status,
         items: orderItemRows.map((it) => ({
           serviceName: it.serviceName ?? "",

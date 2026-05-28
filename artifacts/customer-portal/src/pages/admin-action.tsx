@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams } from "wouter";
+import { PriceBreakdown } from "@/components/PriceBreakdown";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -23,6 +24,9 @@ type OrderInfo = {
   notes: string | null;
   paymentType: string | null;
   grandTotal: string | null;
+  subtotalBeforeTax?: string | null;
+  taxRate?: number | null;
+  taxAmount?: string | null;
   status: string;
   items?: Array<{ serviceName: string; category: string; subtotal: string | null }>;
 };
@@ -172,7 +176,17 @@ function OrderCard({ order }: { order: OrderInfo }) {
         )}
         <DetailRow label="Tanggal Diperlukan" value={order.requiredDate} />
         <DetailRow label="Pembayaran" value={order.paymentType} />
-        <DetailRow label="Total" value={idr(order.grandTotal)} />
+        {order.grandTotal && Number(order.grandTotal) > 0 && (
+          <PriceBreakdown
+            subtotal={order.subtotalBeforeTax ? Number(order.subtotalBeforeTax) : null}
+            taxRate={order.taxRate ?? 11}
+            taxAmount={order.taxAmount ? Number(order.taxAmount) : null}
+            grandTotal={Number(order.grandTotal)}
+            subtotalLabel={order.orderType === "product" ? "Subtotal Produk" : "Subtotal"}
+            grandTotalLabel="Grand Total"
+            className="mt-1"
+          />
+        )}
         {order.notes && (
           <div className="pt-2 mt-1">
             <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide mb-1">Catatan Customer</p>
