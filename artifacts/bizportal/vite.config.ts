@@ -68,6 +68,7 @@ if (h.indexOf('access_token') !== -1 || h.indexOf('error=') !== -1 ||
       "@assets": path.resolve(import.meta.dirname, "..", "..", "attached_assets"),
       "@workspace/replit-auth-web": path.resolve(import.meta.dirname, "../../lib/replit-auth-web/src/index.ts"),
       "@workspace/product-templates": path.resolve(import.meta.dirname, "../../lib/product-templates/src/index.ts"),
+      "@workspace/logistics-constants": path.resolve(import.meta.dirname, "../../lib/logistics-constants/src/index.ts"),
     },
     dedupe: ["react", "react-dom"],
   },
