@@ -28,6 +28,7 @@ import {
   getRfqVendorRecapTemplate,
   renderTemplate,
   sendVendorSelectedAdminWa,
+  sendVendorAwardedWa,
   type LogisticOrderData,
 } from "../lib/orderNotification.js";
 
@@ -1228,7 +1229,7 @@ logisticRfqV2Router.post("/rfq/:rfqId/select-vendor", async (req: Request, res: 
   if (!link) return res.status(404).json({ message: "Link vendor tidak ditemukan" });
 
   const [[vendor], [rfqRow]] = await Promise.all([
-    db.select({ name: suppliersTable.name }).from(suppliersTable).where(eq(suppliersTable.id, link.vendorId)),
+    db.select({ name: suppliersTable.name, phone: suppliersTable.phone }).from(suppliersTable).where(eq(suppliersTable.id, link.vendorId)),
     db.select({
       rfqNumber: logisticOrderRfqsTable.rfqNumber,
       orderId: logisticOrderRfqsTable.orderId,
@@ -1284,6 +1285,21 @@ logisticRfqV2Router.post("/rfq/:rfqId/select-vendor", async (req: Request, res: 
       sellingPrice: sellingPrice ?? null,
       eta: link.eta ?? null,
     }).catch((e: unknown) => logger.error({ e }, "sendVendorSelectedAdminWa failed (select-vendor)"));
+
+    if (vendor?.phone) {
+      sendVendorAwardedWa({
+        vendorName,
+        vendorPhone: vendor.phone,
+        rfqNumber: rfqRow.rfqNumber,
+        orderNumber: orderRow.orderNumber,
+        shipmentType: orderRow.shipmentType ?? "—",
+        origin: orderRow.origin ?? "—",
+        destination: orderRow.destination ?? "—",
+        vendorCost: link.offeredPrice ?? link.basicPrice,
+        eta: link.eta ?? null,
+        notes: link.notes ?? null,
+      }).catch((e: unknown) => logger.error({ e }, "sendVendorAwardedWa failed (select-vendor)"));
+    }
   }
 
   return res.json({ ok: true, selectedVendorName: vendorName });

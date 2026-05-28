@@ -601,6 +601,26 @@ const DEFAULT_TPL = {
       "",
       "Silakan cek BizPortal › RFQ untuk tindak lanjut.",
     ].join("\n"),
+    vendor_awarded: [
+      "🏆 *Selamat! Penawaran Anda Dipilih — CST Logistics*",
+      "━━━━━━━━━━━━━━━━━━",
+      "Kepada Yth. *{{vendorName}}*,",
+      "",
+      "Kami dengan senang memberitahukan bahwa penawaran Anda telah *dipilih* untuk order berikut:",
+      "",
+      "📋 No. RFQ  : {{rfqNumber}}",
+      "📄 No. Order: {{orderNumber}}",
+      "🚚 Jenis    : {{shipmentType}}",
+      "📍 Rute     : {{route}}",
+      "💰 Harga    : {{vendorCost}}",
+      "⏱ ETA      : {{eta}}",
+      "📝 Catatan  : {{notes}}",
+      "━━━━━━━━━━━━━━━━━━",
+      "Tim kami akan segera menghubungi Anda dengan instruksi dan detail selanjutnya.",
+      "",
+      "Terima kasih atas kepercayaan dan kerja sama Anda 🙏",
+      "_CST Logistics_",
+    ].join("\n"),
     vendor_selected_admin: [
       "✅ *Vendor Dipilih — RFQ {{rfqNumber}}*",
       "━━━━━━━━━━━━━━━━━━",
@@ -1406,6 +1426,51 @@ export async function sendVendorSubmissionSummaryNotification(
 // ── getRfqVendorRecapTemplate ──────────────────────────────────────────────────
 export async function getRfqVendorRecapTemplate(): Promise<string> {
   return getWaTemplateConfig("admin_personal", "rfq_vendor_recap", DEFAULT_TPL.admin_personal_extra.rfq_vendor_recap);
+}
+
+// ── sendVendorAwardedWa ────────────────────────────────────────────────────────
+export interface VendorAwardedData {
+  vendorName: string;
+  vendorPhone: string;
+  rfqNumber: string;
+  orderNumber: string;
+  shipmentType: string;
+  origin: string;
+  destination: string;
+  vendorCost: number | string | null;
+  eta?: string | null;
+  notes?: string | null;
+}
+
+export async function sendVendorAwardedWa(data: VendorAwardedData): Promise<void> {
+  const tpl = await getWaTemplateConfig(
+    "vendor",
+    "vendor_awarded",
+    DEFAULT_TPL.admin_personal_extra.vendor_awarded,
+  );
+
+  const fmtCost = (v: number | string | null): string | null => {
+    if (v == null) return null;
+    const n = typeof v === "number" ? v : parseFloat(String(v));
+    return isNaN(n) ? null : new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
+  };
+
+  const msg = renderTemplate(tpl, {
+    vendorName: data.vendorName,
+    rfqNumber: data.rfqNumber,
+    orderNumber: data.orderNumber,
+    shipmentType: data.shipmentType,
+    route: `${data.origin} → ${data.destination}`,
+    vendorCost: fmtCost(data.vendorCost),
+    eta: data.eta ?? null,
+    notes: data.notes ?? null,
+  });
+
+  sendWhatsApp(data.vendorPhone, msg, {
+    context: "vendor-awarded",
+    refType: "rfq",
+    refId: data.rfqNumber,
+  }).catch((e: unknown) => logger.error({ e, vendorName: data.vendorName }, "sendVendorAwardedWa failed"));
 }
 
 // ── sendVendorSelectedAdminWa ──────────────────────────────────────────────────

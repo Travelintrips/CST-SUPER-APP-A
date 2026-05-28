@@ -19,7 +19,7 @@ import { getPreferredDomain } from "../lib/domain.js";
 import { logger } from "../lib/logger.js";
 import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa } from "../lib/adminWa.js";
-import { sendVendorRequestNotification, sendVendorSelectedAdminWa, type LogisticOrderData } from "../lib/orderNotification.js";
+import { sendVendorRequestNotification, sendVendorSelectedAdminWa, sendVendorAwardedWa, type LogisticOrderData } from "../lib/orderNotification.js";
 import { generateShortLink } from "../lib/shortLink.js";
 
 export const adminActionRouter: Router = Router();
@@ -840,6 +840,21 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
         quoteSentToCustomer: sendQuoteToCustomer && !!quoteShortUrl,
         forwardVendorUrl: fwdShort,
       }).catch(() => {});
+
+      if (vendor?.phone) {
+        sendVendorAwardedWa({
+          vendorName: vendor.name ?? `Vendor #${vendorLink.vendorId}`,
+          vendorPhone: vendor.phone,
+          rfqNumber: rfq.rfqNumber,
+          orderNumber: order.orderNumber,
+          shipmentType: order.shipmentType ?? "—",
+          origin: order.origin ?? "—",
+          destination: order.destination ?? "—",
+          vendorCost: vendorLink.offeredPrice ?? vendorLink.basicPrice,
+          eta: vendorLink.eta ?? null,
+          notes: vendorLink.notes ?? null,
+        }).catch(() => {});
+      }
 
       return res.json({
         ok: true,
