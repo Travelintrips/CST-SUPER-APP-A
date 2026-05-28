@@ -2927,13 +2927,7 @@ export default function AdminPage() {
   const [erpStats, setErpStats] = useState<ErpStats | null>(null);
   const [erpStatsLoading, setErpStatsLoading] = useState(false);
 
-  useEffect(() => {
-    if (!isAuthenticated()) {
-      setLocation("/login");
-    }
-  }, []);
-
-  useEffect(() => {
+  function fetchErpStats() {
     if (!isPortalAdmin()) return;
     setErpStatsLoading(true);
     fetch("/api/portal/admin/erp-stats", { headers: getAuthHeaders() })
@@ -2941,6 +2935,17 @@ export default function AdminPage() {
       .then((d) => { if (d) setErpStats(d); })
       .catch(() => {})
       .finally(() => setErpStatsLoading(false));
+  }
+
+  useEffect(() => {
+    if (!isAuthenticated()) {
+      setLocation("/login");
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchErpStats();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (!isAuthenticated()) return null;
@@ -3157,6 +3162,17 @@ export default function AdminPage() {
                   </div>
 
                   {/* Quick Stats */}
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Statistik Real-time</p>
+                    <button
+                      onClick={fetchErpStats}
+                      disabled={erpStatsLoading}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-background hover:bg-muted text-xs font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                    >
+                      <Loader2 className={`h-3.5 w-3.5 ${erpStatsLoading ? "animate-spin" : ""}`} />
+                      Refresh
+                    </button>
+                  </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
                     {[
                       {
