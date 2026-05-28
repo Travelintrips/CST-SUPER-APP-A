@@ -1074,18 +1074,35 @@ export async function runEnterpriseWorkflowMigration(): Promise<void> {
     const existingKeys = new Set(existingRows.map(r => `${r.recipient}__${r.workflow}`));
 
     let seeded = 0;
+    let repaired = 0;
     for (const { recipient, workflow, body } of pairs) {
       const key = `${recipient}__${workflow}`;
       if (!existingKeys.has(key)) {
         await db.insert(waTemplateConfigsTable).values({ recipient, workflow, body });
         seeded++;
         logger.info({ recipient, workflow }, "Enterprise WA template: seeded");
+      } else {
+        // Repair existing rows that have empty body
+        const existingRow = existingRows.find(r => r.recipient === recipient && r.workflow === workflow);
+        if (existingRow && (!existingRow.body || existingRow.body.trim() === "")) {
+          await db
+            .update(waTemplateConfigsTable)
+            .set({ body, updatedAt: new Date() })
+            .where(
+              and(
+                eq(waTemplateConfigsTable.recipient, recipient),
+                eq(waTemplateConfigsTable.workflow, workflow),
+              )
+            );
+          repaired++;
+          logger.info({ recipient, workflow }, "Enterprise WA template: repaired (was empty)");
+        }
       }
     }
 
     invalidateWaTemplateCache();
     logger.info(
-      { total: pairs.length, seeded, alreadyExisted: pairs.length - seeded },
+      { total: pairs.length, seeded, repaired, alreadyExisted: pairs.length - seeded },
       "Enterprise workflow migration: done"
     );
   } catch (err) {
