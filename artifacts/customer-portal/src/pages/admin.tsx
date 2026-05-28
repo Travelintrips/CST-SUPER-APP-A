@@ -2926,15 +2926,22 @@ export default function AdminPage() {
   const [, setLocation] = useLocation();
   const [erpStats, setErpStats] = useState<ErpStats | null>(null);
   const [erpStatsLoading, setErpStatsLoading] = useState(false);
+  const [erpStatsLastUpdated, setErpStatsLastUpdated] = useState<Date | null>(null);
+  const erpDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function fetchErpStats() {
     if (!isPortalAdmin()) return;
     setErpStatsLoading(true);
     fetch("/api/portal/admin/erp-stats", { headers: getAuthHeaders() })
       .then((r) => r.ok ? r.json() as Promise<ErpStats> : null)
-      .then((d) => { if (d) setErpStats(d); })
+      .then((d) => { if (d) { setErpStats(d); setErpStatsLastUpdated(new Date()); } })
       .catch(() => {})
       .finally(() => setErpStatsLoading(false));
+  }
+
+  function scheduleFetchErpStats() {
+    if (erpDebounceRef.current) clearTimeout(erpDebounceRef.current);
+    erpDebounceRef.current = setTimeout(() => fetchErpStats(), 2000);
   }
 
   useEffect(() => {
@@ -2945,6 +2952,17 @@ export default function AdminPage() {
 
   useEffect(() => {
     fetchErpStats();
+
+    if (!isPortalAdmin()) return;
+    const es = new EventSource("/api/ecommerce/events");
+    const STAT_EVENTS = ["new_logistic_order", "logistic_order_status_changed", "vendor_quote_received"];
+    STAT_EVENTS.forEach((ev) => {
+      es.addEventListener(ev, () => scheduleFetchErpStats());
+    });
+    return () => {
+      es.close();
+      if (erpDebounceRef.current) clearTimeout(erpDebounceRef.current);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -3162,16 +3180,29 @@ export default function AdminPage() {
                   </div>
 
                   {/* Quick Stats */}
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Statistik Real-time</p>
-                    <button
-                      onClick={fetchErpStats}
-                      disabled={erpStatsLoading}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-background hover:bg-muted text-xs font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
-                    >
-                      <Loader2 className={`h-3.5 w-3.5 ${erpStatsLoading ? "animate-spin" : ""}`} />
-                      Refresh
-                    </button>
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Statistik Real-time</p>
+                      <span className="inline-flex items-center gap-1 text-[10px] text-emerald-600 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full font-medium">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        Live
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {erpStatsLastUpdated && (
+                        <span className="text-[11px] text-muted-foreground">
+                          Diperbarui {erpStatsLastUpdated.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                        </span>
+                      )}
+                      <button
+                        onClick={fetchErpStats}
+                        disabled={erpStatsLoading}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-background hover:bg-muted text-xs font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                      >
+                        <Loader2 className={`h-3.5 w-3.5 ${erpStatsLoading ? "animate-spin" : ""}`} />
+                        Refresh
+                      </button>
+                    </div>
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
                     {[
