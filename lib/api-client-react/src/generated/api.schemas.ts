@@ -2708,7 +2708,7 @@ export type ListAccountingPaymentsParams = {
   sourceType?: string | null;
   sourceDocId?: number | null;
   refDocNumber?: string | null;
-  company?: string | number | null;
+  company?: string | null;
 };
 
 export type ListAccountingPaymentsPaymentType =

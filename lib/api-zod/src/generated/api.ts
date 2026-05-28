@@ -2864,6 +2864,8 @@ export const ListAccountingPaymentsQueryParams = zod.object({
   to: zod.date().optional(),
   sourceType: zod.coerce.string().nullish(),
   sourceDocId: zod.coerce.number().nullish(),
+  refDocNumber: zod.coerce.string().nullish(),
+  company: zod.coerce.string().nullish(),
 });
 
 export const ListAccountingPaymentsResponseItem = zod.object({

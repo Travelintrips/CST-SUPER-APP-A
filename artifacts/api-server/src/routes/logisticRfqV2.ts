@@ -1548,6 +1548,38 @@ logisticRfqV2Router.post("/rfq/:rfqId/close", async (req: Request, res: Response
   return res.json({ ok: true, rfqId, rfqNumber: rfq.rfqNumber, orderNumber: order?.orderNumber });
 });
 
+// ─── ADMIN: PATCH /rfq/vendor-link/:linkId/refresh-price ─────────────────────
+// Refresh basicPrice dari katalog vendor terkini (tanpa mengubah status/offer vendor)
+logisticRfqV2Router.patch("/rfq/vendor-link/:linkId/refresh-price", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const linkId = parseInt(req.params.linkId as string, 10);
+  if (isNaN(linkId)) return res.status(400).json({ message: "linkId tidak valid" });
+
+  const [link] = await db.select().from(rfqVendorLinksTable).where(eq(rfqVendorLinksTable.id, linkId));
+  if (!link) return res.status(404).json({ message: "Vendor link tidak ditemukan" });
+
+  const catalogItems = await db.select().from(vendorCatalogItemsTable)
+    .where(and(eq(vendorCatalogItemsTable.vendorId, link.vendorId), eq(vendorCatalogItemsTable.isActive, true)));
+  if (catalogItems.length === 0) return res.status(404).json({ message: "Tidak ada item etalase aktif untuk vendor ini" });
+
+  const newPrice = Number(catalogItems[0].priceBase);
+  const oldPrice = link.basicPrice ? Number(link.basicPrice) : null;
+
+  await db.update(rfqVendorLinksTable)
+    .set({ basicPrice: String(newPrice) })
+    .where(eq(rfqVendorLinksTable.id, linkId));
+
+  await logActivity(
+    link.rfqId,
+    "admin",
+    "Admin",
+    "refresh_price",
+    `Harga referensi vendor link #${linkId} diperbarui dari etalase: ${fmtRp(oldPrice)} → ${fmtRp(newPrice)}`,
+  );
+
+  return res.json({ ok: true, oldPrice, newPrice });
+});
+
 // ─── ADMIN: GET /rfq/by-order/:orderId ────────────────────────────────────────
 logisticRfqV2Router.get("/rfq/by-order/:orderId", async (req: Request, res: Response) => {
   if (!(await requireClerkUser(req, res))) return;

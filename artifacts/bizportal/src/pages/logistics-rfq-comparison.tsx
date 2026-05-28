@@ -18,7 +18,7 @@ import {
   ArrowLeft, RefreshCw, Star, CheckCircle, XCircle, MessageCircle,
   Clock, Users, TrendingDown, ExternalLink, Copy, AlertCircle, Loader2,
   Send, Phone, DollarSign, Eye, ThumbsUp, ThumbsDown, RotateCcw, Lock,
-  Package, ExternalLink as LinkIcon, Brain,
+  Package, ExternalLink as LinkIcon, Brain, DatabaseZap,
 } from "lucide-react";
 
 const idr = (n: number | null | undefined) =>
@@ -276,6 +276,25 @@ export default function LogisticsRfqComparisonPage() {
       navigate(`/logistics/freight/${d.shipmentId}`);
     },
     onError: (e: Error) => toast({ title: "Gagal", description: e.message, variant: "destructive" }),
+  });
+
+  const refreshPriceMut = useMutation({
+    mutationFn: async (linkId: number) => {
+      const res = await fetch(`/api/logistic/rfq/vendor-link/${linkId}/refresh-price`, {
+        method: "PATCH",
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.message);
+      return j as { oldPrice: number | null; newPrice: number };
+    },
+    onSuccess: (d) => {
+      toast({
+        title: "Harga Diperbarui",
+        description: `Harga referensi diperbarui: ${idr(d.oldPrice)} → ${idr(d.newPrice)}`,
+      });
+      qc.invalidateQueries({ queryKey: ["rfq-comparison", rfqId] });
+    },
+    onError: (e) => toast({ title: "Gagal", description: (e as Error).message, variant: "destructive" }),
   });
 
   const actionMut = useMutation({
@@ -629,6 +648,8 @@ export default function LogisticsRfqComparisonPage() {
                   onReject={() => actionMut.mutate({ linkId: v.linkId, action: "reject" })}
                   onMarkRead={() => actionMut.mutate({ linkId: v.linkId, action: "mark_read" })}
                   onCopyLink={() => copyLink(window.location.origin + v.formUrl.replace(/^https?:\/\/[^/]+/, ""))}
+                  onRefreshPrice={() => refreshPriceMut.mutate(v.linkId)}
+                  isRefreshingPrice={refreshPriceMut.isPending && refreshPriceMut.variables === v.linkId}
                 />
               ))
             )}
@@ -958,11 +979,12 @@ function StatCard({ label, value, icon, color }: {
 }
 
 function VendorCard({
-  vendor, rank, rankingBadges, aiScore, hasSelected, onSelect, onRevision, onReject, onMarkRead, onCopyLink,
+  vendor, rank, rankingBadges, aiScore, hasSelected, onSelect, onRevision, onReject, onMarkRead, onCopyLink, onRefreshPrice, isRefreshingPrice,
 }: {
   vendor: VendorRow; rank: number; rankingBadges?: RankingBadge[]; aiScore?: VendorAiScore; hasSelected: boolean;
   onSelect: () => void; onRevision: () => void;
   onReject: () => void; onMarkRead: () => void; onCopyLink: () => void;
+  onRefreshPrice: () => void; isRefreshingPrice?: boolean;
 }) {
   const isSelected = vendor.status === "selected";
   const canAct = !hasSelected && !["rejected", "expired", "not_selected"].includes(vendor.status);
@@ -1073,6 +1095,19 @@ function VendorCard({
           )}
           <Button variant="ghost" size="sm" className="text-xs h-7" onClick={onCopyLink}>
             <Copy className="w-3 h-3 mr-1" /> Salin Link
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-xs h-7 text-orange-700 border-orange-300 hover:bg-orange-50"
+            onClick={onRefreshPrice}
+            disabled={isRefreshingPrice}
+            title="Perbarui harga referensi dari katalog etalase vendor terkini"
+          >
+            {isRefreshingPrice
+              ? <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+              : <DatabaseZap className="w-3 h-3 mr-1" />}
+            Refresh Harga
           </Button>
           {canAct && hasAnswer && (
             <>
