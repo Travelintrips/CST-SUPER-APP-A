@@ -458,6 +458,44 @@ const DEFAULT_TPL = {
       "",
       "_{{timestamp}}_",
     ].join("\n"),
+    sales_order_created: [
+      "📋 *{{docLabel}} Baru*",
+      "No: {{orderNumber}}",
+      "Customer: {{customerName}}",
+      "Total: {{grandTotal}}",
+      "Tanggal: {{tanggal}}",
+      "_{{timestamp}}_",
+    ].join("\n"),
+    quotation_sent: [
+      "📤 *Quotation Dikirim ke Customer*",
+      "No: {{orderNumber}}",
+      "Customer: {{customerName}}",
+      "Total: {{grandTotal}}",
+      "_{{timestamp}}_",
+    ].join("\n"),
+    sales_order_confirmed: [
+      "📋 *Sales Order Baru (Dikonfirmasi)*",
+      "No: {{orderNumber}}",
+      "Customer: {{customerName}}",
+      "Total: {{grandTotal}}",
+      "Tanggal: {{tanggal}}",
+      "_{{timestamp}}_",
+    ].join("\n"),
+    sales_order_delivered: [
+      "🚚 *SO Terkirim*",
+      "No: {{orderNumber}}",
+      "Customer: {{customerName}}",
+      "Total: {{grandTotal}}",
+      "_{{timestamp}}_",
+    ].join("\n"),
+    invoice_issued: [
+      "🧾 *Invoice Dibuat*",
+      "No Invoice: {{invNumber}}",
+      "Customer: {{customerName}}",
+      "Total: {{grandTotal}}",
+      "Jatuh tempo: {{dueStr}}",
+      "_{{timestamp}}_",
+    ].join("\n"),
   },
   admin_group: {
     order_new: ["🔔 *[ORDER MASUK] {{orderNumber}}*","━━━━━━━━━━━━━━━━━━","🏷️ No. Order     : `{{orderNumber}}`","📆 Tanggal       : {{tanggal}}","🕐 Jam           : {{jam}}","👤 Customer      : *{{customerDisplay}}*","📞 HP            : {{phone}}","━━━━━━━━━━━━━━━━━━","🚢 Jenis         : {{shipmentType}}","📍 Rute          : {{route}}","📦 Komoditi      : {{commodity}}","📋 Deskripsi     : {{cargoDescription}}","⚖️ Berat         : {{grossWeightDisplay}}","📐 Volume        : {{volumeDisplay}}","{{#if product}}","🛍️ Nama Produk   :","{{productList}}","{{/if}}","📅 Tgl Kirim     : {{requiredDate}}","📝 Catatan       : {{notes}}","━━━━━━━━━━━━━━━━━━","💵 Subtotal      : Rp {{subtotalEst}}","🧾 {{taxLabel}}  : Rp {{taxEst}}","💰 Total Est.    : *Rp {{totalEst}}*","🔵 Status        : Menunggu Konfirmasi","━━━━━━━━━━━━━━━━━━","⚡ *Review & Proses Order (tanpa login):*","👉 {{adminActionUrl}}","","_Dikirim: {{timestamp}}_"].join("\n"),
@@ -523,6 +561,53 @@ const DEFAULT_TPL = {
       "{{trackingUrl}}",
       "",
       "Terima kasih telah mempercayakan pengiriman Anda kepada CST Logistics! 🙏",
+    ].join("\n"),
+    quotation_sent: [
+      "📄 *Sales Quotation — {{orderNumber}}*",
+      "",
+      "Halo {{customerName}},",
+      "",
+      "Penawaran kami untuk Anda:",
+      "Total: {{grandTotal}}",
+      "Berlaku hingga: {{validStr}}",
+      "",
+      "Silakan hubungi kami untuk konfirmasi. Terima kasih!",
+      "_{{timestamp}}_",
+    ].join("\n"),
+    sales_order_confirmed: [
+      "✅ *Sales Order Dikonfirmasi — {{orderNumber}}*",
+      "",
+      "Halo {{customerName}},",
+      "",
+      "Order Anda telah dikonfirmasi:",
+      "Total: {{grandTotal}}",
+      "Estimasi pengiriman: {{expStr}}",
+      "",
+      "Kami akan segera memproses pesanan Anda. Terima kasih!",
+      "_{{timestamp}}_",
+    ].join("\n"),
+    sales_order_delivered: [
+      "🚚 *Pesanan Terkirim — {{orderNumber}}*",
+      "",
+      "Halo {{customerName}},",
+      "",
+      "Pesanan Anda telah dikirim/diserahkan.",
+      "Total: {{grandTotal}}",
+      "",
+      "Terima kasih telah berbelanja bersama kami!",
+      "_{{timestamp}}_",
+    ].join("\n"),
+    invoice_issued: [
+      "🧾 *Invoice Diterbitkan — {{invNumber}}*",
+      "",
+      "Halo {{customerName}},",
+      "",
+      "Invoice untuk order Anda telah diterbitkan:",
+      "Total: {{grandTotal}}",
+      "Jatuh tempo: {{dueStr}}",
+      "",
+      "Silakan hubungi kami untuk informasi pembayaran. Terima kasih!",
+      "_{{timestamp}}_",
     ].join("\n"),
   },
   product_order_status: {
@@ -793,6 +878,11 @@ export function getWaDefaultTemplatesFlatMap(): Record<string, string> {
   add("admin_personal", "vendor_job_rejected", ap.vendor_job_rejected);
   add("admin_personal", "vendor_progress_update", ap.vendor_progress_update);
   add("admin_personal", "vendor_pod_uploaded", ap.vendor_pod_uploaded);
+  add("admin_personal", "sales_order_created", ap.sales_order_created);
+  add("admin_personal", "quotation_sent", ap.quotation_sent);
+  add("admin_personal", "sales_order_confirmed", ap.sales_order_confirmed);
+  add("admin_personal", "sales_order_delivered", ap.sales_order_delivered);
+  add("admin_personal", "invoice_issued", ap.invoice_issued);
 
   // admin_personal_extra (same recipient)
   const ape = DEFAULT_TPL.admin_personal_extra;
@@ -832,6 +922,10 @@ export function getWaDefaultTemplatesFlatMap(): Record<string, string> {
   add("customer", "customer_progress_update", cu.customer_progress_update);
   add("customer", "customer_pod_uploaded", cu.customer_pod_uploaded);
   add("customer", "order_completed", cu.order_completed);
+  add("customer", "quotation_sent", cu.quotation_sent);
+  add("customer", "sales_order_confirmed", cu.sales_order_confirmed);
+  add("customer", "sales_order_delivered", cu.sales_order_delivered);
+  add("customer", "invoice_issued", cu.invoice_issued);
 
   // vendor
   const v = DEFAULT_TPL.vendor;
@@ -1953,6 +2047,147 @@ export async function sendOrderCompletedNotification(
     timestamp: nowWIB(),
   });
   sendWhatsApp(customerPhone, msg).catch((e: unknown) => logger.error({ e }, "WA order_completed failed"));
+}
+
+// ── Sales: SO/Quotation Dibuat → Admin ────────────────────────────────────────
+export async function sendSalesOrderCreatedNotification(
+  orderNumber: string,
+  customerName: string,
+  docKind: "quote" | "order",
+  grandTotal: number,
+  adminWaPhone: string | null | undefined,
+): Promise<void> {
+  if (!adminWaPhone) return;
+  const tpl = await getWaTemplateConfig("admin_personal", "sales_order_created", DEFAULT_TPL.admin_personal.sales_order_created);
+  const fmtRp = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
+  const vars: Record<string, string | null | undefined> = {
+    orderNumber,
+    customerName,
+    docLabel: docKind === "quote" ? "Sales Quotation" : "Sales Order",
+    grandTotal: fmtRp(grandTotal),
+    tanggal: new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" }),
+    timestamp: nowWIB(),
+  };
+  const msg = renderTemplate(tpl, vars);
+  sendWhatsApp(adminWaPhone, msg).catch((e: unknown) => logger.error({ e }, "WA sales_order_created failed"));
+}
+
+// ── Sales: Quotation Dikirim ke Customer ──────────────────────────────────────
+export async function sendQuotationSentNotification(
+  orderNumber: string,
+  customerName: string,
+  grandTotal: number,
+  validStr: string,
+  customerPhone: string | null | undefined,
+  adminWaPhone: string | null | undefined,
+): Promise<void> {
+  const fmtRp = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
+  const vars: Record<string, string | null | undefined> = {
+    orderNumber,
+    customerName,
+    grandTotal: fmtRp(grandTotal),
+    validStr,
+    timestamp: nowWIB(),
+  };
+  if (customerPhone) {
+    const tpl = await getWaTemplateConfig("customer", "quotation_sent", DEFAULT_TPL.customer.quotation_sent);
+    const msg = renderTemplate(tpl, vars);
+    sendWhatsApp(customerPhone, msg).catch((e: unknown) => logger.error({ e }, "WA quotation_sent customer failed"));
+  }
+  if (adminWaPhone) {
+    const tpl = await getWaTemplateConfig("admin_personal", "quotation_sent", DEFAULT_TPL.admin_personal.quotation_sent);
+    const msg = renderTemplate(tpl, vars);
+    sendWhatsApp(adminWaPhone, msg).catch((e: unknown) => logger.error({ e }, "WA quotation_sent admin failed"));
+  }
+}
+
+// ── Sales: SO Confirmed ───────────────────────────────────────────────────────
+export async function sendSalesOrderConfirmedNotification(
+  orderNumber: string,
+  customerName: string,
+  grandTotal: number,
+  expStr: string,
+  tanggal: string,
+  customerPhone: string | null | undefined,
+  adminWaPhone: string | null | undefined,
+): Promise<void> {
+  const fmtRp = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
+  const vars: Record<string, string | null | undefined> = {
+    orderNumber,
+    customerName,
+    grandTotal: fmtRp(grandTotal),
+    expStr,
+    tanggal,
+    timestamp: nowWIB(),
+  };
+  if (customerPhone) {
+    const tpl = await getWaTemplateConfig("customer", "sales_order_confirmed", DEFAULT_TPL.customer.sales_order_confirmed);
+    const msg = renderTemplate(tpl, vars);
+    sendWhatsApp(customerPhone, msg).catch((e: unknown) => logger.error({ e }, "WA sales_order_confirmed customer failed"));
+  }
+  if (adminWaPhone) {
+    const tpl = await getWaTemplateConfig("admin_personal", "sales_order_confirmed", DEFAULT_TPL.admin_personal.sales_order_confirmed);
+    const msg = renderTemplate(tpl, vars);
+    sendWhatsApp(adminWaPhone, msg).catch((e: unknown) => logger.error({ e }, "WA sales_order_confirmed admin failed"));
+  }
+}
+
+// ── Sales: SO Mark Delivered ──────────────────────────────────────────────────
+export async function sendSalesOrderDeliveredNotification(
+  orderNumber: string,
+  customerName: string,
+  grandTotal: number,
+  customerPhone: string | null | undefined,
+  adminWaPhone: string | null | undefined,
+): Promise<void> {
+  const fmtRp = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
+  const vars: Record<string, string | null | undefined> = {
+    orderNumber,
+    customerName,
+    grandTotal: fmtRp(grandTotal),
+    timestamp: nowWIB(),
+  };
+  if (customerPhone) {
+    const tpl = await getWaTemplateConfig("customer", "sales_order_delivered", DEFAULT_TPL.customer.sales_order_delivered);
+    const msg = renderTemplate(tpl, vars);
+    sendWhatsApp(customerPhone, msg).catch((e: unknown) => logger.error({ e }, "WA sales_order_delivered customer failed"));
+  }
+  if (adminWaPhone) {
+    const tpl = await getWaTemplateConfig("admin_personal", "sales_order_delivered", DEFAULT_TPL.admin_personal.sales_order_delivered);
+    const msg = renderTemplate(tpl, vars);
+    sendWhatsApp(adminWaPhone, msg).catch((e: unknown) => logger.error({ e }, "WA sales_order_delivered admin failed"));
+  }
+}
+
+// ── Sales: Invoice Diterbitkan ────────────────────────────────────────────────
+export async function sendInvoiceIssuedNotification(
+  orderNumber: string,
+  invNumber: string,
+  customerName: string,
+  grandTotal: number,
+  dueStr: string,
+  customerPhone: string | null | undefined,
+  adminWaPhone: string | null | undefined,
+): Promise<void> {
+  const fmtRp = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
+  const vars: Record<string, string | null | undefined> = {
+    orderNumber,
+    invNumber,
+    customerName,
+    grandTotal: fmtRp(grandTotal),
+    dueStr,
+    timestamp: nowWIB(),
+  };
+  if (customerPhone) {
+    const tpl = await getWaTemplateConfig("customer", "invoice_issued", DEFAULT_TPL.customer.invoice_issued);
+    const msg = renderTemplate(tpl, vars);
+    sendWhatsApp(customerPhone, msg).catch((e: unknown) => logger.error({ e }, "WA invoice_issued customer failed"));
+  }
+  if (adminWaPhone) {
+    const tpl = await getWaTemplateConfig("admin_personal", "invoice_issued", DEFAULT_TPL.admin_personal.invoice_issued);
+    const msg = renderTemplate(tpl, vars);
+    sendWhatsApp(adminWaPhone, msg).catch((e: unknown) => logger.error({ e }, "WA invoice_issued admin failed"));
+  }
 }
 
 // ── runWaTemplateMigration ─────────────────────────────────────────────────────

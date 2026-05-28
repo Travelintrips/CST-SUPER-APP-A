@@ -19,6 +19,13 @@ import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
 import { ensureAccountingSettings } from "../lib/accountingSeed.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminWa } from "../lib/adminWa.js";
+import {
+  sendSalesOrderCreatedNotification,
+  sendQuotationSentNotification,
+  sendSalesOrderConfirmedNotification,
+  sendSalesOrderDeliveredNotification,
+  sendInvoiceIssuedNotification,
+} from "../lib/orderNotification.js";
 import { saveAndBroadcast } from "../lib/notificationStore.js";
 import { getVendorFilterMode } from "../lib/aiOrderIntake.js";
 import { StockShortageError, postStockOut, postStockIn } from "../lib/inventoryStock.js";
@@ -367,18 +374,9 @@ router.post("/documents", async (req, res) => {
   const detail = await loadDocWithLines(doc.id);
 
   // Notify admin via WhatsApp (fire-and-forget)
-  getAdminWa().then((adminWa) => {
-    if (!adminWa) return;
-    const docLabel = docKind === "quote" ? "Sales Quotation" : "Sales Order";
-    const tanggal = doc.createdAt.toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
-    const msg =
-      `📋 *${docLabel} Baru*\n` +
-      `No: ${docNumber}\n` +
-      `Customer: ${customerName}\n` +
-      `Total: Rp ${grandTotal.toLocaleString("id-ID")}\n` +
-      `Tanggal: ${tanggal}`;
-    return sendWhatsApp(adminWa, msg);
-  }).catch(() => undefined);
+  getAdminWa().then((adminWa) =>
+    sendSalesOrderCreatedNotification(docNumber, customerName, docKind, grandTotal, adminWa)
+  ).catch(() => undefined);
 
   saveAndBroadcast("sales_doc_created", {
     type: "sales_new",
@@ -708,120 +706,33 @@ router.post("/documents/:id/action", async (req, res) => {
       }
 
       const grandTotal = Number(doc.totalAmount ?? 0) + Number(doc.taxAmount ?? 0);
-      const fmtRp = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
       const adminWa = await getAdminWa();
 
       if (action === "send" && doc.status !== "sent") {
-        // WA ke customer: penawaran dikirim
-        if (customerPhone) {
-          const validStr = doc.validUntil
-            ? new Date(doc.validUntil).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })
-            : "—";
-          await sendWhatsApp(
-            customerPhone,
-            `📄 *Sales Quotation — ${doc.docNumber}*\n\n` +
-            `Halo ${doc.customerName},\n\n` +
-            `Penawaran kami untuk Anda:\n` +
-            `Total: ${fmtRp(grandTotal)}\n` +
-            `Berlaku hingga: ${validStr}\n\n` +
-            `Silakan hubungi kami untuk konfirmasi. Terima kasih!`,
-          ).catch(() => undefined);
-        }
-        // WA ke admin: dokumen dikirim ke customer
-        if (adminWa) {
-          await sendWhatsApp(
-            adminWa,
-            `📤 *Quotation Dikirim ke Customer*\n` +
-            `No: ${doc.docNumber}\n` +
-            `Customer: ${doc.customerName}\n` +
-            `Total: ${fmtRp(grandTotal)}`,
-          ).catch(() => undefined);
-        }
+        const validStr = doc.validUntil
+          ? new Date(doc.validUntil).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })
+          : "—";
+        await sendQuotationSentNotification(doc.docNumber, doc.customerName, grandTotal, validStr, customerPhone, adminWa);
       }
 
       if (action === "confirm" && doc.status !== "confirmed") {
-        // WA ke admin: SO baru dikonfirmasi
-        if (adminWa) {
-          const tanggal = doc.createdAt.toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
-          await sendWhatsApp(
-            adminWa,
-            `📋 *Sales Order Baru (Dikonfirmasi)*\n` +
-            `No: ${doc.docNumber}\n` +
-            `Customer: ${doc.customerName}\n` +
-            `Total: ${fmtRp(grandTotal)}\n` +
-            `Tanggal: ${tanggal}`,
-          ).catch(() => undefined);
-        }
-        // WA ke customer: order dikonfirmasi
-        if (customerPhone) {
-          const expStr = doc.expectedDate
-            ? new Date(doc.expectedDate).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })
-            : "—";
-          await sendWhatsApp(
-            customerPhone,
-            `✅ *Sales Order Dikonfirmasi — ${doc.docNumber}*\n\n` +
-            `Halo ${doc.customerName},\n\n` +
-            `Order Anda telah dikonfirmasi:\n` +
-            `Total: ${fmtRp(grandTotal)}\n` +
-            `Estimasi pengiriman: ${expStr}\n\n` +
-            `Kami akan segera memproses pesanan Anda. Terima kasih!`,
-          ).catch(() => undefined);
-        }
+        const tanggal = doc.createdAt.toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
+        const expStr = doc.expectedDate
+          ? new Date(doc.expectedDate).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })
+          : "—";
+        await sendSalesOrderConfirmedNotification(doc.docNumber, doc.customerName, grandTotal, expStr, tanggal, customerPhone, adminWa);
       }
 
       if (action === "mark_delivered" && doc.deliveryStatus !== "delivered") {
-        // WA ke customer: pesanan terkirim
-        if (customerPhone) {
-          await sendWhatsApp(
-            customerPhone,
-            `🚚 *Pesanan Terkirim — ${doc.docNumber}*\n\n` +
-            `Halo ${doc.customerName},\n\n` +
-            `Pesanan Anda telah dikirim/diserahkan.\n` +
-            `Total: ${fmtRp(grandTotal)}\n\n` +
-            `Terima kasih telah berbelanja bersama kami!`,
-          ).catch(() => undefined);
-        }
-        // WA ke admin
-        if (adminWa) {
-          await sendWhatsApp(
-            adminWa,
-            `🚚 *SO Terkirim*\n` +
-            `No: ${doc.docNumber}\n` +
-            `Customer: ${doc.customerName}\n` +
-            `Total: ${fmtRp(grandTotal)}`,
-          ).catch(() => undefined);
-        }
+        await sendSalesOrderDeliveredNotification(doc.docNumber, doc.customerName, grandTotal, customerPhone, adminWa);
       }
 
       if (action === "mark_invoiced" && doc.invoiceStatus !== "invoiced") {
-        // Ambil nomor invoice dari patch (sudah di-assign di atas)
         const invNumber = (patch["invoiceNumber"] as string | undefined) ?? doc.docNumber;
         const dueStr = patch["dueDate"]
           ? new Date(patch["dueDate"] as string).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })
           : "—";
-        // WA ke customer: invoice dibuat
-        if (customerPhone) {
-          await sendWhatsApp(
-            customerPhone,
-            `🧾 *Invoice Diterbitkan — ${invNumber}*\n\n` +
-            `Halo ${doc.customerName},\n\n` +
-            `Invoice untuk order Anda telah diterbitkan:\n` +
-            `Total: ${fmtRp(grandTotal)}\n` +
-            `Jatuh tempo: ${dueStr}\n\n` +
-            `Silakan hubungi kami untuk informasi pembayaran. Terima kasih!`,
-          ).catch(() => undefined);
-        }
-        // WA ke admin
-        if (adminWa) {
-          await sendWhatsApp(
-            adminWa,
-            `🧾 *Invoice Dibuat*\n` +
-            `No Invoice: ${invNumber}\n` +
-            `Customer: ${doc.customerName}\n` +
-            `Total: ${fmtRp(grandTotal)}\n` +
-            `Jatuh tempo: ${dueStr}`,
-          ).catch(() => undefined);
-        }
+        await sendInvoiceIssuedNotification(doc.docNumber, invNumber, doc.customerName, grandTotal, dueStr, customerPhone, adminWa);
       }
     } catch (_e) {
       // fire-and-forget — jangan sampai gagal notif membatalkan response
