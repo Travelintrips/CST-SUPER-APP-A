@@ -9,6 +9,7 @@ import { startOcrTempCleanup } from "./lib/ocrTempCleanup";
 import { startVmfGapNotifier, runVmfGapCheck } from "./lib/vmfGapNotifier";
 import { runPhase1Migration } from "./lib/phase1Migration";
 import { startWorkflowWorker } from "./lib/workflowWorker";
+import { startWaRetryWorker } from "./lib/waRetryWorker";
 import { remediateOrphanProducts } from "./lib/remediateOrphanProducts";
 import { seedProductTemplates } from "./routes/productTemplates.js";
 import { runPortalMigration } from "./lib/portalMigration";
@@ -244,6 +245,7 @@ async function startServer() {
   startVmfGapNotifier();
   startWorkflowWorker();
   startDbBackupScheduler();
+  startWaRetryWorker();
 
   // AI Governance: expire stale approvals & auto-approve setiap 5 menit
   setInterval(() => {
