@@ -99,6 +99,7 @@ import UomPage from "@/pages/settings/uom";
 import NavCompanyConfigPage from "@/pages/settings/nav-company-config";
 import ShortLinksPage from "@/pages/settings/short-links";
 import WaTemplatesPage from "@/pages/settings/wa-templates";
+import LogisticsUnitsPage from "@/pages/settings/logistics-units";
 import SettingsRolesPage from "@/pages/settings-roles";
 import SettingsApprovalRulesPage from "@/pages/settings-approval-rules";
 import ProductTemplatesPage from "@/pages/product-templates";
@@ -296,6 +297,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/settings/uom" component={PR(UomPage)} />
       <Route path="/settings/short-links" component={PR(ShortLinksPage)} />
       <Route path="/settings/wa-templates" component={PR(WaTemplatesPage)} />
+      <Route path="/settings/logistics-units" component={PR(LogisticsUnitsPage)} />
       <Route path="/settings/ai-chatbot/knowledge" component={PR(AiChatbotKnowledgePage)} />
       <Route path="/settings/ai-chatbot" component={PR(AiChatbotSettingsPage)} />
       <Route path="/settings/ai-scan" component={PR(AiScanSettingsPage)} />

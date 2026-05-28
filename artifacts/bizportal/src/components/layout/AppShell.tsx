@@ -423,6 +423,7 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "Konfigurasi Menu", href: "/settings/nav-company-config", icon: LayoutGrid },
         { titleKey: "Short Links", href: "/settings/short-links", icon: Link2 },
         { titleKey: "Product Templates", href: "/settings/product-templates", icon: Layers },
+        { titleKey: "Satuan Pengiriman", href: "/settings/logistics-units", icon: Package },
         { titleKey: "Image Manager", href: "/media", icon: ImageIcon },
       ],
     },
