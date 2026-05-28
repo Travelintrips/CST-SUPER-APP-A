@@ -11,7 +11,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { User, Mail, Briefcase, Shield, MessageCircle, Save, Loader2, CheckCircle, Calculator, ChevronDown, ChevronUp, Package, Plus, X, Bot, Link2, RotateCcw, History, RefreshCw, Download, Layers } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { User, Mail, Briefcase, Shield, MessageCircle, Save, Loader2, CheckCircle, Calculator, ChevronDown, ChevronUp, Package, Plus, X, Bot, Link2, RotateCcw, History, RefreshCw, Download } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -831,21 +830,6 @@ function PageContentCard() {
   );
 }
 
-// ── WA Template Nav Card ───────────────────────────────────────────────────────
-function WaTemplatesCard() {
-  const [customCount, setCustomCount] = useState<number | null>(null);
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        const res = await fetch("/api/settings/wa-template-configs", { credentials: "include" });
-        if (res.ok) {
-          const data = await res.json() as { savedKeys?: string[] };
-          setCustomCount(data.savedKeys?.length ?? 0);
-        }
-      } catch { /* ignore */ }
-    })();
-  }, []);
 
 // ── Freight Stage Labels ──────────────────────────────────────────────────────
 
@@ -1436,6 +1420,7 @@ function WaTemplatesCard() {
   }
 
   const preview = renderWaPreview(currentBody, simSvc, workflow);
+  const HANDLEBAR_RE = /(\{\{[^\x7D]+\}\})/;
 
   return (
     <Card className="col-span-1 md:col-span-3 bg-card border-border">
@@ -1456,12 +1441,23 @@ function WaTemplatesCard() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center justify-between gap-4 mb-4">
           <div className="flex gap-6 text-sm text-muted-foreground">
             <span>👤 Admin Pribadi</span>
             <span>👥 Grup Admin</span>
             <span>🛍️ Customer</span>
             <span>🏭 Vendor</span>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-2 shrink-0"
+            onClick={() => { window.location.href = "/bizportal/settings/wa-templates"; }}
+          >
+            <MessageCircle className="h-4 w-4 text-green-500" />
+            Buka WA Template Manager
+          </Button>
+        </div>
         {loading ? (
           <div className="space-y-3">{[1,2,3,4].map(i => <div key={i} className="h-8 bg-muted rounded animate-pulse" />)}</div>
         ) : (
@@ -1644,7 +1640,7 @@ function WaTemplatesCard() {
               </div>
               <div className="font-mono text-xs bg-muted/40 border rounded-md p-3 whitespace-pre-wrap max-h-72 overflow-y-auto leading-relaxed">
                 {preview
-                  ? preview.split(/(\{\{[^}]+\}\})/).map((part, i) =>
+                  ? preview.split(HANDLEBAR_RE).map((part, i) =>
                       part.startsWith("{{")
                         ? <span key={i} className="bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 rounded px-0.5">{part}</span>
                         : part
@@ -1677,16 +1673,7 @@ function WaTemplatesCard() {
             </div>
 
           </div>
-          <Button
-            size="sm"
-            variant="outline"
-            className="gap-2 shrink-0"
-            onClick={() => { window.location.href = "/bizportal/settings/wa-templates"; }}
-          >
-            <MessageCircle className="h-4 w-4 text-green-500" />
-            Buka WA Template Manager
-          </Button>
-        </div>
+        )}
       </CardContent>
     </Card>
   );
