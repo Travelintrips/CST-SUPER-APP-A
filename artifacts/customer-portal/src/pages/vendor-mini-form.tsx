@@ -1,5 +1,13 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "wouter";
+import type { ProductTemplate, DynamicFormValues } from "@workspace/product-templates";
+import {
+  TemplateFieldRenderer,
+  TemplateDocumentRenderer,
+  TemplateChecklistRenderer,
+  TemplateInstructionRenderer,
+  TemplatePriceBreakdown,
+} from "@/components/template";
 
 type FieldDef = {
   key: string; label: string;
@@ -16,6 +24,7 @@ type FormMeta = {
   schema: ServiceSchema | null; mode: string; orderId: number | null;
   orderNumber: string | null; orderItemId: number | null; phase: string | null;
   alreadySubmitted?: boolean;
+  productTemplate?: ProductTemplate | null;
 };
 
 // ── Skeleton ──────────────────────────────────────────────────────────────────
@@ -147,6 +156,13 @@ export default function VendorMiniFormPage() {
   const [eta, setEta] = useState("");
   const [validUntil, setValidUntil] = useState("");
 
+  const [templateValues, setTemplateValues] = useState<DynamicFormValues>({
+    customFieldValues: {},
+    uploadedDocuments: [],
+    checklistStatus: {},
+    packagingNotes: "",
+    conditionalFlags: {},
+  });
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -210,6 +226,10 @@ export default function VendorMiniFormPage() {
         contactPhone: contactPhone.trim() || null,
         formData: {
           ...values,
+          ...templateValues.customFieldValues,
+          ...Object.fromEntries(templateValues.uploadedDocuments.map((d) => [`_doc_${d.key}`, d.reference])),
+          ...Object.fromEntries(Object.entries(templateValues.checklistStatus).map(([k, v]) => [`_chk_${k}`, v])),
+          ...(templateValues.packagingNotes ? { _packagingNotes: templateValues.packagingNotes } : {}),
           ...(meta.mode === "order_based" ? {
             _deskripsi: vendorDesc.trim() || undefined,
             _qty: vendorQty,
@@ -348,32 +368,14 @@ export default function VendorMiniFormPage() {
                     </div>
                   </FormField>
 
-                  {/* Kalkulasi otomatis PPN */}
-                  {subtotal > 0 && (
-                    <div className="rounded-xl border border-indigo-100 bg-indigo-50 p-4 space-y-2 text-sm">
-                      <p className="text-xs font-semibold text-indigo-700 uppercase tracking-wide mb-2">Ringkasan Harga Dasar</p>
-                      <div className="flex justify-between text-slate-600">
-                        <span>{vendorQty || 1} {vendorUnit || "Ls"} × {currency === "IDR" ? fmtIDR(unitPrice) : unitPrice.toLocaleString()}</span>
-                        <span className="font-medium">{currency === "IDR" ? fmtIDR(subtotal) : subtotal.toLocaleString()}</span>
-                      </div>
-                      <div className="flex justify-between text-slate-500 text-xs">
-                        <span>Subtotal (Harga Dasar, belum PPN)</span>
-                        <span>{currency === "IDR" ? fmtIDR(subtotal) : subtotal.toLocaleString()}</span>
-                      </div>
-                      <div className="flex justify-between text-slate-500 text-xs">
-                        <span>PPN 11%</span>
-                        <span>{currency === "IDR" ? fmtIDR(ppn) : ppn.toLocaleString()}</span>
-                      </div>
-                      <div className="h-px bg-indigo-200 my-1" />
-                      <div className="flex justify-between font-semibold text-indigo-800">
-                        <span>Total (dengan PPN 11%)</span>
-                        <span>{currency === "IDR" ? fmtIDR(total) : total.toLocaleString()}</span>
-                      </div>
-                      <p className="text-[11px] text-slate-400 mt-1">
-                        * Yang Anda kirimkan adalah <strong>Harga Dasar (Subtotal: {currency === "IDR" ? fmtIDR(subtotal) : subtotal.toLocaleString()})</strong>. Harga jual ke customer akan ditentukan oleh admin.
-                      </p>
-                    </div>
-                  )}
+                  <TemplatePriceBreakdown
+                    role="vendor"
+                    basePrice={unitPrice}
+                    qty={qty}
+                    unit={vendorUnit || "Ls"}
+                    currency={currency}
+                    hint="Isi Harga Dasar Anda — belum termasuk margin & PPN. Harga jual ke customer ditentukan oleh admin."
+                  />
 
                   <FormField label="Estimasi Pengiriman / Lead Time">
                     <input type="text" value={eta} onChange={e => setEta(e.target.value)}
@@ -452,6 +454,31 @@ export default function VendorMiniFormPage() {
               </button>
             )}
           </div>
+
+          {meta.productTemplate && (
+            <>
+              <TemplateFieldRenderer
+                template={meta.productTemplate}
+                values={templateValues}
+                onChange={setTemplateValues}
+              />
+              <TemplateDocumentRenderer
+                documents={meta.productTemplate.requiredDocuments}
+                values={templateValues.uploadedDocuments}
+                onChange={(docs) => setTemplateValues((v) => ({ ...v, uploadedDocuments: docs }))}
+              />
+              <TemplateChecklistRenderer
+                checklist={meta.productTemplate.checklist}
+                values={templateValues.checklistStatus}
+                onChange={(key, checked) => setTemplateValues((v) => ({ ...v, checklistStatus: { ...v.checklistStatus, [key]: checked } }))}
+              />
+              <TemplateInstructionRenderer
+                instructions={meta.productTemplate.packagingInstructions}
+                notes={templateValues.packagingNotes}
+                onNotesChange={(notes) => setTemplateValues((v) => ({ ...v, packagingNotes: notes }))}
+              />
+            </>
+          )}
 
           {/* Error */}
           {submitError && (

@@ -23,6 +23,7 @@ import {
   salesDocumentLinesTable,
   orderUpdatesTable,
 } from "@workspace/db";
+import { getInCodeTemplate } from "@workspace/product-templates";
 import { requireClerkUser } from "../lib/requireAdmin";
 import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { sendWhatsApp } from "../lib/fonnte.js";
@@ -641,6 +642,20 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
       }),
     } : null;
 
+    let productTemplate = null;
+    if (row.orderId) {
+      try {
+        const [order] = await db
+          .select({ commodity: logisticOrdersTable.commodity })
+          .from(logisticOrdersTable)
+          .where(eq(logisticOrdersTable.id, row.orderId));
+        if (order?.commodity) {
+          const cat = order.commodity.trim().toLowerCase().replace(/[\s-]+/g, "_");
+          productTemplate = getInCodeTemplate(cat);
+        }
+      } catch { /* non-fatal */ }
+    }
+
     res.setHeader("Cache-Control", PUBLIC_CACHE);
     return res.json({
       id: row.id,
@@ -657,6 +672,7 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
       phase: row.phase,
       alreadySubmitted,
       schema: filteredSchema,
+      productTemplate,
     });
   } catch (err) {
     req.log?.error({ err }, "vendor-mini-form GET error");
