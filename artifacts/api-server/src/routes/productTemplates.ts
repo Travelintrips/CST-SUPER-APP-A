@@ -7,6 +7,7 @@ import { logger } from "../lib/logger.js";
 import {
   resolveAllTemplates,
   resolveTemplate,
+  getAllInCodeTemplates,
   type ProductTemplateOverride,
 } from "@workspace/product-templates";
 
@@ -53,7 +54,7 @@ db.execute(sql`
 });
 
 // ─────────────────────────────────────────────
-// HARDCODED SEED DATA — 18 kategori default
+// SEED DATA — derived dari @workspace/product-templates (single source of truth)
 // ─────────────────────────────────────────────
 const SEED_TEMPLATES = [
   {
@@ -661,6 +662,17 @@ const SEED_TEMPLATES = [
     ],
   },
 ];
+const SEED_TEMPLATES = getAllInCodeTemplates().map((t) => ({
+  categoryKey: t.category,
+  label: t.label,
+  version: t.version,
+  requiredDocuments: t.requiredDocuments,
+  checklist: t.checklist,
+  customFields: t.customFields,
+  packagingInstructions: t.packagingInstructions,
+  conditionalRules: t.conditionalRules,
+  validationRules: t.validationRules,
+}));
 
 // ─────────────────────────────────────────────
 // BOOT SEEDER — jalankan sekali saat server start

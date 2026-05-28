@@ -263,7 +263,7 @@ router.get("/documents/:id", async (req, res) => {
 
 router.post("/documents", async (req, res) => {
   const companyId = resolveCompanyId(req);
-  const { kind, supplierId, supplierName, supplierAddress, expectedDate, notes, lines, taxRateId, warehouseId } = req.body ?? {};
+  const { kind, supplierId, supplierName, supplierAddress, expectedDate, notes, lines, taxRateId, warehouseId, productCategory, incoterm, deliveryTerm, targetPrice, commoditySpecs, requiredDocuments } = req.body ?? {};
   if (typeof supplierName !== "string" || !supplierName.trim())
     return res.status(400).json({ message: "supplierName required" });
   if (!Array.isArray(lines) || lines.length === 0)
@@ -300,6 +300,12 @@ router.post("/documents", async (req, res) => {
       grandTotal: String(grandTotal),
       expectedDate: expectedDate ? new Date(expectedDate) : null,
       notes: notes ?? null,
+      productCategory: productCategory ? String(productCategory) : null,
+      incoterm: incoterm ? String(incoterm) : null,
+      deliveryTerm: deliveryTerm ? String(deliveryTerm) : null,
+      targetPrice: targetPrice ? String(targetPrice) : null,
+      commoditySpecs: commoditySpecs ?? null,
+      requiredDocuments: requiredDocuments ?? null,
     })
     .returning();
 
@@ -335,7 +341,7 @@ router.put("/documents/:id", async (req, res) => {
   const existing = await loadDocWithLines(id);
   if (!existing) return res.status(404).json({ message: "Document not found" });
 
-  const { supplierId, supplierName, supplierAddress, expectedDate, notes, lines, kind, taxRateId, warehouseId } = req.body ?? {};
+  const { supplierId, supplierName, supplierAddress, expectedDate, notes, lines, kind, taxRateId, warehouseId, productCategory, incoterm, deliveryTerm, targetPrice, commoditySpecs, requiredDocuments } = req.body ?? {};
   const patch: Record<string, unknown> = { updatedAt: new Date() };
   if (typeof supplierName === "string") patch["supplierName"] = supplierName;
   if (supplierAddress !== undefined) patch["supplierAddress"] = supplierAddress ?? null;
@@ -345,6 +351,12 @@ router.put("/documents/:id", async (req, res) => {
   if (notes !== undefined) patch["notes"] = notes;
   if (kind === "rfq" || kind === "order") patch["kind"] = kind;
   if (taxRateId !== undefined) patch["taxRateId"] = taxRateId;
+  if (productCategory !== undefined) patch["productCategory"] = productCategory ?? null;
+  if (incoterm !== undefined) patch["incoterm"] = incoterm ?? null;
+  if (deliveryTerm !== undefined) patch["deliveryTerm"] = deliveryTerm ?? null;
+  if (targetPrice !== undefined) patch["targetPrice"] = targetPrice ? String(targetPrice) : null;
+  if (commoditySpecs !== undefined) patch["commoditySpecs"] = commoditySpecs ?? null;
+  if (requiredDocuments !== undefined) patch["requiredDocuments"] = requiredDocuments ?? null;
 
   if (Array.isArray(lines)) {
     const total = (lines as LineInput[]).reduce(

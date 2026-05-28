@@ -49,6 +49,7 @@ import { migratePushSubscriptions } from "./lib/webPush.js";
 import { runPgTrgmMigration } from "./lib/pgTrgmMigration.js";
 import { runIntelligenceAlertSettingsMigration } from "./lib/intelligenceAlertSettingsMigration.js";
 import { runAiGovernanceMigration } from "./lib/aiGovernanceMigration.js";
+import { runPurchaseTemplateMigration } from "./lib/purchaseTemplateMigration.js";
 import { expireStaleApprovals } from "./lib/aiGovernance.js";
 import { startDbBackupScheduler } from "./lib/dbBackup.js";
 import { initAlertsBroadcast } from "./lib/alertsBroadcast.js";
@@ -293,6 +294,7 @@ async function startServer() {
     .then(() => runWithRetry("pg_trgm indexes migration", runPgTrgmMigration))
     .then(() => runWithRetry("Intelligence alert settings migration", runIntelligenceAlertSettingsMigration))
     .then(() => runWithRetry("AI governance migration", runAiGovernanceMigration))
+    .then(() => runWithRetry("Purchase template migration", runPurchaseTemplateMigration))
     .then(() => enableRealtimeTables().catch((err) => {
       logger.warn({ err }, "Supabase Realtime table enable failed (non-fatal)");
     }))

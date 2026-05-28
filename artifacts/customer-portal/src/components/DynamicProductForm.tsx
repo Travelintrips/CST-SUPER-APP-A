@@ -94,6 +94,13 @@ export function DynamicProductForm({ template, values, onChange }: Props) {
                     className="text-sm resize-none"
                     rows={3}
                   />
+                ) : field.type === "date" ? (
+                  <Input
+                    type="date"
+                    value={strVal}
+                    onChange={(e) => setCustomField(field.key, e.target.value)}
+                    className="h-9 text-sm"
+                  />
                 ) : (
                   <Input
                     type={field.type === "number" ? "number" : "text"}

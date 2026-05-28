@@ -20,7 +20,7 @@ export default function VendorComparisonPage() {
   const [, navigate] = useLocation();
   const qcClient = useQueryClient();
   const [showAddForm, setShowAddForm] = useState(false);
-  const [newVQ, setNewVQ] = useState({ supplierName: "", deliveryDays: "", paymentTermDays: "30", notes: "", ppnRate: "11", lines: [{ name: "", quantity: "1", unit: "pcs", unitCost: "0" }] });
+  const [newVQ, setNewVQ] = useState({ supplierName: "", deliveryDays: "", paymentTermDays: "30", notes: "", ppnRate: "11", incoterm: "", deliveryTerm: "", availability: "", validUntil: "", lines: [{ name: "", quantity: "1", unit: "pcs", unitCost: "0" }] });
 
   const { data: quotations = [], isLoading, refetch } = useQuery({
     queryKey: ["/api/purchase-workflow/vq/compare", rfqId],
@@ -40,12 +40,12 @@ export default function VendorComparisonPage() {
       const ppnPct = Number(newVQ.ppnRate) || 0;
       const taxAmount = Math.round(totalAmount * ppnPct) / 100;
       const grandTotal = totalAmount + taxAmount;
-      const payload = { rfqId: Number(rfqId), supplierName: newVQ.supplierName, deliveryDays: newVQ.deliveryDays ? Number(newVQ.deliveryDays) : undefined, paymentTermDays: Number(newVQ.paymentTermDays), notes: newVQ.notes, totalAmount: String(totalAmount), taxAmount: String(taxAmount), grandTotal: String(grandTotal), lines: newVQ.lines };
+      const payload = { rfqId: Number(rfqId), supplierName: newVQ.supplierName, deliveryDays: newVQ.deliveryDays ? Number(newVQ.deliveryDays) : undefined, paymentTermDays: Number(newVQ.paymentTermDays), notes: newVQ.notes, totalAmount: String(totalAmount), taxAmount: String(taxAmount), grandTotal: String(grandTotal), incoterm: newVQ.incoterm || null, deliveryTerm: newVQ.deliveryTerm || null, availability: newVQ.availability || null, validUntil: newVQ.validUntil ? new Date(newVQ.validUntil).toISOString() : null, lines: newVQ.lines };
       const r = await apiFetch("/purchase-workflow/vq", { method: "POST", body: JSON.stringify(payload) });
       if (!r.ok) throw new Error();
       return r.json();
     },
-    onSuccess: () => { toast.success("Quotation ditambahkan"); setShowAddForm(false); setNewVQ({ supplierName: "", deliveryDays: "", paymentTermDays: "30", notes: "", lines: [{ name: "", quantity: "1", unit: "pcs", unitCost: "0" }] }); refetch(); },
+    onSuccess: () => { toast.success("Quotation ditambahkan"); setShowAddForm(false); setNewVQ({ supplierName: "", deliveryDays: "", paymentTermDays: "30", notes: "", ppnRate: "11", incoterm: "", deliveryTerm: "", availability: "", validUntil: "", lines: [{ name: "", quantity: "1", unit: "pcs", unitCost: "0" }] }); refetch(); },
     onError: () => toast.error("Gagal"),
   });
 
@@ -85,6 +85,15 @@ export default function VendorComparisonPage() {
                 <div><Label>Lead Time (hari)</Label><Input type="number" value={newVQ.deliveryDays} onChange={e => setNewVQ(v => ({ ...v, deliveryDays: e.target.value }))} /></div>
                 <div><Label>Term Bayar (hari)</Label><Input type="number" value={newVQ.paymentTermDays} onChange={e => setNewVQ(v => ({ ...v, paymentTermDays: e.target.value }))} /></div>
                 <div><Label>PPN (%)</Label><Input type="number" value={newVQ.ppnRate} onChange={e => setNewVQ(v => ({ ...v, ppnRate: e.target.value }))} placeholder="0 = tidak ada PPN" /></div>
+                <div><Label>Incoterm</Label>
+                  <select className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm" value={newVQ.incoterm} onChange={e => setNewVQ(v => ({ ...v, incoterm: e.target.value }))}>
+                    <option value="">— Tidak ditentukan —</option>
+                    {["EXW","FCA","FAS","FOB","CFR","CIF","CPT","CIP","DAP","DPU","DDP"].map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div><Label>Delivery Term</Label><Input value={newVQ.deliveryTerm} onChange={e => setNewVQ(v => ({ ...v, deliveryTerm: e.target.value }))} placeholder="cth. Franco Gudang" /></div>
+                <div><Label>Ketersediaan</Label><Input value={newVQ.availability} onChange={e => setNewVQ(v => ({ ...v, availability: e.target.value }))} placeholder="cth. Ready stock / indent 2 minggu" /></div>
+                <div><Label>Berlaku s/d</Label><Input type="date" value={newVQ.validUntil} onChange={e => setNewVQ(v => ({ ...v, validUntil: e.target.value }))} /></div>
                 <div className="col-span-2"><Label>Catatan</Label><Input value={newVQ.notes} onChange={e => setNewVQ(v => ({ ...v, notes: e.target.value }))} /></div>
               </div>
               {(() => {
@@ -114,7 +123,7 @@ export default function VendorComparisonPage() {
               </div>
               <div className="flex gap-2">
                 <Button onClick={() => addQuoteMut.mutate()} disabled={addQuoteMut.isPending || !newVQ.supplierName}>Simpan Quotation</Button>
-                <Button variant="outline" onClick={() => { setShowAddForm(false); setNewVQ({ supplierName: "", deliveryDays: "", paymentTermDays: "30", notes: "", ppnRate: "11", lines: [{ name: "", quantity: "1", unit: "pcs", unitCost: "0" }] }); }}>Batal</Button>
+                <Button variant="outline" onClick={() => { setShowAddForm(false); setNewVQ({ supplierName: "", deliveryDays: "", paymentTermDays: "30", notes: "", ppnRate: "11", incoterm: "", deliveryTerm: "", availability: "", validUntil: "", lines: [{ name: "", quantity: "1", unit: "pcs", unitCost: "0" }] }); }}>Batal</Button>
               </div>
             </CardContent>
           </Card>
@@ -174,6 +183,51 @@ export default function VendorComparisonPage() {
                       </td>
                     );
                   })}
+                </tr>
+                {/* Incoterm row */}
+                <tr className="border-t bg-muted/10">
+                  <td className="py-2 px-4 text-muted-foreground text-xs">Incoterm</td>
+                  {quotations.map((q: Record<string, unknown>) => (
+                    <td key={String(q.id)} className="py-2 px-4 text-center text-xs font-mono">
+                      {String(q.incoterm ?? "") || <span className="text-muted-foreground">—</span>}
+                    </td>
+                  ))}
+                </tr>
+                {/* Delivery term row */}
+                <tr className="border-t bg-muted/10">
+                  <td className="py-2 px-4 text-muted-foreground text-xs">Delivery Term</td>
+                  {quotations.map((q: Record<string, unknown>) => (
+                    <td key={String(q.id)} className="py-2 px-4 text-center text-xs">
+                      {String(q.deliveryTerm ?? "") || <span className="text-muted-foreground">—</span>}
+                    </td>
+                  ))}
+                </tr>
+                {/* Availability row */}
+                <tr className="border-t bg-muted/10">
+                  <td className="py-2 px-4 text-muted-foreground text-xs">Ketersediaan</td>
+                  {quotations.map((q: Record<string, unknown>) => (
+                    <td key={String(q.id)} className="py-2 px-4 text-center text-xs">
+                      {String(q.availability ?? "") || <span className="text-muted-foreground">—</span>}
+                    </td>
+                  ))}
+                </tr>
+                {/* Validity row */}
+                <tr className="border-t bg-muted/10">
+                  <td className="py-2 px-4 text-muted-foreground text-xs">Berlaku s/d</td>
+                  {quotations.map((q: Record<string, unknown>) => (
+                    <td key={String(q.id)} className="py-2 px-4 text-center text-xs">
+                      {q.validUntil ? new Date(String(q.validUntil)).toLocaleDateString("id-ID") : <span className="text-muted-foreground">—</span>}
+                    </td>
+                  ))}
+                </tr>
+                {/* Notes row */}
+                <tr className="border-t bg-muted/10">
+                  <td className="py-2 px-4 text-muted-foreground text-xs">Catatan</td>
+                  {quotations.map((q: Record<string, unknown>) => (
+                    <td key={String(q.id)} className="py-2 px-4 text-center text-xs text-muted-foreground">
+                      {String(q.notes ?? "") || "—"}
+                    </td>
+                  ))}
                 </tr>
                 {/* Grand total row */}
                 <tr className="border-t bg-muted/30 font-bold">
