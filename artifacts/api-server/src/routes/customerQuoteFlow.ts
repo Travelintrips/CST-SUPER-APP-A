@@ -9,7 +9,7 @@ import {
   driverLocationsTable,
 } from "@workspace/db";
 import { requireClerkUser } from "../lib/requireAdmin.js";
-import { sendWhatsApp } from "../lib/fonnte.js";
+import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminGroupWa } from "../lib/adminWa.js";
 import { getPreferredDomain } from "../lib/domain.js";
 import { logger } from "../lib/logger.js";

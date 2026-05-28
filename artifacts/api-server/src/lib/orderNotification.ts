@@ -1,6 +1,6 @@
 import { db, suppliersTable, vendorCatalogItemsTable, waTemplateConfigsTable } from "@workspace/db";
 import { eq, and, ilike, sql } from "drizzle-orm";
-import { sendWhatsApp } from "./fonnte";
+import { sendViaService as sendWhatsApp } from "./waTransport.js";
 import { getAdminGroupWa } from "./adminWa";
 import { getPreferredDomain } from "./domain";
 import { sendMail, isSmtpConfigured } from "./mailer";

@@ -15,7 +15,7 @@
 
 import { db, vmfActivityLogTable, portalContentTable } from "@workspace/db";
 import { sql, and, eq, gte } from "drizzle-orm";
-import { sendWhatsApp } from "./fonnte.js";
+import { sendViaService as sendWhatsApp } from "./waTransport.js";
 import { getAdminGroupWa } from "./adminWa.js";
 import { logger } from "./logger.js";
 

@@ -3,7 +3,7 @@ import { randomUUID } from "crypto";
 import { rfqRateLimit } from "../middlewares/rfqRateLimit.js";
 import { db, suppliersTable, logisticOrdersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, logisticOrderItemsTable, vendorCatalogItemsTable, vendorOffersTable, vendorRatesTable, salesDocumentsTable, salesDocumentLinesTable } from "@workspace/db";
 import { eq, and, sql, inArray } from "drizzle-orm";
-import { sendWhatsApp } from "../lib/fonnte.js";
+import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { saveAndBroadcast } from "../lib/notificationStore.js";
 import { broadcastToPortal } from "../lib/sseManager.js";
 import { getAdminWa, getAdminGroupWa } from "../lib/adminWa.js";

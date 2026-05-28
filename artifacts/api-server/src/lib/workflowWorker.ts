@@ -20,7 +20,7 @@ import {
   intelligenceAlertSettingsTable,
 } from "@workspace/db";
 import { and, eq, lt, lte, notInArray, inArray, ne, isNull } from "drizzle-orm";
-import { sendWhatsApp } from "./fonnte.js";
+import { sendViaService as sendWhatsApp } from "./waTransport.js";
 import { getAdminGroupWa } from "./adminWa.js";
 import { wasRecentlyNotified } from "./notificationLog.js";
 import { logger } from "./logger.js";

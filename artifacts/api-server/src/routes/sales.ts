@@ -17,7 +17,7 @@ import { streamInvoicePdf, buildInvoicePdfBuffer } from "../lib/pdfInvoice.js";
 import { postSalesInvoice, postSalesCogs, postSalesCogsReturn, postSalesInvoiceReversal } from "../lib/accounting.js";
 import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
 import { ensureAccountingSettings } from "../lib/accountingSeed.js";
-import { sendWhatsApp } from "../lib/fonnte.js";
+import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminWa } from "../lib/adminWa.js";
 import { saveAndBroadcast } from "../lib/notificationStore.js";
 import { getVendorFilterMode } from "../lib/aiOrderIntake.js";

@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { db, suppliersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, logisticOrdersTable } from "@workspace/db";
 import { eq, sql, and, desc } from "drizzle-orm";
-import { sendWhatsApp } from "../lib/fonnte.js";
+import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminWa } from "../lib/adminWa.js";
 import { logger } from "../lib/logger.js";
 import { processWaForAiIntake, processWaMediaForAiIntake, buildAiReplyWa, getAiIntakeSettings } from "../lib/aiOrderIntake.js";

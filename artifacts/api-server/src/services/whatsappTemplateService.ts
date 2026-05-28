@@ -18,7 +18,7 @@ import {
   resolveCondBlocks,
   deriveServiceType,
 } from "../lib/orderNotification.js";
-import { sendWhatsApp } from "../lib/fonnte.js";
+import { sendViaService } from "../lib/waTransport.js";
 import { logger } from "../lib/logger.js";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -341,7 +341,7 @@ export async function openWhatsAppFlow(
     const variables = buildVariables(context);
     const message = renderTemplate(templateBody, variables);
 
-    await sendWhatsApp(resolvedPhone, message);
+    await sendViaService(resolvedPhone, message);
 
     logger.info({ workflow, recipient, phone: resolvedPhone, ref }, "[whatsappTemplateService] WA terkirim");
     return { success: true, phone: resolvedPhone, workflow, recipient, message };

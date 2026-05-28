@@ -29,7 +29,7 @@ import { logActivity } from "../lib/activityLog.js";
 // [FLOW BARU] autoCreateRfqAndNotifyVendors dinonaktifkan — vendor tidak boleh dihubungi langsung saat order dibuat.
 // Admin harus review dulu via /bizportal/logistics/rfq sebelum blast ke vendor.
 // import { autoCreateRfqAndNotifyVendors } from "./logisticRfq";
-import { sendWhatsApp } from "../lib/fonnte";
+import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { saveAndBroadcast } from "../lib/notificationStore";
 import { broadcastToPortal } from "../lib/sseManager.js";
 import { sendPushToOrder } from "../lib/webPush.js";

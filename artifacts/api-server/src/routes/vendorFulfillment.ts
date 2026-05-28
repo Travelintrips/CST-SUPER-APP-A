@@ -9,7 +9,7 @@ import {
   orderUpdatesTable,
 } from "@workspace/db";
 import { logger } from "../lib/logger";
-import { sendWhatsApp } from "../lib/fonnte";
+import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminWa } from "../lib/adminWa";
 import { getPreferredDomain } from "../lib/domain.js";
 import { resolveServiceCategory } from "@workspace/logistics-constants";

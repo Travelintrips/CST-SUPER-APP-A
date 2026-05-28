@@ -9,7 +9,7 @@ import {
   logisticOrderItemsTable,
   suppliersTable,
 } from "@workspace/db";
-import { sendWhatsApp } from "../lib/fonnte";
+import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { verifyVendorResponseToken } from "../lib/vendorResponseToken";
 import { getAdminGroupWa } from "../lib/adminWa";

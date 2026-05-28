@@ -17,7 +17,7 @@ import { requireClerkUser, requireAdmin } from "../lib/requireAdmin.js";
 import { runDbBackup } from "../lib/dbBackup.js";
 import { getPreferredDomain } from "../lib/domain.js";
 import { logger } from "../lib/logger.js";
-import { sendWhatsApp } from "../lib/fonnte.js";
+import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminWa } from "../lib/adminWa.js";
 import { sendVendorRequestNotification, sendVendorSelectedAdminWa, sendVendorAwardedWa, type LogisticOrderData } from "../lib/orderNotification.js";
 import { generateShortLink } from "../lib/shortLink.js";

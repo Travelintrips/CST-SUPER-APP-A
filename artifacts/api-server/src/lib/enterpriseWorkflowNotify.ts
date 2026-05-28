@@ -16,7 +16,7 @@
  *  - Are fire-and-forget (catch errors internally, non-fatal)
  */
 
-import { sendWhatsApp } from "./fonnte.js";
+import { sendViaService as sendWhatsApp } from "./waTransport.js";
 import { getAdminWa, getAdminGroupWa } from "./adminWa.js";
 import { renderTemplate } from "./orderNotification.js";
 import { getEnterpriseTemplate } from "./enterpriseWorkflowTemplates.js";

@@ -34,7 +34,7 @@ import {
 } from "../lib/accountingSeed.js";
 import { logger } from "../lib/logger.js";
 import { postEntry, type PostingLine } from "../lib/accounting.js";
-import { sendWhatsApp } from "../lib/fonnte.js";
+import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminWa } from "../lib/adminWa.js";
 
 function serializeCompany(c: typeof companiesTable.$inferSelect) {

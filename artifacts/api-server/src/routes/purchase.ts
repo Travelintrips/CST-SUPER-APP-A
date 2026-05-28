@@ -5,7 +5,7 @@ import { resolveCompanyId } from "../lib/resolveCompany.js";
 import { streamInvoicePdf, buildInvoicePdfBuffer } from "../lib/pdfInvoice.js";
 import { postPurchaseBill, postPurchaseBillReversal } from "../lib/accounting.js";
 import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
-import { sendWhatsApp } from "../lib/fonnte.js";
+import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminGroupWa } from "../lib/adminWa.js";
 import { saveAndBroadcast } from "../lib/notificationStore.js";
 import { ensureAccountingSettings } from "../lib/accountingSeed.js";

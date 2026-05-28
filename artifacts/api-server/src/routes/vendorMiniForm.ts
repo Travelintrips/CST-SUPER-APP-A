@@ -26,7 +26,7 @@ import {
 import { getInCodeTemplate } from "@workspace/product-templates";
 import { requireClerkUser } from "../lib/requireAdmin";
 import { deleteFromSupabase } from "../lib/supabaseStorage.js";
-import { sendWhatsApp } from "../lib/fonnte.js";
+import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminGroupWa } from "../lib/adminWa.js";
 import { createSalesOrderFromVmfApproval } from "../lib/vmfSoIntegration.js";
 import {

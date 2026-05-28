@@ -6,7 +6,7 @@ import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { invalidateTokenCache, SERVICE_SCHEMAS } from "./vendorMiniForm";
 import { eq, inArray, and, sql, desc, gte, lte, ilike, or } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage.js";
-import { sendWhatsApp } from "../lib/fonnte";
+import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminWa } from "../lib/adminWa.js";
 import { getWaTemplateConfig, renderTemplate } from "../lib/orderNotification.js";
 import { sendMail, isSmtpConfigured } from "../lib/mailer";

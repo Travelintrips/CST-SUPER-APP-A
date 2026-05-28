@@ -1,4 +1,4 @@
-import { sendWhatsApp } from "./fonnte.js";
+import { sendViaService as sendWhatsApp } from "./waTransport.js";
 import { generateShortLink } from "./shortLink.js";
 import { logger } from "./logger.js";
 import { getWaTemplateConfig, renderTemplate, deriveServiceType } from "./orderNotification.js";

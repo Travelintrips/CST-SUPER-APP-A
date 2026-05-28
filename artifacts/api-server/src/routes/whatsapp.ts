@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { db, quotationReplyLogsTable, waIncomingMessagesTable } from "@workspace/db";
 import { notificationLogsTable } from "@workspace/db/schema";
 import { desc, eq, and, gte, lte, sql } from "drizzle-orm";
-import { sendWhatsApp } from "../lib/fonnte.js";
+import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminWa } from "../lib/adminWa.js";
 import { logger } from "../lib/logger.js";
 import { normalizePhone } from "../lib/phoneUtils.js";

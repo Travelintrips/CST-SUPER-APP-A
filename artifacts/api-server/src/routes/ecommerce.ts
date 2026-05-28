@@ -4,7 +4,7 @@ import { eq, ne, count, inArray, and, ilike, or, type SQL } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { postEcommerceOrder } from "../lib/accounting.js";
-import { sendWhatsApp } from "../lib/fonnte.js";
+import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminWa } from "../lib/adminWa.js";
 import { saveAndBroadcast } from "../lib/notificationStore.js";
 import { registerPortalConnection, unregisterPortalConnection, broadcastToPortal } from "../lib/sseManager.js";

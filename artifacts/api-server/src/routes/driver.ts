@@ -8,7 +8,7 @@ import { db, driversTable, driverJobsTable, driverJobLogsTable, driverPhotosTabl
 import { eq, and, desc, ne } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin";
 import { ObjectStorageService } from "../lib/objectStorage";
-import { sendWhatsApp } from "../lib/fonnte";
+import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { logActivity } from "../lib/activityLog";
 import { getPreferredDomain } from "../lib/domain";
 import {
