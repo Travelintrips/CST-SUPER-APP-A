@@ -601,6 +601,22 @@ const DEFAULT_TPL = {
       "",
       "Silakan cek BizPortal › RFQ untuk tindak lanjut.",
     ].join("\n"),
+    product_vendor_response: [
+      "{{statusEmoji}} *VENDOR RESPONSE — ORDER PRODUK*",
+      "━━━━━━━━━━━━━━━━━━",
+      "📄 No. Order : {{orderNumber}}",
+      "👤 Customer  : {{customerName}}",
+      "🏢 Vendor    : {{vendorName}}",
+      "✅ Status    : {{statusLabel}}",
+      "💰 Harga     : {{quotedPrice}}",
+      "📝 Catatan   : {{notes}}",
+      "━━━━━━━━━━━━━━━━━━",
+      "📦 Item:",
+      "{{itemList}}",
+      "━━━━━━━━━━━━━━━━━━",
+      "🔗 BizPortal: {{adminUrl}}",
+      "_{{timestamp}}_",
+    ].join("\n"),
     vendor_awarded: [
       "🏆 *Selamat! Penawaran Anda Dipilih — CST Logistics*",
       "━━━━━━━━━━━━━━━━━━",
@@ -1426,6 +1442,55 @@ export async function sendVendorSubmissionSummaryNotification(
 // ── getRfqVendorRecapTemplate ──────────────────────────────────────────────────
 export async function getRfqVendorRecapTemplate(): Promise<string> {
   return getWaTemplateConfig("admin_personal", "rfq_vendor_recap", DEFAULT_TPL.admin_personal_extra.rfq_vendor_recap);
+}
+
+// ── sendProductVendorResponseAdminWa ──────────────────────────────────────────
+export interface ProductVendorResponseData {
+  orderNumber: string;
+  customerName: string;
+  vendorName: string;
+  status: "SETUJU" | "TOLAK";
+  quotedPrice?: number | null;
+  notes?: string | null;
+  items?: Array<{ productName: string; qty: number; unit?: string | null; subtotal: number }>;
+  adminUrl?: string | null;
+}
+
+export async function sendProductVendorResponseAdminWa(data: ProductVendorResponseData): Promise<void> {
+  const adminTarget = await getAdminGroupWa();
+  if (!adminTarget) return;
+
+  const tpl = await getWaTemplateConfig(
+    "admin_personal",
+    "product_vendor_response",
+    DEFAULT_TPL.admin_personal_extra.product_vendor_response,
+  );
+
+  const statusEmoji = data.status === "SETUJU" ? "✅" : "❌";
+  const statusLabel = data.status === "SETUJU" ? "✅ SETUJU" : "❌ TOLAK";
+  const itemList = data.items?.length
+    ? data.items.map((i) => `• ${i.productName} × ${i.qty}${i.unit ? ` ${i.unit}` : ""} — Rp ${i.subtotal.toLocaleString("id-ID")}`).join("\n")
+    : null;
+  const quotedPrice = data.quotedPrice != null
+    ? `Rp ${data.quotedPrice.toLocaleString("id-ID")}`
+    : null;
+
+  const msg = renderTemplate(tpl, {
+    statusEmoji,
+    orderNumber: data.orderNumber,
+    customerName: data.customerName,
+    vendorName: data.vendorName || "—",
+    statusLabel,
+    quotedPrice,
+    notes: data.notes ?? null,
+    itemList,
+    adminUrl: data.adminUrl ?? null,
+    timestamp: new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" }),
+  });
+
+  sendWhatsApp(adminTarget, msg).catch((e: unknown) =>
+    logger.error({ e, orderNumber: data.orderNumber }, "sendProductVendorResponseAdminWa failed"),
+  );
 }
 
 // ── sendVendorAwardedWa ────────────────────────────────────────────────────────

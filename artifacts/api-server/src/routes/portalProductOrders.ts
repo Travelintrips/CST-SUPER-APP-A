@@ -10,14 +10,12 @@ import { eq, ilike, and, or, sql } from "drizzle-orm";
 import { resolveTemplate, resolveAllTemplates, validateTemplatePayload, CATEGORY_LABELS } from "@workspace/product-templates";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { getPreferredDomain } from "../lib/domain";
-import { sendProductOrderWaNotification, sendProductOrderStatusUpdateWa } from "../lib/orderNotification";
+import { sendProductOrderWaNotification, sendProductOrderStatusUpdateWa, sendProductVendorResponseAdminWa } from "../lib/orderNotification";
 import { sendMail, isSmtpConfigured } from "../lib/mailer";
 import { logger } from "../lib/logger";
 import { saveAndBroadcast } from "../lib/notificationStore";
 import { broadcastToAdmins } from "../lib/sseManager";
 import { signVendorResponseToken, verifyVendorResponseToken } from "../lib/vendorResponseToken.js";
-import { sendWhatsApp } from "../lib/fonnte.js";
-import { getAdminGroupWa } from "../lib/adminWa.js";
 
 export const portalProductOrdersRouter = Router();
 
@@ -517,8 +515,10 @@ portalProductOrdersRouter.post("/vendor-response/:orderNumber", async (req: Requ
     return res.status(400).json({ error: "Status harus SETUJU atau TOLAK" });
   }
 
-  const [order] = await db.select({ id: portalProductOrdersTable.id })
-    .from(portalProductOrdersTable)
+  const [order] = await db.select({
+    id: portalProductOrdersTable.id,
+    customerName: portalProductOrdersTable.customerName,
+  }).from(portalProductOrdersTable)
     .where(eq(portalProductOrdersTable.orderNumber, orderNumber));
   if (!order) return res.status(404).json({ error: "Order tidak ditemukan" });
 
@@ -529,26 +529,32 @@ portalProductOrdersRouter.post("/vendor-response/:orderNumber", async (req: Requ
     VALUES (${orderNumber}, ${order.id}, ${vendorName ?? null}, ${status}, ${qp}, ${notes ?? null})
   `);
 
-  const statusEmoji = status === "SETUJU" ? "✅" : "❌";
+  const items = await db.select({
+    productName: portalProductOrderItemsTable.productName,
+    qty: portalProductOrderItemsTable.qty,
+    unit: portalProductOrderItemsTable.unit,
+    subtotal: portalProductOrderItemsTable.subtotal,
+  }).from(portalProductOrderItemsTable)
+    .where(eq(portalProductOrderItemsTable.orderId, order.id));
+
   const domain = getPreferredDomain() || "cstlogistic.co.id";
   const adminUrl = `https://${domain}/bizportal/logistics/portal-orders`;
-  const waMsg =
-    `${statusEmoji} *VENDOR RESPONSE — ORDER PRODUK*\n` +
-    `━━━━━━━━━━━━━━━━━━\n` +
-    `No. Order : \`${orderNumber}\`\n` +
-    `Vendor    : ${vendorName ?? "—"}\n` +
-    `Status    : ${statusEmoji} ${status}\n` +
-    (qp ? `💰 Harga  : Rp ${qp.toLocaleString("id-ID")}\n` : ``) +
-    (notes ? `Catatan   : ${notes}\n` : ``) +
-    `━━━━━━━━━━━━━━━━━━\n` +
-    `🔗 Lihat di BizPortal:\n${adminUrl}`;
 
-  try {
-    const adminGroupWa = await getAdminGroupWa();
-    if (adminGroupWa) await sendWhatsApp(adminGroupWa, waMsg);
-  } catch (err) {
-    logger.error({ err }, "Failed to send admin WA for product vendor response");
-  }
+  sendProductVendorResponseAdminWa({
+    orderNumber,
+    customerName: order.customerName,
+    vendorName: vendorName ?? "—",
+    status: status as "SETUJU" | "TOLAK",
+    quotedPrice: qp,
+    notes: notes ?? null,
+    items: items.map((i) => ({
+      productName: i.productName,
+      qty: i.qty,
+      unit: i.unit ?? null,
+      subtotal: parseFloat(i.subtotal),
+    })),
+    adminUrl,
+  }).catch((err: unknown) => logger.error({ err }, "Failed to send admin WA for product vendor response"));
 
   return res.json({ success: true });
 });
