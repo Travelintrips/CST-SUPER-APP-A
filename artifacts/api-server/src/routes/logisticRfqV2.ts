@@ -102,6 +102,14 @@ db.execute(sql`
 `).catch((e: unknown) => logger.warn({ e }, "rfq_vendor_links migration warn"));
 
 db.execute(sql`
+  CREATE INDEX IF NOT EXISTS rfq_vendor_links_token_idx ON rfq_vendor_links (token)
+`).catch((e: unknown) => logger.warn({ e }, "rfq_vendor_links token index warn"));
+
+db.execute(sql`
+  CREATE INDEX IF NOT EXISTS rfq_vendor_links_rfq_id_idx ON rfq_vendor_links (rfq_id)
+`).catch((e: unknown) => logger.warn({ e }, "rfq_vendor_links rfq_id index warn"));
+
+db.execute(sql`
   CREATE TABLE IF NOT EXISTS rfq_activity_logs (
     id SERIAL PRIMARY KEY,
     rfq_id INTEGER NOT NULL,
