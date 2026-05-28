@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { useGetCurrentUser, getGetCurrentUserQueryKey } from "@workspace/api-client-react";
 import { useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { User, Mail, Briefcase, Shield, MessageCircle, Save, Loader2, CheckCircle, Calculator, ChevronDown, ChevronUp, Package, Plus, X, Bot, Link2, RotateCcw, History, RefreshCw, Download, Layers } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { User, Mail, Briefcase, Shield, MessageCircle, Save, Loader2, CheckCircle, Calculator, ChevronDown, ChevronUp, Package, Plus, X, Bot, Link2, RotateCcw, History, RefreshCw, Download } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -830,6 +831,22 @@ function PageContentCard() {
   );
 }
 
+// ── WA Template Nav Card ───────────────────────────────────────────────────────
+function WaTemplatesCard() {
+  const [customCount, setCustomCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch("/api/settings/wa-template-configs", { credentials: "include" });
+        if (res.ok) {
+          const data = await res.json() as { savedKeys?: string[] };
+          setCustomCount(data.savedKeys?.length ?? 0);
+        }
+      } catch { /* ignore */ }
+    })();
+  }, []);
+
 // ── Freight Stage Labels ──────────────────────────────────────────────────────
 
 const DEFAULT_STAGE_LABELS = { booking: "Booking", trucking: "Trucking", handling: "Handling", customs: "Customs Clearance" };
@@ -1424,17 +1441,27 @@ function WaTemplatesCard() {
     <Card className="col-span-1 md:col-span-3 bg-card border-border">
       <CardHeader>
         <CardTitle className="text-xl flex items-center gap-2">
-          <MessageCircle className="h-5 w-5 text-primary" />
+          <MessageCircle className="h-5 w-5 text-green-500" />
           Template Pesan WhatsApp
+          {customCount !== null && customCount > 0 && (
+            <span className="text-xs font-normal bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 rounded-full px-2 py-0.5 ml-1">
+              {customCount} dikustomisasi
+            </span>
+          )}
         </CardTitle>
         <CardDescription>
-          Atur format pesan WA per workflow dan penerima. Gunakan{" "}
-          <code className="bg-muted px-1 rounded text-xs">{"{{variabel}}"}</code> untuk data dinamis dan{" "}
-          <code className="bg-muted px-1 rounded text-xs">{"{{#if trucking}}...{{/if}}"}</code> untuk blok kondisional per service type.
-          Baris dengan variabel kosong dihilangkan otomatis.
+          Atur format pesan WA per workflow dan penerima. Mendukung variabel dinamis{" "}
+          <code className="bg-muted px-1 rounded text-xs">{"{{variabel}}"}</code> dan blok kondisional per service type.
+          Baris dengan variabel kosong dihilangkan otomatis. Perubahan langsung aktif tanpa restart.
         </CardDescription>
       </CardHeader>
       <CardContent>
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex gap-6 text-sm text-muted-foreground">
+            <span>👤 Admin Pribadi</span>
+            <span>👥 Grup Admin</span>
+            <span>🛍️ Customer</span>
+            <span>🏭 Vendor</span>
         {loading ? (
           <div className="space-y-3">{[1,2,3,4].map(i => <div key={i} className="h-8 bg-muted rounded animate-pulse" />)}</div>
         ) : (
@@ -1650,11 +1677,21 @@ function WaTemplatesCard() {
             </div>
 
           </div>
-        )}
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-2 shrink-0"
+            onClick={() => { window.location.href = "/bizportal/settings/wa-templates"; }}
+          >
+            <MessageCircle className="h-4 w-4 text-green-500" />
+            Buka WA Template Manager
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );
 }
+
 
 interface WaLogEntry {
   id: number;
