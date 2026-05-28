@@ -7,7 +7,7 @@ import {
   productTemplatesTable,
 } from "@workspace/db";
 import { eq, ilike, and, or, sql } from "drizzle-orm";
-import { resolveTemplate, validateTemplatePayload } from "@workspace/product-templates";
+import { resolveTemplate, validateTemplatePayload, CATEGORY_LABELS } from "@workspace/product-templates";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { getPreferredDomain } from "../lib/domain";
 import { sendProductOrderWaNotification, sendProductOrderStatusUpdateWa } from "../lib/orderNotification";
@@ -104,13 +104,6 @@ function formatRupiah(amount: number): string {
   return amount.toLocaleString("id-ID");
 }
 
-const CATEGORY_LABELS: Record<string, string> = {
-  coal: "Batubara",
-  iron_steel: "Besi & Baja",
-  coffee: "Kopi",
-  electronics: "Elektronik",
-  general: "Umum / Lainnya",
-};
 
 async function sendProductOrderNotification(order: ReturnType<typeof toOrder>, items: ReturnType<typeof toItem>[]) {
   const domain = getPreferredDomain();

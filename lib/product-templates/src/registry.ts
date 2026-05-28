@@ -3,6 +3,14 @@ import { templates } from "./templates.js";
 
 export const FALLBACK_CATEGORY = "general";
 
+/**
+ * Derived from in-code templates — always in sync with all categories.
+ * Key: categoryKey, Value: display label (Indonesian).
+ */
+export const CATEGORY_LABELS: Readonly<Record<string, string>> = Object.fromEntries(
+  Object.values(templates).map((t) => [t.category, t.label]),
+);
+
 export function getInCodeTemplate(category: string): ProductTemplate {
   return templates[category] ?? templates[FALLBACK_CATEGORY]!;
 }

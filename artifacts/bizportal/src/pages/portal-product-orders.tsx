@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { CATEGORY_LABELS } from "@workspace/product-templates";
 import {
   useListPortalProductOrders,
   useGetPortalProductOrder,
@@ -79,13 +80,6 @@ const STATS_LIST: { status: OrderStatus; label: string }[] = [
   { status: "Cancelled",  label: "Dibatalkan" },
 ];
 
-const CATEGORY_LABELS: Record<string, string> = {
-  coal: "Batubara",
-  iron_steel: "Besi & Baja",
-  coffee: "Kopi",
-  electronics: "Elektronik",
-  general: "Umum / Lainnya",
-};
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
