@@ -1963,6 +1963,19 @@ function PortalTemplateDetailDialog({
   );
 }
 
+type TemplateMiniFormLink = {
+  id: number;
+  token: string;
+  serviceType: string;
+  title: string | null;
+  notes: string | null;
+  adminNotes: string | null;
+  isActive: boolean;
+  expiresAt: string | null;
+  createdAt: string;
+  vendorName: string | null;
+};
+
 function PortalProductTemplateEngine() {
   const { toast } = useToast();
   const [search, setSearch] = useState("");
@@ -1976,6 +1989,10 @@ function PortalProductTemplateEngine() {
   const [linkExpires, setLinkExpires] = useState("7");
   const [linkCopied, setLinkCopied] = useState(false);
   const [createdToken, setCreatedToken] = useState<string | null>(null);
+  const [links, setLinks] = useState<TemplateMiniFormLink[]>([]);
+  const [submissions, setSubmissions] = useState<MiniFormSubmission[]>([]);
+  const [linksLoading, setLinksLoading] = useState(true);
+  const [copiedId, setCopiedId] = useState<number | null>(null);
 
   const allTemplates = Object.values(inCodeTemplates);
 
@@ -1984,6 +2001,23 @@ function PortalProductTemplateEngine() {
     if (!q) return true;
     return t.label.toLowerCase().includes(q) || t.category.toLowerCase().includes(q);
   });
+
+  const loadLinks = async () => {
+    try {
+      const [l, s] = await Promise.all([
+        apiGet<TemplateMiniFormLink[]>("/api/portal/admin/vendor-form/links?formTarget=vendor"),
+        apiGet<MiniFormSubmission[]>("/api/portal/admin/vendor-form/submissions"),
+      ]);
+      setLinks(l.filter(lk => typeof lk.adminNotes === "string" && /productCategory:\w+/.test(lk.adminNotes)));
+      setSubmissions(s);
+    } catch {
+      /* silent */
+    } finally {
+      setLinksLoading(false);
+    }
+  };
+
+  useEffect(() => { void loadLinks(); }, []);
 
   function openLinkDialog(e: React.MouseEvent, t: ProductTemplate) {
     e.stopPropagation();
@@ -2017,6 +2051,7 @@ function PortalProductTemplateEngine() {
       const data = await res.json() as { token: string };
       setCreatedToken(data.token);
       toast({ title: "Link berhasil dibuat" });
+      void loadLinks();
     } catch {
       toast({ title: "Gagal membuat link", variant: "destructive" });
     } finally {
@@ -2031,6 +2066,48 @@ function PortalProductTemplateEngine() {
       setLinkCopied(true);
       setTimeout(() => setLinkCopied(false), 2000);
     });
+  }
+
+  function copyLink(token: string, id: number) {
+    const url = `${window.location.origin}/vendor-mini-form/${token}`;
+    void navigator.clipboard.writeText(url).then(() => {
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 2000);
+    });
+  }
+
+  async function handleToggleLink(link: TemplateMiniFormLink) {
+    try {
+      const res = await fetch(`/api/portal/admin/vendor-form/links/${link.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        body: JSON.stringify({ isActive: !link.isActive }),
+      });
+      if (!res.ok) throw new Error();
+      void loadLinks();
+    } catch {
+      toast({ title: "Gagal update status", variant: "destructive" });
+    }
+  }
+
+  async function handleDeleteLink(id: number) {
+    try {
+      const res = await fetch(`/api/portal/admin/vendor-form/links/${id}`, {
+        method: "DELETE",
+        headers: { ...getAuthHeaders() },
+      });
+      if (!res.ok) throw new Error();
+      toast({ title: "Link dihapus" });
+      void loadLinks();
+    } catch {
+      toast({ title: "Gagal hapus link", variant: "destructive" });
+    }
+  }
+
+  function getCategoryFromAdminNotes(adminNotes: string | null): string | null {
+    if (!adminNotes) return null;
+    const m = /productCategory:(\w+)/.exec(adminNotes);
+    return m ? m[1] : null;
   }
 
   return (
@@ -2144,6 +2221,118 @@ function PortalProductTemplateEngine() {
           <div className="col-span-full flex flex-col items-center py-12 text-muted-foreground gap-2">
             <Layers className="h-8 w-8 opacity-20" />
             <p className="text-sm">Tidak ada hasil untuk pencarian ini</p>
+          </div>
+        )}
+      </div>
+
+      {/* ── Daftar Form Link dari Template ─────────────────────────── */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+            <Link2 className="h-4 w-4 text-indigo-500" />
+            Form Link dari Template
+            {links.length > 0 && (
+              <span className="text-xs font-normal bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-full">
+                {links.length}
+              </span>
+            )}
+          </h3>
+          <span className="text-xs text-muted-foreground">
+            {links.filter(l => l.isActive).length} aktif · {links.filter(l => l.expiresAt && new Date(l.expiresAt) < new Date()).length} expired
+          </span>
+        </div>
+
+        {linksLoading ? (
+          <div className="space-y-2">
+            {[1, 2].map(i => <div key={i} className="h-14 rounded-lg bg-muted animate-pulse" />)}
+          </div>
+        ) : links.length === 0 ? (
+          <div className="flex flex-col items-center py-8 text-muted-foreground gap-2 rounded-xl border border-dashed border-border">
+            <Link2 className="h-7 w-7 opacity-20" />
+            <p className="text-sm">Belum ada form link dari template.</p>
+            <p className="text-xs">Klik "Buat Link" pada kartu komoditas di atas.</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {links.map(link => {
+              const cat = getCategoryFromAdminNotes(link.adminNotes);
+              const tmpl = cat ? inCodeTemplates[cat] : null;
+              const emoji = cat ? (PORTAL_COMMODITY_EMOJIS[cat] ?? "📦") : "📦";
+              const expired = link.expiresAt ? new Date(link.expiresAt) < new Date() : false;
+              const isActive = link.isActive && !expired;
+              const subCount = submissions.filter(s => s.linkId === link.id).length;
+              return (
+                <div
+                  key={link.id}
+                  className="flex items-center gap-3 p-3 rounded-lg border border-border bg-background hover:bg-muted/30 transition-colors"
+                >
+                  <div className="text-xl shrink-0">{emoji}</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-medium text-sm truncate">
+                        {link.title ?? (tmpl ? `Form Template — ${tmpl.label}` : "Form Vendor")}
+                      </span>
+                      <Badge
+                        variant={isActive ? "default" : "secondary"}
+                        className={`text-[10px] shrink-0 ${isActive ? "bg-emerald-100 text-emerald-700 border-emerald-200" : ""}`}
+                      >
+                        {isActive ? "Aktif" : expired ? "Expired" : "Nonaktif"}
+                      </Badge>
+                      {subCount > 0 && (
+                        <Badge variant="outline" className="text-[10px] shrink-0 text-indigo-600 border-indigo-300">
+                          {subCount} submission
+                        </Badge>
+                      )}
+                      {tmpl && (
+                        <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                          {tmpl.label}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5 font-mono truncate">
+                      {`${window.location.origin}/vendor-mini-form/${link.token}`}
+                    </p>
+                    {link.expiresAt && (
+                      <p className={`text-[10px] mt-0.5 ${expired ? "text-red-500" : "text-muted-foreground"}`}>
+                        {expired ? "Expired" : "Kadaluarsa"}: {new Date(link.expiresAt).toLocaleDateString("id-ID")}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Button
+                      variant="ghost" size="icon" className="h-7 w-7"
+                      title="Salin link"
+                      onClick={() => copyLink(link.token, link.id)}
+                    >
+                      {copiedId === link.id
+                        ? <CheckCircle className="h-3.5 w-3.5 text-emerald-500" />
+                        : <Copy className="h-3.5 w-3.5" />}
+                    </Button>
+                    <a href={`${window.location.origin}/vendor-mini-form/${link.token}`} target="_blank" rel="noopener noreferrer">
+                      <Button variant="ghost" size="icon" className="h-7 w-7" title="Buka form">
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </Button>
+                    </a>
+                    <Button
+                      variant="ghost" size="icon" className="h-7 w-7"
+                      title={link.isActive ? "Nonaktifkan" : "Aktifkan"}
+                      onClick={() => void handleToggleLink(link)}
+                    >
+                      {link.isActive
+                        ? <ToggleRight className="h-4 w-4 text-emerald-500" />
+                        : <ToggleLeft className="h-4 w-4 text-muted-foreground" />}
+                    </Button>
+                    <Button
+                      variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive"
+                      title="Hapus"
+                      onClick={() => void handleDeleteLink(link.id)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
