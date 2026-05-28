@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { db, suppliersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, logisticOrdersTable } from "@workspace/db";
 import { eq, sql, and, desc } from "drizzle-orm";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
-import { getAdminWa } from "../lib/adminWa.js";
+import { getAdminWa, getAdminPhones } from "../lib/adminWa.js";
 import { logger } from "../lib/logger.js";
 import { processWaForAiIntake, processWaMediaForAiIntake, buildAiReplyWa, getAiIntakeSettings } from "../lib/aiOrderIntake.js";
 import { getPreferredDomain } from "../lib/domain.js";
@@ -65,11 +65,6 @@ function calcSellingPrice(vendorPrice: number, markupType: string, markupPct: nu
 
 function fmt(n: number): string {
   return `Rp ${Math.round(n).toLocaleString("id-ID")}`;
-}
-
-function getAdminPhones(): string[] {
-  const raw = process.env.ADMIN_WA_PHONES ?? "";
-  return raw.split(",").map((s) => s.trim()).filter(Boolean).map(normalizePhone);
 }
 
 function getOrderUrl(orderId: number): string {
@@ -461,7 +456,7 @@ router.post("/webhook/fonnte", async (req: Request, res: Response) => {
     }
 
     // ─── 1. Admin commands ───────────────────────────────────────────────────
-    const adminPhones = getAdminPhones();
+    const adminPhones = await getAdminPhones();
     const isAdmin = adminPhones.length > 0 && adminPhones.includes(normalizedSender);
 
     if (isAdmin) {

@@ -118,23 +118,18 @@ whatsappRouter.post("/send-quotation", async (req: Request, res: Response) => {
   const messageBody = renderTemplate(customerTplBody, vars);
 
   const normalizedPhone = normalizePhone(String(customerPhone));
-  let fonnteResponse: unknown = null;
   let sentStatus = "draft";
   let sentAt: Date | null = null;
   let sentToAdmin = false;
 
   if (!isDraft) {
     try {
-      const fRes = await fetch("https://api.fonnte.com/send", {
-        method: "POST",
-        headers: {
-          Authorization: process.env.FONNTE_TOKEN ?? "",
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: new URLSearchParams({ target: normalizedPhone, message: messageBody }).toString(),
+      await sendWhatsApp(normalizedPhone, messageBody, {
+        context: "quotation-send",
+        refType: "quotation",
+        refId: rfqId ? String(rfqId) : String(orderId ?? ""),
       });
-      fonnteResponse = await fRes.json();
-      sentStatus = fRes.ok ? "sent" : "failed";
+      sentStatus = "sent";
       sentAt = new Date();
       logger.info({ phone: normalizedPhone, status: sentStatus }, "Quotation WA sent to customer");
     } catch (err) {
@@ -174,7 +169,7 @@ whatsappRouter.post("/send-quotation", async (req: Request, res: Response) => {
     notes: notes ? String(notes) : null,
     status: String(status ?? "Ready"),
     messageBody,
-    fonnteResponse: fonnteResponse ?? null,
+    fonnteResponse: null,
     sentStatus,
     sentToAdmin,
     sentAt: sentAt ?? undefined,
@@ -328,15 +323,12 @@ whatsappRouter.post("/inbox/:id/reply", async (req: Request, res: Response) => {
 
   let sentStatus = "failed";
   try {
-    const fRes = await fetch("https://api.fonnte.com/send", {
-      method: "POST",
-      headers: {
-        Authorization: process.env.FONNTE_TOKEN ?? "",
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: new URLSearchParams({ target: row.sender, message: message.trim() }).toString(),
+    await sendWhatsApp(row.sender, message.trim(), {
+      context: "inbox-reply",
+      refType: "wa_inbox",
+      refId: String(id),
     });
-    if (fRes.ok) sentStatus = "sent";
+    sentStatus = "sent";
     logger.info({ sender: row.sender, sentStatus }, "WA inbox reply sent");
   } catch (err) {
     logger.error({ err }, "Failed to send WA inbox reply");
