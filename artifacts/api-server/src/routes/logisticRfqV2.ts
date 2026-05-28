@@ -27,6 +27,7 @@ import {
   sendCustomerApprovalNotification,
   getRfqVendorRecapTemplate,
   renderTemplate,
+  sendVendorSelectedAdminWa,
   type LogisticOrderData,
 } from "../lib/orderNotification.js";
 
@@ -1226,8 +1227,13 @@ logisticRfqV2Router.post("/rfq/:rfqId/select-vendor", async (req: Request, res: 
     .where(and(eq(rfqVendorLinksTable.id, linkId), eq(rfqVendorLinksTable.rfqId, rfqId)));
   if (!link) return res.status(404).json({ message: "Link vendor tidak ditemukan" });
 
-  const [vendor] = await db.select({ name: suppliersTable.name }).from(suppliersTable)
-    .where(eq(suppliersTable.id, link.vendorId));
+  const [[vendor], [rfqRow]] = await Promise.all([
+    db.select({ name: suppliersTable.name }).from(suppliersTable).where(eq(suppliersTable.id, link.vendorId)),
+    db.select({
+      rfqNumber: logisticOrderRfqsTable.rfqNumber,
+      orderId: logisticOrderRfqsTable.orderId,
+    }).from(logisticOrderRfqsTable).where(eq(logisticOrderRfqsTable.id, rfqId)),
+  ]);
 
   await db.update(rfqVendorLinksTable).set({ status: "selected" })
     .where(eq(rfqVendorLinksTable.id, linkId));
@@ -1246,17 +1252,39 @@ logisticRfqV2Router.post("/rfq/:rfqId/select-vendor", async (req: Request, res: 
   await db.update(logisticOrderRfqsTable).set({ status: "vendor_selected" })
     .where(eq(logisticOrderRfqsTable.id, rfqId));
 
-  if (sellingPrice) {
+  const orderId = rfqRow?.orderId ?? 0;
+
+  let orderRow: typeof logisticOrdersTable.$inferSelect | undefined;
+  if (orderId) {
+    const rows = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
+    orderRow = rows[0];
+  }
+
+  if (sellingPrice && orderId) {
     await db.update(logisticOrdersTable)
       .set({ finalSellingPrice: String(sellingPrice), approvedVendorId: link.vendorId })
-      .where(eq(logisticOrdersTable.id,
-        (await db.select({ orderId: logisticOrderRfqsTable.orderId }).from(logisticOrderRfqsTable).where(eq(logisticOrderRfqsTable.id, rfqId)).then((r) => r[0]?.orderId ?? 0))
-      ));
+      .where(eq(logisticOrdersTable.id, orderId));
   }
 
   const vendorName = vendor?.name ?? `Vendor #${link.vendorId}`;
   await logActivity(rfqId, "admin", "Admin", "admin_select_vendor",
     `Admin memilih vendor: ${vendorName} — ${fmtRp(link.offeredPrice ?? link.basicPrice)}`);
+
+  if (orderRow && rfqRow) {
+    sendVendorSelectedAdminWa({
+      rfqNumber: rfqRow.rfqNumber,
+      orderNumber: orderRow.orderNumber,
+      customerName: orderRow.customerName ?? "—",
+      companyName: orderRow.companyName ?? null,
+      shipmentType: orderRow.shipmentType ?? "—",
+      origin: orderRow.origin ?? "—",
+      destination: orderRow.destination ?? "—",
+      vendorName,
+      vendorCost: link.offeredPrice ?? link.basicPrice,
+      sellingPrice: sellingPrice ?? null,
+      eta: link.eta ?? null,
+    }).catch((e: unknown) => logger.error({ e }, "sendVendorSelectedAdminWa failed (select-vendor)"));
+  }
 
   return res.json({ ok: true, selectedVendorName: vendorName });
 });

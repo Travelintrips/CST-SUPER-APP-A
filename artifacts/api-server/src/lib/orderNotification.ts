@@ -601,6 +601,23 @@ const DEFAULT_TPL = {
       "",
       "Silakan cek BizPortal › RFQ untuk tindak lanjut.",
     ].join("\n"),
+    vendor_selected_admin: [
+      "✅ *Vendor Dipilih — RFQ {{rfqNumber}}*",
+      "━━━━━━━━━━━━━━━━━━",
+      "📄 Order   : {{orderNumber}}",
+      "👤 Customer: {{customerName}}",
+      "🚚 Jenis   : {{shipmentType}}",
+      "📍 Rute    : {{route}}",
+      "━━━━━━━━━━━━━━━━━━",
+      "🏢 Vendor  : *{{vendorName}}*",
+      "💰 Harga Vendor: {{vendorCost}}",
+      "💵 Harga Jual  : {{sellingPrice}}",
+      "⏱ ETA     : {{eta}}",
+      "━━━━━━━━━━━━━━━━━━",
+      "{{quoteSentInfo}}",
+      "📦 Forward ke vendor: {{forwardVendorUrl}}",
+      "_{{timestamp}}_",
+    ].join("\n"),
   },
 } as const;
 
@@ -1389,6 +1406,63 @@ export async function sendVendorSubmissionSummaryNotification(
 // ── getRfqVendorRecapTemplate ──────────────────────────────────────────────────
 export async function getRfqVendorRecapTemplate(): Promise<string> {
   return getWaTemplateConfig("admin_personal", "rfq_vendor_recap", DEFAULT_TPL.admin_personal_extra.rfq_vendor_recap);
+}
+
+// ── sendVendorSelectedAdminWa ──────────────────────────────────────────────────
+export interface VendorSelectedAdminData {
+  rfqNumber: string;
+  orderNumber: string;
+  customerName: string;
+  companyName?: string | null;
+  shipmentType: string;
+  origin: string;
+  destination: string;
+  vendorName: string;
+  vendorCost: number | string | null;
+  sellingPrice?: number | null;
+  eta?: string | null;
+  quoteSentToCustomer?: boolean;
+  forwardVendorUrl?: string | null;
+}
+
+export async function sendVendorSelectedAdminWa(data: VendorSelectedAdminData): Promise<void> {
+  const adminTarget = await getAdminGroupWa();
+  if (!adminTarget) return;
+
+  const tpl = await getWaTemplateConfig(
+    "admin_personal",
+    "vendor_selected_admin",
+    DEFAULT_TPL.admin_personal_extra.vendor_selected_admin,
+  );
+
+  const customerDisplay = data.companyName
+    ? `${data.customerName} (${data.companyName})`
+    : data.customerName;
+
+  const fmtCost = (v: number | string | null): string | null => {
+    if (v == null) return null;
+    const n = typeof v === "number" ? v : parseFloat(String(v));
+    return isNaN(n) ? null : new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
+  };
+
+  const msg = renderTemplate(tpl, {
+    rfqNumber: data.rfqNumber,
+    orderNumber: data.orderNumber,
+    customerName: customerDisplay,
+    shipmentType: data.shipmentType,
+    route: `${data.origin} → ${data.destination}`,
+    vendorName: data.vendorName,
+    vendorCost: fmtCost(data.vendorCost),
+    sellingPrice: data.sellingPrice != null ? fmtCost(data.sellingPrice) : null,
+    eta: data.eta ?? null,
+    quoteSentInfo: data.quoteSentToCustomer ? "📤 Penawaran telah terkirim ke customer" : null,
+    forwardVendorUrl: data.forwardVendorUrl ?? null,
+    timestamp: new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" }),
+  });
+
+  sendWhatsApp(adminTarget, msg).catch((e: unknown) =>
+    logger.error({ e }, "sendVendorSelectedAdminWa failed"),
+  );
 }
 
 // ── runWaTemplateMigration ─────────────────────────────────────────────────────

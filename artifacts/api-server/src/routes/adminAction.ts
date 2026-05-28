@@ -19,7 +19,7 @@ import { getPreferredDomain } from "../lib/domain.js";
 import { logger } from "../lib/logger.js";
 import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa } from "../lib/adminWa.js";
-import { sendVendorRequestNotification, type LogisticOrderData } from "../lib/orderNotification.js";
+import { sendVendorRequestNotification, sendVendorSelectedAdminWa, type LogisticOrderData } from "../lib/orderNotification.js";
 import { generateShortLink } from "../lib/shortLink.js";
 
 export const adminActionRouter: Router = Router();
@@ -825,16 +825,21 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
       const fwdUrl = getAdminActionUrl(fwdToken);
       const fwdShort = await generateShortLink(fwdUrl, { context: "admin_action", refType: "rfq", refId: String(rfq.id) });
 
-      const adminWa = await getAdminWa();
-      if (adminWa) {
-        const vendorName = vendor?.name ?? `Vendor #${vendorLink.vendorId}`;
-        sendWhatsApp(adminWa,
-          `✅ Vendor dipilih: *${vendorName}*\n` +
-          `Order: ${order.orderNumber} | ${fmtRp(vendorLink.offeredPrice ?? vendorLink.basicPrice)}\n` +
-          (quoteShortUrl ? `📤 Penawaran terkirim ke customer\n` : "") +
-          `\n📦 Forward ke vendor untuk eksekusi:\n${fwdShort}`
-        ).catch(() => {});
-      }
+      sendVendorSelectedAdminWa({
+        rfqNumber: rfq.rfqNumber,
+        orderNumber: order.orderNumber,
+        customerName: order.customerName ?? "—",
+        companyName: (order as any).companyName ?? null,
+        shipmentType: order.shipmentType ?? "—",
+        origin: order.origin ?? "—",
+        destination: order.destination ?? "—",
+        vendorName: vendor?.name ?? `Vendor #${vendorLink.vendorId}`,
+        vendorCost: vendorLink.offeredPrice ?? vendorLink.basicPrice,
+        sellingPrice: sellingPrice ?? null,
+        eta: vendorLink.eta ?? null,
+        quoteSentToCustomer: sendQuoteToCustomer && !!quoteShortUrl,
+        forwardVendorUrl: fwdShort,
+      }).catch(() => {});
 
       return res.json({
         ok: true,
