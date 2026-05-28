@@ -93,9 +93,11 @@ router.get("/cargo-types", async (req: Request, res: Response) => {
 router.get("/wa-template-configs", async (req: Request, res: Response) => {
   if (!(await requireAdmin(req, res))) return;
   try {
+    const { getWaDefaultTemplatesFlatMap } = await import("../lib/orderNotification.js");
     const rows = await db.select().from(waTemplateConfigsTable);
-    const configs: Record<string, string> = {};
     const savedKeys: string[] = [];
+    // Start with all defaults so unsaved templates show their default content
+    const configs: Record<string, string> = { ...getWaDefaultTemplatesFlatMap() };
     for (const row of rows) {
       const key = `${row.recipient}__${row.workflow}`;
       configs[key] = row.body;

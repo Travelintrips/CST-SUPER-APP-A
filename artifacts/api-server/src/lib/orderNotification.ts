@@ -668,6 +668,93 @@ const DEFAULT_TPL = {
   },
 } as const;
 
+/**
+ * Returns a flat map of all default WA templates.
+ * Key format: `${recipient}__${workflowKey}`
+ * Used by settings route to pre-populate the editor with defaults.
+ */
+export function getWaDefaultTemplatesFlatMap(): Record<string, string> {
+  const m: Record<string, string> = {};
+  const add = (r: string, w: string, body: string) => { m[`${r}__${w}`] = body; };
+
+  // admin_personal
+  const ap = DEFAULT_TPL.admin_personal;
+  add("admin_personal", "order_new", ap.order_new);
+  add("admin_personal", "vendor_submission", ap.vendor_submission);
+  add("admin_personal", "vendor_confirmed", ap.vendor_confirmed);
+  add("admin_personal", "vendor_rejected", ap.vendor_rejected);
+  add("admin_personal", "customer_approved", ap.customer_approved);
+  add("admin_personal", "customer_revised", ap.customer_revised);
+  add("admin_personal", "customer_rejected", ap.customer_rejected);
+  add("admin_personal", "task_update", ap.task_update);
+  add("admin_personal", "op_request", ap.op_request);
+  add("admin_personal", "driver_assigned", ap.driver_assigned);
+  add("admin_personal", "shipment_update", ap.shipment_update);
+  add("admin_personal", "customs_update", ap.customs_update);
+  add("admin_personal", "delivery_completed", ap.delivery_completed);
+
+  // admin_personal_extra (same recipient)
+  const ape = DEFAULT_TPL.admin_personal_extra;
+  add("admin_personal", "vendor_submission_summary", ape.vendor_submission_summary);
+  add("admin_personal", "rfq_vendor_recap", ape.rfq_vendor_recap);
+  add("admin_personal", "customer_rejection", ape.customer_rejection);
+  add("admin_personal", "op_confirm_submitted", ape.op_confirm_submitted);
+  add("admin_personal", "customer_rfq_response", ape.customer_rfq_response);
+
+  // admin_group
+  const ag = DEFAULT_TPL.admin_group;
+  add("admin_group", "order_new", ag.order_new);
+  add("admin_group", "vendor_submission", ag.vendor_submission);
+  add("admin_group", "vendor_confirmed", ag.vendor_confirmed);
+  add("admin_group", "vendor_rejected", ag.vendor_rejected);
+  add("admin_group", "customer_approved", ag.customer_approved);
+  add("admin_group", "customer_revised", ag.customer_revised);
+  add("admin_group", "customer_rejected", ag.customer_rejected);
+  add("admin_group", "task_update", ag.task_update);
+  add("admin_group", "op_request", ag.op_request);
+  add("admin_group", "driver_assigned", ag.driver_assigned);
+  add("admin_group", "shipment_update", ag.shipment_update);
+  add("admin_group", "customs_update", ag.customs_update);
+
+  // customer
+  const cu = DEFAULT_TPL.customer;
+  add("customer", "order_new", cu.order_new);
+  add("customer", "customer_approval", cu.customer_approval);
+  add("customer", "customer_options", cu.customer_options);
+  add("customer", "operational_update", cu.operational_update);
+  add("customer", "customer_approved", cu.customer_approved);
+  add("customer", "so_created", cu.so_created);
+  add("customer", "driver_assigned", cu.driver_assigned);
+  add("customer", "shipment_update", cu.shipment_update);
+  add("customer", "customs_update", cu.customs_update);
+  add("customer", "delivery_completed", cu.delivery_completed);
+
+  // vendor
+  const v = DEFAULT_TPL.vendor;
+  add("vendor", "order_new", v.order_new);
+  add("vendor", "vendor_request", v.vendor_request);
+  add("vendor", "task_link", v.task_link);
+  add("vendor", "vendor_revision", v.vendor_revision);
+  add("vendor", "op_request", v.op_request);
+  add("vendor", "vendor_submit_confirm", v.vendor_submit_confirm);
+  add("vendor", "vendor_rfq_forward", v.vendor_rfq_forward);
+  add("vendor", "revision_fallback", v.revision_fallback);
+
+  // product_order → workflow key: product_order_new
+  const po = DEFAULT_TPL.product_order;
+  add("admin_personal", "product_order_new", po.admin_personal);
+  add("admin_group",    "product_order_new", po.admin_group);
+  add("customer",       "product_order_new", po.customer);
+
+  // product_order_status → workflow key: product_order_status_update
+  const pos = DEFAULT_TPL.product_order_status;
+  add("admin_personal", "product_order_status_update", pos.admin_personal);
+  add("admin_group",    "product_order_status_update", pos.admin_group);
+  add("customer",       "product_order_status_update", pos.customer);
+
+  return m;
+}
+
 async function notifyAdmin(order: LogisticOrderData): Promise<void> {
   const rows: [string, string][] = [
     ["No. Order", `<strong>${escHtml(order.orderNumber)}</strong>`],
