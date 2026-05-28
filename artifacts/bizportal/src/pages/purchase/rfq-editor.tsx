@@ -462,22 +462,40 @@ export default function PurchaseDocumentEditorPage() {
   const [emailOpen, setEmailOpen] = useState(false);
   const [vendorAcceptLink, setVendorAcceptLink] = useState<string | null>(null);
   const [vendorAcceptCopied, setVendorAcceptCopied] = useState(false);
+  const [vendorAcceptSendWa, setVendorAcceptSendWa] = useState(true);
+  const [vendorAcceptWaAvailable, setVendorAcceptWaAvailable] = useState<boolean | null>(null);
+  const [vendorAcceptGenerating, setVendorAcceptGenerating] = useState(false);
 
   const generateVendorTokenMut = {
-    isPending: false,
-    mutate: async () => {
+    isPending: vendorAcceptGenerating,
+    mutate: async (sendWa?: boolean) => {
       if (!id) return;
+      setVendorAcceptGenerating(true);
       try {
-        const r = await fetch(`/api/purchase/documents/${id}/generate-vendor-token`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" } });
+        const r = await fetch(`/api/purchase/documents/${id}/generate-vendor-token`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sendWa: sendWa ?? vendorAcceptSendWa }),
+        });
         const data = await r.json();
         if (!r.ok) throw new Error(data.message ?? "error");
         setVendorAcceptLink(data.url);
+        setVendorAcceptWaAvailable(data.waAvailable ?? false);
         await navigator.clipboard.writeText(data.url);
         setVendorAcceptCopied(true);
-        toast({ title: "Link berhasil disalin!", description: "Kirimkan link ini ke vendor via WA atau email." });
         setTimeout(() => setVendorAcceptCopied(false), 3000);
+        if (data.waSent) {
+          toast({ title: "Link disalin & WA terkirim!", description: `Pesan WA dikirim ke ${data.waTarget}.` });
+        } else if (data.waAvailable === false && (sendWa ?? vendorAcceptSendWa)) {
+          toast({ title: "Link berhasil disalin!", description: "WA tidak terkirim — nomor HP vendor tidak tersedia di data supplier." });
+        } else {
+          toast({ title: "Link berhasil disalin!", description: "Kirimkan link ini ke vendor via WA atau email." });
+        }
       } catch (e: unknown) {
         toast({ title: "Gagal membuat link", variant: "destructive" });
+      } finally {
+        setVendorAcceptGenerating(false);
       }
     },
   };
@@ -590,32 +608,66 @@ export default function PurchaseDocumentEditorPage() {
               </Button>
             )}
             {!isNew && doc?.kind === "order" && (
-              <Button
-                variant="outline"
-                onClick={() => {
-                  if (vendorAcceptLink) {
-                    navigator.clipboard.writeText(vendorAcceptLink);
-                    setVendorAcceptCopied(true);
-                    toast({ title: "Link disalin!", description: "Kirimkan ke vendor via WA atau email." });
-                    setTimeout(() => setVendorAcceptCopied(false), 3000);
-                  } else {
-                    generateVendorTokenMut.mutate();
-                  }
-                }}
-                data-testid="button-vendor-accept-link"
-              >
-                {vendorAcceptCopied ? <CheckCircle2 className="mr-2 h-4 w-4 text-green-500" /> : <Link2 className="mr-2 h-4 w-4" />}
-                {vendorAcceptLink ? (vendorAcceptCopied ? "Tersalin!" : "Salin Link Vendor Accept") : "Buat Link Vendor Accept"}
-              </Button>
+              <div className="flex items-center gap-2">
+                <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    className="h-3.5 w-3.5 accent-green-600"
+                    checked={vendorAcceptSendWa}
+                    onChange={(e) => setVendorAcceptSendWa(e.target.checked)}
+                  />
+                  Kirim WA
+                </label>
+                <Button
+                  variant="outline"
+                  disabled={generateVendorTokenMut.isPending}
+                  onClick={() => {
+                    if (vendorAcceptLink) {
+                      navigator.clipboard.writeText(vendorAcceptLink);
+                      setVendorAcceptCopied(true);
+                      toast({ title: "Link disalin!", description: "Kirimkan ke vendor via WA atau email." });
+                      setTimeout(() => setVendorAcceptCopied(false), 3000);
+                    } else {
+                      generateVendorTokenMut.mutate();
+                    }
+                  }}
+                  data-testid="button-vendor-accept-link"
+                >
+                  {vendorAcceptGenerating ? (
+                    <span className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent inline-block" />
+                  ) : vendorAcceptCopied ? (
+                    <CheckCircle2 className="mr-2 h-4 w-4 text-green-500" />
+                  ) : (
+                    <Link2 className="mr-2 h-4 w-4" />
+                  )}
+                  {vendorAcceptLink ? (vendorAcceptCopied ? "Tersalin!" : "Salin Link Vendor Accept") : "Buat Link Vendor Accept"}
+                </Button>
+              </div>
             )}
           </div>
           {vendorAcceptLink && (
-            <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded px-3 py-1.5">
-              <Link2 className="h-3 w-3 shrink-0" />
-              <span className="truncate font-mono">{vendorAcceptLink}</span>
-              <Button size="sm" variant="ghost" className="h-6 px-2 shrink-0" onClick={() => { navigator.clipboard.writeText(vendorAcceptLink); setVendorAcceptCopied(true); setTimeout(() => setVendorAcceptCopied(false), 3000); }}>
-                <ClipboardCopy className="h-3 w-3" />
-              </Button>
+            <div className="mt-2 flex flex-col gap-1">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded px-3 py-1.5">
+                <Link2 className="h-3 w-3 shrink-0" />
+                <span className="truncate font-mono">{vendorAcceptLink}</span>
+                <Button size="sm" variant="ghost" className="h-6 px-2 shrink-0" onClick={() => { navigator.clipboard.writeText(vendorAcceptLink); setVendorAcceptCopied(true); setTimeout(() => setVendorAcceptCopied(false), 3000); }}>
+                  <ClipboardCopy className="h-3 w-3" />
+                </Button>
+                {vendorAcceptSendWa && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 px-2 shrink-0 text-green-600 hover:text-green-700"
+                    onClick={() => generateVendorTokenMut.mutate(true)}
+                    title="Kirim ulang WA ke vendor"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-3 w-3"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.117.548 4.107 1.509 5.845L.057 23.428a.75.75 0 0 0 .914.914l5.638-1.45A11.933 11.933 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.75a9.694 9.694 0 0 1-4.922-1.335l-.354-.21-3.674.944.97-3.589-.228-.368A9.694 9.694 0 0 1 2.25 12C2.25 6.615 6.615 2.25 12 2.25S21.75 6.615 21.75 12 17.385 21.75 12 21.75z"/></svg>
+                  </Button>
+                )}
+              </div>
+              {vendorAcceptWaAvailable === false && vendorAcceptSendWa && (
+                <p className="text-xs text-amber-600 px-1">⚠ Nomor HP vendor tidak ditemukan di data supplier — WA tidak terkirim. Tambahkan nomor HP di halaman Vendor.</p>
+              )}
             </div>
           )}
           {!isNew && doc?.kind === "order" && (doc as any).vendor_accepted_at && (

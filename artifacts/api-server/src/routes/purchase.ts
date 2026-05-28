@@ -755,21 +755,56 @@ router.post("/documents/:id/generate-vendor-token", async (req, res) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
 
+  const sendWa = req.body?.sendWa === true;
+
   const [doc] = await db.select().from(purchaseDocumentsTable).where(eq(purchaseDocumentsTable.id, id));
   if (!doc) return res.status(404).json({ message: "Document not found" });
   if (doc.kind !== "order") return res.status(400).json({ message: "Hanya PO yang bisa dibuat link vendor accept" });
 
+  const baseUrl = process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : `http://localhost:5000`;
+
   const existingToken = (doc as any).vendor_accept_token as string | null | undefined;
-  if (existingToken) {
-    const baseUrl = process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : `http://localhost:5000`;
-    return res.json({ token: existingToken, url: `${baseUrl}/vendor-po-accept/${existingToken}` });
+  const token = existingToken ?? randomBytes(24).toString("hex");
+
+  if (!existingToken) {
+    await db.execute(sql`UPDATE purchase_documents SET vendor_accept_token = ${token} WHERE id = ${id}`);
   }
 
-  const token = randomBytes(24).toString("hex");
-  await db.execute(sql`UPDATE purchase_documents SET vendor_accept_token = ${token} WHERE id = ${id}`);
+  const url = `${baseUrl}/vendor-po-accept/${token}`;
 
-  const baseUrl = process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : `http://localhost:5000`;
-  return res.json({ token, url: `${baseUrl}/vendor-po-accept/${token}` });
+  // Lookup supplier phone
+  let waTarget: string | null = null;
+  let waSent = false;
+  if (doc.supplierId) {
+    const [sup] = await db.select({ phone: suppliersTable.phone, name: suppliersTable.name })
+      .from(suppliersTable).where(eq(suppliersTable.id, doc.supplierId)).limit(1);
+    waTarget = sup?.phone ?? null;
+  }
+
+  if (sendWa && waTarget) {
+    const msgLines = [
+      `📋 *Konfirmasi Purchase Order*`,
+      ``,
+      `Kepada Yth. *${doc.supplierName ?? "Vendor"}*,`,
+      ``,
+      `Kami mengirimkan Purchase Order berikut untuk dikonfirmasi:`,
+      `• *No PO*: ${doc.docNumber ?? "-"}`,
+      `• *Total*: Rp ${Number(doc.grandTotal ?? doc.totalAmount ?? 0).toLocaleString("id-ID")}`,
+      ``,
+      `Silakan buka link berikut untuk melihat detail PO dan mengkonfirmasi penerimaan:`,
+      url,
+      ``,
+      `Terima kasih.`,
+    ];
+    sendWhatsApp(waTarget, msgLines.join("\n"), {
+      context: "purchase_vendor_accept",
+      refType: "purchase_document",
+      refId: String(id),
+    }).catch(() => undefined);
+    waSent = true;
+  }
+
+  return res.json({ token, url, waSent, waTarget, waAvailable: !!waTarget });
 });
 
 router.get("/po-detail/:id", async (req, res) => {
