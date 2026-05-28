@@ -2766,17 +2766,19 @@ router.get("/admin/vendor-form/schemas", requirePortalAdmin, async (_req, res) =
 
 router.post("/admin/vendor-form/links", requirePortalAdmin, async (req, res) => {
   try {
-    const { serviceType, title, notes, expiresInDays, mode, vendorName, maxSubmissions, formTarget } = req.body as {
+    const { serviceType, title, notes, adminNotes, expiresInDays, mode, vendorName, maxSubmissions, formTarget } = req.body as {
       serviceType: string;
       title?: string;
       notes?: string;
+      adminNotes?: string;
       expiresInDays?: number;
       mode?: "rate_collection" | "operational_update";
       vendorName?: string;
       maxSubmissions?: number;
       formTarget?: string;
     };
-    if (!serviceType || !SERVICE_SCHEMAS[serviceType]) {
+    const isProductTemplate = typeof adminNotes === "string" && /productCategory:\w+/.test(adminNotes);
+    if (!serviceType || (!SERVICE_SCHEMAS[serviceType] && !isProductTemplate)) {
       return res.status(400).json({ error: "serviceType tidak valid" });
     }
     const { randomBytes } = await import("crypto");
@@ -2790,6 +2792,7 @@ router.post("/admin/vendor-form/links", requirePortalAdmin, async (req, res) => 
         serviceType,
         title: title ?? null,
         notes: notes ?? null,
+        adminNotes: adminNotes ?? null,
         expiresAt: expiresAt ?? undefined,
         mode: mode ?? "rate_collection",
         vendorName: vendorName ?? null,

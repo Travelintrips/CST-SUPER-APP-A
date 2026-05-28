@@ -41,6 +41,7 @@ import {
   PackageCheck,
   Search,
   Info,
+  Eye,
 } from "lucide-react";
 import { inCodeTemplates } from "@workspace/product-templates";
 import type { ProductTemplate } from "@workspace/product-templates";
@@ -1963,9 +1964,18 @@ function PortalTemplateDetailDialog({
 }
 
 function PortalProductTemplateEngine() {
+  const { toast } = useToast();
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<ProductTemplate | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [linkTemplate, setLinkTemplate] = useState<ProductTemplate | null>(null);
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
+  const [linkCreating, setLinkCreating] = useState(false);
+  const [linkTitle, setLinkTitle] = useState("");
+  const [linkNotes, setLinkNotes] = useState("");
+  const [linkExpires, setLinkExpires] = useState("7");
+  const [linkCopied, setLinkCopied] = useState(false);
+  const [createdToken, setCreatedToken] = useState<string | null>(null);
 
   const allTemplates = Object.values(inCodeTemplates);
 
@@ -1974,6 +1984,54 @@ function PortalProductTemplateEngine() {
     if (!q) return true;
     return t.label.toLowerCase().includes(q) || t.category.toLowerCase().includes(q);
   });
+
+  function openLinkDialog(e: React.MouseEvent, t: ProductTemplate) {
+    e.stopPropagation();
+    setLinkTemplate(t);
+    setLinkTitle(`Form Template — ${t.label}`);
+    setLinkNotes("");
+    setLinkExpires("7");
+    setCreatedToken(null);
+    setLinkCopied(false);
+    setLinkDialogOpen(true);
+  }
+
+  async function handleCreateLink() {
+    if (!linkTemplate) return;
+    setLinkCreating(true);
+    try {
+      const res = await fetch("/api/portal/admin/vendor-form/links", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        body: JSON.stringify({
+          serviceType: "vendor_product_template",
+          title: linkTitle.trim() || `Form Template — ${linkTemplate.label}`,
+          notes: linkNotes.trim() || undefined,
+          adminNotes: `productCategory:${linkTemplate.category}`,
+          expiresInDays: linkExpires ? Number(linkExpires) : undefined,
+          mode: "rate_collection",
+          formTarget: "vendor",
+        }),
+      });
+      if (!res.ok) throw new Error();
+      const data = await res.json() as { token: string };
+      setCreatedToken(data.token);
+      toast({ title: "Link berhasil dibuat" });
+    } catch {
+      toast({ title: "Gagal membuat link", variant: "destructive" });
+    } finally {
+      setLinkCreating(false);
+    }
+  }
+
+  function copyCreatedLink() {
+    if (!createdToken) return;
+    const url = `${window.location.origin}/vendor-mini-form/${createdToken}`;
+    void navigator.clipboard.writeText(url).then(() => {
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    });
+  }
 
   return (
     <div className="space-y-5">
@@ -2018,43 +2076,68 @@ function PortalProductTemplateEngine() {
           const emoji = PORTAL_COMMODITY_EMOJIS[t.category] ?? "📦";
           const reqDocs = t.requiredDocuments.filter(d => d.required).length;
           return (
-            <button
+            <div
               key={t.category}
-              onClick={() => { setSelected(t); setDialogOpen(true); }}
-              className="text-left border border-border bg-card rounded-xl p-4 hover:border-indigo-300 hover:shadow-sm transition-all group"
+              className="border border-border bg-card rounded-xl p-4 hover:border-indigo-300 hover:shadow-sm transition-all group"
             >
-              <div className="flex items-start gap-3 mb-3">
-                <div className="w-9 h-9 rounded-lg border border-border bg-muted/50 flex items-center justify-center text-lg shrink-0 group-hover:bg-indigo-50 group-hover:border-indigo-200 transition-colors">
-                  {emoji}
+              <button
+                className="w-full text-left"
+                onClick={() => { setSelected(t); setDialogOpen(true); }}
+              >
+                <div className="flex items-start gap-3 mb-3">
+                  <div className="w-9 h-9 rounded-lg border border-border bg-muted/50 flex items-center justify-center text-lg shrink-0 group-hover:bg-indigo-50 group-hover:border-indigo-200 transition-colors">
+                    {emoji}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-sm text-foreground group-hover:text-indigo-700 transition-colors">{t.label}</p>
+                    <p className="text-xs text-muted-foreground font-mono">{t.category}</p>
+                  </div>
+                  <ChevronRight className="h-4 w-4 text-muted-foreground/40 group-hover:text-indigo-500 shrink-0 mt-0.5 transition-colors" />
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-sm text-foreground group-hover:text-indigo-700 transition-colors">{t.label}</p>
-                  <p className="text-xs text-muted-foreground font-mono">{t.category}</p>
+                <div className="grid grid-cols-3 gap-1.5 text-center">
+                  <div className="bg-muted/50 rounded-lg p-1.5">
+                    <p className="text-sm font-bold text-indigo-600">{t.customFields.length}</p>
+                    <p className="text-[10px] text-muted-foreground">Fields</p>
+                  </div>
+                  <div className="bg-muted/50 rounded-lg p-1.5">
+                    <p className={`text-sm font-bold ${reqDocs > 0 ? "text-red-500" : "text-muted-foreground"}`}>{reqDocs}</p>
+                    <p className="text-[10px] text-muted-foreground">Dok Wajib</p>
+                  </div>
+                  <div className="bg-muted/50 rounded-lg p-1.5">
+                    <p className="text-sm font-bold text-emerald-600">{t.checklist.length}</p>
+                    <p className="text-[10px] text-muted-foreground">Checklist</p>
+                  </div>
                 </div>
-                <ChevronRight className="h-4 w-4 text-muted-foreground/40 group-hover:text-indigo-500 shrink-0 mt-0.5 transition-colors" />
+                {t.requiredDocuments.filter(d => d.required).slice(0, 1).map(d => (
+                  <div key={d.key} className="flex items-center gap-1.5 mt-2 text-xs text-muted-foreground">
+                    <AlertCircle className="h-3 w-3 text-red-400 shrink-0" />
+                    <span className="truncate">{d.label}</span>
+                  </div>
+                ))}
+                {reqDocs > 1 && <p className="text-xs text-muted-foreground mt-1">+{reqDocs - 1} dokumen wajib lainnya</p>}
+              </button>
+
+              <div className="mt-3 pt-3 border-t border-border flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="flex-1 h-7 text-xs gap-1"
+                  onClick={() => { setSelected(t); setDialogOpen(true); }}
+                >
+                  <Eye className="h-3 w-3" />
+                  Detail
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="flex-1 h-7 text-xs gap-1 text-indigo-600 border-indigo-200 hover:bg-indigo-50"
+                  onClick={e => openLinkDialog(e, t)}
+                >
+                  <Link2 className="h-3 w-3" />
+                  Buat Link
+                </Button>
               </div>
-              <div className="grid grid-cols-3 gap-1.5 text-center">
-                <div className="bg-muted/50 rounded-lg p-1.5">
-                  <p className="text-sm font-bold text-indigo-600">{t.customFields.length}</p>
-                  <p className="text-[10px] text-muted-foreground">Fields</p>
-                </div>
-                <div className="bg-muted/50 rounded-lg p-1.5">
-                  <p className={`text-sm font-bold ${reqDocs > 0 ? "text-red-500" : "text-muted-foreground"}`}>{reqDocs}</p>
-                  <p className="text-[10px] text-muted-foreground">Dok Wajib</p>
-                </div>
-                <div className="bg-muted/50 rounded-lg p-1.5">
-                  <p className="text-sm font-bold text-emerald-600">{t.checklist.length}</p>
-                  <p className="text-[10px] text-muted-foreground">Checklist</p>
-                </div>
-              </div>
-              {t.requiredDocuments.filter(d => d.required).slice(0, 1).map(d => (
-                <div key={d.key} className="flex items-center gap-1.5 mt-2 text-xs text-muted-foreground">
-                  <AlertCircle className="h-3 w-3 text-red-400 shrink-0" />
-                  <span className="truncate">{d.label}</span>
-                </div>
-              ))}
-              {reqDocs > 1 && <p className="text-xs text-muted-foreground mt-1">+{reqDocs - 1} dokumen wajib lainnya</p>}
-            </button>
+            </div>
           );
         })}
         {filtered.length === 0 && (
@@ -2070,6 +2153,66 @@ function PortalProductTemplateEngine() {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
       />
+
+      <Dialog open={linkDialogOpen} onOpenChange={v => { setLinkDialogOpen(v); if (!v) setCreatedToken(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <span className="text-xl">{linkTemplate ? (PORTAL_COMMODITY_EMOJIS[linkTemplate.category] ?? "📦") : "📦"}</span>
+              Buat Form Link — {linkTemplate?.label}
+            </DialogTitle>
+          </DialogHeader>
+
+          {createdToken ? (
+            <div className="space-y-4 py-2">
+              <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-4 text-center">
+                <p className="text-sm font-semibold text-emerald-700 mb-1">Link berhasil dibuat!</p>
+                <p className="text-xs text-emerald-600">Salin dan kirim ke vendor</p>
+              </div>
+              <div className="rounded-lg border border-border bg-muted/50 p-3 font-mono text-xs break-all text-muted-foreground">
+                {`${window.location.origin}/vendor-mini-form/${createdToken}`}
+              </div>
+              <Button className="w-full gap-2" onClick={copyCreatedLink}>
+                <Copy className="h-4 w-4" />
+                {linkCopied ? "Tersalin!" : "Salin Link"}
+              </Button>
+              <Button variant="outline" className="w-full" onClick={() => { setLinkDialogOpen(false); setCreatedToken(null); }}>
+                Tutup
+              </Button>
+            </div>
+          ) : (
+            <>
+              <div className="space-y-3 py-2">
+                <div className="space-y-1.5">
+                  <Label>Judul Form</Label>
+                  <Input value={linkTitle} onChange={e => setLinkTitle(e.target.value)} placeholder={`Form Template — ${linkTemplate?.label ?? ""}`} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Instruksi untuk Vendor (opsional)</Label>
+                  <Textarea value={linkNotes} onChange={e => setLinkNotes(e.target.value)} rows={2} placeholder="Instruksi khusus..." />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Kadaluarsa (hari)</Label>
+                  <Input type="number" value={linkExpires} onChange={e => setLinkExpires(e.target.value)} placeholder="Kosong = no limit" />
+                </div>
+                {linkTemplate && (
+                  <div className="rounded-lg bg-indigo-50 border border-indigo-100 p-3 text-xs space-y-1">
+                    <p className="font-medium text-indigo-700">Template akan disertakan:</p>
+                    <p className="text-indigo-600">{linkTemplate.customFields.length} custom field · {linkTemplate.requiredDocuments.filter(d => d.required).length} dok wajib · {linkTemplate.checklist.length} checklist</p>
+                  </div>
+                )}
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setLinkDialogOpen(false)}>Batal</Button>
+                <Button onClick={() => void handleCreateLink()} disabled={linkCreating}>
+                  {linkCreating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Link2 className="h-4 w-4 mr-2" />}
+                  {linkCreating ? "Membuat..." : "Buat Link"}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
