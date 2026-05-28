@@ -189,6 +189,16 @@ function buildOrderVars(
     return null;
   })();
 
+  const productListNoPrice: string | null = (() => {
+    if (order.orderItems?.length) {
+      return order.orderItems.map(i => `• ${i.name}`).join("\n");
+    }
+    if (isProduct && order.serviceList) {
+      return order.serviceList;
+    }
+    return null;
+  })();
+
   return {
     orderNumber: order.orderNumber,
     tanggal: tgl,
@@ -211,6 +221,7 @@ function buildOrderVars(
     jumlahKoliDisplay: (!isProduct && order.jumlahKoli) ? `${order.jumlahKoli} koli` : null,
     serviceList: isProduct ? null : order.serviceList,
     productList,
+    productListNoPrice,
     subtotalEst: order.subtotal != null ? formatRupiah(order.subtotal) : null,
     taxEst: order.tax != null ? formatRupiah(order.tax) : null,
     taxLabel: (() => {
@@ -504,7 +515,7 @@ const DEFAULT_TPL = {
   },
   vendor: {
     order_new: ["📦 *PERMINTAAN ORDER BARU — CST LOGISTICS*","━━━━━━━━━━━━━━━━━━━━","Kepada Yth. *{{vendorName}}*,","","No. Order       : *{{orderNumber}}*","Tanggal         : {{tanggal}}","Jenis           : {{shipmentType}}","Rute            : {{route}}","Kategori Barang : {{commodity}}","Deskripsi       : {{cargoDescription}}","Berat           : {{grossWeightDisplay}}","Volume          : {{volumeDisplay}}","Jumlah Koli     : {{jumlahKoliDisplay}}","{{#if product}}","🛍️ Produk       :","{{productList}}","{{/if}}","Tgl Butuh       : {{requiredDate}}","{{#if trucking}}","🚛 Jenis Kendaraan: {{vehicleType}}","📅 Jadwal Pickup  : {{pickupSchedule}}","💰 Contract Rate  : {{contractRate}}","{{/if}}","Layanan         : {{serviceList}}","Catatan         : {{notes}}","━━━━━━━━━━━━━━━━━━━━","🔗 *Aksi Cepat (klik link):*","✅ Terima  → {{responseUrl}}?action=accept","❌ Tolak   → {{responseUrl}}?action=reject","💬 Form    → {{responseUrl}}","","✏️ *Atau balas WA dengan format:*","📌 Harga: `{{orderNumber}} [HARGA] [TGL_PICKUP]`","📌 Terima: `TERIMA {{orderNumber}}`","📌 Tolak:  `TOLAK {{orderNumber}}`","","Terima kasih 🙏","_Dikirim: {{timestamp}}_"].join("\n"),
-    vendor_request: ["📦 *PERMINTAAN PENAWARAN VENDOR*","━━━━━━━━━━━━━━━━━━","Kepada Yth. *{{vendorName}}*,","","No. RFQ    : *{{rfqNumber}}*","No. Order  : {{orderNumber}}","Tanggal    : {{tanggal}}","Jam        : {{jam}}","Jenis      : {{shipmentType}}","Rute       : {{route}}","Komoditi   : {{commodity}}","Deskripsi  : {{cargoDescription}}","Berat      : {{grossWeightDisplay}}","Volume     : {{volumeDisplay}}","{{#if product}}","🛍️ Produk  :","{{productList}}","{{/if}}","Tgl Butuh  : {{requiredDate}}","Catatan    : {{notes}}","","📝 Silakan isi penawaran melalui link berikut:","","🔗 *[ ISI PENAWARAN VENDOR ]*","👉 {{vendorMiniFormLink}}","","━━━━━━━━━━━━━━━━━━","Terima kasih atas kerja sama Anda 🙏","_CST Logistics_"].join("\n"),
+    vendor_request: ["📦 *PERMINTAAN PENAWARAN VENDOR*","━━━━━━━━━━━━━━━━━━","Kepada Yth. *{{vendorName}}*,","","No. RFQ    : *{{rfqNumber}}*","No. Order  : {{orderNumber}}","Tanggal    : {{tanggal}}","Jam        : {{jam}}","Jenis      : {{shipmentType}}","Rute       : {{route}}","Komoditi   : {{commodity}}","Deskripsi  : {{cargoDescription}}","Berat      : {{grossWeightDisplay}}","Volume     : {{volumeDisplay}}","{{#if product}}","🛍️ Produk  :","{{productListNoPrice}}","{{/if}}","Tgl Butuh  : {{requiredDate}}","Catatan    : {{notes}}","","📝 Silakan isi penawaran melalui link berikut:","","🔗 *[ ISI PENAWARAN VENDOR ]*","👉 {{vendorMiniFormLink}}","","━━━━━━━━━━━━━━━━━━","Terima kasih atas kerja sama Anda 🙏","_CST Logistics_"].join("\n"),
     task_link: ["🚚 *Tugas Order Baru — CST Logistics*","","Order: {{orderNumber}}","Rute: {{route}}","Keterangan: {{label}}","","Silakan buka link berikut untuk konfirmasi dan update status:","{{taskUrl}}","_{{timestamp}}_"].join("\n"),
     vendor_revision: ["↩️ *REVISI PENAWARAN — {{orderNumber}}*","━━━━━━━━━━━━━━━━━━","Kepada Yth. *{{vendorName}}*,","","Kami memerlukan revisi harga untuk order *{{orderNumber}}*.","Harga saat ini: {{vendorPrice}}","","Mohon kirim penawaran terbaik Anda kembali:","🔗 {{vendorMiniFormLink}}","","Terima kasih 🙏"].join("\n"),
     op_request: ["⚙️ *KONFIRMASI OPERASIONAL — CST LOGISTICS*","━━━━━━━━━━━━━━━━━━","Kepada Yth. *{{vendorName}}*,","","Customer telah menyetujui penawaran untuk order *{{orderNumber}}*.","Mohon lengkapi data operasional:","","🔗 {{operationalFormLink}}","","{{#if trucking}}","Data dibutuhkan: Driver, No. Plat, jadwal pickup.","{{/if}}","","{{#if freight_sea}}","Data dibutuhkan: Vessel, Voyage, ETA/ETD, BL.","{{/if}}","","{{#if freight_air}}","Data dibutuhkan: Airline, AWB, jadwal penerbangan.","{{/if}}","","{{#if ppjk}}","Data dibutuhkan: No. Aju, BC type, SPPB.","{{/if}}","","Terima kasih atas kerjasamanya 🙏"].join("\n"),

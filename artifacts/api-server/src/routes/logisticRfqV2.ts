@@ -571,6 +571,22 @@ logisticRfqV2Router.get("/vendor-form/:token", async (req: Request, res: Respons
   // Hitung basicPrice dari katalog vendor (harga etalase vendor itu sendiri)
   const basicPrice: number | null = (() => {
     if (vendorCatalog.length === 0) return null;
+
+    // Prioritas 1: cocokkan berdasarkan nama order item (paling spesifik, untuk product orders)
+    if (orderItems.length > 0) {
+      for (const item of orderItems) {
+        const itemName = (item.serviceName || item.category || "").trim();
+        if (!itemName) continue;
+        const n = itemName.toLowerCase();
+        const matched = vendorCatalog.find((c) => {
+          const cn = c.name.toLowerCase();
+          return cn === n || cn.includes(n) || n.includes(cn);
+        });
+        if (matched) return Number(matched.priceBase);
+      }
+    }
+
+    // Prioritas 2: cocokkan berdasarkan serviceType (untuk freight/trucking orders)
     const svcMatch = serviceType
       ? vendorCatalog.find((c) => {
           const cn = c.name.toLowerCase();
@@ -578,7 +594,9 @@ logisticRfqV2Router.get("/vendor-form/:token", async (req: Request, res: Respons
           return cn.includes(st) || st.includes(cn);
         })
       : null;
-    return svcMatch ? Number(svcMatch.priceBase) : Number(vendorCatalog[0].priceBase);
+
+    // Jangan fallback ke item pertama jika tidak ada match — return null (lebih aman)
+    return svcMatch ? Number(svcMatch.priceBase) : null;
   })();
 
   // Helper: cocokkan item order dengan katalog vendor berdasarkan nama
