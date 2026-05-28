@@ -16,16 +16,15 @@ import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLanguage } from "@/i18n/LanguageContext";
 import { translateServiceName, translateCategory } from "@/i18n/serviceData";
+import { GROUPED_DISPLAY_CATEGORIES } from "@workspace/logistics-constants";
 
 const formatIDR = (v: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(v);
 
 const stripJasa = (name: string) => name.replace(/^Jasa\s+/i, "");
 
-const GROUPED_CATEGORIES = ["Trucking", "Container"];
-
 function isGrouped(service: { categories?: string[] }) {
-  return service.categories?.some((c) => GROUPED_CATEGORIES.includes(c));
+  return service.categories?.some((c) => (GROUPED_DISPLAY_CATEGORIES as readonly string[]).includes(c));
 }
 
 type Service = {

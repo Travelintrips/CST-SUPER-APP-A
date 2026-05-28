@@ -23,6 +23,7 @@
     "@types/ws": "^8.18.1",
     "@workspace/api-zod": "workspace:*",
     "@workspace/db": "workspace:*",
+    "@workspace/logistics-constants": "workspace:*",
     "@workspace/product-templates": "workspace:*",
     "bcryptjs": "^3.0.3",
     "compression": "^1.8.1",

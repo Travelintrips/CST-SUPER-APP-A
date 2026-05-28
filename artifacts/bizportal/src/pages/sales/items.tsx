@@ -31,13 +31,7 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Pencil, Trash2, Search, Package, Wrench, RefreshCw, ImageIcon, X, Video, Loader2, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Download } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
-
-const DEFAULT_SUBCATEGORIES = [
-  "Udara", "Laut", "Darat", "Pabean", "Handling",
-  "Trucking", "Container", "Freight Forwarding", "Lainnya",
-];
-
-const UNITS = ["pcs", "kg", "cbm", "container", "shipment", "dokumen", "trip", "ton", "hari"];
+import { LOGISTICS_SUBCATEGORIES as DEFAULT_SUBCATEGORIES, LOGISTICS_UNITS as UNITS } from "@workspace/logistics-constants";
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);

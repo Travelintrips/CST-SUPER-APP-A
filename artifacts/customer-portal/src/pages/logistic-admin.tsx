@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
+import { LOGISTICS_SUBCATEGORIES as SUBCATEGORIES, LOGISTICS_UNITS as UNITS } from "@workspace/logistics-constants";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,12 +42,6 @@ const adminFetch = async (url: string, opts: RequestInit = {}) => {
     },
   });
 };
-
-const SUBCATEGORIES = [
-  "Udara", "Laut", "Darat", "Pabean", "Handling",
-  "Trucking", "Container", "Freight Forwarding", "Lainnya",
-];
-const UNITS = ["pcs", "kg", "cbm", "container", "shipment", "dokumen", "trip", "ton", "hari"];
 
 interface JasaItem {
   id: number;

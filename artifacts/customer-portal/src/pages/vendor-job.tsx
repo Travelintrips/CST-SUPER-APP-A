@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "wouter";
+import { resolveServiceCategory } from "@workspace/logistics-constants";
 
 type ProgressEntry = {
   id: number;
@@ -59,15 +60,6 @@ const PROGRESS_OPTIONS = [
   { value: "Completed", label: "✅ Selesai" },
   { value: "Problem", label: "⚠️ Ada Masalah / Perlu Perhatian" },
 ];
-
-function detectCategory(serviceType: string): "trucking" | "freight" | "product" | "customs" {
-  const t = (serviceType ?? "").toLowerCase();
-  if (t.includes("truck")) return "trucking";
-  if (t.includes("sea") || t.includes("air") || t.includes("freight") || t.includes("udara") || t.includes("laut")) return "freight";
-  if (t.includes("product") || t.includes("barang") || t.includes("produk")) return "product";
-  if (t.includes("custom") || t.includes("ppjk") || t.includes("cukai") || t.includes("dokumen")) return "customs";
-  return "freight";
-}
 
 function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
   if (!value) return null;
@@ -140,7 +132,7 @@ export default function VendorJobPage() {
   const handleAccept = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!data) return;
-    const category = detectCategory(data.serviceType);
+    const category = resolveServiceCategory(data.serviceType);
 
     // Validate required fields by category
     const required: string[] = [];

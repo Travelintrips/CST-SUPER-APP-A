@@ -72,11 +72,7 @@ import { ArrowLeft, Plus, Send, Check, CheckCircle, X, Receipt, Truck, Trash2, F
 import { CorrespondenceTab } from "@/components/CorrespondenceTab";
 import { useCreateSalesPaymentLink } from "@workspace/api-client-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-
-const LOGISTICS_SUBCATEGORIES = [
-  "Udara", "Laut", "Darat", "Pabean", "Handling",
-  "Trucking", "Container", "Freight Forwarding", "Lainnya",
-];
+import { LOGISTICS_SUBCATEGORIES } from "@workspace/logistics-constants";
 
 interface ItemPickerProps {
   products: Product[];

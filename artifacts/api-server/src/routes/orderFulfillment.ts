@@ -21,6 +21,7 @@ import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa } from "../lib/adminWa.js";
 import { getPreferredDomain } from "../lib/domain.js";
 import { logger } from "../lib/logger.js";
+import { resolveServiceCategory } from "@workspace/logistics-constants";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Migration (idempotent)
@@ -72,16 +73,6 @@ const tok = () => randomBytes(24).toString("hex");
 function getBaseUrl(): string {
   const d = getPreferredDomain();
   return d ? `https://${d}` : "";
-}
-
-/** Normalize shipmentType → fulfillment category */
-function resolveCategory(shipmentType: string): "trucking" | "freight" | "product" | "customs" {
-  const t = shipmentType.toLowerCase();
-  if (t.includes("truck") || t.includes("trucking")) return "trucking";
-  if (t.includes("sea") || t.includes("air") || t.includes("freight")) return "freight";
-  if (t.includes("product") || t.includes("barang")) return "product";
-  if (t.includes("custom") || t.includes("ppjk") || t.includes("handling") || t.includes("bea cukai")) return "customs";
-  return "freight"; // fallback
 }
 
 /** Field definitions per category */
@@ -149,7 +140,7 @@ fulfillmentAdminRouter.post("/orders/:orderId/send-fulfillment", async (req: Req
       ? (await db.select().from(suppliersTable).where(eq(suppliersTable.id, order.approvedVendorId)))[0] ?? null
       : null;
 
-    const category = resolveCategory(order.shipmentType);
+    const category = resolveServiceCategory(order.shipmentType);
     const token = tok();
     const expiresAt = expiresInDays
       ? new Date(Date.now() + expiresInDays * 86_400_000)
@@ -262,7 +253,7 @@ fulfillmentPublicRouter.get("/:token", async (req: Request, res: Response) => {
           .from(suppliersTable).where(eq(suppliersTable.id, link.vendorId)))[0] ?? null
       : null;
 
-    const fields = FIELD_DEFS[link.serviceType] ?? FIELD_DEFS["freight"];
+    const fields = FIELD_DEFS[resolveServiceCategory(link.serviceType)];
 
     return res.json({
       token,
@@ -307,7 +298,7 @@ fulfillmentPublicRouter.post("/:token", async (req: Request, res: Response) => {
     if (!order) return res.status(404).json({ error: "Order tidak ditemukan." });
 
     // Validate required fields
-    const fields = FIELD_DEFS[link.serviceType] ?? FIELD_DEFS["freight"];
+    const fields = FIELD_DEFS[resolveServiceCategory(link.serviceType)];
     const missing = fields.filter(f => f.required && !String(body[f.key] ?? "").trim());
     if (missing.length > 0) {
       return res.status(400).json({ error: `Field wajib belum diisi: ${missing.map(f => f.label).join(", ")}` });

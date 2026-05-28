@@ -1,5 +1,6 @@
 import { AppShell } from "@/components/layout/AppShell";
 import { useState, useMemo, useEffect } from "react";
+import { LOGISTICS_SUBCATEGORIES } from "@workspace/logistics-constants";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import {
@@ -149,7 +150,7 @@ function MasterItemTab({ initialSearch = "" }: { initialSearch?: string }) {
     return true;
   }), [products, filterType, filterActive, search]);
 
-  const DEFAULT_SUBCATEGORIES = ["Udara", "Laut", "Darat", "Pabean", "Handling", "Trucking", "Container", "Freight Forwarding", "Lainnya"];
+  const DEFAULT_SUBCATEGORIES = LOGISTICS_SUBCATEGORIES;
 
   const openCreate = () => {
     setEditingItem(null);

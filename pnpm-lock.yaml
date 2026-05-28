@@ -164,6 +164,9 @@ importers:
       '@workspace/db':
         specifier: workspace:*
         version: link:../../lib/db
+      '@workspace/logistics-constants':
+        specifier: workspace:*
+        version: link:../../lib/logistics-constants
       '@workspace/product-templates':
         specifier: workspace:*
         version: link:../../lib/product-templates
@@ -306,6 +309,9 @@ importers:
       '@uppy/react':
         specifier: ^5.2.0
         version: 5.2.0(@uppy/core@5.2.0)(@uppy/dashboard@5.1.1(@uppy/core@5.2.0))(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@workspace/logistics-constants':
+        specifier: workspace:*
+        version: link:../../lib/logistics-constants
       '@workspace/object-storage-web':
         specifier: workspace:*
         version: link:../../lib/object-storage-web
@@ -798,6 +804,9 @@ importers:
       '@workspace/api-client-react':
         specifier: workspace:*
         version: link:../../lib/api-client-react
+      '@workspace/logistics-constants':
+        specifier: workspace:*
+        version: link:../../lib/logistics-constants
       '@workspace/product-templates':
         specifier: workspace:*
         version: link:../../lib/product-templates
@@ -1347,6 +1356,8 @@ importers:
       p-retry:
         specifier: ^7.1.1
         version: 7.1.1
+
+  lib/logistics-constants: {}
 
   lib/object-storage-web:
     dependencies:
