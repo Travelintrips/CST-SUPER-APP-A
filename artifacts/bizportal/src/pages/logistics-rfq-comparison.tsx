@@ -490,7 +490,20 @@ export default function LogisticsRfqComparisonPage() {
               </div>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-1 text-xs text-green-900">
-              <span><span className="text-green-600">Harga Disetujui:</span> <strong>{idr(data.quotedPrice)}</strong></span>
+              <span>
+                <span className="text-green-600">Harga Disetujui:</span>{" "}
+                <strong>{idr(data.quotedPrice)}</strong>
+                {data.quotedPrice != null && (() => {
+                  const rate = 11;
+                  const sub = Math.round(data.quotedPrice! * 100 / (100 + rate));
+                  const tax = data.quotedPrice! - sub;
+                  return (
+                    <span className="ml-1 text-[10px] text-green-700 font-normal">
+                      (sub {idr(sub)} + PPN {idr(tax)})
+                    </span>
+                  );
+                })()}
+              </span>
               <span><span className="text-green-600">Customer:</span> {data.customerName}</span>
               {data.customerRespondedAt && <span><span className="text-green-600">Disetujui:</span> {new Date(data.customerRespondedAt).toLocaleString("id-ID")}</span>}
               {data.customerResponseNotes && <span className="col-span-2"><span className="text-green-600">Catatan Customer:</span> {data.customerResponseNotes}</span>}
