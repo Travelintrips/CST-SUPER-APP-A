@@ -13,7 +13,8 @@ type NotifType =
   | "logistic" | "logistic_status" | "portal_sales" | "sales_update"
   | "freight_new" | "freight_status" | "freight_stage"
   | "ecommerce" | "product"
-  | "sales_new" | "purchase_rfq" | "purchase_po" | "vendor_quote";
+  | "sales_new" | "purchase_rfq" | "purchase_po" | "vendor_quote"
+  | "vendor_po_accepted";
 
 interface DbNotification {
   id: number;
@@ -38,9 +39,10 @@ const TYPE_LABELS: Record<string, string> = {
   freight_stage:   "Stage Freight",
   ecommerce:       "E-commerce",
   product:         "Order Produk",
-  purchase_rfq:    "RFQ Pembelian",
-  purchase_po:     "Purchase Order",
-  vendor_quote:    "Penawaran Vendor",
+  purchase_rfq:      "RFQ Pembelian",
+  purchase_po:       "Purchase Order",
+  vendor_quote:      "Penawaran Vendor",
+  vendor_po_accepted:"Vendor Konfirmasi PO",
 };
 
 const TYPE_COLORS: Record<string, string> = {
@@ -54,9 +56,10 @@ const TYPE_COLORS: Record<string, string> = {
   freight_stage:   "bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300",
   ecommerce:       "bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300",
   product:         "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
-  purchase_rfq:    "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
-  purchase_po:     "bg-lime-100 text-lime-700 dark:bg-lime-900/40 dark:text-lime-300",
-  vendor_quote:    "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300",
+  purchase_rfq:       "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+  purchase_po:        "bg-lime-100 text-lime-700 dark:bg-lime-900/40 dark:text-lime-300",
+  vendor_quote:       "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300",
+  vendor_po_accepted: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
 };
 
 const TYPE_HREFS: Record<string, (orderId: number | null) => string> = {
@@ -70,9 +73,10 @@ const TYPE_HREFS: Record<string, (orderId: number | null) => string> = {
   freight_stage:   (id) => id ? `/bizportal/logistics/freight/${id}` : "/bizportal/logistics/freight",
   ecommerce:       () => "/bizportal/ecommerce",
   product:         () => "/bizportal/portal-product-orders",
-  purchase_rfq:    (id) => id ? `/bizportal/purchase/documents/${id}` : "/bizportal/purchase/documents",
-  purchase_po:     (id) => id ? `/bizportal/purchase/documents/${id}` : "/bizportal/purchase/documents",
-  vendor_quote:    (id) => id ? `/bizportal/logistics/portal-orders/${id}` : "/bizportal/logistics/portal-orders",
+  purchase_rfq:       (id) => id ? `/bizportal/purchase/documents/${id}` : "/bizportal/purchase/documents",
+  purchase_po:        (id) => id ? `/bizportal/purchase/documents/${id}` : "/bizportal/purchase/documents",
+  vendor_quote:       (id) => id ? `/bizportal/logistics/portal-orders/${id}` : "/bizportal/logistics/portal-orders",
+  vendor_po_accepted: (id) => id ? `/bizportal/purchase/orders/${id}` : "/bizportal/purchase/orders",
 };
 
 function TypeIcon({ type }: { type: string }) {
@@ -86,9 +90,10 @@ function TypeIcon({ type }: { type: string }) {
   if (type === "freight_status")  return <RefreshCw size={15} className={`${cls} text-violet-500`} />;
   if (type === "freight_stage")   return <Layers size={15} className={`${cls} text-teal-500`} />;
   if (type === "ecommerce")       return <ShoppingCart size={15} className={`${cls} text-pink-500`} />;
-  if (type === "purchase_rfq")    return <ShoppingCart size={15} className={`${cls} text-amber-500`} />;
-  if (type === "purchase_po")     return <ShoppingCart size={15} className={`${cls} text-lime-600`} />;
-  if (type === "vendor_quote")    return <MessageSquare size={15} className={`${cls} text-sky-500`} />;
+  if (type === "purchase_rfq")      return <ShoppingCart size={15} className={`${cls} text-amber-500`} />;
+  if (type === "purchase_po")       return <ShoppingCart size={15} className={`${cls} text-lime-600`} />;
+  if (type === "vendor_quote")      return <MessageSquare size={15} className={`${cls} text-sky-500`} />;
+  if (type === "vendor_po_accepted") return <CheckCheck size={15} className={`${cls} text-green-600`} />;
   return <Package size={15} className={`${cls} text-green-500`} />;
 }
 

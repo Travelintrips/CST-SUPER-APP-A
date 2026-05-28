@@ -53,6 +53,7 @@ const NOTIF_TITLES: Record<string, string> = {
   purchase_rfq: "📥 RFQ Pembelian Baru",
   purchase_po: "✅ Purchase Order Dikonfirmasi",
   vendor_quote: "💬 Penawaran Vendor Masuk",
+  vendor_po_accepted: "✅ Vendor Konfirmasi PO",
 };
 
 function showBrowserNotification(notification: OrderNotification) {
@@ -101,7 +102,8 @@ export interface OrderNotification {
   type: "logistic" | "portal_sales" | "product" | "sales_update" | "logistic_status"
       | "freight_new" | "freight_status" | "freight_stage"
       | "sport_booking" | "ecommerce"
-      | "sales_new" | "purchase_rfq" | "purchase_po" | "vendor_quote";
+      | "sales_new" | "purchase_rfq" | "purchase_po" | "vendor_quote"
+      | "vendor_po_accepted";
   orderId: number;
   orderNumber: string;
   customerName: string;
@@ -600,6 +602,26 @@ export function useOrderNotifications() {
             id: generateId(),
             dbId: data.dbId ?? null,
             type: "purchase_po",
+            orderId: data.orderId,
+            orderNumber: data.orderNumber,
+            customerName: data.customerName,
+            companyName: null,
+            grandTotal: data.grandTotal,
+            createdAt: data.createdAt ?? new Date().toISOString(),
+            readAt: null,
+          });
+          queryClient.invalidateQueries({ queryKey: getListPurchaseDocumentsQueryKey() });
+        } catch { }
+      });
+
+      es.addEventListener("vendor_po_accepted", (e: MessageEvent) => {
+        if (!mounted) return;
+        try {
+          const data = JSON.parse(e.data);
+          pushNotification({
+            id: generateId(),
+            dbId: data.dbId ?? null,
+            type: "vendor_po_accepted",
             orderId: data.orderId,
             orderNumber: data.orderNumber,
             customerName: data.customerName,

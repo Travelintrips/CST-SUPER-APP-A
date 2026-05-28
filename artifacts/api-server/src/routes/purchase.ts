@@ -89,8 +89,21 @@ purchasePublicRouter.post("/vendor-accept/:token", async (req, res) => {
     WHERE id = ${doc.id}
   `);
 
-  // Notify admin group via WhatsApp
+  // In-app notification to admin
   const acceptedAt = new Date().toISOString();
+  const totalNum = Number(doc.grand_total ?? doc.total_amount ?? 0);
+  saveAndBroadcast("vendor_po_accepted", {
+    type: "vendor_po_accepted",
+    orderId: doc.id,
+    orderNumber: doc.doc_number ?? "-",
+    customerName: doc.supplier_name ?? "-",
+    companyName: null,
+    grandTotal: totalNum,
+    vendorNotes: notes?.trim() ?? null,
+    acceptedAt,
+  }).catch(() => undefined);
+
+  // Notify admin group via WhatsApp
   const total = Number(doc.grand_total ?? doc.total_amount ?? 0);
   const msgLines = [
     `✅ *Vendor Konfirmasi Purchase Order*`,

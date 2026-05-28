@@ -23,6 +23,7 @@ function typeLabel(type: OrderNotification["type"]) {
   if (type === "purchase_rfq") return "RFQ Pembelian Baru";
   if (type === "purchase_po") return "Purchase Order Dikonfirmasi";
   if (type === "vendor_quote") return "Penawaran Vendor Masuk";
+  if (type === "vendor_po_accepted") return "Vendor Konfirmasi PO";
   return "Order Produk";
 }
 
@@ -38,6 +39,7 @@ function typeIcon(type: OrderNotification["type"]) {
   if (type === "purchase_rfq") return <ShoppingCart size={14} className="text-amber-500 shrink-0" />;
   if (type === "purchase_po") return <ShoppingCart size={14} className="text-green-600 shrink-0" />;
   if (type === "vendor_quote") return <MessageSquare size={14} className="text-sky-500 shrink-0" />;
+  if (type === "vendor_po_accepted") return <CheckCheck size={14} className="text-green-600 shrink-0" />;
   return <Package size={14} className="text-green-500 shrink-0" />;
 }
 
@@ -48,6 +50,7 @@ function orderHref(n: OrderNotification) {
   if (n.type === "freight_new" || n.type === "freight_status" || n.type === "freight_stage") return `/logistics/freight/${n.orderId}`;
   if (n.type === "purchase_rfq" || n.type === "purchase_po") return `/purchase/documents/${n.orderId}`;
   if (n.type === "vendor_quote") return `/logistics/portal-orders/${n.orderId}`;
+  if (n.type === "vendor_po_accepted") return `/purchase/orders/${n.orderId}`;
   return `/portal-product-orders`;
 }
 
@@ -105,6 +108,10 @@ function notifDescription(n: OrderNotification): string {
     const pos = n.quotePosition ? ` · Vendor ke-${n.quotePosition}` : "";
     const price = n.vendorPrice != null ? ` · ${formatRupiah(n.vendorPrice)}` : "";
     return `${n.rfqNumber ?? ""}${pos}${price}`;
+  }
+  if (n.type === "vendor_po_accepted") {
+    const total = n.grandTotal != null ? ` · ${formatRupiah(n.grandTotal)}` : "";
+    return `PO dikonfirmasi vendor${total}`;
   }
   return `${n.itemCount ?? 1} item · ${formatRupiah(n.grandTotal ?? 0)}`;
 }
