@@ -23,6 +23,8 @@ import { requireClerkUser, requireRole } from "../lib/requireAdmin.js";
 import { resolveCompanyId } from "../lib/resolveCompany.js";
 import { requirePortalAdmin } from "../lib/supabaseAuth.js";
 import { sendLogisticOrderNotification } from "../lib/orderNotification";
+import { generateShortLink } from "../lib/shortLink.js";
+import { getPreferredDomain } from "../lib/domain.js";
 import { logActivity } from "../lib/activityLog.js";
 // [FLOW BARU] autoCreateRfqAndNotifyVendors dinonaktifkan — vendor tidak boleh dihubungi langsung saat order dibuat.
 // Admin harus review dulu via /bizportal/logistics/rfq sebelum blast ke vendor.
@@ -238,6 +240,19 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
       publicRfqToken: randomBytes(16).toString("hex"),
     })
     .returning();
+
+  // Auto-generate tracking token saat order dibuat agar customer langsung bisa akses tracking
+  const trackingToken = randomBytes(24).toString("hex");
+  await db.execute(sql`UPDATE logistic_orders SET tracking_token = ${trackingToken} WHERE id = ${order.id}`);
+  const domain = getPreferredDomain();
+  const trackUrl = domain
+    ? `https://${domain}/order-track/${trackingToken}`
+    : `/order-track/${trackingToken}`;
+  generateShortLink(trackUrl, {
+    context: "order_tracking",
+    refType: "order",
+    refId: orderNumber,
+  }).catch((err: unknown) => req.log.warn({ err }, "shortLink: tracking link generation failed"));
 
   const itemValues = body.items.map((item) => ({
     orderId: order.id,
