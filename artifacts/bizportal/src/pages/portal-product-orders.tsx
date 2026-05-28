@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { CATEGORY_LABELS } from "@workspace/product-templates";
 import {
   useListPortalProductOrders,
@@ -28,9 +28,10 @@ import {
   Search, RefreshCw, Package, Trash2, CheckCircle2, Circle,
   Clock, Truck, XCircle, ChevronRight, AlertTriangle, User,
   Mail, Phone, MapPin, StickyNote, Loader2, Tag, FileText,
-  ClipboardList, Wrench,
+  ClipboardList, Wrench, ChevronDown, Eye,
 } from "lucide-react";
 import { getTemplate } from "@/lib/productTemplates";
+import type { ProductTemplate } from "@/lib/productTemplates";
 
 /* ─────────────────────────────────────────────── constants ─── */
 
@@ -182,7 +183,19 @@ function TemplateDataPanel({ order }: { order: PortalProductOrder & {
   packagingNotes?: string | null;
 }}) {
   const category = order.productCategory ?? "general";
-  const template = getTemplate(category);
+  const [resolvedTemplate, setResolvedTemplate] = useState<ProductTemplate | null>(null);
+  const [showDefinition, setShowDefinition] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    fetch(`/api/product-templates/${category}`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => { if (active && data) setResolvedTemplate(data as ProductTemplate); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [category]);
+
+  const template: ProductTemplate = resolvedTemplate ?? getTemplate(category);
   const customFields = order.customFieldValues ?? {};
   const docs = order.uploadedDocuments ?? [];
   const checklist = order.checklistStatus ?? {};
@@ -197,11 +210,20 @@ function TemplateDataPanel({ order }: { order: PortalProductOrder & {
 
   const checklistDone = template.checklist.filter((c) => checklist[c.key]).length;
 
+  const knownFieldKeys = new Set(template.customFields.map((f) => f.key));
+  const unknownEntries = Object.entries(customFields).filter(([k]) => !knownFieldKeys.has(k));
+
+  const versionMismatch =
+    order.templateVersion &&
+    resolvedTemplate &&
+    order.templateVersion !== resolvedTemplate.version;
+
   return (
     <div className="space-y-4">
       <Separator />
       <div>
-        <div className="flex items-center gap-2 mb-4">
+        {/* Header row */}
+        <div className="flex items-center gap-2 mb-4 flex-wrap">
           <Tag className="w-3.5 h-3.5 text-primary" />
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
             Data Template Komoditas
@@ -210,12 +232,31 @@ function TemplateDataPanel({ order }: { order: PortalProductOrder & {
             {catLabel}
           </Badge>
           {order.templateVersion && (
-            <span className="text-[10px] text-muted-foreground">v{order.templateVersion}</span>
+            <span className="text-[10px] text-muted-foreground">
+              Dikirim: v{order.templateVersion}
+            </span>
+          )}
+          {resolvedTemplate && (
+            <span className="text-[10px] text-muted-foreground">
+              · Aktif: v{resolvedTemplate.version}
+            </span>
+          )}
+          {versionMismatch && (
+            <Badge variant="outline" className="text-[10px] h-4 border-amber-400 text-amber-700 bg-amber-50 gap-1">
+              <AlertTriangle className="w-2.5 h-2.5" />
+              Versi berbeda
+            </Badge>
+          )}
+          {unknownEntries.length > 0 && (
+            <Badge variant="outline" className="text-[10px] h-4 border-orange-400 text-orange-700 bg-orange-50 gap-1">
+              <AlertTriangle className="w-2.5 h-2.5" />
+              {unknownEntries.length} field di luar template
+            </Badge>
           )}
         </div>
 
         <div className="space-y-4">
-          {/* Custom Fields */}
+          {/* Custom Fields — template fields + unknown extras */}
           {Object.keys(customFields).length > 0 && (
             <div className="border rounded-lg p-3">
               <div className="flex items-center gap-1.5 mb-3">
@@ -223,6 +264,7 @@ function TemplateDataPanel({ order }: { order: PortalProductOrder & {
                 <p className="text-xs font-semibold">Field Khusus</p>
               </div>
               <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                {/* Known template fields with submitted values */}
                 {template.customFields
                   .filter((f) => customFields[f.key] !== undefined && customFields[f.key] !== "" && customFields[f.key] !== 0)
                   .map((f) => (
@@ -234,15 +276,19 @@ function TemplateDataPanel({ order }: { order: PortalProductOrder & {
                       </p>
                     </div>
                   ))}
-                {/* Show fields not in template (fallback) */}
-                {Object.entries(customFields)
-                  .filter(([key]) => !template.customFields.find((f) => f.key === key))
-                  .map(([key, val]) => (
-                    <div key={key}>
-                      <p className="text-[10px] text-muted-foreground">{key}</p>
-                      <p className="text-xs font-medium">{String(val)}</p>
+                {/* Unknown fields — submitted but not in current template */}
+                {unknownEntries.map(([key, val]) => (
+                  <div key={key} className="col-span-2 rounded bg-amber-50 border border-amber-200 px-2 py-1.5">
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0" />
+                      <p className="text-[10px] text-amber-700 font-medium">
+                        {key}
+                        <span className="ml-1.5 font-normal text-amber-500">(di luar template saat ini)</span>
+                      </p>
                     </div>
-                  ))}
+                    <p className="text-xs font-medium text-amber-900 pl-4.5">{String(val)}</p>
+                  </div>
+                ))}
               </div>
             </div>
           )}
@@ -306,6 +352,108 @@ function TemplateDataPanel({ order }: { order: PortalProductOrder & {
               <p className="text-xs text-muted-foreground">{order.packagingNotes}</p>
             </div>
           )}
+
+          {/* ── Collapsible: Definisi Template Saat Ini ── */}
+          <div className="border rounded-lg overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setShowDefinition((v) => !v)}
+              className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-muted/50 transition-colors"
+            >
+              <div className="flex items-center gap-1.5">
+                <Eye className="w-3 h-3 text-primary" />
+                <p className="text-xs font-semibold">Definisi Template Saat Ini</p>
+                {resolvedTemplate ? (
+                  <Badge variant="outline" className="text-[10px] h-4 border-green-300 text-green-700 bg-green-50">
+                    DB resolved
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="text-[10px] h-4">
+                    in-code
+                  </Badge>
+                )}
+              </div>
+              {showDefinition
+                ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+                : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
+            </button>
+
+            {showDefinition && (
+              <div className="border-t px-3 py-3 space-y-4 bg-muted/20">
+                {/* Custom Field Definitions */}
+                {template.customFields.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                      Field ({template.customFields.length})
+                    </p>
+                    <div className="space-y-1">
+                      {template.customFields.map((f) => {
+                        const submitted = customFields[f.key];
+                        const hasValue = submitted !== undefined && submitted !== "" && submitted !== 0;
+                        return (
+                          <div key={f.key} className="flex items-center gap-2 text-xs">
+                            {hasValue
+                              ? <CheckCircle2 className="w-3 h-3 text-green-500 shrink-0" />
+                              : <Circle className="w-3 h-3 text-muted-foreground/30 shrink-0" />}
+                            <span className={hasValue ? "font-medium" : "text-muted-foreground"}>
+                              {f.label}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground/60 font-mono">{f.type}</span>
+                            {f.required && (
+                              <Badge variant="outline" className="text-[10px] h-3.5 px-1 py-0 border-red-200 text-red-600">
+                                wajib
+                              </Badge>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Required Docs Definition */}
+                {template.requiredDocuments.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                      Dokumen yang Diminta ({template.requiredDocuments.length})
+                    </p>
+                    <div className="space-y-1">
+                      {template.requiredDocuments.map((d) => {
+                        const submitted = docs.find((ud) => ud.key === d.key);
+                        return (
+                          <div key={d.key} className="flex items-center gap-2 text-xs">
+                            {submitted
+                              ? <CheckCircle2 className="w-3 h-3 text-green-500 shrink-0" />
+                              : <Circle className="w-3 h-3 text-muted-foreground/30 shrink-0" />}
+                            <span className={submitted ? "font-medium" : "text-muted-foreground"}>
+                              {d.label}
+                            </span>
+                            {d.required && (
+                              <Badge variant="outline" className="text-[10px] h-3.5 px-1 py-0 border-red-200 text-red-600">
+                                wajib
+                              </Badge>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Packaging Instructions */}
+                {template.packagingInstructions && (
+                  <div>
+                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+                      Instruksi Packaging
+                    </p>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      {template.packagingInstructions}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
