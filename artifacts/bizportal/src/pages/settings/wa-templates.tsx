@@ -190,7 +190,7 @@ export default function WaTemplatesPage() {
         body: JSON.stringify({ recipient: effectiveRecipient, workflow, body: bodyToSave }),
       });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ message: await res.text() }));
+        const err = await res.json().catch(async () => ({ message: await res.text() }));
         throw new Error((err as { message?: string }).message ?? "Gagal menyimpan");
       }
       setSavedKeys(prev => new Set([...prev, cfgKey(effectiveRecipient, workflow)]));
