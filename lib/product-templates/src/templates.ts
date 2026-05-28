@@ -1,63 +1,10 @@
-import { Router, Request, Response } from "express";
-import { db } from "@workspace/db";
-import { productTemplatesTable } from "@workspace/db";
-import { eq, asc, sql } from "drizzle-orm";
-import { requireAdmin } from "../lib/requireAdmin.js";
-import { logger } from "../lib/logger.js";
-import {
-  resolveAllTemplates,
-  resolveTemplate,
-  type ProductTemplateOverride,
-} from "@workspace/product-templates";
+import type { ProductTemplate } from "./types.js";
 
-/**
- * Map a raw DB row from product_templates → ProductTemplateOverride shape
- * expected by the shared resolver.
- */
-function dbRowToOverride(row: typeof productTemplatesTable.$inferSelect): ProductTemplateOverride {
-  return {
-    categoryKey: row.categoryKey,
-    label: row.label,
-    version: row.version,
-    isActive: row.isActive,
-    requiredDocuments: row.requiredDocuments as ProductTemplateOverride["requiredDocuments"],
-    checklist: row.checklist as ProductTemplateOverride["checklist"],
-    customFields: row.customFields as ProductTemplateOverride["customFields"],
-    packagingInstructions: row.packagingInstructions ?? null,
-    conditionalRules: row.conditionalRules as ProductTemplateOverride["conditionalRules"],
-    validationRules: row.validationRules as ProductTemplateOverride["validationRules"],
-  };
-}
-
-export const productTemplatesRouter = Router();
-
-// Inline table creation — ensures table exists before any query
-db.execute(sql`
-  CREATE TABLE IF NOT EXISTS product_templates (
-    id SERIAL PRIMARY KEY,
-    category_key TEXT NOT NULL UNIQUE,
-    label TEXT NOT NULL,
-    version TEXT NOT NULL DEFAULT '1.0.0',
-    is_active BOOLEAN NOT NULL DEFAULT true,
-    required_documents JSONB NOT NULL DEFAULT '[]',
-    checklist JSONB NOT NULL DEFAULT '[]',
-    custom_fields JSONB NOT NULL DEFAULT '[]',
-    packaging_instructions TEXT DEFAULT '',
-    conditional_rules JSONB NOT NULL DEFAULT '[]',
-    validation_rules JSONB NOT NULL DEFAULT '[]',
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
-  )
-`).catch((err) => {
-  logger.warn("product_templates table creation failed (non-fatal)", { err: String(err) });
-});
-
-// ─────────────────────────────────────────────
-// HARDCODED SEED DATA — 18 kategori default
-// ─────────────────────────────────────────────
-const SEED_TEMPLATES = [
-  {
-    categoryKey: "coal", label: "Batubara", version: "1.0.0",
+const templates: Record<string, ProductTemplate> = {
+  coal: {
+    category: "coal",
+    label: "Batubara",
+    version: "1.0.0",
     requiredDocuments: [
       { key: "coa", label: "Certificate of Analysis (COA)", required: true },
       { key: "seal_cert", label: "Seal Certificate", required: true },
@@ -88,8 +35,11 @@ const SEED_TEMPLATES = [
       { fieldKey: "quantity_mt", message: "Kuantitas wajib diisi" },
     ],
   },
-  {
-    categoryKey: "iron_steel", label: "Besi & Baja", version: "1.0.0",
+
+  iron_steel: {
+    category: "iron_steel",
+    label: "Besi & Baja",
+    version: "1.0.0",
     requiredDocuments: [
       { key: "mtc", label: "Mill Test Certificate (MTC)", required: true },
       { key: "packing_list", label: "Packing List", required: true },
@@ -118,8 +68,11 @@ const SEED_TEMPLATES = [
       { fieldKey: "weight_kg", message: "Berat total wajib diisi" },
     ],
   },
-  {
-    categoryKey: "coffee", label: "Kopi", version: "1.0.0",
+
+  coffee: {
+    category: "coffee",
+    label: "Kopi",
+    version: "1.0.0",
     requiredDocuments: [
       { key: "phyto", label: "Phytosanitary Certificate", required: true },
       { key: "fumigation", label: "Fumigation Certificate", required: true },
@@ -149,8 +102,11 @@ const SEED_TEMPLATES = [
       { fieldKey: "quantity_kg", message: "Kuantitas wajib diisi" },
     ],
   },
-  {
-    categoryKey: "electronics", label: "Elektronik", version: "1.0.0",
+
+  electronics: {
+    category: "electronics",
+    label: "Elektronik",
+    version: "1.0.0",
     requiredDocuments: [
       { key: "warranty_doc", label: "Dokumen Garansi", required: false },
       { key: "msds", label: "MSDS (jika mengandung baterai)", required: false },
@@ -172,7 +128,9 @@ const SEED_TEMPLATES = [
       { key: "battery_wh", label: "Kapasitas Baterai (Wh)", type: "number", required: false, placeholder: "50", unit: "Wh" },
       { key: "quantity_pcs", label: "Jumlah (pcs)", type: "number", required: true, placeholder: "10" },
     ],
-    conditionalRules: [{ fieldKey: "has_battery", condition: { value: "Ya" }, show: ["battery_wh"] }],
+    conditionalRules: [
+      { fieldKey: "has_battery", condition: { value: "Ya" }, show: ["battery_wh"] },
+    ],
     validationRules: [
       { fieldKey: "brand", message: "Merek wajib diisi" },
       { fieldKey: "model", message: "Model wajib diisi" },
@@ -180,8 +138,11 @@ const SEED_TEMPLATES = [
       { fieldKey: "quantity_pcs", message: "Jumlah wajib diisi" },
     ],
   },
-  {
-    categoryKey: "palm_oil", label: "Minyak Sawit (CPO/PKO)", version: "1.0.0",
+
+  palm_oil: {
+    category: "palm_oil",
+    label: "Minyak Sawit (CPO/PKO)",
+    version: "1.0.0",
     requiredDocuments: [
       { key: "coa", label: "Certificate of Analysis (COA)", required: true },
       { key: "msds", label: "Material Safety Data Sheet (MSDS)", required: true },
@@ -195,7 +156,7 @@ const SEED_TEMPLATES = [
       { key: "tank_clean", label: "Tangki/ISO tank bersih & bebas kontaminan" },
       { key: "docs_complete", label: "Dokumen lengkap" },
     ],
-    packagingInstructions: "Angkut menggunakan ISO tank atau tangker khusus minyak nabati yang bersih. Jaga suhu 50–55°C untuk CPO agar tidak membeku.",
+    packagingInstructions: "Angkut menggunakan ISO tank atau tangker khusus minyak nabati yang bersih. Jaga suhu 50–55°C untuk CPO agar tidak membeku. Pastikan tidak ada residu produk lain.",
     customFields: [
       { key: "product_type", label: "Jenis Produk", type: "select", required: true, options: ["CPO (Crude Palm Oil)", "RBD Palm Oil", "Palm Kernel Oil (PKO)", "Palm Olein", "Palm Stearin"] },
       { key: "ffa", label: "Free Fatty Acid / FFA (%)", type: "number", required: true, placeholder: "3.5" },
@@ -211,8 +172,11 @@ const SEED_TEMPLATES = [
       { fieldKey: "quantity_mt", message: "Kuantitas wajib diisi" },
     ],
   },
-  {
-    categoryKey: "nickel", label: "Nikel (Ore / NPI / FeNi)", version: "1.0.0",
+
+  nickel: {
+    category: "nickel",
+    label: "Nikel (Ore / NPI / FeNi)",
+    version: "1.0.0",
     requiredDocuments: [
       { key: "coa", label: "Certificate of Analysis (COA)", required: true },
       { key: "survey_report", label: "Laporan Survei Independent", required: true },
@@ -241,8 +205,11 @@ const SEED_TEMPLATES = [
       { fieldKey: "mine_origin", message: "Asal tambang wajib diisi" },
     ],
   },
-  {
-    categoryKey: "copper", label: "Tembaga", version: "1.0.0",
+
+  copper: {
+    category: "copper",
+    label: "Tembaga",
+    version: "1.0.0",
     requiredDocuments: [
       { key: "coa", label: "Certificate of Analysis (COA)", required: true },
       { key: "packing_list", label: "Packing List", required: true },
@@ -270,8 +237,11 @@ const SEED_TEMPLATES = [
       { fieldKey: "weight_kg", message: "Berat total wajib diisi" },
     ],
   },
-  {
-    categoryKey: "rice", label: "Beras", version: "1.0.0",
+
+  rice: {
+    category: "rice",
+    label: "Beras",
+    version: "1.0.0",
     requiredDocuments: [
       { key: "phyto", label: "Phytosanitary Certificate", required: true },
       { key: "quarantine", label: "Sertifikat Karantina Beras", required: true },
@@ -284,7 +254,7 @@ const SEED_TEMPLATES = [
       { key: "bag_weight_verified", label: "Berat per karung terverifikasi" },
       { key: "docs_complete", label: "Dokumen lengkap" },
     ],
-    packagingInstructions: "Kemas dalam karung polipropilen 25 kg atau 50 kg yang bersih. Jahit rapat. Simpan di gudang kering di atas pallet, jauhkan dari dinding.",
+    packagingInstructions: "Kemas dalam karung polipropilen 25 kg atau 50 kg yang bersih. Jahit rapat. Simpan di gudang kering di atas pallet, jauhkan dari dinding. Lakukan fumigasi sebelum pengiriman jarak jauh.",
     customFields: [
       { key: "rice_type", label: "Jenis Beras", type: "select", required: true, options: ["Beras Putih IR64", "Beras Putih Premium", "Beras Merah", "Beras Ketan", "Beras Organik", "Broken Rice"] },
       { key: "grade", label: "Grade / Kualitas", type: "select", required: true, options: ["Premium (0–5% broken)", "Medium (5–15% broken)", "Low (>15% broken)"] },
@@ -300,12 +270,16 @@ const SEED_TEMPLATES = [
       { fieldKey: "quantity_kg", message: "Kuantitas wajib diisi" },
     ],
   },
-  {
-    categoryKey: "sugar", label: "Gula", version: "1.0.0",
+
+  sugar: {
+    category: "sugar",
+    label: "Gula",
+    version: "1.0.0",
     requiredDocuments: [
       { key: "coa", label: "Certificate of Analysis (COA)", required: true },
       { key: "phyto", label: "Phytosanitary Certificate", required: false },
       { key: "halal_cert", label: "Sertifikat Halal", required: false },
+      { key: "bpom", label: "Sertifikat BPOM / SNI", required: false },
     ],
     checklist: [
       { key: "icumsa_verified", label: "Nilai ICUMSA terverifikasi" },
@@ -314,7 +288,7 @@ const SEED_TEMPLATES = [
       { key: "storage_dry", label: "Disimpan di gudang kering & bebas bau" },
       { key: "docs_complete", label: "Dokumen lengkap" },
     ],
-    packagingInstructions: "Kemas dalam karung polipropilen 50 kg yang dijahit rapat dengan inner liner plastik. Simpan di gudang kering, suhu ruangan, di atas pallet.",
+    packagingInstructions: "Kemas dalam karung polipropilen 50 kg yang dijahit rapat dengan inner liner plastik. Simpan di gudang kering, suhu ruangan, di atas pallet. Jauhkan dari bahan berbau tajam.",
     customFields: [
       { key: "sugar_type", label: "Jenis Gula", type: "select", required: true, options: ["Raw Sugar", "Refined White Sugar (ICUMSA 45)", "Plantation White Sugar", "Brown Sugar", "Gula Merah / Jawa"] },
       { key: "icumsa", label: "Nilai ICUMSA", type: "number", required: true, placeholder: "45" },
@@ -330,8 +304,11 @@ const SEED_TEMPLATES = [
       { fieldKey: "quantity_mt", message: "Kuantitas wajib diisi" },
     ],
   },
-  {
-    categoryKey: "textile", label: "Tekstil & Garmen", version: "1.0.0",
+
+  textile: {
+    category: "textile",
+    label: "Tekstil & Garmen",
+    version: "1.0.0",
     requiredDocuments: [
       { key: "packing_list", label: "Packing List", required: true },
       { key: "invoice", label: "Commercial Invoice", required: true },
@@ -344,7 +321,7 @@ const SEED_TEMPLATES = [
       { key: "packaging_ok", label: "Kemasan bebas kelembaban & noda" },
       { key: "docs_complete", label: "Dokumen lengkap" },
     ],
-    packagingInstructions: "Garmen: masukkan dalam polybag per piece, pak dalam kardus, lapis karton. Kain roll: wrap dengan plastik LDPE lalu bungkus dengan karton.",
+    packagingInstructions: "Garmen: masukkan dalam polybag per piece, pak dalam kardus, lapis karton. Kain roll: wrap dengan plastik LDPE lalu bungkus dengan karton. Simpan di tempat kering dan hindari sinar UV langsung.",
     customFields: [
       { key: "product_type", label: "Jenis Produk", type: "select", required: true, options: ["Kain Tenun (Woven)", "Kain Rajut (Knitted)", "Garmen Jadi", "Benang (Yarn)", "Non-woven Fabric"] },
       { key: "fiber_content", label: "Komposisi Serat", type: "text", required: true, placeholder: "100% Cotton / 60% Polyester 40% Cotton" },
@@ -361,8 +338,11 @@ const SEED_TEMPLATES = [
       { fieldKey: "quantity_unit", message: "Satuan wajib dipilih" },
     ],
   },
-  {
-    categoryKey: "machinery", label: "Mesin & Peralatan", version: "1.0.0",
+
+  machinery: {
+    category: "machinery",
+    label: "Mesin & Peralatan",
+    version: "1.0.0",
     requiredDocuments: [
       { key: "packing_list", label: "Packing List", required: true },
       { key: "invoice", label: "Commercial Invoice", required: true },
@@ -395,8 +375,11 @@ const SEED_TEMPLATES = [
       { fieldKey: "weight_kg", message: "Berat mesin wajib diisi" },
     ],
   },
-  {
-    categoryKey: "chemical", label: "Bahan Kimia", version: "1.0.0",
+
+  chemical: {
+    category: "chemical",
+    label: "Bahan Kimia",
+    version: "1.0.0",
     requiredDocuments: [
       { key: "msds", label: "Material Safety Data Sheet (MSDS / SDS)", required: true },
       { key: "coa", label: "Certificate of Analysis (COA)", required: true },
@@ -410,12 +393,12 @@ const SEED_TEMPLATES = [
       { key: "segregation_checked", label: "Pemisahan dari bahan inkompatibel" },
       { key: "docs_complete", label: "Dokumen keselamatan lengkap" },
     ],
-    packagingInstructions: "Gunakan kemasan sesuai standar UN Packaging. Tempel label GHS & UN Number. Pisahkan dari bahan inkompatibel.",
+    packagingInstructions: "Gunakan kemasan sesuai standar UN Packaging (drum, IBC, atau jeriken). Tempel label GHS & UN Number. Simpan sesuai kelas bahaya; pisahkan dari bahan inkompatibel (misal asam dari basa).",
     customFields: [
       { key: "chemical_name", label: "Nama Bahan Kimia", type: "text", required: true, placeholder: "Sodium Hydroxide / Sulfuric Acid" },
       { key: "cas_number", label: "CAS Number", type: "text", required: false, placeholder: "1310-73-2" },
       { key: "un_number", label: "UN Number", type: "text", required: false, placeholder: "UN1823" },
-      { key: "hazard_class", label: "Kelas Bahaya IMDG/IATA", type: "select", required: false, options: ["Class 2 - Gas", "Class 3 - Flammable Liquid", "Class 4 - Flammable Solid", "Class 5 - Oxidizer", "Class 6 - Toxic", "Class 8 - Corrosive", "Class 9 - Misc", "Non-Hazardous"] },
+      { key: "hazard_class", label: "Kelas Bahaya IMDG/IATA", type: "select", required: false, options: ["Class 2 - Gas", "Class 3 - Flammable Liquid", "Class 4 - Flammable Solid", "Class 5 - Oxidizer", "Class 6 - Toxic", "Class 7 - Radioactive", "Class 8 - Corrosive", "Class 9 - Misc", "Non-Hazardous"] },
       { key: "purity", label: "Kemurnian / Konsentrasi (%)", type: "number", required: false, placeholder: "98" },
       { key: "quantity_kg", label: "Kuantitas (kg)", type: "number", required: true, placeholder: "1000" },
       { key: "packaging_type", label: "Jenis Kemasan", type: "select", required: true, options: ["Drum (200L)", "IBC Tank (1000L)", "Jeriken (20L/25L)", "Bag (25kg)", "ISO Tank", "Bulk"] },
@@ -427,8 +410,11 @@ const SEED_TEMPLATES = [
       { fieldKey: "packaging_type", message: "Jenis kemasan wajib dipilih" },
     ],
   },
-  {
-    categoryKey: "plastic_resin", label: "Plastik & Resin", version: "1.0.0",
+
+  plastic_resin: {
+    category: "plastic_resin",
+    label: "Plastik & Resin",
+    version: "1.0.0",
     requiredDocuments: [
       { key: "coa", label: "Certificate of Analysis (COA)", required: true },
       { key: "msds", label: "MSDS (jika diperlukan)", required: false },
@@ -436,12 +422,12 @@ const SEED_TEMPLATES = [
     ],
     checklist: [
       { key: "grade_verified", label: "Grade material terverifikasi" },
-      { key: "moisture_checked", label: "Kadar moisture dicek" },
+      { key: "moisture_checked", label: "Kadar moisture dicek (untuk resin higroskopik)" },
       { key: "mfi_tested", label: "Melt Flow Index (MFI) sesuai spesifikasi" },
       { key: "packaging_intact", label: "Kemasan bag/octabin tidak sobek" },
       { key: "docs_complete", label: "Dokumen lengkap" },
     ],
-    packagingInstructions: "Kemas dalam jumbo bag atau bag 25 kg yang tertutup rapat. Untuk resin higroskopik (Nylon, PC, PET), gunakan moisture-proof packaging. Simpan di gudang kering.",
+    packagingInstructions: "Kemas dalam jumbo bag (big bag 500–1000 kg) atau bag 25 kg yang tertutup rapat. Untuk resin higroskopik (Nylon, PC, PET), gunakan moisture-proof packaging. Simpan di gudang kering.",
     customFields: [
       { key: "resin_type", label: "Jenis Resin/Plastik", type: "select", required: true, options: ["Polyethylene (PE)", "Polypropylene (PP)", "PVC", "PET", "Polystyrene (PS)", "ABS", "Nylon (PA)", "Polycarbonate (PC)", "EVA", "HDPE", "LDPE", "LLDPE"] },
       { key: "grade", label: "Grade", type: "text", required: true, placeholder: "Injection Grade / Blow Film Grade" },
@@ -458,11 +444,14 @@ const SEED_TEMPLATES = [
       { fieldKey: "quantity_kg", message: "Kuantitas wajib diisi" },
     ],
   },
-  {
-    categoryKey: "seafood", label: "Hasil Laut & Ikan", version: "1.0.0",
+
+  seafood: {
+    category: "seafood",
+    label: "Hasil Laut & Ikan",
+    version: "1.0.0",
     requiredDocuments: [
       { key: "health_cert", label: "Health Certificate (BKIPM/Otoritas Kompeten)", required: true },
-      { key: "catch_cert", label: "Catch Certificate / SIPI", required: true },
+      { key: "catch_cert", label: "Catch Certificate / SIPI (Surat Izin Penangkapan)", required: true },
       { key: "halal_cert", label: "Sertifikat Halal (jika ada)", required: false },
       { key: "haccp_cert", label: "Sertifikat HACCP Processing Unit", required: false },
     ],
@@ -473,7 +462,7 @@ const SEED_TEMPLATES = [
       { key: "freshness_checked", label: "Kesegaran/kualitas visual dicek" },
       { key: "docs_complete", label: "Dokumen kesehatan & asal usul lengkap" },
     ],
-    packagingInstructions: "Kemas dalam master carton 10–20 kg dengan inner vacuum pack. Simpan dalam reefer container (suhu -18°C). Tandai 'KEEP FROZEN' dan tanggal produksi.",
+    packagingInstructions: "Kemas dalam master carton 10–20 kg dengan inner vacuum pack. Simpan dalam reefer container (suhu -18°C atau sesuai spesifikasi produk). Tandai 'KEEP FROZEN' dan tanggal produksi.",
     customFields: [
       { key: "product_type", label: "Jenis Produk", type: "select", required: true, options: ["Ikan Segar/Chilled", "Ikan Beku (Frozen Fish)", "Udang Beku", "Cumi-cumi/Sotong", "Kepiting/Rajungan", "Kerang", "Ikan Fillet", "Surimi", "Olahan Seafood"] },
       { key: "species", label: "Spesies / Nama Ikan", type: "text", required: true, placeholder: "Tuna Sirip Kuning / Udang Vannamei" },
@@ -490,21 +479,24 @@ const SEED_TEMPLATES = [
       { fieldKey: "quantity_kg", message: "Kuantitas wajib diisi" },
     ],
   },
-  {
-    categoryKey: "frozen_food", label: "Makanan Beku", version: "1.0.0",
+
+  frozen_food: {
+    category: "frozen_food",
+    label: "Makanan Beku",
+    version: "1.0.0",
     requiredDocuments: [
       { key: "bpom", label: "Nomor Registrasi BPOM / MD", required: true },
       { key: "halal_cert", label: "Sertifikat Halal MUI", required: true },
       { key: "haccp_cert", label: "Sertifikat HACCP / ISO 22000", required: false },
     ],
     checklist: [
-      { key: "temp_maintained", label: "Suhu -18°C dipertahankan" },
+      { key: "temp_maintained", label: "Suhu -18°C dipertahankan selama penyimpanan" },
       { key: "expiry_checked", label: "Tanggal kadaluarsa dicek & sesuai" },
       { key: "labeling_complete", label: "Label nutrisional & alergen lengkap" },
       { key: "cold_chain_doc", label: "Dokumentasi rantai dingin tersedia" },
       { key: "docs_complete", label: "Dokumen izin & sertifikat lengkap" },
     ],
-    packagingInstructions: "Kemasan primer vakum atau modified atmosphere, lalu master carton. Reefer container wajib di-pre-cool ke -18°C sebelum loading. Tandai suhu simpan di setiap karton.",
+    packagingInstructions: "Kemas dalam kemasan primer vakum atau modified atmosphere, lalu master carton. Reefer container wajib di-pre-cool ke -18°C sebelum loading. Tandai suhu simpan di setiap karton.",
     customFields: [
       { key: "product_name", label: "Nama Produk", type: "text", required: true, placeholder: "Nugget Ayam / Bakso Sapi / Dimsum" },
       { key: "brand", label: "Merek", type: "text", required: true, placeholder: "So Good / Fiesta" },
@@ -522,21 +514,24 @@ const SEED_TEMPLATES = [
       { fieldKey: "quantity_carton", message: "Kuantitas wajib diisi" },
     ],
   },
-  {
-    categoryKey: "furniture", label: "Furnitur & Produk Kayu", version: "1.0.0",
+
+  furniture: {
+    category: "furniture",
+    label: "Furnitur & Produk Kayu",
+    version: "1.0.0",
     requiredDocuments: [
-      { key: "svlk", label: "Dokumen V-Legal / SVLK", required: true },
+      { key: "svlk", label: "Dokumen V-Legal / SVLK (Sistem Verifikasi Legalitas Kayu)", required: true },
       { key: "fumigation_cert", label: "Fumigation Certificate (Heat Treatment / ISPM-15)", required: true },
       { key: "packing_list", label: "Packing List", required: true },
     ],
     checklist: [
       { key: "svlk_valid", label: "V-Legal/SVLK valid & tidak kadaluarsa" },
-      { key: "ht_fumigation_done", label: "Heat treatment (HT) kayu kemasan selesai" },
+      { key: "ht_fumigation_done", label: "Heat treatment (HT) kayu kemasan selesai (ISPM-15)" },
       { key: "quality_checked", label: "Kualitas finishing & cat dicek" },
       { key: "assembly_parts_complete", label: "Semua komponen assembly tersedia" },
       { key: "packaging_protected", label: "Sudut & permukaan terlindungi dari goresan" },
     ],
-    packagingInstructions: "Lapisi dengan foam/bubble wrap di bagian sudut dan permukaan. Masukkan dalam kardus double-wall + stretch wrap. Kayu kemasan wajib ber-stamp HT (ISPM-15) untuk ekspor.",
+    packagingInstructions: "Lapisi dengan foam/bubble wrap di bagian sudut dan permukaan. Masukkan dalam kardus double-wall + stretch wrap. Kayu kemasan (palet/crating) wajib ber-stamp HT (ISPM-15) untuk ekspor.",
     customFields: [
       { key: "product_type", label: "Jenis Produk", type: "select", required: true, options: ["Kursi", "Meja", "Lemari/Rak", "Tempat Tidur", "Sofa", "Outdoor Furniture", "Office Furniture", "Craft/Dekorasi", "Komponen/Parts"] },
       { key: "material", label: "Material Utama", type: "select", required: true, options: ["Kayu Jati", "Kayu Mahoni", "Kayu Akasia", "Rotan", "Bambu", "Kayu MDF/Plywood", "Kombinasi Kayu-Metal", "Kayu-Kaca"] },
@@ -552,8 +547,11 @@ const SEED_TEMPLATES = [
       { fieldKey: "quantity_pcs", message: "Kuantitas wajib diisi" },
     ],
   },
-  {
-    categoryKey: "automotive_parts", label: "Suku Cadang Otomotif", version: "1.0.0",
+
+  automotive_parts: {
+    category: "automotive_parts",
+    label: "Suku Cadang Otomotif",
+    version: "1.0.0",
     requiredDocuments: [
       { key: "packing_list", label: "Packing List", required: true },
       { key: "invoice", label: "Commercial Invoice", required: true },
@@ -585,8 +583,11 @@ const SEED_TEMPLATES = [
       { fieldKey: "quantity_pcs", message: "Kuantitas wajib diisi" },
     ],
   },
-  {
-    categoryKey: "general", label: "Umum / Lainnya", version: "1.0.0",
+
+  general: {
+    category: "general",
+    label: "Umum / Lainnya",
+    version: "1.0.0",
     requiredDocuments: [
       { key: "packing_list", label: "Packing List", required: false },
     ],
@@ -607,235 +608,6 @@ const SEED_TEMPLATES = [
       { fieldKey: "quantity", message: "Kuantitas wajib diisi" },
     ],
   },
-];
+};
 
-// ─────────────────────────────────────────────
-// BOOT SEEDER — jalankan sekali saat server start
-// ─────────────────────────────────────────────
-export async function seedProductTemplates() {
-  try {
-    const existing = await db.select({ id: productTemplatesTable.id }).from(productTemplatesTable).limit(1);
-    if (existing.length > 0) return;
-
-    for (const tpl of SEED_TEMPLATES) {
-      await db.insert(productTemplatesTable).values({
-        categoryKey: tpl.categoryKey,
-        label: tpl.label,
-        version: tpl.version,
-        isActive: true,
-        requiredDocuments: tpl.requiredDocuments as unknown as Record<string, unknown>[],
-        checklist: tpl.checklist as unknown as Record<string, unknown>[],
-        customFields: tpl.customFields as unknown as Record<string, unknown>[],
-        packagingInstructions: tpl.packagingInstructions,
-        conditionalRules: tpl.conditionalRules as unknown as Record<string, unknown>[],
-        validationRules: tpl.validationRules as unknown as Record<string, unknown>[],
-      }).onConflictDoNothing();
-    }
-    logger.info("Product templates seeded", { count: SEED_TEMPLATES.length });
-  } catch (err) {
-    logger.warn("Product templates seed failed (non-fatal)", { err: String(err) });
-  }
-}
-
-// ─────────────────────────────────────────────
-// HELPERS
-// ─────────────────────────────────────────────
-function bumpPatch(version: string): string {
-  const parts = version.split(".").map(Number);
-  if (parts.length !== 3) return "1.0.1";
-  parts[2] = (parts[2] ?? 0) + 1;
-  return parts.join(".");
-}
-
-// ─────────────────────────────────────────────
-// PUBLIC — GET /api/product-templates
-//
-// Hybrid: returns RESOLVED templates (in-code definition + DB override merge).
-// `?raw=1` returns raw DB rows (admin CMS uses this to edit overrides only).
-// ─────────────────────────────────────────────
-productTemplatesRouter.get("/", async (req: Request, res: Response) => {
-  try {
-    const rows = await db
-      .select()
-      .from(productTemplatesTable)
-      .orderBy(asc(productTemplatesTable.categoryKey));
-
-    if (req.query.raw === "1") {
-      return res.json(rows);
-    }
-
-    const overrides = rows.map(dbRowToOverride);
-    const resolved = resolveAllTemplates(overrides);
-    // Frontend code expects camelCase ProductTemplate shape — resolveAllTemplates
-    // already returns that. Filter inactive DB-only categories already handled.
-    res.json(resolved);
-  } catch (err) {
-    res.status(500).json({ message: String(err) });
-  }
-});
-
-// PUBLIC — GET /api/product-templates/:key  (by id or categoryKey)
-// Returns the RESOLVED template (in-code + DB override). Always succeeds for
-// in-code categories even when DB is empty; falls back to `general` for
-// unknown keys.
-productTemplatesRouter.get("/:key", async (req: Request, res: Response) => {
-  try {
-    const key = req.params.key as string;
-    const byId = Number(key);
-    let dbRows;
-    if (!isNaN(byId)) {
-      dbRows = await db.select().from(productTemplatesTable).where(eq(productTemplatesTable.id, byId));
-    } else {
-      dbRows = await db.select().from(productTemplatesTable).where(eq(productTemplatesTable.categoryKey, key));
-    }
-    if (req.query.raw === "1") {
-      if (!dbRows.length) return res.status(404).json({ message: "Template tidak ditemukan" });
-      return res.json(dbRows[0]);
-    }
-    const override = dbRows[0] ? dbRowToOverride(dbRows[0]) : null;
-    const categoryKey = override?.categoryKey ?? key;
-    const resolved = resolveTemplate(categoryKey, override);
-    res.json(resolved);
-  } catch (err) {
-    res.status(500).json({ message: String(err) });
-  }
-});
-
-// ADMIN — POST /api/product-templates  (create)
-productTemplatesRouter.post("/", requireAdmin, async (req: Request, res: Response) => {
-  try {
-    const body = req.body as Record<string, unknown>;
-    const { categoryKey, label, version = "1.0.0", isActive = true,
-      requiredDocuments = [], checklist = [], customFields = [],
-      packagingInstructions = "", conditionalRules = [], validationRules = [] } = body;
-
-    if (!categoryKey || !label) {
-      return res.status(400).json({ message: "categoryKey dan label wajib diisi" });
-    }
-
-    const [row] = await db.insert(productTemplatesTable).values({
-      categoryKey: String(categoryKey),
-      label: String(label),
-      version: String(version),
-      isActive: Boolean(isActive),
-      requiredDocuments: requiredDocuments as unknown as Record<string, unknown>[],
-      checklist: checklist as unknown as Record<string, unknown>[],
-      customFields: customFields as unknown as Record<string, unknown>[],
-      packagingInstructions: String(packagingInstructions),
-      conditionalRules: conditionalRules as unknown as Record<string, unknown>[],
-      validationRules: validationRules as unknown as Record<string, unknown>[],
-    }).returning();
-
-    res.status(201).json(row);
-  } catch (err: unknown) {
-    const msg = String((err as { message?: string }).message ?? err);
-    if (msg.includes("unique")) {
-      return res.status(409).json({ message: `Category key "${req.body.categoryKey}" sudah ada` });
-    }
-    res.status(500).json({ message: msg });
-  }
-});
-
-// ADMIN — PUT /api/product-templates/:id  (update, auto-bump version)
-productTemplatesRouter.put("/:id", requireAdmin, async (req: Request, res: Response) => {
-  try {
-    const id = Number(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
-
-    const existing = await db.select().from(productTemplatesTable).where(eq(productTemplatesTable.id, id));
-    if (!existing.length) return res.status(404).json({ message: "Template tidak ditemukan" });
-
-    const body = req.body as Record<string, unknown>;
-    const newVersion = typeof body.version === "string" && body.version !== existing[0]!.version
-      ? body.version
-      : bumpPatch(existing[0]!.version);
-
-    const [updated] = await db.update(productTemplatesTable)
-      .set({
-        label: typeof body.label === "string" ? body.label : existing[0]!.label,
-        version: newVersion,
-        isActive: typeof body.isActive === "boolean" ? body.isActive : existing[0]!.isActive,
-        requiredDocuments: Array.isArray(body.requiredDocuments) ? body.requiredDocuments as unknown as Record<string, unknown>[] : existing[0]!.requiredDocuments as unknown as Record<string, unknown>[],
-        checklist: Array.isArray(body.checklist) ? body.checklist as unknown as Record<string, unknown>[] : existing[0]!.checklist as unknown as Record<string, unknown>[],
-        customFields: Array.isArray(body.customFields) ? body.customFields as unknown as Record<string, unknown>[] : existing[0]!.customFields as unknown as Record<string, unknown>[],
-        packagingInstructions: typeof body.packagingInstructions === "string" ? body.packagingInstructions : existing[0]!.packagingInstructions,
-        conditionalRules: Array.isArray(body.conditionalRules) ? body.conditionalRules as unknown as Record<string, unknown>[] : existing[0]!.conditionalRules as unknown as Record<string, unknown>[],
-        validationRules: Array.isArray(body.validationRules) ? body.validationRules as unknown as Record<string, unknown>[] : existing[0]!.validationRules as unknown as Record<string, unknown>[],
-        updatedAt: new Date(),
-      })
-      .where(eq(productTemplatesTable.id, id))
-      .returning();
-
-    res.json(updated);
-  } catch (err) {
-    res.status(500).json({ message: String(err) });
-  }
-});
-
-// ADMIN — POST /api/product-templates/:id/duplicate
-productTemplatesRouter.post("/:id/duplicate", requireAdmin, async (req: Request, res: Response) => {
-  try {
-    const id = Number(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
-
-    const existing = await db.select().from(productTemplatesTable).where(eq(productTemplatesTable.id, id));
-    if (!existing.length) return res.status(404).json({ message: "Template tidak ditemukan" });
-
-    const src = existing[0]!;
-    const newKey = `${src.categoryKey}_copy_${Date.now()}`;
-
-    const [dup] = await db.insert(productTemplatesTable).values({
-      categoryKey: newKey,
-      label: `${src.label} (Salinan)`,
-      version: "1.0.0",
-      isActive: false,
-      requiredDocuments: src.requiredDocuments as unknown as Record<string, unknown>[],
-      checklist: src.checklist as unknown as Record<string, unknown>[],
-      customFields: src.customFields as unknown as Record<string, unknown>[],
-      packagingInstructions: src.packagingInstructions,
-      conditionalRules: src.conditionalRules as unknown as Record<string, unknown>[],
-      validationRules: src.validationRules as unknown as Record<string, unknown>[],
-    }).returning();
-
-    res.status(201).json(dup);
-  } catch (err) {
-    res.status(500).json({ message: String(err) });
-  }
-});
-
-// ADMIN — PATCH /api/product-templates/:id/toggle  (activate / deactivate)
-productTemplatesRouter.patch("/:id/toggle", requireAdmin, async (req: Request, res: Response) => {
-  try {
-    const id = Number(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
-
-    const existing = await db.select().from(productTemplatesTable).where(eq(productTemplatesTable.id, id));
-    if (!existing.length) return res.status(404).json({ message: "Template tidak ditemukan" });
-
-    const [updated] = await db.update(productTemplatesTable)
-      .set({ isActive: !existing[0]!.isActive, updatedAt: new Date() })
-      .where(eq(productTemplatesTable.id, id))
-      .returning();
-
-    res.json(updated);
-  } catch (err) {
-    res.status(500).json({ message: String(err) });
-  }
-});
-
-// ADMIN — DELETE /api/product-templates/:id  (hard delete — hanya template inaktif)
-productTemplatesRouter.delete("/:id", requireAdmin, async (req: Request, res: Response) => {
-  try {
-    const id = Number(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
-
-    const existing = await db.select().from(productTemplatesTable).where(eq(productTemplatesTable.id, id));
-    if (!existing.length) return res.status(404).json({ message: "Template tidak ditemukan" });
-    if (existing[0]!.isActive) return res.status(400).json({ message: "Nonaktifkan template terlebih dahulu sebelum menghapus" });
-
-    await db.delete(productTemplatesTable).where(eq(productTemplatesTable.id, id));
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ message: String(err) });
-  }
-});
+export { templates };

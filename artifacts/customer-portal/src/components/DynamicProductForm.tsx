@@ -8,30 +8,15 @@ import {
   FileText, ClipboardList, Package, Wrench, StickyNote, ChevronDown, ChevronUp,
 } from "lucide-react";
 import { useState } from "react";
-import type { ProductTemplate } from "@/lib/productTemplates";
+import type { ProductTemplate, DynamicFormValues } from "@workspace/product-templates";
+import { isFieldVisible } from "@workspace/product-templates";
 
-export interface DynamicFormValues {
-  customFieldValues: Record<string, string | number | boolean>;
-  uploadedDocuments: { key: string; label: string; reference: string }[];
-  checklistStatus: Record<string, boolean>;
-  packagingNotes: string;
-  conditionalFlags: Record<string, string | number | boolean>;
-}
+export type { DynamicFormValues };
 
 interface Props {
   template: ProductTemplate;
   values: DynamicFormValues;
   onChange: (next: DynamicFormValues) => void;
-}
-
-function isFieldVisible(fieldKey: string, template: ProductTemplate, values: DynamicFormValues): boolean {
-  for (const rule of template.conditionalRules) {
-    if (rule.show.includes(fieldKey)) {
-      const triggerVal = values.customFieldValues[rule.fieldKey];
-      if (triggerVal !== rule.condition.value) return false;
-    }
-  }
-  return true;
 }
 
 function SectionHeader({ icon, title }: { icon: React.ReactNode; title: string }) {
@@ -210,29 +195,5 @@ export function DynamicProductForm({ template, values, onChange }: Props) {
   );
 }
 
-export function validateDynamicForm(
-  template: ProductTemplate,
-  values: DynamicFormValues,
-): string[] {
-  const errors: string[] = [];
-
-  for (const rule of template.validationRules) {
-    const field = template.customFields.find((f) => f.key === rule.fieldKey);
-    if (!field) continue;
-    if (!isFieldVisible(rule.fieldKey, template, values)) continue;
-    const val = values.customFieldValues[rule.fieldKey];
-    if (val === undefined || val === null || val === "" || val === 0) {
-      errors.push(rule.message);
-    }
-  }
-
-  for (const doc of template.requiredDocuments) {
-    if (!doc.required) continue;
-    const ref = values.uploadedDocuments.find((d) => d.key === doc.key)?.reference ?? "";
-    if (!ref.trim()) {
-      errors.push(`${doc.label} wajib diisi`);
-    }
-  }
-
-  return errors;
-}
+// Re-export shared validator so existing imports `validateDynamicForm` keep working.
+export { validateTemplatePayload as validateDynamicForm } from "@workspace/product-templates";

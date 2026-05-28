@@ -12,10 +12,13 @@ import {
   Package, Search, Plus, Minus, Trash2, ShoppingCart,
   User, CheckCircle2, ChevronLeft, ChevronRight, Loader2, Tag,
 } from "lucide-react";
-import { DynamicProductForm, validateDynamicForm } from "@/components/DynamicProductForm";
-import type { DynamicFormValues } from "@/components/DynamicProductForm";
-import type { ProductTemplate } from "@/lib/productTemplates";
-import { getTemplate as getLocalTemplate, getAllTemplates as getAllLocalTemplates } from "@/lib/productTemplates";
+import { DynamicProductForm } from "@/components/DynamicProductForm";
+import type { ProductTemplate, DynamicFormValues } from "@workspace/product-templates";
+import {
+  getInCodeTemplate as getLocalTemplate,
+  getAllInCodeTemplates as getAllLocalTemplates,
+  validateTemplatePayload,
+} from "@workspace/product-templates";
 
 interface PortalProduct {
   id: number;
@@ -57,21 +60,6 @@ async function submitOrder(body: unknown): Promise<{ orderNumber: string }> {
   return res.json();
 }
 
-// ─── Adapter: DB template row → ProductTemplate interface ───
-function dbRowToTemplate(row: Record<string, unknown>): ProductTemplate {
-  return {
-    category: String(row.categoryKey ?? row.category_key ?? "general"),
-    label: String(row.label ?? ""),
-    version: String(row.version ?? "1.0.0"),
-    requiredDocuments: (row.requiredDocuments ?? row.required_documents ?? []) as ProductTemplate["requiredDocuments"],
-    checklist: (row.checklist ?? []) as ProductTemplate["checklist"],
-    customFields: (row.customFields ?? row.custom_fields ?? []) as ProductTemplate["customFields"],
-    packagingInstructions: String(row.packagingInstructions ?? row.packaging_instructions ?? ""),
-    conditionalRules: (row.conditionalRules ?? row.conditional_rules ?? []) as ProductTemplate["conditionalRules"],
-    validationRules: (row.validationRules ?? row.validation_rules ?? []) as ProductTemplate["validationRules"],
-  };
-}
-
 const EMPTY_FORM: DynamicFormValues = {
   customFieldValues: {},
   uploadedDocuments: [],
@@ -110,20 +98,13 @@ export default function ProductOrderPage() {
 
   // ── Fetch templates from DB on mount ──
   useEffect(() => {
+    // Backend returns RESOLVED ProductTemplate[] (in-code + DB overrides merged).
     fetch(`${BASE}/api/product-templates`)
       .then((r) => r.ok ? r.json() : Promise.reject())
-      .then((rows: unknown[]) => {
-        const active = (rows as Record<string, unknown>[])
-          .filter((r) => r.isActive !== false && r.is_active !== false)
-          .map(dbRowToTemplate);
-        if (active.length > 0) {
-          setAllTemplates(active);
-        } else {
-          setAllTemplates(getAllLocalTemplates());
-        }
+      .then((templates: ProductTemplate[]) => {
+        setAllTemplates(templates.length > 0 ? templates : getAllLocalTemplates());
       })
       .catch(() => {
-        // fallback to hardcoded templates
         setAllTemplates(getAllLocalTemplates());
       })
       .finally(() => setTemplatesLoading(false));
@@ -176,7 +157,7 @@ export default function ProductOrderPage() {
       return;
     }
 
-    const formErrors = validateDynamicForm(template, dynamicValues);
+    const formErrors = validateTemplatePayload(template, dynamicValues);
     if (formErrors.length > 0) {
       toast({ title: formErrors[0], variant: "destructive" });
       return;

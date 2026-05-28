@@ -193,7 +193,9 @@ export default function ProductTemplatesPage() {
   async function load() {
     setLoading(true);
     try {
-      const r = await fetch(API);
+      // ?raw=1 → DB row shape (categoryKey, isActive, id) required by the admin CMS.
+      // Without raw=1 the API returns resolved templates merged with in-code defaults.
+      const r = await fetch(`${API}?raw=1`);
       if (!r.ok) throw new Error("Gagal memuat template");
       setTemplates(await r.json());
     } catch (e) {

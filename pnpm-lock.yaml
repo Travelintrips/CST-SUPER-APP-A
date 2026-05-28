@@ -164,6 +164,9 @@ importers:
       '@workspace/db':
         specifier: workspace:*
         version: link:../../lib/db
+      '@workspace/product-templates':
+        specifier: workspace:*
+        version: link:../../lib/product-templates
       bcryptjs:
         specifier: ^3.0.3
         version: 3.0.3
@@ -792,6 +795,9 @@ importers:
       '@workspace/api-client-react':
         specifier: workspace:*
         version: link:../../lib/api-client-react
+      '@workspace/product-templates':
+        specifier: workspace:*
+        version: link:../../lib/product-templates
       class-variance-authority:
         specifier: 'catalog:'
         version: 0.7.1
@@ -1357,6 +1363,8 @@ importers:
       '@types/react':
         specifier: 'catalog:'
         version: 19.2.14
+
+  lib/product-templates: {}
 
   lib/replit-auth-web:
     dependencies:

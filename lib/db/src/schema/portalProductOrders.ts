@@ -30,6 +30,10 @@ export const portalProductOrdersTable = pgTable("portal_product_orders", {
   checklistStatus: jsonb("checklist_status").$type<Record<string, boolean>>().default({}),
   packagingNotes: text("packaging_notes"),
   conditionalFlags: jsonb("conditional_flags").$type<Record<string, string | number | boolean>>().default({}),
+  // Audit trail — immutable snapshot of the resolved template at the moment
+  // the order was placed. Lets old orders keep rendering correctly even if
+  // an admin later edits/deactivates the template definition.
+  templateSnapshot: jsonb("template_snapshot").$type<Record<string, unknown> | null>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

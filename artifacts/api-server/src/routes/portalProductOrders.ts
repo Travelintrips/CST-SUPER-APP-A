@@ -4,8 +4,10 @@ import {
   portalProductOrdersTable,
   portalProductOrderItemsTable,
   productsTable,
+  productTemplatesTable,
 } from "@workspace/db";
 import { eq, ilike, and, or, sql } from "drizzle-orm";
+import { resolveTemplate, validateTemplatePayload } from "@workspace/product-templates";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { getPreferredDomain } from "../lib/domain";
 import { sendProductOrderWaNotification, sendProductOrderStatusUpdateWa } from "../lib/orderNotification";
@@ -42,7 +44,8 @@ db.execute(sql`
     ADD COLUMN IF NOT EXISTS uploaded_documents JSONB DEFAULT '[]',
     ADD COLUMN IF NOT EXISTS checklist_status JSONB DEFAULT '{}',
     ADD COLUMN IF NOT EXISTS packaging_notes TEXT,
-    ADD COLUMN IF NOT EXISTS conditional_flags JSONB DEFAULT '{}'
+    ADD COLUMN IF NOT EXISTS conditional_flags JSONB DEFAULT '{}',
+    ADD COLUMN IF NOT EXISTS template_snapshot JSONB
 `).catch(() => {});
 
 function generateOrderNumber(): string {
@@ -77,6 +80,7 @@ function toOrder(row: OrderRow) {
     checklistStatus: (row.checklistStatus ?? {}) as Record<string, boolean>,
     packagingNotes: row.packagingNotes ?? null,
     conditionalFlags: (row.conditionalFlags ?? {}) as Record<string, string | number | boolean>,
+    templateSnapshot: (row.templateSnapshot ?? null) as Record<string, unknown> | null,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -216,6 +220,45 @@ portalProductOrdersRouter.post("/orders", async (req: Request, res: Response) =>
   const grandTotal = subtotal;
   const orderNumber = generateOrderNumber();
 
+  // ── Product Template Engine: resolve template + re-validate server-side ──
+  // Never trust the client. Resolve the template (in-code + DB override),
+  // re-run the shared validator, and snapshot the resolved template into the
+  // order so historical orders survive future template edits.
+  const categoryForLookup = (productCategory?.trim() || "general");
+  const tplRows = await db
+    .select()
+    .from(productTemplatesTable)
+    .where(eq(productTemplatesTable.categoryKey, categoryForLookup));
+  const tplOverride = tplRows[0]
+    ? {
+        categoryKey: tplRows[0].categoryKey,
+        label: tplRows[0].label,
+        version: tplRows[0].version,
+        isActive: tplRows[0].isActive,
+        requiredDocuments: tplRows[0].requiredDocuments as never,
+        checklist: tplRows[0].checklist as never,
+        customFields: tplRows[0].customFields as never,
+        packagingInstructions: tplRows[0].packagingInstructions ?? null,
+        conditionalRules: tplRows[0].conditionalRules as never,
+        validationRules: tplRows[0].validationRules as never,
+      }
+    : null;
+  const resolvedTpl = resolveTemplate(categoryForLookup, tplOverride);
+
+  const validationErrors = validateTemplatePayload(resolvedTpl, {
+    customFieldValues: customFieldValues ?? {},
+    uploadedDocuments: uploadedDocuments ?? [],
+    checklistStatus: checklistStatus ?? {},
+    packagingNotes: packagingNotes ?? "",
+    conditionalFlags: conditionalFlags ?? {},
+  });
+  if (validationErrors.length > 0) {
+    return res.status(400).json({
+      message: validationErrors[0],
+      errors: validationErrors,
+    });
+  }
+
   const [order] = await db
     .insert(portalProductOrdersTable)
     .values({
@@ -228,14 +271,17 @@ portalProductOrdersRouter.post("/orders", async (req: Request, res: Response) =>
       subtotal: String(subtotal),
       grandTotal: String(grandTotal),
       status: "New Order",
-      productCategory: productCategory?.trim() ?? "general",
-      templateId: templateId?.trim() ?? null,
-      templateVersion: templateVersion?.trim() ?? null,
+      productCategory: categoryForLookup,
+      // Server-authoritative: ignore client-sent templateId/templateVersion to
+      // keep metadata consistent with templateSnapshot (defense-in-depth).
+      templateId: resolvedTpl.category,
+      templateVersion: resolvedTpl.version,
       customFieldValues: customFieldValues ?? {},
       uploadedDocuments: uploadedDocuments ?? [],
       checklistStatus: checklistStatus ?? {},
       packagingNotes: packagingNotes?.trim() ?? null,
       conditionalFlags: conditionalFlags ?? {},
+      templateSnapshot: resolvedTpl as unknown as Record<string, unknown>,
     })
     .returning();
 
