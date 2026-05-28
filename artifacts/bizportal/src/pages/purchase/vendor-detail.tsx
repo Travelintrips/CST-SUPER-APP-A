@@ -318,13 +318,13 @@ export default function VendorDetailPage() {
     }
     try {
       if (editingItem) {
-        const updated = await updateItem.mutateAsync({ itemId: editingItem.id, data: body });
+        const updated = await updateItem.mutateAsync({ itemId: editingItem.id, data: body as Parameters<typeof updateItem.mutateAsync>[0]["data"] });
         qc.setQueryData<VendorCatalogItem[]>(getListVendorCatalogQueryKey(vendorId), (old) =>
           old ? old.map((i) => (i.id === updated.id ? updated : i)) : [updated]
         );
         toast({ title: t.common.success });
       } else {
-        const created = await createItem.mutateAsync({ id: vendorId, data: body });
+        const created = await createItem.mutateAsync({ id: vendorId, data: body as Parameters<typeof createItem.mutateAsync>[0]["data"] });
         qc.setQueryData<VendorCatalogItem[]>(getListVendorCatalogQueryKey(vendorId), (old) =>
           old ? [...old, created] : [created]
         );

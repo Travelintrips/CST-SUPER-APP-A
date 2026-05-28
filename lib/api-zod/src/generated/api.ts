@@ -626,15 +626,15 @@ export const CreateVendorCatalogItemParams = zod.object({
 
 export const CreateVendorCatalogItemBody = zod.object({
   type: zod.string().optional(),
-  name: zod.string(),
+  name: zod.string().optional(),
   description: zod.string().nullish(),
   unit: zod.string().nullish(),
   subcategory: zod.string().nullish(),
   priceBase: zod.number().optional(),
-  markupPct: zod.number().optional(),
   isActive: zod.boolean().optional(),
   isCommodityTag: zod.boolean().optional(),
   sortOrder: zod.number().optional(),
+  linkMasterItemId: zod.number().nullish(),
 });
 
 /**
@@ -646,15 +646,15 @@ export const UpdateVendorCatalogItemParams = zod.object({
 
 export const UpdateVendorCatalogItemBody = zod.object({
   type: zod.string().optional(),
-  name: zod.string(),
+  name: zod.string().optional(),
   description: zod.string().nullish(),
   unit: zod.string().nullish(),
   subcategory: zod.string().nullish(),
   priceBase: zod.number().optional(),
-  markupPct: zod.number().optional(),
   isActive: zod.boolean().optional(),
   isCommodityTag: zod.boolean().optional(),
   sortOrder: zod.number().optional(),
+  linkMasterItemId: zod.number().nullish(),
 });
 
 export const UpdateVendorCatalogItemResponse = zod.object({

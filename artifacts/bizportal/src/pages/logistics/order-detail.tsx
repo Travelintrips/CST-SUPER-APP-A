@@ -2061,7 +2061,11 @@ export default function LogisticOrderDetailPage() {
               <CardContent className="grid grid-cols-2 gap-3 text-sm">
                 <Field label="Harga Vendor" value={idr(order.vendorCost ?? order.finalPrice)} />
                 <Field label="Harga ke Customer" value={idr(order.finalSellingPrice)} />
-                <Field label="Markup %" value={order.markupPercent ? `${order.markupPercent}%` : "—"} />
+                <Field label="Profit" value={
+                  order.finalSellingPrice && order.vendorCost
+                    ? idr(Number(order.finalSellingPrice) - Number(order.vendorCost))
+                    : "—"
+                } />
                 <Field label="Margin" value={idr(order.orderMargin)} />
                 {order.etaFinal && <Field label="ETA Final" value={order.etaFinal} />}
                 {vendor && (

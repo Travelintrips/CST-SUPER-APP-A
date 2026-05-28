@@ -146,7 +146,7 @@ export default function LogisticsPortalOrderDetailPage() {
         }),
       });
       if (!res.ok) throw new Error(((await res.json()) as { message?: string }).message ?? "Gagal");
-      queryClient.invalidateQueries({ queryKey: getGetLogisticOrderQueryKey(orderId) });
+      qc.invalidateQueries({ queryKey: getGetLogisticOrderQueryKey(orderId) });
       setEditDetailDialog(false);
       toast({ title: "Detail order diperbarui" });
     } catch (e) {
@@ -207,14 +207,13 @@ export default function LogisticsPortalOrderDetailPage() {
   const [quoteDialog, setQuoteDialog] = useState<{ open: boolean; rfqId: number; vendorId?: number } | null>(null);
   const [quoteForm, setQuoteForm] = useState({
     vendorId: "", vendorPrice: "", estimatedPickup: "", estimatedDelivery: "",
-    estimatedDays: "", vendorNotes: "", markupType: "percentage", markupPercentage: "0",
-    fixedSellingPrice: "",
+    estimatedDays: "", vendorNotes: "", fixedSellingPrice: "",
   });
 
   const [editDialog, setEditDialog] = useState<LogisticQuote | null>(null);
   const [editForm, setEditForm] = useState({
     vendorPrice: "", estimatedPickup: "", estimatedDelivery: "", estimatedDays: "",
-    vendorNotes: "", markupType: "percentage", markupPercentage: "0", fixedSellingPrice: "",
+    vendorNotes: "", fixedSellingPrice: "",
   });
 
   const [approveDialog, setApproveDialog] = useState<LogisticQuote | null>(null);
@@ -472,7 +471,6 @@ export default function LogisticsPortalOrderDetailPage() {
       toast({ title: t.common.error, variant: "destructive" });
       return;
     }
-    const mp = parseFloat(quoteForm.markupPercentage) || 0;
     const fp = quoteForm.fixedSellingPrice ? parseFloat(quoteForm.fixedSellingPrice) : undefined;
     createQuote.mutate(
       {
@@ -485,8 +483,8 @@ export default function LogisticsPortalOrderDetailPage() {
           estimatedDelivery: quoteForm.estimatedDelivery || undefined,
           estimatedDays: quoteForm.estimatedDays ? parseInt(quoteForm.estimatedDays) : undefined,
           vendorNotes: quoteForm.vendorNotes || undefined,
-          markupType: quoteForm.markupType,
-          markupPercentage: mp,
+          markupType: "fixed_price",
+          markupPercentage: 0,
           fixedSellingPrice: fp,
         },
       },
@@ -494,7 +492,7 @@ export default function LogisticsPortalOrderDetailPage() {
         onSuccess: () => {
           toast({ title: t.common.success });
           setQuoteDialog(null);
-          setQuoteForm({ vendorId: "", vendorPrice: "", estimatedPickup: "", estimatedDelivery: "", estimatedDays: "", vendorNotes: "", markupType: "percentage", markupPercentage: "0", fixedSellingPrice: "" });
+          setQuoteForm({ vendorId: "", vendorPrice: "", estimatedPickup: "", estimatedDelivery: "", estimatedDays: "", vendorNotes: "", fixedSellingPrice: "" });
           invalidateAll();
         },
         onError: () => toast({ title: t.common.error, variant: "destructive" }),
@@ -510,9 +508,7 @@ export default function LogisticsPortalOrderDetailPage() {
       estimatedDelivery: q.estimatedDelivery ?? "",
       estimatedDays: q.estimatedDays != null ? String(q.estimatedDays) : "",
       vendorNotes: q.vendorNotes ?? "",
-      markupType: q.markupType,
-      markupPercentage: String(q.markupPercentage),
-      fixedSellingPrice: q.fixedSellingPrice != null ? String(q.fixedSellingPrice) : "",
+      fixedSellingPrice: q.fixedSellingPrice != null ? String(q.fixedSellingPrice) : (q.sellingPrice != null ? String(q.sellingPrice) : ""),
     });
   }
 
@@ -532,8 +528,8 @@ export default function LogisticsPortalOrderDetailPage() {
           estimatedDelivery: editForm.estimatedDelivery || undefined,
           estimatedDays: editForm.estimatedDays ? parseInt(editForm.estimatedDays) : undefined,
           vendorNotes: editForm.vendorNotes || undefined,
-          markupType: editForm.markupType,
-          markupPercentage: parseFloat(editForm.markupPercentage) || 0,
+          markupType: "fixed_price",
+          markupPercentage: 0,
           fixedSellingPrice: editForm.fixedSellingPrice ? parseFloat(editForm.fixedSellingPrice) : undefined,
         },
       },
@@ -562,11 +558,6 @@ export default function LogisticsPortalOrderDetailPage() {
         onError: () => toast({ title: t.common.error, variant: "destructive" }),
       }
     );
-  }
-
-  function previewSellingPrice(vp: number, mt: string, mp: number, fp: number | null): number {
-    if (mt === "fixed_price" && fp != null) return fp;
-    return vp + (vp * mp / 100);
   }
 
   async function openLinkFormDialog() {
@@ -1023,7 +1014,7 @@ export default function LogisticsPortalOrderDetailPage() {
                     variant="outline"
                     className="h-7 gap-1.5 text-xs"
                     onClick={() => {
-                      setQuoteForm({ vendorId: "", vendorPrice: "", estimatedPickup: "", estimatedDelivery: "", estimatedDays: "", vendorNotes: "", markupType: "percentage", markupPercentage: "0", fixedSellingPrice: "" });
+                      setQuoteForm({ vendorId: "", vendorPrice: "", estimatedPickup: "", estimatedDelivery: "", estimatedDays: "", vendorNotes: "", fixedSellingPrice: "" });
                       setQuoteDialog({ open: true, rfqId: latestRfq.id });
                     }}
                   >
@@ -1071,9 +1062,9 @@ export default function LogisticsPortalOrderDetailPage() {
                               {idr(q.vendorPrice)}
                             </TableCell>
                             <TableCell className="text-sm text-muted-foreground">
-                              {q.markupType === "fixed_price"
-                                ? `Fix: ${idr(q.fixedSellingPrice)}`
-                                : `${q.markupPercentage}%`}
+                              {q.sellingPrice && q.vendorPrice
+                                ? `+${idr(q.sellingPrice - q.vendorPrice)}`
+                                : "—"}
                             </TableCell>
                             <TableCell className="text-right font-mono text-sm font-semibold">
                               {idr(q.sellingPrice)}
@@ -1629,32 +1620,12 @@ export default function LogisticsPortalOrderDetailPage() {
               </div>
             </div>
             <div>
-              <Label className="text-sm">Markup</Label>
-              <div className="flex gap-2 mt-1">
-                <select
-                  className="rounded-md border bg-background px-3 py-2 text-sm w-36"
-                  value={quoteForm.markupType}
-                  onChange={(e) => setQuoteForm((f) => ({ ...f, markupType: e.target.value }))}
-                >
-                  <option value="percentage">Persentase (%)</option>
-                  <option value="fixed_price">Harga Tetap</option>
-                </select>
-                {quoteForm.markupType === "percentage" ? (
-                  <Input placeholder="15" value={quoteForm.markupPercentage}
-                    onChange={(e) => setQuoteForm((f) => ({ ...f, markupPercentage: e.target.value }))} />
-                ) : (
-                  <Input placeholder="Harga jual (IDR)" value={quoteForm.fixedSellingPrice}
-                    onChange={(e) => setQuoteForm((f) => ({ ...f, fixedSellingPrice: e.target.value }))} />
-                )}
-              </div>
-              {quoteForm.vendorPrice && quoteForm.markupType === "percentage" && (
+              <Label className="text-sm">Harga Jual ke Customer (IDR)</Label>
+              <Input className="mt-1" placeholder="Masukkan harga jual..." value={quoteForm.fixedSellingPrice}
+                onChange={(e) => setQuoteForm((f) => ({ ...f, fixedSellingPrice: e.target.value }))} />
+              {quoteForm.vendorPrice && quoteForm.fixedSellingPrice && (
                 <p className="text-xs text-muted-foreground mt-1">
-                  Preview harga jual: {idr(previewSellingPrice(
-                    parseFloat(quoteForm.vendorPrice) || 0,
-                    "percentage",
-                    parseFloat(quoteForm.markupPercentage) || 0,
-                    null
-                  ))}
+                  Profit: {idr(parseFloat(quoteForm.fixedSellingPrice) - (parseFloat(quoteForm.vendorPrice) || 0))}
                 </p>
               )}
             </div>
@@ -1707,32 +1678,12 @@ export default function LogisticsPortalOrderDetailPage() {
               </div>
             </div>
             <div>
-              <Label className="text-sm">Markup</Label>
-              <div className="flex gap-2 mt-1">
-                <select
-                  className="rounded-md border bg-background px-3 py-2 text-sm w-36"
-                  value={editForm.markupType}
-                  onChange={(e) => setEditForm((f) => ({ ...f, markupType: e.target.value }))}
-                >
-                  <option value="percentage">Persentase (%)</option>
-                  <option value="fixed_price">Harga Tetap</option>
-                </select>
-                {editForm.markupType === "percentage" ? (
-                  <Input placeholder="15" value={editForm.markupPercentage}
-                    onChange={(e) => setEditForm((f) => ({ ...f, markupPercentage: e.target.value }))} />
-                ) : (
-                  <Input placeholder="Harga jual (IDR)" value={editForm.fixedSellingPrice}
-                    onChange={(e) => setEditForm((f) => ({ ...f, fixedSellingPrice: e.target.value }))} />
-                )}
-              </div>
-              {editForm.vendorPrice && editForm.markupType === "percentage" && (
+              <Label className="text-sm">Harga Jual ke Customer (IDR)</Label>
+              <Input className="mt-1" placeholder="Masukkan harga jual..." value={editForm.fixedSellingPrice}
+                onChange={(e) => setEditForm((f) => ({ ...f, fixedSellingPrice: e.target.value }))} />
+              {editForm.vendorPrice && editForm.fixedSellingPrice && (
                 <p className="text-xs text-muted-foreground mt-1">
-                  Preview harga jual: {idr(previewSellingPrice(
-                    parseFloat(editForm.vendorPrice) || 0,
-                    "percentage",
-                    parseFloat(editForm.markupPercentage) || 0,
-                    null
-                  ))}
+                  Profit: {idr(parseFloat(editForm.fixedSellingPrice) - (parseFloat(editForm.vendorPrice) || 0))}
                 </p>
               )}
             </div>

@@ -41,13 +41,6 @@ const DEFAULT_MANUAL_QUOTE_TPL =
   `\nSilakan konfirmasi apabila quotation ini disetujui.\n\n` +
   `Terima kasih,\nCST Logistics`;
 
-function calcFinalPrice(vendorPrice: number, markupType: string, markupValue: number): number {
-  if (markupType === "percentage") {
-    return vendorPrice + (vendorPrice * markupValue / 100);
-  }
-  return vendorPrice + markupValue;
-}
-
 const fmt = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
 
 const DEFAULT_QUOTATION_CUSTOMER_TPL = [
@@ -90,7 +83,7 @@ whatsappRouter.post("/send-quotation", async (req: Request, res: Response) => {
   if (!(await requireAdmin(req, res))) return;
   const {
     rfqId, orderId, customerName, customerPhone, vendorName, vendorPhone,
-    serviceType, route, vendorPrice, markupType, markupValue, finalPrice,
+    serviceType, route, vendorPrice, finalPrice,
     pickupDate, deliveryDate, notes, status, sendToAdminGroup, isDraft,
   } = req.body as Record<string, unknown>;
 
@@ -98,11 +91,7 @@ whatsappRouter.post("/send-quotation", async (req: Request, res: Response) => {
     return res.status(400).json({ message: "customerName dan customerPhone wajib diisi" });
   }
 
-  const fp = finalPrice != null ? Number(finalPrice) : (
-    vendorPrice != null
-      ? calcFinalPrice(Number(vendorPrice), String(markupType ?? "percentage"), Number(markupValue ?? 0))
-      : 0
-  );
+  const fp = finalPrice != null ? Number(finalPrice) : (vendorPrice != null ? Number(vendorPrice) : 0);
   if (isNaN(fp) || fp < 0) {
     return res.status(400).json({ message: "finalPrice tidak valid" });
   }

@@ -90,7 +90,6 @@ type FormState = {
   logo: string;
   eta: string;
   fee: string;
-  markup: string;
   note: string;
   sortOrder: string;
 };
@@ -109,7 +108,6 @@ const emptyForm = (): FormState => ({
   logo: "📦",
   eta: "",
   fee: "0",
-  markup: "0",
   note: "",
   sortOrder: "0",
 });
@@ -193,7 +191,6 @@ export default function VendorsPage() {
       logo: v.logo ?? "📦",
       eta: v.eta ?? "",
       fee: String(v.fee ?? 0),
-      markup: String(v.markup ?? 0),
       note: v.note ?? "",
       sortOrder: String(v.sortOrder ?? 0),
     });
@@ -219,7 +216,6 @@ export default function VendorsPage() {
       logo: form.logo || "📦",
       eta: form.eta || null,
       fee: parseFloat(form.fee) || 0,
-      markup: parseFloat(form.markup) || 0,
       note: form.note || null,
       sortOrder: parseInt(form.sortOrder) || 0,
     };
@@ -472,22 +468,7 @@ export default function VendorsPage() {
                       <Label htmlFor="fee">Tarif Dasar (Rp)</Label>
                       <Input id="fee" type="number" min="0" value={form.fee} onChange={(e) => set("fee", e.target.value)} />
                     </div>
-                    <div className="grid gap-1.5">
-                      <Label htmlFor="markup">Markup (%)</Label>
-                      <Input id="markup" type="number" min="0" step="0.01" value={form.markup} onChange={(e) => set("markup", e.target.value)} placeholder="cth. 20" />
-                    </div>
                   </div>
-                  {(() => {
-                    const base = parseFloat(form.fee) || 0;
-                    const pct = parseFloat(form.markup) || 0;
-                    if (base <= 0) return null;
-                    const after = Math.round(base * (1 + pct / 100));
-                    return (
-                      <p className="text-xs text-muted-foreground -mt-1">
-                        Setelah markup: <span className="font-semibold text-foreground">Rp {after.toLocaleString("id-ID")}</span>
-                      </p>
-                    );
-                  })()}
                   <div className="grid grid-cols-2 gap-3">
                     <div className="grid gap-1.5">
                       <Label htmlFor="sortOrder">Urutan Tampil</Label>
@@ -547,8 +528,6 @@ export default function VendorsPage() {
                   <TableHead>PIC</TableHead>
                   <TableHead>ETA</TableHead>
                   <TableHead className="text-right">Tarif Dasar</TableHead>
-                  <TableHead className="text-right">Markup (%)</TableHead>
-                  <TableHead className="text-right">Setelah Markup</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="w-[100px] text-right sticky right-0 bg-card z-10">Aksi</TableHead>
                 </TableRow>
@@ -556,8 +535,6 @@ export default function VendorsPage() {
               <TableBody>
                 {allList.map((v) => {
                   const baseFee = Number(v.fee ?? 0);
-                  const markupPct = Number(v.markup ?? 0);
-                  const afterMarkup = baseFee * (1 + markupPct / 100);
                   return (
                     <TableRow key={v.id} data-testid={`row-vendor-${v.id}`}>
                       <TableCell>
@@ -583,12 +560,6 @@ export default function VendorsPage() {
                       <TableCell className="text-right font-mono text-sm">
                         {baseFee > 0 ? `Rp ${baseFee.toLocaleString("id-ID")}` : "-"}
                       </TableCell>
-                      <TableCell className="text-right text-sm">
-                        {markupPct > 0 ? `${markupPct}%` : "-"}
-                      </TableCell>
-                      <TableCell className="text-right font-mono text-sm font-medium text-primary">
-                        {baseFee > 0 ? `Rp ${Math.round(afterMarkup).toLocaleString("id-ID")}` : "-"}
-                      </TableCell>
                       <TableCell>
                         {v.isActive
                           ? <Badge className="bg-green-100 text-green-800 hover:bg-green-100 text-xs">Aktif</Badge>
@@ -610,7 +581,7 @@ export default function VendorsPage() {
                 })}
                 {allList.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={12} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
                       Belum ada vendor.
                     </TableCell>
                   </TableRow>

@@ -61,7 +61,6 @@ type CustomerApproval = {
   salesDocId: number | null;
   createdAt: string; expiresAt: string | null;
   submissionId: number | null; vendorCost: string | null;
-  markupPct: string | null; markupNominal: string | null;
   ppnPct: string | null; ppnNominal: string | null; profitMarginPct: string | null;
   adminNotes: string | null; locked: boolean | null;
 };
@@ -638,8 +637,6 @@ function CreateApprovalDialog({ onCreated }: { onCreated: () => void }) {
   const [adminNotes, setAdminNotes] = useState("");
   // Margin calculator
   const [vendorCost, setVendorCost] = useState("");
-  const [markupPct, setMarkupPct] = useState("");
-  const [markupNominal, setMarkupNominal] = useState("");
   const [ppnPct, setPpnPct] = useState("11");
   const [sellingPrice, setSellingPrice] = useState("");
   const [loading, setLoading] = useState(false);
@@ -656,38 +653,12 @@ function CreateApprovalDialog({ onCreated }: { onCreated: () => void }) {
     if (selectedOrder) setOrderNumber(selectedOrder.orderNumber);
   }, [selectedOrder]);
 
-  // Auto-calculate markup fields
   const vendorCostNum = vendorCost ? Number(vendorCost) : null;
-  const markupPctNum = markupPct ? Number(markupPct) : null;
-  const markupNomNum = markupNominal ? Number(markupNominal) : null;
   const ppnPctNum = ppnPct ? Number(ppnPct) : 0;
-
-  const computedMarkupNominal = vendorCostNum !== null && markupPctNum !== null
-    ? Math.round(vendorCostNum * markupPctNum / 100) : null;
-  const computedMarkupPct = vendorCostNum !== null && markupNomNum !== null && vendorCostNum > 0
-    ? Number(((markupNomNum / vendorCostNum) * 100).toFixed(2)) : null;
-
-  const baseBeforeTax = vendorCostNum !== null
-    ? vendorCostNum + (markupPct ? (computedMarkupNominal ?? 0) : (markupNomNum ?? 0))
-    : null;
-  const ppnNominal = baseBeforeTax !== null ? Math.round(baseBeforeTax * ppnPctNum / 100) : null;
-  const autoSellingPrice = baseBeforeTax !== null ? baseBeforeTax + (ppnNominal ?? 0) : null;
-  const profitMarginPct = autoSellingPrice && vendorCostNum
-    ? Number((((autoSellingPrice - vendorCostNum) / autoSellingPrice) * 100).toFixed(2)) : null;
-
-  // Sync sellingPrice to auto-calculated
-  useEffect(() => {
-    if (autoSellingPrice !== null) setSellingPrice(String(autoSellingPrice));
-  }, [autoSellingPrice]);
-
-  const handleMarkupPctChange = (v: string) => {
-    setMarkupPct(v);
-    setMarkupNominal("");
-  };
-  const handleMarkupNomChange = (v: string) => {
-    setMarkupNominal(v);
-    setMarkupPct("");
-  };
+  const ppnNominal = vendorCostNum !== null ? Math.round(vendorCostNum * ppnPctNum / 100) : null;
+  const sellingPriceNum = sellingPrice ? Number(sellingPrice) : null;
+  const profitMarginPct = sellingPriceNum && vendorCostNum
+    ? Number((((sellingPriceNum - vendorCostNum) / sellingPriceNum) * 100).toFixed(2)) : null;
 
   const addItem = () => setOfferItems(p => [...p, { label: "", value: "" }]);
   const updateItem = (i: number, field: "label" | "value", val: string) => {
@@ -698,7 +669,7 @@ function CreateApprovalDialog({ onCreated }: { onCreated: () => void }) {
   const reset = () => {
     setOrderId(""); setOrderNumber(""); setCustomerName(""); setCustomerPhone("");
     setSellingPrice(""); setCurrency("IDR"); setTermsNotes(""); setExpiresInDays("7");
-    setOfferItems([]); setAdminNotes(""); setVendorCost(""); setMarkupPct(""); setMarkupNominal(""); setPpnPct("11");
+    setOfferItems([]); setAdminNotes(""); setVendorCost(""); setPpnPct("11");
   };
 
   const handleCreate = async () => {
@@ -716,8 +687,6 @@ function CreateApprovalDialog({ onCreated }: { onCreated: () => void }) {
           expiresInDays: expiresInDays ? Number(expiresInDays) : undefined,
           adminNotes: adminNotes || undefined,
           vendorCost: vendorCost ? Number(vendorCost) : undefined,
-          markupPct: markupPct ? Number(markupPct) : (computedMarkupPct ?? undefined),
-          markupNominal: markupNominal ? Number(markupNominal) : (computedMarkupNominal ?? undefined),
           ppnPct: ppnPct ? Number(ppnPct) : undefined,
           ppnNominal: ppnNominal ?? undefined,
           profitMarginPct: profitMarginPct ?? undefined,
@@ -798,34 +767,27 @@ function CreateApprovalDialog({ onCreated }: { onCreated: () => void }) {
                 </Select>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs">Markup %</Label>
-                <Input type="number" value={markupPct} onChange={e => handleMarkupPctChange(e.target.value)} placeholder="Auto dari nominal" />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Markup Nominal</Label>
-                <Input type="number" value={markupNominal || (computedMarkupNominal !== null ? String(computedMarkupNominal) : "")}
-                  onChange={e => handleMarkupNomChange(e.target.value)} placeholder="Auto dari %" readOnly={!!markupPct} />
-              </div>
-            </div>
-            {vendorCostNum !== null && (markupPct || markupNominal) && (
+            {vendorCostNum !== null && sellingPriceNum !== null && (
               <div className="bg-white border border-indigo-100 rounded-lg p-3 grid grid-cols-2 sm:grid-cols-4 gap-3 text-center text-xs">
                 <div>
-                  <p className="text-slate-400 mb-0.5">Sebelum PPN</p>
-                  <p className="font-bold text-slate-800">{fmt(baseBeforeTax)}</p>
+                  <p className="text-slate-400 mb-0.5">Harga Dasar</p>
+                  <p className="font-bold text-slate-800">{fmt(vendorCostNum)}</p>
                 </div>
                 <div>
                   <p className="text-slate-400 mb-0.5">PPN {ppnPct}%</p>
                   <p className="font-bold text-slate-600">{fmt(ppnNominal)}</p>
                 </div>
                 <div>
-                  <p className="text-slate-400 mb-0.5">Total Jual</p>
-                  <p className="font-bold text-indigo-700 text-sm">{fmt(autoSellingPrice)}</p>
+                  <p className="text-slate-400 mb-0.5">Harga Jual</p>
+                  <p className="font-bold text-indigo-700 text-sm">{fmt(sellingPriceNum)}</p>
                 </div>
                 <div>
-                  <p className="text-slate-400 mb-0.5">Margin</p>
-                  <p className="font-bold text-green-600">{profitMarginPct !== null ? `${profitMarginPct}%` : "—"}</p>
+                  <p className="text-slate-400 mb-0.5">Profit</p>
+                  <p className="font-bold text-green-600">
+                    {vendorCostNum !== null && sellingPriceNum !== null
+                      ? `${fmt(sellingPriceNum - vendorCostNum)} (${profitMarginPct ?? 0}%)`
+                      : "—"}
+                  </p>
                 </div>
               </div>
             )}
