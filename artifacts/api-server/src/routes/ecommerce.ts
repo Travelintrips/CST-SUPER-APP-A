@@ -2,13 +2,30 @@ import { Router } from "express";
 import { db, productsTable, ordersTable, productCategoriesTable, productCategoryMapTable } from "@workspace/db";
 import { eq, ne, count, inArray, and, ilike, or, type SQL } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage";
+import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { postEcommerceOrder } from "../lib/accounting.js";
 import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa } from "../lib/adminWa.js";
 import { saveAndBroadcast } from "../lib/notificationStore.js";
+import { registerPortalConnection, unregisterPortalConnection, broadcastToPortal } from "../lib/sseManager.js";
+import { requireClerkUser } from "../lib/requireAdmin.js";
 
 const router = Router();
 const objectStorageService = new ObjectStorageService();
+
+// [C3-FIX] In-memory rate limiter: max 3 order creation per IP per minute (prevents double-click duplicates)
+const _orderCreateRateMap = new Map<string, { count: number; resetAt: number }>();
+function _checkOrderCreateRate(ip: string): boolean {
+  const now = Date.now();
+  let entry = _orderCreateRateMap.get(ip);
+  if (!entry || now > entry.resetAt) {
+    entry = { count: 0, resetAt: now + 60_000 };
+  }
+  if (entry.count >= 3) return false;
+  entry.count++;
+  _orderCreateRateMap.set(ip, entry);
+  return true;
+}
 
 function normalizeImage(value: unknown): string | null {
   if (value === null || value === undefined || value === "") return null;
@@ -139,6 +156,7 @@ router.delete("/product-categories/:id", async (req, res) => {
     return res.status(409).json({ message: `Kategori ini digunakan oleh ${usageCount} produk. Ubah kategori produk tersebut terlebih dahulu.` });
   }
   await db.delete(productCategoriesTable).where(eq(productCategoriesTable.id, id));
+  broadcastToPortal("price_sync", { ts: Date.now() });
   return res.json({ message: "Category deleted" });
 });
 
@@ -170,13 +188,24 @@ router.get("/products", async (req, res) => {
   if (activeFilter === "true") conds.push(eq(productsTable.isActive, true));
   if (activeFilter === "false") conds.push(eq(productsTable.isActive, false));
 
+  const page = Math.max(1, parseInt(String(req.query["page"] ?? "1"), 10) || 1);
+  const limit = Math.min(500, Math.max(1, parseInt(String(req.query["limit"] ?? "50"), 10) || 50));
+  const offset = (page - 1) * limit;
+  const where = conds.length ? and(...conds) : undefined;
+
+  const [{ total }] = await db.select({ total: count() }).from(productsTable).where(where);
   const products = await db
     .select()
     .from(productsTable)
-    .where(conds.length ? and(...conds) : undefined)
-    .orderBy(productsTable.name);
+    .where(where)
+    .orderBy(productsTable.name)
+    .limit(limit)
+    .offset(offset);
   const categoryMap = await getProductCategories(products.map((p) => p.id));
-  return res.json(products.map((p) => serializeProduct(p, resolveCategories(p, categoryMap))));
+  return res.json({
+    data: products.map((p) => serializeProduct(p, resolveCategories(p, categoryMap))),
+    pagination: { page, limit, total: Number(total), totalPages: Math.ceil(Number(total) / limit) },
+  });
 });
 
 // POST /api/ecommerce/products
@@ -304,6 +333,10 @@ router.post("/products/bulk-import", async (req, res) => {
     }
   }
 
+  // Notify Customer Portal: satu atau lebih produk baru/diperbarui via bulk-import.
+  // Listener: products.tsx (invalidates ["portal-products"]),
+  //           jasa.tsx (invalidates ["listPortalServicesJasa"])
+  broadcastToPortal("price_sync", { ts: Date.now() });
   return res.json({ results });
 });
 
@@ -324,16 +357,29 @@ router.put("/products/:id", async (req, res) => {
     defaultSalesTaxId, defaultPurchaseTaxId,
     itemType, unit, unitOptions, subcategory, isActive,
   } = req.body;
-  const categoryNames: string[] = Array.isArray(categories) ? categories.map(String) : [];
-  if (categoryNames.length === 0) return res.status(400).json({ message: "Produk harus memiliki setidaknya satu kategori" });
+  const requestedNames: string[] = Array.isArray(categories) ? categories.map(String).filter(Boolean) : [];
 
+  // If categories not provided or empty, preserve the existing categories from DB
+  let categoryNames: string[] = requestedNames;
   let validCats: { id: number; name: string; createdAt: Date }[] = [];
-  if (categoryNames.length > 0) {
+
+  if (requestedNames.length === 0) {
+    // Preserve existing categories
+    const existing = await db
+      .select({ name: productCategoriesTable.name })
+      .from(productCategoryMapTable)
+      .innerJoin(productCategoriesTable, eq(productCategoryMapTable.categoryId, productCategoriesTable.id))
+      .where(eq(productCategoryMapTable.productId, id));
+    categoryNames = existing.map((r) => r.name);
+    if (categoryNames.length > 0) {
+      validCats = await db.select().from(productCategoriesTable).where(inArray(productCategoriesTable.name, categoryNames));
+    }
+  } else {
     validCats = await db
       .select()
       .from(productCategoriesTable)
-      .where(inArray(productCategoriesTable.name, categoryNames));
-    if (validCats.length !== categoryNames.length) {
+      .where(inArray(productCategoriesTable.name, requestedNames));
+    if (validCats.length !== requestedNames.length) {
       return res.status(400).json({ message: "One or more categories do not exist in the predefined list" });
     }
   }
@@ -353,23 +399,45 @@ router.put("/products/:id", async (req, res) => {
       isActive: isActive !== undefined ? Boolean(isActive) : true,
     }).where(eq(productsTable.id, id)).returning();
     if (!p) return null;
-    await tx.delete(productCategoryMapTable).where(eq(productCategoryMapTable.productId, id));
-    if (validCats.length > 0) {
-      await tx.insert(productCategoryMapTable).values(
-        validCats.map((c) => ({ productId: id, categoryId: c.id }))
-      );
+    if (requestedNames.length > 0) {
+      // Only update category map if caller explicitly sent categories
+      await tx.delete(productCategoryMapTable).where(eq(productCategoryMapTable.productId, id));
+      if (validCats.length > 0) {
+        await tx.insert(productCategoryMapTable).values(
+          validCats.map((c) => ({ productId: id, categoryId: c.id }))
+        );
+      }
     }
     return p;
   });
 
   if (!product) return res.status(404).json({ message: "Product not found" });
+  // Notify Customer Portal: harga/data produk berubah via BizPortal admin.
+  // Listener: products.tsx (invalidates ["portal-products"]),
+  //           jasa.tsx (invalidates ["listPortalServicesJasa"])
+  broadcastToPortal("price_sync", { ts: Date.now() });
   return res.json(serializeProduct(product, categoryNames));
 });
 
 // DELETE /api/ecommerce/products/:id
 router.delete("/products/:id", async (req, res) => {
   const id = Number(req.params.id);
+  const [product] = await db.select().from(productsTable).where(eq(productsTable.id, id));
   await db.delete(productsTable).where(eq(productsTable.id, id));
+  // Cascade storage cleanup — imageUrl + mediaItems
+  if (product) {
+    const urls: string[] = [];
+    if (product.imageUrl) urls.push(product.imageUrl);
+    try {
+      const items: Array<{ url?: string }> = JSON.parse(product.mediaItems ?? "[]");
+      for (const item of items) { if (item.url) urls.push(item.url); }
+    } catch { /* ignore */ }
+    for (const url of urls) deleteFromSupabase(url).catch(() => {});
+  }
+  // Notify Customer Portal: produk dihapus — hapus dari listing.
+  // Listener: products.tsx (invalidates ["portal-products"]),
+  //           jasa.tsx (invalidates ["listPortalServicesJasa"])
+  broadcastToPortal("price_sync", { ts: Date.now() });
   return res.json({ message: "Product deleted" });
 });
 
@@ -443,14 +511,20 @@ function serializeOrder(o: typeof ordersTable.$inferSelect) {
   };
 }
 
-// GET /api/ecommerce/orders
-router.get("/orders", async (_req, res) => {
+// GET /api/ecommerce/orders — [C2-FIX] requires internal staff session
+router.get("/orders", async (req, res) => {
+  if (!(await requireClerkUser(req, res))) return;
   const orders = await db.select().from(ordersTable).orderBy(ordersTable.createdAt);
   return res.json(orders.map(serializeOrder));
 });
 
-// POST /api/ecommerce/orders
+// POST /api/ecommerce/orders — public checkout endpoint
 router.post("/orders", async (req, res) => {
+  // [C3-FIX] IP-based rate limit: prevent rapid double-submission / bot flooding
+  const clientIp = (req.ip ?? req.socket?.remoteAddress ?? "unknown").replace(/^::ffff:/, "");
+  if (!_checkOrderCreateRate(clientIp)) {
+    return res.status(429).json({ message: "Terlalu banyak permintaan. Coba lagi dalam 1 menit." });
+  }
   const { customerName, customerEmail, customerPhone, items, lineItems, totalAmount, taxAmount: rawTax } = req.body;
   const parsedLineItems: Array<{ name: string; qty: number; unitPrice: number }> | null =
     Array.isArray(lineItems) && lineItems.length > 0 ? lineItems : null;
@@ -503,8 +577,9 @@ router.post("/orders", async (req, res) => {
   return res.status(201).json(serializeOrder(order));
 });
 
-// PUT /api/ecommerce/orders/:id
+// PUT /api/ecommerce/orders/:id — [C2-FIX] requires internal staff session (triggers accounting)
 router.put("/orders/:id", async (req, res) => {
+  if (!(await requireClerkUser(req, res))) return;
   const id = Number(req.params.id);
   const [existing] = await db.select().from(ordersTable).where(eq(ordersTable.id, id));
   if (!existing) return res.status(404).json({ message: "Order not found" });
@@ -583,6 +658,61 @@ router.delete("/orders/:id", async (req, res) => {
   const id = Number(req.params.id);
   await db.delete(ordersTable).where(eq(ordersTable.id, id));
   return res.json({ message: "Order deleted" });
+});
+
+// GET /api/ecommerce/events — SSE stream for customer portal (live price sync)
+router.get("/events", (req, res) => {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+
+  res.write(": connected\n\n");
+
+  const keepAlive = setInterval(() => {
+    try { res.write(": ping\n\n"); } catch { clearInterval(keepAlive); }
+  }, 25_000);
+
+  registerPortalConnection(res);
+
+  req.on("close", () => {
+    clearInterval(keepAlive);
+    unregisterPortalConnection(res);
+  });
+});
+
+// POST /api/ecommerce/sync-prices — broadcast price_sync to all portal tabs (staff only)
+router.post("/sync-prices", async (req, res) => {
+  if (!(await requireClerkUser(req, res))) return;
+  broadcastToPortal("price_sync", { ts: Date.now() });
+  return res.json({ ok: true, message: "Price sync broadcasted to all portal tabs" });
+});
+
+// ── USD/IDR exchange rate — server-side cache (H6) ────────────────────────
+// Fetches from open.er-api.com and caches for 5 minutes so the browser
+// never calls external APIs directly and stale localStorage values are avoided.
+const _USD_IDR_FALLBACK = 16_300;
+const _USD_IDR_CACHE_MS = 5 * 60 * 1000;
+let _usdIdrCache: { rate: number; fetchedAt: number } | null = null;
+
+// GET /api/ecommerce/usd-idr-rate — public (used by customer portal)
+router.get("/usd-idr-rate", async (_req, res) => {
+  const now = Date.now();
+  if (_usdIdrCache && now - _usdIdrCache.fetchedAt < _USD_IDR_CACHE_MS) {
+    return res.json({ rate: _usdIdrCache.rate, source: "cache" });
+  }
+  try {
+    const resp = await fetch("https://open.er-api.com/v6/latest/USD");
+    const data = await resp.json() as { rates?: { IDR?: number } };
+    const idr = data?.rates?.IDR;
+    if (idr && idr > 1000) {
+      _usdIdrCache = { rate: idr, fetchedAt: now };
+      return res.json({ rate: idr, source: "live" });
+    }
+  } catch { /* fall through to cached/fallback */ }
+  const rate = _usdIdrCache?.rate ?? _USD_IDR_FALLBACK;
+  return res.json({ rate, source: "fallback" });
 });
 
 export default router;

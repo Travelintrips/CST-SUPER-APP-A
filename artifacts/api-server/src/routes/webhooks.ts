@@ -10,6 +10,38 @@ import { normalizePhone } from "../lib/phoneUtils.js";
 
 const router = Router();
 
+// [H3-FIX] SSRF guard: only allow media URLs from Fonnte/WhatsApp CDN domains.
+// Rejects private IP ranges, localhost, and any non-allowlisted hostname.
+const ALLOWED_MEDIA_DOMAINS = [
+  "fonnte.com",
+  "whatsapp.net",
+  "cdn-whatsapp.net",
+  "mmg.whatsapp.net",
+  "whatsapp.com",
+  "wa.me",
+];
+const PRIVATE_HOST_RE = [
+  /^localhost$/i,
+  /^127\./,
+  /^10\./,
+  /^172\.(1[6-9]|2\d|3[01])\./,
+  /^192\.168\./,
+  /^169\.254\./,
+  /^0\./,
+  /^::1$/,
+  /^fc00:/i,
+  /^fe80:/i,
+  /metadata\.google\.internal/i,
+];
+function isAllowedMediaUrl(rawUrl: string): boolean {
+  let u: URL;
+  try { u = new URL(rawUrl); } catch { return false; }
+  if (u.protocol !== "https:" && u.protocol !== "http:") return false;
+  const host = u.hostname.toLowerCase();
+  if (PRIVATE_HOST_RE.some((re) => re.test(host))) return false;
+  return ALLOWED_MEDIA_DOMAINS.some((d) => host === d || host.endsWith(`.${d}`));
+}
+
 // ── In-memory dedup cache: prevent processing the same Fonnte webhook twice ──
 // Key = sender + "|" + message (first 100 chars) + "|" + mediaUrl
 // Entries expire after DEDUP_TTL_MS (2 minutes)
@@ -277,6 +309,25 @@ router.get("/webhook/fonnte", (_req: Request, res: Response) => {
 });
 
 router.post("/webhook/fonnte", async (req: Request, res: Response) => {
+  // ── Webhook origin verification ────────────────────────────────────────────
+  // Set FONNTE_WEBHOOK_SECRET and configure Fonnte to append ?token=SECRET
+  // (or send X-Fonnte-Token header) so only Fonnte can trigger this endpoint.
+  const webhookSecret = process.env.FONNTE_WEBHOOK_SECRET;
+  if (!webhookSecret) {
+    // Fail closed: without a configured secret we cannot verify webhook origin.
+    // Set FONNTE_WEBHOOK_SECRET and configure Fonnte to append ?token=SECRET.
+    logger.error({ ip: req.ip }, "Fonnte webhook: FONNTE_WEBHOOK_SECRET not set — rejecting request. Configure this env var to enable webhook processing.");
+    res.status(503).json({ status: false, error: "Webhook not configured" });
+    return;
+  }
+  const provided =
+    String(req.query["token"] ?? req.headers["x-fonnte-token"] ?? "").trim();
+  if (provided !== webhookSecret) {
+    logger.warn({ ip: req.ip }, "Fonnte webhook: invalid or missing token — rejected");
+    res.status(401).json({ status: false, error: "Unauthorized" });
+    return;
+  }
+
   res.status(200).json({ status: true });
 
   try {
@@ -303,8 +354,13 @@ router.post("/webhook/fonnte", async (req: Request, res: Response) => {
 
     // Must have either a text message OR a media file to process
     const hasText = message.trim().length > 0;
-    const hasMedia = !!mediaUrl && (mediaType === "image" || mediaType === "document" || mediaType === "pdf"
-      || (mediaUrl.match(/\.(pdf|jpg|jpeg|png|webp)(\?|$)/i) !== null));
+    // [H3-FIX] Only treat as media if URL passes SSRF allowlist check
+    const mediaUrlSafe = mediaUrl && isAllowedMediaUrl(mediaUrl) ? mediaUrl : null;
+    if (mediaUrl && !mediaUrlSafe) {
+      logger.warn({ sender, mediaUrl }, "Fonnte webhook: media URL rejected by SSRF allowlist — ignoring");
+    }
+    const hasMedia = !!mediaUrlSafe && (mediaType === "image" || mediaType === "document" || mediaType === "pdf"
+      || (mediaUrlSafe.match(/\.(pdf|jpg|jpeg|png|webp)(\?|$)/i) !== null));
 
     if (!hasText && !hasMedia) {
       logger.info({ sender, mediaType }, "Fonnte webhook: no text or processable media, skipping");
@@ -317,13 +373,13 @@ router.post("/webhook/fonnte", async (req: Request, res: Response) => {
     const adminWa = await getAdminWa();
 
     // ─── 0. Media file processing (PDF / image) ───────────────────────────────
-    if (hasMedia && mediaUrl) {
+    if (hasMedia && mediaUrlSafe) {
       const displayName = senderName ?? actualSender;
-      logger.info({ sender, mediaUrl, mediaType }, "Fonnte webhook: processing media file");
+      logger.info({ sender, mediaUrl: mediaUrlSafe, mediaType }, "Fonnte webhook: processing media file");
 
       let mediaResult = null;
       try {
-        mediaResult = await processWaMediaForAiIntake(mediaUrl, normalizedSender, senderName, message || null);
+        mediaResult = await processWaMediaForAiIntake(mediaUrlSafe, normalizedSender, senderName, message || null);
       } catch (mediaErr) {
         logger.warn({ mediaErr, sender }, "AI media intake: processing failed");
       }
@@ -383,7 +439,7 @@ router.post("/webhook/fonnte", async (req: Request, res: Response) => {
             `Tipe   : ${fileLabel}\n` +
             (message ? `Caption: ${message}\n` : "") +
             `━━━━━━━━━━━━━━━━━━\n` +
-            `🔗 File: ${mediaUrl}\n\n` +
+            `🔗 File: ${mediaUrlSafe}\n\n` +
             `_Periksa file secara manual di BizPortal._`;
           sendWhatsApp(adminWa, forwardMsg).catch(() => undefined);
         }

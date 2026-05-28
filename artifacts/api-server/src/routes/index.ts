@@ -9,7 +9,7 @@ import tradingRouter from "./trading";
 // import logisticsRouter from "./logistics";
 import freightRouter from "./freight";
 import salesRouter from "./sales";
-import purchaseRouter from "./purchase";
+import purchaseRouter, { purchasePublicRouter } from "./purchase";
 import reportsRouter from "./reports";
 import paymentsRouter from "./payments";
 import accountingRouter from "./accounting";
@@ -58,6 +58,7 @@ import {
   customerOrderPublicRouter,
 } from "./customerQuoteFlow";
 
+import storageAuditLogRouter from "./storageAuditLog.js";
 import { vendorPerformanceRouter } from "./vendorPerformance";
 import { internalTasksRouter } from "./internalTasks";
 import { podOcrRouter } from "./podOcr";
@@ -67,6 +68,12 @@ import { vendorFulfillmentPublicRouter } from "./vendorFulfillment";
 import { fulfillmentAdminRouter, fulfillmentPublicRouter } from "./orderFulfillment.js";
 import { vendorJobAdminRouter, vendorJobPublicRouter, orderTrackingPublicRouter } from "./vendorJobOrder.js";
 import { resolveShortLink } from "../lib/shortLink.js";
+import pushRouter from "./push.js";
+import { intelligenceAlertsRouter } from "./intelligenceAlerts.js";
+import { aiApprovalsRouter } from "./aiApprovals.js";
+import { operationalContextRouter } from "./operationalContext.js";
+import { aiDecisionMemoryRouter } from "./aiDecisionMemory.js";
+import { productTemplatesRouter } from "./productTemplates.js";
 import type { Request, Response } from "express";
 
 const router: IRouter = Router();
@@ -84,6 +91,7 @@ router.use("/logistics", freightRouter);
 // pos.ts (LAMA) dinonaktifkan — lihat komentar import di atas.
 // router.use("/pos", posRouter);
 router.use("/sales", salesRouter);
+router.use("/purchase", purchasePublicRouter);
 router.use("/purchase", purchaseRouter);
 router.use("/reports", reportsRouter);
 router.use("/payments", paymentsRouter);
@@ -131,6 +139,7 @@ router.use("/approval-rules", approvalRulesRouter);
 router.use("/bom", productBomRouter);
 router.use("/audit-logs", auditLogRouter);
 router.use("/erp-audits", auditReportsRouter);
+router.use("/storage-audit", storageAuditLogRouter);
 
 router.use("/notifications", notificationsRouter);
 router.use("/nav-preferences", navPreferencesRouter);
@@ -154,6 +163,12 @@ router.use("/fulfillment", fulfillmentPublicRouter);
 router.use("/logistic", vendorJobAdminRouter);
 router.use("/vendor-job", vendorJobPublicRouter);
 router.use("/order-track", orderTrackingPublicRouter);
+router.use("/push", pushRouter);
+router.use("/intelligence-alerts", intelligenceAlertsRouter);
+router.use("/ai-approvals", aiApprovalsRouter);
+router.use("/operational-context", operationalContextRouter);
+router.use("/ai/decision-memory", aiDecisionMemoryRouter);
+router.use("/product-templates", productTemplatesRouter);
 
 router.get("/q/:code", async (req: Request, res: Response) => {
   const code = String(req.params.code ?? "").trim();
@@ -164,7 +179,13 @@ router.get("/q/:code", async (req: Request, res: Response) => {
   if (!target) {
     return res.status(404).json({ error: "Link tidak ditemukan atau sudah kedaluwarsa." });
   }
-  return res.json({ targetUrl: target });
+  // Normalisasi: kembalikan path saja agar domain lama/salah di DB tidak jadi masalah
+  let targetUrl = target;
+  try {
+    const parsed = new URL(target);
+    targetUrl = parsed.pathname + parsed.search + parsed.hash;
+  } catch { /* sudah relative */ }
+  return res.json({ targetUrl });
 });
 
 export default router;

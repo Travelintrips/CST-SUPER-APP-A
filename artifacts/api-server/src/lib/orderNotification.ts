@@ -1,4 +1,4 @@
-import { db, suppliersTable, vendorCatalogItemsTable, portalContentTable, waTemplateConfigsTable } from "@workspace/db";
+import { db, suppliersTable, vendorCatalogItemsTable, waTemplateConfigsTable } from "@workspace/db";
 import { eq, and, ilike, sql } from "drizzle-orm";
 import { sendWhatsApp } from "./fonnte";
 import { getAdminGroupWa } from "./adminWa";
@@ -86,6 +86,19 @@ function formatJamOrder(jam: string): string {
 
 // ─── WA Template Engine ────────────────────────────────────────────────────────
 
+// ── WA Template Rendering ──────────────────────────────────────────────────────
+//
+// Template bodies are stored in wa_template_configs (recipient × workflow key).
+// Falls back to DEFAULT_TPL if no DB record exists.
+//
+// Rendering pipeline:
+//   1. resolveCondBlocks()  — removes {{#if X}}...{{/if}} blocks that don't match serviceType
+//   2. renderTemplate()     — substitutes {{variable}} values; omits lines with null/empty vars
+//   3. Collapse triple-newlines created by removed conditional blocks
+//
+// serviceType keys (from deriveServiceType):
+//   "trucking" | "freight_sea" | "freight_air" | "ppjk" | "product" | "handling" | ""
+
 /** Map shipmentType text → service type key used in {{#if X}} blocks */
 export function deriveServiceType(shipmentType: string, orderType?: string): string {
   if (orderType === "product") return "product";
@@ -99,7 +112,8 @@ export function deriveServiceType(shipmentType: string, orderType?: string): str
   return "";
 }
 
-/** Resolve {{#if serviceTypeKey}}...{{/if}} conditional blocks */
+/** Resolve {{#if serviceTypeKey}}...{{/if}} conditional blocks.
+ *  Blocks whose key matches serviceType are kept (content only); others are removed entirely. */
 export function resolveCondBlocks(body: string, serviceType: string | string[]): string {
   const types = Array.isArray(serviceType) ? serviceType : [serviceType];
   return body.replace(/\{\{#if\s+(\w+)\}\}([\s\S]*?)\{\{\/if\}\}/g, (_m, cond, content: string) =>
@@ -112,28 +126,36 @@ export function resolveCondBlocks(body: string, serviceType: string | string[]):
  * empty/null are omitted from the output (optional-field pattern).
  * Empty lines (no variables) are always kept.
  * Supports {{#if serviceType}}...{{/if}} conditional blocks (resolved before var substitution).
+ *
+ * Example:
+ *   template:  "Harga: {{price}}\nRute: {{route}}"
+ *   vars:      { price: null, route: "JKT → SBY" }
+ *   result:    "Rute: JKT → SBY"   ← "Harga" line omitted because price is null
  */
 export function renderTemplate(
   template: string,
   vars: Record<string, string | null | undefined>,
   serviceType: string | string[] = "",
 ): string {
+  // Step 1: Remove {{#if X}}...{{/if}} blocks that don't match serviceType
   const resolved = resolveCondBlocks(template, serviceType);
   const lines = resolved.split("\n");
   const result: string[] = [];
   for (const line of lines) {
     const matches = [...line.matchAll(/\{\{(\w+)\}\}/g)];
+    // Lines with no variables are always kept (static text / section headers)
     if (matches.length === 0) { result.push(line); continue; }
     let skip = false;
     let rendered = line;
     for (const m of matches) {
       const val = vars[m[1]];
+      // If any variable in the line is null/empty → omit the entire line
       if (val == null || val === "") { skip = true; break; }
       rendered = rendered.replaceAll(`{{${m[1]}}}`, val);
     }
     if (!skip) result.push(rendered);
   }
-  // Collapse triple-newlines left by removed conditional blocks
+  // Step 2: Collapse triple-newlines left by removed conditional blocks
   return result.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
@@ -204,21 +226,21 @@ function buildOrderVars(
   };
 }
 
-// 5-minute in-memory cache for WA templates
-let _waTemplateCache: Record<string, string> | null = null;
-let _waTemplateCacheAt = 0;
+// ── Template DB Cache (wa_template_configs) ────────────────────────────────────
+// All templates are cached in-process for WA_TEMPLATE_TTL (5 min) to avoid
+// DB round-trips on every WA send. Cache key: "<recipient>__<workflow>".
+// Invalidated by invalidateWaTemplateCache() after any admin template update.
 const WA_TEMPLATE_TTL = 5 * 60 * 1000;
-
-// Workflow-based template cache (new table: whatsapp_template_configs)
 let _wfTemplateCache: Map<string, string> | null = null;
 let _wfTemplateCacheAt = 0;
 
 export function invalidateWaTemplateCache() {
-  _waTemplateCache = null;
   _wfTemplateCache = null;
 }
 
-/** Fetch template body for a (recipient × workflow) pair from new DB table; falls back to defaultBody. */
+/** Fetch template body for a (recipient × workflow) pair from wa_template_configs;
+ *  falls back to hardcoded defaultBody if no DB record exists.
+ *  Cache TTL: 5 minutes (WA_TEMPLATE_TTL). */
 export async function getWaTemplateConfig(
   recipient: string,
   workflow: string,
@@ -230,25 +252,9 @@ export async function getWaTemplateConfig(
     try {
       const rows = await db.select().from(waTemplateConfigsTable);
       for (const row of rows) _wfTemplateCache.set(`${row.recipient}__${row.workflow}`, row.body);
-    } catch { /* use defaults */ }
+    } catch { /* use hardcoded defaults if DB unavailable */ }
   }
   return _wfTemplateCache.get(`${recipient}__${workflow}`) ?? defaultBody;
-}
-
-async function getWaTemplates(): Promise<Record<string, string>> {
-  if (_waTemplateCache && Date.now() - _waTemplateCacheAt < WA_TEMPLATE_TTL) {
-    return _waTemplateCache;
-  }
-  try {
-    const { DEFAULT_WA_TEMPLATES } = await import("../routes/settings.js");
-    const [row] = await db.select().from(portalContentTable).where(eq(portalContentTable.key, "wa_templates"));
-    const stored: Record<string, string> = row ? JSON.parse(row.value) as Record<string, string> : {};
-    _waTemplateCache = { ...DEFAULT_WA_TEMPLATES, ...stored };
-    _waTemplateCacheAt = Date.now();
-    return _waTemplateCache;
-  } catch {
-    return {};
-  }
 }
 
 function getApproveFormUrl(orderNumber: string): string {
@@ -333,6 +339,17 @@ function buildAdminGroupWaMessage(
 function buildCustomerWaMessage(order: LogisticOrderData, tplBody: string): string {
   const svcType = deriveServiceType(order.shipmentType, order.orderType);
   return renderTemplate(tplBody, buildOrderVars(order), svcType);
+}
+
+/** Escape user-controlled strings before inserting into HTML email bodies. */
+function escHtml(s: string | null | undefined): string {
+  if (!s) return "";
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#x27;");
 }
 
 function buildEmailHtml(title: string, intro: string, rows: [string, string][], footer: string): string {
@@ -472,8 +489,6 @@ const DEFAULT_TPL = {
       "💰 Total    : *Rp {{grandTotal}}*",
       "Catatan     : {{notes}}",
       "━━━━━━━━━━━━━━━━━━",
-      "📋 Form vendor → {{vendorFormUrl}}",
-      "",
       "_Dikirim: {{timestamp}}_",
     ].join("\n"),
     customer: [
@@ -554,8 +569,6 @@ const DEFAULT_TPL = {
       "",
       "{{vendorListWithHeader}}",
       "{{waitingListWithHeader}}",
-      "🔗 Bandingkan & pilih vendor:",
-      "{{compareLink}}",
       "_{{timestamp}}_",
     ].join("\n"),
     customer_rejection: [
@@ -587,20 +600,20 @@ const DEFAULT_TPL = {
 
 async function notifyAdmin(order: LogisticOrderData): Promise<void> {
   const rows: [string, string][] = [
-    ["No. Order", `<strong>${order.orderNumber}</strong>`],
-    ["Customer", `${order.customerName}${order.companyName ? ` (${order.companyName})` : ""}`],
-    ["Email", order.email],
-    ["HP", order.phone],
-    ["Jenis", order.shipmentType],
-    ["Rute", `${order.origin} → ${order.destination}`],
-    ...(order.commodity ? [["Komoditi", order.commodity] as [string, string]] : []),
-    ...(order.cargoDescription ? [["Deskripsi", order.cargoDescription] as [string, string]] : []),
-    ...(order.grossWeight ? [["Berat", `${order.grossWeight} kg`] as [string, string]] : []),
-    ...(order.volumeCbm ? [["Volume", `${order.volumeCbm} CBM`] as [string, string]] : []),
-    ["Layanan", order.serviceList.replace(/\n/g, "<br>")],
+    ["No. Order", `<strong>${escHtml(order.orderNumber)}</strong>`],
+    ["Customer", `${escHtml(order.customerName)}${order.companyName ? ` (${escHtml(order.companyName)})` : ""}`],
+    ["Email", escHtml(order.email)],
+    ["HP", escHtml(order.phone)],
+    ["Jenis", escHtml(order.shipmentType)],
+    ["Rute", `${escHtml(order.origin)} → ${escHtml(order.destination)}`],
+    ...(order.commodity ? [["Komoditi", escHtml(order.commodity)] as [string, string]] : []),
+    ...(order.cargoDescription ? [["Deskripsi", escHtml(order.cargoDescription)] as [string, string]] : []),
+    ...(order.grossWeight ? [["Berat", `${escHtml(String(order.grossWeight))} kg`] as [string, string]] : []),
+    ...(order.volumeCbm ? [["Volume", `${escHtml(String(order.volumeCbm))} CBM`] as [string, string]] : []),
+    ["Layanan", escHtml(order.serviceList).replace(/\n/g, "<br>")],
     ["Total Est.", `Rp ${formatRupiah(order.grandTotal)}`],
-    ...(order.requiredDate ? [["Tgl Butuh", order.requiredDate] as [string, string]] : []),
-    ...(order.notes ? [["Catatan", order.notes] as [string, string]] : []),
+    ...(order.requiredDate ? [["Tgl Butuh", escHtml(order.requiredDate)] as [string, string]] : []),
+    ...(order.notes ? [["Catatan", escHtml(order.notes)] as [string, string]] : []),
   ];
 
   // Generate admin review link upfront — used in both WA and email
@@ -626,7 +639,9 @@ async function notifyAdmin(order: LogisticOrderData): Promise<void> {
         return longUrl;
       });
     }
-    sendWhatsApp(adminGroupWa, buildAdminGroupWaMessage(order, tplAdminGroup, groupActionUrl)).catch((err: unknown) =>
+    // Wrap URL dengan italic markdown WA (`_..._`) — mencegah link preview card tapi tetap clickable
+    const wrappedActionUrl = groupActionUrl ? `_${groupActionUrl}_` : groupActionUrl;
+    sendWhatsApp(adminGroupWa, buildAdminGroupWaMessage(order, tplAdminGroup, wrappedActionUrl)).catch((err: unknown) =>
       logger.error({ err }, "WA group notification failed")
     );
   } else {
@@ -644,7 +659,7 @@ async function notifyAdmin(order: LogisticOrderData): Promise<void> {
       subject: `[ORDER BARU] ${order.orderNumber} — ${order.customerName}`,
       html: buildEmailHtml(
         "Order Logistik Baru Masuk",
-        `Order baru telah diterima dari <strong>${order.customerName}</strong>. Silakan tinjau dan proses.`,
+        `Order baru telah diterima dari <strong>${escHtml(order.customerName)}</strong>. Silakan tinjau dan proses.`,
         rows,
         reviewCta
       ),
@@ -701,17 +716,17 @@ async function notifyVendors(order: LogisticOrderData): Promise<void> {
   }
 
   const rows: [string, string][] = [
-    ["No. Order", `<strong>${order.orderNumber}</strong>`],
-    ["Jenis", order.shipmentType],
-    ["Rute", `${order.origin} → ${order.destination}`],
-    ...(order.commodity ? [["Komoditi", order.commodity] as [string, string]] : []),
-    ...(order.cargoDescription ? [["Deskripsi", order.cargoDescription] as [string, string]] : []),
-    ...(order.grossWeight ? [["Berat", `${order.grossWeight} kg`] as [string, string]] : []),
-    ...(order.volumeCbm ? [["Volume", `${order.volumeCbm} CBM`] as [string, string]] : []),
-    ...(order.vehicleType ? [["Vehicle Type", order.vehicleType] as [string, string]] : []),
-    ["Layanan", order.serviceList.replace(/\n/g, "<br>")],
-    ...(order.requiredDate ? [["Tgl Pickup", formatISODate(order.requiredDate)] as [string, string]] : []),
-    ...(order.notes ? [["Catatan", order.notes] as [string, string]] : []),
+    ["No. Order", `<strong>${escHtml(order.orderNumber)}</strong>`],
+    ["Jenis", escHtml(order.shipmentType)],
+    ["Rute", `${escHtml(order.origin)} → ${escHtml(order.destination)}`],
+    ...(order.commodity ? [["Komoditi", escHtml(order.commodity)] as [string, string]] : []),
+    ...(order.cargoDescription ? [["Deskripsi", escHtml(order.cargoDescription)] as [string, string]] : []),
+    ...(order.grossWeight ? [["Berat", `${escHtml(String(order.grossWeight))} kg`] as [string, string]] : []),
+    ...(order.volumeCbm ? [["Volume", `${escHtml(String(order.volumeCbm))} CBM`] as [string, string]] : []),
+    ...(order.vehicleType ? [["Vehicle Type", escHtml(order.vehicleType)] as [string, string]] : []),
+    ["Layanan", escHtml(order.serviceList).replace(/\n/g, "<br>")],
+    ...(order.requiredDate ? [["Tgl Pickup", escHtml(formatISODate(order.requiredDate))] as [string, string]] : []),
+    ...(order.notes ? [["Catatan", escHtml(order.notes)] as [string, string]] : []),
   ];
 
   for (const vendor of eligible) {
@@ -771,7 +786,7 @@ async function notifyVendors(order: LogisticOrderData): Promise<void> {
           : `[PERMINTAAN ORDER] ${order.orderNumber} — ${order.shipmentType}`,
         html: buildEmailHtml(
           isTrucking ? "Trucking Request Form" : "Permintaan Order Baru dari CST Logistics",
-          `Kepada Yth. <strong>${vendor.name}</strong>,<br><br>${isTrucking ? "Ada permintaan trucking baru. Mohon lengkapi form di bawah dan balas email ini." : "Anda mendapat permintaan pengiriman baru dari CST Logistics. Silakan balas email ini dengan salah satu format di bawah."}`,
+          `Kepada Yth. <strong>${escHtml(vendor.name)}</strong>,<br><br>${isTrucking ? "Ada permintaan trucking baru. Mohon lengkapi form di bawah dan balas email ini." : "Anda mendapat permintaan pengiriman baru dari CST Logistics. Silakan balas email ini dengan salah satu format di bawah."}`,
           rows,
           isTrucking ? "Balas email ini dengan form response yang sudah diisi." : "Balas email ini langsung dengan format penawaran di bawah ini."
         ).replace(
@@ -803,15 +818,15 @@ async function notifyCustomer(order: LogisticOrderData): Promise<void> {
   }
 
   const rows: [string, string][] = [
-    ["No. Order", `<strong>${order.orderNumber}</strong>`],
+    ["No. Order", `<strong>${escHtml(order.orderNumber)}</strong>`],
     ["Status", "<span style='color:#d97706;font-weight:600'>Menunggu Penawaran Harga</span>"],
-    ["Jenis", order.shipmentType],
-    ["Rute", `${order.origin} → ${order.destination}`],
-    ...(order.commodity ? [["Komoditi", order.commodity] as [string, string]] : []),
-    ...(order.grossWeight ? [["Berat", `${order.grossWeight} kg`] as [string, string]] : []),
-    ...(order.volumeCbm ? [["Volume", `${order.volumeCbm} CBM`] as [string, string]] : []),
-    ["Layanan", order.serviceList.replace(/\n/g, "<br>")],
-    ...(order.requiredDate ? [["Tgl Butuh", order.requiredDate] as [string, string]] : []),
+    ["Jenis", escHtml(order.shipmentType)],
+    ["Rute", `${escHtml(order.origin)} → ${escHtml(order.destination)}`],
+    ...(order.commodity ? [["Komoditi", escHtml(order.commodity)] as [string, string]] : []),
+    ...(order.grossWeight ? [["Berat", `${escHtml(String(order.grossWeight))} kg`] as [string, string]] : []),
+    ...(order.volumeCbm ? [["Volume", `${escHtml(String(order.volumeCbm))} CBM`] as [string, string]] : []),
+    ["Layanan", escHtml(order.serviceList).replace(/\n/g, "<br>")],
+    ...(order.requiredDate ? [["Tgl Butuh", escHtml(order.requiredDate)] as [string, string]] : []),
   ];
 
   if (isSmtpConfigured()) {
@@ -820,7 +835,7 @@ async function notifyCustomer(order: LogisticOrderData): Promise<void> {
       subject: `Permintaan Diterima — ${order.orderNumber}`,
       html: buildEmailHtml(
         "Permintaan Pengiriman Diterima",
-        `Halo <strong>${order.customerName}</strong>,<br><br>Terima kasih telah mempercayakan pengiriman Anda kepada CST Logistics. Tim kami sedang memproses permintaan Anda dan akan segera mengirimkan penawaran harga terbaik untuk Anda.`,
+        `Halo <strong>${escHtml(order.customerName)}</strong>,<br><br>Terima kasih telah mempercayakan pengiriman Anda kepada CST Logistics. Tim kami sedang memproses permintaan Anda dan akan segera mengirimkan penawaran harga terbaik untuk Anda.`,
         rows,
         "Gunakan nomor order di atas untuk tracking. Hubungi kami di: <strong>(021) 6241234</strong>"
       ),

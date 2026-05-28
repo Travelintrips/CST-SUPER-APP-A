@@ -1,13 +1,21 @@
 import { Router } from "express";
 import { db, shipmentsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, count } from "drizzle-orm";
 
 const router = Router();
 
 // GET /api/logistics/shipments
-router.get("/shipments", async (_req, res) => {
-  const shipments = await db.select().from(shipmentsTable).orderBy(shipmentsTable.createdAt);
-  return res.json(shipments.map(s => ({ ...s, createdAt: s.createdAt.toISOString() })));
+router.get("/shipments", async (req, res) => {
+  const page = Math.max(1, parseInt(String(req.query["page"] ?? "1"), 10) || 1);
+  const limit = Math.min(500, Math.max(1, parseInt(String(req.query["limit"] ?? "50"), 10) || 50));
+  const offset = (page - 1) * limit;
+
+  const [{ total }] = await db.select({ total: count() }).from(shipmentsTable);
+  const shipments = await db.select().from(shipmentsTable).orderBy(shipmentsTable.createdAt).limit(limit).offset(offset);
+  return res.json({
+    data: shipments.map(s => ({ ...s, createdAt: s.createdAt.toISOString() })),
+    pagination: { page, limit, total: Number(total), totalPages: Math.ceil(Number(total) / limit) },
+  });
 });
 
 // POST /api/logistics/shipments

@@ -486,7 +486,8 @@ export default function ExpenseEditorPage() {
     }));
   };
 
-  const { data: salesDocs = [] } = useListSalesDocuments({ kind: "order" });
+  const { data: _salesDocsPaginated } = useListSalesDocuments({ kind: "order", limit: 500 });
+  const salesDocs = _salesDocsPaginated?.data ?? [];
   const { data: shipments = [] } = useListFreightShipments();
 
   const save = async () => {

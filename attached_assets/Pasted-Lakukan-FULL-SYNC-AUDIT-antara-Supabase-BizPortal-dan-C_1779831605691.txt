@@ -1,0 +1,103 @@
+Lakukan FULL SYNC AUDIT antara Supabase, BizPortal, dan Customer Frontend.
+
+Tujuan:
+Pastikan semua data yang dibuat/diubah/dihapus di satu sisi langsung konsisten di sisi lain.
+
+Audit area berikut:
+
+1. Customer Order Sync
+- Customer submit order dari frontend
+- Data masuk Supabase
+- Order muncul di BizPortal
+- Order items lengkap
+- Attachment ikut tersimpan
+
+2. Status Sync
+- Admin ubah status order di BizPortal
+- Status tersimpan ke Supabase
+- Customer Portal membaca status terbaru
+- Tidak ada status hardcoded/local state
+
+3. Product & Service Sync
+- Product/service aktif tampil di frontend
+- Product/service inactive/hidden tidak tampil
+- Harga, nama, deskripsi, kategori, gambar sinkron
+- Delete/archive di BizPortal sinkron ke frontend
+
+4. Vendor Mini Form Sync
+- Admin generate link
+- Link tersimpan Supabase
+- Vendor submit
+- Submission masuk Supabase
+- Admin langsung bisa lihat submission
+- Tidak ada submission yang hanya local state
+
+5. WhatsApp Template Sync
+- Template Settings tersimpan ke Supabase
+- Semua flow WA membaca template dari Supabase
+- Tidak ada hardcoded React message
+- Variable render benar
+
+6. Customer Approval Sync
+- Customer approve/reject dari public link
+- Status masuk Supabase
+- BizPortal update otomatis
+- Jika approve, SO dibuat satu kali saja
+- Tidak duplicate SO
+
+7. Operational Data Sync
+- Vendor submit driver/flight/vessel/customs data
+- Data masuk Supabase
+- Admin dan customer melihat data terbaru sesuai permission
+
+8. Attachment Sync
+- Semua upload masuk Supabase Storage atau table terkait
+- URL bisa dibuka lagi
+- File tidak hilang setelah refresh
+- Permission aman
+
+9. Realtime / Refetch Audit
+Untuk setiap perubahan data, cek apakah frontend:
+- memakai EventSource / Supabase Realtime / refetch
+- invalidate query key yang benar
+- tidak memakai cache lama
+- tidak perlu refresh manual untuk data penting
+
+10. RLS & Security Audit
+Pastikan:
+- customer tidak bisa lihat vendor price/margin
+- vendor tidak bisa lihat vendor lain
+- public link hanya bisa akses via token
+- admin punya akses penuh
+- anonymous user tidak bisa update sembarangan
+
+Output wajib:
+A. Sync Matrix
+Feature | Source Update | Supabase Table | BizPortal Read | Frontend Read | Realtime/Refetch | Status
+
+B. Broken Sync Found
+- file
+- endpoint
+- table
+- masalah
+- dampak
+
+C. Hardcoded/Local Data Found
+- file
+- variable
+- harus diganti ke Supabase table apa
+
+D. Permission/RLS Issue
+- table
+- risk
+- fix policy
+
+E. Fix Plan
+- prioritas critical/high/medium/low
+- langkah aman tanpa merusak fitur existing
+
+F. Final Score
+- Supabase Sync Score
+- BizPortal Sync Score
+- Customer Frontend Sync Score
+- Production Readiness Score

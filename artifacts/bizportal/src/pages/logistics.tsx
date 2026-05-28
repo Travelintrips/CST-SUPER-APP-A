@@ -66,7 +66,8 @@ export default function LogisticsPage() {
     try { localStorage.setItem(FREIGHT_REFRESH_LS_KEY, next); } catch {}
   };
 
-  const { data: shipments, isLoading } = useListShipments();
+  const { data: _shipmentsPaginated, isLoading } = useListShipments({ limit: 500 });
+  const shipments = _shipmentsPaginated?.data;
   const createShipment = useCreateShipment();
   const updateStatus = useUpdateShipmentStatus();
 

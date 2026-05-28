@@ -2,6 +2,7 @@ import { pgTable, serial, text, integer, timestamp, boolean, numeric, index } fr
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { companiesTable } from "./companies";
+import { productsTable } from "./products";
 
 export const suppliersTable = pgTable("suppliers", {
   id: serial("id").primaryKey(),
@@ -24,6 +25,9 @@ export const suppliersTable = pgTable("suppliers", {
   sortOrder: integer("sort_order").notNull().default(0),
   yearVehicle: integer("year_vehicle"),
   supportedModes: text("supported_modes").array(),
+  // ── Phase 1: Structured ETA (replaces free-text eta field) ────────────────
+  etaDaysMin: integer("eta_days_min"),
+  etaDaysMax: integer("eta_days_max"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (t) => [
   index("suppliers_company_idx").on(t.companyId),
@@ -32,10 +36,13 @@ export const suppliersTable = pgTable("suppliers", {
 export const vendorCatalogItemsTable = pgTable("vendor_catalog_items", {
   id: serial("id").primaryKey(),
   vendorId: integer("vendor_id").notNull().references(() => suppliersTable.id),
+  masterItemId: integer("master_item_id").references(() => productsTable.id, { onDelete: "set null" }),
   type: text("type").notNull().default("service"),
   name: text("name").notNull(),
   description: text("description"),
   unit: text("unit"),
+  kategori: text("kategori"),
+  subcategory: text("subcategory"),
   priceBase: numeric("price_base", { precision: 15, scale: 2 }).notNull().default("0"),
   markupPct: numeric("markup_pct", { precision: 5, scale: 2 }).notNull().default("0"),
   isActive: boolean("is_active").notNull().default(true),

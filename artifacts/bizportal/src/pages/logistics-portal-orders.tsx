@@ -176,6 +176,7 @@ export default function LogisticsPortalOrdersPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [fulfillmentFilter, setFulfillmentFilter] = useState("all");
   const [koliFilter, setKoliFilter] = useState("all");
+  const [shipmentTypeFilter, setShipmentTypeFilter] = useState("all");
   const [updatingId, setUpdatingId] = useState<number | null>(null);
   const [updatingTypeId, setUpdatingTypeId] = useState<number | null>(null);
   const [soDialog, setSoDialog] = useState<LogisticOrder | null>(null);
@@ -253,6 +254,7 @@ export default function LogisticsPortalOrdersPage() {
       if (!res.ok) throw new Error("Failed");
       return res.json() as Promise<VendorRow[]>;
     },
+    staleTime: 5 * 60 * 1000,
   });
   const activeVendors = vendors.filter((v) => v.isActive !== false);
 
@@ -294,14 +296,18 @@ export default function LogisticsPortalOrdersPage() {
 
   function handleStatusChange(id: number, status: string) {
     setUpdatingId(id);
+    const order = orders.find((o) => o.id === id);
     updateStatus.mutate(
-      { id, data: { status } },
+      { id, data: { status, clientUpdatedAt: order?.updatedAt } },
       {
         onSuccess: () => {
           toast({ title: t.common.success, description: status });
           queryClient.invalidateQueries({ queryKey: getListLogisticOrdersQueryKey() });
         },
-        onError: () => toast({ title: t.common.error, variant: "destructive" }),
+        onError: (err: any) => {
+          const msg = err?.response?.data?.error ?? t.common.error;
+          toast({ title: msg, variant: "destructive" });
+        },
         onSettled: () => setUpdatingId(null),
       },
     );
@@ -470,6 +476,10 @@ export default function LogisticsPortalOrdersPage() {
       if (koliFilter === "5to10" && (k == null || k < 5 || k > 10)) return false;
       if (koliFilter === "gt10" && (k == null || k <= 10)) return false;
     }
+    if (shipmentTypeFilter !== "all") {
+      const st = (o.shipmentType ?? "").toLowerCase();
+      if (!st.includes(shipmentTypeFilter.toLowerCase())) return false;
+    }
     return true;
   });
 
@@ -599,8 +609,20 @@ export default function LogisticsPortalOrdersPage() {
               <SelectItem value="gt10">&gt; 10 koli</SelectItem>
             </SelectContent>
           </Select>
-          {(fulfillmentFilter !== "all" || koliFilter !== "all") && (
-            <Button variant="ghost" size="sm" className="text-muted-foreground gap-1" onClick={() => { setFulfillmentFilter("all"); setKoliFilter("all"); }}>
+          <Select value={shipmentTypeFilter} onValueChange={setShipmentTypeFilter}>
+            <SelectTrigger className="w-44">
+              <SelectValue placeholder="Semua tipe" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Semua Tipe</SelectItem>
+              <SelectItem value="fcl">FCL</SelectItem>
+              <SelectItem value="lcl">LCL</SelectItem>
+              <SelectItem value="trucking">Trucking</SelectItem>
+              <SelectItem value="air">Air Freight</SelectItem>
+            </SelectContent>
+          </Select>
+          {(fulfillmentFilter !== "all" || koliFilter !== "all" || shipmentTypeFilter !== "all") && (
+            <Button variant="ghost" size="sm" className="text-muted-foreground gap-1" onClick={() => { setFulfillmentFilter("all"); setKoliFilter("all"); setShipmentTypeFilter("all"); }}>
               <X className="h-3.5 w-3.5" /> Reset
             </Button>
           )}
@@ -703,8 +725,12 @@ export default function LogisticsPortalOrdersPage() {
                   </TableRow>
                 ) : filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={12} className="text-center py-8 text-muted-foreground">
-                      Tidak ada pesanan
+                    <TableCell colSpan={12} className="text-center py-10 text-muted-foreground">
+                      <div className="flex flex-col items-center gap-1.5">
+                        <span className="text-2xl">📭</span>
+                        <span className="text-sm font-medium">Tidak ada pesanan ditemukan</span>
+                        <span className="text-xs">Coba ubah filter atau kata kunci pencarian</span>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ) : filtered.map((o) => (

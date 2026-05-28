@@ -4,8 +4,10 @@ import {
   portalProductOrdersTable,
   portalProductOrderItemsTable,
   productsTable,
+  productTemplatesTable,
 } from "@workspace/db";
 import { eq, ilike, and, or, sql } from "drizzle-orm";
+import { resolveTemplate, validateTemplatePayload } from "@workspace/product-templates";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { getPreferredDomain } from "../lib/domain";
 import { sendProductOrderWaNotification, sendProductOrderStatusUpdateWa } from "../lib/orderNotification";
@@ -14,6 +16,8 @@ import { logger } from "../lib/logger";
 import { saveAndBroadcast } from "../lib/notificationStore";
 import { broadcastToAdmins } from "../lib/sseManager";
 import { signVendorResponseToken, verifyVendorResponseToken } from "../lib/vendorResponseToken.js";
+import { sendWhatsApp } from "../lib/fonnte.js";
+import { getAdminGroupWa } from "../lib/adminWa.js";
 
 export const portalProductOrdersRouter = Router();
 
@@ -30,6 +34,20 @@ db.execute(sql`
   )
 `).catch(() => {});
 
+// Migrate existing table to add template engine columns
+db.execute(sql`
+  ALTER TABLE portal_product_orders
+    ADD COLUMN IF NOT EXISTS product_category TEXT,
+    ADD COLUMN IF NOT EXISTS template_id TEXT,
+    ADD COLUMN IF NOT EXISTS template_version TEXT,
+    ADD COLUMN IF NOT EXISTS custom_field_values JSONB DEFAULT '{}',
+    ADD COLUMN IF NOT EXISTS uploaded_documents JSONB DEFAULT '[]',
+    ADD COLUMN IF NOT EXISTS checklist_status JSONB DEFAULT '{}',
+    ADD COLUMN IF NOT EXISTS packaging_notes TEXT,
+    ADD COLUMN IF NOT EXISTS conditional_flags JSONB DEFAULT '{}',
+    ADD COLUMN IF NOT EXISTS template_snapshot JSONB
+`).catch(() => {});
+
 function generateOrderNumber(): string {
   const date = new Date();
   const y = date.getFullYear().toString().slice(-2);
@@ -39,7 +57,9 @@ function generateOrderNumber(): string {
   return `PRD-${y}${m}${d}-${rand}`;
 }
 
-function toOrder(row: typeof portalProductOrdersTable.$inferSelect) {
+type OrderRow = typeof portalProductOrdersTable.$inferSelect;
+
+function toOrder(row: OrderRow) {
   return {
     id: row.id,
     orderNumber: row.orderNumber,
@@ -51,6 +71,16 @@ function toOrder(row: typeof portalProductOrdersTable.$inferSelect) {
     subtotal: parseFloat(row.subtotal),
     grandTotal: parseFloat(row.grandTotal),
     status: row.status,
+    // Template engine fields
+    productCategory: row.productCategory ?? null,
+    templateId: row.templateId ?? null,
+    templateVersion: row.templateVersion ?? null,
+    customFieldValues: (row.customFieldValues ?? {}) as Record<string, string | number | boolean>,
+    uploadedDocuments: (row.uploadedDocuments ?? []) as { key: string; label: string; reference: string }[],
+    checklistStatus: (row.checklistStatus ?? {}) as Record<string, boolean>,
+    packagingNotes: row.packagingNotes ?? null,
+    conditionalFlags: (row.conditionalFlags ?? {}) as Record<string, string | number | boolean>,
+    templateSnapshot: (row.templateSnapshot ?? null) as Record<string, unknown> | null,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -73,6 +103,14 @@ function toItem(row: typeof portalProductOrderItemsTable.$inferSelect) {
 function formatRupiah(amount: number): string {
   return amount.toLocaleString("id-ID");
 }
+
+const CATEGORY_LABELS: Record<string, string> = {
+  coal: "Batubara",
+  iron_steel: "Besi & Baja",
+  coffee: "Kopi",
+  electronics: "Elektronik",
+  general: "Umum / Lainnya",
+};
 
 async function sendProductOrderNotification(order: ReturnType<typeof toOrder>, items: ReturnType<typeof toItem>[]) {
   const domain = getPreferredDomain();
@@ -99,12 +137,14 @@ async function sendProductOrderNotification(order: ReturnType<typeof toOrder>, i
   }).catch((err: unknown) => logger.error({ err }, "WA product order notification failed"));
 
   if (isSmtpConfigured() && order.email) {
+    const catLabel = order.productCategory ? (CATEGORY_LABELS[order.productCategory] ?? order.productCategory) : null;
     sendMail({
       to: order.email,
       subject: `Pesanan Anda Diterima — ${order.orderNumber}`,
       text: `Terima kasih atas pesanan Anda! No. Order: ${order.orderNumber}`,
       html: `<h2>Terima kasih atas pesanan Anda!</h2>
 <p><strong>No. Order:</strong> ${order.orderNumber}</p>
+${catLabel ? `<p><strong>Kategori:</strong> ${catLabel}</p>` : ""}
 <table border="1" cellpadding="6" cellspacing="0">
   <tr><th>Produk</th><th>Qty</th><th>Satuan</th><th>Harga</th></tr>
   ${items.map((i) => `<tr><td>${i.productName}</td><td>${i.qty}</td><td>${i.unit ?? "pcs"}</td><td>Rp ${formatRupiah(i.subtotal)}</td></tr>`).join("")}
@@ -147,13 +187,26 @@ portalProductOrdersRouter.get("/products", async (req: Request, res: Response) =
 
 // POST /api/portal-product/orders — create order (public)
 portalProductOrdersRouter.post("/orders", async (req: Request, res: Response) => {
-  const { customerName, email, phone, shippingAddress, notes, items } = req.body as {
+  const {
+    customerName, email, phone, shippingAddress, notes, items,
+    productCategory, templateId, templateVersion,
+    customFieldValues, uploadedDocuments, checklistStatus,
+    packagingNotes, conditionalFlags,
+  } = req.body as {
     customerName?: string;
     email?: string;
     phone?: string;
     shippingAddress?: string;
     notes?: string;
     items?: { productId?: number; productName: string; productSku?: string; unit?: string; unitPrice: number; qty: number; subtotal: number }[];
+    productCategory?: string;
+    templateId?: string;
+    templateVersion?: string;
+    customFieldValues?: Record<string, string | number | boolean>;
+    uploadedDocuments?: { key: string; label: string; reference: string }[];
+    checklistStatus?: Record<string, boolean>;
+    packagingNotes?: string;
+    conditionalFlags?: Record<string, string | number | boolean>;
   };
 
   if (!customerName?.trim() || !email?.trim() || !phone?.trim() || !shippingAddress?.trim()) {
@@ -167,6 +220,45 @@ portalProductOrdersRouter.post("/orders", async (req: Request, res: Response) =>
   const grandTotal = subtotal;
   const orderNumber = generateOrderNumber();
 
+  // ── Product Template Engine: resolve template + re-validate server-side ──
+  // Never trust the client. Resolve the template (in-code + DB override),
+  // re-run the shared validator, and snapshot the resolved template into the
+  // order so historical orders survive future template edits.
+  const categoryForLookup = (productCategory?.trim() || "general");
+  const tplRows = await db
+    .select()
+    .from(productTemplatesTable)
+    .where(eq(productTemplatesTable.categoryKey, categoryForLookup));
+  const tplOverride = tplRows[0]
+    ? {
+        categoryKey: tplRows[0].categoryKey,
+        label: tplRows[0].label,
+        version: tplRows[0].version,
+        isActive: tplRows[0].isActive,
+        requiredDocuments: tplRows[0].requiredDocuments as never,
+        checklist: tplRows[0].checklist as never,
+        customFields: tplRows[0].customFields as never,
+        packagingInstructions: tplRows[0].packagingInstructions ?? null,
+        conditionalRules: tplRows[0].conditionalRules as never,
+        validationRules: tplRows[0].validationRules as never,
+      }
+    : null;
+  const resolvedTpl = resolveTemplate(categoryForLookup, tplOverride);
+
+  const validationErrors = validateTemplatePayload(resolvedTpl, {
+    customFieldValues: customFieldValues ?? {},
+    uploadedDocuments: uploadedDocuments ?? [],
+    checklistStatus: checklistStatus ?? {},
+    packagingNotes: packagingNotes ?? "",
+    conditionalFlags: conditionalFlags ?? {},
+  });
+  if (validationErrors.length > 0) {
+    return res.status(400).json({
+      message: validationErrors[0],
+      errors: validationErrors,
+    });
+  }
+
   const [order] = await db
     .insert(portalProductOrdersTable)
     .values({
@@ -179,6 +271,17 @@ portalProductOrdersRouter.post("/orders", async (req: Request, res: Response) =>
       subtotal: String(subtotal),
       grandTotal: String(grandTotal),
       status: "New Order",
+      productCategory: categoryForLookup,
+      // Server-authoritative: ignore client-sent templateId/templateVersion to
+      // keep metadata consistent with templateSnapshot (defense-in-depth).
+      templateId: resolvedTpl.category,
+      templateVersion: resolvedTpl.version,
+      customFieldValues: customFieldValues ?? {},
+      uploadedDocuments: uploadedDocuments ?? [],
+      checklistStatus: checklistStatus ?? {},
+      packagingNotes: packagingNotes?.trim() ?? null,
+      conditionalFlags: conditionalFlags ?? {},
+      templateSnapshot: resolvedTpl as unknown as Record<string, unknown>,
     })
     .returning();
 
@@ -201,7 +304,7 @@ portalProductOrdersRouter.post("/orders", async (req: Request, res: Response) =>
   const orderOut = toOrder(order);
   const itemsOut = insertedItems.map(toItem);
 
-  // Real-time SSE: notify BizPortal admins immediately (persisted to DB)
+  // Real-time SSE
   saveAndBroadcast("new_order", {
     type: "product",
     orderId: order.id,
@@ -363,6 +466,8 @@ portalProductOrdersRouter.get("/vendor-access/:orderNumber", async (req: Request
     shippingAddress: order.shippingAddress,
     notes: order.notes ?? null,
     grandTotal: parseFloat(order.grandTotal),
+    productCategory: order.productCategory ?? null,
+    customFieldValues: (order.customFieldValues ?? {}) as Record<string, string | number | boolean>,
     items: items.map(i => ({
       productName: i.productName,
       productSku: i.productSku ?? null,

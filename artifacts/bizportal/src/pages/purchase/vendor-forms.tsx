@@ -1659,6 +1659,15 @@ export default function VendorFormsPage() {
     onError: (e: Error) => toast({ title: "Gagal", description: e.message, variant: "destructive" }),
   });
 
+  const retrySoMut = useMutation({
+    mutationFn: (id: number) => apiFetch<{ ok: boolean; docNumber: string; already?: boolean }>(`/api/vendor-form/admin/customer-approvals/${id}/retry-so`, { method: "POST" }),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["vmf-approvals"] });
+      toast({ title: data.already ? "SO sudah ada" : "Sales Order berhasil dibuat", description: data.docNumber });
+    },
+    onError: (e: Error) => toast({ title: "Gagal buat SO", description: e.message, variant: "destructive" }),
+  });
+
   // ── Filtered links ──
   const filteredLinks = useMemo(() => {
     let list = links;
@@ -2100,6 +2109,18 @@ export default function VendorFormsPage() {
                                   </a>
                                 )}
                               </div>
+                            ) : a.status === "approved" ? (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-6 text-xs gap-1 text-amber-700 border-amber-300 hover:bg-amber-50"
+                                disabled={retrySoMut.isPending}
+                                onClick={() => retrySoMut.mutate(a.id)}
+                                title="SO belum terbuat — klik untuk coba lagi"
+                              >
+                                {retrySoMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
+                                Buat SO
+                              </Button>
                             ) : <span className="text-xs text-slate-400">—</span>}
                           </TableCell>
                           <TableCell>

@@ -43,7 +43,7 @@ const DEFAULT_UPSTREAM = { host: "localhost", port: 3001 };
 
 const SERVICE_NAMES = {
   18444: "API Server",
-  3000:  "BizPortal",
+  18442: "BizPortal",
   3001:  "Customer Portal",
   3002:  "Sport Center",
 };
@@ -224,7 +224,7 @@ async function startGateway() {
           process.exit(1);
         }
       });
-      srv.listen(PORT, "0.0.0.0", () => {
+      srv.listen(PORT, () => {
         console.log(`Gateway listening on port ${PORT}`);
         console.log(`  /api/*          → :${API_PORT} (API Server)`);
         console.log(`  /bizportal/*    → :18442 (BizPortal)`);

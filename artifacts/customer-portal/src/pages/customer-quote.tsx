@@ -7,10 +7,10 @@ type QuoteData = {
   isExpired: boolean;
   isResponded: boolean;
   rfqNumber: string;
-  serviceType: string;
-  origin: string;
-  destination: string;
-  cargoDetail: string;
+  serviceType: string | null;
+  origin: string | null;
+  destination: string | null;
+  cargoDetail: string | null;
   finalCustomerPrice: number | null;
   etaFinal: string | null;
   termsConditions: string | null;
@@ -301,7 +301,9 @@ export default function CustomerQuotePage() {
               <p className="text-sm text-slate-600 mb-1">Anda akan menyetujui penawaran berikut:</p>
               <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm mb-4">
                 <p className="font-semibold text-green-800">{data.quotationNumber ?? data.rfqNumber}</p>
-                <p className="text-green-700">{data.origin} → {data.destination}</p>
+                {(data.origin || data.destination) && (
+                  <p className="text-green-700">{data.origin || "—"} → {data.destination || "—"}</p>
+                )}
                 <p className="text-lg font-bold text-green-700 mt-1">{idr(data.finalCustomerPrice)}</p>
               </div>
               <p className="text-xs text-slate-400 mb-4">Dengan menekan Setuju, Anda menyetujui penawaran dan syarat yang berlaku.</p>
@@ -322,18 +324,18 @@ export default function CustomerQuotePage() {
         )}
 
         <p className="text-center text-xs text-slate-400 pb-4">
-          CST Logistics · Pertanyaan? Hubungi tim kami.
+Pertanyaan? Hubungi tim kami.
         </p>
       </div>
     </div>
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function Row({ label, value }: { label: string; value: string | null | undefined }) {
   return (
     <div className="flex justify-between items-start gap-3">
       <span className="text-sm text-slate-500 flex-shrink-0">{label}</span>
-      <span className="text-sm font-medium text-slate-800 text-right">{value}</span>
+      <span className="text-sm font-medium text-slate-800 text-right">{value || "—"}</span>
     </div>
   );
 }

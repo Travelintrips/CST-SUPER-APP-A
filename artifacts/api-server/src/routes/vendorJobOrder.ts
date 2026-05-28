@@ -35,6 +35,7 @@ import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa } from "../lib/adminWa.js";
 import { getPreferredDomain } from "../lib/domain.js";
 import { logger } from "../lib/logger.js";
+import { recordDecision, updateDecisionOutcome } from "../lib/decisionMemory.js";
 import multer from "multer";
 import { Client as ObjStoreClient } from "@replit/object-storage";
 
@@ -306,6 +307,35 @@ vendorJobAdminRouter.post("/orders/:orderId/assign-vendor", async (req: Request,
       ).catch(() => {});
     }
 
+    // Catat ke Decision Memory Store (fire-and-forget)
+    recordDecision({
+      decisionType: "vendor_assignment",
+      chosenEntityType: "vendor",
+      chosenEntityId: vendor.id,
+      chosenEntityName: vendor.name,
+      reasoning: adminNote ?? `Admin memilih ${vendor.name} untuk order ${order.orderNumber}`,
+      decidedBy: "admin",
+      orderId,
+      orderNumber: order.orderNumber,
+      rfqId: quote.rfqId ?? undefined,
+      quoteId: quote.id,
+      companyId: order.companyId ?? undefined,
+      origin: order.origin,
+      destination: order.destination,
+      shipmentType: order.shipmentType,
+      transportMode: order.transportMode ?? undefined,
+      commodity: order.commodity ?? undefined,
+      weightKg: order.weightKg ? parseFloat(String(order.weightKg)) : undefined,
+      direction: order.direction ?? undefined,
+      quotedVendorPrice: quote.vendorPrice ? parseFloat(String(quote.vendorPrice)) : undefined,
+      contextSnapshot: {
+        quoteEstimatedDays: quote.estimatedDays,
+        quoteSellingPrice: quote.sellingPrice,
+        orderGrandTotal: order.grandTotal,
+        orderStatus: order.status,
+      },
+    }).catch(() => {});
+
     logger.info({ orderId, jobToken, vendorId: vendor.id }, "Vendor assigned");
     return res.status(201).json({
       ok: true, jobToken, jobUrl,
@@ -487,6 +517,14 @@ vendorJobAdminRouter.post("/orders/:orderId/complete-review", async (req: Reques
         `\nTerima kasih telah mempercayakan pengiriman Anda kepada CST Logistics! 🙏`;
       sendWhatsApp(order.phone, waMsg).catch(e => logger.warn({ e }, "complete WA to customer failed"));
     }
+
+    // Update Decision Memory outcome (fire-and-forget)
+    updateDecisionOutcome({
+      orderId,
+      outcome: "success",
+      onTimeDelivery: true,
+      outcomeNotes: adminNotes ?? undefined,
+    }).catch(() => {});
 
     return res.json({ ok: true });
   } catch (err) {

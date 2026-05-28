@@ -13,7 +13,8 @@ import {
   customerQuoteLinksTable,
   orderUpdatesTable,
 } from "@workspace/db";
-import { requireClerkUser } from "../lib/requireAdmin.js";
+import { requireClerkUser, requireAdmin } from "../lib/requireAdmin.js";
+import { runDbBackup } from "../lib/dbBackup.js";
 import { getPreferredDomain } from "../lib/domain.js";
 import { logger } from "../lib/logger.js";
 import { sendWhatsApp } from "../lib/fonnte.js";
@@ -24,6 +25,11 @@ import { generateShortLink } from "../lib/shortLink.js";
 export const adminActionRouter: Router = Router();
 export const adminActionPublicRouter = Router();
 export const adminActionAdminRouter = Router();
+
+// ── Blast guard: mencegah 2 admin blast RFQ bersamaan ke order yang sama ──────
+// In-memory Set; cukup untuk single-process. Jika scale ke multi-process,
+// ganti dengan advisory lock atau Redis key dengan TTL.
+const blastInProgress = new Set<number>();
 
 /**
  * GET /admin-action/:token
@@ -90,6 +96,13 @@ export function getAdminActionUrl(token: string): string {
   const domain = getPreferredDomain() || "cstlogistic.co.id";
   return `https://${domain}/admin-review/${token}`;
 }
+
+// ─── Admin: POST /api/admin-action/db-backup — manual DB backup trigger ──────
+adminActionAdminRouter.post("/db-backup", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const result = await runDbBackup();
+  return res.status(result.ok ? 200 : 500).json(result);
+});
 
 // ─── Admin: POST /api/admin-action/create ────────────────────────────────────
 adminActionAdminRouter.post("/create", async (req: Request, res: Response) => {
@@ -171,6 +184,15 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
     if (!order) return res.status(404).json({ error: "Order tidak ditemukan" });
 
     const actionType = link?.actionType ?? "review_order";
+
+    // Fetch order items untuk ditampilkan di OrderCard (nama produk/layanan yang dipesan)
+    const orderItemRows = await db.select({
+      serviceName: logisticOrderItemsTable.serviceName,
+      category: logisticOrderItemsTable.category,
+      subtotal: logisticOrderItemsTable.subtotal,
+    }).from(logisticOrderItemsTable)
+      .where(eq(logisticOrderItemsTable.orderId, order.id));
+
     const base = {
       token,
       actionType,
@@ -197,6 +219,11 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
         paymentType: (order as any).paymentType ?? null,
         grandTotal: order.grandTotal ? String(order.grandTotal) : null,
         status: order.status,
+        items: orderItemRows.map((it) => ({
+          serviceName: it.serviceName ?? "",
+          category: it.category ?? "",
+          subtotal: it.subtotal != null ? String(it.subtotal) : null,
+        })),
       },
     };
 
@@ -230,6 +257,7 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
             name: vendorCatalogItemsTable.name,
             type: vendorCatalogItemsTable.type,
             isCommodityTag: vendorCatalogItemsTable.isCommodityTag,
+            priceBase: vendorCatalogItemsTable.priceBase,
           }).from(vendorCatalogItemsTable)
             .where(and(
               inArray(vendorCatalogItemsTable.vendorId, vendorIdList),
@@ -238,22 +266,49 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
         : [];
 
       // Build sets: vendor dengan commodity match & vendor yang punya item PRODUK di etalase
+      // Derive keywords dari order.commodity + serviceName/category tiap item order
       const commodityKeyword = (order.commodity ?? "").toLowerCase().trim();
+      const itemKwSet = new Set<string>();
+      for (const it of orderItemRows) {
+        for (const src of [it.serviceName ?? "", it.category ?? ""]) {
+          for (const w of src.toLowerCase().split(/[\s,/()\-]+/)) {
+            if (w.length > 2) itemKwSet.add(w);
+          }
+        }
+      }
+      const commodityKwParts = Array.from(new Set([
+        ...commodityKeyword.split(/\s+/).filter((k: string) => k.length > 2),
+        ...itemKwSet,
+      ]));
+      const hasOrderKeywords = commodityKwParts.length > 0 || commodityKeyword.length > 0;
       const vendorIdsWithCommodity   = new Set<number>();
       const vendorIdsWithProductItem = new Set<number>(); // hanya type='product'
+      // Map vendorId → priceBase: PREFER item yang match dengan order; fallback ke item product pertama
+      const vendorPriceBaseMap = new Map<number, number | null>();
+      const vendorMatchedItemName = new Map<number, string>();
 
       for (const item of catalogItems) {
         if (item.type === "product") {
           vendorIdsWithProductItem.add(item.vendorId);
         }
 
-        if (commodityKeyword) {
-          const kwParts = commodityKeyword.split(/\s+/).filter((k: string) => k.length > 2);
-          const isTagged = item.isCommodityTag === true;
-          const itemName = item.name.toLowerCase();
-          const nameMatches = itemName.includes(commodityKeyword) ||
-            kwParts.some((kw: string) => itemName.includes(kw));
-          if (isTagged || nameMatches) vendorIdsWithCommodity.add(item.vendorId);
+        const itemName = item.name.toLowerCase();
+        const nameMatches = hasOrderKeywords && (
+          (commodityKeyword && itemName.includes(commodityKeyword)) ||
+          commodityKwParts.some((kw: string) => itemName.includes(kw))
+        );
+
+        if (nameMatches) {
+          vendorIdsWithCommodity.add(item.vendorId);
+          // Item yang match selalu menang untuk priceBase
+          if (!vendorMatchedItemName.has(item.vendorId)) {
+            vendorPriceBaseMap.set(item.vendorId, item.priceBase != null ? Number(item.priceBase) : null);
+            vendorMatchedItemName.set(item.vendorId, item.name);
+          }
+        } else if (!vendorPriceBaseMap.has(item.vendorId) && item.type === "product") {
+          vendorPriceBaseMap.set(item.vendorId, item.priceBase != null ? Number(item.priceBase) : null);
+        } else if (!vendorPriceBaseMap.has(item.vendorId)) {
+          vendorPriceBaseMap.set(item.vendorId, item.priceBase != null ? Number(item.priceBase) : null);
         }
       }
 
@@ -269,6 +324,7 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
         isMatching: isServiceMatch(v.serviceType),
         hasCommodityMatch: vendorIdsWithCommodity.has(v.id),
         hasProductItem: vendorIdsWithProductItem.has(v.id),
+        priceBase: vendorPriceBaseMap.get(v.id) ?? null,
       }));
 
       const commodityMatched  = allWithFlag.filter((v) => v.hasCommodityMatch);
@@ -279,7 +335,7 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
       // 1. shipmentType ada + ada match → hanya vendor yg match (service + commodity)
       // 2. shipmentType ada + tak ada match → semua vendor berserviceType + warning
       // 3. shipmentType kosong + commodity ada + ada commodity match → hanya vendor dg commodity match
-      // 4. shipmentType kosong + commodity ada + tak ada match → vendor yg punya etalase apapun
+      // 4. shipmentType kosong + commodity ada + ada product vendors → filter product vendors by commodity
       // 5. shipmentType kosong + commodity kosong + ada etalase → hanya vendor yg punya etalase
       // 6. shipmentType kosong + commodity kosong + tak ada etalase → vendor berserviceType (fallback)
       let vendors: typeof allWithFlag;
@@ -295,13 +351,18 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
         } else {
           vendors = allWithFlag.filter((v) => !!(v.serviceType && v.serviceType.trim()));
         }
-      } else if (commodityKeyword && commodityMatched.length > 0) {
-        // Ada commodity + ada vendor yg punya produk itu di etalase
+      } else if (hasOrderKeywords && commodityMatched.length > 0) {
+        // Ada keyword order + ada vendor yg punya item matching di etalase
         vendors = commodityMatched;
         vendorFilterApplied = true;
         filterMode = "commodity";
+      } else if (hasOrderKeywords) {
+        // Ada keyword order tapi tidak ada vendor yang relevan → JANGAN tampilkan vendor tidak relevan
+        vendors = [];
+        vendorFilterApplied = true;
+        filterMode = "commodity";
       } else if (productVendors.length > 0) {
-        // Tidak ada shipmentType → hanya tampilkan vendor yang punya item PRODUK di etalase
+        // Tidak ada keyword order, tampilkan semua vendor yg punya etalase produk
         vendors = productVendors;
         vendorFilterApplied = true;
         filterMode = "etalase";
@@ -422,6 +483,7 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
   const { token } = req.params as { token: string };
   await ensureTables();
 
+  let _blastGuardOrderId: number | null = null;
   try {
     let link = (await db.select().from(adminActionLinksTable)
       .where(eq(adminActionLinksTable.token, token)))[0] ?? null;
@@ -472,6 +534,19 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
         deadlineHours?: number;
       };
       if (!vendorIds?.length) return res.status(400).json({ error: "vendorIds wajib diisi" });
+
+      // Guard: tolak jika blast untuk order yang sama sedang berlangsung
+      // (mencegah 2 admin klik blast bersamaan → vendor terima WA ganda)
+      if (blastInProgress.has(order.id)) {
+        return res.status(409).json({
+          error: "Blast RFQ untuk order ini sedang diproses. Tunggu beberapa detik lalu coba lagi.",
+          code: "BLAST_IN_PROGRESS",
+        });
+      }
+      blastInProgress.add(order.id);
+      _blastGuardOrderId = order.id;
+      // Auto-release setelah 60 detik sebagai safety net jika proses error
+      const blastTimer = setTimeout(() => { blastInProgress.delete(order.id); _blastGuardOrderId = null; }, 60_000);
 
       // Create or reuse RFQ
       let rfq = await db.select().from(logisticOrderRfqsTable)
@@ -610,6 +685,10 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
           `Bandingkan penawaran vendor:\n${compareShort}`
         ).catch(() => {});
       }
+
+      // Release blast guard
+      clearTimeout(blastTimer);
+      blastInProgress.delete(order.id);
 
       return res.json({ ok: true, rfqId: rfq.id, rfqNumber: rfq.rfqNumber, results, compareUrl: compareShort });
     }
@@ -814,6 +893,8 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
 
     return res.status(400).json({ error: "actionType tidak dikenal" });
   } catch (err) {
+    // Pastikan blast guard dilepas jika terjadi error di tengah proses
+    if (_blastGuardOrderId !== null) blastInProgress.delete(_blastGuardOrderId);
     logger.error({ err }, "admin-action POST error");
     return res.status(500).json({ error: "Gagal memproses aksi" });
   }

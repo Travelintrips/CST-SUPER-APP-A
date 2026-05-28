@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { getAdminWa, setAdminWa, getAdminGroupWa, setAdminGroupWa } from "../lib/adminWa.js";
 import { db, portalContentTable } from "@workspace/db";
+import { broadcastToPortal } from "../lib/sseManager.js";
 import { shortLinksTable, waTemplateConfigsTable, notificationLogsTable } from "@workspace/db/schema";
 import { eq, desc, ilike, or, sql, and } from "drizzle-orm";
 import { getAiIntakeSettings, saveAiIntakeSettings, type VendorFilterMode } from "../lib/aiOrderIntake.js";
@@ -66,6 +67,9 @@ router.put("/calculator-rates", async (req: Request, res: Response) => {
       target: portalContentTable.key,
       set: { value: JSON.stringify(rates), updatedAt: new Date() },
     });
+  // Notify Customer Portal: tarif kalkulator diperbarui oleh admin.
+  // Listener: calculator.tsx (invalidates ["portal-calculator-rates"])
+  broadcastToPortal("price_sync", { ts: Date.now() });
   return res.json({ ok: true });
 });
 
@@ -79,181 +83,6 @@ router.get("/cargo-types", async (req: Request, res: Response) => {
   } catch {
     return res.json(DEFAULT_CARGO_TYPES);
   }
-});
-
-// ── WA Message Templates ───────────────────────────────────────────────────────
-const WA_TEMPLATES_KEY = "wa_templates";
-
-export const DEFAULT_WA_TEMPLATES: Record<string, string> = {
-  admin_personal: [
-    "🚢 *ORDER LOGISTIK BARU*",
-    "━━━━━━━━━━━━━━━━━━",
-    "No. Order       : `{{orderNumber}}`",
-    "Tanggal         : {{tanggal}}",
-    "Jam             : {{jam}}",
-    "Status          : Menunggu Konfirmasi",
-    "Customer        : {{customerDisplay}}",
-    "Email           : {{email}}",
-    "HP              : {{phone}}",
-    "Jenis           : {{shipmentType}}",
-    "Rute            : {{route}}",
-    "Kategori Barang : {{commodity}}",
-    "Deskripsi       : {{cargoDescription}}",
-    "Berat           : {{grossWeightDisplay}}",
-    "Volume          : {{volumeDisplay}}",
-    "Jumlah Koli     : {{jumlahKoliDisplay}}",
-    "Layanan         :",
-    "{{serviceList}}",
-    "Total Est.      : Rp {{totalEst}}",
-    "Tgl Kirim       : {{requiredDate}}",
-    "Catatan         : {{notes}}",
-    "━━━━━━━━━━━━━━━━━━",
-    "⚡ *Aksi Cepat Admin (tanpa login):*",
-    "🔭 Review & Blast Vendor → {{adminActionUrl}}",
-    "_Dikirim: {{timestamp}}_",
-  ].join("\n"),
-
-  admin_group: [
-    "🔔 *[ORDER MASUK] {{orderNumber}}*",
-    "━━━━━━━━━━━━━━━━━━",
-    "🏷️ No. Tracking  : `{{orderNumber}}`",
-    "📆 Tanggal       : {{tanggal}}",
-    "👤 Customer      : *{{customerDisplay}}*",
-    "📞 HP            : {{phone}}",
-    "📧 Email         : {{email}}",
-    "━━━━━━━━━━━━━━━━━━",
-    "🚢 Jenis         : {{shipmentType}}",
-    "📍 Rute          : {{route}}",
-    "📦 Komoditi      : {{commodity}}",
-    "📋 Deskripsi     : {{cargoDescription}}",
-    "⚖️ Berat         : {{grossWeightDisplay}}",
-    "📐 Volume        : {{volumeDisplay}}",
-    "📅 Tgl Kirim     : {{requiredDate}}",
-    "📝 Catatan       : {{notes}}",
-    "━━━━━━━━━━━━━━━━━━",
-    "💰 Total Est.    : *Rp {{totalEst}}*",
-    "🔵 Status        : Menunggu Konfirmasi",
-    "━━━━━━━━━━━━━━━━━━",
-    "⚡ *Aksi Cepat (tanpa login):*",
-    "🚀 Review & Blast Vendor → {{adminActionUrl}}",
-    "",
-    "_Harap segera diproses. Dikirim: {{timestamp}}_",
-  ].join("\n"),
-
-  customer: [
-    "✅ *PESANAN ANDA DITERIMA*",
-    "━━━━━━━━━━━━━━━━━━",
-    "Halo *{{customerName}}*,",
-    "",
-    "Terima kasih telah mempercayakan pengiriman Anda kepada CST Logistics.",
-    "",
-    "No. Order       : *{{orderNumber}}*",
-    "Tanggal         : {{tanggal}}",
-    "Jam             : {{jam}}",
-    "Status          : Menunggu Penawaran Harga",
-    "Rute            : {{route}}",
-    "Kategori Barang : {{commodity}}",
-    "Berat           : {{grossWeightDisplay}}",
-    "Volume          : {{volumeDisplay}}",
-    "Layanan         :",
-    "{{serviceList}}",
-    "Tgl Butuh       : {{requiredDate}}",
-    "━━━━━━━━━━━━━━━━━━",
-    "Tim kami sedang memproses permintaan Anda dan akan segera mengirimkan *penawaran harga terbaik* untuk Anda.",
-    "",
-    "📞 Jakarta: (021) 6241234 | Tangerang: (021) 5591234",
-    "",
-    "_Dikirim: {{timestamp}}_",
-  ].join("\n"),
-
-  vendor: [
-    "📦 *PERMINTAAN ORDER BARU — CST LOGISTICS*",
-    "━━━━━━━━━━━━━━━━━━━━",
-    "Kepada Yth. *{{vendorName}}*,",
-    "",
-    "No. Order       : *{{orderNumber}}*",
-    "Tanggal         : {{tanggal}}",
-    "Jam             : {{jam}}",
-    "Status          : Menunggu Konfirmasi",
-    "Jenis           : {{shipmentType}}",
-    "Rute            : {{route}}",
-    "Kategori Barang : {{commodity}}",
-    "Deskripsi       : {{cargoDescription}}",
-    "Berat           : {{grossWeightDisplay}}",
-    "Volume          : {{volumeDisplay}}",
-    "Jumlah Koli     : {{jumlahKoliDisplay}}",
-    "Tgl Butuh       : {{requiredDate}}",
-    "Layanan         :",
-    "{{serviceList}}",
-    "Catatan         : {{notes}}",
-    "━━━━━━━━━━━━━━━━━━━━",
-    "🔗 *Aksi Cepat (klik link):*",
-    "✅ Terima  → {{responseUrl}}?action=accept",
-    "❌ Tolak   → {{responseUrl}}?action=reject",
-    "💬 Form    → {{responseUrl}}",
-    "",
-    "✏️ *Atau balas WA dengan format:*",
-    "📌 Harga: `{{orderNumber}} [HARGA] [TGL_PICKUP]`",
-    "📌 Terima: `TERIMA {{orderNumber}}`",
-    "📌 Tolak:  `TOLAK {{orderNumber}}`",
-    "",
-    "Terima kasih 🙏",
-    "_Dikirim: {{timestamp}}_",
-  ].join("\n"),
-};
-
-// GET /api/settings/wa-templates
-router.get("/wa-templates", async (req: Request, res: Response) => {
-  if (!(await requireAdmin(req, res))) return;
-  try {
-    const [row] = await db.select().from(portalContentTable).where(eq(portalContentTable.key, WA_TEMPLATES_KEY));
-    const stored: Record<string, string> = row ? JSON.parse(row.value) as Record<string, string> : {};
-    const merged = { ...DEFAULT_WA_TEMPLATES, ...stored };
-    return res.json({ templates: merged, customized: Object.keys(stored) });
-  } catch {
-    return res.json({ templates: DEFAULT_WA_TEMPLATES, customized: [] });
-  }
-});
-
-// PUT /api/settings/wa-templates
-router.put("/wa-templates", async (req: Request, res: Response) => {
-  if (!(await requireAdmin(req, res))) return;
-  const { templates } = req.body as { templates?: Record<string, string> };
-  if (!templates || typeof templates !== "object") {
-    return res.status(400).json({ message: "Payload harus berupa { templates: { ... } }" });
-  }
-  const allowed = Object.keys(DEFAULT_WA_TEMPLATES);
-  const filtered: Record<string, string> = {};
-  for (const key of allowed) {
-    if (typeof templates[key] === "string") filtered[key] = templates[key];
-  }
-  await db.insert(portalContentTable).values({ key: WA_TEMPLATES_KEY, value: JSON.stringify(filtered), updatedAt: new Date() })
-    .onConflictDoUpdate({ target: portalContentTable.key, set: { value: JSON.stringify(filtered), updatedAt: new Date() } });
-  // Invalidate in-memory template cache
-  try {
-    const { invalidateWaTemplateCache } = await import("../lib/orderNotification.js");
-    invalidateWaTemplateCache();
-  } catch { /* non-fatal */ }
-  return res.json({ ok: true });
-});
-
-// DELETE /api/settings/wa-templates/:key — reset satu template ke default
-router.delete("/wa-templates/:templateKey", async (req: Request, res: Response) => {
-  if (!(await requireAdmin(req, res))) return;
-  const { templateKey } = req.params as { templateKey: string };
-  if (!(templateKey in DEFAULT_WA_TEMPLATES)) {
-    return res.status(400).json({ message: "Template key tidak dikenal" });
-  }
-  try {
-    const [row] = await db.select().from(portalContentTable).where(eq(portalContentTable.key, WA_TEMPLATES_KEY));
-    if (row) {
-      const stored = JSON.parse(row.value) as Record<string, string>;
-      delete stored[templateKey];
-      await db.update(portalContentTable).set({ value: JSON.stringify(stored), updatedAt: new Date() })
-        .where(eq(portalContentTable.key, WA_TEMPLATES_KEY));
-    }
-  } catch { /* ignore */ }
-  return res.json({ ok: true, default: DEFAULT_WA_TEMPLATES[templateKey] });
 });
 
 // ── WA Template Configs (workflow-based) ──────────────────────────────────────
@@ -677,6 +506,43 @@ router.put("/page-content", async (req: Request, res: Response) => {
       set: { value: JSON.stringify(content), updatedAt: new Date() },
     });
   return res.json({ ok: true });
+});
+
+// ── Freight Stage Labels ──────────────────────────────────────────────────────
+const FREIGHT_STAGE_LABELS_KEY = "freight_stage_labels";
+
+export const DEFAULT_FREIGHT_STAGE_LABELS: Record<string, string> = {
+  booking: "Booking",
+  trucking: "Trucking",
+  handling: "Handling",
+  customs: "Customs Clearance",
+};
+
+// GET /api/settings/freight-stage-labels — no auth required (used by authenticated BizPortal pages)
+router.get("/freight-stage-labels", async (_req: Request, res: Response) => {
+  try {
+    const [row] = await db.select().from(portalContentTable).where(eq(portalContentTable.key, FREIGHT_STAGE_LABELS_KEY));
+    const stored: Record<string, string> = row ? JSON.parse(row.value) as Record<string, string> : {};
+    return res.json({ labels: { ...DEFAULT_FREIGHT_STAGE_LABELS, ...stored } });
+  } catch {
+    return res.json({ labels: DEFAULT_FREIGHT_STAGE_LABELS });
+  }
+});
+
+// PUT /api/settings/freight-stage-labels — admin only
+router.put("/freight-stage-labels", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const { labels } = req.body as { labels?: Record<string, string> };
+  if (!labels || typeof labels !== "object") return res.status(400).json({ message: "Invalid payload" });
+  const filtered: Record<string, string> = {};
+  for (const k of Object.keys(DEFAULT_FREIGHT_STAGE_LABELS)) {
+    if (typeof labels[k] === "string" && labels[k].trim()) filtered[k] = labels[k].trim();
+  }
+  await db
+    .insert(portalContentTable)
+    .values({ key: FREIGHT_STAGE_LABELS_KEY, value: JSON.stringify(filtered), updatedAt: new Date() })
+    .onConflictDoUpdate({ target: portalContentTable.key, set: { value: JSON.stringify(filtered), updatedAt: new Date() } });
+  return res.json({ ok: true, labels: { ...DEFAULT_FREIGHT_STAGE_LABELS, ...filtered } });
 });
 
 export default router;

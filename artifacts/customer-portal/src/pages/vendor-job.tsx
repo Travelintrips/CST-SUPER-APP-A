@@ -232,7 +232,7 @@ export default function VendorJobPage() {
         <div className="text-5xl mb-4">⚠️</div>
         <h2 className="text-lg font-semibold text-slate-800 mb-2">Link Tidak Valid</h2>
         <p className="text-sm text-slate-500">{error}</p>
-        <p className="text-xs text-slate-400 mt-3">Hubungi tim CST Logistics jika ada kendala.</p>
+        <p className="text-xs text-slate-400 mt-3">Hubungi tim kami jika ada kendala.</p>
       </div>
     </div>
   );
@@ -267,7 +267,7 @@ export default function VendorJobPage() {
           <div className="flex items-start gap-3">
             <div className="text-3xl flex-shrink-0">🚚</div>
             <div className="flex-1 min-w-0">
-              <h1 className="text-xl font-bold text-slate-800">Job Order — CST Logistics</h1>
+              <h1 className="text-xl font-bold text-slate-800">Job Order Vendor</h1>
               {data.vendorName && <p className="text-sm text-slate-500 mt-0.5">Vendor: {data.vendorName}</p>}
             </div>
           </div>
@@ -393,6 +393,7 @@ export default function VendorJobPage() {
             <p className="text-sm font-semibold text-red-700">Job ini telah ditolak.</p>
             {data.rejectReason && <p className="text-xs text-red-500 mt-1">Alasan: {data.rejectReason}</p>}
             <p className="text-xs text-slate-500 mt-2">Admin akan segera menindaklanjuti.</p>
+          <p className="text-xs text-slate-400 mt-1">Hubungi tim kami jika ada kendala.</p>
           </div>
         )}
 
@@ -525,7 +526,7 @@ export default function VendorJobPage() {
           </div>
         )}
 
-        <p className="text-center text-xs text-slate-400 pb-4">CST Logistics · Vendor Job Order</p>
+        <p className="text-center text-xs text-slate-400 pb-4">Vendor Job Order</p>
       </div>
     </div>
   );

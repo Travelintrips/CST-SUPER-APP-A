@@ -317,6 +317,8 @@ export default function LogisticsPortalOrderDetailPage() {
       if (!res.ok) throw new Error("Failed to load vendors");
       return res.json() as Promise<VendorRow[]>;
     },
+    staleTime: 0,
+    refetchOnMount: "always",
   });
 
   // [MULTI-MODE] Vendor Offers query

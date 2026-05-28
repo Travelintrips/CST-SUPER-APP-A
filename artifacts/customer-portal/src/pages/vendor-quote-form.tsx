@@ -48,6 +48,7 @@ export default function VendorQuoteFormPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [vendorPrice, setVendorPrice] = useState("");
+  const [currency, setCurrency] = useState("IDR");
   const [estimatedPickup, setEstimatedPickup] = useState("");
   const [estimatedDelivery, setEstimatedDelivery] = useState("");
   const [estimatedDays, setEstimatedDays] = useState("");
@@ -95,6 +96,7 @@ export default function VendorQuoteFormPage() {
         vendorPrice: price,
         token,
       };
+      body.currency = currency;
       if (estimatedPickup) body.estimatedPickup = estimatedPickup;
       if (estimatedDelivery) body.estimatedDelivery = estimatedDelivery;
       if (estimatedDays) body.estimatedDays = parseInt(estimatedDays, 10);
@@ -149,7 +151,7 @@ export default function VendorQuoteFormPage() {
           </div>
           <div>
             <h2 className="font-bold text-lg text-white">Penawaran Terkirim!</h2>
-            <p className="text-sm text-slate-400 mt-1">Tim CST Logistics akan segera memproses penawaran Anda</p>
+            <p className="text-sm text-slate-400 mt-1">Tim admin akan segera memproses penawaran Anda</p>
           </div>
           <div className="bg-slate-700 rounded-xl p-4 text-left space-y-2 text-sm">
             <div className="flex justify-between">
@@ -314,29 +316,41 @@ export default function VendorQuoteFormPage() {
         <form onSubmit={handleSubmit} className="bg-slate-800 rounded-2xl p-4 space-y-4">
           <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Isi Penawaran Anda</h3>
 
-          {/* Harga Penawaran */}
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1.5">
-              Harga Penawaran (Rp) <span className="text-red-400">*</span>
-            </label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-yellow-400">Rp</span>
-              <input
-                type="number"
-                required
-                min={1}
-                className="w-full bg-slate-700 border border-slate-600 rounded-xl pl-10 pr-4 py-3 text-white font-semibold text-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder-slate-500"
-                value={vendorPrice}
-                onChange={(e) => setVendorPrice(e.target.value)}
-                placeholder="0"
-              />
+          {/* Harga Penawaran + Mata Uang */}
+          <div className="grid grid-cols-[1fr_110px] gap-2">
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-1.5">
+                Harga Dasar Penawaran <span className="text-red-400">*</span>
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-yellow-400">{currency}</span>
+                <input
+                  type="number"
+                  required
+                  min={1}
+                  className="w-full bg-slate-700 border border-slate-600 rounded-xl pl-14 pr-4 py-3 text-white font-semibold text-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder-slate-500"
+                  value={vendorPrice}
+                  onChange={(e) => setVendorPrice(e.target.value)}
+                  placeholder="0"
+                />
+              </div>
             </div>
-            {vendorPrice && !isNaN(parseFloat(vendorPrice)) && parseFloat(vendorPrice) > 0 && (
-              <p className="text-xs text-slate-400 mt-1 ml-1">
-                = Rp {Math.round(parseFloat(vendorPrice)).toLocaleString("id-ID")}
-              </p>
-            )}
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-1.5">Mata Uang</label>
+              <select
+                value={currency}
+                onChange={(e) => setCurrency(e.target.value)}
+                className="w-full bg-slate-700 border border-slate-600 rounded-xl px-2 py-3 text-white text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {["IDR","USD","SGD","EUR","CNY"].map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
           </div>
+          {vendorPrice && !isNaN(parseFloat(vendorPrice)) && parseFloat(vendorPrice) > 0 && (
+            <p className="text-xs text-slate-400 -mt-2 ml-1">
+              = {currency} {Math.round(parseFloat(vendorPrice)).toLocaleString("id-ID")} <span className="text-slate-500">(belum termasuk PPN — harga dasar untuk admin)</span>
+            </p>
+          )}
 
           {/* ETA */}
           <div className="grid grid-cols-2 gap-3">
@@ -410,7 +424,7 @@ export default function VendorQuoteFormPage() {
         </form>
 
         <p className="text-center text-xs text-slate-500 pb-4">
-          CST Logistics · Form ini hanya untuk vendor yang mendapat undangan RFQ
+          Form ini hanya untuk vendor yang mendapat undangan RFQ
         </p>
       </div>
     </div>

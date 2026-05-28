@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import WebSocket from "ws";
 
 function normalizeSupabaseUrl(raw: string): string {
   if (!raw) return "";
@@ -24,6 +25,7 @@ function getClient(): SupabaseClient | null {
   if (!_client) {
     _client = createClient(url, key, {
       auth: { autoRefreshToken: false, persistSession: false },
+      realtime: { transport: WebSocket as unknown as typeof globalThis.WebSocket },
     });
   }
   return _client;

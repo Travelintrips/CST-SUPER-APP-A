@@ -161,7 +161,8 @@ export default function LogisticsFreightEditorPage() {
   const createSupplier = useCreateSupplier();
   const updateSupplier = useUpdateSupplier();
 
-  const { data: salesOrders = [] } = useListSalesDocuments({ kind: "order" }, { query: { queryKey: getListSalesDocumentsQueryKey({ kind: "order" }) } });
+  const { data: _salesOrdersPaginated } = useListSalesDocuments({ kind: "order", limit: 500 }, { query: { queryKey: getListSalesDocumentsQueryKey({ kind: "order" }) } });
+  const salesOrders = _salesOrdersPaginated?.data ?? [];
   const { data: purchaseOrders = [] } = useListPurchaseDocuments({ kind: "order" }, { query: { queryKey: getListPurchaseDocumentsQueryKey({ kind: "order" }) } });
   const { data: suppliers = [], isFetched: suppliersFetched } = useListSuppliers({ query: { queryKey: getListSuppliersQueryKey() } });
   const [soPickerOpen, setSoPickerOpen] = useState(false);

@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, RefreshCw, Ship, Trash2, Eye, Filter, X, Clock, ShoppingCart, TrendingUp, TrendingDown } from "lucide-react";
+import { Plus, RefreshCw, Ship, Trash2, Eye, Filter, X, Clock, ShoppingCart, TrendingUp, TrendingDown, ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
 import {
@@ -248,7 +248,8 @@ export default function LogisticsFreightPage() {
   };
 
   const deleteShipment = useDeleteFreightShipment();
-  const { data: salesDocs = [] } = useListSalesDocuments({ kind: "order" });
+  const { data: _salesDocsPaginated } = useListSalesDocuments({ kind: "order", limit: 500 });
+  const salesDocs = _salesDocsPaginated?.data ?? [];
   const soMap = Object.fromEntries(salesDocs.map((sd) => [sd.id, sd.docNumber]));
 
   void location;
@@ -280,6 +281,9 @@ export default function LogisticsFreightPage() {
   const [datePreset, setDatePresetState] = useState<DatePreset>(initial.preset);
   const [customDateFrom, setCustomDateFromState] = useState<string>(initial.from);
   const [customDateTo, setCustomDateToState] = useState<string>(initial.to);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+  const [search, setSearch] = useState("");
 
   const syncStateFromUrl = useCallback(() => {
     const parsed = parseParamsFromSearch(window.location.search);
@@ -330,6 +334,7 @@ export default function LogisticsFreightPage() {
 
   const setStatusFilter = (value: string | null) => {
     setStatusFilterState(value);
+    setPage(1);
   };
 
   const setDatePreset = (preset: DatePreset) => {
@@ -338,6 +343,7 @@ export default function LogisticsFreightPage() {
       setCustomDateToState("");
     }
     setDatePresetState(preset);
+    setPage(1);
   };
 
   const customFrom = customDateFrom
@@ -347,6 +353,8 @@ export default function LogisticsFreightPage() {
     ? (() => { const [y, m, d] = customDateTo.split("-").map(Number); return new Date(y, m - 1, d, 23, 59, 59, 999); })()
     : null;
   const isCustomRangeInvalid = !!(customFrom && customTo && customFrom > customTo);
+
+  const searchLower = search.trim().toLowerCase();
 
   const filteredShipments = (shipments ?? []).filter((s) => {
     if (statusFilter) {
@@ -370,6 +378,18 @@ export default function LogisticsFreightPage() {
 
     if (blReadyFilter && !hasBLData(s)) return false;
 
+    if (searchLower) {
+      const hay = [
+        s.shipmentNumber,
+        s.shipperName,
+        s.consigneeName,
+        s.commodity,
+        s.origin,
+        s.destination,
+      ].filter(Boolean).join(" ").toLowerCase();
+      if (!hay.includes(searchLower)) return false;
+    }
+
     return true;
   });
 
@@ -381,6 +401,9 @@ export default function LogisticsFreightPage() {
     if (value === "active") return shipments.filter((s) => ACTIVE_STATUSES.includes(s.status)).length;
     return shipments.filter((s) => s.status === value).length;
   };
+
+  const totalPages = Math.ceil(filteredShipments.length / pageSize);
+  const pagedShipments = filteredShipments.slice((page - 1) * pageSize, page * pageSize);
 
   const handleDelete = (id: number, shipmentNumber: string) => {
     if (!confirm(`Hapus shipment ${shipmentNumber}?`)) return;
@@ -398,16 +421,19 @@ export default function LogisticsFreightPage() {
     );
   };
 
-  const isFiltered = statusFilter !== null || datePreset !== "all" || blReadyFilter;
+  const isFiltered = statusFilter !== null || datePreset !== "all" || blReadyFilter || !!searchLower;
 
   const clearFilters = () => {
     setStatusFilterState(null);
     setBlReadyFilter(false);
     setDatePreset("all");
+    setSearch("");
+    setPage(1);
     try { localStorage.removeItem(FREIGHT_BL_LS_KEY); } catch {}
   };
 
   const activeFilterParts: string[] = [];
+  if (searchLower) activeFilterParts.push(`"${search.trim()}"`);
   if (statusFilter) {
     const label = STATUS_FILTERS.find((f) => f.value === statusFilter)?.label ?? statusFilter;
     activeFilterParts.push(`Status: ${label}`);
@@ -531,7 +557,7 @@ export default function LogisticsFreightPage() {
           <Button
             variant={blReadyFilter ? "default" : "outline"}
             size="sm"
-            onClick={() => setBlReadyFilter((v) => !v)}
+            onClick={() => { setBlReadyFilter((v) => !v); setPage(1); }}
             className="gap-1.5"
           >
             B/L Siap
@@ -546,6 +572,24 @@ export default function LogisticsFreightPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Cari no. shipment, shipper, consignee..."
+              className={`pl-9 h-8 text-sm w-72 ${search ? "pr-8" : ""}`}
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            />
+            {search && (
+              <button
+                onClick={() => { setSearch(""); setPage(1); }}
+                className="absolute right-2.5 top-2 text-muted-foreground hover:text-foreground"
+                aria-label="Hapus pencarian"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
           <Select
             value={datePreset}
             onValueChange={(v) => setDatePreset(v as DatePreset)}
@@ -586,7 +630,7 @@ export default function LogisticsFreightPage() {
 
           {isFiltered && (
             <p className="text-xs text-muted-foreground">
-              Menampilkan {filteredShipments.length} shipment
+              {filteredShipments.length} shipment ditemukan
             </p>
           )}
         </div>
@@ -626,7 +670,7 @@ export default function LogisticsFreightPage() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredShipments.map((s) => (
+                  pagedShipments.map((s) => (
                     <TableRow key={s.id}>
                       <TableCell>
                         <div className="font-mono text-sm font-semibold">{s.shipmentNumber}</div>
@@ -691,6 +735,33 @@ export default function LogisticsFreightPage() {
               </TableBody>
             </Table>
           </CardContent>
+
+          {/* Desktop pagination controls */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between px-4 py-3 border-t">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Per halaman:</span>
+                <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setPage(1); }}>
+                  <SelectTrigger className="h-7 w-16 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {[20, 50, 100].map((n) => <SelectItem key={n} value={String(n)} className="text-xs">{n}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <span className="text-xs text-muted-foreground">
+                  {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, filteredShipments.length)} dari {filteredShipments.length}
+                </span>
+              </div>
+              <div className="flex items-center gap-1">
+                <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <span className="text-xs px-2">{page} / {totalPages}</span>
+                <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages}>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </Card>
 
         {/* Mobile card list — hidden on md+ */}
@@ -720,7 +791,7 @@ export default function LogisticsFreightPage() {
               </CardContent>
             </Card>
           ) : (
-            filteredShipments.map((s) => (
+            pagedShipments.map((s) => (
               <Card
                 key={s.id}
                 data-testid={`card-shipment-${s.id}`}
@@ -799,6 +870,24 @@ export default function LogisticsFreightPage() {
                 </CardContent>
               </Card>
             ))
+          )}
+
+          {/* Mobile pagination controls */}
+          {!isLoading && totalPages > 1 && (
+            <div className="flex items-center justify-between py-2">
+              <span className="text-xs text-muted-foreground">
+                {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, filteredShipments.length)} dari {filteredShipments.length}
+              </span>
+              <div className="flex items-center gap-1">
+                <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <span className="text-xs px-1">{page}/{totalPages}</span>
+                <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages}>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
           )}
         </div>
       </div>

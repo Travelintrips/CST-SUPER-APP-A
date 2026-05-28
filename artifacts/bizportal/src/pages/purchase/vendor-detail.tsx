@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useMemo } from "react";
 import { useParams, Link } from "wouter";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -44,10 +44,11 @@ import {
   getListSuppliersQueryKey,
   useListTaxes,
   useListProducts,
+  useListProductCategories,
 } from "@workspace/api-client-react";
 import type { Supplier, VendorCatalogItem } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Pencil, Plus, Trash2, Upload, X } from "lucide-react";
+import { ArrowLeft, Link2, Pencil, Plus, Search, Tag, Trash2, Upload, X } from "lucide-react";
 import { useUpload } from "@workspace/object-storage-web";
 
 const SERVICE_TYPES = [
@@ -84,25 +85,30 @@ function LogoDisplay({ logo, size = "sm" }: { logo: string | null | undefined; s
 
 const fmt = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
 
+
 type CatalogForm = {
+  masterItemId: number | null;
   type: string;
   name: string;
   description: string;
   unit: string;
+  kategori: string;
+  subcategory: string;
   priceBase: string;
-  markupPct: string;
   isActive: boolean;
   isCommodityTag: boolean;
   sortOrder: string;
 };
 
 const emptyCatalogForm = (): CatalogForm => ({
+  masterItemId: null,
   type: "service",
   name: "",
   description: "",
   unit: "",
+  kategori: "",
+  subcategory: "",
   priceBase: "0",
-  markupPct: "0",
   isActive: true,
   isCommodityTag: false,
   sortOrder: "0",
@@ -134,7 +140,9 @@ export default function VendorDetailPage() {
 
   const { data: allVendors } = useListSuppliers({ query: { queryKey: getListSuppliersQueryKey() } });
   const { data: taxes } = useListTaxes();
-  const { data: products = [] } = useListProducts();
+  const { data: _productsPaginated } = useListProducts({ limit: 500 });
+  const products = _productsPaginated?.data ?? [];
+  const { data: productCategories = [] } = useListProductCategories();
   const vendor = (allVendors ?? []).find((v) => v.id === vendorId) as Supplier | undefined;
 
   const { data: catalog, isLoading: catalogLoading } = useListVendorCatalog(vendorId, {
@@ -148,9 +156,71 @@ export default function VendorDetailPage() {
 
   const purchaseTaxes = (taxes ?? []).filter((t) => t.kind === "purchase" && t.isActive);
 
+  const allSubcategories = Array.from(new Set(
+    (catalog ?? []).map((i) => (i as any).subcategory).filter((s): s is string => !!s)
+  )).sort();
+
+  const allKategoriCatalog = Array.from(new Set(
+    (catalog ?? []).map((i) => (i as any).kategori).filter((s): s is string => !!s)
+  )).sort();
+
+  const [catalogSearch, setCatalogSearch] = useState("");
+  const [filterKategoriCatalog, setFilterKategoriCatalog] = useState("all");
+  const [filterSubcatCatalog, setFilterSubcatCatalog] = useState("all");
+
+  const filteredCatalog = useMemo(() => {
+    return (catalog ?? []).filter((item) => {
+      if (filterKategoriCatalog !== "all" && (item as any).kategori !== filterKategoriCatalog) return false;
+      if (filterSubcatCatalog !== "all" && (item as any).subcategory !== filterSubcatCatalog) return false;
+      if (catalogSearch) {
+        const q = catalogSearch.toLowerCase();
+        return (
+          item.name.toLowerCase().includes(q) ||
+          (item.description ?? "").toLowerCase().includes(q) ||
+          ((item as any).kategori ?? "").toLowerCase().includes(q) ||
+          ((item as any).subcategory ?? "").toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+  }, [catalog, filterKategoriCatalog, filterSubcatCatalog, catalogSearch]);
+
+  const catalogSummary = useMemo(() => {
+    const all = catalog ?? [];
+    const activeItems = all.filter((i) => i.isActive);
+    const inactiveItems = all.filter((i) => !i.isActive);
+    const linkedItems = all.filter((i) => (i as any).masterItemId != null);
+    const withSell = all.filter((i) => (i as any).priceSell != null);
+
+    const totalPriceBase = activeItems.reduce((sum, i) => sum + Number(i.priceBase ?? 0), 0);
+
+    const avgMarginPct = withSell.length > 0
+      ? withSell.reduce((sum, i) => {
+          const sell = Number((i as any).priceSell ?? 0);
+          const base = Number(i.priceBase ?? 0);
+          return sum + (sell > 0 ? ((sell - base) / sell) * 100 : 0);
+        }, 0) / withSell.length
+      : null;
+
+    return {
+      totalPriceBase,
+      avgMarginPct,
+      activeCount: activeItems.length,
+      inactiveCount: inactiveItems.length,
+      linkedCount: linkedItems.length,
+      totalCount: all.length,
+    };
+  }, [catalog]);
+
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<VendorCatalogItem | null>(null);
   const [itemForm, setItemForm] = useState<CatalogForm>(emptyCatalogForm());
+  const [masterItemSearch, setMasterItemSearch] = useState("");
+
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [linkingItem, setLinkingItem] = useState<VendorCatalogItem | null>(null);
+  const [linkMasterSearch, setLinkMasterSearch] = useState("");
+  const [linkPending, setLinkPending] = useState(false);
 
   const [vendorEditOpen, setVendorEditOpen] = useState(false);
   const [vendorForm, setVendorForm] = useState<VendorForm | null>(null);
@@ -194,41 +264,58 @@ export default function VendorDetailPage() {
   const openNewItem = () => {
     setEditingItem(null);
     setItemForm(emptyCatalogForm());
+    setMasterItemSearch("");
     setCatalogOpen(true);
   };
 
   const openEditItem = (item: VendorCatalogItem) => {
     setEditingItem(item);
     setItemForm({
+      masterItemId: (item as any).masterItemId ?? null,
       type: item.type,
       name: item.name,
       description: item.description ?? "",
       unit: item.unit ?? "",
-      priceBase: String(item.priceBase),
-      markupPct: String(item.markupPct),
+      kategori: (item as any).kategori ?? "",
+      subcategory: (item as any).subcategory ?? "",
+      priceBase: String(Number(item.priceBase ?? 0)),
       isActive: item.isActive,
       isCommodityTag: (item as any).isCommodityTag ?? false,
       sortOrder: String(item.sortOrder),
     });
+    setMasterItemSearch("");
     setCatalogOpen(true);
   };
 
   const submitItem = async () => {
-    if (!itemForm.name.trim()) {
+    if (!editingItem && !itemForm.masterItemId) {
+      toast({ title: "Pilih item dari Master Item terlebih dahulu", variant: "destructive" });
+      return;
+    }
+    // Item lama (legacy) tanpa masterItemId wajib punya nama
+    if (editingItem && !(editingItem as any).masterItemId && !itemForm.name.trim()) {
       toast({ title: t.common.error, variant: "destructive" });
       return;
     }
-    const body = {
-      type: itemForm.type,
-      name: itemForm.name.trim(),
-      description: itemForm.description || null,
-      unit: itemForm.unit || null,
+    const body: Record<string, unknown> = {
       priceBase: parseFloat(itemForm.priceBase) || 0,
-      markupPct: parseFloat(itemForm.markupPct) || 0,
       isActive: itemForm.isActive,
       isCommodityTag: itemForm.isCommodityTag,
       sortOrder: parseInt(itemForm.sortOrder) || 0,
     };
+    // Tambah masterItemId hanya saat create baru
+    if (!editingItem) {
+      body.masterItemId = itemForm.masterItemId;
+    }
+    // Legacy item: sertakan field manual
+    if (editingItem && !(editingItem as any).masterItemId) {
+      body.type = itemForm.type;
+      body.name = itemForm.name.trim();
+      body.description = itemForm.description || null;
+      body.unit = itemForm.unit || null;
+      body.kategori = itemForm.kategori || null;
+      body.subcategory = itemForm.subcategory || null;
+    }
     try {
       if (editingItem) {
         const updated = await updateItem.mutateAsync({ itemId: editingItem.id, data: body });
@@ -247,6 +334,28 @@ export default function VendorDetailPage() {
       setEditingItem(null);
     } catch (e) {
       toast({ title: t.common.error, description: String(e), variant: "destructive" });
+    }
+  };
+
+  const openLinkItem = (item: VendorCatalogItem) => {
+    setLinkingItem(item);
+    setLinkMasterSearch("");
+    setLinkOpen(true);
+  };
+
+  const submitLink = async (masterId: number) => {
+    if (!linkingItem) return;
+    setLinkPending(true);
+    try {
+      await updateItem.mutateAsync({ itemId: linkingItem.id, data: { linkMasterItemId: masterId } });
+      await qc.invalidateQueries({ queryKey: getListVendorCatalogQueryKey(vendorId) });
+      toast({ title: "Item berhasil dihubungkan ke Master Item" });
+      setLinkOpen(false);
+      setLinkingItem(null);
+    } catch (e: any) {
+      toast({ title: t.common.error, description: e?.message ?? String(e), variant: "destructive" });
+    } finally {
+      setLinkPending(false);
     }
   };
 
@@ -388,6 +497,53 @@ export default function VendorDetailPage() {
           </Card>
         )}
 
+        {/* ── Summary Cards ── */}
+        {!catalogLoading && (catalog ?? []).length > 0 && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <Card>
+              <CardContent className="pt-4 pb-3">
+                <p className="text-xs text-muted-foreground">Total Item</p>
+                <p className="text-2xl font-bold mt-0.5">{catalogSummary.totalCount}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  <span className="text-green-600 font-medium">{catalogSummary.activeCount} aktif</span>
+                  {catalogSummary.inactiveCount > 0 && <> · {catalogSummary.inactiveCount} nonaktif</>}
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4 pb-3">
+                <p className="text-xs text-muted-foreground">Total Harga Dasar (Aktif)</p>
+                <p className="text-lg font-bold mt-0.5 font-mono">
+                  {catalogSummary.totalPriceBase > 0 ? fmt(catalogSummary.totalPriceBase) : "—"}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">Sum priceBase item aktif</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4 pb-3">
+                <p className="text-xs text-muted-foreground">Rata-rata Margin</p>
+                <p className="text-2xl font-bold mt-0.5">
+                  {catalogSummary.avgMarginPct != null
+                    ? <span className={catalogSummary.avgMarginPct >= 0 ? "text-green-600" : "text-destructive"}>{catalogSummary.avgMarginPct.toFixed(1)}%</span>
+                    : <span className="text-muted-foreground text-base">—</span>}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">Dari item terhubung master</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4 pb-3">
+                <p className="text-xs text-muted-foreground">Link Master Item</p>
+                <p className="text-2xl font-bold mt-0.5">{catalogSummary.linkedCount}<span className="text-base font-normal text-muted-foreground">/{catalogSummary.totalCount}</span></p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {catalogSummary.linkedCount < catalogSummary.totalCount
+                    ? <span className="text-amber-600">{catalogSummary.totalCount - catalogSummary.linkedCount} item belum terhubung</span>
+                    : <span className="text-green-600">Semua terhubung</span>}
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -395,6 +551,54 @@ export default function VendorDetailPage() {
               <Button size="sm" onClick={openNewItem}>
                 <Plus className="h-4 w-4 mr-1" /> Tambah Item
               </Button>
+            </div>
+            <div className="flex flex-wrap gap-2 mt-3">
+              <div className="relative flex-1 min-w-[160px]">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                <Input
+                  value={catalogSearch}
+                  onChange={(e) => setCatalogSearch(e.target.value)}
+                  placeholder="Cari nama, deskripsi..."
+                  className="pl-8 h-8 text-sm"
+                />
+                {catalogSearch && (
+                  <button onClick={() => setCatalogSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+              <Select value={filterKategoriCatalog} onValueChange={setFilterKategoriCatalog}>
+                <SelectTrigger className="h-8 text-sm w-[150px]">
+                  <SelectValue placeholder="Kategori" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Semua Kategori</SelectItem>
+                  {allKategoriCatalog.map((k) => (
+                    <SelectItem key={k} value={k}>{k}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={filterSubcatCatalog} onValueChange={setFilterSubcatCatalog}>
+                <SelectTrigger className="h-8 text-sm w-[160px]">
+                  <SelectValue placeholder="Sub-kategori" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Semua Sub-kategori</SelectItem>
+                  {allSubcategories.map((s) => (
+                    <SelectItem key={s} value={s}>{s}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {(catalogSearch || filterKategoriCatalog !== "all" || filterSubcatCatalog !== "all") && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 text-xs text-muted-foreground"
+                  onClick={() => { setCatalogSearch(""); setFilterKategoriCatalog("all"); setFilterSubcatCatalog("all"); }}
+                >
+                  <X className="h-3 w-3 mr-1" /> Reset
+                </Button>
+              )}
             </div>
           </CardHeader>
           <CardContent>
@@ -405,21 +609,22 @@ export default function VendorDetailPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Nama</TableHead>
+                    <TableHead>Kategori</TableHead>
                     <TableHead>Tipe</TableHead>
                     <TableHead>Satuan</TableHead>
                     <TableHead className="text-right">Harga Dasar</TableHead>
-                    <TableHead className="text-right">Markup (%)</TableHead>
                     <TableHead className="text-right">Harga Jual</TableHead>
+                    <TableHead className="text-right">Profit</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Tag</TableHead>
                     <TableHead className="w-[90px] text-right">Aksi</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(catalog ?? []).map((item) => {
-                    const base = Number(item.priceBase ?? 0);
-                    const markup = Number(item.markupPct ?? 0);
-                    const sell = base * (1 + markup / 100);
+                  {filteredCatalog.map((item) => {
+                    const priceBase = Number(item.priceBase ?? 0);
+                    const priceSell = (item as any).priceSell as number | null;
+                    const profit = (item as any).profit as number | null;
                     return (
                       <TableRow key={item.id}>
                         <TableCell>
@@ -428,18 +633,30 @@ export default function VendorDetailPage() {
                             <p className="text-xs text-muted-foreground">{item.description}</p>
                           )}
                         </TableCell>
+                        <TableCell className="text-sm">
+                          {(item as any).kategori
+                            ? <span className="flex items-center gap-1 text-muted-foreground"><Tag className="h-3 w-3" />{(item as any).kategori}</span>
+                            : <span className="text-muted-foreground">—</span>}
+                          {(item as any).subcategory && (
+                            <p className="text-xs text-muted-foreground mt-0.5">{(item as any).subcategory}</p>
+                          )}
+                        </TableCell>
                         <TableCell>
                           <Badge variant="outline" className="text-xs capitalize">{item.type}</Badge>
                         </TableCell>
                         <TableCell className="text-sm">{item.unit ?? "-"}</TableCell>
-                        <TableCell className="text-right font-mono text-sm">
-                          {base > 0 ? fmt(base) : "-"}
-                        </TableCell>
-                        <TableCell className="text-right text-sm">
-                          {markup > 0 ? `${markup}%` : "-"}
+                        <TableCell className="text-right font-mono text-sm text-muted-foreground">
+                          {priceBase > 0 ? fmt(priceBase) : <span className="text-muted-foreground/50">—</span>}
                         </TableCell>
                         <TableCell className="text-right font-mono text-sm font-semibold text-primary">
-                          {base > 0 ? fmt(sell) : "-"}
+                          {priceSell != null
+                            ? fmt(priceSell)
+                            : <span className="text-xs text-amber-500 font-normal">Belum linked</span>}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-sm font-semibold">
+                          {profit != null
+                            ? <span className={profit >= 0 ? "text-green-600" : "text-destructive"}>{fmt(profit)}</span>
+                            : <span className="text-muted-foreground/40">—</span>}
                         </TableCell>
                         <TableCell>
                           {item.isActive
@@ -452,6 +669,16 @@ export default function VendorDetailPage() {
                           )}
                         </TableCell>
                         <TableCell className="text-right">
+                          {!(item as any).masterItemId && (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              title="Link ke Master Item"
+                              onClick={() => openLinkItem(item)}
+                            >
+                              <Link2 className="h-4 w-4 text-amber-500" />
+                            </Button>
+                          )}
                           <Button size="icon" variant="ghost" onClick={() => openEditItem(item)}>
                             <Pencil className="h-4 w-4" />
                           </Button>
@@ -462,10 +689,12 @@ export default function VendorDetailPage() {
                       </TableRow>
                     );
                   })}
-                  {(!catalog || catalog.length === 0) && (
+                  {filteredCatalog.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center text-muted-foreground py-10">
-                        Belum ada item. Klik <strong>Tambah Item</strong> untuk mulai mengisi etalase.
+                      <TableCell colSpan={10} className="text-center text-muted-foreground py-10">
+                        {(catalogSearch || filterKategoriCatalog !== "all" || filterSubcatCatalog !== "all")
+                          ? "Tidak ada item yang cocok dengan filter."
+                          : <>Belum ada item. Klik <strong>Tambah Item</strong> untuk mulai mengisi etalase.</>}
                       </TableCell>
                     </TableRow>
                   )}
@@ -479,115 +708,146 @@ export default function VendorDetailPage() {
       <Dialog open={catalogOpen} onOpenChange={(v) => { setCatalogOpen(v); if (!v) setEditingItem(null); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{editingItem ? "Edit Item" : "Tambah Item Etalase"}</DialogTitle>
+            <DialogTitle>{editingItem ? "Edit Item Etalase" : "Tambah Item ke Etalase"}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-3">
-            <div className="grid gap-1.5">
-              <Label>Nama Item *</Label>
-              <Input
-                list="catalog-product-names"
-                value={itemForm.name}
-                onChange={(e) => {
-                  setI("name", e.target.value);
-                  const match = products.find((p) => p.name === e.target.value);
-                  if (match) {
-                    setI("unit", match.unit);
-                    if (match.price > 0) setI("priceBase", String(match.price));
-                  }
-                }}
-                placeholder="Ketik atau pilih dari daftar item..."
-              />
-              <datalist id="catalog-product-names">
-                {products.map((p) => (
-                  <option key={p.id} value={p.name} />
-                ))}
-              </datalist>
-              <p className="text-xs text-muted-foreground">
-                Pilih dari item yang sudah ada untuk auto-isi satuan & harga, atau ketik nama baru.
-              </p>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
+
+            {/* ── Pilih Master Item (hanya saat tambah baru) ── */}
+            {!editingItem && (
               <div className="grid gap-1.5">
-                <Label>Tipe</Label>
-                <Select value={itemForm.type} onValueChange={(v) => setI("type", v)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="service">Layanan</SelectItem>
-                    <SelectItem value="product">Produk</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-1.5">
-                <Label>Satuan</Label>
-                <Select
-                  value={UNITS.includes(itemForm.unit) ? itemForm.unit : (itemForm.unit ? "__custom__" : "__none__")}
-                  onValueChange={(v) => {
-                    if (v === "__none__") setI("unit", "");
-                    else if (v !== "__custom__") setI("unit", v);
-                  }}
-                >
-                  <SelectTrigger><SelectValue placeholder="Pilih satuan..." /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">— Pilih satuan —</SelectItem>
-                    {UNITS.map((u) => (
-                      <SelectItem key={u} value={u}>{u}</SelectItem>
-                    ))}
-                    {itemForm.unit && !UNITS.includes(itemForm.unit) && (
-                      <SelectItem value="__custom__">{itemForm.unit} (kustom)</SelectItem>
-                    )}
-                  </SelectContent>
-                </Select>
-                {(!UNITS.includes(itemForm.unit) && itemForm.unit) && (
-                  <Input
-                    value={itemForm.unit}
-                    onChange={(e) => setI("unit", e.target.value)}
-                    placeholder="Satuan kustom..."
-                    className="mt-1"
-                  />
+                <Label>Master Item *</Label>
+                {itemForm.masterItemId ? (
+                  // Item sudah dipilih — tampilkan info + tombol ganti
+                  (() => {
+                    const sel = products.find((p) => p.id === itemForm.masterItemId);
+                    return (
+                      <div className="flex items-center gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-sm truncate">{sel?.name ?? "—"}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {sel?.itemType === "jasa" ? "Layanan" : "Produk"} · {sel?.unit ?? "-"}
+                            {(sel?.categories as string[] | undefined)?.[0] && (
+                              <> · <Tag className="inline h-3 w-3" /> {(sel.categories as string[])[0]}</>
+                            )}
+                          </p>
+                        </div>
+                        <Button size="sm" variant="ghost" className="shrink-0 h-7 px-2 text-xs"
+                          onClick={() => { setI("masterItemId", null); setMasterItemSearch(""); }}>
+                          <X className="h-3 w-3 mr-1" /> Ganti
+                        </Button>
+                      </div>
+                    );
+                  })()
+                ) : (
+                  // Picker — search + scrollable list
+                  <div className="grid gap-1.5">
+                    <div className="relative">
+                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                      <Input
+                        value={masterItemSearch}
+                        onChange={(e) => setMasterItemSearch(e.target.value)}
+                        placeholder="Cari nama item..."
+                        className="pl-8 h-8 text-sm"
+                        autoFocus
+                      />
+                    </div>
+                    <div className="border rounded-md overflow-y-auto max-h-44">
+                      {(() => {
+                        const q = masterItemSearch.toLowerCase();
+                        const linkedIds = new Set((catalog ?? []).map((i) => (i as any).masterItemId).filter(Boolean));
+                        const filtered = products.filter((p) =>
+                          !linkedIds.has(p.id) &&
+                          (p.name.toLowerCase().includes(q) || p.sku?.toLowerCase().includes(q))
+                        );
+                        if (filtered.length === 0) {
+                          return (
+                            <p className="text-center text-xs text-muted-foreground py-4">
+                              {q ? "Tidak ada item yang cocok." : "Semua item sudah ditambahkan ke etalase ini."}
+                            </p>
+                          );
+                        }
+                        return filtered.map((p) => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors border-b last:border-b-0"
+                            onClick={() => {
+                              setI("masterItemId", p.id);
+                            }}
+                          >
+                            <p className="font-medium">{p.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {p.itemType === "jasa" ? "Layanan" : "Produk"} · {p.unit}
+                              {(p.categories as string[] | undefined)?.[0] && <> · {(p.categories as string[])[0]}</>}
+                            </p>
+                          </button>
+                        ));
+                      })()}
+                    </div>
+                    <p className="text-xs text-muted-foreground">Produk dan layanan diambil dari <strong>Katalog &gt; Master Item</strong>.</p>
+                  </div>
                 )}
               </div>
-            </div>
-            <div className="grid gap-1.5">
-              <Label>Deskripsi</Label>
-              <Textarea
-                value={itemForm.description}
-                onChange={(e) => setI("description", e.target.value)}
-                rows={2}
-                placeholder="Keterangan tambahan (opsional)"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="grid gap-1.5">
-                <Label>Harga Dasar (Rp)</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  value={itemForm.priceBase}
-                  onChange={(e) => setI("priceBase", e.target.value)}
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <Label>Markup (%)</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={itemForm.markupPct}
-                  onChange={(e) => setI("markupPct", e.target.value)}
-                  placeholder="cth. 20"
-                />
-              </div>
-            </div>
-            {(() => {
-              const base = parseFloat(itemForm.priceBase) || 0;
-              const pct = parseFloat(itemForm.markupPct) || 0;
-              if (base <= 0) return null;
-              return (
-                <p className="text-xs text-muted-foreground -mt-1">
-                  Harga jual: <span className="font-semibold text-foreground">{fmt(base * (1 + pct / 100))}</span>
+            )}
+
+            {/* ── Edit mode: tampilkan nama master item sebagai read-only ── */}
+            {editingItem && (editingItem as any).masterItemId && (
+              <div className="rounded-md border bg-muted/40 px-3 py-2">
+                <p className="text-xs text-muted-foreground mb-0.5">Item dari Master Item</p>
+                <p className="font-medium text-sm">{editingItem.name}</p>
+                <p className="text-xs text-muted-foreground">
+                  {editingItem.type === "service" ? "Layanan" : "Produk"} · {editingItem.unit ?? "-"}
+                  {(editingItem as any).kategori && <> · <Tag className="inline h-3 w-3" /> {(editingItem as any).kategori}</>}
                 </p>
-              );
-            })()}
+              </div>
+            )}
+
+            {/* ── Legacy item: tetap bisa edit semua field ── */}
+            {editingItem && !(editingItem as any).masterItemId && (
+              <>
+                <div className="grid gap-1.5">
+                  <Label>Nama Item *</Label>
+                  <Input value={itemForm.name} onChange={(e) => setI("name", e.target.value)} />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="grid gap-1.5">
+                    <Label>Tipe</Label>
+                    <Select value={itemForm.type} onValueChange={(v) => setI("type", v)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="service">Layanan</SelectItem>
+                        <SelectItem value="product">Produk</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label>Satuan</Label>
+                    <Input value={itemForm.unit} onChange={(e) => setI("unit", e.target.value)} placeholder="pcs, kg, dll" />
+                  </div>
+                </div>
+                <div className="grid gap-1.5">
+                  <Label>Deskripsi</Label>
+                  <Textarea value={itemForm.description} onChange={(e) => setI("description", e.target.value)} rows={2} />
+                </div>
+              </>
+            )}
+
+            {/* ── Harga Dasar — editable untuk semua item ── */}
+            <div className="grid gap-1.5">
+              <Label>Harga Dasar (Rp)</Label>
+              <Input
+                type="number"
+                min="0"
+                step="1000"
+                value={itemForm.priceBase}
+                onChange={(e) => setI("priceBase", e.target.value)}
+                placeholder="Harga yang vendor charge ke kita"
+              />
+              <p className="text-xs text-muted-foreground">
+                Harga beli / biaya vendor. Dipakai untuk RFQ blast. Profit = Harga Jual (master) − Harga Dasar.
+              </p>
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div className="grid gap-1.5">
                 <Label>Urutan Tampil</Label>
@@ -624,6 +884,82 @@ export default function VendorDetailPage() {
             <Button onClick={submitItem} disabled={createItem.isPending || updateItem.isPending}>
               {editingItem ? "Simpan" : "Tambah"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialog: Link Legacy Item ke Master Item ── */}
+      <Dialog open={linkOpen} onOpenChange={(v) => { setLinkOpen(v); if (!v) setLinkingItem(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Link ke Master Item</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-3">
+            {linkingItem && (
+              <div className="rounded-md border bg-muted/40 px-3 py-2">
+                <p className="text-xs text-muted-foreground mb-0.5">Item legacy yang akan dihubungkan</p>
+                <p className="font-medium text-sm">{linkingItem.name}</p>
+                <p className="text-xs text-muted-foreground">{linkingItem.type === "service" ? "Layanan" : "Produk"} · {linkingItem.unit ?? "-"}</p>
+              </div>
+            )}
+            <div className="grid gap-1.5">
+              <Label>Pilih Master Item</Label>
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                <Input
+                  value={linkMasterSearch}
+                  onChange={(e) => setLinkMasterSearch(e.target.value)}
+                  placeholder="Cari nama item..."
+                  className="pl-8 h-8 text-sm"
+                  autoFocus
+                />
+              </div>
+              <div className="border rounded-md overflow-y-auto max-h-60">
+                {(() => {
+                  const q = linkMasterSearch.toLowerCase();
+                  const linkedIds = new Set(
+                    (catalog ?? [])
+                      .map((i) => (i as any).masterItemId)
+                      .filter(Boolean)
+                  );
+                  const filtered = products.filter((p) =>
+                    !linkedIds.has(p.id) &&
+                    (p.name.toLowerCase().includes(q) || p.sku?.toLowerCase().includes(q))
+                  );
+                  if (filtered.length === 0) {
+                    return (
+                      <p className="text-center text-xs text-muted-foreground py-4">
+                        {q ? "Tidak ada item yang cocok." : "Semua item sudah ada di etalase ini."}
+                      </p>
+                    );
+                  }
+                  return filtered.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      disabled={linkPending}
+                      className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent transition-colors border-b last:border-b-0 disabled:opacity-50"
+                      onClick={() => submitLink(p.id)}
+                    >
+                      <p className="font-medium">{p.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {p.itemType === "jasa" ? "Layanan" : "Produk"} · {p.unit}
+                        {(p.categories as string[] | undefined)?.[0] && <> · {(p.categories as string[])[0]}</>}
+                        {p.price != null && Number(p.price) > 0 && (
+                          <> · <span className="text-primary font-medium">{fmt(Number(p.price))}</span></>
+                        )}
+                      </p>
+                    </button>
+                  ));
+                })()}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Nama, tipe, satuan, dan kategori akan disinkron dari master item. Harga Dasar tetap seperti semula.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLinkOpen(false)}>Batal</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

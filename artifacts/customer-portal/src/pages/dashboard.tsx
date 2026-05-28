@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useGetPortalMe, useListPortalOrders, useListPortalLogisticOrders } from "@workspace/api-client-react";
 import { getAuthToken, getAuthHeaders, removeAuthToken } from "@/lib/auth";
 import { useLocation, Link } from "wouter";
@@ -110,6 +111,17 @@ export default function Dashboard() {
   useEffect(() => {
     if (!token) setLocation("/login");
   }, [token, setLocation]);
+
+  // Real-time: refresh daftar order saat ada perubahan status
+  const qc = useQueryClient();
+  useEffect(() => {
+    if (!token) return;
+    const es = new EventSource("/api/ecommerce/events");
+    es.addEventListener("logistic_order_status_changed", () => {
+      qc.invalidateQueries({ queryKey: ["listPortalLogisticOrders", token] });
+    });
+    return () => es.close();
+  }, [token, qc]);
 
   const headers = getAuthHeaders() as any;
 

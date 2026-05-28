@@ -49,6 +49,31 @@ export async function downloadFromSupabase(storagePath: string): Promise<Buffer>
 }
 
 /**
+ * Delete file dari Replit Object Storage (public).
+ * Menerima storagePath (e.g. "uploads/uuid.jpg") atau serving URL
+ * ("/api/storage/public-objects/portal-assets/uploads/uuid.jpg").
+ * Non-fatal — diam jika objek tidak ditemukan.
+ */
+export async function deleteFromSupabase(storagePath: string): Promise<void> {
+  try {
+    // Normalise: strip serving-URL prefix
+    let resolved = storagePath;
+    if (resolved.startsWith("/api/storage/public-objects/portal-assets/")) {
+      resolved = resolved.replace("/api/storage/public-objects/portal-assets/", "");
+    } else if (resolved.startsWith("/api/storage/public-objects/")) {
+      resolved = resolved.replace("/api/storage/public-objects/", "");
+    }
+    // Also strip "supabase:media/" virtual prefix (legacy objectPath format)
+    if (resolved.startsWith("supabase:media/")) {
+      resolved = resolved.replace("supabase:media/", "");
+    }
+    await objectStorage.tryDeletePublicFile(resolved);
+  } catch {
+    // Non-fatal
+  }
+}
+
+/**
  * Check apakah URL adalah Supabase URL (legacy — always false on Replit)
  */
 export function isSupabaseUrl(url: string): boolean {

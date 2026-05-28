@@ -448,7 +448,7 @@ export default function BookPage() {
   const [selectedCategory, setSelectedCategory] = useState<ServiceCategory | null>(null);
   const [selectedItem, setSelectedItem] = useState<ServiceItem | null>(null);
   const [editCartId, setEditCartId] = useState<string | null>(null);
-  const { items: cartItems, addItem, removeItem, clearCart, subtotal, tax, grandTotal, taxRate } = useCart();
+  const { items: cartItems, addItem, removeItem, clearCart, subtotal, tax, grandTotal } = useCart();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const createOrder = useCreateLogisticOrder();
@@ -625,6 +625,7 @@ export default function BookPage() {
           subtotal: productPrice * qty,
         });
       }
+      setOrderType("product");
     }
 
     const serviceId = params.get("service");
@@ -707,16 +708,21 @@ export default function BookPage() {
     const truckingItem = cartItems.find(c => c.calculatorType === "trucking");
     const truckingInputData = (truckingItem?.inputData ?? {}) as Record<string, unknown>;
     const str = (v: unknown) => (v ? String(v) : "");
-    const effectiveOrigin = (orderType === "product" || orderType === "service") ? (origin || "") : origin;
-    const effectiveDestination = orderType === "product"
+    const derivedOrderType: "product" | "service" | "shipment" | null = orderType ?? (
+      cartItems.every(c => c.calculatorType === "product") ? "product" :
+      cartItems.every(c => c.calculatorType !== "trucking" && c.calculatorType !== "air_freight" && c.calculatorType !== "sea_fcl" && c.calculatorType !== "sea_lcl") && cartItems.some(c => c.calculatorType !== "product") ? "service" :
+      "shipment"
+    );
+    const effectiveOrigin = (derivedOrderType === "product" || derivedOrderType === "service") ? (origin || "") : origin;
+    const effectiveDestination = derivedOrderType === "product"
       ? (shippingAddress || destination || "")
-      : (orderType === "service" ? (destination || "") : destination);
+      : (derivedOrderType === "service" ? (destination || "") : destination);
     createOrder.mutate({ data: {
       companyName,
       customerName,
       email,
       phone,
-      orderType: orderType ?? undefined,
+      orderType: derivedOrderType ?? undefined,
       shipmentType: shipmentType ?? "",
       origin: effectiveOrigin,
       destination: effectiveDestination,
@@ -1076,7 +1082,7 @@ export default function BookPage() {
                 <>
                   <Separator />
                   <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">PPN {taxRate === 0.011 ? "1,1%" : "11%"}</span>
+                    <span className="text-muted-foreground">PPN 11%</span>
                     <span className="font-medium">{formatCurrency(tax)}</span>
                   </div>
                   <Separator />

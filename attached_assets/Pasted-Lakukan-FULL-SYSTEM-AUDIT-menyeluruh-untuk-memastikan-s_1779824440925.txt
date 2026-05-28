@@ -1,0 +1,241 @@
+Lakukan FULL SYSTEM AUDIT menyeluruh untuk memastikan semua fitur sudah terhubung bolak-balik dengan Supabase.
+
+Maksud "bolak-balik":
+- Create data masuk ke Supabase
+- Read data tampil dari Supabase
+- Update data tersimpan ke Supabase
+- Delete/Archive data benar-benar update ke Supabase
+- Data yang berubah langsung terbaca ulang di UI
+- Tidak ada data dummy/localStorage/hardcoded yang masih dipakai untuk flow production
+
+FOKUS AUDIT:
+1. Customer Order
+2. Order Items
+3. Vendor Mini Form
+4. Vendor Submission
+5. Template WhatsApp Settings
+6. Customer Approval
+7. Sales Order
+8. Operational Confirmation
+9. Vendor Data
+10. Product / Service Catalog
+11. Harga / Rate
+12. Notification Log
+13. Activity Timeline
+14. Admin Settings
+
+AUDIT YANG HARUS DICEK:
+
+==================================================
+1. SUPABASE CONNECTION AUDIT
+==================================================
+Cek semua file yang memakai:
+- supabase.from
+- supabase.rpc
+- supabase.auth
+- insert
+- select
+- update
+- delete
+- upsert
+- localStorage
+- sessionStorage
+- mockData
+- dummyData
+- hardcoded array
+- useState default data
+
+Laporkan bagian mana yang:
+- sudah connect Supabase
+- masih dummy/local state
+- hanya read tapi belum write
+- write tapi tidak refresh UI
+- update tapi tidak persist
+- delete hanya hilang di UI tapi tidak ke database
+
+==================================================
+2. CRUD MATRIX
+==================================================
+Buat tabel audit:
+
+Feature | Table Supabase | Create | Read | Update | Delete/Archive | Realtime Refresh | Status
+
+Untuk fitur:
+- orders
+- order_items
+- vendors
+- vendor_mini_form_links
+- vendor_mini_form_submissions
+- whatsapp_template_configs
+- customer_approvals
+- sales_orders
+- vendor_operational_confirmations
+- notification_logs
+- activity_logs
+- products
+- services
+- rates/pricing
+
+Status:
+- OK
+- Partial
+- Not Connected
+- Broken
+- Dummy Data
+
+==================================================
+3. DATA FLOW AUDIT
+==================================================
+Test flow ini dari awal sampai akhir:
+
+Customer submit order
+→ data masuk ke Supabase orders
+→ order_items masuk ke Supabase
+→ admin page read dari Supabase
+→ admin approve order
+→ status update ke Supabase
+→ generate vendor mini form
+→ link masuk ke Supabase
+→ vendor submit form
+→ submission masuk ke Supabase
+→ admin lihat submission dari Supabase
+→ admin pilih vendor
+→ selected vendor update ke Supabase
+→ customer approval link dibuat
+→ customer approve
+→ approval masuk ke Supabase
+→ SO otomatis dibuat di Supabase
+→ operational form vendor dibuat
+→ vendor submit operational data
+→ data masuk ke Supabase
+→ timeline/log masuk ke Supabase
+
+Pastikan tidak ada step yang hanya terjadi di frontend.
+
+==================================================
+4. TEMPLATE WA AUDIT
+==================================================
+Pastikan:
+- template WA Settings disimpan ke Supabase
+- template dibaca lagi dari Supabase
+- semua workflow WA memakai template dari Supabase
+- tidak pakai hardcoded React kecuali default fallback
+- perubahan template langsung berpengaruh saat kirim WA
+
+==================================================
+5. RLS / SECURITY AUDIT
+==================================================
+Audit Supabase:
+- RLS policy aktif atau tidak
+- public mini form hanya bisa akses berdasarkan token
+- vendor tidak bisa baca submission vendor lain
+- customer tidak bisa baca harga modal/vendorPrice/margin
+- admin bisa full access
+- insert public form dibatasi token valid
+- update/delete tidak boleh publik sembarangan
+
+==================================================
+6. SCHEMA AUDIT
+==================================================
+Cek apakah table dan column yang dipakai frontend sama dengan Supabase.
+
+Cari error:
+- column tidak ada
+- table tidak ada
+- typo column
+- enum/status tidak cocok
+- nullable error
+- foreign key error
+- wrong data type
+- payload_json tidak konsisten
+
+==================================================
+7. STATE SYNC AUDIT
+==================================================
+Pastikan setelah action:
+- create
+- update
+- delete
+- approve
+- submit
+- send
+- save template
+
+UI melakukan:
+- refetch dari Supabase, atau
+- update state dari response Supabase yang valid
+
+Jangan hanya optimistic update tanpa persist.
+
+==================================================
+8. ERROR HANDLING AUDIT
+==================================================
+Pastikan setiap Supabase query punya:
+- error handling
+- loading state
+- success state
+- toast/message
+- retry jika perlu
+- console error yang jelas
+
+==================================================
+9. PERFORMANCE AUDIT
+==================================================
+Cek:
+- query berulang tidak perlu
+- select * terlalu berat
+- data besar tanpa pagination
+- missing index untuk order_id, token, vendor_id, status
+- realtime subscription bocor
+- useEffect infinite loop
+- double insert karena button double click
+
+==================================================
+10. OUTPUT AUDIT WAJIB
+==================================================
+Berikan hasil dalam format:
+
+A. SUPABASE CONNECTION SUMMARY
+- fitur yang sudah full connected
+- fitur yang partial
+- fitur yang masih dummy/local/hardcoded
+
+B. CRUD MATRIX
+Feature | Table | Create | Read | Update | Delete | Status | Notes
+
+C. BROKEN FLOW FOUND
+- step
+- file
+- masalah
+- dampak
+
+D. LOCAL/DUMMY DATA FOUND
+- file
+- variable/function
+- harus diganti ke table apa
+
+E. SCHEMA MISMATCH FOUND
+- table
+- column
+- frontend expects
+- database has
+
+F. SECURITY/RLS ISSUE
+- table
+- risk
+- recommended policy
+
+G. FIX PLAN
+- step by step aman
+- jangan merusak fitur existing
+- migration yang dibutuhkan
+- file yang harus diubah
+
+H. FINAL VERDICT
+- Supabase connected score
+- CRUD completeness score
+- security score
+- production readiness score
+
+Jangan hanya kasih summary.
+Audit harus detail seperti senior backend engineer + senior QA + Supabase architect.

@@ -1,9 +1,16 @@
 import { SignJWT, jwtVerify } from "jose";
 
-const SECRET_RAW = process.env.PORTAL_JWT_SECRET ?? process.env.SESSION_SECRET ?? "portal-jwt-fallback-secret-change-me";
+const SECRET_RAW = process.env.PORTAL_JWT_SECRET ?? process.env.SESSION_SECRET;
+if (!SECRET_RAW) {
+  throw new Error(
+    "Portal JWT secret not configured. " +
+    "Set PORTAL_JWT_SECRET (or SESSION_SECRET as fallback) environment variable."
+  );
+}
+
 const SECRET = new TextEncoder().encode(SECRET_RAW);
 const ISSUER = "cst-portal";
-const EXPIRY = "30d";
+const EXPIRY = "7d";
 
 export interface PortalJwtPayload {
   sub: string;

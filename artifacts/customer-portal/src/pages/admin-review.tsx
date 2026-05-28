@@ -141,7 +141,7 @@ interface PageContent {
 const DEFAULT_PAGE_CONTENT: PageContent = {
   admin_review: {
     pageTitle: "Review & Blast Vendor",
-    pageSubtitle: "CST Logistics — Admin Panel",
+    pageSubtitle: "Admin Panel",
     deadlineLabel: "Batas Waktu Respon Vendor",
     vendorSectionTitle: "Pilih Vendor",
     blastHint: "Vendor akan menerima WA dengan link form penawaran",
@@ -435,7 +435,7 @@ function CompareVendorsView({ data, token }: { data: CompareData; token: string 
             <span className="text-2xl">🔍</span>
             <div>
               <h1 className="text-base font-bold text-slate-800 leading-tight">Bandingkan Penawaran</h1>
-              <p className="text-xs text-slate-400">CST Logistics — Admin Panel</p>
+              <p className="text-xs text-slate-400">Admin Panel</p>
             </div>
           </div>
         </div>
@@ -465,7 +465,7 @@ function CompareVendorsView({ data, token }: { data: CompareData; token: string 
           <span className="text-2xl">🔍</span>
           <div>
             <h1 className="text-base font-bold text-slate-800 leading-tight">Bandingkan Penawaran Vendor</h1>
-            <p className="text-xs text-slate-400">CST Logistics — Admin Panel</p>
+            <p className="text-xs text-slate-400">Admin Panel</p>
           </div>
         </div>
       </div>
@@ -1031,13 +1031,50 @@ const SERVICE_TYPE_OPTIONS = [
   "Less Container Load (LCL)",
 ];
 
+function deriveServiceType(serviceType: string | null, orderType: string | null): { serviceType: string; customService: string } {
+  const val = (serviceType ?? "").trim();
+
+  if (!val) {
+    if ((orderType ?? "").toLowerCase() === "product") {
+      return { serviceType: "Warehousing", customService: "" };
+    }
+    return { serviceType: "", customService: "" };
+  }
+
+  if (SERVICE_TYPE_OPTIONS.includes(val)) return { serviceType: val, customService: "" };
+
+  const ciMatch = SERVICE_TYPE_OPTIONS.find((o) => o.toLowerCase() === val.toLowerCase());
+  if (ciMatch) return { serviceType: ciMatch, customService: "" };
+
+  const lower = val.toLowerCase();
+  if (lower.includes("sea") || lower.includes("laut") || lower.includes("kapal"))
+    return { serviceType: "Sea Freight", customService: "" };
+  if (lower.includes("air") || lower.includes("udara") || lower.includes("pesawat"))
+    return { serviceType: "Air Freight", customService: "" };
+  if (lower.includes("land") || lower.includes("darat") || lower.includes("truck"))
+    return { serviceType: "Land Freight", customService: "" };
+  if (lower.includes("custom") || lower.includes("bea") || lower.includes("cukai") || lower.includes("pabean"))
+    return { serviceType: "Custom Clearance", customService: "" };
+  if (lower.includes("warehouse") || lower.includes("gudang") || lower.includes("storage"))
+    return { serviceType: "Warehousing", customService: "" };
+  if (lower.includes("door") || lower.includes("d2d") || lower.includes("d-to-d"))
+    return { serviceType: "Door to Door", customService: "" };
+  if (lower.includes("fcl") || lower.includes("full container"))
+    return { serviceType: "Full Container Load (FCL)", customService: "" };
+  if (lower.includes("lcl") || lower.includes("less container"))
+    return { serviceType: "Less Container Load (LCL)", customService: "" };
+
+  return { serviceType: "__custom__", customService: val };
+}
+
 function ForwardVendorView({ data, token }: { data: ForwardVendorData; token: string }) {
   const { order, rfq, selectedVendor, selectedVendorLink } = data;
 
   const price = selectedVendorLink?.offeredPrice ?? selectedVendorLink?.basicPrice;
 
-  const [serviceType, setServiceType] = useState(order.serviceType ?? "");
-  const [customService, setCustomService] = useState("");
+  const derived = deriveServiceType(order.serviceType, order.orderType);
+  const [serviceType, setServiceType] = useState(derived.serviceType);
+  const [customService, setCustomService] = useState(derived.customService);
   const [expiresInHours, setExpiresInHours] = useState(72);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<ForwardResult | null>(null);
@@ -1310,7 +1347,7 @@ function PageHeader({ icon, title }: { icon: string; title: string }) {
         <span className="text-2xl">{icon}</span>
         <div>
           <h1 className="text-base font-bold text-slate-800 leading-tight">{title}</h1>
-          <p className="text-xs text-slate-400">CST Logistics — Admin Panel</p>
+          <p className="text-xs text-slate-400">Admin Panel</p>
         </div>
       </div>
     </div>

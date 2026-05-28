@@ -30,6 +30,7 @@ interface OrderItem {
 interface FormData {
   rfqNumber: string;
   vendorName: string;
+  orderType?: string;
   serviceType: string;
   origin: string;
   destination: string;
@@ -221,7 +222,7 @@ export default function VendorFormPage() {
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white font-bold text-lg">
-              CST
+              RFQ
             </div>
             <div>
               <p className="text-xs text-gray-400 uppercase tracking-wide">Request For Quotation</p>
@@ -230,7 +231,11 @@ export default function VendorFormPage() {
           </div>
           <p className="text-sm text-gray-600">
             Kepada Yth. <strong>{data.vendorName}</strong>,<br />
-            Mohon bantu isi penawaran harga untuk kebutuhan layanan logistik di bawah ini.
+            {data.orderType === "product"
+              ? "Mohon bantu isi penawaran harga untuk kebutuhan pembelian produk di bawah ini."
+              : data.orderType === "service"
+              ? "Mohon bantu isi penawaran harga untuk kebutuhan layanan di bawah ini."
+              : "Mohon bantu isi penawaran harga untuk kebutuhan layanan logistik di bawah ini."}
           </p>
         </div>
 
@@ -264,50 +269,76 @@ export default function VendorFormPage() {
         {/* RFQ Details */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
           <h3 className="font-semibold text-gray-800 mb-4 text-sm uppercase tracking-wide text-blue-600">
-            Detail Muatan
+            {data.orderType === "product"
+              ? "Detail Produk"
+              : data.orderType === "service"
+              ? "Detail Layanan"
+              : "Detail Muatan"}
           </h3>
           <div className="space-y-3">
-            {/* Layanan */}
-            {data.serviceType ? (
-              <Row label="Layanan" value={data.serviceType} />
-            ) : (data.orderItems && data.orderItems.length > 0) ? (
-              <div className="flex justify-between items-start gap-4 text-sm">
-                <span className="text-gray-500 shrink-0">Layanan / Produk</span>
-                <div className="text-right space-y-1">
-                  {data.orderItems.map((item, i) => (
-                    <div key={i} className="text-gray-800 font-medium">{item.serviceName || item.category}</div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
-            {/* Rute — hanya tampil jika ada origin atau destination */}
-            {(data.origin || data.destination) && (
-              <Row label="Rute" value={`${data.origin || "—"} → ${data.destination || "—"}`} />
-            )}
-
-            {data.commodity && <Row label="Komoditi" value={data.commodity} />}
-            {data.cargoDescription && <Row label="Deskripsi" value={data.cargoDescription} />}
-            {data.grossWeight && <Row label="Berat" value={`${data.grossWeight} kg`} />}
-            {data.volumeCbm && <Row label="Volume" value={`${data.volumeCbm} CBM`} />}
-            {data.requiredDate && <Row label="Tgl Butuh" value={data.requiredDate} />}
-
-            {/* Order items detail (produk/jasa) */}
-            {data.orderItems && data.orderItems.length > 0 && !data.serviceType && (
-              <div className="pt-2 border-t border-gray-100 space-y-1.5">
-                {data.orderItems.map((item, i) => (
-                  <div key={i} className="flex justify-between items-center text-sm">
-                    <span className="text-gray-500">{item.category}</span>
-                    <span className="text-gray-800 font-medium text-right max-w-[55%]">{item.serviceName}</span>
+            {data.orderType === "product" || data.orderType === "service" ? (
+              <>
+                {/* Product/service order: show items prominently */}
+                {data.orderItems && data.orderItems.length > 0 ? (
+                  <div className="space-y-2">
+                    {data.orderItems.map((item, i) => (
+                      <div key={i} className="flex justify-between items-center text-sm bg-gray-50 rounded-lg px-3 py-2">
+                        <span className="text-gray-700 font-medium">{item.serviceName || item.category || "—"}</span>
+                        {item.subtotal != null && (
+                          <span className="text-blue-700 font-semibold shrink-0 ml-2">{idr(item.subtotal)}</span>
+                        )}
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                ) : data.serviceType ? (
+                  <Row label={data.orderType === "product" ? "Produk" : "Layanan"} value={data.serviceType} />
+                ) : null}
+                {data.requiredDate && <Row label="Tgl Dibutuhkan" value={data.requiredDate} />}
+                {data.commodity && <Row label="Keterangan" value={data.commodity} />}
+              </>
+            ) : (
+              <>
+                {/* Shipment order: logistics detail */}
+                {data.serviceType ? (
+                  <Row label="Layanan" value={data.serviceType} />
+                ) : (data.orderItems && data.orderItems.length > 0) ? (
+                  <div className="flex justify-between items-start gap-4 text-sm">
+                    <span className="text-gray-500 shrink-0">Layanan / Produk</span>
+                    <div className="text-right space-y-1">
+                      {data.orderItems.map((item, i) => (
+                        <div key={i} className="text-gray-800 font-medium">{item.serviceName || item.category}</div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+                {(data.origin || data.destination) && (
+                  <Row label="Rute" value={`${data.origin || "—"} → ${data.destination || "—"}`} />
+                )}
+                {data.commodity && <Row label="Komoditi" value={data.commodity} />}
+                {data.cargoDescription && <Row label="Deskripsi" value={data.cargoDescription} />}
+                {data.grossWeight && <Row label="Berat" value={`${data.grossWeight} kg`} />}
+                {data.volumeCbm && <Row label="Volume" value={`${data.volumeCbm} CBM`} />}
+                {data.requiredDate && <Row label="Tgl Butuh" value={data.requiredDate} />}
+                {data.orderItems && data.orderItems.length > 0 && !data.serviceType && (
+                  <div className="pt-2 border-t border-gray-100 space-y-1.5">
+                    {data.orderItems.map((item, i) => (
+                      <div key={i} className="flex justify-between items-center text-sm">
+                        <span className="text-gray-500">{item.category}</span>
+                        <span className="text-gray-800 font-medium text-right max-w-[55%]">{item.serviceName}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
             )}
 
             {data.basicPrice && (
-              <div className="flex justify-between items-center pt-3 border-t border-gray-100">
-                <span className="text-sm text-gray-500">Harga Dasar (Referensi)</span>
-                <span className="font-bold text-blue-600 text-base">{idr(data.basicPrice)}</span>
+              <div className="flex flex-col gap-1 pt-3 border-t border-gray-100">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-500 font-medium">HARGA DASAR <span className="text-xs text-gray-400">(belum PPN)</span></span>
+                  <span className="font-bold text-blue-600 text-base">{idr(data.basicPrice)}</span>
+                </div>
+                <p className="text-xs text-blue-500">* Harga referensi dari etalase vendor. Belum termasuk margin & PPN.</p>
               </div>
             )}
           </div>
@@ -318,7 +349,7 @@ export default function VendorFormPage() {
           <div className="bg-red-50 border border-red-300 rounded-2xl p-5 text-center">
             <p className="text-2xl mb-2">⛔</p>
             <p className="font-bold text-red-700 mb-1">Batas Waktu Telah Berakhir</p>
-            <p className="text-sm text-red-600">RFQ ini sudah tidak dapat direspon. Silakan hubungi tim CST Logistics jika ada pertanyaan.</p>
+            <p className="text-sm text-red-600">RFQ ini sudah tidak dapat direspon. Silakan hubungi tim kami jika ada pertanyaan.</p>
           </div>
         )}
 
@@ -438,7 +469,7 @@ export default function VendorFormPage() {
         )}
 
         <p className="text-center text-xs text-gray-400 pb-4">
-          CST Logistics — Mohon balas sebelum batas waktu yang ditentukan
+          Mohon balas sebelum batas waktu yang ditentukan
         </p>
       </div>
     </div>

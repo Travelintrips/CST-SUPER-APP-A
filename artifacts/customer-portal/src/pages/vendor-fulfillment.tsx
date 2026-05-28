@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { useParams } from "wouter";
 
+/* ─── Types ──────────────────────────────────────────────────── */
+
 type OrderInfo = {
   id: number;
   orderNumber: string;
@@ -14,13 +16,67 @@ type OrderInfo = {
   status: string;
 };
 
+type SubmittedData = {
+  driverName: string | null;
+  driverPhone: string | null;
+  plateNumber: string | null;
+  vehicleType: string | null;
+  pickupTime: string | null;
+  carrierName: string | null;
+  awbBlNumber: string | null;
+  flightVessel: string | null;
+  bookingNumber: string | null;
+  etd: string | null;
+  eta: string | null;
+  stockConfirmed: string | null;
+  qtyConfirmed: string | null;
+  readyDate: string | null;
+  warehouseLocation: string | null;
+  customsPicName: string | null;
+  customsDocuments: string | null;
+  customsProcessEta: string | null;
+  notes: string | null;
+  submittedAt: string | null;
+};
+
 type PageData = {
   token: string;
   isSubmitted: boolean;
   serviceType: string;
   vendorName: string | null;
   order: OrderInfo;
+  submittedData?: SubmittedData;
 };
+
+/* ─── Helpers ────────────────────────────────────────────────── */
+
+function getServiceIcon(svcType: string) {
+  if (svcType.includes("trucking")) return "🚚";
+  if (svcType.includes("air"))      return "✈️";
+  if (svcType.includes("sea"))      return "🚢";
+  if (svcType.includes("product"))  return "📦";
+  if (svcType.includes("customs"))  return "🏛️";
+  return "🔧";
+}
+
+function getServiceLabel(svcType: string) {
+  if (svcType.includes("trucking"))    return "Trucking";
+  if (svcType.includes("freight_air")) return "Freight Udara";
+  if (svcType.includes("freight_sea")) return "Freight Laut";
+  if (svcType.includes("product"))     return "Produk / Gudang";
+  if (svcType.includes("customs"))     return "Kepabeanan";
+  return "Fulfillment";
+}
+
+function fmtDateTime(iso: string | null) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const BULAN = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agt","Sep","Okt","Nov","Des"];
+  return `${pad(d.getDate())} ${BULAN[d.getMonth()]} ${d.getFullYear()}, ${pad(d.getHours())}:${pad(d.getMinutes())} WIB`;
+}
+
+/* ─── UI primitives ──────────────────────────────────────────── */
 
 function Loader() {
   return (
@@ -41,41 +97,188 @@ function ErrorCard({ message }: { message: string }) {
         <h2 className="text-lg font-semibold text-slate-800 mb-2">Link Tidak Valid</h2>
         <p className="text-sm text-slate-600">{message}</p>
         <p className="text-xs text-slate-400 mt-3">
-          Jika Anda merasa ini keliru, hubungi tim CST Logistics.
+          Jika Anda merasa ini keliru, hubungi tim admin.
         </p>
       </div>
     </div>
   );
 }
 
-function SuccessCard({ orderNumber }: { orderNumber: string }) {
+function Row({ label, value }: { label: string; value: string | null }) {
+  if (!value) return null;
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8 max-w-sm w-full text-center">
-        <div className="text-6xl mb-4">✅</div>
-        <h2 className="text-xl font-bold text-slate-800 mb-2">Data Terkirim!</h2>
-        <p className="text-sm text-slate-500 mb-4">
-          Terima kasih. Data Anda telah kami terima dan tim CST Logistics akan segera memprosesnya.
-        </p>
-        <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-left text-sm text-green-800">
-          <p className="font-medium">Status order: <span className="font-bold">Vendor Confirmed</span></p>
-          <p className="text-green-600 text-xs mt-1">Order: {orderNumber}</p>
+    <div className="flex justify-between items-start gap-3 py-2 border-b border-slate-50 last:border-0">
+      <span className="text-sm text-slate-500 flex-shrink-0 min-w-[130px]">{label}</span>
+      <span className="text-sm font-medium text-slate-800 text-right break-words">{value}</span>
+    </div>
+  );
+}
+
+function OrderRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between items-start gap-3">
+      <span className="text-sm text-slate-500 flex-shrink-0">{label}</span>
+      <span className="text-sm font-medium text-slate-800 text-right">{value}</span>
+    </div>
+  );
+}
+
+/* ─── Submitted Review ───────────────────────────────────────── */
+
+function SubmittedReview({
+  data,
+  localFields,
+  justSubmitted,
+}: {
+  data: PageData;
+  localFields?: Record<string, string>;
+  justSubmitted?: boolean;
+}) {
+  const svc = data.serviceType;
+  const icon = getServiceIcon(svc);
+  const svcLabel = getServiceLabel(svc);
+
+  // Use server-returned submittedData, or fall back to locally captured fields
+  const sd = data.submittedData;
+  const lf = localFields ?? {};
+
+  function val(key: keyof SubmittedData): string | null {
+    if (sd?.[key]) return String(sd[key]);
+    if (lf[key]) return lf[key];
+    return null;
+  }
+
+  const isTrucking = svc.includes("trucking");
+  const isFreight  = (svc.includes("freight_air") || svc.includes("freight_sea") || svc.includes("freight")) && !isTrucking;
+  const isProduct  = svc.includes("product");
+  const isCustoms  = svc.includes("customs");
+
+  const hasAnyData =
+    val("driverName") || val("carrierName") || val("stockConfirmed") ||
+    val("customsPicName") || val("plateNumber") || val("awbBlNumber");
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-teal-50 py-10 px-4">
+      <div className="max-w-lg mx-auto space-y-4">
+
+        {/* Header status */}
+        <div className="bg-white rounded-2xl shadow-sm border border-emerald-100 p-6 text-center">
+          <div className="text-5xl mb-3">{justSubmitted ? "✅" : "📋"}</div>
+          <h1 className="text-xl font-bold text-slate-800 mb-1">
+            {justSubmitted ? "Data Berhasil Dikirim!" : "Data Fulfillment Telah Disubmit"}
+          </h1>
+          <p className="text-sm text-slate-500 mb-4">
+            {justSubmitted
+              ? "Terima kasih. Tim kami akan segera memprosesnya."
+              : "Data di bawah adalah isian yang telah dikirimkan untuk order ini."}
+          </p>
+          <div className="inline-flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-full px-4 py-1.5 text-xs font-semibold text-emerald-700">
+            <span>✓ Submitted</span>
+            {sd?.submittedAt && (
+              <span className="text-emerald-500 font-normal">{fmtDateTime(sd.submittedAt)}</span>
+            )}
+          </div>
         </div>
+
+        {/* Order info */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <span className="text-xl">{icon}</span>
+            <div>
+              <h2 className="text-sm font-semibold text-slate-700">Detail Order — {svcLabel}</h2>
+              {data.vendorName && (
+                <p className="text-xs text-slate-400">Vendor: {data.vendorName}</p>
+              )}
+            </div>
+          </div>
+          <div className="space-y-2.5">
+            <OrderRow label="No. Order" value={data.order.orderNumber} />
+            <OrderRow label="Layanan" value={data.order.serviceType} />
+            <OrderRow label="Rute" value={`${data.order.origin} → ${data.order.destination}`} />
+            {data.order.commodity && <OrderRow label="Komoditi" value={data.order.commodity} />}
+            {data.order.grossWeight && <OrderRow label="Berat" value={`${data.order.grossWeight} kg`} />}
+            {data.order.requiredDate && <OrderRow label="Tgl Butuh" value={data.order.requiredDate} />}
+          </div>
+        </div>
+
+        {/* Submitted fulfillment data */}
+        {hasAnyData && (
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+            <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-1">
+              {icon} Data Fulfillment yang Dikirim
+            </h2>
+            <p className="text-xs text-slate-400 mb-4">Read-only — tidak dapat diubah.</p>
+
+            <div>
+              {isTrucking && (
+                <>
+                  <Row label="Nama Driver"      value={val("driverName")} />
+                  <Row label="No. HP Driver"    value={val("driverPhone")} />
+                  <Row label="Nomor Plat"       value={val("plateNumber")} />
+                  <Row label="Tipe Kendaraan"   value={val("vehicleType")} />
+                  <Row label="Est. Pickup"      value={val("pickupTime")} />
+                </>
+              )}
+              {isFreight && (
+                <>
+                  <Row label="Carrier / Maskapai" value={val("carrierName")} />
+                  <Row label="No. AWB / BL"        value={val("awbBlNumber")} />
+                  <Row label="No. Penerbangan/Vessel" value={val("flightVessel")} />
+                  <Row label="No. Booking"         value={val("bookingNumber")} />
+                  <Row label="ETD"                 value={val("etd")} />
+                  <Row label="ETA"                 value={val("eta")} />
+                </>
+              )}
+              {isProduct && (
+                <>
+                  <Row label="Konfirmasi Stok"    value={val("stockConfirmed")} />
+                  <Row label="Qty Terpenuhi"      value={val("qtyConfirmed")} />
+                  <Row label="Tanggal Siap Kirim" value={val("readyDate")} />
+                  <Row label="Lokasi Gudang"      value={val("warehouseLocation")} />
+                </>
+              )}
+              {isCustoms && (
+                <>
+                  <Row label="Nama PIC Kepabeanan"  value={val("customsPicName")} />
+                  <Row label="Dokumen Dibutuhkan"   value={val("customsDocuments")} />
+                  <Row label="Est. Selesai Bea Cukai" value={val("customsProcessEta")} />
+                </>
+              )}
+              {/* Fallback: show all non-null fields for unknown service types */}
+              {!isTrucking && !isFreight && !isProduct && !isCustoms && (
+                <>
+                  <Row label="Driver"          value={val("driverName")} />
+                  <Row label="No. Plat"        value={val("plateNumber")} />
+                  <Row label="Carrier"         value={val("carrierName")} />
+                  <Row label="AWB/BL"          value={val("awbBlNumber")} />
+                  <Row label="ETD"             value={val("etd")} />
+                  <Row label="ETA"             value={val("eta")} />
+                  <Row label="Stok"            value={val("stockConfirmed")} />
+                  <Row label="PIC Kepabeanan"  value={val("customsPicName")} />
+                </>
+              )}
+              {val("notes") && (
+                <div className="mt-3 pt-3 border-t border-slate-100">
+                  <p className="text-xs text-slate-400 mb-1">Catatan Tambahan</p>
+                  <p className="text-sm text-slate-700 whitespace-pre-wrap">{val("notes")}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   );
 }
+
+/* ─── Form fields ────────────────────────────────────────────── */
 
 function Field({
   label, name, value, onChange, placeholder = "", required = false, type = "text",
 }: {
-  label: string;
-  name: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  required?: boolean;
-  type?: string;
+  label: string; name: string; value: string; onChange: (v: string) => void;
+  placeholder?: string; required?: boolean; type?: string;
 }) {
   return (
     <div className="space-y-1.5">
@@ -83,12 +286,9 @@ function Field({
         {label}{required && <span className="text-red-500 ml-0.5">*</span>}
       </label>
       <input
-        type={type}
-        name={name}
-        value={value}
+        type={type} name={name} value={value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        required={required}
+        placeholder={placeholder} required={required}
         className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
       />
     </div>
@@ -141,42 +341,17 @@ function CustomsFields({ fields, setField }: { fields: Record<string, string>; s
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex justify-between items-start gap-3">
-      <span className="text-sm text-slate-500 flex-shrink-0">{label}</span>
-      <span className="text-sm font-medium text-slate-800 text-right">{value}</span>
-    </div>
-  );
-}
-
-function getServiceIcon(svcType: string) {
-  if (svcType.includes("trucking")) return "🚚";
-  if (svcType.includes("air")) return "✈️";
-  if (svcType.includes("sea")) return "🚢";
-  if (svcType.includes("product")) return "📦";
-  if (svcType.includes("customs")) return "🏛️";
-  return "🔧";
-}
-
-function getServiceLabel(svcType: string) {
-  if (svcType.includes("trucking")) return "Trucking";
-  if (svcType.includes("freight_air")) return "Freight Udara";
-  if (svcType.includes("freight_sea")) return "Freight Laut";
-  if (svcType.includes("product")) return "Produk / Gudang";
-  if (svcType.includes("customs")) return "Kepabeanan";
-  return "Fulfillment";
-}
+/* ─── Main Page ──────────────────────────────────────────────── */
 
 export default function VendorFulfillmentPage() {
   const { token } = useParams<{ token: string }>();
-  const [data, setData] = useState<PageData | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [data, setData]       = useState<PageData | null>(null);
+  const [error, setError]     = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [fields, setFields] = useState<Record<string, string>>({});
-  const [notes, setNotes] = useState("");
+  const [fields, setFields]   = useState<Record<string, string>>({});
+  const [notes, setNotes]     = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
+  const [justSubmitted, setJustSubmitted] = useState(false);
 
   const setField = (k: string, v: string) =>
     setFields((prev) => ({ ...prev, [k]: v }));
@@ -188,7 +363,6 @@ export default function VendorFulfillmentPage() {
         const d = await r.json() as PageData & { error?: string };
         if (!r.ok) throw new Error(d.error ?? "Terjadi kesalahan");
         setData(d);
-        if (d.isSubmitted) setSubmitted(true);
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
@@ -205,7 +379,7 @@ export default function VendorFulfillmentPage() {
       });
       const d = await res.json() as { ok?: boolean; error?: string };
       if (!res.ok) throw new Error(d.error ?? "Gagal mengirim");
-      setSubmitted(true);
+      setJustSubmitted(true);
     } catch (e: unknown) {
       alert((e as Error).message);
     } finally {
@@ -214,12 +388,21 @@ export default function VendorFulfillmentPage() {
   };
 
   if (loading) return <Loader />;
-  if (error) return <ErrorCard message={error} />;
-  if (submitted) return <SuccessCard orderNumber={data?.order.orderNumber ?? ""} />;
-  if (!data) return <ErrorCard message="Data tidak ditemukan" />;
+  if (error)   return <ErrorCard message={error} />;
+  if (!data)   return <ErrorCard message="Data tidak ditemukan" />;
 
-  const svc = data.serviceType;
-  const icon = getServiceIcon(svc);
+  // Already submitted (from server) — show read-only review
+  if (data.isSubmitted) {
+    return <SubmittedReview data={data} justSubmitted={false} />;
+  }
+
+  // Just submitted locally — show review with locally-captured fields
+  if (justSubmitted) {
+    return <SubmittedReview data={data} localFields={{ ...fields, notes }} justSubmitted />;
+  }
+
+  const svc      = data.serviceType;
+  const icon     = getServiceIcon(svc);
   const svcLabel = getServiceLabel(svc);
 
   return (
@@ -244,13 +427,13 @@ export default function VendorFulfillmentPage() {
           <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
             <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-4">Detail Order</h2>
             <div className="space-y-2.5">
-              <Row label="No. Order" value={data.order.orderNumber} />
-              <Row label="Layanan" value={data.order.serviceType} />
-              <Row label="Rute" value={`${data.order.origin} -> ${data.order.destination}`} />
-              {data.order.commodity && <Row label="Komoditi" value={data.order.commodity} />}
-              {data.order.grossWeight && <Row label="Berat" value={`${data.order.grossWeight} kg`} />}
-              {data.order.requiredDate && <Row label="Tgl Butuh" value={data.order.requiredDate} />}
-              {data.order.vehicleType && <Row label="Tipe Kendaraan" value={data.order.vehicleType} />}
+              <OrderRow label="No. Order" value={data.order.orderNumber} />
+              <OrderRow label="Layanan" value={data.order.serviceType} />
+              <OrderRow label="Rute" value={`${data.order.origin} → ${data.order.destination}`} />
+              {data.order.commodity && <OrderRow label="Komoditi" value={data.order.commodity} />}
+              {data.order.grossWeight && <OrderRow label="Berat" value={`${data.order.grossWeight} kg`} />}
+              {data.order.requiredDate && <OrderRow label="Tgl Butuh" value={data.order.requiredDate} />}
+              {data.order.vehicleType && <OrderRow label="Tipe Kendaraan" value={data.order.vehicleType} />}
             </div>
           </div>
 
@@ -286,9 +469,6 @@ export default function VendorFulfillmentPage() {
             {submitting ? "Mengirim..." : "Kirim Data Fulfillment"}
           </button>
 
-          <p className="text-center text-xs text-slate-400 pb-4">
-            CST Logistics - Formulir Vendor Fulfillment
-          </p>
         </div>
       </form>
     </div>

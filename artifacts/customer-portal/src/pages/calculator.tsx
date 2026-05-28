@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import {
@@ -56,19 +57,33 @@ const SERVICE_CONFIG: Record<string, { icon: React.ReactNode; label: string; col
 export default function CalculatorPage() {
   const { t } = useLanguage();
 
-  const [rates, setRates] = useState<CalcRates>(DEFAULT_RATES);
-  const [cargoTypes, setCargoTypes] = useState<string[]>([]);
+  const qc = useQueryClient();
+
+  const { data: ratesData } = useQuery<CalcRates>({
+    queryKey: ["portal-calculator-rates"],
+    queryFn: () => fetch("/api/portal/calculator-rates").then((r) => r.ok ? r.json() : null),
+    staleTime: 0,
+    gcTime: 0,
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+  });
+  const rates = ratesData ?? DEFAULT_RATES;
+
+  const { data: cargoTypesData } = useQuery<string[]>({
+    queryKey: ["portal-cargo-types"],
+    queryFn: () => fetch("/api/portal/cargo-types").then((r) => r.ok ? r.json() : []),
+    staleTime: 60 * 1000,
+  });
+  const cargoTypes = cargoTypesData ?? [];
 
   useEffect(() => {
-    fetch("/api/portal/calculator-rates")
-      .then((r) => r.ok ? r.json() : null)
-      .then((data) => { if (data) setRates(data as CalcRates); })
-      .catch(() => undefined);
-    fetch("/api/portal/cargo-types")
-      .then((r) => r.ok ? r.json() : null)
-      .then((data) => { if (Array.isArray(data)) setCargoTypes(data as string[]); })
-      .catch(() => undefined);
-  }, []);
+    const es = new EventSource("/api/ecommerce/events");
+    es.addEventListener("price_sync", () => {
+      qc.invalidateQueries({ queryKey: ["portal-calculator-rates"] });
+      qc.invalidateQueries({ queryKey: ["portal-cargo-types"] });
+    });
+    return () => es.close();
+  }, [qc]);
 
   const [service, setService] = useState<ServiceType>("");
   const [origin, setOrigin] = useState("");
@@ -921,7 +936,7 @@ export default function CalculatorPage() {
                 ))}
               </div>
               <div className="mt-3.5 pt-3 border-t text-[10.5px] text-slate-500" style={{ borderColor:"rgba(255,255,255,0.08)" }}>
-                Tarif dikonfigurasi oleh admin CST Logistics
+                Tarif dikonfigurasi oleh admin
               </div>
             </div>
 

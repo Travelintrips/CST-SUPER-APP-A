@@ -64,8 +64,8 @@ export default defineConfig({
   },
   server: {
     port,
-    strictPort: false,
-    host: "0.0.0.0",
+    strictPort: true,
+    host: "::",
     allowedHosts: true,
     watch: {
       ignored: [
@@ -89,7 +89,7 @@ export default defineConfig({
       },
       // BizPortal dev server — proxied so /bizportal/* works via main entry port
       "/bizportal": {
-        target: "http://localhost:3000",
+        target: "http://localhost:18442",
         changeOrigin: true,
         ws: true,
       },

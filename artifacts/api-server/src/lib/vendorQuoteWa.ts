@@ -166,7 +166,10 @@ export async function sendVendorWhatsApp(input: SendVendorWhatsAppInput): Promis
     // For product orders, show ALL items. For other types, filter by category.
     const items = svcType === "product"
       ? input.orderItems
-      : input.orderItems.filter((it) => it.category?.toLowerCase().includes("product"));
+      : input.orderItems.filter((it) => {
+          const cat = (it.category ?? "").toLowerCase();
+          return cat.includes("product") || cat.includes("produk");
+        });
     if (!items.length) return null;
     return items
       .map((it) => {

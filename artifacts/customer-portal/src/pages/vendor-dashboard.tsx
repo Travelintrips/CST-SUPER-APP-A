@@ -270,7 +270,7 @@ export default function VendorDashboard() {
                 <div>
                   <p className="font-semibold text-yellow-900">Akun belum terhubung ke data vendor</p>
                   <p className="text-sm text-yellow-700 mt-0.5">
-                    Hubungi admin CST Logistics untuk menghubungkan akun dengan email{" "}
+                    Hubungi admin untuk menghubungkan akun dengan email{" "}
                     <strong>{portalCustomer.email}</strong>.
                   </p>
                 </div>

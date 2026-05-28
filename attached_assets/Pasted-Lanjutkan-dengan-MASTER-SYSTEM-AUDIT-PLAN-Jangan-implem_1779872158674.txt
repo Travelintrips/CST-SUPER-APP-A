@@ -1,0 +1,95 @@
+Lanjutkan dengan MASTER SYSTEM AUDIT PLAN.
+
+Jangan implement fix dulu.
+Buat dan jalankan audit bertahap untuk memastikan Supabase, BizPortal, Customer Portal, Mini Form, WA Template, SO, dan operational flow benar-benar sinkron.
+
+Audit dibagi menjadi 6 batch:
+
+BATCH 1 — Order Lifecycle Sync
+- customer create order
+- admin approve
+- vendor mini form
+- vendor submit
+- admin select vendor
+- customer approve
+- SO created
+- vendor operational submit
+- order completed
+
+BATCH 2 — Security / RLS / Token
+- public link security
+- vendor access
+- customer access
+- admin access
+- token expired
+- no IDOR
+- no price/margin leak
+
+BATCH 3 — Attachment / Storage
+- upload dokumen
+- file tersimpan permanen
+- file linked ke order
+- signed/public URL
+- delete/archive
+- file permission
+
+BATCH 4 — Notification / Timeline / WA Log
+- order timeline
+- notification log
+- WA send history
+- resend history
+- duplicate notification prevention
+
+BATCH 5 — Duplicate / Race Condition
+- double approve
+- double submit
+- double create SO
+- two admins edit same order
+- vendor revise saat customer approve
+- refresh saat submit
+
+BATCH 6 — Frontend Cache / Realtime / Refetch
+- query key consistency
+- invalidation
+- EventSource/SSE
+- Supabase refetch
+- localStorage/dummy data
+- stale data
+
+Untuk setiap batch, output harus berisi:
+
+1. Audit Matrix
+Feature | Table | API/Endpoint | Frontend File | BizPortal File | Status | Issue
+
+2. Broken Flow
+- step
+- root cause
+- risk level
+
+3. Security/Data Leak Risk
+- role
+- exposed data
+- fix suggestion
+
+4. Persistence Check
+- create/read/update/delete benar-benar ke Supabase atau tidak
+
+5. Realtime/Refetch Check
+- perlu auto sync atau cukup refresh manual
+- sudah ada invalidation atau belum
+
+6. Priority Fix Plan
+- Critical
+- High
+- Medium
+- Low
+
+7. Final Score
+- Sync score
+- Security score
+- Production readiness score
+
+PENTING:
+Jangan langsung fix.
+Audit dulu semua batch.
+Setelah semua audit selesai, beri saya daftar prioritas fix paling aman.

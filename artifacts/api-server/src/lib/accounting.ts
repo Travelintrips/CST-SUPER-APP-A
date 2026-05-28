@@ -1035,3 +1035,87 @@ export async function postPurchaseBillReversal(args: {
     logger.error({ err, purchaseDocId: args.purchaseDocId }, "Auto-post purchase bill reversal failed");
   }
 }
+
+/**
+ * Reversal jurnal penjualan saat SO dibatalkan.
+ * Membalik entri sales_invoice: Credit AR / Debit Revenue.
+ * Idempoten — hanya berjalan sekali per salesDocId.
+ */
+export async function postSalesInvoiceReversal(args: {
+  salesDocId: number;
+  docNumber: string;
+  customerName: string;
+  companyId?: number | null;
+}): Promise<void> {
+  try {
+    const settings = await ensureAccountingSettings(args.companyId ?? undefined);
+    if (!settings.salesJournalId) {
+      logger.warn({ salesDocId: args.salesDocId }, "Skipping sales reversal: salesJournalId missing");
+      return;
+    }
+
+    // Cari entri sales_invoice asli untuk SO ini
+    const [entry] = await db
+      .select()
+      .from(accountingEntriesTable)
+      .where(
+        sql`${accountingEntriesTable.source} = 'sales_invoice' AND ${accountingEntriesTable.sourceId} = ${args.salesDocId}`,
+      )
+      .limit(1);
+
+    if (!entry) {
+      logger.warn({ salesDocId: args.salesDocId }, "No sales_invoice entry found to reverse — skipping");
+      return;
+    }
+
+    // Idempoten: cek apakah reversal untuk SO ini sudah ada
+    const [existingReversal] = await db
+      .select()
+      .from(accountingEntriesTable)
+      .where(
+        sql`${accountingEntriesTable.source} = 'reversal' AND ${accountingEntriesTable.sourceId} = ${args.salesDocId} AND ${accountingEntriesTable.journalId} = ${settings.salesJournalId}`,
+      )
+      .limit(1);
+    if (existingReversal) {
+      logger.info({ salesDocId: args.salesDocId }, "Sales invoice reversal already posted — skipping");
+      return;
+    }
+
+    // Ambil baris entri asli
+    const entryLines = await db
+      .select()
+      .from(accountingEntryLinesTable)
+      .where(eq(accountingEntryLinesTable.entryId, entry.id));
+
+    if (!entryLines.length) {
+      logger.warn({ salesDocId: args.salesDocId, entryId: entry.id }, "Original sales entry has no lines — skipping reversal");
+      return;
+    }
+
+    // Balik debit/kredit
+    const reversalLines: PostingLine[] = entryLines.map((l: EntryLine) => ({
+      accountId: l.accountId,
+      debit: round2(Number(l.credit)),
+      credit: round2(Number(l.debit)),
+      description: `[Batal] ${l.description ?? ""}`.trim(),
+    }));
+
+    await postEntry(
+      {
+        journalId: settings.salesJournalId,
+        date: new Date(),
+        ref: args.docNumber,
+        description: `Pembatalan penjualan ${args.docNumber} - ${args.customerName}`,
+        source: "reversal",
+        sourceId: args.salesDocId,
+        companyId: args.companyId ?? null,
+        lines: reversalLines,
+      },
+      "SAL",
+    );
+
+    logger.info({ salesDocId: args.salesDocId }, "Sales invoice reversal posted");
+  } catch (err) {
+    logger.error({ err, salesDocId: args.salesDocId }, "Auto-post sales invoice reversal failed");
+  }
+}

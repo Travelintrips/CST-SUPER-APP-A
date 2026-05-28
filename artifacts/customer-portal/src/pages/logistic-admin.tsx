@@ -362,6 +362,7 @@ export default function AdminPage() {
   const [authed, setAuthed] = useState(false);
   const [checking, setChecking] = useState(true);
   const [activeTab, setActiveTab] = useState<"orders" | "jasa">("orders");
+  const [newOrderCount, setNewOrderCount] = useState(0);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const updateStatus = useUpdateLogisticOrderStatus();
@@ -390,6 +391,24 @@ export default function AdminPage() {
     return () => clearTimeout(t);
   }, [search]);
 
+  // Real-time: order baru masuk → refresh daftar & summary otomatis + badge counter
+  useEffect(() => {
+    if (!authed) return;
+    const es = new EventSource("/api/ecommerce/events");
+    es.addEventListener("new_logistic_order", (e: MessageEvent) => {
+      try {
+        const data = JSON.parse(e.data);
+        queryClient.invalidateQueries({ queryKey: getListLogisticOrdersQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getGetLogisticOrderSummaryQueryKey() });
+        queryClient.invalidateQueries({ queryKey: ["listPortalLogisticOrders"] });
+        // Increment badge hanya saat tab orders tidak aktif / halaman di background
+        setNewOrderCount((n) => n + 1);
+        toast({ title: `Order baru masuk: ${data.orderNumber ?? ""}`, description: `${data.customerName ?? ""} — ${data.shipmentType ?? ""}` });
+      } catch { }
+    });
+    return () => es.close();
+  }, [authed, queryClient, toast]);
+
   const params = {
     status: statusFilter || undefined,
     shipmentType: typeFilter || undefined,
@@ -417,6 +436,8 @@ export default function AdminPage() {
           toast({ title: `Status diperbarui: ${status}` });
           queryClient.invalidateQueries({ queryKey: getListLogisticOrdersQueryKey() });
           queryClient.invalidateQueries({ queryKey: getGetLogisticOrderSummaryQueryKey() });
+          // Invalidate customer-facing portal orders (orders.tsx uses different hook/key)
+          queryClient.invalidateQueries({ queryKey: ["listPortalLogisticOrders"] });
         },
         onError: () => toast({ title: "Gagal memperbarui status", variant: "destructive" }),
       }
@@ -444,11 +465,16 @@ export default function AdminPage() {
             {/* Tab nav */}
             <div className="flex gap-1 bg-muted rounded-lg p-1">
               <button
-                onClick={() => setActiveTab("orders")}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${activeTab === "orders" ? "bg-background shadow text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                onClick={() => { setActiveTab("orders"); setNewOrderCount(0); }}
+                className={`relative px-3 py-1.5 rounded-md text-xs font-medium transition-all ${activeTab === "orders" ? "bg-background shadow text-foreground" : "text-muted-foreground hover:text-foreground"}`}
               >
                 <Package className="h-3.5 w-3.5 inline mr-1" />
                 Pesanan
+                {newOrderCount > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center leading-none">
+                    {newOrderCount > 99 ? "99+" : newOrderCount}
+                  </span>
+                )}
               </button>
               <button
                 onClick={() => setActiveTab("jasa")}

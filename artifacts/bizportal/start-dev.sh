@@ -1,18 +1,11 @@
 #!/bin/bash
-ARTIFACT_PORT=${PORT:-3000}
+ARTIFACT_PORT=${PORT:-18442}
 
-# Kill any existing process on target port and on legacy 3000
+# Kill any existing process on target port
 fuser -k "${ARTIFACT_PORT}/tcp" 2>/dev/null || true
-if [ "$ARTIFACT_PORT" != "3000" ]; then
-  fuser -k 3000/tcp 2>/dev/null || true
-fi
 sleep 0.3
 
 export PORT=$ARTIFACT_PORT
 export BASE_PATH=${BASE_PATH:-/bizportal/}
-
-# Start gateway on port 5000 in background (explicit PORT=5000 to override env)
-fuser -k 5000/tcp 2>/dev/null || true
-PORT=5000 node /home/runner/workspace/gateway.mjs &
 
 exec vite --config vite.config.ts --host 0.0.0.0

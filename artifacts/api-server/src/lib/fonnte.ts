@@ -1,8 +1,15 @@
 import { logger } from "./logger.js";
-import { logNotification } from "./notificationLog.js";
+import { logNotification, wasRecentlyNotified } from "./notificationLog.js";
 
 const FONNTE_TOKEN = process.env.FONNTE_TOKEN ?? "";
 const FONNTE_URL = "https://api.fonnte.com/send";
+
+/**
+ * Deduplication window in milliseconds.
+ * WA with same context+refId sent within this window will be skipped.
+ * Override via WA_DEDUP_WINDOW_MS env var (e.g. "300000" for 5 min).
+ */
+const DEDUP_WINDOW_MS = parseInt(process.env.WA_DEDUP_WINDOW_MS ?? "1800000", 10);
 
 /**
  * Normalizes an Indonesian phone number to the international format (628...).
@@ -36,6 +43,27 @@ export async function sendWhatsApp(
     logger.warn("sendWhatsApp: empty target — skipping");
     return;
   }
+
+  // ── Deduplication guard ──────────────────────────────────────────────────
+  // If context + refId are both set, check if the same notification was
+  // successfully sent within DEDUP_WINDOW_MS. Skip silently if so.
+  if (opts?.context && opts?.refId) {
+    const alreadySent = await wasRecentlyNotified(opts.context, opts.refId, DEDUP_WINDOW_MS);
+    if (alreadySent) {
+      logger.info(
+        { context: opts.context, refId: opts.refId, target, windowMs: DEDUP_WINDOW_MS },
+        "sendWhatsApp: deduped — same context+refId already sent within window",
+      );
+      await logNotification({
+        channel: "wa", recipient: target, message,
+        status: "deduped",
+        errorMsg: `Deduped: context=${opts.context} refId=${opts.refId} within ${DEDUP_WINDOW_MS}ms`,
+        context: opts.context, refType: opts.refType, refId: opts.refId,
+      });
+      return;
+    }
+  }
+  // ────────────────────────────────────────────────────────────────────────
 
   const phone = normalizePhoneID(target);
   if (!phone.includes("@") && phone.length < 10) {
