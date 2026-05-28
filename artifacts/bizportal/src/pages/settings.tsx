@@ -1459,6 +1459,7 @@ function WaTemplatesCard() {
   const filteredWorkflows = (Object.keys(WORKFLOW_META) as WorkflowKey[]).filter(
     w => category === "semua" || WORKFLOW_CATEGORY[w] === category
   );
+  const customCount = loading ? null : savedKeys.size;
 
   function handleCategoryChange(cat: WorkflowCategory) {
     setCategory(cat);

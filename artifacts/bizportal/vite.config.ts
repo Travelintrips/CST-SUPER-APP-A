@@ -111,6 +111,7 @@ if (h.indexOf('access_token') !== -1 || h.indexOf('error=') !== -1 ||
       "/api": {
         target: "http://localhost:18444",
         changeOrigin: true,
+        ws: true,
       },
     },
   },
