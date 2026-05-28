@@ -2924,24 +2924,44 @@ type ErpStats = {
 
 export default function AdminPage() {
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
   const [erpStats, setErpStats] = useState<ErpStats | null>(null);
   const [erpStatsLoading, setErpStatsLoading] = useState(false);
   const [erpStatsLastUpdated, setErpStatsLastUpdated] = useState<Date | null>(null);
   const erpDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const erpPendingEventRef = useRef<string | null>(null);
 
-  function fetchErpStats() {
+  function fetchErpStats(fromEvent?: string) {
     if (!isPortalAdmin()) return;
     setErpStatsLoading(true);
     fetch("/api/portal/admin/erp-stats", { headers: getAuthHeaders() })
       .then((r) => r.ok ? r.json() as Promise<ErpStats> : null)
-      .then((d) => { if (d) { setErpStats(d); setErpStatsLastUpdated(new Date()); } })
+      .then((d) => {
+        if (d) {
+          setErpStats(d);
+          setErpStatsLastUpdated(new Date());
+          if (fromEvent) {
+            const messages: Record<string, { title: string; description: string }> = {
+              new_logistic_order:           { title: "Order baru masuk", description: "Statistik portal diperbarui otomatis." },
+              logistic_order_status_changed:{ title: "Status order berubah", description: "Statistik freight diperbarui otomatis." },
+              vendor_quote_received:        { title: "Quote vendor diterima", description: "Data RFQ diperbarui otomatis." },
+            };
+            const msg = messages[fromEvent] ?? { title: "Statistik diperbarui", description: "Data ERP terbaru telah dimuat." };
+            toast({ title: msg.title, description: msg.description });
+          }
+        }
+      })
       .catch(() => {})
       .finally(() => setErpStatsLoading(false));
   }
 
-  function scheduleFetchErpStats() {
+  function scheduleFetchErpStats(eventName: string) {
+    erpPendingEventRef.current = eventName;
     if (erpDebounceRef.current) clearTimeout(erpDebounceRef.current);
-    erpDebounceRef.current = setTimeout(() => fetchErpStats(), 2000);
+    erpDebounceRef.current = setTimeout(() => {
+      fetchErpStats(erpPendingEventRef.current ?? undefined);
+      erpPendingEventRef.current = null;
+    }, 2000);
   }
 
   useEffect(() => {
@@ -2957,7 +2977,7 @@ export default function AdminPage() {
     const es = new EventSource("/api/ecommerce/events");
     const STAT_EVENTS = ["new_logistic_order", "logistic_order_status_changed", "vendor_quote_received"];
     STAT_EVENTS.forEach((ev) => {
-      es.addEventListener(ev, () => scheduleFetchErpStats());
+      es.addEventListener(ev, () => scheduleFetchErpStats(ev));
     });
     return () => {
       es.close();
@@ -3195,7 +3215,7 @@ export default function AdminPage() {
                         </span>
                       )}
                       <button
-                        onClick={fetchErpStats}
+                        onClick={() => fetchErpStats()}
                         disabled={erpStatsLoading}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-background hover:bg-muted text-xs font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
                       >
