@@ -76,6 +76,8 @@ import { aiDecisionMemoryRouter } from "./aiDecisionMemory.js";
 import { productTemplatesRouter } from "./productTemplates.js";
 import logisticsUnitsRouter from "./logisticsUnits.js";
 import { enterpriseWorkflowRouter } from "./enterpriseWorkflow.js";
+import { customerFeedbackPublicRouter, customerFeedbackAdminRouter } from "./customerFeedback.js";
+import { purchaseMiniPublicRouter, purchaseMiniAdminRouter } from "./purchaseMiniFormRoute.js";
 import type { Request, Response } from "express";
 
 const router: IRouter = Router();
@@ -173,6 +175,10 @@ router.use("/ai/decision-memory", aiDecisionMemoryRouter);
 router.use("/product-templates", productTemplatesRouter);
 router.use("/logistics-units", logisticsUnitsRouter);
 router.use("/enterprise-workflow", enterpriseWorkflowRouter);
+router.use("/customer-feedback", customerFeedbackAdminRouter);
+router.use("/customer-feedback", customerFeedbackPublicRouter);
+router.use("/purchase-mini", purchaseMiniAdminRouter);
+router.use("/purchase-mini", purchaseMiniPublicRouter);
 
 router.get("/q/:code", async (req: Request, res: Response) => {
   const code = String(req.params.code ?? "").trim();

@@ -76,3 +76,4 @@ export * from "./intelligenceAlertSettings";
 export * from "./orderStageLogs";
 export * from "./aiGovernance";
 export * from "./productTemplates";
+export * from "./purchaseMiniForm";
