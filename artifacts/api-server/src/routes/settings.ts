@@ -116,6 +116,7 @@ router.put("/wa-template-configs", async (req: Request, res: Response) => {
   }
   const VALID_RECIPIENTS = ["admin_personal", "admin_group", "customer", "vendor"];
   const VALID_WORKFLOWS = [
+    // ── Existing logistics & product order workflows ──────────────────────
     "order_new", "vendor_request", "vendor_submission", "vendor_revision",
     "vendor_confirmed", "vendor_rejected",
     "vendor_submit_confirm", "vendor_rfq_forward", "vendor_submission_summary", "revision_fallback",
@@ -127,6 +128,40 @@ router.put("/wa-template-configs", async (req: Request, res: Response) => {
     "rfq_vendor_recap", "customer_rejection", "op_confirm_submitted", "customer_rfq_response",
     "product_order_new",
     "product_order_status_update",
+    "product_vendor_response", "vendor_awarded", "vendor_selected_admin",
+    "quotation_send",
+    // ── PROCUREMENT ───────────────────────────────────────────────────────
+    "procurement_purchase_request",
+    "procurement_vendor_comparison",
+    "procurement_po_release",
+    "procurement_goods_receipt",
+    "procurement_invoice_matching",
+    // ── FINANCE ───────────────────────────────────────────────────────────
+    "finance_customer_invoice",
+    "finance_vendor_invoice",
+    "finance_payment_reminder",
+    "finance_payment_confirmation",
+    "finance_outstanding_alert",
+    // ── DOCUMENT ──────────────────────────────────────────────────────────
+    "doc_missing",
+    "doc_approved",
+    "doc_customs_released",
+    "doc_bl_released",
+    "doc_coa_uploaded",
+    // ── APPROVAL ──────────────────────────────────────────────────────────
+    "approval_waiting",
+    "approval_approved",
+    "approval_rejected",
+    "approval_revision_requested",
+    // ── OPERATIONS ────────────────────────────────────────────────────────
+    "ops_shipment_delayed",
+    "ops_truck_arrived",
+    "ops_driver_checkin",
+    "ops_warehouse_ready",
+    // ── SYSTEM ────────────────────────────────────────────────────────────
+    "sys_template_updated",
+    "sys_required_field_missing",
+    "sys_required_doc_missing",
   ];
   if (!VALID_RECIPIENTS.includes(recipient)) return res.status(400).json({ message: "recipient tidak valid" });
   if (!VALID_WORKFLOWS.includes(workflow)) return res.status(400).json({ message: "workflow tidak valid" });
