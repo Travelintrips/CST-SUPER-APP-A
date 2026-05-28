@@ -618,6 +618,7 @@ function WhatsAppNotificationCard() {
   const { t } = useLanguage();
   const [adminWa, setAdminWa] = useState("");
   const [adminGroupWa, setAdminGroupWa] = useState("");
+  const [adminPhones, setAdminPhones] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -629,9 +630,10 @@ function WhatsAppNotificationCard() {
           credentials: "include",
         });
         if (res.ok) {
-          const data = await res.json() as { adminWa: string; adminGroupWa?: string };
+          const data = await res.json() as { adminWa: string; adminGroupWa?: string; adminPhones?: string };
           setAdminWa(data.adminWa ?? "");
           setAdminGroupWa(data.adminGroupWa ?? "");
+          setAdminPhones(data.adminPhones ?? "");
         }
       } catch {
         // ignore
@@ -647,7 +649,7 @@ function WhatsAppNotificationCard() {
       const res = await fetch("/api/settings/notifications", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ adminWa, adminGroupWa }),
+        body: JSON.stringify({ adminWa, adminGroupWa, adminPhones }),
       });
       if (!res.ok) throw new Error(await res.text());
       setSaved(true);
@@ -716,6 +718,30 @@ function WhatsAppNotificationCard() {
                 </p>
                 <p>
                   Cara cari Group ID: Kirim pesan dari grup ke bot Fonnte, lalu cek log di dashboard Fonnte — Group ID terlihat di kolom <em>target</em>.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="admin-phones" className="flex items-center gap-1.5">
+                Nomor Admin Perintah WA
+                <span className="text-[10px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400 rounded px-1.5 py-0.5">
+                  Whitelist Bot
+                </span>
+              </Label>
+              <Input
+                id="admin-phones"
+                value={adminPhones}
+                onChange={(e) => setAdminPhones(e.target.value)}
+                placeholder="628111111111,628222222222"
+              />
+              <div className="text-xs text-muted-foreground space-y-1">
+                <p>
+                  Daftar nomor yang diizinkan mengirim perintah ke bot WhatsApp (webhook Fonnte). Hanya pesan dari nomor-nomor ini yang akan diproses sebagai perintah admin.
+                </p>
+                <p className="text-amber-600 dark:text-amber-400">
+                  ⚠️ Pisahkan beberapa nomor dengan koma, tanpa spasi. Format: <code>628111111111,628222222222</code>.
+                  Kosongkan untuk menonaktifkan filter (semua pesan diproses).
                 </p>
               </div>
             </div>

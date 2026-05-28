@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { requireAdmin } from "../lib/requireAdmin.js";
-import { getAdminWa, setAdminWa, getAdminGroupWa, setAdminGroupWa } from "../lib/adminWa.js";
+import { getAdminWa, setAdminWa, getAdminGroupWa, setAdminGroupWa, getAdminPhones, setAdminPhones } from "../lib/adminWa.js";
 import { db, portalContentTable } from "@workspace/db";
 import { broadcastToPortal } from "../lib/sseManager.js";
 import { shortLinksTable, waTemplateConfigsTable, notificationLogsTable } from "@workspace/db/schema";
@@ -26,21 +26,27 @@ export const DEFAULT_CALC_RATES = {
 // GET /api/settings/notifications — get notification settings (admin)
 router.get("/notifications", async (req: Request, res: Response) => {
   if (!(await requireAdmin(req, res))) return;
-  const [adminWa, adminGroupWa] = await Promise.all([getAdminWa(), getAdminGroupWa()]);
-  return res.json({ adminWa, adminGroupWa });
+  const [adminWa, adminGroupWa, adminPhones] = await Promise.all([getAdminWa(), getAdminGroupWa(), getAdminPhones()]);
+  return res.json({ adminWa, adminGroupWa, adminPhones });
 });
 
 // PUT /api/settings/notifications — update notification settings (admin)
 router.put("/notifications", async (req: Request, res: Response) => {
   if (!(await requireAdmin(req, res))) return;
-  const { adminWa, adminGroupWa } = req.body ?? {};
+  const { adminWa, adminGroupWa, adminPhones } = req.body ?? {};
   if (typeof adminWa !== "string") {
     return res.status(400).json({ message: "adminWa harus berupa string" });
   }
   const saves: Promise<void>[] = [setAdminWa(adminWa)];
   if (typeof adminGroupWa === "string") saves.push(setAdminGroupWa(adminGroupWa));
+  if (typeof adminPhones === "string") saves.push(setAdminPhones(adminPhones));
   await Promise.all(saves);
-  return res.json({ ok: true, adminWa: adminWa.trim(), adminGroupWa: typeof adminGroupWa === "string" ? adminGroupWa.trim() : undefined });
+  return res.json({
+    ok: true,
+    adminWa: adminWa.trim(),
+    adminGroupWa: typeof adminGroupWa === "string" ? adminGroupWa.trim() : undefined,
+    adminPhones: typeof adminPhones === "string" ? adminPhones.trim() : undefined,
+  });
 });
 
 // GET /api/settings/calculator-rates — get calculator rates (admin)
