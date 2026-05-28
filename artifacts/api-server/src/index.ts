@@ -10,6 +10,7 @@ import { startVmfGapNotifier, runVmfGapCheck } from "./lib/vmfGapNotifier";
 import { runPhase1Migration } from "./lib/phase1Migration";
 import { startWorkflowWorker } from "./lib/workflowWorker";
 import { remediateOrphanProducts } from "./lib/remediateOrphanProducts";
+import { seedProductTemplates } from "./routes/productTemplates.js";
 import { runPortalMigration } from "./lib/portalMigration";
 import { runAccountingMigration } from "./lib/accountingMigration";
 import { runOauthStateMigration } from "./lib/oauthStateMigration";
@@ -300,6 +301,9 @@ async function startServer() {
     }))
     .then(() => seedUom().catch((err) => {
       logger.warn({ err }, "UOM seed failed (non-fatal)");
+    }))
+    .then(() => seedProductTemplates().catch((err) => {
+      logger.warn({ err }, "Product templates seed failed (non-fatal)");
     }))
     .then(() =>
       seedLogisticsServiceItems()

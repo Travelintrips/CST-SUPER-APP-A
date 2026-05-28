@@ -100,6 +100,7 @@ import NavCompanyConfigPage from "@/pages/settings/nav-company-config";
 import ShortLinksPage from "@/pages/settings/short-links";
 import SettingsRolesPage from "@/pages/settings-roles";
 import SettingsApprovalRulesPage from "@/pages/settings-approval-rules";
+import ProductTemplatesPage from "@/pages/product-templates";
 import UsersPage from "@/pages/users";
 import MediaManagerPage from "@/pages/media-manager";
 import OrgManagementPage from "@/pages/OrgManagementPage";
@@ -298,6 +299,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/settings/ai-scan" component={PR(AiScanSettingsPage)} />
       <Route path="/settings/roles" component={PR(SettingsRolesPage)} />
       <Route path="/settings/approval-rules" component={PR(SettingsApprovalRulesPage)} />
+      <Route path="/settings/product-templates" component={PR(ProductTemplatesPage)} />
       <Route path="/settings" component={PR(SettingsPage)} />
 
       {/* ── Users & Org ────────────────────────────────────────────────── */}

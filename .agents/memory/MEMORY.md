@@ -4,3 +4,4 @@
 - [VMF Brace Mismatch Gotcha](vmf-brace-mismatch.md) — vendorMiniForm.ts customer-approval POST handler had unclosed if(action==="approve") for activity log section; caused "Unexpected catch" build error.
 - [VMF → Sales Order Integration](vmf-so-integration.md) — SO nyata dibuat di sales_documents saat customer approve VMF; idempoten via logisticOrderId; helper di lib/vmfSoIntegration.ts.
 - [Order Lifecycle Sync Fixes](order-lifecycle-fixes.md) — 7 critical/high fixes: duplicate order guard, source field, unified SO number, vendor-selected status, approval expiry default, retry-SO endpoint.
+- [New Route Table Creation Pattern](new-route-table-creation.md) — drizzle-kit push alone is not enough; new route files must include inline CREATE TABLE IF NOT EXISTS.

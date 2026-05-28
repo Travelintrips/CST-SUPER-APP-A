@@ -14,7 +14,8 @@ import {
 } from "lucide-react";
 import { DynamicProductForm, validateDynamicForm } from "@/components/DynamicProductForm";
 import type { DynamicFormValues } from "@/components/DynamicProductForm";
-import { getTemplate, getAllTemplates } from "@/lib/productTemplates";
+import type { ProductTemplate } from "@/lib/productTemplates";
+import { getTemplate as getLocalTemplate, getAllTemplates as getAllLocalTemplates } from "@/lib/productTemplates";
 
 interface PortalProduct {
   id: number;
@@ -56,6 +57,21 @@ async function submitOrder(body: unknown): Promise<{ orderNumber: string }> {
   return res.json();
 }
 
+// ─── Adapter: DB template row → ProductTemplate interface ───
+function dbRowToTemplate(row: Record<string, unknown>): ProductTemplate {
+  return {
+    category: String(row.categoryKey ?? row.category_key ?? "general"),
+    label: String(row.label ?? ""),
+    version: String(row.version ?? "1.0.0"),
+    requiredDocuments: (row.requiredDocuments ?? row.required_documents ?? []) as ProductTemplate["requiredDocuments"],
+    checklist: (row.checklist ?? []) as ProductTemplate["checklist"],
+    customFields: (row.customFields ?? row.custom_fields ?? []) as ProductTemplate["customFields"],
+    packagingInstructions: String(row.packagingInstructions ?? row.packaging_instructions ?? ""),
+    conditionalRules: (row.conditionalRules ?? row.conditional_rules ?? []) as ProductTemplate["conditionalRules"],
+    validationRules: (row.validationRules ?? row.validation_rules ?? []) as ProductTemplate["validationRules"],
+  };
+}
+
 const EMPTY_FORM: DynamicFormValues = {
   customFieldValues: {},
   uploadedDocuments: [],
@@ -68,7 +84,10 @@ export default function ProductOrderPage() {
   const [step, setStep] = useState<0 | 1 | 2>(0);
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const allTemplates = getAllTemplates();
+
+  // ── Templates from DB ──
+  const [allTemplates, setAllTemplates] = useState<ProductTemplate[]>([]);
+  const [templatesLoading, setTemplatesLoading] = useState(true);
 
   // Step 0: product browsing
   const [products, setProducts] = useState<PortalProduct[]>([]);
@@ -89,6 +108,27 @@ export default function ProductOrderPage() {
   const [submitting, setSubmitting] = useState(false);
   const [orderNumber, setOrderNumber] = useState("");
 
+  // ── Fetch templates from DB on mount ──
+  useEffect(() => {
+    fetch(`${BASE}/api/product-templates`)
+      .then((r) => r.ok ? r.json() : Promise.reject())
+      .then((rows: unknown[]) => {
+        const active = (rows as Record<string, unknown>[])
+          .filter((r) => r.isActive !== false && r.is_active !== false)
+          .map(dbRowToTemplate);
+        if (active.length > 0) {
+          setAllTemplates(active);
+        } else {
+          setAllTemplates(getAllLocalTemplates());
+        }
+      })
+      .catch(() => {
+        // fallback to hardcoded templates
+        setAllTemplates(getAllLocalTemplates());
+      })
+      .finally(() => setTemplatesLoading(false));
+  }, []);
+
   useEffect(() => {
     setLoadingProducts(true);
     fetchProducts(search)
@@ -104,7 +144,11 @@ export default function ProductOrderPage() {
 
   const cartTotal = cart.reduce((s, i) => s + i.product.price * i.qty, 0);
   const cartCount = cart.reduce((s, i) => s + i.qty, 0);
-  const template = getTemplate(productCategory);
+
+  // Template lookup: DB first, fallback to hardcoded
+  const template: ProductTemplate =
+    allTemplates.find((t) => t.category === productCategory) ??
+    getLocalTemplate(productCategory);
 
   function addToCart(product: PortalProduct) {
     setCart((prev) => {
@@ -156,7 +200,6 @@ export default function ProductOrderPage() {
         shippingAddress: address.trim(),
         notes: notes.trim() || undefined,
         items,
-        // Template engine payload
         productCategory,
         templateId: template.category,
         templateVersion: template.version,
@@ -328,26 +371,34 @@ export default function ProductOrderPage() {
             <p className="text-xs text-muted-foreground">
               Pilih kategori produk untuk menampilkan field dan dokumen yang relevan.
             </p>
-            <Select value={productCategory} onValueChange={setProductCategory}>
-              <SelectTrigger className="h-10">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {allTemplates.map((t) => (
-                  <SelectItem key={t.category} value={t.category}>
-                    {t.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {templatesLoading ? (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
+                <Loader2 className="w-3 h-3 animate-spin" /> Memuat kategori...
+              </div>
+            ) : (
+              <Select value={productCategory} onValueChange={setProductCategory}>
+                <SelectTrigger className="h-10">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {allTemplates.map((t) => (
+                    <SelectItem key={t.category} value={t.category}>
+                      {t.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
 
           {/* Dynamic Product Form */}
-          <DynamicProductForm
-            template={template}
-            values={dynamicValues}
-            onChange={setDynamicValues}
-          />
+          {!templatesLoading && (
+            <DynamicProductForm
+              template={template}
+              values={dynamicValues}
+              onChange={setDynamicValues}
+            />
+          )}
 
           {/* Customer Data */}
           <div className="border rounded-xl p-5 bg-card space-y-4">
@@ -378,7 +429,7 @@ export default function ProductOrderPage() {
             </div>
           </div>
 
-          <Button className="w-full h-12 text-base" onClick={handleSubmit} disabled={submitting}>
+          <Button className="w-full h-12 text-base" onClick={handleSubmit} disabled={submitting || templatesLoading}>
             {submitting ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Mengirim...</> : "Kirim Pesanan"}
           </Button>
         </div>
