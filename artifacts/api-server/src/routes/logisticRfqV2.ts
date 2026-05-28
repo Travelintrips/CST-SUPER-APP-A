@@ -21,7 +21,6 @@ import { logger } from "../lib/logger.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import {
   sendVendorRequestNotification,
-  sendVendorSubmissionNotification,
   sendVendorRevisionNotification,
   sendVendorRevisionFallbackNotification,
   sendCustomerRfqResponseAdminNotification,
@@ -239,11 +238,25 @@ async function logActivity(
   await db.insert(rfqActivityLogsTable).values({ rfqId, actorType, actorName, action, description }).catch(() => {});
 }
 
-async function sendAdminRecapWa(rfqId: number, rfq: { rfqNumber: string; orderId: number }) {
+async function sendAdminRecapWa(
+  rfqId: number,
+  rfq: { rfqNumber: string; orderId: number },
+  submitter?: {
+    vendorName: string;
+    action: "accept" | "counter" | "reject";
+    priceStr: string;
+    eta?: string | null;
+    notes?: string | null;
+    isUpdate: boolean;
+  },
+) {
   const adminTarget = await getAdminGroupWa();
   if (!adminTarget) return;
 
   const [order] = await db.select({
+    orderNumber: logisticOrdersTable.orderNumber,
+    customerName: logisticOrdersTable.customerName,
+    companyName: logisticOrdersTable.companyName,
     shipmentType: logisticOrdersTable.shipmentType,
     origin: logisticOrdersTable.origin,
     destination: logisticOrdersTable.destination,
@@ -300,13 +313,37 @@ async function sendAdminRecapWa(rfqId: number, rfq: { rfqNumber: string; orderId
     }
   }
 
+  // Build submitter info block jika ada
+  let newSubmitterInfo: string | null = null;
+  if (submitter) {
+    const emoji = submitter.isUpdate ? "📝" : "📩";
+    const tag = submitter.isUpdate ? "UPDATE" : "BARU";
+    const actionLabel = submitter.action === "accept" ? "Terima Harga Dasar"
+      : submitter.action === "counter" ? "Counter Offer"
+      : "Tolak";
+    const lines = [
+      `${emoji} *[${tag}]* Vendor *${submitter.vendorName}*`,
+      `Aksi: ${actionLabel} — 💰 ${submitter.priceStr}`,
+    ];
+    if (submitter.eta) lines.push(`ETA: ${submitter.eta}`);
+    if (submitter.notes) lines.push(`Catatan: ${submitter.notes}`);
+    newSubmitterInfo = lines.join("\n");
+  }
+
+  const customerDisplay = order
+    ? (order.companyName ? `${order.customerName ?? ""} (${order.companyName})` : (order.customerName ?? "—"))
+    : "—";
+
   const tplRfqRecap = await getRfqVendorRecapTemplate();
   const vendorListWithHeader = listStr ? `📋 *Daftar penawaran:*\n${listStr.trimEnd()}` : null;
   const waitingListWithHeader = waitingStr ? `⏳ *Belum jawab:*\n${waitingStr.trimEnd()}` : null;
   const msg = renderTemplate(tplRfqRecap, {
+    orderNumber: order?.orderNumber ?? null,
+    customerName: customerDisplay,
     rfqNumber: rfq.rfqNumber,
     shipmentType: order?.shipmentType ?? "—",
-    route: order ? `${order.origin} → ${order.destination}` : "—",
+    route: order ? `${order.origin ?? ""} → ${order.destination ?? ""}` : "—",
+    newSubmitterInfo,
     vendorListWithHeader,
     waitingListWithHeader,
     compareLink: compareAdminLink,
@@ -707,21 +744,20 @@ logisticRfqV2Router.post("/vendor-form/:token", async (req: Request, res: Respon
     : `${vendorName} submit penawaran: ${actionLabel}`;
   await logActivity(link.rfqId, "vendor", vendorName, isUpdate ? "vendor_update" : "vendor_submit", actDesc);
 
-  await sendAdminRecapWa(link.rfqId, rfq);
+  // Hitung harga yang ditampilkan di notif
+  const finalPriceNum = action === "accept"
+    ? (link.basicPrice ? Number(link.basicPrice) : (offeredPrice ? Number(offeredPrice) : null))
+    : (offeredPrice ? Number(offeredPrice) : null);
+  const submitterPriceStr = finalPriceNum != null ? fmtRp(finalPriceNum) : "Harga Dasar";
 
-  // Notifikasi template ke admin saat vendor submit penawaran
-  db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, rfq.orderId)).limit(1)
-    .then(([orderRow]) => {
-      if (!orderRow) return;
-      const priceNum = action === "accept"
-        ? (link.basicPrice ? Number(link.basicPrice) : null)
-        : (offeredPrice ? Number(offeredPrice) : null);
-      sendVendorSubmissionNotification(
-        buildOrderData(orderRow),
-        vendorName,
-        priceNum != null ? fmtRp(priceNum) : "—",
-      ).catch((e: unknown) => logger.error({ e }, "sendVendorSubmissionNotification failed"));
-    }).catch(() => {});
+  await sendAdminRecapWa(link.rfqId, rfq, {
+    vendorName,
+    action,
+    priceStr: submitterPriceStr,
+    eta: eta ?? null,
+    notes: notes ?? null,
+    isUpdate,
+  });
 
   return res.json({ success: true, message: "Penawaran berhasil dikirim", isUpdate });
 });
