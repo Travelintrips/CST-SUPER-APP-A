@@ -178,14 +178,21 @@ export default function WaTemplatesPage() {
   }
 
   async function handleSave() {
+    const bodyToSave = configs[cfgKey(effectiveRecipient, workflow)] ?? "";
+    if (!bodyToSave.trim()) {
+      toast({ title: "Template kosong", description: "Tulis isi template dulu, atau klik 'Reset ke Default' untuk mengembalikan template bawaan.", variant: "destructive" });
+      return;
+    }
     setSaving(true);
     try {
-      const body = configs[cfgKey(effectiveRecipient, workflow)] ?? "";
       const res = await fetch("/api/settings/wa-template-configs", {
         method: "PUT", headers: { "Content-Type": "application/json" }, credentials: "include",
-        body: JSON.stringify({ recipient: effectiveRecipient, workflow, body }),
+        body: JSON.stringify({ recipient: effectiveRecipient, workflow, body: bodyToSave }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: await res.text() }));
+        throw new Error((err as { message?: string }).message ?? "Gagal menyimpan");
+      }
       setSavedKeys(prev => new Set([...prev, cfgKey(effectiveRecipient, workflow)]));
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
@@ -359,13 +366,22 @@ export default function WaTemplatesPage() {
                     </p>
                     <Textarea
                       ref={textareaRef}
-                      className="font-mono text-xs min-h-[320px] resize-y border-primary/40 focus:border-primary leading-relaxed"
+                      className={`font-mono text-xs min-h-[320px] resize-y leading-relaxed ${!currentBody.trim() ? "border-amber-400 focus:border-amber-500" : "border-primary/40 focus:border-primary"}`}
                       value={currentBody}
                       onChange={e => setBody(e.target.value)}
-                      placeholder={`Template untuk workflow "${WORKFLOW_META[workflow].label}" — penerima "${RECIPIENT_META[effectiveRecipient].label}"…`}
+                      placeholder={`Template kosong — tulis pesan untuk workflow "${WORKFLOW_META[workflow].label}" penerima "${RECIPIENT_META[effectiveRecipient].label}"…`}
                       spellCheck={false}
                     />
-                    <p className="text-xs text-muted-foreground text-right">{currentBody.length} karakter</p>
+                    <div className="flex items-center justify-between">
+                      {!currentBody.trim() ? (
+                        <p className="text-xs text-amber-600 flex items-center gap-1">
+                          ⚠️ Template kosong — menggunakan pesan default bawaan sistem saat notifikasi dikirim.
+                        </p>
+                      ) : (
+                        <span />
+                      )}
+                      <p className="text-xs text-muted-foreground">{currentBody.length} karakter</p>
+                    </div>
                   </div>
 
                   {/* Preview */}

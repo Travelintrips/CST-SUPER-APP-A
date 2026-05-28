@@ -100,8 +100,11 @@ router.get("/wa-template-configs", async (req: Request, res: Response) => {
     const configs: Record<string, string> = { ...getWaDefaultTemplatesFlatMap() };
     for (const row of rows) {
       const key = `${row.recipient}__${row.workflow}`;
-      configs[key] = row.body;
-      savedKeys.push(key);
+      // Only override default if body is non-empty (empty DB rows = treat as default)
+      if (row.body.trim()) {
+        configs[key] = row.body;
+        savedKeys.push(key);
+      }
     }
     return res.json({ configs, savedKeys });
   } catch {
@@ -115,6 +118,9 @@ router.put("/wa-template-configs", async (req: Request, res: Response) => {
   const { recipient, workflow, body } = req.body as { recipient?: string; workflow?: string; body?: string };
   if (!recipient || !workflow || typeof body !== "string") {
     return res.status(400).json({ message: "Payload harus berupa { recipient, workflow, body }" });
+  }
+  if (!body.trim()) {
+    return res.status(400).json({ message: "Template tidak boleh kosong. Gunakan tombol 'Reset ke Default' untuk menghapus kustomisasi." });
   }
   const VALID_RECIPIENTS = ["admin_personal", "admin_group", "customer", "vendor"];
   const VALID_WORKFLOWS = [
