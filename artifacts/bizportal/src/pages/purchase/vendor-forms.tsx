@@ -23,10 +23,14 @@ import {
   Loader2, RotateCcw, CalendarDays, User, Phone, MessageCircle, XCircle,
   Clock, SendHorizonal, Pencil, CheckCircle, Package, Star, Building2, FileText,
   BarChart2, TrendingDown, TrendingUp, Minus, Award,
+  Layers, ChevronDown, ChevronRight, AlertCircle, ClipboardList, PackageCheck, Info,
+  Search,
 } from "lucide-react";
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
 } from "@/components/ui/sheet";
+import { inCodeTemplates } from "@workspace/product-templates";
+import type { ProductTemplate } from "@workspace/product-templates";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -1510,6 +1514,337 @@ function LinkDetailSheet({
   );
 }
 
+// ── Product Template Engine ───────────────────────────────────────────────────
+
+const COMMODITY_EMOJIS: Record<string, string> = {
+  coal: "⛏️", iron_steel: "🔩", coffee: "☕", electronics: "💻",
+  palm_oil: "🌴", nickel: "⚙️", copper: "🔶", rice: "🌾",
+  sugar: "🍬", rubber: "🧤", cocoa: "🍫", timber: "🪵",
+  fertilizer: "🌱", cement: "🏗️", textile: "🧵", medical_device: "💊",
+  general: "📦",
+};
+
+const FIELD_TYPE_LABELS: Record<string, string> = {
+  text: "Teks", number: "Angka", select: "Pilihan", textarea: "Teks Panjang", date: "Tanggal",
+};
+
+function TemplateDetailSheet({
+  template, open, onOpenChange,
+}: {
+  template: ProductTemplate | null;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
+  const [section, setSection] = useState<"fields" | "docs" | "checklist" | "packaging">("fields");
+
+  if (!template) return null;
+  const emoji = COMMODITY_EMOJIS[template.category] ?? "📦";
+  const reqDocs = template.requiredDocuments.filter(d => d.required);
+  const optDocs = template.requiredDocuments.filter(d => !d.required);
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="w-full sm:max-w-2xl flex flex-col p-0" side="right">
+        <SheetHeader className="px-6 pt-6 pb-4 border-b bg-gradient-to-r from-slate-50 to-indigo-50 shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-white border border-slate-200 shadow-sm flex items-center justify-center text-xl">
+              {emoji}
+            </div>
+            <div>
+              <SheetTitle className="text-lg">{template.label}</SheetTitle>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Kategori: <span className="font-mono text-indigo-600">{template.category}</span>
+                {" · "}v{template.version}
+              </p>
+            </div>
+          </div>
+          {/* Section pills */}
+          <div className="flex gap-1.5 flex-wrap mt-3">
+            {(["fields", "docs", "checklist", "packaging"] as const).map(s => (
+              <button
+                key={s}
+                onClick={() => setSection(s)}
+                className={`px-3 py-1 rounded-full text-xs font-medium border transition-all ${
+                  section === s
+                    ? "bg-indigo-600 text-white border-indigo-600"
+                    : "bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-700"
+                }`}
+              >
+                {s === "fields" ? `📋 ${template.customFields.length} Custom Fields` :
+                 s === "docs" ? `📎 ${template.requiredDocuments.length} Dokumen` :
+                 s === "checklist" ? `✅ ${template.checklist.length} Checklist` :
+                 "📦 Pengemasan"}
+              </button>
+            ))}
+          </div>
+        </SheetHeader>
+
+        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          {/* CUSTOM FIELDS */}
+          {section === "fields" && (
+            <div className="space-y-3">
+              <p className="text-xs text-slate-500 font-medium uppercase tracking-wide">Custom Fields — ditampilkan di form vendor</p>
+              {template.customFields.length === 0 ? (
+                <p className="text-sm text-slate-400 italic">Tidak ada custom field</p>
+              ) : template.customFields.map(f => {
+                const isConditional = template.conditionalRules.some(r => r.show.includes(f.key));
+                return (
+                  <div key={f.key} className={`border rounded-lg p-3.5 ${f.required ? "border-indigo-200 bg-indigo-50/40" : "border-slate-200 bg-white"}`}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-medium text-sm text-slate-800">{f.label}</span>
+                          {f.required && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 border border-indigo-200">WAJIB</span>
+                          )}
+                          {isConditional && (
+                            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-200 flex items-center gap-0.5">
+                              <Info className="h-2.5 w-2.5" /> Kondisional
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-slate-400 font-mono mt-0.5">key: {f.key}</p>
+                        {f.placeholder && <p className="text-xs text-slate-500 mt-1">Placeholder: {f.placeholder}</p>}
+                        {f.options && f.options.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1.5">
+                            {f.options.map(o => (
+                              <span key={o} className="text-xs bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded border border-slate-200">{o}</span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <span className={`shrink-0 text-xs px-2 py-0.5 rounded font-medium ${
+                        f.type === "number" ? "bg-green-100 text-green-700" :
+                        f.type === "select" ? "bg-purple-100 text-purple-700" :
+                        f.type === "textarea" ? "bg-orange-100 text-orange-700" :
+                        f.type === "date" ? "bg-blue-100 text-blue-700" :
+                        "bg-slate-100 text-slate-600"
+                      }`}>
+                        {FIELD_TYPE_LABELS[f.type] ?? f.type}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+              {template.conditionalRules.length > 0 && (
+                <div className="mt-3 border border-amber-200 bg-amber-50 rounded-lg p-3">
+                  <p className="text-xs font-semibold text-amber-700 mb-2 flex items-center gap-1">
+                    <Info className="h-3.5 w-3.5" /> Aturan Kondisional
+                  </p>
+                  {template.conditionalRules.map((r, i) => (
+                    <p key={i} className="text-xs text-amber-700">
+                      Jika <span className="font-mono bg-amber-100 px-1 rounded">{r.fieldKey}</span> = <span className="font-mono bg-amber-100 px-1 rounded">"{r.condition.value}"</span>, tampilkan: {r.show.join(", ")}
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* DOCUMENTS */}
+          {section === "docs" && (
+            <div className="space-y-3">
+              {reqDocs.length > 0 && (
+                <>
+                  <p className="text-xs text-slate-500 font-medium uppercase tracking-wide">Dokumen Wajib</p>
+                  {reqDocs.map(d => (
+                    <div key={d.key} className="flex items-center gap-3 border border-red-200 bg-red-50/40 rounded-lg p-3">
+                      <AlertCircle className="h-4 w-4 text-red-500 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-slate-800">{d.label}</p>
+                        <p className="text-xs text-slate-400 font-mono">key: {d.key}</p>
+                      </div>
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-100 text-red-700 border border-red-200 shrink-0">WAJIB</span>
+                    </div>
+                  ))}
+                </>
+              )}
+              {optDocs.length > 0 && (
+                <>
+                  <p className="text-xs text-slate-500 font-medium uppercase tracking-wide mt-2">Dokumen Opsional</p>
+                  {optDocs.map(d => (
+                    <div key={d.key} className="flex items-center gap-3 border border-slate-200 bg-white rounded-lg p-3">
+                      <FileText className="h-4 w-4 text-slate-400 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-slate-700">{d.label}</p>
+                        <p className="text-xs text-slate-400 font-mono">key: {d.key}</p>
+                      </div>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200 shrink-0">Opsional</span>
+                    </div>
+                  ))}
+                </>
+              )}
+              {template.requiredDocuments.length === 0 && (
+                <p className="text-sm text-slate-400 italic">Tidak ada dokumen yang dikonfigurasi</p>
+              )}
+            </div>
+          )}
+
+          {/* CHECKLIST */}
+          {section === "checklist" && (
+            <div className="space-y-2">
+              <p className="text-xs text-slate-500 font-medium uppercase tracking-wide">Checklist Operasional</p>
+              {template.checklist.length === 0 ? (
+                <p className="text-sm text-slate-400 italic">Tidak ada checklist</p>
+              ) : template.checklist.map(c => (
+                <div key={c.key} className="flex items-center gap-3 border border-slate-200 bg-white rounded-lg p-3 hover:bg-slate-50 transition-colors">
+                  <div className="w-4 h-4 rounded border-2 border-slate-300 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-slate-800">{c.label}</p>
+                    <p className="text-xs text-slate-400 font-mono">key: {c.key}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* PACKAGING */}
+          {section === "packaging" && (
+            <div className="space-y-3">
+              <p className="text-xs text-slate-500 font-medium uppercase tracking-wide">Instruksi Pengemasan & Pengiriman</p>
+              <div className="border border-emerald-200 bg-emerald-50/40 rounded-xl p-4">
+                <div className="flex items-start gap-2 mb-2">
+                  <PackageCheck className="h-4 w-4 text-emerald-600 mt-0.5 shrink-0" />
+                  <p className="text-xs font-semibold text-emerald-700">Panduan untuk Vendor</p>
+                </div>
+                <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{template.packagingInstructions}</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function ProductTemplateEngine() {
+  const [search, setSearch] = useState("");
+  const [selectedTemplate, setSelectedTemplate] = useState<ProductTemplate | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
+
+  const allTemplates = Object.values(inCodeTemplates);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return allTemplates;
+    return allTemplates.filter(t =>
+      t.label.toLowerCase().includes(q) ||
+      t.category.toLowerCase().includes(q)
+    );
+  }, [search, allTemplates]);
+
+  const openDetail = (t: ProductTemplate) => {
+    setSelectedTemplate(t);
+    setSheetOpen(true);
+  };
+
+  return (
+    <div className="space-y-5">
+      {/* Header banner */}
+      <div className="rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 p-5 text-white">
+        <div className="flex items-start gap-3">
+          <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+            <Layers className="h-5 w-5 text-white" />
+          </div>
+          <div>
+            <h2 className="font-bold text-lg">Product Template Engine</h2>
+            <p className="text-sm text-indigo-100 mt-0.5">
+              Template komoditas multi-jenis untuk trading — custom fields, checklist, dan dokumen otomatis
+              disesuaikan dengan jenis barang pada order.
+            </p>
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-3 mt-4">
+          {[
+            { label: "Template Komoditas", value: allTemplates.length, icon: "📦" },
+            { label: "Total Custom Fields", value: allTemplates.reduce((s, t) => s + t.customFields.length, 0), icon: "📋" },
+            { label: "Total Dokumen Terkonfigurasi", value: allTemplates.reduce((s, t) => s + t.requiredDocuments.length, 0), icon: "📎" },
+          ].map(s => (
+            <div key={s.label} className="bg-white/15 rounded-lg p-3 text-center">
+              <p className="text-xl font-bold">{s.value}</p>
+              <p className="text-xs text-indigo-100 mt-0.5">{s.label}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Search */}
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+        <Input
+          placeholder="Cari komoditas..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="pl-9 h-9 text-sm"
+        />
+      </div>
+
+      {/* Template grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {filtered.map(t => {
+          const emoji = COMMODITY_EMOJIS[t.category] ?? "📦";
+          const reqDocs = t.requiredDocuments.filter(d => d.required).length;
+          return (
+            <button
+              key={t.category}
+              onClick={() => openDetail(t)}
+              className="text-left border border-slate-200 bg-white rounded-xl p-4 hover:border-indigo-300 hover:shadow-md transition-all group"
+            >
+              <div className="flex items-start gap-3 mb-3">
+                <div className="w-10 h-10 rounded-xl border border-slate-100 bg-slate-50 flex items-center justify-center text-xl shrink-0 group-hover:bg-indigo-50 group-hover:border-indigo-200 transition-colors">
+                  {emoji}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-slate-800 text-sm group-hover:text-indigo-700 transition-colors">{t.label}</p>
+                  <p className="text-xs text-slate-400 font-mono">{t.category}</p>
+                </div>
+                <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-indigo-500 shrink-0 mt-0.5 transition-colors" />
+              </div>
+
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="bg-slate-50 rounded-lg p-2">
+                  <p className="text-sm font-bold text-indigo-700">{t.customFields.length}</p>
+                  <p className="text-[10px] text-slate-500">Fields</p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-2">
+                  <p className={`text-sm font-bold ${reqDocs > 0 ? "text-red-600" : "text-slate-400"}`}>{reqDocs}</p>
+                  <p className="text-[10px] text-slate-500">Dok Wajib</p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-2">
+                  <p className="text-sm font-bold text-emerald-600">{t.checklist.length}</p>
+                  <p className="text-[10px] text-slate-500">Checklist</p>
+                </div>
+              </div>
+
+              {t.requiredDocuments.filter(d => d.required).slice(0, 2).map(d => (
+                <div key={d.key} className="flex items-center gap-1.5 mt-2 text-xs text-slate-500">
+                  <AlertCircle className="h-3 w-3 text-red-400 shrink-0" />
+                  <span className="truncate">{d.label}</span>
+                </div>
+              ))}
+              {t.requiredDocuments.filter(d => d.required).length > 2 && (
+                <p className="text-xs text-slate-400 mt-1">+{t.requiredDocuments.filter(d => d.required).length - 2} dokumen wajib lainnya</p>
+              )}
+            </button>
+          );
+        })}
+        {filtered.length === 0 && (
+          <div className="col-span-full flex flex-col items-center justify-center py-16 text-slate-400">
+            <Layers className="h-10 w-10 mb-3 opacity-30" />
+            <p className="text-sm">Tidak ada template yang cocok dengan pencarian</p>
+          </div>
+        )}
+      </div>
+
+      <TemplateDetailSheet
+        template={selectedTemplate}
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
+      />
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function VendorFormsPage() {
@@ -1693,6 +2028,7 @@ export default function VendorFormsPage() {
             <TabsTrigger value="submissions">📝 Submissions ({submissions.length})</TabsTrigger>
             <TabsTrigger value="approvals">✅ Customer Approval ({approvals.length})</TabsTrigger>
             <TabsTrigger value="op-confirms">🚚 Konfirmasi Operasional ({opConfirms.length})</TabsTrigger>
+            <TabsTrigger value="product-templates">🏭 Product Templates</TabsTrigger>
             <TabsTrigger value="activity-log">📋 Log Aktivitas</TabsTrigger>
           </TabsList>
 
@@ -2216,6 +2552,11 @@ export default function VendorFormsPage() {
                 </CardContent>
               </Card>
             )}
+          </TabsContent>
+
+          {/* ── PRODUCT TEMPLATE ENGINE TAB ── */}
+          <TabsContent value="product-templates" className="space-y-4">
+            <ProductTemplateEngine />
           </TabsContent>
 
           {/* ── ACTIVITY LOG TAB ── */}
