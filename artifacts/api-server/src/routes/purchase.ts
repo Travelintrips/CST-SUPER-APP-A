@@ -6,6 +6,7 @@ import { streamInvoicePdf, buildInvoicePdfBuffer } from "../lib/pdfInvoice.js";
 import { postPurchaseBill, postPurchaseBillReversal } from "../lib/accounting.js";
 import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
 import { sendWhatsApp } from "../lib/fonnte.js";
+import { getAdminGroupWa } from "../lib/adminWa.js";
 import { saveAndBroadcast } from "../lib/notificationStore.js";
 import { ensureAccountingSettings } from "../lib/accountingSeed.js";
 import { postStockIn } from "../lib/inventoryStock.js";
@@ -74,7 +75,8 @@ purchasePublicRouter.post("/vendor-accept/:token", async (req, res) => {
   const { notes } = req.body ?? {};
 
   const result = await db.execute(sql`
-    SELECT id, vendor_accepted_at FROM purchase_documents
+    SELECT id, doc_number, supplier_name, grand_total, total_amount, vendor_accepted_at
+    FROM purchase_documents
     WHERE vendor_accept_token = ${token} AND kind = 'order' LIMIT 1
   `);
   const doc = (result as any).rows?.[0] ?? (Array.isArray(result) ? result[0] : null);
@@ -87,7 +89,31 @@ purchasePublicRouter.post("/vendor-accept/:token", async (req, res) => {
     WHERE id = ${doc.id}
   `);
 
-  return res.json({ ok: true, acceptedAt: new Date().toISOString() });
+  // Notify admin group via WhatsApp
+  const acceptedAt = new Date().toISOString();
+  const total = Number(doc.grand_total ?? doc.total_amount ?? 0);
+  const msgLines = [
+    `✅ *Vendor Konfirmasi Purchase Order*`,
+    ``,
+    `• *No PO*: ${doc.doc_number ?? "-"}`,
+    `• *Vendor*: ${doc.supplier_name ?? "-"}`,
+    `• *Total*: Rp ${total.toLocaleString("id-ID")}`,
+    `• *Waktu*: ${new Date(acceptedAt).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })}`,
+    notes?.trim() ? `• *Catatan vendor*: ${notes.trim()}` : null,
+    ``,
+    `Silakan proses GR (Goods Receipt) untuk PO ini.`,
+  ].filter(Boolean).join("\n");
+
+  getAdminGroupWa().then((adminGroup) => {
+    if (!adminGroup) return;
+    sendWhatsApp(adminGroup, msgLines, {
+      context: "purchase_vendor_accept_admin",
+      refType: "purchase_document",
+      refId: String(doc.id),
+    }).catch(() => undefined);
+  }).catch(() => undefined);
+
+  return res.json({ ok: true, acceptedAt });
 });
 
 // ── Authenticated router ─────────────────────────────────────────────────────
