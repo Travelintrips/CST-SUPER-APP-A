@@ -11,7 +11,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { User, Mail, Briefcase, Shield, MessageCircle, Save, Loader2, CheckCircle, Calculator, ChevronDown, ChevronUp, Package, Plus, X, Bot, Link2, RotateCcw, History, RefreshCw, Download, Layers } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { User, Mail, Briefcase, Shield, MessageCircle, Save, Loader2, CheckCircle, Calculator, ChevronDown, ChevronUp, Package, Plus, X, Bot, Link2, RotateCcw, History, RefreshCw, Download } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -212,6 +211,106 @@ function CalculatorRatesCard() {
                   <Save className="h-4 w-4" />
                 )}
                 {saving ? "Menyimpan..." : saved ? "Tersimpan!" : "Simpan Tarif"}
+              </Button>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function LogisticsSubcategoriesCard() {
+  const { toast } = useToast();
+  const { t } = useLanguage();
+  const [cats, setCats] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [newCat, setNewCat] = useState("");
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch("/api/settings/logistics-subcategories", { credentials: "include" });
+        if (res.ok) setCats(await res.json() as string[]);
+      } catch { /* ignore */ }
+      finally { setLoading(false); }
+    })();
+  }, []);
+
+  function addCat() {
+    const v = newCat.trim();
+    if (!v || cats.includes(v)) { setNewCat(""); return; }
+    setCats((prev) => [...prev, v]);
+    setNewCat("");
+  }
+
+  function removeCat(idx: number) {
+    setCats((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/settings/logistics-subcategories", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" }, credentials: "include",
+        body: JSON.stringify(cats),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+      toast({ title: t.common.success });
+    } catch (err) {
+      toast({ title: t.common.error, description: String(err), variant: "destructive" });
+    } finally { setSaving(false); }
+  }
+
+  return (
+    <Card className="col-span-1 md:col-span-3 bg-card border-border">
+      <CardHeader>
+        <CardTitle className="text-xl flex items-center gap-2">
+          <Layers className="h-5 w-5 text-primary" />
+          Sub-Kategori Logistik
+        </CardTitle>
+        <CardDescription>
+          Daftar sub-kategori jasa logistik yang tersedia sebagai pilihan dropdown di BizPortal (Sales Items, Katalog, Quote Editor) dan Customer Portal Admin.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {loading ? (
+          <div className="space-y-2">{[1,2,3].map((i) => <div key={i} className="h-8 rounded bg-muted animate-pulse" />)}</div>
+        ) : (
+          <>
+            <div className="flex flex-wrap gap-2 min-h-[40px]">
+              {cats.length === 0 && <p className="text-sm text-muted-foreground italic">Belum ada item — tambahkan di bawah</p>}
+              {cats.map((c, i) => (
+                <span key={i} className="inline-flex items-center gap-1 text-sm bg-muted border border-border rounded-full px-3 py-1">
+                  {c}
+                  <button type="button" onClick={() => removeCat(i)} className="ml-1 text-muted-foreground hover:text-destructive transition-colors">
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+            <div className="flex gap-2 max-w-sm">
+              <Input
+                value={newCat}
+                onChange={(e) => setNewCat(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCat(); } }}
+                placeholder="cth: Cold Chain, Project Cargo"
+                className="flex-1"
+              />
+              <Button type="button" variant="outline" size="sm" onClick={addCat} className="gap-1 shrink-0">
+                <Plus className="h-4 w-4" /> Tambah
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">Tekan Enter atau klik Tambah. Klik × untuk hapus item.</p>
+            <div className="flex justify-end pt-1 border-t border-border">
+              <Button onClick={handleSave} disabled={saving} size="sm" className="gap-2">
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : saved ? <CheckCircle className="h-4 w-4 text-green-400" /> : <Save className="h-4 w-4" />}
+                {saving ? "Menyimpan..." : saved ? "Tersimpan!" : "Simpan Daftar"}
               </Button>
             </div>
           </>
@@ -2043,6 +2142,7 @@ export default function SettingsPage() {
           {isAdmin && <WhatsAppNotificationCard />}
           {isAdmin && <AiIntakeSettingsCard />}
           {isAdmin && <CargoTypesCard />}
+          {isAdmin && <LogisticsSubcategoriesCard />}
           {isAdmin && <CalculatorRatesCard />}
           {isAdmin && <VendorMiniFormCard />}
           {isAdmin && <PageContentCard />}

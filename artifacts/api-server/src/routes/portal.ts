@@ -1,4 +1,5 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
+import { LOGISTICS_SUBCATEGORIES as LOGISTICS_SUBCATEGORIES_FALLBACK } from "@workspace/logistics-constants";
 import { rateLimit } from "express-rate-limit";
 import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, portalContentTable, accountingSettingsTable, salesDocumentsTable, salesDocumentLinesTable, customersTable, logisticOrdersTable, suppliersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, quoteRequestsTable, userProfilesTable, identityDocumentsTable, ocrResultsTable, vendorProfilesTable, driverProfilesTable, employeeProfilesTable, onboardingApprovalsTable, waOtpCodesTable, trustedDevicesTable, vendorMiniFormLinksTable, vendorMiniFormSubmissionsTable } from "@workspace/db";
 import { deleteFromSupabase } from "../lib/supabaseStorage.js";
@@ -1912,6 +1913,17 @@ router.get("/cargo-types", async (_req, res) => {
     return res.json(types);
   } catch {
     return res.json(["Electronics", "Textiles", "Furniture", "Food & Beverage", "Chemicals"]);
+  }
+});
+
+// GET /api/portal/logistics-subcategories — public, returns logistics subcategory list
+router.get("/logistics-subcategories", async (_req, res) => {
+  try {
+    const [row] = await db.select().from(portalContentTable).where(eq(portalContentTable.key, "logistics_subcategories"));
+    const cats = row ? JSON.parse(row.value) : LOGISTICS_SUBCATEGORIES_FALLBACK;
+    return res.json(cats);
+  } catch {
+    return res.json(LOGISTICS_SUBCATEGORIES_FALLBACK);
   }
 });
 

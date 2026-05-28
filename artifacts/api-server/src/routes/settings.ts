@@ -6,12 +6,14 @@ import { broadcastToPortal } from "../lib/sseManager.js";
 import { shortLinksTable, waTemplateConfigsTable, notificationLogsTable } from "@workspace/db/schema";
 import { eq, desc, ilike, or, sql, and } from "drizzle-orm";
 import { getAiIntakeSettings, saveAiIntakeSettings, type VendorFilterMode } from "../lib/aiOrderIntake.js";
+import { LOGISTICS_SUBCATEGORIES } from "@workspace/logistics-constants";
 
 const router = Router();
 
 const CALC_RATES_KEY = "calculator_rates";
 const CARGO_TYPES_KEY = "cargo_types";
 const DEFAULT_CARGO_TYPES = ["Electronics", "Textiles", "Furniture", "Food & Beverage", "Chemicals", "Machinery", "Automotive Parts", "Medical Supplies", "Paper & Printing", "Raw Materials"];
+const LOGISTICS_SUBCATEGORIES_KEY = "logistics_subcategories";
 
 export const DEFAULT_CALC_RATES = {
   airFreight:  { baseCost: 500000,  ratePerKg: 90000,    handlingPct: 5, customsFee: 1200000 },
@@ -170,6 +172,36 @@ router.put("/cargo-types", async (req: Request, res: Response) => {
   await db
     .insert(portalContentTable)
     .values({ key: CARGO_TYPES_KEY, value: JSON.stringify(cleaned), updatedAt: new Date() })
+    .onConflictDoUpdate({
+      target: portalContentTable.key,
+      set: { value: JSON.stringify(cleaned), updatedAt: new Date() },
+    });
+  return res.json({ ok: true, count: cleaned.length });
+});
+
+// GET /api/settings/logistics-subcategories — get subcategory list (admin)
+router.get("/logistics-subcategories", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  try {
+    const [row] = await db.select().from(portalContentTable).where(eq(portalContentTable.key, LOGISTICS_SUBCATEGORIES_KEY));
+    const cats = row ? JSON.parse(row.value) : LOGISTICS_SUBCATEGORIES;
+    return res.json(cats);
+  } catch {
+    return res.json(LOGISTICS_SUBCATEGORIES);
+  }
+});
+
+// PUT /api/settings/logistics-subcategories — update subcategory list (admin)
+router.put("/logistics-subcategories", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const cats = req.body;
+  if (!Array.isArray(cats)) {
+    return res.status(400).json({ message: "Payload must be an array of strings" });
+  }
+  const cleaned = cats.map((c: unknown) => String(c).trim()).filter(Boolean);
+  await db
+    .insert(portalContentTable)
+    .values({ key: LOGISTICS_SUBCATEGORIES_KEY, value: JSON.stringify(cleaned), updatedAt: new Date() })
     .onConflictDoUpdate({
       target: portalContentTable.key,
       set: { value: JSON.stringify(cleaned), updatedAt: new Date() },

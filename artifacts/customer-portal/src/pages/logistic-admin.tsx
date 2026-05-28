@@ -76,10 +76,18 @@ function JasaManager() {
   const [form, setForm] = useState<JasaForm>(emptyJasaForm());
   const [deleteTarget, setDeleteTarget] = useState<JasaItem | null>(null);
   const [saving, setSaving] = useState(false);
+  const [dbSubcats, setDbSubcats] = useState<string[]>([...SUBCATEGORIES]);
 
-  // Gabung DEFAULT_SUBCATEGORIES + yang sudah ada di items (jika ada custom)
+  useEffect(() => {
+    void fetch("/api/portal/logistics-subcategories")
+      .then((r) => r.ok ? r.json() : [...SUBCATEGORIES])
+      .then((data: string[]) => setDbSubcats(data))
+      .catch(() => { /* keep fallback */ });
+  }, []);
+
+  // Gabung DB subcategories + yang sudah ada di items (jika ada custom)
   const allSubcats = Array.from(new Set([
-    ...SUBCATEGORIES,
+    ...dbSubcats,
     ...items.map((i) => i.subcategory).filter((s): s is string => !!s),
   ])).sort();
 

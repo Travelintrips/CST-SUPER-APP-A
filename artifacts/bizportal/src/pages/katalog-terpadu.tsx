@@ -150,7 +150,11 @@ function MasterItemTab({ initialSearch = "" }: { initialSearch?: string }) {
     return true;
   }), [products, filterType, filterActive, search]);
 
-  const DEFAULT_SUBCATEGORIES = LOGISTICS_SUBCATEGORIES;
+  const { data: DEFAULT_SUBCATEGORIES = [...LOGISTICS_SUBCATEGORIES] } = useQuery<string[]>({
+    queryKey: ["logistics-subcategories"],
+    queryFn: () => fetch("/api/settings/logistics-subcategories", { credentials: "include" }).then((r) => r.ok ? r.json() : [...LOGISTICS_SUBCATEGORIES]),
+    staleTime: 5 * 60 * 1000,
+  });
 
   const openCreate = () => {
     setEditingItem(null);
