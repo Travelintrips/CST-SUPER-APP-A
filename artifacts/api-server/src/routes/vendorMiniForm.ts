@@ -653,6 +653,12 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
         }
       } catch { /* non-fatal */ }
     }
+    if (!productTemplate && row.adminNotes) {
+      const catMatch = /productCategory:(\w+)/.exec(row.adminNotes);
+      if (catMatch?.[1]) {
+        productTemplate = getInCodeTemplate(catMatch[1]);
+      }
+    }
 
     res.setHeader("Cache-Control", PUBLIC_CACHE);
     return res.json({

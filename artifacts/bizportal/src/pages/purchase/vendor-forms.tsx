@@ -1514,6 +1514,145 @@ function LinkDetailSheet({
   );
 }
 
+// ── Create Link From Template Dialog ─────────────────────────────────────────
+
+function CreateLinkFromTemplateDialog({
+  template, open, onOpenChange, suppliers, onCreated,
+}: {
+  template: ProductTemplate | null;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  suppliers: Supplier[];
+  onCreated: () => void;
+}) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [serviceType, setServiceType] = useState("");
+  const [supplierId, setSupplierId] = useState("");
+  const [vendorName, setVendorName] = useState("");
+  const [title, setTitle] = useState("");
+  const [notes, setNotes] = useState("");
+  const [expiresInDays, setExpiresInDays] = useState("7");
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (template && open) {
+      setTitle(`Form Template — ${template.label}`);
+      setNotes(`Komoditas: ${template.label}\n\nMohon isi form sesuai spesifikasi komoditas ${template.label}.`);
+    }
+  }, [template, open]);
+
+  const reset = () => {
+    setServiceType(""); setSupplierId(""); setVendorName("");
+    setTitle(""); setNotes(""); setExpiresInDays("7"); setLoading(false);
+  };
+
+  const handleCreate = async () => {
+    if (!serviceType) { toast({ title: "Pilih service type dulu", variant: "destructive" }); return; }
+    setLoading(true);
+    try {
+      await apiFetch("/api/vendor-form/admin/links", {
+        method: "POST",
+        body: JSON.stringify({
+          serviceType,
+          supplierId: supplierId ? Number(supplierId) : undefined,
+          vendorName: vendorName.trim() || undefined,
+          title: title.trim() || undefined,
+          notes: notes.trim() || undefined,
+          expiresInDays: expiresInDays ? Number(expiresInDays) : undefined,
+          mode: "rate_collection",
+          adminNotes: `productCategory:${template?.category ?? "general"}`,
+        }),
+      });
+      toast({ title: "Link berhasil dibuat", description: `Template ${template?.label} akan muncul di form.` });
+      queryClient.invalidateQueries({ queryKey: ["vmf-links"] });
+      onCreated();
+      onOpenChange(false);
+      reset();
+    } catch (e: unknown) {
+      toast({ title: "Gagal membuat link", description: (e as Error).message, variant: "destructive" });
+    } finally { setLoading(false); }
+  };
+
+  if (!template) return null;
+  const emoji = COMMODITY_EMOJIS[template.category] ?? "📦";
+
+  return (
+    <Dialog open={open} onOpenChange={v => { onOpenChange(v); if (!v) reset(); }}>
+      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <span className="text-xl">{emoji}</span>
+            Buat Form Link — {template.label}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4 py-1">
+          <div className="flex items-center gap-3 bg-indigo-50 border border-indigo-200 rounded-lg p-3">
+            <Layers className="h-4 w-4 text-indigo-600 shrink-0" />
+            <p className="text-xs text-indigo-700">
+              Link ini akan menyertakan template komoditas <strong>{template.label}</strong> — vendor akan melihat {template.customFields.length} custom field, {template.requiredDocuments.filter(d => d.required).length} dokumen wajib, dan {template.checklist.length} checklist.
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Service Type <span className="text-red-500">*</span></Label>
+            <Select value={serviceType} onValueChange={setServiceType}>
+              <SelectTrigger><SelectValue placeholder="Pilih tipe layanan logistik" /></SelectTrigger>
+              <SelectContent>
+                {SERVICE_TYPES.map(k => (
+                  <SelectItem key={k} value={k}>{SERVICE_META[k]!.emoji} {SERVICE_META[k]!.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Vendor (opsional)</Label>
+            <Select value={supplierId || "__none__"} onValueChange={v => setSupplierId(v === "__none__" ? "" : v)}>
+              <SelectTrigger><SelectValue placeholder="Tidak spesifik" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">— Tidak spesifik —</SelectItem>
+                {suppliers.map(s => (
+                  <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Nama Vendor (manual)</Label>
+            <Input value={vendorName} onChange={e => setVendorName(e.target.value)} placeholder="Jika tidak ada di daftar" />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Judul Form</Label>
+            <Input value={title} onChange={e => setTitle(e.target.value)} />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Instruksi untuk Vendor</Label>
+            <Textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Kadaluarsa (hari)</Label>
+            <Input type="number" value={expiresInDays} onChange={e => setExpiresInDays(e.target.value)} placeholder="7" />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => { onOpenChange(false); reset(); }}>Batal</Button>
+          <Button onClick={handleCreate} disabled={loading}>
+            {loading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Plus className="h-4 w-4 mr-1" />}
+            Buat Link
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── Product Template Engine ───────────────────────────────────────────────────
 
 const COMMODITY_EMOJIS: Record<string, string> = {
@@ -1721,6 +1860,13 @@ function ProductTemplateEngine() {
   const [search, setSearch] = useState("");
   const [selectedTemplate, setSelectedTemplate] = useState<ProductTemplate | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [linkTemplate, setLinkTemplate] = useState<ProductTemplate | null>(null);
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
+
+  const { data: suppliers = [] } = useQuery<Supplier[]>({
+    queryKey: ["suppliers-simple"],
+    queryFn: () => apiFetch<Supplier[]>("/api/trading/suppliers"),
+  });
 
   const allTemplates = Object.values(inCodeTemplates);
 
@@ -1736,6 +1882,12 @@ function ProductTemplateEngine() {
   const openDetail = (t: ProductTemplate) => {
     setSelectedTemplate(t);
     setSheetOpen(true);
+  };
+
+  const openLinkDialog = (e: React.MouseEvent, t: ProductTemplate) => {
+    e.stopPropagation();
+    setLinkTemplate(t);
+    setLinkDialogOpen(true);
   };
 
   return (
@@ -1756,9 +1908,9 @@ function ProductTemplateEngine() {
         </div>
         <div className="grid grid-cols-3 gap-3 mt-4">
           {[
-            { label: "Template Komoditas", value: allTemplates.length, icon: "📦" },
-            { label: "Total Custom Fields", value: allTemplates.reduce((s, t) => s + t.customFields.length, 0), icon: "📋" },
-            { label: "Total Dokumen Terkonfigurasi", value: allTemplates.reduce((s, t) => s + t.requiredDocuments.length, 0), icon: "📎" },
+            { label: "Template Komoditas", value: allTemplates.length },
+            { label: "Total Custom Fields", value: allTemplates.reduce((s, t) => s + t.customFields.length, 0) },
+            { label: "Total Dokumen Terkonfigurasi", value: allTemplates.reduce((s, t) => s + t.requiredDocuments.length, 0) },
           ].map(s => (
             <div key={s.label} className="bg-white/15 rounded-lg p-3 text-center">
               <p className="text-xl font-bold">{s.value}</p>
@@ -1785,47 +1937,63 @@ function ProductTemplateEngine() {
           const emoji = COMMODITY_EMOJIS[t.category] ?? "📦";
           const reqDocs = t.requiredDocuments.filter(d => d.required).length;
           return (
-            <button
+            <div
               key={t.category}
-              onClick={() => openDetail(t)}
-              className="text-left border border-slate-200 bg-white rounded-xl p-4 hover:border-indigo-300 hover:shadow-md transition-all group"
+              className="border border-slate-200 bg-white rounded-xl p-4 hover:border-indigo-300 hover:shadow-md transition-all group"
             >
-              <div className="flex items-start gap-3 mb-3">
-                <div className="w-10 h-10 rounded-xl border border-slate-100 bg-slate-50 flex items-center justify-center text-xl shrink-0 group-hover:bg-indigo-50 group-hover:border-indigo-200 transition-colors">
-                  {emoji}
+              <button
+                className="w-full text-left"
+                onClick={() => openDetail(t)}
+              >
+                <div className="flex items-start gap-3 mb-3">
+                  <div className="w-10 h-10 rounded-xl border border-slate-100 bg-slate-50 flex items-center justify-center text-xl shrink-0 group-hover:bg-indigo-50 group-hover:border-indigo-200 transition-colors">
+                    {emoji}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-slate-800 text-sm group-hover:text-indigo-700 transition-colors">{t.label}</p>
+                    <p className="text-xs text-slate-400 font-mono">{t.category}</p>
+                  </div>
+                  <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-indigo-500 shrink-0 mt-0.5 transition-colors" />
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-slate-800 text-sm group-hover:text-indigo-700 transition-colors">{t.label}</p>
-                  <p className="text-xs text-slate-400 font-mono">{t.category}</p>
-                </div>
-                <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-indigo-500 shrink-0 mt-0.5 transition-colors" />
-              </div>
 
-              <div className="grid grid-cols-3 gap-2 text-center">
-                <div className="bg-slate-50 rounded-lg p-2">
-                  <p className="text-sm font-bold text-indigo-700">{t.customFields.length}</p>
-                  <p className="text-[10px] text-slate-500">Fields</p>
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="bg-slate-50 rounded-lg p-2">
+                    <p className="text-sm font-bold text-indigo-700">{t.customFields.length}</p>
+                    <p className="text-[10px] text-slate-500">Fields</p>
+                  </div>
+                  <div className="bg-slate-50 rounded-lg p-2">
+                    <p className={`text-sm font-bold ${reqDocs > 0 ? "text-red-600" : "text-slate-400"}`}>{reqDocs}</p>
+                    <p className="text-[10px] text-slate-500">Dok Wajib</p>
+                  </div>
+                  <div className="bg-slate-50 rounded-lg p-2">
+                    <p className="text-sm font-bold text-emerald-600">{t.checklist.length}</p>
+                    <p className="text-[10px] text-slate-500">Checklist</p>
+                  </div>
                 </div>
-                <div className="bg-slate-50 rounded-lg p-2">
-                  <p className={`text-sm font-bold ${reqDocs > 0 ? "text-red-600" : "text-slate-400"}`}>{reqDocs}</p>
-                  <p className="text-[10px] text-slate-500">Dok Wajib</p>
-                </div>
-                <div className="bg-slate-50 rounded-lg p-2">
-                  <p className="text-sm font-bold text-emerald-600">{t.checklist.length}</p>
-                  <p className="text-[10px] text-slate-500">Checklist</p>
-                </div>
-              </div>
 
-              {t.requiredDocuments.filter(d => d.required).slice(0, 2).map(d => (
-                <div key={d.key} className="flex items-center gap-1.5 mt-2 text-xs text-slate-500">
-                  <AlertCircle className="h-3 w-3 text-red-400 shrink-0" />
-                  <span className="truncate">{d.label}</span>
-                </div>
-              ))}
-              {t.requiredDocuments.filter(d => d.required).length > 2 && (
-                <p className="text-xs text-slate-400 mt-1">+{t.requiredDocuments.filter(d => d.required).length - 2} dokumen wajib lainnya</p>
-              )}
-            </button>
+                {t.requiredDocuments.filter(d => d.required).slice(0, 2).map(d => (
+                  <div key={d.key} className="flex items-center gap-1.5 mt-2 text-xs text-slate-500">
+                    <AlertCircle className="h-3 w-3 text-red-400 shrink-0" />
+                    <span className="truncate">{d.label}</span>
+                  </div>
+                ))}
+                {t.requiredDocuments.filter(d => d.required).length > 2 && (
+                  <p className="text-xs text-slate-400 mt-1">+{t.requiredDocuments.filter(d => d.required).length - 2} dokumen wajib lainnya</p>
+                )}
+              </button>
+
+              <div className="mt-3 pt-3 border-t border-slate-100">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full h-7 text-xs gap-1.5 text-indigo-600 border-indigo-200 hover:bg-indigo-50"
+                  onClick={e => openLinkDialog(e, t)}
+                >
+                  <Plus className="h-3 w-3" />
+                  Buat Form Link
+                </Button>
+              </div>
+            </div>
           );
         })}
         {filtered.length === 0 && (
@@ -1840,6 +2008,13 @@ function ProductTemplateEngine() {
         template={selectedTemplate}
         open={sheetOpen}
         onOpenChange={setSheetOpen}
+      />
+      <CreateLinkFromTemplateDialog
+        template={linkTemplate}
+        open={linkDialogOpen}
+        onOpenChange={setLinkDialogOpen}
+        suppliers={suppliers}
+        onCreated={() => {}}
       />
     </div>
   );

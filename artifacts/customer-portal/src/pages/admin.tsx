@@ -35,7 +35,15 @@ import {
   ExternalLink,
   Link2,
   Copy,
+  Layers,
+  ChevronRight,
+  AlertCircle,
+  PackageCheck,
+  Search,
+  Info,
 } from "lucide-react";
+import { inCodeTemplates } from "@workspace/product-templates";
+import type { ProductTemplate } from "@workspace/product-templates";
 import {
   Dialog,
   DialogContent,
@@ -1798,6 +1806,274 @@ function PricingTab() {
   );
 }
 
+const PORTAL_COMMODITY_EMOJIS: Record<string, string> = {
+  coal: "⛏️", iron_steel: "🔩", coffee: "☕", electronics: "💻",
+  palm_oil: "🌴", nickel: "⚙️", copper: "🔶", rice: "🌾",
+  sugar: "🍬", rubber: "🧤", cocoa: "🍫", timber: "🪵",
+  fertilizer: "🌱", cement: "🏗️", textile: "🧵", medical_device: "💊",
+  general: "📦",
+};
+
+const FIELD_TYPE_LABELS_PORTAL: Record<string, string> = {
+  text: "Teks", number: "Angka", select: "Pilihan", textarea: "Teks Panjang", date: "Tanggal",
+};
+
+function PortalTemplateDetailDialog({
+  template, open, onOpenChange,
+}: { template: ProductTemplate | null; open: boolean; onOpenChange: (v: boolean) => void }) {
+  const [section, setSection] = useState<"fields" | "docs" | "checklist" | "packaging">("fields");
+  if (!template) return null;
+  const emoji = PORTAL_COMMODITY_EMOJIS[template.category] ?? "📦";
+  const reqDocs = template.requiredDocuments.filter(d => d.required);
+  const optDocs = template.requiredDocuments.filter(d => !d.required);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2.5">
+            <span className="text-2xl">{emoji}</span>
+            <div>
+              <span>{template.label}</span>
+              <p className="text-xs font-normal text-muted-foreground font-mono mt-0.5">{template.category} · v{template.version}</p>
+            </div>
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="flex gap-1.5 flex-wrap">
+          {(["fields", "docs", "checklist", "packaging"] as const).map(s => (
+            <button
+              key={s}
+              onClick={() => setSection(s)}
+              className={`px-3 py-1 rounded-full text-xs font-medium border transition-all ${
+                section === s
+                  ? "bg-indigo-600 text-white border-indigo-600"
+                  : "bg-background text-muted-foreground border-border hover:border-indigo-300 hover:text-indigo-700"
+              }`}
+            >
+              {s === "fields" ? `📋 ${template.customFields.length} Custom Fields` :
+               s === "docs" ? `📎 ${template.requiredDocuments.length} Dokumen` :
+               s === "checklist" ? `✅ ${template.checklist.length} Checklist` :
+               "📦 Pengemasan"}
+            </button>
+          ))}
+        </div>
+
+        <div className="space-y-3 mt-2">
+          {section === "fields" && (
+            <>
+              {template.customFields.length === 0
+                ? <p className="text-sm text-muted-foreground italic">Tidak ada custom field</p>
+                : template.customFields.map(f => (
+                  <div key={f.key} className={`border rounded-lg p-3 ${f.required ? "border-indigo-200 bg-indigo-50/30" : "border-border"}`}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-medium text-sm">{f.label}</span>
+                          {f.required && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700">WAJIB</span>}
+                        </div>
+                        <p className="text-xs text-muted-foreground font-mono mt-0.5">key: {f.key}</p>
+                        {f.options && f.options.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1.5">
+                            {f.options.map(o => <span key={o} className="text-xs bg-muted px-1.5 py-0.5 rounded">{o}</span>)}
+                          </div>
+                        )}
+                      </div>
+                      <span className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground shrink-0">
+                        {FIELD_TYPE_LABELS_PORTAL[f.type] ?? f.type}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              }
+              {template.conditionalRules.length > 0 && (
+                <div className="border border-amber-200 bg-amber-50 rounded-lg p-3">
+                  <p className="text-xs font-semibold text-amber-700 mb-2 flex items-center gap-1"><Info className="h-3.5 w-3.5" /> Aturan Kondisional</p>
+                  {template.conditionalRules.map((r, i) => (
+                    <p key={i} className="text-xs text-amber-700">
+                      Jika <span className="font-mono bg-amber-100 px-1 rounded">{r.fieldKey}</span> = <span className="font-mono bg-amber-100 px-1 rounded">"{r.condition.value}"</span> → tampilkan: {r.show.join(", ")}
+                    </p>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
+          {section === "docs" && (
+            <>
+              {reqDocs.length > 0 && (
+                <><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Dokumen Wajib</p>
+                {reqDocs.map(d => (
+                  <div key={d.key} className="flex items-center gap-3 border border-red-200 bg-red-50/30 rounded-lg p-3">
+                    <AlertCircle className="h-4 w-4 text-red-500 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium">{d.label}</p>
+                      <p className="text-xs text-muted-foreground font-mono">key: {d.key}</p>
+                    </div>
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-100 text-red-700 shrink-0">WAJIB</span>
+                  </div>
+                ))}</>
+              )}
+              {optDocs.length > 0 && (
+                <><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mt-1">Opsional</p>
+                {optDocs.map(d => (
+                  <div key={d.key} className="flex items-center gap-3 border border-border rounded-lg p-3">
+                    <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm">{d.label}</p>
+                      <p className="text-xs text-muted-foreground font-mono">key: {d.key}</p>
+                    </div>
+                  </div>
+                ))}</>
+              )}
+              {template.requiredDocuments.length === 0 && <p className="text-sm text-muted-foreground italic">Tidak ada dokumen</p>}
+            </>
+          )}
+
+          {section === "checklist" && (
+            <>
+              {template.checklist.length === 0
+                ? <p className="text-sm text-muted-foreground italic">Tidak ada checklist</p>
+                : template.checklist.map(c => (
+                  <div key={c.key} className="flex items-center gap-3 border border-border rounded-lg p-3">
+                    <div className="w-4 h-4 rounded border-2 border-muted-foreground/30 shrink-0" />
+                    <div>
+                      <p className="text-sm">{c.label}</p>
+                      <p className="text-xs text-muted-foreground font-mono">key: {c.key}</p>
+                    </div>
+                  </div>
+                ))
+              }
+            </>
+          )}
+
+          {section === "packaging" && (
+            <div className="border border-emerald-200 bg-emerald-50/40 rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <PackageCheck className="h-4 w-4 text-emerald-600" />
+                <p className="text-xs font-semibold text-emerald-700">Instruksi Pengemasan & Pengiriman</p>
+              </div>
+              <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">{template.packagingInstructions}</p>
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function PortalProductTemplateEngine() {
+  const [search, setSearch] = useState("");
+  const [selected, setSelected] = useState<ProductTemplate | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
+
+  const allTemplates = Object.values(inCodeTemplates);
+
+  const filtered = allTemplates.filter(t => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return t.label.toLowerCase().includes(q) || t.category.toLowerCase().includes(q);
+  });
+
+  return (
+    <div className="space-y-5">
+      <div className="rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 p-5 text-white">
+        <div className="flex items-start gap-3 mb-4">
+          <div className="w-9 h-9 rounded-lg bg-white/20 flex items-center justify-center shrink-0">
+            <Layers className="h-5 w-5" />
+          </div>
+          <div>
+            <h3 className="font-bold text-base">Product Template Engine</h3>
+            <p className="text-xs text-indigo-100 mt-0.5">
+              Template komoditas untuk form vendor — custom fields, dokumen, checklist, dan instruksi pengemasan per jenis barang.
+            </p>
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          {[
+            { label: "Komoditas", value: allTemplates.length },
+            { label: "Custom Fields", value: allTemplates.reduce((s, t) => s + t.customFields.length, 0) },
+            { label: "Dok Terkonfigurasi", value: allTemplates.reduce((s, t) => s + t.requiredDocuments.length, 0) },
+          ].map(s => (
+            <div key={s.label} className="bg-white/15 rounded-lg p-2.5 text-center">
+              <p className="text-lg font-bold">{s.value}</p>
+              <p className="text-[10px] text-indigo-100">{s.label}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="relative max-w-xs">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+        <input
+          className="w-full rounded-md border border-input bg-background pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          placeholder="Cari komoditas..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {filtered.map(t => {
+          const emoji = PORTAL_COMMODITY_EMOJIS[t.category] ?? "📦";
+          const reqDocs = t.requiredDocuments.filter(d => d.required).length;
+          return (
+            <button
+              key={t.category}
+              onClick={() => { setSelected(t); setDialogOpen(true); }}
+              className="text-left border border-border bg-card rounded-xl p-4 hover:border-indigo-300 hover:shadow-sm transition-all group"
+            >
+              <div className="flex items-start gap-3 mb-3">
+                <div className="w-9 h-9 rounded-lg border border-border bg-muted/50 flex items-center justify-center text-lg shrink-0 group-hover:bg-indigo-50 group-hover:border-indigo-200 transition-colors">
+                  {emoji}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-sm text-foreground group-hover:text-indigo-700 transition-colors">{t.label}</p>
+                  <p className="text-xs text-muted-foreground font-mono">{t.category}</p>
+                </div>
+                <ChevronRight className="h-4 w-4 text-muted-foreground/40 group-hover:text-indigo-500 shrink-0 mt-0.5 transition-colors" />
+              </div>
+              <div className="grid grid-cols-3 gap-1.5 text-center">
+                <div className="bg-muted/50 rounded-lg p-1.5">
+                  <p className="text-sm font-bold text-indigo-600">{t.customFields.length}</p>
+                  <p className="text-[10px] text-muted-foreground">Fields</p>
+                </div>
+                <div className="bg-muted/50 rounded-lg p-1.5">
+                  <p className={`text-sm font-bold ${reqDocs > 0 ? "text-red-500" : "text-muted-foreground"}`}>{reqDocs}</p>
+                  <p className="text-[10px] text-muted-foreground">Dok Wajib</p>
+                </div>
+                <div className="bg-muted/50 rounded-lg p-1.5">
+                  <p className="text-sm font-bold text-emerald-600">{t.checklist.length}</p>
+                  <p className="text-[10px] text-muted-foreground">Checklist</p>
+                </div>
+              </div>
+              {t.requiredDocuments.filter(d => d.required).slice(0, 1).map(d => (
+                <div key={d.key} className="flex items-center gap-1.5 mt-2 text-xs text-muted-foreground">
+                  <AlertCircle className="h-3 w-3 text-red-400 shrink-0" />
+                  <span className="truncate">{d.label}</span>
+                </div>
+              ))}
+              {reqDocs > 1 && <p className="text-xs text-muted-foreground mt-1">+{reqDocs - 1} dokumen wajib lainnya</p>}
+            </button>
+          );
+        })}
+        {filtered.length === 0 && (
+          <div className="col-span-full flex flex-col items-center py-12 text-muted-foreground gap-2">
+            <Layers className="h-8 w-8 opacity-20" />
+            <p className="text-sm">Tidak ada hasil untuk pencarian ini</p>
+          </div>
+        )}
+      </div>
+
+      <PortalTemplateDetailDialog
+        template={selected}
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+      />
+    </div>
+  );
+}
+
 function ClaimAdminTab() {
   const { toast } = useToast();
   const [key, setKey] = useState("");
@@ -2358,6 +2634,10 @@ export default function AdminPage() {
                   <Link2 className="h-4 w-4" />
                   Mini Form
                 </TabsTrigger>
+                <TabsTrigger value="product-templates" className="gap-2">
+                  <Layers className="h-4 w-4" />
+                  Product Templates
+                </TabsTrigger>
               </>
             )}
             <TabsTrigger value="claim" className="gap-2">
@@ -2466,6 +2746,23 @@ export default function AdminPage() {
                         <MiniFormTab formTarget="admin" />
                       </TabsContent>
                     </Tabs>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="product-templates">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Layers className="h-5 w-5 text-indigo-500" />
+                      Product Template Engine
+                    </CardTitle>
+                    <CardDescription>
+                      Referensi template komoditas multi-jenis — custom fields, dokumen wajib, checklist operasional, dan instruksi pengemasan per kategori barang.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <PortalProductTemplateEngine />
                   </CardContent>
                 </Card>
               </TabsContent>
