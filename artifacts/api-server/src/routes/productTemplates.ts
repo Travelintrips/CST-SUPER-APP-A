@@ -823,6 +823,57 @@ productTemplatesRouter.patch("/:id/toggle", requireAdmin, async (req: Request, r
   }
 });
 
+// ADMIN — POST /api/product-templates/sync-defaults
+// Upsert semua SEED_TEMPLATES ke DB. Template yang sudah ada di-update,
+// template baru di-insert. Template custom (tidak ada di SEED_TEMPLATES) dibiarkan.
+productTemplatesRouter.post("/sync-defaults", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const results: { categoryKey: string; action: "inserted" | "updated" }[] = [];
+    for (const tpl of SEED_TEMPLATES) {
+      const existing = await db
+        .select({ id: productTemplatesTable.id, version: productTemplatesTable.version })
+        .from(productTemplatesTable)
+        .where(eq(productTemplatesTable.categoryKey, tpl.categoryKey));
+
+      if (existing.length === 0) {
+        await db.insert(productTemplatesTable).values({
+          categoryKey: tpl.categoryKey,
+          label: tpl.label,
+          version: tpl.version,
+          isActive: true,
+          requiredDocuments: tpl.requiredDocuments as unknown as Record<string, unknown>[],
+          checklist: tpl.checklist as unknown as Record<string, unknown>[],
+          customFields: tpl.customFields as unknown as Record<string, unknown>[],
+          packagingInstructions: tpl.packagingInstructions,
+          conditionalRules: tpl.conditionalRules as unknown as Record<string, unknown>[],
+          validationRules: tpl.validationRules as unknown as Record<string, unknown>[],
+        });
+        results.push({ categoryKey: tpl.categoryKey, action: "inserted" });
+      } else {
+        const newVersion = bumpPatch(existing[0]!.version);
+        await db.update(productTemplatesTable)
+          .set({
+            label: tpl.label,
+            version: newVersion,
+            requiredDocuments: tpl.requiredDocuments as unknown as Record<string, unknown>[],
+            checklist: tpl.checklist as unknown as Record<string, unknown>[],
+            customFields: tpl.customFields as unknown as Record<string, unknown>[],
+            packagingInstructions: tpl.packagingInstructions,
+            conditionalRules: tpl.conditionalRules as unknown as Record<string, unknown>[],
+            validationRules: tpl.validationRules as unknown as Record<string, unknown>[],
+            updatedAt: new Date(),
+          })
+          .where(eq(productTemplatesTable.categoryKey, tpl.categoryKey));
+        results.push({ categoryKey: tpl.categoryKey, action: "updated" });
+      }
+    }
+    logger.info("sync-defaults: completed", { inserted: results.filter(r => r.action === "inserted").length, updated: results.filter(r => r.action === "updated").length });
+    res.json({ success: true, results });
+  } catch (err) {
+    res.status(500).json({ message: String(err) });
+  }
+});
+
 // ADMIN — DELETE /api/product-templates/:id  (hard delete — hanya template inaktif)
 productTemplatesRouter.delete("/:id", requireAdmin, async (req: Request, res: Response) => {
   try {

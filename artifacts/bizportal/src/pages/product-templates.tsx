@@ -18,7 +18,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import {
   Layers, Plus, Pencil, Copy, PowerOff, Power, Trash2, RefreshCw,
   PackageCheck, FileText, ClipboardList, Wrench, GitBranch, AlertCircle,
-  Search, CheckCircle2, XCircle, Info,
+  Search, CheckCircle2, XCircle, Info, RotateCcw,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
@@ -189,6 +189,8 @@ export default function ProductTemplatesPage() {
   const [saving, setSaving] = useState(false);
 
   const [deleteTarget, setDeleteTarget] = useState<DbTemplate | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncConfirmOpen, setSyncConfirmOpen] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -308,6 +310,27 @@ export default function ProductTemplatesPage() {
     }
   }
 
+  async function handleSyncDefaults() {
+    setSyncing(true);
+    setSyncConfirmOpen(false);
+    try {
+      const r = await authFetch(`${API}/sync-defaults`, { method: "POST" });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({})) as { message?: string };
+        throw new Error(err.message ?? "Gagal sync");
+      }
+      const data = await r.json() as { results: { categoryKey: string; action: string }[] };
+      const inserted = data.results.filter((x) => x.action === "inserted").length;
+      const updated = data.results.filter((x) => x.action === "updated").length;
+      toast({ title: `Sync selesai: ${inserted} ditambah, ${updated} diperbarui` });
+      load();
+    } catch (e) {
+      toast({ title: (e as Error).message, variant: "destructive" });
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   function setF<K extends keyof FormState>(key: K, val: FormState[K]) {
     setForm((p) => ({ ...p, [key]: val }));
   }
@@ -328,6 +351,15 @@ export default function ProductTemplatesPage() {
           <div className="flex items-center gap-2 shrink-0">
             <Button variant="outline" size="sm" onClick={load} disabled={loading}>
               <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setSyncConfirmOpen(true)}
+              disabled={syncing}
+            >
+              <RotateCcw className={`w-4 h-4 mr-1 ${syncing ? "animate-spin" : ""}`} />
+              Sync Default
             </Button>
             <Button size="sm" onClick={openCreate}>
               <Plus className="w-4 h-4 mr-1" /> Tambah Template
@@ -613,6 +645,32 @@ export default function ProductTemplatesPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Sync Default Confirm */}
+        <AlertDialog open={syncConfirmOpen} onOpenChange={setSyncConfirmOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle className="flex items-center gap-2">
+                <RotateCcw className="w-4 h-4 text-amber-500" /> Sync ke Default?
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                Semua <strong>18 template bawaan</strong> akan di-upsert ke database:
+                <ul className="mt-2 space-y-1 text-xs list-disc list-inside">
+                  <li>Template yang <strong>belum ada</strong> → ditambahkan</li>
+                  <li>Template yang <strong>sudah ada</strong> → semua field diperbarui ke versi default (versi di-bump otomatis)</li>
+                  <li>Template <strong>custom buatan sendiri</strong> → tidak disentuh</li>
+                </ul>
+                <span className="block mt-2 text-amber-600 font-medium">Perubahan manual pada template bawaan akan tertimpa.</span>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Batal</AlertDialogCancel>
+              <AlertDialogAction onClick={handleSyncDefaults} className="bg-amber-500 text-white hover:bg-amber-600">
+                <RotateCcw className="w-3.5 h-3.5 mr-1.5" /> Ya, Sync Sekarang
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         {/* Delete Confirm */}
         <AlertDialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
