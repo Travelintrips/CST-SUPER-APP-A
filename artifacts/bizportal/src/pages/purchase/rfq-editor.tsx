@@ -210,6 +210,9 @@ export default function PurchaseDocumentEditorPage() {
   const [addVendorForm, setAddVendorForm] = useState({ name: "", country: "ID", contactEmail: "", phone: "", address: "", defaultPurchaseTaxId: null as number | null });
   const [expectedDate, setExpectedDate] = useState("");
   const [notes, setNotes] = useState("");
+  const [incoterm, setIncoterm] = useState("");
+  const [deliveryTerm, setDeliveryTerm] = useState("");
+  const [targetPrice, setTargetPrice] = useState("");
   const [lines, setLines] = useState<LineDraft[]>([
     { name: "", quantity: 1, unitCost: 0 },
   ]);
@@ -231,6 +234,9 @@ export default function PurchaseDocumentEditorPage() {
       }
       setExpectedDate(doc.expectedDate ? doc.expectedDate.slice(0, 10) : "");
       setNotes(doc.notes ?? "");
+      setIncoterm((doc as any).incoterm ?? "");
+      setDeliveryTerm((doc as any).deliveryTerm ?? "");
+      setTargetPrice((doc as any).targetPrice ?? "");
       setTaxRateId(doc.taxRateId ?? null);
       setTaxApplied(true);
       setLines(
@@ -384,6 +390,9 @@ export default function PurchaseDocumentEditorPage() {
       taxRateId: taxRateId ?? null,
       expectedDate: expectedDate ? new Date(expectedDate).toISOString() : null,
       notes: notes || null,
+      incoterm: incoterm || null,
+      deliveryTerm: deliveryTerm || null,
+      targetPrice: targetPrice || null,
       lines: lines.map((l) => ({
         productId: l.productId ?? null,
         name: l.name,
@@ -820,6 +829,26 @@ export default function PurchaseDocumentEditorPage() {
             <div className="grid gap-1.5">
               <Label>Tanggal Diharapkan</Label>
               <DatePicker value={expectedDate} onChange={setExpectedDate} disabled={!isEditable} />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Incoterm</Label>
+              <Select value={incoterm || "__none"} onValueChange={(v) => setIncoterm(v === "__none" ? "" : v)} disabled={!isEditable}>
+                <SelectTrigger><SelectValue placeholder="Pilih incoterm (opsional)" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none">— Tidak ditentukan —</SelectItem>
+                  {["EXW","FCA","FAS","FOB","CFR","CIF","CPT","CIP","DAP","DPU","DDP"].map((t) => (
+                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Syarat Pengiriman (Delivery Term)</Label>
+              <Input value={deliveryTerm} onChange={(e) => setDeliveryTerm(e.target.value)} disabled={!isEditable} placeholder="cth. Franco Gudang Pembeli" />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Target Harga (IDR)</Label>
+              <Input type="number" value={targetPrice} onChange={(e) => setTargetPrice(e.target.value)} disabled={!isEditable} placeholder="0" />
             </div>
             <div className="grid gap-1.5 md:col-span-2">
               <Label>Catatan</Label>

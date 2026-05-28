@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, numeric, timestamp, pgEnum, index } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, numeric, timestamp, pgEnum, index, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { suppliersTable } from "./suppliers";
@@ -56,6 +56,12 @@ export const purchaseDocumentsTable = pgTable("purchase_documents", {
   billDate: text("bill_date"),
   dueDate: text("due_date"),
   paymentTermDays: integer("payment_term_days").default(30),
+  productCategory: text("product_category"),
+  incoterm: text("incoterm"),
+  deliveryTerm: text("delivery_term"),
+  targetPrice: numeric("target_price", { precision: 14, scale: 2 }),
+  commoditySpecs: jsonb("commodity_specs"),
+  requiredDocuments: jsonb("required_documents"),
   cancelledAt: timestamp("cancelled_at"),
   createdById: text("created_by_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
