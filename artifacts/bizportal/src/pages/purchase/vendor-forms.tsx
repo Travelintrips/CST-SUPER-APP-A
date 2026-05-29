@@ -60,6 +60,7 @@ type Submission = {
   eta: string | null; validUntil: string | null; selectedByAdmin: boolean;
   selectedAt: string | null; locked: boolean | null; revisionCount: number | null;
   adminNotes: string | null; submittedIp: string | null;
+  orderId: number | null;
 };
 
 type CustomerApproval = {
@@ -2282,6 +2283,25 @@ export default function VendorFormsPage() {
     return { count: approved.length, pending, totalRevenue, totalCost, totalProfit, marginPct };
   }, [approvals]);
 
+  // Hitung per-order: total vendor diundang vs sudah submit (order_based active links)
+  const orderVendorProgress = useMemo(() => {
+    const stats: Record<number, { total: number; submitted: number; orderNumber: string | null }> = {};
+    for (const link of links) {
+      if (link.mode === "order_based" && link.orderId && link.isActive) {
+        if (!stats[link.orderId]) stats[link.orderId] = { total: 0, submitted: 0, orderNumber: link.orderNumber };
+        stats[link.orderId].total++;
+        const doneStatuses = ["vendor_submitted", "admin_review", "waiting_customer", "customer_approved"];
+        if (link.itemStatus && doneStatuses.includes(link.itemStatus)) {
+          stats[link.orderId].submitted++;
+        }
+      }
+    }
+    return stats;
+  }, [links]);
+
+  // Map linkId → link untuk lookup cepat di tabel submissions
+  const linkMap = useMemo(() => Object.fromEntries(links.map(l => [l.id, l])), [links]);
+
   const { data: opConfirms = [], isLoading: opLoading } = useQuery<OpConfirm[]>({
     queryKey: ["vmf-op-confirms"],
     queryFn: () => apiFetch<OpConfirm[]>("/api/vendor-form/admin/op-confirms"),
@@ -2509,10 +2529,33 @@ export default function VendorFormsPage() {
                               )}
                             </TableCell>
                             <TableCell>
-                              <span className="text-sm font-semibold text-slate-700">
-                                {linkSubs.length}
-                                {linkSubs.some(s => s.selectedByAdmin) && <Star className="h-3 w-3 text-green-500 fill-green-500 inline ml-1" />}
-                              </span>
+                              {link.mode === "order_based" && link.orderId && orderVendorProgress[link.orderId] ? (() => {
+                                const stat = orderVendorProgress[link.orderId!]!;
+                                const allDone = stat.submitted >= stat.total && stat.total > 0;
+                                const readyToCompare = stat.submitted >= 2;
+                                return (
+                                  <div className="space-y-0.5">
+                                    <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full border ${
+                                      allDone ? "bg-green-100 text-green-700 border-green-200" :
+                                      stat.submitted > 0 ? "bg-blue-100 text-blue-700 border-blue-200" :
+                                      "bg-yellow-50 text-yellow-600 border-yellow-200"
+                                    }`}>
+                                      {stat.submitted}/{stat.total} vendor
+                                    </span>
+                                    {readyToCompare && (
+                                      <p className="text-[10px] font-medium text-indigo-600">⚖️ Siap dibandingkan!</p>
+                                    )}
+                                    {linkSubs.some(s => s.selectedByAdmin) && (
+                                      <Star className="h-3 w-3 text-green-500 fill-green-500" />
+                                    )}
+                                  </div>
+                                );
+                              })() : (
+                                <span className="text-sm font-semibold text-slate-700">
+                                  {linkSubs.length}
+                                  {linkSubs.some(s => s.selectedByAdmin) && <Star className="h-3 w-3 text-green-500 fill-green-500 inline ml-1" />}
+                                </span>
+                              )}
                             </TableCell>
                             <TableCell>
                               <div className="flex items-center gap-0.5">
@@ -2574,6 +2617,7 @@ export default function VendorFormsPage() {
                         <TableHead>Service</TableHead>
                         <TableHead>Penawaran</TableHead>
                         <TableHead>Status</TableHead>
+                        <TableHead>Status Vendor</TableHead>
                         <TableHead>Dikirim</TableHead>
                         <TableHead>Aksi</TableHead>
                       </TableRow>
@@ -2581,10 +2625,14 @@ export default function VendorFormsPage() {
                     <TableBody>
                       {submissions.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={6} className="text-center py-10 text-slate-400 text-sm">Belum ada submission.</TableCell>
+                          <TableCell colSpan={7} className="text-center py-10 text-slate-400 text-sm">Belum ada submission.</TableCell>
                         </TableRow>
                       ) : submissions.map(sub => {
                         const meta = SERVICE_META[sub.serviceType];
+                        const parentLink = sub.linkId ? linkMap[sub.linkId] : null;
+                        const orderId = sub.orderId ?? parentLink?.orderId ?? null;
+                        const orderNum = parentLink?.orderNumber ?? null;
+                        const stat = orderId ? orderVendorProgress[orderId] : null;
                         return (
                           <TableRow key={sub.id} className={sub.selectedByAdmin ? "bg-green-50" : ""}>
                             <TableCell>
@@ -2605,6 +2653,31 @@ export default function VendorFormsPage() {
                               <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${sub.responseStatus === "selected" ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-600"}`}>
                                 {sub.responseStatus ?? "submitted"}
                               </span>
+                            </TableCell>
+                            <TableCell>
+                              {stat ? (
+                                <div className="space-y-0.5">
+                                  {orderNum && (
+                                    <p className="text-xs text-blue-600 font-medium">📦 {orderNum}</p>
+                                  )}
+                                  <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full border ${
+                                    stat.submitted >= stat.total && stat.total > 0
+                                      ? "bg-green-100 text-green-700 border-green-200"
+                                      : stat.submitted > 0
+                                        ? "bg-blue-100 text-blue-700 border-blue-200"
+                                        : "bg-yellow-50 text-yellow-600 border-yellow-200"
+                                  }`}>
+                                    {stat.submitted}/{stat.total} vendor
+                                  </span>
+                                  {stat.submitted >= 2 && (
+                                    <p className="text-[10px] font-medium text-indigo-600">⚖️ Siap dibandingkan!</p>
+                                  )}
+                                </div>
+                              ) : orderNum ? (
+                                <p className="text-xs text-blue-600">📦 {orderNum}</p>
+                              ) : (
+                                <span className="text-xs text-slate-400">—</span>
+                              )}
                             </TableCell>
                             <TableCell>
                               <p className="text-xs text-slate-500">{new Date(sub.submittedAt).toLocaleString("id-ID", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</p>
