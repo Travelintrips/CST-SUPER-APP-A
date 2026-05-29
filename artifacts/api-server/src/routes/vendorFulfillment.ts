@@ -333,13 +333,18 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
     }
     if (body.notes) noteParts.push(`Catatan: ${body.notes}`);
 
+    // Update order status → "Vendor Confirmed" agar tombol konfirmasi di BizPortal muncul
+    await db.update(logisticOrdersTable)
+      .set({ status: "Vendor Confirmed" })
+      .where(eq(logisticOrdersTable.id, link.orderId));
+
     await db.insert(orderUpdatesTable).values({
       orderId: link.orderId,
       actorType: "vendor",
       actorName: vendorName,
-      status: "assigned_to_vendor",
+      status: "Vendor Confirmed",
       notes: noteParts.join("\n"),
-      isPublic: false,
+      isPublic: true,
     });
 
     // Notify admin via WA

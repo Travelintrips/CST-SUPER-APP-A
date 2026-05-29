@@ -2269,14 +2269,48 @@ export default function LogisticOrderDetailPage() {
                         {sub && (
                           <div className="bg-white rounded-lg border border-emerald-100 px-3 py-2.5 space-y-1.5">
                             <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">Data dari Vendor</p>
-                            {Object.entries(sub.fulfillmentData).map(([k, v]) => v ? (
-                              <div key={k} className="flex gap-2 text-xs">
-                                <span className="text-slate-400 capitalize min-w-[120px] flex-shrink-0">
-                                  {k.replace(/_/g, " ")}
-                                </span>
-                                <span className="text-slate-700 font-medium">{v}</span>
-                              </div>
-                            ) : null)}
+                            {Object.entries(sub.fulfillmentData).map(([k, v]) => {
+                              if (!v) return null;
+                              const LABELS: Record<string, string> = {
+                                stockConfirmed: "Status Stok", qtyConfirmed: "Qty Dipenuhi",
+                                readyDate: "Tanggal Siap Kirim", leadTime: "Lead Time",
+                                warehouseLocation: "Lokasi Gudang", priceConfirmed: "Konfirmasi Harga",
+                                revisedPrice: "Harga Revisi (DPP)", driverName: "Nama Driver",
+                                driverPhone: "HP Driver", plateNumber: "Plat Nomor",
+                                vehicleType: "Jenis Kendaraan", pickupTime: "Waktu Pickup",
+                                carrierName: "Carrier", awbBlNumber: "AWB / BL",
+                                flightVessel: "Kapal / Flight", bookingNumber: "No. Booking",
+                                etd: "ETD", eta: "ETA", customsPicName: "Nama PIC",
+                                customsDocuments: "Dokumen", customsProcessEta: "ETA Proses",
+                                stockPhotoUrl: "Foto Stok", invoiceUrl: "Invoice",
+                                supportingDocUrl: "Dok. Pendukung", notes: "Catatan",
+                                driver_name: "Nama Driver", driver_phone: "HP Driver",
+                                vehicle_plate: "Plat Nomor", vehicle_type: "Jenis Kendaraan",
+                                pickup_time: "Waktu Pickup", carrier_name: "Carrier",
+                                booking_number: "No. Booking", awb_or_bl_number: "AWB / BL",
+                                ready_date: "Tanggal Siap Kirim", source_warehouse: "Gudang Asal",
+                                operational_note: "Catatan",
+                              };
+                              const STOCK_MAP: Record<string, string> = {
+                                all: "✅ Tersedia Semua", partial: "⚠️ Tersedia Sebagian", none: "❌ Tidak Tersedia",
+                              };
+                              const PRICE_MAP: Record<string, string> = {
+                                agree: "✅ Setuju harga asal", revised: "✏️ Revisi harga",
+                              };
+                              const label = LABELS[k] ?? k.replace(/([A-Z])/g, " $1").replace(/_/g, " ").trim();
+                              const display = STOCK_MAP[v] ?? PRICE_MAP[v] ?? v;
+                              const isUrl = v.startsWith("http");
+                              return (
+                                <div key={k} className="flex gap-2 text-xs">
+                                  <span className="text-slate-400 min-w-[140px] flex-shrink-0 capitalize">{label}</span>
+                                  <span className="text-slate-700 font-medium">
+                                    {isUrl
+                                      ? <a href={v} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">Lihat file ↗</a>
+                                      : display}
+                                  </span>
+                                </div>
+                              );
+                            })}
                             <p className="text-[10px] text-slate-400 pt-1">
                               Diterima: {new Date(sub.submittedAt).toLocaleString("id-ID")}
                             </p>

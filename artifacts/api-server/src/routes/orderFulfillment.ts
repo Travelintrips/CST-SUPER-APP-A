@@ -15,6 +15,7 @@ import {
   orderFulfillmentLinksTable,
   orderFulfillmentSubmissionsTable,
   orderUpdatesTable,
+  vendorFulfillmentLinksTable,
 } from "@workspace/db";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
@@ -198,6 +199,27 @@ fulfillmentAdminRouter.post("/orders/:orderId/send-fulfillment", async (req: Req
   }
 });
 
+// ─── Helper: extract display data from vendor_fulfillment_links row ───────────
+const VF_FIELD_KEYS = [
+  "stockConfirmed", "qtyConfirmed", "readyDate", "leadTime", "warehouseLocation",
+  "priceConfirmed", "revisedPrice", "driverName", "driverPhone", "plateNumber",
+  "vehicleType", "pickupTime", "carrierName", "awbBlNumber", "flightVessel",
+  "bookingNumber", "etd", "eta", "customsPicName", "customsDocuments",
+  "customsProcessEta", "stockPhotoUrl", "invoiceUrl", "supportingDocUrl", "notes",
+] as const;
+
+function extractVfData(l: Record<string, unknown>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const k of VF_FIELD_KEYS) {
+    const v = l[k];
+    if (v != null && v !== "") out[k] = String(v);
+  }
+  return out;
+}
+
+// Offset to avoid ID collision between old (order_fulfillment_links) and new (vendor_fulfillment_links)
+const VF_ID_OFFSET = 10_000_000;
+
 // GET /api/logistic/orders/:orderId/fulfillment
 fulfillmentAdminRouter.get("/orders/:orderId/fulfillment", async (req: Request, res: Response) => {
   if (!(await requireClerkUser(req, res))) return;
@@ -205,19 +227,53 @@ fulfillmentAdminRouter.get("/orders/:orderId/fulfillment", async (req: Request, 
   if (isNaN(orderId)) return res.status(400).json({ message: "orderId tidak valid" });
 
   try {
-    const links = await db.select().from(orderFulfillmentLinksTable)
-      .where(eq(orderFulfillmentLinksTable.orderId, orderId))
-      .orderBy(desc(orderFulfillmentLinksTable.createdAt));
-
-    const submissions = await db.select().from(orderFulfillmentSubmissionsTable)
-      .where(eq(orderFulfillmentSubmissionsTable.orderId, orderId))
-      .orderBy(desc(orderFulfillmentSubmissionsTable.createdAt));
+    const [oldLinks, oldSubs, vfLinks] = await Promise.all([
+      db.select().from(orderFulfillmentLinksTable)
+        .where(eq(orderFulfillmentLinksTable.orderId, orderId))
+        .orderBy(desc(orderFulfillmentLinksTable.createdAt)),
+      db.select().from(orderFulfillmentSubmissionsTable)
+        .where(eq(orderFulfillmentSubmissionsTable.orderId, orderId))
+        .orderBy(desc(orderFulfillmentSubmissionsTable.createdAt)),
+      db.select().from(vendorFulfillmentLinksTable)
+        .where(eq(vendorFulfillmentLinksTable.orderId, orderId))
+        .orderBy(desc(vendorFulfillmentLinksTable.createdAt)),
+    ]);
 
     const base = getBaseUrl();
-    return res.json({
-      links: links.map(l => ({ ...l, formUrl: `${base}/fulfillment/${l.token}` })),
-      submissions,
-    });
+
+    const mergedLinks = [
+      ...oldLinks.map(l => ({ ...l, formUrl: `${base}/fulfillment/${l.token}` })),
+      ...vfLinks.map(l => ({
+        id: VF_ID_OFFSET + l.id,
+        orderId: l.orderId,
+        vendorId: l.vendorId ?? null,
+        serviceType: l.serviceType,
+        token: l.token,
+        status: l.status,
+        sentAt: null,
+        expiresAt: l.expiresAt?.toISOString() ?? null,
+        submittedAt: l.submittedAt?.toISOString() ?? null,
+        createdAt: (l.createdAt as Date | null)?.toISOString() ?? null,
+        formUrl: `${base}/vendor-fulfillment/${l.token}`,
+      })),
+    ];
+
+    const mergedSubs = [
+      ...oldSubs,
+      ...vfLinks
+        .filter(l => l.status === "submitted")
+        .map(l => ({
+          id: VF_ID_OFFSET + l.id,
+          linkId: VF_ID_OFFSET + l.id,
+          orderId: l.orderId,
+          serviceType: l.serviceType,
+          fulfillmentData: extractVfData(l as unknown as Record<string, unknown>),
+          submittedAt: l.submittedAt?.toISOString() ?? new Date().toISOString(),
+          createdAt: l.submittedAt?.toISOString() ?? null,
+        })),
+    ];
+
+    return res.json({ links: mergedLinks, submissions: mergedSubs });
   } catch (err) {
     logger.error({ err }, "get-fulfillment error");
     return res.status(500).json({ message: "Gagal memuat data fulfillment" });
@@ -380,12 +436,22 @@ fulfillmentAdminRouter.post("/orders/:orderId/confirm-fulfillment", async (req: 
       return res.status(400).json({ message: `Status saat ini "${order.status}" tidak bisa dikonfirmasi.` });
     }
 
-    // Ambil submission terbaru
-    const [latestSub] = await db.select()
+    // Ambil submission terbaru: cek old system dulu, lalu vendor_fulfillment_links (new system)
+    const [latestOldSub] = await db.select()
       .from(orderFulfillmentSubmissionsTable)
       .where(eq(orderFulfillmentSubmissionsTable.orderId, orderId))
       .orderBy(desc(orderFulfillmentSubmissionsTable.createdAt))
       .limit(1);
+    const [latestVfLink] = await db.select()
+      .from(vendorFulfillmentLinksTable)
+      .where(eq(vendorFulfillmentLinksTable.orderId, orderId))
+      .orderBy(desc(vendorFulfillmentLinksTable.createdAt))
+      .limit(1);
+    const latestSub = latestOldSub ?? null;
+    // For WA detail lines, merge both sources
+    const vfFulfillmentData = latestVfLink?.status === "submitted"
+      ? extractVfData(latestVfLink as unknown as Record<string, unknown>)
+      : null;
 
     await db.update(logisticOrdersTable)
       .set({ status: "In Progress" })
@@ -405,25 +471,30 @@ fulfillmentAdminRouter.post("/orders/:orderId/confirm-fulfillment", async (req: 
     if (customerPhone) {
       const domain = getBaseUrl();
       let detailLines = "";
-      if (latestSub?.fulfillmentData) {
-        const fd = latestSub.fulfillmentData as Record<string, string>;
-        const FIELD_LABELS: Record<string, string> = {
-          driver_name: "Driver",
-          driver_phone: "HP Driver",
-          vehicle_plate: "Plat Nomor",
-          vehicle_type: "Jenis Kendaraan",
-          pickup_time: "Waktu Pickup",
-          carrier_name: "Carrier",
-          booking_number: "Nomor Booking",
-          awb_or_bl_number: "AWB / BL",
-          etd: "ETD",
-          eta: "ETA",
-          ready_date: "Siap Kirim",
-          source_warehouse: "Gudang Asal",
-          operational_note: "Catatan",
-        };
-        const lines = Object.entries(fd)
-          .filter(([, v]) => v?.trim())
+      const FIELD_LABELS: Record<string, string> = {
+        driver_name: "Driver", driverName: "Driver",
+        driver_phone: "HP Driver", driverPhone: "HP Driver",
+        vehicle_plate: "Plat Nomor", plateNumber: "Plat Nomor",
+        vehicle_type: "Jenis Kendaraan", vehicleType: "Jenis Kendaraan",
+        pickup_time: "Waktu Pickup", pickupTime: "Waktu Pickup",
+        carrier_name: "Carrier", carrierName: "Carrier",
+        booking_number: "Nomor Booking", bookingNumber: "Nomor Booking",
+        awb_or_bl_number: "AWB / BL", awbBlNumber: "AWB / BL",
+        etd: "ETD", eta: "ETA",
+        ready_date: "Siap Kirim", readyDate: "Siap Kirim",
+        source_warehouse: "Gudang Asal", warehouseLocation: "Gudang Asal",
+        operational_note: "Catatan", notes: "Catatan",
+        stockConfirmed: "Status Stok", qtyConfirmed: "Qty Dipenuhi",
+        leadTime: "Lead Time", priceConfirmed: "Konfirmasi Harga",
+        revisedPrice: "Harga Revisi",
+      };
+      const fdSource: Record<string, string> = {
+        ...(latestSub?.fulfillmentData as Record<string, string> ?? {}),
+        ...(vfFulfillmentData ?? {}),
+      };
+      if (Object.keys(fdSource).length > 0) {
+        const lines = Object.entries(fdSource)
+          .filter(([, v]) => v?.trim() && !v.startsWith("http"))
           .map(([k, v]) => `  • ${FIELD_LABELS[k] ?? k.replace(/_/g, " ")}: ${v}`)
           .join("\n");
         if (lines) detailLines = `\n\nDetail operasional:\n${lines}`;
