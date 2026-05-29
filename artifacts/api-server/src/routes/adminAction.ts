@@ -963,16 +963,30 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
         .where(eq(suppliersTable.id, vendorId));
 
       if (vendor?.phone) {
-        sendWhatsApp(vendor.phone,
-          `📦 *Penugasan Fulfillment — CST Logistics*\n\n` +
-          `Kepada Yth. *${vendor.name}*,\n\n` +
-          `Order Anda telah dikonfirmasi. Mohon lengkapi detail fulfillment:\n\n` +
-          `No. Order   : *${order.orderNumber}*\n` +
-          `Layanan     : ${order.shipmentType}\n` +
-          `Rute        : ${order.origin} → ${order.destination}\n\n` +
-          `📱 *Isi data fulfillment di sini:*\n${shortUrl}\n\n` +
-          `⏰ Batas waktu: ${expiresInHours} jam\n\nTerima kasih 🙏`
-        ).catch(() => {});
+        const isProductOrder = ((order as any).orderType ?? "").toLowerCase() === "product";
+        const waMsg = isProductOrder
+          ? `🛒 *Penugasan Pemenuhan Produk — CST Logistics*\n\n` +
+            `Kepada Yth. *${vendor.name}*,\n\n` +
+            `Anda mendapat tugas pemenuhan produk:\n\n` +
+            `No. Order   : *${order.orderNumber}*\n` +
+            `Customer    : ${order.customerName}\n` +
+            (order.grandTotal ? `Total       : ${fmtRp(order.grandTotal)}\n` : "") +
+            `\n📋 *Instruksi:*\n` +
+            `1. Konfirmasi ketersediaan stok\n` +
+            `2. Konfirmasi harga penawaran\n` +
+            `3. Konfirmasi estimasi waktu siap kirim\n` +
+            `4. Upload invoice/dokumen jika ada\n\n` +
+            `📱 *Isi form konfirmasi di sini:*\n${shortUrl}\n\n` +
+            `⏰ Batas waktu: ${expiresInHours} jam\n\nTerima kasih 🙏`
+          : `📦 *Penugasan Fulfillment — CST Logistics*\n\n` +
+            `Kepada Yth. *${vendor.name}*,\n\n` +
+            `Order Anda telah dikonfirmasi. Mohon lengkapi detail fulfillment:\n\n` +
+            `No. Order   : *${order.orderNumber}*\n` +
+            `Layanan     : ${order.shipmentType}\n` +
+            `Rute        : ${order.origin} → ${order.destination}\n\n` +
+            `📱 *Isi data fulfillment di sini:*\n${shortUrl}\n\n` +
+            `⏰ Batas waktu: ${expiresInHours} jam\n\nTerima kasih 🙏`;
+        sendWhatsApp(vendor.phone, waMsg).catch(() => {});
       }
 
       // Activity log
