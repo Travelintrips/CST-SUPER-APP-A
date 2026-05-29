@@ -115,15 +115,17 @@ function TransactionList({
   const soParams = useMemo(() => ({ kind: "order" as const }), []);
   const poParams = useMemo(() => ({ kind: "order" as const }), []);
 
-  const { data: salesDocs = [], isLoading: soLoading } = useListSalesDocuments(
-    soParams,
+  const { data: _salesDocsPaginated, isLoading: soLoading } = useListSalesDocuments(
+    { ...soParams, limit: 500 },
     { query: { enabled: docType === "sales_order", queryKey: getListSalesDocumentsQueryKey(soParams) } }
   );
+  const salesDocs = _salesDocsPaginated?.data ?? [];
   const invoiceParams = useMemo(() => ({}), []);
-  const { data: invoiceDocs = [], isLoading: invLoading } = useListSalesDocuments(
-    invoiceParams,
+  const { data: _invoiceDocsPaginated, isLoading: invLoading } = useListSalesDocuments(
+    { ...invoiceParams, limit: 500 },
     { query: { enabled: docType === "invoice", queryKey: getListSalesDocumentsQueryKey(invoiceParams) } }
   );
+  const invoiceDocs = _invoiceDocsPaginated?.data ?? [];
   const { data: purchaseDocs = [], isLoading: poLoading } = useListPurchaseDocuments(
     poParams,
     { query: { enabled: docType === "purchase_order", queryKey: getListPurchaseDocumentsQueryKey(poParams) } }

@@ -536,6 +536,7 @@ export async function seedAccountingDefaults(companyId?: number): Promise<void> 
     const cPurJ   = getJournal("PUR", companyId);
     const cBankJ  = getJournal("BNK", companyId);
     const cCashJ  = getJournal("CSH", companyId);
+    const abbr = COMPANY_ABBR[companyId]!;
 
     const grir = byCode.get(`2-1045-${abbr}`);
 

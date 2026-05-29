@@ -9,9 +9,10 @@ import {
   orderUpdatesTable,
 } from "@workspace/db";
 import { logger } from "../lib/logger";
-import { sendWhatsApp } from "../lib/fonnte";
+import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminWa } from "../lib/adminWa";
 import { getPreferredDomain } from "../lib/domain.js";
+import { resolveServiceCategory } from "@workspace/logistics-constants";
 
 export const vendorFulfillmentPublicRouter = Router();
 
@@ -72,10 +73,6 @@ vendorFulfillmentPublicRouter.get("/:token", async (req: Request, res: Response)
       return res.status(410).json({ error: "Link sudah kadaluarsa", isExpired: true });
     }
 
-    if (link.status === "submitted") {
-      return res.json({ token, isSubmitted: true, serviceType: link.serviceType });
-    }
-
     const [order] = await db.select().from(logisticOrdersTable)
       .where(eq(logisticOrdersTable.id, link.orderId));
     if (!order) return res.status(404).json({ error: "Order tidak ditemukan" });
@@ -87,23 +84,57 @@ vendorFulfillmentPublicRouter.get("/:token", async (req: Request, res: Response)
       vendorName = v?.name ?? null;
     }
 
+    const orderInfo = {
+      id: order.id,
+      orderNumber: order.orderNumber,
+      serviceType: order.shipmentType,
+      origin: order.origin,
+      destination: order.destination,
+      commodity: order.commodity ?? null,
+      grossWeight: order.grossWeight ?? null,
+      requiredDate: (order as any).requiredDate ?? null,
+      vehicleType: (order as any).vehicleType ?? null,
+      status: order.status,
+    };
+
+    if (link.status === "submitted") {
+      return res.json({
+        token,
+        isSubmitted: true,
+        serviceType: link.serviceType,
+        vendorName,
+        order: orderInfo,
+        submittedData: {
+          driverName:        link.driverName ?? null,
+          driverPhone:       link.driverPhone ?? null,
+          plateNumber:       link.plateNumber ?? null,
+          vehicleType:       link.vehicleType ?? null,
+          pickupTime:        link.pickupTime ?? null,
+          carrierName:       link.carrierName ?? null,
+          awbBlNumber:       link.awbBlNumber ?? null,
+          flightVessel:      link.flightVessel ?? null,
+          bookingNumber:     link.bookingNumber ?? null,
+          etd:               link.etd ?? null,
+          eta:               link.eta ?? null,
+          stockConfirmed:    link.stockConfirmed ?? null,
+          qtyConfirmed:      link.qtyConfirmed ?? null,
+          readyDate:         link.readyDate ?? null,
+          warehouseLocation: link.warehouseLocation ?? null,
+          customsPicName:    link.customsPicName ?? null,
+          customsDocuments:  link.customsDocuments ?? null,
+          customsProcessEta: link.customsProcessEta ?? null,
+          notes:             link.notes ?? null,
+          submittedAt:       link.submittedAt ?? null,
+        },
+      });
+    }
+
     return res.json({
       token,
       isSubmitted: false,
       serviceType: link.serviceType,
       vendorName,
-      order: {
-        id: order.id,
-        orderNumber: order.orderNumber,
-        serviceType: order.shipmentType,
-        origin: order.origin,
-        destination: order.destination,
-        commodity: order.commodity ?? null,
-        grossWeight: order.grossWeight ?? null,
-        requiredDate: (order as any).requiredDate ?? null,
-        vehicleType: (order as any).vehicleType ?? null,
-        status: order.status,
-      },
+      order: orderInfo,
     });
   } catch (err) {
     logger.error({ err }, "vendor-fulfillment GET error");
@@ -166,19 +197,20 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
     const svcLabel = link.serviceType;
     const noteParts: string[] = [`Vendor fulfillment (${svcLabel}) telah dikirim`];
 
-    if (link.serviceType.includes("trucking")) {
+    const svcCategory = resolveServiceCategory(link.serviceType);
+    if (svcCategory === "trucking") {
       if (body.driverName) noteParts.push(`Driver: ${body.driverName}`);
       if (body.plateNumber) noteParts.push(`Plat: ${body.plateNumber}`);
       if (body.pickupTime) noteParts.push(`Estimasi pickup: ${body.pickupTime}`);
-    } else if (link.serviceType.includes("freight")) {
+    } else if (svcCategory === "freight") {
       if (body.carrierName) noteParts.push(`Carrier: ${body.carrierName}`);
       if (body.awbBlNumber) noteParts.push(`AWB/BL: ${body.awbBlNumber}`);
       if (body.etd) noteParts.push(`ETD: ${body.etd}`);
       if (body.eta) noteParts.push(`ETA: ${body.eta}`);
-    } else if (link.serviceType.includes("product")) {
+    } else if (svcCategory === "product") {
       if (body.stockConfirmed) noteParts.push(`Stok: ${body.stockConfirmed}`);
       if (body.readyDate) noteParts.push(`Ready: ${body.readyDate}`);
-    } else if (link.serviceType.includes("customs")) {
+    } else if (svcCategory === "customs") {
       if (body.customsPicName) noteParts.push(`PIC: ${body.customsPicName}`);
       if (body.customsProcessEta) noteParts.push(`ETA proses: ${body.customsProcessEta}`);
     }
@@ -195,41 +227,35 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
       isPublic: false,
     });
 
-    // Notify admin via WA — ringkasan lengkap + link BizPortal
+    // Notify admin via WA — ringkasan lengkap + link mini form (public, no login needed)
     const adminWa = await getAdminWa();
     if (adminWa) {
       const domain = getPreferredDomain() || "cstlogistic.co.id";
-      const bizportalLink = `https://${domain}/bizportal/logistics/orders/${link.orderId}`;
+      const bizportalLink = `https://${domain}/vendor-fulfillment/${token}`;
 
       // Build detailed field summary by service type
       const detailLines: string[] = [];
 
-      if (link.serviceType.toLowerCase().includes("trucking") ||
-          link.serviceType.toLowerCase().includes("land")) {
+      const detailCategory = resolveServiceCategory(link.serviceType);
+      if (detailCategory === "trucking") {
         if (body.driverName)   detailLines.push(`👤 Driver      : ${body.driverName}`);
         if (body.driverPhone)  detailLines.push(`📱 HP Driver   : ${body.driverPhone}`);
         if (body.plateNumber)  detailLines.push(`🚛 Plat Nomor  : ${body.plateNumber}`);
         if (body.vehicleType)  detailLines.push(`🚚 Kendaraan   : ${body.vehicleType}`);
         if (body.pickupTime)   detailLines.push(`⏰ Est. Pickup : ${body.pickupTime}`);
-      } else if (link.serviceType.toLowerCase().includes("freight") ||
-                 link.serviceType.toLowerCase().includes("sea") ||
-                 link.serviceType.toLowerCase().includes("air") ||
-                 link.serviceType.toLowerCase().includes("fcl") ||
-                 link.serviceType.toLowerCase().includes("lcl") ||
-                 link.serviceType.toLowerCase().includes("door")) {
+      } else if (detailCategory === "freight") {
         if (body.carrierName)    detailLines.push(`🏢 Carrier     : ${body.carrierName}`);
         if (body.awbBlNumber)    detailLines.push(`📄 AWB/BL No.  : ${body.awbBlNumber}`);
         if (body.bookingNumber)  detailLines.push(`🔖 Booking No. : ${body.bookingNumber}`);
         if (body.flightVessel)   detailLines.push(`✈️ Kapal/Flight : ${body.flightVessel}`);
         if (body.etd)            detailLines.push(`📅 ETD         : ${body.etd}`);
         if (body.eta)            detailLines.push(`📅 ETA         : ${body.eta}`);
-      } else if (link.serviceType.toLowerCase().includes("warehouse") ||
-                 link.serviceType.toLowerCase().includes("product")) {
+      } else if (detailCategory === "product") {
         if (body.stockConfirmed)     detailLines.push(`📦 Stok        : ${body.stockConfirmed}`);
         if (body.qtyConfirmed)       detailLines.push(`🔢 Qty         : ${body.qtyConfirmed}`);
         if (body.readyDate)          detailLines.push(`📅 Ready Date  : ${body.readyDate}`);
         if (body.warehouseLocation)  detailLines.push(`📍 Lokasi      : ${body.warehouseLocation}`);
-      } else if (link.serviceType.toLowerCase().includes("custom")) {
+      } else if (detailCategory === "customs") {
         if (body.customsPicName)     detailLines.push(`👤 PIC         : ${body.customsPicName}`);
         if (body.customsDocuments)   detailLines.push(`📋 Dokumen     : ${body.customsDocuments}`);
         if (body.customsProcessEta)  detailLines.push(`⏱ ETA Proses  : ${body.customsProcessEta}`);
@@ -261,7 +287,7 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
         `━━━━━━━━━━━━━━━━━━\n` +
         (detailLines.length > 0 ? detailLines.join("\n") + "\n" : "") +
         `━━━━━━━━━━━━━━━━━━\n` +
-        `🔗 Lihat order:\n${bizportalLink}`;
+        `📋 Buka form fulfillment:\n${bizportalLink}`;
 
       sendWhatsApp(adminWa, waMsg).catch((e) =>
         logger.warn({ e }, "vendor-fulfillment WA to admin failed")

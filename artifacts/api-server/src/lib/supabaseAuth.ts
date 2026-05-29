@@ -5,8 +5,10 @@ import { verifySupabaseToken } from "./supabaseAdmin";
 import { verifyPortalJwt } from "./portalJwt";
 import { createHmac } from "crypto";
 
-const DEV_SECRET = process.env.DEV_PORTAL_SECRET ?? "dev-portal-secret-local-only";
-const IS_PROD = process.env.NODE_ENV === "production";
+const IS_PROD =
+  process.env.REPLIT_DEPLOYMENT === "1" || process.env.NODE_ENV === "production";
+// Fallback ke hardcoded secret di non-production agar dev-login bekerja tanpa konfigurasi tambahan.
+const DEV_SECRET = process.env.DEV_PORTAL_SECRET ?? (IS_PROD ? "" : "cst-dev-portal-fallback-2025");
 
 export function signDevToken(payload: object): string {
   const b64 = Buffer.from(JSON.stringify(payload)).toString("base64url");
@@ -16,6 +18,7 @@ export function signDevToken(payload: object): string {
 
 function verifyDevToken(token: string): { id: number; email: string; role: string } | null {
   if (IS_PROD) return null;
+  if (!DEV_SECRET) return null; // explicitly unset → dev bypass disabled
   if (!token.startsWith("devportal.")) return null;
   const parts = token.split(".");
   if (parts.length !== 3) return null;
@@ -179,8 +182,9 @@ export async function requirePortalAdmin(req: Request, res: Response, next: Next
   }
 
   const emailLower = supabaseUser.email.toLowerCase();
-  const adminListConfigured = PORTAL_ADMIN_EMAILS.length > 0;
-  if (adminListConfigured && !PORTAL_ADMIN_EMAILS.includes(emailLower)) {
+  // [C10-FIX] Always enforce email allowlist — remove conditional that could bypass the check
+  // when adminListConfigured=false. PORTAL_ADMIN_EMAILS always has at least hardcoded entries.
+  if (!PORTAL_ADMIN_EMAILS.includes(emailLower)) {
     res.status(403).json({ message: "Akses admin diperlukan" });
     return;
   }

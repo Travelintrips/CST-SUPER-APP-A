@@ -50,6 +50,10 @@ const OnboardingPage            = lazy(() => import("@/pages/onboarding"));
 const PendingApprovalPage       = lazy(() => import("@/pages/pending-approval"));
 // Mini form: standalone + lightweight — preload its own tiny chunk immediately
 const VendorMiniFormPage        = lazy(() => import("@/pages/vendor-mini-form"));
+const CustomerMiniFormPage      = lazy(() => import("@/pages/customer-mini-form"));
+const AdminMiniFormPage         = lazy(() => import("@/pages/admin-mini-form"));
+const CustomerApprovalPage      = lazy(() => import("@/pages/customer-approval"));
+const OpConfirmPage             = lazy(() => import("@/pages/op-confirm"));
 const CustomerQuotePage         = lazy(() => import("@/pages/customer-quote"));
 const OrderTaskPage             = lazy(() => import("@/pages/order-task"));
 const CustomerOrderPage         = lazy(() => import("@/pages/customer-order"));
@@ -63,6 +67,13 @@ const ShipmentTimeline          = lazy(() => import("@/pages/shipment-timeline")
 const AdminReview               = lazy(() => import("@/pages/admin-review"));
 const VendorJobPage             = lazy(() => import("@/pages/vendor-job"));
 const OrderTrackPage            = lazy(() => import("@/pages/order-track"));
+const CustomerInvoicePage       = lazy(() => import("@/pages/customer-invoice"));
+const AccountSecurity           = lazy(() => import("@/pages/account-security"));
+const VendorPoAcceptPage        = lazy(() => import("@/pages/vendor-po-accept"));
+const CustomerFeedbackPage      = lazy(() => import("@/pages/customer-feedback"));
+const PurchaseRequestFormPage   = lazy(() => import("@/pages/purchase-request-form"));
+const VendorInvoiceFormPage     = lazy(() => import("@/pages/vendor-invoice-form"));
+const GoodsReceiptFormPage      = lazy(() => import("@/pages/goods-receipt-form"));
 const NotFound                  = lazy(() => import("@/pages/not-found"));
 
 const queryClient = new QueryClient();
@@ -77,18 +88,27 @@ const LOGISTIC_ROUTES = ["/book", "/logistic-order-success", "/logistic-admin", 
 const NO_SHELL_PREFIXES = [
   "/jasa/", "/services/", "/vendor-response", "/vendor-product-approval",
   "/approve", "/confirm", "/vendor-quote", "/vendor-confirm", "/vendor-form",
-  "/vendor-mini-form", "/choose-option", "/onboarding", "/pending-approval",
+  "/vendor-mini-form", "/customer-mini-form", "/admin-mini-form",
+  "/choose-option", "/onboarding", "/pending-approval",
   "/customer-quote", "/order-task", "/customer-order", "/admin-action",
   "/vendor-fulfillment", "/vendor-job", "/order-track",
+  "/customer-approval", "/op-confirm", "/customer-invoice",
+  "/vendor-po-accept",
+  "/customer-feedback", "/purchase-request", "/vendor-invoice", "/goods-receipt",
+  "/q/",
 ];
 
 // Routes that should skip the Supabase auth check entirely (public/standalone pages)
 const NO_AUTH_CHECK_PREFIXES = [
-  "/vendor-mini-form", "/vendor-form", "/vendor-response", "/vendor-product-approval",
+  "/vendor-mini-form", "/customer-mini-form", "/admin-mini-form",
+  "/vendor-form", "/vendor-response", "/vendor-product-approval",
   "/vendor-quote", "/vendor-confirm", "/vendor-fulfillment", "/vendor-job",
   "/approve", "/confirm", "/customer-quote", "/order-task", "/customer-order",
   "/admin-action", "/admin-review", "/order-track", "/fulfillment", "/q/",
   "/privacy-policy", "/contact",
+  "/customer-approval", "/op-confirm", "/customer-invoice",
+  "/vendor-po-accept",
+  "/customer-feedback", "/purchase-request", "/vendor-invoice", "/goods-receipt",
 ];
 
 const BASE_PREFIX = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -201,6 +221,10 @@ function AppShell() {
         <Route path="/onboarding" component={OnboardingPage} />
         <Route path="/pending-approval" component={PendingApprovalPage} />
         <Route path="/vendor-mini-form/:token" component={VendorMiniFormPage} />
+        <Route path="/customer-mini-form/:token" component={CustomerMiniFormPage} />
+        <Route path="/admin-mini-form/:token" component={AdminMiniFormPage} />
+        <Route path="/customer-approval/:token" component={CustomerApprovalPage} />
+        <Route path="/op-confirm/:token" component={OpConfirmPage} />
         <Route path="/approve/:orderNumber" component={ApprovePage} />
         <Route path="/confirm/:token" component={ConfirmPage} />
         <Route path="/customer-quote/:token" component={CustomerQuotePage} />
@@ -216,6 +240,13 @@ function AppShell() {
         <Route path="/admin-review/:token" component={AdminReview} />
         <Route path="/vendor-job/:token" component={VendorJobPage} />
         <Route path="/order-track/:trackToken" component={OrderTrackPage} />
+        <Route path="/customer-invoice/:token" component={CustomerInvoicePage} />
+        <Route path="/account-security" component={AccountSecurity} />
+        <Route path="/vendor-po-accept/:token" component={VendorPoAcceptPage} />
+        <Route path="/customer-feedback/:token" component={CustomerFeedbackPage} />
+        <Route path="/purchase-request/:token" component={PurchaseRequestFormPage} />
+        <Route path="/vendor-invoice/:token" component={VendorInvoiceFormPage} />
+        <Route path="/goods-receipt/:token" component={GoodsReceiptFormPage} />
         <Route component={NotFound} />
       </Switch>
     </Suspense>

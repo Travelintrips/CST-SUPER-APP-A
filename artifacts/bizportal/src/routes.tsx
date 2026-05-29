@@ -2,6 +2,7 @@ import React from "react";
 import { Switch, Route, Redirect } from "wouter";
 import NotFound from "@/pages/not-found";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import AuthCallbackPage from "@/pages/auth-callback";
 import DashboardPage from "@/pages/dashboard";
 import EcommercePage from "@/pages/ecommerce";
 import TradingPage from "@/pages/trading";
@@ -28,6 +29,7 @@ import PortalProductOrdersPage from "@/pages/portal-product-orders";
 import SalesDashboardPage from "@/pages/sales/dashboard";
 import SalesDocumentsListPage from "@/pages/sales/documents-list";
 import SalesDocumentEditorPage from "@/pages/sales/quotation-editor";
+import SalesDocumentDetailPage from "@/pages/sales/document-detail";
 import AiDraftsPage from "@/pages/sales/ai-drafts";
 import CustomersPage from "@/pages/sales/customers";
 import SalesInvoicesPage from "@/pages/sales/invoices";
@@ -73,11 +75,13 @@ import AccountingTrialBalancePage from "@/pages/accounting/reports/trial-balance
 import AccountingGeneralLedgerPage from "@/pages/accounting/reports/general-ledger";
 import AccountingProfitLossPage from "@/pages/accounting/reports/profit-loss";
 import AccountingBalanceSheetPage from "@/pages/accounting/reports/balance-sheet";
+import AccountingFreightProfitabilityPage from "@/pages/accounting/reports/freight-profitability";
 import AccountingReconciliationPage from "@/pages/accounting/reconciliation";
 import HoldingPage from "@/pages/HoldingPage";
 import HoldingDashboardPage from "@/pages/accounting/holding-dashboard";
 import HoldingPLReportPage from "@/pages/accounting/holding-pl-report";
 import HoldingCashflowReportPage from "@/pages/accounting/holding-cashflow-report";
+import HoldingGroupDetailPage from "@/pages/accounting/holding-group-detail";
 // Expenses
 import ExpenseListPage from "@/pages/expense/index";
 import ExpenseEditorPage from "@/pages/expense/editor";
@@ -93,11 +97,19 @@ import AiChatbotKnowledgePage from "@/pages/ai-chatbot-knowledge";
 import AiScanSettingsPage from "@/pages/ai-scan-settings";
 import UomPage from "@/pages/settings/uom";
 import NavCompanyConfigPage from "@/pages/settings/nav-company-config";
+import ShortLinksPage from "@/pages/settings/short-links";
+import WaTemplatesPage from "@/pages/settings/wa-templates";
+import EnterpriseWaTemplatesPage from "@/pages/settings/enterprise-wa-templates";
+import LogisticsUnitsPage from "@/pages/settings/logistics-units";
 import SettingsRolesPage from "@/pages/settings-roles";
 import SettingsApprovalRulesPage from "@/pages/settings-approval-rules";
+import ProductTemplatesPage from "@/pages/product-templates";
 import UsersPage from "@/pages/users";
 import MediaManagerPage from "@/pages/media-manager";
 import OrgManagementPage from "@/pages/OrgManagementPage";
+import AuditReportListPage from "@/pages/audit/index";
+import AuditReportFormPage from "@/pages/audit/form";
+import AuditComparePage from "@/pages/audit/compare";
 
 // Products
 import ProductItemsPage from "@/pages/products/items";
@@ -109,7 +121,28 @@ import ThaiTeaBranchesPage from "@/pages/thai-tea/branches";
 import ThaiTeaProductionPage from "@/pages/thai-tea/production";
 import ThaiTeaRecipesPage from "@/pages/thai-tea/recipes";
 import ThaiTeaReportsPage from "@/pages/thai-tea/reports";
-
+// Portal
+import PortalCustomersPage from "@/pages/portal-customers";
+import PortalOnboardingApprovalsPage from "@/pages/portal-onboarding-approvals";
+// Logistics RFQ + Order detail
+import LogisticsRfqListPage from "@/pages/logistics-rfq-list";
+import LogisticsRfqDetailPage from "@/pages/logistics-rfq-detail";
+import LogisticsRfqComparisonPage from "@/pages/logistics-rfq-comparison";
+import LogisticOrderDetailPage from "@/pages/logistics/order-detail";
+import VendorPerformancePage from "@/pages/logistics/vendor-performance";
+import InternalTasksPage from "@/pages/logistics/internal-tasks";
+// Misc
+import NotificationsPage from "@/pages/notifications";
+import IntelligenceAlertsPage from "@/pages/intelligence-alerts";
+import AiApprovalsPage from "@/pages/ai-approvals";
+import OperationalContextPage from "@/pages/operational-context";
+import AiDecisionMemoryPage from "@/pages/ai-decision-memory";
+import WaNotificationHistoryPage from "@/pages/wa-notification-history";
+import VendorLeaderboardPage from "@/pages/vendor-leaderboard";
+import AnalyticsDashboardPage from "@/pages/analytics-dashboard";
+import POOrdersPage from "@/pages/purchase/po-orders";
+import VendorFormsPage from "@/pages/purchase/vendor-forms";
+import VmfAuditTrailPage from "@/pages/purchase/vmf-audit-trail";
 
 const PR = (C: React.ComponentType) => () => <ProtectedRoute component={C} />;
 
@@ -118,9 +151,13 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
     <Switch>
       {rootGuard && <Route path="/" component={rootGuard} />}
 
+      {/* ── Auth callback (Supabase OAuth popup) ───────────────────────── */}
+      <Route path="/auth/callback" component={AuthCallbackPage} />
+
       {/* ── Welcome / Dashboard ────────────────────────────────────────── */}
       <Route path="/welcome" component={WelcomePage} />
       <Route path="/dashboard" component={PR(DashboardPage)} />
+      <Route path="/ai/decision-memory" component={PR(AiDecisionMemoryPage)} />
       <Route path="/approvals" component={PR(ApprovalsPage)} />
       <Route path="/ecommerce" component={PR(EcommercePage)} />
       <Route path="/trading" component={PR(TradingPage)} />
@@ -144,19 +181,27 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/logistics/vendor-quote/:token" component={LogisticsVendorQuotePage} />
       <Route path="/logistics/quotation-reply/:token" component={LogisticsQuotationReplyPage} />
       <Route path="/logistics/margin-rules" component={PR(LogisticsMarginRulesPage)} />
+      <Route path="/logistics/rfq/:rfqId/comparison" component={PR(LogisticsRfqComparisonPage)} />
+      <Route path="/logistics/rfq/:rfqId/detail" component={PR(LogisticsRfqDetailPage)} />
+      <Route path="/logistics/rfq" component={PR(LogisticsRfqListPage)} />
+      <Route path="/logistics/orders/:orderId" component={PR(LogisticOrderDetailPage)} />
+      <Route path="/logistics/vendor-performance" component={PR(VendorPerformancePage)} />
+      <Route path="/logistics/internal-tasks" component={PR(InternalTasksPage)} />
       <Route path="/portal-product-orders" component={PR(PortalProductOrdersPage)} />
+      <Route path="/portal/customers" component={PR(PortalCustomersPage)} />
+      <Route path="/portal/onboarding-approvals" component={PR(PortalOnboardingApprovalsPage)} />
 
       {/* ── Sales ──────────────────────────────────────────────────────── */}
       <Route path="/sales/documents/new" component={PR(SalesDocumentEditorPage)} />
       <Route path="/sales/documents/:id/edit" component={PR(SalesDocumentEditorPage)} />
-      <Route path="/sales/documents/:id" component={PR(SalesDocumentEditorPage)} />
+      <Route path="/sales/documents/:id" component={PR(SalesDocumentDetailPage)} />
       <Route path="/sales/documents" component={PR(SalesDocumentsListPage)} />
       <Route path="/sales/quotations/new" component={PR(SalesDocumentEditorPage)} />
       <Route path="/sales/quotations/:id/edit" component={PR(SalesDocumentEditorPage)} />
-      <Route path="/sales/quotations/:id" component={PR(SalesDocumentEditorPage)} />
+      <Route path="/sales/quotations/:id" component={PR(SalesDocumentDetailPage)} />
       <Route path="/sales/quotations" component={PR(SalesDocumentsListPage)} />
       <Route path="/sales/orders/new" component={() => <ProtectedRoute component={() => <SalesDocumentEditorPage kind="order" />} />} />
-      <Route path="/sales/orders/:id" component={() => <ProtectedRoute component={() => <SalesDocumentEditorPage kind="order" />} />} />
+      <Route path="/sales/orders/:id" component={PR(SalesDocumentDetailPage)} />
       <Route path="/sales/orders" component={() => <ProtectedRoute component={() => <SalesDocumentsListPage kind="order" />} />} />
       <Route path="/sales/ai-drafts" component={PR(AiDraftsPage)} />
       <Route path="/sales/customers" component={PR(CustomersPage)} />
@@ -177,7 +222,9 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/purchase/rfq/:id" component={PR(PurchaseDocumentEditorPage)} />
       <Route path="/purchase/rfq" component={() => <ProtectedRoute component={() => <PurchaseDocumentsListPage kind="rfq" />} />} />
       <Route path="/purchase/orders/:id" component={PR(PurchaseDocumentEditorPage)} />
-      <Route path="/purchase/orders" component={() => <ProtectedRoute component={() => <PurchaseDocumentsListPage kind="order" />} />} />
+      <Route path="/purchase/orders" component={PR(POOrdersPage)} />
+      <Route path="/purchase/vendor-forms" component={PR(VendorFormsPage)} />
+      <Route path="/purchase/vmf-audit-trail" component={PR(VmfAuditTrailPage)} />
       <Route path="/purchase/vendors/:id" component={PR(VendorDetailPage)} />
       <Route path="/purchase/vendors" component={PR(VendorsPage)} />
       <Route path="/purchase/bills" component={PR(PurchaseBillsPage)} />
@@ -226,6 +273,8 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/accounting/reports/general-ledger" component={PR(AccountingGeneralLedgerPage)} />
       <Route path="/accounting/reports/profit-loss" component={PR(AccountingProfitLossPage)} />
       <Route path="/accounting/reports/balance-sheet" component={PR(AccountingBalanceSheetPage)} />
+      <Route path="/accounting/reports/freight-profitability" component={PR(AccountingFreightProfitabilityPage)} />
+      <Route path="/holding/groups/:id" component={PR(HoldingGroupDetailPage)} />
       <Route path="/holding/dashboard" component={PR(HoldingDashboardPage)} />
       <Route path="/holding/pl-report" component={PR(HoldingPLReportPage)} />
       <Route path="/holding/cashflow-report" component={PR(HoldingCashflowReportPage)} />
@@ -242,15 +291,21 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       {/* ── Correspondence ─────────────────────────────────────────────── */}
       <Route path="/correspondences" component={PR(CorrespondencesPage)} />
       <Route path="/email-inbox" component={PR(EmailInboxPage)} />
+      <Route path="/notification-history" component={PR(WaNotificationHistoryPage)} />
 
       {/* ── Settings ───────────────────────────────────────────────────── */}
       <Route path="/settings/nav-company-config" component={PR(NavCompanyConfigPage)} />
       <Route path="/settings/uom" component={PR(UomPage)} />
+      <Route path="/settings/short-links" component={PR(ShortLinksPage)} />
+      <Route path="/settings/wa-templates" component={PR(WaTemplatesPage)} />
+      <Route path="/settings/enterprise-wa-templates" component={PR(EnterpriseWaTemplatesPage)} />
+      <Route path="/settings/logistics-units" component={PR(LogisticsUnitsPage)} />
       <Route path="/settings/ai-chatbot/knowledge" component={PR(AiChatbotKnowledgePage)} />
       <Route path="/settings/ai-chatbot" component={PR(AiChatbotSettingsPage)} />
       <Route path="/settings/ai-scan" component={PR(AiScanSettingsPage)} />
       <Route path="/settings/roles" component={PR(SettingsRolesPage)} />
       <Route path="/settings/approval-rules" component={PR(SettingsApprovalRulesPage)} />
+      <Route path="/settings/product-templates" component={PR(ProductTemplatesPage)} />
       <Route path="/settings" component={PR(SettingsPage)} />
 
       {/* ── Users & Org ────────────────────────────────────────────────── */}
@@ -272,6 +327,21 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/thai-tea/reports" component={PR(ThaiTeaReportsPage)} />
       <Route path="/thai-tea" component={PR(ThaiTeaDashboardPage)} />
 
+
+      {/* ── Vendor Leaderboard ─────────────────────────────────────────── */}
+      <Route path="/vendors" component={PR(VendorLeaderboardPage)} />
+
+      {/* ── Notifications & Analytics ──────────────────────────────────── */}
+      <Route path="/notifications" component={PR(NotificationsPage)} />
+      <Route path="/intelligence-alerts" component={PR(IntelligenceAlertsPage)} />
+      <Route path="/ai-approvals" component={PR(AiApprovalsPage)} />
+      <Route path="/operational-context" component={PR(OperationalContextPage)} />
+      <Route path="/analytics" component={PR(AnalyticsDashboardPage)} />
+
+      {/* ── Audit ERP ──────────────────────────────────────────────────── */}
+      <Route path="/audit/compare" component={PR(AuditComparePage)} />
+      <Route path="/audit/:id" component={PR(AuditReportFormPage)} />
+      <Route path="/audit" component={PR(AuditReportListPage)} />
 
       {/* ── Legacy redirects ───────────────────────────────────────────── */}
       <Route path="/expenses/new" component={() => <Redirect to="/expense/new" />} />

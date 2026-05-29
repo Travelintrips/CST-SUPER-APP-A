@@ -231,15 +231,19 @@ paths:
         - in: query
           name: isActive
           schema: { type: string }
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 50 }
       responses:
         "200":
           description: Product list
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Product"
+                $ref: "#/components/schemas/PaginatedProducts"
     post:
       operationId: createProduct
       tags: [ecommerce]
@@ -740,15 +744,20 @@ paths:
       operationId: listShipments
       tags: [logistics]
       summary: List all shipments
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 50 }
       responses:
         "200":
           description: Shipments list
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Shipment"
+                $ref: "#/components/schemas/PaginatedShipments"
     post:
       operationId: createShipment
       tags: [logistics]
@@ -1344,15 +1353,21 @@ paths:
           required: false
           schema:
             type: string
+        - in: query
+          name: page
+          required: false
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, default: 50 }
       responses:
         "200":
           description: Sales documents
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/SalesDocument"
+                $ref: "#/components/schemas/PaginatedSalesDocuments"
     post:
       operationId: createSalesDocument
       tags: [sales]
@@ -2109,6 +2124,12 @@ paths:
         - in: query
           name: sourceDocId
           schema: { type: integer, nullable: true }
+        - in: query
+          name: refDocNumber
+          schema: { type: string, nullable: true }
+        - in: query
+          name: company
+          schema: { type: string, nullable: true }
       responses:
         "200":
           description: List of payments
@@ -3543,6 +3564,45 @@ paths:
 
 components:
   schemas:
+    Pagination:
+      type: object
+      required: [page, limit, total, totalPages]
+      properties:
+        page: { type: integer }
+        limit: { type: integer }
+        total: { type: integer }
+        totalPages: { type: integer }
+
+    PaginatedProducts:
+      type: object
+      required: [data, pagination]
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Product" }
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+
+    PaginatedShipments:
+      type: object
+      required: [data, pagination]
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Shipment" }
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+
+    PaginatedSalesDocuments:
+      type: object
+      required: [data, pagination]
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/SalesDocument" }
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+
     HealthStatus:
       type: object
       properties:
@@ -4030,11 +4090,16 @@ components:
         unit:
           type: string
           nullable: true
+        subcategory:
+          type: string
+          nullable: true
         priceBase:
           type: number
         markupPct:
           type: number
         isActive:
+          type: boolean
+        isCommodityTag:
           type: boolean
         sortOrder:
           type: integer
@@ -4055,15 +4120,20 @@ components:
         unit:
           type: string
           nullable: true
+        subcategory:
+          type: string
+          nullable: true
         priceBase:
-          type: number
-        markupPct:
           type: number
         isActive:
           type: boolean
+        isCommodityTag:
+          type: boolean
         sortOrder:
           type: integer
-      required: [name]
+        linkMasterItemId:
+          type: integer
+          nullable: true
 
     Shipment:
       type: object
@@ -5872,7 +5942,8 @@ components:
         finalSellingPrice: { type: number, nullable: true }
         quotationSentAt: { type: string, nullable: true }
         createdAt: { type: string }
-      required: [id, orderNumber, companyName, customerName, email, phone, shipmentType, origin, destination, source, subtotal, tax, grandTotal, status, createdAt]
+        updatedAt: { type: string }
+      required: [id, orderNumber, companyName, customerName, email, phone, shipmentType, origin, destination, source, subtotal, tax, grandTotal, status, createdAt, updatedAt]
 
     LogisticOrderItem:
       type: object
@@ -5916,6 +5987,7 @@ components:
         customerName: { type: string }
         email: { type: string }
         phone: { type: string }
+        orderType: { type: string, nullable: true }
         shipmentType: { type: string }
         origin: { type: string }
         destination: { type: string }
@@ -5943,6 +6015,7 @@ components:
       type: object
       properties:
         status: { type: string }
+        clientUpdatedAt: { type: string }
       required: [status]
 
     LogisticOrderSummary:

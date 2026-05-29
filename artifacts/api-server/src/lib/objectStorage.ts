@@ -182,6 +182,50 @@ export class ObjectStorageService {
     const { objectName } = parseObjectPath(storagePath);
     return `/api/storage/public-objects/${objectName}`;
   }
+
+  /** Upload buffer to storagePath and return the public serving URL. */
+  async uploadPublicFile(buffer: Buffer, storagePath: string, contentType: string): Promise<string> {
+    await this.uploadFile(buffer, storagePath, contentType);
+    return this.getPublicUrl(storagePath);
+  }
+
+  /** Upload buffer to storagePath and return the public serving URL (args: storagePath, buffer, contentType). */
+  async uploadPublic(storagePath: string, buffer: Buffer, contentType: string): Promise<string> {
+    await this.uploadFile(buffer, storagePath, contentType);
+    return this.getPublicUrl(storagePath);
+  }
+
+  /**
+   * Delete a private entity object given its normalized objectPath (/objects/...).
+   * Non-fatal: silently ignores "object not found" errors so callers can
+   * unconditionally call this after deleting the DB record.
+   */
+  async tryDeletePrivateEntity(objectPath: string): Promise<void> {
+    try {
+      const objectFile = await this.getObjectEntityFile(objectPath);
+      await objectFile.delete();
+    } catch {
+      // Object not found or already deleted — no action needed.
+    }
+  }
+
+  /**
+   * Delete a public file given its raw storagePath (e.g. "public/cargo-photos/jobId/uuid.jpg").
+   * Also accepts a full serving URL (/api/storage/public-objects/...) and resolves it.
+   * Non-fatal: silently ignores "object not found".
+   */
+  async tryDeletePublicFile(storagePath: string): Promise<void> {
+    try {
+      // Resolve from serving URL if needed
+      const resolved = storagePath.startsWith("/api/storage/public-objects/")
+        ? storagePath.replace("/api/storage/public-objects/", "")
+        : storagePath;
+      const file = await this.searchPublicObject(resolved);
+      if (file) await file.delete();
+    } catch {
+      // Non-fatal
+    }
+  }
 }
 
 function parseObjectPath(path: string): { bucketName: string; objectName: string } {

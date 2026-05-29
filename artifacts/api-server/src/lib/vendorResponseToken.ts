@@ -1,4 +1,4 @@
-import { createHmac } from "crypto";
+import { createHmac, timingSafeEqual } from "crypto";
 
 function getSecret(): string {
   const s = process.env.PORTAL_ADMIN_KEY ?? process.env.SESSION_SECRET ?? "";
@@ -12,20 +12,59 @@ function getSecret(): string {
 }
 
 /**
- * Produce a 32-hex-char HMAC token scoped to a specific order number.
- * Used to authenticate vendor-response GET/POST without requiring login.
+ * Token window size: 48 hours.
+ * Tokens rotate every 48 hours so old links eventually expire.
+ * Returns the floor of the current 48-hour epoch.
  */
-export function signVendorResponseToken(orderNumber: string): string {
-  return createHmac("sha256", getSecret())
-    .update(orderNumber)
-    .digest("hex")
-    .slice(0, 32);
+const WINDOW_MS = 48 * 60 * 60 * 1000;
+
+function currentWindow(): number {
+  return Math.floor(Date.now() / WINDOW_MS);
 }
 
-export function verifyVendorResponseToken(orderNumber: string, token: string): boolean {
+/**
+ * Produce a 64-hex-char HMAC token scoped to orderNumber + optional vendorId + time window.
+ * Tokens expire after at most 48 hours (window rollover).
+ *
+ * @param orderNumber  - logistic order number
+ * @param vendorId     - optional vendor ID for per-vendor isolation
+ * @param window       - override time window (for prev-window verify)
+ */
+export function signVendorResponseToken(
+  orderNumber: string,
+  vendorId?: number | null,
+  window?: number,
+): string {
+  const w = window ?? currentWindow();
+  const payload = vendorId != null
+    ? `${orderNumber}:v${vendorId}:w${w}`
+    : `${orderNumber}:w${w}`;
+  return createHmac("sha256", getSecret()).update(payload).digest("hex");
+}
+
+/**
+ * Verify a vendor response token using constant-time comparison.
+ * Accepts tokens from current window OR previous window (grace period for
+ * tokens generated just before a window rollover).
+ */
+export function verifyVendorResponseToken(
+  orderNumber: string,
+  token: string,
+  vendorId?: number | null,
+): boolean {
   if (!token) return false;
   try {
-    return token === signVendorResponseToken(orderNumber);
+    const tokenBuf = Buffer.from(token, "hex");
+    if (tokenBuf.length !== 32) return false; // 64 hex = 32 bytes
+
+    const w = currentWindow();
+    for (const window of [w, w - 1]) {
+      const expected = Buffer.from(signVendorResponseToken(orderNumber, vendorId, window), "hex");
+      if (expected.length === tokenBuf.length && timingSafeEqual(expected, tokenBuf)) {
+        return true;
+      }
+    }
+    return false;
   } catch {
     return false;
   }

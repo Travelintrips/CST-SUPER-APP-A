@@ -1,0 +1,10 @@
+- [Vendor Mini Form order-based](vendor-mini-form-order-based.md) — system dua mode (rate_collection + order_based) dengan flow multi-fase hingga SO creation + op confirmation
+- [Vendor Mini Form Features](vmf-features.md) — anti-duplicate, resubmit flow, lock-on-approve, markup calc, WA summary, activity log, price versioning architecture decisions.
+- [VMF Security & Race Condition Fixes](vmf-security-fixes.md) — transaction isolation, rate limiting, SO number random suffix, offerSummary whitelist, server-side validation, pagination.
+- [VMF Brace Mismatch Gotcha](vmf-brace-mismatch.md) — vendorMiniForm.ts customer-approval POST handler had unclosed if(action==="approve") for activity log section; caused "Unexpected catch" build error.
+- [VMF → Sales Order Integration](vmf-so-integration.md) — SO nyata dibuat di sales_documents saat customer approve VMF; idempoten via logisticOrderId; helper di lib/vmfSoIntegration.ts.
+- [Order Lifecycle Sync Fixes](order-lifecycle-fixes.md) — 7 critical/high fixes: duplicate order guard, source field, unified SO number, vendor-selected status, approval expiry default, retry-SO endpoint.
+- [New Route Table Creation Pattern](new-route-table-creation.md) — drizzle-kit push alone is not enough; new route files must include inline CREATE TABLE IF NOT EXISTS.
+- [JSX regex-in-expression pitfall](jsx-regex-pitfall.md) — bare `}` inside regex char class `[^}]` in a JSX expression can confuse esbuild JSX depth tracker; move regex to a const outside JSX.
+- [Unclosed stub function cascades](unclosed-stub-function.md) — a stub function without its closing `}` makes every top-level declaration after it appear inside its body; "Unexpected export" far from the real bug line is the symptom.
+- [WA Template Migration](wa-template-migration.md) — pattern & progress migrating hardcoded WA flows to Settings → Template WA via `whatsappTemplateService`

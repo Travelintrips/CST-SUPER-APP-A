@@ -24,6 +24,7 @@ import {
   type SessionData,
 } from "../lib/auth";
 import { writeAuditLog, extractRequestMeta } from "../lib/auditLog.js";
+import { verifySupabaseToken } from "../lib/supabaseAdmin";
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID!;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET!;
@@ -102,6 +103,7 @@ function setOidcCookie(res: Response, name: string, value: string) {
 }
 
 function getSafeReturnTo(value: unknown): string {
+  if (value === "popup") return "popup";
   if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) {
     return "/";
   }
@@ -269,6 +271,116 @@ router.get("/callback", async (req: Request, res: Response) => {
   res.redirect(returnTo);
 });
 
+// ─── Supabase Token Exchange → Session Cookie ─────────────────────────────────
+// BizPortal frontend melakukan Supabase Google OAuth via popup, lalu POST token
+// ke sini untuk mendapat session cookie (supaya semua API call tetap pakai cookie).
+
+router.post("/auth/supabase-exchange", async (req: Request, res: Response) => {
+  const { access_token } = req.body as { access_token?: string };
+  if (!access_token || typeof access_token !== "string") {
+    res.status(400).json({ error: "access_token required" });
+    return;
+  }
+
+  const supabaseUser = await verifySupabaseToken(access_token);
+  if (!supabaseUser?.email) {
+    res.status(401).json({ error: "Invalid or expired token" });
+    return;
+  }
+
+  // Cari user di DB berdasarkan email (handle migrasi dari id "google_<sub>")
+  let [dbUser] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.email, supabaseUser.email));
+
+  if (!dbUser) {
+    const meta = supabaseUser.user_metadata ?? {};
+    const adminEmails = (process.env.ADMIN_EMAIL ?? "")
+      .split(",")
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean);
+    const isAdmin = adminEmails.includes(supabaseUser.email.toLowerCase());
+
+    const firstName =
+      (meta.given_name as string) ||
+      (meta.full_name as string)?.split(" ")[0] ||
+      null;
+    const lastName =
+      (meta.family_name as string) ||
+      (meta.full_name as string)?.split(" ").slice(1).join(" ") ||
+      null;
+    const profileImageUrl =
+      (meta.avatar_url as string) || (meta.picture as string) || null;
+
+    try {
+      const [created] = await db
+        .insert(usersTable)
+        .values({
+          id: supabaseUser.id,
+          email: supabaseUser.email,
+          firstName,
+          lastName,
+          profileImageUrl,
+          role: isAdmin ? "admin" : "ecommerce",
+        })
+        .returning();
+      dbUser = created;
+    } catch {
+      // Race condition — coba select lagi
+      const [retry] = await db
+        .select()
+        .from(usersTable)
+        .where(eq(usersTable.email, supabaseUser.email));
+      if (!retry) {
+        res.status(500).json({ error: "Failed to create user" });
+        return;
+      }
+      dbUser = retry;
+    }
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const sessionData: SessionData = {
+    user: {
+      id: dbUser.id,
+      email: dbUser.email,
+      firstName: dbUser.firstName,
+      lastName: dbUser.lastName,
+      profileImageUrl: dbUser.profileImageUrl,
+    },
+    access_token,
+    expires_at: now + 3600,
+  };
+
+  const sid = await createSession(sessionData);
+  setSessionCookie(res, sid);
+
+  const _meta = extractRequestMeta(req);
+  writeAuditLog({
+    companyId: dbUser.companyId ?? null,
+    userId: dbUser.id,
+    userEmail: dbUser.email ?? null,
+    action: "login",
+    module: "auth",
+    referenceId: "supabase-exchange",
+    newData: { email: dbUser.email, role: dbUser.role },
+    ipAddress: _meta.ipAddress,
+    userAgent: _meta.userAgent,
+  });
+
+  res.json({
+    user: {
+      id: dbUser.id,
+      email: dbUser.email,
+      firstName: dbUser.firstName,
+      lastName: dbUser.lastName,
+      profileImageUrl: dbUser.profileImageUrl,
+      role: dbUser.role,
+    },
+  });
+});
+
 // ─── Google OAuth ─────────────────────────────────────────────────────────────
 
 router.get("/login/google", async (req: Request, res: Response) => {
@@ -319,11 +431,37 @@ router.get("/callback/google", async (req: Request, res: Response) => {
   const client = getGoogleOAuthClient(redirectUri);
 
   try {
-    const { tokens } = await client.getToken(code);
-    if (!tokens.id_token) throw new Error("No id_token");
+    // Manual token exchange — menggunakan fetch + URLSearchParams untuk memastikan
+    // code di-encode dengan benar di request body (menghindari bug gaxios v7).
+    const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        code,
+        client_id: GOOGLE_CLIENT_ID,
+        client_secret: GOOGLE_CLIENT_SECRET,
+        redirect_uri: redirectUri,
+        grant_type: "authorization_code",
+      }).toString(),
+    });
+
+    if (!tokenRes.ok) {
+      const errBody = await tokenRes.json().catch(() => ({})) as Record<string, unknown>;
+      req.log.error({ status: tokenRes.status, errBody }, "[Google OAuth] token endpoint error");
+      throw new Error(`Token exchange failed: ${errBody.error ?? tokenRes.status}`);
+    }
+
+    const tokenData = await tokenRes.json() as {
+      id_token?: string;
+      access_token?: string;
+      refresh_token?: string;
+      expires_in?: number;
+    };
+
+    if (!tokenData.id_token) throw new Error("No id_token in token response");
 
     const ticket = await client.verifyIdToken({
-      idToken: tokens.id_token,
+      idToken: tokenData.id_token,
       audience: GOOGLE_CLIENT_ID,
     });
     const payload = ticket.getPayload();
@@ -348,9 +486,9 @@ router.get("/callback/google", async (req: Request, res: Response) => {
         lastName: dbUser.lastName,
         profileImageUrl: dbUser.profileImageUrl,
       },
-      access_token: tokens.access_token || "",
-      refresh_token: tokens.refresh_token || undefined,
-      expires_at: tokens.expiry_date ? Math.floor(tokens.expiry_date / 1000) : now + 3600,
+      access_token: tokenData.access_token || "",
+      refresh_token: tokenData.refresh_token || undefined,
+      expires_at: tokenData.expires_in ? now + tokenData.expires_in : now + 3600,
     };
 
     const sid = await createSession(sessionData);
@@ -393,8 +531,26 @@ router.get("/callback/google", async (req: Request, res: Response) => {
 
 // ─── Dev Login (development only) ─────────────────────────────────────────────
 
-router.post("/dev-login", async (req: Request, res: Response) => {
+router.get("/dev-users", async (req: Request, res: Response) => {
   if (process.env.NODE_ENV !== "development") {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  const users = await db
+    .select({
+      id: usersTable.id,
+      email: usersTable.email,
+      firstName: usersTable.firstName,
+      lastName: usersTable.lastName,
+      role: usersTable.role,
+    })
+    .from(usersTable)
+    .orderBy(usersTable.role, usersTable.email);
+  res.json({ users });
+});
+
+router.post("/dev-login", async (req: Request, res: Response) => {
+  if (process.env.REPLIT_DEPLOYMENT === "1") {
     res.status(404).json({ error: "Not found" });
     return;
   }

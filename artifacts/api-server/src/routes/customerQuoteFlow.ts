@@ -9,11 +9,12 @@ import {
   driverLocationsTable,
 } from "@workspace/db";
 import { requireClerkUser } from "../lib/requireAdmin.js";
-import { sendWhatsApp } from "../lib/fonnte.js";
-import { getAdminWa } from "../lib/adminWa.js";
+import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
+import { getAdminGroupWa } from "../lib/adminWa.js";
 import { getPreferredDomain } from "../lib/domain.js";
 import { logger } from "../lib/logger.js";
 import { checkOrderGeofence } from "../lib/orderGeofenceChecker.js";
+import { getWaTemplateConfig, renderTemplate, deriveServiceType } from "../lib/orderNotification.js";
 
 const tok = () => randomBytes(24).toString("hex");
 const fmtRp = (n: number | null | undefined) =>
@@ -74,7 +75,7 @@ customerQuoteAdminRouter.post("/rfq/:rfqId/send-customer-quote", async (req: Req
       orderId: order.id,
       token,
       status: "pending",
-      etaFinal: etaFinal ?? order.etaFinal ?? null,
+      etaFinal: etaFinal ?? (order as any).etaFinal ?? null,
       termsConditions: termsConditions ?? null,
       quoteNotes: quoteNotes ?? null,
       finalCustomerPrice: customerPrice ? String(customerPrice) : null,
@@ -109,17 +110,33 @@ customerQuoteAdminRouter.post("/rfq/:rfqId/send-customer-quote", async (req: Req
 
     // Send WhatsApp to customer
     if (order.phone) {
-      const waMsg =
-        `Halo ${order.customerName ?? "Customer"},\n\n` +
+      const defaultTpl =
+        `Halo {{customerName}},\n\n` +
         `Berikut penawaran untuk permintaan Anda:\n\n` +
-        `RFQ: ${rfq.rfqNumber}\n` +
-        `Layanan: ${order.shipmentType}\n` +
-        `Rute: ${order.origin} → ${order.destination}\n` +
-        `Harga: ${fmtRp(customerPrice)}\n` +
-        `ETA: ${etaFinal ?? "—"}\n` +
-        `Valid sampai: ${validUntil.toLocaleDateString("id-ID")}\n\n` +
-        `Silakan review dan konfirmasi melalui link berikut:\n${quoteUrl}`;
-
+        `RFQ: {{rfqNumber}}\nLayanan: {{shipmentType}}\nRute: {{route}}\n` +
+        `Harga: {{sellingPrice}}\nETA: {{etaFinal}}\nValid s/d: {{validUntil}}\n\n` +
+        `Silakan review dan konfirmasi:\n{{customerApprovalLink}}`;
+      const tplBody = await getWaTemplateConfig("customer", "customer_approval", defaultTpl);
+      const svcType = deriveServiceType(order.shipmentType ?? "", (order as any).orderType ?? undefined);
+      const origin = order.origin || null;
+      const destination = order.destination || null;
+      const waMsg = renderTemplate(tplBody, {
+        customerName: order.customerName ?? "Customer",
+        rfqNumber: rfq.rfqNumber,
+        orderNumber: order.orderNumber,
+        shipmentType: order.shipmentType || null,
+        serviceType: svcType || null,
+        origin,
+        destination,
+        commodity: order.commodity ?? null,
+        cargoDescription: order.cargoDescription ?? null,
+        route: (origin && destination) ? `${origin} → ${destination}` : (origin || destination || null),
+        sellingPrice: fmtRp(customerPrice),
+        etaFinal: etaFinal ?? null,
+        validUntil: validUntil.toLocaleDateString("id-ID"),
+        customerApprovalLink: quoteUrl,
+        timestamp: new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" }),
+      }, svcType);
       sendWhatsApp(order.phone, waMsg).catch((e) =>
         logger.warn({ e }, "customerQuote WA to customer failed")
       );
@@ -166,13 +183,16 @@ customerQuoteAdminRouter.post("/orders/:orderId/create-task-link", async (req: R
     if (vendorId) {
       const [vendor] = await db.select().from(suppliersTable).where(eq(suppliersTable.id, vendorId));
       if (vendor?.phone) {
-        const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
-        const waMsg =
-          `🚚 *Tugas Order Baru — CST Logistics*\n\n` +
-          `Order: ${order?.orderNumber ?? orderId}\n` +
-          `Rute: ${order?.origin ?? ""} → ${order?.destination ?? ""}\n` +
-          (label ? `Keterangan: ${label}\n` : "") +
-          `\nSilakan buka link berikut untuk konfirmasi dan update status:\n${taskUrl}`;
+        const [orderRow] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
+        const defaultTpl = ["🚚 *Tugas Order Baru — CST Logistics*","","Order: {{orderNumber}}","Rute: {{route}}","Keterangan: {{label}}","","Silakan buka link berikut untuk konfirmasi dan update status:","{{taskUrl}}","_{{timestamp}}_"].join("\n");
+        const tplBody = await getWaTemplateConfig("vendor", "task_link", defaultTpl);
+        const waMsg = renderTemplate(tplBody, {
+          orderNumber: orderRow?.orderNumber ?? String(orderId),
+          route: orderRow ? `${orderRow.origin ?? ""} → ${orderRow.destination ?? ""}` : "",
+          label: label ?? null,
+          taskUrl,
+          timestamp: new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" }),
+        });
         sendWhatsApp(vendor.phone, waMsg).catch((e) =>
           logger.warn({ e }, "createTaskLink WA failed")
         );
@@ -267,7 +287,7 @@ customerQuoteAdminRouter.get("/orders/:orderId/detail", async (req: Request, res
       WHERE r.order_id = ${orderId}
       ORDER BY fs.created_at DESC
     `);
-    const freightShipments = (freightRows as any[]).map((row: any) => ({
+    const freightShipments = (freightRows.rows as any[]).map((row: any) => ({
       id: row.id as number,
       shipmentNumber: row.shipmentNumber as string,
       status: row.status as string,
@@ -392,20 +412,25 @@ customerQuotePublicRouter.get("/:token", async (req: Request, res: Response) => 
     const isExpired = link.validUntil && link.validUntil < new Date();
     const isResponded = ["approved", "revision_requested", "rejected"].includes(link.status);
 
+    const [rfqRow] = link.rfqId
+      ? await db.select().from(logisticOrderRfqsTable).where(eq(logisticOrderRfqsTable.id, link.rfqId))
+      : [null];
+
     return res.json({
       token,
       status: link.status,
       isExpired,
       isResponded,
-      rfqNumber: order.orderNumber,
-      serviceType: order.shipmentType,
-      origin: order.origin,
-      destination: order.destination,
+      rfqNumber: rfqRow?.rfqNumber ?? order.orderNumber,
+      quotationNumber: (order as any).quotationNumber ?? null,
+      serviceType: order.shipmentType || null,
+      origin: order.origin || null,
+      destination: order.destination || null,
       cargoDetail: [
         order.commodity, order.cargoDescription,
         order.grossWeight ? `${order.grossWeight} kg` : null,
         order.volumeCbm ? `${order.volumeCbm} cbm` : null,
-      ].filter(Boolean).join(" · ") || "—",
+      ].filter(Boolean).join(" · ") || null,
       finalCustomerPrice: link.finalCustomerPrice ? Number(link.finalCustomerPrice) : null,
       etaFinal: link.etaFinal,
       termsConditions: link.termsConditions,
@@ -480,9 +505,9 @@ customerQuotePublicRouter.post("/:token/respond", async (req: Request, res: Resp
     const rfqNum = order.orderNumber;
     const adminLink = `${getBaseUrl()}/bizportal/logistics/orders/${order.id}`;
     const rfqLink = `${getBaseUrl()}/bizportal/logistics/portal-orders/${order.id}`;
-    const adminWa = await getAdminWa();
+    const adminGroupWa = await getAdminGroupWa();
 
-    if (adminWa && response === "approve") {
+    if (response === "approve") {
       // Create customer tracking link automatically
       const trackToken = tok();
       await db.insert(customerOrderLinksTable).values({ orderId: order.id, token: trackToken });
@@ -499,46 +524,50 @@ customerQuotePublicRouter.post("/:token/respond", async (req: Request, res: Resp
         logger.warn({ e }, "customerQuote approve: gagal generate forward_vendor link");
       }
 
-      // Send WA to admin
-      const waAdmin =
-        `✅ Customer Approve Penawaran\n\n` +
-        `RFQ: ${rfqNum}\n` +
-        `Customer: ${order.customerName}\n` +
-        `Harga Final: ${fmtRp(link.finalCustomerPrice ? Number(link.finalCustomerPrice) : null)}\n\n` +
-        (fwdShort
-          ? `📦 Forward ke vendor (tanpa login):\n${fwdShort}`
-          : `Lihat order:\n${adminLink}`);
-      sendWhatsApp(adminWa, waAdmin).catch(() => {});
+      // Send WA to admin group only
+      const ts = new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" });
+      if (adminGroupWa) {
+        const tplApproveGroup = await getWaTemplateConfig("admin_group", "customer_approved", "🎉 *CUSTOMER APPROVED — {{orderNumber}}*\nCustomer *{{customerName}}* menyetujui. Proses operasional!\n_{{timestamp}}_");
+        const approvedVars = {
+          rfqNumber: rfqNum, orderNumber: order.orderNumber, customerName: order.customerName,
+          sellingPrice: fmtRp(link.finalCustomerPrice ? Number(link.finalCustomerPrice) : null),
+          fwdUrl: fwdShort ? `📦 Forward ke vendor (tanpa login):\n${fwdShort}` : `Lihat order:\n${adminLink}`,
+          timestamp: ts,
+        };
+        sendWhatsApp(adminGroupWa, renderTemplate(tplApproveGroup, approvedVars)).catch(() => {});
+      }
 
       // Notify selected vendor
       if (order.approvedVendorId) {
         const [vendor] = await db.select().from(suppliersTable)
           .where(eq(suppliersTable.id, order.approvedVendorId));
         if (vendor?.phone) {
-          const waVendor =
-            `📦 *Order Dikonfirmasi — CST Logistics*\n\n` +
-            `Order: ${order.orderNumber}\n` +
-            `Rute: ${order.origin} → ${order.destination}\n\n` +
-            `Customer telah menyetujui penawaran. Tim CST akan segera menghubungi Anda.`;
+          const defaultVendorTpl = "📦 *Order Dikonfirmasi — CST Logistics*\n\nOrder: {{orderNumber}}\nRute: {{route}}\n\nCustomer telah menyetujui penawaran. Tim CST akan segera menghubungi Anda.";
+          const tplVendor = await getWaTemplateConfig("vendor", "customer_approved", defaultVendorTpl);
+          const waVendor = renderTemplate(tplVendor, {
+            orderNumber: order.orderNumber,
+            route: `${order.origin} → ${order.destination}`,
+            timestamp: ts,
+          });
           sendWhatsApp(vendor.phone, waVendor).catch(() => {});
         }
       }
-    } else if (adminWa && response === "revise") {
-      const waAdmin =
-        `🟡 Customer Minta Revisi\n\n` +
-        `RFQ: ${rfqNum}\n` +
-        `Customer: ${order.customerName}\n` +
-        `Catatan:\n${revisionNotes ?? "—"}\n\n` +
-        `Buka RFQ:\n${rfqLink}`;
-      sendWhatsApp(adminWa, waAdmin).catch(() => {});
-    } else if (adminWa && response === "reject") {
-      const waAdmin =
-        `🔴 Customer Menolak Penawaran\n\n` +
-        `RFQ: ${rfqNum}\n` +
-        `Customer: ${order.customerName}\n` +
-        `Alasan:\n${rejectionReason ?? "—"}\n\n` +
-        `Buka RFQ:\n${rfqLink}`;
-      sendWhatsApp(adminWa, waAdmin).catch(() => {});
+    } else if (response === "revise" && adminGroupWa) {
+      const tpl = await getWaTemplateConfig("admin_group", "customer_revised", "🟡 *CUSTOMER REVISI — {{rfqNumber}}*\nCustomer: {{customerName}}\nCatatan: {{revisionNotes}}\n{{rfqLink}}\n_{{timestamp}}_");
+      const waAdmin = renderTemplate(tpl, {
+        rfqNumber: rfqNum, customerName: order.customerName,
+        revisionNotes: revisionNotes ?? "—", rfqLink,
+        timestamp: new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" }),
+      });
+      sendWhatsApp(adminGroupWa, waAdmin).catch(() => {});
+    } else if (response === "reject" && adminGroupWa) {
+      const tpl = await getWaTemplateConfig("admin_group", "customer_rejected", "🔴 *CUSTOMER TOLAK — {{rfqNumber}}*\nCustomer: {{customerName}}\nAlasan: {{rejectionReason}}\n{{rfqLink}}\n_{{timestamp}}_");
+      const waAdmin = renderTemplate(tpl, {
+        rfqNumber: rfqNum, customerName: order.customerName,
+        rejectionReason: rejectionReason ?? "—", rfqLink,
+        timestamp: new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" }),
+      });
+      sendWhatsApp(adminGroupWa, waAdmin).catch(() => {});
     }
 
     const msg = response === "approve"
@@ -696,15 +725,15 @@ orderTaskPublicRouter.post("/:token/update", async (req: Request, res: Response)
       isPublic: true,
     });
 
-    // Notify admin
-    const adminWa = await getAdminWa();
-    if (adminWa && (status || notes)) {
+    // Notify admin group
+    const adminGroupWaTask = await getAdminGroupWa();
+    if (adminGroupWaTask && (status || notes)) {
       const waMsg =
         `📦 Update Order — ${order.orderNumber}\n` +
         `Dari: ${vendorName ?? link.roleType}\n` +
         (status ? `Status: ${status}\n` : "") +
         (notes ? `Catatan: ${notes}\n` : "");
-      sendWhatsApp(adminWa, waMsg).catch(() => {});
+      sendWhatsApp(adminGroupWaTask, waMsg).catch(() => {});
     }
 
     return res.json({ ok: true, message: "Update berhasil" });

@@ -1,0 +1,115 @@
+Lakukan PRODUCTION READINESS FINAL AUDIT.
+
+Jangan tambah fitur baru.
+Jangan refactor besar.
+Audit final untuk memastikan sistem siap dipakai production.
+
+Area audit final:
+
+1. End-to-End Smoke Test
+Jalankan flow penuh:
+Customer create order
+→ Admin approve
+→ Vendor mini form submit
+→ Admin select vendor
+→ Customer approve
+→ SO created
+→ Vendor operational submit
+→ Attachment upload/open
+→ Timeline/log tercatat
+→ WA template send
+→ Price sync tetap jalan
+
+2. Supabase / Database Readiness
+Cek:
+- semua table penting ada
+- migration sudah aman
+- FK/unique constraint penting ada
+- duplicate SO prevention ada
+- token table aman
+- status enum/konsistensi aman
+
+3. Security Readiness
+Cek:
+- admin route protected
+- public token aman
+- expired link aman
+- customer tidak lihat vendorPrice/margin
+- vendor tidak lihat vendor lain
+- attachment permission aman
+
+4. Frontend Readiness
+Cek:
+- tidak ada dummy/local data production
+- query key sudah benar
+- refetch/realtime penting jalan
+- loading/error/empty state ada
+- mobile friendly untuk mini form
+
+5. WhatsApp Template Readiness
+Cek:
+- semua WA flow pakai Settings Template
+- tidak ada hardcoded message aktif
+- variable render benar
+- conditional block jalan
+- log WA tercatat
+
+6. Attachment Readiness
+Cek:
+- upload masuk storage/database
+- link file persist
+- file bisa dibuka setelah refresh
+- file permission aman
+
+7. Regression Test
+Pastikan tetap PASS:
+- price_sync
+- critical security
+- duplicate prevention
+- order lifecycle
+- vendor mini form
+- customer approval
+- SO creation
+- WA template
+- attachment upload
+
+8. Deployment Risk
+Cek:
+- env variable lengkap
+- build berhasil
+- no TypeScript error
+- no console fatal error
+- no API route broken
+- no migration pending
+- no storage bucket missing
+
+Output wajib:
+
+A. FINAL READINESS MATRIX
+Area | Status | Score | Issue Remaining | Recommendation
+
+B. BLOCKER LIST
+- Critical blocker
+- High blocker
+- Medium/Low boleh nanti
+
+C. FINAL SMOKE TEST RESULT
+Step | PASS/FAIL | Evidence | Notes
+
+D. DEPLOYMENT CHECKLIST
+- env
+- build
+- migration
+- storage
+- auth
+- RLS
+- rollback plan
+
+E. GO / NO-GO DECISION
+Berikan keputusan:
+- GO production
+- GO with minor notes
+- NO-GO
+
+F. NEXT ROADMAP
+Setelah stabil, rekomendasikan fitur berikutnya yang aman dikembangkan.

@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db, internalTasksTable, usersTable, logisticOrdersTable } from "@workspace/db";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin.js";
-import { sendWhatsApp } from "../lib/fonnte.js";
+import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminWa } from "../lib/adminWa.js";
 
 const router = Router();

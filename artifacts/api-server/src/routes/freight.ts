@@ -1,12 +1,67 @@
 import { Router } from "express";
-import { db, freightShipmentsTable, freightRfqsTable, freightQuotesTable, freightAttachmentsTable, shipmentStagesTable, salesDocumentsTable, purchaseDocumentsTable, expensesTable, freightCustomsDocsTable, freightShipmentAuditLogsTable } from "@workspace/db";
+import { db, freightShipmentsTable, freightRfqsTable, freightQuotesTable, freightAttachmentsTable, shipmentStagesTable, salesDocumentsTable, purchaseDocumentsTable, expensesTable, freightCustomsDocsTable, freightShipmentAuditLogsTable, logisticOrdersTable, SHIPMENT_STAGE_TYPES, type ShipmentStageType } from "@workspace/db";
 import { eq, desc, inArray, sum, and, sql } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { saveAndBroadcast } from "../lib/notificationStore.js";
+import { ObjectStorageService } from "../lib/objectStorage.js";
+import {
+  sendShipmentUpdateNotification,
+  sendDeliveryCompletedNotification,
+  type LogisticOrderData,
+} from "../lib/orderNotification.js";
+import { logStorageEvent, getRequestIp, getActor } from "../lib/storageAuditLog.js";
+
+const _freightObjectStorage = new ObjectStorageService();
 
 function resolveUserDisplay(user: { id: string; firstName?: string | null; lastName?: string | null; email?: string | null }): { name: string; id: string } {
   const name = [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || user.email || user.id;
   return { name, id: user.id };
+}
+
+const TRANSPORT_MODES = ["sea", "air", "land", "multimodal"] as const;
+const CARGO_TYPES = ["FCL", "LCL", "Air"] as const;
+const FREIGHT_SHIPMENT_STATUSES = ["draft", "rfq_sent", "confirmed", "in_transit", "completed", "cancelled"] as const;
+type TransportMode = typeof TRANSPORT_MODES[number];
+type CargoType = typeof CARGO_TYPES[number];
+type FreightShipmentStatus = typeof FREIGHT_SHIPMENT_STATUSES[number];
+
+function validateTransportMode(v: unknown): TransportMode | null | undefined {
+  if (v === undefined) return undefined;
+  if (v === null || v === "") return null;
+  if (!TRANSPORT_MODES.includes(v as TransportMode))
+    throw Object.assign(new Error(`transportMode tidak valid. Nilai yang diterima: ${TRANSPORT_MODES.join(", ")}`), { statusCode: 400 });
+  return v as TransportMode;
+}
+function validateCargoType(v: unknown): CargoType | null | undefined {
+  if (v === undefined) return undefined;
+  if (v === null || v === "") return null;
+  if (!CARGO_TYPES.includes(v as CargoType))
+    throw Object.assign(new Error(`cargoType tidak valid. Nilai yang diterima: ${CARGO_TYPES.join(", ")}`), { statusCode: 400 });
+  return v as CargoType;
+}
+function validateShipmentStatus(v: unknown): FreightShipmentStatus | undefined {
+  if (v === undefined) return undefined;
+  if (!FREIGHT_SHIPMENT_STATUSES.includes(v as FreightShipmentStatus))
+    throw Object.assign(new Error(`status tidak valid. Nilai yang diterima: ${FREIGHT_SHIPMENT_STATUSES.join(", ")}`), { statusCode: 400 });
+  return v as FreightShipmentStatus;
+}
+
+const STAGE_STATUSES = ["pending", "in_progress", "completed", "skipped"] as const;
+type StageStatus = typeof STAGE_STATUSES[number];
+
+function validateStageStatus(v: unknown): StageStatus | undefined {
+  if (v === undefined) return undefined;
+  if (!STAGE_STATUSES.includes(v as StageStatus))
+    throw Object.assign(new Error(`status stage tidak valid. Nilai yang diterima: ${STAGE_STATUSES.join(", ")}`), { statusCode: 400 });
+  return v as StageStatus;
+}
+
+function validateStageType(v: unknown): ShipmentStageType {
+  if (!v || typeof v !== "string")
+    throw Object.assign(new Error("stageType wajib diisi"), { statusCode: 400 });
+  if (!(SHIPMENT_STAGE_TYPES as readonly string[]).includes(v))
+    throw Object.assign(new Error(`stageType tidak valid. Nilai yang diterima: ${SHIPMENT_STAGE_TYPES.join(", ")}`), { statusCode: 400 });
+  return v as ShipmentStageType;
 }
 
 const router = Router();
@@ -120,7 +175,7 @@ router.get("/freight-shipments/:id", async (req, res) => {
     LIMIT 1
   `);
 
-  const linkedLogisticRfqRow = (linkedRfqRows as any[])[0] ?? null;
+  const linkedLogisticRfqRow = (linkedRfqRows.rows as any[])[0] ?? null;
   const linkedLogisticRfq = linkedLogisticRfqRow
     ? {
         id: linkedLogisticRfqRow.id as number,
@@ -151,6 +206,14 @@ router.post("/freight-shipments", async (req, res) => {
   if (!salesDocId) {
     return res.status(400).json({ message: "Sales Order wajib dipilih sebelum membuat shipment." });
   }
+  let validatedTM: TransportMode | null;
+  let validatedCT: CargoType | null;
+  try {
+    validatedTM = validateTransportMode(transportMode) ?? null;
+    validatedCT = validateCargoType(cargoType) ?? null;
+  } catch (e: any) {
+    return res.status(400).json({ message: e.message });
+  }
   const [linkedDoc] = await db.select({ id: salesDocumentsTable.id }).from(salesDocumentsTable).where(eq(salesDocumentsTable.id, Number(salesDocId))).limit(1);
   if (!linkedDoc) {
     return res.status(400).json({ message: "Sales Order tidak ditemukan." });
@@ -175,8 +238,8 @@ router.post("/freight-shipments", async (req, res) => {
     vessel: vessel || null, voyage: voyage || null,
     notifyParty: notifyParty || null, marksAndNumbers: marksAndNumbers || null,
     measurement: measurement || null, notes: notes || null,
-    transportMode: transportMode || null,
-    cargoType: cargoType || null,
+    transportMode: validatedTM,
+    cargoType: validatedCT,
     containerNo: containerNo || null,
     salesDocId: salesDocId ? Number(salesDocId) : null,
     purchaseDocId: purchaseDocId ? Number(purchaseDocId) : null,
@@ -228,15 +291,24 @@ router.put("/freight-shipments/:id", async (req, res) => {
   if (notifyParty !== undefined) patch.notifyParty = notifyParty || null;
   if (marksAndNumbers !== undefined) patch.marksAndNumbers = marksAndNumbers || null;
   if (measurement !== undefined) patch.measurement = measurement || null;
-  if (status !== undefined) patch.status = status;
+  if (status !== undefined) {
+    try { patch.status = validateShipmentStatus(status); }
+    catch (e: any) { return res.status(400).json({ message: e.message }); }
+  }
   if (notes !== undefined) patch.notes = notes || null;
   if (actualCost !== undefined) patch.actualCost = actualCost != null ? String(actualCost) : null;
   if (departureDate !== undefined) patch.departureDate = departureDate || null;
   if (arrivalDate !== undefined) patch.arrivalDate = arrivalDate || null;
   if (trackingNumber !== undefined) patch.trackingNumber = trackingNumber || null;
   if (awbNumber !== undefined) patch.awbNumber = awbNumber || null;
-  if (transportMode !== undefined) patch.transportMode = transportMode || null;
-  if (cargoType !== undefined) patch.cargoType = cargoType || null;
+  if (transportMode !== undefined) {
+    try { patch.transportMode = validateTransportMode(transportMode) ?? null; }
+    catch (e: any) { return res.status(400).json({ message: e.message }); }
+  }
+  if (cargoType !== undefined) {
+    try { patch.cargoType = validateCargoType(cargoType) ?? null; }
+    catch (e: any) { return res.status(400).json({ message: e.message }); }
+  }
   if (containerNo !== undefined) patch.containerNo = containerNo || null;
   if (salesDocId !== undefined) patch.salesDocId = salesDocId ? Number(salesDocId) : null;
   if (purchaseDocId !== undefined) {
@@ -268,6 +340,56 @@ router.put("/freight-shipments/:id", async (req, res) => {
       status: updated!.status,
       updatedAt: new Date().toISOString(),
     }).catch(() => {});
+
+    // Notifikasi template ke customer berdasarkan status baru
+    const newStatus = updated!.status;
+    if (newStatus === "in_transit" || newStatus === "completed") {
+      // Cari logistic order via RFQ (freight_shipment_id disimpan di logistic_order_rfqs)
+      db.execute(sql`
+        SELECT lo.* FROM logistic_orders lo
+        JOIN logistic_order_rfqs lor ON lor.order_id = lo.id
+        WHERE lor.freight_shipment_id = ${updated!.id}
+        LIMIT 1
+      `).then((result) => {
+        const row = result.rows[0] as (typeof logisticOrdersTable.$inferSelect) | undefined;
+        if (!row?.phone) return;
+        const orderData: LogisticOrderData = {
+          id: Number(row.id),
+          orderNumber: String(row.order_number ?? ""),
+          customerName: String(row.customer_name ?? ""),
+          companyName: String(row.company_name ?? ""),
+          email: String(row.email ?? ""),
+          phone: String(row.phone ?? ""),
+          orderType: row.order_type ? String(row.order_type) : undefined,
+          shipmentType: String(row.shipment_type ?? ""),
+          origin: String(row.origin ?? ""),
+          destination: String(row.destination ?? ""),
+          commodity: row.commodity ? String(row.commodity) : null,
+          cargoDescription: row.cargo_description ? String(row.cargo_description) : null,
+          grossWeight: row.gross_weight ? Number(row.gross_weight) : null,
+          volumeCbm: row.volume_cbm ? Number(row.volume_cbm) : null,
+          jumlahKoli: row.jumlah_koli ? Number(row.jumlah_koli) : null,
+          grandTotal: row.grand_total ? Number(row.grand_total) : 0,
+          serviceList: String(row.shipment_type ?? ""),
+          requiredDate: row.required_date ? String(row.required_date) : null,
+          notes: row.notes ? String(row.notes) : null,
+          jamOrder: row.jam_order ? String(row.jam_order) : null,
+          vehicleType: row.truck_type ? String(row.truck_type) : null,
+          createdAt: row.created_at ? new Date(String(row.created_at)) : null,
+          publicRfqToken: row.public_rfq_token ? String(row.public_rfq_token) : null,
+        };
+        if (newStatus === "in_transit") {
+          sendShipmentUpdateNotification(orderData, {
+            vessel: updated!.vessel ?? undefined,
+            voyage: updated!.voyage ?? undefined,
+            containerNumber: updated!.containerNo ?? undefined,
+            awbNumber: updated!.awbNumber ?? undefined,
+          }).catch(() => {});
+        } else if (newStatus === "completed") {
+          sendDeliveryCompletedNotification(orderData).catch(() => {});
+        }
+      }).catch(() => {});
+    }
   }
   return res.json(serializeShipment(updated!));
 });
@@ -290,7 +412,16 @@ router.delete("/freight-shipments/:id", async (req, res) => {
   if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ message: "Invalid id" });
   const [existing] = await db.select().from(freightShipmentsTable).where(eq(freightShipmentsTable.id, id));
   if (!existing) return res.status(404).json({ message: "Shipment not found" });
+  // Ambil semua objectPath attachment sebelum DB cascade menghapus recordnya
+  const attachments = await db
+    .select({ objectPath: freightAttachmentsTable.objectPath })
+    .from(freightAttachmentsTable)
+    .where(eq(freightAttachmentsTable.shipmentId, id));
   await db.delete(freightShipmentsTable).where(eq(freightShipmentsTable.id, id));
+  // Cascade storage cleanup — hapus file fisik (non-fatal)
+  for (const a of attachments) {
+    if (a.objectPath) _freightObjectStorage.tryDeletePrivateEntity(a.objectPath).catch(() => {});
+  }
   return res.json({ message: "Berhasil dihapus" });
 });
 
@@ -309,7 +440,12 @@ router.post("/freight-shipments/:shipmentId/stages", async (req, res) => {
   const shipmentId = Number(req.params.shipmentId);
   if (!Number.isInteger(shipmentId) || shipmentId <= 0) return res.status(400).json({ message: "Invalid shipmentId" });
   const { stageType, vendorName, date, status, notes } = req.body;
-  if (!stageType) return res.status(400).json({ message: "stageType wajib diisi" });
+  let validatedStageType: StageType;
+  let validatedStatus: StageStatus | undefined;
+  try { validatedStageType = validateStageType(stageType); }
+  catch (e: any) { return res.status(400).json({ message: e.message }); }
+  try { validatedStatus = validateStageStatus(status); }
+  catch (e: any) { return res.status(400).json({ message: e.message }); }
   const [existing] = await db.select().from(shipmentStagesTable)
     .where(eq(shipmentStagesTable.shipmentId, shipmentId))
     .then((rows) => rows.filter((r) => r.stageType === stageType));
@@ -319,7 +455,7 @@ router.post("/freight-shipments/:shipmentId/stages", async (req, res) => {
       .set({
         vendorName: vendorName ?? null,
         date: date ?? null,
-        status: status ?? existing.status,
+        status: validatedStatus ?? existing.status,
         notes: notes ?? null,
       })
       .where(eq(shipmentStagesTable.id, existing.id))
@@ -328,10 +464,10 @@ router.post("/freight-shipments/:shipmentId/stages", async (req, res) => {
     [stage] = await db.insert(shipmentStagesTable)
       .values({
         shipmentId,
-        stageType,
+        stageType: validatedStageType,
         vendorName: vendorName ?? null,
         date: date ?? null,
-        status: status ?? "pending",
+        status: validatedStatus ?? "pending",
         notes: notes ?? null,
       })
       .returning();
@@ -577,6 +713,23 @@ router.post("/freight-shipments/:shipmentId/attachments", async (req, res) => {
   }
   const [existing] = await db.select({ id: freightShipmentsTable.id }).from(freightShipmentsTable).where(eq(freightShipmentsTable.id, shipmentId));
   if (!existing) return res.status(404).json({ message: "Shipment tidak ditemukan" });
+
+  // Duplicate guard: reject if the same objectPath is already linked to this shipment
+  const [dup] = await db.select({ id: freightAttachmentsTable.id })
+    .from(freightAttachmentsTable)
+    .where(and(eq(freightAttachmentsTable.shipmentId, shipmentId), eq(freightAttachmentsTable.objectPath, String(objectPath))))
+    .limit(1);
+  if (dup) return res.status(409).json({ message: "File ini sudah terlampir ke shipment ini" });
+
+  // Verify objectPath actually exists in storage before persisting the link
+  if (String(objectPath).startsWith("/objects/")) {
+    try {
+      await _freightObjectStorage.getObjectEntityFile(String(objectPath));
+    } catch {
+      return res.status(422).json({ message: "File tidak ditemukan di storage. Pastikan upload berhasil sebelum melampirkan." });
+    }
+  }
+
   const [attachment] = await db.insert(freightAttachmentsTable).values({
     shipmentId, objectPath, fileName, contentType,
     fileType: fileType as "photo" | "document",
@@ -587,6 +740,19 @@ router.post("/freight-shipments/:shipmentId/attachments", async (req, res) => {
     docStatus: docStatus || null,
     invoiceId: invoiceId ? Number(invoiceId) : null,
   }).returning();
+  const actor = getActor(req);
+  logStorageEvent({
+    action: "upload",
+    entityType: "freight_attachment",
+    entityId: attachment!.id,
+    objectPath: String(objectPath),
+    fileName: String(fileName),
+    contentType: String(contentType),
+    actorId: actor.actorId,
+    actorType: actor.actorType,
+    ipAddress: getRequestIp(req),
+    details: `shipmentId=${shipmentId} docType=${docType ?? "-"}`,
+  });
   return res.status(201).json({ ...attachment!, createdAt: attachment!.createdAt.toISOString() });
 });
 
@@ -614,11 +780,29 @@ router.delete("/freight-shipments/:shipmentId/attachments/:attachmentId", async 
   const shipmentId = Number(req.params.shipmentId);
   const attachmentId = Number(req.params.attachmentId);
   if (!Number.isInteger(shipmentId) || !Number.isInteger(attachmentId)) return res.status(400).json({ message: "Invalid id" });
+  // Filter by BOTH id AND shipmentId to prevent IDOR (deleting another shipment's attachment)
   const [deleted] = await db
     .delete(freightAttachmentsTable)
-    .where(eq(freightAttachmentsTable.id, attachmentId))
+    .where(and(eq(freightAttachmentsTable.id, attachmentId), eq(freightAttachmentsTable.shipmentId, shipmentId)))
     .returning();
   if (!deleted) return res.status(404).json({ message: "Attachment tidak ditemukan" });
+  // Delete the underlying GCS object (non-fatal — DB record already removed)
+  if (deleted.objectPath) {
+    _freightObjectStorage.tryDeletePrivateEntity(deleted.objectPath).catch(() => {});
+  }
+  const actor = getActor(req);
+  logStorageEvent({
+    action: "delete",
+    entityType: "freight_attachment",
+    entityId: deleted.id,
+    objectPath: deleted.objectPath,
+    fileName: deleted.fileName,
+    contentType: deleted.contentType,
+    actorId: actor.actorId,
+    actorType: actor.actorType,
+    ipAddress: getRequestIp(req),
+    details: `shipmentId=${shipmentId}`,
+  });
   return res.json({ message: "Deleted" });
 });
 

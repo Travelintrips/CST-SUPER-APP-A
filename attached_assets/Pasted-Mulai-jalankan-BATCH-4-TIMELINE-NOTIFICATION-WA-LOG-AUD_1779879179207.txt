@@ -1,0 +1,129 @@
+Mulai jalankan BATCH 4 — TIMELINE / NOTIFICATION / WA LOG AUDIT.
+
+Jangan fix dulu. Audit saja.
+
+Tujuan:
+Pastikan semua aktivitas penting tercatat permanen di database, tidak hanya muncul di UI sementara.
+
+Area yang wajib diaudit:
+
+1. Order Timeline
+Cek apakah setiap step order masuk ke timeline:
+- customer submit order
+- admin approve/reject
+- vendor mini form generated
+- vendor submit quotation
+- vendor revise price
+- admin select vendor
+- customer approval sent
+- customer approve/reject
+- SO created
+- operational form sent
+- vendor submit operational data
+- shipment update
+- order completed
+
+2. Notification Log
+Cek apakah notifikasi tercatat:
+- ke admin
+- ke customer
+- ke vendor
+- ke grup admin
+- gagal kirim
+- berhasil kirim
+- retry kirim
+
+3. WhatsApp Log
+Cek semua aksi WA:
+- template yang dipakai
+- recipient
+- phone number
+- rendered message
+- workflow
+- order_id
+- vendor_id/customer_id
+- sent_at
+- sent_by
+- delivery status jika ada
+- resend history
+
+4. Persistence Audit
+Pastikan:
+- log tersimpan di Supabase/database
+- tidak hanya console.log
+- tidak hanya toast UI
+- tidak hanya localStorage
+- tetap ada setelah refresh/login ulang
+
+5. Duplicate Notification Audit
+Test:
+- klik send WA dua kali
+- vendor submit dua kali
+- customer approve dua kali
+- admin refresh saat action
+- SSE event masuk dua kali
+
+Pastikan tidak membuat log duplikat yang membingungkan.
+
+6. Timeline Ordering Audit
+Cek:
+- timestamp konsisten
+- timezone benar
+- urutan timeline benar
+- action user jelas
+- role actor jelas: admin/customer/vendor/system
+
+7. Error Log Audit
+Cek:
+- jika WA gagal generate
+- jika template kosong
+- jika Supabase insert gagal
+- jika attachment gagal upload
+- jika SO gagal dibuat
+- apakah error tercatat dengan jelas
+
+8. UI Audit
+Cek apakah BizPortal punya tampilan:
+- order timeline
+- notification history
+- WA message history
+- filter by order/vendor/customer
+- status success/failed
+
+Output wajib:
+
+A. TIMELINE MATRIX
+Action | DB Table | Trigger File/API | Actor | Stored? | Status | Issue
+
+B. NOTIFICATION MATRIX
+Notification Type | Recipient | DB Table | Trigger | Stored? | Duplicate Protection | Status
+
+C. WHATSAPP LOG MATRIX
+Workflow | Recipient | Template Source | Rendered Message Stored? | Send History Stored? | Status
+
+D. MISSING LOG FOUND
+- action
+- file/API
+- impact
+- risk level
+
+E. DUPLICATE LOG RISK
+- scenario
+- root cause
+- fix suggestion
+
+F. ERROR LOG FINDINGS
+- failed action
+- current behavior
+- recommended behavior
+
+G. PRIORITY FIX PLAN
+Critical / High / Medium / Low
+
+H. FINAL VERDICT
+- Timeline completeness score
+- Notification reliability score
+- WA audit trail score
+- Production readiness score
+
+Jangan implement fix sampai saya minta.

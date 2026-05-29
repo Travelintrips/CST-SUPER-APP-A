@@ -121,40 +121,54 @@ export const GetDashboardSummaryResponse = zod.object({
 /**
  * @summary List all products / master items
  */
+export const listProductsQueryPageDefault = 1;
+export const listProductsQueryLimitDefault = 50;
+
 export const ListProductsQueryParams = zod.object({
   search: zod.coerce.string().optional(),
   itemType: zod.coerce.string().optional(),
   subcategory: zod.coerce.string().optional(),
   isActive: zod.coerce.string().optional(),
+  page: zod.coerce.number().default(listProductsQueryPageDefault),
+  limit: zod.coerce.number().default(listProductsQueryLimitDefault),
 });
 
-export const ListProductsResponseItem = zod.object({
-  id: zod.number(),
-  name: zod.string(),
-  sku: zod.string(),
-  price: zod.number(),
-  stock: zod.number(),
-  categories: zod.array(zod.string()),
-  description: zod.string().nullish(),
-  imageUrl: zod.string().nullish(),
-  mediaItems: zod
-    .array(
-      zod.object({
-        type: zod.enum(["image", "video"]),
-        url: zod.string(),
-      }),
-    )
-    .optional(),
-  defaultSalesTaxId: zod.number().nullish(),
-  defaultPurchaseTaxId: zod.number().nullish(),
-  itemType: zod.enum(["barang", "jasa"]),
-  unit: zod.string(),
-  unitOptions: zod.array(zod.string()).optional(),
-  subcategory: zod.string().nullish(),
-  isActive: zod.boolean(),
-  createdAt: zod.string(),
+export const ListProductsResponse = zod.object({
+  data: zod.array(
+    zod.object({
+      id: zod.number(),
+      name: zod.string(),
+      sku: zod.string(),
+      price: zod.number(),
+      stock: zod.number(),
+      categories: zod.array(zod.string()),
+      description: zod.string().nullish(),
+      imageUrl: zod.string().nullish(),
+      mediaItems: zod
+        .array(
+          zod.object({
+            type: zod.enum(["image", "video"]),
+            url: zod.string(),
+          }),
+        )
+        .optional(),
+      defaultSalesTaxId: zod.number().nullish(),
+      defaultPurchaseTaxId: zod.number().nullish(),
+      itemType: zod.enum(["barang", "jasa"]),
+      unit: zod.string(),
+      unitOptions: zod.array(zod.string()).optional(),
+      subcategory: zod.string().nullish(),
+      isActive: zod.boolean(),
+      createdAt: zod.string(),
+    }),
+  ),
+  pagination: zod.object({
+    page: zod.number(),
+    limit: zod.number(),
+    total: zod.number(),
+    totalPages: zod.number(),
+  }),
 });
-export const ListProductsResponse = zod.array(ListProductsResponseItem);
 
 /**
  * @summary Create a product
@@ -591,9 +605,11 @@ export const ListVendorCatalogResponseItem = zod.object({
   name: zod.string(),
   description: zod.string().nullish(),
   unit: zod.string().nullish(),
+  subcategory: zod.string().nullish(),
   priceBase: zod.number(),
   markupPct: zod.number(),
   isActive: zod.boolean(),
+  isCommodityTag: zod.boolean().optional(),
   sortOrder: zod.number(),
   createdAt: zod.string(),
 });
@@ -610,13 +626,15 @@ export const CreateVendorCatalogItemParams = zod.object({
 
 export const CreateVendorCatalogItemBody = zod.object({
   type: zod.string().optional(),
-  name: zod.string(),
+  name: zod.string().optional(),
   description: zod.string().nullish(),
   unit: zod.string().nullish(),
+  subcategory: zod.string().nullish(),
   priceBase: zod.number().optional(),
-  markupPct: zod.number().optional(),
   isActive: zod.boolean().optional(),
+  isCommodityTag: zod.boolean().optional(),
   sortOrder: zod.number().optional(),
+  linkMasterItemId: zod.number().nullish(),
 });
 
 /**
@@ -628,13 +646,15 @@ export const UpdateVendorCatalogItemParams = zod.object({
 
 export const UpdateVendorCatalogItemBody = zod.object({
   type: zod.string().optional(),
-  name: zod.string(),
+  name: zod.string().optional(),
   description: zod.string().nullish(),
   unit: zod.string().nullish(),
+  subcategory: zod.string().nullish(),
   priceBase: zod.number().optional(),
-  markupPct: zod.number().optional(),
   isActive: zod.boolean().optional(),
+  isCommodityTag: zod.boolean().optional(),
   sortOrder: zod.number().optional(),
+  linkMasterItemId: zod.number().nullish(),
 });
 
 export const UpdateVendorCatalogItemResponse = zod.object({
@@ -644,9 +664,11 @@ export const UpdateVendorCatalogItemResponse = zod.object({
   name: zod.string(),
   description: zod.string().nullish(),
   unit: zod.string().nullish(),
+  subcategory: zod.string().nullish(),
   priceBase: zod.number(),
   markupPct: zod.number(),
   isActive: zod.boolean(),
+  isCommodityTag: zod.boolean().optional(),
   sortOrder: zod.number(),
   createdAt: zod.string(),
 });
@@ -721,25 +743,42 @@ export const DeleteSupplierResponse = zod.object({
 /**
  * @summary List all shipments
  */
-export const ListShipmentsResponseItem = zod.object({
-  id: zod.number(),
-  orderId: zod.number().optional(),
-  trackingNumber: zod.string(),
-  carrier: zod.string(),
-  status: zod.enum([
-    "pending",
-    "picked_up",
-    "in_transit",
-    "out_for_delivery",
-    "delivered",
-    "failed",
-  ]),
-  origin: zod.string(),
-  destination: zod.string(),
-  estimatedDelivery: zod.string().optional(),
-  createdAt: zod.string(),
+export const listShipmentsQueryPageDefault = 1;
+export const listShipmentsQueryLimitDefault = 50;
+
+export const ListShipmentsQueryParams = zod.object({
+  page: zod.coerce.number().default(listShipmentsQueryPageDefault),
+  limit: zod.coerce.number().default(listShipmentsQueryLimitDefault),
 });
-export const ListShipmentsResponse = zod.array(ListShipmentsResponseItem);
+
+export const ListShipmentsResponse = zod.object({
+  data: zod.array(
+    zod.object({
+      id: zod.number(),
+      orderId: zod.number().optional(),
+      trackingNumber: zod.string(),
+      carrier: zod.string(),
+      status: zod.enum([
+        "pending",
+        "picked_up",
+        "in_transit",
+        "out_for_delivery",
+        "delivered",
+        "failed",
+      ]),
+      origin: zod.string(),
+      destination: zod.string(),
+      estimatedDelivery: zod.string().optional(),
+      createdAt: zod.string(),
+    }),
+  ),
+  pagination: zod.object({
+    page: zod.number(),
+    limit: zod.number(),
+    total: zod.number(),
+    totalPages: zod.number(),
+  }),
+});
 
 /**
  * @summary Create a shipment
@@ -1658,6 +1697,9 @@ export const DeleteCustomerResponse = zod.object({
 /**
  * @summary List sales documents (quotations and orders)
  */
+export const listSalesDocumentsQueryPageDefault = 1;
+export const listSalesDocumentsQueryLimitDefault = 50;
+
 export const ListSalesDocumentsQueryParams = zod.object({
   kind: zod.enum(["quote", "order"]).optional(),
   status: zod
@@ -1666,42 +1708,51 @@ export const ListSalesDocumentsQueryParams = zod.object({
   invoiceStatus: zod.enum(["none", "to_invoice", "invoiced"]).optional(),
   paymentStatus: zod.enum(["unpaid", "partial", "paid"]).optional(),
   search: zod.coerce.string().optional(),
+  page: zod.coerce.number().default(listSalesDocumentsQueryPageDefault),
+  limit: zod.coerce.number().default(listSalesDocumentsQueryLimitDefault),
 });
 
-export const ListSalesDocumentsResponseItem = zod.object({
-  id: zod.number(),
-  docNumber: zod.string(),
-  kind: zod.enum(["quote", "order"]),
-  status: zod.enum(["draft", "sent", "confirmed", "done", "cancelled"]),
-  invoiceStatus: zod.enum(["none", "to_invoice", "invoiced"]),
-  deliveryStatus: zod.enum(["none", "to_deliver", "delivered"]),
-  customerId: zod.number().nullish(),
-  customerName: zod.string(),
-  totalAmount: zod.number(),
-  taxRateId: zod.number().nullish(),
-  taxAmount: zod.number(),
-  grandTotal: zod.number(),
-  origin: zod.string().nullish(),
-  destination: zod.string().nullish(),
-  transportMode: zod.enum(["sea", "air", "land", "multimodal"]).nullish(),
-  etd: zod.string().nullish(),
-  eta: zod.string().nullish(),
-  validUntil: zod.string().nullish(),
-  expectedDate: zod.string().nullish(),
-  notes: zod.string().nullish(),
-  confirmedAt: zod.string().nullish(),
-  customerAddress: zod.string().nullish(),
-  paymentStatus: zod.enum(["unpaid", "partial", "paid"]),
-  amountPaid: zod.number(),
-  createdAt: zod.string(),
-  updatedAt: zod.string(),
-  aiGenerated: zod.boolean().optional(),
-  aiSourceWaPhone: zod.string().nullish(),
-  aiSourceCorrespondenceId: zod.number().nullish(),
+export const ListSalesDocumentsResponse = zod.object({
+  data: zod.array(
+    zod.object({
+      id: zod.number(),
+      docNumber: zod.string(),
+      kind: zod.enum(["quote", "order"]),
+      status: zod.enum(["draft", "sent", "confirmed", "done", "cancelled"]),
+      invoiceStatus: zod.enum(["none", "to_invoice", "invoiced"]),
+      deliveryStatus: zod.enum(["none", "to_deliver", "delivered"]),
+      customerId: zod.number().nullish(),
+      customerName: zod.string(),
+      totalAmount: zod.number(),
+      taxRateId: zod.number().nullish(),
+      taxAmount: zod.number(),
+      grandTotal: zod.number(),
+      origin: zod.string().nullish(),
+      destination: zod.string().nullish(),
+      transportMode: zod.enum(["sea", "air", "land", "multimodal"]).nullish(),
+      etd: zod.string().nullish(),
+      eta: zod.string().nullish(),
+      validUntil: zod.string().nullish(),
+      expectedDate: zod.string().nullish(),
+      notes: zod.string().nullish(),
+      confirmedAt: zod.string().nullish(),
+      customerAddress: zod.string().nullish(),
+      paymentStatus: zod.enum(["unpaid", "partial", "paid"]),
+      amountPaid: zod.number(),
+      createdAt: zod.string(),
+      updatedAt: zod.string(),
+      aiGenerated: zod.boolean().optional(),
+      aiSourceWaPhone: zod.string().nullish(),
+      aiSourceCorrespondenceId: zod.number().nullish(),
+    }),
+  ),
+  pagination: zod.object({
+    page: zod.number(),
+    limit: zod.number(),
+    total: zod.number(),
+    totalPages: zod.number(),
+  }),
 });
-export const ListSalesDocumentsResponse = zod.array(
-  ListSalesDocumentsResponseItem,
-);
 
 /**
  * @summary Create a sales document (quotation or order)
@@ -2813,6 +2864,8 @@ export const ListAccountingPaymentsQueryParams = zod.object({
   to: zod.date().optional(),
   sourceType: zod.coerce.string().nullish(),
   sourceDocId: zod.coerce.number().nullish(),
+  refDocNumber: zod.coerce.string().nullish(),
+  company: zod.coerce.string().nullish(),
 });
 
 export const ListAccountingPaymentsResponseItem = zod.object({
@@ -4676,10 +4729,10 @@ export const CreateLogisticOrderBody = zod.object({
   customerName: zod.string(),
   email: zod.string(),
   phone: zod.string(),
-  orderType: zod.enum(["product", "service", "shipment"]).optional().default("shipment"),
-  shipmentType: zod.string().optional().default(""),
-  origin: zod.string().optional().default(""),
-  destination: zod.string().optional().default(""),
+  orderType: zod.string().nullish(),
+  shipmentType: zod.string(),
+  origin: zod.string(),
+  destination: zod.string(),
   commodity: zod.string().nullish(),
   cargoDescription: zod.string().nullish(),
   grossWeight: zod.number().nullish(),
@@ -4754,6 +4807,7 @@ export const ListLogisticOrdersResponseItem = zod.object({
   finalSellingPrice: zod.number().nullish(),
   quotationSentAt: zod.string().nullish(),
   createdAt: zod.string(),
+  updatedAt: zod.string(),
 });
 export const ListLogisticOrdersResponse = zod.array(
   ListLogisticOrdersResponseItem,
@@ -4818,6 +4872,7 @@ export const GetLogisticOrderByNumberResponse = zod
     finalSellingPrice: zod.number().nullish(),
     quotationSentAt: zod.string().nullish(),
     createdAt: zod.string(),
+    updatedAt: zod.string(),
   })
   .and(
     zod.object({
@@ -4881,6 +4936,7 @@ export const GetLogisticOrderResponse = zod
     finalSellingPrice: zod.number().nullish(),
     quotationSentAt: zod.string().nullish(),
     createdAt: zod.string(),
+    updatedAt: zod.string(),
   })
   .and(
     zod.object({
@@ -5137,6 +5193,7 @@ export const ApproveLogisticOrderQuoteResponse = zod.object({
   finalSellingPrice: zod.number().nullish(),
   quotationSentAt: zod.string().nullish(),
   createdAt: zod.string(),
+  updatedAt: zod.string(),
 });
 
 /**
@@ -5148,6 +5205,7 @@ export const UpdateLogisticOrderStatusParams = zod.object({
 
 export const UpdateLogisticOrderStatusBody = zod.object({
   status: zod.string(),
+  clientUpdatedAt: zod.string().optional(),
 });
 
 export const UpdateLogisticOrderStatusResponse = zod.object({
@@ -5186,6 +5244,7 @@ export const UpdateLogisticOrderStatusResponse = zod.object({
   finalSellingPrice: zod.number().nullish(),
   quotationSentAt: zod.string().nullish(),
   createdAt: zod.string(),
+  updatedAt: zod.string(),
 });
 
 /**
@@ -5235,6 +5294,7 @@ export const UpdateLogisticOrderTypeResponse = zod.object({
   finalSellingPrice: zod.number().nullish(),
   quotationSentAt: zod.string().nullish(),
   createdAt: zod.string(),
+  updatedAt: zod.string(),
 });
 
 /**

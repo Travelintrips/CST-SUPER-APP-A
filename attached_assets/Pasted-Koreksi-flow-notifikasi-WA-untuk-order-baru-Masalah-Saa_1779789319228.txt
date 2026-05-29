@@ -1,0 +1,100 @@
+Koreksi flow notifikasi WA untuk order baru.
+
+Masalah:
+Saat customer membuat order produk, notifikasi masuk ke WA Admin Pribadi.
+Seharusnya order baru masuk ke WA Admin Group, bukan Admin Pribadi.
+
+ATURAN BARU:
+1. Customer order baru → kirim ke Admin Group saja.
+2. Jangan kirim order baru ke Admin Pribadi.
+3. Admin Pribadi hanya dipakai untuk notifikasi personal/manual, bukan default order masuk.
+4. Template yang dipakai untuk order baru adalah:
+   workflow = order_new
+   recipient = admin_group
+
+JANGAN pakai:
+   workflow = order_new
+   recipient = admin_personal
+
+==================================================
+YANG HARUS DIAUDIT
+==================================================
+
+Cari semua function yang mengirim WA saat order baru dibuat:
+- sendOrderNotification
+- sendAdminNotification
+- notifyAdmin
+- notifyAdminPersonal
+- order_new
+- admin_personal
+- admin_group
+- personalAdminPhone
+- adminGroupPhone
+- groupWhatsApp
+- wa.me
+- whatsapp
+- encodeURIComponent
+
+Pastikan tidak ada double notification:
+- Admin Pribadi + Admin Group bersamaan
+
+Untuk event order_new:
+Hanya boleh 1 target:
+- Admin Group
+
+==================================================
+EXPECTED FLOW
+==================================================
+
+Customer pesan produk
+→ sistem create order
+→ sistem kirim WA ke Admin Group
+→ isi pesan memakai template Settings:
+   Order Baru → Grup Admin
+→ pesan berisi 1 link:
+   {{adminActionUrl}}
+→ admin group klik link Review Order
+→ baru lanjut pilih vendor / approve / RFQ
+
+==================================================
+TEMPLATE RULE
+==================================================
+
+Untuk order_new admin_group:
+boleh tampil:
+- orderNumber
+- tanggal
+- jam
+- customerName
+- customerPhone
+- productList
+- totalEst
+- adminActionUrl
+
+Tidak boleh tampil:
+- vendorMiniFormLink
+- customerApprovalLink
+- operationalFormLink
+- vendorPrice
+- margin
+
+==================================================
+JANGAN UBAH
+==================================================
+
+Jangan ubah flow Vendor Request.
+Jangan ubah Customer Approval.
+Jangan ubah Mini Form.
+Fokus hanya routing notifikasi order baru.
+
+==================================================
+OUTPUT SETELAH FIX
+==================================================
+
+Laporkan:
+1. File/function mana yang sebelumnya mengirim ke Admin Pribadi.
+2. File/function mana yang sekarang diganti ke Admin Group.
+3. Pastikan order_new admin_personal tidak dipanggil otomatis.
+4. Pastikan order_new admin_group yang dipanggil.
+5. Pastikan tidak ada duplicate WA notification.
+6. Test product order baru dan tunjukkan hasilnya.

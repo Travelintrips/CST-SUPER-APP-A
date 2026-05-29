@@ -18,7 +18,7 @@ import {
   ArrowLeft, RefreshCw, Star, CheckCircle, XCircle, MessageCircle,
   Clock, Users, TrendingDown, ExternalLink, Copy, AlertCircle, Loader2,
   Send, Phone, DollarSign, Eye, ThumbsUp, ThumbsDown, RotateCcw, Lock,
-  Package, ExternalLink as LinkIcon,
+  Package, ExternalLink as LinkIcon, Brain, DatabaseZap,
 } from "lucide-react";
 
 const idr = (n: number | null | undefined) =>
@@ -73,6 +73,25 @@ interface VendorRow {
   submittedAt: string | null;
   formUrl: string;
 }
+
+interface VendorAiScore {
+  vendorId: number;
+  aiScore: number;
+  tier: "top" | "good" | "moderate" | "new";
+  routeOrderCount: number;
+  routeOnTimePct: number | null;
+  avgDelayDays: number;
+  dataConfidence: "high" | "medium" | "low" | "none";
+  scoreBullets: string[];
+  badges: string[];
+}
+
+const AI_TIER = {
+  top:      { label: "Top",  bar: "bg-green-500",  text: "text-green-700",  bg: "bg-green-50",  border: "border-green-200" },
+  good:     { label: "Good", bar: "bg-blue-500",   text: "text-blue-700",   bg: "bg-blue-50",   border: "border-blue-200"  },
+  moderate: { label: "OK",   bar: "bg-yellow-500", text: "text-yellow-700", bg: "bg-yellow-50", border: "border-yellow-200"},
+  new:      { label: "Baru", bar: "bg-gray-400",   text: "text-gray-500",   bg: "bg-gray-50",   border: "border-gray-200"  },
+};
 
 interface RankingBadge {
   label: string;
@@ -172,6 +191,26 @@ export default function LogisticsRfqComparisonPage() {
     refetchInterval: autoRefresh ? 10000 : false,
   });
 
+  // AI Vendor Score Engine — blends global performance + route-specific Decision Memory
+  const { data: vendorScores = [] } = useQuery<VendorAiScore[]>({
+    queryKey: ["vendor-scores-bulk-cmp", rfqId, data?.origin, data?.destination, data?.serviceType],
+    queryFn: async () => {
+      if (!data || data.vendors.length === 0) return [];
+      const ids = data.vendors.map(v => v.vendorId).join(",");
+      const params = new URLSearchParams({ vendorIds: ids });
+      if (data.origin) params.set("origin", data.origin);
+      if (data.destination) params.set("destination", data.destination);
+      if (data.serviceType) params.set("shipmentType", data.serviceType);
+      const r = await fetch(`/api/vendor-performance/scores-bulk?${params.toString()}`);
+      if (!r.ok) return [];
+      return r.json();
+    },
+    enabled: !!data && data.vendors.length > 0,
+    staleTime: 60_000,
+  });
+
+  const scoreMap = new Map(vendorScores.map(s => [s.vendorId, s]));
+
   const selectMut = useMutation({
     mutationFn: async (payload: { linkId: number; sellingPrice?: number }) => {
       const res = await fetch(`/api/logistic/rfq/${rfqId}/select-vendor`, {
@@ -236,6 +275,25 @@ export default function LogisticsRfqComparisonPage() {
       navigate(`/logistics/freight/${d.shipmentId}`);
     },
     onError: (e: Error) => toast({ title: "Gagal", description: e.message, variant: "destructive" }),
+  });
+
+  const refreshPriceMut = useMutation({
+    mutationFn: async (linkId: number) => {
+      const res = await fetch(`/api/logistic/rfq/vendor-link/${linkId}/refresh-price`, {
+        method: "PATCH",
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.message);
+      return j as { oldPrice: number | null; newPrice: number };
+    },
+    onSuccess: (d) => {
+      toast({
+        title: "Harga Diperbarui",
+        description: `Harga referensi diperbarui: ${idr(d.oldPrice)} → ${idr(d.newPrice)}`,
+      });
+      qc.invalidateQueries({ queryKey: ["rfq-comparison", rfqId] });
+    },
+    onError: (e) => toast({ title: "Gagal", description: (e as Error).message, variant: "destructive" }),
   });
 
   const actionMut = useMutation({
@@ -315,11 +373,10 @@ export default function LogisticsRfqComparisonPage() {
 
   const selectedVendorForFreight = data.vendors.find((v) => v.status === "selected");
 
-  // Pre-fill harga jual saat buka dialog
   const openQuoteDialog = () => {
     const selectedVendor = data.vendors.find((v) => v.status === "selected");
     const vendorPrice = selectedVendor ? (selectedVendor.offeredPrice ?? selectedVendor.basicPrice) : null;
-    const suggested = vendorPrice ? Math.round(vendorPrice * 1.2) : (data.finalSellingPrice ?? 0);
+    const suggested = data.finalSellingPrice ?? vendorPrice ?? 0;
     setQuotePrice(data.quotedPrice ? String(data.quotedPrice) : String(suggested));
     setQuoteNotes(data.quoteNotes ?? "");
     setQuoteSendWa(true);
@@ -449,7 +506,20 @@ export default function LogisticsRfqComparisonPage() {
               </div>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-1 text-xs text-green-900">
-              <span><span className="text-green-600">Harga Disetujui:</span> <strong>{idr(data.quotedPrice)}</strong></span>
+              <span>
+                <span className="text-green-600">Harga Disetujui:</span>{" "}
+                <strong>{idr(data.quotedPrice)}</strong>
+                {data.quotedPrice != null && (() => {
+                  const rate = 11;
+                  const sub = Math.round(data.quotedPrice! * 100 / (100 + rate));
+                  const tax = data.quotedPrice! - sub;
+                  return (
+                    <span className="ml-1 text-[10px] text-green-700 font-normal">
+                      (sub {idr(sub)} + PPN {idr(tax)})
+                    </span>
+                  );
+                })()}
+              </span>
               <span><span className="text-green-600">Customer:</span> {data.customerName}</span>
               {data.customerRespondedAt && <span><span className="text-green-600">Disetujui:</span> {new Date(data.customerRespondedAt).toLocaleString("id-ID")}</span>}
               {data.customerResponseNotes && <span className="col-span-2"><span className="text-green-600">Catatan Customer:</span> {data.customerResponseNotes}</span>}
@@ -563,15 +633,19 @@ export default function LogisticsRfqComparisonPage() {
                   vendor={v}
                   rank={idx + 1}
                   rankingBadges={getRankingBadges(v, data.vendors)}
+                  aiScore={scoreMap.get(v.vendorId)}
                   hasSelected={hasSelected}
                   onSelect={() => {
                     setSelectDialog({ linkId: v.linkId, vendorName: v.vendorName, price: v.offeredPrice ?? v.basicPrice });
-                    setSellingPrice(v.offeredPrice ? String(Math.round(v.offeredPrice * 1.2)) : "");
+                    const _vp = v.offeredPrice ?? v.basicPrice;
+                    setSellingPrice(_vp ? String(_vp) : "");
                   }}
                   onRevision={() => { setRevisionDialog({ linkId: v.linkId, vendorName: v.vendorName }); setRevisionMsg(""); }}
                   onReject={() => actionMut.mutate({ linkId: v.linkId, action: "reject" })}
                   onMarkRead={() => actionMut.mutate({ linkId: v.linkId, action: "mark_read" })}
                   onCopyLink={() => copyLink(window.location.origin + v.formUrl.replace(/^https?:\/\/[^/]+/, ""))}
+                  onRefreshPrice={() => refreshPriceMut.mutate(v.linkId)}
+                  isRefreshingPrice={refreshPriceMut.isPending && refreshPriceMut.variables === v.linkId}
                 />
               ))
             )}
@@ -782,11 +856,12 @@ export default function LogisticsRfqComparisonPage() {
             {(() => {
               const sv = data.vendors.find((v) => v.status === "selected");
               if (!sv) return null;
+              const vp = sv.offeredPrice ?? sv.basicPrice;
               return (
                 <div className="bg-teal-50 border border-teal-200 rounded-lg p-3 text-xs space-y-1">
                   <p className="font-semibold text-teal-800 text-sm">Vendor Terpilih: {sv.vendorName}</p>
                   <div className="text-teal-700 grid grid-cols-2 gap-x-4">
-                    <span>Harga Vendor: <strong>{idr(sv.offeredPrice ?? sv.basicPrice)}</strong></span>
+                    <span>Harga Vendor: <strong>{idr(vp)}</strong></span>
                     {sv.eta && <span>ETA: {sv.eta}</span>}
                   </div>
                 </div>
@@ -896,16 +971,20 @@ function StatCard({ label, value, icon, color }: {
 }
 
 function VendorCard({
-  vendor, rank, rankingBadges, hasSelected, onSelect, onRevision, onReject, onMarkRead, onCopyLink,
+  vendor, rank, rankingBadges, aiScore, hasSelected, onSelect, onRevision, onReject, onMarkRead, onCopyLink, onRefreshPrice, isRefreshingPrice,
 }: {
-  vendor: VendorRow; rank: number; rankingBadges?: RankingBadge[]; hasSelected: boolean;
+  vendor: VendorRow; rank: number; rankingBadges?: RankingBadge[]; aiScore?: VendorAiScore; hasSelected: boolean;
   onSelect: () => void; onRevision: () => void;
   onReject: () => void; onMarkRead: () => void; onCopyLink: () => void;
+  onRefreshPrice: () => void; isRefreshingPrice?: boolean;
 }) {
   const isSelected = vendor.status === "selected";
   const canAct = !hasSelected && !["rejected", "expired", "not_selected"].includes(vendor.status);
   const hasAnswer = !!vendor.submittedAt;
   const price = vendor.offeredPrice ?? vendor.basicPrice;
+  const [showScoreDetail, setShowScoreDetail] = useState(false);
+
+  const tierCfg = aiScore ? AI_TIER[aiScore.tier] : null;
 
   return (
     <Card className={`transition-all ${isSelected ? "ring-2 ring-teal-400 bg-teal-50/50" : ""} ${vendor.isNewUpdate ? "ring-2 ring-blue-300" : ""}`}>
@@ -923,14 +1002,63 @@ function VendorCard({
                 {rankingBadges?.map((b, i) => (
                   <span key={i} className={`text-xs px-1.5 py-0.5 rounded border font-medium ${b.color}`}>{b.label}</span>
                 ))}
+                {aiScore && aiScore.badges.map((b, i) => (
+                  <span key={`ai-${i}`} className="text-xs px-1.5 py-0.5 rounded border font-medium bg-violet-50 text-violet-700 border-violet-200">{b}</span>
+                ))}
               </div>
               {vendor.phone && <p className="text-xs text-gray-400">{vendor.phone}</p>}
             </div>
           </div>
-          <Badge className={STATUS_COLOR[vendor.status] ?? "bg-gray-100 text-gray-500"}>
-            {STATUS_LABEL[vendor.status] ?? vendor.status}
-          </Badge>
+          <div className="flex items-center gap-2">
+            {aiScore && tierCfg && (
+              <button
+                onClick={() => setShowScoreDetail(s => !s)}
+                className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-xs font-semibold cursor-pointer transition-colors ${tierCfg.bg} ${tierCfg.text} ${tierCfg.border} hover:opacity-80`}
+                title="Klik untuk lihat detail AI Score"
+              >
+                <Brain className="w-3 h-3" />
+                AI Score: {aiScore.aiScore.toFixed(0)}
+                <span className="opacity-60">
+                  {aiScore.dataConfidence === "high" ? "★★" : aiScore.dataConfidence === "medium" ? "★" : aiScore.dataConfidence === "low" ? "·" : ""}
+                </span>
+              </button>
+            )}
+            <Badge className={STATUS_COLOR[vendor.status] ?? "bg-gray-100 text-gray-500"}>
+              {STATUS_LABEL[vendor.status] ?? vendor.status}
+            </Badge>
+          </div>
         </div>
+
+        {/* AI Score Detail Panel */}
+        {aiScore && showScoreDetail && (
+          <div className={`mb-3 rounded-lg border p-2.5 text-xs space-y-1.5 ${tierCfg?.bg ?? "bg-gray-50"} ${tierCfg?.border ?? "border-gray-200"}`}>
+            <div className="flex items-center justify-between">
+              <span className={`font-semibold flex items-center gap-1 ${tierCfg?.text ?? "text-gray-600"}`}>
+                <Brain className="w-3 h-3" /> AI Vendor Score — {aiScore.aiScore.toFixed(1)} / 100
+              </span>
+              <span className="text-gray-400">
+                {aiScore.dataConfidence === "high" ? "Kepercayaan data: Tinggi ★★" :
+                 aiScore.dataConfidence === "medium" ? "Kepercayaan data: Sedang ★" :
+                 aiScore.dataConfidence === "low" ? "Kepercayaan data: Rendah (data terbatas)" :
+                 "Berbasis skor global (belum ada data rute)"}
+              </span>
+            </div>
+            {/* Score bar */}
+            <div className="w-full bg-gray-200 rounded-full h-1.5">
+              <div
+                className={`h-1.5 rounded-full ${tierCfg?.bar ?? "bg-gray-400"}`}
+                style={{ width: `${Math.min(100, aiScore.aiScore)}%` }}
+              />
+            </div>
+            <ul className="space-y-0.5 text-gray-600">
+              {aiScore.scoreBullets.map((b, i) => (
+                <li key={i} className="flex items-start gap-1">
+                  <span className="text-gray-400 mt-0.5">›</span>{b}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-3 mb-3 text-sm">
           <InfoItem label="Harga Penawaran" value={idr(price)} highlight={!!hasAnswer} />
@@ -959,6 +1087,19 @@ function VendorCard({
           )}
           <Button variant="ghost" size="sm" className="text-xs h-7" onClick={onCopyLink}>
             <Copy className="w-3 h-3 mr-1" /> Salin Link
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-xs h-7 text-orange-700 border-orange-300 hover:bg-orange-50"
+            onClick={onRefreshPrice}
+            disabled={isRefreshingPrice}
+            title="Perbarui harga referensi dari katalog etalase vendor terkini"
+          >
+            {isRefreshingPrice
+              ? <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+              : <DatabaseZap className="w-3 h-3 mr-1" />}
+            Refresh Harga
           </Button>
           {canAct && hasAnswer && (
             <>

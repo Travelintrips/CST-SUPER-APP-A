@@ -301,7 +301,7 @@ function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin,
             <div><Label className="text-xs">Destination Port</Label><Input placeholder="SGSIN" value={state.destinationPort||""} onChange={e => set("destinationPort", e.target.value)} /></div>
           </div>
           <div><Label className="text-xs">Container Type</Label>
-            <Select value={state.containerType||""} onValueChange={v => set("containerType", v)}>
+            <Select value={state.containerType||undefined} onValueChange={v => set("containerType", v)}>
               <SelectTrigger><SelectValue placeholder="Select container" /></SelectTrigger>
               <SelectContent>
                 {["20FT", "40FT", "40HC"].map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
@@ -327,7 +327,7 @@ function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin,
 
         {ct === "customs" && <>
           <div><Label className="text-xs">Shipment Type</Label>
-            <Select value={state.shipmentType||""} onValueChange={v => set("shipmentType", v)}>
+            <Select value={state.shipmentType||undefined} onValueChange={v => set("shipmentType", v)}>
               <SelectTrigger><SelectValue placeholder="Import / Export" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="Import">Import</SelectItem>
@@ -349,7 +349,7 @@ function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin,
             <div><Label className="text-xs">Destination City</Label><Input placeholder="Surabaya" value={state.destCity||""} onChange={e => set("destCity", e.target.value)} /></div>
           </div>
           <div><Label className="text-xs">Vehicle Type</Label>
-            <Select value={state.vehicleType||""} onValueChange={v => set("vehicleType", v)}>
+            <Select value={state.vehicleType||undefined} onValueChange={v => set("vehicleType", v)}>
               <SelectTrigger><SelectValue placeholder="Select vehicle" /></SelectTrigger>
               <SelectContent>
                 {["CDE", "CDD", "Fuso", "Wingbox", "Trailer"].map(v => <SelectItem key={v} value={v}>{v}</SelectItem>)}
@@ -379,7 +379,7 @@ function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin,
             <div><Label className="text-xs">Quantity</Label><Input type="number" placeholder="1" value={state.quantity||""} onChange={e => set("quantity", e.target.value)} /></div>
           </div>
           <div><Label className="text-xs">Unit</Label>
-            <Select value={state.unit||""} onValueChange={v => set("unit", v)}>
+            <Select value={state.unit||undefined} onValueChange={v => set("unit", v)}>
               <SelectTrigger><SelectValue placeholder="Select unit" /></SelectTrigger>
               <SelectContent>
                 {["CBM", "Pallet", "KG"].map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
@@ -448,7 +448,7 @@ export default function BookPage() {
   const [selectedCategory, setSelectedCategory] = useState<ServiceCategory | null>(null);
   const [selectedItem, setSelectedItem] = useState<ServiceItem | null>(null);
   const [editCartId, setEditCartId] = useState<string | null>(null);
-  const { items: cartItems, addItem, removeItem, clearCart, subtotal, tax, grandTotal, taxRate } = useCart();
+  const { items: cartItems, addItem, removeItem, clearCart, subtotal, tax, grandTotal } = useCart();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const createOrder = useCreateLogisticOrder();
@@ -625,6 +625,7 @@ export default function BookPage() {
           subtotal: productPrice * qty,
         });
       }
+      setOrderType("product");
     }
 
     const serviceId = params.get("service");
@@ -707,16 +708,21 @@ export default function BookPage() {
     const truckingItem = cartItems.find(c => c.calculatorType === "trucking");
     const truckingInputData = (truckingItem?.inputData ?? {}) as Record<string, unknown>;
     const str = (v: unknown) => (v ? String(v) : "");
-    const effectiveOrigin = (orderType === "product" || orderType === "service") ? (origin || "") : origin;
-    const effectiveDestination = orderType === "product"
+    const derivedOrderType: "product" | "service" | "shipment" | null = orderType ?? (
+      cartItems.every(c => c.calculatorType === "product") ? "product" :
+      cartItems.every(c => c.calculatorType !== "trucking" && c.calculatorType !== "air_freight" && c.calculatorType !== "sea_fcl" && c.calculatorType !== "sea_lcl") && cartItems.some(c => c.calculatorType !== "product") ? "service" :
+      "shipment"
+    );
+    const effectiveOrigin = (derivedOrderType === "product" || derivedOrderType === "service") ? (origin || "") : origin;
+    const effectiveDestination = derivedOrderType === "product"
       ? (shippingAddress || destination || "")
-      : (orderType === "service" ? (destination || "") : destination);
+      : (derivedOrderType === "service" ? (destination || "") : destination);
     createOrder.mutate({ data: {
       companyName,
       customerName,
       email,
       phone,
-      orderType: orderType ?? "shipment",
+      orderType: derivedOrderType ?? undefined,
       shipmentType: shipmentType ?? "",
       origin: effectiveOrigin,
       destination: effectiveDestination,
@@ -735,7 +741,7 @@ export default function BookPage() {
       nomorPenerima: customerForm.nomorPenerima || null,
       jamOrder: str(truckingInputData.pickupTime) || null,
       // [MULTI-MODE] transport mode fields
-      transportMode: customerForm.transportMode || undefined,
+      transportMode: (customerForm.transportMode || undefined) as "sea" | "air" | "land" | "multimodal" | undefined,
       originDistrict: customerForm.originDistrict || undefined,
       destDistrict: customerForm.destDistrict || undefined,
       pickupDate: customerForm.pickupDate || str(truckingInputData.pickupDate) || undefined,
@@ -1076,7 +1082,7 @@ export default function BookPage() {
                 <>
                   <Separator />
                   <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">PPN {taxRate === 0.011 ? "1,1%" : "11%"}</span>
+                    <span className="text-muted-foreground">PPN 11%</span>
                     <span className="font-medium">{formatCurrency(tax)}</span>
                   </div>
                   <Separator />
@@ -1159,6 +1165,7 @@ export default function BookPage() {
                     <option value="TRUCKING">🚛 Trucking / Darat</option>
                     <option value="AIR_FREIGHT">✈️ Air Freight / Udara</option>
                     <option value="SEA_FREIGHT">🚢 Sea Freight / Laut</option>
+                    <option value="FOB">📦 FOB (Free On Board)</option>
                   </select>
                 </div>
               )}
@@ -1260,6 +1267,18 @@ export default function BookPage() {
                   <Input placeholder="Surabaya" value={f.destination} onChange={e => set("destination", e.target.value)} />
                 </div>
               </>)}
+
+              <div className="col-span-2 sm:col-span-1">
+                <Label className="text-xs">Jumlah Koli <span className="text-muted-foreground font-normal">(pcs/koli)</span></Label>
+                <Input
+                  type="number"
+                  min="1"
+                  placeholder="Contoh: 10"
+                  value={f.jumlahKoli}
+                  onChange={e => set("jumlahKoli", e.target.value)}
+                />
+                <p className="text-[11px] text-muted-foreground mt-1">Total jumlah koli / kotak / karton</p>
+              </div>
 
               <div className="col-span-2">
                 <Label className="text-xs">Catatan Tambahan</Label>
@@ -1411,7 +1430,7 @@ export default function BookPage() {
             <Button
               variant="outline"
               onClick={() => setStep((s) => Math.max(0, s - 1) as Step)}
-              disabled={step === 0}
+              disabled={(step as number) === 0}
             >
               <ChevronLeft className="w-4 h-4 mr-1" /> Kembali
             </Button>

@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import cstLogo from "@assets/WhatsApp_Image_2026-05-04_at_18.59.18__1_-removebg-preview_1777916047606.png";
 import { useParams, Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -268,7 +269,17 @@ export default function JasaDetail() {
   const [cargoPhotoFiles, setCargoPhotoFiles] = useState<File[]>([]);
   const [cargoPhotoUrls, setCargoPhotoUrls] = useState<string[]>([]);
   const [pendingOrder, setPendingOrder] = useState<{ serviceId: number; productName: string } | null>(null);
-  const [truckingRates, setTruckingRates] = useState<Record<string, { ratePerKm: number; loadingFee: number }>>({});
+  const qc = useQueryClient();
+  const { data: truckingRatesData } = useQuery<Record<string, { ratePerKm: number; loadingFee: number }>>({
+    queryKey: ["portal-trucking-rates"],
+    queryFn: () => fetch("/api/portal/trucking-rates").then(r => r.ok ? r.json() : {}),
+    staleTime: 0,
+    gcTime: 0,
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+    refetchInterval: 60_000,
+  });
+  const truckingRates = truckingRatesData ?? {};
   const [truckingPayment, setTruckingPayment] = useState<"transfer" | "gateway" | "">("");
   const [truckingTransferTerm, setTruckingTransferTerm] = useState<"full" | "termin" | "dp" | "">("");
   const [truckingPayTerm, setTruckingPayTerm] = useState<"net7" | "net14" | "net30" | "net60" | "">("");
@@ -285,11 +296,13 @@ export default function JasaDetail() {
   }, [params.id]);
 
   useEffect(() => {
-    fetch("/api/portal/trucking-rates")
-      .then(r => r.ok ? r.json() as Promise<Record<string, { ratePerKm: number; loadingFee: number }>> : Promise.reject())
-      .then(setTruckingRates)
-      .catch(() => {/* fallback: empty, user can input manually */});
-  }, []);
+    const es = new EventSource("/api/ecommerce/events");
+    es.addEventListener("price_sync", () => {
+      qc.invalidateQueries({ queryKey: ["portal-trucking-rates"] });
+      qc.invalidateQueries({ queryKey: ["listPortalServicesDetail"] });
+    });
+    return () => es.close();
+  }, [qc]);
 
   // Trucking always uses Schedule
   useEffect(() => {
@@ -1291,7 +1304,7 @@ export default function JasaDetail() {
                     <div><Label>Destination Port</Label><Input placeholder="SGSIN" className="mt-1" value={state.destinationPort || ""} onChange={e => set("destinationPort", e.target.value)} /></div>
                   </div>
                   <div><Label>Container Type</Label>
-                    <Select value={state.containerType || ""} onValueChange={v => set("containerType", v)}>
+                    <Select value={state.containerType || undefined} onValueChange={v => set("containerType", v)}>
                       <SelectTrigger className="mt-1"><SelectValue placeholder="Pilih container" /></SelectTrigger>
                       <SelectContent>{["20 ft", "40 ft", "40 ft (High Cube)", "20 ft Suspensi", "40 ft Suspensi"].map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
                     </Select>
@@ -1315,7 +1328,7 @@ export default function JasaDetail() {
 
                 {ct === "customs" && <>
                   <div><Label>Shipment Type</Label>
-                    <Select value={state.shipmentType || ""} onValueChange={v => set("shipmentType", v)}>
+                    <Select value={state.shipmentType || undefined} onValueChange={v => set("shipmentType", v)}>
                       <SelectTrigger className="mt-1"><SelectValue placeholder="Import / Export" /></SelectTrigger>
                       <SelectContent><SelectItem value="Import">Import</SelectItem><SelectItem value="Export">Export</SelectItem></SelectContent>
                     </Select>
@@ -1867,7 +1880,7 @@ export default function JasaDetail() {
                     <div><Label>Quantity</Label><Input type="number" placeholder="1" className="mt-1" value={state.quantity || ""} onChange={e => set("quantity", e.target.value)} /></div>
                   </div>
                   <div><Label>Unit</Label>
-                    <Select value={state.unit || ""} onValueChange={v => set("unit", v)}>
+                    <Select value={state.unit || undefined} onValueChange={v => set("unit", v)}>
                       <SelectTrigger className="mt-1"><SelectValue placeholder="Pilih unit" /></SelectTrigger>
                       <SelectContent>{["CBM", "Pallet", "KG"].map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
                     </Select>

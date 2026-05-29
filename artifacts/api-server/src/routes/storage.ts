@@ -8,25 +8,36 @@ import {
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage.js";
 import { ObjectPermission } from "../lib/objectAcl.js";
 import { requireAdmin, requireClerkUser } from "../lib/requireAdmin.js";
+import { logStorageEvent, getRequestIp, getActor } from "../lib/storageAuditLog.js";
+import { createRateLimiter } from "../lib/userRateLimiter.js";
 
-// Per-user rate limit for presigned URL generation: 50 per user per hour.
-// Keyed by authenticated user ID (Clerk session) so it cannot be bypassed by
-// rotating IPs or forging x-forwarded-for headers.
-interface RateEntry { count: number; resetAt: number }
-const UPLOAD_URL_USER_WINDOW_MS = 60 * 60 * 1000; // 1 hour
-const UPLOAD_URL_USER_LIMIT = 50;
-const uploadUrlUserRateMap = new Map<string, RateEntry>();
+// Allowed MIME types for presigned URL uploads (staff BizPortal).
+// Excludes executables, scripts, and server-side code formats.
+const PRESIGNED_ALLOWED_MIME_TYPES = new Set([
+  // Images
+  "image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif",
+  "image/tiff", "image/bmp", "image/heic", "image/heif", "image/svg+xml",
+  // Documents
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  // Text
+  "text/plain", "text/csv",
+  // Archives
+  "application/zip", "application/x-zip-compressed",
+]);
+
+// Per-user rate limits — keyed by authenticated user ID (Clerk session)
+// so they cannot be bypassed by rotating IPs or forging x-forwarded-for.
+const uploadUrlLimiter = createRateLimiter({ windowMs: 60 * 60_000, limit: 50 }); // 50/hour
+const uploadFileLimiter = createRateLimiter({ windowMs: 60 * 60_000, limit: 50 }); // 50/hour
 
 function checkUploadUrlUserLimit(userId: string): boolean {
-  const now = Date.now();
-  let entry = uploadUrlUserRateMap.get(userId);
-  if (!entry || now > entry.resetAt) {
-    entry = { count: 0, resetAt: now + UPLOAD_URL_USER_WINDOW_MS };
-  }
-  if (entry.count >= UPLOAD_URL_USER_LIMIT) return false;
-  entry.count += 1;
-  uploadUrlUserRateMap.set(userId, entry);
-  return true;
+  return uploadUrlLimiter.check(userId);
 }
 
 const router: IRouter = Router();
@@ -45,6 +56,12 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 
 router.post("/storage/uploads/file", upload.single("file"), async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) {
     res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  // Per-user upload rate limit: 50 file uploads per hour
+  const userId = (req.user as { id: string }).id;
+  if (!uploadFileLimiter.check(userId)) {
+    res.status(429).json({ error: "Terlalu banyak upload file. Batas: 50/jam per akun." });
     return;
   }
   if (!req.file) {
@@ -66,6 +83,20 @@ router.post("/storage/uploads/file", upload.single("file"), async (req: Request,
     } catch (aclErr) {
       req.log.warn({ err: aclErr }, "Could not set ACL on uploaded object; admin-only fallback applies");
     }
+
+    const { actorId, actorType } = getActor(req);
+    logStorageEvent({
+      action: "upload",
+      entityType: "presigned_upload",
+      objectPath,
+      fileName: req.file.originalname,
+      contentType: req.file.mimetype,
+      fileSizeBytes: req.file.size,
+      actorId,
+      actorType,
+      ipAddress: getRequestIp(req),
+      details: "server-side multipart upload",
+    });
 
     res.json({ objectPath, url: `/api/storage${objectPath}` });
   } catch (error) {
@@ -164,6 +195,13 @@ router.post("/storage/uploads/request-url", async (req: Request, res: Response) 
 
   try {
     const { name, size, contentType } = parsed.data;
+
+    // MIME type whitelist — reject executable/script types before issuing a presigned URL.
+    if (contentType && !PRESIGNED_ALLOWED_MIME_TYPES.has(contentType.toLowerCase())) {
+      res.status(415).json({ error: `Tipe file tidak didukung: ${contentType}. Hanya dokumen, gambar, dan arsip yang diperbolehkan.` });
+      return;
+    }
+
     const uploadURL = await objectStorageService.getObjectEntityUploadURL();
     const objectPath = objectStorageService.normalizeObjectEntityPath(uploadURL);
 
@@ -173,6 +211,20 @@ router.post("/storage/uploads/request-url", async (req: Request, res: Response) 
       objectPath,
       userId,
       checkAfter: Date.now() + (PRESIGNED_URL_TTL_SEC + 60) * 1000,
+    });
+
+    const { actorId, actorType } = getActor(req);
+    logStorageEvent({
+      action: "upload_presigned_issued",
+      entityType: "presigned_upload",
+      objectPath,
+      fileName: name,
+      contentType,
+      fileSizeBytes: size ?? null,
+      actorId,
+      actorType,
+      ipAddress: getRequestIp(req),
+      details: "presigned PUT URL issued",
     });
 
     res.json(

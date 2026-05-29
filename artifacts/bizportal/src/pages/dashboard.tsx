@@ -4,7 +4,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { getLastResponseTime, useListLogisticOrders } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ShoppingCart, DollarSign, Truck, Package, Activity, AlertTriangle, ChevronRight, Ship, ArrowRight, Clock, RefreshCw, TrendingUp, TrendingDown, Minus, PackageOpen, ChevronDown, ChevronUp, FilePlus, X, Users, CheckCircle2, CircleDot, FileText, BarChart2, ExternalLink, Building2, Globe, LayoutGrid } from "lucide-react";
+import { ShoppingCart, DollarSign, Truck, Package, Activity, AlertTriangle, ChevronRight, Ship, ArrowRight, Clock, RefreshCw, TrendingUp, TrendingDown, Minus, PackageOpen, ChevronDown, ChevronUp, FilePlus, X, Users, CheckCircle2, CircleDot, FileText, BarChart2, ExternalLink, Globe, LayoutGrid } from "lucide-react";
 import { useCompany } from "@/contexts/CompanyContext";
 import { useQueryClient } from "@tanstack/react-query";
 import { useUpdateLogisticOrderStatus, useCreateSalesDocument, getListLogisticOrdersQueryKey } from "@workspace/api-client-react";
@@ -232,7 +232,7 @@ export default function DashboardPage() {
   const companyBreakdown = summary?.companyBreakdown ?? [];
 
   const { data: portalOrders = [], isLoading: portalLoading, refetch: refetchPortal } = useListLogisticOrders(undefined, {
-    query: { queryKey: ["dashboard-portal-orders"], refetchInterval },
+    query: { queryKey: getListLogisticOrdersQueryKey(), refetchInterval },
   });
 
   interface DashDriver { id: number; name: string; phone: string | null; vehiclePlate: string | null; vehicleType: string | null; isActive: boolean; }
@@ -282,8 +282,9 @@ export default function DashboardPage() {
 
   function handlePortalStatusChange(id: number, status: string) {
     setUpdatingId(id);
+    const order = portalOrders.find((o) => o.id === id);
     updateStatus.mutate(
-      { id, data: { status } },
+      { id, data: { status, clientUpdatedAt: order?.updatedAt } },
       {
         onSuccess: () => {
           toast({ title: t.common.success });
@@ -376,15 +377,11 @@ export default function DashboardPage() {
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">{t.dashboard.title}</h1>
-              {isConsolidated ? (
+              {isConsolidated && (
                 <Badge className="bg-purple-100 text-purple-800 border border-purple-200 gap-1 text-xs font-medium">
                   <LayoutGrid className="h-3 w-3" /> Holding Consolidated
                 </Badge>
-              ) : activeCompany ? (
-                <Badge className="bg-indigo-100 text-indigo-800 border border-indigo-200 gap-1 text-xs font-medium">
-                  <Building2 className="h-3 w-3" /> {activeCompany.companyName}
-                </Badge>
-              ) : null}
+              )}
             </div>
             <p className="text-sm sm:text-base text-muted-foreground mt-1 sm:mt-2">{t.dashboard.subtitle}</p>
           </div>
@@ -701,7 +698,7 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent className="space-y-3">
               {summary.perCompany.map((co) => {
-                const barW = Math.max(co.contribution, 2);
+                const barW = Math.max(co.contributionPct, 2);
                 return (
                   <div key={co.companyId} className="space-y-1">
                     <div className="flex items-center justify-between text-sm">
@@ -716,7 +713,7 @@ export default function DashboardPage() {
                         <span className="font-semibold text-emerald-700 tabular-nums">
                           {new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(co.revenueThisMonth)}
                         </span>
-                        <span className="text-xs font-medium text-purple-700 w-8 text-right">{co.contribution}%</span>
+                        <span className="text-xs font-medium text-purple-700 w-8 text-right">{co.contributionPct}%</span>
                       </div>
                     </div>
                     <div className="h-1.5 rounded-full bg-muted overflow-hidden">
@@ -1140,14 +1137,14 @@ export default function DashboardPage() {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setSoDialog(null)}>{t.common.cancel}</Button>
-            {soDialog?.linkedSalesDocId ? (
+            {(soDialog as any)?.linkedSalesDocId ? (
               <Button
                 variant="secondary"
                 className="gap-2"
                 onClick={() => { setSoDialog(null); window.location.href = "/sales/orders"; }}
               >
                 <ExternalLink className="h-4 w-4" />
-                Lihat SO: {soDialog.linkedSalesDocNumber}
+                Lihat SO: {(soDialog as any).linkedSalesDocNumber}
               </Button>
             ) : (
               <Button onClick={handleCreateSalesOrder} disabled={createSalesDoc.isPending} className="gap-2">

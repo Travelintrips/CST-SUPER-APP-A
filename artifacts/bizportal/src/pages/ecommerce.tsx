@@ -215,9 +215,10 @@ export default function EcommercePage() {
     syncUrl({ tab: value, categories: filterCategories });
   };
 
-  const { data: products, isLoading: isLoadingProducts } = useListProducts(undefined, {
+  const { data: _productsPaginated, isLoading: isLoadingProducts } = useListProducts({ limit: 500 }, {
     query: { queryKey: getListProductsQueryKey() }
   });
+  const products = _productsPaginated?.data;
 
   const { data: productCategories = [] as ProductCategory[], isLoading: isLoadingCategories } = useListProductCategories({
     query: { queryKey: getListProductCategoriesQueryKey() }
@@ -295,11 +296,11 @@ export default function EcommercePage() {
   const [editLineItemsTouched, setEditLineItemsTouched] = useState(false);
 
   const createSubtotal = createLineItems.reduce((s, li) => s + li.qty * li.unitPrice, 0);
-  const [createTaxRateId, setCreateTaxRateId] = useState<string>("");
+  const [createTaxRateId, setCreateTaxRateId] = useState<string>("none");
   const [createTaxAmount, setCreateTaxAmount] = useState(0);
 
   const [editSubtotal, setEditSubtotal] = useState(0);
-  const [editTaxRateId, setEditTaxRateId] = useState<string>("");
+  const [editTaxRateId, setEditTaxRateId] = useState<string>("none");
   const [editTaxAmount, setEditTaxAmount] = useState(0);
 
   const { data: allTaxes = [] as AccountingTax[] } = useListTaxes();

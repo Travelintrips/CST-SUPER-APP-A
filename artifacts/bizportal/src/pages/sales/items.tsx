@@ -15,7 +15,7 @@ import {
   type MediaItem,
 } from "@workspace/api-client-react";
 import { useState, useMemo, useRef, useEffect } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -31,13 +31,7 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Pencil, Trash2, Search, Package, Wrench, RefreshCw, ImageIcon, X, Video, Loader2, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Download } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
-
-const DEFAULT_SUBCATEGORIES = [
-  "Udara", "Laut", "Darat", "Pabean", "Handling",
-  "Trucking", "Container", "Freight Forwarding", "Lainnya",
-];
-
-const UNITS = ["pcs", "kg", "cbm", "container", "shipment", "dokumen", "trip", "ton", "hari"];
+import { LOGISTICS_SUBCATEGORIES as DEFAULT_SUBCATEGORIES, LOGISTICS_UNITS as UNITS } from "@workspace/logistics-constants";
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
@@ -65,10 +59,10 @@ function useUsdRate(): number {
   useEffect(() => {
     const { fresh } = _readBpRate();
     if (fresh) return;
-    fetch("https://open.er-api.com/v6/latest/USD")
+    fetch("/api/ecommerce/usd-idr-rate")
       .then((r) => r.json())
-      .then((data) => {
-        const idrRate = (data?.rates?.IDR as number) ?? 0;
+      .then((data: { rate: number }) => {
+        const idrRate = data?.rate ?? 0;
         if (idrRate > 1000) {
           localStorage.setItem(_BP_USD_KEY, JSON.stringify({ rate: idrRate, ts: Date.now() }));
           setRate(idrRate);
@@ -224,12 +218,18 @@ export default function SalesItemsPage() {
   const [filterSubcat, setFilterSubcat] = useState<string>("all");
   const [filterActive, setFilterActive] = useState<"all" | "active" | "inactive">("active");
 
-  const { data: products = [], isLoading } = useListProducts(
-    {},
+  const { data: _productsPaginated, isLoading } = useListProducts(
+    { limit: 500 },
     { query: { queryKey: getListProductsQueryKey({}) } }
   );
+  const products = _productsPaginated?.data ?? [];
   const { data: categories = [] } = useListProductCategories();
   const { data: taxes = [] } = useListTaxes();
+  const { data: apiSubcats = [...DEFAULT_SUBCATEGORIES] } = useQuery<string[]>({
+    queryKey: ["logistics-subcategories"],
+    queryFn: () => fetch("/api/settings/logistics-subcategories", { credentials: "include" }).then((r) => r.ok ? r.json() : [...DEFAULT_SUBCATEGORIES]),
+    staleTime: 5 * 60 * 1000,
+  });
 
   const createMut = useCreateProduct();
   const updateMut = useUpdateProduct();
@@ -385,14 +385,14 @@ export default function SalesItemsPage() {
     }
   };
 
-  // Kumpulkan semua sub-kategori unik dari produk yang ada (+ default)
+  // Kumpulkan semua sub-kategori unik dari produk yang ada (+ dari API/default)
   const allSubcategories = useMemo(() => {
     const fromProducts = products
       .map((p) => p.subcategory)
       .filter((s): s is string => !!s && s.trim() !== "");
-    const merged = Array.from(new Set([...DEFAULT_SUBCATEGORIES, ...fromProducts]));
+    const merged = Array.from(new Set([...apiSubcats, ...fromProducts]));
     return merged.sort();
-  }, [products]);
+  }, [products, apiSubcats]);
 
   const filtered = useMemo(() => {
     return products.filter((p) => {
@@ -779,7 +779,7 @@ export default function SalesItemsPage() {
                   placeholder="cth: Ekspedisi Khusus, Cold Chain…"
                   className="bg-slate-800 border-slate-600 text-slate-200 placeholder:text-slate-500"
                 />
-                {form.subcategory && !DEFAULT_SUBCATEGORIES.includes(form.subcategory) && (
+                {form.subcategory && !apiSubcats.includes(form.subcategory) && (
                   <p className="text-xs text-blue-400 flex items-center gap-1 mt-0.5">
                     <Plus className="h-3 w-3" /> Jenis baru: <strong>{form.subcategory}</strong>
                   </p>

@@ -1,11 +1,13 @@
 import { Router } from "express";
 import { db, companiesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
+import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 
 const router = Router();
 
-/** Detects PostgreSQL unique constraint violation (23505) on company_code / code columns. */
+/** Detects PostgreSQL unique constraint violation (23505) on company_code column. */
 function getDuplicateCompanyCodeMessage(err: any): string | null {
   const pgCode: string | undefined = err?.cause?.code ?? err?.code;
   if (pgCode !== "23505") return null;
@@ -16,7 +18,6 @@ function getDuplicateCompanyCodeMessage(err: any): string | null {
 
   if (
     detail.includes("companies_company_code_unique") ||
-    detail.includes("companies_code_uniq") ||
     detail.includes("company_code") ||
     detail.includes("company code")
   ) {
@@ -28,6 +29,26 @@ function getDuplicateCompanyCodeMessage(err: any): string | null {
   }
 
   return null;
+}
+
+/**
+ * Tambahkan perusahaan ke semua holding group yang aktif (CST-GROUP).
+ * Idempotent — ON CONFLICT DO NOTHING karena ada UNIQUE(holding_group_id, company_id).
+ */
+async function addCompanyToHoldingGroups(companyId: number): Promise<void> {
+  try {
+    const groups = await db.execute(sql`SELECT id FROM holding_groups ORDER BY id`);
+    for (const row of groups.rows) {
+      const holdingGroupId = (row as { id: number }).id;
+      await db.execute(sql`
+        INSERT INTO company_holding_members (holding_group_id, company_id, ownership_percentage, consolidation_method)
+        VALUES (${holdingGroupId}, ${companyId}, 100.00, 'full')
+        ON CONFLICT ON CONSTRAINT chm_holding_company_unique DO NOTHING
+      `);
+    }
+  } catch {
+    // Jangan gagalkan pembuatan perusahaan hanya karena holding insert gagal
+  }
 }
 
 // GET /companies — all logged-in users can read (for CompanySwitcher)
@@ -62,10 +83,14 @@ router.post("/", async (req, res) => {
         npwp,
         isHolding: isHolding ?? false,
         parentCompanyId: parentCompanyId ? Number(parentCompanyId) : null,
-        name: companyName,
-        code: companyCode,
       })
       .returning();
+
+    // Otomatis daftarkan ke holding group (kecuali perusahaan ini sendiri adalah holding)
+    if (!created.isHolding) {
+      await addCompanyToHoldingGroups(created.id);
+    }
+
     return res.status(201).json({ ...created, createdAt: created.createdAt.toISOString() });
   } catch (err: any) {
     const msg = getDuplicateCompanyCodeMessage(err);
@@ -81,8 +106,8 @@ router.patch("/:id", async (req, res) => {
   if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
   const { companyName, companyCode, logoUrl, address, phone, email, npwp, isActive, isHolding, parentCompanyId } = req.body ?? {};
   const patch: Partial<typeof companiesTable.$inferInsert> = {};
-  if (companyName !== undefined) { patch.companyName = companyName; patch.name = companyName; }
-  if (companyCode !== undefined) { patch.companyCode = companyCode; patch.code = companyCode; }
+  if (companyName !== undefined) patch.companyName = companyName;
+  if (companyCode !== undefined) patch.companyCode = companyCode;
   if (logoUrl !== undefined) patch.logoUrl = logoUrl;
   if (address !== undefined) patch.address = address;
   if (phone !== undefined) patch.phone = phone;
@@ -114,7 +139,9 @@ router.delete("/:id", async (req, res) => {
   if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
   // Prevent deleting core companies 1-4
   if (id <= 4) return res.status(403).json({ message: "Tidak dapat menghapus perusahaan inti (id 1-4)" });
+  const [company] = await db.select({ logoUrl: companiesTable.logoUrl }).from(companiesTable).where(eq(companiesTable.id, id));
   await db.delete(companiesTable).where(eq(companiesTable.id, id));
+  if (company?.logoUrl) deleteFromSupabase(company.logoUrl).catch(() => {});
   return res.json({ success: true });
 });
 

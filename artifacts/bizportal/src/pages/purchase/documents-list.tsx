@@ -88,7 +88,6 @@ export default function PurchaseDocumentsListPage({ kind }: Props) {
   const { data: docs } = useListPurchaseDocuments({
     kind,
     ...(!isRfq && paymentFilter !== "all" ? { paymentStatus: paymentFilter } : {}),
-    company: activeCompanyId,
   });
 
   const allDocs = docs ?? [];

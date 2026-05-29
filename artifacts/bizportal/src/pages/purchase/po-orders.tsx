@@ -26,6 +26,7 @@ import {
   BookOpen,
   ChevronRight,
   AlertCircle,
+  SquareArrowOutUpRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -257,11 +258,18 @@ function PODetailPanel({ id }: { id: number }) {
           <div className="text-sm text-slate-400">{data.supplierName}</div>
           {data.notes && <div className="text-xs text-slate-500 mt-1 max-w-lg truncate">{data.notes}</div>}
         </div>
-        <Link href={`/purchase/orders/${data.id}`}>
-          <Button size="sm" variant="outline" className="border-slate-600 text-slate-300 hover:text-white flex-shrink-0">
-            <ExternalLink className="w-3.5 h-3.5 mr-1" /> Buka
-          </Button>
-        </Link>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <Link href={`/accounting/payments?refDocNumber=${encodeURIComponent(data.docNumber)}`}>
+            <Button size="sm" variant="ghost" className="border-slate-700 text-slate-400 hover:text-slate-200 gap-1.5">
+              <SquareArrowOutUpRight className="w-3.5 h-3.5" /> Lihat Pembayaran
+            </Button>
+          </Link>
+          <Link href={`/purchase/orders/${data.id}`}>
+            <Button size="sm" variant="outline" className="border-slate-600 text-slate-300 hover:text-white">
+              <ExternalLink className="w-3.5 h-3.5 mr-1" /> Buka
+            </Button>
+          </Link>
+        </div>
       </div>
 
       <div className="px-5 py-3 border-b border-slate-700/60 grid grid-cols-2 sm:grid-cols-4 gap-3 flex-shrink-0 bg-slate-800/30">
@@ -520,7 +528,7 @@ function PODetailPanel({ id }: { id: number }) {
 }
 
 export default function POOrdersPage() {
-  const { companyId } = useCompany();
+  const { activeCompanyId: companyId } = useCompany();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<POStatus>("all");
   const [receiveFilter, setReceiveFilter] = useState<ReceiveFilter>("all");
@@ -528,9 +536,8 @@ export default function POOrdersPage() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
 
   const { data: docs = [], isLoading } = useListPurchaseDocuments({
-    companyId: String(companyId),
     kind: "order",
-  });
+  } as any);
 
   const filtered = useMemo(() => {
     return docs.filter((d) => {

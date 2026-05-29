@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { Bell, Package, Ship, ShoppingBag, CheckCheck, Trash2, FileText, RefreshCw, Container, Layers, BellOff, BellRing, AlertTriangle } from "lucide-react";
+import { Bell, Package, Ship, ShoppingBag, CheckCheck, Trash2, FileText, RefreshCw, Container, Layers, BellOff, BellRing, AlertTriangle, ClipboardList, ShoppingCart, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
 import {
   Popover,
@@ -16,9 +16,14 @@ function typeLabel(type: OrderNotification["type"]) {
   if (type === "logistic_status") return "Update Status Logistik";
   if (type === "portal_sales") return "Order Portal";
   if (type === "sales_update") return "Update Sales Order";
+  if (type === "sales_new") return "Sales Baru";
   if (type === "freight_new") return "Freight Shipment Baru";
   if (type === "freight_status") return "Update Status Shipment";
   if (type === "freight_stage") return "Update Stage Shipment";
+  if (type === "purchase_rfq") return "RFQ Pembelian Baru";
+  if (type === "purchase_po") return "Purchase Order Dikonfirmasi";
+  if (type === "vendor_quote") return "Penawaran Vendor Masuk";
+  if (type === "vendor_po_accepted") return "Vendor Konfirmasi PO";
   return "Order Produk";
 }
 
@@ -27,17 +32,25 @@ function typeIcon(type: OrderNotification["type"]) {
   if (type === "logistic_status") return <RefreshCw size={14} className="text-cyan-500 shrink-0" />;
   if (type === "portal_sales") return <ShoppingBag size={14} className="text-purple-500 shrink-0" />;
   if (type === "sales_update") return <FileText size={14} className="text-orange-500 shrink-0" />;
+  if (type === "sales_new") return <ClipboardList size={14} className="text-emerald-500 shrink-0" />;
   if (type === "freight_new") return <Container size={14} className="text-indigo-500 shrink-0" />;
   if (type === "freight_status") return <RefreshCw size={14} className="text-violet-500 shrink-0" />;
   if (type === "freight_stage") return <Layers size={14} className="text-teal-500 shrink-0" />;
+  if (type === "purchase_rfq") return <ShoppingCart size={14} className="text-amber-500 shrink-0" />;
+  if (type === "purchase_po") return <ShoppingCart size={14} className="text-green-600 shrink-0" />;
+  if (type === "vendor_quote") return <MessageSquare size={14} className="text-sky-500 shrink-0" />;
+  if (type === "vendor_po_accepted") return <CheckCheck size={14} className="text-green-600 shrink-0" />;
   return <Package size={14} className="text-green-500 shrink-0" />;
 }
 
 function orderHref(n: OrderNotification) {
   if (n.type === "logistic" || n.type === "logistic_status") return `/logistics/portal-orders/${n.orderId}`;
   if (n.type === "portal_sales") return `/logistics/portal-orders`;
-  if (n.type === "sales_update") return `/sales/documents/${n.orderId}`;
+  if (n.type === "sales_update" || n.type === "sales_new") return `/sales/documents/${n.orderId}`;
   if (n.type === "freight_new" || n.type === "freight_status" || n.type === "freight_stage") return `/logistics/freight/${n.orderId}`;
+  if (n.type === "purchase_rfq" || n.type === "purchase_po") return `/purchase/documents/${n.orderId}`;
+  if (n.type === "vendor_quote") return `/logistics/portal-orders/${n.orderId}`;
+  if (n.type === "vendor_po_accepted") return `/purchase/orders/${n.orderId}`;
   return `/portal-product-orders`;
 }
 
@@ -77,6 +90,28 @@ function notifDescription(n: OrderNotification): string {
   if (n.type === "freight_stage") {
     const vendor = n.vendorName ? ` · ${n.vendorName}` : "";
     return `${n.stageType ?? ""}: ${n.stageStatus ?? ""}${vendor}`;
+  }
+  if (n.type === "sales_new") {
+    const kind = n.docKind === "order" ? "Sales Order" : "Sales Quotation";
+    const total = n.grandTotal != null ? ` · ${formatRupiah(n.grandTotal)}` : "";
+    return `${kind}${total}`;
+  }
+  if (n.type === "purchase_rfq") {
+    const total = n.grandTotal != null ? ` · ${formatRupiah(n.grandTotal)}` : "";
+    return `Request for Quotation${total}`;
+  }
+  if (n.type === "purchase_po") {
+    const total = n.grandTotal != null ? ` · ${formatRupiah(n.grandTotal)}` : "";
+    return `Purchase Order${total}`;
+  }
+  if (n.type === "vendor_quote") {
+    const pos = n.quotePosition ? ` · Vendor ke-${n.quotePosition}` : "";
+    const price = n.vendorPrice != null ? ` · ${formatRupiah(n.vendorPrice)}` : "";
+    return `${n.rfqNumber ?? ""}${pos}${price}`;
+  }
+  if (n.type === "vendor_po_accepted") {
+    const total = n.grandTotal != null ? ` · ${formatRupiah(n.grandTotal)}` : "";
+    return `PO dikonfirmasi vendor${total}`;
   }
   return `${n.itemCount ?? 1} item · ${formatRupiah(n.grandTotal ?? 0)}`;
 }

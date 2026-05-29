@@ -1,0 +1,117 @@
+Lanjutkan PRIORITAS 2:
+Migrasikan seluruh hardcoded WhatsApp di sales.ts ke Settings → Template WA menggunakan whatsappTemplateService.
+
+Jangan refactor besar.
+Gunakan pola yang sama seperti vendorJobOrder.ts.
+
+==================================================
+FLOW YANG HARUS DIMIGRASIKAN
+============================
+
+1. SO / Quotation Dibuat → Admin
+
+Hardcoded:
+notif admin saat quotation/SO dibuat
+
+Workflow:
+sales_order_created
+
+Recipient:
+admin_personal
+
+==================================================
+
+2. Quotation Dikirim ke Customer
+
+Hardcoded:
+quotation sent message
+
+Workflow:
+quotation_sent
+
+Recipient:
+customer
+
+==================================================
+
+3. SO Confirmed
+
+Hardcoded:
+SO confirmed message
+
+Workflow:
+sales_order_confirmed
+
+Recipient:
+
+* customer
+* admin_personal
+
+==================================================
+
+4. SO Mark Delivered
+
+Hardcoded:
+SO delivered message
+
+Workflow:
+sales_order_delivered
+
+Recipient:
+
+* customer
+* admin_personal
+
+==================================================
+
+5. Invoice Diterbitkan
+
+Hardcoded:
+invoice created/sent message
+
+Workflow:
+invoice_issued
+
+Recipient:
+
+* customer
+* admin_personal
+
+==================================================
+ATURAN
+======
+
+* Semua WA flow wajib lewat whatsappTemplateService
+* Tidak boleh ada const message hardcoded
+* Tidak boleh encodeURIComponent manual
+* Template source = Settings Template WA
+* Jika template kosong → fallback default template
+* Simpan log ke whatsapp_logs
+* Support variable render + conditional block
+
+==================================================
+VARIABLE WAJIB
+==============
+
+{{orderNumber}}
+{{customerName}}
+{{serviceType}}
+{{route}}
+{{currency}}
+{{sellingPrice}}
+{{invoiceNumber}}
+{{invoiceLink}}
+{{trackingLink}}
+{{status}}
+
+==================================================
+OUTPUT YANG SAYA MAU
+====================
+
+1. File yang diubah
+2. Hardcoded yang dihapus
+3. Workflow yang berhasil connect
+4. Test result per workflow
+5. Regression check
+6. Pastikan flow lama tidak rusak
+7. Pastikan Settings Template WA sekarang bisa edit seluruh flow sales.ts

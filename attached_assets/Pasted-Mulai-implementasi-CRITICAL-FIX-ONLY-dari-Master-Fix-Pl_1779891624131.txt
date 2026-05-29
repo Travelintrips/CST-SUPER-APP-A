@@ -1,0 +1,79 @@
+Mulai implementasi CRITICAL FIX ONLY dari Master Fix Plan.
+
+Jangan implement High/Medium/Low dulu.
+
+Aturan:
+1. Fix hanya issue priority Critical.
+2. Jangan refactor besar.
+3. Jangan ubah fitur yang sudah PASS:
+   - price_sync BizPortal → Customer Portal
+   - existing mini form links
+   - existing order data
+   - existing WA template settings
+4. Setiap fix harus aman untuk data existing.
+5. Jika butuh migration, buat migration backward-compatible.
+6. Setelah fix, jalankan test spesifik per issue.
+
+Urutan implementasi Critical:
+
+A. Security & Data Leak
+- cegah customer melihat vendorPrice, margin, harga modal
+- cegah vendor melihat data vendor lain
+- cegah public anonymous update sembarangan
+- pastikan admin endpoint protected
+
+B. Token & Public Link Safety
+- vendor mini form hanya valid dengan token
+- customer approval hanya valid dengan token
+- token expired ditolak
+- submitted link tidak bisa submit ulang kecuali resubmit_allowed
+- token tidak boleh predictable
+
+C. Duplicate SO / Double Approval Prevention
+- customer approve dua kali tidak boleh create SO dobel
+- create SO harus idempotent
+- tambahkan unique constraint jika perlu
+- gunakan transaction/atomic check
+
+D. Order / Status Corruption Prevention
+- status transition harus valid
+- jangan bisa loncat status berbahaya
+- vendor revise tidak boleh override saat customer sudah approve
+- selected vendor tidak berubah diam-diam setelah customer approve
+
+E. Persistence Critical
+- data order, approval, submission, SO, operational confirmation tidak boleh hanya local state
+- pastikan semua critical create/update benar-benar persist ke Supabase/database
+
+Output setelah implementasi:
+
+1. FIXED CRITICAL ISSUES
+Priority | Issue | File/API | Fix Applied | Test Result
+
+2. MIGRATION CREATED
+- nama migration
+- table/constraint/policy yang berubah
+- backward compatible atau tidak
+
+3. SECURITY TEST RESULT
+- customer data leak test
+- vendor isolation test
+- public token test
+- admin protection test
+
+4. DUPLICATE TEST RESULT
+- double approve
+- double SO create
+- double vendor submit
+- refresh during submit
+
+5. REGRESSION TEST
+Pastikan tetap PASS:
+- price_sync
+- customer portal product/service display
+- mini form existing link
+- WA template settings
+
+6. FINAL VERDICT
+- Critical issues fixed?
+- Safe to continue High priority?

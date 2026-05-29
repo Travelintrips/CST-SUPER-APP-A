@@ -14,6 +14,7 @@ import { shortLinkRedirectRouter } from "./routes/shortLinkRedirect";
 import { adminActionRouter } from "./routes/adminAction";
 import { authMiddleware } from "./middlewares/authMiddleware";
 import { bearerRateLimiter } from "./middlewares/bearerRateLimiter";
+import { correlationIdMiddleware } from "./middlewares/correlationId";
 import { logger } from "./lib/logger";
 import { recordResponseTime } from "./lib/responseTimeLog";
 
@@ -23,6 +24,9 @@ const app: Express = express();
 // This makes req.ip reflect the real client IP from X-Forwarded-For instead
 // of the proxy's internal address, which is required for IP-based rate limiting.
 app.set("trust proxy", 1);
+
+// ── Correlation ID — assign / echo X-Request-ID on every request ─────────────
+app.use(correlationIdMiddleware);
 
 // ── Gzip compression ─────────────────────────────────────────────────────────
 app.use(compression());
@@ -118,6 +122,9 @@ app.use((req, res, next) => {
 app.use(
   pinoHttp({
     logger,
+    // Reuse the correlation ID already set by correlationIdMiddleware so every
+    // pino-http log line carries the same reqId as the X-Request-ID header.
+    genReqId: (req) => (req as IncomingMessage & { id?: string }).id,
     serializers: {
       req(req: IncomingMessage & { id?: string }) {
         return {
@@ -217,15 +224,20 @@ if (fs.existsSync(CUSTOMER_PORTAL_DIST)) {
   app.use(express.static(CUSTOMER_PORTAL_DIST, { index: false }));
 }
 
-// ─── Dev-mode root redirect ───────────────────────────────────────────────────
+// ─── Health check + Dev-mode root ─────────────────────────────────────────────
+// /healthz always returns 200 — used by Replit's workflow port health-check.
+app.get("/healthz", (_req: Request, res: Response) => {
+  res.status(200).json({ status: "ok" });
+});
+
 // In development, frontend apps run as separate Vite processes so
-// customer-portal/dist doesn't exist yet. Redirect "/" to the BizPortal
-// so the port stays reachable and Replit's proxy health-check passes.
+// customer-portal/dist doesn't exist yet. Return 200 with a redirect meta tag
+// so Replit's proxy health-check passes (302 causes health-check failures).
 app.get("/", (_req: Request, res: Response, next: NextFunction) => {
   if (fs.existsSync(CUSTOMER_PORTAL_DIST)) return next();
   const bizportalDist = path.join(ARTIFACTS_DIR, "bizportal/dist/public");
   if (fs.existsSync(bizportalDist)) return next();
-  res.redirect(302, "/bizportal/");
+  res.status(200).send(`<!DOCTYPE html><html><head><meta http-equiv="refresh" content="0;url=/bizportal/"></head><body><a href="/bizportal/">BizPortal</a></body></html>`);
 });
 
 // ─── BizPortal Static Serving ────────────────────────────────────────────────
@@ -250,6 +262,26 @@ if (fs.existsSync(BIZPORTAL_DIST)) {
   // SPA fallback: any /bizportal/* path that isn't a file → index.html
   app.use("/bizportal/{*path}", (_req: Request, res: Response) => {
     res.sendFile(path.join(BIZPORTAL_DIST, "index.html"));
+  });
+}
+
+// ─── Logistic Order Static Serving ───────────────────────────────────────────
+// logistic-order is built with base="/logistic-order/" — serves as redirect shim
+// pointing to customer portal routes (/book, /track, /logistic-admin).
+
+const LOGISTIC_ORDER_DIST = path.resolve(
+  ARTIFACTS_DIR,
+  "logistic-order/dist/public",
+);
+
+if (fs.existsSync(LOGISTIC_ORDER_DIST)) {
+  app.use(
+    "/logistic-order",
+    express.static(LOGISTIC_ORDER_DIST, { index: "index.html" }),
+  );
+
+  app.use("/logistic-order/{*path}", (_req: Request, res: Response) => {
+    res.sendFile(path.join(LOGISTIC_ORDER_DIST, "index.html"));
   });
 }
 
@@ -287,7 +319,7 @@ app.use("/api", router);
 // For any non-API, non-BizPortal path (e.g. /confirm/:token, /, /services, etc.)
 // serve the customer portal index.html so client-side routing works.
 if (fs.existsSync(CUSTOMER_PORTAL_DIST)) {
-  const PORTAL_SKIP = ["/api/", "/bizportal", "/login", "/logout", "/callback", "/auth", "/mobile-auth", "/q/", "/admin-action/"];
+  const PORTAL_SKIP = ["/api/", "/bizportal", "/login", "/logout", "/callback", "/auth", "/mobile-auth"];
   app.use((req: Request, res: Response, next: NextFunction) => {
     if (PORTAL_SKIP.some((p) => req.path === p || req.path.startsWith(p + "/") || req.path.startsWith(p))) {
       return next();
@@ -303,8 +335,10 @@ if (fs.existsSync(CUSTOMER_PORTAL_DIST)) {
 
 // Global error handler — logs unhandled errors and returns JSON
 app.use((err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  const reqId = (req as express.Request & { id?: string }).id;
   logger.error(
     {
+      reqId,
       err: { message: err.message, stack: err.stack, name: err.name },
       method: req.method,
       url: req.url,
@@ -315,6 +349,7 @@ app.use((err: Error, req: express.Request, res: express.Response, _next: express
   const isProd = process.env["NODE_ENV"] === "production";
   res.status(500).json({
     message: "Internal Server Error",
+    reqId,
     ...(isProd ? {} : { error: err.message }),
   });
 });

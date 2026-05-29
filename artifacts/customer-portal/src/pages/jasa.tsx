@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +13,7 @@ import { resolveImageUrl } from "@/lib/utils";
 import { getServiceFallbackImage } from "@/lib/categoryImages";
 import { useLanguage } from "@/i18n/LanguageContext";
 import { translateServiceName, translateCategory } from "@/i18n/serviceData";
+import { GROUPED_DISPLAY_CATEGORIES as GROUPED_CATEGORIES } from "@workspace/logistics-constants";
 
 const COLOR_BY_CATEGORY: Record<string, { bg: string; text: string; badge: string }> = {
   "Udara":             { bg: "bg-blue-50",    text: "text-blue-700",   badge: "bg-blue-100 text-blue-700" },
@@ -46,7 +48,8 @@ const DEFAULT_ACCENT = { overlay: "rgba(59,130,246,0.20)", hoverShadow: "0 10px 
 
 const stripJasa = (name: string) => name.replace(/^Jasa\s+/i, "");
 
-const GROUPED_CATEGORIES = ["Trucking", "Container"];
+const formatIDR = (v: number) =>
+  new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(v);
 
 export default function Jasa() {
   const [, setLocation] = useLocation();
@@ -54,9 +57,18 @@ export default function Jasa() {
   const { t, locale } = useLanguage();
   const [activeCategory, setActiveCategory] = useState<string>("__all__");
   const [failedImages, setFailedImages] = useState<Set<number>>(new Set());
+  const qc = useQueryClient();
+
+  useEffect(() => {
+    const es = new EventSource("/api/ecommerce/events");
+    es.addEventListener("price_sync", () => {
+      qc.invalidateQueries({ queryKey: ["listPortalServicesJasa"] });
+    });
+    return () => es.close();
+  }, [qc]);
 
   const { data: servicesRaw, isLoading } = useListPortalServices({
-    query: { queryKey: ["listPortalServicesJasa"] },
+    query: { queryKey: ["listPortalServicesJasa"], staleTime: 0, gcTime: 0, refetchOnWindowFocus: true },
   });
 
   const services = Array.isArray(servicesRaw) ? servicesRaw : [];
@@ -582,10 +594,6 @@ export default function Jasa() {
                       <CardTitle className="text-[13.5px] font-bold leading-snug text-slate-800">
                         {translateServiceName(stripJasa(service.name), locale)}
                       </CardTitle>
-                      <div className="flex items-center gap-1 mt-1">
-                        <Calculator className="h-3 w-3 text-blue-500" />
-                        <span className="text-[9.5px] font-semibold text-blue-500 uppercase tracking-widest">{t("jasa.calcCost")}</span>
-                      </div>
                     </CardHeader>
 
                     {service.description && (
@@ -595,6 +603,21 @@ export default function Jasa() {
                         </CardDescription>
                       </CardContent>
                     )}
+
+                    {/* Harga Jual from BizPortal */}
+                    <CardContent className="px-4 pb-2 pt-0">
+                      <div
+                        className="flex items-center justify-between rounded-lg px-3 py-1.5"
+                        style={{ background: "rgba(11,92,173,0.05)", border: "1px solid rgba(11,92,173,0.10)" }}
+                      >
+                        <span className="text-[9.5px] font-semibold text-slate-400 uppercase tracking-wide">Harga Jual</span>
+                        {service.price > 0 ? (
+                          <span className="text-[13px] font-bold text-[#0B5CAD]">{formatIDR(service.price)}</span>
+                        ) : (
+                          <span className="text-[11px] font-semibold text-amber-600">Harga Negosiasi</span>
+                        )}
+                      </div>
+                    </CardContent>
 
                     <CardContent className="px-4 pb-4 pt-1">
                       <Button

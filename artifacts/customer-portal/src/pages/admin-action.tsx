@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams } from "wouter";
+import { PriceBreakdown } from "@/components/PriceBreakdown";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -7,11 +8,27 @@ type OrderInfo = {
   id: number;
   orderNumber: string;
   customerName: string;
+  companyName: string | null;
+  email: string | null;
+  phone: string | null;
+  orderType: string | null;
   serviceType: string;
   origin: string;
   destination: string;
   commodity: string | null;
+  cargoDescription: string | null;
+  grossWeight: string | null;
+  volumeCbm: string | null;
+  jumlahKoli: number | null;
+  requiredDate: string | null;
+  notes: string | null;
+  paymentType: string | null;
+  grandTotal: string | null;
+  subtotalBeforeTax?: string | null;
+  taxRate?: number | null;
+  taxAmount?: string | null;
   status: string;
+  items?: Array<{ serviceName: string; category: string; subtotal: string | null; quantity?: string | null; unit?: string | null }>;
 };
 
 type Vendor = {
@@ -19,6 +36,15 @@ type Vendor = {
   name: string;
   phone: string | null;
   serviceType?: string | null;
+  isMatching?: boolean;
+  hasCommodityMatch?: boolean;
+  priceBase?: number | null;
+  orderQty?: number | null;
+  orderUnit?: string | null;
+  vendorEstSubtotal?: number | null;
+  vendorEstTax?: number | null;
+  vendorEstTotal?: number | null;
+  taxRate?: number | null;
 };
 
 type VendorRow = {
@@ -43,7 +69,7 @@ type BaseData = {
   order: OrderInfo;
 };
 
-type ReviewData = BaseData & { vendors: Vendor[]; rfqs: Rfq[] };
+type ReviewData = BaseData & { vendors: Vendor[]; rfqs: Rfq[]; vendorFilterApplied: boolean; filterMode: "service" | "commodity" | "etalase" | "none"; shipmentType: string; commodity: string | null };
 type CompareData = BaseData & { rfq: Rfq; vendors: VendorRow[] };
 type ForwardData = BaseData & {
   rfq: Rfq | null;
@@ -90,20 +116,98 @@ function SuccessCard({ title, message }: { title: string; message: string }) {
   );
 }
 
+function DetailRow({ label, value }: { label: string; value: string | number | null | undefined }) {
+  if (value == null || value === "") return null;
+  return (
+    <div className="flex justify-between gap-2 py-1 border-b border-slate-50 last:border-0">
+      <span className="text-xs text-slate-400 shrink-0">{label}</span>
+      <span className="text-xs text-slate-700 text-right font-medium">{value}</span>
+    </div>
+  );
+}
+
 function OrderCard({ order }: { order: OrderInfo }) {
+  const isProduct = order.orderType === "product";
+  const hasRoute = !isProduct && (order.origin || order.destination);
+  const idr = (v: string | null) => v && Number(v) > 0 ? `Rp ${Math.round(Number(v)).toLocaleString("id-ID")}` : null;
+
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
-      <div className="flex items-center gap-3 mb-3">
-        <span className="text-3xl">🚢</span>
+      <div className="flex items-center gap-3 mb-4">
+        <span className="text-3xl">{isProduct ? "🛍️" : "🚢"}</span>
         <div>
           <h1 className="text-lg font-bold text-slate-800">{order.orderNumber}</h1>
-          <p className="text-sm text-slate-500">{order.serviceType} · {order.origin} → {order.destination}</p>
-          <p className="text-xs text-slate-400 mt-0.5">Customer: {order.customerName}</p>
+          <p className="text-xs text-slate-400 mt-0.5">
+            {order.companyName ? `${order.companyName} · ` : ""}{order.customerName}
+          </p>
         </div>
+        <span className="ml-auto text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 uppercase tracking-wide">{order.status}</span>
       </div>
-      {order.commodity && (
-        <p className="text-xs text-slate-500">📦 {order.commodity}</p>
-      )}
+
+      <div className="space-y-0.5">
+        {hasRoute && (
+          <div className="flex justify-between gap-2 py-1 border-b border-slate-50">
+            <span className="text-xs text-slate-400 shrink-0">Rute</span>
+            <span className="text-xs text-slate-700 text-right font-medium">
+              {order.origin || "?"} → {order.destination || "?"}
+            </span>
+          </div>
+        )}
+        <DetailRow label="Komoditi" value={order.commodity} />
+        <DetailRow label="Deskripsi Kargo" value={order.cargoDescription} />
+        {(order.grossWeight || order.volumeCbm || order.jumlahKoli) && (
+          <div className="flex justify-between gap-2 py-1 border-b border-slate-50">
+            <span className="text-xs text-slate-400 shrink-0">Dimensi / Berat</span>
+            <span className="text-xs text-slate-700 text-right font-medium">
+              {[
+                order.grossWeight ? `${Number(order.grossWeight).toLocaleString("id-ID")} kg` : null,
+                order.volumeCbm ? `${Number(order.volumeCbm).toLocaleString("id-ID")} CBM` : null,
+                order.jumlahKoli ? `${order.jumlahKoli} koli` : null,
+              ].filter(Boolean).join(" · ")}
+            </span>
+          </div>
+        )}
+        {order.items && order.items.length > 0 && (
+          <div className="py-2 border-b border-slate-50">
+            <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide mb-1">{isProduct ? "Produk Dipesan" : "Layanan / Item"}</p>
+            <ul className="space-y-2">
+              {order.items.map((it, i) => (
+                <li key={i} className="text-xs">
+                  <div className="flex justify-between gap-2">
+                    <span className="text-slate-700">• {it.serviceName}</span>
+                    <span className="text-slate-500 shrink-0">{idr(it.subtotal) ?? ""}</span>
+                  </div>
+                  {it.quantity && (
+                    <div className="flex justify-between gap-2 ml-3 mt-0.5">
+                      <span className="text-slate-400">Quantity</span>
+                      <span className="text-slate-500 shrink-0">{it.quantity}{it.unit ? ` ${it.unit}` : ""}</span>
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <DetailRow label="Tanggal Diperlukan" value={order.requiredDate} />
+        <DetailRow label="Pembayaran" value={order.paymentType} />
+        {order.grandTotal && Number(order.grandTotal) > 0 && (
+          <PriceBreakdown
+            subtotal={order.subtotalBeforeTax ? Number(order.subtotalBeforeTax) : null}
+            taxRate={order.taxRate ?? 11}
+            taxAmount={order.taxAmount ? Number(order.taxAmount) : null}
+            grandTotal={Number(order.grandTotal)}
+            subtotalLabel={order.orderType === "product" ? "Subtotal Produk" : "Subtotal"}
+            grandTotalLabel="Grand Total"
+            className="mt-1"
+          />
+        )}
+        {order.notes && (
+          <div className="pt-2 mt-1">
+            <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide mb-1">Catatan Customer</p>
+            <p className="text-xs text-slate-600 bg-slate-50 rounded-lg px-3 py-2">{order.notes}</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -161,7 +265,9 @@ function ReviewOrderView({ token, data }: { token: string; data: ReviewData }) {
 
   if (result?.ok) return <SuccessCard title="RFQ Terkirim!" message={result.message} />;
 
-  const matchingVendors = data.vendors;
+  const hasServiceType = !!(data.shipmentType && data.shipmentType.trim());
+  const hasCommodity   = !!(data.commodity && data.commodity.trim());
+  const filterMode     = data.filterMode ?? "none";
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 py-8 px-4">
@@ -183,14 +289,61 @@ function ReviewOrderView({ token, data }: { token: string; data: ReviewData }) {
         )}
 
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
-          <h2 className="font-semibold text-slate-800 mb-4">
-            Vendor Tersedia ({matchingVendors.length})
-          </h2>
-          {matchingVendors.length === 0 ? (
-            <p className="text-sm text-slate-500">Tidak ada vendor aktif yang cocok dengan tipe layanan ini.</p>
+          <div className="flex items-center justify-between mb-1">
+            <h2 className="font-semibold text-slate-800">
+              Vendor Tersedia ({data.vendors.length})
+            </h2>
+            {filterMode === "service" && (
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                Filter: {data.shipmentType}
+              </span>
+            )}
+            {filterMode === "commodity" && (
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">
+                Filter: {data.commodity}
+              </span>
+            )}
+          </div>
+
+          {/* Kasus: shipmentType ada, tidak ada vendor yg cocok */}
+          {hasServiceType && !data.vendorFilterApplied && (
+            <div className="mb-3 px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-500">
+              ℹ️ Tidak ada vendor yang cocok dengan "<strong>{data.shipmentType}</strong>" — menampilkan semua vendor aktif.
+            </div>
+          )}
+          {/* Kasus: shipmentType kosong, ada commodity / item produk */}
+          {filterMode === "commodity" && (() => {
+            const label = (data.commodity && data.commodity.trim())
+              || (data.order.items && data.order.items[0]?.serviceName)
+              || "";
+            return data.vendors.length > 0 ? (
+              <div className="mb-3 px-3 py-2 rounded-lg bg-green-50 border border-green-200 text-xs text-green-700">
+                ✅ Menampilkan vendor yang menjual "<strong>{label}</strong>" di etalase.
+              </div>
+            ) : (
+              <div className="mb-3 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-700">
+                ⚠️ Belum ada vendor yang punya "<strong>{label}</strong>" di etalase. Tambahkan item ke katalog vendor terlebih dahulu.
+              </div>
+            );
+          })()}
+          {/* Kasus: shipmentType kosong, menampilkan hanya vendor yg punya etalase */}
+          {filterMode === "etalase" && (
+            <div className="mb-3 px-3 py-2 rounded-lg bg-blue-50 border border-blue-200 text-xs text-blue-700">
+              🛍️ Order produk — menampilkan vendor yang memiliki katalog produk/etalase.
+            </div>
+          )}
+          {/* Kasus: tidak ada etalase sama sekali, fallback ke serviceType */}
+          {!hasServiceType && !data.vendorFilterApplied && filterMode === "none" && (
+            <div className="mb-3 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-700">
+              ⚠️ Belum ada vendor dengan etalase produk — menampilkan vendor berdasarkan tipe layanan terdaftar.
+            </div>
+          )}
+
+          {data.vendors.length === 0 ? (
+            <p className="text-sm text-slate-500">Tidak ada vendor aktif yang bisa dihubungi.</p>
           ) : (
-            <div className="space-y-2">
-              {matchingVendors.map((v) => (
+            <div className="space-y-2 mt-3">
+              {data.vendors.map((v) => (
                 <label key={v.id} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${selectedIds.includes(v.id) ? "border-blue-400 bg-blue-50" : "border-slate-200 hover:bg-slate-50"}`}>
                   <input
                     type="checkbox"
@@ -199,10 +352,45 @@ function ReviewOrderView({ token, data }: { token: string; data: ReviewData }) {
                     className="w-4 h-4 accent-blue-600"
                   />
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium text-slate-800 text-sm">{v.name}</p>
-                    {v.serviceType && <p className="text-xs text-slate-400 truncate">{v.serviceType}</p>}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <p className="font-medium text-slate-800 text-sm">{v.name}</p>
+                      {v.hasCommodityMatch && (
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 border border-green-200">✓ Komoditi</span>
+                      )}
+                      {v.isMatching && !v.hasCommodityMatch && (
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 border border-blue-200">✓ Layanan</span>
+                      )}
+                    </div>
+                    {v.priceBase != null && (
+                      <div className="text-xs text-slate-500 mt-1 space-y-0.5">
+                        <div className="flex justify-between gap-2">
+                          <span>Harga Dasar{v.orderUnit ? ` / ${v.orderUnit}` : ""}</span>
+                          <span className="font-semibold text-slate-700">Rp {Math.round(v.priceBase).toLocaleString("id-ID")}{v.orderUnit ? `/${v.orderUnit}` : ""}</span>
+                        </div>
+                        {v.vendorEstSubtotal != null && v.orderQty != null && (
+                          <>
+                            <div className="flex justify-between gap-2">
+                              <span className="text-slate-400">Subtotal <span className="text-slate-300">({Math.round(v.priceBase).toLocaleString("id-ID")} × {v.orderQty}{v.orderUnit ? ` ${v.orderUnit}` : ""})</span></span>
+                              <span className="font-semibold text-slate-700">Rp {v.vendorEstSubtotal.toLocaleString("id-ID")}</span>
+                            </div>
+                            {v.vendorEstTax != null && (
+                              <div className="flex justify-between gap-2">
+                                <span className="text-slate-400">PPN {v.taxRate ?? 11}% <span className="text-slate-300">({v.vendorEstSubtotal.toLocaleString("id-ID")} × {v.taxRate ?? 11}%)</span></span>
+                                <span className="text-slate-600">Rp {v.vendorEstTax.toLocaleString("id-ID")}</span>
+                              </div>
+                            )}
+                            {v.vendorEstTotal != null && (
+                              <div className="flex justify-between gap-2 font-semibold border-t border-slate-100 pt-1 mt-0.5">
+                                <span className="text-slate-700">Est. Grand Total</span>
+                                <span className="text-slate-800">IDR {v.vendorEstTotal.toLocaleString("id-ID")}</span>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  {v.phone && <span className="text-xs text-slate-400">{v.phone}</span>}
+                  {v.phone && <span className="text-xs text-slate-400 shrink-0">{v.phone}</span>}
                 </label>
               ))}
             </div>
@@ -238,7 +426,6 @@ function ReviewOrderView({ token, data }: { token: string; data: ReviewData }) {
           {submitting ? "Mengirim..." : `🚀 Blast RFQ ke ${selectedIds.length} Vendor`}
         </button>
 
-        <p className="text-center text-xs text-slate-400 pb-4">CST Logistics · Admin Action</p>
       </div>
     </div>
   );
@@ -391,7 +578,6 @@ function CompareVendorsView({ token, data }: { token: string; data: CompareData 
           {submitting ? "Memproses..." : "✅ Konfirmasi Pilihan Vendor"}
         </button>
 
-        <p className="text-center text-xs text-slate-400 pb-4">CST Logistics · Admin Action</p>
       </div>
     </div>
   );
@@ -503,7 +689,6 @@ function ForwardVendorView({ token, data }: { token: string; data: ForwardData }
           {submitting ? "Mengirim..." : "📨 Kirim Link Fulfillment ke Vendor"}
         </button>
 
-        <p className="text-center text-xs text-slate-400 pb-4">CST Logistics · Admin Action</p>
       </div>
     </div>
   );

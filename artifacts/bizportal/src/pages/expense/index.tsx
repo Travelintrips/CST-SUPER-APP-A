@@ -122,9 +122,10 @@ export default function ExpenseListPage() {
     from: fromFilter || undefined,
     to: toFilter || undefined,
     company: activeCompanyId,
-  });
+  } as any);
   const { data: cats = [] } = useListExpenseCategories();
-  const { data: salesDocs = [] } = useListSalesDocuments({ kind: "order" });
+  const { data: _salesDocsPaginated } = useListSalesDocuments({ kind: "order", limit: 500 });
+  const salesDocs = _salesDocsPaginated?.data ?? [];
   const { data: shipments = [] } = useListFreightShipments();
   const deleteMut = useDeleteExpense();
   const [deleteId, setDeleteId] = useState<number | null>(null);

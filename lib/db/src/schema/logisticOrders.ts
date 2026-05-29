@@ -8,6 +8,7 @@ import {
   timestamp,
   boolean,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { suppliersTable } from "./suppliers";
@@ -73,6 +74,16 @@ export const logisticOrdersTable = pgTable("logistic_orders", {
   publicRfqToken: text("public_rfq_token").unique(),
   geofenceEnabled: boolean("geofence_enabled").default(true).notNull(),
   geofenceRadiusKm: integer("geofence_radius_km").default(75).notNull(),
+  // Optimistic locking — incremented on every write; client must echo back current value to detect concurrent edits
+  version: integer("version").notNull().default(1),
+  // ── Phase 1: AI classification fields ─────────────────────────────────────
+  direction: text("direction"),
+  // import | export | domestic | transit
+  isDangerousGood: boolean("is_dangerous_good").default(false),
+  serviceCategory: text("service_category"),
+  // freight | trucking | customs | handling | storage
+  cargoSpecialTags: text("cargo_special_tags").array(),
+  requiredDocs: text("required_docs").array(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (t) => [
   index("logistic_orders_company_idx").on(t.companyId),
@@ -118,6 +129,7 @@ export const logisticOrderQuotesTable = pgTable("logistic_order_quotes", {
   orderId: integer("order_id").notNull().references(() => logisticOrdersTable.id, { onDelete: "cascade" }),
   vendorId: integer("vendor_id").notNull().references(() => suppliersTable.id, { onDelete: "cascade" }),
   vendorPrice: numeric("vendor_price", { precision: 14, scale: 2 }).notNull().default("0"),
+  currency: text("currency").notNull().default("IDR"),
   estimatedPickup: text("estimated_pickup"),
   estimatedDelivery: text("estimated_delivery"),
   estimatedDays: integer("estimated_days"),
@@ -134,7 +146,10 @@ export const logisticOrderQuotesTable = pgTable("logistic_order_quotes", {
   rankScore: numeric("rank_score", { precision: 6, scale: 2 }),
   rankBadges: text("rank_badges").array().default([]),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (t) => ({
+  // Prevent duplicate vendor quote submission for same RFQ (race condition guard)
+  rfqVendorUidx: uniqueIndex("liq_rfq_vendor_uidx").on(t.rfqId, t.vendorId),
+}));
 
 export const vendorOffersTable = pgTable("vendor_offers", {
   id: serial("id").primaryKey(),
@@ -191,7 +206,8 @@ export const logisticOrderQuotesRelations = relations(logisticOrderQuotesTable, 
 
 export const vendorResponsesTable = pgTable("vendor_responses", {
   id: serial("id").primaryKey(),
-  orderNumber: text("order_number").notNull(),
+  // unique: one vendor response record per order (upsert target)
+  orderNumber: text("order_number").notNull().unique(),
   orderId: integer("order_id").references(() => logisticOrdersTable.id, { onDelete: "set null" }),
   vendorName: text("vendor_name"),
   status: text("status").notNull(),

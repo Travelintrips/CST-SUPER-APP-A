@@ -338,7 +338,7 @@ function CalculatorForm({ item, onAdd, onBack }: { item: ServiceItem; onAdd: (da
             <div><Label className="text-xs">Destination Port</Label><Input placeholder="SGSIN" value={state.destinationPort||""} onChange={e => set("destinationPort", e.target.value)} /></div>
           </div>
           <div><Label className="text-xs">Container Type</Label>
-            <Select value={state.containerType||""} onValueChange={v => set("containerType", v)}>
+            <Select value={state.containerType||undefined} onValueChange={v => set("containerType", v)}>
               <SelectTrigger><SelectValue placeholder="Select container" /></SelectTrigger>
               <SelectContent>
                 {["20FT", "40FT", "40HC"].map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
@@ -364,7 +364,7 @@ function CalculatorForm({ item, onAdd, onBack }: { item: ServiceItem; onAdd: (da
 
         {ct === "customs" && <>
           <div><Label className="text-xs">Shipment Type</Label>
-            <Select value={state.shipmentType||""} onValueChange={v => set("shipmentType", v)}>
+            <Select value={state.shipmentType||undefined} onValueChange={v => set("shipmentType", v)}>
               <SelectTrigger><SelectValue placeholder="Import / Export" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="Import">Import</SelectItem>
@@ -401,7 +401,7 @@ function CalculatorForm({ item, onAdd, onBack }: { item: ServiceItem; onAdd: (da
           </div>
           <div>
             <Label className="text-xs">Vehicle Type</Label>
-            <Select value={state.vehicleType||""} onValueChange={v => set("vehicleType", v)}>
+            <Select value={state.vehicleType||undefined} onValueChange={v => set("vehicleType", v)}>
               <SelectTrigger><SelectValue placeholder="Pilih kendaraan" /></SelectTrigger>
               <SelectContent>
                 {["CDE", "CDD", "Fuso", "Wingbox", "Trailer"].map(v => <SelectItem key={v} value={v}>{v}</SelectItem>)}
@@ -462,7 +462,7 @@ function CalculatorForm({ item, onAdd, onBack }: { item: ServiceItem; onAdd: (da
             <div><Label className="text-xs">Quantity</Label><Input type="number" placeholder="1" value={state.quantity||""} onChange={e => set("quantity", e.target.value)} /></div>
           </div>
           <div><Label className="text-xs">Unit</Label>
-            <Select value={state.unit||""} onValueChange={v => set("unit", v)}>
+            <Select value={state.unit||undefined} onValueChange={v => set("unit", v)}>
               <SelectTrigger><SelectValue placeholder="Select unit" /></SelectTrigger>
               <SelectContent>
                 {["CBM", "Pallet", "KG"].map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
@@ -516,7 +516,7 @@ export default function BookPage() {
   const [selectedCategory, setSelectedCategory] = useState<ServiceCategory | null>(null);
   const [selectedItem, setSelectedItem] = useState<ServiceItem | null>(null);
   const [editCartId, setEditCartId] = useState<string | null>(null);
-  const { items: cartItems, addItem, removeItem, subtotal, tax, grandTotal, taxRate } = useCart();
+  const { items: cartItems, addItem, removeItem, subtotal, tax, grandTotal } = useCart();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const createOrder = useCreateLogisticOrder();
@@ -782,7 +782,7 @@ export default function BookPage() {
                 <span className="font-medium">{formatCurrency(subtotal)}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">PPN {taxRate === 0.011 ? "1,1%" : "11%"}</span>
+                <span className="text-muted-foreground">PPN 11%</span>
                 <span className="font-medium">{formatCurrency(tax)}</span>
               </div>
               <Separator />

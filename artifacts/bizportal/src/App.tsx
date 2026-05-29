@@ -105,6 +105,7 @@ import ProductRecipesPage from "@/pages/products/recipes";
 
 import SettingsRolesPage from "@/pages/settings-roles";
 import SettingsApprovalRulesPage from "@/pages/settings-approval-rules";
+import ProductTemplatesPage from "@/pages/product-templates";
 import PurchaseRequestListPage from "@/pages/purchase/pr-list";
 import PurchaseRequestEditorPage from "@/pages/purchase/pr-editor";
 import GoodsReceiptListPage from "@/pages/purchase/gr-list";
@@ -174,9 +175,118 @@ function LoadingSpinner() {
 
 const IS_DEV = import.meta.env.DEV;
 
+type DevUser = { id: string; email: string; firstName: string | null; lastName: string | null; role: string | null };
+
+const ROLE_LABELS: Record<string, string> = {
+  admin: "Admin",
+  ecommerce: "Ecommerce",
+  trading: "Trading",
+  logistics: "Logistics",
+};
+
+function DevLoginSection() {
+  const [users, setUsers] = React.useState<DevUser[]>([]);
+  const [devEmail, setDevEmail] = React.useState("");
+  const [mode, setMode] = React.useState<"pick" | "manual">("pick");
+
+  React.useEffect(() => {
+    fetch("/api/dev-users")
+      .then((r) => r.ok ? r.json() : { users: [] })
+      .then((d: { users: DevUser[] }) => {
+        setUsers(d.users ?? []);
+        if (d.users?.length > 0) {
+          setDevEmail(d.users[0].email ?? "");
+        }
+      })
+      .catch(() => setMode("manual"));
+  }, []);
+
+  const grouped = React.useMemo(() => {
+    const map: Record<string, DevUser[]> = {};
+    for (const u of users) {
+      const r = u.role ?? "other";
+      if (!map[r]) map[r] = [];
+      map[r].push(u);
+    }
+    return map;
+  }, [users]);
+
+  return (
+    <>
+      <div className="flex items-center gap-3">
+        <div className="flex-1 h-px bg-slate-700" />
+        <span className="text-xs text-amber-400 font-mono">DEV ONLY</span>
+        <div className="flex-1 h-px bg-slate-700" />
+      </div>
+      <form
+        method="post"
+        action={`/api/dev-login?redirect=/bizportal/`}
+        className="flex flex-col gap-2"
+      >
+        {mode === "pick" && users.length > 0 ? (
+          <>
+            <select
+              name="email"
+              value={devEmail}
+              onChange={(e) => setDevEmail(e.target.value)}
+              className="rounded-lg bg-slate-800 border border-amber-600/40 px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
+            >
+              {Object.entries(grouped).map(([role, roleUsers]) => (
+                <optgroup key={role} label={`— ${ROLE_LABELS[role] ?? role} —`}>
+                  {roleUsers.map((u) => {
+                    const name = [u.firstName, u.lastName].filter(Boolean).join(" ") || u.email;
+                    return (
+                      <option key={u.id} value={u.email ?? ""}>
+                        {name} ({u.email})
+                      </option>
+                    );
+                  })}
+                </optgroup>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => setMode("manual")}
+              className="text-xs text-slate-500 hover:text-slate-400 text-right -mt-1"
+            >
+              + email lain
+            </button>
+          </>
+        ) : (
+          <>
+            <input
+              type="email"
+              name="email"
+              placeholder="Email (dev bypass)"
+              value={devEmail}
+              onChange={(e) => setDevEmail(e.target.value)}
+              required
+              className="rounded-lg bg-slate-800 border border-amber-600/40 px-4 py-2.5 text-sm text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500"
+            />
+            {users.length > 0 && (
+              <button
+                type="button"
+                onClick={() => { setMode("pick"); setDevEmail(users[0].email ?? ""); }}
+                className="text-xs text-slate-500 hover:text-slate-400 text-right -mt-1"
+              >
+                ← pilih dari daftar
+              </button>
+            )}
+          </>
+        )}
+        <button
+          type="submit"
+          className="rounded-lg bg-amber-600 px-6 py-2.5 text-sm font-medium text-white shadow hover:bg-amber-500 active:scale-95 transition-all"
+        >
+          Dev Login (tanpa Google)
+        </button>
+      </form>
+    </>
+  );
+}
+
 function LoginScreen() {
   const { signInWithGoogle } = useSupabaseAuth();
-  const [devEmail, setDevEmail] = React.useState("elmiraratuabadi@gmail.com");
 
   return (
     <div className="flex h-screen flex-col items-center justify-center gap-6 bg-slate-950 text-white">
@@ -214,36 +324,7 @@ function LoginScreen() {
           </svg>
           Masuk dengan Google
         </button>
-        {IS_DEV && (
-          <>
-            <div className="flex items-center gap-3">
-              <div className="flex-1 h-px bg-slate-700" />
-              <span className="text-xs text-amber-400 font-mono">DEV ONLY</span>
-              <div className="flex-1 h-px bg-slate-700" />
-            </div>
-            <form
-              method="post"
-              action={`/api/dev-login?redirect=/bizportal/`}
-              className="flex flex-col gap-2"
-            >
-              <input
-                type="email"
-                name="email"
-                placeholder="Email (dev bypass)"
-                value={devEmail}
-                onChange={(e) => setDevEmail(e.target.value)}
-                required
-                className="rounded-lg bg-slate-800 border border-amber-600/40 px-4 py-2.5 text-sm text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500"
-              />
-              <button
-                type="submit"
-                className="rounded-lg bg-amber-600 px-6 py-2.5 text-sm font-medium text-white shadow hover:bg-amber-500 active:scale-95 transition-all"
-              >
-                Dev Login (tanpa Google)
-              </button>
-            </form>
-          </>
-        )}
+        {IS_DEV && <DevLoginSection />}
       </div>
     </div>
   );
@@ -275,167 +356,6 @@ function AuthRouteGuard() {
 function Router() {
   return (
     <WouterRouter base={basePath}>
-      <Switch>
-        <Route path="/" component={AuthRouteGuard} />
-        <Route path="/welcome" component={() => <ProtectedRoute component={WelcomePage} />} />
-        <Route path="/dashboard" component={() => <ProtectedRoute component={DashboardPage} />} />
-        <Route path="/approvals" component={() => <ProtectedRoute component={ApprovalsPage} />} />
-        <Route path="/ecommerce" component={() => <ProtectedRoute component={EcommercePage} />} />
-        <Route path="/trading" component={() => <ProtectedRoute component={TradingPage} />} />
-        <Route path="/katalog-terpadu" component={() => <ProtectedRoute component={KatalogTerpaduPage} />} />
-        {/* Logistics */}
-        <Route path="/logistics" component={() => <ProtectedRoute component={LogisticsPage} />} />
-        <Route path="/logistics/freight" component={() => <ProtectedRoute component={LogisticsFreightPage} />} />
-        <Route path="/logistics/freight/new" component={() => <ProtectedRoute component={LogisticsFreightEditorPage} />} />
-        <Route path="/logistics/freight/:id/edit" component={() => <ProtectedRoute component={LogisticsFreightEditorPage} />} />
-        <Route path="/logistics/freight/:id/bl" component={() => <ProtectedRoute component={LogisticsFreightBLPage} />} />
-        <Route path="/logistics/freight/:id" component={() => <ProtectedRoute component={LogisticsFreightDetailPage} />} />
-        <Route path="/logistics/portal-orders" component={() => <ProtectedRoute component={LogisticsPortalOrdersPage} />} />
-        <Route path="/portal/customers" component={() => <ProtectedRoute component={PortalCustomersPage} />} />
-        <Route path="/logistics/portal-orders/:id" component={() => <ProtectedRoute component={LogisticsPortalOrderDetailPage} />} />
-        <Route path="/logistics/drivers" component={() => <ProtectedRoute component={LogisticsDriversPage} />} />
-        <Route path="/logistics/drivers/:id/performance" component={() => <ProtectedRoute component={LogisticsDriverPerformancePage} />} />
-        <Route path="/logistics/driver-performance" component={() => <ProtectedRoute component={LogisticsDriverPerformancePage} />} />
-        <Route path="/logistics/quote-requests" component={() => <ProtectedRoute component={LogisticsQuoteRequestsPage} />} />
-        <Route path="/logistics/vendors" component={() => <ProtectedRoute component={LogisticsVendorsPage} />} />
-        <Route path="/logistics/quotation-reply/:token" component={LogisticsQuotationReplyPage} />
-        <Route path="/logistics/vendor-quote/:token" component={LogisticsVendorQuotePage} />
-        <Route path="/logistics/rfq" component={() => <ProtectedRoute component={LogisticsRfqListPage} />} />
-        <Route path="/logistics/rfq/:rfqId/detail" component={() => <ProtectedRoute component={LogisticsRfqDetailPage} />} />
-        <Route path="/logistics/rfq/:rfqId/comparison" component={() => <ProtectedRoute component={LogisticsRfqComparisonPage} />} />
-        <Route path="/logistics/orders/:orderId" component={() => <ProtectedRoute component={LogisticOrderDetailPage} />} />
-        <Route path="/portal-product-orders" component={() => <ProtectedRoute component={PortalProductOrdersPage} />} />
-        <Route path="/portal/onboarding-approvals" component={() => <ProtectedRoute component={PortalOnboardingApprovalsPage} />} />
-        {/* Sales */}
-        <Route path="/sales" component={() => <ProtectedRoute component={SalesDashboardPage} />} />
-        <Route path="/sales/documents" component={() => <ProtectedRoute component={SalesDocumentsListPage} />} />
-        <Route path="/sales/documents/new" component={() => <ProtectedRoute component={SalesDocumentEditorPage} />} />
-        <Route path="/sales/documents/:id/edit" component={() => <ProtectedRoute component={SalesDocumentEditorPage} />} />
-        <Route path="/sales/documents/:id" component={() => <ProtectedRoute component={SalesDocumentEditorPage} />} />
-        <Route path="/sales/quotations" component={() => <ProtectedRoute component={SalesDocumentsListPage} />} />
-        <Route path="/sales/quotations/new" component={() => <ProtectedRoute component={SalesDocumentEditorPage} />} />
-        <Route path="/sales/quotations/:id/edit" component={() => <ProtectedRoute component={SalesDocumentEditorPage} />} />
-        <Route path="/sales/quotations/:id" component={() => <ProtectedRoute component={SalesDocumentEditorPage} />} />
-        <Route path="/sales/orders" component={() => <ProtectedRoute component={() => <SalesDocumentsListPage kind="order" />} />} />
-        <Route path="/sales/orders/new" component={() => <ProtectedRoute component={() => <SalesDocumentEditorPage kind="order" />} />} />
-        <Route path="/sales/orders/:id" component={() => <ProtectedRoute component={() => <SalesDocumentEditorPage kind="order" />} />} />
-        <Route path="/sales/ai-drafts" component={() => <ProtectedRoute component={AiDraftsPage} />} />
-        <Route path="/sales/customers" component={() => <ProtectedRoute component={CustomersPage} />} />
-        <Route path="/sales/invoices" component={() => <ProtectedRoute component={SalesInvoicesPage} />} />
-        <Route path="/sales/items" component={() => <ProtectedRoute component={SalesItemsPage} />} />
-        {/* Purchase */}
-        <Route path="/purchase" component={() => <ProtectedRoute component={PurchaseDashboardPage} />} />
-        <Route path="/purchase/documents" component={() => <ProtectedRoute component={() => <PurchaseDocumentsListPage kind="order" />} />} />
-        <Route path="/purchase/documents/new" component={() => <ProtectedRoute component={PurchaseDocumentEditorPage} />} />
-        <Route path="/purchase/documents/:id/edit" component={() => <ProtectedRoute component={PurchaseDocumentEditorPage} />} />
-        <Route path="/purchase/documents/:id" component={() => <ProtectedRoute component={PurchaseDocumentEditorPage} />} />
-        <Route path="/purchase/rfq" component={() => <ProtectedRoute component={() => <PurchaseDocumentsListPage kind="rfq" />} />} />
-        <Route path="/purchase/rfq/new" component={() => <ProtectedRoute component={PurchaseDocumentEditorPage} />} />
-        <Route path="/purchase/rfq/:id" component={() => <ProtectedRoute component={PurchaseDocumentEditorPage} />} />
-        <Route path="/purchase/orders" component={() => <ProtectedRoute component={POOrdersPage} />} />
-        <Route path="/purchase/orders/:id" component={() => <ProtectedRoute component={PurchaseDocumentEditorPage} />} />
-        <Route path="/purchase/vendors" component={() => <ProtectedRoute component={VendorsPage} />} />
-        <Route path="/purchase/vendors/:id" component={() => <ProtectedRoute component={VendorDetailPage} />} />
-        <Route path="/purchase/vendor-forms" component={() => <ProtectedRoute component={VendorFormsPage} />} />
-        <Route path="/purchase/bills" component={() => <ProtectedRoute component={PurchaseBillsPage} />} />
-        {/* Purchase Workflow */}
-        <Route path="/purchase/pr" component={() => <ProtectedRoute component={PurchaseRequestListPage} />} />
-        <Route path="/purchase/pr/new" component={() => <ProtectedRoute component={PurchaseRequestEditorPage} />} />
-        <Route path="/purchase/pr/:id" component={() => <ProtectedRoute component={PurchaseRequestEditorPage} />} />
-        <Route path="/purchase/gr" component={() => <ProtectedRoute component={GoodsReceiptListPage} />} />
-        <Route path="/purchase/gr/new" component={() => <ProtectedRoute component={GoodsReceiptEditorPage} />} />
-        <Route path="/purchase/gr/:id" component={() => <ProtectedRoute component={GoodsReceiptEditorPage} />} />
-        <Route path="/purchase/qc" component={() => <ProtectedRoute component={QcListPage} />} />
-        <Route path="/purchase/qc/new" component={() => <ProtectedRoute component={QcEditorPage} />} />
-        <Route path="/purchase/qc/:id" component={() => <ProtectedRoute component={QcEditorPage} />} />
-        <Route path="/purchase/vendor-invoices" component={() => <ProtectedRoute component={VendorInvoicesListPage} />} />
-        <Route path="/purchase/vendor-invoices/new" component={() => <ProtectedRoute component={VendorInvoiceEditorPage} />} />
-        <Route path="/purchase/vendor-invoices/:id" component={() => <ProtectedRoute component={VendorInvoiceEditorPage} />} />
-        <Route path="/purchase/payment-requests" component={() => <ProtectedRoute component={PaymentRequestsListPage} />} />
-        <Route path="/purchase/payment-requests/new" component={() => <ProtectedRoute component={PaymentRequestEditorPage} />} />
-        <Route path="/purchase/payment-requests/:id" component={() => <ProtectedRoute component={PaymentRequestEditorPage} />} />
-        <Route path="/purchase/returns" component={() => <ProtectedRoute component={PurchaseReturnsListPage} />} />
-        <Route path="/purchase/returns/new" component={() => <ProtectedRoute component={PurchaseReturnEditorPage} />} />
-        <Route path="/purchase/returns/:id" component={() => <ProtectedRoute component={PurchaseReturnEditorPage} />} />
-        <Route path="/purchase/landed-costs" component={() => <ProtectedRoute component={LandedCostsListPage} />} />
-        <Route path="/purchase/landed-costs/new" component={() => <ProtectedRoute component={LandedCostEditorPage} />} />
-        <Route path="/purchase/landed-costs/:id" component={() => <ProtectedRoute component={LandedCostEditorPage} />} />
-        <Route path="/purchase/rfq/:rfqId/compare" component={() => <ProtectedRoute component={VendorComparisonPage} />} />
-        {/* Reports */}
-        <Route path="/reports/sales" component={() => <ProtectedRoute component={ReportsSalesPage} />} />
-        <Route path="/reports/purchase" component={() => <ProtectedRoute component={ReportsPurchasePage} />} />
-        <Route path="/reports/ar-aging" component={() => <ProtectedRoute component={ReportsArAgingPage} />} />
-        <Route path="/reports/ap-aging" component={() => <ProtectedRoute component={ReportsApAgingPage} />} />
-        <Route path="/reports/operasional" component={() => <ProtectedRoute component={ReportsMainPage} />} />
-        <Route path="/reports/audit-log" component={() => <ProtectedRoute component={AuditLogPage} />} />
-        <Route path="/reports/inventory-valuation" component={() => <ProtectedRoute component={InventoryValuationPage} />} />
-        {/* Accounting */}
-        <Route path="/accounting/accounts" component={() => <ProtectedRoute component={AccountingAccountsPage} />} />
-        <Route path="/accounting/journals" component={() => <ProtectedRoute component={AccountingJournalsPage} />} />
-        <Route path="/accounting/taxes" component={() => <ProtectedRoute component={AccountingTaxesPage} />} />
-        <Route path="/accounting/entries" component={() => <ProtectedRoute component={AccountingEntriesPage} />} />
-        <Route path="/accounting/entries/:id" component={() => <ProtectedRoute component={AccountingEntryDetailPage} />} />
-        <Route path="/accounting/journal-items" component={() => <ProtectedRoute component={AccountingJournalItemsPage} />} />
-        <Route path="/accounting/payments" component={() => <ProtectedRoute component={AccountingPaymentsPage} />} />
-        <Route path="/accounting/reconciliation" component={() => <ProtectedRoute component={AccountingReconciliationPage} />} />
-        <Route path="/accounting/settings" component={() => <ProtectedRoute component={AccountingSettingsPage} />} />
-        <Route path="/accounting/reports/trial-balance" component={() => <ProtectedRoute component={AccountingTrialBalancePage} />} />
-        <Route path="/accounting/reports/general-ledger" component={() => <ProtectedRoute component={AccountingGeneralLedgerPage} />} />
-        <Route path="/accounting/reports/profit-loss" component={() => <ProtectedRoute component={AccountingProfitLossPage} />} />
-        <Route path="/accounting/reports/balance-sheet" component={() => <ProtectedRoute component={AccountingBalanceSheetPage} />} />
-        {/* Expenses */}
-        <Route path="/expense" component={() => <ProtectedRoute component={ExpenseListPage} />} />
-        <Route path="/expense/new" component={() => <ProtectedRoute component={ExpenseEditorPage} />} />
-        <Route path="/expense/categories" component={() => <ProtectedRoute component={ExpenseCategoriesPage} />} />
-        <Route path="/expense/reports" component={() => <ProtectedRoute component={ExpenseReportsPage} />} />
-        <Route path="/expense/:id/edit" component={() => <ProtectedRoute component={ExpenseEditorPage} />} />
-        {/* Correspondence & Email */}
-        <Route path="/correspondences" component={() => <ProtectedRoute component={CorrespondencesPage} />} />
-        <Route path="/email-inbox" component={() => <ProtectedRoute component={EmailInboxPage} />} />
-        {/* Settings & Users */}
-        <Route path="/settings" component={() => <ProtectedRoute component={SettingsPage} />} />
-        <Route path="/settings/nav-company-config" component={() => <ProtectedRoute component={NavCompanyConfigPage} />} />
-        <Route path="/settings/ai-chatbot" component={() => <ProtectedRoute component={AiChatbotSettingsPage} />} />
-        <Route path="/settings/ai-chatbot/knowledge" component={() => <ProtectedRoute component={AiChatbotKnowledgePage} />} />
-        <Route path="/settings/ai-scan" component={() => <ProtectedRoute component={AiScanSettingsPage} />} />
-        <Route path="/settings/roles" component={() => <ProtectedRoute component={SettingsRolesPage} />} />
-        <Route path="/settings/approval-rules" component={() => <ProtectedRoute component={SettingsApprovalRulesPage} />} />
-        <Route path="/users" component={() => <ProtectedRoute component={UsersPage} />} />
-        <Route path="/media" component={() => <ProtectedRoute component={MediaManagerPage} />} />
-        {/* Holding */}
-        <Route path="/holding/dashboard" component={() => <ProtectedRoute component={HoldingDashboardPage} />} />
-        <Route path="/holding/pl-report" component={() => <ProtectedRoute component={HoldingPLReportPage} />} />
-        <Route path="/holding/cashflow-report" component={() => <ProtectedRoute component={HoldingCashflowReportPage} />} />
-        <Route path="/holding" component={() => <ProtectedRoute component={HoldingPage} />} />
-        <Route path="/org" component={() => <ProtectedRoute component={OrgManagementPage} />} />
-        {/* Purchase Receive */}
-        <Route path="/purchase/receive" component={() => <ProtectedRoute component={PurchaseReceivePage} />} />
-        {/* Thai Tea Purchase */}
-        <Route path="/purchase/thai-tea" component={() => <ProtectedRoute component={ThaiTeaPurchasePage} />} />
-        {/* Thai Tea CST */}
-        <Route path="/thai-tea/dashboard" component={() => <ProtectedRoute component={ThaiTeaDashboardPage} />} />
-        <Route path="/thai-tea/recipes" component={() => <ProtectedRoute component={ThaiTeaRecipesPage} />} />
-        <Route path="/thai-tea/stock" component={() => <ProtectedRoute component={ThaiTeaStockPage} />} />
-        <Route path="/thai-tea/branches" component={() => <ProtectedRoute component={ThaiTeaBranchesPage} />} />
-        <Route path="/thai-tea/production" component={() => <ProtectedRoute component={ThaiTeaProductionPage} />} />
-        <Route path="/thai-tea/reports" component={() => <ProtectedRoute component={ThaiTeaReportsPage} />} />
-        {/* Products & BOM */}
-        <Route path="/products/items" component={() => <ProtectedRoute component={ProductItemsPage} />} />
-        <Route path="/products/recipes" component={() => <ProtectedRoute component={ProductRecipesPage} />} />
-
-        <Route path="/notifications" component={() => <ProtectedRoute component={NotificationsPage} />} />
-        {/* Analytics & Performance */}
-        <Route path="/analytics" component={() => <ProtectedRoute component={AnalyticsDashboardPage} />} />
-        <Route path="/logistics/vendor-performance" component={() => <ProtectedRoute component={VendorPerformancePage} />} />
-        <Route path="/logistics/internal-tasks" component={() => <ProtectedRoute component={InternalTasksPage} />} />
-        {/* Legacy /expenses/* → /expense/* */}
-        <Route path="/expenses" component={() => <Redirect to="/expense" />} />
-        <Route path="/expenses/new" component={() => <Redirect to="/expense/new" />} />
-        <Route path="/expenses/categories" component={() => <Redirect to="/expense/categories" />} />
-        <Route path="/expenses/reports" component={() => <Redirect to="/expense/reports" />} />
-        <Route path="/expenses/:id" component={({ params }: { params: { id: string } }) => <Redirect to={`/expense/${params.id}/edit`} />} />
-        <Route component={NotFound} />
-      </Switch>
       <AppRoutes rootGuard={AuthRouteGuard} />
     </WouterRouter>
   );

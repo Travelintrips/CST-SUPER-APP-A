@@ -1,6 +1,8 @@
 import { Router, type Request } from "express";
 import { resolveCompanyId } from "../lib/resolveCompany.js";
 import { eq, desc, and, gte, lte, like, or, sql, count } from "drizzle-orm";
+import { ObjectStorageService } from "../lib/objectStorage.js";
+import { logStorageEvent, getRequestIp, getActor } from "../lib/storageAuditLog.js";
 import {
   db,
   expenseCategoriesTable,
@@ -14,6 +16,8 @@ import {
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { postEntry } from "../lib/accounting.js";
 import { ensureAccountingSettings } from "../lib/accountingSeed.js";
+
+const _expenseObjectStorage = new ObjectStorageService();
 
 const router = Router();
 router.use(async (req, res, next) => {
@@ -428,8 +432,17 @@ router.delete("/:id", async (req, res) => {
   if (existing.status !== "draft" && existing.status !== "rejected") {
     return res.status(400).json({ message: "Hanya expense dengan status Draft atau Rejected yang bisa dihapus." });
   }
+  // Ambil objectPath semua attachment sebelum dihapus dari DB
+  const attachments = await db
+    .select({ objectPath: expenseAttachmentsTable.objectPath })
+    .from(expenseAttachmentsTable)
+    .where(eq(expenseAttachmentsTable.expenseId, id));
   await db.delete(expenseAttachmentsTable).where(eq(expenseAttachmentsTable.expenseId, id));
   await db.delete(expensesTable).where(eq(expensesTable.id, id));
+  // Cascade storage cleanup — hapus file fisik (non-fatal)
+  for (const a of attachments) {
+    if (a.objectPath) _expenseObjectStorage.tryDeletePrivateEntity(a.objectPath).catch(() => {});
+  }
   return res.json({ message: "Deleted" });
 });
 
@@ -610,19 +623,63 @@ router.post("/:id/attachments", async (req, res) => {
   if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
   const { objectPath, fileName, contentType } = req.body ?? {};
   if (!objectPath || !fileName) return res.status(400).json({ message: "objectPath and fileName required" });
+
+  // Duplicate guard: reject if the same objectPath is already linked to this expense
+  const [dup] = await db.select({ id: expenseAttachmentsTable.id })
+    .from(expenseAttachmentsTable)
+    .where(and(eq(expenseAttachmentsTable.expenseId, id), eq(expenseAttachmentsTable.objectPath, String(objectPath))))
+    .limit(1);
+  if (dup) return res.status(409).json({ message: "File ini sudah terlampir ke expense ini" });
+
   const [att] = await db.insert(expenseAttachmentsTable).values({
     expenseId: id,
     objectPath: String(objectPath),
     fileName: String(fileName),
     contentType: contentType ? String(contentType) : null,
   }).returning();
+  const actor = getActor(req);
+  logStorageEvent({
+    action: "upload",
+    entityType: "expense_attachment",
+    entityId: att!.id,
+    objectPath: String(objectPath),
+    fileName: String(fileName),
+    contentType: contentType ? String(contentType) : null,
+    actorId: actor.actorId,
+    actorType: actor.actorType,
+    ipAddress: getRequestIp(req),
+    details: `expenseId=${id}`,
+  });
   return res.status(201).json(att);
 });
 
 router.delete("/:id/attachments/:attId", async (req, res) => {
+  const expenseId = Number(req.params.id);
   const attId = Number(req.params.attId);
-  if (Number.isNaN(attId)) return res.status(400).json({ message: "Invalid id" });
-  await db.delete(expenseAttachmentsTable).where(eq(expenseAttachmentsTable.id, attId));
+  if (Number.isNaN(expenseId) || Number.isNaN(attId)) return res.status(400).json({ message: "Invalid id" });
+  // Filter by BOTH id AND expenseId to prevent IDOR (deleting another expense's attachment)
+  const [deleted] = await db
+    .delete(expenseAttachmentsTable)
+    .where(and(eq(expenseAttachmentsTable.id, attId), eq(expenseAttachmentsTable.expenseId, expenseId)))
+    .returning();
+  if (!deleted) return res.status(404).json({ message: "Attachment tidak ditemukan" });
+  // Delete the underlying GCS object (non-fatal — DB record already removed)
+  if (deleted.objectPath) {
+    _expenseObjectStorage.tryDeletePrivateEntity(deleted.objectPath).catch(() => {});
+  }
+  const actor = getActor(req);
+  logStorageEvent({
+    action: "delete",
+    entityType: "expense_attachment",
+    entityId: deleted.id,
+    objectPath: deleted.objectPath,
+    fileName: deleted.fileName,
+    contentType: deleted.contentType ?? null,
+    actorId: actor.actorId,
+    actorType: actor.actorType,
+    ipAddress: getRequestIp(req),
+    details: `expenseId=${expenseId}`,
+  });
   return res.json({ message: "Deleted" });
 });
 

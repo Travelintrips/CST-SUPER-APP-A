@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useGetPortalMe, useListPortalOrders, useListPortalLogisticOrders } from "@workspace/api-client-react";
 import { getAuthToken, getAuthHeaders, removeAuthToken } from "@/lib/auth";
 import { useLocation, Link } from "wouter";
@@ -6,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import {
   Package, Truck, ArrowRight, Activity, Calendar, Ship, Plus,
   Plane, Box, Archive, BarChart2, Layers, Navigation,
-  ClipboardList, Globe, Anchor, MapPin,
+  ClipboardList, Globe, Anchor, MapPin, Shield,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -110,6 +111,17 @@ export default function Dashboard() {
   useEffect(() => {
     if (!token) setLocation("/login");
   }, [token, setLocation]);
+
+  // Real-time: refresh daftar order saat ada perubahan status
+  const qc = useQueryClient();
+  useEffect(() => {
+    if (!token) return;
+    const es = new EventSource("/api/ecommerce/events");
+    es.addEventListener("logistic_order_status_changed", () => {
+      qc.invalidateQueries({ queryKey: ["listPortalLogisticOrders", token] });
+    });
+    return () => es.close();
+  }, [token, qc]);
 
   const headers = getAuthHeaders() as any;
 
@@ -350,8 +362,13 @@ export default function Dashboard() {
                       <p className="text-sm text-muted-foreground">{t("dashboard.phone")}</p>
                       <p className="font-medium">{customer.phone || t("dashboard.notProvided")}</p>
                     </div>
-                    <div className="pt-4 border-t border-border/40">
+                    <div className="pt-4 border-t border-border/40 space-y-2">
                       <Button variant="outline" className="w-full">{t("dashboard.editProfile")}</Button>
+                      <Link href="/account-security">
+                        <Button variant="ghost" size="sm" className="w-full gap-2 text-muted-foreground hover:text-foreground">
+                          <Shield className="h-4 w-4" /> Keamanan Akun
+                        </Button>
+                      </Link>
                     </div>
                   </div>
                 ) : null}

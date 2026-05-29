@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -41,35 +42,18 @@ function isUsdProduct(product: Product): boolean {
   return product.subcategory === "Green Bean";
 }
 
-// ── USD/IDR exchange rate — cached in localStorage for 6 h ─────────────────
-const _USD_IDR_KEY = "cst_usd_idr_rate";
-const _USD_IDR_TTL = 6 * 60 * 60 * 1000;
+// ── USD/IDR exchange rate — fetched from server (H6 fix) ────────────────────
+// Rate is fetched from our own API server (which caches it for 5 min server-side).
+// This avoids direct external API calls from the browser and stale 6-hour localStorage.
 const _USD_IDR_FALLBACK = 16_300;
 
-function _readCachedRate(): { rate: number; fresh: boolean } {
-  try {
-    const raw = localStorage.getItem(_USD_IDR_KEY);
-    if (raw) {
-      const { rate, ts } = JSON.parse(raw) as { rate: number; ts: number };
-      if (rate > 1000) return { rate, fresh: Date.now() - ts < _USD_IDR_TTL };
-    }
-  } catch { /* ignore */ }
-  return { rate: _USD_IDR_FALLBACK, fresh: false };
-}
-
 function useUsdIdrRate(): number {
-  const [rate, setRate] = useState<number>(() => _readCachedRate().rate);
+  const [rate, setRate] = useState<number>(_USD_IDR_FALLBACK);
   useEffect(() => {
-    const { fresh } = _readCachedRate();
-    if (fresh) return;
-    fetch("https://open.er-api.com/v6/latest/USD")
+    fetch("/api/ecommerce/usd-idr-rate")
       .then((r) => r.json())
-      .then((data) => {
-        const idr = (data?.rates?.IDR as number) ?? 0;
-        if (idr > 1000) {
-          localStorage.setItem(_USD_IDR_KEY, JSON.stringify({ rate: idr, ts: Date.now() }));
-          setRate(idr);
-        }
+      .then((data: { rate?: number }) => {
+        if (data?.rate && data.rate > 1000) setRate(data.rate);
       })
       .catch(() => { /* keep fallback */ });
   }, []);
@@ -381,6 +365,7 @@ function ProductModal({ product, onClose }: { product: Product; onClose: () => v
 
           {/* Price */}
           <div className="bg-primary/5 rounded-xl px-4 py-3 border border-primary/10">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1">Harga Jual</p>
             {product.price > 0 ? (
               <div>
                 {isUsdProduct(product) ? (
@@ -502,20 +487,31 @@ const PRODUCT_HERO_BG = `${import.meta.env.BASE_URL}images/product-hero-brand.pn
 // ── Main page ──────────────────────────────────────────────────────────────
 export default function Products() {
   const [searchQuery, setSearchQuery] = useState("");
-  const [products, setProducts] = useState<Product[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>("");
   const { t } = useLanguage();
   const usdIdrRate = useUsdIdrRate();
+  const qc = useQueryClient();
 
   useEffect(() => {
-    fetch("/api/portal/products")
-      .then((r) => r.json())
-      .then((data) => setProducts(Array.isArray(data) ? data : []))
-      .catch(() => setProducts([]))
-      .finally(() => setIsLoading(false));
-  }, []);
+    const es = new EventSource("/api/ecommerce/events");
+    es.addEventListener("price_sync", () => {
+      qc.invalidateQueries({ queryKey: ["portal-products"] });
+    });
+    return () => es.close();
+  }, [qc]);
+
+  const { data: productsData, isLoading } = useQuery<Product[]>({
+    queryKey: ["portal-products"],
+    queryFn: () => fetch("/api/portal/products").then((r) => r.json()),
+    staleTime: 0,
+    gcTime: 0,
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+    refetchInterval: 30_000,
+  });
+
+  const products = Array.isArray(productsData) ? productsData : [];
 
   const allCategories = Array.from(new Set(products.flatMap((p) => p.categories)));
 
@@ -818,6 +814,7 @@ export default function Products() {
 
                   {/* Price */}
                   <div className="mb-2">
+                    <span className="text-[9px] font-semibold text-slate-400 uppercase tracking-widest block mb-0.5">Harga Jual</span>
                     {product.price > 0 ? (
                       <>
                         <div className="flex items-baseline gap-1.5">

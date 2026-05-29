@@ -71,6 +71,14 @@ export default function OrderSuccessPage() {
             <span className="text-muted-foreground">Tipe</span><span className="font-medium text-foreground text-right">{order.shipmentType}</span>
             <span className="text-muted-foreground">Origin</span><span className="font-medium text-foreground text-right">{order.origin}</span>
             <span className="text-muted-foreground">Destination</span><span className="font-medium text-foreground text-right">{order.destination}</span>
+            {order.jumlahKoli != null && order.jumlahKoli > 0 && (<>
+              <span className="text-muted-foreground">Jumlah Koli</span>
+              <span className="font-semibold text-foreground text-right">
+                <span className="inline-flex items-center gap-1 bg-primary/10 text-primary px-2 py-0.5 rounded-full text-xs font-bold">
+                  📦 {order.jumlahKoli} koli
+                </span>
+              </span>
+            </>)}
           </div>
         </div>
 

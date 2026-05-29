@@ -1,0 +1,110 @@
+Mulai jalankan BATCH 2 — SECURITY / RLS / TOKEN AUDIT.
+
+Jangan fix dulu. Audit saja.
+
+Fokus utama:
+Pastikan public form, customer portal, vendor mini form, dan admin portal aman dari akses yang tidak berhak.
+
+Area yang wajib dicek:
+
+1. Public Mini Form Security
+- vendor mini form hanya bisa dibuka dengan token valid
+- token tidak predictable
+- expired_at benar-benar dipakai
+- link expired tidak bisa submit
+- link yang sudah submitted tidak bisa submit ulang kecuali resubmit_allowed
+- vendor tidak bisa mengganti order_id/order_item_id/vendor_id dari request body
+
+2. Customer Approval Security
+- customer approval hanya bisa via token valid
+- token expired ditolak
+- approve dua kali tidak membuat SO dobel
+- reject setelah approve tidak boleh sembarangan
+- customer tidak bisa lihat vendorPrice, margin, harga modal
+
+3. Vendor Access Control
+- vendor hanya lihat form miliknya
+- vendor tidak bisa lihat submission vendor lain
+- vendor tidak bisa lihat harga vendor lain
+- vendor tidak bisa lihat data customer yang tidak perlu
+
+4. Admin Access Control
+- route admin harus protected
+- endpoint admin wajib requireAdmin / auth middleware
+- anonymous user tidak bisa create/update/delete product, service, order, SO, settings
+
+5. Supabase / Database RLS
+Audit semua table terkait:
+- orders
+- order_items
+- vendors
+- vendor_mini_form_links
+- vendor_mini_form_submissions
+- customer_approvals
+- sales_orders
+- vendor_operational_confirmations
+- whatsapp_template_configs
+- notification_logs
+- activity_logs
+- products
+- services
+- attachments/files
+
+Cek:
+- RLS aktif atau tidak
+- policy terlalu terbuka atau tidak
+- anon role boleh akses apa
+- authenticated role boleh akses apa
+- service role hanya dipakai backend
+
+6. IDOR Audit
+Cek apakah user bisa akses data hanya dengan mengganti ID di URL:
+- /orders/:id
+- /vendor-mini-form/:token
+- /customer-approval/:token
+- /sales-orders/:id
+- /attachments/:id
+
+7. Data Leak Audit
+Pastikan tidak bocor:
+- vendorPrice ke customer
+- margin ke customer/vendor
+- harga modal ke customer
+- vendor lain ke vendor
+- internal notes ke customer/vendor
+- admin-only logs ke public page
+
+8. File / Attachment Security
+- file upload validasi mime type
+- file size limit
+- signed URL jika private
+- public URL hanya untuk file yang aman
+- vendor/customer tidak bisa akses file order lain
+
+Output wajib:
+
+A. SECURITY MATRIX
+Area | Endpoint/File | Protection | Status | Issue | Risk Level
+
+B. RLS MATRIX
+Table | RLS Enabled | Policy Summary | Risk | Recommendation
+
+C. TOKEN SECURITY CHECK
+Token Type | Randomness | Expiry | Reuse Rule | Status
+
+D. IDOR FINDINGS
+Endpoint | Risk | How it can be abused | Fix Suggestion
+
+E. DATA LEAK FINDINGS
+Role | Data Exposed | File/API | Risk Level
+
+F. CRITICAL FIX PRIORITY
+Critical / High / Medium / Low
+
+G. FINAL VERDICT
+- Security score
+- RLS readiness score
+- Public form safety score
+- Production readiness score
+
+Jangan implement fix sampai saya minta.

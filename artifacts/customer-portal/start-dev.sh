@@ -1,35 +1,29 @@
 #!/bin/bash
-# Customer portal MUST run on port 3001 — the gateway (port 5000) proxies /* to :3001.
-# Replit assigns ARTIFACT_PORT dynamically; we open that port immediately with an HTTP
-# forward proxy so Replit's timeout check passes, then start Vite on 3001.
-
 ARTIFACT_PORT=${PORT:-3001}
+INTERNAL_PORT=${INTERNAL_PORT:-5173}
 
-# Kill whatever is on 3001 or ARTIFACT_PORT
-fuser -k 3001/tcp 2>/dev/null || true
-[ "$ARTIFACT_PORT" != "3001" ] && fuser -k "${ARTIFACT_PORT}/tcp" 2>/dev/null || true
+fuser -k "${INTERNAL_PORT}/tcp" 2>/dev/null || true
+[ "$ARTIFACT_PORT" != "$INTERNAL_PORT" ] && fuser -k "${ARTIFACT_PORT}/tcp" 2>/dev/null || true
 sleep 0.2
 
-# If Replit assigned a non-3001 port, open it immediately with an HTTP forward proxy.
-# This satisfies Replit's "did the port open?" check before the 60-second timeout.
-if [ "$ARTIFACT_PORT" != "3001" ]; then
+if [ "$ARTIFACT_PORT" != "$INTERNAL_PORT" ]; then
   node -e "
 const http = require('http');
 let retries = 0;
 function tryProxy(req, res) {
-  const opts = { hostname: '127.0.0.1', port: 3001, path: req.url, method: req.method, headers: req.headers };
+  const opts = { hostname: '127.0.0.1', port: $INTERNAL_PORT, path: req.url, method: req.method, headers: req.headers };
   const p = http.request(opts, r => { res.writeHead(r.statusCode, r.headers); r.pipe(res, {end:true}); });
   p.on('error', () => { if (++retries < 3) { setTimeout(() => tryProxy(req,res), 500); } else { res.writeHead(502); res.end('Starting...'); } });
   req.pipe(p, {end:true});
 }
 http.createServer(tryProxy).listen($ARTIFACT_PORT, '0.0.0.0', () => {
-  console.log('[customer-portal] HTTP proxy :$ARTIFACT_PORT -> :3001');
+  console.log('[customer-portal] HTTP proxy :$ARTIFACT_PORT -> :$INTERNAL_PORT');
 });
 " &
   sleep 0.5
 fi
 
-export PORT=3001
+export PORT=$INTERNAL_PORT
 export BASE_PATH=${BASE_PATH:-/}
 
-exec node_modules/.bin/vite --config vite.config.ts --host 0.0.0.0
+exec pnpm exec vite --config vite.config.ts --host 0.0.0.0 --port $INTERNAL_PORT

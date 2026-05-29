@@ -1,0 +1,165 @@
+Implement ALL CRITICAL FIXES from audit.
+
+PRIORITAS #1 — SECURITY FIX
+==================================================
+
+CRITICAL:
+vendorPrice bocor ke customer di /approve-form.
+
+FIX:
+1. Customer approval endpoint/page TIDAK BOLEH menerima:
+- vendorPrice
+- margin
+- vendor internal notes
+- vendor comparison data
+- vendor raw quotation
+
+2. Buat whitelist variable khusus customer:
+Allowed:
+- orderNumber
+- customerName
+- serviceType
+- route
+- commodity
+- sellingPrice
+- currency
+- ETA final
+- shipment summary
+- operational status
+
+Blocked:
+- vendorPrice
+- margin
+- vendorCost
+- internalMargin
+- vendorComparison
+- adminNotes
+- vendorPhone internal
+
+3. Audit semua:
+- approve-form
+- customerApprovalLink
+- customer payload builder
+- template renderer
+- preview renderer
+
+4. Jangan hanya hide di frontend.
+Pastikan backend payload juga strip data sensitif.
+
+==================================================
+PRIORITAS #2 — REMOVE HARDCODED WA
+==================================================
+
+Fix semua hardcoded WA message:
+- trucking vendor blast
+- VendorMiniForm confirmations
+- frontend WA dialog
+- admin recap WA
+- RFQ V2
+
+Semua WA flow wajib memakai:
+openWhatsApp(workflow, recipient, context)
+
+==================================================
+PRIORITAS #3 — CENTRALIZED TEMPLATE ENGINE
+==================================================
+
+Pastikan:
+Tidak ada lagi component React yang membuat:
+const message = `...`
+
+Semua harus memakai:
+- getTemplate()
+- buildVariables()
+- renderTemplate()
+- renderConditionalBlocks()
+- removeEmptyLines()
+- buildWhatsAppUrl()
+
+==================================================
+PRIORITAS #4 — FIX DUAL SYSTEM CONFUSION
+==================================================
+
+Saat admin edit template:
+Tampilkan badge besar:
+"Settings Template WA aktif"
+
+Saat workflow masih hardcoded:
+Tampilkan warning:
+"Workflow ini belum memakai Settings Template"
+
+Jangan biarkan admin bingung antara:
+- hardcoded flow
+- settings flow
+
+==================================================
+PRIORITAS #5 — FIX VARIABLE COVERAGE
+==================================================
+
+Tambahkan variable yang missing:
+- margin
+- etaFinal
+- shipmentStatus
+- finalNotes
+- operationalStatus
+- deliveryDate
+- vendorResponseTime
+
+Jika variable tidak ada:
+- jangan render label kosong
+- jangan render "undefined"
+
+==================================================
+PRIORITAS #6 — FIX FRONTEND WA DIALOG
+==================================================
+
+Frontend WA dialog sekarang masih hardcoded.
+
+Fix:
+Dialog preview harus render:
+- template dari Settings
+- variable realtime
+- conditional block
+- empty-line removal
+
+Saat admin klik kirim:
+preview = EXACT SAME dengan pesan WA final.
+
+==================================================
+PRIORITAS #7 — TEST MATRIX
+==================================================
+
+Test semua workflow:
+1. Vendor Request
+2. Customer Approval
+3. Operational Request
+4. Driver Assigned
+5. Shipment Update
+6. Customs Update
+7. Delivery Completed
+
+Untuk:
+- trucking
+- freight_sea
+- freight_air
+- ppjk
+- product
+
+==================================================
+OUTPUT YANG SAYA MAU
+==================================================
+
+Setelah selesai:
+1. Daftar file yang diperbaiki
+2. Daftar hardcoded yang dihapus
+3. Workflow coverage baru (%)
+4. Security issue yang sudah fixed
+5. Workflow mana yang masih belum connected
+6. Screenshot/summary hasil testing
+7. Confirmation bahwa customer tidak bisa melihat vendorPrice lagi
+
+PENTING:
+- Jangan merusak flow existing
+- Jangan refactor besar-besaran
+- Lakukan safe incremental fix
+- Prioritaskan production safety

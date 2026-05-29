@@ -46,7 +46,7 @@ export default function Contact() {
                 </a>
 
                 <a
-                  href="https://wa.me/6281234567890"
+                  href="https://wa.me/6221624123"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center gap-4 group"
@@ -56,7 +56,7 @@ export default function Contact() {
                   </div>
                   <div>
                     <p className="text-xs text-slate-500 font-medium uppercase tracking-wide">WhatsApp</p>
-                    <p className="text-slate-800 font-medium group-hover:text-emerald-600 transition-colors">+62 812-3456-7890</p>
+                    <p className="text-slate-800 font-medium group-hover:text-emerald-600 transition-colors">(021) 6241234</p>
                   </div>
                 </a>
 

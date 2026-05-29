@@ -6,7 +6,12 @@ import { seedCatalogProducts } from "./lib/seedCatalogProducts";
 import { seedDemoData, seedDemoDrivers } from "./lib/seedDemoData";
 import { startImapPoller } from "./lib/imapPoller";
 import { startOcrTempCleanup } from "./lib/ocrTempCleanup";
+import { startVmfGapNotifier, runVmfGapCheck } from "./lib/vmfGapNotifier";
+import { runPhase1Migration } from "./lib/phase1Migration";
+import { startWorkflowWorker } from "./lib/workflowWorker";
+import { startWaRetryWorker } from "./lib/waRetryWorker";
 import { remediateOrphanProducts } from "./lib/remediateOrphanProducts";
+import { seedProductTemplates } from "./routes/productTemplates.js";
 import { runPortalMigration } from "./lib/portalMigration";
 import { runAccountingMigration } from "./lib/accountingMigration";
 import { runOauthStateMigration } from "./lib/oauthStateMigration";
@@ -38,11 +43,25 @@ import { runShortLinksMigration } from "./lib/shortLinksMigration";
 import { runGeofenceMigration } from "./lib/geofenceMigration";
 import { runOrderFulfillmentMigration } from "./routes/orderFulfillment.js";
 import { runTrustedDevicesMigration } from "./lib/trustedDevicesMigration.js";
+import { runAuditReportsMigration } from "./lib/auditReportsMigration.js";
+import { runWaTemplateMigration } from "./lib/orderNotification.js";
+import { runRlsMigration } from "./lib/rlsMigration.js";
+import { migratePushSubscriptions } from "./lib/webPush.js";
+import { runPgTrgmMigration } from "./lib/pgTrgmMigration.js";
+import { runIntelligenceAlertSettingsMigration } from "./lib/intelligenceAlertSettingsMigration.js";
+import { runAiGovernanceMigration } from "./lib/aiGovernanceMigration.js";
+import { runPurchaseTemplateMigration } from "./lib/purchaseTemplateMigration.js";
+import { runEnterpriseWorkflowMigration } from "./lib/enterpriseWorkflowTemplates.js";
+import { expireStaleApprovals } from "./lib/aiGovernance.js";
+import { startDbBackupScheduler } from "./lib/dbBackup.js";
+import { initAlertsBroadcast } from "./lib/alertsBroadcast.js";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 
 
-const rawPort = process.env["PORT"] ?? process.env["API_PORT"] ?? "5000";
+// REPLIT_API_PORT overrides PORT so the server listens on the local port
+// that maps to external port 8080 in the Replit dev proxy (localPort=18444).
+const rawPort = process.env["REPLIT_API_PORT"] ?? process.env["PORT"] ?? process.env["API_PORT"] ?? "5000";
 
 // Security: PORTAL_ADMIN_EMAILS must be set in production.
 // Without it, requirePortalAdmin falls back to DB role-only check,
@@ -120,6 +139,20 @@ async function runCriticalPreStartMigrations() {
     END $$;
   `);
 
+  // Add is_commodity_tag to vendor_catalog_items for blast auto-matching
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'vendor_catalog_items') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'vendor_catalog_items' AND column_name = 'is_commodity_tag'
+        ) THEN
+          ALTER TABLE vendor_catalog_items ADD COLUMN is_commodity_tag BOOLEAN NOT NULL DEFAULT FALSE;
+        END IF;
+      END IF;
+    END $$;
+  `);
+
   // Ensure wh_returns has company_id column (older installs may lack it)
   await db.execute(sql`
     DO $$ BEGIN
@@ -129,6 +162,56 @@ async function runCriticalPreStartMigrations() {
           WHERE table_name = 'wh_returns' AND column_name = 'company_id'
         ) THEN
           ALTER TABLE wh_returns ADD COLUMN company_id INTEGER;
+        END IF;
+      END IF;
+    END $$;
+  `);
+
+  // Add order_type to logistic_orders (Drizzle schema field missing from older DB installs)
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'logistic_orders' AND column_name = 'order_type'
+      ) THEN
+        ALTER TABLE logistic_orders ADD COLUMN order_type TEXT NOT NULL DEFAULT 'shipment';
+      END IF;
+    END $$;
+  `);
+
+  // Add version column to logistic_orders (optimistic locking)
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'logistic_orders' AND column_name = 'version'
+      ) THEN
+        ALTER TABLE logistic_orders ADD COLUMN version INTEGER NOT NULL DEFAULT 1;
+      END IF;
+    END $$;
+  `);
+
+  // Add vendor_accept_token and vendor_accepted_at to purchase_documents (Vendor PO Accept feature)
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'purchase_documents') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'purchase_documents' AND column_name = 'vendor_accept_token'
+        ) THEN
+          ALTER TABLE purchase_documents ADD COLUMN vendor_accept_token TEXT UNIQUE;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'purchase_documents' AND column_name = 'vendor_accepted_at'
+        ) THEN
+          ALTER TABLE purchase_documents ADD COLUMN vendor_accepted_at TIMESTAMP;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'purchase_documents' AND column_name = 'vendor_accept_notes'
+        ) THEN
+          ALTER TABLE purchase_documents ADD COLUMN vendor_accept_notes TEXT;
         END IF;
       END IF;
     END $$;
@@ -147,6 +230,19 @@ async function startServer() {
     logger.info({ port }, "Server listening");
   });
 
+  // Attach WebSocket server for real-time Intelligence Alerts
+  initAlertsBroadcast(server);
+
+  // Also bind on port 18444 (gateway routing port) if not already the main port
+  // Set SKIP_GATEWAY=1 to disable this secondary binding (e.g. when a dedicated
+  // artifact workflow already handles port 18444).
+  const GATEWAY_PORT = 18444;
+  if (port !== GATEWAY_PORT && !process.env.SKIP_GATEWAY) {
+    app.listen(GATEWAY_PORT, (err?: Error) => {
+      if (!err) logger.info({ port: GATEWAY_PORT }, "Also listening on gateway port");
+    });
+  }
+
   // Graceful shutdown on SIGTERM / SIGINT
   const shutdown = () => {
     server.close(() => process.exit(0));
@@ -158,6 +254,17 @@ async function startServer() {
   // Start background services immediately
   startImapPoller(3 * 60 * 1000);
   startOcrTempCleanup();
+  startVmfGapNotifier();
+  startWorkflowWorker();
+  startDbBackupScheduler();
+  startWaRetryWorker();
+
+  // AI Governance: expire stale approvals & auto-approve setiap 5 menit
+  setInterval(() => {
+    expireStaleApprovals().catch((err: unknown) => {
+      logger.warn({ err }, "expireStaleApprovals background tick failed (non-fatal)");
+    });
+  }, 5 * 60 * 1000).unref();
 
   // Run all migrations + seeds in the background with a small initial delay
   // to prevent a DB connection storm on cold starts.
@@ -196,6 +303,16 @@ async function startServer() {
     .then(() => runWithRetry("Geofence migration", runGeofenceMigration))
     .then(() => runWithRetry("Order fulfillment migration", runOrderFulfillmentMigration))
     .then(() => runWithRetry("Trusted devices migration", runTrustedDevicesMigration))
+    .then(() => runWithRetry("ERP audit reports migration", runAuditReportsMigration))
+    .then(() => runWithRetry("WA template migration", runWaTemplateMigration))
+    .then(() => runWithRetry("RLS migration", runRlsMigration))
+    .then(() => runWithRetry("Phase 1 migration", runPhase1Migration))
+    .then(() => runWithRetry("Push subscriptions migration", migratePushSubscriptions))
+    .then(() => runWithRetry("pg_trgm indexes migration", runPgTrgmMigration))
+    .then(() => runWithRetry("Intelligence alert settings migration", runIntelligenceAlertSettingsMigration))
+    .then(() => runWithRetry("AI governance migration", runAiGovernanceMigration))
+    .then(() => runWithRetry("Purchase template migration", runPurchaseTemplateMigration))
+    .then(() => runWithRetry("Enterprise workflow template migration", runEnterpriseWorkflowMigration))
     .then(() => enableRealtimeTables().catch((err) => {
       logger.warn({ err }, "Supabase Realtime table enable failed (non-fatal)");
     }))
@@ -204,6 +321,9 @@ async function startServer() {
     }))
     .then(() => seedUom().catch((err) => {
       logger.warn({ err }, "UOM seed failed (non-fatal)");
+    }))
+    .then(() => seedProductTemplates().catch((err) => {
+      logger.warn({ err }, "Product templates seed failed (non-fatal)");
     }))
     .then(() =>
       seedLogisticsServiceItems()

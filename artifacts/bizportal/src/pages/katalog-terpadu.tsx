@@ -1,5 +1,6 @@
 import { AppShell } from "@/components/layout/AppShell";
 import { useState, useMemo, useEffect } from "react";
+import { LOGISTICS_SUBCATEGORIES } from "@workspace/logistics-constants";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import {
@@ -9,6 +10,7 @@ import {
   useDeleteProduct,
   useListStocks,
   useListSuppliers,
+  useListProductCategories,
   useCreateStockItem,
   useUpdateStockItem,
   useDeleteStockItem,
@@ -35,7 +37,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2, Search, Package, Wrench, FlaskConical, Building, ExternalLink, BookOpen, ShoppingBag, Globe, X, ArrowRight, Tag } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Package, Wrench, FlaskConical, Building, ExternalLink, BookOpen, ShoppingBag, Globe, X, ArrowRight, Tag, RefreshCw } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 const fmt = (n: number) =>
@@ -83,6 +85,36 @@ function SummaryCard({ icon: Icon, label, count, color }: {
   );
 }
 
+// ── SYNC HARGA BUTTON ─────────────────────────────────────────────────────────
+
+function SyncHargaButton() {
+  const { toast } = useToast();
+  const [syncing, setSyncing] = useState(false);
+
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      await fetch("/api/ecommerce/sync-prices", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+      });
+      toast({ title: "Harga disinkronisasi", description: "Semua tab customer portal telah diperbarui." });
+    } catch {
+      toast({ title: "Gagal sinkronisasi", variant: "destructive" });
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  return (
+    <Button variant="outline" size="sm" onClick={handleSync} disabled={syncing}>
+      <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${syncing ? "animate-spin" : ""}`} />
+      Sinkronisasi Harga
+    </Button>
+  );
+}
+
 // ── TAB 1: MASTER ITEM (SALES) ────────────────────────────────────────────────
 
 function MasterItemTab({ initialSearch = "" }: { initialSearch?: string }) {
@@ -98,9 +130,11 @@ function MasterItemTab({ initialSearch = "" }: { initialSearch?: string }) {
   const [editingItem, setEditingItem] = useState<{ id: number; name: string; sku: string; itemType: string; subcategory: string | null; unit: string; price: number; isActive: boolean; description: string | null } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; name: string } | null>(null);
 
-  const [form, setForm] = useState({ name: "", sku: "", itemType: "barang", subcategory: "", unit: "pcs", price: "0", isActive: true, description: "" });
+  const [form, setForm] = useState({ name: "", sku: "", itemType: "barang", kategori: "", subcategory: "", unit: "pcs", price: "0", isActive: true, description: "" });
 
-  const { data: products = [], isLoading } = useListProducts({}, { query: { queryKey: getListProductsQueryKey({}) } });
+  const { data: _productsPaginated, isLoading } = useListProducts({ limit: 500 }, { query: { queryKey: getListProductsQueryKey({}) } });
+  const products = _productsPaginated?.data ?? [];
+  const { data: productCategories = [] } = useListProductCategories();
   const createMut = useCreateProduct();
   const updateMut = useUpdateProduct();
   const deleteMut = useDeleteProduct();
@@ -116,15 +150,22 @@ function MasterItemTab({ initialSearch = "" }: { initialSearch?: string }) {
     return true;
   }), [products, filterType, filterActive, search]);
 
+  const { data: DEFAULT_SUBCATEGORIES = [...LOGISTICS_SUBCATEGORIES] } = useQuery<string[]>({
+    queryKey: ["logistics-subcategories"],
+    queryFn: () => fetch("/api/settings/logistics-subcategories", { credentials: "include" }).then((r) => r.ok ? r.json() : [...LOGISTICS_SUBCATEGORIES]),
+    staleTime: 5 * 60 * 1000,
+  });
+
   const openCreate = () => {
     setEditingItem(null);
-    setForm({ name: "", sku: "", itemType: "barang", subcategory: "", unit: "pcs", price: "0", isActive: true, description: "" });
+    setForm({ name: "", sku: "", itemType: "barang", kategori: "", subcategory: "", unit: "pcs", price: "0", isActive: true, description: "" });
     setDialogOpen(true);
   };
 
   const openEdit = (p: typeof products[0]) => {
     setEditingItem({ id: p.id, name: p.name, sku: p.sku, itemType: p.itemType, subcategory: p.subcategory ?? null, unit: p.unit, price: p.price, isActive: p.isActive, description: p.description ?? null });
-    setForm({ name: p.name, sku: p.sku, itemType: p.itemType, subcategory: p.subcategory ?? "", unit: p.unit, price: String(p.price), isActive: p.isActive, description: p.description ?? "" });
+    const existingKategori = (p.categories as string[] | undefined)?.[0] ?? "";
+    setForm({ name: p.name, sku: p.sku, itemType: p.itemType, kategori: existingKategori, subcategory: p.subcategory ?? "", unit: p.unit, price: String(p.price), isActive: p.isActive, description: p.description ?? "" });
     setDialogOpen(true);
   };
 
@@ -133,7 +174,9 @@ function MasterItemTab({ initialSearch = "" }: { initialSearch?: string }) {
       toast({ title: "Nama dan SKU wajib diisi", variant: "destructive" });
       return;
     }
-    const body = { name: form.name.trim(), sku: form.sku.trim(), itemType: form.itemType as "barang" | "jasa", subcategory: form.subcategory || null, unit: form.unit, price: Number(form.price) || 0, isActive: form.isActive, description: form.description || null, categories: form.subcategory ? [form.subcategory] : [], stock: 0, unitOptions: [] };
+    const kategoriVal = (form.kategori && form.kategori !== "_none") ? form.kategori : null;
+    const subcategoryVal = (form.subcategory && form.subcategory !== "_none") ? form.subcategory : null;
+    const body = { name: form.name.trim(), sku: form.sku.trim(), itemType: form.itemType as "barang" | "jasa", subcategory: subcategoryVal, unit: form.unit, price: Number(form.price) || 0, isActive: form.isActive, description: form.description || null, categories: kategoriVal ? [kategoriVal] : [], stock: 0, unitOptions: [] };
     try {
       if (editingItem) {
         await updateMut.mutateAsync({ id: editingItem.id, data: body });
@@ -190,6 +233,7 @@ function MasterItemTab({ initialSearch = "" }: { initialSearch?: string }) {
           <Button variant="outline" size="sm" asChild>
             <Link href="/sales/items"><ExternalLink className="h-3.5 w-3.5 mr-1.5" />Halaman Lengkap</Link>
           </Button>
+          <SyncHargaButton />
           <Button size="sm" onClick={openCreate}><Plus className="h-4 w-4 mr-1" />Tambah Item</Button>
         </div>
       </div>
@@ -282,8 +326,28 @@ function MasterItemTab({ initialSearch = "" }: { initialSearch?: string }) {
               </Select>
             </div>
             <div className="space-y-1">
+              <Label>Kategori</Label>
+              <Select value={form.kategori} onValueChange={(v) => setForm(f => ({ ...f, kategori: v }))}>
+                <SelectTrigger><SelectValue placeholder="Pilih kategori..." /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_none">— Tidak ada —</SelectItem>
+                  {productCategories.map((c) => (
+                    <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
               <Label>Sub-kategori</Label>
-              <Input value={form.subcategory} onChange={(e) => setForm(f => ({ ...f, subcategory: e.target.value }))} placeholder="Udara, Laut, Darat..." />
+              <Select value={form.subcategory} onValueChange={(v) => setForm(f => ({ ...f, subcategory: v === "_none" ? "" : v }))}>
+                <SelectTrigger><SelectValue placeholder="Pilih sub-kategori..." /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_none">— Tidak ada —</SelectItem>
+                  {DEFAULT_SUBCATEGORIES.map((s) => (
+                    <SelectItem key={s} value={s}>{s}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1">
               <Label>Satuan</Label>
@@ -1007,14 +1071,14 @@ function GlobalSearchResults({
     });
 
     (stocks as StockItem[]).forEach((s) => {
-      const n = (s.name ?? "").toLowerCase();
+      const n = ((s as any).name ?? "").toLowerCase();
       const sku = (s.sku ?? "").toLowerCase();
       if (n.includes(q) || sku.includes(q)) {
         out.push({
           id: `st-${s.id}`,
-          name: s.name ?? "-",
+          name: (s as any).name ?? "-",
           sku: s.sku ?? "-",
-          detail: `Stok Trading • ${s.unit ?? "-"} • Beli ${fmt(Number(s.buyPrice ?? 0))}`,
+          detail: `Stok Trading • ${s.unit ?? "-"} • Beli ${fmt(Number((s as any).buyPrice ?? 0))}`,
           source: "Stok Trading",
           sourceColor: "bg-green-100 text-green-700",
           sourceIcon: Globe,
@@ -1027,7 +1091,7 @@ function GlobalSearchResults({
       if ((s.name ?? "").toLowerCase().includes(q) || (s.contactEmail ?? "").toLowerCase().includes(q)) {
         out.push({
           id: `sp-${s.id}`,
-          name: s.name ?? "-",
+          name: (s as any).name ?? "-",
           sku: s.contactEmail ?? "-",
           detail: `Supplier • ${s.country ?? "-"} • ${s.phone ?? "-"}`,
           source: "Supplier",
@@ -1114,7 +1178,8 @@ function GlobalSearchResults({
 // ── MAIN PAGE ─────────────────────────────────────────────────────────────────
 
 export default function KatalogTerpaduPage() {
-  const { data: products = [] } = useListProducts({}, { query: { queryKey: getListProductsQueryKey({}) } });
+  const { data: _productsPaginatedMain } = useListProducts({ limit: 500 }, { query: { queryKey: getListProductsQueryKey({}) } });
+  const products = _productsPaginatedMain?.data ?? [];
   const { data: stocks = [] } = useListStocks();
   const { data: suppliers = [] } = useListSuppliers({ query: { queryKey: getListSuppliersQueryKey() } });
   const { data: bomProducts = [] } = useQuery<BomProduct[]>({ queryKey: ["bom-products"], queryFn: () => apiFetch("/bom/products") });

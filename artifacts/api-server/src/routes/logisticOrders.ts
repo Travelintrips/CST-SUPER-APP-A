@@ -11,18 +11,32 @@ import {
   driverPhotosTable,
   logisticOrderRfqsTable,
   driverLocationsTable,
+  orderUpdatesTable,
+  vendorResponsesTable,
+  podOcrResultsTable,
+  rfqVendorLinksTable,
 } from "@workspace/db";
+import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { eq, ilike, and, gte, lte, or, sql, desc, inArray, isNotNull } from "drizzle-orm";
 import { salesDocumentsTable } from "@workspace/db";
-import { requireClerkUser } from "../lib/requireAdmin.js";
+import { requireClerkUser, requireRole } from "../lib/requireAdmin.js";
 import { resolveCompanyId } from "../lib/resolveCompany.js";
 import { requirePortalAdmin } from "../lib/supabaseAuth.js";
-import { sendLogisticOrderNotification } from "../lib/orderNotification";
+import {
+  sendLogisticOrderNotification,
+  sendVendorOrderStatusChangeNotification,
+  sendLogisticOrderStatusCustomerNotification,
+} from "../lib/orderNotification";
+import { generateShortLink } from "../lib/shortLink.js";
+import { getPreferredDomain } from "../lib/domain.js";
+import { logActivity } from "../lib/activityLog.js";
 // [FLOW BARU] autoCreateRfqAndNotifyVendors dinonaktifkan — vendor tidak boleh dihubungi langsung saat order dibuat.
 // Admin harus review dulu via /bizportal/logistics/rfq sebelum blast ke vendor.
 // import { autoCreateRfqAndNotifyVendors } from "./logisticRfq";
-import { sendWhatsApp } from "../lib/fonnte";
+import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { saveAndBroadcast } from "../lib/notificationStore";
+import { broadcastToPortal } from "../lib/sseManager.js";
+import { sendPushToOrder } from "../lib/webPush.js";
 import {
   CreateLogisticOrderBody,
   ListLogisticOrdersQueryParams,
@@ -33,6 +47,21 @@ import {
 } from "@workspace/api-zod";
 
 export const logisticOrdersRouter = Router();
+
+// [C4-FIX] IP-based rate limit for public order creation: max 10 orders per IP per hour
+const _publicOrderRateMap = new Map<string, { count: number; resetAt: number }>();
+function _checkPublicOrderRate(ip: string): boolean {
+  const now = Date.now();
+  let entry = _publicOrderRateMap.get(ip);
+  if (!entry || now > entry.resetAt) {
+    entry = { count: 0, resetAt: now + 60 * 60 * 1000 }; // 1-hour window
+  }
+  const cap = process.env.NODE_ENV === "production" ? 10 : 1000;
+  if (entry.count >= cap) return false;
+  entry.count++;
+  _publicOrderRateMap.set(ip, entry);
+  return true;
+}
 
 function generateOrderNumber(): string {
   const date = new Date();
@@ -81,7 +110,9 @@ function toOrder(row: typeof logisticOrdersTable.$inferSelect, approvedVendorNam
     approvedVendorName: approvedVendorName ?? null,
     finalSellingPrice: row.finalSellingPrice ? parseFloat(row.finalSellingPrice) : null,
     quotationSentAt: row.quotationSentAt?.toISOString() ?? null,
+    version: (row as any).version ?? 1,
     createdAt: row.createdAt.toISOString(),
+    updatedAt: ((row as any).updatedAt ?? row.createdAt).toISOString(),
   };
 }
 
@@ -135,13 +166,36 @@ async function getTruckingRates() {
 
 // ─── PUBLIC ROUTES (no auth required) ────────────────────────────────────────
 
-// POST /api/logistic/orders — create order (public)
+// POST /api/logistic/orders — create order (public customer portal endpoint)
 logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
+  // [C4-FIX] IP-based rate limit: prevent bot flooding
+  const clientIp = ((req.ip ?? req.socket?.remoteAddress) || "unknown").replace(/^::ffff:/, "");
+  if (!_checkPublicOrderRate(clientIp)) {
+    return res.status(429).json({ message: "Terlalu banyak permintaan. Coba lagi dalam 1 jam." });
+  }
+
   const parsed = CreateLogisticOrderBody.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ message: "Data tidak valid", errors: parsed.error.errors });
   }
   const body = parsed.data;
+
+  // Anti-duplicate: tolak jika email yang sama sudah membuat order dalam 60 detik terakhir
+  const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
+  const [recentDuplicate] = await db
+    .select({ id: logisticOrdersTable.id, orderNumber: logisticOrdersTable.orderNumber })
+    .from(logisticOrdersTable)
+    .where(and(
+      eq(logisticOrdersTable.email, body.email),
+      gte(logisticOrdersTable.createdAt, oneMinuteAgo),
+    ))
+    .limit(1);
+  if (recentDuplicate) {
+    return res.status(429).json({
+      message: "Pesanan sudah dikirim baru-baru ini. Mohon tunggu sebentar atau cek email konfirmasi Anda.",
+      orderNumber: recentDuplicate.orderNumber,
+    });
+  }
 
   const orderNumber = generateOrderNumber();
 
@@ -170,19 +224,19 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
       nomorPenerima: body.nomorPenerima ?? null,
       jamOrder: body.jamOrder ?? null,
       // [MULTI-MODE] transport mode fields
-      transportMode: (body as any).transportMode ?? null,
-      originDistrict: (body as any).originDistrict ?? null,
-      destDistrict: (body as any).destDistrict ?? null,
-      pickupDate: (body as any).pickupDate ?? null,
-      pickupTime: (body as any).pickupTime ?? null,
-      truckType: (body as any).truckType ?? null,
-      originPort: (body as any).originPort ?? null,
-      destPort: (body as any).destPort ?? null,
-      weightKg: (body as any).weightKg != null ? String((body as any).weightKg) : null,
-      incoterm: (body as any).incoterm ?? null,
-      etd: (body as any).etd ? new Date((body as any).etd as string) : null,
-      eta: (body as any).eta ? new Date((body as any).eta as string) : null,
-      source: "manual",
+      transportMode: body.transportMode ?? null,
+      originDistrict: body.originDistrict ?? null,
+      destDistrict: body.destDistrict ?? null,
+      pickupDate: body.pickupDate ?? null,
+      pickupTime: body.pickupTime ?? null,
+      truckType: body.truckType ?? null,
+      originPort: body.originPort ?? null,
+      destPort: body.destPort ?? null,
+      weightKg: body.weightKg != null ? String(body.weightKg) : null,
+      incoterm: body.incoterm ?? null,
+      etd: body.etd ? new Date(body.etd) : null,
+      eta: body.eta ? new Date(body.eta) : null,
+      source: "portal",
       subtotal: String(body.subtotal),
       tax: String(body.tax),
       grandTotal: String(body.grandTotal),
@@ -190,6 +244,19 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
       publicRfqToken: randomBytes(16).toString("hex"),
     })
     .returning();
+
+  // Auto-generate tracking token saat order dibuat agar customer langsung bisa akses tracking
+  const trackingToken = randomBytes(24).toString("hex");
+  await db.execute(sql`UPDATE logistic_orders SET tracking_token = ${trackingToken} WHERE id = ${order.id}`);
+  const domain = getPreferredDomain();
+  const trackUrl = domain
+    ? `https://${domain}/order-track/${trackingToken}`
+    : `/order-track/${trackingToken}`;
+  generateShortLink(trackUrl, {
+    context: "order_tracking",
+    refType: "order",
+    refId: orderNumber,
+  }).catch((err: unknown) => req.log.warn({ err }, "shortLink: tracking link generation failed"));
 
   const itemValues = body.items.map((item) => ({
     orderId: order.id,
@@ -206,7 +273,15 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
       ? await db.insert(logisticOrderItemsTable).values(itemValues).returning()
       : [];
 
-  const serviceList = body.items.map((i) => `• ${i.serviceName}`).join("\n");
+  const isProductOrder = (body.orderType ?? "shipment") === "product";
+  const serviceList = !isProductOrder
+    ? body.items.map((i) => `• ${i.serviceName}`).join("\n")
+    : "";
+  const orderItems = body.items.map((i) => ({
+    name: i.serviceName,
+    qty: null as number | null,
+    subtotal: i.subtotal != null ? Number(i.subtotal) : null,
+  }));
 
   const vehicleType =
     (body.items.find((i) => i.calculatorType === "trucking")
@@ -225,10 +300,14 @@ sendLogisticOrderNotification({
     destination: body.destination ?? "",
     commodity: body.commodity ?? null,
     cargoDescription: body.cargoDescription ?? null,
-    grossWeight: body.grossWeight != null ? Number(body.grossWeight) : null,
-    volumeCbm: body.volumeCbm != null ? Number(body.volumeCbm) : null,
+    grossWeight: !isProductOrder && body.grossWeight != null ? Number(body.grossWeight) : null,
+    volumeCbm: !isProductOrder && body.volumeCbm != null ? Number(body.volumeCbm) : null,
+    jumlahKoli: !isProductOrder && body.jumlahKoli != null ? Number(body.jumlahKoli) : null,
+    subtotal: body.subtotal != null ? Number(body.subtotal) : null,
+    tax: body.tax != null ? Number(body.tax) : null,
     grandTotal: Number(body.grandTotal),
     serviceList,
+    orderItems,
     requiredDate: body.requiredDate ?? null,
     notes: body.notes ?? null,
     jamOrder: body.jamOrder ?? null,
@@ -257,6 +336,28 @@ sendLogisticOrderNotification({
     createdAt: order.createdAt.toISOString(),
   }).catch(() => {});
 
+  // Broadcast ke Customer Portal agar logistic-admin page auto-refresh
+  broadcastToPortal("new_logistic_order", {
+    orderId: order.id,
+    orderNumber,
+    customerName: body.customerName,
+    companyName: body.companyName ?? null,
+    shipmentType: body.shipmentType ?? "",
+    origin: body.origin ?? "",
+    destination: body.destination ?? "",
+    createdAt: order.createdAt.toISOString(),
+  });
+
+  logActivity({
+    orderId: order.id,
+    actorType: "customer",
+    actorName: body.customerName,
+    action: "order_created",
+    description: `Order ${orderNumber} dibuat oleh ${body.customerName} (${body.companyName ?? "-"}) — ${body.shipmentType} ${body.origin}→${body.destination}`,
+    newValue: { orderNumber, grandTotal: body.grandTotal, shipmentType: body.shipmentType },
+    ipAddress: req.ip ?? null,
+  }).catch(() => {});
+
   return res.status(201).json({
     ...toOrder(order),
     items: items.map(toItem),
@@ -281,13 +382,14 @@ function toPublicOrder(row: typeof logisticOrdersTable.$inferSelect) {
   };
 }
 
-/** Simple in-memory rate limiter for public order-number lookup endpoints */
+/** In-memory rate limiter for public order-number lookup endpoints.
+ *  Limit: 5 requests / minute / IP (tightened from 20 to reduce enumeration risk). */
 const publicLookupHits = new Map<string, { count: number; resetAt: number }>();
 function publicLookupRateLimit(req: Request, res: Response, next: () => void) {
   const ip = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ?? req.socket.remoteAddress ?? "unknown";
   const now = Date.now();
   const window = 60_000;
-  const limit = 20;
+  const limit = 5;
   const entry = publicLookupHits.get(ip);
   if (!entry || now > entry.resetAt) {
     publicLookupHits.set(ip, { count: 1, resetAt: now + window });
@@ -301,7 +403,7 @@ function publicLookupRateLimit(req: Request, res: Response, next: () => void) {
   next();
 }
 
-// GET /api/logistic/orders/by-number/:orderNumber — lookup by order number (public)
+// GET /api/logistic/orders/by-number/:orderNumber — minimal public lookup (no PII fields)
 logisticOrdersRouter.get(
   "/by-number/:orderNumber",
   publicLookupRateLimit,
@@ -322,7 +424,10 @@ logisticOrdersRouter.get(
       .from(logisticOrderItemsTable)
       .where(eq(logisticOrderItemsTable.orderId, order.id));
 
-    return res.json({ ...toPublicOrder(order), items: items.map(toPublicItem) });
+    // Strip origin/destination to prevent PII enumeration via guessable order numbers.
+    // Full tracking detail (incl. route) is available on /track/:orderNumber for the owner.
+    const { origin: _o, destination: _d, ...safeOrder } = toPublicOrder(order);
+    return res.json({ ...safeOrder, items: items.map(toPublicItem) });
   }
 );
 
@@ -341,31 +446,30 @@ logisticOrdersRouter.get(
 
     if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
 
-    const items = await db
-      .select()
-      .from(logisticOrderItemsTable)
-      .where(eq(logisticOrderItemsTable.orderId, order.id));
-
-    const [driverJob] = await db
-      .select()
-      .from(driverJobsTable)
-      .where(eq(driverJobsTable.logisticOrderId, order.id))
-      .orderBy(desc(driverJobsTable.assignedAt))
-      .limit(1);
+    // Run all independent queries in parallel — eliminates N+1 sequential awaits
+    const [items, [driverJob], [latestRfq]] = await Promise.all([
+      db.select().from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, order.id)),
+      db.select().from(driverJobsTable)
+        .where(eq(driverJobsTable.logisticOrderId, order.id))
+        .orderBy(desc(driverJobsTable.assignedAt))
+        .limit(1),
+      db.select().from(logisticOrderRfqsTable)
+        .where(eq(logisticOrderRfqsTable.orderId, order.id))
+        .orderBy(desc(logisticOrderRfqsTable.createdAt))
+        .limit(1),
+    ]);
 
     let driverJobData = null;
     if (driverJob) {
-      const logs = await db
-        .select()
-        .from(driverJobLogsTable)
-        .where(eq(driverJobLogsTable.driverJobId, driverJob.id))
-        .orderBy(desc(driverJobLogsTable.timestamp));
-
-      const photos = await db
-        .select()
-        .from(driverPhotosTable)
-        .where(eq(driverPhotosTable.driverJobId, driverJob.id))
-        .orderBy(desc(driverPhotosTable.takenAt));
+      // Run driver logs + photos in parallel once we know the job ID
+      const [logs, photos] = await Promise.all([
+        db.select().from(driverJobLogsTable)
+          .where(eq(driverJobLogsTable.driverJobId, driverJob.id))
+          .orderBy(desc(driverJobLogsTable.timestamp)),
+        db.select().from(driverPhotosTable)
+          .where(eq(driverPhotosTable.driverJobId, driverJob.id))
+          .orderBy(desc(driverPhotosTable.takenAt)),
+      ]);
 
       driverJobData = {
         id: driverJob.id,
@@ -387,20 +491,12 @@ logisticOrdersRouter.get(
       };
     }
 
-    // RFQ quote info untuk customer portal
-    const [latestRfq] = await db
-      .select()
-      .from(logisticOrderRfqsTable)
-      .where(eq(logisticOrderRfqsTable.orderId, order.id))
-      .orderBy(desc(logisticOrderRfqsTable.createdAt))
-      .limit(1);
-
+    // Security: quotedPrice is financial/margin data — never expose on public tracking endpoint.
+    // Only status and timing info is safe for unauthenticated callers.
     const rfqQuote = latestRfq ? {
       rfqId: latestRfq.id,
       rfqStatus: latestRfq.status,
-      quotedPrice: latestRfq.quotedPrice ? parseFloat(latestRfq.quotedPrice) : null,
       quotedAt: latestRfq.quotedAt?.toISOString() ?? null,
-      quoteNotes: latestRfq.quoteNotes ?? null,
       customerResponseNotes: (latestRfq as any).customerResponseNotes ?? null,
       customerRespondedAt: (latestRfq as any).customerRespondedAt
         ? new Date((latestRfq as any).customerRespondedAt).toISOString() : null,
@@ -415,20 +511,21 @@ logisticOrdersRouter.get(
   }
 );
 
-// GET /api/logistic/orders/trucking-rates — public
-logisticOrdersRouter.get("/trucking-rates", async (_req: Request, res: Response) => {
+// GET /api/logistic/orders/trucking-rates — [H2-FIX] internal pricing, requires staff session
+// Note: customer portal uses /api/portal/trucking-rates (separate public endpoint)
+logisticOrdersRouter.get("/trucking-rates", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
   const rates = await getTruckingRates();
   return res.json(rates);
 });
 
-// GET /api/logistic/orders/vendors — admin & logistics staff
+// GET /api/logistic/orders/vendors — [H2-FIX] admin, owner & logistics staff only
 logisticOrdersRouter.get("/vendors", async (req: Request, res: Response) => {
-  const user = (req as any).user;
-  const allowed = ["admin", "owner", "logistics"];
-  if (!user || !allowed.includes(user.role)) {
-    return res.status(403).json({ error: "Forbidden" });
-  }
-  const rows = await db.select().from(suppliersTable).orderBy(suppliersTable.sortOrder);
+  if (!(await requireClerkUser(req, res))) return;
+  if (!(await requireRole(req, res, ["admin", "owner", "logistics"]))) return;
+  const limit = Math.min(Number(req.query["limit"] ?? 500), 1000);
+  const offset = Math.max(Number(req.query["offset"] ?? 0), 0);
+  const rows = await db.select().from(suppliersTable).orderBy(suppliersTable.sortOrder).limit(limit).offset(offset);
   return res.json(rows.map((v) => ({ ...v, fee: Number(v.fee ?? 0), email: v.contactEmail })));
 });
 
@@ -445,6 +542,10 @@ logisticOrdersRouter.use(async (req, res, next) => {
 logisticOrdersRouter.get("/", async (req: Request, res: Response) => {
   const parsed = ListLogisticOrdersQueryParams.safeParse(req.query);
   const q = parsed.success ? parsed.data : {};
+
+  // Pagination — default 100 per page, max 500
+  const limit = Math.min(Number(req.query["limit"] ?? 100), 500);
+  const offset = Math.max(Number(req.query["offset"] ?? 0), 0);
 
   const rawCompany = req.query["company"] ?? req.query["companyId"];
   const isConsolidated = rawCompany === "0" || rawCompany === "all" || rawCompany === undefined;
@@ -475,10 +576,14 @@ logisticOrdersRouter.get("/", async (req: Request, res: Response) => {
           .from(logisticOrdersTable)
           .where(and(...conditions))
           .orderBy(sql`${logisticOrdersTable.createdAt} DESC`)
+          .limit(limit)
+          .offset(offset)
       : await db
           .select()
           .from(logisticOrdersTable)
-          .orderBy(sql`${logisticOrdersTable.createdAt} DESC`);
+          .orderBy(sql`${logisticOrdersTable.createdAt} DESC`)
+          .limit(limit)
+          .offset(offset);
 
   // Attach linked sales doc info for each order
   const orderIds = rows.map((r) => r.id);
@@ -533,7 +638,7 @@ logisticOrdersRouter.get("/", async (req: Request, res: Response) => {
       WHERE order_id = ANY(${sql.raw(`ARRAY[${orderIds.join(",")}]::int[]`)})
       ORDER BY order_id, created_at DESC
     `);
-    for (const row of ((fRows as unknown as { rows: unknown[] }).rows ?? fRows as unknown[]) as { orderId: unknown; status: unknown }[]) {
+    for (const row of (fRows.rows as { orderId: unknown; status: unknown }[])) {
       fulfillmentStatusMap.set(Number(row.orderId), row.status as string);
     }
   }
@@ -593,8 +698,9 @@ logisticOrdersRouter.put("/trucking-rates", requirePortalAdmin, async (req: Requ
 
 // ─── Delivery Vendors CRUD (for BizPortal) ───────────────────────────────────
 
-// POST /api/logistic/orders/vendors
+// POST /api/logistic/orders/vendors — [C9-FIX] requires admin or owner role
 logisticOrdersRouter.post("/vendors", async (req: Request, res: Response) => {
+  if (!(await requireRole(req, res, ["admin", "owner"]))) return;
   const { name, logo, eta, fee, note, phone, email, serviceType } = req.body as Record<string, unknown>;
   if (!name || typeof name !== "string" || !name.trim())
     return res.status(400).json({ message: "Nama vendor harus diisi" });
@@ -615,8 +721,9 @@ logisticOrdersRouter.post("/vendors", async (req: Request, res: Response) => {
   return res.status(201).json({ ...created, fee: Number(created.fee ?? 0), email: created.contactEmail });
 });
 
-// PUT /api/logistic/orders/vendors/:id
+// PUT /api/logistic/orders/vendors/:id — [C9-FIX] requires admin or owner role
 logisticOrdersRouter.put("/vendors/:id", async (req: Request, res: Response) => {
+  if (!(await requireRole(req, res, ["admin", "owner"]))) return;
   const id = parseInt(String(req.params.id), 10);
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
   const { name, logo, eta, fee, note, phone, email, serviceType, isActive, sortOrder } = req.body as Record<string, unknown>;
@@ -637,12 +744,17 @@ logisticOrdersRouter.put("/vendors/:id", async (req: Request, res: Response) => 
   return res.json({ ...updated, fee: Number(updated.fee ?? 0), email: updated.contactEmail });
 });
 
-// DELETE /api/logistic/orders/vendors/:id
+// DELETE /api/logistic/orders/vendors/:id — [C9-FIX] requires admin or owner role
 logisticOrdersRouter.delete("/vendors/:id", async (req: Request, res: Response) => {
+  if (!(await requireRole(req, res, ["admin", "owner"]))) return;
   const id = parseInt(String(req.params.id), 10);
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
   const [deleted] = await db.delete(suppliersTable).where(eq(suppliersTable.id, id)).returning();
   if (!deleted) return res.status(404).json({ message: "Vendor tidak ditemukan" });
+  // Cascade storage cleanup — logo (hanya jika berupa URL, bukan emoji)
+  if (deleted.logo && (deleted.logo.startsWith("http") || deleted.logo.startsWith("/api/storage"))) {
+    deleteFromSupabase(deleted.logo).catch(() => {});
+  }
   return res.json({ success: true });
 });
 
@@ -661,6 +773,13 @@ logisticOrdersRouter.get("/:id", async (req: Request, res: Response) => {
     .where(eq(logisticOrdersTable.id, id));
 
   if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+  // [C5-FIX] Cross-company data leak prevention: non-admin/owner users can only access their company's orders
+  const u = req.user as { role?: string | null; companyId?: number | null } | undefined;
+  const isAdminOrOwner = u?.role === "admin" || u?.role === "owner";
+  if (!isAdminOrOwner && order.companyId !== null && order.companyId !== (u?.companyId ?? null)) {
+    return res.status(403).json({ message: "Akses ditolak: order ini bukan milik perusahaan Anda" });
+  }
 
   const [items, linkedDocRows] = await Promise.all([
     db.select().from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, id)),
@@ -685,6 +804,115 @@ logisticOrdersRouter.get("/:id", async (req: Request, res: Response) => {
   });
 });
 
+// POST /api/logistic/orders/:id/resend-wa-group — resend order_new notif ke Admin Group
+logisticOrdersRouter.post("/:id/resend-wa-group", async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params["id"] ?? ""));
+  if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+
+  const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, id));
+  if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+  const items = await db.select().from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, id));
+
+  const orderType = (order as any).orderType ?? "shipment";
+  const isProduct = orderType === "product";
+
+  const serviceList = !isProduct
+    ? items.map(i => `• ${i.serviceName}`).join("\n")
+    : "";
+
+  const orderItems = items.map(i => ({
+    name: i.serviceName,
+    qty: null as number | null,
+    subtotal: i.subtotal != null ? parseFloat(String(i.subtotal)) : null,
+  }));
+
+  const vehicleType =
+    (items.find(i => i.calculatorType === "trucking")?.inputData as Record<string, unknown> | undefined)
+      ?.vehicleType as string ?? null;
+
+  sendLogisticOrderNotification({
+    id: order.id,
+    orderNumber: order.orderNumber,
+    customerName: order.customerName,
+    companyName: order.companyName,
+    email: order.email,
+    phone: order.phone,
+    orderType,
+    shipmentType: order.shipmentType ?? "",
+    origin: order.origin ?? "",
+    destination: order.destination ?? "",
+    commodity: order.commodity ?? null,
+    cargoDescription: order.cargoDescription ?? null,
+    grossWeight: !isProduct && order.grossWeight ? parseFloat(String(order.grossWeight)) : null,
+    volumeCbm: !isProduct && order.volumeCbm ? parseFloat(String(order.volumeCbm)) : null,
+    jumlahKoli: !isProduct && order.jumlahKoli ? order.jumlahKoli : null,
+    subtotal: order.subtotal != null ? parseFloat(String(order.subtotal)) : null,
+    tax: order.tax != null ? parseFloat(String(order.tax)) : null,
+    grandTotal: parseFloat(String(order.grandTotal)),
+    serviceList,
+    orderItems,
+    requiredDate: order.requiredDate ?? null,
+    notes: order.notes ?? null,
+    jamOrder: order.jamOrder ?? null,
+    vehicleType,
+    createdAt: order.createdAt,
+    publicRfqToken: order.publicRfqToken ?? null,
+  }).catch((err: unknown) => req.log.error({ err }, "resend-wa-group failed"));
+
+  return res.json({ ok: true, message: "Notifikasi WA dikirim ke Admin Group" });
+});
+
+// ─── Vendor WA notification on status change ──────────────────────────────────
+const VENDOR_NOTIFY_STATUSES = new Set([
+  "Confirmed", "In Progress", "Completed", "Cancelled",
+]);
+
+const VENDOR_STATUS_LABELS: Record<string, string> = {
+  "Confirmed":   "Dikonfirmasi ✅",
+  "In Progress": "Sedang Diproses 🔄",
+  "Completed":   "Selesai 🎉",
+  "Cancelled":   "Dibatalkan ❌",
+};
+
+const VENDOR_STATUS_NOTES: Record<string, string> = {
+  "Confirmed":
+    "Customer telah mengkonfirmasi order. Silakan lanjutkan proses pengiriman sesuai rencana.",
+  "In Progress":
+    "Order kini berstatus In Progress. Pastikan semua berjalan sesuai jadwal dan SOP.",
+  "Completed":
+    "Order telah diselesaikan oleh tim CST Logistics. Terima kasih atas kerja sama Anda.",
+  "Cancelled":
+    "⚠️ Order ini telah DIBATALKAN. Mohon hentikan semua proses terkait order ini segera.",
+};
+
+async function notifyVendorStatusChange(
+  order: { orderNumber: string; customerName: string | null; origin: string | null; destination: string | null; approvedVendorId: number | null },
+  status: string,
+) {
+  if (!VENDOR_NOTIFY_STATUSES.has(status)) return;
+  if (!order.approvedVendorId) return;
+
+  try {
+    const [vendor] = await db
+      .select({ name: suppliersTable.name, phone: suppliersTable.phone })
+      .from(suppliersTable)
+      .where(eq(suppliersTable.id, order.approvedVendorId));
+
+    if (!vendor?.phone) return;
+
+    const { normalizePhone } = await import("../lib/phoneUtils.js");
+    const phone = normalizePhone(vendor.phone);
+    if (!phone) return;
+
+    const label = VENDOR_STATUS_LABELS[status] ?? status;
+    const note  = VENDOR_STATUS_NOTES[status] ?? "";
+    sendVendorOrderStatusChangeNotification(order, label, note, vendor.name ?? "—", phone);
+  } catch {
+    // fire-and-forget, never block the response
+  }
+}
+
 // PUT /api/logistic/orders/:id/status — update status (admin)
 logisticOrdersRouter.put("/:id/status", async (req: Request, res: Response) => {
   const paramsParsed = UpdateLogisticOrderStatusParams.safeParse({
@@ -699,14 +927,78 @@ logisticOrdersRouter.put("/:id/status", async (req: Request, res: Response) => {
 
   const { id } = paramsParsed.data;
   const { status } = bodyParsed.data;
+  const clientVersion: number | undefined =
+    typeof req.body.version === "number" ? req.body.version : undefined;
+  const clientUpdatedAt = typeof (req.body as Record<string, unknown>).clientUpdatedAt === "string"
+    ? new Date((req.body as Record<string, unknown>).clientUpdatedAt as string)
+    : null;
+
+  // Optimistic locking enforcement: setidaknya salah satu harus dikirim agar
+  // concurrent-edit conflict dapat terdeteksi. Tolak jika tidak ada keduanya.
+  if (clientVersion === undefined && clientUpdatedAt === null) {
+    return res.status(400).json({
+      message: "Permintaan tidak valid: sertakan 'version' atau 'clientUpdatedAt' untuk mencegah konflik perubahan bersamaan.",
+      code: "OPTIMISTIC_LOCK_REQUIRED",
+    });
+  }
+
+  const whereClause =
+    clientVersion !== undefined
+      ? and(eq(logisticOrdersTable.id, id), eq(logisticOrdersTable.version, clientVersion))
+      : eq(logisticOrdersTable.id, id);
+  if (clientUpdatedAt) {
+    const [current] = await db
+      .select({ updatedAt: logisticOrdersTable.updatedAt })
+      .from(logisticOrdersTable)
+      .where(eq(logisticOrdersTable.id, id));
+    if (!current) return res.status(404).json({ message: "Order tidak ditemukan" });
+    const dbMs = new Date(current.updatedAt).getTime();
+    const clientMs = clientUpdatedAt.getTime();
+    if (Math.abs(dbMs - clientMs) > 1000) {
+      return res.status(409).json({
+        message: "Order telah diubah oleh pengguna lain. Muat ulang halaman untuk mendapatkan data terbaru.",
+        conflict: true,
+        serverUpdatedAt: current.updatedAt,
+      });
+    }
+  }
 
   const [updated] = await db
     .update(logisticOrdersTable)
-    .set({ status })
-    .where(eq(logisticOrdersTable.id, id))
+    .set({ status, updatedAt: new Date(), version: sql`${logisticOrdersTable.version} + 1` } as any)
+    .where(whereClause)
     .returning();
 
-  if (!updated) return res.status(404).json({ message: "Order tidak ditemukan" });
+  if (!updated) {
+    const [exists] = await db.select({ id: logisticOrdersTable.id }).from(logisticOrdersTable).where(eq(logisticOrdersTable.id, id));
+    if (!exists) return res.status(404).json({ message: "Order tidak ditemukan" });
+    return res.status(409).json({ message: "Data sudah diubah oleh pengguna lain. Refresh halaman dan coba lagi." });
+  }
+
+  const adminName = (req.user as { name?: string } | undefined)?.name ?? "Admin";
+  const adminId   = (req.user as { id?: string } | undefined)?.id ?? null;
+
+  logActivity({
+    orderId: updated.id,
+    actorType: "admin",
+    actorName: adminName,
+    actorId: adminId,
+    action: "status_changed",
+    description: `Status order ${updated.orderNumber} diubah menjadi "${status}"`,
+    newValue: { status },
+    ipAddress: req.ip ?? null,
+  }).catch(() => {});
+
+  // Persistent timeline entry — visible to customer tracking
+  db.insert(orderUpdatesTable).values({
+    orderId: updated.id,
+    actorType: "admin",
+    actorId: adminId,
+    actorName: adminName,
+    status,
+    notes: `Status diubah menjadi "${status}"`,
+    isPublic: true,
+  }).catch(() => {});
 
   // Notify customer via WhatsApp (fire-and-forget)
   if (updated.phone) {
@@ -720,13 +1012,24 @@ logisticOrdersRouter.put("/:id/status", async (req: Request, res: Response) => {
       "Cancelled": "Dibatalkan",
     };
     const label = statusLabels[status] ?? status;
-    const msg =
-      `📦 *Update Status Order Anda*\n` +
-      `No Order: ${updated.orderNumber}\n` +
-      `Status: *${label}*\n\n` +
-      `Terima kasih telah menggunakan layanan kami. Hubungi kami jika ada pertanyaan.`;
-    sendWhatsApp(updated.phone, msg).catch(() => undefined);
+    sendLogisticOrderStatusCustomerNotification(updated.orderNumber, label, updated.phone);
   }
+
+  // Notify vendor via WhatsApp (fire-and-forget)
+  notifyVendorStatusChange(updated, status).catch(() => undefined);
+
+  // Web Push ke subscriber halaman tracking (fire-and-forget)
+  const statusLabelsForPush: Record<string, string> = {
+    "New Order": "Order Baru", "Under Review": "Sedang Ditinjau",
+    "Quotation Sent": "Penawaran Dikirim", "Confirmed": "Dikonfirmasi",
+    "In Progress": "Sedang Diproses", "Completed": "Selesai", "Cancelled": "Dibatalkan",
+  };
+  sendPushToOrder(updated.orderNumber, {
+    title: "Update Status Order",
+    body: `Order ${updated.orderNumber}: ${statusLabelsForPush[status] ?? status}`,
+    url: `/logistic-track?order=${encodeURIComponent(updated.orderNumber)}`,
+    tag: `order-${updated.orderNumber}`,
+  } as { title: string; body: string; url?: string }).catch(() => undefined);
 
   saveAndBroadcast("logistic_order_status_changed", {
     type: "logistic_status",
@@ -738,6 +1041,83 @@ logisticOrdersRouter.put("/:id/status", async (req: Request, res: Response) => {
     updatedAt: new Date().toISOString(),
   }).catch(() => {});
 
+  // Broadcast ke Customer Portal agar orders page auto-refresh
+  broadcastToPortal("logistic_order_status_changed", {
+    orderId: updated.id,
+    orderNumber: updated.orderNumber,
+    status: updated.status,
+    updatedAt: new Date().toISOString(),
+  });
+
+  return res.json(toOrder(updated));
+});
+
+// PATCH /api/logistic/orders/:id/details — update detail order (admin)
+logisticOrdersRouter.patch("/:id/details", async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params["id"] ?? ""), 10);
+  if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+
+  const parsed = z.object({
+    shipmentType:    z.string().optional(),
+    origin:          z.string().optional(),
+    destination:     z.string().optional(),
+    commodity:       z.string().optional(),
+    cargoDescription: z.string().optional(),
+    grossWeight:     z.string().optional(),
+    volumeCbm:       z.string().optional(),
+    jumlahKoli:      z.number().int().nonnegative().optional(),
+    requiredDate:    z.string().optional(),
+    notes:           z.string().optional(),
+  }).safeParse(req.body);
+
+  if (!parsed.success) return res.status(400).json({ message: "Data tidak valid" });
+
+  const patch: Record<string, unknown> = {};
+  const d = parsed.data;
+  if (d.shipmentType    !== undefined) patch["shipmentType"]    = d.shipmentType.trim() || null;
+  if (d.origin          !== undefined) patch["origin"]          = d.origin.trim() || null;
+  if (d.destination     !== undefined) patch["destination"]     = d.destination.trim() || null;
+  if (d.commodity       !== undefined) patch["commodity"]       = d.commodity.trim() || null;
+  if (d.cargoDescription !== undefined) patch["cargoDescription"] = d.cargoDescription.trim() || null;
+  if (d.grossWeight     !== undefined) patch["grossWeight"]     = d.grossWeight.trim() || null;
+  if (d.volumeCbm       !== undefined) patch["volumeCbm"]       = d.volumeCbm.trim() || null;
+  if (d.jumlahKoli      !== undefined) patch["jumlahKoli"]      = d.jumlahKoli;
+  if (d.requiredDate    !== undefined) patch["requiredDate"]    = d.requiredDate.trim() || null;
+  if (d.notes           !== undefined) patch["notes"]           = d.notes.trim() || null;
+
+  if (Object.keys(patch).length === 0)
+    return res.status(400).json({ message: "Tidak ada field yang diupdate" });
+
+  const detailsClientVersion: number | undefined =
+    typeof req.body.version === "number" ? req.body.version : undefined;
+  const detailsWhereClause =
+    detailsClientVersion !== undefined
+      ? and(eq(logisticOrdersTable.id, id), eq(logisticOrdersTable.version, detailsClientVersion))
+      : eq(logisticOrdersTable.id, id);
+
+  const [updated] = await db
+    .update(logisticOrdersTable)
+    .set({ ...patch, version: sql`${logisticOrdersTable.version} + 1` } as any)
+    .where(detailsWhereClause)
+    .returning();
+
+  if (!updated) {
+    const [exists] = await db.select({ id: logisticOrdersTable.id }).from(logisticOrdersTable).where(eq(logisticOrdersTable.id, id));
+    if (!exists) return res.status(404).json({ message: "Order tidak ditemukan" });
+    return res.status(409).json({ message: "Data sudah diubah oleh pengguna lain. Refresh halaman dan coba lagi." });
+  }
+
+  logActivity({
+    orderId: updated.id,
+    actorType: "admin",
+    actorName: (req.user as { name?: string } | undefined)?.name ?? "Admin",
+    actorId: (req.user as { id?: string } | undefined)?.id ?? null,
+    action: "details_updated",
+    description: `Detail order ${updated.orderNumber} diperbarui`,
+    newValue: patch,
+    ipAddress: req.ip ?? null,
+  }).catch(() => {});
+
   return res.json(toOrder(updated));
 });
 
@@ -745,22 +1125,156 @@ logisticOrdersRouter.put("/:id/status", async (req: Request, res: Response) => {
 logisticOrdersRouter.patch("/:id/type", async (req: Request, res: Response) => {
   const id = parseInt(String(req.params["id"] ?? ""), 10);
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
-  const { shipmentType } = req.body as { shipmentType?: unknown };
+  const { shipmentType, version: typeVersion } = req.body as { shipmentType?: unknown; version?: unknown };
   if (!shipmentType || typeof shipmentType !== "string" || shipmentType.trim() === "")
     return res.status(400).json({ message: "shipmentType wajib diisi" });
+
+  const typeClientVersion: number | undefined = typeof typeVersion === "number" ? typeVersion : undefined;
+  const typeWhereClause =
+    typeClientVersion !== undefined
+      ? and(eq(logisticOrdersTable.id, id), eq(logisticOrdersTable.version, typeClientVersion))
+      : eq(logisticOrdersTable.id, id);
+
   const [updated] = await db
     .update(logisticOrdersTable)
-    .set({ shipmentType: shipmentType.trim() })
-    .where(eq(logisticOrdersTable.id, id))
+    .set({ shipmentType: shipmentType.trim(), version: sql`${logisticOrdersTable.version} + 1` } as any)
+    .where(typeWhereClause)
     .returning();
-  if (!updated) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+  if (!updated) {
+    const [exists] = await db.select({ id: logisticOrdersTable.id }).from(logisticOrdersTable).where(eq(logisticOrdersTable.id, id));
+    if (!exists) return res.status(404).json({ message: "Order tidak ditemukan" });
+    return res.status(409).json({ message: "Data sudah diubah oleh pengguna lain. Refresh halaman dan coba lagi." });
+  }
+
+  logActivity({
+    orderId: updated.id,
+    actorType: "admin",
+    actorName: (req.user as { name?: string } | undefined)?.name ?? "Admin",
+    actorId: (req.user as { id?: string } | undefined)?.id ?? null,
+    action: "shipment_type_changed",
+    description: `Jenis pengiriman order ${updated.orderNumber} diubah menjadi "${shipmentType.trim()}"`,
+    newValue: { shipmentType: shipmentType.trim() },
+    ipAddress: req.ip ?? null,
+  }).catch(() => {});
+
   return res.json(toOrder(updated));
+});
+
+// PUT /api/logistic/orders/bulk-status — ubah status banyak order sekaligus
+logisticOrdersRouter.put("/bulk-status", async (req: Request, res: Response) => {
+  const parsed = z.object({
+    ids: z.array(z.number().int().positive()).min(1),
+    status: z.enum(["New Order", "Confirmed", "In Progress", "Completed", "Cancelled"]),
+  }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: "ids dan status harus valid" });
+  const { ids, status } = parsed.data;
+  const updated = await db
+    .update(logisticOrdersTable)
+    .set({ status })
+    .where(inArray(logisticOrdersTable.id, ids))
+    .returning({ id: logisticOrdersTable.id, orderNumber: logisticOrdersTable.orderNumber });
+
+  const adminName = (req.user as { name?: string } | undefined)?.name ?? "Admin";
+  const adminId   = (req.user as { id?: string } | undefined)?.id ?? null;
+
+  // Log audit trail + timeline for each affected order (fire-and-forget)
+  for (const row of updated) {
+    logActivity({
+      orderId: row.id,
+      actorType: "admin",
+      actorName: adminName,
+      actorId: adminId,
+      action: "bulk_status_changed",
+      description: `Bulk status change → "${status}"`,
+      newValue: { status },
+      ipAddress: req.ip ?? null,
+    }).catch(() => {});
+    db.insert(orderUpdatesTable).values({
+      orderId: row.id,
+      actorType: "admin",
+      actorId: adminId,
+      actorName: adminName,
+      status,
+      notes: `Status diubah (bulk) menjadi "${status}"`,
+      isPublic: false,
+    }).catch(() => {});
+  }
+
+  return res.json({ message: "Updated", updatedIds: updated.map((r) => r.id), count: updated.length });
+});
+
+// Helper: hapus file storage terkait logistic order (driver photos + vendor unit photos)
+async function cleanupLogisticOrderStorage(orderIds: number[]): Promise<void> {
+  if (orderIds.length === 0) return;
+  try {
+    // 1. Cari driver jobs terkait order, lalu hapus foto-foto driver
+    const jobs = await db
+      .select({ id: driverJobsTable.id })
+      .from(driverJobsTable)
+      .where(inArray(driverJobsTable.logisticOrderId, orderIds));
+    if (jobs.length > 0) {
+      const jobIds = jobs.map((j) => j.id);
+      const photos = await db
+        .select({ url: driverPhotosTable.url })
+        .from(driverPhotosTable)
+        .where(inArray(driverPhotosTable.driverJobId, jobIds));
+      for (const p of photos) deleteFromSupabase(p.url).catch(() => {});
+    }
+    // 2. Hapus unit photo dari vendor response
+    const responses = await db
+      .select({ unitPhotoUrl: vendorResponsesTable.unitPhotoUrl })
+      .from(vendorResponsesTable)
+      .where(inArray(vendorResponsesTable.orderId, orderIds));
+    for (const r of responses) {
+      if (r.unitPhotoUrl) deleteFromSupabase(r.unitPhotoUrl).catch(() => {});
+    }
+    // 3. Hapus POD OCR images (orderId jadi null setelah delete, jadi fetch sekarang)
+    const podOcrRows = await db
+      .select({ imageUrl: podOcrResultsTable.imageUrl })
+      .from(podOcrResultsTable)
+      .where(inArray(podOcrResultsTable.orderId, orderIds));
+    for (const p of podOcrRows) {
+      if (p.imageUrl) deleteFromSupabase(p.imageUrl).catch(() => {});
+    }
+    // 4. Hapus RFQ vendor link attachments (cascade delete: order → rfqs → rfq_vendor_links)
+    const rfqs = await db
+      .select({ id: logisticOrderRfqsTable.id })
+      .from(logisticOrderRfqsTable)
+      .where(inArray(logisticOrderRfqsTable.orderId, orderIds));
+    if (rfqs.length > 0) {
+      const rfqIds = rfqs.map((r) => r.id);
+      const vendorLinks = await db
+        .select({ attachmentUrl: rfqVendorLinksTable.attachmentUrl })
+        .from(rfqVendorLinksTable)
+        .where(inArray(rfqVendorLinksTable.rfqId, rfqIds));
+      for (const vl of vendorLinks) {
+        if (vl.attachmentUrl) deleteFromSupabase(vl.attachmentUrl).catch(() => {});
+      }
+    }
+  } catch { /* non-fatal */ }
+}
+
+// DELETE /api/logistic/orders/bulk — hapus banyak order sekaligus
+logisticOrdersRouter.delete("/bulk", async (req: Request, res: Response) => {
+  const parsed = z.object({ ids: z.array(z.number().int().positive()).min(1) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: "ids harus array angka yang valid" });
+  const { ids } = parsed.data;
+  // Cleanup storage dulu sebelum delete DB
+  await cleanupLogisticOrderStorage(ids);
+  const deleted = await db
+    .delete(logisticOrdersTable)
+    .where(inArray(logisticOrdersTable.id, ids))
+    .returning({ id: logisticOrdersTable.id });
+  return res.json({ message: "Deleted", deletedIds: deleted.map((r) => r.id), count: deleted.length });
 });
 
 // DELETE /api/logistic/orders/:id
 logisticOrdersRouter.delete("/:id", async (req: Request, res: Response) => {
   const id = parseInt(String(req.params["id"] ?? ""));
   if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+  // Cleanup storage dulu sebelum delete DB
+  await cleanupLogisticOrderStorage([id]);
   const [deleted] = await db
     .delete(logisticOrdersTable)
     .where(eq(logisticOrdersTable.id, id))
@@ -769,8 +1283,40 @@ logisticOrdersRouter.delete("/:id", async (req: Request, res: Response) => {
   return res.json({ message: "Deleted", id });
 });
 
-// GET /api/logistic/orders/:id/locations — GPS history for an order (admin)
+// POST /api/logistic/orders/:id/updates — tambah catatan manual ke timeline
+logisticOrdersRouter.post("/:id/updates", requireClerkUser, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params["id"] ?? ""));
+  if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+
+  const [order] = await db.select({ id: logisticOrdersTable.id }).from(logisticOrdersTable).where(eq(logisticOrdersTable.id, id));
+  if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+  const notes = String(req.body?.notes ?? "").trim();
+  const status = req.body?.status ? String(req.body.status).trim() : null;
+  const isPublic = req.body?.isPublic === true || req.body?.isPublic === "true";
+
+  if (!notes && !status) return res.status(400).json({ message: "notes atau status wajib diisi" });
+
+  const actorName = (req as any).user?.fullName ?? (req as any).user?.name ?? "Admin";
+  const actorId = (req as any).user?.id ?? null;
+
+  const [inserted] = await db.insert(orderUpdatesTable).values({
+    orderId: id,
+    actorType: "admin",
+    actorId: actorId ? String(actorId) : null,
+    actorName,
+    status: status || null,
+    notes: notes || null,
+    isPublic,
+    createdAt: new Date(),
+  }).returning();
+
+  return res.status(201).json({ ok: true, update: inserted });
+});
+
+// GET /api/logistic/orders/:id/locations — GPS history for an order [H2-FIX: admin/owner/logistics only]
 logisticOrdersRouter.get("/:id/locations", async (req: Request, res: Response) => {
+  if (!(await requireRole(req, res, ["admin", "owner", "logistics"]))) return;
   const id = parseInt(String(req.params["id"] ?? ""));
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
   const limit = Math.min(parseInt(String(req.query["limit"] ?? "200"), 10), 500);
