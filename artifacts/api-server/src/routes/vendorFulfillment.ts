@@ -17,6 +17,8 @@ import { getAdminWa } from "../lib/adminWa";
 import { getPreferredDomain } from "../lib/domain.js";
 import { resolveServiceCategory } from "@workspace/logistics-constants";
 import { ObjectStorageService } from "../lib/objectStorage.js";
+import { createAdminActionLink, getAdminActionUrl } from "./adminAction.js";
+import { generateShortLink } from "../lib/shortLink.js";
 
 export const vendorFulfillmentPublicRouter = Router();
 
@@ -351,7 +353,21 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
     const adminWa = await getAdminWa();
     if (adminWa) {
       const domain = getPreferredDomain() || "cstlogistic.co.id";
-      const bizportalLink = `https://${domain}/bizportal/logistics/orders/${order.id}`;
+
+      // Buat link mini form confirm_fulfillment untuk admin
+      let bizportalLink: string;
+      try {
+        const cfToken = await createAdminActionLink(order.id, "confirm_fulfillment", null, 168);
+        const cfUrl = getAdminActionUrl(cfToken);
+        bizportalLink = await generateShortLink(cfUrl, {
+          context: "admin_action",
+          refType: "order",
+          refId: order.orderNumber,
+        });
+      } catch (e) {
+        logger.warn({ e }, "vendor-fulfillment: gagal buat confirm_fulfillment link, fallback ke BizPortal URL");
+        bizportalLink = `https://${domain}/bizportal/logistics/orders/${order.id}`;
+      }
       const detailLines: string[] = [];
       const cat = resolveServiceCategory(link.serviceType);
 

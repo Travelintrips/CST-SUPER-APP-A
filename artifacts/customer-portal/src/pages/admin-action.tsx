@@ -77,6 +77,17 @@ type ForwardData = BaseData & {
   selectedVendorLink: { id: number; vendorId: number; offeredPrice: string | null } | null;
 };
 
+type VendorFulfillmentLink = {
+  id: number; serviceType: string; status: string;
+  stockConfirmed: string | null; qtyConfirmed: string | null;
+  readyDate: string | null; leadTime: string | null; warehouseLocation: string | null;
+  priceConfirmed: string | null; revisedPrice: number | null;
+  notes: string | null; stockPhotoUrl: string | null;
+  invoiceUrl: string | null; supportingDocUrl: string | null;
+  submittedAt: string | null;
+};
+type ConfirmFulfillmentData = BaseData & { vendorFulfillmentLink: VendorFulfillmentLink | null };
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const idr = (n: number | null | undefined) =>
@@ -694,11 +705,142 @@ function ForwardVendorView({ token, data }: { token: string; data: ForwardData }
   );
 }
 
+// ─── Confirm Fulfillment View ─────────────────────────────────────────────────
+
+function ConfirmFulfillmentView({ token, data }: { token: string; data: ConfirmFulfillmentData }) {
+  const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const vfl = data.vendorFulfillmentLink;
+
+  const STOCK_MAP: Record<string, string> = {
+    all: "✅ Tersedia Semua", partial: "⚠️ Tersedia Sebagian", none: "❌ Tidak Tersedia",
+  };
+  const PRICE_MAP: Record<string, string> = {
+    agree: "✅ Setuju harga asal", revised: "✏️ Revisi harga",
+  };
+
+  const handleConfirm = async () => {
+    if (!confirm("Konfirmasi fulfillment? Order akan diubah ke In Progress dan WA dikirim ke customer.")) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch(`/api/admin-action/${token}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const d = await res.json() as { ok?: boolean; error?: string };
+      if (!res.ok) throw new Error(d.error ?? "Gagal");
+      setResult({ ok: true, message: "Order dikonfirmasi. WA otomatis dikirim ke customer." });
+    } catch (e: unknown) {
+      setResult({ ok: false, message: (e as Error).message });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (result?.ok) return <SuccessCard title="✅ Dikonfirmasi!" message={result.message} />;
+
+  const alreadyDone = data.order.status === "In Progress" || data.order.status === "Completed";
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 py-8 px-4">
+      <div className="max-w-lg mx-auto space-y-4">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-2xl">🚀</span>
+            <h1 className="text-xl font-bold text-slate-800">Konfirmasi Fulfillment Vendor</h1>
+          </div>
+          <p className="text-sm text-slate-500">Vendor telah submit data. Tinjau lalu konfirmasi untuk mulai pengiriman.</p>
+        </div>
+
+        <OrderCard order={data.order} />
+
+        {vfl ? (
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">📦</span>
+                <h2 className="font-semibold text-slate-800">Data dari Vendor</h2>
+              </div>
+              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${vfl.status === "submitted" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>
+                {vfl.status === "submitted" ? "✅ Submitted" : vfl.status}
+              </span>
+            </div>
+            <div className="space-y-0.5">
+              {vfl.stockConfirmed && <DetailRow label="Status Stok" value={STOCK_MAP[vfl.stockConfirmed] ?? vfl.stockConfirmed} />}
+              {vfl.qtyConfirmed && <DetailRow label="Qty Dipenuhi" value={vfl.qtyConfirmed} />}
+              {vfl.readyDate && <DetailRow label="Tanggal Siap Kirim" value={vfl.readyDate} />}
+              {vfl.leadTime && <DetailRow label="Lead Time" value={vfl.leadTime} />}
+              {vfl.warehouseLocation && <DetailRow label="Lokasi Gudang" value={vfl.warehouseLocation} />}
+              {vfl.priceConfirmed && <DetailRow label="Konfirmasi Harga" value={PRICE_MAP[vfl.priceConfirmed] ?? vfl.priceConfirmed} />}
+              {vfl.revisedPrice != null && vfl.priceConfirmed === "revised" && (
+                <DetailRow label="Harga Revisi (DPP)" value={idr(vfl.revisedPrice)} />
+              )}
+              {vfl.notes && <DetailRow label="Catatan" value={vfl.notes} />}
+              {vfl.stockPhotoUrl && (
+                <div className="flex justify-between gap-2 py-1 border-b border-slate-50">
+                  <span className="text-xs text-slate-400 shrink-0">Foto Stok</span>
+                  <a href={vfl.stockPhotoUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 underline">Lihat foto ↗</a>
+                </div>
+              )}
+              {vfl.invoiceUrl && (
+                <div className="flex justify-between gap-2 py-1 border-b border-slate-50">
+                  <span className="text-xs text-slate-400 shrink-0">Invoice</span>
+                  <a href={vfl.invoiceUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 underline">Lihat invoice ↗</a>
+                </div>
+              )}
+              {vfl.supportingDocUrl && (
+                <div className="flex justify-between gap-2 py-1 border-b border-slate-50">
+                  <span className="text-xs text-slate-400 shrink-0">Dok. Pendukung</span>
+                  <a href={vfl.supportingDocUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 underline">Lihat dokumen ↗</a>
+                </div>
+              )}
+              {vfl.submittedAt && (
+                <p className="text-[10px] text-slate-400 pt-2">
+                  Disubmit: {new Date(vfl.submittedAt).toLocaleString("id-ID")}
+                </p>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-700">
+            ⚠️ Belum ada data fulfillment dari vendor.
+          </div>
+        )}
+
+        {alreadyDone && (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-700">
+            ✅ Order sudah dikonfirmasi sebelumnya. Status: <strong>{data.order.status}</strong>
+          </div>
+        )}
+
+        {result && !result.ok && (
+          <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
+            ⚠️ {result.message}
+          </div>
+        )}
+
+        <button
+          onClick={handleConfirm}
+          disabled={submitting || !vfl || vfl.status !== "submitted" || alreadyDone}
+          className="w-full py-4 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold text-sm transition-colors"
+        >
+          {submitting
+            ? "Mengkonfirmasi..."
+            : alreadyDone
+            ? "✅ Sudah Dikonfirmasi"
+            : "🚀 Konfirmasi & Mulai Pengiriman"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function AdminActionPage() {
   const { token } = useParams<{ token: string }>();
-  const [data, setData] = useState<ReviewData | CompareData | ForwardData | null>(null);
+  const [data, setData] = useState<ReviewData | CompareData | ForwardData | ConfirmFulfillmentData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -706,7 +848,7 @@ export default function AdminActionPage() {
     if (!token) return;
     fetch(`/api/admin-action/${token}`)
       .then(async (r) => {
-        const d = await r.json() as (ReviewData | CompareData | ForwardData) & { error?: string };
+        const d = await r.json() as (ReviewData | CompareData | ForwardData | ConfirmFulfillmentData) & { error?: string };
         if (!r.ok) throw new Error(d.error ?? "Terjadi kesalahan");
         setData(d);
       })
@@ -726,6 +868,9 @@ export default function AdminActionPage() {
   }
   if (data.actionType === "forward_vendor") {
     return <ForwardVendorView token={token!} data={data as ForwardData} />;
+  }
+  if (data.actionType === "confirm_fulfillment") {
+    return <ConfirmFulfillmentView token={token!} data={data as ConfirmFulfillmentData} />;
   }
 
   return <ErrorCard message={`Tipe aksi tidak dikenal: ${data.actionType}`} />;

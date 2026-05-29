@@ -12,6 +12,7 @@ import {
   vendorCatalogItemsTable,
   customerQuoteLinksTable,
   orderUpdatesTable,
+  vendorFulfillmentLinksTable,
 } from "@workspace/db";
 import { requireClerkUser, requireAdmin } from "../lib/requireAdmin.js";
 import { runDbBackup } from "../lib/dbBackup.js";
@@ -520,6 +521,35 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
       });
     }
 
+    // confirm_fulfillment: show vendor's submitted data for admin to confirm
+    if (link && link.actionType === "confirm_fulfillment") {
+      const [vfLink] = await db.select().from(vendorFulfillmentLinksTable)
+        .where(eq(vendorFulfillmentLinksTable.orderId, order.id))
+        .orderBy(desc(vendorFulfillmentLinksTable.createdAt))
+        .limit(1);
+
+      return res.json({
+        ...base,
+        vendorFulfillmentLink: vfLink ? {
+          id: vfLink.id,
+          serviceType: vfLink.serviceType,
+          status: vfLink.status,
+          stockConfirmed: vfLink.stockConfirmed ?? null,
+          qtyConfirmed: vfLink.qtyConfirmed ?? null,
+          readyDate: vfLink.readyDate ?? null,
+          leadTime: vfLink.leadTime ?? null,
+          warehouseLocation: vfLink.warehouseLocation ?? null,
+          priceConfirmed: vfLink.priceConfirmed ?? null,
+          revisedPrice: vfLink.revisedPrice ? Number(vfLink.revisedPrice) : null,
+          notes: vfLink.notes ?? null,
+          stockPhotoUrl: vfLink.stockPhotoUrl ?? null,
+          invoiceUrl: vfLink.invoiceUrl ?? null,
+          supportingDocUrl: vfLink.supportingDocUrl ?? null,
+          submittedAt: vfLink.submittedAt?.toISOString() ?? null,
+        } : null,
+      });
+    }
+
     // forward_vendor: show order + selected vendor to create fulfillment task
     if (link.actionType === "forward_vendor") {
       if (!link.rfqId) return res.status(400).json({ error: "rfqId diperlukan untuk forward_vendor" });
@@ -1003,6 +1033,47 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
         .where(eq(adminActionLinksTable.token, token));
 
       return res.json({ ok: true, fulfillToken, fulfillUrl: shortUrl, vendorName: vendor?.name });
+    }
+
+    // confirm_fulfillment: update order → "In Progress" + WA to customer
+    if (actionType === "confirm_fulfillment") {
+      if ((order as any).status === "In Progress") {
+        return res.status(409).json({ error: "Order sudah dikonfirmasi sebelumnya." });
+      }
+
+      await db.update(logisticOrdersTable)
+        .set({ status: "In Progress" })
+        .where(eq(logisticOrdersTable.id, order.id));
+
+      await db.insert(orderUpdatesTable).values({
+        orderId: order.id,
+        actorType: "admin",
+        actorName: "Admin",
+        status: "In Progress",
+        notes: "Admin mengkonfirmasi fulfillment vendor via mini form. Order sedang diproses.",
+        isPublic: true,
+      });
+
+      if (link) {
+        await db.update(adminActionLinksTable).set({ usedAt: new Date() })
+          .where(eq(adminActionLinksTable.token, token));
+      }
+
+      const customerPhone = ((order as any).phone ?? "").trim();
+      if (customerPhone) {
+        const domain = getPreferredDomain() || "cstlogistic.co.id";
+        const waMsg =
+          `🚀 *Order Anda Sedang Diproses — CST Logistics*\n\n` +
+          `Halo ${order.customerName},\n\n` +
+          `Order *${order.orderNumber}* (${order.shipmentType || "—"}) telah dikonfirmasi dan sedang diproses.\n` +
+          ((order.origin && order.destination) ? `Rute: ${order.origin} → ${order.destination}\n` : "") +
+          `\nCek status order: https://${domain}/track`;
+        sendWhatsApp(customerPhone, waMsg).catch((e) =>
+          logger.warn({ e }, "confirm_fulfillment WA to customer failed")
+        );
+      }
+
+      return res.json({ ok: true });
     }
 
     return res.status(400).json({ error: "actionType tidak dikenal" });
