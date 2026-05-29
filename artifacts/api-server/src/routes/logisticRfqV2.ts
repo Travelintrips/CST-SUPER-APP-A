@@ -1052,6 +1052,112 @@ logisticRfqV2Router.post("/rfq/:rfqId/blast", async (req: Request, res: Response
   return res.json({ ok: true, rfqNumber: rfq.rfqNumber, sentCount, results, comparisonUrl: getComparisonUrl(rfqId) });
 });
 
+// ─── ADMIN: POST /rfq/:rfqId/reblast-all ─────────────────────────────────────
+// Re-blast ke SEMUA vendor yang sudah ada di rfq_vendor_links:
+//   • Recalculate & update basic_price untuk setiap link (selalu, bukan hanya yang null)
+//   • Reset expired_at berdasarkan deadlineHours baru
+//   • Kirim ulang WA notifikasi ke semua vendor
+logisticRfqV2Router.post("/rfq/:rfqId/reblast-all", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const rfqId = parseInt(req.params.rfqId as string, 10);
+  if (isNaN(rfqId)) return res.status(400).json({ message: "rfqId tidak valid" });
+
+  const { deadlineHours = 48 } = req.body as { deadlineHours?: number };
+
+  const [rfq] = await db.select().from(logisticOrderRfqsTable)
+    .where(eq(logisticOrderRfqsTable.id, rfqId));
+  if (!rfq) return res.status(404).json({ message: "RFQ tidak ditemukan" });
+
+  const [order] = await db.select().from(logisticOrdersTable)
+    .where(eq(logisticOrdersTable.id, rfq.orderId));
+  if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+  const existingLinks = await db.select().from(rfqVendorLinksTable)
+    .where(eq(rfqVendorLinksTable.rfqId, rfqId));
+  if (!existingLinks.length) return res.status(400).json({ message: "Tidak ada vendor yang sudah di-blast sebelumnya" });
+
+  const vendorIds = existingLinks.map((l) => l.vendorId);
+  const vendors = await db.select().from(suppliersTable).where(inArray(suppliersTable.id, vendorIds));
+  const eligible = vendors.filter((v) => v.phone);
+  if (!eligible.length) return res.status(400).json({ message: "Tidak ada vendor dengan nomor WA" });
+
+  const expiredAt = new Date(Date.now() + deadlineHours * 60 * 60 * 1000);
+
+  // Fetch order items untuk kalkulasi basic_price
+  const orderItemsForReblast = await db.select({
+    serviceName: logisticOrderItemsTable.serviceName,
+    category: logisticOrderItemsTable.category,
+    subtotal: logisticOrderItemsTable.subtotal,
+  }).from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, rfq.orderId));
+  const orderSubtotalSum = orderItemsForReblast.reduce(
+    (sum, i) => sum + (i.subtotal ? parseFloat(i.subtotal) : 0), 0
+  );
+
+  const results: { vendorId: number; vendorName: string; token: string; sent: boolean }[] = [];
+
+  for (const vendor of eligible) {
+    const link = existingLinks.find((l) => l.vendorId === vendor.id);
+    if (!link) continue;
+
+    // Recalculate basic_price (sama persis dengan logika blast)
+    const catalogItems = await db.select().from(vendorCatalogItemsTable)
+      .where(and(eq(vendorCatalogItemsTable.vendorId, vendor.id), eq(vendorCatalogItemsTable.isActive, true)));
+
+    let basicPrice: string | null = null;
+    if (orderSubtotalSum > 0) {
+      basicPrice = String(Math.round(orderSubtotalSum));
+    } else {
+      const matchedItem = orderItemsForReblast.find((it) => {
+        const name = (it.serviceName || it.category || "").toLowerCase().trim();
+        if (!name) return false;
+        return catalogItems.some((c) => {
+          const cName = c.name.toLowerCase().trim();
+          return cName.includes(name) || name.includes(cName);
+        });
+      });
+      if (matchedItem) {
+        const name = (matchedItem.serviceName || matchedItem.category || "").toLowerCase().trim();
+        const cat = catalogItems.find((c) => {
+          const cName = c.name.toLowerCase().trim();
+          return cName.includes(name) || name.includes(cName);
+        });
+        basicPrice = cat ? String(cat.priceBase) : (catalogItems[0] ? String(catalogItems[0].priceBase) : null);
+      } else {
+        basicPrice = catalogItems[0] ? String(catalogItems[0].priceBase) : null;
+      }
+    }
+
+    // Update basic_price & reset expired_at (selalu update, bukan hanya kalau null)
+    await db.update(rfqVendorLinksTable)
+      .set({
+        basicPrice: basicPrice ?? undefined,
+        expiredAt,
+        status: link.status === "expired" ? "waiting_response" : link.status,
+      })
+      .where(eq(rfqVendorLinksTable.id, link.id));
+
+    try {
+      await sendVendorRequestNotification(await buildOrderDataWithItems(order), vendor.name, vendor.phone!, getVendorFormUrl(link.token));
+      results.push({ vendorId: vendor.id, vendorName: vendor.name, token: link.token, sent: true });
+    } catch (e) {
+      logger.error({ e, vendorId: vendor.id }, "reblast-all WA vendor failed");
+      results.push({ vendorId: vendor.id, vendorName: vendor.name, token: link.token, sent: false });
+    }
+  }
+
+  // Pastikan status RFQ tetap vendor_blasted & perbarui deadline
+  await db.update(logisticOrderRfqsTable).set({
+    status: "vendor_blasted",
+    responseDeadline: expiredAt,
+  }).where(eq(logisticOrderRfqsTable.id, rfqId));
+
+  const sentCount = results.filter((r) => r.sent).length;
+  await logActivity(rfqId, "admin", "Admin", "admin_blast",
+    `Admin re-blast semua vendor (${sentCount}/${results.length}): ${eligible.map((v) => v.name).join(", ")}`);
+
+  return res.json({ ok: true, rfqNumber: rfq.rfqNumber, sentCount, totalVendors: results.length, results });
+});
+
 // ─── ADMIN: GET /rfq/:rfqId/detail ───────────────────────────────────────────
 // Mengembalikan detail RFQ + order items + vendors dengan catalog items yang cocok
 logisticRfqV2Router.get("/rfq/:rfqId/detail", async (req: Request, res: Response) => {

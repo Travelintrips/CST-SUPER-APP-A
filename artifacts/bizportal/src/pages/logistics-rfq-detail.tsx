@@ -16,7 +16,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import {
   ArrowLeft, Send, Loader2, AlertCircle, BarChart2, Package,
-  Store, ChevronDown, ChevronUp,
+  Store, ChevronDown, ChevronUp, RefreshCw,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -202,6 +202,7 @@ export default function LogisticsRfqDetailPage() {
   const [selectedVendorIds, setSelectedVendorIds] = useState<Set<number>>(new Set());
   const [deadlineHours, setDeadlineHours] = useState("48");
   const [showBlastConfirm, setShowBlastConfirm] = useState(false);
+  const [showReblastConfirm, setShowReblastConfirm] = useState(false);
   const [filterMode, setFilterMode] = useState<"matched" | "all">("matched");
 
   const rfqNumId = Number(rfqId);
@@ -239,6 +240,29 @@ export default function LogisticsRfqDetailPage() {
       setShowBlastConfirm(false);
       qc.invalidateQueries({ queryKey: ["rfq-detail-v2", rfqNumId] });
       navigate(`/logistics/rfq/${rfqNumId}/comparison`);
+    },
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const reblastAllMutation = useMutation({
+    mutationFn: async () => {
+      const r = await fetch(`/api/logistic/rfq/${rfqNumId}/reblast-all`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ deadlineHours: Number(deadlineHours) || 48 }),
+      });
+      const result = await r.json();
+      if (!r.ok) throw new Error(result.message ?? "Gagal re-blast ke semua vendor");
+      return result;
+    },
+    onSuccess: (result) => {
+      toast({
+        title: "Re-blast berhasil",
+        description: `${result.sentCount} dari ${result.totalVendors} vendor menerima WA. basic_price diperbarui.`,
+      });
+      setShowReblastConfirm(false);
+      qc.invalidateQueries({ queryKey: ["rfq-detail-v2", rfqNumId] });
     },
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -456,6 +480,30 @@ export default function LogisticsRfqDetailPage() {
                   : <><Send className="h-4 w-4" />🚀 Blast RFQ ke {selectedVendorIds.size} Vendor</>
                 }
               </Button>
+
+              {isBlasted && data.vendorStats.total > 0 && (
+                <>
+                  <div className="relative flex items-center gap-2 text-xs text-muted-foreground">
+                    <div className="flex-1 h-px bg-border" />
+                    <span className="shrink-0">atau</span>
+                    <div className="flex-1 h-px bg-border" />
+                  </div>
+                  <Button
+                    variant="outline"
+                    className="w-full gap-2 border-orange-300 text-orange-700 hover:bg-orange-50 hover:border-orange-400 dark:border-orange-700 dark:text-orange-400 dark:hover:bg-orange-950/30"
+                    disabled={reblastAllMutation.isPending}
+                    onClick={() => setShowReblastConfirm(true)}
+                  >
+                    {reblastAllMutation.isPending
+                      ? <><Loader2 className="h-4 w-4 animate-spin" />Mengirim ulang...</>
+                      : <><RefreshCw className="h-4 w-4" />📢 Kirim ke Semua Vendor ({data.vendorStats.total})</>
+                    }
+                  </Button>
+                  <p className="text-[11px] text-muted-foreground text-center -mt-1">
+                    Update <code className="bg-muted px-1 rounded">basic_price</code> & kirim ulang WA ke semua vendor yang sudah di-blast
+                  </p>
+                </>
+              )}
             </CardContent>
           </Card>
         )}
@@ -472,7 +520,7 @@ export default function LogisticsRfqDetailPage() {
           </Card>
         )}
 
-        {/* Confirm Dialog */}
+        {/* Confirm Dialog — blast selektif */}
         <Dialog open={showBlastConfirm} onOpenChange={setShowBlastConfirm}>
           <DialogContent>
             <DialogHeader>
@@ -501,6 +549,43 @@ export default function LogisticsRfqDetailPage() {
               <Button onClick={() => blastMutation.mutate()} disabled={blastMutation.isPending}>
                 {blastMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                 Ya, Blast ke Vendor
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Confirm Dialog — re-blast semua vendor */}
+        <Dialog open={showReblastConfirm} onOpenChange={setShowReblastConfirm}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Konfirmasi Kirim ke Semua Vendor</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3 text-sm">
+              <p>
+                Re-blast ke <strong>semua {data.vendorStats.total} vendor</strong> yang sudah di-blast sebelumnya.
+              </p>
+              <div className="bg-orange-50 border border-orange-200 rounded p-3 space-y-1 text-xs dark:bg-orange-950/20 dark:border-orange-800">
+                <div className="font-medium text-orange-800 dark:text-orange-400 mb-1">Yang akan terjadi:</div>
+                <div className="text-orange-700 dark:text-orange-500">• <code className="bg-orange-100 dark:bg-orange-900/40 px-1 rounded">basic_price</code> semua vendor link akan di-recalculate & diperbarui</div>
+                <div className="text-orange-700 dark:text-orange-500">• Deadline baru: <strong>{deadlineHours} jam</strong> dari sekarang</div>
+                <div className="text-orange-700 dark:text-orange-500">• WA notifikasi dikirim ulang ke semua vendor</div>
+                <div className="text-orange-700 dark:text-orange-500">• Respons vendor yang sudah masuk <strong>tidak</strong> dihapus</div>
+              </div>
+              <div className="bg-muted/50 rounded p-3 space-y-1 text-xs">
+                <div><span className="text-muted-foreground">RFQ:</span> {data.rfqNumber}</div>
+                <div><span className="text-muted-foreground">Order:</span> {order.orderNumber}</div>
+                <div><span className="text-muted-foreground">Total Vendor:</span> {data.vendorStats.total}</div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowReblastConfirm(false)}>Batal</Button>
+              <Button
+                className="bg-orange-600 hover:bg-orange-700 text-white"
+                onClick={() => reblastAllMutation.mutate()}
+                disabled={reblastAllMutation.isPending}
+              >
+                {reblastAllMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                Ya, Kirim ke Semua Vendor
               </Button>
             </DialogFooter>
           </DialogContent>
