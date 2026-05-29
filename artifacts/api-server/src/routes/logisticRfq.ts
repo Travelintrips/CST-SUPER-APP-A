@@ -6,6 +6,7 @@ import { eq, and, sql, inArray } from "drizzle-orm";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import {
   sendAdminQuoteNotification,
+  sendAdminGroupQuoteNotification,
   sendTruckingVendorConfirmedAdminNotification,
   sendTruckingVendorRejectedAdminNotification,
   sendQuotationSentCustomerNotification,
@@ -708,7 +709,12 @@ logisticRfqRouter.post("/vendor-quote", rfqRateLimit, async (req: Request, res: 
     quotePosition, waPhone,
   );
   if (adminWa) notifyAdminQuote(adminWa);
-  if (adminGroupWa) notifyAdminQuote(adminGroupWa);
+  if (adminGroupWa) sendAdminGroupQuoteNotification(
+    rfq.rfqNumber, order.orderNumber, vendor?.name ?? `#${vendorId}`,
+    { vendorPrice: vp, estimatedPickup: quote.estimatedPickup, estimatedDelivery: quote.estimatedDelivery,
+      estimatedDays: quote.estimatedDays, vendorNotes: quote.vendorNotes },
+    quotePosition, adminGroupWa,
+  );
 
   saveAndBroadcast("vendor_quote_received", {
     type: "vendor_quote",

@@ -39,6 +39,7 @@ import {
   sendVendorSubmitConfirmNotification,
   sendVendorRfqForwardNotification,
   sendVendorSubmissionSummaryNotification,
+  sendVendorSubmissionGroupNotification,
   sendCustomerRejectionAdminNotification,
   sendOpConfirmSubmittedNotification,
   type LogisticOrderData,
@@ -939,42 +940,60 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
       }
     }
 
-    // WA Summary to admin (especially useful for order-based: show all competing offers)
+    // WA Summary to admin (admin_group, vendor_submission_summary dengan count & compare link)
     (() => {
       const priceStr = vendorPrice ? `${currency ?? "IDR"} ${Number(vendorPrice).toLocaleString("id-ID")}` : "-";
 
       if (link.mode === "order_based" && link.orderId) {
-        // Pakai template sendVendorSubmissionNotification
-        db.select().from(logisticOrdersTable)
-          .where(eq(logisticOrdersTable.id, link.orderId))
-          .limit(1)
-          .then(([orderRow]) => {
-            if (!orderRow) return;
-            sendVendorSubmissionNotification(buildOrderDataFromRow(orderRow), vendorLabel, priceStr).catch(() => {});
-          }).catch(() => {});
-      } else if (link.mode === "order_based" && link.orderNumber) {
+        const orderId = link.orderId;
         getAdminGroupWa().then(async (adminGroupWa) => {
           if (!adminGroupWa) return;
-          const allSubs = await db
-            .select({ vendorName: vendorMiniFormSubmissionsTable.vendorName, vendorPrice: vendorMiniFormSubmissionsTable.vendorPrice, currency: vendorMiniFormSubmissionsTable.currency, eta: vendorMiniFormSubmissionsTable.eta })
+          const [orderRow] = await db.select().from(logisticOrdersTable)
+            .where(eq(logisticOrdersTable.id, orderId)).limit(1);
+          if (!orderRow) return;
+
+          // Hitung berapa vendor sudah submit vs berapa yang diundang
+          const [submittedRow] = await db.select({ c: count() })
             .from(vendorMiniFormSubmissionsTable)
-            .where(eq(vendorMiniFormSubmissionsTable.linkId, link.id))
-            .orderBy(desc(vendorMiniFormSubmissionsTable.submittedAt));
-          const lines = allSubs.map((s, i) => {
-            const p = s.vendorPrice ? `${s.currency ?? "IDR"} ${Number(s.vendorPrice).toLocaleString("id-ID")}` : "-";
-            return `${i + 1}. *${s.vendorName ?? "Vendor"}* - ${p}${s.eta ? ` - ETA ${s.eta}` : ""}`;
-          });
-          sendVendorSubmissionSummaryNotification(adminGroupWa, {
-            vendorLabel,
-            picLabel,
-            contactPhone: contactPhone?.trim() ?? null,
-            orderNumber: link.orderNumber ?? null,
-            serviceLabel: `Order #${link.orderNumber}`,
-            priceStr: lines.join("\n") || priceStr,
-            statusStr: isRevision ? `REVISI (Rev-${(submission as { revisionCount?: number }).revisionCount ?? 1})` : (responseStatus ?? "submitted"),
+            .where(eq(vendorMiniFormSubmissionsTable.orderId, orderId));
+          const [invitedRow] = await db.select({ c: count() })
+            .from(vendorMiniFormLinksTable)
+            .where(and(
+              eq(vendorMiniFormLinksTable.orderId, orderId),
+              eq(vendorMiniFormLinksTable.mode, "order_based"),
+              eq(vendorMiniFormLinksTable.isActive, true),
+            ));
+          const submittedVendorCount = Number(submittedRow?.c ?? 1);
+          const totalVendorInvited = Number(invitedRow?.c ?? 1);
+
+          // Buat comparison link ke halaman order di BizPortal
+          const { getPreferredDomain } = await import("../lib/domain.js");
+          const { generateShortLink } = await import("../lib/shortLink.js");
+          const domain = getPreferredDomain() || "cstlogistic.co.id";
+          const longUrl = `https://${domain}/bizportal/logistics/orders/${orderId}`;
+          const vendorComparisonLink = await generateShortLink(longUrl, {
+            context: "vendor_comparison",
+            refType: "order",
+            refId: String(orderId),
+          }).catch(() => longUrl);
+
+          sendVendorSubmissionGroupNotification(adminGroupWa, {
+            orderNumber: orderRow.orderNumber,
+            vendorName: vendorLabel,
+            vendorPrice: priceStr,
+            serviceType: orderRow.shipmentType ?? null,
+            route: (orderRow.origin && orderRow.destination)
+              ? `${orderRow.origin} → ${orderRow.destination}`
+              : null,
+            commodity: orderRow.commodity ?? null,
+            picLabel: picLabel || null,
+            submittedVendorCount,
+            totalVendorInvited,
+            vendorComparisonLink,
           }, String(link.id)).catch(() => {});
         }).catch(() => {});
       } else {
+        // Non-order-based (admin_rfq_forward, standalone, dll) — pakai summary sederhana
         getAdminGroupWa().then((adminGroupWa) => {
           if (!adminGroupWa) return;
           sendVendorSubmissionSummaryNotification(adminGroupWa, {

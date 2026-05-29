@@ -575,6 +575,22 @@ const DEFAULT_TPL = {
     driver_assigned: ["🚚 *[DRIVER DITUGASKAN] {{orderNumber}}*","Customer: {{customerName}}","{{#if trucking}}","Driver: {{driverName}} | Plat: {{plateNumber}}","{{/if}}","_{{timestamp}}_"].join("\n"),
     shipment_update: ["🚢 *SHIPMENT UPDATE — {{orderNumber}}*","Customer: {{customerName}} | Rute: {{route}}","{{#if freight_sea}}","Vessel: {{vessel}} / BL: {{blNumber}}","{{/if}}","{{#if freight_air}}","AWB: {{awbNumber}} / Flight: {{flightNumber}}","{{/if}}","_{{timestamp}}_"].join("\n"),
     customs_update: ["🏛️ *KEPABEANAN UPDATE — {{orderNumber}}*","Customer: {{customerName}}","{{#if ppjk}}","Aju: {{ajuNumber}} | SPPB: {{sppbNumber}}","{{/if}}","_{{timestamp}}_"].join("\n"),
+    vendor_submission_summary: [
+      "📩 *PENAWARAN VENDOR — {{orderNumber}}*",
+      "━━━━━━━━━━━━━━━━━━",
+      "Vendor    : *{{vendorName}}*",
+      "Harga     : *{{vendorPrice}}*",
+      "Layanan   : {{serviceType}}",
+      "Rute      : {{route}}",
+      "Komoditi  : {{commodity}}",
+      "PIC       : {{picLabel}}",
+      "━━━━━━━━━━━━━━━━━━",
+      "📊 {{submittedVendorCount}} / {{totalVendorInvited}} vendor sudah submit",
+      "{{compareMessage}}",
+      "🔗 Bandingkan penawaran:",
+      "{{vendorComparisonLink}}",
+      "_{{timestamp}}_",
+    ].join("\n"),
   },
   customer: {
     order_new: ["✅ *PESANAN ANDA DITERIMA*","━━━━━━━━━━━━━━━━━━","Halo *{{customerName}}*,","","Terima kasih telah mempercayakan kepercayaan Anda kepada CST Logistics.","","No. Order       : *{{orderNumber}}*","Tanggal         : {{tanggal}}","Jam             : {{jam}}","Status          : Menunggu Konfirmasi","Rute            : {{route}}","Kategori Barang : {{commodity}}","Berat           : {{grossWeightDisplay}}","Volume          : {{volumeDisplay}}","{{#if product}}","🛍️ Produk       :","{{productList}}","{{/if}}","Layanan         : {{serviceList}}","Tgl Butuh       : {{requiredDate}}","━━━━━━━━━━━━━━━━━━","💵 Subtotal      : Rp {{subtotalEst}}","🧾 {{taxLabel}}  : Rp {{taxEst}}","💰 Total Est.    : Rp {{totalEst}}","━━━━━━━━━━━━━━━━━━","Tim kami sedang memproses permintaan Anda dan akan segera menghubungi Anda.","","📞 Jakarta: (021) 6241234 | Tangerang: (021) 5591234","","_Dikirim: {{timestamp}}_"].join("\n"),
@@ -1026,6 +1042,7 @@ export function getWaDefaultTemplatesFlatMap(): Record<string, string> {
   add("admin_group", "driver_assigned", ag.driver_assigned);
   add("admin_group", "shipment_update", ag.shipment_update);
   add("admin_group", "customs_update", ag.customs_update);
+  add("admin_group", "vendor_submission_summary", ag.vendor_submission_summary);
 
   // customer
   const cu = DEFAULT_TPL.customer;
@@ -1406,6 +1423,53 @@ export async function sendVendorSubmissionNotification(
   ]);
   const extras = { vendorName, vendorPrice };
   if (group) sendWhatsApp(group, renderWf(tplG, order, extras)).catch((e: unknown) => logger.error({ e }, "WA vendor_submission (group) failed"));
+}
+
+// ── Vendor Submission Group (admin_group notif saat vendor submit — dengan count & compare link) ─
+export async function sendVendorSubmissionGroupNotification(
+  adminGroupWa: string,
+  vars: {
+    orderNumber: string;
+    vendorName: string;
+    vendorPrice: string;
+    serviceType?: string | null;
+    route?: string | null;
+    commodity?: string | null;
+    picLabel?: string | null;
+    submittedVendorCount: number;
+    totalVendorInvited: number;
+    vendorComparisonLink?: string | null;
+  },
+  refToken: string,
+): Promise<void> {
+  const tpl = await getWaTemplateConfig(
+    "admin_group",
+    "vendor_submission_summary",
+    DEFAULT_TPL.admin_group.vendor_submission_summary,
+  );
+  const compareMessage =
+    vars.submittedVendorCount >= 2
+      ? `✅ *${vars.submittedVendorCount} vendor* sudah submit — segera *bandingkan penawaran*!`
+      : `📥 Penawaran pertama masuk. Menunggu vendor lain.`;
+  const msg = renderTemplate(tpl, {
+    orderNumber: vars.orderNumber,
+    vendorName: vars.vendorName,
+    vendorPrice: vars.vendorPrice,
+    serviceType: vars.serviceType ?? null,
+    route: vars.route ?? null,
+    commodity: vars.commodity ?? null,
+    picLabel: vars.picLabel ?? null,
+    submittedVendorCount: String(vars.submittedVendorCount),
+    totalVendorInvited: String(vars.totalVendorInvited),
+    compareMessage,
+    vendorComparisonLink: vars.vendorComparisonLink ?? null,
+    timestamp: nowWIB(),
+  });
+  sendWhatsApp(adminGroupWa, msg, {
+    context: "vendor-submission-group",
+    refType: "vendor_mini_form",
+    refId: refToken,
+  }).catch((e: unknown) => logger.error({ e }, "WA vendor_submission_summary (group) failed"));
 }
 
 // ── Vendor Revision (minta revisi harga ke vendor) ────────────────────────────
@@ -2246,6 +2310,39 @@ export async function sendAdminQuoteNotification(
   };
   const msg = renderTemplate(tpl, vars);
   sendWhatsApp(adminWaPhone, msg).catch((e: unknown) => logger.error({ e }, "WA vendor_quote_received failed"));
+}
+
+// ── Logistic RFQ: Admin Group Quote Notification (uses admin_group template) ──
+export async function sendAdminGroupQuoteNotification(
+  rfqNumber: string,
+  orderNumber: string,
+  vendorName: string,
+  quote: {
+    vendorPrice: number;
+    estimatedPickup?: string | null;
+    estimatedDelivery?: string | null;
+    estimatedDays?: number | null;
+    vendorNotes?: string | null;
+  },
+  quotePosition: number | undefined,
+  adminGroupWaPhone: string,
+): Promise<void> {
+  const tpl = await getWaTemplateConfig("admin_group", "vendor_submission", DEFAULT_TPL.admin_group.vendor_submission);
+  const fmtRp = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
+  const vars: Record<string, string | null | undefined> = {
+    rfqNumber,
+    orderNumber,
+    vendorName,
+    quotePosition: quotePosition != null ? ` (vendor ke-${quotePosition})` : null,
+    vendorPrice: fmtRp(quote.vendorPrice),
+    estimatedPickup: quote.estimatedPickup || null,
+    estimatedDelivery: quote.estimatedDelivery || null,
+    estimatedDays: quote.estimatedDays != null ? String(quote.estimatedDays) : null,
+    vendorNotes: quote.vendorNotes || null,
+    timestamp: nowWIB(),
+  };
+  const msg = renderTemplate(tpl, vars);
+  sendWhatsApp(adminGroupWaPhone, msg).catch((e: unknown) => logger.error({ e }, "WA vendor_submission (admin group RFQ) failed"));
 }
 
 // ── Logistic RFQ: Trucking Vendor Confirmed → Admin ──────────────────────────
