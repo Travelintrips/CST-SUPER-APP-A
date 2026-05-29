@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
@@ -21,7 +21,7 @@ import {
   Package, Truck, User, ClipboardList, Clock, ShieldAlert, Ship,
   ClipboardCheck, CheckCircle2, XCircle, MapPin, MessageCircle,
   Link2, FileText, AlertTriangle, Eye, EyeOff, StickyNote, Globe,
-  RotateCcw, Bell, ChevronDown, ChevronUp,
+  RotateCcw, Bell, ChevronDown, ChevronUp, Download,
 } from "lucide-react";
 import { Link } from "wouter";
 import GpsTrackingPanel from "@/components/logistics/GpsTrackingPanel";
@@ -1959,6 +1959,8 @@ export default function LogisticOrderDetailPage() {
   const [podPhotoFile, setPodPhotoFile] = useState<File | null>(null);
   const [podPhotoPreview, setPodPhotoPreview] = useState<string | null>(null);
   const [showCompleteDialog, setShowCompleteDialog] = useState(false);
+  const [isGeneratingPodPdf, setIsGeneratingPodPdf] = useState(false);
+  const podPdfRefs = useRef<Record<number, HTMLDivElement | null>>({});
 
   const completeOrderMut = useMutation({
     mutationFn: async ({ note, receiverName, photo }: { note: string; receiverName: string; photo: File | null }) => {
@@ -1983,6 +1985,43 @@ export default function LogisticOrderDetailPage() {
     },
     onError: (e: Error) => toast({ title: "Gagal selesaikan order", description: e.message, variant: "destructive" }),
   });
+
+  const handleDownloadPodPdf = async (pod: PodSubmission) => {
+    const el = podPdfRefs.current[pod.id];
+    if (!el) return;
+    setIsGeneratingPodPdf(true);
+    try {
+      const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+        import("html2canvas"),
+        import("jspdf"),
+      ]);
+      const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: "#ffffff", logging: false });
+      const imgData = canvas.toDataURL("image/png");
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+      if (pdfHeight <= pageHeight) {
+        pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
+      } else {
+        let heightLeft = pdfHeight;
+        let position = 0;
+        pdf.addImage(imgData, "PNG", 0, position, pdfWidth, pdfHeight);
+        heightLeft -= pageHeight;
+        while (heightLeft > 0) {
+          position -= pageHeight;
+          pdf.addPage();
+          pdf.addImage(imgData, "PNG", 0, position, pdfWidth, pdfHeight);
+          heightLeft -= pageHeight;
+        }
+      }
+      pdf.save(`POD-${order?.orderNumber ?? pod.order_id}-${pod.id}.pdf`);
+    } catch (err) {
+      toast({ title: "Gagal generate PDF", variant: "destructive" });
+    } finally {
+      setIsGeneratingPodPdf(false);
+    }
+  };
 
   const copyUrl = (url: string) => {
     navigator.clipboard.writeText(url);
@@ -2437,9 +2476,23 @@ export default function LogisticOrderDetailPage() {
                     <div key={pod.id} className="rounded-lg border border-teal-100 bg-teal-50/30 px-3 py-3 space-y-2">
                       <div className="flex items-center justify-between gap-2 flex-wrap">
                         <Badge className="bg-emerald-100 text-emerald-800">✅ POD Tersimpan</Badge>
-                        <span className="text-[10px] text-slate-400">
-                          {new Date(pod.created_at).toLocaleString("id-ID", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] text-slate-400">
+                            {new Date(pod.created_at).toLocaleString("id-ID", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                          </span>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-6 px-2 text-[10px] gap-1 text-teal-700 border-teal-200 hover:bg-teal-50"
+                            disabled={isGeneratingPodPdf}
+                            onClick={() => handleDownloadPodPdf(pod)}
+                          >
+                            {isGeneratingPodPdf
+                              ? <Loader2 className="w-3 h-3 animate-spin" />
+                              : <Download className="w-3 h-3" />}
+                            PDF
+                          </Button>
+                        </div>
                       </div>
                       <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
                         {pod.receiver_name && (
@@ -2470,6 +2523,96 @@ export default function LogisticOrderDetailPage() {
                           />
                         </a>
                       )}
+
+                      {/* Hidden printable template untuk PDF */}
+                      <div
+                        ref={el => { podPdfRefs.current[pod.id] = el; }}
+                        style={{
+                          position: "fixed", top: "-9999px", left: "-9999px",
+                          width: "794px", background: "#ffffff", fontFamily: "Arial, sans-serif",
+                          padding: "48px", boxSizing: "border-box",
+                        }}
+                      >
+                        {/* Header */}
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "2px solid #0d9488", paddingBottom: "16px", marginBottom: "24px" }}>
+                          <div>
+                            <div style={{ fontSize: "22px", fontWeight: 700, color: "#0f172a" }}>CST LOGISTICS</div>
+                            <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>Bukti Tanda Terima Pengiriman (Proof of Delivery)</div>
+                          </div>
+                          <div style={{ textAlign: "right" }}>
+                            <div style={{ fontSize: "13px", fontWeight: 700, color: "#0d9488" }}>POD-{order?.orderNumber ?? pod.order_id}</div>
+                            <div style={{ fontSize: "10px", color: "#94a3b8", marginTop: "2px" }}>
+                              {new Date(pod.created_at).toLocaleString("id-ID", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Order Info */}
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "24px" }}>
+                          {[
+                            { label: "Nomor Order", value: order?.orderNumber ?? "—" },
+                            { label: "Status", value: "Completed" },
+                            { label: "Customer", value: order?.customerName ?? "—" },
+                            { label: "Jenis Layanan", value: order?.shipmentType ?? "—" },
+                            { label: "Asal", value: order?.origin ?? "—" },
+                            { label: "Tujuan", value: order?.destination ?? "—" },
+                          ].map(({ label, value }) => (
+                            <div key={label} style={{ background: "#f8fafc", borderRadius: "6px", padding: "10px 12px" }}>
+                              <div style={{ fontSize: "9px", color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "2px" }}>{label}</div>
+                              <div style={{ fontSize: "12px", fontWeight: 600, color: "#1e293b" }}>{value}</div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* POD Details */}
+                        <div style={{ border: "1px solid #e2e8f0", borderRadius: "8px", padding: "16px 20px", marginBottom: "24px" }}>
+                          <div style={{ fontSize: "11px", fontWeight: 700, color: "#0d9488", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "12px" }}>Detail Penerimaan</div>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                            <div>
+                              <div style={{ fontSize: "9px", color: "#94a3b8", textTransform: "uppercase", marginBottom: "3px" }}>Nama Penerima</div>
+                              <div style={{ fontSize: "13px", fontWeight: 700, color: "#0f172a" }}>{pod.receiver_name ?? "—"}</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: "9px", color: "#94a3b8", textTransform: "uppercase", marginBottom: "3px" }}>Diverifikasi oleh</div>
+                              <div style={{ fontSize: "12px", color: "#475569" }}>{pod.submitted_by ?? "Admin"}</div>
+                            </div>
+                            {pod.note && (
+                              <div style={{ gridColumn: "1 / -1" }}>
+                                <div style={{ fontSize: "9px", color: "#94a3b8", textTransform: "uppercase", marginBottom: "3px" }}>Catatan</div>
+                                <div style={{ fontSize: "12px", color: "#475569" }}>{pod.note}</div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Photo */}
+                        {pod.photo_url && (
+                          <div style={{ marginBottom: "24px" }}>
+                            <div style={{ fontSize: "11px", fontWeight: 700, color: "#0d9488", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "10px" }}>Foto Bukti Pengiriman</div>
+                            <img
+                              src={pod.photo_url}
+                              alt="POD Photo"
+                              crossOrigin="anonymous"
+                              style={{ maxWidth: "100%", maxHeight: "360px", objectFit: "contain", borderRadius: "8px", border: "1px solid #e2e8f0" }}
+                            />
+                          </div>
+                        )}
+
+                        {/* Signature area */}
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "40px", marginTop: "32px", paddingTop: "24px", borderTop: "1px solid #e2e8f0" }}>
+                          {["Pengirim / Shipper", "Penerima / Receiver"].map(label => (
+                            <div key={label} style={{ textAlign: "center" }}>
+                              <div style={{ fontSize: "10px", color: "#64748b", marginBottom: "48px" }}>{label}</div>
+                              <div style={{ borderTop: "1px solid #94a3b8", paddingTop: "6px", fontSize: "10px", color: "#94a3b8" }}>(Tanda Tangan &amp; Stempel)</div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Footer */}
+                        <div style={{ marginTop: "24px", textAlign: "center", fontSize: "9px", color: "#94a3b8" }}>
+                          Dokumen ini diterbitkan secara otomatis oleh sistem CST Logistics • {new Date(pod.created_at).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}
+                        </div>
+                      </div>
                     </div>
                   ))}
                 </CardContent>
