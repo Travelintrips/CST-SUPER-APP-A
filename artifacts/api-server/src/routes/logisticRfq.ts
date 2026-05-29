@@ -818,7 +818,7 @@ logisticRfqRouter.post("/:id/rfq", async (req: Request, res: Response) => {
         const inputData2 = (it.inputData as Record<string, unknown>) ?? {};
         const qty2 = Number(inputData2.qty ?? inputData2.quantity ?? 1) || 1;
         const unit2 = String(inputData2.unit ?? "Unit") || "Unit";
-        const sellingUnitPrice2 = inputData2.productPrice != null ? Number(inputData2.productPrice) : null;
+        const sellingUnitPrice2 = inputData2.productPrice != null ? Number(inputData2.productPrice) : (inputData2.price != null ? Number(inputData2.price) : null);
         const name = (it.serviceName || it.category || "").toLowerCase().trim();
         const catalogMatch = name ? catalogItems.find((c) => {
           const cName = c.name.toLowerCase();
@@ -1169,7 +1169,7 @@ logisticRfqRouter.get("/rfq-form", rfqRateLimit, async (req: Request, res: Respo
     const inputData = (it.inputData as Record<string, unknown>) ?? {};
     const quantity = Number(inputData.qty ?? inputData.quantity ?? 1) || 1;
     const unit = String(inputData.unit ?? "Unit") || "Unit";
-    const sellingUnitPrice = inputData.productPrice != null ? Number(inputData.productPrice) : null;
+    const sellingUnitPrice = inputData.productPrice != null ? Number(inputData.productPrice) : (inputData.price != null ? Number(inputData.price) : null);
     const sellingSubtotal = it.subtotal ? parseFloat(it.subtotal) : (sellingUnitPrice != null ? sellingUnitPrice * quantity : null);
 
     // Vendor unit price: name-match against catalog
@@ -1337,7 +1337,7 @@ logisticRfqRouter.post("/:id/manual-rfq", async (req: Request, res: Response) =>
       const inputDataManual = (it.inputData as Record<string, unknown>) ?? {};
       const qtyManual = Number(inputDataManual.qty ?? inputDataManual.quantity ?? 1) || 1;
       const unitManual = String(inputDataManual.unit ?? "Unit") || "Unit";
-      const sellingUnitPriceManual = inputDataManual.productPrice != null ? Number(inputDataManual.productPrice) : null;
+      const sellingUnitPriceManual = inputDataManual.productPrice != null ? Number(inputDataManual.productPrice) : (inputDataManual.price != null ? Number(inputDataManual.price) : null);
       return { serviceName: it.serviceName || it.category, category: it.category, subtotal: catalogMatch ? Number(catalogMatch.priceBase) : null, quantity: qtyManual, unit: unitManual, sellingUnitPrice: sellingUnitPriceManual };
     });
     sendVendorWhatsApp({
@@ -1590,7 +1590,7 @@ logisticRfqRouter.post("/:id/resend-rfq", async (req: Request, res: Response) =>
       const inputDataResend = (it.inputData as Record<string, unknown>) ?? {};
       const qtyResend = Number(inputDataResend.qty ?? inputDataResend.quantity ?? 1) || 1;
       const unitResend = String(inputDataResend.unit ?? "Unit") || "Unit";
-      const sellingUnitPriceResend = inputDataResend.productPrice != null ? Number(inputDataResend.productPrice) : null;
+      const sellingUnitPriceResend = inputDataResend.productPrice != null ? Number(inputDataResend.productPrice) : (inputDataResend.price != null ? Number(inputDataResend.price) : null);
       return { serviceName: it.serviceName || it.category, category: it.category, subtotal: catalogMatch ? Number(catalogMatch.priceBase) : null, quantity: qtyResend, unit: unitResend, sellingUnitPrice: sellingUnitPriceResend };
     });
     try {
@@ -2376,7 +2376,7 @@ logisticRfqRouter.post("/:id/duplicate-rfq", async (req: Request, res: Response)
     const inputDataDup = (it.inputData as Record<string, unknown>) ?? {};
     const qtyDup = Number(inputDataDup.qty ?? inputDataDup.quantity ?? 1) || 1;
     const unitDup = String(inputDataDup.unit ?? "Unit") || "Unit";
-    const sellingUnitPriceDup = inputDataDup.productPrice != null ? Number(inputDataDup.productPrice) : null;
+    const sellingUnitPriceDup = inputDataDup.productPrice != null ? Number(inputDataDup.productPrice) : (inputDataDup.price != null ? Number(inputDataDup.price) : null);
     return { serviceName: it.serviceName || it.category, category: it.category, subtotal: it.subtotal != null ? parseFloat(String(it.subtotal)) : null, quantity: qtyDup, unit: unitDup, sellingUnitPrice: sellingUnitPriceDup };
   });
 
