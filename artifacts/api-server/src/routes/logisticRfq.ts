@@ -815,12 +815,23 @@ logisticRfqRouter.post("/:id/rfq", async (req: Request, res: Response) => {
       const formUrl = getVendorFormUrl(rfqNumber, vendor.id, orderToken2);
       const isTruckingOrder2 = !!truckingItem;
       const waItems2 = orderItems.map((it) => {
+        const inputData2 = (it.inputData as Record<string, unknown>) ?? {};
+        const qty2 = Number(inputData2.qty ?? inputData2.quantity ?? 1) || 1;
+        const unit2 = String(inputData2.unit ?? "Unit") || "Unit";
+        const sellingUnitPrice2 = inputData2.productPrice != null ? Number(inputData2.productPrice) : null;
         const name = (it.serviceName || it.category || "").toLowerCase().trim();
         const catalogMatch = name ? catalogItems.find((c) => {
           const cName = c.name.toLowerCase();
           return cName.includes(name) || name.includes(cName);
         }) : null;
-        return { serviceName: it.serviceName || it.category, category: it.category, subtotal: catalogMatch ? Number(catalogMatch.priceBase) : null };
+        return {
+          serviceName: it.serviceName || it.category,
+          category: it.category,
+          subtotal: catalogMatch ? Number(catalogMatch.priceBase) : null,
+          quantity: qty2,
+          unit: unit2,
+          sellingUnitPrice: sellingUnitPrice2,
+        };
       });
       sendVendorWhatsApp({
         vendorPhone: vendor.phone, vendorName: vendor.name, vendorId: vendor.id,
@@ -1078,7 +1089,14 @@ logisticRfqRouter.get("/rfq-form", rfqRateLimit, async (req: Request, res: Respo
       )),
     db.select().from(vendorCatalogItemsTable)
       .where(and(eq(vendorCatalogItemsTable.vendorId, vendorId), eq(vendorCatalogItemsTable.isActive, true))),
-    db.select({ serviceName: logisticOrderItemsTable.serviceName, category: logisticOrderItemsTable.category, calculatorType: logisticOrderItemsTable.calculatorType })
+    db.select({
+        id: logisticOrderItemsTable.id,
+        serviceName: logisticOrderItemsTable.serviceName,
+        category: logisticOrderItemsTable.category,
+        calculatorType: logisticOrderItemsTable.calculatorType,
+        inputData: logisticOrderItemsTable.inputData,
+        subtotal: logisticOrderItemsTable.subtotal,
+      })
       .from(logisticOrderItemsTable)
       .where(eq(logisticOrderItemsTable.orderId, rfq.orderId)),
     db.select({ basicPrice: rfqVendorLinksTable.basicPrice })
@@ -1139,12 +1157,69 @@ logisticRfqRouter.get("/rfq-form", rfqRateLimit, async (req: Request, res: Respo
     vendorBasePrice = Number(catalogItems[0].priceBase);
   }
 
-  // Prefer blast-time price stored in rfq_vendor_links.basic_price —
-  // this is the price that was computed and sent in the WA message, so
-  // the form should reflect the same figure even if the catalog changes later.
+  // Prefer blast-time price stored in rfq_vendor_links.basic_price
   if (vendorLink?.basicPrice != null) {
     vendorBasePrice = Number(vendorLink.basicPrice);
   }
+
+  // ── Build per-item breakdown for product orders ──────────────────────────
+  const PPN_RATE = 0.11;
+
+  const items = orderItemRows.map((it) => {
+    const inputData = (it.inputData as Record<string, unknown>) ?? {};
+    const quantity = Number(inputData.qty ?? inputData.quantity ?? 1) || 1;
+    const unit = String(inputData.unit ?? "Unit") || "Unit";
+    const sellingUnitPrice = inputData.productPrice != null ? Number(inputData.productPrice) : null;
+    const sellingSubtotal = it.subtotal ? parseFloat(it.subtotal) : (sellingUnitPrice != null ? sellingUnitPrice * quantity : null);
+
+    // Vendor unit price: name-match against catalog
+    const name = (it.serviceName || it.category || "").toLowerCase().trim();
+    const catalogMatch = name ? catalogItems.find((c) => {
+      const cName = c.name.toLowerCase().trim();
+      return cName.includes(name) || name.includes(cName);
+    }) : null;
+    const vendorUnitPrice = catalogMatch
+      ? Number(catalogMatch.priceBase)
+      : (catalogItems.length > 0 ? Number(catalogItems[0].priceBase) : null);
+
+    const vendorSubtotal = vendorUnitPrice != null ? Math.round(vendorUnitPrice * quantity) : null;
+    const ppnAmount = vendorSubtotal != null ? Math.round(vendorSubtotal * PPN_RATE) : null;
+    const vendorGrandTotal = vendorSubtotal != null && ppnAmount != null ? vendorSubtotal + ppnAmount : null;
+
+    return {
+      orderItemId: it.id,
+      productName: it.serviceName || it.category,
+      quantity,
+      unit,
+      sellingUnitPrice,
+      sellingSubtotal,
+      vendorUnitPrice,
+      vendorSubtotal,
+      ppnRate: PPN_RATE,
+      ppnAmount,
+      vendorGrandTotal,
+    };
+  });
+
+  // Override vendorUnitPrice from vendorLink.basicPrice when set
+  if (vendorLink?.basicPrice != null && items.length === 1) {
+    const bp = Number(vendorLink.basicPrice);
+    const qty = items[0].quantity;
+    items[0].vendorUnitPrice = bp;
+    items[0].vendorSubtotal = Math.round(bp * qty);
+    items[0].ppnAmount = Math.round(bp * qty * PPN_RATE);
+    items[0].vendorGrandTotal = Math.round(bp * qty * (1 + PPN_RATE));
+  }
+
+  const summaryVendorSubtotal = items.reduce((s, i) => s + (i.vendorSubtotal ?? 0), 0);
+  const summaryPpnAmount = Math.round(summaryVendorSubtotal * PPN_RATE);
+  const summary = {
+    totalQuantity: items.reduce((s, i) => s + i.quantity, 0),
+    vendorSubtotal: summaryVendorSubtotal,
+    ppnRate: PPN_RATE,
+    ppnAmount: summaryPpnAmount,
+    vendorGrandTotal: summaryVendorSubtotal + summaryPpnAmount,
+  };
 
   return res.json({
     rfqNumber: rfq.rfqNumber,
@@ -1163,6 +1238,8 @@ logisticRfqRouter.get("/rfq-form", rfqRateLimit, async (req: Request, res: Respo
     matchedCatalogItems: matchedCatalogItems.length > 0 ? matchedCatalogItems : undefined,
     alreadySubmitted: existing.length > 0,
     orderItems: orderItemRows.map((it) => ({ serviceName: it.serviceName, category: it.category })),
+    items,
+    summary,
     createdAt: order.createdAt.toISOString(),
     jamOrder: order.jamOrder ?? null,
     isTrucking,

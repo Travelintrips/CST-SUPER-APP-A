@@ -23,6 +23,15 @@ function formatJam(d: Date | string): string {
 
 const fmtRp = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
 
+export interface VendorQuoteOrderItem {
+  serviceName: string;
+  category: string;
+  subtotal?: number | null;
+  quantity?: number | null;
+  unit?: string | null;
+  sellingUnitPrice?: number | null;
+}
+
 export interface VendorQuoteMessageInput {
   rfqNumber: string;
   orderNumber: string;
@@ -39,15 +48,13 @@ export interface VendorQuoteMessageInput {
   createdAt?: Date | string | null;
   jamOrder?: string | null;
   shortLinkUrl: string;
-  orderItems?: Array<{ serviceName: string; category: string; subtotal?: number | null }> | null;
+  orderItems?: VendorQuoteOrderItem[] | null;
   isTrucking?: boolean;
   orderType?: string | null;
 }
 
 /**
  * Build a clean, modern mini-card WhatsApp message for vendor quote requests.
- * Falls back to short link (no interactive buttons since Fonnte doesn't expose
- * the WhatsApp Business interactive message API).
  */
 export function generateVendorQuoteMessage(input: VendorQuoteMessageInput): string {
   const tgl = input.createdAt ? formatTanggal(input.createdAt) : "";
@@ -65,16 +72,24 @@ export function generateVendorQuoteMessage(input: VendorQuoteMessageInput): stri
     input.notes ? `📝 Catatan    : ${input.notes}\n` : "",
   ].join("");
 
-  // Produk/layanan yang dipesan customer dari web
+  // Produk/layanan yang dipesan customer — tampilkan qty, harga jual/unit, total
   const itemsBlock = input.orderItems && input.orderItems.length > 0
     ? `\n🛒 *Produk Dipesan:*\n` +
       input.orderItems.map((it) => {
-        const price = it.subtotal != null && it.subtotal > 0 ? ` — ${fmtRp(it.subtotal)}` : "";
-        return `   • ${it.serviceName}${price}`;
-      }).join("\n") + "\n"
+        const qty = it.quantity ?? 1;
+        const unit = it.unit ?? "Unit";
+        const lines: string[] = [`   • ${it.serviceName}`];
+        lines.push(`     Qty: ${qty} ${unit}`);
+        if (it.sellingUnitPrice != null && it.sellingUnitPrice > 0) {
+          lines.push(`     Harga Jual/Unit: ${fmtRp(it.sellingUnitPrice)}`);
+          lines.push(`     Total: ${fmtRp(it.sellingUnitPrice * qty)}`);
+        } else if (it.subtotal != null && it.subtotal > 0) {
+          lines.push(`     Total: ${fmtRp(it.subtotal)}`);
+        }
+        return lines.join("\n");
+      }).join("\n\n") + "\n"
     : "";
 
-  // Untuk trucking: tampilkan tanggal & jam order customer
   const truckingDateBlock = input.isTrucking && (tgl || jam)
     ? `📅 Tgl Order  : ${tgl}\n` +
       (jam ? `🕐 Jam Order  : ${jam}\n` : "")
@@ -126,7 +141,7 @@ export interface SendVendorWhatsAppInput {
   vendorBasePrice?: number | null;
   createdAt?: Date | string | null;
   jamOrder?: string | null;
-  orderItems?: Array<{ serviceName: string; category: string; subtotal?: number | null }> | null;
+  orderItems?: VendorQuoteOrderItem[] | null;
   isTrucking?: boolean;
   orderType?: string | null;
 }
@@ -148,10 +163,8 @@ export async function sendVendorWhatsApp(input: SendVendorWhatsAppInput): Promis
     refId: input.rfqNumber,
   });
 
-  // Build default template (legacy mini-card — used only if Settings not configured)
   const defaultTpl = generateVendorQuoteMessage({ ...input, shortLinkUrl });
 
-  // Fetch user-configured template (or default fallback)
   const tplBody = await getWaTemplateConfig("vendor", "vendor_request", defaultTpl);
 
   const svcType = deriveServiceType(
@@ -163,7 +176,6 @@ export async function sendVendorWhatsApp(input: SendVendorWhatsAppInput): Promis
 
   const productList: string | null = (() => {
     if (!input.orderItems?.length) return null;
-    // For product orders, show ALL items. For other types, filter by category.
     const items = svcType === "product"
       ? input.orderItems
       : input.orderItems.filter((it) => {
@@ -173,13 +185,21 @@ export async function sendVendorWhatsApp(input: SendVendorWhatsAppInput): Promis
     if (!items.length) return null;
     return items
       .map((it) => {
-        const price = it.subtotal != null && it.subtotal > 0 ? ` — ${fmtRp(it.subtotal)}` : "";
-        return `• ${it.serviceName}${price}`;
+        const qty = it.quantity ?? 1;
+        const unit = it.unit ?? "Unit";
+        const lines: string[] = [`• ${it.serviceName}`];
+        lines.push(`  Qty: ${qty} ${unit}`);
+        if (it.sellingUnitPrice != null && it.sellingUnitPrice > 0) {
+          lines.push(`  Harga Jual/Unit: ${fmtRp(it.sellingUnitPrice)}`);
+          lines.push(`  Total: ${fmtRp(it.sellingUnitPrice * qty)}`);
+        } else if (it.subtotal != null && it.subtotal > 0) {
+          lines.push(`  Total: ${fmtRp(it.subtotal)}`);
+        }
+        return lines.join("\n");
       })
-      .join("\n");
+      .join("\n\n");
   })();
 
-  // Build conditions: always include svcType; add "product" if we have a productList to render
   const conditions: string[] = svcType ? [svcType] : [];
   if (productList && !conditions.includes("product")) conditions.push("product");
 
