@@ -1057,16 +1057,58 @@ logisticRfqRouter.get("/rfq-form", rfqRateLimit, async (req: Request, res: Respo
   ]);
 
   const vt = (order as any).vehicleType ?? (order as any).truckType ?? null;
-  const matchingCatalog = vt
-    ? catalogItems.find((c) => c.name.toLowerCase().includes(vt.toLowerCase()))
-    : null;
-  const vendorBasePrice = matchingCatalog
-    ? Number(matchingCatalog.priceBase)
-    : catalogItems[0] ? Number(catalogItems[0].priceBase) : null;
-
   const isTrucking = orderItemRows.some((it) => it.calculatorType === "trucking")
     || order.shipmentType?.toLowerCase().includes("trucking")
     || false;
+
+  // ── Price matching: same logic as WA blast (logisticRfq.ts sendVendorWhatsApp path) ──
+  // 1. For trucking: match by vehicleType/truckType against catalog name (existing behaviour).
+  // 2. For all orders: match each order item serviceName/category against catalog name.
+  //    Rule: cName.includes(name) || name.includes(cName)  (case-insensitive)
+  // 3. Fallback to catalogItems[0] ONLY when no item name is available AND no vt match.
+
+  type MatchedCatalogItem = {
+    serviceName: string;
+    catalogItemId: number;
+    catalogName: string;
+    priceBase: number;
+  };
+
+  const matchedCatalogItems: MatchedCatalogItem[] = [];
+
+  for (const it of orderItemRows) {
+    const name = (it.serviceName || it.category || "").toLowerCase().trim();
+    if (!name) continue;
+    const cat = catalogItems.find((c) => {
+      const cName = c.name.toLowerCase().trim();
+      return cName.includes(name) || name.includes(cName);
+    });
+    if (cat) {
+      matchedCatalogItems.push({
+        serviceName: it.serviceName || it.category,
+        catalogItemId: cat.id,
+        catalogName: cat.name,
+        priceBase: Number(cat.priceBase),
+      });
+    }
+  }
+
+  // For trucking: also try vehicleType match (may override or supplement name matches)
+  const vtMatchCatalog = vt
+    ? catalogItems.find((c) => c.name.toLowerCase().includes(vt.toLowerCase()))
+    : null;
+
+  let vendorBasePrice: number | null = null;
+  if (matchedCatalogItems.length > 0) {
+    // Use price from first matched item (same as WA blast behaviour)
+    vendorBasePrice = matchedCatalogItems[0].priceBase;
+  } else if (vtMatchCatalog) {
+    // Trucking fallback: vehicleType match
+    vendorBasePrice = Number(vtMatchCatalog.priceBase);
+  } else if (catalogItems.length > 0) {
+    // Last resort: first active catalog item
+    vendorBasePrice = Number(catalogItems[0].priceBase);
+  }
 
   return res.json({
     rfqNumber: rfq.rfqNumber,
@@ -1082,6 +1124,7 @@ logisticRfqRouter.get("/rfq-form", rfqRateLimit, async (req: Request, res: Respo
     requiredDate: order.requiredDate?.trim() || null,
     vehicleType: vt?.trim() || null,
     vendorBasePrice,
+    matchedCatalogItems: matchedCatalogItems.length > 0 ? matchedCatalogItems : undefined,
     alreadySubmitted: existing.length > 0,
     orderItems: orderItemRows.map((it) => ({ serviceName: it.serviceName, category: it.category })),
     createdAt: order.createdAt.toISOString(),
