@@ -28,7 +28,7 @@ type OrderInfo = {
   taxRate?: number | null;
   taxAmount?: string | null;
   status: string;
-  items?: Array<{ serviceName: string; category: string; subtotal: string | null }>;
+  items?: Array<{ serviceName: string; category: string; subtotal: string | null; quantity?: string | null; unit?: string | null }>;
 };
 
 type Vendor = {
@@ -39,6 +39,12 @@ type Vendor = {
   isMatching?: boolean;
   hasCommodityMatch?: boolean;
   priceBase?: number | null;
+  orderQty?: number | null;
+  orderUnit?: string | null;
+  vendorEstSubtotal?: number | null;
+  vendorEstTax?: number | null;
+  vendorEstTotal?: number | null;
+  taxRate?: number | null;
 };
 
 type VendorRow = {
@@ -164,11 +170,19 @@ function OrderCard({ order }: { order: OrderInfo }) {
         {order.items && order.items.length > 0 && (
           <div className="py-2 border-b border-slate-50">
             <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide mb-1">{isProduct ? "Produk Dipesan" : "Layanan / Item"}</p>
-            <ul className="space-y-1">
+            <ul className="space-y-2">
               {order.items.map((it, i) => (
-                <li key={i} className="flex justify-between gap-2 text-xs">
-                  <span className="text-slate-700">• {it.serviceName}</span>
-                  <span className="text-slate-500 shrink-0">{idr(it.subtotal) ?? ""}</span>
+                <li key={i} className="text-xs">
+                  <div className="flex justify-between gap-2">
+                    <span className="text-slate-700">• {it.serviceName}</span>
+                    <span className="text-slate-500 shrink-0">{idr(it.subtotal) ?? ""}</span>
+                  </div>
+                  {it.quantity && (
+                    <div className="flex justify-between gap-2 ml-3 mt-0.5">
+                      <span className="text-slate-400">Quantity</span>
+                      <span className="text-slate-500 shrink-0">{it.quantity}{it.unit ? ` ${it.unit}` : ""}</span>
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>
@@ -348,9 +362,32 @@ function ReviewOrderView({ token, data }: { token: string; data: ReviewData }) {
                       )}
                     </div>
                     {v.priceBase != null && (
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        Harga Dasar: <span className="font-semibold text-slate-700">{`Rp ${Math.round(v.priceBase).toLocaleString("id-ID")}`}</span>
-                      </p>
+                      <div className="text-xs text-slate-500 mt-1 space-y-0.5">
+                        <div className="flex justify-between gap-2">
+                          <span>Harga Dasar{v.orderUnit ? ` / ${v.orderUnit}` : ""}</span>
+                          <span className="font-semibold text-slate-700">Rp {Math.round(v.priceBase).toLocaleString("id-ID")}{v.orderUnit ? `/${v.orderUnit}` : ""}</span>
+                        </div>
+                        {v.vendorEstSubtotal != null && v.orderQty != null && (
+                          <>
+                            <div className="flex justify-between gap-2">
+                              <span className="text-slate-400">Subtotal <span className="text-slate-300">({Math.round(v.priceBase).toLocaleString("id-ID")} × {v.orderQty}{v.orderUnit ? ` ${v.orderUnit}` : ""})</span></span>
+                              <span className="font-semibold text-slate-700">Rp {v.vendorEstSubtotal.toLocaleString("id-ID")}</span>
+                            </div>
+                            {v.vendorEstTax != null && (
+                              <div className="flex justify-between gap-2">
+                                <span className="text-slate-400">PPN {v.taxRate ?? 11}% <span className="text-slate-300">({v.vendorEstSubtotal.toLocaleString("id-ID")} × {v.taxRate ?? 11}%)</span></span>
+                                <span className="text-slate-600">Rp {v.vendorEstTax.toLocaleString("id-ID")}</span>
+                              </div>
+                            )}
+                            {v.vendorEstTotal != null && (
+                              <div className="flex justify-between gap-2 font-semibold border-t border-slate-100 pt-1 mt-0.5">
+                                <span className="text-slate-700">Est. Grand Total</span>
+                                <span className="text-slate-800">IDR {v.vendorEstTotal.toLocaleString("id-ID")}</span>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
                     )}
                   </div>
                   {v.phone && <span className="text-xs text-slate-400 shrink-0">{v.phone}</span>}

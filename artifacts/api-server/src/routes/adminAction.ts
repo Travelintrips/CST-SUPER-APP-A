@@ -190,8 +190,45 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
       serviceName: logisticOrderItemsTable.serviceName,
       category: logisticOrderItemsTable.category,
       subtotal: logisticOrderItemsTable.subtotal,
+      inputData: logisticOrderItemsTable.inputData,
+      calculatorType: logisticOrderItemsTable.calculatorType,
     }).from(logisticOrderItemsTable)
       .where(eq(logisticOrderItemsTable.orderId, order.id));
+
+    // Helper: ekstrak qty & unit dari inputData item
+    const extractItemQty = (input: Record<string, unknown> | null): number | null => {
+      if (!input) return null;
+      const v = input.qty ?? input.quantity;
+      const n = parseFloat(String(v ?? ""));
+      return isNaN(n) || n <= 0 ? null : n;
+    };
+    const extractItemUnit = (input: Record<string, unknown> | null): string | null => {
+      if (!input) return null;
+      return input.unit != null ? String(input.unit) : null;
+    };
+
+    // Hitung total qty untuk estimasi harga vendor (hanya berlaku jika semua item satu unit)
+    let totalQtyForVendor: number | null = null;
+    let orderUnitForVendor: string | null = null;
+    if (orderItemRows.length === 1) {
+      const inp = orderItemRows[0].inputData as Record<string, unknown> | null;
+      totalQtyForVendor = extractItemQty(inp);
+      orderUnitForVendor = extractItemUnit(inp);
+    } else if (orderItemRows.length > 1) {
+      let sumQty = 0;
+      let firstUnit: string | null = null;
+      let sameUnit = true;
+      for (const it of orderItemRows) {
+        const inp = it.inputData as Record<string, unknown> | null;
+        const q = extractItemQty(inp);
+        const u = extractItemUnit(inp);
+        if (q == null) { sameUnit = false; break; }
+        if (firstUnit == null) firstUnit = u;
+        else if (u !== firstUnit) sameUnit = false;
+        sumQty += q;
+      }
+      if (sameUnit && sumQty > 0) { totalQtyForVendor = sumQty; orderUnitForVendor = firstUnit; }
+    }
 
     // Compute tax breakdown — source of truth for all views
     const _itemsSubtotal = orderItemRows.reduce((sum, it) => {
@@ -238,11 +275,18 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
         taxRate: _TAX_RATE,
         taxAmount: _taxAmount != null ? String(_taxAmount) : null,
         status: order.status,
-        items: orderItemRows.map((it) => ({
-          serviceName: it.serviceName ?? "",
-          category: it.category ?? "",
-          subtotal: it.subtotal != null ? String(it.subtotal) : null,
-        })),
+        items: orderItemRows.map((it) => {
+          const inp = it.inputData as Record<string, unknown> | null;
+          const qty = extractItemQty(inp);
+          const unit = extractItemUnit(inp);
+          return {
+            serviceName: it.serviceName ?? "",
+            category: it.category ?? "",
+            subtotal: it.subtotal != null ? String(it.subtotal) : null,
+            quantity: qty != null ? String(qty) : null,
+            unit: unit ?? null,
+          };
+        }),
       },
     };
 
@@ -338,13 +382,30 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
         return shipKeywords.some((kw) => vst.includes(kw));
       };
 
-      const allWithFlag = allWithPhone.map((v) => ({
-        ...v,
-        isMatching: isServiceMatch(v.serviceType),
-        hasCommodityMatch: vendorIdsWithCommodity.has(v.id),
-        hasProductItem: vendorIdsWithProductItem.has(v.id),
-        priceBase: vendorPriceBaseMap.get(v.id) ?? null,
-      }));
+      const allWithFlag = allWithPhone.map((v) => {
+        const pb = vendorPriceBaseMap.get(v.id) ?? null;
+        let vendorEstSubtotal: number | null = null;
+        let vendorEstTax: number | null = null;
+        let vendorEstTotal: number | null = null;
+        if (pb != null && totalQtyForVendor != null) {
+          vendorEstSubtotal = Math.round(pb * totalQtyForVendor);
+          vendorEstTax = Math.round(vendorEstSubtotal * _TAX_RATE / 100);
+          vendorEstTotal = vendorEstSubtotal + vendorEstTax;
+        }
+        return {
+          ...v,
+          isMatching: isServiceMatch(v.serviceType),
+          hasCommodityMatch: vendorIdsWithCommodity.has(v.id),
+          hasProductItem: vendorIdsWithProductItem.has(v.id),
+          priceBase: pb,
+          orderQty: totalQtyForVendor,
+          orderUnit: orderUnitForVendor,
+          vendorEstSubtotal,
+          vendorEstTax,
+          vendorEstTotal,
+          taxRate: _TAX_RATE,
+        };
+      });
 
       const commodityMatched  = allWithFlag.filter((v) => v.hasCommodityMatch);
       const serviceMatched    = allWithFlag.filter((v) => v.isMatching && !v.hasCommodityMatch);
