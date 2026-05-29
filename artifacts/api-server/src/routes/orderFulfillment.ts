@@ -360,3 +360,150 @@ fulfillmentPublicRouter.post("/:token", async (req: Request, res: Response) => {
     return res.status(500).json({ error: "Terjadi kesalahan server. Coba lagi." });
   }
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Admin: Konfirmasi fulfillment → In Progress + WA ke customer
+// POST /api/logistic/orders/:orderId/confirm-fulfillment
+// ─────────────────────────────────────────────────────────────────────────────
+
+fulfillmentAdminRouter.post("/orders/:orderId/confirm-fulfillment", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const orderId = Number(req.params["orderId"]);
+  if (isNaN(orderId)) return res.status(400).json({ message: "orderId tidak valid" });
+
+  try {
+    const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
+    if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+    const allowedStatuses = ["Vendor Confirmed", "Processing", "Customer Approved"];
+    if (!allowedStatuses.includes(order.status)) {
+      return res.status(400).json({ message: `Status saat ini "${order.status}" tidak bisa dikonfirmasi.` });
+    }
+
+    // Ambil submission terbaru
+    const [latestSub] = await db.select()
+      .from(orderFulfillmentSubmissionsTable)
+      .where(eq(orderFulfillmentSubmissionsTable.orderId, orderId))
+      .orderBy(desc(orderFulfillmentSubmissionsTable.createdAt))
+      .limit(1);
+
+    await db.update(logisticOrdersTable)
+      .set({ status: "In Progress" })
+      .where(eq(logisticOrdersTable.id, orderId));
+
+    await db.insert(orderUpdatesTable).values({
+      orderId,
+      actorType: "admin",
+      actorName: "Admin",
+      status: "In Progress",
+      notes: "Admin mengkonfirmasi data fulfillment. Order sedang diproses / dalam perjalanan.",
+      isPublic: true,
+    });
+
+    // Kirim WA ke customer
+    const customerPhone = order.phone?.trim();
+    if (customerPhone) {
+      const domain = getBaseUrl();
+      let detailLines = "";
+      if (latestSub?.fulfillmentData) {
+        const fd = latestSub.fulfillmentData as Record<string, string>;
+        const FIELD_LABELS: Record<string, string> = {
+          driver_name: "Driver",
+          driver_phone: "HP Driver",
+          vehicle_plate: "Plat Nomor",
+          vehicle_type: "Jenis Kendaraan",
+          pickup_time: "Waktu Pickup",
+          carrier_name: "Carrier",
+          booking_number: "Nomor Booking",
+          awb_or_bl_number: "AWB / BL",
+          etd: "ETD",
+          eta: "ETA",
+          ready_date: "Siap Kirim",
+          source_warehouse: "Gudang Asal",
+          operational_note: "Catatan",
+        };
+        const lines = Object.entries(fd)
+          .filter(([, v]) => v?.trim())
+          .map(([k, v]) => `  • ${FIELD_LABELS[k] ?? k.replace(/_/g, " ")}: ${v}`)
+          .join("\n");
+        if (lines) detailLines = `\n\nDetail operasional:\n${lines}`;
+      }
+      const trackUrl = domain ? `\n\nCek status order: ${domain}/track` : "";
+      const waMsg =
+        `🚀 *Order Anda Sedang Diproses — CST Logistics*\n\n` +
+        `Halo ${order.customerName},\n\n` +
+        `Order *${order.orderNumber}* (${order.shipmentType}) sedang dalam proses pengiriman.\n` +
+        `Rute: ${order.origin} → ${order.destination}` +
+        detailLines +
+        trackUrl;
+      sendWhatsApp(customerPhone, waMsg).catch((e) =>
+        logger.warn({ e }, "confirm-fulfillment WA to customer failed")
+      );
+    }
+
+    logger.info({ orderId }, "Fulfillment confirmed → In Progress");
+    return res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err }, "confirm-fulfillment error");
+    return res.status(500).json({ message: "Gagal konfirmasi fulfillment" });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Admin: Selesaikan order → Completed + WA ke customer
+// POST /api/logistic/orders/:orderId/complete-order
+// ─────────────────────────────────────────────────────────────────────────────
+
+fulfillmentAdminRouter.post("/orders/:orderId/complete-order", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const orderId = Number(req.params["orderId"]);
+  if (isNaN(orderId)) return res.status(400).json({ message: "orderId tidak valid" });
+
+  const { note } = req.body as { note?: string };
+
+  try {
+    const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
+    if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+    const allowedStatuses = ["In Progress", "Vendor Confirmed", "Processing"];
+    if (!allowedStatuses.includes(order.status)) {
+      return res.status(400).json({ message: `Status saat ini "${order.status}" tidak bisa diselesaikan dari sini.` });
+    }
+
+    await db.update(logisticOrdersTable)
+      .set({ status: "Completed" })
+      .where(eq(logisticOrdersTable.id, orderId));
+
+    await db.insert(orderUpdatesTable).values({
+      orderId,
+      actorType: "admin",
+      actorName: "Admin",
+      status: "Completed",
+      notes: note?.trim()
+        ? `Order diselesaikan oleh admin. Catatan: ${note.trim()}`
+        : "Order telah diselesaikan oleh admin.",
+      isPublic: true,
+    });
+
+    // WA ke customer
+    const customerPhone = order.phone?.trim();
+    if (customerPhone) {
+      const waMsg =
+        `✅ *Order Selesai — CST Logistics*\n\n` +
+        `Halo ${order.customerName},\n\n` +
+        `Order *${order.orderNumber}* (${order.shipmentType}) telah *diselesaikan*.\n` +
+        `Rute: ${order.origin} → ${order.destination}\n\n` +
+        (note?.trim() ? `Catatan: ${note.trim()}\n\n` : "") +
+        `Terima kasih telah mempercayakan pengiriman Anda kepada CST Logistics! 🙏`;
+      sendWhatsApp(customerPhone, waMsg).catch((e) =>
+        logger.warn({ e }, "complete-order WA to customer failed")
+      );
+    }
+
+    logger.info({ orderId }, "Order completed by admin");
+    return res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err }, "complete-order error");
+    return res.status(500).json({ message: "Gagal menyelesaikan order" });
+  }
+});

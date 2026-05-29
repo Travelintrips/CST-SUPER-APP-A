@@ -1943,6 +1943,33 @@ export default function LogisticOrderDetailPage() {
     onError: (e: Error) => toast({ title: "Gagal buat SO", description: e.message, variant: "destructive" }),
   });
 
+  const confirmFulfillmentMut = useMutation({
+    mutationFn: () => apiFetch<{ ok: boolean }>(`/api/logistic/orders/${orderId}/confirm-fulfillment`, { method: "POST" }),
+    onSuccess: () => {
+      toast({ title: "✅ Fulfillment dikonfirmasi", description: "Status diubah ke In Progress. WA dikirim ke customer." });
+      qc.invalidateQueries({ queryKey: ["order-detail", orderId] });
+      void refetchFulfillment();
+    },
+    onError: (e: Error) => toast({ title: "Gagal konfirmasi", description: e.message, variant: "destructive" }),
+  });
+
+  const [completeNote, setCompleteNote] = useState("");
+  const [showCompleteDialog, setShowCompleteDialog] = useState(false);
+  const completeOrderMut = useMutation({
+    mutationFn: (note: string) => apiFetch<{ ok: boolean }>(`/api/logistic/orders/${orderId}/complete-order`, {
+      method: "POST",
+      body: JSON.stringify({ note }),
+    }),
+    onSuccess: () => {
+      toast({ title: "✅ Order selesai", description: "WA konfirmasi dikirim ke customer." });
+      setShowCompleteDialog(false);
+      setCompleteNote("");
+      qc.invalidateQueries({ queryKey: ["order-detail", orderId] });
+      void refetchFulfillment();
+    },
+    onError: (e: Error) => toast({ title: "Gagal selesaikan order", description: e.message, variant: "destructive" }),
+  });
+
   const copyUrl = (url: string) => {
     navigator.clipboard.writeText(url);
     toast({ title: "Link disalin!" });
@@ -2255,12 +2282,86 @@ export default function LogisticOrderDetailPage() {
                             </p>
                           </div>
                         )}
+
+                        {/* ── Aksi lanjutan setelah vendor submit ── */}
+                        {isSubmitted && sub && (
+                          <div className="pt-1 flex flex-wrap gap-2">
+                            {["Vendor Confirmed", "Processing", "Customer Approved"].includes(order.status) && (
+                              <Button
+                                size="sm"
+                                className="bg-blue-600 hover:bg-blue-700 text-white h-8 text-xs"
+                                disabled={confirmFulfillmentMut.isPending}
+                                onClick={() => {
+                                  if (!confirm("Konfirmasi fulfillment dan ubah status ke In Progress? WA akan dikirim ke customer.")) return;
+                                  confirmFulfillmentMut.mutate();
+                                }}
+                              >
+                                {confirmFulfillmentMut.isPending
+                                  ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                                  : <Truck className="w-3.5 h-3.5 mr-1" />}
+                                Konfirmasi &amp; Mulai Pengiriman
+                              </Button>
+                            )}
+                            {order.status === "In Progress" && (
+                              <Button
+                                size="sm"
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white h-8 text-xs"
+                                onClick={() => setShowCompleteDialog(true)}
+                              >
+                                <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
+                                Selesaikan Order
+                              </Button>
+                            )}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
                 </CardContent>
               </Card>
             )}
+
+            {/* Dialog: Selesaikan Order */}
+            <Dialog open={showCompleteDialog} onOpenChange={setShowCompleteDialog}>
+              <DialogContent className="max-w-sm">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                    Selesaikan Order
+                  </DialogTitle>
+                </DialogHeader>
+                <div className="space-y-3 py-2">
+                  <p className="text-sm text-slate-600">
+                    Status akan berubah ke <strong>Completed</strong> dan WA konfirmasi dikirim ke customer.
+                  </p>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Catatan penutup (opsional)</Label>
+                    <Textarea
+                      value={completeNote}
+                      onChange={e => setCompleteNote(e.target.value)}
+                      rows={3}
+                      placeholder="Contoh: Barang telah diterima dengan baik di gudang tujuan."
+                    />
+                  </div>
+                </div>
+                <DialogFooter className="gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setShowCompleteDialog(false)}>
+                    Batal
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                    disabled={completeOrderMut.isPending}
+                    onClick={() => completeOrderMut.mutate(completeNote)}
+                  >
+                    {completeOrderMut.isPending
+                      ? <Loader2 className="w-4 h-4 animate-spin mr-1" />
+                      : <CheckCircle2 className="w-4 h-4 mr-1" />}
+                    Ya, Selesaikan
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
 
             {/* Job Order & Tracking Panel */}
             <JobOrderPanel orderId={orderId} />
