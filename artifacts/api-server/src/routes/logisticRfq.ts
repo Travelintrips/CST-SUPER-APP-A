@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
 import { randomUUID } from "crypto";
 import { rfqRateLimit } from "../middlewares/rfqRateLimit.js";
-import { db, suppliersTable, logisticOrdersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, logisticOrderItemsTable, vendorCatalogItemsTable, vendorOffersTable, vendorRatesTable, salesDocumentsTable, salesDocumentLinesTable } from "@workspace/db";
+import { db, suppliersTable, logisticOrdersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, logisticOrderItemsTable, vendorCatalogItemsTable, vendorOffersTable, vendorRatesTable, salesDocumentsTable, salesDocumentLinesTable, rfqVendorLinksTable } from "@workspace/db";
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import {
@@ -836,6 +836,33 @@ logisticRfqRouter.post("/:id/rfq", async (req: Request, res: Response) => {
       }).catch((err: unknown) =>
         logger.error({ err, vendorId: vendor.id }, "WA RFQ send failed")
       );
+
+      // Store blast-time price in rfq_vendor_links so rfq-form can show the exact same price
+      // as the WA message, even if the catalog is updated later.
+      const blastBasicPrice = waItems2.find((it) => (it.subtotal ?? 0) > 0)?.subtotal
+        ?? vendorBasePrice;
+      if (blastBasicPrice != null) {
+        db.select({ id: rfqVendorLinksTable.id }).from(rfqVendorLinksTable)
+          .where(and(eq(rfqVendorLinksTable.rfqId, rfq.id), eq(rfqVendorLinksTable.vendorId, vendor.id)))
+          .limit(1)
+          .then(([existing]) => {
+            if (existing) {
+              return db.update(rfqVendorLinksTable)
+                .set({ basicPrice: String(blastBasicPrice) })
+                .where(eq(rfqVendorLinksTable.id, existing.id));
+            } else {
+              return db.insert(rfqVendorLinksTable).values({
+                rfqId: rfq.id,
+                vendorId: vendor.id,
+                token: randomUUID(),
+                status: "waiting_response",
+                basicPrice: String(blastBasicPrice),
+                ...(deadlineDate ? { expiredAt: deadlineDate } : {}),
+              });
+            }
+          })
+          .catch((err: unknown) => logger.warn({ err, vendorId: vendor.id }, "rfq_vendor_links upsert failed (non-fatal)"));
+      }
     }
   }
 
@@ -1043,7 +1070,7 @@ logisticRfqRouter.get("/rfq-form", rfqRateLimit, async (req: Request, res: Respo
     .where(eq(suppliersTable.id, vendorId));
   if (!vendor) return res.status(404).json({ error: "Not found" });
 
-  const [existing, catalogItems, orderItemRows] = await Promise.all([
+  const [existing, catalogItems, orderItemRows, vendorLink] = await Promise.all([
     db.select().from(logisticOrderQuotesTable)
       .where(and(
         eq(logisticOrderQuotesTable.rfqId, rfq.id),
@@ -1054,6 +1081,11 @@ logisticRfqRouter.get("/rfq-form", rfqRateLimit, async (req: Request, res: Respo
     db.select({ serviceName: logisticOrderItemsTable.serviceName, category: logisticOrderItemsTable.category, calculatorType: logisticOrderItemsTable.calculatorType })
       .from(logisticOrderItemsTable)
       .where(eq(logisticOrderItemsTable.orderId, rfq.orderId)),
+    db.select({ basicPrice: rfqVendorLinksTable.basicPrice })
+      .from(rfqVendorLinksTable)
+      .where(and(eq(rfqVendorLinksTable.rfqId, rfq.id), eq(rfqVendorLinksTable.vendorId, vendorId)))
+      .limit(1)
+      .then((rows) => rows[0] ?? null),
   ]);
 
   const vt = (order as any).vehicleType ?? (order as any).truckType ?? null;
@@ -1100,14 +1132,18 @@ logisticRfqRouter.get("/rfq-form", rfqRateLimit, async (req: Request, res: Respo
 
   let vendorBasePrice: number | null = null;
   if (matchedCatalogItems.length > 0) {
-    // Use price from first matched item (same as WA blast behaviour)
     vendorBasePrice = matchedCatalogItems[0].priceBase;
   } else if (vtMatchCatalog) {
-    // Trucking fallback: vehicleType match
     vendorBasePrice = Number(vtMatchCatalog.priceBase);
   } else if (catalogItems.length > 0) {
-    // Last resort: first active catalog item
     vendorBasePrice = Number(catalogItems[0].priceBase);
+  }
+
+  // Prefer blast-time price stored in rfq_vendor_links.basic_price —
+  // this is the price that was computed and sent in the WA message, so
+  // the form should reflect the same figure even if the catalog changes later.
+  if (vendorLink?.basicPrice != null) {
+    vendorBasePrice = Number(vendorLink.basicPrice);
   }
 
   return res.json({
@@ -1238,6 +1274,34 @@ logisticRfqRouter.post("/:id/manual-rfq", async (req: Request, res: Response) =>
     }).catch((err: unknown) =>
       logger.error({ err, vendorId: vendor.id }, "manualRFQ WA vendor failed")
     );
+
+    // Store blast-time price in rfq_vendor_links (same as POST /:id/rfq blast)
+    const manualRfqRow = (await db.select().from(logisticOrderRfqsTable)
+      .where(eq(logisticOrderRfqsTable.rfqNumber, rfqNumber)).limit(1))[0];
+    if (manualRfqRow) {
+      const manualBlastPrice = waItemsManual.find((it) => (it.subtotal ?? 0) > 0)?.subtotal ?? vendorBasePrice;
+      if (manualBlastPrice != null) {
+        db.select({ id: rfqVendorLinksTable.id }).from(rfqVendorLinksTable)
+          .where(and(eq(rfqVendorLinksTable.rfqId, manualRfqRow.id), eq(rfqVendorLinksTable.vendorId, vendor.id)))
+          .limit(1)
+          .then(([existingLink]) => {
+            if (existingLink) {
+              return db.update(rfqVendorLinksTable)
+                .set({ basicPrice: String(manualBlastPrice) })
+                .where(eq(rfqVendorLinksTable.id, existingLink.id));
+            } else {
+              return db.insert(rfqVendorLinksTable).values({
+                rfqId: manualRfqRow.id,
+                vendorId: vendor.id,
+                token: randomUUID(),
+                status: "waiting_response",
+                basicPrice: String(manualBlastPrice),
+              });
+            }
+          })
+          .catch((err: unknown) => logger.warn({ err, vendorId: vendor.id }, "manual-rfq rfq_vendor_links upsert failed (non-fatal)"));
+      }
+    }
   }
 
   logActivity({
