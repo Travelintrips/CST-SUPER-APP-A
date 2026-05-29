@@ -67,12 +67,18 @@ async function buildOrderDataWithItems(order: typeof logisticOrdersTable.$inferS
   try {
     const items = await db.select({
       name: logisticOrderItemsTable.serviceName,
+      inputData: logisticOrderItemsTable.inputData,
       subtotal: logisticOrderItemsTable.subtotal,
     }).from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, order.id));
-    base.orderItems = items.map(i => ({
-      name: i.name,
-      subtotal: i.subtotal ? parseFloat(i.subtotal) : null,
-    }));
+    base.orderItems = items.map(i => {
+      const input = (i.inputData as Record<string, unknown> | null) ?? {};
+      return {
+        name: i.name,
+        qty: input.qty != null ? Number(input.qty) : null,
+        unit: input.unit ? String(input.unit) : null,
+        subtotal: i.subtotal ? parseFloat(i.subtotal) : null,
+      };
+    });
   } catch { /* non-critical, skip */ }
   return base;
 }
@@ -517,6 +523,8 @@ logisticRfqV2Router.get("/vendor-form/:token", async (req: Request, res: Respons
   const [vendor] = await db.select({ name: suppliersTable.name })
     .from(suppliersTable).where(eq(suppliersTable.id, link.vendorId));
 
+  const PPN_RATE = 0.11;
+
   // Fetch order items + vendor's own catalog items (for price reference per etalase)
   const [orderItems, vendorCatalog] = await Promise.all([
     db.select({
@@ -651,11 +659,33 @@ logisticRfqV2Router.get("/vendor-form/:token", async (req: Request, res: Respons
     orderItems: orderItems.map((i) => {
       const itemName = (i.serviceName || i.category || "").trim();
       const catalogMatch = matchCatalogItem(itemName);
+      const input = (i.inputData as Record<string, unknown> | null) ?? {};
+
+      const qty = input.qty != null ? Number(input.qty) : 1;
+      const unit = input.unit ? String(input.unit) : "Unit";
+      const sellingUnitPrice = input.price != null ? Number(input.price)
+        : input.productPrice != null ? Number(input.productPrice) : null;
+      const sellingSubtotal = sellingUnitPrice != null ? sellingUnitPrice * qty
+        : (i.subtotal ? Number(i.subtotal) : null);
+
+      const vendorUnitPrice = catalogMatch ? Number(catalogMatch.priceBase) : null;
+      const vendorSubtotal = vendorUnitPrice != null ? vendorUnitPrice * qty : null;
+      const ppnAmount = vendorSubtotal != null ? Math.round(vendorSubtotal * PPN_RATE) : null;
+      const vendorGrandTotal = vendorSubtotal != null && ppnAmount != null
+        ? vendorSubtotal + ppnAmount : null;
+
       return {
         serviceName: i.serviceName,
         category: i.category,
         calculatorType: i.calculatorType,
-        subtotal: catalogMatch ? Number(catalogMatch.priceBase) : null,
+        qty,
+        unit,
+        sellingUnitPrice,
+        sellingSubtotal,
+        vendorUnitPrice,
+        vendorSubtotal,
+        ppnAmount,
+        vendorGrandTotal,
       };
     }),
   });

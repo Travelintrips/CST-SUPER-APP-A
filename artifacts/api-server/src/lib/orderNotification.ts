@@ -29,7 +29,7 @@ export interface LogisticOrderData {
   tax?: number | null;
   grandTotal: number;
   serviceList: string;
-  orderItems?: Array<{ name: string; qty?: number | null; subtotal?: number | null }> | null;
+  orderItems?: Array<{ name: string; qty?: number | null; unit?: string | null; subtotal?: number | null }> | null;
   requiredDate?: string | null;
   notes?: string | null;
   jamOrder?: string | null;
@@ -177,10 +177,13 @@ function buildOrderVars(
   const productList: string | null = (() => {
     if (order.orderItems?.length) {
       return order.orderItems.map(i => {
+        const qtyStr = (i.qty != null && i.qty > 1)
+          ? ` (${i.qty} ${i.unit ?? "Unit"})`
+          : (i.qty === 1 ? ` (1 ${i.unit ?? "Unit"})` : "");
         const price = (i.subtotal != null && i.subtotal > 0)
           ? ` — Rp ${i.subtotal.toLocaleString("id-ID")}`
           : "";
-        return `• ${i.name}${price}`;
+        return `• ${i.name}${qtyStr}${price}`;
       }).join("\n");
     }
     if (isProduct && order.serviceList) {
@@ -191,7 +194,12 @@ function buildOrderVars(
 
   const productListNoPrice: string | null = (() => {
     if (order.orderItems?.length) {
-      return order.orderItems.map(i => `• ${i.name}`).join("\n");
+      return order.orderItems.map(i => {
+        const qtyStr = (i.qty != null && i.qty > 0)
+          ? ` (${i.qty} ${i.unit ?? "Unit"})`
+          : "";
+        return `• ${i.name}${qtyStr}`;
+      }).join("\n");
     }
     if (isProduct && order.serviceList) {
       return order.serviceList;

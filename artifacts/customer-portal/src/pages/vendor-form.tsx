@@ -24,7 +24,14 @@ interface OrderItem {
   serviceName: string;
   category: string;
   calculatorType: string;
-  subtotal: number | null;
+  qty: number;
+  unit: string;
+  sellingUnitPrice: number | null;
+  sellingSubtotal: number | null;
+  vendorUnitPrice: number | null;
+  vendorSubtotal: number | null;
+  ppnAmount: number | null;
+  vendorGrandTotal: number | null;
 }
 
 interface FormData {
@@ -79,7 +86,7 @@ function formatCountdown(ms: number) {
 export default function VendorFormPage() {
   const { token } = useParams<{ token: string }>();
   const [mode, setMode] = useState<"select" | "accept" | "counter" | "reject" | "done" | null>(null);
-  const [offeredPrice, setOfferedPrice] = useState("");
+  const [unitPrice, setUnitPrice] = useState("");
   const [eta, setEta] = useState("");
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -103,6 +110,27 @@ export default function VendorFormPage() {
 
   const countdown = useCountdown(data?.responseDeadline);
   const isExpired = countdown !== null && countdown <= 0;
+
+  const isProductOrder = data?.orderType === "product" || data?.orderType === "service";
+  const productItems = (data?.orderItems ?? []).filter(i =>
+    i.calculatorType === "product" || i.calculatorType === "service" ||
+    (i.category ?? "").toLowerCase().includes("produk") ||
+    (i.category ?? "").toLowerCase().includes("product") ||
+    (i.category ?? "").toLowerCase().includes("jasa") ||
+    (i.category ?? "").toLowerCase().includes("service")
+  );
+
+  const totalQty = productItems.reduce((s, i) => s + (i.qty ?? 1), 0);
+  const hasVendorPricing = productItems.some(i => i.vendorUnitPrice != null);
+
+  const totalVendorSubtotal = productItems.reduce((s, i) => s + (i.vendorSubtotal ?? 0), 0);
+  const totalPpn = productItems.reduce((s, i) => s + (i.ppnAmount ?? 0), 0);
+  const totalVendorGrandTotal = totalVendorSubtotal + totalPpn;
+
+  const unitPriceNum = unitPrice ? Number(unitPrice) : 0;
+  const previewSubtotal = unitPriceNum > 0 ? unitPriceNum * totalQty : 0;
+  const previewPpn = Math.round(previewSubtotal * 0.11);
+  const previewGrandTotal = previewSubtotal + previewPpn;
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -128,7 +156,7 @@ export default function VendorFormPage() {
     if (!mode || mode === "select" || mode === "done") return;
     if (isExpired) { setError("Batas waktu RFQ sudah berakhir."); return; }
     if (mode === "counter") {
-      if (!offeredPrice || Number(offeredPrice) <= 0) { setError("Harga penawaran harus diisi"); return; }
+      if (!unitPrice || unitPriceNum <= 0) { setError("Harga satuan harus diisi"); return; }
       if (!eta) { setError("Estimasi waktu harus diisi"); return; }
     }
     setSubmitting(true);
@@ -136,7 +164,9 @@ export default function VendorFormPage() {
     try {
       const body: Record<string, unknown> = { action: mode };
       if (mode === "counter") {
-        body.offeredPrice = Number(offeredPrice);
+        body.offeredPrice = isProductOrder && totalQty > 1
+          ? previewGrandTotal
+          : unitPriceNum;
         body.eta = eta;
         body.notes = notes;
         if (attachmentUrl) body.attachmentUrl = attachmentUrl;
@@ -257,9 +287,7 @@ export default function VendorFormPage() {
               <div className="mt-2 h-1.5 bg-gray-200 rounded-full overflow-hidden">
                 <div
                   className={`h-full rounded-full transition-all ${countdown < 3600000 ? "bg-orange-500" : "bg-amber-500"}`}
-                  style={{
-                    width: `${Math.min(100, (countdown / (7 * 24 * 3600000)) * 100)}%`
-                  }}
+                  style={{ width: `${Math.min(100, (countdown / (7 * 24 * 3600000)) * 100)}%` }}
                 />
               </div>
             )}
@@ -268,80 +296,119 @@ export default function VendorFormPage() {
 
         {/* RFQ Details */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-          <h3 className="font-semibold text-gray-800 mb-4 text-sm uppercase tracking-wide text-blue-600">
-            {data.orderType === "product"
-              ? "Detail Produk"
-              : data.orderType === "service"
-              ? "Detail Layanan"
-              : "Detail Muatan"}
+          <h3 className="font-semibold text-sm uppercase tracking-wide text-blue-600 mb-4">
+            {isProductOrder ? "Detail Produk" : data.orderType === "service" ? "Detail Layanan" : "Detail Muatan"}
           </h3>
-          <div className="space-y-3">
-            {data.orderType === "product" || data.orderType === "service" ? (
-              <>
-                {/* Product/service order: show items prominently */}
-                {data.orderItems && data.orderItems.length > 0 ? (
-                  <div className="space-y-2">
-                    {data.orderItems.map((item, i) => (
-                      <div key={i} className="flex justify-between items-center text-sm bg-gray-50 rounded-lg px-3 py-2">
-                        <span className="text-gray-700 font-medium">{item.serviceName || item.category || "—"}</span>
-                        {item.subtotal != null && (
-                          <span className="text-blue-700 font-semibold shrink-0 ml-2">{idr(item.subtotal)}</span>
-                        )}
-                      </div>
-                    ))}
+
+          {isProductOrder && productItems.length > 0 ? (
+            <div className="space-y-3">
+              {/* Per-item breakdown */}
+              {productItems.map((item, i) => (
+                <div key={i} className="rounded-xl border border-gray-100 bg-gray-50 p-3 space-y-1.5">
+                  <div className="flex justify-between items-start">
+                    <span className="font-semibold text-gray-800 text-sm">{item.serviceName || item.category || "—"}</span>
+                    {item.sellingUnitPrice != null && (
+                      <span className="text-xs text-gray-400 ml-2 shrink-0">
+                        Ref jual: {idr(item.sellingUnitPrice)}/Unit
+                      </span>
+                    )}
                   </div>
-                ) : data.serviceType ? (
-                  <Row label={data.orderType === "product" ? "Produk" : "Layanan"} value={data.serviceType} />
-                ) : null}
-                {data.requiredDate && <Row label="Tgl Dibutuhkan" value={data.requiredDate} />}
-                {data.commodity && <Row label="Keterangan" value={data.commodity} />}
-              </>
-            ) : (
-              <>
-                {/* Shipment order: logistics detail */}
-                {data.serviceType ? (
-                  <Row label="Layanan" value={data.serviceType} />
-                ) : (data.orderItems && data.orderItems.length > 0) ? (
-                  <div className="flex justify-between items-start gap-4 text-sm">
-                    <span className="text-gray-500 shrink-0">Layanan / Produk</span>
-                    <div className="text-right space-y-1">
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span>Qty</span>
+                    <span className="font-medium text-gray-700">{item.qty} {item.unit}</span>
+                  </div>
+                  {item.vendorUnitPrice != null && (
+                    <div className="flex justify-between text-xs text-gray-500">
+                      <span>Harga Satuan Vendor</span>
+                      <span className="font-medium text-blue-700">{idr(item.vendorUnitPrice)}</span>
+                    </div>
+                  )}
+                  {item.vendorSubtotal != null && (
+                    <div className="flex justify-between text-xs text-gray-500">
+                      <span>Subtotal ({item.qty} × {idr(item.vendorUnitPrice)})</span>
+                      <span className="font-medium text-gray-700">{idr(item.vendorSubtotal)}</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              {/* Summary: PPN + Grand Total */}
+              {hasVendorPricing && (
+                <div className="mt-2 pt-3 border-t border-gray-100 space-y-1.5">
+                  <div className="flex justify-between text-sm text-gray-500">
+                    <span>Subtotal Vendor</span>
+                    <span>{idr(totalVendorSubtotal)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm text-gray-500">
+                    <span>PPN 11%</span>
+                    <span>{idr(totalPpn)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm font-bold text-blue-700 pt-1 border-t border-blue-100">
+                    <span>Grand Total Vendor</span>
+                    <span>{idr(totalVendorGrandTotal)}</span>
+                  </div>
+                  <p className="text-xs text-blue-500">* Harga referensi dari etalase vendor. Belum termasuk margin & markup.</p>
+                </div>
+              )}
+
+              {/* Harga Dasar label (untuk non-catalog order) */}
+              {!hasVendorPricing && data.basicPrice && (
+                <div className="flex flex-col gap-1 pt-3 border-t border-gray-100">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-500 font-medium">
+                      HARGA DASAR <span className="text-xs text-gray-400">(belum PPN)</span>
+                    </span>
+                    <span className="font-bold text-blue-600 text-base">{idr(data.basicPrice)}</span>
+                  </div>
+                  <p className="text-xs text-blue-500">* Harga referensi dari etalase vendor. Belum termasuk margin & PPN.</p>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {data.orderType === "product" || data.orderType === "service" ? (
+                <>
+                  {data.orderItems && data.orderItems.length > 0 ? (
+                    <div className="space-y-2">
                       {data.orderItems.map((item, i) => (
-                        <div key={i} className="text-gray-800 font-medium">{item.serviceName || item.category}</div>
+                        <div key={i} className="flex justify-between items-center text-sm bg-gray-50 rounded-lg px-3 py-2">
+                          <span className="text-gray-700 font-medium">{item.serviceName || item.category || "—"}</span>
+                          <span className="text-xs text-gray-400">{item.qty} {item.unit}</span>
+                        </div>
                       ))}
                     </div>
-                  </div>
-                ) : null}
-                {(data.origin || data.destination) && (
-                  <Row label="Rute" value={`${data.origin || "—"} → ${data.destination || "—"}`} />
-                )}
-                {data.commodity && <Row label="Komoditi" value={data.commodity} />}
-                {data.cargoDescription && <Row label="Deskripsi" value={data.cargoDescription} />}
-                {data.grossWeight && <Row label="Berat" value={`${data.grossWeight} kg`} />}
-                {data.volumeCbm && <Row label="Volume" value={`${data.volumeCbm} CBM`} />}
-                {data.requiredDate && <Row label="Tgl Butuh" value={data.requiredDate} />}
-                {data.orderItems && data.orderItems.length > 0 && !data.serviceType && (
-                  <div className="pt-2 border-t border-gray-100 space-y-1.5">
-                    {data.orderItems.map((item, i) => (
-                      <div key={i} className="flex justify-between items-center text-sm">
-                        <span className="text-gray-500">{item.category}</span>
-                        <span className="text-gray-800 font-medium text-right max-w-[55%]">{item.serviceName}</span>
+                  ) : data.serviceType ? (
+                    <Row label={data.orderType === "product" ? "Produk" : "Layanan"} value={data.serviceType} />
+                  ) : null}
+                  {data.requiredDate && <Row label="Tgl Dibutuhkan" value={data.requiredDate} />}
+                  {data.commodity && <Row label="Keterangan" value={data.commodity} />}
+                </>
+              ) : (
+                <>
+                  {data.serviceType && <Row label="Layanan" value={data.serviceType} />}
+                  {(data.origin || data.destination) && (
+                    <Row label="Rute" value={`${data.origin || "—"} → ${data.destination || "—"}`} />
+                  )}
+                  {data.commodity && <Row label="Komoditi" value={data.commodity} />}
+                  {data.cargoDescription && <Row label="Deskripsi" value={data.cargoDescription} />}
+                  {data.grossWeight && <Row label="Berat" value={`${data.grossWeight} kg`} />}
+                  {data.volumeCbm && <Row label="Volume" value={`${data.volumeCbm} CBM`} />}
+                  {data.requiredDate && <Row label="Tgl Butuh" value={data.requiredDate} />}
+                  {data.basicPrice && (
+                    <div className="flex flex-col gap-1 pt-3 border-t border-gray-100">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-gray-500 font-medium">
+                          HARGA DASAR <span className="text-xs text-gray-400">(belum PPN)</span>
+                        </span>
+                        <span className="font-bold text-blue-600 text-base">{idr(data.basicPrice)}</span>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
-
-            {data.basicPrice && (
-              <div className="flex flex-col gap-1 pt-3 border-t border-gray-100">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-500 font-medium">HARGA DASAR <span className="text-xs text-gray-400">(belum PPN)</span></span>
-                  <span className="font-bold text-blue-600 text-base">{idr(data.basicPrice)}</span>
-                </div>
-                <p className="text-xs text-blue-500">* Harga referensi dari etalase vendor. Belum termasuk margin & PPN.</p>
-              </div>
-            )}
-          </div>
+                      <p className="text-xs text-blue-500">* Harga referensi dari etalase vendor. Belum termasuk margin & PPN.</p>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Expired notice */}
@@ -376,7 +443,13 @@ export default function VendorFormPage() {
               <ActionButton
                 icon="✅"
                 label="Terima Harga Dasar"
-                desc={data.basicPrice ? `Setuju dengan harga ${idr(data.basicPrice)}` : "Saya setuju dengan harga yang tertera"}
+                desc={
+                  hasVendorPricing && totalVendorGrandTotal > 0
+                    ? `Setuju dengan total ${idr(totalVendorGrandTotal)} (termasuk PPN)`
+                    : data.basicPrice
+                    ? `Setuju dengan harga ${idr(data.basicPrice)}`
+                    : "Saya setuju dengan harga yang tertera"
+                }
                 color="green"
                 onClick={() => setMode("accept")}
               />
@@ -405,12 +478,43 @@ export default function VendorFormPage() {
               <button onClick={() => setMode("select")} className="text-gray-400 hover:text-gray-600 text-sm">← Kembali</button>
             </div>
             <h3 className="font-semibold text-gray-800 mb-4">✅ Terima Harga Dasar</h3>
-            {data.basicPrice && (
+
+            {/* Breakdown for product orders */}
+            {isProductOrder && hasVendorPricing && productItems.length > 0 ? (
+              <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-4 space-y-2">
+                {productItems.map((item, i) => (
+                  <div key={i} className="space-y-1">
+                    <p className="text-sm font-semibold text-green-800">{item.serviceName || item.category}</p>
+                    <div className="flex justify-between text-xs text-green-700">
+                      <span>Qty</span><span>{item.qty} {item.unit}</span>
+                    </div>
+                    <div className="flex justify-between text-xs text-green-700">
+                      <span>Harga Satuan</span><span>{idr(item.vendorUnitPrice)}</span>
+                    </div>
+                    <div className="flex justify-between text-xs text-green-700">
+                      <span>Subtotal</span><span>{idr(item.vendorSubtotal)}</span>
+                    </div>
+                  </div>
+                ))}
+                <div className="pt-2 border-t border-green-200 space-y-1">
+                  <div className="flex justify-between text-xs text-green-700">
+                    <span>Subtotal</span><span>{idr(totalVendorSubtotal)}</span>
+                  </div>
+                  <div className="flex justify-between text-xs text-green-700">
+                    <span>PPN 11%</span><span>{idr(totalPpn)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm font-bold text-green-800">
+                    <span>Grand Total</span><span>{idr(totalVendorGrandTotal)}</span>
+                  </div>
+                </div>
+              </div>
+            ) : data.basicPrice ? (
               <div className="bg-green-50 border border-green-200 rounded-xl p-3 mb-4 text-center">
                 <p className="text-sm text-green-700">Anda menyetujui harga</p>
                 <p className="text-2xl font-bold text-green-700">{idr(data.basicPrice)}</p>
               </div>
-            )}
+            ) : null}
+
             <FormField label="Estimasi Waktu (opsional)" placeholder="Contoh: 2-3 hari" value={eta} onChange={setEta} />
             <FormField label="Catatan (opsional)" placeholder="Catatan tambahan..." value={notes} onChange={setNotes} textarea />
             {error && <p className="text-red-500 text-sm mt-2">{error}</p>}
@@ -425,13 +529,44 @@ export default function VendorFormPage() {
               <button onClick={() => setMode("select")} className="text-gray-400 hover:text-gray-600 text-sm">← Kembali</button>
             </div>
             <h3 className="font-semibold text-gray-800 mb-4">💬 Ajukan Harga Baru</h3>
-            <FormField
-              label="Harga Penawaran (IDR) *"
-              placeholder="Contoh: 5000000"
-              type="number"
-              value={offeredPrice}
-              onChange={setOfferedPrice}
-            />
+
+            {isProductOrder ? (
+              <>
+                <FormField
+                  label={`Harga Satuan Baru per Unit (IDR) *`}
+                  placeholder="Contoh: 4800000"
+                  type="number"
+                  value={unitPrice}
+                  onChange={setUnitPrice}
+                />
+                {unitPriceNum > 0 && totalQty > 0 && (
+                  <div className="mb-4 bg-blue-50 border border-blue-200 rounded-xl p-3 text-sm space-y-1">
+                    <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-2">Kalkulasi Penawaran</p>
+                    <div className="flex justify-between text-blue-700">
+                      <span>{totalQty} Unit × {idr(unitPriceNum)}</span>
+                      <span>{idr(previewSubtotal)}</span>
+                    </div>
+                    <div className="flex justify-between text-blue-600 text-xs">
+                      <span>PPN 11%</span>
+                      <span>{idr(previewPpn)}</span>
+                    </div>
+                    <div className="flex justify-between font-bold text-blue-800 pt-1 border-t border-blue-200">
+                      <span>Grand Total Penawaran</span>
+                      <span>{idr(previewGrandTotal)}</span>
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <FormField
+                label="Harga Penawaran (IDR) *"
+                placeholder="Contoh: 5000000"
+                type="number"
+                value={unitPrice}
+                onChange={setUnitPrice}
+              />
+            )}
+
             <FormField
               label="Estimasi Waktu / ETA *"
               placeholder="Contoh: 3-5 hari"
