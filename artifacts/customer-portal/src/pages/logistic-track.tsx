@@ -69,7 +69,20 @@ const ORDER_STEPS = [
 ];
 
 const ORDER_STATUS_RANK: Record<string, number> = {
-  "New Order": 0, "Processing": 1, "In Progress": 2, "Completed": 3,
+  // Step 0 — Order masuk
+  "New Order": 0,
+  // Step 1 — Sedang diproses (semua status review/vendor/quotation)
+  "Under Review": 1,
+  "Vendor Confirmed": 1,
+  "Vendor Rejected": 1,
+  "Quotation Sent": 1,
+  "Customer Approved": 1,
+  "Processing": 1,
+  // Step 2 — Dalam pengerjaan
+  "In Progress": 2,
+  // Step 3 — Selesai
+  "Completed": 3,
+  "Done": 3,
 };
 
 const DRIVER_STEPS: { key: DriverJobStatus; label: string }[] = [
@@ -89,23 +102,35 @@ const DRIVER_STATUS_RANK: Record<string, number> = Object.fromEntries(
 );
 
 const STATUS_COLORS: Record<string, string> = {
-  "New Order":   "bg-yellow-100 text-yellow-800 border-yellow-200",
-  "Processing":  "bg-blue-100 text-blue-800 border-blue-200",
-  "In Progress": "bg-indigo-100 text-indigo-800 border-indigo-200",
-  "Completed":   "bg-green-100 text-green-800 border-green-200",
-  "Cancelled":   "bg-red-100 text-red-800 border-red-200",
+  "New Order":          "bg-yellow-100 text-yellow-800 border-yellow-200",
+  "Under Review":       "bg-blue-100 text-blue-800 border-blue-200",
+  "Vendor Confirmed":   "bg-indigo-100 text-indigo-800 border-indigo-200",
+  "Vendor Rejected":    "bg-red-100 text-red-800 border-red-200",
+  "Quotation Sent":     "bg-purple-100 text-purple-800 border-purple-200",
+  "Customer Approved":  "bg-emerald-100 text-emerald-800 border-emerald-200",
+  "Processing":         "bg-blue-100 text-blue-800 border-blue-200",
+  "In Progress":        "bg-indigo-100 text-indigo-800 border-indigo-200",
+  "Completed":          "bg-green-100 text-green-800 border-green-200",
+  "Done":               "bg-green-100 text-green-800 border-green-200",
+  "Cancelled":          "bg-red-100 text-red-800 border-red-200",
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  "New Order":   "Order Masuk",
-  "Processing":  "Sedang Diproses",
-  "In Progress": "Dalam Pengerjaan",
-  "Completed":   "Selesai",
-  "Cancelled":   "Dibatalkan",
+  "New Order":          "Order Masuk",
+  "Under Review":       "Sedang Ditinjau",
+  "Vendor Confirmed":   "Vendor Dikonfirmasi",
+  "Vendor Rejected":    "Vendor Menolak",
+  "Quotation Sent":     "Penawaran Dikirim",
+  "Customer Approved":  "Customer Menyetujui",
+  "Processing":         "Sedang Diproses",
+  "In Progress":        "Dalam Pengerjaan",
+  "Completed":          "Selesai",
+  "Done":               "Selesai",
+  "Cancelled":          "Dibatalkan",
 };
 
 function isTerminalStatus(status: string) {
-  return status === "Completed" || status === "Cancelled";
+  return status === "Completed" || status === "Done" || status === "Cancelled";
 }
 
 function formatDateTime(iso: string) {
