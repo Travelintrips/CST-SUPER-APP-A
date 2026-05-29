@@ -994,6 +994,110 @@ logisticRfqV2Router.post("/rfq/:rfqId/blast", async (req: Request, res: Response
   return res.json({ ok: true, rfqNumber: rfq.rfqNumber, sentCount, results, comparisonUrl: getComparisonUrl(rfqId) });
 });
 
+// ─── ADMIN: GET /rfq/:rfqId/detail ───────────────────────────────────────────
+// Mengembalikan detail RFQ + order items + vendors dengan catalog items yang cocok
+logisticRfqV2Router.get("/rfq/:rfqId/detail", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const rfqId = parseInt(req.params.rfqId as string, 10);
+  if (isNaN(rfqId)) return res.status(400).json({ message: "rfqId tidak valid" });
+
+  const [rfq] = await db.select().from(logisticOrderRfqsTable).where(eq(logisticOrderRfqsTable.id, rfqId));
+  if (!rfq) return res.status(404).json({ message: "RFQ tidak ditemukan" });
+
+  const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, rfq.orderId));
+  if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+  const [orderItems, allVendors, allCatalogItems, vendorLinks] = await Promise.all([
+    db.select().from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, order.id)),
+    db.select({
+      id: suppliersTable.id,
+      name: suppliersTable.name,
+      phone: suppliersTable.phone,
+      serviceType: suppliersTable.serviceType,
+      isActive: suppliersTable.isActive,
+    }).from(suppliersTable).where(eq(suppliersTable.isActive, true)),
+    db.select({
+      id: vendorCatalogItemsTable.id,
+      vendorId: vendorCatalogItemsTable.vendorId,
+      type: vendorCatalogItemsTable.type,
+      name: vendorCatalogItemsTable.name,
+      unit: vendorCatalogItemsTable.unit,
+      priceBase: vendorCatalogItemsTable.priceBase,
+      isCommodityTag: vendorCatalogItemsTable.isCommodityTag,
+      isActive: vendorCatalogItemsTable.isActive,
+    }).from(vendorCatalogItemsTable).where(eq(vendorCatalogItemsTable.isActive, true)),
+    db.select({ vendorId: rfqVendorLinksTable.vendorId, status: rfqVendorLinksTable.status })
+      .from(rfqVendorLinksTable).where(eq(rfqVendorLinksTable.rfqId, rfqId)),
+  ]);
+
+  // Kumpulkan nama produk dari order items untuk filter catalog
+  const productNames = orderItems.map((i) => i.serviceName.toLowerCase());
+
+  // Kelompokkan catalog items per vendor + cek kecocokan nama produk
+  const catalogByVendor = new Map<number, typeof allCatalogItems>();
+  for (const c of allCatalogItems) {
+    if (!catalogByVendor.has(c.vendorId)) catalogByVendor.set(c.vendorId, []);
+    catalogByVendor.get(c.vendorId)!.push(c);
+  }
+
+  const alreadyBlastedIds = new Set(vendorLinks.map((l) => l.vendorId));
+
+  const vendors = allVendors.map((v) => {
+    const catalog = catalogByVendor.get(v.id) ?? [];
+    // Cari catalog item yang namanya cocok dengan salah satu produk dalam order
+    const matchedItems = catalog.filter((c) =>
+      productNames.some((pn) => c.name.toLowerCase().includes(pn) || pn.includes(c.name.toLowerCase()))
+    );
+    return {
+      id: v.id,
+      name: v.name,
+      phone: v.phone,
+      serviceType: v.serviceType,
+      hasMatchingCatalog: matchedItems.length > 0,
+      matchedCatalogItems: matchedItems.map((c) => ({
+        id: c.id,
+        type: c.type,
+        name: c.name,
+        unit: c.unit,
+        priceBase: c.priceBase ? parseFloat(c.priceBase) : 0,
+        isCommodityTag: c.isCommodityTag,
+      })),
+      alreadyBlasted: alreadyBlastedIds.has(v.id),
+    };
+  });
+
+  return res.json({
+    rfqId: rfq.id,
+    rfqNumber: rfq.rfqNumber,
+    rfqStatus: rfq.status,
+    responseDeadline: rfq.responseDeadline?.toISOString() ?? null,
+    order: {
+      id: order.id,
+      orderNumber: order.orderNumber,
+      customerName: order.customerName,
+      status: order.status,
+      orderType: (order as any).orderType ?? "shipment",
+      subtotal: parseFloat(order.subtotal),
+      tax: parseFloat(order.tax),
+      grandTotal: parseFloat(order.grandTotal),
+    },
+    orderItems: orderItems.map((i) => ({
+      id: i.id,
+      serviceName: i.serviceName,
+      subtotal: parseFloat(i.subtotal),
+      inputData: i.inputData as Record<string, unknown>,
+      calculatorType: i.calculatorType,
+    })),
+    vendors,
+    vendorStats: {
+      total: vendorLinks.length,
+      waiting: vendorLinks.filter((l) => l.status === "waiting_response").length,
+      answered: vendorLinks.filter((l) => ["accepted_basic_price", "counter_offer", "selected", "not_selected", "late_response"].includes(l.status)).length,
+      rejected: vendorLinks.filter((l) => l.status === "rejected").length,
+    },
+  });
+});
+
 // ─── ADMIN: GET /rfq/:rfqId/comparison ───────────────────────────────────────
 logisticRfqV2Router.get("/rfq/:rfqId/comparison", async (req: Request, res: Response) => {
   if (!(await requireClerkUser(req, res))) return;
