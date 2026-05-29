@@ -310,8 +310,8 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
       const shipType = (order.shipmentType ?? "").toLowerCase().trim();
       const shipKeywords = shipType.split(/[\s,]+/).filter((k) => k.length > 1);
 
-      // Vendor harus punya phone.
-      const allWithPhone = allVendors.filter((v) => !!v.phone);
+      // Semua vendor aktif (dengan/tanpa phone); marking hasPhone untuk blast WA
+      const allWithPhone = allVendors;
 
       // Fetch catalog items for all vendors in one query to check commodity match
       const vendorIdList = allWithPhone.map((v) => v.id);
@@ -395,6 +395,7 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
         }
         return {
           ...v,
+          hasPhone: !!v.phone,
           isMatching: isServiceMatch(v.serviceType),
           hasCommodityMatch: vendorIdsWithCommodity.has(v.id),
           hasProductItem: vendorIdsWithProductItem.has(v.id),

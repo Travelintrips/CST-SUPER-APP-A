@@ -35,6 +35,7 @@ type Vendor = {
   id: number;
   name: string;
   phone: string | null;
+  hasPhone?: boolean;
   serviceType?: string | null;
   isMatching?: boolean;
   hasCommodityMatch?: boolean;
@@ -280,6 +281,13 @@ function ReviewOrderView({ token, data }: { token: string; data: ReviewData }) {
   const hasCommodity   = !!(data.commodity && data.commodity.trim());
   const filterMode     = data.filterMode ?? "none";
 
+  const VENDOR_CONFIRMED_STATUSES = ["Vendor Confirmed", "In Progress", "Completed", "Cancelled"];
+  const isVendorConfirmed = VENDOR_CONFIRMED_STATUSES.includes(data.order.status ?? "");
+
+  const vendorsWithPhone    = data.vendors.filter((v) => v.hasPhone !== false && !!v.phone);
+  const vendorsWithoutPhone = data.vendors.filter((v) => v.hasPhone === false || !v.phone);
+  const selectedCount = selectedIds.filter((id) => vendorsWithPhone.some((v) => v.id === id)).length;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 py-8 px-4">
       <div className="max-w-lg mx-auto space-y-4">
@@ -293,7 +301,18 @@ function ReviewOrderView({ token, data }: { token: string; data: ReviewData }) {
 
         <OrderCard order={data.order} />
 
-        {data.isUsed && (
+        {isVendorConfirmed && (
+          <div className="bg-emerald-50 border border-emerald-300 rounded-xl px-4 py-3 text-sm text-emerald-800">
+            <p className="font-semibold mb-1">✅ Vendor sudah submit fulfillment (status: {data.order.status})</p>
+            <p className="text-xs text-emerald-700">
+              Langkah selanjutnya: buka link <strong>Konfirmasi Fulfillment</strong> yang dikirim via WhatsApp ke admin,
+              lalu klik "Konfirmasi & Mulai Pengiriman" di halaman tersebut.
+              Jika tidak menerima WA, hubungi tim teknis.
+            </p>
+          </div>
+        )}
+
+        {data.isUsed && !isVendorConfirmed && (
           <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-700">
             ⚠️ Link ini sudah pernah digunakan. Anda masih bisa blast ulang ke vendor lain.
           </div>
@@ -351,10 +370,11 @@ function ReviewOrderView({ token, data }: { token: string; data: ReviewData }) {
           )}
 
           {data.vendors.length === 0 ? (
-            <p className="text-sm text-slate-500">Tidak ada vendor aktif yang bisa dihubungi.</p>
+            <p className="text-sm text-slate-500 mt-2">Tidak ada vendor aktif yang terdaftar di sistem.</p>
           ) : (
             <div className="space-y-2 mt-3">
-              {data.vendors.map((v) => (
+              {/* Vendor dengan WA/phone — bisa diblast */}
+              {vendorsWithPhone.map((v) => (
                 <label key={v.id} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${selectedIds.includes(v.id) ? "border-blue-400 bg-blue-50" : "border-slate-200 hover:bg-slate-50"}`}>
                   <input
                     type="checkbox"
@@ -404,6 +424,35 @@ function ReviewOrderView({ token, data }: { token: string; data: ReviewData }) {
                   {v.phone && <span className="text-xs text-slate-400 shrink-0">{v.phone}</span>}
                 </label>
               ))}
+
+              {/* Vendor tanpa WA — tidak bisa diblast, tampil greyed out */}
+              {vendorsWithoutPhone.length > 0 && (
+                <>
+                  {vendorsWithPhone.length > 0 && (
+                    <p className="text-[11px] text-slate-400 pt-1 pb-0.5">Vendor berikut tidak memiliki nomor WA — tidak bisa di-blast:</p>
+                  )}
+                  {vendorsWithPhone.length === 0 && (
+                    <div className="mb-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-700">
+                      ⚠️ Semua vendor aktif belum memiliki nomor WhatsApp. Tambahkan nomor WA vendor di menu Pembelian → Vendor agar bisa di-blast.
+                    </div>
+                  )}
+                  {vendorsWithoutPhone.map((v) => (
+                    <div key={v.id} className="flex items-center gap-3 p-3 rounded-xl border border-slate-100 bg-slate-50 opacity-60">
+                      <div className="w-4 h-4 rounded border border-slate-300 bg-slate-200 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className="font-medium text-slate-500 text-sm">{v.name}</p>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-200 text-slate-500">Tanpa WA</span>
+                          {v.hasCommodityMatch && (
+                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-green-100 text-green-600 border border-green-200">✓ Komoditi</span>
+                          )}
+                        </div>
+                        {v.serviceType && <p className="text-xs text-slate-400 mt-0.5">{v.serviceType}</p>}
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
             </div>
           )}
         </div>
@@ -431,10 +480,10 @@ function ReviewOrderView({ token, data }: { token: string; data: ReviewData }) {
 
         <button
           onClick={handleBlast}
-          disabled={submitting || selectedIds.length === 0}
+          disabled={submitting || selectedCount === 0}
           className="w-full py-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-semibold text-sm transition-colors"
         >
-          {submitting ? "Mengirim..." : `🚀 Blast RFQ ke ${selectedIds.length} Vendor`}
+          {submitting ? "Mengirim..." : `🚀 Blast RFQ ke ${selectedCount} Vendor`}
         </button>
 
       </div>
