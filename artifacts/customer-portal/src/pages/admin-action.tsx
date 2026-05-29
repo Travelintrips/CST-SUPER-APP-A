@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams } from "wouter";
+import { PriceBreakdown } from "@/components/PriceBreakdown";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -23,7 +24,11 @@ type OrderInfo = {
   notes: string | null;
   paymentType: string | null;
   grandTotal: string | null;
+  subtotalBeforeTax?: string | null;
+  taxRate?: number | null;
+  taxAmount?: string | null;
   status: string;
+  items?: Array<{ serviceName: string; category: string; subtotal: string | null; quantity?: string | null; unit?: string | null }>;
 };
 
 type Vendor = {
@@ -33,6 +38,13 @@ type Vendor = {
   serviceType?: string | null;
   isMatching?: boolean;
   hasCommodityMatch?: boolean;
+  priceBase?: number | null;
+  orderQty?: number | null;
+  orderUnit?: string | null;
+  vendorEstSubtotal?: number | null;
+  vendorEstTax?: number | null;
+  vendorEstTotal?: number | null;
+  taxRate?: number | null;
 };
 
 type VendorRow = {
@@ -133,7 +145,6 @@ function OrderCard({ order }: { order: OrderInfo }) {
       </div>
 
       <div className="space-y-0.5">
-        <DetailRow label="Tipe Layanan" value={isProduct ? "Produk" : (order.serviceType || null)} />
         {hasRoute && (
           <div className="flex justify-between gap-2 py-1 border-b border-slate-50">
             <span className="text-xs text-slate-400 shrink-0">Rute</span>
@@ -156,9 +167,40 @@ function OrderCard({ order }: { order: OrderInfo }) {
             </span>
           </div>
         )}
+        {order.items && order.items.length > 0 && (
+          <div className="py-2 border-b border-slate-50">
+            <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide mb-1">{isProduct ? "Produk Dipesan" : "Layanan / Item"}</p>
+            <ul className="space-y-2">
+              {order.items.map((it, i) => (
+                <li key={i} className="text-xs">
+                  <div className="flex justify-between gap-2">
+                    <span className="text-slate-700">• {it.serviceName}</span>
+                    <span className="text-slate-500 shrink-0">{idr(it.subtotal) ?? ""}</span>
+                  </div>
+                  {it.quantity && (
+                    <div className="flex justify-between gap-2 ml-3 mt-0.5">
+                      <span className="text-slate-400">Quantity</span>
+                      <span className="text-slate-500 shrink-0">{it.quantity}{it.unit ? ` ${it.unit}` : ""}</span>
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         <DetailRow label="Tanggal Diperlukan" value={order.requiredDate} />
         <DetailRow label="Pembayaran" value={order.paymentType} />
-        <DetailRow label="Total" value={idr(order.grandTotal)} />
+        {order.grandTotal && Number(order.grandTotal) > 0 && (
+          <PriceBreakdown
+            subtotal={order.subtotalBeforeTax ? Number(order.subtotalBeforeTax) : null}
+            taxRate={order.taxRate ?? 11}
+            taxAmount={order.taxAmount ? Number(order.taxAmount) : null}
+            grandTotal={Number(order.grandTotal)}
+            subtotalLabel={order.orderType === "product" ? "Subtotal Produk" : "Subtotal"}
+            grandTotalLabel="Grand Total"
+            className="mt-1"
+          />
+        )}
         {order.notes && (
           <div className="pt-2 mt-1">
             <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide mb-1">Catatan Customer</p>
@@ -269,12 +311,21 @@ function ReviewOrderView({ token, data }: { token: string; data: ReviewData }) {
               ℹ️ Tidak ada vendor yang cocok dengan "<strong>{data.shipmentType}</strong>" — menampilkan semua vendor aktif.
             </div>
           )}
-          {/* Kasus: shipmentType kosong, ada commodity, ada vendor etalase match */}
-          {filterMode === "commodity" && (
-            <div className="mb-3 px-3 py-2 rounded-lg bg-green-50 border border-green-200 text-xs text-green-700">
-              ✅ Menampilkan vendor yang menjual "<strong>{data.commodity}</strong>" di etalase.
-            </div>
-          )}
+          {/* Kasus: shipmentType kosong, ada commodity / item produk */}
+          {filterMode === "commodity" && (() => {
+            const label = (data.commodity && data.commodity.trim())
+              || (data.order.items && data.order.items[0]?.serviceName)
+              || "";
+            return data.vendors.length > 0 ? (
+              <div className="mb-3 px-3 py-2 rounded-lg bg-green-50 border border-green-200 text-xs text-green-700">
+                ✅ Menampilkan vendor yang menjual "<strong>{label}</strong>" di etalase.
+              </div>
+            ) : (
+              <div className="mb-3 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-700">
+                ⚠️ Belum ada vendor yang punya "<strong>{label}</strong>" di etalase. Tambahkan item ke katalog vendor terlebih dahulu.
+              </div>
+            );
+          })()}
           {/* Kasus: shipmentType kosong, menampilkan hanya vendor yg punya etalase */}
           {filterMode === "etalase" && (
             <div className="mb-3 px-3 py-2 rounded-lg bg-blue-50 border border-blue-200 text-xs text-blue-700">
@@ -310,7 +361,34 @@ function ReviewOrderView({ token, data }: { token: string; data: ReviewData }) {
                         <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 border border-blue-200">✓ Layanan</span>
                       )}
                     </div>
-                    {v.serviceType && <p className="text-xs text-slate-400 truncate">{v.serviceType}</p>}
+                    {v.priceBase != null && (
+                      <div className="text-xs text-slate-500 mt-1 space-y-0.5">
+                        <div className="flex justify-between gap-2">
+                          <span>Harga Dasar{v.orderUnit ? ` / ${v.orderUnit}` : ""}</span>
+                          <span className="font-semibold text-slate-700">Rp {Math.round(v.priceBase).toLocaleString("id-ID")}{v.orderUnit ? `/${v.orderUnit}` : ""}</span>
+                        </div>
+                        {v.vendorEstSubtotal != null && v.orderQty != null && (
+                          <>
+                            <div className="flex justify-between gap-2">
+                              <span className="text-slate-400">Subtotal <span className="text-slate-300">({Math.round(v.priceBase).toLocaleString("id-ID")} × {v.orderQty}{v.orderUnit ? ` ${v.orderUnit}` : ""})</span></span>
+                              <span className="font-semibold text-slate-700">Rp {v.vendorEstSubtotal.toLocaleString("id-ID")}</span>
+                            </div>
+                            {v.vendorEstTax != null && (
+                              <div className="flex justify-between gap-2">
+                                <span className="text-slate-400">PPN {v.taxRate ?? 11}% <span className="text-slate-300">({v.vendorEstSubtotal.toLocaleString("id-ID")} × {v.taxRate ?? 11}%)</span></span>
+                                <span className="text-slate-600">Rp {v.vendorEstTax.toLocaleString("id-ID")}</span>
+                              </div>
+                            )}
+                            {v.vendorEstTotal != null && (
+                              <div className="flex justify-between gap-2 font-semibold border-t border-slate-100 pt-1 mt-0.5">
+                                <span className="text-slate-700">Est. Grand Total</span>
+                                <span className="text-slate-800">IDR {v.vendorEstTotal.toLocaleString("id-ID")}</span>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
                   {v.phone && <span className="text-xs text-slate-400 shrink-0">{v.phone}</span>}
                 </label>
@@ -348,7 +426,6 @@ function ReviewOrderView({ token, data }: { token: string; data: ReviewData }) {
           {submitting ? "Mengirim..." : `🚀 Blast RFQ ke ${selectedIds.length} Vendor`}
         </button>
 
-        <p className="text-center text-xs text-slate-400 pb-4">CST Logistics · Admin Action</p>
       </div>
     </div>
   );
@@ -501,7 +578,6 @@ function CompareVendorsView({ token, data }: { token: string; data: CompareData 
           {submitting ? "Memproses..." : "✅ Konfirmasi Pilihan Vendor"}
         </button>
 
-        <p className="text-center text-xs text-slate-400 pb-4">CST Logistics · Admin Action</p>
       </div>
     </div>
   );
@@ -613,7 +689,6 @@ function ForwardVendorView({ token, data }: { token: string; data: ForwardData }
           {submitting ? "Mengirim..." : "📨 Kirim Link Fulfillment ke Vendor"}
         </button>
 
-        <p className="text-center text-xs text-slate-400 pb-4">CST Logistics · Admin Action</p>
       </div>
     </div>
   );

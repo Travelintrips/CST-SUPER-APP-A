@@ -9,7 +9,7 @@ const FONNTE_URL = "https://api.fonnte.com/send";
  * WA with same context+refId sent within this window will be skipped.
  * Override via WA_DEDUP_WINDOW_MS env var (e.g. "300000" for 5 min).
  */
-const DEDUP_WINDOW_MS = parseInt(process.env.WA_DEDUP_WINDOW_MS ?? "300000", 10);
+const DEDUP_WINDOW_MS = parseInt(process.env.WA_DEDUP_WINDOW_MS ?? "1800000", 10);
 
 /**
  * Normalizes an Indonesian phone number to the international format (628...).

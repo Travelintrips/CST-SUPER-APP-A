@@ -3,6 +3,14 @@ import { useParams } from "wouter";
 
 // ── Shared types ──────────────────────────────────────────────────────────────
 
+type OrderItemInfo = {
+  serviceName: string;
+  category: string;
+  subtotal: string | null;
+  quantity: string | null;
+  unit: string | null;
+};
+
 type OrderInfo = {
   id: number;
   orderNumber: string;
@@ -13,6 +21,11 @@ type OrderInfo = {
   destination: string;
   commodity: string | null;
   status: string;
+  items?: OrderItemInfo[];
+  grandTotal?: string | null;
+  subtotalBeforeTax?: string | null;
+  taxAmount?: string | null;
+  taxRate?: number | null;
 };
 
 type ReviewVendor = {
@@ -141,7 +154,7 @@ interface PageContent {
 const DEFAULT_PAGE_CONTENT: PageContent = {
   admin_review: {
     pageTitle: "Review & Blast Vendor",
-    pageSubtitle: "CST Logistics — Admin Panel",
+    pageSubtitle: "Admin Panel",
     deadlineLabel: "Batas Waktu Respon Vendor",
     vendorSectionTitle: "Pilih Vendor",
     blastHint: "Vendor akan menerima WA dengan link form penawaran",
@@ -435,7 +448,7 @@ function CompareVendorsView({ data, token }: { data: CompareData; token: string 
             <span className="text-2xl">🔍</span>
             <div>
               <h1 className="text-base font-bold text-slate-800 leading-tight">Bandingkan Penawaran</h1>
-              <p className="text-xs text-slate-400">CST Logistics — Admin Panel</p>
+              <p className="text-xs text-slate-400">Admin Panel</p>
             </div>
           </div>
         </div>
@@ -465,7 +478,7 @@ function CompareVendorsView({ data, token }: { data: CompareData; token: string 
           <span className="text-2xl">🔍</span>
           <div>
             <h1 className="text-base font-bold text-slate-800 leading-tight">Bandingkan Penawaran Vendor</h1>
-            <p className="text-xs text-slate-400">CST Logistics — Admin Panel</p>
+            <p className="text-xs text-slate-400">Admin Panel</p>
           </div>
         </div>
       </div>
@@ -1035,9 +1048,6 @@ function deriveServiceType(serviceType: string | null, orderType: string | null)
   const val = (serviceType ?? "").trim();
 
   if (!val) {
-    if ((orderType ?? "").toLowerCase() === "product") {
-      return { serviceType: "Warehousing", customService: "" };
-    }
     return { serviceType: "", customService: "" };
   }
 
@@ -1069,10 +1079,11 @@ function deriveServiceType(serviceType: string | null, orderType: string | null)
 
 function ForwardVendorView({ data, token }: { data: ForwardVendorData; token: string }) {
   const { order, rfq, selectedVendor, selectedVendorLink } = data;
+  const isProduct = (order.orderType ?? "").toLowerCase() === "product";
 
-  const price = selectedVendorLink?.offeredPrice ?? selectedVendorLink?.basicPrice;
-
-  const derived = deriveServiceType(order.serviceType, order.orderType);
+  const derived = isProduct
+    ? { serviceType: "product_fulfillment", customService: "" }
+    : deriveServiceType(order.serviceType, order.orderType);
   const [serviceType, setServiceType] = useState(derived.serviceType);
   const [customService, setCustomService] = useState(derived.customService);
   const [expiresInHours, setExpiresInHours] = useState(72);
@@ -1080,10 +1091,14 @@ function ForwardVendorView({ data, token }: { data: ForwardVendorData; token: st
   const [result, setResult] = useState<ForwardResult | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
-  const effectiveService = serviceType === "__custom__" ? customService : serviceType;
+  const effectiveService = isProduct
+    ? "product_fulfillment"
+    : serviceType === "__custom__" ? customService : serviceType;
+
+  const canSubmit = !!selectedVendor && (isProduct || effectiveService.trim().length > 0);
 
   const handleSubmit = async () => {
-    if (!selectedVendor || !effectiveService.trim()) return;
+    if (!canSubmit) return;
     setSubmitting(true);
     setErr(null);
     try {
@@ -1091,8 +1106,8 @@ function ForwardVendorView({ data, token }: { data: ForwardVendorData; token: st
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          vendorId: selectedVendor.id,
-          serviceType: effectiveService.trim(),
+          vendorId: selectedVendor!.id,
+          serviceType: effectiveService,
           expiresInHours,
         }),
       });
@@ -1200,7 +1215,7 @@ function ForwardVendorView({ data, token }: { data: ForwardVendorData; token: st
   // ── Main forward screen ─────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-slate-50">
-      <PageHeader icon="📦" title="Forward Tugas ke Vendor" />
+      <PageHeader icon="📦" title={isProduct ? "Kirim Tugas Produk ke Vendor" : "Forward Tugas ke Vendor"} />
 
       <div className="max-w-2xl mx-auto px-4 py-5 space-y-5">
         <OrderCard order={order} label="Order" />
@@ -1221,57 +1236,148 @@ function ForwardVendorView({ data, token }: { data: ForwardVendorData; token: st
         {/* Selected vendor card */}
         <VendorInfoCard vendor={selectedVendor} link={selectedVendorLink} />
 
-        {/* Service type */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 px-5 py-5 space-y-4">
-          <h2 className="text-sm font-bold text-slate-800">🛳 Jenis Layanan</h2>
-          <p className="text-xs text-slate-400 -mt-2">
-            Layanan yang harus dieksekusi vendor untuk order ini
-          </p>
+        {/* ── PRODUCT ORDER: detail produk + instruksi vendor ── */}
+        {isProduct ? (
+          <>
+            {/* Jenis tugas */}
+            <div className="bg-emerald-50 border border-emerald-200 rounded-2xl px-5 py-4 flex items-center gap-3">
+              <span className="text-2xl">🛒</span>
+              <div>
+                <p className="text-xs text-emerald-600 font-semibold uppercase tracking-wide">Jenis Tugas</p>
+                <p className="font-bold text-emerald-800">Pemenuhan Produk / Product Fulfillment</p>
+              </div>
+            </div>
 
-          <div className="grid grid-cols-2 gap-2">
-            {SERVICE_TYPE_OPTIONS.map((opt) => (
+            {/* Detail produk */}
+            {(order.items && order.items.length > 0) ? (
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                <div className="px-5 py-3 bg-slate-50 border-b border-slate-100">
+                  <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Detail Produk</p>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-slate-400 text-xs border-b border-slate-100">
+                        <th className="text-left px-4 py-2 font-medium">Nama Produk</th>
+                        <th className="text-right px-4 py-2 font-medium">Qty</th>
+                        <th className="text-right px-4 py-2 font-medium">Satuan</th>
+                        <th className="text-right px-4 py-2 font-medium">Subtotal</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {order.items.map((item, idx) => (
+                        <tr key={idx}>
+                          <td className="px-4 py-3 text-slate-700 font-medium">{item.serviceName || "—"}</td>
+                          <td className="px-4 py-3 text-right text-slate-600">{item.quantity ?? "—"}</td>
+                          <td className="px-4 py-3 text-right text-slate-500">{item.unit ?? "—"}</td>
+                          <td className="px-4 py-3 text-right font-semibold text-slate-700">{idr(item.subtotal)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {/* Price breakdown */}
+                <div className="px-5 py-4 border-t border-slate-100 space-y-2">
+                  {order.subtotalBeforeTax && Number(order.subtotalBeforeTax) > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-500">DPP (Harga Dasar)</span>
+                      <span className="text-slate-700">{idr(order.subtotalBeforeTax)}</span>
+                    </div>
+                  )}
+                  {order.taxAmount && Number(order.taxAmount) > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-500">PPN {order.taxRate ?? 11}%</span>
+                      <span className="text-slate-700">{idr(order.taxAmount)}</span>
+                    </div>
+                  )}
+                  {order.grandTotal && Number(order.grandTotal) > 0 && (
+                    <div className="flex justify-between font-bold border-t border-slate-200 pt-2">
+                      <span className="text-slate-700">Grand Total</span>
+                      <span className="text-emerald-700 text-lg">{idr(order.grandTotal)}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : order.grandTotal && Number(order.grandTotal) > 0 ? (
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 px-5 py-4 space-y-2">
+                <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">Nilai Order</p>
+                <div className="flex justify-between font-bold">
+                  <span className="text-slate-700">Grand Total</span>
+                  <span className="text-emerald-700 text-lg">{idr(order.grandTotal)}</span>
+                </div>
+              </div>
+            ) : null}
+
+            {/* Instruksi vendor */}
+            <div className="bg-white rounded-2xl shadow-sm border border-amber-100 px-5 py-4 space-y-3">
+              <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Instruksi untuk Vendor</p>
+              <ul className="space-y-2">
+                {[
+                  "✅ Konfirmasi ketersediaan stok",
+                  "💰 Konfirmasi harga penawaran",
+                  "📅 Konfirmasi estimasi waktu siap kirim",
+                  "📎 Upload invoice / dokumen pendukung jika ada",
+                ].map((instr, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm text-slate-700">
+                    <span>{instr}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </>
+        ) : (
+          /* ── LOGISTICS ORDER: pilihan jenis layanan ── */
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 px-5 py-5 space-y-4">
+            <h2 className="text-sm font-bold text-slate-800">🛳 Jenis Layanan</h2>
+            <p className="text-xs text-slate-400 -mt-2">
+              Layanan yang harus dieksekusi vendor untuk order ini
+            </p>
+
+            <div className="grid grid-cols-2 gap-2">
+              {SERVICE_TYPE_OPTIONS.map((opt) => (
+                <button
+                  key={opt}
+                  onClick={() => setServiceType(opt)}
+                  className={`text-left px-3 py-2.5 rounded-xl border text-xs font-medium transition-all ${
+                    serviceType === opt
+                      ? "border-blue-500 bg-blue-50 text-blue-800"
+                      : "border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:bg-slate-50"
+                  }`}
+                >
+                  {opt}
+                </button>
+              ))}
               <button
-                key={opt}
-                onClick={() => setServiceType(opt)}
+                onClick={() => setServiceType("__custom__")}
                 className={`text-left px-3 py-2.5 rounded-xl border text-xs font-medium transition-all ${
-                  serviceType === opt
+                  serviceType === "__custom__"
                     ? "border-blue-500 bg-blue-50 text-blue-800"
                     : "border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:bg-slate-50"
                 }`}
               >
-                {opt}
+                ✏️ Lainnya…
               </button>
-            ))}
-            <button
-              onClick={() => setServiceType("__custom__")}
-              className={`text-left px-3 py-2.5 rounded-xl border text-xs font-medium transition-all ${
-                serviceType === "__custom__"
-                  ? "border-blue-500 bg-blue-50 text-blue-800"
-                  : "border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:bg-slate-50"
-              }`}
-            >
-              ✏️ Lainnya…
-            </button>
-          </div>
-
-          {serviceType === "__custom__" && (
-            <input
-              type="text"
-              placeholder="Ketik jenis layanan…"
-              value={customService}
-              onChange={(e) => setCustomService(e.target.value)}
-              className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-              autoFocus
-            />
-          )}
-
-          {effectiveService && serviceType !== "__custom__" && (
-            <div className="bg-blue-50 rounded-xl px-3 py-2 flex items-center gap-2">
-              <span className="text-blue-600 text-sm">✓</span>
-              <span className="text-sm font-medium text-blue-800">{effectiveService}</span>
             </div>
-          )}
-        </div>
+
+            {serviceType === "__custom__" && (
+              <input
+                type="text"
+                placeholder="Ketik jenis layanan…"
+                value={customService}
+                onChange={(e) => setCustomService(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                autoFocus
+              />
+            )}
+
+            {effectiveService && serviceType !== "__custom__" && (
+              <div className="bg-blue-50 rounded-xl px-3 py-2 flex items-center gap-2">
+                <span className="text-blue-600 text-sm">✓</span>
+                <span className="text-sm font-medium text-blue-800">{effectiveService}</span>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Deadline */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 px-5 py-4">
@@ -1315,9 +1421,9 @@ function ForwardVendorView({ data, token }: { data: ForwardVendorData; token: st
         {/* Submit */}
         <button
           onClick={handleSubmit}
-          disabled={submitting || !effectiveService.trim()}
+          disabled={submitting || !canSubmit}
           className={`w-full py-4 rounded-2xl font-bold text-base flex items-center justify-center gap-3 transition-all ${
-            submitting || !effectiveService.trim()
+            submitting || !canSubmit
               ? "bg-slate-200 text-slate-400 cursor-not-allowed"
               : "bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white shadow-md shadow-emerald-200"
           }`}
@@ -1327,13 +1433,17 @@ function ForwardVendorView({ data, token }: { data: ForwardVendorData; token: st
               <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
               Mengirim…
             </>
+          ) : isProduct ? (
+            <>🛒 Kirim Tugas Produk ke {selectedVendor.name}</>
           ) : (
             <>📤 Kirim Tugas ke {selectedVendor.name}</>
           )}
         </button>
 
         <p className="text-center text-xs text-slate-400 pb-8">
-          Vendor akan menerima WA dengan link form pengisian data fulfillment
+          {isProduct
+            ? "Vendor akan menerima WA dengan link form konfirmasi produk"
+            : "Vendor akan menerima WA dengan link form pengisian data fulfillment"}
         </p>
       </div>
     </div>
@@ -1347,7 +1457,7 @@ function PageHeader({ icon, title }: { icon: string; title: string }) {
         <span className="text-2xl">{icon}</span>
         <div>
           <h1 className="text-base font-bold text-slate-800 leading-tight">{title}</h1>
-          <p className="text-xs text-slate-400">CST Logistics — Admin Panel</p>
+          <p className="text-xs text-slate-400">Admin Panel</p>
         </div>
       </div>
     </div>

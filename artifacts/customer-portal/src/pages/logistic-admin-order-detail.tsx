@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useLocation, useParams } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +17,7 @@ export default function AdminOrderDetail() {
   const params = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const qc = useQueryClient();
   const id = parseInt(params.id || "0");
 
   useEffect(() => {
@@ -26,6 +28,21 @@ export default function AdminOrderDetail() {
       if (!profile || profile.role !== "admin") { setLocation("/dashboard"); return; }
     });
   }, [setLocation]);
+
+  // Real-time: invalidasi order ini saat status berubah
+  useEffect(() => {
+    if (!id) return;
+    const es = new EventSource("/api/ecommerce/events");
+    es.addEventListener("logistic_order_status_changed", (e: MessageEvent) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (data.orderId === id) {
+          qc.invalidateQueries({ queryKey: getGetLogisticOrderQueryKey(id) });
+        }
+      } catch { }
+    });
+    return () => es.close();
+  }, [id, qc]);
 
   const { data: order, isLoading, refetch } = useGetLogisticOrder(id, {
     query: { enabled: !!id, queryKey: getGetLogisticOrderQueryKey(id) },

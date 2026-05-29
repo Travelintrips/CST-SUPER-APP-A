@@ -72,11 +72,7 @@ import { ArrowLeft, Plus, Send, Check, CheckCircle, X, Receipt, Truck, Trash2, F
 import { CorrespondenceTab } from "@/components/CorrespondenceTab";
 import { useCreateSalesPaymentLink } from "@workspace/api-client-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-
-const LOGISTICS_SUBCATEGORIES = [
-  "Udara", "Laut", "Darat", "Pabean", "Handling",
-  "Trucking", "Container", "Freight Forwarding", "Lainnya",
-];
+import { LOGISTICS_SUBCATEGORIES } from "@workspace/logistics-constants";
 
 interface ItemPickerProps {
   products: Product[];
@@ -92,6 +88,11 @@ function ItemPicker({ products, onSelect, onAddNew, disabled, currentName }: Ite
   const [filterType, setFilterType] = useState<"all" | "barang" | "jasa">("all");
   const [filterSubcat, setFilterSubcat] = useState("all");
   const searchRef = useRef<HTMLInputElement>(null);
+  const { data: subcatList = [...LOGISTICS_SUBCATEGORIES] } = useQuery<string[]>({
+    queryKey: ["logistics-subcategories"],
+    queryFn: () => fetch("/api/settings/logistics-subcategories", { credentials: "include" }).then((r) => r.ok ? r.json() : [...LOGISTICS_SUBCATEGORIES]),
+    staleTime: 5 * 60 * 1000,
+  });
 
   const filtered = useMemo(() => {
     return products.filter((p) => {
@@ -148,7 +149,7 @@ function ItemPicker({ products, onSelect, onAddNew, disabled, currentName }: Ite
               className="flex-1 text-xs bg-slate-800 border border-slate-600 rounded px-2 py-1 text-slate-300 outline-none"
             >
               <option value="all">Semua Sub-Kat</option>
-              {LOGISTICS_SUBCATEGORIES.map((s) => (
+              {subcatList.map((s) => (
                 <option key={s} value={s}>{s}</option>
               ))}
             </select>

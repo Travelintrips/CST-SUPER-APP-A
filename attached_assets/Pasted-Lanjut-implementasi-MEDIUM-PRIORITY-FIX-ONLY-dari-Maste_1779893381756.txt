@@ -1,0 +1,92 @@
+Lanjut implementasi MEDIUM PRIORITY FIX ONLY dari Master Fix Plan.
+
+Jangan implement Low dulu.
+Jangan refactor besar.
+Jangan mengubah Critical dan High fix yang sudah PASS.
+
+Area Medium Priority yang harus difix:
+
+A. Timeline & Activity Log
+- setiap action penting harus masuk timeline
+- customer submit order
+- admin approve/reject
+- vendor mini form generated
+- vendor submit
+- admin select vendor
+- customer approve/reject
+- SO created
+- operational submit
+- shipment update
+- completed
+
+B. Notification Log
+- notifikasi admin/customer/vendor harus tercatat
+- WA send history harus tercatat
+- retry/resend history harus jelas
+- jangan hanya toast/console.log
+
+C. Error Handling
+- Supabase/API error harus tampil jelas
+- upload gagal harus ada pesan
+- template WA kosong harus ada warning
+- link expired harus tampil jelas
+- submit gagal tidak boleh silent fail
+
+D. UI State Consistency
+- loading state
+- success state
+- empty state
+- disabled button saat submit
+- prevent double click di frontend
+
+E. Cache & Realtime Improvement
+- stale cache minor diperbaiki
+- refetch setelah mutation diperbaiki
+- query key dirapikan jika masih ada mismatch non-critical
+
+F. Admin UX Improvement
+- filter order/vendor/submission
+- badge status lebih jelas
+- timeline lebih mudah dibaca
+- log WA bisa dibuka dari order detail
+
+Output setelah implementasi:
+
+1. FIXED MEDIUM ISSUES
+Priority | Issue | File/API | Fix Applied | Test Result
+
+2. TIMELINE TEST RESULT
+- action apa saja yang sudah masuk log
+- table apa yang dipakai
+- apakah persist setelah refresh
+
+3. NOTIFICATION / WA LOG TEST RESULT
+- workflow
+- recipient
+- template source
+- log stored atau tidak
+
+4. ERROR HANDLING TEST RESULT
+- scenario
+- expected message
+- actual result
+
+5. UI STATE TEST RESULT
+- loading
+- success
+- empty
+- disabled button
+- no duplicate click
+
+6. REGRESSION TEST
+Pastikan tetap PASS:
+- Critical security tests
+- High sync tests
+- price_sync
+- WA template settings
+- existing mini form links
+- order lifecycle
+
+7. FINAL VERDICT
+- Medium priority fixed?
+- Safe to continue Low priority?

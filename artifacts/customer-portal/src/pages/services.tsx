@@ -12,19 +12,19 @@ import { Search, ShoppingCart, Truck, ChevronRight, X, Container, ArrowLeft } fr
 import { useLocation } from "wouter";
 import { resolveImageUrl } from "@/lib/utils";
 import { getServiceFallbackImage } from "@/lib/categoryImages";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useLanguage } from "@/i18n/LanguageContext";
 import { translateServiceName, translateCategory } from "@/i18n/serviceData";
+import { GROUPED_DISPLAY_CATEGORIES } from "@workspace/logistics-constants";
 
 const formatIDR = (v: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(v);
 
 const stripJasa = (name: string) => name.replace(/^Jasa\s+/i, "");
 
-const GROUPED_CATEGORIES = ["Trucking", "Container"];
-
 function isGrouped(service: { categories?: string[] }) {
-  return service.categories?.some((c) => GROUPED_CATEGORIES.includes(c));
+  return service.categories?.some((c) => (GROUPED_DISPLAY_CATEGORIES as readonly string[]).includes(c));
 }
 
 type Service = {
@@ -63,10 +63,19 @@ export default function Services() {
   const [truckingOpen, setTruckingOpen] = useState(false);
   const { t, locale } = useLanguage();
   const [, setLocation] = useLocation();
+  const qc = useQueryClient();
 
   const { data: servicesData, isLoading } = useListPortalServices({
     query: { queryKey: ["listPortalServices"] }
   });
+
+  useEffect(() => {
+    const es = new EventSource("/api/ecommerce/events");
+    es.addEventListener("price_sync", () => {
+      qc.invalidateQueries({ queryKey: ["listPortalServices"] });
+    });
+    return () => es.close();
+  }, [qc]);
 
   const allServices: Service[] = Array.isArray(servicesData)
     ? (servicesData as Service[]).map((s) => ({ ...s, description: s.description ?? undefined }))

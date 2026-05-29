@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "wouter";
+import { resolveServiceCategory } from "@workspace/logistics-constants";
 
 type ProgressEntry = {
   id: number;
@@ -59,15 +60,6 @@ const PROGRESS_OPTIONS = [
   { value: "Completed", label: "✅ Selesai" },
   { value: "Problem", label: "⚠️ Ada Masalah / Perlu Perhatian" },
 ];
-
-function detectCategory(serviceType: string): "trucking" | "freight" | "product" | "customs" {
-  const t = (serviceType ?? "").toLowerCase();
-  if (t.includes("truck")) return "trucking";
-  if (t.includes("sea") || t.includes("air") || t.includes("freight") || t.includes("udara") || t.includes("laut")) return "freight";
-  if (t.includes("product") || t.includes("barang") || t.includes("produk")) return "product";
-  if (t.includes("custom") || t.includes("ppjk") || t.includes("cukai") || t.includes("dokumen")) return "customs";
-  return "freight";
-}
 
 function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
   if (!value) return null;
@@ -140,7 +132,7 @@ export default function VendorJobPage() {
   const handleAccept = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!data) return;
-    const category = detectCategory(data.serviceType);
+    const category = resolveServiceCategory(data.serviceType);
 
     // Validate required fields by category
     const required: string[] = [];
@@ -232,7 +224,7 @@ export default function VendorJobPage() {
         <div className="text-5xl mb-4">⚠️</div>
         <h2 className="text-lg font-semibold text-slate-800 mb-2">Link Tidak Valid</h2>
         <p className="text-sm text-slate-500">{error}</p>
-        <p className="text-xs text-slate-400 mt-3">Hubungi tim CST Logistics jika ada kendala.</p>
+        <p className="text-xs text-slate-400 mt-3">Hubungi tim kami jika ada kendala.</p>
       </div>
     </div>
   );
@@ -267,7 +259,7 @@ export default function VendorJobPage() {
           <div className="flex items-start gap-3">
             <div className="text-3xl flex-shrink-0">🚚</div>
             <div className="flex-1 min-w-0">
-              <h1 className="text-xl font-bold text-slate-800">Job Order — CST Logistics</h1>
+              <h1 className="text-xl font-bold text-slate-800">Job Order Vendor</h1>
               {data.vendorName && <p className="text-sm text-slate-500 mt-0.5">Vendor: {data.vendorName}</p>}
             </div>
           </div>
@@ -393,6 +385,7 @@ export default function VendorJobPage() {
             <p className="text-sm font-semibold text-red-700">Job ini telah ditolak.</p>
             {data.rejectReason && <p className="text-xs text-red-500 mt-1">Alasan: {data.rejectReason}</p>}
             <p className="text-xs text-slate-500 mt-2">Admin akan segera menindaklanjuti.</p>
+          <p className="text-xs text-slate-400 mt-1">Hubungi tim kami jika ada kendala.</p>
           </div>
         )}
 
@@ -525,7 +518,7 @@ export default function VendorJobPage() {
           </div>
         )}
 
-        <p className="text-center text-xs text-slate-400 pb-4">CST Logistics · Vendor Job Order</p>
+        <p className="text-center text-xs text-slate-400 pb-4">Vendor Job Order</p>
       </div>
     </div>
   );

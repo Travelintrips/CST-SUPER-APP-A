@@ -13,17 +13,23 @@ import {
   customerQuoteLinksTable,
   orderUpdatesTable,
 } from "@workspace/db";
-import { requireClerkUser } from "../lib/requireAdmin.js";
+import { requireClerkUser, requireAdmin } from "../lib/requireAdmin.js";
+import { runDbBackup } from "../lib/dbBackup.js";
 import { getPreferredDomain } from "../lib/domain.js";
 import { logger } from "../lib/logger.js";
-import { sendWhatsApp } from "../lib/fonnte.js";
+import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminWa } from "../lib/adminWa.js";
-import { sendVendorRequestNotification, type LogisticOrderData } from "../lib/orderNotification.js";
+import { sendVendorRequestNotification, sendVendorSelectedAdminWa, sendVendorAwardedWa, type LogisticOrderData } from "../lib/orderNotification.js";
 import { generateShortLink } from "../lib/shortLink.js";
 
 export const adminActionRouter: Router = Router();
 export const adminActionPublicRouter = Router();
 export const adminActionAdminRouter = Router();
+
+// ── Blast guard: mencegah 2 admin blast RFQ bersamaan ke order yang sama ──────
+// In-memory Set; cukup untuk single-process. Jika scale ke multi-process,
+// ganti dengan advisory lock atau Redis key dengan TTL.
+const blastInProgress = new Set<number>();
 
 /**
  * GET /admin-action/:token
@@ -90,6 +96,13 @@ export function getAdminActionUrl(token: string): string {
   const domain = getPreferredDomain() || "cstlogistic.co.id";
   return `https://${domain}/admin-review/${token}`;
 }
+
+// ─── Admin: POST /api/admin-action/db-backup — manual DB backup trigger ──────
+adminActionAdminRouter.post("/db-backup", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const result = await runDbBackup();
+  return res.status(result.ok ? 200 : 500).json(result);
+});
 
 // ─── Admin: POST /api/admin-action/create ────────────────────────────────────
 adminActionAdminRouter.post("/create", async (req: Request, res: Response) => {
@@ -171,6 +184,68 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
     if (!order) return res.status(404).json({ error: "Order tidak ditemukan" });
 
     const actionType = link?.actionType ?? "review_order";
+
+    // Fetch order items untuk ditampilkan di OrderCard (nama produk/layanan yang dipesan)
+    const orderItemRows = await db.select({
+      serviceName: logisticOrderItemsTable.serviceName,
+      category: logisticOrderItemsTable.category,
+      subtotal: logisticOrderItemsTable.subtotal,
+      inputData: logisticOrderItemsTable.inputData,
+      calculatorType: logisticOrderItemsTable.calculatorType,
+    }).from(logisticOrderItemsTable)
+      .where(eq(logisticOrderItemsTable.orderId, order.id));
+
+    // Helper: ekstrak qty & unit dari inputData item
+    const extractItemQty = (input: Record<string, unknown> | null): number | null => {
+      if (!input) return null;
+      const v = input.qty ?? input.quantity;
+      const n = parseFloat(String(v ?? ""));
+      return isNaN(n) || n <= 0 ? null : n;
+    };
+    const extractItemUnit = (input: Record<string, unknown> | null): string | null => {
+      if (!input) return null;
+      return input.unit != null ? String(input.unit) : null;
+    };
+
+    // Hitung total qty untuk estimasi harga vendor (hanya berlaku jika semua item satu unit)
+    let totalQtyForVendor: number | null = null;
+    let orderUnitForVendor: string | null = null;
+    if (orderItemRows.length === 1) {
+      const inp = orderItemRows[0].inputData as Record<string, unknown> | null;
+      totalQtyForVendor = extractItemQty(inp);
+      orderUnitForVendor = extractItemUnit(inp);
+    } else if (orderItemRows.length > 1) {
+      let sumQty = 0;
+      let firstUnit: string | null = null;
+      let sameUnit = true;
+      for (const it of orderItemRows) {
+        const inp = it.inputData as Record<string, unknown> | null;
+        const q = extractItemQty(inp);
+        const u = extractItemUnit(inp);
+        if (q == null) { sameUnit = false; break; }
+        if (firstUnit == null) firstUnit = u;
+        else if (u !== firstUnit) sameUnit = false;
+        sumQty += q;
+      }
+      if (sameUnit && sumQty > 0) { totalQtyForVendor = sumQty; orderUnitForVendor = firstUnit; }
+    }
+
+    // Compute tax breakdown — source of truth for all views
+    const _itemsSubtotal = orderItemRows.reduce((sum, it) => {
+      return sum + (it.subtotal != null ? parseFloat(String(it.subtotal)) : 0);
+    }, 0);
+    const _grandTotalNum = order.grandTotal ? parseFloat(String(order.grandTotal)) : null;
+    const _TAX_RATE = 11;
+    let _subtotalBeforeTax: number | null = null;
+    let _taxAmount: number | null = null;
+    if (_itemsSubtotal > 0 && _grandTotalNum != null) {
+      _subtotalBeforeTax = _itemsSubtotal;
+      _taxAmount = Math.round(_grandTotalNum - _itemsSubtotal);
+    } else if (_grandTotalNum != null && _grandTotalNum > 0) {
+      _subtotalBeforeTax = Math.round(_grandTotalNum * 100 / (100 + _TAX_RATE));
+      _taxAmount = _grandTotalNum - _subtotalBeforeTax;
+    }
+
     const base = {
       token,
       actionType,
@@ -196,7 +271,22 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
         notes: (order as any).notes ?? null,
         paymentType: (order as any).paymentType ?? null,
         grandTotal: order.grandTotal ? String(order.grandTotal) : null,
+        subtotalBeforeTax: _subtotalBeforeTax != null ? String(_subtotalBeforeTax) : null,
+        taxRate: _TAX_RATE,
+        taxAmount: _taxAmount != null ? String(_taxAmount) : null,
         status: order.status,
+        items: orderItemRows.map((it) => {
+          const inp = it.inputData as Record<string, unknown> | null;
+          const qty = extractItemQty(inp);
+          const unit = extractItemUnit(inp);
+          return {
+            serviceName: it.serviceName ?? "",
+            category: it.category ?? "",
+            subtotal: it.subtotal != null ? String(it.subtotal) : null,
+            quantity: qty != null ? String(qty) : null,
+            unit: unit ?? null,
+          };
+        }),
       },
     };
 
@@ -230,6 +320,7 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
             name: vendorCatalogItemsTable.name,
             type: vendorCatalogItemsTable.type,
             isCommodityTag: vendorCatalogItemsTable.isCommodityTag,
+            priceBase: vendorCatalogItemsTable.priceBase,
           }).from(vendorCatalogItemsTable)
             .where(and(
               inArray(vendorCatalogItemsTable.vendorId, vendorIdList),
@@ -238,22 +329,49 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
         : [];
 
       // Build sets: vendor dengan commodity match & vendor yang punya item PRODUK di etalase
+      // Derive keywords dari order.commodity + serviceName/category tiap item order
       const commodityKeyword = (order.commodity ?? "").toLowerCase().trim();
+      const itemKwSet = new Set<string>();
+      for (const it of orderItemRows) {
+        for (const src of [it.serviceName ?? "", it.category ?? ""]) {
+          for (const w of src.toLowerCase().split(/[\s,/()\-]+/)) {
+            if (w.length > 2) itemKwSet.add(w);
+          }
+        }
+      }
+      const commodityKwParts = Array.from(new Set([
+        ...commodityKeyword.split(/\s+/).filter((k: string) => k.length > 2),
+        ...itemKwSet,
+      ]));
+      const hasOrderKeywords = commodityKwParts.length > 0 || commodityKeyword.length > 0;
       const vendorIdsWithCommodity   = new Set<number>();
       const vendorIdsWithProductItem = new Set<number>(); // hanya type='product'
+      // Map vendorId → priceBase: PREFER item yang match dengan order; fallback ke item product pertama
+      const vendorPriceBaseMap = new Map<number, number | null>();
+      const vendorMatchedItemName = new Map<number, string>();
 
       for (const item of catalogItems) {
         if (item.type === "product") {
           vendorIdsWithProductItem.add(item.vendorId);
         }
 
-        if (commodityKeyword) {
-          const kwParts = commodityKeyword.split(/\s+/).filter((k: string) => k.length > 2);
-          const isTagged = item.isCommodityTag === true;
-          const itemName = item.name.toLowerCase();
-          const nameMatches = itemName.includes(commodityKeyword) ||
-            kwParts.some((kw: string) => itemName.includes(kw));
-          if (isTagged || nameMatches) vendorIdsWithCommodity.add(item.vendorId);
+        const itemName = item.name.toLowerCase();
+        const nameMatches = hasOrderKeywords && (
+          (commodityKeyword && itemName.includes(commodityKeyword)) ||
+          commodityKwParts.some((kw: string) => itemName.includes(kw))
+        );
+
+        if (nameMatches) {
+          vendorIdsWithCommodity.add(item.vendorId);
+          // Item yang match selalu menang untuk priceBase
+          if (!vendorMatchedItemName.has(item.vendorId)) {
+            vendorPriceBaseMap.set(item.vendorId, item.priceBase != null ? Number(item.priceBase) : null);
+            vendorMatchedItemName.set(item.vendorId, item.name);
+          }
+        } else if (!vendorPriceBaseMap.has(item.vendorId) && item.type === "product") {
+          vendorPriceBaseMap.set(item.vendorId, item.priceBase != null ? Number(item.priceBase) : null);
+        } else if (!vendorPriceBaseMap.has(item.vendorId)) {
+          vendorPriceBaseMap.set(item.vendorId, item.priceBase != null ? Number(item.priceBase) : null);
         }
       }
 
@@ -264,12 +382,30 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
         return shipKeywords.some((kw) => vst.includes(kw));
       };
 
-      const allWithFlag = allWithPhone.map((v) => ({
-        ...v,
-        isMatching: isServiceMatch(v.serviceType),
-        hasCommodityMatch: vendorIdsWithCommodity.has(v.id),
-        hasProductItem: vendorIdsWithProductItem.has(v.id),
-      }));
+      const allWithFlag = allWithPhone.map((v) => {
+        const pb = vendorPriceBaseMap.get(v.id) ?? null;
+        let vendorEstSubtotal: number | null = null;
+        let vendorEstTax: number | null = null;
+        let vendorEstTotal: number | null = null;
+        if (pb != null && totalQtyForVendor != null) {
+          vendorEstSubtotal = Math.round(pb * totalQtyForVendor);
+          vendorEstTax = Math.round(vendorEstSubtotal * _TAX_RATE / 100);
+          vendorEstTotal = vendorEstSubtotal + vendorEstTax;
+        }
+        return {
+          ...v,
+          isMatching: isServiceMatch(v.serviceType),
+          hasCommodityMatch: vendorIdsWithCommodity.has(v.id),
+          hasProductItem: vendorIdsWithProductItem.has(v.id),
+          priceBase: pb,
+          orderQty: totalQtyForVendor,
+          orderUnit: orderUnitForVendor,
+          vendorEstSubtotal,
+          vendorEstTax,
+          vendorEstTotal,
+          taxRate: _TAX_RATE,
+        };
+      });
 
       const commodityMatched  = allWithFlag.filter((v) => v.hasCommodityMatch);
       const serviceMatched    = allWithFlag.filter((v) => v.isMatching && !v.hasCommodityMatch);
@@ -279,7 +415,7 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
       // 1. shipmentType ada + ada match → hanya vendor yg match (service + commodity)
       // 2. shipmentType ada + tak ada match → semua vendor berserviceType + warning
       // 3. shipmentType kosong + commodity ada + ada commodity match → hanya vendor dg commodity match
-      // 4. shipmentType kosong + commodity ada + tak ada match → vendor yg punya etalase apapun
+      // 4. shipmentType kosong + commodity ada + ada product vendors → filter product vendors by commodity
       // 5. shipmentType kosong + commodity kosong + ada etalase → hanya vendor yg punya etalase
       // 6. shipmentType kosong + commodity kosong + tak ada etalase → vendor berserviceType (fallback)
       let vendors: typeof allWithFlag;
@@ -295,13 +431,18 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
         } else {
           vendors = allWithFlag.filter((v) => !!(v.serviceType && v.serviceType.trim()));
         }
-      } else if (commodityKeyword && commodityMatched.length > 0) {
-        // Ada commodity + ada vendor yg punya produk itu di etalase
+      } else if (hasOrderKeywords && commodityMatched.length > 0) {
+        // Ada keyword order + ada vendor yg punya item matching di etalase
         vendors = commodityMatched;
         vendorFilterApplied = true;
         filterMode = "commodity";
+      } else if (hasOrderKeywords) {
+        // Ada keyword order tapi tidak ada vendor yang relevan → JANGAN tampilkan vendor tidak relevan
+        vendors = [];
+        vendorFilterApplied = true;
+        filterMode = "commodity";
       } else if (productVendors.length > 0) {
-        // Tidak ada shipmentType → hanya tampilkan vendor yang punya item PRODUK di etalase
+        // Tidak ada keyword order, tampilkan semua vendor yg punya etalase produk
         vendors = productVendors;
         vendorFilterApplied = true;
         filterMode = "etalase";
@@ -422,6 +563,7 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
   const { token } = req.params as { token: string };
   await ensureTables();
 
+  let _blastGuardOrderId: number | null = null;
   try {
     let link = (await db.select().from(adminActionLinksTable)
       .where(eq(adminActionLinksTable.token, token)))[0] ?? null;
@@ -472,6 +614,19 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
         deadlineHours?: number;
       };
       if (!vendorIds?.length) return res.status(400).json({ error: "vendorIds wajib diisi" });
+
+      // Guard: tolak jika blast untuk order yang sama sedang berlangsung
+      // (mencegah 2 admin klik blast bersamaan → vendor terima WA ganda)
+      if (blastInProgress.has(order.id)) {
+        return res.status(409).json({
+          error: "Blast RFQ untuk order ini sedang diproses. Tunggu beberapa detik lalu coba lagi.",
+          code: "BLAST_IN_PROGRESS",
+        });
+      }
+      blastInProgress.add(order.id);
+      _blastGuardOrderId = order.id;
+      // Auto-release setelah 60 detik sebagai safety net jika proses error
+      const blastTimer = setTimeout(() => { blastInProgress.delete(order.id); _blastGuardOrderId = null; }, 60_000);
 
       // Create or reuse RFQ
       let rfq = await db.select().from(logisticOrderRfqsTable)
@@ -611,6 +766,10 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
         ).catch(() => {});
       }
 
+      // Release blast guard
+      clearTimeout(blastTimer);
+      blastInProgress.delete(order.id);
+
       return res.json({ ok: true, rfqId: rfq.id, rfqNumber: rfq.rfqNumber, results, compareUrl: compareShort });
     }
 
@@ -727,15 +886,35 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
       const fwdUrl = getAdminActionUrl(fwdToken);
       const fwdShort = await generateShortLink(fwdUrl, { context: "admin_action", refType: "rfq", refId: String(rfq.id) });
 
-      const adminWa = await getAdminWa();
-      if (adminWa) {
-        const vendorName = vendor?.name ?? `Vendor #${vendorLink.vendorId}`;
-        sendWhatsApp(adminWa,
-          `✅ Vendor dipilih: *${vendorName}*\n` +
-          `Order: ${order.orderNumber} | ${fmtRp(vendorLink.offeredPrice ?? vendorLink.basicPrice)}\n` +
-          (quoteShortUrl ? `📤 Penawaran terkirim ke customer\n` : "") +
-          `\n📦 Forward ke vendor untuk eksekusi:\n${fwdShort}`
-        ).catch(() => {});
+      sendVendorSelectedAdminWa({
+        rfqNumber: rfq.rfqNumber,
+        orderNumber: order.orderNumber,
+        customerName: order.customerName ?? "—",
+        companyName: (order as any).companyName ?? null,
+        shipmentType: order.shipmentType ?? "—",
+        origin: order.origin ?? "—",
+        destination: order.destination ?? "—",
+        vendorName: vendor?.name ?? `Vendor #${vendorLink.vendorId}`,
+        vendorCost: vendorLink.offeredPrice ?? vendorLink.basicPrice,
+        sellingPrice: sellingPrice ?? null,
+        eta: vendorLink.eta ?? null,
+        quoteSentToCustomer: sendQuoteToCustomer && !!quoteShortUrl,
+        forwardVendorUrl: fwdShort,
+      }).catch(() => {});
+
+      if (vendor?.phone) {
+        sendVendorAwardedWa({
+          vendorName: vendor.name ?? `Vendor #${vendorLink.vendorId}`,
+          vendorPhone: vendor.phone,
+          rfqNumber: rfq.rfqNumber,
+          orderNumber: order.orderNumber,
+          shipmentType: order.shipmentType ?? "—",
+          origin: order.origin ?? "—",
+          destination: order.destination ?? "—",
+          vendorCost: vendorLink.offeredPrice ?? vendorLink.basicPrice,
+          eta: vendorLink.eta ?? null,
+          notes: vendorLink.notes ?? null,
+        }).catch(() => {});
       }
 
       return res.json({
@@ -784,16 +963,30 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
         .where(eq(suppliersTable.id, vendorId));
 
       if (vendor?.phone) {
-        sendWhatsApp(vendor.phone,
-          `📦 *Penugasan Fulfillment — CST Logistics*\n\n` +
-          `Kepada Yth. *${vendor.name}*,\n\n` +
-          `Order Anda telah dikonfirmasi. Mohon lengkapi detail fulfillment:\n\n` +
-          `No. Order   : *${order.orderNumber}*\n` +
-          `Layanan     : ${order.shipmentType}\n` +
-          `Rute        : ${order.origin} → ${order.destination}\n\n` +
-          `📱 *Isi data fulfillment di sini:*\n${shortUrl}\n\n` +
-          `⏰ Batas waktu: ${expiresInHours} jam\n\nTerima kasih 🙏`
-        ).catch(() => {});
+        const isProductOrder = ((order as any).orderType ?? "").toLowerCase() === "product";
+        const waMsg = isProductOrder
+          ? `🛒 *Penugasan Pemenuhan Produk — CST Logistics*\n\n` +
+            `Kepada Yth. *${vendor.name}*,\n\n` +
+            `Anda mendapat tugas pemenuhan produk:\n\n` +
+            `No. Order   : *${order.orderNumber}*\n` +
+            `Customer    : ${order.customerName}\n` +
+            (order.grandTotal ? `Total       : ${fmtRp(order.grandTotal)}\n` : "") +
+            `\n📋 *Instruksi:*\n` +
+            `1. Konfirmasi ketersediaan stok\n` +
+            `2. Konfirmasi harga penawaran\n` +
+            `3. Konfirmasi estimasi waktu siap kirim\n` +
+            `4. Upload invoice/dokumen jika ada\n\n` +
+            `📱 *Isi form konfirmasi di sini:*\n${shortUrl}\n\n` +
+            `⏰ Batas waktu: ${expiresInHours} jam\n\nTerima kasih 🙏`
+          : `📦 *Penugasan Fulfillment — CST Logistics*\n\n` +
+            `Kepada Yth. *${vendor.name}*,\n\n` +
+            `Order Anda telah dikonfirmasi. Mohon lengkapi detail fulfillment:\n\n` +
+            `No. Order   : *${order.orderNumber}*\n` +
+            `Layanan     : ${order.shipmentType}\n` +
+            `Rute        : ${order.origin} → ${order.destination}\n\n` +
+            `📱 *Isi data fulfillment di sini:*\n${shortUrl}\n\n` +
+            `⏰ Batas waktu: ${expiresInHours} jam\n\nTerima kasih 🙏`;
+        sendWhatsApp(vendor.phone, waMsg).catch(() => {});
       }
 
       // Activity log
@@ -814,6 +1007,8 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
 
     return res.status(400).json({ error: "actionType tidak dikenal" });
   } catch (err) {
+    // Pastikan blast guard dilepas jika terjadi error di tengah proses
+    if (_blastGuardOrderId !== null) blastInProgress.delete(_blastGuardOrderId);
     logger.error({ err }, "admin-action POST error");
     return res.status(500).json({ error: "Gagal memproses aksi" });
   }

@@ -1,10 +1,12 @@
 import { Router, type Request } from "express";
+import { randomBytes } from "crypto";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { resolveCompanyId } from "../lib/resolveCompany.js";
 import { streamInvoicePdf, buildInvoicePdfBuffer } from "../lib/pdfInvoice.js";
 import { postPurchaseBill, postPurchaseBillReversal } from "../lib/accounting.js";
 import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
-import { sendWhatsApp } from "../lib/fonnte.js";
+import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
+import { getAdminGroupWa } from "../lib/adminWa.js";
 import { saveAndBroadcast } from "../lib/notificationStore.js";
 import { ensureAccountingSettings } from "../lib/accountingSeed.js";
 import { postStockIn } from "../lib/inventoryStock.js";
@@ -44,6 +46,90 @@ async function computeTax(subtotal: number, taxRateId: number | null | undefined
   return { taxAmount, grandTotal: subtotal + taxAmount };
 }
 
+// ── Public router: vendor PO accept (no auth required) ────────────────────
+export const purchasePublicRouter = Router();
+
+purchasePublicRouter.get("/vendor-accept/:token", async (req, res) => {
+  const token = req.params.token;
+  const result = await db.execute(sql`
+    SELECT pd.id, pd.doc_number, pd.supplier_name, pd.grand_total, pd.total_amount, pd.tax_amount,
+           pd.status, pd.kind, pd.vendor_accepted_at, pd.vendor_accept_notes, pd.expected_date,
+           pd.notes, pd.created_at
+    FROM purchase_documents pd
+    WHERE pd.vendor_accept_token = ${token} AND pd.kind = 'order'
+    LIMIT 1
+  `);
+  const doc = (result as any).rows?.[0] ?? (Array.isArray(result) ? result[0] : null);
+  if (!doc) return res.status(404).json({ message: "Link tidak valid atau sudah kadaluarsa" });
+
+  const lines = await db.execute(sql`
+    SELECT name, description, quantity, unit_cost, subtotal
+    FROM purchase_document_lines WHERE document_id = ${doc.id} ORDER BY id
+  `);
+
+  return res.json({ ...doc, lines: (lines as any).rows ?? lines });
+});
+
+purchasePublicRouter.post("/vendor-accept/:token", async (req, res) => {
+  const token = req.params.token;
+  const { notes } = req.body ?? {};
+
+  const result = await db.execute(sql`
+    SELECT id, doc_number, supplier_name, grand_total, total_amount, vendor_accepted_at
+    FROM purchase_documents
+    WHERE vendor_accept_token = ${token} AND kind = 'order' LIMIT 1
+  `);
+  const doc = (result as any).rows?.[0] ?? (Array.isArray(result) ? result[0] : null);
+  if (!doc) return res.status(404).json({ message: "Link tidak valid atau sudah kadaluarsa" });
+  if (doc.vendor_accepted_at) return res.status(409).json({ message: "PO ini sudah dikonfirmasi sebelumnya", alreadyAccepted: true });
+
+  await db.execute(sql`
+    UPDATE purchase_documents
+    SET vendor_accepted_at = NOW(), vendor_accept_notes = ${notes ?? null}
+    WHERE id = ${doc.id}
+  `);
+
+  // In-app notification to admin
+  const acceptedAt = new Date().toISOString();
+  const totalNum = Number(doc.grand_total ?? doc.total_amount ?? 0);
+  saveAndBroadcast("vendor_po_accepted", {
+    type: "vendor_po_accepted",
+    orderId: doc.id,
+    orderNumber: doc.doc_number ?? "-",
+    customerName: doc.supplier_name ?? "-",
+    companyName: null,
+    grandTotal: totalNum,
+    vendorNotes: notes?.trim() ?? null,
+    acceptedAt,
+  }).catch(() => undefined);
+
+  // Notify admin group via WhatsApp
+  const total = Number(doc.grand_total ?? doc.total_amount ?? 0);
+  const msgLines = [
+    `✅ *Vendor Konfirmasi Purchase Order*`,
+    ``,
+    `• *No PO*: ${doc.doc_number ?? "-"}`,
+    `• *Vendor*: ${doc.supplier_name ?? "-"}`,
+    `• *Total*: Rp ${total.toLocaleString("id-ID")}`,
+    `• *Waktu*: ${new Date(acceptedAt).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })}`,
+    notes?.trim() ? `• *Catatan vendor*: ${notes.trim()}` : null,
+    ``,
+    `Silakan proses GR (Goods Receipt) untuk PO ini.`,
+  ].filter(Boolean).join("\n");
+
+  getAdminGroupWa().then((adminGroup) => {
+    if (!adminGroup) return;
+    sendWhatsApp(adminGroup, msgLines, {
+      context: "purchase_vendor_accept_admin",
+      refType: "purchase_document",
+      refId: String(doc.id),
+    }).catch(() => undefined);
+  }).catch(() => undefined);
+
+  return res.json({ ok: true, acceptedAt });
+});
+
+// ── Authenticated router ─────────────────────────────────────────────────────
 const router = Router();
 
 router.use(async (req, res, next) => {
@@ -177,7 +263,7 @@ router.get("/documents/:id", async (req, res) => {
 
 router.post("/documents", async (req, res) => {
   const companyId = resolveCompanyId(req);
-  const { kind, supplierId, supplierName, supplierAddress, expectedDate, notes, lines, taxRateId, warehouseId } = req.body ?? {};
+  const { kind, supplierId, supplierName, supplierAddress, expectedDate, notes, lines, taxRateId, warehouseId, productCategory, incoterm, deliveryTerm, targetPrice, commoditySpecs, requiredDocuments } = req.body ?? {};
   if (typeof supplierName !== "string" || !supplierName.trim())
     return res.status(400).json({ message: "supplierName required" });
   if (!Array.isArray(lines) || lines.length === 0)
@@ -214,6 +300,12 @@ router.post("/documents", async (req, res) => {
       grandTotal: String(grandTotal),
       expectedDate: expectedDate ? new Date(expectedDate) : null,
       notes: notes ?? null,
+      productCategory: productCategory ? String(productCategory) : null,
+      incoterm: incoterm ? String(incoterm) : null,
+      deliveryTerm: deliveryTerm ? String(deliveryTerm) : null,
+      targetPrice: targetPrice ? String(targetPrice) : null,
+      commoditySpecs: commoditySpecs ?? null,
+      requiredDocuments: requiredDocuments ?? null,
     })
     .returning();
 
@@ -249,7 +341,7 @@ router.put("/documents/:id", async (req, res) => {
   const existing = await loadDocWithLines(id);
   if (!existing) return res.status(404).json({ message: "Document not found" });
 
-  const { supplierId, supplierName, supplierAddress, expectedDate, notes, lines, kind, taxRateId, warehouseId } = req.body ?? {};
+  const { supplierId, supplierName, supplierAddress, expectedDate, notes, lines, kind, taxRateId, warehouseId, productCategory, incoterm, deliveryTerm, targetPrice, commoditySpecs, requiredDocuments } = req.body ?? {};
   const patch: Record<string, unknown> = { updatedAt: new Date() };
   if (typeof supplierName === "string") patch["supplierName"] = supplierName;
   if (supplierAddress !== undefined) patch["supplierAddress"] = supplierAddress ?? null;
@@ -259,6 +351,12 @@ router.put("/documents/:id", async (req, res) => {
   if (notes !== undefined) patch["notes"] = notes;
   if (kind === "rfq" || kind === "order") patch["kind"] = kind;
   if (taxRateId !== undefined) patch["taxRateId"] = taxRateId;
+  if (productCategory !== undefined) patch["productCategory"] = productCategory ?? null;
+  if (incoterm !== undefined) patch["incoterm"] = incoterm ?? null;
+  if (deliveryTerm !== undefined) patch["deliveryTerm"] = deliveryTerm ?? null;
+  if (targetPrice !== undefined) patch["targetPrice"] = targetPrice ? String(targetPrice) : null;
+  if (commoditySpecs !== undefined) patch["commoditySpecs"] = commoditySpecs ?? null;
+  if (requiredDocuments !== undefined) patch["requiredDocuments"] = requiredDocuments ?? null;
 
   if (Array.isArray(lines)) {
     const total = (lines as LineInput[]).reduce(
@@ -702,6 +800,62 @@ router.post("/documents/:id/email", async (req, res): Promise<void> => {
   });
 
   res.json({ message: "Email berhasil dikirim", to, filename });
+});
+
+router.post("/documents/:id/generate-vendor-token", async (req, res) => {
+  const id = Number(req.params.id);
+  if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+
+  const sendWa = req.body?.sendWa === true;
+
+  const [doc] = await db.select().from(purchaseDocumentsTable).where(eq(purchaseDocumentsTable.id, id));
+  if (!doc) return res.status(404).json({ message: "Document not found" });
+  if (doc.kind !== "order") return res.status(400).json({ message: "Hanya PO yang bisa dibuat link vendor accept" });
+
+  const baseUrl = process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : `http://localhost:5000`;
+
+  const existingToken = (doc as any).vendor_accept_token as string | null | undefined;
+  const token = existingToken ?? randomBytes(24).toString("hex");
+
+  if (!existingToken) {
+    await db.execute(sql`UPDATE purchase_documents SET vendor_accept_token = ${token} WHERE id = ${id}`);
+  }
+
+  const url = `${baseUrl}/vendor-po-accept/${token}`;
+
+  // Lookup supplier phone
+  let waTarget: string | null = null;
+  let waSent = false;
+  if (doc.supplierId) {
+    const [sup] = await db.select({ phone: suppliersTable.phone, name: suppliersTable.name })
+      .from(suppliersTable).where(eq(suppliersTable.id, doc.supplierId)).limit(1);
+    waTarget = sup?.phone ?? null;
+  }
+
+  if (sendWa && waTarget) {
+    const msgLines = [
+      `📋 *Konfirmasi Purchase Order*`,
+      ``,
+      `Kepada Yth. *${doc.supplierName ?? "Vendor"}*,`,
+      ``,
+      `Kami mengirimkan Purchase Order berikut untuk dikonfirmasi:`,
+      `• *No PO*: ${doc.docNumber ?? "-"}`,
+      `• *Total*: Rp ${Number(doc.grandTotal ?? doc.totalAmount ?? 0).toLocaleString("id-ID")}`,
+      ``,
+      `Silakan buka link berikut untuk melihat detail PO dan mengkonfirmasi penerimaan:`,
+      url,
+      ``,
+      `Terima kasih.`,
+    ];
+    sendWhatsApp(waTarget, msgLines.join("\n"), {
+      context: "purchase_vendor_accept",
+      refType: "purchase_document",
+      refId: String(id),
+    }).catch(() => undefined);
+    waSent = true;
+  }
+
+  return res.json({ token, url, waSent, waTarget, waAvailable: !!waTarget });
 });
 
 router.get("/po-detail/:id", async (req, res) => {

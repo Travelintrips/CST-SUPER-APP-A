@@ -119,7 +119,7 @@ export default function FulfillmentFormPage() {
           <h2 className="text-lg font-semibold text-slate-800 mb-2">Link Tidak Valid</h2>
           <p className="text-sm text-slate-500">{error}</p>
           <p className="text-xs text-slate-400 mt-3">
-            Jika Anda merasa ini keliru, hubungi tim CST Logistics.
+            Jika Anda merasa ini keliru, hubungi tim admin.
           </p>
         </div>
       </div>
@@ -133,7 +133,7 @@ export default function FulfillmentFormPage() {
           <div className="text-6xl mb-4">✅</div>
           <h2 className="text-xl font-semibold text-slate-800 mb-2">Data Fulfillment Terkirim!</h2>
           <p className="text-sm text-slate-500">
-            Terima kasih. Data Anda telah kami terima dan tim CST Logistics akan segera memprosesnya.
+            Terima kasih. Data Anda telah kami terima dan tim kami akan segera memprosesnya.
           </p>
           <div className="mt-4 bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-left text-sm text-green-800">
             <p className="font-medium">Status order: <span className="font-bold">Vendor Confirmed</span></p>
@@ -261,7 +261,7 @@ export default function FulfillmentFormPage() {
           </button>
 
           <p className="text-center text-xs text-slate-400 mt-3">
-            Data yang Anda kirimkan akan digunakan untuk proses operasional CST Logistics.
+            Data yang Anda kirimkan akan digunakan untuk proses operasional.
           </p>
         </form>
       </div>

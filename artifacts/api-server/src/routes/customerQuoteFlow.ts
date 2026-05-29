@@ -7,9 +7,10 @@ import {
   customerQuoteLinksTable, customerQuoteResponsesTable,
   orderTaskLinksTable, orderUpdatesTable, customerOrderLinksTable,
   driverLocationsTable,
+  logisticOrderItemsTable,
 } from "@workspace/db";
 import { requireClerkUser } from "../lib/requireAdmin.js";
-import { sendWhatsApp } from "../lib/fonnte.js";
+import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminGroupWa } from "../lib/adminWa.js";
 import { getPreferredDomain } from "../lib/domain.js";
 import { logger } from "../lib/logger.js";
@@ -416,6 +417,37 @@ customerQuotePublicRouter.get("/:token", async (req: Request, res: Response) => 
       ? await db.select().from(logisticOrderRfqsTable).where(eq(logisticOrderRfqsTable.id, link.rfqId))
       : [null];
 
+    const orderItems = await db.select().from(logisticOrderItemsTable)
+      .where(eq(logisticOrderItemsTable.orderId, link.orderId));
+
+    const priceItems = orderItems.map((i) => ({
+      name: i.serviceName,
+      category: i.category,
+      subtotal: i.subtotal ? Number(i.subtotal) : 0,
+    }));
+
+    const orderSubtotal = order.subtotal ? Number(order.subtotal) : 0;
+    const orderTax = order.tax ? Number(order.tax) : 0;
+    const orderGrandTotal = order.grandTotal ? Number(order.grandTotal) : 0;
+    const finalCustomerPrice = link.finalCustomerPrice ? Number(link.finalCustomerPrice) : null;
+
+    // Derive subtotal/tax breakdown when order fields aren't set
+    // but finalCustomerPrice is known (assume 11% PPN inclusive)
+    let displaySubtotal: number | null = null;
+    let displayTax: number | null = null;
+    let displayTotal: number | null = finalCustomerPrice;
+
+    if (orderSubtotal > 0 && orderTax > 0) {
+      displaySubtotal = orderSubtotal;
+      displayTax = orderTax;
+      displayTotal = finalCustomerPrice ?? orderGrandTotal;
+    } else if (finalCustomerPrice && finalCustomerPrice > 0) {
+      // finalCustomerPrice is the quoted total — show DPP + PPN breakdown
+      displaySubtotal = Math.round(finalCustomerPrice / 1.11);
+      displayTax = finalCustomerPrice - displaySubtotal;
+      displayTotal = finalCustomerPrice;
+    }
+
     return res.json({
       token,
       status: link.status,
@@ -431,7 +463,11 @@ customerQuotePublicRouter.get("/:token", async (req: Request, res: Response) => 
         order.grossWeight ? `${order.grossWeight} kg` : null,
         order.volumeCbm ? `${order.volumeCbm} cbm` : null,
       ].filter(Boolean).join(" · ") || null,
-      finalCustomerPrice: link.finalCustomerPrice ? Number(link.finalCustomerPrice) : null,
+      finalCustomerPrice,
+      displaySubtotal,
+      displayTax,
+      displayTotal,
+      priceItems,
       etaFinal: link.etaFinal,
       termsConditions: link.termsConditions,
       quoteNotes: link.quoteNotes,

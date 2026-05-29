@@ -2,11 +2,12 @@ import { Router, type Request, type Response } from "express";
 import { db, quotationReplyLogsTable, waIncomingMessagesTable } from "@workspace/db";
 import { notificationLogsTable } from "@workspace/db/schema";
 import { desc, eq, and, gte, lte, sql } from "drizzle-orm";
-import { sendWhatsApp } from "../lib/fonnte.js";
+import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminWa } from "../lib/adminWa.js";
 import { logger } from "../lib/logger.js";
 import { normalizePhone } from "../lib/phoneUtils.js";
 import { getWaTemplateConfig, renderTemplate } from "../lib/orderNotification.js";
+import { requireAdmin } from "../lib/requireAdmin.js";
 
 export const whatsappRouter = Router();
 
@@ -39,13 +40,6 @@ const DEFAULT_MANUAL_QUOTE_TPL =
   `\nCatatan:\n{{notes}}\n` +
   `\nSilakan konfirmasi apabila quotation ini disetujui.\n\n` +
   `Terima kasih,\nCST Logistics`;
-
-function calcFinalPrice(vendorPrice: number, markupType: string, markupValue: number): number {
-  if (markupType === "percentage") {
-    return vendorPrice + (vendorPrice * markupValue / 100);
-  }
-  return vendorPrice + markupValue;
-}
 
 const fmt = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
 
@@ -86,9 +80,10 @@ const DEFAULT_QUOTATION_ADMIN_TPL = [
 
 // POST /api/whatsapp/send-quotation
 whatsappRouter.post("/send-quotation", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
   const {
     rfqId, orderId, customerName, customerPhone, vendorName, vendorPhone,
-    serviceType, route, vendorPrice, markupType, markupValue, finalPrice,
+    serviceType, route, vendorPrice, finalPrice,
     pickupDate, deliveryDate, notes, status, sendToAdminGroup, isDraft,
   } = req.body as Record<string, unknown>;
 
@@ -96,11 +91,7 @@ whatsappRouter.post("/send-quotation", async (req: Request, res: Response) => {
     return res.status(400).json({ message: "customerName dan customerPhone wajib diisi" });
   }
 
-  const fp = finalPrice != null ? Number(finalPrice) : (
-    vendorPrice != null
-      ? calcFinalPrice(Number(vendorPrice), String(markupType ?? "percentage"), Number(markupValue ?? 0))
-      : 0
-  );
+  const fp = finalPrice != null ? Number(finalPrice) : (vendorPrice != null ? Number(vendorPrice) : 0);
   if (isNaN(fp) || fp < 0) {
     return res.status(400).json({ message: "finalPrice tidak valid" });
   }
@@ -127,23 +118,18 @@ whatsappRouter.post("/send-quotation", async (req: Request, res: Response) => {
   const messageBody = renderTemplate(customerTplBody, vars);
 
   const normalizedPhone = normalizePhone(String(customerPhone));
-  let fonnteResponse: unknown = null;
   let sentStatus = "draft";
   let sentAt: Date | null = null;
   let sentToAdmin = false;
 
   if (!isDraft) {
     try {
-      const fRes = await fetch("https://api.fonnte.com/send", {
-        method: "POST",
-        headers: {
-          Authorization: process.env.FONNTE_TOKEN ?? "",
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: new URLSearchParams({ target: normalizedPhone, message: messageBody }).toString(),
+      await sendWhatsApp(normalizedPhone, messageBody, {
+        context: "quotation-send",
+        refType: "quotation",
+        refId: rfqId ? String(rfqId) : String(orderId ?? ""),
       });
-      fonnteResponse = await fRes.json();
-      sentStatus = fRes.ok ? "sent" : "failed";
+      sentStatus = "sent";
       sentAt = new Date();
       logger.info({ phone: normalizedPhone, status: sentStatus }, "Quotation WA sent to customer");
     } catch (err) {
@@ -183,7 +169,7 @@ whatsappRouter.post("/send-quotation", async (req: Request, res: Response) => {
     notes: notes ? String(notes) : null,
     status: String(status ?? "Ready"),
     messageBody,
-    fonnteResponse: fonnteResponse ?? null,
+    fonnteResponse: null,
     sentStatus,
     sentToAdmin,
     sentAt: sentAt ?? undefined,
@@ -199,7 +185,9 @@ whatsappRouter.post("/send-quotation", async (req: Request, res: Response) => {
 });
 
 // GET /api/whatsapp/quotation-logs
-whatsappRouter.get("/quotation-logs", async (_req: Request, res: Response) => {
+whatsappRouter.get("/quotation-logs", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const _req = req;
   const logs = await db
     .select()
     .from(quotationReplyLogsTable)
@@ -265,6 +253,7 @@ whatsappRouter.post("/webhook", async (req: Request, res: Response) => {
 
 // GET /api/whatsapp/inbox — daftar pesan masuk dari vendor/customer
 whatsappRouter.get("/inbox", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
   const unreadOnly = req.query.unread === "true";
   let query = db
     .select()
@@ -303,6 +292,7 @@ function mapIncoming(r: typeof waIncomingMessagesTable.$inferSelect) {
 
 // PATCH /api/whatsapp/inbox/:id/read — tandai sudah dibaca
 whatsappRouter.patch("/inbox/:id/read", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
   const id = parseInt(req.params["id"] as string);
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
 
@@ -316,6 +306,7 @@ whatsappRouter.patch("/inbox/:id/read", async (req: Request, res: Response) => {
 
 // POST /api/whatsapp/inbox/:id/reply — balas pesan masuk
 whatsappRouter.post("/inbox/:id/reply", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
   const id = parseInt(req.params["id"] as string);
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
 
@@ -332,15 +323,12 @@ whatsappRouter.post("/inbox/:id/reply", async (req: Request, res: Response) => {
 
   let sentStatus = "failed";
   try {
-    const fRes = await fetch("https://api.fonnte.com/send", {
-      method: "POST",
-      headers: {
-        Authorization: process.env.FONNTE_TOKEN ?? "",
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: new URLSearchParams({ target: row.sender, message: message.trim() }).toString(),
+    await sendWhatsApp(row.sender, message.trim(), {
+      context: "inbox-reply",
+      refType: "wa_inbox",
+      refId: String(id),
     });
-    if (fRes.ok) sentStatus = "sent";
+    sentStatus = "sent";
     logger.info({ sender: row.sender, sentStatus }, "WA inbox reply sent");
   } catch (err) {
     logger.error({ err }, "Failed to send WA inbox reply");
@@ -354,10 +342,55 @@ whatsappRouter.post("/inbox/:id/reply", async (req: Request, res: Response) => {
   return res.json({ ok: true, sentStatus });
 });
 
+// GET /api/whatsapp/notification-logs/stats — summary counts for dashboard cards
+whatsappRouter.get("/notification-logs/stats", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  try {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const [allTime, today] = await Promise.all([
+      db.select({
+        channel: notificationLogsTable.channel,
+        status:  notificationLogsTable.status,
+        count:   sql<number>`COUNT(*)::int`,
+      })
+      .from(notificationLogsTable)
+      .groupBy(notificationLogsTable.channel, notificationLogsTable.status),
+
+      db.select({
+        channel: notificationLogsTable.channel,
+        status:  notificationLogsTable.status,
+        count:   sql<number>`COUNT(*)::int`,
+      })
+      .from(notificationLogsTable)
+      .where(gte(notificationLogsTable.createdAt, todayStart))
+      .groupBy(notificationLogsTable.channel, notificationLogsTable.status),
+    ]);
+
+    function agg(rows: { channel: string; status: string; count: number }[]) {
+      const r = { waSent: 0, waFailed: 0, waDeduped: 0, emailSent: 0, emailFailed: 0 };
+      for (const row of rows) {
+        if (row.channel === "wa"    && row.status === "sent")    r.waSent    += row.count;
+        if (row.channel === "wa"    && row.status === "failed")  r.waFailed  += row.count;
+        if (row.channel === "wa"    && row.status === "deduped") r.waDeduped += row.count;
+        if (row.channel === "email" && row.status === "sent")    r.emailSent    += row.count;
+        if (row.channel === "email" && row.status === "failed")  r.emailFailed  += row.count;
+      }
+      return r;
+    }
+
+    return res.json({ allTime: agg(allTime), today: agg(today) });
+  } catch {
+    return res.status(500).json({ error: "Gagal memuat stats" });
+  }
+});
+
 // GET /api/whatsapp/notification-logs — admin: lihat riwayat WA + email + dedup status
 // Query params: channel (wa|email), status (sent|failed|deduped), context, refId,
 //               from (ISO date), to (ISO date), limit (max 200), offset
 whatsappRouter.get("/notification-logs", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
   const channel  = String(req.query.channel ?? "").trim() || null;
   const status   = String(req.query.status  ?? "").trim() || null;
   const context  = String(req.query.context ?? "").trim() || null;
@@ -412,6 +445,7 @@ whatsappRouter.get("/notification-logs", async (req: Request, res: Response) => 
 
 // GET /api/whatsapp/notification-logs/:id — admin: full message body for one log entry
 whatsappRouter.get("/notification-logs/:id", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
   const id = parseInt(String(req.params.id ?? ""), 10);
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
 

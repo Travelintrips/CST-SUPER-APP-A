@@ -31,10 +31,21 @@ import {
   orderUpdatesTable,
 } from "@workspace/db";
 import { requireClerkUser } from "../lib/requireAdmin.js";
-import { sendWhatsApp } from "../lib/fonnte.js";
+import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminWa } from "../lib/adminWa.js";
 import { getPreferredDomain } from "../lib/domain.js";
+import {
+  sendVendorAssignmentNotification,
+  sendVendorJobAcceptedNotification,
+  sendVendorJobRejectedNotification,
+  sendVendorProgressUpdateNotification,
+  sendVendorPodUploadedNotification,
+  sendCustomerProgressUpdateNotification,
+  sendCustomerPodUploadedNotification,
+  sendOrderCompletedNotification,
+} from "../lib/orderNotification.js";
 import { logger } from "../lib/logger.js";
+import { recordDecision, updateDecisionOutcome } from "../lib/decisionMemory.js";
 import multer from "multer";
 import { Client as ObjStoreClient } from "@replit/object-storage";
 
@@ -132,59 +143,6 @@ const JOB_STATUS_LABEL: Record<string, string> = {
   problem:          "Ada Masalah / Perlu Perhatian",
 };
 
-function buildVendorWaMessage(
-  orderNumber: string,
-  origin: string,
-  destination: string,
-  serviceType: string,
-  jobUrl: string,
-  adminNote?: string
-): string {
-  return (
-    `🚚 *Job Order — CST Logistics*\n\n` +
-    `Order: *${orderNumber}*\n` +
-    `Layanan: ${serviceType}\n` +
-    `Rute: ${origin} → ${destination}\n` +
-    (adminNote ? `\nCatatan Admin: ${adminNote}\n` : "") +
-    `\n✅ Anda telah dipilih sebagai vendor untuk order ini.\n` +
-    `\nSilakan buka link berikut untuk menerima atau menolak job, dan mengisi detail operasional:\n${jobUrl}\n\n` +
-    `_Link berlaku 7 hari. Hubungi admin jika ada kendala._`
-  );
-}
-
-function buildCustomerProgressWaMessage(
-  orderNumber: string,
-  status: string,
-  notes: string | undefined,
-  trackingUrl: string
-): string {
-  const statusLabel = JOB_STATUS_LABEL[status.toLowerCase().replace(/\s+/g, "_")] ?? status;
-  return (
-    `📦 *Update Status Pengiriman Anda*\n\n` +
-    `Order: *${orderNumber}*\n` +
-    `Status: *${statusLabel}*\n` +
-    (notes ? `Keterangan: ${notes}\n` : "") +
-    `\n🔗 Pantau progress real-time:\n${trackingUrl}\n\n` +
-    `_CST Logistics — kami informasikan setiap perubahan status._`
-  );
-}
-
-function buildCustomerPodWaMessage(
-  orderNumber: string,
-  vendorName: string,
-  completionNotes: string | undefined,
-  trackingUrl: string
-): string {
-  return (
-    `✅ *Pengiriman Selesai!*\n\n` +
-    `Order: *${orderNumber}*\n` +
-    `Vendor *${vendorName}* telah mengunggah dokumen bukti pengiriman (POD).\n` +
-    (completionNotes ? `Catatan: ${completionNotes}\n` : "") +
-    `\nMohon konfirmasi penerimaan barang kepada tim CST Logistics jika diperlukan.\n` +
-    `\n🔗 Detail tracking:\n${trackingUrl}\n\n` +
-    `_CST Logistics_`
-  );
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Object storage for POD
@@ -232,7 +190,7 @@ vendorJobAdminRouter.post("/orders/:orderId/assign-vendor", async (req: Request,
     if ((existing.rows ?? []).length > 0) {
       const row = existing.rows[0] as { id: number; token: string };
       const jobUrl = `${baseUrl()}/vendor-job/${row.token}`;
-      const waMsg = buildVendorWaMessage(order.orderNumber, order.origin, order.destination, order.shipmentType, jobUrl, adminNote);
+      const waMsg = await sendVendorAssignmentNotification(order.orderNumber, order.origin, order.destination, order.shipmentType, jobUrl, vendor.phone, adminNote);
       return res.json({ ok: true, jobToken: row.token, jobUrl, waMessage: waMsg, vendorPhone: vendor.phone, alreadyExists: true });
     }
 
@@ -291,12 +249,7 @@ vendorJobAdminRouter.post("/orders/:orderId/assign-vendor", async (req: Request,
     });
 
     const jobUrl = `${baseUrl()}/vendor-job/${jobToken}`;
-    const waMsg = buildVendorWaMessage(order.orderNumber, order.origin, order.destination, order.shipmentType, jobUrl, adminNote);
-
-    // Kirim WA ke vendor jika ada nomor
-    if (vendor.phone) {
-      sendWhatsApp(vendor.phone, waMsg).catch(e => logger.warn({ e }, "vendor job WA failed"));
-    }
+    const waMsg = await sendVendorAssignmentNotification(order.orderNumber, order.origin, order.destination, order.shipmentType, jobUrl, vendor.phone, adminNote);
 
     // Notify admin group
     const adminWa = await getAdminWa();
@@ -305,6 +258,35 @@ vendorJobAdminRouter.post("/orders/:orderId/assign-vendor", async (req: Request,
         `📋 *Vendor Ditugaskan*\n\nOrder: ${order.orderNumber}\nVendor: ${vendor.name}\nLink Job: ${jobUrl}`
       ).catch(() => {});
     }
+
+    // Catat ke Decision Memory Store (fire-and-forget)
+    recordDecision({
+      decisionType: "vendor_assignment",
+      chosenEntityType: "vendor",
+      chosenEntityId: vendor.id,
+      chosenEntityName: vendor.name,
+      reasoning: adminNote ?? `Admin memilih ${vendor.name} untuk order ${order.orderNumber}`,
+      decidedBy: "admin",
+      orderId,
+      orderNumber: order.orderNumber,
+      rfqId: quote.rfqId ?? undefined,
+      quoteId: quote.id,
+      companyId: order.companyId ?? undefined,
+      origin: order.origin,
+      destination: order.destination,
+      shipmentType: order.shipmentType,
+      transportMode: order.transportMode ?? undefined,
+      commodity: order.commodity ?? undefined,
+      weightKg: order.weightKg ? parseFloat(String(order.weightKg)) : undefined,
+      direction: order.direction ?? undefined,
+      quotedVendorPrice: quote.vendorPrice ? parseFloat(String(quote.vendorPrice)) : undefined,
+      contextSnapshot: {
+        quoteEstimatedDays: quote.estimatedDays,
+        quoteSellingPrice: quote.sellingPrice,
+        orderGrandTotal: order.grandTotal,
+        orderStatus: order.status,
+      },
+    }).catch(() => {});
 
     logger.info({ orderId, jobToken, vendorId: vendor.id }, "Vendor assigned");
     return res.status(201).json({
@@ -477,16 +459,16 @@ vendorJobAdminRouter.post("/orders/:orderId/complete-review", async (req: Reques
     // Kirim WA ke customer
     if (sendCustomerNotif && order.phone) {
       const trackUrl = trackingToken ? `${baseUrl()}/order-track/${trackingToken}` : "";
-      const waMsg =
-        `✅ *Order Anda Telah Selesai — CST Logistics*\n\n` +
-        `Order: *${order.orderNumber}*\n` +
-        `Rute: ${order.origin} → ${order.destination}\n\n` +
-        `Order Anda telah berhasil diselesaikan.\n` +
-        (adminNotes ? `Catatan: ${adminNotes}\n` : "") +
-        (trackUrl ? `\nLihat detail & dokumen di:\n${trackUrl}\n` : "") +
-        `\nTerima kasih telah mempercayakan pengiriman Anda kepada CST Logistics! 🙏`;
-      sendWhatsApp(order.phone, waMsg).catch(e => logger.warn({ e }, "complete WA to customer failed"));
+      sendOrderCompletedNotification(order.orderNumber, order.origin, order.destination, order.phone, trackUrl, adminNotes).catch(e => logger.warn({ e }, "complete WA to customer failed"));
     }
+
+    // Update Decision Memory outcome (fire-and-forget)
+    updateDecisionOutcome({
+      orderId,
+      outcome: "success",
+      onTimeDelivery: true,
+      outcomeNotes: adminNotes ?? undefined,
+    }).catch(() => {});
 
     return res.json({ ok: true });
   } catch (err) {
@@ -662,14 +644,13 @@ vendorJobPublicRouter.post("/:token/accept", async (req: Request, res: Response)
     // Notify admin
     const adminWa = await getAdminWa();
     if (adminWa) {
-      sendWhatsApp(adminWa,
-        `✅ *Vendor Menerima Job Order*\n\n` +
-        `Order: ${job.order_number}\nVendor: ${job.vendor_name ?? "—"}\nRute: ${job.origin} → ${job.destination}\n` +
-        (body.driverName ? `Driver: ${body.driverName} | Plat: ${body.vehiclePlate ?? "—"}\n` : "") +
-        (body.pickupTime ? `Pickup: ${body.pickupTime}\n` : "") +
-        (body.carrier ? `Carrier: ${body.carrier}\n` : "") +
-        (body.notes ? `Catatan: ${body.notes}` : "")
-      ).catch(() => {});
+      sendVendorJobAcceptedNotification(job.order_number, job.vendor_name ?? "—", job.origin, job.destination, adminWa, {
+        driverName: body.driverName,
+        vehiclePlate: body.vehiclePlate,
+        pickupTime: body.pickupTime,
+        carrier: body.carrier,
+        notes: body.notes,
+      }).catch(() => {});
     }
 
     return res.json({ ok: true, message: "Job berhasil diterima. Terima kasih!" });
@@ -723,10 +704,7 @@ vendorJobPublicRouter.post("/:token/reject", async (req: Request, res: Response)
 
     const adminWa = await getAdminWa();
     if (adminWa) {
-      sendWhatsApp(adminWa,
-        `❌ *Vendor Menolak Job Order*\n\nOrder: ${job.order_number}\nVendor: ${job.vendor_name ?? "—"}\n` +
-        (reason ? `Alasan: ${reason}` : "")
-      ).catch(() => {});
+      sendVendorJobRejectedNotification(job.order_number, job.vendor_name ?? "—", adminWa, reason).catch(() => {});
     }
 
     return res.json({ ok: true, message: "Job ditolak. Admin akan segera ditindaklanjuti." });
@@ -791,10 +769,8 @@ vendorJobPublicRouter.post("/:token/progress", async (req: Request, res: Respons
     // Notify admin
     const adminWa = await getAdminWa();
     if (adminWa) {
-      sendWhatsApp(adminWa,
-        `📍 *Update Progress Order*\n\nOrder: ${job.order_number}\nStatus: ${status}\n` +
-        (notes ? `Catatan: ${notes}` : "")
-      ).catch(() => {});
+      const statusLabel = JOB_STATUS_LABEL[status.toLowerCase().replace(/\s+/g, "_")] ?? status;
+      sendVendorProgressUpdateNotification(job.order_number, job.vendor_name ?? "—", statusLabel, adminWa, notes).catch(() => {});
     }
 
     // Notify customer via WA
@@ -803,10 +779,8 @@ vendorJobPublicRouter.post("/:token/progress", async (req: Request, res: Respons
       const trackingUrl = job.tracking_token
         ? `${baseUrl()}/order-track/${job.tracking_token}`
         : `${baseUrl()}/order-track`;
-      sendWhatsApp(
-        customerPhone,
-        buildCustomerProgressWaMessage(job.order_number, status, notes, trackingUrl)
-      ).catch((e) => logger.warn({ e, phone: customerPhone }, "customer progress WA failed"));
+      const statusLabel = JOB_STATUS_LABEL[status.toLowerCase().replace(/\s+/g, "_")] ?? status;
+      sendCustomerProgressUpdateNotification(job.order_number, customerPhone, statusLabel, trackingUrl, notes).catch((e) => logger.warn({ e, phone: customerPhone }, "customer progress WA failed"));
     }
 
     return res.json({ ok: true });
@@ -892,11 +866,7 @@ vendorJobPublicRouter.post("/:token/pod", upload.array("files", 10), async (req:
 
     const adminWa = await getAdminWa();
     if (adminWa) {
-      sendWhatsApp(adminWa,
-        `📎 *Vendor Upload POD*\n\nOrder: ${job.order_number}\nVendor: ${job.vendor_name ?? "—"}\n` +
-        `File diunggah: ${files.length}\n` +
-        (completionNotes ? `Catatan: ${completionNotes}` : "")
-      ).catch(() => {});
+      sendVendorPodUploadedNotification(job.order_number, job.vendor_name ?? "—", files.length, adminWa, completionNotes).catch(() => {});
     }
 
     // Notify customer via WA
@@ -905,10 +875,7 @@ vendorJobPublicRouter.post("/:token/pod", upload.array("files", 10), async (req:
       const trackingUrlPod = job.tracking_token
         ? `${baseUrl()}/order-track/${job.tracking_token}`
         : `${baseUrl()}/order-track`;
-      sendWhatsApp(
-        customerPhonePod,
-        buildCustomerPodWaMessage(job.order_number, job.vendor_name ?? "Vendor", completionNotes, trackingUrlPod)
-      ).catch((e) => logger.warn({ e, phone: customerPhonePod }, "customer POD WA failed"));
+      sendCustomerPodUploadedNotification(job.order_number, job.vendor_name ?? "Vendor", customerPhonePod, trackingUrlPod, completionNotes).catch((e) => logger.warn({ e, phone: customerPhonePod }, "customer POD WA failed"));
     }
 
     return res.json({ ok: true, uploadedFiles: uploadedUrls.length, message: "POD berhasil diunggah. Menunggu konfirmasi admin." });

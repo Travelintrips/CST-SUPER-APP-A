@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { resolveCompanyId } from "../lib/resolveCompany.js";
+import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 
 const router = Router();
 
@@ -113,9 +114,18 @@ router.put("/products/:id", async (req: Request, res: Response) => {
 router.delete("/products/:id", async (req: Request, res: Response) => {
   const companyId = resolveCompanyId(req);
   const id = Number(req.params.id);
-  const check = await db.execute(sql`SELECT id FROM products WHERE id = ${id} AND company_id = ${companyId}`);
+  const check = await db.execute(sql`SELECT id, image_url, media_items FROM products WHERE id = ${id} AND company_id = ${companyId}`);
   if (check.rows.length === 0) { res.status(404).json({ message: "Produk tidak ditemukan" }); return; }
   await db.execute(sql`DELETE FROM products WHERE id = ${id} AND company_id = ${companyId}`);
+  // Cascade storage cleanup
+  const row = check.rows[0] as { image_url?: string; media_items?: string };
+  const urls: string[] = [];
+  if (row.image_url) urls.push(row.image_url);
+  try {
+    const items: Array<{ url?: string }> = JSON.parse(row.media_items ?? "[]");
+    for (const item of items) { if (item.url) urls.push(item.url); }
+  } catch { /* ignore */ }
+  for (const url of urls) deleteFromSupabase(url).catch(() => {});
   res.json({ ok: true });
 });
 

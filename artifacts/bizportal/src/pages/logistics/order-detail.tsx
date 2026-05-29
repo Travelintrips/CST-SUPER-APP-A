@@ -20,6 +20,8 @@ import {
   ArrowLeft, Loader2, Copy, ExternalLink, Plus, RefreshCw, Send,
   Package, Truck, User, ClipboardList, Clock, ShieldAlert, Ship,
   ClipboardCheck, CheckCircle2, XCircle, MapPin, MessageCircle,
+  Link2, FileText, AlertTriangle, Eye, EyeOff, StickyNote, Globe,
+  RotateCcw, Bell, ChevronDown, ChevronUp,
 } from "lucide-react";
 import { Link } from "wouter";
 import GpsTrackingPanel from "@/components/logistics/GpsTrackingPanel";
@@ -69,6 +71,16 @@ type FreightShipmentLink = {
   rfqId: number; rfqNumber: string;
 };
 
+type CustomerApproval = {
+  id: number; token: string; status: string;
+  customerName: string | null; customerPhone: string | null;
+  sellingPrice: string | null; currency: string | null;
+  soNumber: string | null; salesDocId: number | null;
+  approvedAt: string | null; rejectedAt: string | null;
+  expiresAt: string | null; createdAt: string;
+  orderId: number | null; orderNumber: string | null;
+};
+
 type DetailData = {
   order: Order; vendor: Vendor;
   updates: OrderUpdate[];
@@ -77,6 +89,93 @@ type DetailData = {
   freightShipments: FreightShipmentLink[];
 };
 
+type WaLog = {
+  id: number;
+  channel: string;
+  recipient: string | null;
+  subject: string | null;
+  status: string;
+  context: string | null;
+  refType: string | null;
+  refId: string | null;
+  errorMsg: string | null;
+  createdAt: string;
+};
+
+function WaNotificationLogPanel({ orderNumber }: { orderNumber: string }) {
+  const [open, setOpen] = useState(false);
+  const { data: logData, isLoading, refetch } = useQuery<{ total: number; rows: WaLog[] }>({
+    queryKey: ["wa-logs", orderNumber],
+    queryFn: () => apiFetch(`/api/whatsapp/notification-logs?refId=${encodeURIComponent(orderNumber)}&limit=50`),
+    enabled: open,
+    staleTime: 30000,
+  });
+  const logs = logData?.rows ?? [];
+
+  const fmtStatus = (s: string) => {
+    if (s === "sent") return <span className="text-xs text-green-600 font-medium">✓ Terkirim</span>;
+    if (s === "failed") return <span className="text-xs text-red-500 font-medium">✗ Gagal</span>;
+    if (s === "deduped") return <span className="text-xs text-slate-400 font-medium">↩ Duplikat</span>;
+    return <span className="text-xs text-slate-500">{s}</span>;
+  };
+
+  const fmtChannel = (c: string) => c === "wa" ? "WhatsApp" : c === "email" ? "Email" : c;
+
+  return (
+    <Card className="border-slate-100">
+      <CardHeader
+        className="pb-2 cursor-pointer select-none"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-semibold text-slate-600 uppercase tracking-wide flex items-center gap-1.5">
+            <Bell className="w-4 h-4" /> Log Notifikasi WA/Email
+            {logData && <span className="ml-1 text-xs font-normal normal-case text-slate-400">({logData.total})</span>}
+          </CardTitle>
+          <div className="flex items-center gap-2">
+            {open && (
+              <button
+                onClick={(e) => { e.stopPropagation(); void refetch(); }}
+                className="text-slate-400 hover:text-slate-600 transition-colors"
+                title="Refresh log"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+              </button>
+            )}
+            {open ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+          </div>
+        </div>
+      </CardHeader>
+      {open && (
+        <CardContent className="pt-0">
+          {isLoading ? (
+            <div className="flex justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-slate-400" /></div>
+          ) : !logs || logs.length === 0 ? (
+            <p className="text-sm text-slate-400 text-center py-4">Belum ada log notifikasi</p>
+          ) : (
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {logs.map((log) => (
+                <div key={log.id} className={`rounded border px-3 py-2 text-xs ${log.status === "failed" ? "border-red-200 bg-red-50" : log.status === "deduped" ? "border-slate-100 bg-slate-50" : "border-green-100 bg-green-50"}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium text-slate-700">{fmtChannel(log.channel)}</span>
+                    {fmtStatus(log.status)}
+                  </div>
+                  {log.context && <p className="text-slate-500 mt-0.5">{log.context}</p>}
+                  {log.recipient && <p className="text-slate-400 truncate">→ {log.recipient}</p>}
+                  {log.errorMsg && <p className="text-red-500 mt-1 text-xs">{log.errorMsg}</p>}
+                  <p className="text-slate-400 mt-1">
+                    {new Date(log.createdAt).toLocaleString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      )}
+    </Card>
+  );
+}
+
 const ORDER_STATUSES = [
   "New Order", "Pending Vendor", "Vendor Confirmed", "Quotation Sent",
   "order_confirmed", "assigned_to_vendor", "waiting_pickup", "picked_up",
@@ -84,7 +183,23 @@ const ORDER_STATUSES = [
   "payment_pending", "paid", "completed", "cancelled",
 ];
 
+// ── Status badge color map ──────────────────────────────────────────────────────
+// Covers both logistic_orders.status values and quote/customer status values.
+// Unknown statuses fall back to "bg-slate-100 text-slate-700" (neutral grey).
+// Keep this in sync with the status enum in the backend schema.
 const STATUS_COLOR: Record<string, string> = {
+  // Order lifecycle statuses
+  "New Order":           "bg-yellow-100 text-yellow-800",
+  "Under Review":        "bg-blue-100 text-blue-700",
+  "Vendor Confirmed":    "bg-indigo-100 text-indigo-800",
+  "Vendor Rejected":     "bg-red-100 text-red-800",
+  "Quotation Sent":      "bg-purple-100 text-purple-800",
+  "Customer Approved":   "bg-emerald-100 text-emerald-800",
+  "In Progress":         "bg-indigo-100 text-indigo-800",
+  "Completed":           "bg-green-200 text-green-900",
+  "Cancelled":           "bg-red-100 text-red-800",
+  "Done":                "bg-green-200 text-green-900",
+  // Legacy / internal status keys
   order_confirmed: "bg-green-100 text-green-800",
   assigned_to_vendor: "bg-blue-100 text-blue-800",
   waiting_pickup: "bg-yellow-100 text-yellow-800",
@@ -94,7 +209,7 @@ const STATUS_COLOR: Record<string, string> = {
   completed: "bg-green-200 text-green-900",
   cancelled: "bg-red-100 text-red-800",
   customer_quoted: "bg-purple-100 text-purple-800",
-  customer_approved: "bg-green-100 text-green-800",
+  customer_approved: "bg-emerald-100 text-emerald-800",
   customer_rejected: "bg-red-100 text-red-800",
   customer_revision_requested: "bg-amber-100 text-amber-800",
 };
@@ -403,6 +518,10 @@ function AssignVendorDialog({ orderId, onAssigned }: { orderId: number; onAssign
         });
       setResult({ jobUrl: r.jobUrl, trackingUrl: r.trackingUrl, waMessage: r.waMessage, vendorPhone: r.vendorPhone });
       toast({ title: "Vendor berhasil ditugaskan!", description: "Job order telah dibuat." });
+      // Invalidate both order-detail (status/price section) and order-job (driver panel).
+      // All mutations in this file use ["order-detail", orderId] as the primary cache key.
+      // Additional keys (order-job, order-fulfillment, order-approvals) are invalidated
+      // only where the mutation specifically affects those panels.
       qc.invalidateQueries({ queryKey: ["order-detail", orderId] });
       qc.invalidateQueries({ queryKey: ["order-job", orderId] });
       onAssigned();
@@ -798,6 +917,799 @@ function JobOrderPanel({ orderId }: { orderId: number }) {
   );
 }
 
+// ── Customer Invoice Panel (Tahap 10) ─────────────────────────────────────────
+
+type InvoiceLink = {
+  id: number; token: string; invoiceNumber: string | null;
+  customerName: string | null; grandTotal: string | null;
+  currency: string | null; dueDate: string | null;
+  paymentStatus: string | null; acknowledgedAt: string | null;
+  viewedAt: string | null; status: string; createdAt: string;
+};
+
+function CustomerInvoicePanel({
+  orderId, order, salesDocId,
+}: {
+  orderId: number;
+  order: Order;
+  salesDocId: number | null | undefined;
+}) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [resending, setResending] = useState<number | null>(null);
+
+  const today = new Date().toISOString().slice(0, 10);
+  const defaultDue = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
+
+  const [form, setForm] = useState({
+    phone: order.phone ?? "",
+    invoiceNumber: "",
+    notes: "",
+    dueDate: defaultDue,
+    sendWa: true,
+  });
+  const [result, setResult] = useState<{ url: string; token: string } | null>(null);
+
+  const { data: links = [], refetch } = useQuery<InvoiceLink[]>({
+    queryKey: ["customer-invoice-links", orderId],
+    queryFn: () => apiFetch(`/api/vendor-form/admin/customer-invoices?orderId=${orderId}`),
+    enabled: open,
+    staleTime: 15000,
+  });
+
+  const openDialog = () => {
+    setForm({ phone: order.phone ?? "", invoiceNumber: "", notes: "", dueDate: defaultDue, sendWa: true });
+    setResult(null);
+    setDialogOpen(true);
+  };
+
+  const handleCreate = async () => {
+    setSending(true);
+    try {
+      const body: Record<string, unknown> = {
+        orderId,
+        orderNumber: order.orderNumber,
+        customerName: order.customerName,
+        customerPhone: form.phone || undefined,
+        invoiceNumber: form.invoiceNumber || undefined,
+        dueDate: form.dueDate || undefined,
+        notes: form.notes || undefined,
+        currency: "IDR",
+        sendWa: form.sendWa && !!form.phone,
+      };
+      if (salesDocId) body.salesDocId = salesDocId;
+      const res = await fetch("/api/vendor-form/admin/customer-invoices", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(body),
+      });
+      const d = await res.json() as { success?: boolean; url?: string; token?: string; error?: string };
+      if (!res.ok) throw new Error(d.error ?? "Gagal");
+      setResult({ url: d.url ?? "", token: d.token ?? "" });
+      toast({ title: "✅ Link invoice dibuat", description: form.sendWa && form.phone ? "WA terkirim ke customer" : "Salin link di bawah" });
+      void refetch();
+    } catch (e: unknown) {
+      toast({ title: "Error", description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleResendWa = async (linkId: number, phone: string) => {
+    const p = prompt("No. WhatsApp customer (format: 628...):", phone);
+    if (!p) return;
+    setResending(linkId);
+    try {
+      const res = await fetch(`/api/vendor-form/admin/customer-invoices/${linkId}/send-wa`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ phone: p }),
+      });
+      const d = await res.json() as { ok?: boolean; error?: string };
+      if (!res.ok) throw new Error(d.error ?? "Gagal");
+      toast({ title: "✅ WA terkirim ulang" });
+    } catch (e: unknown) {
+      toast({ title: "Gagal kirim WA", description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setResending(null);
+    }
+  };
+
+  const copyLink = (url: string) => {
+    navigator.clipboard.writeText(url);
+    toast({ title: "Link disalin!" });
+  };
+
+  const fmtMoney = (v: string | null) =>
+    v == null ? "—" : `Rp ${Math.round(Number(v)).toLocaleString("id-ID")}`;
+
+  const payBadge = (s: string | null) => {
+    if (s === "paid") return <span className="text-[10px] font-semibold text-green-700 bg-green-100 px-1.5 py-0.5 rounded-full">Lunas</span>;
+    if (s === "partial") return <span className="text-[10px] font-semibold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full">Sebagian</span>;
+    return <span className="text-[10px] font-semibold text-red-700 bg-red-100 px-1.5 py-0.5 rounded-full">Belum Bayar</span>;
+  };
+
+  return (
+    <>
+      <Card className="border-emerald-200">
+        <CardHeader
+          className="pb-2 cursor-pointer select-none"
+          onClick={() => setOpen(v => !v)}
+        >
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm font-semibold text-emerald-700 uppercase tracking-wide flex items-center gap-1.5">
+              <FileText className="w-4 h-4" />
+              Invoice & Pembayaran
+              <span className="ml-1 text-[10px] font-normal normal-case text-slate-400 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full">
+                Tahap 10
+              </span>
+              {links.length > 0 && (
+                <span className="text-xs font-normal normal-case text-slate-400">({links.length})</span>
+              )}
+            </CardTitle>
+            <div className="flex items-center gap-2">
+              {open && (
+                <button
+                  onClick={e => { e.stopPropagation(); void refetch(); }}
+                  className="text-slate-400 hover:text-slate-600"
+                  title="Refresh"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                </button>
+              )}
+              {open ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+            </div>
+          </div>
+        </CardHeader>
+
+        {open && (
+          <CardContent className="pt-0 space-y-3">
+            {/* Existing links */}
+            {links.length === 0 ? (
+              <p className="text-xs text-slate-400 text-center py-3">Belum ada link invoice untuk order ini</p>
+            ) : (
+              <div className="space-y-2">
+                {links.map(lnk => (
+                  <div
+                    key={lnk.id}
+                    className={`rounded-lg border px-3 py-2.5 space-y-2 ${lnk.acknowledgedAt ? "border-green-200 bg-green-50/40" : "border-slate-100"}`}
+                  >
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {lnk.invoiceNumber && (
+                          <span className="text-xs font-mono font-semibold text-emerald-800">{lnk.invoiceNumber}</span>
+                        )}
+                        {payBadge(lnk.paymentStatus)}
+                        {lnk.acknowledgedAt && (
+                          <span className="text-[10px] text-green-600 font-medium">✅ Dikonfirmasi customer</span>
+                        )}
+                        {lnk.viewedAt && !lnk.acknowledgedAt && (
+                          <span className="text-[10px] text-blue-500">👁 Sudah dilihat</span>
+                        )}
+                      </div>
+                      <div className="flex gap-1">
+                        <Button
+                          variant="ghost" size="icon" className="h-6 w-6"
+                          title="Kirim ulang WA"
+                          disabled={resending === lnk.id}
+                          onClick={() => void handleResendWa(lnk.id, order.phone ?? "")}
+                        >
+                          {resending === lnk.id
+                            ? <Loader2 className="h-3 w-3 animate-spin" />
+                            : <Send className="h-3 w-3 text-green-600" />}
+                        </Button>
+                        <Button
+                          variant="ghost" size="icon" className="h-6 w-6"
+                          title="Salin link"
+                          onClick={() => copyLink(`${window.location.origin}/customer-invoice/${lnk.token}`)}
+                        >
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                        <a
+                          href={`/customer-invoice/${lnk.token}`}
+                          target="_blank" rel="noopener noreferrer"
+                        >
+                          <Button variant="ghost" size="icon" className="h-6 w-6" title="Buka link">
+                            <ExternalLink className="h-3 w-3" />
+                          </Button>
+                        </a>
+                      </div>
+                    </div>
+                    <div className="flex gap-x-4 gap-y-0.5 flex-wrap text-[11px] text-slate-500">
+                      {lnk.grandTotal && <span>Total: <strong>{fmtMoney(lnk.grandTotal)}</strong></span>}
+                      {lnk.dueDate && (
+                        <span className={new Date(lnk.dueDate) < new Date() && lnk.paymentStatus !== "paid" ? "text-red-500 font-medium" : ""}>
+                          Jatuh tempo: {new Date(lnk.dueDate).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
+                        </span>
+                      )}
+                      <span className="text-slate-400">
+                        Dibuat: {new Date(lnk.createdAt).toLocaleString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Create button */}
+            <Button
+              size="sm" className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+              onClick={openDialog}
+            >
+              <Plus className="w-3.5 h-3.5 mr-1" />
+              Buat & Kirim Link Invoice
+            </Button>
+          </CardContent>
+        )}
+      </Card>
+
+      {/* Create Invoice Dialog */}
+      <Dialog open={dialogOpen} onOpenChange={v => { if (!sending) { setDialogOpen(v); if (!v) setResult(null); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="w-4 h-4 text-emerald-600" />
+              Buat Link Invoice Customer
+            </DialogTitle>
+          </DialogHeader>
+
+          {result ? (
+            <div className="space-y-4 py-2">
+              <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
+                <p className="text-2xl mb-1">✅</p>
+                <p className="font-semibold text-green-700 text-sm">Link Invoice Berhasil Dibuat</p>
+                {form.sendWa && form.phone && (
+                  <p className="text-xs text-green-600 mt-1">WA terkirim ke customer</p>
+                )}
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-slate-500">Link Invoice (untuk customer)</Label>
+                <div className="flex gap-2">
+                  <input
+                    readOnly
+                    value={`${window.location.origin}/customer-invoice/${result.token}`}
+                    className="flex-1 text-xs rounded-lg border border-slate-200 px-2 py-1.5 bg-slate-50 font-mono truncate"
+                  />
+                  <Button
+                    size="sm" variant="outline"
+                    onClick={() => copyLink(`${window.location.origin}/customer-invoice/${result.token}`)}
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              </div>
+              <Button
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+                onClick={() => { setDialogOpen(false); setResult(null); }}
+              >
+                Selesai
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-4 py-2">
+              <div className="bg-slate-50 rounded-lg px-3 py-2 text-sm space-y-0.5">
+                <p><span className="text-slate-400 text-xs">Order:</span> <span className="font-mono font-semibold">{order.orderNumber}</span></p>
+                <p><span className="text-slate-400 text-xs">Customer:</span> {order.customerName}</p>
+                {salesDocId && (
+                  <p className="text-xs text-emerald-600">✓ Data rincian harga dari Sales Order akan diambil otomatis</p>
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs">No. Invoice <span className="text-slate-400">(opsional)</span></Label>
+                <Input
+                  value={form.invoiceNumber}
+                  onChange={e => setForm(f => ({ ...f, invoiceNumber: e.target.value }))}
+                  placeholder="INV/2026/001"
+                  className="h-9 text-sm"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs">No. WhatsApp Customer</Label>
+                <Input
+                  value={form.phone}
+                  onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+                  placeholder="6281234567890"
+                  className="h-9 text-sm font-mono"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs">Jatuh Tempo Pembayaran</Label>
+                <Input
+                  type="date"
+                  value={form.dueDate}
+                  min={today}
+                  onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))}
+                  className="h-9 text-sm"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs">Catatan <span className="text-slate-400">(opsional)</span></Label>
+                <Textarea
+                  value={form.notes}
+                  onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                  placeholder="Catatan pembayaran, cara transfer, rekening bank, dll."
+                  rows={3}
+                  className="text-sm resize-none"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="sendWa"
+                  checked={form.sendWa}
+                  onCheckedChange={v => setForm(f => ({ ...f, sendWa: v }))}
+                />
+                <Label htmlFor="sendWa" className="text-sm cursor-pointer">
+                  Kirim link via WhatsApp ke customer
+                </Label>
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={sending}>Batal</Button>
+                <Button
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                  onClick={() => void handleCreate()}
+                  disabled={sending}
+                >
+                  {sending ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Membuat...</> : <><Send className="w-3.5 h-3.5 mr-1.5" />Buat & Kirim</>}
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+// ── Payment Summary Panel ──────────────────────────────────────────────────────
+
+type SalesDocSummary = {
+  id: number; docNumber: string; status: string; invoiceStatus: string;
+  customerName: string; totalAmount: number; taxAmount: number;
+  grandTotal: number; amountPaid: number;
+  lines: { id: number; name: string; quantity: number; unitPrice: number; subtotal: number }[];
+};
+
+type Journal = { id: number; name: string; type: string; code: string };
+type Payment = {
+  id: number; paymentType: string; amount: number; date: string;
+  ref: string | null; memo: string | null; partnerName: string | null;
+  journalId: number; status: string; voidReason: string | null; createdAt: string;
+};
+
+function PaymentSummaryPanel({
+  salesDocId, soNumber,
+}: {
+  salesDocId: number | null | undefined;
+  soNumber: string | null | undefined;
+}) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const today = new Date().toISOString().slice(0, 10);
+
+  const { data: doc, isLoading, isError, refetch } = useQuery<SalesDocSummary>({
+    queryKey: ["sales-doc-summary", salesDocId],
+    queryFn: () => apiFetch(`/api/sales/documents/${salesDocId}`),
+    enabled: salesDocId != null,
+    staleTime: 30000,
+  });
+
+  const { data: allJournals = [] } = useQuery<Journal[]>({
+    queryKey: ["accounting-journals"],
+    queryFn: () => apiFetch("/api/accounting/journals"),
+    staleTime: 60000,
+  });
+  const bankCashJournals = allJournals.filter(j => j.type === "bank" || j.type === "cash");
+
+  const { data: payments = [], refetch: refetchPayments } = useQuery<Payment[]>({
+    queryKey: ["so-payments", salesDocId],
+    queryFn: () => apiFetch(`/api/accounting/payments?sourceType=sales_order&sourceDocId=${salesDocId}`),
+    enabled: salesDocId != null,
+    staleTime: 30000,
+  });
+  const journalMap = Object.fromEntries(allJournals.map(j => [j.id, j]));
+
+  const [payOpen, setPayOpen] = useState(false);
+  const [paying, setPaying] = useState(false);
+  const [payForm, setPayForm] = useState({
+    journalId: "",
+    date: today,
+    ref: "",
+    memo: "",
+    amount: "",
+  });
+
+  const outstanding = doc ? Math.max(0, doc.grandTotal - doc.amountPaid) : 0;
+  const pctPaid = doc && doc.grandTotal > 0 ? Math.round((doc.amountPaid / doc.grandTotal) * 100) : 0;
+
+  const openPayDialog = () => {
+    setPayForm({
+      journalId: bankCashJournals.length > 0 ? String(bankCashJournals[0]!.id) : "",
+      date: today,
+      ref: doc?.docNumber ?? soNumber ?? "",
+      memo: `Pembayaran ${doc?.docNumber ?? soNumber ?? "SO"}`,
+      amount: String(Math.round(outstanding)),
+    });
+    setPayOpen(true);
+  };
+
+  const submitPayment = async () => {
+    if (!payForm.journalId || !payForm.date || !payForm.amount) {
+      toast({ title: "Lengkapi data pembayaran", variant: "destructive" }); return;
+    }
+    const amt = Number(payForm.amount);
+    if (Number.isNaN(amt) || amt <= 0) {
+      toast({ title: "Jumlah harus lebih dari 0", variant: "destructive" }); return;
+    }
+    setPaying(true);
+    try {
+      await apiFetch("/api/accounting/payments", {
+        method: "POST",
+        body: JSON.stringify({
+          paymentType: "inbound",
+          amount: amt,
+          journalId: Number(payForm.journalId),
+          partnerName: doc?.customerName ?? "",
+          date: payForm.date,
+          ref: payForm.ref || undefined,
+          memo: payForm.memo || undefined,
+          sourceType: "sales_order",
+          sourceDocId: salesDocId,
+        }),
+      });
+      toast({ title: "✅ Pembayaran dicatat", description: `${idr(amt)} berhasil direkam ke jurnal` });
+      setPayOpen(false);
+      void refetch();
+      void refetchPayments();
+      void qc.invalidateQueries({ queryKey: ["sales-doc-summary", salesDocId] });
+      void qc.invalidateQueries({ queryKey: ["so-payments", salesDocId] });
+    } catch (e: unknown) {
+      toast({ title: "Gagal catat pembayaran", description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setPaying(false);
+    }
+  };
+
+  const invoiceBadge = (s: string) => {
+    if (s === "invoiced") return <span className="text-[10px] font-semibold text-green-700 bg-green-100 px-1.5 py-0.5 rounded-full">Invoiced</span>;
+    if (s === "to_invoice") return <span className="text-[10px] font-semibold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full">Belum Invoice</span>;
+    return <span className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-full">—</span>;
+  };
+
+  const statusBadge = (s: string) => {
+    const map: Record<string, string> = {
+      draft: "bg-slate-100 text-slate-600",
+      sent: "bg-blue-100 text-blue-700",
+      confirmed: "bg-emerald-100 text-emerald-700",
+      done: "bg-green-200 text-green-900",
+      cancelled: "bg-red-100 text-red-700",
+    };
+    const labels: Record<string, string> = { draft: "Draft", sent: "Terkirim", confirmed: "Dikonfirmasi", done: "Selesai", cancelled: "Dibatalkan" };
+    return (
+      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${map[s] ?? "bg-slate-100 text-slate-600"}`}>
+        {labels[s] ?? s}
+      </span>
+    );
+  };
+
+  if (!salesDocId) {
+    return (
+      <Card className="border-dashed border-slate-200">
+        <CardContent className="py-4">
+          <p className="text-xs text-slate-400 text-center">
+            Ringkasan pembayaran tersedia setelah customer menyetujui penawaran dan Sales Order dibuat.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <>
+      <Card className="border-indigo-200">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm font-semibold text-indigo-700 uppercase tracking-wide flex items-center gap-1.5">
+              <ClipboardList className="w-4 h-4" />
+              Ringkasan Pembayaran SO
+            </CardTitle>
+            <div className="flex items-center gap-1.5">
+              {doc && statusBadge(doc.status)}
+              {doc && invoiceBadge(doc.invoiceStatus)}
+              <button
+                onClick={() => void refetch()}
+                className="text-slate-400 hover:text-slate-600"
+                title="Refresh"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+          {(doc?.docNumber ?? soNumber) && (
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className="font-mono text-xs text-slate-500">{doc?.docNumber ?? soNumber}</span>
+              <Link href={`/sales/documents/${salesDocId}`}>
+                <ExternalLink className="w-3 h-3 text-indigo-400 hover:text-indigo-600 cursor-pointer" />
+              </Link>
+            </div>
+          )}
+        </CardHeader>
+
+        <CardContent className="pt-0 space-y-3">
+          {isLoading ? (
+            <div className="flex justify-center py-4">
+              <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
+            </div>
+          ) : isError ? (
+            <p className="text-xs text-red-500 text-center py-2">Gagal memuat data SO</p>
+          ) : doc ? (
+            <>
+              {/* Line items */}
+              {doc.lines.length > 0 && (
+                <div className="rounded-lg border border-slate-100 overflow-hidden">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-100">
+                        <th className="text-left px-3 py-1.5 text-slate-500 font-medium">Item</th>
+                        <th className="text-right px-3 py-1.5 text-slate-500 font-medium">Qty</th>
+                        <th className="text-right px-3 py-1.5 text-slate-500 font-medium">Subtotal</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {doc.lines.map(l => (
+                        <tr key={l.id} className="border-b border-slate-50 last:border-0">
+                          <td className="px-3 py-1.5 text-slate-700">{l.name}</td>
+                          <td className="px-3 py-1.5 text-right text-slate-500">{l.quantity}</td>
+                          <td className="px-3 py-1.5 text-right font-mono text-slate-700">
+                            {idr(l.subtotal)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Totals */}
+              <div className="rounded-lg bg-indigo-50/60 border border-indigo-100 px-3 py-2.5 space-y-1.5 text-sm">
+                <div className="flex justify-between text-xs text-slate-500">
+                  <span>Subtotal</span>
+                  <span className="font-mono">{idr(doc.totalAmount)}</span>
+                </div>
+                {doc.taxAmount > 0 && (
+                  <div className="flex justify-between text-xs text-slate-500">
+                    <span>PPN</span>
+                    <span className="font-mono">{idr(doc.taxAmount)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between font-semibold text-slate-800 border-t border-indigo-100 pt-1.5">
+                  <span className="text-xs">Total Tagihan</span>
+                  <span className="font-mono text-indigo-800">{idr(doc.grandTotal)}</span>
+                </div>
+                <div className="flex justify-between text-xs text-emerald-600">
+                  <span>Sudah Dibayar</span>
+                  <span className="font-mono font-semibold">{idr(doc.amountPaid)}</span>
+                </div>
+                <div className={`flex justify-between text-xs font-semibold ${outstanding > 0 ? "text-red-600" : "text-emerald-600"}`}>
+                  <span>Sisa Outstanding</span>
+                  <span className="font-mono">{outstanding > 0 ? idr(outstanding) : "✓ Lunas"}</span>
+                </div>
+              </div>
+
+              {/* Progress bar */}
+              {doc.grandTotal > 0 && (
+                <div className="space-y-1">
+                  <div className="flex justify-between text-[10px] text-slate-400">
+                    <span>Progress Pembayaran</span>
+                    <span>{pctPaid}%</span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${pctPaid >= 100 ? "bg-emerald-500" : pctPaid > 0 ? "bg-indigo-400" : "bg-slate-200"}`}
+                      style={{ width: `${Math.min(pctPaid, 100)}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Riwayat Pembayaran */}
+              {payments.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
+                    Riwayat Pembayaran ({payments.length})
+                  </p>
+                  <div className="space-y-1 max-h-40 overflow-y-auto">
+                    {payments.map(p => {
+                      const isVoided = p.status === "void";
+                      const jrnl = journalMap[p.journalId];
+                      return (
+                        <div
+                          key={p.id}
+                          className={`rounded-lg border px-3 py-2 text-xs ${isVoided ? "border-slate-100 bg-slate-50 opacity-60" : "border-emerald-100 bg-emerald-50/50"}`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className={`font-mono font-semibold ${isVoided ? "line-through text-slate-400" : "text-emerald-700"}`}>
+                              {idr(p.amount)}
+                            </span>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {isVoided && (
+                                <span className="text-[9px] font-bold text-red-500 bg-red-50 border border-red-200 px-1 py-0.5 rounded">VOID</span>
+                              )}
+                              <span className="text-slate-400">
+                                {new Date(p.date).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                            {jrnl && (
+                              <span className="text-slate-400">{jrnl.name}</span>
+                            )}
+                            {p.ref && (
+                              <span className="text-slate-500 font-medium">#{p.ref}</span>
+                            )}
+                            {p.memo && (
+                              <span className="text-slate-400 truncate">{p.memo}</span>
+                            )}
+                          </div>
+                          {isVoided && p.voidReason && (
+                            <p className="text-[10px] text-red-400 mt-0.5">Void: {p.voidReason}</p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Action buttons */}
+              <div className="flex gap-2">
+                {outstanding > 0 && (
+                  <Button
+                    size="sm"
+                    className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white text-xs"
+                    onClick={openPayDialog}
+                  >
+                    <Plus className="w-3.5 h-3.5 mr-1" />
+                    Catat Pembayaran
+                  </Button>
+                )}
+                <Link href={`/sales/documents/${salesDocId}`} className={outstanding > 0 ? "" : "flex-1"}>
+                  <Button
+                    variant="outline" size="sm"
+                    className={`text-xs border-indigo-200 text-indigo-600 hover:bg-indigo-50 ${outstanding > 0 ? "" : "w-full"}`}
+                  >
+                    <ExternalLink className="w-3 h-3 mr-1.5" />
+                    Buka Detail SO
+                  </Button>
+                </Link>
+              </div>
+            </>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      {/* Catat Pembayaran Dialog */}
+      <Dialog open={payOpen} onOpenChange={v => { if (!paying) setPayOpen(v); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ClipboardList className="w-4 h-4 text-indigo-600" />
+              Catat Pembayaran Masuk
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-3 py-1">
+            {/* SO info */}
+            <div className="bg-indigo-50 rounded-lg px-3 py-2 text-xs space-y-0.5">
+              <p><span className="text-slate-400">SO:</span> <span className="font-mono font-semibold">{doc?.docNumber ?? soNumber}</span></p>
+              <p><span className="text-slate-400">Customer:</span> {doc?.customerName}</p>
+              <p>
+                <span className="text-slate-400">Outstanding:</span>{" "}
+                <span className="font-semibold text-red-600">{idr(outstanding)}</span>
+              </p>
+            </div>
+
+            {/* Jurnal */}
+            <div className="space-y-1.5">
+              <Label className="text-xs">Jurnal Kas/Bank <span className="text-red-500">*</span></Label>
+              {bankCashJournals.length === 0 ? (
+                <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  Belum ada jurnal Kas/Bank. Buat dulu di menu Akuntansi → Jurnal.
+                </p>
+              ) : (
+                <Select value={payForm.journalId} onValueChange={v => setPayForm(f => ({ ...f, journalId: v }))}>
+                  <SelectTrigger className="h-9 text-sm">
+                    <SelectValue placeholder="Pilih jurnal..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {bankCashJournals.map(j => (
+                      <SelectItem key={j.id} value={String(j.id)}>
+                        [{j.code}] {j.name} ({j.type === "bank" ? "Bank" : "Kas"})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+
+            {/* Tanggal */}
+            <div className="space-y-1.5">
+              <Label className="text-xs">Tanggal Pembayaran <span className="text-red-500">*</span></Label>
+              <Input
+                type="date"
+                value={payForm.date}
+                onChange={e => setPayForm(f => ({ ...f, date: e.target.value }))}
+                className="h-9 text-sm"
+              />
+            </div>
+
+            {/* Jumlah */}
+            <div className="space-y-1.5">
+              <Label className="text-xs">Jumlah Diterima (IDR) <span className="text-red-500">*</span></Label>
+              <Input
+                type="number"
+                value={payForm.amount}
+                onChange={e => setPayForm(f => ({ ...f, amount: e.target.value }))}
+                placeholder="0"
+                min={1}
+                className="h-9 text-sm font-mono"
+              />
+              {outstanding > 0 && Number(payForm.amount) > 0 && Number(payForm.amount) < outstanding && (
+                <p className="text-[10px] text-amber-600">
+                  Pembayaran sebagian — sisa {idr(outstanding - Number(payForm.amount))}
+                </p>
+              )}
+            </div>
+
+            {/* Referensi */}
+            <div className="space-y-1.5">
+              <Label className="text-xs">Referensi <span className="text-slate-400">(opsional)</span></Label>
+              <Input
+                value={payForm.ref}
+                onChange={e => setPayForm(f => ({ ...f, ref: e.target.value }))}
+                placeholder="No. transfer / cek / bukti"
+                className="h-9 text-sm"
+              />
+            </div>
+
+            {/* Memo */}
+            <div className="space-y-1.5">
+              <Label className="text-xs">Memo <span className="text-slate-400">(opsional)</span></Label>
+              <Input
+                value={payForm.memo}
+                onChange={e => setPayForm(f => ({ ...f, memo: e.target.value }))}
+                className="h-9 text-sm"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPayOpen(false)} disabled={paying}>Batal</Button>
+            <Button
+              className="bg-indigo-600 hover:bg-indigo-700 text-white"
+              onClick={() => void submitPayment()}
+              disabled={paying || !payForm.journalId}
+            >
+              {paying
+                ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Menyimpan...</>
+                : <><CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />Catat Pembayaran</>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 // ── Update Status Dialog ───────────────────────────────────────────────────────
 
 function UpdateStatusDialog({ orderId, currentStatus, currentVersion, onUpdated }: { orderId: number; currentStatus: string; currentVersion?: number; onUpdated: () => void }) {
@@ -876,6 +1788,98 @@ function UpdateStatusDialog({ orderId, currentStatus, currentVersion, onUpdated 
   );
 }
 
+// ── Timeline helpers ───────────────────────────────────────────────────────────
+
+function timelineIcon(status: string | null): React.ReactNode {
+  const s = (status ?? "").toLowerCase();
+  if (s.includes("vmf") || s.includes("link")) return <Link2 className="w-3.5 h-3.5 text-violet-500" />;
+  if (s.includes("so dibuat") || s.includes("sales order") || s.includes("so ")) return <FileText className="w-3.5 h-3.5 text-blue-500" />;
+  if (s.includes("gagal") || s.includes("error") || s.includes("reject") || s.includes("tolak")) return <AlertTriangle className="w-3.5 h-3.5 text-red-500" />;
+  if (s.includes("approv") || s.includes("setuju") || s.includes("confirm") || s.includes("completed")) return <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />;
+  if (s.includes("customer") || s.includes("quotat") || s.includes("quote") || s.includes("penawaran")) return <User className="w-3.5 h-3.5 text-purple-500" />;
+  if (s.includes("vendor") || s.includes("rfq")) return <Truck className="w-3.5 h-3.5 text-blue-500" />;
+  if (s.includes("wa") || s.includes("whatsapp") || s.includes("notif")) return <MessageCircle className="w-3.5 h-3.5 text-green-500" />;
+  if (s.includes("op-confirm") || s.includes("op confirm") || s.includes("operational")) return <ClipboardCheck className="w-3.5 h-3.5 text-orange-500" />;
+  if (s.includes("status")) return <ClipboardList className="w-3.5 h-3.5 text-slate-500" />;
+  return <StickyNote className="w-3.5 h-3.5 text-slate-400" />;
+}
+
+function timelineDotColor(u: OrderUpdate): string {
+  const s = (u.status ?? "").toLowerCase();
+  if (s.includes("gagal") || s.includes("error") || s.includes("reject")) return "bg-red-400";
+  if (s.includes("approv") || s.includes("setuju") || s.includes("confirm") || s.includes("completed")) return "bg-emerald-400";
+  if (u.isPublic) return "bg-teal-400";
+  return "bg-blue-400";
+}
+
+// ── Add Timeline Note Dialog ───────────────────────────────────────────────────
+
+function AddTimelineNoteDialog({ orderId, onAdded }: { orderId: number; onAdded: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [notes, setNotes] = useState("");
+  const [isPublic, setIsPublic] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const { toast } = useToast();
+
+  const handleSubmit = async () => {
+    if (!notes.trim()) { toast({ title: "Catatan tidak boleh kosong", variant: "destructive" }); return; }
+    setLoading(true);
+    try {
+      await apiFetch(`/api/logistic/orders/${orderId}/updates`, {
+        method: "POST",
+        body: JSON.stringify({ notes: notes.trim(), isPublic }),
+      });
+      toast({ title: "Catatan berhasil ditambahkan" });
+      setNotes("");
+      setIsPublic(false);
+      setOpen(false);
+      onAdded();
+    } catch (e: unknown) {
+      toast({ title: "Gagal", description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <>
+      <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-slate-500 hover:text-slate-800" onClick={() => setOpen(true)}>
+        <Plus className="w-3 h-3 mr-1" /> Tambah Catatan
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Tambah Catatan ke Timeline</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label>Catatan <span className="text-red-500">*</span></Label>
+              <Textarea
+                value={notes}
+                onChange={e => setNotes(e.target.value)}
+                rows={3}
+                placeholder="Tulis catatan internal atau update untuk customer..."
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch id="isPublic" checked={isPublic} onCheckedChange={setIsPublic} />
+              <Label htmlFor="isPublic" className="cursor-pointer flex items-center gap-1">
+                {isPublic ? <Globe className="w-3.5 h-3.5 text-teal-500" /> : <EyeOff className="w-3.5 h-3.5 text-slate-400" />}
+                {isPublic ? "Tampil ke Customer (Publik)" : "Internal (Tidak Tampil ke Customer)"}
+              </Label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)}>Batal</Button>
+            <Button onClick={handleSubmit} disabled={loading}>
+              {loading ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Plus className="w-4 h-4 mr-1" />}
+              Simpan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 // ── Main Page ──────────────────────────────────────────────────────────────────
 
 export default function LogisticOrderDetailPage() {
@@ -913,6 +1917,57 @@ export default function LogisticOrderDetailPage() {
     queryFn: () => apiFetch(`/api/logistic/orders/${orderId}/fulfillment`),
     enabled: !isNaN(orderId),
     refetchInterval: 15000,
+  });
+
+  const { data: approvalData, refetch: refetchApprovals } = useQuery<CustomerApproval[]>({
+    queryKey: ["order-approvals", orderId],
+    queryFn: () => apiFetch(`/api/vendor-form/admin/customer-approvals?orderId=${orderId}`),
+    enabled: !isNaN(orderId),
+    refetchInterval: 30000,
+  });
+
+  const retrySoMut = useMutation({
+    mutationFn: (approvalId: number) =>
+      apiFetch<{ ok: boolean; docNumber: string; already?: boolean }>(
+        `/api/vendor-form/admin/customer-approvals/${approvalId}/retry-so`,
+        { method: "POST" }
+      ),
+    onSuccess: (r, approvalId) => {
+      toast({
+        title: r.already ? "SO sudah ada" : "✅ Sales Order berhasil dibuat",
+        description: `Nomor SO: ${r.docNumber}`,
+      });
+      void refetchApprovals();
+      qc.invalidateQueries({ queryKey: ["order-detail", orderId] });
+    },
+    onError: (e: Error) => toast({ title: "Gagal buat SO", description: e.message, variant: "destructive" }),
+  });
+
+  const confirmFulfillmentMut = useMutation({
+    mutationFn: () => apiFetch<{ ok: boolean }>(`/api/logistic/orders/${orderId}/confirm-fulfillment`, { method: "POST" }),
+    onSuccess: () => {
+      toast({ title: "✅ Fulfillment dikonfirmasi", description: "Status diubah ke In Progress. WA dikirim ke customer." });
+      qc.invalidateQueries({ queryKey: ["order-detail", orderId] });
+      void refetchFulfillment();
+    },
+    onError: (e: Error) => toast({ title: "Gagal konfirmasi", description: e.message, variant: "destructive" }),
+  });
+
+  const [completeNote, setCompleteNote] = useState("");
+  const [showCompleteDialog, setShowCompleteDialog] = useState(false);
+  const completeOrderMut = useMutation({
+    mutationFn: (note: string) => apiFetch<{ ok: boolean }>(`/api/logistic/orders/${orderId}/complete-order`, {
+      method: "POST",
+      body: JSON.stringify({ note }),
+    }),
+    onSuccess: () => {
+      toast({ title: "✅ Order selesai", description: "WA konfirmasi dikirim ke customer." });
+      setShowCompleteDialog(false);
+      setCompleteNote("");
+      qc.invalidateQueries({ queryKey: ["order-detail", orderId] });
+      void refetchFulfillment();
+    },
+    onError: (e: Error) => toast({ title: "Gagal selesaikan order", description: e.message, variant: "destructive" }),
   });
 
   const copyUrl = (url: string) => {
@@ -1033,7 +2088,11 @@ export default function LogisticOrderDetailPage() {
               <CardContent className="grid grid-cols-2 gap-3 text-sm">
                 <Field label="Harga Vendor" value={idr(order.vendorCost ?? order.finalPrice)} />
                 <Field label="Harga ke Customer" value={idr(order.finalSellingPrice)} />
-                <Field label="Markup %" value={order.markupPercent ? `${order.markupPercent}%` : "—"} />
+                <Field label="Profit" value={
+                  order.finalSellingPrice && order.vendorCost
+                    ? idr(Number(order.finalSellingPrice) - Number(order.vendorCost))
+                    : "—"
+                } />
                 <Field label="Margin" value={idr(order.orderMargin)} />
                 {order.etaFinal && <Field label="ETA Final" value={order.etaFinal} />}
                 {vendor && (
@@ -1068,6 +2127,104 @@ export default function LogisticOrderDetailPage() {
                       </div>
                     </div>
                   ))}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Customer Approval & SO */}
+            {(approvalData?.length ?? 0) > 0 && (
+              <Card className="border-violet-200">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-semibold text-violet-700 uppercase tracking-wide flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4" /> Persetujuan Customer &amp; Sales Order
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {approvalData!.map(a => {
+                    const APPROVAL_COLOR: Record<string, string> = {
+                      pending: "bg-amber-100 text-amber-700",
+                      approved: "bg-emerald-100 text-emerald-800",
+                      rejected: "bg-red-100 text-red-700",
+                    };
+                    const needsRetrySo = a.status === "approved" && !a.soNumber;
+                    const approvalUrl = `${window.location.origin}/vendor-form/customer-approval/${a.token}`;
+                    return (
+                      <div key={a.id} className={`rounded-lg border px-3 py-3 space-y-2.5 ${a.status === "approved" ? "border-emerald-200 bg-emerald-50/40" : a.status === "rejected" ? "border-red-100" : "border-amber-100"}`}>
+                        {/* Status row */}
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <Badge className={APPROVAL_COLOR[a.status] ?? "bg-slate-100 text-slate-600"}>
+                              {a.status === "approved" ? "✅ Disetujui" : a.status === "rejected" ? "❌ Ditolak" : "⏳ Menunggu"}
+                            </Badge>
+                            {a.customerName && <span className="text-sm font-medium text-slate-700">{a.customerName}</span>}
+                            {a.sellingPrice && (
+                              <span className="text-xs text-slate-500">{idr(a.sellingPrice)} {a.currency ?? "IDR"}</span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Button variant="ghost" size="icon" className="h-7 w-7" title="Salin link approval" onClick={() => { navigator.clipboard.writeText(approvalUrl); toast({ title: "Link disalin!" }); }}>
+                              <Copy className="h-3.5 w-3.5" />
+                            </Button>
+                            <a href={approvalUrl} target="_blank" rel="noopener noreferrer">
+                              <Button variant="ghost" size="icon" className="h-7 w-7" title="Buka halaman approval">
+                                <ExternalLink className="h-3.5 w-3.5" />
+                              </Button>
+                            </a>
+                          </div>
+                        </div>
+
+                        {/* SO Number row */}
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 text-sm">
+                            <FileText className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                            {a.soNumber ? (
+                              <>
+                                <span className="text-slate-500 text-xs">SO:</span>
+                                {a.salesDocId ? (
+                                  <Link href={`/sales/documents/${a.salesDocId}`}>
+                                    <span className="font-mono font-semibold text-blue-700 hover:underline cursor-pointer">{a.soNumber}</span>
+                                  </Link>
+                                ) : (
+                                  <span className="font-mono font-semibold text-blue-700">{a.soNumber}</span>
+                                )}
+                              </>
+                            ) : (
+                              <span className="text-xs text-slate-400 italic">
+                                {a.status === "approved" ? "SO belum terbuat" : "—"}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Retry SO button — hanya muncul saat approved tapi SO belum ada */}
+                          {needsRetrySo && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs border-blue-300 text-blue-700 hover:bg-blue-50 shrink-0"
+                              disabled={retrySoMut.isPending}
+                              onClick={() => retrySoMut.mutate(a.id)}
+                              title="Buat ulang Sales Order dari approval ini"
+                            >
+                              {retrySoMut.isPending
+                                ? <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                                : <RotateCcw className="h-3 w-3 mr-1" />}
+                              Buat SO
+                            </Button>
+                          )}
+                        </div>
+
+                        {/* Timestamps */}
+                        <div className="text-[10px] text-slate-400 flex gap-3 flex-wrap">
+                          <span>Dibuat: {dt(a.createdAt)}</span>
+                          {a.approvedAt && <span>Disetujui: {dt(a.approvedAt)}</span>}
+                          {a.rejectedAt && <span>Ditolak: {dt(a.rejectedAt)}</span>}
+                          {a.expiresAt && new Date(a.expiresAt) > new Date() && (
+                            <span>Exp: {dt(a.expiresAt)}</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </CardContent>
               </Card>
             )}
@@ -1125,12 +2282,86 @@ export default function LogisticOrderDetailPage() {
                             </p>
                           </div>
                         )}
+
+                        {/* ── Aksi lanjutan setelah vendor submit ── */}
+                        {isSubmitted && sub && (
+                          <div className="pt-1 flex flex-wrap gap-2">
+                            {["Vendor Confirmed", "Processing", "Customer Approved"].includes(order.status) && (
+                              <Button
+                                size="sm"
+                                className="bg-blue-600 hover:bg-blue-700 text-white h-8 text-xs"
+                                disabled={confirmFulfillmentMut.isPending}
+                                onClick={() => {
+                                  if (!confirm("Konfirmasi fulfillment dan ubah status ke In Progress? WA akan dikirim ke customer.")) return;
+                                  confirmFulfillmentMut.mutate();
+                                }}
+                              >
+                                {confirmFulfillmentMut.isPending
+                                  ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                                  : <Truck className="w-3.5 h-3.5 mr-1" />}
+                                Konfirmasi &amp; Mulai Pengiriman
+                              </Button>
+                            )}
+                            {order.status === "In Progress" && (
+                              <Button
+                                size="sm"
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white h-8 text-xs"
+                                onClick={() => setShowCompleteDialog(true)}
+                              >
+                                <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
+                                Selesaikan Order
+                              </Button>
+                            )}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
                 </CardContent>
               </Card>
             )}
+
+            {/* Dialog: Selesaikan Order */}
+            <Dialog open={showCompleteDialog} onOpenChange={setShowCompleteDialog}>
+              <DialogContent className="max-w-sm">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                    Selesaikan Order
+                  </DialogTitle>
+                </DialogHeader>
+                <div className="space-y-3 py-2">
+                  <p className="text-sm text-slate-600">
+                    Status akan berubah ke <strong>Completed</strong> dan WA konfirmasi dikirim ke customer.
+                  </p>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Catatan penutup (opsional)</Label>
+                    <Textarea
+                      value={completeNote}
+                      onChange={e => setCompleteNote(e.target.value)}
+                      rows={3}
+                      placeholder="Contoh: Barang telah diterima dengan baik di gudang tujuan."
+                    />
+                  </div>
+                </div>
+                <DialogFooter className="gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setShowCompleteDialog(false)}>
+                    Batal
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                    disabled={completeOrderMut.isPending}
+                    onClick={() => completeOrderMut.mutate(completeNote)}
+                  >
+                    {completeOrderMut.isPending
+                      ? <Loader2 className="w-4 h-4 animate-spin mr-1" />
+                      : <CheckCircle2 className="w-4 h-4 mr-1" />}
+                    Ya, Selesaikan
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
 
             {/* Job Order & Tracking Panel */}
             <JobOrderPanel orderId={orderId} />
@@ -1266,35 +2497,84 @@ export default function LogisticOrderDetailPage() {
                 </CardContent>
               </Card>
             )}
+
+            {/* Ringkasan Pembayaran SO */}
+            <PaymentSummaryPanel
+              salesDocId={approvalData?.find(a => a.salesDocId != null)?.salesDocId}
+              soNumber={approvalData?.find(a => a.soNumber != null)?.soNumber}
+            />
+
+            {/* Invoice & Payment — Tahap 10 */}
+            <CustomerInvoicePanel
+              orderId={orderId}
+              order={order}
+              salesDocId={approvalData?.find(a => a.salesDocId != null)?.salesDocId}
+            />
           </div>
 
-          {/* Right: Timeline */}
+          {/* Right: Timeline + WA Log */}
           <div className="space-y-4">
+            <WaNotificationLogPanel orderNumber={order.orderNumber} />
             <Card className="sticky top-6">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-semibold text-slate-600 uppercase tracking-wide flex items-center gap-1.5">
-                  <Clock className="w-4 h-4" /> Timeline Aktivitas
-                </CardTitle>
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm font-semibold text-slate-600 uppercase tracking-wide flex items-center gap-1.5">
+                    <Clock className="w-4 h-4" /> Timeline Aktivitas
+                    <span className="ml-1 text-xs font-normal normal-case text-slate-400">({updates.length})</span>
+                  </CardTitle>
+                  <AddTimelineNoteDialog
+                    orderId={orderId}
+                    onAdded={() => qc.invalidateQueries({ queryKey: ["order-detail", orderId] })}
+                  />
+                </div>
+                <div className="flex gap-2 text-xs text-slate-400 mt-1">
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-teal-400 inline-block" />Publik</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-400 inline-block" />Internal</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400 inline-block" />Error</span>
+                </div>
               </CardHeader>
-              <CardContent className="max-h-[550px] overflow-y-auto">
+              <CardContent className="max-h-[600px] overflow-y-auto pt-2">
                 {updates.length === 0 ? (
-                  <p className="text-sm text-slate-400 text-center py-4">Belum ada aktivitas</p>
+                  <p className="text-sm text-slate-400 text-center py-6">Belum ada aktivitas</p>
                 ) : (
-                  <div className="relative pl-4">
-                    <div className="absolute left-1 top-0 bottom-0 w-0.5 bg-slate-100" />
+                  <div className="relative pl-5">
+                    <div className="absolute left-2 top-0 bottom-0 w-0.5 bg-slate-100" />
                     <div className="space-y-4">
                       {updates.map(u => (
-                        <div key={u.id} className="relative text-sm">
-                          <div className={`absolute -left-[13px] top-1 w-2.5 h-2.5 rounded-full border-2 border-white ${u.isPublic ? "bg-teal-400" : "bg-blue-400"}`} />
-                          <div>
+                        <div key={u.id} className="relative text-sm group">
+                          {/* Dot + icon */}
+                          <div className={`absolute -left-[17px] top-0.5 w-3.5 h-3.5 rounded-full border-2 border-white flex items-center justify-center ${timelineDotColor(u)}`} />
+                          <div className="absolute -left-[28px] top-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                            {timelineIcon(u.status)}
+                          </div>
+                          <div className="bg-white rounded-lg border border-slate-100 px-3 py-2 shadow-sm hover:border-slate-200 transition-colors">
+                            {/* Status badge */}
                             {u.status && (
-                              <span className={`text-xs font-medium rounded-full px-2 py-0.5 ${STATUS_COLOR[u.status] ?? "bg-slate-100 text-slate-600"}`}>
-                                {u.status}
-                              </span>
+                              <div className="flex items-center gap-1.5 mb-1">
+                                {timelineIcon(u.status)}
+                                <span className={`text-xs font-semibold rounded-full px-2 py-0.5 ${STATUS_COLOR[u.status] ?? "bg-slate-100 text-slate-700"}`}>
+                                  {u.status}
+                                </span>
+                                {u.isPublic && (
+                                  <span title="Tampil ke customer" className="ml-auto">
+                                    <Eye className="w-3 h-3 text-teal-500" />
+                                  </span>
+                                )}
+                              </div>
                             )}
-                            {u.notes && <p className="text-slate-700 mt-1">{u.notes}</p>}
-                            <p className="text-xs text-slate-400 mt-0.5">
-                              {u.actorName ?? u.actorType} · {dt(u.createdAt)}
+                            {/* Notes */}
+                            {u.notes && (
+                              <p className="text-slate-700 text-xs leading-relaxed">{u.notes}</p>
+                            )}
+                            {/* Meta */}
+                            <p className="text-xs text-slate-400 mt-1 flex items-center gap-1">
+                              <User className="w-3 h-3" />
+                              {u.actorName ?? u.actorType}
+                              <span className="text-slate-300">·</span>
+                              {dt(u.createdAt)}
+                              {u.isPublic && !u.status && (
+                                <span className="ml-auto"><Eye className="w-3 h-3 text-teal-500" /></span>
+                              )}
                             </p>
                           </div>
                         </div>

@@ -232,7 +232,7 @@ export default function DashboardPage() {
   const companyBreakdown = summary?.companyBreakdown ?? [];
 
   const { data: portalOrders = [], isLoading: portalLoading, refetch: refetchPortal } = useListLogisticOrders(undefined, {
-    query: { queryKey: ["dashboard-portal-orders"], refetchInterval },
+    query: { queryKey: getListLogisticOrdersQueryKey(), refetchInterval },
   });
 
   interface DashDriver { id: number; name: string; phone: string | null; vehiclePlate: string | null; vehicleType: string | null; isActive: boolean; }
@@ -282,8 +282,9 @@ export default function DashboardPage() {
 
   function handlePortalStatusChange(id: number, status: string) {
     setUpdatingId(id);
+    const order = portalOrders.find((o) => o.id === id);
     updateStatus.mutate(
-      { id, data: { status } },
+      { id, data: { status, clientUpdatedAt: order?.updatedAt } },
       {
         onSuccess: () => {
           toast({ title: t.common.success });

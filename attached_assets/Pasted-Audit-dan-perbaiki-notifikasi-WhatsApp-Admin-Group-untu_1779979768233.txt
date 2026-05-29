@@ -1,0 +1,86 @@
+Audit dan perbaiki notifikasi WhatsApp Admin Group untuk Vendor Submit / Update Penawaran Vendor.
+
+Masalah:
+Notif admin group saat vendor submit masih terlalu pendek:
+- Harga kosong / "-"
+- Tidak ada rincian item
+- Tidak ada breakdown PPN
+- Tidak ada qty/unit
+- Tidak ada dokumen/checklist
+- Tidak ada link action admin
+- Tidak mengambil data dari template produk/jasa
+
+Target:
+Notif admin group harus informatif dan data-driven.
+
+Cari semua function terkait:
+- buildVendorSubmitNotification
+- buildVendorQuotationNotification
+- buildAdminGroupMessage
+- sendAdminGroupNotification
+- broadcastToAdminGroup
+- RFQ notification handler
+- vendor quotation submit handler
+
+Perbaiki agar notif admin group menampilkan:
+
+1. Header
+- Nomor order
+- Nomor RFQ
+- Nama customer
+- Nama vendor
+- Waktu submit
+- Status quotation
+
+2. Detail item
+- Nama produk/jasa
+- Kategori/template
+- Qty
+- Unit
+- Field khusus dari productTemplate/serviceTemplate
+
+3. Harga vendor
+- Harga dasar/vendor price
+- Subtotal
+- PPN jika berlaku
+- Biaya tambahan jika ada
+- Grand total
+- Validity quotation
+
+4. Dokumen & checklist
+- Dokumen wajib
+- Dokumen vendor yang sudah upload
+- Checklist requirement dari template
+
+5. Action link
+- Link admin review quotation
+- Link comparison vendor
+- Link approve/reject quotation
+
+6. Fallback
+Jika harga kosong, jangan tampilkan “Harga: -”.
+Tampilkan “Harga belum tersedia” atau ambil dari quotation.items / priceBreakdown.
+Jika template tidak ditemukan, gunakan general template.
+
+7. Jangan hardcode per kategori.
+Gunakan reusable function:
+buildAdminVendorQuotationNotification(order, rfq, quotation, vendor, template, priceBreakdown)
+
+8. Tambahkan log debug:
+- quotation payload
+- priceBreakdown
+- templateId/templateVersion
+- notification payload
+
+9. Tambahkan test:
+- vendor submit dengan harga
+- vendor submit tanpa harga
+- vendor submit dengan item multi-komoditas
+- vendor submit dengan dokumen
+- vendor submit dari mini form
+
+Setelah selesai tampilkan:
+1. File yang diubah
+2. Contoh notif sebelum/sesudah
+3. Payload yang dipakai
+4. PASS/FAIL per skenario test

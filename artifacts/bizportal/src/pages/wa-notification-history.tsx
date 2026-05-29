@@ -39,6 +39,7 @@ import {
   ChevronRight,
   Eye,
   Send,
+  TrendingDown,
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -68,6 +69,19 @@ interface LogsResponse {
   limit: number;
   offset: number;
   rows: NotifLog[];
+}
+
+interface NotifStats {
+  waSent: number;
+  waFailed: number;
+  waDeduped: number;
+  emailSent: number;
+  emailFailed: number;
+}
+
+interface StatsResponse {
+  allTime: NotifStats;
+  today: NotifStats;
 }
 
 const STATUS_CONFIG: Record<string, { label: string; cls: string; icon: React.ReactNode }> = {
@@ -113,6 +127,16 @@ export default function WaNotificationHistoryPage() {
   const [offset, setOffset]       = useState(0);
   const [detail, setDetail]       = useState<NotifLogFull | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+
+  const { data: stats } = useQuery<StatsResponse>({
+    queryKey: ["notif-stats"],
+    queryFn: async () => {
+      const r = await fetch(`${BASE_URL}/api/whatsapp/notification-logs/stats`);
+      if (!r.ok) throw new Error("Gagal memuat stats");
+      return r.json();
+    },
+    staleTime: 60_000,
+  });
 
   const params = useCallback(() => {
     const p = new URLSearchParams();
@@ -188,6 +212,12 @@ export default function WaNotificationHistoryPage() {
   const hasFilters = channel !== "__all__" || status !== "__all__" ||
     context.trim() || refId.trim() || from || to;
 
+  const todayWaSuccessRate = stats
+    ? stats.today.waSent + stats.today.waFailed > 0
+      ? Math.round((stats.today.waSent / (stats.today.waSent + stats.today.waFailed)) * 100)
+      : 100
+    : null;
+
   return (
     <AppShell>
       <div className="p-4 md:p-6 space-y-4 max-w-7xl mx-auto">
@@ -200,6 +230,60 @@ export default function WaNotificationHistoryPage() {
             <RefreshCw className={`h-4 w-4 mr-1.5 ${isFetching ? "animate-spin" : ""}`} />
             Refresh
           </Button>
+        </div>
+
+        {/* Stats cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <Card>
+            <CardContent className="pt-4 pb-3">
+              <div className="flex items-center gap-1.5 mb-1">
+                <MessageCircle className="h-3.5 w-3.5 text-green-600" />
+                <span className="text-xs text-muted-foreground">WA Hari Ini</span>
+              </div>
+              <p className="text-2xl font-bold text-green-700">{stats?.today.waSent ?? "—"}</p>
+              {stats && stats.today.waFailed > 0 && (
+                <p className="text-xs text-red-500 flex items-center gap-0.5 mt-0.5">
+                  <TrendingDown className="h-3 w-3" /> {stats.today.waFailed} gagal
+                </p>
+              )}
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-4 pb-3">
+              <div className="flex items-center gap-1.5 mb-1">
+                <CheckCircle2 className="h-3.5 w-3.5 text-blue-600" />
+                <span className="text-xs text-muted-foreground">Success Rate WA</span>
+              </div>
+              <p className={`text-2xl font-bold ${todayWaSuccessRate !== null && todayWaSuccessRate < 80 ? "text-red-600" : "text-blue-700"}`}>
+                {todayWaSuccessRate !== null ? `${todayWaSuccessRate}%` : "—"}
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">dari {(stats?.today.waSent ?? 0) + (stats?.today.waFailed ?? 0)} terkirim</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-4 pb-3">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Mail className="h-3.5 w-3.5 text-blue-500" />
+                <span className="text-xs text-muted-foreground">Email Hari Ini</span>
+              </div>
+              <p className="text-2xl font-bold text-blue-600">{stats?.today.emailSent ?? "—"}</p>
+              {stats && stats.today.emailFailed > 0 && (
+                <p className="text-xs text-red-500 flex items-center gap-0.5 mt-0.5">
+                  <TrendingDown className="h-3 w-3" /> {stats.today.emailFailed} gagal
+                </p>
+              )}
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-4 pb-3">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Copy className="h-3.5 w-3.5 text-yellow-600" />
+                <span className="text-xs text-muted-foreground">All-Time WA</span>
+              </div>
+              <p className="text-2xl font-bold">{((stats?.allTime.waSent ?? 0) + (stats?.allTime.waFailed ?? 0)).toLocaleString("id-ID")}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{stats?.allTime.waDeduped ?? 0} dilewati (dedup)</p>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Filters */}

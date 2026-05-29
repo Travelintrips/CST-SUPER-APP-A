@@ -258,8 +258,17 @@ router.put("/:id", async (req, res) => {
 // DELETE /api/correspondences/:id
 router.delete("/:id", async (req, res) => {
   const id = Number(req.params.id);
+  // Ambil objectPath semua attachment sebelum dihapus dari DB
+  const attachments = await db
+    .select({ objectPath: correspondenceAttachmentsTable.objectPath })
+    .from(correspondenceAttachmentsTable)
+    .where(eq(correspondenceAttachmentsTable.correspondenceId, id));
   await db.delete(correspondenceAttachmentsTable).where(eq(correspondenceAttachmentsTable.correspondenceId, id));
   await db.delete(correspondencesTable).where(eq(correspondencesTable.id, id));
+  // Cascade storage cleanup — hapus file fisik (non-fatal)
+  for (const a of attachments) {
+    if (a.objectPath) objectStorageService.tryDeletePrivateEntity(a.objectPath).catch(() => {});
+  }
   return res.json({ message: "Berhasil dihapus" });
 });
 

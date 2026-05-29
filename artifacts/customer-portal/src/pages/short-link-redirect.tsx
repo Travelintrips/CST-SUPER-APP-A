@@ -47,7 +47,7 @@ export default function ShortLinkRedirect() {
             Link ini sudah tidak aktif. Admin akan menerima link baru secara otomatis via WhatsApp.
           </p>
           <p className="text-xs text-slate-400 mt-3">
-            Hubungi tim CST Logistics jika membutuhkan bantuan.
+            Hubungi tim kami jika membutuhkan bantuan.
           </p>
         </div>
       </div>
@@ -62,7 +62,7 @@ export default function ShortLinkRedirect() {
           <h2 className="text-lg font-semibold text-slate-800 mb-2">Link Tidak Valid</h2>
           <p className="text-sm text-slate-500">{errorMsg}</p>
           <p className="text-xs text-slate-400 mt-3">
-            Hubungi tim CST Logistics untuk mendapatkan link baru.
+            Hubungi tim kami untuk mendapatkan link baru.
           </p>
         </div>
       </div>

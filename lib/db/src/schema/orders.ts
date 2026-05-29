@@ -1,4 +1,4 @@
-import { pgTable, serial, text, numeric, timestamp, pgEnum, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, numeric, timestamp, pgEnum, jsonb, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -16,7 +16,12 @@ export const ordersTable = pgTable("orders", {
   items: text("items"),
   lineItems: jsonb("line_items").$type<Array<{ name: string; qty: number; unitPrice: number }>>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (t) => [
+  // [H5-FIX] Performance indexes: full table scan tiap query tanpa ini
+  index("orders_customer_email_idx").on(t.customerEmail),
+  index("orders_status_idx").on(t.status),
+  index("orders_created_at_idx").on(t.createdAt),
+]);
 
 export const insertOrderSchema = createInsertSchema(ordersTable).omit({ id: true, createdAt: true });
 export type InsertOrder = z.infer<typeof insertOrderSchema>;

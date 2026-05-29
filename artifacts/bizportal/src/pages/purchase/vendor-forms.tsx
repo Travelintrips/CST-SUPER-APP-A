@@ -23,10 +23,20 @@ import {
   Loader2, RotateCcw, CalendarDays, User, Phone, MessageCircle, XCircle,
   Clock, SendHorizonal, Pencil, CheckCircle, Package, Star, Building2, FileText,
   BarChart2, TrendingDown, TrendingUp, Minus, Award,
+  Layers, ChevronDown, ChevronRight, AlertCircle, ClipboardList, PackageCheck, Info,
+  Search,
 } from "lucide-react";
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
 } from "@/components/ui/sheet";
+import { inCodeTemplates } from "@workspace/product-templates";
+import type { ProductTemplate, DynamicFormValues } from "@workspace/product-templates";
+import {
+  TemplateFieldRenderer,
+  TemplateDocumentRenderer,
+  TemplateChecklistRenderer,
+  TemplateInstructionRenderer,
+} from "@/components/template";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -50,6 +60,7 @@ type Submission = {
   eta: string | null; validUntil: string | null; selectedByAdmin: boolean;
   selectedAt: string | null; locked: boolean | null; revisionCount: number | null;
   adminNotes: string | null; submittedIp: string | null;
+  orderId: number | null;
 };
 
 type CustomerApproval = {
@@ -61,7 +72,6 @@ type CustomerApproval = {
   salesDocId: number | null;
   createdAt: string; expiresAt: string | null;
   submissionId: number | null; vendorCost: string | null;
-  markupPct: string | null; markupNominal: string | null;
   ppnPct: string | null; ppnNominal: string | null; profitMarginPct: string | null;
   adminNotes: string | null; locked: boolean | null;
 };
@@ -638,8 +648,6 @@ function CreateApprovalDialog({ onCreated }: { onCreated: () => void }) {
   const [adminNotes, setAdminNotes] = useState("");
   // Margin calculator
   const [vendorCost, setVendorCost] = useState("");
-  const [markupPct, setMarkupPct] = useState("");
-  const [markupNominal, setMarkupNominal] = useState("");
   const [ppnPct, setPpnPct] = useState("11");
   const [sellingPrice, setSellingPrice] = useState("");
   const [loading, setLoading] = useState(false);
@@ -656,38 +664,12 @@ function CreateApprovalDialog({ onCreated }: { onCreated: () => void }) {
     if (selectedOrder) setOrderNumber(selectedOrder.orderNumber);
   }, [selectedOrder]);
 
-  // Auto-calculate markup fields
   const vendorCostNum = vendorCost ? Number(vendorCost) : null;
-  const markupPctNum = markupPct ? Number(markupPct) : null;
-  const markupNomNum = markupNominal ? Number(markupNominal) : null;
   const ppnPctNum = ppnPct ? Number(ppnPct) : 0;
-
-  const computedMarkupNominal = vendorCostNum !== null && markupPctNum !== null
-    ? Math.round(vendorCostNum * markupPctNum / 100) : null;
-  const computedMarkupPct = vendorCostNum !== null && markupNomNum !== null && vendorCostNum > 0
-    ? Number(((markupNomNum / vendorCostNum) * 100).toFixed(2)) : null;
-
-  const baseBeforeTax = vendorCostNum !== null
-    ? vendorCostNum + (markupPct ? (computedMarkupNominal ?? 0) : (markupNomNum ?? 0))
-    : null;
-  const ppnNominal = baseBeforeTax !== null ? Math.round(baseBeforeTax * ppnPctNum / 100) : null;
-  const autoSellingPrice = baseBeforeTax !== null ? baseBeforeTax + (ppnNominal ?? 0) : null;
-  const profitMarginPct = autoSellingPrice && vendorCostNum
-    ? Number((((autoSellingPrice - vendorCostNum) / autoSellingPrice) * 100).toFixed(2)) : null;
-
-  // Sync sellingPrice to auto-calculated
-  useEffect(() => {
-    if (autoSellingPrice !== null) setSellingPrice(String(autoSellingPrice));
-  }, [autoSellingPrice]);
-
-  const handleMarkupPctChange = (v: string) => {
-    setMarkupPct(v);
-    setMarkupNominal("");
-  };
-  const handleMarkupNomChange = (v: string) => {
-    setMarkupNominal(v);
-    setMarkupPct("");
-  };
+  const ppnNominal = vendorCostNum !== null ? Math.round(vendorCostNum * ppnPctNum / 100) : null;
+  const sellingPriceNum = sellingPrice ? Number(sellingPrice) : null;
+  const profitMarginPct = sellingPriceNum && vendorCostNum
+    ? Number((((sellingPriceNum - vendorCostNum) / sellingPriceNum) * 100).toFixed(2)) : null;
 
   const addItem = () => setOfferItems(p => [...p, { label: "", value: "" }]);
   const updateItem = (i: number, field: "label" | "value", val: string) => {
@@ -698,7 +680,7 @@ function CreateApprovalDialog({ onCreated }: { onCreated: () => void }) {
   const reset = () => {
     setOrderId(""); setOrderNumber(""); setCustomerName(""); setCustomerPhone("");
     setSellingPrice(""); setCurrency("IDR"); setTermsNotes(""); setExpiresInDays("7");
-    setOfferItems([]); setAdminNotes(""); setVendorCost(""); setMarkupPct(""); setMarkupNominal(""); setPpnPct("11");
+    setOfferItems([]); setAdminNotes(""); setVendorCost(""); setPpnPct("11");
   };
 
   const handleCreate = async () => {
@@ -716,8 +698,6 @@ function CreateApprovalDialog({ onCreated }: { onCreated: () => void }) {
           expiresInDays: expiresInDays ? Number(expiresInDays) : undefined,
           adminNotes: adminNotes || undefined,
           vendorCost: vendorCost ? Number(vendorCost) : undefined,
-          markupPct: markupPct ? Number(markupPct) : (computedMarkupPct ?? undefined),
-          markupNominal: markupNominal ? Number(markupNominal) : (computedMarkupNominal ?? undefined),
           ppnPct: ppnPct ? Number(ppnPct) : undefined,
           ppnNominal: ppnNominal ?? undefined,
           profitMarginPct: profitMarginPct ?? undefined,
@@ -798,34 +778,27 @@ function CreateApprovalDialog({ onCreated }: { onCreated: () => void }) {
                 </Select>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs">Markup %</Label>
-                <Input type="number" value={markupPct} onChange={e => handleMarkupPctChange(e.target.value)} placeholder="Auto dari nominal" />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Markup Nominal</Label>
-                <Input type="number" value={markupNominal || (computedMarkupNominal !== null ? String(computedMarkupNominal) : "")}
-                  onChange={e => handleMarkupNomChange(e.target.value)} placeholder="Auto dari %" readOnly={!!markupPct} />
-              </div>
-            </div>
-            {vendorCostNum !== null && (markupPct || markupNominal) && (
+            {vendorCostNum !== null && sellingPriceNum !== null && (
               <div className="bg-white border border-indigo-100 rounded-lg p-3 grid grid-cols-2 sm:grid-cols-4 gap-3 text-center text-xs">
                 <div>
-                  <p className="text-slate-400 mb-0.5">Sebelum PPN</p>
-                  <p className="font-bold text-slate-800">{fmt(baseBeforeTax)}</p>
+                  <p className="text-slate-400 mb-0.5">Harga Dasar</p>
+                  <p className="font-bold text-slate-800">{fmt(vendorCostNum)}</p>
                 </div>
                 <div>
                   <p className="text-slate-400 mb-0.5">PPN {ppnPct}%</p>
                   <p className="font-bold text-slate-600">{fmt(ppnNominal)}</p>
                 </div>
                 <div>
-                  <p className="text-slate-400 mb-0.5">Total Jual</p>
-                  <p className="font-bold text-indigo-700 text-sm">{fmt(autoSellingPrice)}</p>
+                  <p className="text-slate-400 mb-0.5">Harga Jual</p>
+                  <p className="font-bold text-indigo-700 text-sm">{fmt(sellingPriceNum)}</p>
                 </div>
                 <div>
-                  <p className="text-slate-400 mb-0.5">Margin</p>
-                  <p className="font-bold text-green-600">{profitMarginPct !== null ? `${profitMarginPct}%` : "—"}</p>
+                  <p className="text-slate-400 mb-0.5">Profit</p>
+                  <p className="font-bold text-green-600">
+                    {vendorCostNum !== null && sellingPriceNum !== null
+                      ? `${fmt(sellingPriceNum - vendorCostNum)} (${profitMarginPct ?? 0}%)`
+                      : "—"}
+                  </p>
                 </div>
               </div>
             )}
@@ -1548,6 +1521,712 @@ function LinkDetailSheet({
   );
 }
 
+// ── Form Preview Sheet ────────────────────────────────────────────────────────
+
+const EMPTY_TEMPLATE_VALUES: DynamicFormValues = {
+  customFieldValues: {},
+  uploadedDocuments: [],
+  checklistStatus: {},
+  packagingNotes: "",
+  conditionalFlags: {},
+};
+
+function FormPreviewSheet({
+  template, open, onOpenChange,
+}: {
+  template: ProductTemplate | null;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
+  const [values, setValues] = useState<DynamicFormValues>(EMPTY_TEMPLATE_VALUES);
+
+  useEffect(() => {
+    if (open) setValues(EMPTY_TEMPLATE_VALUES);
+  }, [open, template]);
+
+  if (!template) return null;
+  const emoji = COMMODITY_EMOJIS[template.category] ?? "📦";
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent
+        side="right"
+        className="w-full sm:max-w-2xl flex flex-col p-0 overflow-hidden"
+      >
+        {/* Header */}
+        <SheetHeader className="px-6 pt-5 pb-4 shrink-0 border-b bg-gradient-to-r from-violet-50 to-indigo-50">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-white border border-slate-200 shadow-sm flex items-center justify-center text-xl shrink-0">
+              {emoji}
+            </div>
+            <div className="flex-1 min-w-0">
+              <SheetTitle className="text-base">Preview Form — {template.label}</SheetTitle>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Simulasi interaktif tampilan form vendor · data tidak tersimpan
+              </p>
+            </div>
+            <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-full bg-violet-100 text-violet-700 border border-violet-200">
+              👁️ PREVIEW
+            </span>
+          </div>
+          <div className="mt-2 flex gap-4 text-xs text-slate-500">
+            <span className="flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 inline-block" />
+              {template.customFields.length} custom field
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-red-400 inline-block" />
+              {template.requiredDocuments.filter(d => d.required).length} dokumen wajib
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
+              {template.checklist.length} checklist
+            </span>
+          </div>
+        </SheetHeader>
+
+        {/* Scrollable form body */}
+        <div className="flex-1 overflow-y-auto">
+          {/* Mock vendor form — mirrors admin-mini-form layout */}
+          <div className="bg-slate-50 min-h-full p-5 space-y-4">
+            {/* Form header card */}
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+              <div className="flex items-center gap-3 mb-2">
+                <span className="text-3xl leading-none">{emoji}</span>
+                <div>
+                  <h1 className="text-lg font-bold text-slate-800">Form Template — {template.label}</h1>
+                  <p className="text-sm text-slate-500">Untuk: [Nama Vendor]</p>
+                </div>
+              </div>
+              <div className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium bg-violet-50 text-violet-700 border border-violet-200 px-3 py-1.5 rounded-lg">
+                🔐 Form Internal — hanya untuk penggunaan staf
+              </div>
+              <div className="mt-3 text-sm text-slate-600 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+                Komoditas: {template.label} — mohon isi form sesuai spesifikasi komoditas ini.
+              </div>
+            </div>
+
+            {/* Identity section */}
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+              <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-4">Data Pengisi</h2>
+              <div className="space-y-3">
+                {[
+                  { label: "Nama Lengkap", placeholder: "Nama Anda", required: true },
+                  { label: "Jabatan / Divisi", placeholder: "Contoh: Staff Operasional, Manager Logistik" },
+                  { label: "Nomor HP / WhatsApp", placeholder: "Contoh: 0812xxxx" },
+                ].map(f => (
+                  <div key={f.label}>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      {f.label}{f.required && <span className="text-red-500 ml-0.5">*</span>}
+                    </label>
+                    <input
+                      type="text"
+                      placeholder={f.placeholder}
+                      disabled
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-400 cursor-not-allowed"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Template custom fields — INTERACTIVE */}
+            {template.customFields.length > 0 && (
+              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+                <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-4">
+                  {emoji} Spesifikasi {template.label}
+                </h2>
+                <TemplateFieldRenderer
+                  template={template}
+                  values={values}
+                  onChange={setValues}
+                />
+              </div>
+            )}
+
+            {/* Documents */}
+            {template.requiredDocuments.length > 0 && (
+              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+                <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-4">
+                  📎 Dokumen
+                </h2>
+                <TemplateDocumentRenderer
+                  documents={template.requiredDocuments}
+                  values={values.uploadedDocuments}
+                  onChange={docs => setValues(v => ({ ...v, uploadedDocuments: docs }))}
+                />
+              </div>
+            )}
+
+            {/* Checklist */}
+            {template.checklist.length > 0 && (
+              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+                <TemplateChecklistRenderer
+                  checklist={template.checklist}
+                  values={values.checklistStatus}
+                  onChange={(key, checked) =>
+                    setValues(v => ({ ...v, checklistStatus: { ...v.checklistStatus, [key]: checked } }))
+                  }
+                />
+              </div>
+            )}
+
+            {/* Packaging instructions */}
+            {template.packagingInstructions && (
+              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+                <TemplateInstructionRenderer
+                  instructions={template.packagingInstructions}
+                  notes={values.packagingNotes}
+                  onNotesChange={notes => setValues(v => ({ ...v, packagingNotes: notes }))}
+                />
+              </div>
+            )}
+
+            {/* Submit button (disabled) */}
+            <button
+              disabled
+              className="w-full rounded-xl bg-violet-300 text-white font-semibold py-3.5 text-sm cursor-not-allowed"
+            >
+              ✉️ Kirim Data
+            </button>
+            <p className="text-center text-xs text-slate-400 pb-4">
+              Mode preview — form tidak dapat disubmit
+            </p>
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+// ── Create Link From Template Dialog ─────────────────────────────────────────
+
+function CreateLinkFromTemplateDialog({
+  template, open, onOpenChange, suppliers, onCreated,
+}: {
+  template: ProductTemplate | null;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  suppliers: Supplier[];
+  onCreated: () => void;
+}) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [serviceType, setServiceType] = useState("");
+  const [supplierId, setSupplierId] = useState("");
+  const [vendorName, setVendorName] = useState("");
+  const [title, setTitle] = useState("");
+  const [notes, setNotes] = useState("");
+  const [expiresInDays, setExpiresInDays] = useState("7");
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (template && open) {
+      setTitle(`Form Template — ${template.label}`);
+      setNotes(`Komoditas: ${template.label}\n\nMohon isi form sesuai spesifikasi komoditas ${template.label}.`);
+    }
+  }, [template, open]);
+
+  const reset = () => {
+    setServiceType(""); setSupplierId(""); setVendorName("");
+    setTitle(""); setNotes(""); setExpiresInDays("7"); setLoading(false);
+  };
+
+  const handleCreate = async () => {
+    if (!serviceType) { toast({ title: "Pilih service type dulu", variant: "destructive" }); return; }
+    setLoading(true);
+    try {
+      await apiFetch("/api/vendor-form/admin/links", {
+        method: "POST",
+        body: JSON.stringify({
+          serviceType,
+          supplierId: supplierId ? Number(supplierId) : undefined,
+          vendorName: vendorName.trim() || undefined,
+          title: title.trim() || undefined,
+          notes: notes.trim() || undefined,
+          expiresInDays: expiresInDays ? Number(expiresInDays) : undefined,
+          mode: "rate_collection",
+          adminNotes: `productCategory:${template?.category ?? "general"}`,
+        }),
+      });
+      toast({ title: "Link berhasil dibuat", description: `Template ${template?.label} akan muncul di form.` });
+      queryClient.invalidateQueries({ queryKey: ["vmf-links"] });
+      onCreated();
+      onOpenChange(false);
+      reset();
+    } catch (e: unknown) {
+      toast({ title: "Gagal membuat link", description: (e as Error).message, variant: "destructive" });
+    } finally { setLoading(false); }
+  };
+
+  if (!template) return null;
+  const emoji = COMMODITY_EMOJIS[template.category] ?? "📦";
+
+  return (
+    <Dialog open={open} onOpenChange={v => { onOpenChange(v); if (!v) reset(); }}>
+      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <span className="text-xl">{emoji}</span>
+            Buat Form Link — {template.label}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4 py-1">
+          <div className="flex items-center gap-3 bg-indigo-50 border border-indigo-200 rounded-lg p-3">
+            <Layers className="h-4 w-4 text-indigo-600 shrink-0" />
+            <p className="text-xs text-indigo-700">
+              Link ini akan menyertakan template komoditas <strong>{template.label}</strong> — vendor akan melihat {template.customFields.length} custom field, {template.requiredDocuments.filter(d => d.required).length} dokumen wajib, dan {template.checklist.length} checklist.
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Service Type <span className="text-red-500">*</span></Label>
+            <Select value={serviceType} onValueChange={setServiceType}>
+              <SelectTrigger><SelectValue placeholder="Pilih tipe layanan logistik" /></SelectTrigger>
+              <SelectContent>
+                {SERVICE_TYPES.map(k => (
+                  <SelectItem key={k} value={k}>{SERVICE_META[k]!.emoji} {SERVICE_META[k]!.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Vendor (opsional)</Label>
+            <Select value={supplierId || "__none__"} onValueChange={v => setSupplierId(v === "__none__" ? "" : v)}>
+              <SelectTrigger><SelectValue placeholder="Tidak spesifik" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">— Tidak spesifik —</SelectItem>
+                {suppliers.map(s => (
+                  <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Nama Vendor (manual)</Label>
+            <Input value={vendorName} onChange={e => setVendorName(e.target.value)} placeholder="Jika tidak ada di daftar" />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Judul Form</Label>
+            <Input value={title} onChange={e => setTitle(e.target.value)} />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Instruksi untuk Vendor</Label>
+            <Textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Kadaluarsa (hari)</Label>
+            <Input type="number" value={expiresInDays} onChange={e => setExpiresInDays(e.target.value)} placeholder="7" />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => { onOpenChange(false); reset(); }}>Batal</Button>
+          <Button onClick={handleCreate} disabled={loading}>
+            {loading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Plus className="h-4 w-4 mr-1" />}
+            Buat Link
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Product Template Engine ───────────────────────────────────────────────────
+
+const COMMODITY_EMOJIS: Record<string, string> = {
+  coal: "⛏️", iron_steel: "🔩", coffee: "☕", electronics: "💻",
+  palm_oil: "🌴", nickel: "⚙️", copper: "🔶", rice: "🌾",
+  sugar: "🍬", rubber: "🧤", cocoa: "🍫", timber: "🪵",
+  fertilizer: "🌱", cement: "🏗️", textile: "🧵", medical_device: "💊",
+  general: "📦",
+};
+
+const FIELD_TYPE_LABELS: Record<string, string> = {
+  text: "Teks", number: "Angka", select: "Pilihan", textarea: "Teks Panjang", date: "Tanggal",
+};
+
+function TemplateDetailSheet({
+  template, open, onOpenChange,
+}: {
+  template: ProductTemplate | null;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
+  const [section, setSection] = useState<"fields" | "docs" | "checklist" | "packaging">("fields");
+
+  if (!template) return null;
+  const emoji = COMMODITY_EMOJIS[template.category] ?? "📦";
+  const reqDocs = template.requiredDocuments.filter(d => d.required);
+  const optDocs = template.requiredDocuments.filter(d => !d.required);
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="w-full sm:max-w-2xl flex flex-col p-0" side="right">
+        <SheetHeader className="px-6 pt-6 pb-4 border-b bg-gradient-to-r from-slate-50 to-indigo-50 shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-white border border-slate-200 shadow-sm flex items-center justify-center text-xl">
+              {emoji}
+            </div>
+            <div>
+              <SheetTitle className="text-lg">{template.label}</SheetTitle>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Kategori: <span className="font-mono text-indigo-600">{template.category}</span>
+                {" · "}v{template.version}
+              </p>
+            </div>
+          </div>
+          {/* Section pills */}
+          <div className="flex gap-1.5 flex-wrap mt-3">
+            {(["fields", "docs", "checklist", "packaging"] as const).map(s => (
+              <button
+                key={s}
+                onClick={() => setSection(s)}
+                className={`px-3 py-1 rounded-full text-xs font-medium border transition-all ${
+                  section === s
+                    ? "bg-indigo-600 text-white border-indigo-600"
+                    : "bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-700"
+                }`}
+              >
+                {s === "fields" ? `📋 ${template.customFields.length} Custom Fields` :
+                 s === "docs" ? `📎 ${template.requiredDocuments.length} Dokumen` :
+                 s === "checklist" ? `✅ ${template.checklist.length} Checklist` :
+                 "📦 Pengemasan"}
+              </button>
+            ))}
+          </div>
+        </SheetHeader>
+
+        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          {/* CUSTOM FIELDS */}
+          {section === "fields" && (
+            <div className="space-y-3">
+              <p className="text-xs text-slate-500 font-medium uppercase tracking-wide">Custom Fields — ditampilkan di form vendor</p>
+              {template.customFields.length === 0 ? (
+                <p className="text-sm text-slate-400 italic">Tidak ada custom field</p>
+              ) : template.customFields.map(f => {
+                const isConditional = template.conditionalRules.some(r => r.show.includes(f.key));
+                return (
+                  <div key={f.key} className={`border rounded-lg p-3.5 ${f.required ? "border-indigo-200 bg-indigo-50/40" : "border-slate-200 bg-white"}`}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-medium text-sm text-slate-800">{f.label}</span>
+                          {f.required && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 border border-indigo-200">WAJIB</span>
+                          )}
+                          {isConditional && (
+                            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-200 flex items-center gap-0.5">
+                              <Info className="h-2.5 w-2.5" /> Kondisional
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-slate-400 font-mono mt-0.5">key: {f.key}</p>
+                        {f.placeholder && <p className="text-xs text-slate-500 mt-1">Placeholder: {f.placeholder}</p>}
+                        {f.options && f.options.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1.5">
+                            {f.options.map(o => (
+                              <span key={o} className="text-xs bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded border border-slate-200">{o}</span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <span className={`shrink-0 text-xs px-2 py-0.5 rounded font-medium ${
+                        f.type === "number" ? "bg-green-100 text-green-700" :
+                        f.type === "select" ? "bg-purple-100 text-purple-700" :
+                        f.type === "textarea" ? "bg-orange-100 text-orange-700" :
+                        f.type === "date" ? "bg-blue-100 text-blue-700" :
+                        "bg-slate-100 text-slate-600"
+                      }`}>
+                        {FIELD_TYPE_LABELS[f.type] ?? f.type}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+              {template.conditionalRules.length > 0 && (
+                <div className="mt-3 border border-amber-200 bg-amber-50 rounded-lg p-3">
+                  <p className="text-xs font-semibold text-amber-700 mb-2 flex items-center gap-1">
+                    <Info className="h-3.5 w-3.5" /> Aturan Kondisional
+                  </p>
+                  {template.conditionalRules.map((r, i) => (
+                    <p key={i} className="text-xs text-amber-700">
+                      Jika <span className="font-mono bg-amber-100 px-1 rounded">{r.fieldKey}</span> = <span className="font-mono bg-amber-100 px-1 rounded">"{r.condition.value}"</span>, tampilkan: {r.show.join(", ")}
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* DOCUMENTS */}
+          {section === "docs" && (
+            <div className="space-y-3">
+              {reqDocs.length > 0 && (
+                <>
+                  <p className="text-xs text-slate-500 font-medium uppercase tracking-wide">Dokumen Wajib</p>
+                  {reqDocs.map(d => (
+                    <div key={d.key} className="flex items-center gap-3 border border-red-200 bg-red-50/40 rounded-lg p-3">
+                      <AlertCircle className="h-4 w-4 text-red-500 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-slate-800">{d.label}</p>
+                        <p className="text-xs text-slate-400 font-mono">key: {d.key}</p>
+                      </div>
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-100 text-red-700 border border-red-200 shrink-0">WAJIB</span>
+                    </div>
+                  ))}
+                </>
+              )}
+              {optDocs.length > 0 && (
+                <>
+                  <p className="text-xs text-slate-500 font-medium uppercase tracking-wide mt-2">Dokumen Opsional</p>
+                  {optDocs.map(d => (
+                    <div key={d.key} className="flex items-center gap-3 border border-slate-200 bg-white rounded-lg p-3">
+                      <FileText className="h-4 w-4 text-slate-400 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-slate-700">{d.label}</p>
+                        <p className="text-xs text-slate-400 font-mono">key: {d.key}</p>
+                      </div>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200 shrink-0">Opsional</span>
+                    </div>
+                  ))}
+                </>
+              )}
+              {template.requiredDocuments.length === 0 && (
+                <p className="text-sm text-slate-400 italic">Tidak ada dokumen yang dikonfigurasi</p>
+              )}
+            </div>
+          )}
+
+          {/* CHECKLIST */}
+          {section === "checklist" && (
+            <div className="space-y-2">
+              <p className="text-xs text-slate-500 font-medium uppercase tracking-wide">Checklist Operasional</p>
+              {template.checklist.length === 0 ? (
+                <p className="text-sm text-slate-400 italic">Tidak ada checklist</p>
+              ) : template.checklist.map(c => (
+                <div key={c.key} className="flex items-center gap-3 border border-slate-200 bg-white rounded-lg p-3 hover:bg-slate-50 transition-colors">
+                  <div className="w-4 h-4 rounded border-2 border-slate-300 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-slate-800">{c.label}</p>
+                    <p className="text-xs text-slate-400 font-mono">key: {c.key}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* PACKAGING */}
+          {section === "packaging" && (
+            <div className="space-y-3">
+              <p className="text-xs text-slate-500 font-medium uppercase tracking-wide">Instruksi Pengemasan & Pengiriman</p>
+              <div className="border border-emerald-200 bg-emerald-50/40 rounded-xl p-4">
+                <div className="flex items-start gap-2 mb-2">
+                  <PackageCheck className="h-4 w-4 text-emerald-600 mt-0.5 shrink-0" />
+                  <p className="text-xs font-semibold text-emerald-700">Panduan untuk Vendor</p>
+                </div>
+                <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{template.packagingInstructions}</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function ProductTemplateEngine() {
+  const [search, setSearch] = useState("");
+  const [selectedTemplate, setSelectedTemplate] = useState<ProductTemplate | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [linkTemplate, setLinkTemplate] = useState<ProductTemplate | null>(null);
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
+  const [previewTemplate, setPreviewTemplate] = useState<ProductTemplate | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+
+  const { data: suppliers = [] } = useQuery<Supplier[]>({
+    queryKey: ["suppliers-simple"],
+    queryFn: () => apiFetch<Supplier[]>("/api/trading/suppliers"),
+  });
+
+  const allTemplates = Object.values(inCodeTemplates);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return allTemplates;
+    return allTemplates.filter(t =>
+      t.label.toLowerCase().includes(q) ||
+      t.category.toLowerCase().includes(q)
+    );
+  }, [search, allTemplates]);
+
+  const openDetail = (t: ProductTemplate) => {
+    setSelectedTemplate(t);
+    setSheetOpen(true);
+  };
+
+  const openLinkDialog = (e: React.MouseEvent, t: ProductTemplate) => {
+    e.stopPropagation();
+    setLinkTemplate(t);
+    setLinkDialogOpen(true);
+  };
+
+  const openPreview = (e: React.MouseEvent, t: ProductTemplate) => {
+    e.stopPropagation();
+    setPreviewTemplate(t);
+    setPreviewOpen(true);
+  };
+
+  return (
+    <div className="space-y-5">
+      {/* Header banner */}
+      <div className="rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 p-5 text-white">
+        <div className="flex items-start gap-3">
+          <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+            <Layers className="h-5 w-5 text-white" />
+          </div>
+          <div>
+            <h2 className="font-bold text-lg">Product Template Engine</h2>
+            <p className="text-sm text-indigo-100 mt-0.5">
+              Template komoditas multi-jenis untuk trading — custom fields, checklist, dan dokumen otomatis
+              disesuaikan dengan jenis barang pada order.
+            </p>
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-3 mt-4">
+          {[
+            { label: "Template Komoditas", value: allTemplates.length },
+            { label: "Total Custom Fields", value: allTemplates.reduce((s, t) => s + t.customFields.length, 0) },
+            { label: "Total Dokumen Terkonfigurasi", value: allTemplates.reduce((s, t) => s + t.requiredDocuments.length, 0) },
+          ].map(s => (
+            <div key={s.label} className="bg-white/15 rounded-lg p-3 text-center">
+              <p className="text-xl font-bold">{s.value}</p>
+              <p className="text-xs text-indigo-100 mt-0.5">{s.label}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Search */}
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+        <Input
+          placeholder="Cari komoditas..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="pl-9 h-9 text-sm"
+        />
+      </div>
+
+      {/* Template grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {filtered.map(t => {
+          const emoji = COMMODITY_EMOJIS[t.category] ?? "📦";
+          const reqDocs = t.requiredDocuments.filter(d => d.required).length;
+          return (
+            <div
+              key={t.category}
+              className="border border-slate-200 bg-white rounded-xl p-4 hover:border-indigo-300 hover:shadow-md transition-all group"
+            >
+              <button
+                className="w-full text-left"
+                onClick={() => openDetail(t)}
+              >
+                <div className="flex items-start gap-3 mb-3">
+                  <div className="w-10 h-10 rounded-xl border border-slate-100 bg-slate-50 flex items-center justify-center text-xl shrink-0 group-hover:bg-indigo-50 group-hover:border-indigo-200 transition-colors">
+                    {emoji}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-slate-800 text-sm group-hover:text-indigo-700 transition-colors">{t.label}</p>
+                    <p className="text-xs text-slate-400 font-mono">{t.category}</p>
+                  </div>
+                  <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-indigo-500 shrink-0 mt-0.5 transition-colors" />
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="bg-slate-50 rounded-lg p-2">
+                    <p className="text-sm font-bold text-indigo-700">{t.customFields.length}</p>
+                    <p className="text-[10px] text-slate-500">Fields</p>
+                  </div>
+                  <div className="bg-slate-50 rounded-lg p-2">
+                    <p className={`text-sm font-bold ${reqDocs > 0 ? "text-red-600" : "text-slate-400"}`}>{reqDocs}</p>
+                    <p className="text-[10px] text-slate-500">Dok Wajib</p>
+                  </div>
+                  <div className="bg-slate-50 rounded-lg p-2">
+                    <p className="text-sm font-bold text-emerald-600">{t.checklist.length}</p>
+                    <p className="text-[10px] text-slate-500">Checklist</p>
+                  </div>
+                </div>
+
+                {t.requiredDocuments.filter(d => d.required).slice(0, 2).map(d => (
+                  <div key={d.key} className="flex items-center gap-1.5 mt-2 text-xs text-slate-500">
+                    <AlertCircle className="h-3 w-3 text-red-400 shrink-0" />
+                    <span className="truncate">{d.label}</span>
+                  </div>
+                ))}
+                {t.requiredDocuments.filter(d => d.required).length > 2 && (
+                  <p className="text-xs text-slate-400 mt-1">+{t.requiredDocuments.filter(d => d.required).length - 2} dokumen wajib lainnya</p>
+                )}
+              </button>
+
+              <div className="mt-3 pt-3 border-t border-slate-100 flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="flex-1 h-7 text-xs gap-1 text-slate-600 border-slate-200 hover:bg-slate-50"
+                  onClick={e => openPreview(e, t)}
+                >
+                  <Eye className="h-3 w-3" />
+                  Preview
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="flex-1 h-7 text-xs gap-1 text-indigo-600 border-indigo-200 hover:bg-indigo-50"
+                  onClick={e => openLinkDialog(e, t)}
+                >
+                  <Plus className="h-3 w-3" />
+                  Buat Link
+                </Button>
+              </div>
+            </div>
+          );
+        })}
+        {filtered.length === 0 && (
+          <div className="col-span-full flex flex-col items-center justify-center py-16 text-slate-400">
+            <Layers className="h-10 w-10 mb-3 opacity-30" />
+            <p className="text-sm">Tidak ada template yang cocok dengan pencarian</p>
+          </div>
+        )}
+      </div>
+
+      <TemplateDetailSheet
+        template={selectedTemplate}
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
+      />
+      <FormPreviewSheet
+        template={previewTemplate}
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+      />
+      <CreateLinkFromTemplateDialog
+        template={linkTemplate}
+        open={linkDialogOpen}
+        onOpenChange={setLinkDialogOpen}
+        suppliers={suppliers}
+        onCreated={() => {}}
+      />
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function VendorFormsPage() {
@@ -1603,6 +2282,25 @@ export default function VendorFormsPage() {
     const pending      = approvals.filter(a => a.status === "pending").length;
     return { count: approved.length, pending, totalRevenue, totalCost, totalProfit, marginPct };
   }, [approvals]);
+
+  // Hitung per-order: total vendor diundang vs sudah submit (order_based active links)
+  const orderVendorProgress = useMemo(() => {
+    const stats: Record<number, { total: number; submitted: number; orderNumber: string | null }> = {};
+    for (const link of links) {
+      if (link.mode === "order_based" && link.orderId && link.isActive) {
+        if (!stats[link.orderId]) stats[link.orderId] = { total: 0, submitted: 0, orderNumber: link.orderNumber };
+        stats[link.orderId].total++;
+        const doneStatuses = ["vendor_submitted", "admin_review", "waiting_customer", "customer_approved"];
+        if (link.itemStatus && doneStatuses.includes(link.itemStatus)) {
+          stats[link.orderId].submitted++;
+        }
+      }
+    }
+    return stats;
+  }, [links]);
+
+  // Map linkId → link untuk lookup cepat di tabel submissions
+  const linkMap = useMemo(() => Object.fromEntries(links.map(l => [l.id, l])), [links]);
 
   const { data: opConfirms = [], isLoading: opLoading } = useQuery<OpConfirm[]>({
     queryKey: ["vmf-op-confirms"],
@@ -1731,6 +2429,7 @@ export default function VendorFormsPage() {
             <TabsTrigger value="submissions">📝 Submissions ({submissions.length})</TabsTrigger>
             <TabsTrigger value="approvals">✅ Customer Approval ({approvals.length})</TabsTrigger>
             <TabsTrigger value="op-confirms">🚚 Konfirmasi Operasional ({opConfirms.length})</TabsTrigger>
+            <TabsTrigger value="product-templates">🏭 Product Templates</TabsTrigger>
             <TabsTrigger value="activity-log">📋 Log Aktivitas</TabsTrigger>
           </TabsList>
 
@@ -1830,10 +2529,33 @@ export default function VendorFormsPage() {
                               )}
                             </TableCell>
                             <TableCell>
-                              <span className="text-sm font-semibold text-slate-700">
-                                {linkSubs.length}
-                                {linkSubs.some(s => s.selectedByAdmin) && <Star className="h-3 w-3 text-green-500 fill-green-500 inline ml-1" />}
-                              </span>
+                              {link.mode === "order_based" && link.orderId && orderVendorProgress[link.orderId] ? (() => {
+                                const stat = orderVendorProgress[link.orderId!]!;
+                                const allDone = stat.submitted >= stat.total && stat.total > 0;
+                                const readyToCompare = stat.submitted >= 2;
+                                return (
+                                  <div className="space-y-0.5">
+                                    <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full border ${
+                                      allDone ? "bg-green-100 text-green-700 border-green-200" :
+                                      stat.submitted > 0 ? "bg-blue-100 text-blue-700 border-blue-200" :
+                                      "bg-yellow-50 text-yellow-600 border-yellow-200"
+                                    }`}>
+                                      {stat.submitted}/{stat.total} vendor
+                                    </span>
+                                    {readyToCompare && (
+                                      <p className="text-[10px] font-medium text-indigo-600">⚖️ Siap dibandingkan!</p>
+                                    )}
+                                    {linkSubs.some(s => s.selectedByAdmin) && (
+                                      <Star className="h-3 w-3 text-green-500 fill-green-500" />
+                                    )}
+                                  </div>
+                                );
+                              })() : (
+                                <span className="text-sm font-semibold text-slate-700">
+                                  {linkSubs.length}
+                                  {linkSubs.some(s => s.selectedByAdmin) && <Star className="h-3 w-3 text-green-500 fill-green-500 inline ml-1" />}
+                                </span>
+                              )}
                             </TableCell>
                             <TableCell>
                               <div className="flex items-center gap-0.5">
@@ -1895,6 +2617,7 @@ export default function VendorFormsPage() {
                         <TableHead>Service</TableHead>
                         <TableHead>Penawaran</TableHead>
                         <TableHead>Status</TableHead>
+                        <TableHead>Status Vendor</TableHead>
                         <TableHead>Dikirim</TableHead>
                         <TableHead>Aksi</TableHead>
                       </TableRow>
@@ -1902,10 +2625,14 @@ export default function VendorFormsPage() {
                     <TableBody>
                       {submissions.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={6} className="text-center py-10 text-slate-400 text-sm">Belum ada submission.</TableCell>
+                          <TableCell colSpan={7} className="text-center py-10 text-slate-400 text-sm">Belum ada submission.</TableCell>
                         </TableRow>
                       ) : submissions.map(sub => {
                         const meta = SERVICE_META[sub.serviceType];
+                        const parentLink = sub.linkId ? linkMap[sub.linkId] : null;
+                        const orderId = sub.orderId ?? parentLink?.orderId ?? null;
+                        const orderNum = parentLink?.orderNumber ?? null;
+                        const stat = orderId ? orderVendorProgress[orderId] : null;
                         return (
                           <TableRow key={sub.id} className={sub.selectedByAdmin ? "bg-green-50" : ""}>
                             <TableCell>
@@ -1926,6 +2653,31 @@ export default function VendorFormsPage() {
                               <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${sub.responseStatus === "selected" ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-600"}`}>
                                 {sub.responseStatus ?? "submitted"}
                               </span>
+                            </TableCell>
+                            <TableCell>
+                              {stat ? (
+                                <div className="space-y-0.5">
+                                  {orderNum && (
+                                    <p className="text-xs text-blue-600 font-medium">📦 {orderNum}</p>
+                                  )}
+                                  <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full border ${
+                                    stat.submitted >= stat.total && stat.total > 0
+                                      ? "bg-green-100 text-green-700 border-green-200"
+                                      : stat.submitted > 0
+                                        ? "bg-blue-100 text-blue-700 border-blue-200"
+                                        : "bg-yellow-50 text-yellow-600 border-yellow-200"
+                                  }`}>
+                                    {stat.submitted}/{stat.total} vendor
+                                  </span>
+                                  {stat.submitted >= 2 && (
+                                    <p className="text-[10px] font-medium text-indigo-600">⚖️ Siap dibandingkan!</p>
+                                  )}
+                                </div>
+                              ) : orderNum ? (
+                                <p className="text-xs text-blue-600">📦 {orderNum}</p>
+                              ) : (
+                                <span className="text-xs text-slate-400">—</span>
+                              )}
                             </TableCell>
                             <TableCell>
                               <p className="text-xs text-slate-500">{new Date(sub.submittedAt).toLocaleString("id-ID", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</p>
@@ -2254,6 +3006,11 @@ export default function VendorFormsPage() {
                 </CardContent>
               </Card>
             )}
+          </TabsContent>
+
+          {/* ── PRODUCT TEMPLATE ENGINE TAB ── */}
+          <TabsContent value="product-templates" className="space-y-4">
+            <ProductTemplateEngine />
           </TabsContent>
 
           {/* ── ACTIVITY LOG TAB ── */}
