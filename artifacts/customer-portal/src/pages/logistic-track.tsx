@@ -587,6 +587,7 @@ export default function TrackPage() {
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const [sseConnected, setSseConnected] = useState(false);
   const sseReconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const qc = useQueryClient();
 
   const prevStatusRef = useRef<string | null>(null);
   const prevDriverStatusRef = useRef<string | null>(null);
