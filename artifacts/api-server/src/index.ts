@@ -179,6 +179,18 @@ async function runCriticalPreStartMigrations() {
     END $$;
   `);
 
+  // Add version column to logistic_orders (optimistic locking)
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'logistic_orders' AND column_name = 'version'
+      ) THEN
+        ALTER TABLE logistic_orders ADD COLUMN version INTEGER NOT NULL DEFAULT 1;
+      END IF;
+    END $$;
+  `);
+
   // Add vendor_accept_token and vendor_accepted_at to purchase_documents (Vendor PO Accept feature)
   await db.execute(sql`
     DO $$ BEGIN

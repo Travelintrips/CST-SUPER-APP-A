@@ -305,7 +305,7 @@ export default function LogisticsPortalOrdersPage() {
           queryClient.invalidateQueries({ queryKey: getListLogisticOrdersQueryKey() });
         },
         onError: (err: any) => {
-          const msg = err?.response?.data?.error ?? t.common.error;
+          const msg = err?.response?.data?.message ?? err?.response?.data?.error ?? t.common.error;
           toast({ title: msg, variant: "destructive" });
         },
         onSettled: () => setUpdatingId(null),
