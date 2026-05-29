@@ -69,7 +69,7 @@ export default function CustomerQuotePage() {
   const [rejectionReason, setRejectionReason] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [submitResult, setSubmitResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [submitResult, setSubmitResult] = useState<{ ok: boolean; message: string; action?: "approve" | "revise" | "reject" } | null>(null);
 
   const countdown = useCountdown(data?.validUntil);
 
@@ -100,7 +100,7 @@ export default function CustomerQuotePage() {
       });
       const d = await res.json() as { ok?: boolean; message?: string; error?: string };
       if (!res.ok) throw new Error(d.error ?? "Gagal mengirim respons");
-      setSubmitResult({ ok: true, message: d.message ?? "Berhasil" });
+      setSubmitResult({ ok: true, message: d.message ?? "Berhasil", action });
     } catch (e: unknown) {
       setSubmitResult({ ok: false, message: (e as Error).message });
     } finally {
@@ -115,11 +115,12 @@ export default function CustomerQuotePage() {
   if (!data) return <ErrorPage message="Data tidak ditemukan" />;
 
   if (submitResult?.ok) {
-    const emoji = action === "approve" ? "✅" : action === "revise" ? "🔄" : "❌";
+    const doneAction = submitResult.action;
+    const emoji = doneAction === "approve" ? "✅" : doneAction === "revise" ? "🔄" : "❌";
     return (
       <SuccessPage
         emoji={emoji}
-        title={action === "approve" ? "Penawaran Disetujui!" : action === "revise" ? "Revisi Terkirim" : "Penolakan Dicatat"}
+        title={doneAction === "approve" ? "Penawaran Disetujui!" : doneAction === "revise" ? "Revisi Terkirim" : "Penolakan Dicatat"}
         message={submitResult.message}
       />
     );
