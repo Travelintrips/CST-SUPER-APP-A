@@ -1,6 +1,12 @@
 import { useState, useEffect } from "react";
 import { useParams } from "wouter";
 
+type PriceItem = {
+  name: string;
+  category: string;
+  subtotal: number;
+};
+
 type QuoteData = {
   token: string;
   status: string;
@@ -12,6 +18,10 @@ type QuoteData = {
   destination: string | null;
   cargoDetail: string | null;
   finalCustomerPrice: number | null;
+  displaySubtotal: number | null;
+  displayTax: number | null;
+  displayTotal: number | null;
+  priceItems: PriceItem[];
   etaFinal: string | null;
   termsConditions: string | null;
   quoteNotes: string | null;
@@ -203,10 +213,51 @@ export default function CustomerQuotePage() {
         <div className="bg-white rounded-2xl shadow-sm border border-blue-100 p-6">
           <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-4">Detail Penawaran</h2>
           <div className="space-y-3">
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-slate-600">Harga Final</span>
-              <span className="text-2xl font-bold text-blue-700">{idr(data.finalCustomerPrice)}</span>
-            </div>
+            {/* Line items (if any) */}
+            {data.priceItems && data.priceItems.length > 0 && (
+              <div className="rounded-xl border border-slate-100 overflow-hidden mb-2">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-slate-50 text-slate-500 text-xs">
+                      <th className="text-left px-3 py-2 font-medium">Item / Layanan</th>
+                      <th className="text-right px-3 py-2 font-medium">Subtotal</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {data.priceItems.map((item, idx) => (
+                      <tr key={idx}>
+                        <td className="px-3 py-2 text-slate-700">{item.name}</td>
+                        <td className="px-3 py-2 text-right text-slate-700 font-medium">{idr(item.subtotal)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Price breakdown */}
+            {data.displaySubtotal != null && data.displayTax != null ? (
+              <div className="space-y-2">
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-slate-500">DPP (Harga Dasar)</span>
+                  <span className="text-slate-700 font-medium">{idr(data.displaySubtotal)}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-slate-500">PPN 11%</span>
+                  <span className="text-slate-700 font-medium">{idr(data.displayTax)}</span>
+                </div>
+                <div className="border-t border-slate-200 pt-2 flex justify-between items-center">
+                  <span className="text-sm font-semibold text-slate-700">Total Penawaran</span>
+                  <span className="text-2xl font-bold text-blue-700">{idr(data.displayTotal)}</span>
+                </div>
+              </div>
+            ) : (
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-slate-600">Harga Final</span>
+                <span className="text-2xl font-bold text-blue-700">{idr(data.finalCustomerPrice)}</span>
+              </div>
+            )}
+
             {data.etaFinal && <Row label="Estimasi Waktu" value={data.etaFinal} />}
             {data.validUntil && (
               <Row label="Berlaku Hingga" value={new Date(data.validUntil).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })} />
