@@ -379,6 +379,39 @@ export default function LogisticsPortalOrdersPage() {
     );
   }
 
+  const fulfillmentOf = (o: typeof orders[number]) =>
+    (o as unknown as { fulfillmentStatus: string | null }).fulfillmentStatus;
+
+  const filtered = orders.filter((o) => {
+    if (search) {
+      const q = search.toLowerCase();
+      const matchSearch =
+        o.orderNumber.toLowerCase().includes(q) ||
+        o.customerName.toLowerCase().includes(q) ||
+        o.companyName.toLowerCase().includes(q) ||
+        o.email.toLowerCase().includes(q);
+      if (!matchSearch) return false;
+    }
+    if (fulfillmentFilter !== "all") {
+      const fs = fulfillmentOf(o);
+      if (fulfillmentFilter === "not_sent" && fs !== null) return false;
+      if (fulfillmentFilter === "pending" && fs !== "pending") return false;
+      if (fulfillmentFilter === "submitted" && fs !== "submitted") return false;
+    }
+    if (koliFilter !== "all") {
+      const k = o.jumlahKoli ?? null;
+      if (koliFilter === "has_koli" && k == null) return false;
+      if (koliFilter === "lt5" && (k == null || k >= 5)) return false;
+      if (koliFilter === "5to10" && (k == null || k < 5 || k > 10)) return false;
+      if (koliFilter === "gt10" && (k == null || k <= 10)) return false;
+    }
+    if (shipmentTypeFilter !== "all") {
+      const st = (o.shipmentType ?? "").toLowerCase();
+      if (!st.includes(shipmentTypeFilter.toLowerCase())) return false;
+    }
+    return true;
+  });
+
   const allFilteredIds = filtered.map((o) => o.id);
   const allSelected = allFilteredIds.length > 0 && allFilteredIds.every((id) => selectedIds.has(id));
   const someSelected = allFilteredIds.some((id) => selectedIds.has(id)) && !allSelected;
@@ -449,39 +482,6 @@ export default function LogisticsPortalOrdersPage() {
       setIsBulkDeleting(false);
     }
   }
-
-  const fulfillmentOf = (o: typeof orders[number]) =>
-    (o as unknown as { fulfillmentStatus: string | null }).fulfillmentStatus;
-
-  const filtered = orders.filter((o) => {
-    if (search) {
-      const q = search.toLowerCase();
-      const matchSearch =
-        o.orderNumber.toLowerCase().includes(q) ||
-        o.customerName.toLowerCase().includes(q) ||
-        o.companyName.toLowerCase().includes(q) ||
-        o.email.toLowerCase().includes(q);
-      if (!matchSearch) return false;
-    }
-    if (fulfillmentFilter !== "all") {
-      const fs = fulfillmentOf(o);
-      if (fulfillmentFilter === "not_sent" && fs !== null) return false;
-      if (fulfillmentFilter === "pending" && fs !== "pending") return false;
-      if (fulfillmentFilter === "submitted" && fs !== "submitted") return false;
-    }
-    if (koliFilter !== "all") {
-      const k = o.jumlahKoli ?? null;
-      if (koliFilter === "has_koli" && k == null) return false;
-      if (koliFilter === "lt5" && (k == null || k >= 5)) return false;
-      if (koliFilter === "5to10" && (k == null || k < 5 || k > 10)) return false;
-      if (koliFilter === "gt10" && (k == null || k <= 10)) return false;
-    }
-    if (shipmentTypeFilter !== "all") {
-      const st = (o.shipmentType ?? "").toLowerCase();
-      if (!st.includes(shipmentTypeFilter.toLowerCase())) return false;
-    }
-    return true;
-  });
 
   const counts = {
     total: orders.length,
