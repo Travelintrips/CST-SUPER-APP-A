@@ -28,10 +28,6 @@ args = "Customer Portal"
 task = "workflow.run"
 args = "Logistic Order"
 
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "API Server"
-
 [[workflows.workflow]]
 name = "BizPortal"
 author = "agent"
@@ -67,18 +63,6 @@ waitForPort = 3001
 
 [workflows.workflow.metadata]
 outputType = "console"
-
-[[workflows.workflow]]
-name = "API Server"
-author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "console"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd artifacts/api-server && node build.mjs && PORT=8080 NODE_ENV=development node --enable-source-maps ./dist/index.mjs"
-waitForPort = 8080
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
