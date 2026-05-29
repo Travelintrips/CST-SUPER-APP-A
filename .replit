@@ -22,10 +22,6 @@ args = "BizPortal"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "API Server"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
 args = "Customer Portal"
 
 [[workflows.workflow]]
@@ -39,18 +35,6 @@ outputType = "console"
 task = "shell.exec"
 args = "fuser -k 18442/tcp 2>/dev/null; sleep 0.3; cd artifacts/bizportal && PORT=18442 BASE_PATH=/bizportal/ node_modules/.bin/vite --config vite.config.ts --host 0.0.0.0"
 waitForPort = 18442
-
-[[workflows.workflow]]
-name = "API Server"
-author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "console"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "fuser -k 8080/tcp 2>/dev/null; sleep 0.3; cd artifacts/api-server && node build.mjs && cd ../../lib/api-spec && pnpm exec orval --config ./orval.config.ts && cd ../../artifacts/api-server && PORT=8080 NODE_ENV=development node --enable-source-maps ./dist/index.mjs"
-waitForPort = 8080
 
 [[workflows.workflow]]
 name = "Customer Portal"
