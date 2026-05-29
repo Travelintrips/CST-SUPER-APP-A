@@ -1136,19 +1136,6 @@ async function notifyAdmin(order: LogisticOrderData): Promise<void> {
         return longUrl;
       });
     }
-    sendWhatsApp(adminWa, buildAdminWaMessage(order, adminActionShortUrl, adminReviewUrl)).catch((err: unknown) =>
-      logger.error({ err }, "WA admin notification failed")
-    );
-  } else {
-    logger.warn("Admin WA target not configured — skipping (set FONNTE_ADMIN_WA or configure via admin panel)");
-  }
-
-  // Send to admin WhatsApp group if configured
-  const adminGroupWa = await getAdminGroupWa();
-  if (adminGroupWa) {
-    logger.info({ groupId: adminGroupWa, orderNumber: order.orderNumber }, "Sending group WA notification");
-    sendWhatsApp(adminGroupWa, buildAdminGroupWaMessage(order)).catch((err: unknown) =>
-    // Wrap URL dengan italic markdown WA (`_..._`) — mencegah link preview card tapi tetap clickable
     const wrappedActionUrl = groupActionUrl ? `_${groupActionUrl}_` : groupActionUrl;
     sendWhatsApp(adminGroupWa, buildAdminGroupWaMessage(order, tplAdminGroup, wrappedActionUrl)).catch((err: unknown) =>
       logger.error({ err }, "WA group notification failed")

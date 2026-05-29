@@ -102,6 +102,8 @@ async function buildAll() {
       "puppeteer",
       "puppeteer-core",
       "electron",
+      "ws",
+      "web-push",
     ],
     alias: {
       "@workspace/logistics-constants": path.resolve(workspaceRoot, "lib/logistics-constants/src/index.ts"),

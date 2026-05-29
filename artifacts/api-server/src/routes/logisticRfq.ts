@@ -1178,9 +1178,8 @@ logisticRfqRouter.get("/rfq-form", rfqRateLimit, async (req: Request, res: Respo
       const cName = c.name.toLowerCase().trim();
       return cName.includes(name) || name.includes(cName);
     }) : null;
-    const vendorUnitPrice = catalogMatch
-      ? Number(catalogMatch.priceBase)
-      : (catalogItems.length > 0 ? Number(catalogItems[0].priceBase) : null);
+    // Jangan fallback ke catalogItems[0] jika tidak ada name match — harga vendor null jika tidak cocok
+    const vendorUnitPrice = catalogMatch ? Number(catalogMatch.priceBase) : null;
 
     const vendorSubtotal = vendorUnitPrice != null ? Math.round(vendorUnitPrice * quantity) : null;
     const ppnAmount = vendorSubtotal != null ? Math.round(vendorSubtotal * PPN_RATE) : null;
@@ -1300,7 +1299,7 @@ logisticRfqRouter.post("/:id/manual-rfq", async (req: Request, res: Response) =>
 
   await db.update(logisticOrdersTable).set({ status: "Under Review" }).where(eq(logisticOrdersTable.id, orderId));
 
-  const manualOrderItems = await db.select({ serviceName: logisticOrderItemsTable.serviceName, category: logisticOrderItemsTable.category, calculatorType: logisticOrderItemsTable.calculatorType, subtotal: logisticOrderItemsTable.subtotal })
+  const manualOrderItems = await db.select({ serviceName: logisticOrderItemsTable.serviceName, category: logisticOrderItemsTable.category, calculatorType: logisticOrderItemsTable.calculatorType, subtotal: logisticOrderItemsTable.subtotal, inputData: logisticOrderItemsTable.inputData })
     .from(logisticOrderItemsTable)
     .where(eq(logisticOrderItemsTable.orderId, orderId));
   const isTruckingManual = manualOrderItems.some((it) => it.calculatorType === "trucking");
@@ -1335,7 +1334,11 @@ logisticRfqRouter.post("/:id/manual-rfq", async (req: Request, res: Response) =>
         const cName = c.name.toLowerCase();
         return cName.includes(name) || name.includes(cName);
       }) : null;
-      return { serviceName: it.serviceName || it.category, category: it.category, subtotal: catalogMatch ? Number(catalogMatch.priceBase) : null };
+      const inputDataManual = (it.inputData as Record<string, unknown>) ?? {};
+      const qtyManual = Number(inputDataManual.qty ?? inputDataManual.quantity ?? 1) || 1;
+      const unitManual = String(inputDataManual.unit ?? "Unit") || "Unit";
+      const sellingUnitPriceManual = inputDataManual.productPrice != null ? Number(inputDataManual.productPrice) : null;
+      return { serviceName: it.serviceName || it.category, category: it.category, subtotal: catalogMatch ? Number(catalogMatch.priceBase) : null, quantity: qtyManual, unit: unitManual, sellingUnitPrice: sellingUnitPriceManual };
     });
     sendVendorWhatsApp({
       vendorPhone: vendor.phone!, vendorName: vendor.name, vendorId: vendor.id,
@@ -1562,7 +1565,7 @@ logisticRfqRouter.post("/:id/resend-rfq", async (req: Request, res: Response) =>
     return res.status(400).json({ message: "Tidak ada vendor terpilih yang memiliki nomor WhatsApp" });
 
   const orderToken = order.publicRfqToken ?? "";
-  const resendOrderItems = await db.select({ serviceName: logisticOrderItemsTable.serviceName, category: logisticOrderItemsTable.category, subtotal: logisticOrderItemsTable.subtotal })
+  const resendOrderItems = await db.select({ serviceName: logisticOrderItemsTable.serviceName, category: logisticOrderItemsTable.category, subtotal: logisticOrderItemsTable.subtotal, inputData: logisticOrderItemsTable.inputData })
     .from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, orderId));
 
   const results: { vendorId: number; vendorName: string; sent: boolean }[] = [];
@@ -1584,7 +1587,11 @@ logisticRfqRouter.post("/:id/resend-rfq", async (req: Request, res: Response) =>
         const cName = c.name.toLowerCase();
         return cName.includes(name) || name.includes(cName);
       }) : null;
-      return { serviceName: it.serviceName || it.category, category: it.category, subtotal: catalogMatch ? Number(catalogMatch.priceBase) : null };
+      const inputDataResend = (it.inputData as Record<string, unknown>) ?? {};
+      const qtyResend = Number(inputDataResend.qty ?? inputDataResend.quantity ?? 1) || 1;
+      const unitResend = String(inputDataResend.unit ?? "Unit") || "Unit";
+      const sellingUnitPriceResend = inputDataResend.productPrice != null ? Number(inputDataResend.productPrice) : null;
+      return { serviceName: it.serviceName || it.category, category: it.category, subtotal: catalogMatch ? Number(catalogMatch.priceBase) : null, quantity: qtyResend, unit: unitResend, sellingUnitPrice: sellingUnitPriceResend };
     });
     try {
       await sendVendorWhatsApp({
@@ -2365,7 +2372,13 @@ logisticRfqRouter.post("/:id/duplicate-rfq", async (req: Request, res: Response)
   const orderToken = order.publicRfqToken ?? "";
   const orderItems = await db.select().from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, orderId));
   const isTrucking = orderItems.some((it) => it.calculatorType === "trucking");
-  const waItems = orderItems.map((it) => ({ serviceName: it.serviceName || it.category, category: it.category, subtotal: it.subtotal != null ? parseFloat(String(it.subtotal)) : null }));
+  const waItems = orderItems.map((it) => {
+    const inputDataDup = (it.inputData as Record<string, unknown>) ?? {};
+    const qtyDup = Number(inputDataDup.qty ?? inputDataDup.quantity ?? 1) || 1;
+    const unitDup = String(inputDataDup.unit ?? "Unit") || "Unit";
+    const sellingUnitPriceDup = inputDataDup.productPrice != null ? Number(inputDataDup.productPrice) : null;
+    return { serviceName: it.serviceName || it.category, category: it.category, subtotal: it.subtotal != null ? parseFloat(String(it.subtotal)) : null, quantity: qtyDup, unit: unitDup, sellingUnitPrice: sellingUnitPriceDup };
+  });
 
   for (const vendor of eligible) {
     const catalogItems = await db.select().from(vendorCatalogItemsTable)

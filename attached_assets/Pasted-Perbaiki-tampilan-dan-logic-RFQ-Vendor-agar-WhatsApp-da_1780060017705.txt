@@ -1,0 +1,307 @@
+Perbaiki tampilan dan logic RFQ Vendor agar WhatsApp dan Mini Form Vendor menampilkan quantity serta breakdown harga dengan benar.
+
+JANGAN refactor besar.
+JANGAN ubah flow trucking/freight/customs.
+Fokus hanya RFQ produk/vendor quotation.
+
+==================================================
+KONTEKS MASALAH
+==================================================
+
+Saat ini WhatsApp Vendor menampilkan:
+
+Samsung Galaxy A54 – Rp 10.920.000
+
+Harga tersebut sebenarnya benar karena berasal dari:
+
+Harga jual customer per unit × quantity
+Rp 5.460.000 × 2 = Rp 10.920.000
+
+Jadi Rp 10.920.000 bukan error.
+
+Masalahnya:
+1. WhatsApp tidak menampilkan quantity, sehingga vendor bingung apakah itu harga satuan atau total.
+2. Mini Form Vendor hanya menampilkan harga dasar vendor tanpa rincian quantity, subtotal, PPN, dan grand total.
+3. Saat vendor ajukan harga baru, input harus dianggap harga satuan baru, lalu sistem menghitung total berdasarkan quantity.
+
+==================================================
+TUJUAN
+==================================================
+
+1. WhatsApp RFQ Vendor harus menampilkan:
+- nama produk
+- quantity
+- unit
+- harga jual per unit
+- total harga jual
+
+2. Mini Form Vendor harus menampilkan:
+- nama produk
+- quantity
+- unit
+- harga dasar vendor per unit
+- subtotal vendor
+- PPN 11%
+- grand total vendor
+
+3. Ajukan Harga Baru harus berdasarkan:
+harga satuan baru × quantity
+
+==================================================
+FORMAT WHATSAPP YANG DIHARAPKAN
+==================================================
+
+Pada workflow Vendor RFQ / Permintaan Penawaran Vendor, ubah detail produk menjadi:
+
+📦 Produk:
+• Samsung Galaxy A54
+  Qty: 2 Unit
+  Harga Jual/Unit: Rp 5.460.000
+  Total: Rp 10.920.000
+
+Jika multi item:
+
+📦 Produk:
+• Item A
+  Qty: 2 Unit
+  Harga Jual/Unit: Rp xxx
+  Total: Rp xxx
+
+• Item B
+  Qty: 5 Kg
+  Harga Jual/Unit: Rp xxx
+  Total: Rp xxx
+
+Catatan:
+- Harga di WhatsApp boleh memakai harga jual customer karena ini request order yang sudah dibuat customer.
+- Tetapi harus jelas bahwa angka tersebut adalah total berdasarkan quantity.
+- Jangan tampilkan hanya “produk – total” tanpa qty.
+
+==================================================
+FORMAT MINI FORM VENDOR YANG DIHARAPKAN
+==================================================
+
+Di halaman RFQ Vendor / Mini Form Vendor, bagian detail produk harus menjadi:
+
+DETAIL PRODUK
+
+Samsung Galaxy A54
+
+Qty                         : 2 Unit
+Harga Dasar Vendor / Unit    : Rp 5.000.000
+Subtotal Vendor              : Rp 10.000.000
+
+--------------------------------
+
+RINGKASAN
+
+Subtotal Vendor              : Rp 10.000.000
+PPN 11%                      : Rp 1.100.000
+Grand Total Vendor           : Rp 11.100.000
+
+Catatan kecil:
+* Harga dasar vendor belum termasuk margin. PPN dihitung otomatis berdasarkan subtotal vendor.
+
+==================================================
+LOGIC PERHITUNGAN
+==================================================
+
+Untuk setiap item:
+
+quantity = order item quantity
+unit = order item unit, fallback "Unit"
+vendorUnitPrice = harga dasar vendor per unit dari vendor_catalog_items.price_base
+vendorSubtotal = vendorUnitPrice × quantity
+ppn = vendorSubtotal × 11%
+vendorGrandTotal = vendorSubtotal + ppn
+
+Untuk WhatsApp:
+
+sellingUnitPrice = harga jual customer per unit
+sellingSubtotal = sellingUnitPrice × quantity
+
+Jangan samakan:
+- selling price customer
+dengan
+- vendor base price
+
+Keduanya berbeda.
+
+==================================================
+AJUKAN HARGA BARU
+==================================================
+
+Saat vendor klik "Ajukan Harga Baru":
+
+Input label harus:
+Harga Satuan Baru
+
+Bukan:
+Harga Total Baru
+
+Logic:
+newUnitPrice = input vendor
+newSubtotal = newUnitPrice × quantity
+newPpn = newSubtotal × 11%
+newGrandTotal = newSubtotal + newPpn
+
+Tampilkan preview realtime:
+
+Harga Satuan Baru      : Rp xxx
+Qty                    : 2 Unit
+Subtotal Baru          : Rp xxx
+PPN 11%                : Rp xxx
+Grand Total Baru       : Rp xxx
+
+Data yang disubmit harus menyimpan:
+- unit_price
+- quantity
+- subtotal
+- ppn
+- grand_total
+
+==================================================
+API RESPONSE YANG DIHARAPKAN
+==================================================
+
+Endpoint RFQ form harus mengembalikan struktur seperti:
+
+items: [
+  {
+    orderItemId,
+    productName,
+    quantity,
+    unit,
+    sellingUnitPrice,
+    sellingSubtotal,
+    vendorUnitPrice,
+    vendorSubtotal,
+    ppnRate,
+    ppnAmount,
+    vendorGrandTotal
+  }
+]
+
+summary: {
+  totalQuantity,
+  vendorSubtotal,
+  ppnRate,
+  ppnAmount,
+  vendorGrandTotal
+}
+
+Jika saat ini response hanya mengirim vendorBasePrice, tetap boleh dipertahankan untuk backward compatibility, tapi tambahkan items dan summary.
+
+==================================================
+FILE YANG PERLU DIAUDIT / DIPERBAIKI
+==================================================
+
+Audit dan perbaiki file terkait:
+
+Backend:
+- artifacts/api-server/src/routes/logisticRfq.ts
+- artifacts/api-server/src/lib/vendorQuoteWa.ts
+- jika ada helper orderNotification.ts terkait vendor_rfq
+
+Frontend:
+- artifacts/customer-portal/src/pages/vendor-quote-form.tsx
+
+Pastikan:
+- WA message memakai quantity
+- RFQ page memakai items/summary baru
+- frontend tidak memakai default harga lama
+- frontend tidak menganggap vendorBasePrice sebagai total
+
+==================================================
+VALIDASI DATA
+==================================================
+
+Audit field quantity:
+
+Cari field kemungkinan:
+- quantity
+- qty
+- jumlah
+- item.quantity
+- orderItem.quantity
+
+Audit field unit:
+
+Cari field kemungkinan:
+- unit
+- satuan
+- item.unit
+- orderItem.unit
+
+Jika quantity kosong:
+- fallback = 1
+
+Jika unit kosong:
+- fallback = "Unit"
+
+==================================================
+CONTOH TEST CASE
+==================================================
+
+Order:
+Product: Samsung Galaxy A54
+Quantity: 2 Unit
+Harga jual customer/unit: Rp 5.460.000
+Harga dasar vendor/unit: Rp 5.000.000
+PPN: 11%
+
+Expected WhatsApp:
+Samsung Galaxy A54
+Qty: 2 Unit
+Harga Jual/Unit: Rp 5.460.000
+Total: Rp 10.920.000
+
+Expected Mini Form:
+Qty: 2 Unit
+Harga Dasar Vendor/Unit: Rp 5.000.000
+Subtotal Vendor: Rp 10.000.000
+PPN 11%: Rp 1.100.000
+Grand Total Vendor: Rp 11.100.000
+
+Expected Ajukan Harga Baru:
+Jika vendor input Rp 4.800.000:
+Subtotal Baru: Rp 9.600.000
+PPN 11%: Rp 1.056.000
+Grand Total Baru: Rp 10.656.000
+
+==================================================
+JANGAN LAKUKAN
+==================================================
+
+Jangan:
+- mengubah harga jual customer
+- mengubah margin logic
+- mengubah flow trucking/freight/customs
+- menghapus vendorBasePrice jika masih dipakai
+- membuat harga vendor sama dengan harga customer
+- memakai catalogItems[0] jika ada item name match
+- hardcode quantity
+- hardcode harga
+- hardcode product name
+
+==================================================
+OUTPUT YANG SAYA MAU
+==================================================
+
+Setelah selesai, laporkan:
+
+1. File yang diubah
+2. Field quantity yang dipakai
+3. Field unit yang dipakai
+4. Logic harga WA
+5. Logic harga Mini Form Vendor
+6. Response API baru
+7. Test result:
+   - WhatsApp tampil quantity
+   - Mini Form tampil quantity
+   - Subtotal benar
+   - PPN benar
+   - Grand total benar
+   - Ajukan Harga Baru hitung benar
+8. Screenshot atau log hasil test
+9. Pastikan flow lain tidak rusak
