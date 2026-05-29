@@ -6,8 +6,9 @@
  * - Public: POST /api/fulfillment/:token                         → vendor submit
  */
 import { Router, type Request, type Response } from "express";
-import { randomBytes } from "crypto";
+import { randomBytes, randomUUID } from "crypto";
 import { eq, desc, sql } from "drizzle-orm";
+import multer from "multer";
 import {
   db,
   logisticOrdersTable,
@@ -22,6 +23,11 @@ import { getAdminWa } from "../lib/adminWa.js";
 import { getPreferredDomain } from "../lib/domain.js";
 import { logger } from "../lib/logger.js";
 import { resolveServiceCategory } from "@workspace/logistics-constants";
+import { ObjectStorageService } from "../lib/objectStorage.js";
+import { compressImageBuffer } from "../lib/imageCompress.js";
+
+const objectStorageService = new ObjectStorageService();
+const podUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Migration (idempotent)
@@ -53,10 +59,21 @@ export async function runOrderFulfillmentMigration() {
         created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
 
-      CREATE INDEX IF NOT EXISTS ofl_order_idx ON order_fulfillment_links(order_id);
-      CREATE INDEX IF NOT EXISTS ofl_token_idx ON order_fulfillment_links(token);
-      CREATE INDEX IF NOT EXISTS ofs_order_idx ON order_fulfillment_submissions(order_id);
-      CREATE INDEX IF NOT EXISTS ofs_link_idx  ON order_fulfillment_submissions(link_id);
+      CREATE TABLE IF NOT EXISTS order_pod_submissions (
+        id            SERIAL PRIMARY KEY,
+        order_id      INTEGER NOT NULL REFERENCES logistic_orders(id) ON DELETE CASCADE,
+        receiver_name TEXT,
+        photo_url     TEXT,
+        note          TEXT,
+        submitted_by  TEXT,
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS ofl_order_idx  ON order_fulfillment_links(order_id);
+      CREATE INDEX IF NOT EXISTS ofl_token_idx  ON order_fulfillment_links(token);
+      CREATE INDEX IF NOT EXISTS ofs_order_idx  ON order_fulfillment_submissions(order_id);
+      CREATE INDEX IF NOT EXISTS ofs_link_idx   ON order_fulfillment_submissions(link_id);
+      CREATE INDEX IF NOT EXISTS opod_order_idx ON order_pod_submissions(order_id);
     `);
     logger.info("Order fulfillment migration: ok");
   } catch (err) {
@@ -213,10 +230,19 @@ fulfillmentAdminRouter.get("/orders/:orderId/fulfillment", async (req: Request, 
       .where(eq(orderFulfillmentSubmissionsTable.orderId, orderId))
       .orderBy(desc(orderFulfillmentSubmissionsTable.createdAt));
 
+    const podRows = await db.execute(sql`
+      SELECT id, order_id, receiver_name, photo_url, note, submitted_by, created_at
+      FROM order_pod_submissions
+      WHERE order_id = ${orderId}
+      ORDER BY created_at DESC
+      LIMIT 5
+    `);
+
     const base = getBaseUrl();
     return res.json({
       links: links.map(l => ({ ...l, formUrl: `${base}/fulfillment/${l.token}` })),
       submissions,
+      pods: podRows.rows ?? [],
     });
   } catch (err) {
     logger.error({ err }, "get-fulfillment error");
@@ -507,3 +533,91 @@ fulfillmentAdminRouter.post("/orders/:orderId/complete-order", async (req: Reque
     return res.status(500).json({ message: "Gagal menyelesaikan order" });
   }
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Admin: Upload Bukti Pengiriman (POD) → simpan foto, update status Completed
+// POST /api/logistic/orders/:orderId/pod   (multipart/form-data)
+// fields: photo (file, optional), receiverName (text), note (text)
+// ─────────────────────────────────────────────────────────────────────────────
+
+fulfillmentAdminRouter.post(
+  "/orders/:orderId/pod",
+  podUpload.single("photo") as any,
+  async (req: Request, res: Response) => {
+    if (!(await requireClerkUser(req, res))) return;
+    const orderId = Number(req.params["orderId"]);
+    if (isNaN(orderId)) return res.status(400).json({ message: "orderId tidak valid" });
+
+    const receiverName = (req.body?.receiverName as string | undefined)?.trim() ?? "";
+    const note = (req.body?.note as string | undefined)?.trim() ?? "";
+    const actor = (req as any).session?.user?.name ?? "Admin";
+
+    try {
+      const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
+      if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+      // Upload foto ke object storage jika ada
+      let photoUrl: string | null = null;
+      if (req.file) {
+        try {
+          const { buffer: compressed, contentType } = await compressImageBuffer(req.file.buffer, req.file.mimetype, "photo");
+          const filename = `${randomUUID()}.jpg`;
+          const storagePath = `public/pod-photos/${orderId}/${filename}`;
+          await objectStorageService.uploadFile(compressed, storagePath, contentType);
+          photoUrl = `/api/storage/public-objects/pod-photos/${orderId}/${filename}`;
+        } catch (uploadErr) {
+          logger.warn({ uploadErr }, "POD photo upload failed, continuing without photo");
+        }
+      }
+
+      // Simpan POD record
+      await db.execute(sql`
+        INSERT INTO order_pod_submissions (order_id, receiver_name, photo_url, note, submitted_by)
+        VALUES (${orderId}, ${receiverName || null}, ${photoUrl}, ${note || null}, ${actor})
+      `);
+
+      // Update status → Completed
+      await db.update(logisticOrdersTable)
+        .set({ status: "Completed" })
+        .where(eq(logisticOrdersTable.id, orderId));
+
+      // Activity log
+      const logNote = [
+        "Bukti pengiriman (POD) diupload oleh admin.",
+        receiverName ? `Penerima: ${receiverName}.` : "",
+        note ? `Catatan: ${note}` : "",
+      ].filter(Boolean).join(" ");
+
+      await db.insert(orderUpdatesTable).values({
+        orderId,
+        actorType: "admin",
+        actorName: actor,
+        status: "Completed",
+        notes: logNote,
+        isPublic: true,
+      });
+
+      // WA ke customer
+      const customerPhone = order.phone?.trim();
+      if (customerPhone) {
+        const waMsg =
+          `✅ *Order Selesai & Bukti Pengiriman Tersedia — CST Logistics*\n\n` +
+          `Halo ${order.customerName},\n\n` +
+          `Order *${order.orderNumber}* (${order.shipmentType}) telah *selesai* dan barang sudah diterima.\n` +
+          `Rute: ${order.origin} → ${order.destination}\n` +
+          (receiverName ? `Diterima oleh: *${receiverName}*\n` : "") +
+          (note ? `Catatan: ${note}\n` : "") +
+          `\nTerima kasih telah mempercayakan pengiriman Anda kepada CST Logistics! 🙏`;
+        sendWhatsApp(customerPhone, waMsg).catch((e) =>
+          logger.warn({ e }, "POD WA to customer failed")
+        );
+      }
+
+      logger.info({ orderId, photoUrl }, "POD submitted, order completed");
+      return res.json({ ok: true, photoUrl });
+    } catch (err) {
+      logger.error({ err }, "pod-submit error");
+      return res.status(500).json({ message: "Gagal menyimpan bukti pengiriman" });
+    }
+  }
+);

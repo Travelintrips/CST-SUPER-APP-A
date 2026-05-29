@@ -63,6 +63,7 @@ type CustomerLink = { id: number; token: string; status: string; trackUrl: strin
 type QuoteLink = { id: number; token: string; status: string; quoteUrl: string; finalCustomerPrice: string | null; etaFinal: string | null; createdAt: string };
 type FulfillmentLink = { id: number; token: string; serviceType: string; status: string; formUrl: string; sentAt: string | null; expiresAt: string | null; submittedAt: string | null; createdAt: string };
 type FulfillmentSubmission = { id: number; linkId: number; serviceType: string; fulfillmentData: Record<string, string>; submittedAt: string };
+type PodSubmission = { id: number; order_id: number; receiver_name: string | null; photo_url: string | null; note: string | null; submitted_by: string | null; created_at: string };
 
 type FreightShipmentLink = {
   id: number; shipmentNumber: string; status: string;
@@ -1912,7 +1913,7 @@ export default function LogisticOrderDetailPage() {
     onError: (e: Error) => toast({ title: "Gagal kirim WA", description: e.message, variant: "destructive" }),
   });
 
-  const { data: fulfillmentData, refetch: refetchFulfillment } = useQuery<{ links: FulfillmentLink[]; submissions: FulfillmentSubmission[] }>({
+  const { data: fulfillmentData, refetch: refetchFulfillment } = useQuery<{ links: FulfillmentLink[]; submissions: FulfillmentSubmission[]; pods: PodSubmission[] }>({
     queryKey: ["order-fulfillment", orderId],
     queryFn: () => apiFetch(`/api/logistic/orders/${orderId}/fulfillment`),
     enabled: !isNaN(orderId),
@@ -1954,16 +1955,29 @@ export default function LogisticOrderDetailPage() {
   });
 
   const [completeNote, setCompleteNote] = useState("");
+  const [completeReceiver, setCompleteReceiver] = useState("");
+  const [podPhotoFile, setPodPhotoFile] = useState<File | null>(null);
+  const [podPhotoPreview, setPodPhotoPreview] = useState<string | null>(null);
   const [showCompleteDialog, setShowCompleteDialog] = useState(false);
+
   const completeOrderMut = useMutation({
-    mutationFn: (note: string) => apiFetch<{ ok: boolean }>(`/api/logistic/orders/${orderId}/complete-order`, {
-      method: "POST",
-      body: JSON.stringify({ note }),
-    }),
+    mutationFn: async ({ note, receiverName, photo }: { note: string; receiverName: string; photo: File | null }) => {
+      const fd = new FormData();
+      fd.append("note", note);
+      fd.append("receiverName", receiverName);
+      if (photo) fd.append("photo", photo);
+      const res = await fetch(`/api/logistic/orders/${orderId}/pod`, { method: "POST", body: fd });
+      const data = await res.json() as { ok?: boolean; message?: string };
+      if (!res.ok) throw new Error(data.message ?? "Gagal menyimpan POD");
+      return data;
+    },
     onSuccess: () => {
-      toast({ title: "✅ Order selesai", description: "WA konfirmasi dikirim ke customer." });
+      toast({ title: "✅ Order selesai & POD tersimpan", description: "WA konfirmasi dikirim ke customer." });
       setShowCompleteDialog(false);
       setCompleteNote("");
+      setCompleteReceiver("");
+      setPodPhotoFile(null);
+      setPodPhotoPreview(null);
       qc.invalidateQueries({ queryKey: ["order-detail", orderId] });
       void refetchFulfillment();
     },
@@ -2321,26 +2335,73 @@ export default function LogisticOrderDetailPage() {
               </Card>
             )}
 
-            {/* Dialog: Selesaikan Order */}
-            <Dialog open={showCompleteDialog} onOpenChange={setShowCompleteDialog}>
-              <DialogContent className="max-w-sm">
+            {/* Dialog: Selesaikan Order + POD */}
+            <Dialog open={showCompleteDialog} onOpenChange={(o) => {
+              if (!o) { setPodPhotoFile(null); setPodPhotoPreview(null); }
+              setShowCompleteDialog(o);
+            }}>
+              <DialogContent className="max-w-md">
                 <DialogHeader>
                   <DialogTitle className="flex items-center gap-2">
                     <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                    Selesaikan Order
+                    Selesaikan Order &amp; Upload POD
                   </DialogTitle>
                 </DialogHeader>
                 <div className="space-y-3 py-2">
-                  <p className="text-sm text-slate-600">
-                    Status akan berubah ke <strong>Completed</strong> dan WA konfirmasi dikirim ke customer.
+                  <p className="text-sm text-slate-500">
+                    Status → <strong>Completed</strong>. WA konfirmasi otomatis dikirim ke customer.
                   </p>
+
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Catatan penutup (opsional)</Label>
+                    <Label className="text-xs">Nama Penerima <span className="text-slate-400">(opsional)</span></Label>
+                    <Input
+                      value={completeReceiver}
+                      onChange={e => setCompleteReceiver(e.target.value)}
+                      placeholder="Contoh: Budi Santoso"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Foto Bukti Pengiriman <span className="text-slate-400">(opsional)</span></Label>
+                    {podPhotoPreview ? (
+                      <div className="relative inline-block">
+                        <img src={podPhotoPreview} alt="preview" className="w-full max-h-48 object-contain rounded-lg border border-slate-200" />
+                        <button
+                          className="absolute top-1 right-1 bg-white/80 rounded-full p-0.5 text-slate-500 hover:text-red-500"
+                          onClick={() => { setPodPhotoFile(null); setPodPhotoPreview(null); }}
+                          type="button"
+                        >
+                          <XCircle className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <label className="flex flex-col items-center justify-center gap-1.5 border-2 border-dashed border-slate-200 rounded-lg py-5 cursor-pointer hover:border-emerald-300 hover:bg-emerald-50/30 transition-colors">
+                        <ClipboardCheck className="w-6 h-6 text-slate-400" />
+                        <span className="text-xs text-slate-400">Klik untuk pilih foto</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={e => {
+                            const f = e.target.files?.[0] ?? null;
+                            setPodPhotoFile(f);
+                            if (f) {
+                              const url = URL.createObjectURL(f);
+                              setPodPhotoPreview(url);
+                            }
+                          }}
+                        />
+                      </label>
+                    )}
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Catatan <span className="text-slate-400">(opsional)</span></Label>
                     <Textarea
                       value={completeNote}
                       onChange={e => setCompleteNote(e.target.value)}
-                      rows={3}
-                      placeholder="Contoh: Barang telah diterima dengan baik di gudang tujuan."
+                      rows={2}
+                      placeholder="Contoh: Barang diterima dalam kondisi baik."
                     />
                   </div>
                 </div>
@@ -2352,16 +2413,68 @@ export default function LogisticOrderDetailPage() {
                     size="sm"
                     className="bg-emerald-600 hover:bg-emerald-700 text-white"
                     disabled={completeOrderMut.isPending}
-                    onClick={() => completeOrderMut.mutate(completeNote)}
+                    onClick={() => completeOrderMut.mutate({ note: completeNote, receiverName: completeReceiver, photo: podPhotoFile })}
                   >
                     {completeOrderMut.isPending
                       ? <Loader2 className="w-4 h-4 animate-spin mr-1" />
                       : <CheckCircle2 className="w-4 h-4 mr-1" />}
-                    Ya, Selesaikan
+                    Selesaikan &amp; Simpan POD
                   </Button>
                 </DialogFooter>
               </DialogContent>
             </Dialog>
+
+            {/* ── Panel POD (Bukti Pengiriman) ── */}
+            {(fulfillmentData?.pods?.length ?? 0) > 0 && (
+              <Card className="border-teal-200">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-semibold text-teal-700 uppercase tracking-wide flex items-center gap-1.5">
+                    <ClipboardCheck className="w-4 h-4" /> Bukti Pengiriman (POD)
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {fulfillmentData!.pods.map(pod => (
+                    <div key={pod.id} className="rounded-lg border border-teal-100 bg-teal-50/30 px-3 py-3 space-y-2">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <Badge className="bg-emerald-100 text-emerald-800">✅ POD Tersimpan</Badge>
+                        <span className="text-[10px] text-slate-400">
+                          {new Date(pod.created_at).toLocaleString("id-ID", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                        {pod.receiver_name && (
+                          <div>
+                            <span className="text-slate-400">Penerima</span>
+                            <p className="font-semibold text-slate-700">{pod.receiver_name}</p>
+                          </div>
+                        )}
+                        {pod.submitted_by && (
+                          <div>
+                            <span className="text-slate-400">Diupload oleh</span>
+                            <p className="font-medium text-slate-600">{pod.submitted_by}</p>
+                          </div>
+                        )}
+                        {pod.note && (
+                          <div className="col-span-2">
+                            <span className="text-slate-400">Catatan</span>
+                            <p className="text-slate-600">{pod.note}</p>
+                          </div>
+                        )}
+                      </div>
+                      {pod.photo_url && (
+                        <a href={pod.photo_url} target="_blank" rel="noopener noreferrer" className="block">
+                          <img
+                            src={pod.photo_url}
+                            alt="Bukti pengiriman"
+                            className="w-full max-h-56 object-contain rounded-lg border border-teal-100 hover:opacity-90 transition-opacity cursor-zoom-in"
+                          />
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
 
             {/* Job Order & Tracking Panel */}
             <JobOrderPanel orderId={orderId} />
