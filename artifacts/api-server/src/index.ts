@@ -234,11 +234,10 @@ async function startServer() {
   // Attach WebSocket server for real-time Intelligence Alerts
   initAlertsBroadcast(server);
 
-  // Also bind on port 18444 (gateway routing port) if not already the main port
-  // Set SKIP_GATEWAY=1 to disable this secondary binding (e.g. when a dedicated
-  // artifact workflow already handles port 18444).
-  const GATEWAY_PORT = 18444;
-  if (port !== GATEWAY_PORT && !process.env.SKIP_GATEWAY) {
+  // Also bind on secondary gateway port if REPLIT_API_GATEWAY_PORT is set.
+  // Set SKIP_GATEWAY=1 to disable this secondary binding.
+  const GATEWAY_PORT = process.env.REPLIT_API_GATEWAY_PORT ? Number(process.env.REPLIT_API_GATEWAY_PORT) : null;
+  if (GATEWAY_PORT && port !== GATEWAY_PORT && !process.env.SKIP_GATEWAY) {
     app.listen(GATEWAY_PORT, (err?: Error) => {
       if (!err) logger.info({ port: GATEWAY_PORT }, "Also listening on gateway port");
     });

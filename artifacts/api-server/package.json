@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node ./build.mjs && NODE_ENV=development PORT=18444 node --enable-source-maps ./dist/index.mjs",
-    "dev:watch": "PORT=18444 node ./dev.mjs",
+    "dev": "node ./build.mjs && NODE_ENV=development PORT=8080 node --enable-source-maps ./dist/index.mjs",
+    "dev:watch": "PORT=8080 node ./dev.mjs",
     "build": "node ./build.mjs",
     "start": "PORT=8080 node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
