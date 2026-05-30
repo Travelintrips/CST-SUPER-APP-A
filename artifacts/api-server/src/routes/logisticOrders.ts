@@ -15,6 +15,7 @@ import {
   vendorResponsesTable,
   podOcrResultsTable,
   rfqVendorLinksTable,
+  freightShipmentsTable,
 } from "@workspace/db";
 import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { eq, ilike, and, gte, lte, or, sql, desc, inArray, isNotNull } from "drizzle-orm";
@@ -644,12 +645,30 @@ logisticOrdersRouter.get("/", async (req: Request, res: Response) => {
     }
   }
 
+  // Attach direct freight shipment (via salesDoc path — created by "Konversi ke Shipment")
+  const directShipmentMap = new Map<number, { id: number; shipmentNumber: string }>();
+  const salesDocIds = [...linkedDocMap.values()].map((d) => d.id);
+  if (salesDocIds.length > 0) {
+    const fsRows = await db
+      .select({ salesDocId: freightShipmentsTable.salesDocId, id: freightShipmentsTable.id, shipmentNumber: freightShipmentsTable.shipmentNumber })
+      .from(freightShipmentsTable)
+      .where(inArray(freightShipmentsTable.salesDocId, salesDocIds));
+    // Build reverse map: salesDocId → shipment, then resolve logisticOrderId
+    const salesDocToShipment = new Map(fsRows.map((r) => [r.salesDocId!, { id: r.id, shipmentNumber: r.shipmentNumber }]));
+    for (const [orderId, doc] of linkedDocMap.entries()) {
+      const shipment = salesDocToShipment.get(doc.id);
+      if (shipment) directShipmentMap.set(orderId, shipment);
+    }
+  }
+
   return res.json(rows.map((row) => ({
     ...toOrder(row),
     linkedSalesDocId: linkedDocMap.get(row.id)?.id ?? null,
     linkedSalesDocNumber: linkedDocMap.get(row.id)?.docNumber ?? null,
     latestRfq: rfqMap.get(row.id) ?? null,
     fulfillmentStatus: fulfillmentStatusMap.get(row.id) ?? null,
+    directFreightShipmentId: directShipmentMap.get(row.id)?.id ?? null,
+    directFreightShipmentNumber: directShipmentMap.get(row.id)?.shipmentNumber ?? null,
   })));
 });
 

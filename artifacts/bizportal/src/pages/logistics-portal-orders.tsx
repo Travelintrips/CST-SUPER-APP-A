@@ -767,6 +767,21 @@ export default function LogisticsPortalOrdersPage() {
                         {(o as { orderType?: string }).orderType === "service" && (
                           <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold bg-violet-100 text-violet-700 border border-violet-200">Jasa</span>
                         )}
+                        {(() => {
+                          const fsId = (o as any).directFreightShipmentId ?? (o as any).latestRfq?.freightShipmentId;
+                          const fsNum = (o as any).directFreightShipmentNumber ?? (o as any).latestRfq?.freightShipmentNumber;
+                          if (!fsId) return null;
+                          return (
+                            <button
+                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-teal-100 text-teal-700 border border-teal-200 hover:bg-teal-200 transition-colors"
+                              onClick={(e) => { e.stopPropagation(); navigate(`/logistics/freight/${fsId}`); }}
+                              title={`Freight Shipment: ${fsNum ?? fsId}`}
+                            >
+                              <Ship className="h-2.5 w-2.5 shrink-0" />
+                              {fsNum ?? `FS#${fsId}`}
+                            </button>
+                          );
+                        })()}
                       </div>
                     </TableCell>
                     <TableCell>
