@@ -1,0 +1,2 @@
+ CREATE TABLE IF NOT EXISTS workflow_events (id integer NOT NULL, event_type text NOT NULL, entity_type text NOT NULL, entity_id integer NOT NULL, company_id integer, payload jsonb NOT NULL, status text NOT NULL, attempts integer NOT NULL, max_attempts integer NOT NULL, process_after timestamp with time zone NOT NULL, processed_at timestamp with time zone, error_message text, created_at timestamp without time zone NOT NULL);
+
