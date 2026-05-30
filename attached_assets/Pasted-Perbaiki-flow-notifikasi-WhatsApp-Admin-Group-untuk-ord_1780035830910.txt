@@ -1,0 +1,131 @@
+Perbaiki flow notifikasi WhatsApp Admin Group untuk order dan vendor quotation.
+
+Masalah:
+Saat order baru masuk, sistem langsung blast ke WA Admin Group untuk perbandingan harga vendor. Ini salah.
+
+Aturan flow yang benar:
+
+1. Saat customer order baru masuk:
+
+* Kirim notifikasi order baru ke WA Admin Group saja.
+* Jangan kirim pesan "bandingkan penawaran vendor".
+* Jangan kirim ke WA Admin Pribadi untuk perbandingan vendor.
+* Isi pesan hanya ringkasan order baru dan link admin review order.
+
+2. Setelah Admin blast RFQ ke vendor:
+
+* Tidak perlu kirim pesan perbandingan vendor ke Admin Group.
+* Cukup log bahwa RFQ sudah dikirim ke vendor.
+
+3. Setelah vendor mengisi "Permintaan Penawaran Vendor" / Vendor Mini Form:
+
+* Baru kirim notifikasi ke WA Admin Group.
+* Isi pesan: Vendor sudah submit penawaran.
+* Sertakan summary penawaran vendor.
+* Sertakan link untuk "Bandingkan Penawaran Vendor".
+* Workflow yang dipakai harus vendor_submission_summary atau rfq_vendor_recap.
+* Recipient harus admin_group.
+
+4. Jika ada beberapa vendor:
+
+* Setelah setiap vendor submit, Admin Group boleh menerima update ringkas.
+* Jika minimal 2 vendor sudah submit, pesan harus menekankan "Bandingkan Penawaran Vendor".
+* Jika baru 1 vendor submit, pesan cukup "Penawaran vendor masuk, menunggu vendor lain / bisa review".
+
+5. Semua pesan WA harus tetap memakai Settings → Template WA.
+
+* Jangan hardcoded message.
+* Jangan bypass whatsappTemplateService.
+* Gunakan workflow dan recipient yang benar.
+
+==================================================
+FLOW YANG DIHARAPKAN
+====================
+
+Customer Order Masuk
+→ WA Admin Group: "Order baru masuk"
+→ Admin review
+→ Admin blast RFQ ke vendor
+→ Vendor isi Permintaan Penawaran Vendor
+→ WA Admin Group: "Penawaran vendor masuk"
+→ Admin klik link "Bandingkan Penawaran Vendor"
+
+==================================================
+YANG HARUS DIAUDIT
+==================
+
+Cari trigger WA Admin Group pada:
+
+* order created
+* RFQ blast
+* vendor mini form submitted
+* vendor submission received
+* vendor quotation received
+* rfq recap
+* vendor comparison
+
+Cari file:
+
+* orderNotification.ts
+* vendorMiniForm.ts
+* portal.ts
+* logistics-rfq-comparison.tsx
+* order-detail.tsx
+* vendorJobOrder.ts
+
+==================================================
+PERBAIKAN YANG DIMINTA
+======================
+
+1. Pastikan order baru hanya trigger:
+   workflow = order_new
+   recipient = admin_group
+
+2. Pastikan order baru TIDAK trigger:
+   workflow = vendor_submission_summary
+   workflow = rfq_vendor_recap
+   workflow = vendor_comparison
+   recipient = admin_personal untuk perbandingan vendor
+
+3. Pindahkan trigger "Bandingkan Penawaran Vendor" agar hanya jalan setelah vendor submit mini form.
+
+4. Saat vendor submit mini form, trigger:
+   workflow = vendor_submission_summary
+   recipient = admin_group
+
+5. Variable yang harus tersedia:
+   {{orderNumber}}
+   {{vendorName}}
+   {{vendorPrice}}
+   {{sellingPrice}}
+   {{currency}}
+   {{serviceType}}
+   {{route}}
+   {{commodity}}
+   {{submittedVendorCount}}
+   {{totalVendorInvited}}
+   {{vendorComparisonLink}}
+   {{adminActionUrl}}
+
+6. Jika submittedVendorCount >= 2:
+   gunakan pesan yang mengarahkan admin untuk membandingkan vendor.
+
+7. Jika submittedVendorCount = 1:
+   gunakan pesan bahwa penawaran pertama sudah masuk.
+
+==================================================
+OUTPUT YANG SAYA MAU
+====================
+
+1. File yang menyebabkan Admin Group terlalu cepat menerima pesan perbandingan vendor.
+2. Trigger lama yang salah.
+3. Trigger baru yang benar.
+4. Workflow Template WA yang dipakai.
+5. Test result:
+
+* order baru masuk
+* RFQ dikirim
+* vendor pertama submit
+* vendor kedua submit
+
+6. Pastikan tidak ada pesan perbandingan vendor sebelum vendor submit.

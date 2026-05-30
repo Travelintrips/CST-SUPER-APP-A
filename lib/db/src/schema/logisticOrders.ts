@@ -76,6 +76,14 @@ export const logisticOrdersTable = pgTable("logistic_orders", {
   geofenceRadiusKm: integer("geofence_radius_km").default(75).notNull(),
   // Optimistic locking — incremented on every write; client must echo back current value to detect concurrent edits
   version: integer("version").notNull().default(1),
+  // ── Phase 1: AI classification fields ─────────────────────────────────────
+  direction: text("direction"),
+  // import | export | domestic | transit
+  isDangerousGood: boolean("is_dangerous_good").default(false),
+  serviceCategory: text("service_category"),
+  // freight | trucking | customs | handling | storage
+  cargoSpecialTags: text("cargo_special_tags").array(),
+  requiredDocs: text("required_docs").array(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (t) => [
@@ -122,6 +130,7 @@ export const logisticOrderQuotesTable = pgTable("logistic_order_quotes", {
   orderId: integer("order_id").notNull().references(() => logisticOrdersTable.id, { onDelete: "cascade" }),
   vendorId: integer("vendor_id").notNull().references(() => suppliersTable.id, { onDelete: "cascade" }),
   vendorPrice: numeric("vendor_price", { precision: 14, scale: 2 }).notNull().default("0"),
+  currency: text("currency").notNull().default("IDR"),
   estimatedPickup: text("estimated_pickup"),
   estimatedDelivery: text("estimated_delivery"),
   estimatedDays: integer("estimated_days"),

@@ -1,17 +1,19 @@
 import { Router, type Request, type Response } from "express";
 import { requireAdmin } from "../lib/requireAdmin.js";
-import { getAdminWa, setAdminWa, getAdminGroupWa, setAdminGroupWa } from "../lib/adminWa.js";
+import { getAdminWa, setAdminWa, getAdminGroupWa, setAdminGroupWa, getAdminPhones, setAdminPhones } from "../lib/adminWa.js";
 import { db, portalContentTable } from "@workspace/db";
 import { broadcastToPortal } from "../lib/sseManager.js";
 import { shortLinksTable, waTemplateConfigsTable, notificationLogsTable } from "@workspace/db/schema";
 import { eq, desc, ilike, or, sql, and } from "drizzle-orm";
 import { getAiIntakeSettings, saveAiIntakeSettings, type VendorFilterMode } from "../lib/aiOrderIntake.js";
+import { LOGISTICS_SUBCATEGORIES } from "@workspace/logistics-constants";
 
 const router = Router();
 
 const CALC_RATES_KEY = "calculator_rates";
 const CARGO_TYPES_KEY = "cargo_types";
 const DEFAULT_CARGO_TYPES = ["Electronics", "Textiles", "Furniture", "Food & Beverage", "Chemicals", "Machinery", "Automotive Parts", "Medical Supplies", "Paper & Printing", "Raw Materials"];
+const LOGISTICS_SUBCATEGORIES_KEY = "logistics_subcategories";
 
 export const DEFAULT_CALC_RATES = {
   airFreight:  { baseCost: 500000,  ratePerKg: 90000,    handlingPct: 5, customsFee: 1200000 },
@@ -24,21 +26,27 @@ export const DEFAULT_CALC_RATES = {
 // GET /api/settings/notifications — get notification settings (admin)
 router.get("/notifications", async (req: Request, res: Response) => {
   if (!(await requireAdmin(req, res))) return;
-  const [adminWa, adminGroupWa] = await Promise.all([getAdminWa(), getAdminGroupWa()]);
-  return res.json({ adminWa, adminGroupWa });
+  const [adminWa, adminGroupWa, adminPhones] = await Promise.all([getAdminWa(), getAdminGroupWa(), getAdminPhones()]);
+  return res.json({ adminWa, adminGroupWa, adminPhones });
 });
 
 // PUT /api/settings/notifications — update notification settings (admin)
 router.put("/notifications", async (req: Request, res: Response) => {
   if (!(await requireAdmin(req, res))) return;
-  const { adminWa, adminGroupWa } = req.body ?? {};
+  const { adminWa, adminGroupWa, adminPhones } = req.body ?? {};
   if (typeof adminWa !== "string") {
     return res.status(400).json({ message: "adminWa harus berupa string" });
   }
   const saves: Promise<void>[] = [setAdminWa(adminWa)];
   if (typeof adminGroupWa === "string") saves.push(setAdminGroupWa(adminGroupWa));
+  if (typeof adminPhones === "string") saves.push(setAdminPhones(adminPhones));
   await Promise.all(saves);
-  return res.json({ ok: true, adminWa: adminWa.trim(), adminGroupWa: typeof adminGroupWa === "string" ? adminGroupWa.trim() : undefined });
+  return res.json({
+    ok: true,
+    adminWa: adminWa.trim(),
+    adminGroupWa: typeof adminGroupWa === "string" ? adminGroupWa.trim() : undefined,
+    adminPhones: typeof adminPhones === "string" ? adminPhones.trim() : undefined,
+  });
 });
 
 // GET /api/settings/calculator-rates — get calculator rates (admin)
@@ -91,13 +99,18 @@ router.get("/cargo-types", async (req: Request, res: Response) => {
 router.get("/wa-template-configs", async (req: Request, res: Response) => {
   if (!(await requireAdmin(req, res))) return;
   try {
+    const { getWaDefaultTemplatesFlatMap } = await import("../lib/orderNotification.js");
     const rows = await db.select().from(waTemplateConfigsTable);
-    const configs: Record<string, string> = {};
     const savedKeys: string[] = [];
+    // Start with all defaults so unsaved templates show their default content
+    const configs: Record<string, string> = { ...getWaDefaultTemplatesFlatMap() };
     for (const row of rows) {
       const key = `${row.recipient}__${row.workflow}`;
-      configs[key] = row.body;
-      savedKeys.push(key);
+      // Only override default if body is non-empty (empty DB rows = treat as default)
+      if (row.body.trim()) {
+        configs[key] = row.body;
+        savedKeys.push(key);
+      }
     }
     return res.json({ configs, savedKeys });
   } catch {
@@ -112,8 +125,12 @@ router.put("/wa-template-configs", async (req: Request, res: Response) => {
   if (!recipient || !workflow || typeof body !== "string") {
     return res.status(400).json({ message: "Payload harus berupa { recipient, workflow, body }" });
   }
+  if (!body.trim()) {
+    return res.status(400).json({ message: "Template tidak boleh kosong. Gunakan tombol 'Reset ke Default' untuk menghapus kustomisasi." });
+  }
   const VALID_RECIPIENTS = ["admin_personal", "admin_group", "customer", "vendor"];
   const VALID_WORKFLOWS = [
+    // ── Existing logistics & product order workflows ──────────────────────
     "order_new", "vendor_request", "vendor_submission", "vendor_revision",
     "vendor_confirmed", "vendor_rejected",
     "vendor_submit_confirm", "vendor_rfq_forward", "vendor_submission_summary", "revision_fallback",
@@ -125,6 +142,40 @@ router.put("/wa-template-configs", async (req: Request, res: Response) => {
     "rfq_vendor_recap", "customer_rejection", "op_confirm_submitted", "customer_rfq_response",
     "product_order_new",
     "product_order_status_update",
+    "product_vendor_response", "vendor_awarded", "vendor_selected_admin",
+    "quotation_send",
+    // ── PROCUREMENT ───────────────────────────────────────────────────────
+    "procurement_purchase_request",
+    "procurement_vendor_comparison",
+    "procurement_po_release",
+    "procurement_goods_receipt",
+    "procurement_invoice_matching",
+    // ── FINANCE ───────────────────────────────────────────────────────────
+    "finance_customer_invoice",
+    "finance_vendor_invoice",
+    "finance_payment_reminder",
+    "finance_payment_confirmation",
+    "finance_outstanding_alert",
+    // ── DOCUMENT ──────────────────────────────────────────────────────────
+    "doc_missing",
+    "doc_approved",
+    "doc_customs_released",
+    "doc_bl_released",
+    "doc_coa_uploaded",
+    // ── APPROVAL ──────────────────────────────────────────────────────────
+    "approval_waiting",
+    "approval_approved",
+    "approval_rejected",
+    "approval_revision_requested",
+    // ── OPERATIONS ────────────────────────────────────────────────────────
+    "ops_shipment_delayed",
+    "ops_truck_arrived",
+    "ops_driver_checkin",
+    "ops_warehouse_ready",
+    // ── SYSTEM ────────────────────────────────────────────────────────────
+    "sys_template_updated",
+    "sys_required_field_missing",
+    "sys_required_doc_missing",
   ];
   if (!VALID_RECIPIENTS.includes(recipient)) return res.status(400).json({ message: "recipient tidak valid" });
   if (!VALID_WORKFLOWS.includes(workflow)) return res.status(400).json({ message: "workflow tidak valid" });
@@ -170,6 +221,36 @@ router.put("/cargo-types", async (req: Request, res: Response) => {
   await db
     .insert(portalContentTable)
     .values({ key: CARGO_TYPES_KEY, value: JSON.stringify(cleaned), updatedAt: new Date() })
+    .onConflictDoUpdate({
+      target: portalContentTable.key,
+      set: { value: JSON.stringify(cleaned), updatedAt: new Date() },
+    });
+  return res.json({ ok: true, count: cleaned.length });
+});
+
+// GET /api/settings/logistics-subcategories — get subcategory list (admin)
+router.get("/logistics-subcategories", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  try {
+    const [row] = await db.select().from(portalContentTable).where(eq(portalContentTable.key, LOGISTICS_SUBCATEGORIES_KEY));
+    const cats = row ? JSON.parse(row.value) : LOGISTICS_SUBCATEGORIES;
+    return res.json(cats);
+  } catch {
+    return res.json(LOGISTICS_SUBCATEGORIES);
+  }
+});
+
+// PUT /api/settings/logistics-subcategories — update subcategory list (admin)
+router.put("/logistics-subcategories", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const cats = req.body;
+  if (!Array.isArray(cats)) {
+    return res.status(400).json({ message: "Payload must be an array of strings" });
+  }
+  const cleaned = cats.map((c: unknown) => String(c).trim()).filter(Boolean);
+  await db
+    .insert(portalContentTable)
+    .values({ key: LOGISTICS_SUBCATEGORIES_KEY, value: JSON.stringify(cleaned), updatedAt: new Date() })
     .onConflictDoUpdate({
       target: portalContentTable.key,
       set: { value: JSON.stringify(cleaned), updatedAt: new Date() },

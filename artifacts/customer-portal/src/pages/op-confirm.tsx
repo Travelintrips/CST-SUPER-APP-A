@@ -52,7 +52,7 @@ function SuccessState() {
         </div>
         <h2 className="text-xl font-bold text-slate-800 mb-2">Data Operasional Terkirim!</h2>
         <p className="text-sm text-slate-500">
-          Terima kasih! Data operasional Anda telah kami terima. Tim CST Logistics akan memproses lebih lanjut.
+          Terima kasih! Data operasional Anda telah kami terima. Tim kami akan memproses lebih lanjut.
         </p>
       </div>
     </div>

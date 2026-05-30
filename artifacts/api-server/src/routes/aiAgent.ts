@@ -18,7 +18,7 @@ import { randomBytes } from "crypto";
 import { createRequire } from "node:module";
 import multer from "multer";
 import { sendLogisticOrderNotification } from "../lib/orderNotification";
-import { sendWhatsApp } from "../lib/fonnte";
+import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminWa } from "../lib/adminWa.js";
 import { requireAdmin } from "../lib/requireAdmin";
 import { logger } from "../lib/logger";

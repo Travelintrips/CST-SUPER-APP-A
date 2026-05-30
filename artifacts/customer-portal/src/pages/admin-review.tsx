@@ -3,6 +3,14 @@ import { useParams } from "wouter";
 
 // ── Shared types ──────────────────────────────────────────────────────────────
 
+type OrderItemInfo = {
+  serviceName: string;
+  category: string;
+  subtotal: string | null;
+  quantity: string | null;
+  unit: string | null;
+};
+
 type OrderInfo = {
   id: number;
   orderNumber: string;
@@ -13,6 +21,11 @@ type OrderInfo = {
   destination: string;
   commodity: string | null;
   status: string;
+  items?: OrderItemInfo[];
+  grandTotal?: string | null;
+  subtotalBeforeTax?: string | null;
+  taxAmount?: string | null;
+  taxRate?: number | null;
 };
 
 type ReviewVendor = {
@@ -75,6 +88,49 @@ type CompareResult = {
   quoteToken: string | null;
   quoteUrl: string | null;
   forwardVendorUrl: string | null;
+};
+
+// ── Confirm-fulfillment types ─────────────────────────────────────────────────
+
+type VendorFulfillmentInfo = {
+  id: number;
+  serviceType: string;
+  status: string;
+  stockConfirmed: string | null;
+  qtyConfirmed: string | null;
+  readyDate: string | null;
+  leadTime: string | null;
+  warehouseLocation: string | null;
+  priceConfirmed: string | null;
+  revisedPrice: number | null;
+  notes: string | null;
+  stockPhotoUrl: string | null;
+  invoiceUrl: string | null;
+  supportingDocUrl: string | null;
+  submittedAt: string | null;
+  driverName?: string | null;
+  driverPhone?: string | null;
+  plateNumber?: string | null;
+  vehicleType?: string | null;
+  pickupTime?: string | null;
+  carrierName?: string | null;
+  awbBlNumber?: string | null;
+  bookingNumber?: string | null;
+  flightVessel?: string | null;
+  etd?: string | null;
+  eta?: string | null;
+  customsPicName?: string | null;
+  customsDocuments?: string | null;
+  customsProcessEta?: string | null;
+};
+
+type ConfirmFulfillmentData = {
+  token: string;
+  actionType: "confirm_fulfillment";
+  isUsed: boolean;
+  usedAt: string | null;
+  order: OrderInfo;
+  vendorFulfillmentLink: VendorFulfillmentInfo | null;
 };
 
 // ── Forward-vendor types ──────────────────────────────────────────────────────
@@ -141,7 +197,7 @@ interface PageContent {
 const DEFAULT_PAGE_CONTENT: PageContent = {
   admin_review: {
     pageTitle: "Review & Blast Vendor",
-    pageSubtitle: "CST Logistics — Admin Panel",
+    pageSubtitle: "Admin Panel",
     deadlineLabel: "Batas Waktu Respon Vendor",
     vendorSectionTitle: "Pilih Vendor",
     blastHint: "Vendor akan menerima WA dengan link form penawaran",
@@ -344,13 +400,17 @@ function CompareVendorsView({ data, token }: { data: CompareData; token: string 
   );
   const [sellingPrice, setSellingPrice] = useState<string>("");
   const [quoteNotes, setQuoteNotes] = useState("");
-  const [sendToCustomer, setSendToCustomer] = useState(false);
+  const [sendToCustomer, setSendToCustomer] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<CompareResult | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   const selectedVendor = vendors.find((v) => v.linkId === selectedLinkId) ?? null;
   const effectivePrice = selectedVendor?.offeredPrice ?? selectedVendor?.basicPrice;
+
+  useEffect(() => {
+    if (effectivePrice != null) setSellingPrice(String(effectivePrice));
+  }, [selectedLinkId]);
 
   const fillPrice = () => {
     if (effectivePrice != null) setSellingPrice(String(effectivePrice));
@@ -407,20 +467,12 @@ function CompareVendorsView({ data, token }: { data: CompareData; token: string 
               <p className="text-xs text-slate-500 break-all">{result.quoteUrl}</p>
             </div>
           )}
-          {result.forwardVendorUrl && (
-            <div className="rounded-xl bg-blue-50 border border-blue-100 p-4 space-y-2">
-              <p className="text-xs text-blue-700 font-semibold uppercase tracking-wide">Langkah Selanjutnya</p>
-              <p className="text-sm text-slate-600">
-                Forward instruksi ke vendor untuk eksekusi pengiriman:
-              </p>
-              <a
-                href={result.forwardVendorUrl}
-                className="block text-center bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-4 rounded-lg text-sm transition-colors"
-              >
-                📦 Forward ke Vendor →
-              </a>
-            </div>
-          )}
+          <div className="rounded-xl bg-amber-50 border border-amber-100 p-4 space-y-1">
+            <p className="text-xs text-amber-700 font-semibold uppercase tracking-wide">⏳ Menunggu Persetujuan Customer</p>
+            <p className="text-sm text-slate-600">
+              Forward ke vendor akan tersedia setelah customer menyetujui penawaran.
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -435,7 +487,7 @@ function CompareVendorsView({ data, token }: { data: CompareData; token: string 
             <span className="text-2xl">🔍</span>
             <div>
               <h1 className="text-base font-bold text-slate-800 leading-tight">Bandingkan Penawaran</h1>
-              <p className="text-xs text-slate-400">CST Logistics — Admin Panel</p>
+              <p className="text-xs text-slate-400">Admin Panel</p>
             </div>
           </div>
         </div>
@@ -465,7 +517,7 @@ function CompareVendorsView({ data, token }: { data: CompareData; token: string 
           <span className="text-2xl">🔍</span>
           <div>
             <h1 className="text-base font-bold text-slate-800 leading-tight">Bandingkan Penawaran Vendor</h1>
-            <p className="text-xs text-slate-400">CST Logistics — Admin Panel</p>
+            <p className="text-xs text-slate-400">Admin Panel</p>
           </div>
         </div>
       </div>
@@ -547,18 +599,19 @@ function CompareVendorsView({ data, token }: { data: CompareData; token: string 
 
             {/* Price suggestion */}
             {effectivePrice != null && (
-              <div className="bg-slate-50 rounded-xl px-4 py-3 flex items-center justify-between">
-                <div>
+              <button
+                type="button"
+                onClick={fillPrice}
+                className="w-full bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 rounded-xl px-4 py-3 flex items-center justify-between transition-colors cursor-pointer"
+              >
+                <div className="text-left">
                   <p className="text-xs text-slate-400">Harga vendor dipilih</p>
                   <p className="font-semibold text-slate-700">{idr(effectivePrice)}</p>
                 </div>
-                <button
-                  onClick={fillPrice}
-                  className="text-xs text-blue-600 hover:underline font-medium"
-                >
+                <span className="text-xs text-blue-600 font-medium">
                   Pakai harga ini
-                </button>
-              </div>
+                </span>
+              </button>
             )}
 
             <div>
@@ -1018,6 +1071,197 @@ function ReviewOrderView({ data, token }: { data: ReviewData; token: string }) {
   );
 }
 
+// ── ConfirmFulfillmentView ────────────────────────────────────────────────────
+
+const STOCK_LABEL: Record<string, string> = {
+  all: "Tersedia Semua ✅",
+  partial: "Tersedia Sebagian ⚠️",
+  none: "Tidak Tersedia ❌",
+};
+
+function FulfillmentDetailRow({ label, value }: { label: string; value: string | null | undefined }) {
+  if (!value) return null;
+  return (
+    <div className="flex items-start justify-between gap-3 py-2 border-b border-slate-50 last:border-0">
+      <span className="text-xs text-slate-400 shrink-0">{label}</span>
+      <span className="text-sm text-slate-700 font-medium text-right">{value}</span>
+    </div>
+  );
+}
+
+function ConfirmFulfillmentView({ data, token }: { data: ConfirmFulfillmentData; token: string }) {
+  const { order, vendorFulfillmentLink: vf } = data;
+  const [submitting, setSubmitting] = useState(false);
+  const [done, setDone] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const handleConfirm = async () => {
+    setSubmitting(true);
+    setErr(null);
+    try {
+      const r = await fetch(`/api/admin-action/${token}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const body = await r.json();
+      if (!r.ok) throw new Error(body.error ?? "Gagal konfirmasi");
+      setDone(true);
+    } catch (e: unknown) {
+      setErr((e as Error).message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (done) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-md p-8 max-w-md w-full space-y-5 text-center">
+          <div className="text-5xl">🚀</div>
+          <h2 className="text-xl font-bold text-slate-800">Order Dikonfirmasi!</h2>
+          <p className="text-slate-500 text-sm">
+            Order <strong>{order.orderNumber}</strong> sekarang berstatus <strong>In Progress</strong>.
+            Customer akan mendapat notifikasi WhatsApp.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (data.isUsed && data.usedAt) {
+    return (
+      <div className="min-h-screen bg-slate-50">
+        <PageHeader icon="✅" title="Konfirmasi Fulfillment" />
+        <div className="max-w-2xl mx-auto px-4 py-5 space-y-5">
+          <OrderCard order={order} label="Order" />
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-3">
+            <span className="text-xl mt-0.5">⚠️</span>
+            <div>
+              <p className="text-amber-800 font-semibold text-sm">Sudah Dikonfirmasi</p>
+              <p className="text-amber-700 text-xs mt-0.5">
+                Order ini sudah dikonfirmasi pada{" "}
+                {new Date(data.usedAt).toLocaleString("id-ID")}.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-50">
+      <PageHeader icon="✅" title="Konfirmasi Fulfillment Vendor" />
+      <div className="max-w-2xl mx-auto px-4 py-5 space-y-5">
+        <OrderCard order={order} label="Order" />
+
+        {vf ? (
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+            <div className="px-5 py-3 bg-emerald-50 border-b border-emerald-100">
+              <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">
+                📦 Data Fulfillment dari Vendor
+              </p>
+              {vf.submittedAt && (
+                <p className="text-[10px] text-emerald-600 mt-0.5">
+                  Dikirim: {new Date(vf.submittedAt).toLocaleString("id-ID")}
+                </p>
+              )}
+            </div>
+            <div className="px-5 py-3 space-y-0.5">
+              {/* Product fulfillment fields */}
+              <FulfillmentDetailRow label="Stok" value={vf.stockConfirmed ? (STOCK_LABEL[vf.stockConfirmed] ?? vf.stockConfirmed) : null} />
+              <FulfillmentDetailRow label="Qty Konfirmasi" value={vf.qtyConfirmed} />
+              <FulfillmentDetailRow label="Siap Kirim" value={vf.readyDate} />
+              <FulfillmentDetailRow label="Lead Time" value={vf.leadTime} />
+              <FulfillmentDetailRow label="Lokasi Gudang" value={vf.warehouseLocation} />
+              <FulfillmentDetailRow
+                label="Harga"
+                value={
+                  vf.priceConfirmed === "agree"
+                    ? "Setuju harga asal"
+                    : vf.priceConfirmed === "revised" && vf.revisedPrice
+                    ? `Revisi: Rp ${Math.round(vf.revisedPrice).toLocaleString("id-ID")}`
+                    : null
+                }
+              />
+              {/* Trucking fields */}
+              <FulfillmentDetailRow label="Driver" value={vf.driverName} />
+              <FulfillmentDetailRow label="HP Driver" value={vf.driverPhone} />
+              <FulfillmentDetailRow label="Plat Nomor" value={vf.plateNumber} />
+              <FulfillmentDetailRow label="Kendaraan" value={vf.vehicleType} />
+              <FulfillmentDetailRow label="Est. Pickup" value={vf.pickupTime} />
+              {/* Freight fields */}
+              <FulfillmentDetailRow label="Carrier" value={vf.carrierName} />
+              <FulfillmentDetailRow label="AWB/BL No." value={vf.awbBlNumber} />
+              <FulfillmentDetailRow label="Booking No." value={vf.bookingNumber} />
+              <FulfillmentDetailRow label="Kapal/Flight" value={vf.flightVessel} />
+              <FulfillmentDetailRow label="ETD" value={vf.etd} />
+              <FulfillmentDetailRow label="ETA" value={vf.eta} />
+              {/* Customs fields */}
+              <FulfillmentDetailRow label="PIC Customs" value={vf.customsPicName} />
+              <FulfillmentDetailRow label="Dokumen Customs" value={vf.customsDocuments} />
+              <FulfillmentDetailRow label="ETA Customs" value={vf.customsProcessEta} />
+              <FulfillmentDetailRow label="Catatan" value={vf.notes} />
+            </div>
+            {(vf.stockPhotoUrl || vf.invoiceUrl || vf.supportingDocUrl) && (
+              <div className="px-5 py-3 border-t border-slate-100 space-y-2">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Dokumen</p>
+                <div className="flex flex-wrap gap-2">
+                  {vf.stockPhotoUrl && (
+                    <a href={vf.stockPhotoUrl} target="_blank" rel="noopener noreferrer"
+                       className="text-xs text-blue-600 underline">📷 Foto Stok</a>
+                  )}
+                  {vf.invoiceUrl && (
+                    <a href={vf.invoiceUrl} target="_blank" rel="noopener noreferrer"
+                       className="text-xs text-blue-600 underline">📄 Invoice</a>
+                  )}
+                  {vf.supportingDocUrl && (
+                    <a href={vf.supportingDocUrl} target="_blank" rel="noopener noreferrer"
+                       className="text-xs text-blue-600 underline">📎 Dok. Pendukung</a>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
+            ⚠️ Belum ada data fulfillment dari vendor.
+          </div>
+        )}
+
+        {err && (
+          <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
+            ⚠️ {err}
+          </div>
+        )}
+
+        <button
+          onClick={handleConfirm}
+          disabled={submitting}
+          className={`w-full py-4 rounded-2xl font-bold text-base flex items-center justify-center gap-3 transition-all ${
+            submitting
+              ? "bg-slate-200 text-slate-400 cursor-not-allowed"
+              : "bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white shadow-md shadow-emerald-200"
+          }`}
+        >
+          {submitting ? (
+            <>
+              <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              Mengkonfirmasi…
+            </>
+          ) : (
+            <>🚀 Konfirmasi &amp; Mulai Pengiriman</>
+          )}
+        </button>
+        <p className="text-center text-xs text-slate-400 pb-8">
+          Customer akan mendapat notifikasi WhatsApp setelah dikonfirmasi
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // ── ForwardVendorView ─────────────────────────────────────────────────────────
 
 const SERVICE_TYPE_OPTIONS = [
@@ -1035,9 +1279,6 @@ function deriveServiceType(serviceType: string | null, orderType: string | null)
   const val = (serviceType ?? "").trim();
 
   if (!val) {
-    if ((orderType ?? "").toLowerCase() === "product") {
-      return { serviceType: "Warehousing", customService: "" };
-    }
     return { serviceType: "", customService: "" };
   }
 
@@ -1069,10 +1310,11 @@ function deriveServiceType(serviceType: string | null, orderType: string | null)
 
 function ForwardVendorView({ data, token }: { data: ForwardVendorData; token: string }) {
   const { order, rfq, selectedVendor, selectedVendorLink } = data;
+  const isProduct = (order.orderType ?? "").toLowerCase() === "product";
 
-  const price = selectedVendorLink?.offeredPrice ?? selectedVendorLink?.basicPrice;
-
-  const derived = deriveServiceType(order.serviceType, order.orderType);
+  const derived = isProduct
+    ? { serviceType: "product_fulfillment", customService: "" }
+    : deriveServiceType(order.serviceType, order.orderType);
   const [serviceType, setServiceType] = useState(derived.serviceType);
   const [customService, setCustomService] = useState(derived.customService);
   const [expiresInHours, setExpiresInHours] = useState(72);
@@ -1080,10 +1322,14 @@ function ForwardVendorView({ data, token }: { data: ForwardVendorData; token: st
   const [result, setResult] = useState<ForwardResult | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
-  const effectiveService = serviceType === "__custom__" ? customService : serviceType;
+  const effectiveService = isProduct
+    ? "product_fulfillment"
+    : serviceType === "__custom__" ? customService : serviceType;
+
+  const canSubmit = !!selectedVendor && (isProduct || effectiveService.trim().length > 0);
 
   const handleSubmit = async () => {
-    if (!selectedVendor || !effectiveService.trim()) return;
+    if (!canSubmit) return;
     setSubmitting(true);
     setErr(null);
     try {
@@ -1091,8 +1337,8 @@ function ForwardVendorView({ data, token }: { data: ForwardVendorData; token: st
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          vendorId: selectedVendor.id,
-          serviceType: effectiveService.trim(),
+          vendorId: selectedVendor!.id,
+          serviceType: effectiveService,
           expiresInHours,
         }),
       });
@@ -1200,7 +1446,7 @@ function ForwardVendorView({ data, token }: { data: ForwardVendorData; token: st
   // ── Main forward screen ─────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-slate-50">
-      <PageHeader icon="📦" title="Forward Tugas ke Vendor" />
+      <PageHeader icon="📦" title={isProduct ? "Kirim Tugas Produk ke Vendor" : "Forward Tugas ke Vendor"} />
 
       <div className="max-w-2xl mx-auto px-4 py-5 space-y-5">
         <OrderCard order={order} label="Order" />
@@ -1221,57 +1467,148 @@ function ForwardVendorView({ data, token }: { data: ForwardVendorData; token: st
         {/* Selected vendor card */}
         <VendorInfoCard vendor={selectedVendor} link={selectedVendorLink} />
 
-        {/* Service type */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 px-5 py-5 space-y-4">
-          <h2 className="text-sm font-bold text-slate-800">🛳 Jenis Layanan</h2>
-          <p className="text-xs text-slate-400 -mt-2">
-            Layanan yang harus dieksekusi vendor untuk order ini
-          </p>
+        {/* ── PRODUCT ORDER: detail produk + instruksi vendor ── */}
+        {isProduct ? (
+          <>
+            {/* Jenis tugas */}
+            <div className="bg-emerald-50 border border-emerald-200 rounded-2xl px-5 py-4 flex items-center gap-3">
+              <span className="text-2xl">🛒</span>
+              <div>
+                <p className="text-xs text-emerald-600 font-semibold uppercase tracking-wide">Jenis Tugas</p>
+                <p className="font-bold text-emerald-800">Pemenuhan Produk / Product Fulfillment</p>
+              </div>
+            </div>
 
-          <div className="grid grid-cols-2 gap-2">
-            {SERVICE_TYPE_OPTIONS.map((opt) => (
+            {/* Detail produk */}
+            {(order.items && order.items.length > 0) ? (
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                <div className="px-5 py-3 bg-slate-50 border-b border-slate-100">
+                  <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Detail Produk</p>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-slate-400 text-xs border-b border-slate-100">
+                        <th className="text-left px-4 py-2 font-medium">Nama Produk</th>
+                        <th className="text-right px-4 py-2 font-medium">Qty</th>
+                        <th className="text-right px-4 py-2 font-medium">Satuan</th>
+                        <th className="text-right px-4 py-2 font-medium">Subtotal</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {order.items.map((item, idx) => (
+                        <tr key={idx}>
+                          <td className="px-4 py-3 text-slate-700 font-medium">{item.serviceName || "—"}</td>
+                          <td className="px-4 py-3 text-right text-slate-600">{item.quantity ?? "—"}</td>
+                          <td className="px-4 py-3 text-right text-slate-500">{item.unit ?? "—"}</td>
+                          <td className="px-4 py-3 text-right font-semibold text-slate-700">{idr(item.subtotal)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {/* Price breakdown */}
+                <div className="px-5 py-4 border-t border-slate-100 space-y-2">
+                  {order.subtotalBeforeTax && Number(order.subtotalBeforeTax) > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-500">DPP (Harga Dasar)</span>
+                      <span className="text-slate-700">{idr(order.subtotalBeforeTax)}</span>
+                    </div>
+                  )}
+                  {order.taxAmount && Number(order.taxAmount) > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-500">PPN {order.taxRate ?? 11}%</span>
+                      <span className="text-slate-700">{idr(order.taxAmount)}</span>
+                    </div>
+                  )}
+                  {order.grandTotal && Number(order.grandTotal) > 0 && (
+                    <div className="flex justify-between font-bold border-t border-slate-200 pt-2">
+                      <span className="text-slate-700">Grand Total</span>
+                      <span className="text-emerald-700 text-lg">{idr(order.grandTotal)}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : order.grandTotal && Number(order.grandTotal) > 0 ? (
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 px-5 py-4 space-y-2">
+                <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">Nilai Order</p>
+                <div className="flex justify-between font-bold">
+                  <span className="text-slate-700">Grand Total</span>
+                  <span className="text-emerald-700 text-lg">{idr(order.grandTotal)}</span>
+                </div>
+              </div>
+            ) : null}
+
+            {/* Instruksi vendor */}
+            <div className="bg-white rounded-2xl shadow-sm border border-amber-100 px-5 py-4 space-y-3">
+              <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Instruksi untuk Vendor</p>
+              <ul className="space-y-2">
+                {[
+                  "✅ Konfirmasi ketersediaan stok",
+                  "💰 Konfirmasi harga penawaran",
+                  "📅 Konfirmasi estimasi waktu siap kirim",
+                  "📎 Upload invoice / dokumen pendukung jika ada",
+                ].map((instr, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm text-slate-700">
+                    <span>{instr}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </>
+        ) : (
+          /* ── LOGISTICS ORDER: pilihan jenis layanan ── */
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 px-5 py-5 space-y-4">
+            <h2 className="text-sm font-bold text-slate-800">🛳 Jenis Layanan</h2>
+            <p className="text-xs text-slate-400 -mt-2">
+              Layanan yang harus dieksekusi vendor untuk order ini
+            </p>
+
+            <div className="grid grid-cols-2 gap-2">
+              {SERVICE_TYPE_OPTIONS.map((opt) => (
+                <button
+                  key={opt}
+                  onClick={() => setServiceType(opt)}
+                  className={`text-left px-3 py-2.5 rounded-xl border text-xs font-medium transition-all ${
+                    serviceType === opt
+                      ? "border-blue-500 bg-blue-50 text-blue-800"
+                      : "border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:bg-slate-50"
+                  }`}
+                >
+                  {opt}
+                </button>
+              ))}
               <button
-                key={opt}
-                onClick={() => setServiceType(opt)}
+                onClick={() => setServiceType("__custom__")}
                 className={`text-left px-3 py-2.5 rounded-xl border text-xs font-medium transition-all ${
-                  serviceType === opt
+                  serviceType === "__custom__"
                     ? "border-blue-500 bg-blue-50 text-blue-800"
                     : "border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:bg-slate-50"
                 }`}
               >
-                {opt}
+                ✏️ Lainnya…
               </button>
-            ))}
-            <button
-              onClick={() => setServiceType("__custom__")}
-              className={`text-left px-3 py-2.5 rounded-xl border text-xs font-medium transition-all ${
-                serviceType === "__custom__"
-                  ? "border-blue-500 bg-blue-50 text-blue-800"
-                  : "border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:bg-slate-50"
-              }`}
-            >
-              ✏️ Lainnya…
-            </button>
-          </div>
-
-          {serviceType === "__custom__" && (
-            <input
-              type="text"
-              placeholder="Ketik jenis layanan…"
-              value={customService}
-              onChange={(e) => setCustomService(e.target.value)}
-              className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-              autoFocus
-            />
-          )}
-
-          {effectiveService && serviceType !== "__custom__" && (
-            <div className="bg-blue-50 rounded-xl px-3 py-2 flex items-center gap-2">
-              <span className="text-blue-600 text-sm">✓</span>
-              <span className="text-sm font-medium text-blue-800">{effectiveService}</span>
             </div>
-          )}
-        </div>
+
+            {serviceType === "__custom__" && (
+              <input
+                type="text"
+                placeholder="Ketik jenis layanan…"
+                value={customService}
+                onChange={(e) => setCustomService(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                autoFocus
+              />
+            )}
+
+            {effectiveService && serviceType !== "__custom__" && (
+              <div className="bg-blue-50 rounded-xl px-3 py-2 flex items-center gap-2">
+                <span className="text-blue-600 text-sm">✓</span>
+                <span className="text-sm font-medium text-blue-800">{effectiveService}</span>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Deadline */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 px-5 py-4">
@@ -1315,9 +1652,9 @@ function ForwardVendorView({ data, token }: { data: ForwardVendorData; token: st
         {/* Submit */}
         <button
           onClick={handleSubmit}
-          disabled={submitting || !effectiveService.trim()}
+          disabled={submitting || !canSubmit}
           className={`w-full py-4 rounded-2xl font-bold text-base flex items-center justify-center gap-3 transition-all ${
-            submitting || !effectiveService.trim()
+            submitting || !canSubmit
               ? "bg-slate-200 text-slate-400 cursor-not-allowed"
               : "bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white shadow-md shadow-emerald-200"
           }`}
@@ -1327,13 +1664,17 @@ function ForwardVendorView({ data, token }: { data: ForwardVendorData; token: st
               <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
               Mengirim…
             </>
+          ) : isProduct ? (
+            <>🛒 Kirim Tugas Produk ke {selectedVendor.name}</>
           ) : (
             <>📤 Kirim Tugas ke {selectedVendor.name}</>
           )}
         </button>
 
         <p className="text-center text-xs text-slate-400 pb-8">
-          Vendor akan menerima WA dengan link form pengisian data fulfillment
+          {isProduct
+            ? "Vendor akan menerima WA dengan link form konfirmasi produk"
+            : "Vendor akan menerima WA dengan link form pengisian data fulfillment"}
         </p>
       </div>
     </div>
@@ -1347,7 +1688,7 @@ function PageHeader({ icon, title }: { icon: string; title: string }) {
         <span className="text-2xl">{icon}</span>
         <div>
           <h1 className="text-base font-bold text-slate-800 leading-tight">{title}</h1>
-          <p className="text-xs text-slate-400">CST Logistics — Admin Panel</p>
+          <p className="text-xs text-slate-400">Admin Panel</p>
         </div>
       </div>
     </div>
@@ -1433,6 +1774,10 @@ export default function AdminReviewPage() {
   if (loading) return <LoadingScreen />;
   if (error) return <ErrorScreen message={error} />;
   if (!data) return null;
+
+  if (data.actionType === "confirm_fulfillment") {
+    return <ConfirmFulfillmentView data={data as ConfirmFulfillmentData} token={token} />;
+  }
 
   if (data.actionType === "compare_vendors") {
     return <CompareVendorsView data={data as CompareData} token={token} />;

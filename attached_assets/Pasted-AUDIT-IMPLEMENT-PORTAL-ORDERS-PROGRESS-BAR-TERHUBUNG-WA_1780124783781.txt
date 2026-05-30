@@ -1,0 +1,157 @@
+AUDIT & IMPLEMENT — PORTAL ORDERS PROGRESS BAR TERHUBUNG WA MINI FORM
+
+Tujuan:
+Pada halaman Portal Orders, setiap customer order harus menampilkan progress bar/timeline yang jelas dari awal order sampai selesai, dan progress tersebut otomatis berubah berdasarkan aksi admin serta konfirmasi dari WhatsApp notification / mini form.
+
+Scope halaman:
+- Portal Orders
+- Delivery Status list
+- Order detail / mini form related flow
+- WhatsApp notification callback / response handler
+- Admin action buttons
+
+Progress step wajib:
+1. New Order
+2. Confirmed by Admin
+3. Sent to Vendor / RFQ
+4. Vendor Response Received
+5. Price Reviewed by Admin
+6. Sent to Customer
+7. Customer Approved
+8. Sales Order Created
+9. Vendor Confirmed Fulfillment
+10. Completed
+
+Tampilan UI:
+- Di setiap row customer order, tampilkan horizontal progress bar/timeline.
+- Setiap step tampil sebagai dot/icon kecil dengan label singkat.
+- Step yang sudah selesai warna hijau/biru.
+- Step aktif warna kuning/orange.
+- Step belum berjalan warna abu-abu.
+- Jika rejected/cancelled, tampilkan status merah.
+- Progress bar jangan memenuhi row terlalu besar, tetapi tetap mudah dibaca.
+- Saat hover/click pada step, tampilkan detail:
+  - nama step
+  - waktu update
+  - sumber update: Admin / WA Mini Form / Vendor / Customer
+  - catatan jika ada
+
+Admin button behavior:
+- Button di sisi kanan harus berubah sesuai progress terakhir.
+- Jika status New Order: tampilkan button “Confirm Order”
+- Setelah Confirm Order: tampilkan “Send to Vendor”
+- Setelah vendor response masuk: tampilkan “Review Price”
+- Setelah review selesai: tampilkan “Send Quote to Customer”
+- Setelah customer approve: tampilkan “Create Sales Order”
+- Setelah sales order dibuat: tampilkan “Forward Fulfillment to Vendor”
+- Setelah vendor fulfillment confirm: tampilkan “Mark Completed”
+- Button harus bisa diklik oleh admin sesuai step berikutnya.
+- Admin tidak boleh lompat step tanpa validasi.
+
+Integrasi WA / Mini Form:
+- Semua submit dari mini form WA harus update status order_progress.
+- Vendor mini form response harus mengubah progress menjadi “Vendor Response Received”.
+- Customer approval mini form harus mengubah progress menjadi “Customer Approved”.
+- Vendor fulfillment mini form harus mengubah progress menjadi “Vendor Confirmed Fulfillment”.
+- Jika customer/vendor reject, status harus menjadi Rejected dengan alasan.
+- Simpan semua log response WA ke timeline/log table.
+
+Database requirement:
+Audit table existing terlebih dahulu. Jika belum ada, buat/adjust table:
+
+order_progress_events:
+- id
+- order_id
+- step_key
+- step_label
+- status: pending | active | completed | rejected | cancelled
+- source: admin | customer_wa | vendor_wa | system
+- actor_name
+- actor_phone
+- notes
+- metadata JSONB
+- created_at
+
+Tambahkan/cek field pada orders/logistic_orders:
+- current_step
+- progress_status
+- last_progress_at
+- rejected_reason
+- completed_at
+
+Step key enum:
+NEW_ORDER
+ADMIN_CONFIRMED
+SENT_TO_VENDOR
+VENDOR_RESPONSE_RECEIVED
+PRICE_REVIEWED
+SENT_TO_CUSTOMER
+CUSTOMER_APPROVED
+SALES_ORDER_CREATED
+SENT_TO_VENDOR_FULFILLMENT
+VENDOR_FULFILLMENT_CONFIRMED
+COMPLETED
+REJECTED
+CANCELLED
+
+Backend logic:
+- Buat helper function updateOrderProgress(orderId, stepKey, source, actor, notes, metadata)
+- Function ini harus:
+  1. validasi step berurutan
+  2. update current_step di order
+  3. insert ke order_progress_events
+  4. return progress summary untuk UI
+- Semua endpoint admin button wajib pakai helper ini.
+- Semua endpoint mini form WA callback wajib pakai helper ini.
+- Jangan ada update status manual yang bypass helper.
+
+Frontend requirement:
+- Buat component reusable: OrderProgressBar
+- Props:
+  - orderId
+  - currentStep
+  - progressEvents
+  - progressStatus
+- Tampilkan di setiap row Portal Orders.
+- Tambahkan expandable detail jika user klik progress bar.
+- Tambahkan button dinamis: NextProgressActionButton.
+- Button label dan action harus mengikuti current_step.
+
+Validasi penting:
+- Jika vendor response belum ada, admin tidak boleh klik Review Price.
+- Jika customer belum approve, admin tidak boleh Create Sales Order.
+- Jika sales order sudah dibuat, jangan tampilkan Create Sales Order lagi.
+- Jika order rejected/cancelled/completed, disable semua next action kecuali View Detail.
+- Semua action harus idempotent, jangan duplicate event jika klik dua kali.
+
+WA notification sync:
+- Saat admin klik Send to Vendor, kirim WA ke vendor berisi link mini form.
+- Saat vendor submit mini form, update progress otomatis.
+- Saat admin klik Send Quote to Customer, kirim WA ke customer berisi link approval mini form.
+- Saat customer approve/reject, update progress otomatis.
+- Saat admin klik Forward Fulfillment to Vendor, kirim WA fulfillment ke vendor.
+- Saat vendor submit fulfillment confirmation, update progress otomatis.
+
+Audit yang harus dilakukan:
+1. Cari semua file Portal Orders component.
+2. Cari semua endpoint order status update.
+3. Cari semua endpoint WA mini form submit.
+4. Cari semua logic Create Sales Order.
+5. Pastikan semuanya menggunakan updateOrderProgress().
+6. Pastikan tidak ada status lama yang konflik dengan progress baru.
+7. Pastikan UI progress bar muncul di setiap customer order.
+8. Test end-to-end:
+   - customer order masuk
+   - admin confirm
+   - send vendor
+   - vendor submit mini form
+   - admin review
+   - send customer
+   - customer approve
+   - create sales order
+   - forward fulfillment vendor
+   - vendor confirm
+   - completed
+
+Expected result:
+Portal Orders tidak hanya menampilkan status dropdown, tetapi setiap order customer memiliki progress bar/timeline yang hidup, bisa diklik admin sesuai tahap proses, dan otomatis sinkron dengan konfirmasi WhatsApp serta mini form.

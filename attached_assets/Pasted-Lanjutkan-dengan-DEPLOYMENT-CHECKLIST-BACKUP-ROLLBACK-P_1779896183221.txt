@@ -1,0 +1,187 @@
+Lanjutkan dengan DEPLOYMENT CHECKLIST + BACKUP / ROLLBACK PLAN.
+
+Jangan tambah fitur baru.
+Jangan refactor besar.
+Fokus memastikan aman sebelum deploy production.
+
+==================================================
+1. PRE-DEPLOYMENT CHECKLIST
+==================================================
+
+Cek dan laporkan:
+
+A. Build & Type Check
+- npm/pnpm install sukses
+- build frontend sukses
+- build backend sukses
+- tidak ada TypeScript error
+- tidak ada fatal lint error
+- tidak ada import path broken
+
+B. Environment Variables
+Pastikan env lengkap:
+- SUPABASE_URL
+- SUPABASE_ANON_KEY
+- SUPABASE_SERVICE_ROLE_KEY
+- DATABASE_URL
+- JWT_SECRET / SESSION_SECRET
+- FRONTEND_URL
+- API_URL
+- WA related config jika ada
+- storage bucket config
+
+C. Database Migration
+- semua migration sudah applied
+- tidak ada pending migration
+- migration backward-compatible
+- tidak drop data existing
+- constraint tidak merusak data lama
+
+D. Supabase Storage
+- bucket tersedia
+- policy storage aman
+- signed/public URL sesuai kebutuhan
+- upload test berhasil
+- download/open test berhasil
+
+E. Auth & Permission
+- admin login berhasil
+- customer/public access sesuai token
+- vendor public form sesuai token
+- anon tidak bisa akses endpoint admin
+- customer tidak lihat vendorPrice/margin
+
+F. API Health
+Test endpoint:
+- order create
+- order status update
+- vendor mini form
+- customer approval
+- SO create
+- attachment upload
+- WA template read/save
+- price sync SSE
+- notification/timeline
+
+G. Frontend Smoke Test
+Test:
+- Customer Portal
+- BizPortal
+- Vendor Mini Form
+- Customer Approval Page
+- Settings Template WA
+- Product/Service pages
+- Calculator page
+
+==================================================
+2. BACKUP PLAN
+==================================================
+
+Sebelum deploy, buat backup:
+
+A. Database Backup
+- backup schema
+- backup data penting
+- backup table orders
+- order_items
+- vendors
+- products/services
+- vendor_mini_form_links
+- vendor_submissions
+- customer_approvals
+- sales_orders
+- whatsapp_template_configs
+- attachments metadata
+- notification/activity logs
+
+B. Storage Backup
+- backup bucket attachments
+- backup product images
+- backup operational documents
+
+C. Config Backup
+- backup env variables list tanpa expose secret
+- backup WA templates
+- backup pricing/calculator rates
+
+D. Code Backup
+- commit git sebelum deploy
+- tag version release
+- catat commit hash terakhir yang stabil
+
+==================================================
+3. ROLLBACK PLAN
+==================================================
+
+Siapkan rollback:
+
+A. Code Rollback
+- cara kembali ke commit/tag sebelumnya
+- command rollback
+- siapa yang menjalankan
+
+B. Database Rollback
+- migration rollback tersedia atau tidak
+- jika tidak bisa rollback otomatis, tulis manual recovery plan
+- jangan rollback data order baru tanpa backup
+
+C. Storage Rollback
+- cara restore file jika bucket/policy bermasalah
+
+D. Feature Flag / Disable Plan
+Jika ada error production, fitur yang bisa dimatikan sementara:
+- SSE price sync
+- WA template advanced rendering
+- public mini form submit
+- customer approval auto SO
+- attachment upload
+
+E. Emergency Checklist
+Jika production error:
+1. disable fitur bermasalah
+2. cek logs
+3. rollback code
+4. restore config
+5. verify order data tidak corrupt
+6. inform admin/user internal
+
+==================================================
+4. POST-DEPLOYMENT VERIFICATION
+==================================================
+
+Setelah deploy, test ulang:
+
+1. Login admin
+2. Customer create order
+3. Admin approve
+4. Vendor submit mini form
+5. Admin select vendor
+6. Customer approve
+7. SO created
+8. Attachment upload/open
+9. WA template send
+10. Price sync update product/service
+11. Calculator rates sync
+12. Timeline/log stored
+
+Output wajib:
+
+A. DEPLOYMENT READINESS MATRIX
+Area | Status | Risk | Notes
+
+B. BACKUP STATUS
+Item | Backup Ready? | Location/Method | Notes
+
+C. ROLLBACK PLAN
+Scenario | Rollback Step | Risk | Owner
+
+D. ENV CHECKLIST
+Variable | Exists? | Used By | Risk if Missing
+
+E. FINAL GO / NO-GO
+- GO
+- GO with notes
+- NO-GO
+
+F. RELEASE NOTES
+Buat ringkasan perubahan untuk internal admin.

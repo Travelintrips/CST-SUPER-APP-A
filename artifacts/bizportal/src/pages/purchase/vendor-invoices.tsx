@@ -174,8 +174,8 @@ export function VendorInvoiceEditorPage() {
           <Card>
             <CardHeader><CardTitle className="text-base">Ringkasan</CardTitle></CardHeader>
             <CardContent className="space-y-2">
-              <div className="flex justify-between"><span>Subtotal</span><span className="font-mono">{idr(totalAmount)}</span></div>
-              <div className="flex justify-between"><span>Pajak</span><span className="font-mono">{idr(taxAmount)}</span></div>
+              <div className="flex justify-between text-slate-500"><span>Subtotal</span><span className="font-mono">{idr(totalAmount)}</span></div>
+              <div className="flex justify-between text-slate-500"><span>Pajak (PPN)</span><span className="font-mono">{idr(taxAmount)}</span></div>
               <div className="flex justify-between font-bold text-lg border-t pt-2"><span>Grand Total</span><span className="font-mono">{idr(totalAmount + taxAmount)}</span></div>
               {vi && <div className="flex justify-between text-green-600"><span>Terbayar</span><span className="font-mono">{idr(Number(vi.amountPaid))}</span></div>}
               {vi && <div className="flex justify-between font-semibold text-red-600"><span>Sisa</span><span className="font-mono">{idr(Math.max(0, Number(vi.grandTotal) - Number(vi.amountPaid)))}</span></div>}

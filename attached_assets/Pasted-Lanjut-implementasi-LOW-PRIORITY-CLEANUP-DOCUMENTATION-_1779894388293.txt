@@ -1,0 +1,105 @@
+Lanjut implementasi LOW PRIORITY / CLEANUP / DOCUMENTATION ONLY.
+
+Jangan ubah logic Critical, High, dan Medium yang sudah PASS.
+Jangan refactor besar.
+Fokus merapikan, dokumentasi, dan menjaga agar fix tidak rusak di update berikutnya.
+
+Area Low Priority:
+
+A. Documentation
+Buat/update dokumentasi:
+- docs/SYSTEM_SYNC_FLOW.md
+- docs/ORDER_LIFECYCLE_FLOW.md
+- docs/WA_TEMPLATE_FLOW.md
+- docs/MINI_FORM_SECURITY.md
+- docs/ATTACHMENT_STORAGE_FLOW.md
+
+Isi dokumentasi:
+- flow data
+- table yang dipakai
+- endpoint utama
+- frontend file terkait
+- query key / refetch
+- security rule
+- test checklist
+
+B. Code Comments
+Tambahkan komentar singkat di bagian penting:
+- token validation
+- idempotency SO
+- WA template rendering
+- attachment storage
+- timeline logging
+- cache invalidation
+
+C. Naming Consistency
+Rapikan naming yang membingungkan tanpa merusak API:
+- serviceType
+- workflow
+- recipient
+- orderStatus
+- submissionStatus
+- approvalStatus
+
+D. Minor UI Cleanup
+- label status dibuat konsisten
+- empty state lebih jelas
+- error message lebih rapi
+- badge warna/status konsisten
+- tombol disabled saat loading
+
+E. Regression Checklist
+Buat file:
+docs/REGRESSION_CHECKLIST.md
+
+Isi checklist:
+- price sync
+- order lifecycle
+- security/token
+- WA template
+- vendor mini form
+- customer approval
+- SO creation
+- attachment upload
+- timeline/log
+- duplicate prevention
+
+F. Final Smoke Test
+Jalankan smoke test:
+1. Customer create order
+2. Admin approve
+3. Vendor mini form submit
+4. Admin select vendor
+5. Customer approve
+6. SO created
+7. Vendor operational submit
+8. Attachment upload/open
+9. WA template send
+10. Price sync tetap PASS
+
+Output setelah selesai:
+
+1. DOCUMENTATION CREATED/UPDATED
+- file
+- isi ringkas
+
+2. CLEANUP APPLIED
+- file
+- perubahan
+
+3. SMOKE TEST RESULT
+- PASS/FAIL per flow
+
+4. REGRESSION RESULT
+- Critical PASS?
+- High PASS?
+- Medium PASS?
+- Price sync PASS?
+
+5. FINAL PRODUCTION READINESS SCORE
+- Sync
+- Security
+- Stability
+- UX
+- Documentation
+- Overall

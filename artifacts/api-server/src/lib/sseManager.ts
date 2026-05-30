@@ -79,3 +79,43 @@ export function getStats() {
     portalConnections: portalConnections.size,
   };
 }
+
+// ── Heartbeat: kirim komentar SSE setiap 30 detik ke semua koneksi ────────────
+// Tujuan: (1) menjaga koneksi tetap hidup melewati proxy/load-balancer,
+//         (2) mendeteksi dan membersihkan ghost connection secara otomatis —
+//             jika res.write() gagal, koneksi langsung dihapus dari Set.
+const HEARTBEAT_INTERVAL_MS = 30_000;
+
+setInterval(() => {
+  const heartbeat = ":keepalive\n\n";
+
+  // Admin connections
+  for (const res of adminConnections) {
+    try {
+      res.write(heartbeat);
+    } catch {
+      adminConnections.delete(res);
+    }
+  }
+
+  // Portal connections
+  for (const res of portalConnections) {
+    try {
+      res.write(heartbeat);
+    } catch {
+      portalConnections.delete(res);
+    }
+  }
+
+  // Driver connections
+  for (const [driverId, set] of driverConnections) {
+    for (const res of set) {
+      try {
+        res.write(heartbeat);
+      } catch {
+        set.delete(res);
+      }
+    }
+    if (set.size === 0) driverConnections.delete(driverId);
+  }
+}, HEARTBEAT_INTERVAL_MS).unref();

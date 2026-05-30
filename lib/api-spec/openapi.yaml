@@ -2124,6 +2124,12 @@ paths:
         - in: query
           name: sourceDocId
           schema: { type: integer, nullable: true }
+        - in: query
+          name: refDocNumber
+          schema: { type: string, nullable: true }
+        - in: query
+          name: company
+          schema: { type: string, nullable: true }
       responses:
         "200":
           description: List of payments
@@ -4119,15 +4125,15 @@ components:
           nullable: true
         priceBase:
           type: number
-        markupPct:
-          type: number
         isActive:
           type: boolean
         isCommodityTag:
           type: boolean
         sortOrder:
           type: integer
-      required: [name]
+        linkMasterItemId:
+          type: integer
+          nullable: true
 
     Shipment:
       type: object

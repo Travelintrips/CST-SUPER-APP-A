@@ -9,7 +9,7 @@ import {
   logisticOrderItemsTable,
   suppliersTable,
 } from "@workspace/db";
-import { sendWhatsApp } from "../lib/fonnte";
+import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { verifyVendorResponseToken } from "../lib/vendorResponseToken";
 import { getAdminGroupWa } from "../lib/adminWa";
@@ -18,6 +18,24 @@ import { getPreferredDomain } from "../lib/domain";
 const router: IRouter = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 const objectStorage = new ObjectStorageService();
+
+const VENDOR_PHOTO_ALLOWED_MIME = new Set([
+  "image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif",
+  "image/heic", "image/heif",
+]);
+
+const _vendorPhotoRateMap = new Map<string, { count: number; resetAt: number }>();
+function _checkVendorPhotoRateLimit(orderNumber: string): boolean {
+  const now = Date.now();
+  let entry = _vendorPhotoRateMap.get(orderNumber);
+  if (!entry || now > entry.resetAt) {
+    entry = { count: 0, resetAt: now + 60 * 60 * 1000 };
+  }
+  if (entry.count >= 10) return false;
+  entry.count += 1;
+  _vendorPhotoRateMap.set(orderNumber, entry);
+  return true;
+}
 
 db.execute(sql`ALTER TABLE vendor_responses ADD COLUMN IF NOT EXISTS quoted_price NUMERIC(14, 2)`).catch(() => {});
 
@@ -169,8 +187,16 @@ router.post("/:orderNumber/photo", upload.single("photo") as any, async (req: Re
     res.status(403).json({ error: "Link tidak valid atau sudah kadaluarsa" });
     return;
   }
+  if (!_checkVendorPhotoRateLimit(orderNumberPhoto)) {
+    res.status(429).json({ error: "Terlalu banyak upload. Coba lagi dalam 1 jam." });
+    return;
+  }
   if (!req.file) {
     res.status(400).json({ error: "Tidak ada foto yang diupload" });
+    return;
+  }
+  if (!VENDOR_PHOTO_ALLOWED_MIME.has(req.file.mimetype)) {
+    res.status(415).json({ error: "Hanya file gambar (JPEG, PNG, WEBP) yang diizinkan." });
     return;
   }
 
@@ -224,12 +250,20 @@ router.post("/:orderNumber", async (req: Request, res: Response) => {
 
   try {
     const [order] = await db
-      .select({ id: logisticOrdersTable.id, orderNumber: logisticOrdersTable.orderNumber })
+      .select({ id: logisticOrdersTable.id, orderNumber: logisticOrdersTable.orderNumber, status: logisticOrdersTable.status })
       .from(logisticOrdersTable)
       .where(eq(logisticOrdersTable.orderNumber, orderNumber));
 
     if (!order) {
       res.status(404).json({ error: "Order tidak ditemukan" });
+      return;
+    }
+
+    // [CRITICAL-B] Block submission on terminal orders: vendor must not overwrite
+    // data after the order has been confirmed/completed/cancelled.
+    const TERMINAL_STATUSES = ["Customer Approved", "Customer Confirmed", "Completed", "Done", "Cancelled"];
+    if (TERMINAL_STATUSES.includes(order.status)) {
+      res.status(409).json({ error: "Order sudah dalam status final. Response tidak dapat diubah." });
       return;
     }
 

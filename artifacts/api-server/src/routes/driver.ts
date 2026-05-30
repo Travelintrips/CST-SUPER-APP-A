@@ -8,7 +8,8 @@ import { db, driversTable, driverJobsTable, driverJobLogsTable, driverPhotosTabl
 import { eq, and, desc, ne } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin";
 import { ObjectStorageService } from "../lib/objectStorage";
-import { sendWhatsApp } from "../lib/fonnte";
+import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
+import { logActivity } from "../lib/activityLog";
 import { getPreferredDomain } from "../lib/domain";
 import {
   sendDriverAssignedNotification,
@@ -314,6 +315,16 @@ router.put("/jobs/:jobId/status", requireDriverAuth, async (req, res) => {
     updatedAt: new Date().toISOString(),
   });
 
+  if (job.logisticOrderId) {
+    logActivity({
+      orderId: job.logisticOrderId,
+      actorType: "driver",
+      action: "shipment_status_updated",
+      description: `Driver memperbarui status pengiriman: ${job.status} → ${status}${note ? ` — ${note}` : ""}`,
+      newValue: { jobId, jobNumber: updated.jobNumber, status, previousStatus: job.status },
+    }).catch(() => {});
+  }
+
   res.json({ ...serializeJob(updated), validNextStatuses: VALID_TRANSITIONS[String(status)] ?? [] });
 });
 
@@ -386,6 +397,14 @@ router.post("/jobs/:jobId/pod", requireDriverAuth, async (req, res) => {
     fetchOrderData(job.logisticOrderId).then((orderData) => {
       if (!orderData) return;
       sendDeliveryCompletedNotification(orderData).catch(() => {});
+    }).catch(() => {});
+
+    logActivity({
+      orderId: job.logisticOrderId,
+      actorType: "driver",
+      action: "pod_submitted",
+      description: `Proof of Delivery disubmit — diterima oleh: ${receiverName}`,
+      newValue: { jobId, jobNumber: updated.jobNumber, receiverName, status: "DELIVERED" },
     }).catch(() => {});
   }
 

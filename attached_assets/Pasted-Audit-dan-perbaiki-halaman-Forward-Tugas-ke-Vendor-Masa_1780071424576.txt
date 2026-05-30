@@ -1,0 +1,97 @@
+Audit dan perbaiki halaman Forward Tugas ke Vendor.
+
+Masalah:
+Saat order tipe = Produk, halaman Forward Tugas ke Vendor masih menampilkan pilihan jenis layanan logistik:
+- Sea Freight
+- Air Freight
+- Land Freight
+- Custom Clearance
+- Warehousing
+- Door to Door
+- FCL
+- LCL
+
+Ini salah untuk pesanan produk.
+
+Aturan yang benar:
+
+1. Jika tipe order = Produk / Product:
+   Jangan tampilkan pilihan jenis layanan logistik.
+   Tampilkan detail produk yang harus dipenuhi vendor.
+
+Format yang diharapkan:
+
+Jenis Tugas:
+Pemenuhan Produk / Product Fulfillment
+
+Detail Produk:
+- Nama Produk
+- Quantity
+- Unit
+- Harga Penawaran
+- Subtotal
+- PPN jika ada
+- Grand Total
+
+Instruksi Vendor:
+- Konfirmasi stok
+- Konfirmasi harga
+- Konfirmasi estimasi siap kirim
+- Upload invoice / dokumen jika ada
+
+2. Jika tipe order = Logistics / Service:
+   Baru tampilkan pilihan layanan:
+   - Sea Freight
+   - Air Freight
+   - Land Freight
+   - Custom Clearance
+   - Warehousing
+   - Door to Door
+   - FCL
+   - LCL
+
+3. Jangan hardcode default "Warehousing" untuk semua order.
+
+4. Selected service harus mengikuti:
+   - order.type
+   - order.serviceType
+   - order.shipmentType
+   - order items category
+
+5. Untuk order produk, selectedService default harus:
+   product_fulfillment
+
+6. Tombol submit untuk order produk:
+   "Kirim Tugas Produk ke Vendor"
+
+Bukan:
+"Kirim Tugas ke Vendor" dengan pilihan warehousing.
+
+7. Data yang dikirim ke vendor untuk produk harus menyertakan:
+   - orderId
+   - rfqId
+   - vendorId
+   - productName
+   - quantity
+   - unit
+   - vendorPrice
+   - sellingPrice
+   - subtotal
+   - ppn
+   - grandTotal
+   - deadline
+
+8. Audit file terkait:
+   - halaman Forward Tugas ke Vendor
+   - vendor job order route
+   - function yang menentukan service type
+   - default selected service
+
+Output:
+1. File yang menyebabkan produk masuk ke pilihan logistics service
+2. Logic lama yang salah
+3. Logic baru berdasarkan order type
+4. Test:
+   - Product order: tampil Product Fulfillment + detail produk
+   - Logistics order: tampil pilihan layanan logistik
+5. Pastikan tidak merusak flow trucking/freight/customs

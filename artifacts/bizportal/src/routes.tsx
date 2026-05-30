@@ -29,6 +29,7 @@ import PortalProductOrdersPage from "@/pages/portal-product-orders";
 import SalesDashboardPage from "@/pages/sales/dashboard";
 import SalesDocumentsListPage from "@/pages/sales/documents-list";
 import SalesDocumentEditorPage from "@/pages/sales/quotation-editor";
+import SalesDocumentDetailPage from "@/pages/sales/document-detail";
 import AiDraftsPage from "@/pages/sales/ai-drafts";
 import CustomersPage from "@/pages/sales/customers";
 import SalesInvoicesPage from "@/pages/sales/invoices";
@@ -97,8 +98,12 @@ import AiScanSettingsPage from "@/pages/ai-scan-settings";
 import UomPage from "@/pages/settings/uom";
 import NavCompanyConfigPage from "@/pages/settings/nav-company-config";
 import ShortLinksPage from "@/pages/settings/short-links";
+import WaTemplatesPage from "@/pages/settings/wa-templates";
+import EnterpriseWaTemplatesPage from "@/pages/settings/enterprise-wa-templates";
+import LogisticsUnitsPage from "@/pages/settings/logistics-units";
 import SettingsRolesPage from "@/pages/settings-roles";
 import SettingsApprovalRulesPage from "@/pages/settings-approval-rules";
+import ProductTemplatesPage from "@/pages/product-templates";
 import UsersPage from "@/pages/users";
 import MediaManagerPage from "@/pages/media-manager";
 import OrgManagementPage from "@/pages/OrgManagementPage";
@@ -128,10 +133,16 @@ import VendorPerformancePage from "@/pages/logistics/vendor-performance";
 import InternalTasksPage from "@/pages/logistics/internal-tasks";
 // Misc
 import NotificationsPage from "@/pages/notifications";
+import IntelligenceAlertsPage from "@/pages/intelligence-alerts";
+import AiApprovalsPage from "@/pages/ai-approvals";
+import OperationalContextPage from "@/pages/operational-context";
+import AiDecisionMemoryPage from "@/pages/ai-decision-memory";
 import WaNotificationHistoryPage from "@/pages/wa-notification-history";
+import VendorLeaderboardPage from "@/pages/vendor-leaderboard";
 import AnalyticsDashboardPage from "@/pages/analytics-dashboard";
 import POOrdersPage from "@/pages/purchase/po-orders";
 import VendorFormsPage from "@/pages/purchase/vendor-forms";
+import VmfAuditTrailPage from "@/pages/purchase/vmf-audit-trail";
 
 const PR = (C: React.ComponentType) => () => <ProtectedRoute component={C} />;
 
@@ -146,6 +157,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       {/* ── Welcome / Dashboard ────────────────────────────────────────── */}
       <Route path="/welcome" component={WelcomePage} />
       <Route path="/dashboard" component={PR(DashboardPage)} />
+      <Route path="/ai/decision-memory" component={PR(AiDecisionMemoryPage)} />
       <Route path="/approvals" component={PR(ApprovalsPage)} />
       <Route path="/ecommerce" component={PR(EcommercePage)} />
       <Route path="/trading" component={PR(TradingPage)} />
@@ -182,14 +194,14 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       {/* ── Sales ──────────────────────────────────────────────────────── */}
       <Route path="/sales/documents/new" component={PR(SalesDocumentEditorPage)} />
       <Route path="/sales/documents/:id/edit" component={PR(SalesDocumentEditorPage)} />
-      <Route path="/sales/documents/:id" component={PR(SalesDocumentEditorPage)} />
+      <Route path="/sales/documents/:id" component={PR(SalesDocumentDetailPage)} />
       <Route path="/sales/documents" component={PR(SalesDocumentsListPage)} />
       <Route path="/sales/quotations/new" component={PR(SalesDocumentEditorPage)} />
       <Route path="/sales/quotations/:id/edit" component={PR(SalesDocumentEditorPage)} />
-      <Route path="/sales/quotations/:id" component={PR(SalesDocumentEditorPage)} />
+      <Route path="/sales/quotations/:id" component={PR(SalesDocumentDetailPage)} />
       <Route path="/sales/quotations" component={PR(SalesDocumentsListPage)} />
       <Route path="/sales/orders/new" component={() => <ProtectedRoute component={() => <SalesDocumentEditorPage kind="order" />} />} />
-      <Route path="/sales/orders/:id" component={() => <ProtectedRoute component={() => <SalesDocumentEditorPage kind="order" />} />} />
+      <Route path="/sales/orders/:id" component={PR(SalesDocumentDetailPage)} />
       <Route path="/sales/orders" component={() => <ProtectedRoute component={() => <SalesDocumentsListPage kind="order" />} />} />
       <Route path="/sales/ai-drafts" component={PR(AiDraftsPage)} />
       <Route path="/sales/customers" component={PR(CustomersPage)} />
@@ -212,6 +224,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/purchase/orders/:id" component={PR(PurchaseDocumentEditorPage)} />
       <Route path="/purchase/orders" component={PR(POOrdersPage)} />
       <Route path="/purchase/vendor-forms" component={PR(VendorFormsPage)} />
+      <Route path="/purchase/vmf-audit-trail" component={PR(VmfAuditTrailPage)} />
       <Route path="/purchase/vendors/:id" component={PR(VendorDetailPage)} />
       <Route path="/purchase/vendors" component={PR(VendorsPage)} />
       <Route path="/purchase/bills" component={PR(PurchaseBillsPage)} />
@@ -284,11 +297,15 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/settings/nav-company-config" component={PR(NavCompanyConfigPage)} />
       <Route path="/settings/uom" component={PR(UomPage)} />
       <Route path="/settings/short-links" component={PR(ShortLinksPage)} />
+      <Route path="/settings/wa-templates" component={PR(WaTemplatesPage)} />
+      <Route path="/settings/enterprise-wa-templates" component={PR(EnterpriseWaTemplatesPage)} />
+      <Route path="/settings/logistics-units" component={PR(LogisticsUnitsPage)} />
       <Route path="/settings/ai-chatbot/knowledge" component={PR(AiChatbotKnowledgePage)} />
       <Route path="/settings/ai-chatbot" component={PR(AiChatbotSettingsPage)} />
       <Route path="/settings/ai-scan" component={PR(AiScanSettingsPage)} />
       <Route path="/settings/roles" component={PR(SettingsRolesPage)} />
       <Route path="/settings/approval-rules" component={PR(SettingsApprovalRulesPage)} />
+      <Route path="/settings/product-templates" component={PR(ProductTemplatesPage)} />
       <Route path="/settings" component={PR(SettingsPage)} />
 
       {/* ── Users & Org ────────────────────────────────────────────────── */}
@@ -311,8 +328,14 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/thai-tea" component={PR(ThaiTeaDashboardPage)} />
 
 
+      {/* ── Vendor Leaderboard ─────────────────────────────────────────── */}
+      <Route path="/vendors" component={PR(VendorLeaderboardPage)} />
+
       {/* ── Notifications & Analytics ──────────────────────────────────── */}
       <Route path="/notifications" component={PR(NotificationsPage)} />
+      <Route path="/intelligence-alerts" component={PR(IntelligenceAlertsPage)} />
+      <Route path="/ai-approvals" component={PR(AiApprovalsPage)} />
+      <Route path="/operational-context" component={PR(OperationalContextPage)} />
       <Route path="/analytics" component={PR(AnalyticsDashboardPage)} />
 
       {/* ── Audit ERP ──────────────────────────────────────────────────── */}

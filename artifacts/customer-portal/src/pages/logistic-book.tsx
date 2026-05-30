@@ -448,7 +448,7 @@ export default function BookPage() {
   const [selectedCategory, setSelectedCategory] = useState<ServiceCategory | null>(null);
   const [selectedItem, setSelectedItem] = useState<ServiceItem | null>(null);
   const [editCartId, setEditCartId] = useState<string | null>(null);
-  const { items: cartItems, addItem, removeItem, clearCart, subtotal, tax, grandTotal, taxRate } = useCart();
+  const { items: cartItems, addItem, removeItem, clearCart, subtotal, tax, grandTotal } = useCart();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const createOrder = useCreateLogisticOrder();
@@ -1082,7 +1082,7 @@ export default function BookPage() {
                 <>
                   <Separator />
                   <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">PPN {taxRate === 0.011 ? "1,1%" : "11%"}</span>
+                    <span className="text-muted-foreground">PPN 11%</span>
                     <span className="font-medium">{formatCurrency(tax)}</span>
                   </div>
                   <Separator />

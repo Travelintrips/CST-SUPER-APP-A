@@ -442,15 +442,15 @@ export interface VendorCatalogItem {
 
 export interface CreateVendorCatalogItemBody {
   type?: string;
-  name: string;
+  name?: string;
   description?: string | null;
   unit?: string | null;
   subcategory?: string | null;
   priceBase?: number;
-  markupPct?: number;
   isActive?: boolean;
   isCommodityTag?: boolean;
   sortOrder?: number;
+  linkMasterItemId?: number | null;
 }
 
 export interface CreateShipmentBody {
@@ -2707,6 +2707,8 @@ export type ListAccountingPaymentsParams = {
   to?: string;
   sourceType?: string | null;
   sourceDocId?: number | null;
+  refDocNumber?: string | null;
+  company?: string | null;
 };
 
 export type ListAccountingPaymentsPaymentType =

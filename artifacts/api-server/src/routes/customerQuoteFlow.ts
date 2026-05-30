@@ -7,13 +7,15 @@ import {
   customerQuoteLinksTable, customerQuoteResponsesTable,
   orderTaskLinksTable, orderUpdatesTable, customerOrderLinksTable,
   driverLocationsTable,
+  logisticOrderItemsTable,
 } from "@workspace/db";
 import { requireClerkUser } from "../lib/requireAdmin.js";
-import { sendWhatsApp } from "../lib/fonnte.js";
+import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminGroupWa } from "../lib/adminWa.js";
 import { getPreferredDomain } from "../lib/domain.js";
 import { logger } from "../lib/logger.js";
 import { checkOrderGeofence } from "../lib/orderGeofenceChecker.js";
+import { updateOrderProgress } from "../lib/orderProgress.js";
 import { getWaTemplateConfig, renderTemplate, deriveServiceType } from "../lib/orderNotification.js";
 
 const tok = () => randomBytes(24).toString("hex");
@@ -60,7 +62,16 @@ customerQuoteAdminRouter.post("/rfq/:rfqId/send-customer-quote", async (req: Req
       ? Number(selectedLink.offeredPrice)
       : selectedLink?.basicPrice ? Number(selectedLink.basicPrice) : null;
 
-    const customerPrice = finalCustomerPrice ?? (order.finalSellingPrice ? Number(order.finalSellingPrice) : null);
+    const orderSubtotalNum = order.subtotal ? Number(order.subtotal) : 0;
+    const orderTaxNum = order.tax ? Number(order.tax) : 0;
+    const orderGrandTotalNum = order.grandTotal ? Number(order.grandTotal) : (orderSubtotalNum + orderTaxNum);
+
+    // Harga jual ke customer: pakai finalCustomerPrice dari request jika ada,
+    // fallback ke order.finalSellingPrice, fallback ke order grandTotal (subtotal+tax)
+    const customerPrice = finalCustomerPrice
+      ?? (order.finalSellingPrice ? Number(order.finalSellingPrice) : null)
+      ?? (orderGrandTotalNum > 0 ? orderGrandTotalNum : null);
+
     const margin = customerPrice && vendorCost ? customerPrice - vendorCost : null;
 
     const validUntil = validInDays
@@ -105,6 +116,8 @@ customerQuoteAdminRouter.post("/rfq/:rfqId/send-customer-quote", async (req: Req
       notes: `Penawaran dikirim ke customer. Harga: ${fmtRp(customerPrice)}. ETA: ${etaFinal ?? "—"}.`,
       isPublic: false,
     });
+
+    updateOrderProgress(order.id, "SENT_TO_CUSTOMER", "admin", "Admin", `Penawaran dikirim ke customer. Harga: ${fmtRp(customerPrice)}`).catch(() => {});
 
     const quoteUrl = `${getBaseUrl()}/customer-quote/${token}`;
 
@@ -416,6 +429,54 @@ customerQuotePublicRouter.get("/:token", async (req: Request, res: Response) => 
       ? await db.select().from(logisticOrderRfqsTable).where(eq(logisticOrderRfqsTable.id, link.rfqId))
       : [null];
 
+    const orderItems = await db.select().from(logisticOrderItemsTable)
+      .where(eq(logisticOrderItemsTable.orderId, link.orderId));
+
+    function extractQty(inp: unknown): number | null {
+      if (!inp || typeof inp !== "object") return null;
+      const d = inp as Record<string, unknown>;
+      const q = d.quantity ?? d.qty ?? d.jumlah;
+      if (typeof q === "number") return q;
+      if (typeof q === "string") { const n = parseFloat(q); return isNaN(n) ? null : n; }
+      return null;
+    }
+    function extractUnit(inp: unknown): string | null {
+      if (!inp || typeof inp !== "object") return null;
+      const d = inp as Record<string, unknown>;
+      const u = d.unit ?? d.satuan ?? d.uom;
+      return typeof u === "string" ? u : null;
+    }
+
+    const priceItems = orderItems.map((i) => ({
+      name: i.serviceName,
+      category: i.category,
+      subtotal: i.subtotal ? Number(i.subtotal) : 0,
+      qty: extractQty(i.inputData),
+      unit: extractUnit(i.inputData),
+    }));
+
+    const orderSubtotal = order.subtotal ? Number(order.subtotal) : 0;
+    const orderTax = order.tax ? Number(order.tax) : 0;
+    const orderGrandTotal = order.grandTotal ? Number(order.grandTotal) : 0;
+    const finalCustomerPrice = link.finalCustomerPrice ? Number(link.finalCustomerPrice) : null;
+
+    // Derive subtotal/tax breakdown when order fields aren't set
+    // but finalCustomerPrice is known (assume 11% PPN inclusive)
+    let displaySubtotal: number | null = null;
+    let displayTax: number | null = null;
+    let displayTotal: number | null = finalCustomerPrice;
+
+    if (orderSubtotal > 0 && orderTax > 0) {
+      displaySubtotal = orderSubtotal;
+      displayTax = orderTax;
+      displayTotal = orderSubtotal + orderTax;
+    } else if (finalCustomerPrice && finalCustomerPrice > 0) {
+      // finalCustomerPrice is the quoted total — show PPN breakdown
+      displaySubtotal = Math.round(finalCustomerPrice / 1.11);
+      displayTax = finalCustomerPrice - displaySubtotal;
+      displayTotal = finalCustomerPrice;
+    }
+
     return res.json({
       token,
       status: link.status,
@@ -431,7 +492,11 @@ customerQuotePublicRouter.get("/:token", async (req: Request, res: Response) => 
         order.grossWeight ? `${order.grossWeight} kg` : null,
         order.volumeCbm ? `${order.volumeCbm} cbm` : null,
       ].filter(Boolean).join(" · ") || null,
-      finalCustomerPrice: link.finalCustomerPrice ? Number(link.finalCustomerPrice) : null,
+      finalCustomerPrice,
+      displaySubtotal,
+      displayTax,
+      displayTotal,
+      priceItems,
       etaFinal: link.etaFinal,
       termsConditions: link.termsConditions,
       quoteNotes: link.quoteNotes,

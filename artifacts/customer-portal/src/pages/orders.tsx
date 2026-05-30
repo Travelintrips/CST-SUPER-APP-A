@@ -57,6 +57,16 @@ export default function Orders() {
     if (!token) setLocation("/login");
   }, [token, setLocation]);
 
+  // Auto-refresh saat admin mengubah status logistic order
+  useEffect(() => {
+    if (!token) return;
+    const es = new EventSource("/api/ecommerce/events");
+    es.addEventListener("logistic_order_status_changed", () => {
+      queryClient.invalidateQueries({ queryKey: ["listPortalLogisticOrders", token] });
+    });
+    return () => es.close();
+  }, [token, queryClient]);
+
   /** Build a URL preserving both filters, then navigate. */
   function buildOrdersUrl(q: string, status: string): string {
     const p = new URLSearchParams();

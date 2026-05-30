@@ -1,0 +1,94 @@
+Audit dan implementasikan Product Template Engine untuk aplikasi trading multi-komoditas.
+
+Tujuan:
+Aplikasi tidak boleh memakai form statis per produk. Form order harus dinamis berdasarkan productCategory seperti coal, iron_steel, coffee, electronics, general.
+
+Kerjakan:
+
+1. Buat struktur data product template:
+- category
+- label
+- version
+- requiredDocuments
+- checklist
+- packagingInstructions
+- customFields
+- conditionalRules
+- validationRules
+
+2. Buat fallback template general jika kategori belum tersedia.
+
+3. Buat komponen React/TSX DynamicProductForm:
+- membaca template berdasarkan productCategory
+- render checklist
+- render dokumen wajib
+- render field khusus
+- render instruksi handling/packaging
+- render aturan kondisional
+- tidak error jika data kosong/undefined
+
+4. Buat field khusus minimal:
+Coal:
+- GAR/NAR
+- moisture
+- ash
+- sulfur
+- COA
+- seal number
+- mine origin
+
+Iron/Steel:
+- grade
+- dimension
+- weight
+- MTC certificate
+- HS code
+- mill origin
+
+Coffee:
+- bean type
+- grade
+- moisture
+- origin
+- phytosanitary certificate
+- fumigation certificate
+
+Electronics:
+- brand
+- model
+- serial number
+- battery information
+- MSDS jika mengandung baterai
+- warranty document
+
+5. Saat submit, payload harus menyimpan:
+- productCategory
+- templateId
+- templateVersion
+- customFieldValues
+- uploadedDocuments
+- checklistStatus
+- packagingNotes
+- conditionalFlags
+
+6. Tambahkan validasi dinamis:
+- dokumen wajib tidak boleh kosong
+- required customFields wajib diisi
+- kategori tidak dikenal fallback ke general
+
+7. Tambahkan audit trail:
+- simpan templateVersion pada order
+- jangan overwrite data order lama jika template berubah
+
+8. Buat UI yang rapi:
+- section Informasi Produk
+- Dokumen Wajib
+- Checklist Persiapan
+- Field Khusus Komoditas
+- Handling / Packaging
+- Catatan Tambahan
+
+9. Pastikan tidak mengganggu flow order existing:
+Customer Order > Admin Review > Vendor Quotation > Admin Markup > Customer Approval > Admin Confirm Vendor.
+
+10. Setelah selesai, tampilkan file yang diubah, struktur payload submit, dan contoh hasil untuk kategori coal dan iron_steel.

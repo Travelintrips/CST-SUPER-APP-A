@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
-import { rateLimit } from "express-rate-limit";
-import { eq, desc, inArray, and, count, isNull, ne } from "drizzle-orm";
+import { rateLimit, ipKeyGenerator } from "express-rate-limit";
+import { eq, desc, inArray, and, count, isNull, ne, sql } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import multer from "multer";
 import { ObjectStorageService } from "../lib/objectStorage.js";
@@ -9,6 +9,7 @@ import {
   vendorMiniFormLinksTable,
   vendorMiniFormSubmissionsTable,
   customerApprovalsTable,
+  customerInvoiceLinksTable,
   vendorOperationalConfirmationsTable,
   vendorPriceHistoryTable,
   vmfActivityLogTable,
@@ -17,11 +18,16 @@ import {
   logisticOrdersTable,
   logisticOrderItemsTable,
   salesDocumentsTable,
+  salesDocumentLinesTable,
+  orderUpdatesTable,
 } from "@workspace/db";
+import { getInCodeTemplate } from "@workspace/product-templates";
 import { requireClerkUser } from "../lib/requireAdmin";
-import { sendWhatsApp } from "../lib/fonnte.js";
+import { deleteFromSupabase } from "../lib/supabaseStorage.js";
+import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminGroupWa } from "../lib/adminWa.js";
 import { createSalesOrderFromVmfApproval } from "../lib/vmfSoIntegration.js";
+import { updateOrderProgress } from "../lib/orderProgress.js";
 import {
   sendCustomerApprovedNotification,
   sendSoCreatedNotification,
@@ -34,6 +40,7 @@ import {
   sendVendorSubmitConfirmNotification,
   sendVendorRfqForwardNotification,
   sendVendorSubmissionSummaryNotification,
+  sendVendorSubmissionGroupNotification,
   sendCustomerRejectionAdminNotification,
   sendOpConfirmSubmittedNotification,
   type LogisticOrderData,
@@ -98,7 +105,39 @@ async function logActivity(
   } catch { /* non-fatal */ }
 }
 
+// ── Order updates helper (persists to order_updates timeline) ──────────────────
+
+async function logOrderUpdate(
+  orderId: number,
+  status: string,
+  notes: string,
+  actorId?: string | null,
+  isPublic = false,
+) {
+  try {
+    await db.insert(orderUpdatesTable).values({
+      orderId,
+      actorType: "admin",
+      actorId: actorId ?? null,
+      actorName: "Admin",
+      status,
+      notes,
+      isPublic,
+    });
+  } catch { /* non-fatal */ }
+}
+
 // ── Token cache ────────────────────────────────────────────────────────────────
+// In-process cache for vendor_mini_form_links rows, keyed by token string.
+// TTL: CACHE_TTL_MS (5 min). Reduces DB load on high-frequency GET requests.
+//
+// IMPORTANT: invalidateTokenCache(token) MUST be called whenever the link row
+// is mutated (isActive toggled, link expired, submission locked, etc.) to prevent
+// stale data being served. This is done automatically in all write endpoints below.
+//
+// formTarget validation: each router (vendor-form / customer-form / admin-form)
+// checks that link.formTarget matches the expected target derived from the request
+// base URL. This prevents a vendor from using a customer-only or admin-only link.
 
 type CachedForm = {
   id: number; serviceType: string; title: string | null; notes: string | null;
@@ -128,6 +167,8 @@ function setCached(token: string, row: CachedForm) {
   TOKEN_CACHE.set(token, { ...row, expiresCache: Date.now() + CACHE_TTL_MS });
 }
 export function invalidateTokenCache(token: string) {
+  // Remove cached entry so the next GET re-fetches from DB.
+  // Call this after any mutation to the link or its submission.
   TOKEN_CACHE.delete(token);
 }
 
@@ -151,6 +192,21 @@ const vmfPostLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: "Terlalu banyak pengiriman form, coba lagi dalam 15 menit" },
   skip: (req) => req.path.startsWith("/admin"),
+});
+
+// Stricter rate-limit khusus customer-approval: 5 req / 10 menit per token
+// Melindungi dari spam yang memicu WA notification & activity log berulang
+const vmfApprovalLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 5,
+  keyGenerator: (req) => {
+    const token = (req.params as { token?: string }).token;
+    if (token) return `approval:${token}`;
+    return ipKeyGenerator(req);
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Terlalu banyak percobaan, coba lagi dalam 10 menit" },
 });
 
 vendorMiniFormRouter.use((req, res, next) => {
@@ -586,6 +642,73 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
       }),
     } : null;
 
+    let productTemplate = null;
+    let orderContext: {
+      customerName: string | null;
+      requiredDate: string | null;
+      adminNotes: string | null;
+      items: Array<{ serviceName: string; qty: string | null; unit: string | null; subtotal: string | null }>;
+    } | null = null;
+
+    if (row.orderId) {
+      try {
+        const [order] = await db
+          .select({
+            commodity: logisticOrdersTable.commodity,
+            customerName: logisticOrdersTable.customerName,
+            requiredDate: logisticOrdersTable.requiredDate,
+            notes: logisticOrdersTable.notes,
+          })
+          .from(logisticOrdersTable)
+          .where(eq(logisticOrdersTable.id, row.orderId));
+
+        if (order?.commodity) {
+          const cat = order.commodity.trim().toLowerCase().replace(/[\s-]+/g, "_");
+          productTemplate = getInCodeTemplate(cat);
+        }
+
+        const orderItems = await db
+          .select({
+            serviceName: logisticOrderItemsTable.serviceName,
+            subtotal: logisticOrderItemsTable.subtotal,
+            inputData: logisticOrderItemsTable.inputData,
+          })
+          .from(logisticOrderItemsTable)
+          .where(eq(logisticOrderItemsTable.orderId, row.orderId));
+
+        orderContext = {
+          customerName: order?.customerName ?? null,
+          requiredDate: order?.requiredDate ?? null,
+          adminNotes: row.adminNotes ?? order?.notes ?? null,
+          items: orderItems.map((it) => {
+            const inp = (it.inputData ?? {}) as Record<string, unknown>;
+            return {
+              serviceName: it.serviceName,
+              qty: inp["qty"] != null ? String(inp["qty"]) : inp["weight"] != null ? String(inp["weight"]) : null,
+              unit: inp["unit"] != null ? String(inp["unit"]) : inp["weightUnit"] != null ? String(inp["weightUnit"]) : null,
+              subtotal: it.subtotal,
+            };
+          }),
+        };
+      } catch { /* non-fatal */ }
+    }
+
+    if (!productTemplate && row.adminNotes) {
+      const catMatch = /productCategory:(\w+)/.exec(row.adminNotes);
+      if (catMatch?.[1]) {
+        productTemplate = getInCodeTemplate(catMatch[1]);
+      }
+    }
+
+    if (!orderContext && row.adminNotes) {
+      orderContext = {
+        customerName: null,
+        requiredDate: null,
+        adminNotes: row.adminNotes,
+        items: [],
+      };
+    }
+
     res.setHeader("Cache-Control", PUBLIC_CACHE);
     return res.json({
       id: row.id,
@@ -602,6 +725,8 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
       phase: row.phase,
       alreadySubmitted,
       schema: filteredSchema,
+      productTemplate,
+      orderContext,
     });
   } catch (err) {
     req.log?.error({ err }, "vendor-mini-form GET error");
@@ -679,6 +804,14 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
     };
 
     if (!formData || typeof formData !== "object") return res.status(400).json({ error: "formData diperlukan" });
+
+    // Validasi attachmentUrl: hanya boleh objectPath dari private storage (/objects/...)
+    // Tolak URL arbitrary (http://, https://, dll) untuk mencegah SSRF/XSS.
+    if (attachmentUrl !== undefined && attachmentUrl !== null && attachmentUrl !== "") {
+      if (!attachmentUrl.startsWith("/objects/")) {
+        return res.status(400).json({ error: "attachmentUrl tidak valid. Gunakan endpoint upload terlebih dahulu." });
+      }
+    }
 
     // Validasi server-side untuk field required berdasarkan SERVICE_SCHEMAS
     const schema = SERVICE_SCHEMAS[link.serviceType];
@@ -758,9 +891,16 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
         `Revisi penawaran oleh ${vendorName ?? link.vendorName ?? "vendor"}`,
         { vendorPrice, currency, eta });
     } else {
-      // Wrap count-check + insert dalam transaksi agar maxSubmissions tidak bisa di-race
+      // Wrap count-check + insert dalam transaksi dengan SELECT FOR UPDATE
+      // Mengunci row link agar concurrent submissions tidak lolos quota check bersamaan
       const inserted = await db.transaction(async (tx) => {
         if (link.maxSubmissions !== null) {
+          // Lock link row dulu agar transaksi concurrent harus antri di sini
+          await tx
+            .select({ id: vendorMiniFormLinksTable.id })
+            .from(vendorMiniFormLinksTable)
+            .where(eq(vendorMiniFormLinksTable.id, link.id))
+            .for("update");
           const [cntRow] = await tx
             .select({ cnt: count() })
             .from(vendorMiniFormSubmissionsTable)
@@ -849,42 +989,64 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
       }
     }
 
-    // WA Summary to admin (especially useful for order-based: show all competing offers)
+    // WA Summary to admin (admin_group, vendor_submission_summary dengan count & compare link)
     (() => {
       const priceStr = vendorPrice ? `${currency ?? "IDR"} ${Number(vendorPrice).toLocaleString("id-ID")}` : "-";
 
       if (link.mode === "order_based" && link.orderId) {
-        // Pakai template sendVendorSubmissionNotification
-        db.select().from(logisticOrdersTable)
-          .where(eq(logisticOrdersTable.id, link.orderId))
-          .limit(1)
-          .then(([orderRow]) => {
-            if (!orderRow) return;
-            sendVendorSubmissionNotification(buildOrderDataFromRow(orderRow), vendorLabel, priceStr).catch(() => {});
-          }).catch(() => {});
-      } else if (link.mode === "order_based" && link.orderNumber) {
+        const orderId = link.orderId;
         getAdminGroupWa().then(async (adminGroupWa) => {
           if (!adminGroupWa) return;
-          const allSubs = await db
-            .select({ vendorName: vendorMiniFormSubmissionsTable.vendorName, vendorPrice: vendorMiniFormSubmissionsTable.vendorPrice, currency: vendorMiniFormSubmissionsTable.currency, eta: vendorMiniFormSubmissionsTable.eta })
+          const [orderRow] = await db.select().from(logisticOrdersTable)
+            .where(eq(logisticOrdersTable.id, orderId)).limit(1);
+          if (!orderRow) return;
+
+          // Progress bar event
+          updateOrderProgress(link.orderId, "VENDOR_RESPONSE_RECEIVED", "vendor_wa",
+            (sub as any).vendorName ?? "Vendor").catch(() => {});
+
+          // Hitung berapa vendor sudah submit vs berapa yang diundang
+          const [submittedRow] = await db.select({ c: count() })
             .from(vendorMiniFormSubmissionsTable)
-            .where(eq(vendorMiniFormSubmissionsTable.linkId, link.id))
-            .orderBy(desc(vendorMiniFormSubmissionsTable.submittedAt));
-          const lines = allSubs.map((s, i) => {
-            const p = s.vendorPrice ? `${s.currency ?? "IDR"} ${Number(s.vendorPrice).toLocaleString("id-ID")}` : "-";
-            return `${i + 1}. *${s.vendorName ?? "Vendor"}* - ${p}${s.eta ? ` - ETA ${s.eta}` : ""}`;
-          });
-          sendVendorSubmissionSummaryNotification(adminGroupWa, {
-            vendorLabel,
-            picLabel,
-            contactPhone: contactPhone?.trim() ?? null,
-            orderNumber: link.orderNumber ?? null,
-            serviceLabel: `Order #${link.orderNumber}`,
-            priceStr: lines.join("\n") || priceStr,
-            statusStr: isRevision ? `REVISI (Rev-${(submission as { revisionCount?: number }).revisionCount ?? 1})` : (responseStatus ?? "submitted"),
+            .where(eq(vendorMiniFormSubmissionsTable.orderId, orderId));
+          const [invitedRow] = await db.select({ c: count() })
+            .from(vendorMiniFormLinksTable)
+            .where(and(
+              eq(vendorMiniFormLinksTable.orderId, orderId),
+              eq(vendorMiniFormLinksTable.mode, "order_based"),
+              eq(vendorMiniFormLinksTable.isActive, true),
+            ));
+          const submittedVendorCount = Number(submittedRow?.c ?? 1);
+          const totalVendorInvited = Number(invitedRow?.c ?? 1);
+
+          // Buat comparison link ke halaman order di BizPortal
+          const { getPreferredDomain } = await import("../lib/domain.js");
+          const { generateShortLink } = await import("../lib/shortLink.js");
+          const domain = getPreferredDomain() || "cstlogistic.co.id";
+          const longUrl = `https://${domain}/bizportal/logistics/orders/${orderId}`;
+          const vendorComparisonLink = await generateShortLink(longUrl, {
+            context: "vendor_comparison",
+            refType: "order",
+            refId: String(orderId),
+          }).catch(() => longUrl);
+
+          sendVendorSubmissionGroupNotification(adminGroupWa, {
+            orderNumber: orderRow.orderNumber,
+            vendorName: vendorLabel,
+            vendorPrice: priceStr,
+            serviceType: orderRow.shipmentType ?? null,
+            route: (orderRow.origin && orderRow.destination)
+              ? `${orderRow.origin} → ${orderRow.destination}`
+              : null,
+            commodity: orderRow.commodity ?? null,
+            picLabel: picLabel || null,
+            submittedVendorCount,
+            totalVendorInvited,
+            vendorComparisonLink,
           }, String(link.id)).catch(() => {});
         }).catch(() => {});
       } else {
+        // Non-order-based (admin_rfq_forward, standalone, dll) — pakai summary sederhana
         getAdminGroupWa().then((adminGroupWa) => {
           if (!adminGroupWa) return;
           sendVendorSubmissionSummaryNotification(adminGroupWa, {
@@ -933,12 +1095,20 @@ vendorMiniFormRouter.get("/customer-approval/:token", async (req: Request, res: 
     const [approval] = await db.select().from(customerApprovalsTable).where(eq(customerApprovalsTable.token, token));
     if (!approval) return res.status(404).json({ error: "Link tidak ditemukan" });
     if (approval.expiresAt && approval.expiresAt < new Date()) return res.status(410).json({ error: "Link penawaran sudah kadaluarsa" });
+    const ppnPct = approval.ppnPct ? Number(approval.ppnPct) : 11;
+    const sellingNum = approval.sellingPrice ? Number(approval.sellingPrice) : null;
+    const ppnNominal = approval.ppnNominal ? Number(approval.ppnNominal) : (sellingNum ? Math.round(sellingNum * ppnPct / (100 + ppnPct)) : null);
+    const subtotalBeforePpn = sellingNum && ppnNominal ? sellingNum - ppnNominal : sellingNum;
     return res.json({
       token: approval.token, orderNumber: approval.orderNumber,
       customerName: approval.customerName,
       offerSummary: sanitizeOfferSummary(approval.offerSummary),
       sellingPrice: approval.sellingPrice, currency: approval.currency,
       termsNotes: approval.termsNotes, status: approval.status, soNumber: approval.soNumber,
+      taxRate: ppnPct,
+      taxAmount: ppnNominal,
+      subtotal: subtotalBeforePpn,
+      grandTotal: sellingNum,
     });
   } catch (err) {
     req.log?.error({ err }, "customer-approval GET error");
@@ -948,15 +1118,16 @@ vendorMiniFormRouter.get("/customer-approval/:token", async (req: Request, res: 
 
 // ── PUBLIC: POST /api/vendor-form/customer-approval/:token ────────────────────
 
-vendorMiniFormRouter.post("/customer-approval/:token", async (req: Request, res: Response) => {
+vendorMiniFormRouter.post("/customer-approval/:token", vmfApprovalLimiter, async (req: Request, res: Response) => {
   const { token } = req.params as { token: string };
   try {
-    // Cek awal sebelum masuk transaksi (fast-fail untuk expired/not found)
+    // Cek awal sebelum masuk transaksi: hanya fast-fail untuk not found & expired.
+    // Status check TIDAK dilakukan di sini untuk menghindari TOCTOU — perlindungan
+    // double-approve dilakukan secara atomik via UPDATE WHERE status='pending' di dalam transaksi.
     const [preCheck] = await db.select({ expiresAt: customerApprovalsTable.expiresAt, status: customerApprovalsTable.status })
       .from(customerApprovalsTable).where(eq(customerApprovalsTable.token, token));
     if (!preCheck) return res.status(404).json({ error: "Link tidak ditemukan" });
     if (preCheck.expiresAt && preCheck.expiresAt < new Date()) return res.status(410).json({ error: "Link penawaran sudah kadaluarsa" });
-    if (preCheck.status !== "pending") return res.status(409).json({ error: "Penawaran ini sudah direspons sebelumnya", status: preCheck.status });
 
     const { action, notes } = req.body as { action: "approve" | "reject"; notes?: string };
     if (!["approve", "reject"].includes(action)) return res.status(400).json({ error: "action harus approve atau reject" });
@@ -1035,6 +1206,12 @@ vendorMiniFormRouter.post("/customer-approval/:token", async (req: Request, res:
       }
     });
 
+    // Progress events — customer approval
+    if (action === "approve" && orderId) {
+      updateOrderProgress(orderId, "CUSTOMER_APPROVED", "customer_wa",
+        customerName ?? "Customer", notes ?? undefined).catch(() => {});
+    }
+
     // ── Buat Sales Order nyata di sales_documents (hanya saat approve) ────
     let salesDocId: number | null = null;
     if (action === "approve") {
@@ -1055,25 +1232,74 @@ vendorMiniFormRouter.post("/customer-approval/:token", async (req: Request, res:
           await db.update(customerApprovalsTable)
             .set({ soNumber: soResult.docNumber })
             .where(eq(customerApprovalsTable.token, token));
+          // G-3: persist SO creation success ke order_updates
+          if (orderId) {
+            await logOrderUpdate(
+              orderId,
+              "SO Dibuat",
+              `Sales Order ${soResult.docNumber} berhasil dibuat dari persetujuan customer.`,
+              "system",
+              false,
+            ).catch(() => {});
+            updateOrderProgress(orderId, "SALES_ORDER_CREATED", "system",
+              "System", `SO ${soResult.docNumber} dibuat`).catch(() => {});
+          }
         } else if (soResult.reason === "already_exists") {
           soNumber = soResult.docNumber;
           salesDocId = soResult.docId;
         } else {
-          // SO creation gagal — log saja, jangan gagalkan approval
+          // G-3: persist SO creation failure ke order_updates (sebelumnya hanya req.log.warn)
           req.log?.warn({ reason: soResult.message }, "VMF SO creation failed — approval tetap valid");
+          if (orderId) {
+            await logOrderUpdate(
+              orderId,
+              "Gagal Buat SO",
+              `Pembuatan Sales Order gagal: ${soResult.message}`,
+              "system",
+              false,
+            ).catch(() => {});
+          }
         }
       }
     }
 
     // Activity log (non-fatal, di luar transaksi)
     if (action === "approve") {
-      await logActivity("customer_approval", 0, "approved", "customer",
+      await logActivity("customer_approval", locked?.id ?? 0, "approved", "customer",
         `Customer ${customerName ?? "-"} menyetujui penawaran. SO: ${soNumber}`,
-        { soNumber, salesDocId, orderId }).catch?.(() => {});
+        { soNumber, salesDocId, orderId, approvalId: locked?.id }).catch?.(() => {})
+      // order_updates entry untuk persetujuan customer
+      if (orderId) {
+        await logOrderUpdate(
+          orderId,
+          "Customer Approved",
+          `Customer ${customerName ?? "-"} menyetujui penawaran.${soNumber ? ` SO: ${soNumber}` : ""}`,
+          "system",
+          true,
+        ).catch(() => {});
+      // Log SO creation activity jika SO berhasil dibuat
+
+      if (salesDocId && soNumber) {
+        await logActivity("sales_order", salesDocId, "so_created", "system",
+          `SO ${soNumber} dibuat otomatis dari persetujuan customer VMF${customerName ? ` (${customerName})` : ""}`,
+          { docNumber: soNumber, approvalId: locked?.id, orderId }).catch?.(() => {});
+      }
     } else {
-      await logActivity("customer_approval", 0, "rejected", "customer",
-        `Customer ${customerName ?? "-"} menolak penawaran`, { orderId }).catch?.(() => {});
+      await logActivity("customer_approval", locked?.id ?? 0, "rejected", "customer",
+        `Customer ${customerName ?? "-"} menolak penawaran`, { orderId, approvalId: locked?.id }).catch?.(() => {});
+      // order_updates entry untuk penolakan customer
+      if (orderId) {
+        await logOrderUpdate(
+          orderId,
+          "Customer Rejected",
+          `Customer ${customerName ?? "-"} menolak penawaran.`,
+          "system",
+          false,
+        ).catch(() => {});
+      }
     }
+    }
+    // ↑ tutup if (action === "approve") untuk activity log section
 
     // Notify via WA templates (fire-and-forget)
     if (orderId) {
@@ -1299,6 +1525,16 @@ vendorMiniFormRouter.post("/admin/links", async (req: Request, res: Response) =>
       `Link dibuat untuk ${serviceType} (mode: ${mode ?? "rate_collection"})`,
       { serviceType, orderId, orderNumber, mode });
 
+    // G-1: tambahkan entry ke order_updates timeline
+    if (orderId) {
+      await logOrderUpdate(
+        orderId,
+        "VMF Link Dibuat",
+        `Link form vendor dibuat untuk layanan ${serviceType}${vendorName ? ` (${vendorName})` : ""}`,
+        userId,
+      );
+    }
+
     return res.status(201).json({ ...link, expiresAt: link.expiresAt?.toISOString() ?? null, createdAt: link.createdAt.toISOString(), deactivatedCount });
   } catch (err) {
     req.log?.error({ err }, "vendor-mini-form admin POST links error");
@@ -1402,10 +1638,39 @@ vendorMiniFormRouter.post("/admin/submissions/:id/select", async (req: Request, 
     const [sub] = await db.select().from(vendorMiniFormSubmissionsTable).where(eq(vendorMiniFormSubmissionsTable.id, id));
     if (!sub) return res.status(404).json({ error: "Submission tidak ditemukan" });
 
-    // RC-2 FIX: Wrap deselect-all + select-one in a single transaction to prevent
-    // race condition when two admins select different submissions simultaneously
+    // Wrap deselect-all + select-one dalam transaksi dengan SELECT FOR UPDATE
+    // pada link row agar dua admin concurrent harus antri — mencegah race condition
+    // di mana dua submission berbeda terpilih bersamaan.
     let updated: typeof vendorMiniFormSubmissionsTable.$inferSelect;
+    let conflictError: string | null = null;
     await db.transaction(async (tx) => {
+      // Lock link row terlebih dahulu — semua tx concurrent pada link ini harus antri
+      if (sub.linkId) {
+        await tx
+          .select({ id: vendorMiniFormLinksTable.id })
+          .from(vendorMiniFormLinksTable)
+          .where(eq(vendorMiniFormLinksTable.id, sub.linkId))
+          .for("update");
+
+        // Setelah lock diperoleh, cek apakah ada submission lain yang sudah di-lock
+        // oleh customer approval — jika iya, select admin tidak boleh mengganggunya
+        const [lockedOther] = await tx
+          .select({ id: vendorMiniFormSubmissionsTable.id, vendorName: vendorMiniFormSubmissionsTable.vendorName })
+          .from(vendorMiniFormSubmissionsTable)
+          .where(
+            and(
+              eq(vendorMiniFormSubmissionsTable.linkId, sub.linkId),
+              eq(vendorMiniFormSubmissionsTable.locked, true),
+              ne(vendorMiniFormSubmissionsTable.id, id)
+            )
+          )
+          .limit(1);
+        if (lockedOther) {
+          conflictError = `Vendor ${lockedOther.vendorName ?? "-"} sudah dikunci oleh customer approval, tidak bisa diganti`;
+          return;
+        }
+      }
+
       if (sub.linkId) {
         await tx.update(vendorMiniFormSubmissionsTable)
           .set({ selectedByAdmin: false, selectedAt: null })
@@ -1432,9 +1697,18 @@ vendorMiniFormRouter.post("/admin/submissions/:id/select", async (req: Request, 
       }
     });
 
+    if (conflictError) {
+      return res.status(409).json({ error: conflictError });
+    }
+
     await logActivity("submission", id, "selected", userId,
       `Vendor ${sub.vendorName ?? "-"} dipilih oleh admin`,
       { vendorPrice: sub.vendorPrice, currency: sub.currency, linkId: sub.linkId });
+
+    if (sub.orderId) {
+      updateOrderProgress(sub.orderId, "PRICE_REVIEWED", "admin", userId,
+        `Vendor ${sub.vendorName ?? "-"} dipilih oleh admin`).catch(() => {});
+    }
 
     return res.json({ ...updated!, selectedAt: updated!.selectedAt?.toISOString() ?? null, submittedAt: updated!.submittedAt.toISOString() });
   } catch (err) {
@@ -1543,14 +1817,214 @@ vendorMiniFormRouter.get("/admin/submissions/:id/price-history", async (req: Req
 vendorMiniFormRouter.get("/admin/activity-log", async (req: Request, res: Response) => {
   if (!(await requireClerkUser(req, res))) return;
   try {
-    const logs = await db
-      .select()
-      .from(vmfActivityLogTable)
-      .orderBy(desc(vmfActivityLogTable.createdAt))
-      .limit(200);
-    return res.json(logs.map(l => ({ ...l, createdAt: l.createdAt.toISOString() })));
+    const {
+      entityType, action, orderNumber, actor,
+      from, to,
+      limit: limitQ, offset: offsetQ,
+    } = req.query as Record<string, string | undefined>;
+
+    const limit = Math.min(Number(limitQ) || 200, 500);
+    const offset = Number(offsetQ) || 0;
+
+    const conditions = [];
+    if (entityType) conditions.push(eq(vmfActivityLogTable.entityType, entityType));
+    if (action) conditions.push(eq(vmfActivityLogTable.action, action));
+    if (actor) conditions.push(eq(vmfActivityLogTable.actor, actor));
+    if (from) {
+      const fromDate = new Date(from);
+      if (!isNaN(fromDate.getTime())) {
+        conditions.push(sql`${vmfActivityLogTable.createdAt} >= ${fromDate}`);
+      }
+    }
+    if (to) {
+      const toDate = new Date(to);
+      if (!isNaN(toDate.getTime())) {
+        toDate.setHours(23, 59, 59, 999);
+        conditions.push(sql`${vmfActivityLogTable.createdAt} <= ${toDate}`);
+      }
+    }
+    if (orderNumber) {
+      conditions.push(sql`${vmfActivityLogTable.data}->>'orderNumber' = ${orderNumber}`);
+    }
+
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const [logs, countResult] = await Promise.all([
+      db.select().from(vmfActivityLogTable)
+        .where(where)
+        .orderBy(desc(vmfActivityLogTable.createdAt))
+        .limit(limit)
+        .offset(offset),
+      db.select({ total: count() }).from(vmfActivityLogTable).where(where),
+    ]);
+
+    return res.json({
+      rows: logs.map(l => ({ ...l, createdAt: l.createdAt.toISOString() })),
+      total: countResult[0]?.total ?? 0,
+    });
   } catch (err) {
     req.log?.error({ err }, "activity-log error");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── ADMIN: GET /api/vendor-form/admin/activity-log/gaps ───────────────────────
+// Returns orders where at least one critical VMF step is missing.
+// Critical flow: link_generated → approval_sent → so_created → op_confirm_sent
+
+vendorMiniFormRouter.get("/admin/activity-log/gaps", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  try {
+    const { from, to, orderNumber, gapAfter } = req.query as Record<string, string | undefined>;
+
+    const fromDate = from ? new Date(from) : null;
+    const toDate   = to   ? (() => { const d = new Date(to); d.setHours(23, 59, 59, 999); return d; })() : null;
+
+    const extraConds = sql.join(
+      [
+        fromDate && !isNaN(fromDate.getTime()) ? sql`AND ${vmfActivityLogTable.createdAt} >= ${fromDate}` : null,
+        toDate   && !isNaN(toDate.getTime())   ? sql`AND ${vmfActivityLogTable.createdAt} <= ${toDate}`   : null,
+        orderNumber ? sql`AND ${vmfActivityLogTable.data}->>'orderNumber' = ${orderNumber}` : null,
+      ].filter(Boolean) as ReturnType<typeof sql>[],
+      sql` `,
+    );
+
+    const result = await db.execute(sql`
+      SELECT
+        ${vmfActivityLogTable.data}->>'orderNumber'          AS order_number,
+        bool_or(${vmfActivityLogTable.action} = 'link_generated')   AS has_link_generated,
+        bool_or(${vmfActivityLogTable.action} = 'approval_sent')    AS has_approval_sent,
+        bool_or(${vmfActivityLogTable.action} = 'so_created')       AS has_so_created,
+        bool_or(${vmfActivityLogTable.action} = 'op_confirm_sent')  AS has_op_confirm_sent,
+        MIN(${vmfActivityLogTable.createdAt})  AS first_event,
+        MAX(${vmfActivityLogTable.createdAt})  AS last_event,
+        COUNT(*)::int                          AS total_events
+      FROM ${vmfActivityLogTable}
+      WHERE ${vmfActivityLogTable.data}->>'orderNumber' IS NOT NULL
+        AND ${vmfActivityLogTable.action} IN ('link_generated','approval_sent','so_created','op_confirm_sent')
+        ${extraConds}
+      GROUP BY ${vmfActivityLogTable.data}->>'orderNumber'
+      ORDER BY MIN(${vmfActivityLogTable.createdAt}) DESC
+    `);
+
+    type DbRow = {
+      order_number: string;
+      has_link_generated: boolean;
+      has_approval_sent: boolean;
+      has_so_created: boolean;
+      has_op_confirm_sent: boolean;
+      first_event: string;
+      last_event: string;
+      total_events: number;
+    };
+
+    const allOrders = (result.rows as unknown as DbRow[]);
+
+    const CRITICAL = ["link_generated", "approval_sent", "so_created", "op_confirm_sent"] as const;
+    type CriticalKey = typeof CRITICAL[number];
+    const hasMap: Record<CriticalKey, keyof DbRow> = {
+      link_generated:  "has_link_generated",
+      approval_sent:   "has_approval_sent",
+      so_created:      "has_so_created",
+      op_confirm_sent: "has_op_confirm_sent",
+    };
+
+    const gapRows = allOrders
+      .map(row => {
+        const present = CRITICAL.filter(a => row[hasMap[a]]);
+        const missing = CRITICAL.filter(a => !row[hasMap[a]]);
+        const lastPresentIdx = Math.max(-1, ...present.map(a => CRITICAL.indexOf(a)));
+        // Gap = has made some progress but is missing a subsequent step
+        const hasGap = lastPresentIdx >= 0 && missing.some(a => CRITICAL.indexOf(a) <= lastPresentIdx + 2);
+        return {
+          orderNumber: row.order_number,
+          present,
+          missing,
+          hasGap,
+          firstEvent: row.first_event,
+          lastEvent: row.last_event,
+          totalEvents: Number(row.total_events),
+        };
+      })
+      .filter(r => {
+        if (r.present.length === 0) return false;
+        if (gapAfter && !r.present.includes(gapAfter as CriticalKey)) return false;
+        return r.hasGap;
+      });
+
+    return res.json({
+      rows: gapRows,
+      total: gapRows.length,
+      summary: {
+        total_orders:           allOrders.length,
+        orders_with_gap:        gapRows.length,
+        missing_link_generated:  allOrders.filter(r => !r.has_link_generated).length,
+        missing_approval_sent:   allOrders.filter(r => !r.has_approval_sent).length,
+        missing_so_created:      allOrders.filter(r => !r.has_so_created).length,
+        missing_op_confirm_sent: allOrders.filter(r => !r.has_op_confirm_sent).length,
+      },
+    });
+  } catch (err) {
+    req.log?.error({ err }, "activity-log/gaps error");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── ADMIN: GET /api/vendor-form/admin/gap-config ─────────────────────────────
+
+vendorMiniFormRouter.get("/admin/gap-config", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  try {
+    const { getThresholdDays, getNotifierEnabled } = await import("../lib/vmfGapNotifier.js");
+    const [thresholdDays, enabled] = await Promise.all([getThresholdDays(), getNotifierEnabled()]);
+    return res.json({ thresholdDays, enabled });
+  } catch (err) {
+    req.log?.error({ err }, "gap-config GET error");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── ADMIN: POST /api/vendor-form/admin/gap-config ────────────────────────────
+
+vendorMiniFormRouter.post("/admin/gap-config", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  try {
+    const { thresholdDays, enabled } = req.body as { thresholdDays?: unknown; enabled?: unknown };
+    const { setThresholdDays, setNotifierEnabled } = await import("../lib/vmfGapNotifier.js");
+
+    const updates: string[] = [];
+    if (thresholdDays !== undefined) {
+      const n = Number(thresholdDays);
+      if (isNaN(n) || n < 1 || n > 365) return res.status(400).json({ error: "thresholdDays harus antara 1–365" });
+      await setThresholdDays(Math.round(n));
+      updates.push(`thresholdDays=${Math.round(n)}`);
+    }
+    if (enabled !== undefined) {
+      await setNotifierEnabled(Boolean(enabled));
+      updates.push(`enabled=${Boolean(enabled)}`);
+    }
+    if (updates.length === 0) return res.status(400).json({ error: "Tidak ada field yang diupdate" });
+    return res.json({ ok: true, updated: updates });
+  } catch (err) {
+    req.log?.error({ err }, "gap-config POST error");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── ADMIN: POST /api/vendor-form/admin/activity-log/gaps/trigger ─────────────
+// Manually triggers a VMF gap check and WA digest right now.
+
+vendorMiniFormRouter.post("/admin/activity-log/gaps/trigger", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  try {
+    const { runVmfGapCheck } = await import("../lib/vmfGapNotifier.js");
+    // Run in background — return immediately
+    runVmfGapCheck().catch((err: unknown) => {
+      req.log?.warn({ err }, "manual VMF gap check error");
+    });
+    return res.json({ ok: true, message: "Gap check dimulai. Notifikasi WA akan dikirim jika ada order yang stuck." });
+  } catch (err) {
+    req.log?.error({ err }, "gap trigger error");
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1614,6 +2088,19 @@ vendorMiniFormRouter.post("/admin/customer-approvals", async (req: Request, res:
       `Link approval dibuat untuk ${customerName ?? "customer"}`,
       { orderNumber, sellingPrice, currency, vendorCost, markupPct });
 
+    // G-2: tambahkan entry ke order_updates timeline
+    if (orderId) {
+      const priceLabel = sellingPrice
+        ? `${currency ?? "IDR"} ${Number(sellingPrice).toLocaleString("id-ID")}`
+        : "-";
+      await logOrderUpdate(
+        orderId,
+        "Penawaran Dibuat",
+        `Link persetujuan customer dibuat. Harga: ${priceLabel}`,
+        userId,
+      );
+    }
+
     // Update link itemStatus if orderId matches
     if (orderId) {
       await db.update(vendorMiniFormLinksTable)
@@ -1633,7 +2120,9 @@ vendorMiniFormRouter.post("/admin/customer-approvals", async (req: Request, res:
 vendorMiniFormRouter.get("/admin/customer-approvals", async (req: Request, res: Response) => {
   if (!(await requireClerkUser(req, res))) return;
   try {
-    const approvals = await db
+    const orderIdFilter = req.query["orderId"] ? Number(req.query["orderId"]) : null;
+
+    const query = db
       .select({
         approval: customerApprovalsTable,
         salesDocId: salesDocumentsTable.id,
@@ -1642,9 +2131,13 @@ vendorMiniFormRouter.get("/admin/customer-approvals", async (req: Request, res: 
       .leftJoin(
         salesDocumentsTable,
         eq(salesDocumentsTable.docNumber, customerApprovalsTable.soNumber),
-      )
-      .orderBy(desc(customerApprovalsTable.createdAt));
-    return res.json(approvals.map(({ approval: a, salesDocId }) => ({
+      );
+
+    const rows = orderIdFilter
+      ? await query.where(eq(customerApprovalsTable.orderId, orderIdFilter)).orderBy(desc(customerApprovalsTable.createdAt))
+      : await query.orderBy(desc(customerApprovalsTable.createdAt));
+
+    return res.json(rows.map(({ approval: a, salesDocId }) => ({
       ...a,
       salesDocId: salesDocId ?? null,
       createdAt: a.createdAt.toISOString(),
@@ -1677,8 +2170,19 @@ vendorMiniFormRouter.post("/admin/op-confirms", async (req: Request, res: Respon
       instruction: instruction ?? null, status: "pending",
     }).returning();
 
-    await logActivity("op_confirm", conf.id, "created", (req.user as { id: string } | undefined)?.id ?? "admin",
+    const userId4a = (req.user as { id: string } | undefined)?.id ?? "admin";
+    await logActivity("op_confirm", conf.id, "created", userId4a,
       `Link konfirmasi operasional dibuat untuk ${vendorName ?? "vendor"}`, { orderNumber, serviceType });
+
+    // G-4: tambahkan entry ke order_updates timeline
+    if (orderId) {
+      await logOrderUpdate(
+        orderId,
+        "Konfirmasi Operasional Diminta",
+        `Link konfirmasi operasional dikirim ke ${vendorName ?? "vendor"} (${serviceType}).`,
+        userId4a,
+      ).catch(() => {});
+    }
 
     return res.status(201).json({ ...conf, createdAt: conf.createdAt.toISOString() });
   } catch (err) {
@@ -1799,6 +2303,7 @@ vendorMiniFormRouter.delete("/admin/submissions/:id", async (req: Request, res: 
     await logActivity("submission", id, "deleted", userId,
       `Submission dari ${deleted.vendorName ?? "vendor"} dihapus oleh admin`,
       { vendorPrice: deleted.vendorPrice, responseStatus: deleted.responseStatus });
+    if (deleted.attachmentUrl) deleteFromSupabase(deleted.attachmentUrl).catch(() => {});
     return res.json({ success: true });
   } catch (err) {
     req.log?.error({ err }, "vendor-mini-form DELETE submission error");
@@ -1823,6 +2328,9 @@ vendorMiniFormRouter.post("/admin/links/:id/short-link", async (req: Request, re
     const longUrl = domain ? `https://${domain}/vendor-mini-form/${link.token}` : `/vendor-mini-form/${link.token}`;
     const shortUrl = await generateShortLink(longUrl, { context: "vendor_mini_form", refType: "vendor_mini_form_link", refId: String(link.id) });
     await db.update(vendorMiniFormLinksTable).set({ shortUrl }).where(eq(vendorMiniFormLinksTable.id, id));
+    await logActivity("link", id, "link_generated", (req.user as { id: string } | undefined)?.id ?? "admin",
+      `Short link di-generate untuk ${link.serviceType}${link.orderNumber ? ` (Order: ${link.orderNumber})` : ""}`,
+      { shortUrl, serviceType: link.serviceType, orderNumber: link.orderNumber });
     return res.json({ shortUrl, cached: false });
   } catch (err) {
     req.log?.error({ err }, "vendor-mini-form short-link error");
@@ -1845,6 +2353,9 @@ vendorMiniFormRouter.post("/admin/links/:id/reset-short-link", async (req: Reque
     const longUrl = domain ? `https://${domain}/vendor-mini-form/${link.token}` : `/vendor-mini-form/${link.token}`;
     const shortUrl = await generateShortLink(longUrl, { context: "vendor_mini_form", refType: "vendor_mini_form_link", refId: String(link.id) });
     await db.update(vendorMiniFormLinksTable).set({ shortUrl }).where(eq(vendorMiniFormLinksTable.id, id));
+    await logActivity("link", id, "link_generated", (req.user as { id: string } | undefined)?.id ?? "admin",
+      `Short link di-reset untuk ${link.serviceType}${link.orderNumber ? ` (Order: ${link.orderNumber})` : ""}`,
+      { shortUrl, serviceType: link.serviceType, orderNumber: link.orderNumber });
     return res.json({ shortUrl });
   } catch (err) {
     req.log?.error({ err }, "vendor-mini-form reset-short-link error");
@@ -1916,6 +2427,9 @@ vendorMiniFormRouter.post("/admin/customer-approvals/:id/retry-so", async (req: 
       await db.update(customerApprovalsTable)
         .set({ soNumber: soResult.docNumber })
         .where(eq(customerApprovalsTable.id, id));
+      await logActivity("sales_order", soResult.docId, "so_created", (req.user as { id: string } | undefined)?.id ?? "admin",
+        `SO ${soResult.docNumber} dibuat ulang via retry untuk approval ID ${id}${approval.customerName ? ` (${approval.customerName})` : ""}`,
+        { docNumber: soResult.docNumber, approvalId: id, orderId: approval.orderId, orderNumber: approval.orderNumber });
       return res.json({ ok: true, docId: soResult.docId, docNumber: soResult.docNumber });
     } else if (soResult.reason === "already_exists") {
       if (!approval.soNumber) {
@@ -1958,8 +2472,24 @@ vendorMiniFormRouter.post("/admin/customer-approvals/:id/send-wa", async (req: R
         .where(eq(logisticOrdersTable.id, approval.orderId)).limit(1);
       if (orderRow) {
         await sendCustomerApprovalNotification(buildOrderDataFromRow(orderRow), priceStr, approvalUrl);
-        await logActivity("customer_approval", id, "sent_wa", (req.user as { id: string } | undefined)?.id ?? "admin",
+        const userId2b = (req.user as { id: string } | undefined)?.id ?? "admin";
+        await logActivity("customer_approval", id, "sent_wa", userId2b,
           `WA penawaran dikirim ke customer ${approval.customerName ?? "-"}`, { phone: target });
+        // G-2b: order_updates entry saat WA approval dikirim ke customer
+        if (approval.orderId) {
+          await logOrderUpdate(
+            approval.orderId,
+            "Penawaran Dikirim ke Customer",
+            `WA penawaran harga ${priceStr} dikirim ke ${approval.customerName ?? "customer"} (${target}).`,
+            userId2b,
+          ).catch(() => {});
+        }
+        const actorId = (req.user as { id: string } | undefined)?.id ?? "admin";
+        await logActivity("customer_approval", id, "sent_wa", actorId,
+          `WA penawaran dikirim ke customer ${approval.customerName ?? "-"}`, { phone: target });
+        await logActivity("customer_approval", id, "approval_sent", actorId,
+          `Link approval dikirim ke customer ${approval.customerName ?? "-"} via WhatsApp${approval.orderNumber ? ` (Order: ${approval.orderNumber})` : ""}`,
+          { phone: target, channel: "whatsapp", orderNumber: approval.orderNumber, sellingPrice: approval.sellingPrice });
         return res.json({ success: true, message: "Pesan WA ke customer berhasil dikirim" });
       }
     }
@@ -1973,8 +2503,22 @@ vendorMiniFormRouter.post("/admin/customer-approvals/:id/send-wa", async (req: R
 
     await sendWhatsApp(target, msg, { context: "customer-approval-send", refType: "customer_approval", refId: String(approval.id) });
 
-    await logActivity("customer_approval", id, "sent_wa", (req.user as { id: string } | undefined)?.id ?? "admin",
+    const actorId = (req.user as { id: string } | undefined)?.id ?? "admin";
+    await logActivity("customer_approval", id, "sent_wa", actorId,
       `WA penawaran dikirim ke customer ${approval.customerName ?? "-"}`, { phone: target });
+    await logActivity("customer_approval", id, "approval_sent", actorId,
+      `Link approval dikirim ke customer ${approval.customerName ?? "-"} via WhatsApp${approval.orderNumber ? ` (Order: ${approval.orderNumber})` : ""}`,
+      { phone: target, channel: "whatsapp", orderNumber: approval.orderNumber, sellingPrice: approval.sellingPrice });
+
+    // order_updates entry
+    if (approval.orderId) {
+      await logOrderUpdate(
+        approval.orderId,
+        "Penawaran Dikirim ke Customer",
+        `WA penawaran harga ${priceStr} dikirim ke ${approval.customerName ?? "customer"} (${target}).`,
+        actorId,
+      ).catch(() => {});
+    }
 
     return res.json({ success: true, message: "Pesan WA ke customer berhasil dikirim" });
   } catch (err) {
@@ -2055,12 +2599,248 @@ vendorMiniFormRouter.post("/admin/op-confirms/:id/send-wa", async (req: Request,
       await sendWhatsApp(phone.trim(), msg, { context: "op-confirm-send", refType: "vendor_op_confirm", refId: String(conf.id) });
     }
 
-    await logActivity("op_confirm", id, "sent_wa", (req.user as { id: string } | undefined)?.id ?? "admin",
+    const userId4b = (req.user as { id: string } | undefined)?.id ?? "admin";
+    const opActorId = (req.user as { id: string } | undefined)?.id ?? "admin";
+    await logActivity("op_confirm", id, "sent_wa", opActorId,
       `WA op-confirm dikirim ke ${conf.vendorName ?? "vendor"}`, { phone });
+    await logActivity("op_confirm", id, "op_confirm_sent", opActorId,
+      `Link konfirmasi operasional dikirim ke ${conf.vendorName ?? "vendor"} via WhatsApp${conf.orderNumber ? ` (Order: ${conf.orderNumber})` : ""}`,
+      { phone, channel: "whatsapp", orderNumber: conf.orderNumber, serviceType: conf.serviceType });
+
+    // G-4b: order_updates entry saat WA op-confirm dikirim ke vendor
+    if (conf.orderId) {
+      await logOrderUpdate(
+        conf.orderId,
+        "Op-Confirm WA Dikirim",
+        `WA konfirmasi operasional dikirim ke ${conf.vendorName ?? "vendor"} (${SERVICE_SCHEMAS[conf.serviceType]?.label ?? conf.serviceType}).`,
+        userId4b,
+      ).catch(() => {});
+    }
 
     return res.json({ success: true, message: "Pesan WA ke vendor berhasil dikirim" });
   } catch (err) {
     req.log?.error({ err }, "send-wa op-confirm error");
+    return res.status(500).json({ error: "Gagal mengirim WA" });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CUSTOMER INVOICE LINKS — Public mini form untuk tahap 10 (Invoice & Close)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── PUBLIC: GET /api/vendor-form/customer-invoice/:token ──────────────────────
+vendorMiniFormRouter.get("/customer-invoice/:token", async (req: Request, res: Response) => {
+  const { token } = req.params as { token: string };
+  try {
+    const [link] = await db.select().from(customerInvoiceLinksTable)
+      .where(eq(customerInvoiceLinksTable.token, token));
+    if (!link) return res.status(404).json({ error: "Link invoice tidak ditemukan" });
+    if (link.expiresAt && link.expiresAt < new Date()) return res.status(410).json({ error: "Link invoice sudah kadaluarsa" });
+
+    // Tandai viewed_at jika belum pernah dibuka
+    if (!link.viewedAt) {
+      await db.update(customerInvoiceLinksTable)
+        .set({ viewedAt: new Date() })
+        .where(eq(customerInvoiceLinksTable.token, token));
+    }
+
+    return res.json({
+      token: link.token,
+      orderNumber: link.orderNumber,
+      invoiceNumber: link.invoiceNumber,
+      customerName: link.customerName,
+      currency: link.currency,
+      subtotal: link.subtotal ? Number(link.subtotal) : null,
+      taxRate: link.taxRate ? Number(link.taxRate) : 11,
+      taxAmount: link.taxAmount ? Number(link.taxAmount) : null,
+      grandTotal: link.grandTotal ? Number(link.grandTotal) : null,
+      amountPaid: link.amountPaid ? Number(link.amountPaid) : 0,
+      paymentStatus: link.paymentStatus,
+      paymentMethod: link.paymentMethod,
+      dueDate: link.dueDate,
+      notes: link.notes,
+      lineItems: link.lineItems ?? [],
+      acknowledgedAt: link.acknowledgedAt,
+      status: link.status,
+    });
+  } catch (err) {
+    req.log?.error({ err }, "customer-invoice GET error");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── PUBLIC: POST /api/vendor-form/customer-invoice/:token ─────────────────────
+// Customer mengakui penerimaan invoice (acknowledgement)
+vendorMiniFormRouter.post("/customer-invoice/:token", async (req: Request, res: Response) => {
+  const { token } = req.params as { token: string };
+  try {
+    const [link] = await db.select().from(customerInvoiceLinksTable)
+      .where(eq(customerInvoiceLinksTable.token, token));
+    if (!link) return res.status(404).json({ error: "Link invoice tidak ditemukan" });
+    if (link.acknowledgedAt) return res.status(409).json({ error: "Invoice sudah dikonfirmasi sebelumnya" });
+
+    await db.update(customerInvoiceLinksTable)
+      .set({ acknowledgedAt: new Date() })
+      .where(eq(customerInvoiceLinksTable.token, token));
+
+    // Notif admin
+    const adminGroupWa = await getAdminGroupWa();
+    if (adminGroupWa && link.orderNumber) {
+      const msg = `✅ *Invoice Dikonfirmasi Customer*\n\nNo. Invoice: ${link.invoiceNumber ?? "—"}\nOrder: ${link.orderNumber}\nCustomer: ${link.customerName ?? "—"}\nTotal: ${link.currency ?? "IDR"} ${Number(link.grandTotal ?? 0).toLocaleString("id-ID")}\n\nCustomer telah mengkonfirmasi penerimaan invoice.`;
+      sendWhatsApp(adminGroupWa, msg, { context: "customer-invoice-ack", refType: "customer_invoice", refId: String(link.id) }).catch(() => {});
+    }
+
+    return res.json({ ok: true, message: "Terima kasih! Invoice telah Anda konfirmasi." });
+  } catch (err) {
+    req.log?.error({ err }, "customer-invoice POST error");
+    return res.status(500).json({ error: "Gagal menyimpan konfirmasi" });
+  }
+});
+
+// ── ADMIN: POST /api/vendor-form/admin/customer-invoices ──────────────────────
+// Buat link invoice publik + kirim WA ke customer
+vendorMiniFormRouter.post("/admin/customer-invoices", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const {
+    salesDocId, orderId, orderNumber, invoiceNumber, customerName, customerPhone,
+    currency, dueDate, notes, sendWa,
+  } = req.body as {
+    salesDocId?: number; orderId?: number; orderNumber?: string;
+    invoiceNumber?: string; customerName?: string; customerPhone?: string;
+    currency?: string; dueDate?: string; notes?: string; sendWa?: boolean;
+  };
+
+  try {
+    let subtotal: number | null = null;
+    let taxRate = 11;
+    let taxAmount: number | null = null;
+    let grandTotal: number | null = null;
+    let lineItems: unknown[] = [];
+
+    // Ambil data dari sales_documents jika ada salesDocId
+    if (salesDocId) {
+      const [doc] = await db.select().from(salesDocumentsTable)
+        .where(eq(salesDocumentsTable.id, salesDocId));
+      if (doc) {
+        subtotal = Number(doc.totalAmount);
+        taxAmount = Number(doc.taxAmount);
+        grandTotal = Number(doc.grandTotal);
+        // Hitung tax rate dari data
+        if (subtotal > 0 && taxAmount > 0) {
+          taxRate = Math.round((taxAmount / subtotal) * 100);
+        }
+        // Ambil line items
+        const lines = await db.select().from(salesDocumentLinesTable)
+          .where(eq(salesDocumentLinesTable.documentId, salesDocId));
+        lineItems = lines.map(l => ({
+          description: l.name,
+          qty: Number(l.quantity),
+          unit: "",
+          unitPrice: Number(l.unitPrice),
+          subtotal: Number(l.subtotal),
+        }));
+      }
+    }
+
+    const token = randomBytes(24).toString("hex");
+    const expiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 hari
+    const createdBy = (req.user as { id?: string } | undefined)?.id ?? "admin";
+
+    const [link] = await db.insert(customerInvoiceLinksTable).values({
+      token,
+      salesDocId: salesDocId ?? null,
+      orderId: orderId ?? null,
+      orderNumber: orderNumber ?? null,
+      invoiceNumber: invoiceNumber ?? null,
+      customerName: customerName ?? null,
+      customerPhone: customerPhone ?? null,
+      currency: currency ?? "IDR",
+      subtotal: subtotal ? String(subtotal) : null,
+      taxRate: String(taxRate),
+      taxAmount: taxAmount ? String(taxAmount) : null,
+      grandTotal: grandTotal ? String(grandTotal) : null,
+      notes: notes ?? null,
+      lineItems,
+      dueDate: dueDate ? new Date(dueDate) : null,
+      expiresAt: expiry,
+      createdBy,
+    } as any).returning();
+
+    const { getPreferredDomain } = await import("../lib/domain.js");
+    const domain = getPreferredDomain();
+    const invoiceUrl = domain ? `https://${domain}/customer-invoice/${token}` : `/customer-invoice/${token}`;
+
+    // Kirim WA ke customer jika diminta
+    if (sendWa && customerPhone) {
+      const invoiceNumLabel = invoiceNumber ? `No. Invoice: *${invoiceNumber}*\n` : "";
+      const orderNumLabel = orderNumber ? `No. Order: *${orderNumber}*\n` : "";
+      const dueDateLabel = dueDate ? `Jatuh Tempo: *${new Date(dueDate).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}*\n` : "";
+      const totalLabel = grandTotal ? `Total: *${currency ?? "IDR"} ${Math.round(grandTotal).toLocaleString("id-ID")}*\n` : "";
+      const waMsg = `📄 *Invoice Pembayaran*\n\n` +
+        `Kepada Yth. ${customerName ?? "Customer"},\n\n` +
+        invoiceNumLabel + orderNumLabel + totalLabel + dueDateLabel +
+        `\nSilakan lihat detail invoice dan konfirmasi penerimaan melalui link berikut:\n${invoiceUrl}` +
+        (notes ? `\n\n📝 Catatan: ${notes}` : "") +
+        `\n\nTerima kasih atas kepercayaan Anda.`;
+      await sendWhatsApp(customerPhone, waMsg, { context: "customer-invoice-send", refType: "customer_invoice", refId: String(link.id) });
+    }
+
+    return res.json({ success: true, token, url: invoiceUrl, id: link.id });
+  } catch (err) {
+    req.log?.error({ err }, "create customer-invoice error");
+    return res.status(500).json({ error: "Gagal membuat link invoice" });
+  }
+});
+
+// ── ADMIN: GET /api/vendor-form/admin/customer-invoices ───────────────────────
+vendorMiniFormRouter.get("/admin/customer-invoices", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const orderIdFilter = req.query["orderId"] ? Number(req.query["orderId"]) : null;
+  try {
+    const query = db.select().from(customerInvoiceLinksTable).orderBy(desc(customerInvoiceLinksTable.createdAt));
+    const rows = orderIdFilter
+      ? await query.where(eq(customerInvoiceLinksTable.orderId, orderIdFilter))
+      : await query.limit(100);
+    return res.json(rows);
+  } catch (err) {
+    req.log?.error({ err }, "get customer-invoices error");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── ADMIN: POST /api/vendor-form/admin/customer-invoices/:id/send-wa ──────────
+vendorMiniFormRouter.post("/admin/customer-invoices/:id/send-wa", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const id = Number(req.params["id"]);
+  if (isNaN(id)) return res.status(400).json({ error: "ID tidak valid" });
+  try {
+    const [link] = await db.select().from(customerInvoiceLinksTable)
+      .where(eq(customerInvoiceLinksTable.id, id));
+    if (!link) return res.status(404).json({ error: "Invoice link tidak ditemukan" });
+
+    const phone = req.body.phone ?? link.customerPhone;
+    if (!phone) return res.status(400).json({ error: "Nomor telepon customer tidak tersedia" });
+
+    const { getPreferredDomain } = await import("../lib/domain.js");
+    const domain = getPreferredDomain();
+    const invoiceUrl = domain ? `https://${domain}/customer-invoice/${link.token}` : `/customer-invoice/${link.token}`;
+
+    const invoiceNumLabel = link.invoiceNumber ? `No. Invoice: *${link.invoiceNumber}*\n` : "";
+    const orderNumLabel = link.orderNumber ? `No. Order: *${link.orderNumber}*\n` : "";
+    const totalLabel = link.grandTotal ? `Total: *${link.currency ?? "IDR"} ${Math.round(Number(link.grandTotal)).toLocaleString("id-ID")}*\n` : "";
+    const dueDateLabel = link.dueDate ? `Jatuh Tempo: *${new Date(link.dueDate).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}*\n` : "";
+
+    const waMsg = `📄 *Invoice Pembayaran*\n\n` +
+      `Kepada Yth. ${link.customerName ?? "Customer"},\n\n` +
+      invoiceNumLabel + orderNumLabel + totalLabel + dueDateLabel +
+      `\nSilakan lihat detail invoice dan konfirmasi penerimaan melalui link berikut:\n${invoiceUrl}` +
+      (link.notes ? `\n\n📝 Catatan: ${link.notes}` : "") +
+      `\n\nTerima kasih atas kepercayaan Anda.`;
+
+    await sendWhatsApp(phone, waMsg, { context: "customer-invoice-send", refType: "customer_invoice", refId: String(link.id) });
+    return res.json({ success: true });
+  } catch (err) {
+    req.log?.error({ err }, "send-wa customer-invoice error");
     return res.status(500).json({ error: "Gagal mengirim WA" });
   }
 });

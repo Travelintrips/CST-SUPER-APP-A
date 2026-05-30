@@ -1,6 +1,6 @@
 import {
   pgTable, pgEnum, serial, text, integer, numeric, boolean,
-  timestamp, index, unique,
+  timestamp, index, unique, jsonb,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -85,6 +85,8 @@ export const purchaseRequestLinesTable = pgTable("purchase_request_lines", {
   unit: text("unit").notNull().default("pcs"),
   estimatedCost: numeric("estimated_cost", { precision: 14, scale: 2 }).notNull().default("0"),
   notes: text("notes"),
+  productCategory: text("product_category"),
+  customFieldValues: jsonb("custom_field_values"),
 }, (t) => [
   index("pr_lines_pr_idx").on(t.prId),
 ]);
@@ -120,6 +122,10 @@ export const vendorQuotationsTable = pgTable("vendor_quotations", {
   totalAmount: numeric("total_amount", { precision: 14, scale: 2 }).notNull().default("0"),
   taxAmount: numeric("tax_amount", { precision: 14, scale: 2 }).notNull().default("0"),
   grandTotal: numeric("grand_total", { precision: 14, scale: 2 }).notNull().default("0"),
+  incoterm: text("incoterm"),
+  deliveryTerm: text("delivery_term"),
+  availability: text("availability"),
+  documentRefs: jsonb("document_refs"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (t) => [
@@ -183,6 +189,9 @@ export const goodsReceiptLinesTable = pgTable("goods_receipt_lines", {
   subtotal: numeric("subtotal", { precision: 14, scale: 2 }).notNull().default("0"),
   rackId: integer("rack_id").references(() => warehouseRacksTable.id, { onDelete: "set null" }),
   notes: text("notes"),
+  condition: text("condition"),
+  receivingNotes: text("receiving_notes"),
+  attachments: jsonb("attachments"),
 }, (t) => [
   index("gr_lines_gr_idx").on(t.grId),
 ]);

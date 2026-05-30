@@ -1,0 +1,182 @@
+Masuk ke fase ENTERPRISE HARDENING & SCALABILITY.
+
+Jangan tambah fitur random dulu.
+Fokus membuat sistem lebih stabil, scalable, aman, dan siap multi-user production.
+
+Buat audit + implementation plan untuk area berikut:
+
+==================================================
+1. OBSERVABILITY & MONITORING
+==================================================
+
+Tambahkan architecture plan untuk:
+- centralized error logging
+- API monitoring
+- failed request tracking
+- failed WA send tracking
+- SSE disconnect monitoring
+- upload/storage monitoring
+- order lifecycle anomaly detection
+
+Jika belum ada:
+- structured logger
+- request ID
+- correlation ID
+- audit trail standardization
+
+Rekomendasikan:
+- log structure
+- monitoring strategy
+- alert strategy
+
+==================================================
+2. QUEUE / BACKGROUND JOB SYSTEM
+==================================================
+
+Audit flow yang sebaiknya async/queue:
+- WA sending
+- bulk import
+- attachment processing
+- notification sending
+- timeline logging
+- heavy recalculation
+- OCR future feature
+
+Buat recommendation:
+- mana yang masih sync
+- mana yang harus queue
+- retry mechanism
+- dead-letter strategy
+
+==================================================
+3. PERFORMANCE & SCALABILITY
+==================================================
+
+Audit:
+- N+1 query risk
+- missing pagination
+- large order list
+- heavy attachment list
+- SSE scalability
+- React rerender heavy page
+- memory leak risk
+- expensive Supabase query
+
+Rekomendasikan:
+- pagination
+- lazy loading
+- cache strategy
+- indexing strategy
+- query optimization
+
+==================================================
+4. API STANDARDIZATION
+==================================================
+
+Audit:
+- response shape consistency
+- error response consistency
+- status code consistency
+- validation consistency
+- duplicate endpoint logic
+
+Buat recommendation:
+- API response standard
+- validation standard
+- error format standard
+
+==================================================
+5. DOMAIN MODEL CLEANUP
+==================================================
+
+Audit:
+- inconsistent naming
+- duplicate status enum
+- duplicated business logic
+- mixed serviceType naming
+- workflow naming inconsistency
+
+Buat proposal standardization:
+- order status
+- approval status
+- submission status
+- service type
+- workflow type
+
+==================================================
+6. FEATURE FLAG SYSTEM
+==================================================
+
+Buat recommendation untuk feature flag:
+- SSE enable/disable
+- auto SO creation
+- advanced WA rendering
+- OCR module future
+- AI assistant future
+- public mini form advanced mode
+
+==================================================
+7. BACKUP & DISASTER RECOVERY
+==================================================
+
+Audit:
+- DB backup frequency
+- storage backup
+- rollback capability
+- restore testing
+- attachment recovery
+
+Buat DR plan:
+- RPO target
+- RTO target
+- emergency recovery steps
+
+==================================================
+8. FUTURE MODULE READINESS
+==================================================
+
+Audit apakah architecture sudah siap untuk:
+- OCR document parsing
+- AI quotation assistant
+- vendor auto matching
+- accounting integration
+- multi-company
+- mobile app
+- customer tracking realtime
+- warehouse/TPS integration
+- customs integration future
+
+==================================================
+OUTPUT WAJIB
+==================================================
+
+A. HARDENING MATRIX
+Area | Current Status | Risk | Recommendation | Priority
+
+B. SCALABILITY RISK
+- bottleneck
+- impact
+- suggested solution
+
+C. ARCHITECTURE DEBT
+- duplicated logic
+- technical debt
+- cleanup recommendation
+
+D. FUTURE READINESS SCORE
+- AI readiness
+- ERP readiness
+- multi-company readiness
+- mobile readiness
+
+E. IMPLEMENTATION ROADMAP
+Phase 1
+Phase 2
+Phase 3
+
+F. FINAL ENTERPRISE READINESS SCORE
+- Stability
+- Security
+- Scalability
+- Maintainability
+- Enterprise readiness

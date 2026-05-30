@@ -1,5 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "wouter";
+import type { ProductTemplate, DynamicFormValues } from "@workspace/product-templates";
+import {
+  TemplateFieldRenderer,
+  TemplateDocumentRenderer,
+  TemplateChecklistRenderer,
+  TemplateInstructionRenderer,
+} from "@/components/template";
 
 type FieldDef = {
   key: string; label: string;
@@ -16,6 +23,7 @@ type FormMeta = {
   schema: ServiceSchema | null; mode: string; orderId: number | null;
   orderNumber: string | null; orderItemId: number | null; phase: string | null;
   alreadySubmitted?: boolean;
+  productTemplate?: ProductTemplate | null;
 };
 
 function Skeleton({ className }: { className?: string }) {
@@ -129,6 +137,13 @@ export default function AdminMiniFormPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [templateValues, setTemplateValues] = useState<DynamicFormValues>({
+    customFieldValues: {},
+    uploadedDocuments: [],
+    checklistStatus: {},
+    packagingNotes: "",
+    conditionalFlags: {},
+  });
 
   useEffect(() => {
     if (!token) { setError("Token tidak ditemukan"); setLoading(false); return; }
@@ -167,7 +182,13 @@ export default function AdminMiniFormPage() {
         vendorName: staffName.trim() || null,
         contactPerson: contactPerson.trim() || null,
         contactPhone: contactPhone.trim() || null,
-        formData: values,
+        formData: {
+          ...values,
+          ...templateValues.customFieldValues,
+          ...Object.fromEntries(templateValues.uploadedDocuments.map((d) => [`_doc_${d.key}`, d.reference])),
+          ...Object.fromEntries(Object.entries(templateValues.checklistStatus).map(([k, v]) => [`_chk_${k}`, v])),
+          ...(templateValues.packagingNotes ? { _packagingNotes: templateValues.packagingNotes } : {}),
+        },
       };
       const res = await fetch(`/api/admin-form/${token}`, {
         method: "POST",
@@ -277,6 +298,35 @@ export default function AdminMiniFormPage() {
                 ))}
               </div>
             </div>
+          )}
+
+          {meta.productTemplate && (
+            <>
+              <TemplateFieldRenderer
+                template={meta.productTemplate}
+                values={templateValues}
+                onChange={setTemplateValues}
+                accentColor="violet"
+              />
+              <TemplateDocumentRenderer
+                documents={meta.productTemplate.requiredDocuments}
+                values={templateValues.uploadedDocuments}
+                onChange={(docs) => setTemplateValues((v) => ({ ...v, uploadedDocuments: docs }))}
+                accentColor="violet"
+              />
+              <TemplateChecklistRenderer
+                checklist={meta.productTemplate.checklist}
+                values={templateValues.checklistStatus}
+                onChange={(key, checked) => setTemplateValues((v) => ({ ...v, checklistStatus: { ...v.checklistStatus, [key]: checked } }))}
+                accentColor="violet"
+              />
+              <TemplateInstructionRenderer
+                instructions={meta.productTemplate.packagingInstructions}
+                notes={templateValues.packagingNotes}
+                onNotesChange={(notes) => setTemplateValues((v) => ({ ...v, packagingNotes: notes }))}
+                accentColor="violet"
+              />
+            </>
           )}
 
           {submitError && (

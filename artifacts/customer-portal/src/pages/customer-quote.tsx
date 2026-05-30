@@ -1,6 +1,14 @@
 import { useState, useEffect } from "react";
 import { useParams } from "wouter";
 
+type PriceItem = {
+  name: string;
+  category: string;
+  subtotal: number;
+  qty: number | null;
+  unit: string | null;
+};
+
 type QuoteData = {
   token: string;
   status: string;
@@ -12,6 +20,10 @@ type QuoteData = {
   destination: string | null;
   cargoDetail: string | null;
   finalCustomerPrice: number | null;
+  displaySubtotal: number | null;
+  displayTax: number | null;
+  displayTotal: number | null;
+  priceItems: PriceItem[];
   etaFinal: string | null;
   termsConditions: string | null;
   quoteNotes: string | null;
@@ -59,7 +71,7 @@ export default function CustomerQuotePage() {
   const [rejectionReason, setRejectionReason] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [submitResult, setSubmitResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [submitResult, setSubmitResult] = useState<{ ok: boolean; message: string; action?: "approve" | "revise" | "reject" } | null>(null);
 
   const countdown = useCountdown(data?.validUntil);
 
@@ -90,7 +102,7 @@ export default function CustomerQuotePage() {
       });
       const d = await res.json() as { ok?: boolean; message?: string; error?: string };
       if (!res.ok) throw new Error(d.error ?? "Gagal mengirim respons");
-      setSubmitResult({ ok: true, message: d.message ?? "Berhasil" });
+      setSubmitResult({ ok: true, message: d.message ?? "Berhasil", action });
     } catch (e: unknown) {
       setSubmitResult({ ok: false, message: (e as Error).message });
     } finally {
@@ -105,11 +117,12 @@ export default function CustomerQuotePage() {
   if (!data) return <ErrorPage message="Data tidak ditemukan" />;
 
   if (submitResult?.ok) {
-    const emoji = action === "approve" ? "✅" : action === "revise" ? "🔄" : "❌";
+    const doneAction = submitResult.action;
+    const emoji = doneAction === "approve" ? "✅" : doneAction === "revise" ? "🔄" : "❌";
     return (
       <SuccessPage
         emoji={emoji}
-        title={action === "approve" ? "Penawaran Disetujui!" : action === "revise" ? "Revisi Terkirim" : "Penolakan Dicatat"}
+        title={doneAction === "approve" ? "Penawaran Disetujui!" : doneAction === "revise" ? "Revisi Terkirim" : "Penolakan Dicatat"}
         message={submitResult.message}
       />
     );
@@ -188,25 +201,68 @@ export default function CustomerQuotePage() {
           </div>
         )}
 
-        {/* Detail */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-          <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-4">Detail Pengiriman</h2>
-          <div className="space-y-3">
-            <Row label="Layanan" value={data.serviceType} />
-            <Row label="Asal" value={data.origin} />
-            <Row label="Tujuan" value={data.destination} />
-            <Row label="Kargo" value={data.cargoDetail} />
+        {/* Detail — hanya tampil jika ada minimal satu field yang terisi */}
+        {(data.serviceType || data.origin || data.destination || data.cargoDetail) && (
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+            <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-4">Detail Pengiriman</h2>
+            <div className="space-y-3">
+              <Row label="Layanan" value={data.serviceType} />
+              <Row label="Asal" value={data.origin} />
+              <Row label="Tujuan" value={data.destination} />
+              <Row label="Kargo" value={data.cargoDetail} />
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Pricing */}
         <div className="bg-white rounded-2xl shadow-sm border border-blue-100 p-6">
           <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-4">Detail Penawaran</h2>
           <div className="space-y-3">
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-slate-600">Harga Final</span>
-              <span className="text-2xl font-bold text-blue-700">{idr(data.finalCustomerPrice)}</span>
-            </div>
+            {/* Line items (if any) */}
+            {data.priceItems && data.priceItems.length > 0 && (
+              <div className="rounded-xl border border-slate-100 overflow-hidden mb-2">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-slate-50 text-slate-500 text-xs">
+                      <th className="text-left px-3 py-2 font-medium">Item / Layanan</th>
+                      <th className="text-right px-3 py-2 font-medium">Qty</th>
+                      <th className="text-right px-3 py-2 font-medium">Satuan</th>
+                      <th className="text-right px-3 py-2 font-medium">Subtotal</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {data.priceItems.map((item, idx) => (
+                      <tr key={idx}>
+                        <td className="px-3 py-2 text-slate-700">{item.name}</td>
+                        <td className="px-3 py-2 text-right text-slate-500">{item.qty ?? "—"}</td>
+                        <td className="px-3 py-2 text-right text-slate-400 text-xs">{item.unit ?? "—"}</td>
+                        <td className="px-3 py-2 text-right text-slate-700 font-medium">{idr(item.subtotal)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Price breakdown */}
+            {data.displayTax != null && data.displayTotal != null ? (
+              <div className="space-y-2">
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-slate-500">PPN 11%</span>
+                  <span className="text-slate-700 font-medium">{idr(data.displayTax)}</span>
+                </div>
+                <div className="border-t border-slate-200 pt-2 flex justify-between items-center">
+                  <span className="text-sm font-semibold text-slate-700">Total Penawaran</span>
+                  <span className="text-2xl font-bold text-blue-700">{idr(data.displayTotal)}</span>
+                </div>
+              </div>
+            ) : (
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-slate-600">Harga Final</span>
+                <span className="text-2xl font-bold text-blue-700">{idr(data.finalCustomerPrice)}</span>
+              </div>
+            )}
+
             {data.etaFinal && <Row label="Estimasi Waktu" value={data.etaFinal} />}
             {data.validUntil && (
               <Row label="Berlaku Hingga" value={new Date(data.validUntil).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })} />
@@ -324,7 +380,7 @@ export default function CustomerQuotePage() {
         )}
 
         <p className="text-center text-xs text-slate-400 pb-4">
-          CST Logistics · Pertanyaan? Hubungi tim kami.
+Pertanyaan? Hubungi tim kami.
         </p>
       </div>
     </div>
