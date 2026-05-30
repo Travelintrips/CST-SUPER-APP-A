@@ -344,7 +344,7 @@ function CompareVendorsView({ data, token }: { data: CompareData; token: string 
   );
   const [sellingPrice, setSellingPrice] = useState<string>("");
   const [quoteNotes, setQuoteNotes] = useState("");
-  const [sendToCustomer, setSendToCustomer] = useState(false);
+  const [sendToCustomer, setSendToCustomer] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<CompareResult | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -547,18 +547,19 @@ function CompareVendorsView({ data, token }: { data: CompareData; token: string 
 
             {/* Price suggestion */}
             {effectivePrice != null && (
-              <div className="bg-slate-50 rounded-xl px-4 py-3 flex items-center justify-between">
-                <div>
+              <button
+                type="button"
+                onClick={fillPrice}
+                className="w-full bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 rounded-xl px-4 py-3 flex items-center justify-between transition-colors cursor-pointer"
+              >
+                <div className="text-left">
                   <p className="text-xs text-slate-400">Harga vendor dipilih</p>
                   <p className="font-semibold text-slate-700">{idr(effectivePrice)}</p>
                 </div>
-                <button
-                  onClick={fillPrice}
-                  className="text-xs text-blue-600 hover:underline font-medium"
-                >
+                <span className="text-xs text-blue-600 font-medium">
                   Pakai harga ini
-                </button>
-              </div>
+                </span>
+              </button>
             )}
 
             <div>
