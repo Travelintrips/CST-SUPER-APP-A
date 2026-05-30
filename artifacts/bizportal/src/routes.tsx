@@ -105,7 +105,6 @@ import EnterpriseWaTemplatesPage from "@/pages/settings/enterprise-wa-templates"
 import LogisticsUnitsPage from "@/pages/settings/logistics-units";
 import SettingsRolesPage from "@/pages/settings-roles";
 import SettingsApprovalRulesPage from "@/pages/settings-approval-rules";
-import ProductTemplatesPage from "@/pages/product-templates";
 import UsersPage from "@/pages/users";
 import MediaManagerPage from "@/pages/media-manager";
 import OrgManagementPage from "@/pages/OrgManagementPage";
@@ -131,6 +130,7 @@ import LogisticsRfqListPage from "@/pages/logistics-rfq-list";
 import LogisticsRfqDetailPage from "@/pages/logistics-rfq-detail";
 import LogisticsRfqComparisonPage from "@/pages/logistics-rfq-comparison";
 import LogisticOrderDetailPage from "@/pages/logistics/order-detail";
+import OrderAuditTrailPage from "@/pages/logistics/order-audit-trail";
 import VendorPerformancePage from "@/pages/logistics/vendor-performance";
 import InternalTasksPage from "@/pages/logistics/internal-tasks";
 // Misc
@@ -186,6 +186,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/logistics/rfq/:rfqId/comparison" component={PR(LogisticsRfqComparisonPage)} />
       <Route path="/logistics/rfq/:rfqId/detail" component={PR(LogisticsRfqDetailPage)} />
       <Route path="/logistics/rfq" component={PR(LogisticsRfqListPage)} />
+      <Route path="/logistics/orders/:orderId/audit-trail" component={PR(OrderAuditTrailPage)} />
       <Route path="/logistics/orders/:orderId" component={PR(LogisticOrderDetailPage)} />
       <Route path="/logistics/vendor-performance" component={PR(VendorPerformancePage)} />
       <Route path="/logistics/internal-tasks" component={PR(InternalTasksPage)} />

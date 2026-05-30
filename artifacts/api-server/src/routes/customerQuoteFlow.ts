@@ -17,6 +17,7 @@ import { logger } from "../lib/logger.js";
 import { checkOrderGeofence } from "../lib/orderGeofenceChecker.js";
 import { updateOrderProgress } from "../lib/orderProgress.js";
 import { getWaTemplateConfig, renderTemplate, deriveServiceType } from "../lib/orderNotification.js";
+import { logOrderAudit, logCustomerApprovalEvent, logOrderStatusChange } from "../lib/auditTrail.js";
 
 const tok = () => randomBytes(24).toString("hex");
 const fmtRp = (n: number | null | undefined) =>
@@ -118,6 +119,32 @@ customerQuoteAdminRouter.post("/rfq/:rfqId/send-customer-quote", async (req: Req
     });
 
     updateOrderProgress(order.id, "SENT_TO_CUSTOMER", "admin", "Admin", `Penawaran dikirim ke customer. Harga: ${fmtRp(customerPrice)}`).catch(() => {});
+
+    // Audit trail: customer_approval_history + order_audit_logs
+    logCustomerApprovalEvent({
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      rfqId: rfq.id,
+      eventType: "quotation_sent",
+      oldStatus: (order as any).customer_quote_status ?? null,
+      newStatus: "customer_quoted",
+      customerName: order.customerName ?? null,
+      customerEmail: order.email ?? null,
+      customerPhone: order.phone ?? null,
+      tokenUsed: token,
+      actorType: "admin",
+      actorName: "Admin",
+    }).catch(() => {});
+    logOrderAudit({
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      rfqId: rfq.id,
+      actorType: "admin",
+      actorName: "Admin",
+      action: "customer_quoted",
+      description: `Penawaran dikirim ke customer ${order.customerName ?? "-"}. Harga: ${fmtRp(customerPrice)}. ETA: ${etaFinal ?? "—"}.`,
+      newValue: { customerPrice, etaFinal, token },
+    }).catch(() => {});
 
     const quoteUrl = `${getBaseUrl()}/customer-quote/${token}`;
 
@@ -634,6 +661,41 @@ customerQuotePublicRouter.post("/:token/respond", async (req: Request, res: Resp
       });
       sendWhatsApp(adminGroupWa, waAdmin).catch(() => {});
     }
+
+    // Audit trail: customer_approval_history + order_audit_logs
+    logCustomerApprovalEvent({
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      rfqId: link.rfqId ?? null,
+      eventType: response === "approve" ? "quotation_approved"
+        : response === "revise" ? "quotation_revision_requested"
+        : "quotation_rejected",
+      oldStatus: "customer_quoted",
+      newStatus: linkStatus,
+      customerName: order.customerName ?? null,
+      customerEmail: order.email ?? null,
+      customerPhone: order.phone ?? null,
+      tokenUsed: token,
+      response,
+      revisionNotes: revisionNotes ?? null,
+      rejectionReason: rejectionReason ?? null,
+      actorType: "customer",
+      actorName: order.customerName ?? null,
+      ipAddress: req.ip ?? null,
+    }).catch(() => {});
+    logOrderAudit({
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      rfqId: link.rfqId ?? null,
+      actorType: "customer",
+      actorName: order.customerName ?? null,
+      action: response === "approve" ? "customer_approved"
+        : response === "revise" ? "customer_revision_requested"
+        : "customer_rejected",
+      description: notes,
+      newValue: { response, linkStatus, revisionNotes, rejectionReason },
+      ipAddress: req.ip ?? null,
+    }).catch(() => {});
 
     const msg = response === "approve"
       ? "Terima kasih! Penawaran Anda telah dikonfirmasi. Tim kami akan segera menghubungi Anda."

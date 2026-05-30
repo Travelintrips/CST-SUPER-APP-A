@@ -77,3 +77,7 @@ export * from "./orderStageLogs";
 export * from "./aiGovernance";
 export * from "./productTemplates";
 export * from "./purchaseMiniForm";
+export * from "./orderStatusHistory";
+export * from "./orderAuditLogs";
+export * from "./vendorQuoteHistory";
+export * from "./customerApprovalHistory";

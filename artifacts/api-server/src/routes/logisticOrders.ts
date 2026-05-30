@@ -31,6 +31,7 @@ import {
 import { generateShortLink } from "../lib/shortLink.js";
 import { getPreferredDomain } from "../lib/domain.js";
 import { logActivity } from "../lib/activityLog.js";
+import { logOrderStatusChange, logOrderAudit } from "../lib/auditTrail.js";
 // [FLOW BARU] autoCreateRfqAndNotifyVendors dinonaktifkan — vendor tidak boleh dihubungi langsung saat order dibuat.
 // Admin harus review dulu via /bizportal/logistics/rfq sebelum blast ke vendor.
 // import { autoCreateRfqAndNotifyVendors } from "./logisticRfq";
@@ -372,6 +373,29 @@ sendLogisticOrderNotification({
     action: "order_created",
     description: `Order ${orderNumber} dibuat oleh ${body.customerName} (${body.companyName ?? "-"}) — ${body.shipmentType} ${body.origin}→${body.destination}`,
     newValue: { orderNumber, grandTotal: body.grandTotal, shipmentType: body.shipmentType },
+    ipAddress: req.ip ?? null,
+  }).catch(() => {});
+
+  // Audit trail: order_status_history + order_audit_logs
+  logOrderStatusChange({
+    orderId: order.id,
+    orderNumber,
+    oldStatus: null,
+    newStatus: "New Order",
+    changedByType: "customer",
+    changedByName: body.customerName,
+    changedByIp: req.ip ?? null,
+    notes: "Order dibuat",
+    source: "POST /logistic/orders",
+  }).catch(() => {});
+  logOrderAudit({
+    orderId: order.id,
+    orderNumber,
+    actorType: "customer",
+    actorName: body.customerName,
+    action: "order_created",
+    description: `Order ${orderNumber} dibuat oleh ${body.customerName} (${body.companyName ?? "-"}) — ${body.shipmentType} ${body.origin ?? ""}→${body.destination ?? ""}`,
+    newValue: { status: "New Order", grandTotal: body.grandTotal, shipmentType: body.shipmentType },
     ipAddress: req.ip ?? null,
   }).catch(() => {});
 
@@ -1071,6 +1095,31 @@ logisticOrdersRouter.put("/:id/status", async (req: Request, res: Response) => {
     actorType: "admin",
     actorName: adminName,
     actorId: adminId,
+    action: "status_changed",
+    description: `Status order ${updated.orderNumber} diubah menjadi "${status}"`,
+    newValue: { status },
+    ipAddress: req.ip ?? null,
+  }).catch(() => {});
+
+  // Audit trail: catat di order_status_history + order_audit_logs
+  logOrderStatusChange({
+    orderId: updated.id,
+    orderNumber: updated.orderNumber,
+    oldStatus: (req.body as Record<string, unknown>).oldStatus as string | null ?? null,
+    newStatus: status,
+    changedByType: "admin",
+    changedById: adminId,
+    changedByName: adminName,
+    changedByIp: req.ip ?? null,
+    notes: (req.body as Record<string, unknown>).notes as string | null ?? null,
+    source: "PUT /logistic/orders/:id/status",
+  }).catch(() => {});
+  logOrderAudit({
+    orderId: updated.id,
+    orderNumber: updated.orderNumber,
+    actorType: "admin",
+    actorId: adminId,
+    actorName: adminName,
     action: "status_changed",
     description: `Status order ${updated.orderNumber} diubah menjadi "${status}"`,
     newValue: { status },

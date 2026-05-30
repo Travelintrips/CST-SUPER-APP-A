@@ -26,6 +26,7 @@ import { generateShortLink } from "../lib/shortLink.js";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
 import { logActivity } from "../lib/activityLog.js";
+import { logOrderAudit, logVendorQuoteEvent, logOrderStatusChange } from "../lib/auditTrail.js";
 import { updateOrderProgress } from "../lib/orderProgress.js";
 
 function getConfirmFormUrl(token: string): string {
@@ -489,6 +490,45 @@ logisticRfqRouter.post("/vendor-confirm", rfqRateLimit, async (req: Request, res
     newValue: { action, vendorPrice: updatedPrice ?? Number(quote.vendorPrice) },
   }).catch(() => {});
 
+  // Audit trail: vendor_quote_history + order_status_history + order_audit_logs
+  logVendorQuoteEvent({
+    orderId,
+    orderNumber: order.orderNumber,
+    rfqId: rfq?.id ?? null,
+    rfqNumber: rfq?.rfqNumber ?? null,
+    vendorId: vendor?.id ?? null,
+    vendorName: vendor?.name ?? null,
+    eventType: action === "accept" ? "vendor_confirmed" : "vendor_rejected",
+    oldStatus: "pending",
+    newStatus: action === "accept" ? "vendor_confirmed" : "vendor_rejected",
+    oldPrice: Number(quote.vendorPrice),
+    newPrice: basePrice,
+    changedByType: "vendor",
+    changedByName: vendor?.name ?? null,
+    notes: action === "accept"
+      ? `Vendor menerima order, harga: Rp ${basePrice.toLocaleString("id-ID")}`
+      : "Vendor menolak order",
+  }).catch(() => {});
+  logOrderStatusChange({
+    orderId,
+    orderNumber: order.orderNumber,
+    oldStatus: order.status,
+    newStatus: newOrderStatus,
+    changedByType: "vendor",
+    changedByName: vendor?.name ?? null,
+    notes: action === "accept" ? "Vendor confirm via vendor-confirm endpoint" : "Vendor reject via vendor-confirm endpoint",
+    source: "POST /logistic/orders/vendor-confirm",
+  }).catch(() => {});
+  logOrderAudit({
+    orderId,
+    orderNumber: order.orderNumber,
+    actorType: "vendor",
+    actorName: vendor?.name ?? "Vendor",
+    action: action === "accept" ? "vendor_confirmed" : "vendor_rejected",
+    description: `Vendor ${vendor?.name ?? "-"} ${action === "accept" ? "menerima" : "menolak"} order ${order.orderNumber}`,
+    newValue: { action, vendorPrice: basePrice, finalPrice },
+  }).catch(() => {});
+
   logger.info({ orderId, action, vendorId: quote.vendorId }, `[TRUCKING-FIX] Vendor ${action} order`);
   return res.json({ message: action === "accept" ? "Konfirmasi diterima. Terima kasih!" : "Order ditolak." });
 });
@@ -883,6 +923,31 @@ logisticRfqRouter.post("/:id/rfq", async (req: Request, res: Response) => {
     actorType: "admin",
     action: "rfq_blasted",
     description: `RFQ ${rfqNumber} dikirim ke ${vendors.length} vendor untuk order ${order.orderNumber}`,
+    newValue: { rfqNumber, vendorCount: vendors.length, vendorIds },
+  }).catch(() => {});
+
+  // Audit trail: vendor_quote_history per vendor + order_audit_logs
+  for (const v of vendors) {
+    logVendorQuoteEvent({
+      orderId,
+      orderNumber: order.orderNumber,
+      rfqId: rfq.id,
+      rfqNumber,
+      vendorId: v.id,
+      vendorName: v.name,
+      eventType: "rfq_blasted",
+      newStatus: "waiting_response",
+      changedByType: "admin",
+      notes: `RFQ ${rfqNumber} dikirim ke vendor ${v.name}`,
+    }).catch(() => {});
+  }
+  logOrderAudit({
+    orderId,
+    orderNumber: order.orderNumber,
+    rfqId: rfq.id,
+    actorType: "admin",
+    action: "rfq_blasted",
+    description: `RFQ ${rfqNumber} dikirim ke ${vendors.length} vendor`,
     newValue: { rfqNumber, vendorCount: vendors.length, vendorIds },
   }).catch(() => {});
 
@@ -1742,6 +1807,44 @@ logisticRfqRouter.post("/:id/approve", async (req: Request, res: Response) => {
   logActivity({
     orderId,
     actorType: "admin",
+    action: "vendor_selected",
+    description: `Admin memilih vendor ${vendor?.name ?? "-"} dan mengirim penawaran ke customer ${updatedOrder.customerName} — Harga: Rp ${Math.round(sellingPrice).toLocaleString("id-ID")}`,
+    newValue: { vendorId: quote.vendorId, vendorName: vendor?.name, sellingPrice, quoteId },
+  }).catch(() => {});
+
+  // Audit trail: vendor_quote_history (vendor_selected) + order_status_history + order_audit_logs
+  logVendorQuoteEvent({
+    orderId,
+    orderNumber: updatedOrder.orderNumber,
+    rfqId: quote.rfqId ?? null,
+    vendorId: vendor?.id ?? null,
+    vendorName: vendor?.name ?? null,
+    eventType: "vendor_selected",
+    oldStatus: "vendor_confirmed",
+    newStatus: "vendor_selected",
+    newPrice: sellingPrice,
+    changedByType: "admin",
+    changedByName: (req.user as { name?: string } | undefined)?.name ?? "Admin",
+    notes: `Admin memilih vendor ${vendor?.name ?? "-"}, harga jual ke customer: Rp ${Math.round(sellingPrice).toLocaleString("id-ID")}`,
+  }).catch(() => {});
+  logOrderStatusChange({
+    orderId,
+    orderNumber: updatedOrder.orderNumber,
+    oldStatus: updatedOrder.status ?? null,
+    newStatus: "Waiting Customer Confirmation",
+    changedByType: "admin",
+    changedById: (req.user as { id?: string } | undefined)?.id ?? null,
+    changedByName: (req.user as { name?: string } | undefined)?.name ?? "Admin",
+    notes: `Vendor ${vendor?.name ?? "-"} dipilih, penawaran dikirim ke customer`,
+    source: "POST /logistic/orders/:id/approve",
+  }).catch(() => {});
+  logOrderAudit({
+    orderId,
+    orderNumber: updatedOrder.orderNumber,
+    rfqId: quote.rfqId ?? null,
+    actorType: "admin",
+    actorId: (req.user as { id?: string } | undefined)?.id ?? null,
+    actorName: (req.user as { name?: string } | undefined)?.name ?? "Admin",
     action: "vendor_selected",
     description: `Admin memilih vendor ${vendor?.name ?? "-"} dan mengirim penawaran ke customer ${updatedOrder.customerName} — Harga: Rp ${Math.round(sellingPrice).toLocaleString("id-ID")}`,
     newValue: { vendorId: quote.vendorId, vendorName: vendor?.name, sellingPrice, quoteId },
