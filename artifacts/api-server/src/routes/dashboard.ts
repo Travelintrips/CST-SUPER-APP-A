@@ -510,4 +510,155 @@ router.get("/analytics", async (req, res) => {
   }
 });
 
+// ── Enterprise Admin Dashboard ─────────────────────────────────────────────
+// GET /api/dashboard/enterprise?companyId=N|all
+router.get("/enterprise", async (req, res) => {
+  const { isConsolidated, companyId } = parseCompanyParam(req.query.companyId);
+  const cf = (!isConsolidated && companyId !== null)
+    ? sql` AND company_id = ${companyId}`
+    : sql``;
+
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const endOfLastMonth = startOfMonth;
+
+  try {
+    const [
+      totalOrdersRes,
+      pendingRfqRes,
+      pendingApprovalRes,
+      inTransitRes,
+      deliveredRes,
+      revenueThisMonthRes,
+      revenueLastMonthRes,
+      cancelledRes,
+      vendorPerfRes,
+      dailyTrendRes,
+      statusBreakdownRes,
+      topCustomersRes,
+    ] = await Promise.all([
+      db.execute<{ cnt: string }>(sql`
+        SELECT count(*)::text AS cnt FROM logistic_orders WHERE 1=1 ${cf}
+      `),
+      db.execute<{ cnt: string }>(sql`
+        SELECT count(*)::text AS cnt FROM logistic_order_rfqs
+        WHERE status IN ('pending','open','sent','blasted')
+      `),
+      db.execute<{ cnt: string }>(sql`
+        SELECT count(*)::text AS cnt FROM logistic_orders
+        WHERE (customer_confirm_status = 'pending' OR status = 'New Order')
+          AND status != 'Cancelled' ${cf}
+      `),
+      db.execute<{ cnt: string }>(sql`
+        SELECT count(*)::text AS cnt FROM logistic_orders
+        WHERE status IN ('In Progress','in_transit','In Transit') ${cf}
+      `),
+      db.execute<{ cnt: string }>(sql`
+        SELECT count(*)::text AS cnt FROM logistic_orders
+        WHERE status IN ('Completed','delivered','Delivered') ${cf}
+      `),
+      db.execute<{ total: string }>(sql`
+        SELECT COALESCE(SUM(grand_total::numeric), 0)::text AS total
+        FROM logistic_orders
+        WHERE status NOT IN ('Cancelled','cancelled')
+          AND created_at >= ${startOfMonth} ${cf}
+      `),
+      db.execute<{ total: string }>(sql`
+        SELECT COALESCE(SUM(grand_total::numeric), 0)::text AS total
+        FROM logistic_orders
+        WHERE status NOT IN ('Cancelled','cancelled')
+          AND created_at >= ${startOfLastMonth}
+          AND created_at < ${endOfLastMonth} ${cf}
+      `),
+      db.execute<{ cnt: string }>(sql`
+        SELECT count(*)::text AS cnt FROM logistic_orders
+        WHERE status IN ('Cancelled','cancelled') ${cf}
+      `),
+      db.execute<{ supplier_id: string; name: string; score: string; completed: string; on_time: string }>(sql`
+        SELECT vp.supplier_id::text, s.name, vp.score::text,
+               vp.completed_orders::text AS completed,
+               vp.on_time_rate::text AS on_time
+        FROM vendor_performance vp
+        LEFT JOIN suppliers s ON s.id = vp.supplier_id
+        ORDER BY vp.score DESC NULLS LAST
+        LIMIT 5
+      `),
+      db.execute<{ day: string; revenue: string; orders: string }>(sql`
+        SELECT
+          to_char(date_trunc('day', created_at), 'YYYY-MM-DD') AS day,
+          COALESCE(SUM(grand_total::numeric), 0)::text AS revenue,
+          count(*)::text AS orders
+        FROM logistic_orders
+        WHERE created_at >= NOW() - INTERVAL '30 days'
+          AND status NOT IN ('Cancelled','cancelled') ${cf}
+        GROUP BY date_trunc('day', created_at)
+        ORDER BY 1
+      `),
+      db.execute<{ status: string; cnt: string }>(sql`
+        SELECT status, count(*)::text AS cnt
+        FROM logistic_orders WHERE 1=1 ${cf}
+        GROUP BY status ORDER BY cnt::int DESC
+      `),
+      db.execute<{ customer_name: string; cnt: string; revenue: string }>(sql`
+        SELECT customer_name,
+               count(*)::text AS cnt,
+               COALESCE(SUM(grand_total::numeric), 0)::text AS revenue
+        FROM logistic_orders
+        WHERE created_at >= NOW() - INTERVAL '90 days' ${cf}
+        GROUP BY customer_name
+        ORDER BY cnt::int DESC
+        LIMIT 8
+      `),
+    ]);
+
+    const revenueThis = Number(revenueThisMonthRes.rows[0]?.total ?? 0);
+    const revenueLast = Number(revenueLastMonthRes.rows[0]?.total ?? 0);
+    const revenueGrowth = revenueLast > 0
+      ? ((revenueThis - revenueLast) / revenueLast) * 100
+      : revenueThis > 0 ? 100 : 0;
+
+    return res.json({
+      // Core KPIs
+      totalOrders: Number(totalOrdersRes.rows[0]?.cnt ?? 0),
+      pendingRfq: Number(pendingRfqRes.rows[0]?.cnt ?? 0),
+      pendingApproval: Number(pendingApprovalRes.rows[0]?.cnt ?? 0),
+      inTransit: Number(inTransitRes.rows[0]?.cnt ?? 0),
+      delivered: Number(deliveredRes.rows[0]?.cnt ?? 0),
+      cancelled: Number(cancelledRes.rows[0]?.cnt ?? 0),
+      revenueThisMonth: revenueThis,
+      revenueLastMonth: revenueLast,
+      revenueGrowthPct: Number(revenueGrowth.toFixed(1)),
+      // Vendor performance
+      topVendors: vendorPerfRes.rows.map((r) => ({
+        supplierId: Number(r.supplier_id),
+        name: r.name,
+        score: Number(r.score ?? 0),
+        completedOrders: Number(r.completed ?? 0),
+        onTimeRate: Number(r.on_time ?? 0),
+      })),
+      // Trend
+      dailyTrend: dailyTrendRes.rows.map((r) => ({
+        day: r.day,
+        revenue: Number(r.revenue),
+        orders: Number(r.orders),
+      })),
+      // Status breakdown for donut
+      statusBreakdown: statusBreakdownRes.rows.map((r) => ({
+        status: r.status,
+        count: Number(r.cnt),
+      })),
+      // Top customers
+      topCustomers: topCustomersRes.rows.map((r) => ({
+        name: r.customer_name,
+        orders: Number(r.cnt),
+        revenue: Number(r.revenue),
+      })),
+    });
+  } catch (e) {
+    console.error("enterprise dashboard error", e);
+    return res.status(500).json({ error: "Gagal memuat enterprise dashboard" });
+  }
+});
+
 export default router;

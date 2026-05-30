@@ -105,7 +105,6 @@ import EnterpriseWaTemplatesPage from "@/pages/settings/enterprise-wa-templates"
 import LogisticsUnitsPage from "@/pages/settings/logistics-units";
 import SettingsRolesPage from "@/pages/settings-roles";
 import SettingsApprovalRulesPage from "@/pages/settings-approval-rules";
-import ProductTemplatesPage from "@/pages/product-templates";
 import UsersPage from "@/pages/users";
 import MediaManagerPage from "@/pages/media-manager";
 import OrgManagementPage from "@/pages/OrgManagementPage";
@@ -142,6 +141,7 @@ import AiDecisionMemoryPage from "@/pages/ai-decision-memory";
 import WaNotificationHistoryPage from "@/pages/wa-notification-history";
 import VendorLeaderboardPage from "@/pages/vendor-leaderboard";
 import AnalyticsDashboardPage from "@/pages/analytics-dashboard";
+import EnterpriseDashboardPage from "@/pages/enterprise-dashboard";
 import POOrdersPage from "@/pages/purchase/po-orders";
 import VendorFormsPage from "@/pages/purchase/vendor-forms";
 import VmfAuditTrailPage from "@/pages/purchase/vmf-audit-trail";
@@ -343,6 +343,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/ai-approvals" component={PR(AiApprovalsPage)} />
       <Route path="/operational-context" component={PR(OperationalContextPage)} />
       <Route path="/analytics" component={PR(AnalyticsDashboardPage)} />
+      <Route path="/enterprise-dashboard" component={PR(EnterpriseDashboardPage)} />
 
       {/* ── Audit ERP ──────────────────────────────────────────────────── */}
       <Route path="/audit/compare" component={PR(AuditComparePage)} />

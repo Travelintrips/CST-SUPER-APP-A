@@ -177,6 +177,15 @@ export function AppShell({ children }: AppShellProps) {
       roles: ALL_ROLES,
     },
 
+    // ── ENTERPRISE DASHBOARD ──────────────────────────────────────────
+    {
+      type: "flat",
+      titleKey: "Enterprise Dashboard",
+      href: "/enterprise-dashboard",
+      icon: BarChart2,
+      roles: ["admin", "owner"],
+    },
+
     // ── NOTIFIKASI ────────────────────────────────────────────────────
     {
       type: "flat",

@@ -162,6 +162,7 @@ const STATUS_LABELS: Record<string, string> = {
   "Quote Received":    "Penawaran Masuk",
   "Customer Approval": "Menunggu Persetujuan Anda",
   "Vendor Confirmed":  "Vendor Dikonfirmasi",
+  "Vendor Rejected":   "Vendor Menolak",
   "In Progress":       "Sedang Diproses",
   "Pickup":            "Proses Penjemputan",
   "In Transit":        "Dalam Perjalanan",
@@ -171,37 +172,14 @@ const STATUS_LABELS: Record<string, string> = {
   "Invoice Issued":    "Invoice Diterbitkan",
   "Payment Received":  "Pembayaran Diterima",
   "Completed":         "Selesai",
+  "Done":              "Selesai",
   "Cancelled":         "Dibatalkan",
   // backward compat
   "New Order":         "Order Masuk",
+  "Under Review":      "Sedang Ditinjau",
+  "Quotation Sent":    "Penawaran Dikirim",
+  "Customer Approved": "Customer Menyetujui",
   "Processing":        "Sedang Diproses",
-
-  "New Order":          "bg-yellow-100 text-yellow-800 border-yellow-200",
-  "Under Review":       "bg-blue-100 text-blue-800 border-blue-200",
-  "Vendor Confirmed":   "bg-indigo-100 text-indigo-800 border-indigo-200",
-  "Vendor Rejected":    "bg-red-100 text-red-800 border-red-200",
-  "Quotation Sent":     "bg-purple-100 text-purple-800 border-purple-200",
-  "Customer Approved":  "bg-emerald-100 text-emerald-800 border-emerald-200",
-  "Processing":         "bg-blue-100 text-blue-800 border-blue-200",
-  "In Progress":        "bg-indigo-100 text-indigo-800 border-indigo-200",
-  "Completed":          "bg-green-100 text-green-800 border-green-200",
-  "Done":               "bg-green-100 text-green-800 border-green-200",
-  "Cancelled":          "bg-red-100 text-red-800 border-red-200",
-};
-
-const STATUS_LABELS: Record<string, string> = {
-  "New Order":          "Order Masuk",
-  "Under Review":       "Sedang Ditinjau",
-  "Vendor Confirmed":   "Vendor Dikonfirmasi",
-  "Vendor Rejected":    "Vendor Menolak",
-  "Quotation Sent":     "Penawaran Dikirim",
-  "Customer Approved":  "Customer Menyetujui",
-  "Processing":         "Sedang Diproses",
-  "In Progress":        "Dalam Pengerjaan",
-  "Completed":          "Selesai",
-  "Done":               "Selesai",
-  "Cancelled":          "Dibatalkan",
-
 };
 
 function isTerminalStatus(status: string) {

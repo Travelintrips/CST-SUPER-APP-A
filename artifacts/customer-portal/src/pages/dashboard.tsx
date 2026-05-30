@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useGetPortalMe, useListPortalOrders, useListPortalLogisticOrders } from "@workspace/api-client-react";
 import { getAuthToken, getAuthHeaders, removeAuthToken } from "@/lib/auth";
 import { useLocation, Link } from "wouter";
@@ -8,6 +8,7 @@ import {
   Package, Truck, ArrowRight, Activity, Calendar, Ship, Plus,
   Plane, Box, Archive, BarChart2, Layers, Navigation,
   ClipboardList, Globe, Anchor, MapPin, Shield,
+  CheckCircle2, FileText, TrendingUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -100,6 +101,21 @@ function IconPicker({ currentKey, onSelect, className, label }: {
   );
 }
 
+interface DashboardStats {
+  totalOrders: number;
+  activeOrders: number;
+  completedOrders: number;
+  invoiceOutstandingCount: number;
+  invoiceOutstandingAmount: number;
+  trackingActive: number;
+}
+
+function idr(n: number) {
+  if (n >= 1_000_000_000) return `Rp ${(n / 1_000_000_000).toFixed(1)}M`;
+  if (n >= 1_000_000) return `Rp ${(n / 1_000_000).toFixed(0)}jt`;
+  return `Rp ${Math.round(n).toLocaleString("id-ID")}`;
+}
+
 export default function Dashboard() {
   const [, setLocation] = useLocation();
   const [statusFilter, setStatusFilter] = useState<string>("");
@@ -112,7 +128,6 @@ export default function Dashboard() {
     if (!token) setLocation("/login");
   }, [token, setLocation]);
 
-  // Real-time: refresh daftar order saat ada perubahan status
   const qc = useQueryClient();
   useEffect(() => {
     if (!token) return;
@@ -123,7 +138,7 @@ export default function Dashboard() {
     return () => es.close();
   }, [token, qc]);
 
-  const headers = getAuthHeaders() as any;
+  const headers = getAuthHeaders() as Record<string, string>;
 
   const { data: userResponse, isLoading: isLoadingUser, error: userError } = useGetPortalMe({
     query: { queryKey: ["getPortalMe", token], enabled: !!token, retry: 1 },
@@ -138,6 +153,18 @@ export default function Dashboard() {
   const { data: logisticOrdersResponse, isLoading: isLoadingLogisticOrders } = useListPortalLogisticOrders({
     query: { queryKey: ["listPortalLogisticOrders", token], enabled: !!token },
     request: { headers }
+  });
+
+  // Dashboard stats from new API
+  const { data: dashStats } = useQuery<DashboardStats>({
+    queryKey: ["portal-dashboard-stats", token],
+    queryFn: async () => {
+      const r = await fetch("/api/portal/me/dashboard-stats", { headers });
+      if (!r.ok) throw new Error("stats error");
+      return r.json() as Promise<DashboardStats>;
+    },
+    enabled: !!token,
+    staleTime: 60_000,
   });
 
   useEffect(() => {
@@ -194,6 +221,38 @@ export default function Dashboard() {
   const filteredOrders = filterByMetric(statusFilter);
   const displayOrders = filteredOrders.slice(0, 8);
 
+  // Derive stats: prefer API response, fallback to local calculation
+  const totalOrdersCount = dashStats?.totalOrders ?? orders.length;
+  const activeOrdersCount = dashStats?.activeOrders ?? activeOrders.length;
+  const completedOrdersCount = dashStats?.completedOrders ?? orders.filter((o) => o.status === "delivered").length;
+  const invoiceOutstanding = dashStats?.invoiceOutstandingCount ?? 0;
+  const invoiceAmount = dashStats?.invoiceOutstandingAmount ?? 0;
+  const trackingActive = dashStats?.trackingActive ?? activeOrders.filter((o) => o.trackUrl).length;
+
+  const extraStats = [
+    {
+      label: "Order Selesai",
+      value: isLoadingOrders ? "-" : completedOrdersCount,
+      icon: <CheckCircle2 className="h-4 w-4" />,
+      color: "bg-emerald-50 text-emerald-700 border border-emerald-100",
+    },
+    {
+      label: "Invoice Outstanding",
+      value: invoiceOutstanding,
+      sub: invoiceOutstanding > 0 ? idr(invoiceAmount) : null,
+      icon: <FileText className="h-4 w-4" />,
+      color: invoiceOutstanding > 0
+        ? "bg-orange-50 text-orange-700 border border-orange-200"
+        : "bg-gray-50 text-gray-600 border border-gray-100",
+    },
+    {
+      label: "Tracking Aktif",
+      value: isLoadingOrders ? "-" : trackingActive,
+      icon: <Navigation className="h-4 w-4" />,
+      color: "bg-blue-50 text-blue-700 border border-blue-100",
+    },
+  ];
+
   return (
     <div className="min-h-[calc(100vh-80px)] bg-gray-50 py-8">
       <div className="container px-4 md:px-6">
@@ -215,20 +274,40 @@ export default function Dashboard() {
 
         {/* Hero stat cards */}
         <div className="grid grid-cols-2 gap-4 mb-4">
-          <div className="bg-primary text-primary-foreground rounded-xl p-5 flex items-center justify-between">
+          <div
+            className="bg-primary text-primary-foreground rounded-xl p-5 flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"
+            onClick={() => setStatusFilter("")}
+          >
             <div>
               <p className="text-xs text-primary-foreground/60 mb-1">{t("dashboard.totalOrders")}</p>
-              <p className="text-4xl font-bold">{isLoadingOrders ? "-" : orders.length}</p>
+              <p className="text-4xl font-bold">{isLoadingOrders ? "-" : totalOrdersCount}</p>
             </div>
             <IconPicker currentKey={card1Icon} onSelect={setCard1Icon} label={t("dashboard.selectIcon")} />
           </div>
-          <div className="bg-accent text-accent-foreground rounded-xl p-5 flex items-center justify-between">
+          <div
+            className="bg-accent text-accent-foreground rounded-xl p-5 flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"
+            onClick={() => setStatusFilter("active")}
+          >
             <div>
               <p className="text-xs text-accent-foreground/70 mb-1">{t("dashboard.activeShipments")}</p>
-              <p className="text-4xl font-bold">{isLoadingOrders ? "-" : activeOrders.length}</p>
+              <p className="text-4xl font-bold">{isLoadingOrders ? "-" : activeOrdersCount}</p>
             </div>
             <IconPicker currentKey={card2Icon} onSelect={setCard2Icon} label={t("dashboard.selectIcon")} />
           </div>
+        </div>
+
+        {/* Extra KPI cards */}
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          {extraStats.map((s) => (
+            <div key={s.label} className={`rounded-xl p-4 flex flex-col gap-1 ${s.color}`}>
+              <div className="flex items-center gap-2">
+                {s.icon}
+                <span className="text-xs font-medium">{s.label}</span>
+              </div>
+              <p className="text-2xl font-bold">{s.value}</p>
+              {s.sub && <p className="text-xs opacity-80">{s.sub}</p>}
+            </div>
+          ))}
         </div>
 
         {/* Status filter cards — managed via admin edit mode */}
@@ -372,6 +451,29 @@ export default function Dashboard() {
                     </div>
                   </div>
                 ) : null}
+              </CardContent>
+            </Card>
+
+            {/* Stat summary card */}
+            <Card className="border-none shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4 text-primary" />
+                  Ringkasan Akun
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {[
+                  { label: "Total Order", value: totalOrdersCount, color: "text-primary" },
+                  { label: "Aktif", value: activeOrdersCount, color: "text-blue-600" },
+                  { label: "Selesai", value: completedOrdersCount, color: "text-emerald-600" },
+                  ...(invoiceOutstanding > 0 ? [{ label: "Invoice Pending", value: invoiceOutstanding, color: "text-orange-600" }] : []),
+                ].map((s) => (
+                  <div key={s.label} className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">{s.label}</span>
+                    <span className={`font-bold ${s.color}`}>{s.value}</span>
+                  </div>
+                ))}
               </CardContent>
             </Card>
 

@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { getAuthToken, getAuthHeaders, removeAuthToken } from "@/lib/auth";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -78,6 +79,19 @@ export default function VendorDashboard() {
 
   const token = getAuthToken();
   const headers = getAuthHeaders() as Record<string, string>;
+
+  const { data: vendorStats } = useQuery<{
+    rfqReceived: number; rfqSubmitted: number; fulfillmentPending: number; completedOrders: number;
+  }>({
+    queryKey: ["portal-vendor-stats", token],
+    queryFn: async () => {
+      const r = await fetch("/api/portal/me/dashboard-stats", { headers });
+      if (!r.ok) throw new Error("stats");
+      return r.json();
+    },
+    enabled: !!token,
+    staleTime: 60_000,
+  });
 
   const loadProfile = useCallback(() => {
     if (!token) { setLocation("/login"); return; }
@@ -242,6 +256,68 @@ export default function VendorDashboard() {
             </div>
           )}
         </div>
+
+        {/* ── Enterprise Stat Cards ── */}
+        {(() => {
+          const s = vendorStats;
+          // fallback to local data derived from profile
+          const rfqReceived  = s?.rfqReceived   ?? rfqs.length;
+          const rfqSubmitted = s?.rfqSubmitted  ?? quotes.length;
+          const fulfillPend  = s?.fulfillmentPending ?? approvedQuotes;
+          const completed    = s?.completedOrders ?? 0;
+
+          const cards = [
+            {
+              label: "RFQ Diterima",
+              value: rfqReceived,
+              cls: "border-l-amber-500",
+              iconCls: "text-amber-500",
+              Icon: FileText,
+              sub: "Total undangan tender",
+            },
+            {
+              label: "Penawaran Dikirim",
+              value: rfqSubmitted,
+              cls: "border-l-blue-500",
+              iconCls: "text-blue-500",
+              Icon: Send,
+              sub: "Quote yang sudah dikirim",
+            },
+            {
+              label: "Fulfillment Pending",
+              value: fulfillPend,
+              cls: fulfillPend > 0 ? "border-l-orange-500" : "border-l-gray-300",
+              iconCls: fulfillPend > 0 ? "text-orange-500" : "text-muted-foreground",
+              Icon: Package,
+              sub: "Order disetujui, belum selesai",
+            },
+            {
+              label: "Order Selesai",
+              value: completed,
+              cls: "border-l-emerald-500",
+              iconCls: "text-emerald-500",
+              Icon: CheckCircle2,
+              sub: "Berhasil diselesaikan",
+            },
+          ];
+
+          return (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {cards.map((c) => (
+                <Card key={c.label} className={`border-l-4 ${c.cls}`}>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs text-muted-foreground">{c.label}</span>
+                      <c.Icon className={`h-4 w-4 ${c.iconCls}`} />
+                    </div>
+                    <div className="text-3xl font-bold">{c.value}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">{c.sub}</div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          );
+        })()}
 
         {/* Supplier link status */}
         {supplier ? (
