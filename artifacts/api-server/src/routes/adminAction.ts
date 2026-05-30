@@ -795,8 +795,7 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
         const sentCount = results.filter((r) => r.sent).length;
         sendWhatsApp(adminGroupWa,
           `✅ RFQ ${rfq.rfqNumber} telah di-blast ke ${sentCount} vendor\n` +
-          `Order: ${order.orderNumber}\n` +
-          `Bandingkan penawaran vendor:\n${compareShort}`
+          `Order: ${order.orderNumber}`
         ).catch(() => {});
       }
 
