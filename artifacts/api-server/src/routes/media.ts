@@ -3,7 +3,7 @@ import multer from "multer";
 
 import { db, mediaAssetsTable } from "@workspace/db";
 import { eq, desc, sql, inArray } from "drizzle-orm";
-import { requireClerkUser } from "../lib/requireAdmin";
+import { requireClerkUser, requireAdmin } from "../lib/requireAdmin";
 import { uploadToSupabase, downloadFromSupabase, isSupabaseUrl, deleteFromSupabase } from "../lib/supabaseStorage";
 import { logStorageEvent, getRequestIp, getActor } from "../lib/storageAuditLog";
 import { compressImageBuffer, isCompressibleImage } from "../lib/imageCompress";
@@ -53,6 +53,16 @@ router.get("/", async (req, res) => {
   res.json({ items });
 });
 
+const MEDIA_ALLOWED_MIME = new Set([
+  "image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif",
+  "image/tiff", "image/bmp", "image/heic", "image/heif", "image/svg+xml",
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+]);
+
 // POST /api/media/upload — upload dan kompres gambar, simpan ke Supabase Storage
 router.post("/upload", upload.single("file"), async (req, res): Promise<void> => {
   try {
@@ -61,6 +71,11 @@ router.post("/upload", upload.single("file"), async (req, res): Promise<void> =>
     }
 
     const { mimetype, originalname } = req.file;
+
+    if (!MEDIA_ALLOWED_MIME.has(mimetype)) {
+      res.status(415).json({ error: `Tipe file tidak didukung: ${mimetype}. Gunakan gambar, PDF, atau dokumen Office.` }); return;
+    }
+
     const folder = (req.body.folder as string)?.trim() || "Umum";
     let buffer = req.file.buffer;
     let finalContentType = mimetype;
@@ -169,6 +184,20 @@ router.patch("/:id/folder", async (req, res): Promise<void> => {
   if (!id) { res.status(400).json({ error: "ID tidak valid" }); return; }
   const folder = (req.body.folder as string)?.trim();
   if (!folder) { res.status(400).json({ error: "Nama folder wajib diisi" }); return; }
+
+  // Ownership guard: only owner or admin may move an asset
+  const [asset] = await db
+    .select({ uploadedBy: mediaAssetsTable.uploadedBy })
+    .from(mediaAssetsTable)
+    .where(eq(mediaAssetsTable.id, id));
+  if (!asset) { res.status(404).json({ error: "Asset tidak ditemukan" }); return; }
+  const currentUserEmail = (req as any).user?.email ?? null;
+  const isOwner = asset.uploadedBy && currentUserEmail && asset.uploadedBy === currentUserEmail;
+  if (!isOwner) {
+    const isAdm = await requireAdmin(req, res);
+    if (!isAdm) return;
+  }
+
   const [updated] = await db
     .update(mediaAssetsTable)
     .set({ folder })
@@ -232,9 +261,19 @@ router.delete("/:id", async (req, res): Promise<void> => {
   if (!id) { res.status(400).json({ error: "ID tidak valid" }); return; }
   // Lookup storage paths before deletion so we can clean up GCS objects
   const [asset] = await db
-    .select({ objectPath: mediaAssetsTable.objectPath, publicUrl: mediaAssetsTable.publicUrl })
+    .select({ objectPath: mediaAssetsTable.objectPath, publicUrl: mediaAssetsTable.publicUrl, uploadedBy: mediaAssetsTable.uploadedBy })
     .from(mediaAssetsTable)
     .where(eq(mediaAssetsTable.id, id));
+  if (!asset) { res.status(404).json({ error: "Asset tidak ditemukan" }); return; }
+
+  // Ownership guard: only owner or admin may delete an asset
+  const currentUserEmail = (req as any).user?.email ?? null;
+  const isOwner = asset.uploadedBy && currentUserEmail && asset.uploadedBy === currentUserEmail;
+  if (!isOwner) {
+    const isAdm = await requireAdmin(req, res);
+    if (!isAdm) return;
+  }
+
   await db.delete(mediaAssetsTable).where(eq(mediaAssetsTable.id, id));
   // Delete from GCS (non-fatal) after DB record is removed
   if (asset?.objectPath) {

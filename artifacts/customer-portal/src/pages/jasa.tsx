@@ -13,6 +13,7 @@ import { resolveImageUrl } from "@/lib/utils";
 import { getServiceFallbackImage } from "@/lib/categoryImages";
 import { useLanguage } from "@/i18n/LanguageContext";
 import { translateServiceName, translateCategory } from "@/i18n/serviceData";
+import { GROUPED_DISPLAY_CATEGORIES as GROUPED_CATEGORIES } from "@workspace/logistics-constants";
 
 const COLOR_BY_CATEGORY: Record<string, { bg: string; text: string; badge: string }> = {
   "Udara":             { bg: "bg-blue-50",    text: "text-blue-700",   badge: "bg-blue-100 text-blue-700" },
@@ -49,8 +50,6 @@ const stripJasa = (name: string) => name.replace(/^Jasa\s+/i, "");
 
 const formatIDR = (v: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(v);
-
-const GROUPED_CATEGORIES = ["Trucking", "Container"];
 
 export default function Jasa() {
   const [, setLocation] = useLocation();

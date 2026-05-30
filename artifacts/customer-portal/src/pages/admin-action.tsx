@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams } from "wouter";
+import { PriceBreakdown } from "@/components/PriceBreakdown";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -23,16 +24,28 @@ type OrderInfo = {
   notes: string | null;
   paymentType: string | null;
   grandTotal: string | null;
+  subtotalBeforeTax?: string | null;
+  taxRate?: number | null;
+  taxAmount?: string | null;
   status: string;
+  items?: Array<{ serviceName: string; category: string; subtotal: string | null; quantity?: string | null; unit?: string | null }>;
 };
 
 type Vendor = {
   id: number;
   name: string;
   phone: string | null;
+  hasPhone?: boolean;
   serviceType?: string | null;
   isMatching?: boolean;
   hasCommodityMatch?: boolean;
+  priceBase?: number | null;
+  orderQty?: number | null;
+  orderUnit?: string | null;
+  vendorEstSubtotal?: number | null;
+  vendorEstTax?: number | null;
+  vendorEstTotal?: number | null;
+  taxRate?: number | null;
 };
 
 type VendorRow = {
@@ -64,6 +77,17 @@ type ForwardData = BaseData & {
   selectedVendor: Vendor | null;
   selectedVendorLink: { id: number; vendorId: number; offeredPrice: string | null } | null;
 };
+
+type VendorFulfillmentLink = {
+  id: number; serviceType: string; status: string;
+  stockConfirmed: string | null; qtyConfirmed: string | null;
+  readyDate: string | null; leadTime: string | null; warehouseLocation: string | null;
+  priceConfirmed: string | null; revisedPrice: number | null;
+  notes: string | null; stockPhotoUrl: string | null;
+  invoiceUrl: string | null; supportingDocUrl: string | null;
+  submittedAt: string | null;
+};
+type ConfirmFulfillmentData = BaseData & { vendorFulfillmentLink: VendorFulfillmentLink | null };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -133,7 +157,6 @@ function OrderCard({ order }: { order: OrderInfo }) {
       </div>
 
       <div className="space-y-0.5">
-        <DetailRow label="Tipe Layanan" value={isProduct ? "Produk" : (order.serviceType || null)} />
         {hasRoute && (
           <div className="flex justify-between gap-2 py-1 border-b border-slate-50">
             <span className="text-xs text-slate-400 shrink-0">Rute</span>
@@ -156,9 +179,40 @@ function OrderCard({ order }: { order: OrderInfo }) {
             </span>
           </div>
         )}
+        {order.items && order.items.length > 0 && (
+          <div className="py-2 border-b border-slate-50">
+            <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide mb-1">{isProduct ? "Produk Dipesan" : "Layanan / Item"}</p>
+            <ul className="space-y-2">
+              {order.items.map((it, i) => (
+                <li key={i} className="text-xs">
+                  <div className="flex justify-between gap-2">
+                    <span className="text-slate-700">• {it.serviceName}</span>
+                    <span className="text-slate-500 shrink-0">{idr(it.subtotal) ?? ""}</span>
+                  </div>
+                  {it.quantity && (
+                    <div className="flex justify-between gap-2 ml-3 mt-0.5">
+                      <span className="text-slate-400">Quantity</span>
+                      <span className="text-slate-500 shrink-0">{it.quantity}{it.unit ? ` ${it.unit}` : ""}</span>
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         <DetailRow label="Tanggal Diperlukan" value={order.requiredDate} />
         <DetailRow label="Pembayaran" value={order.paymentType} />
-        <DetailRow label="Total" value={idr(order.grandTotal)} />
+        {order.grandTotal && Number(order.grandTotal) > 0 && (
+          <PriceBreakdown
+            subtotal={order.subtotalBeforeTax ? Number(order.subtotalBeforeTax) : null}
+            taxRate={order.taxRate ?? 11}
+            taxAmount={order.taxAmount ? Number(order.taxAmount) : null}
+            grandTotal={Number(order.grandTotal)}
+            subtotalLabel={order.orderType === "product" ? "Subtotal Produk" : "Subtotal"}
+            grandTotalLabel="Grand Total"
+            className="mt-1"
+          />
+        )}
         {order.notes && (
           <div className="pt-2 mt-1">
             <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide mb-1">Catatan Customer</p>
@@ -227,6 +281,13 @@ function ReviewOrderView({ token, data }: { token: string; data: ReviewData }) {
   const hasCommodity   = !!(data.commodity && data.commodity.trim());
   const filterMode     = data.filterMode ?? "none";
 
+  const VENDOR_CONFIRMED_STATUSES = ["Vendor Confirmed", "In Progress", "Completed", "Cancelled"];
+  const isVendorConfirmed = VENDOR_CONFIRMED_STATUSES.includes(data.order.status ?? "");
+
+  const vendorsWithPhone    = data.vendors.filter((v) => v.hasPhone !== false && !!v.phone);
+  const vendorsWithoutPhone = data.vendors.filter((v) => v.hasPhone === false || !v.phone);
+  const selectedCount = selectedIds.filter((id) => vendorsWithPhone.some((v) => v.id === id)).length;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 py-8 px-4">
       <div className="max-w-lg mx-auto space-y-4">
@@ -240,7 +301,18 @@ function ReviewOrderView({ token, data }: { token: string; data: ReviewData }) {
 
         <OrderCard order={data.order} />
 
-        {data.isUsed && (
+        {isVendorConfirmed && (
+          <div className="bg-emerald-50 border border-emerald-300 rounded-xl px-4 py-3 text-sm text-emerald-800">
+            <p className="font-semibold mb-1">✅ Vendor sudah submit fulfillment (status: {data.order.status})</p>
+            <p className="text-xs text-emerald-700">
+              Langkah selanjutnya: buka link <strong>Konfirmasi Fulfillment</strong> yang dikirim via WhatsApp ke admin,
+              lalu klik "Konfirmasi & Mulai Pengiriman" di halaman tersebut.
+              Jika tidak menerima WA, hubungi tim teknis.
+            </p>
+          </div>
+        )}
+
+        {data.isUsed && !isVendorConfirmed && (
           <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-700">
             ⚠️ Link ini sudah pernah digunakan. Anda masih bisa blast ulang ke vendor lain.
           </div>
@@ -269,12 +341,21 @@ function ReviewOrderView({ token, data }: { token: string; data: ReviewData }) {
               ℹ️ Tidak ada vendor yang cocok dengan "<strong>{data.shipmentType}</strong>" — menampilkan semua vendor aktif.
             </div>
           )}
-          {/* Kasus: shipmentType kosong, ada commodity, ada vendor etalase match */}
-          {filterMode === "commodity" && (
-            <div className="mb-3 px-3 py-2 rounded-lg bg-green-50 border border-green-200 text-xs text-green-700">
-              ✅ Menampilkan vendor yang menjual "<strong>{data.commodity}</strong>" di etalase.
-            </div>
-          )}
+          {/* Kasus: shipmentType kosong, ada commodity / item produk */}
+          {filterMode === "commodity" && (() => {
+            const label = (data.commodity && data.commodity.trim())
+              || (data.order.items && data.order.items[0]?.serviceName)
+              || "";
+            return data.vendors.length > 0 ? (
+              <div className="mb-3 px-3 py-2 rounded-lg bg-green-50 border border-green-200 text-xs text-green-700">
+                ✅ Menampilkan vendor yang menjual "<strong>{label}</strong>" di etalase.
+              </div>
+            ) : (
+              <div className="mb-3 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-700">
+                ⚠️ Belum ada vendor yang punya "<strong>{label}</strong>" di etalase. Tambahkan item ke katalog vendor terlebih dahulu.
+              </div>
+            );
+          })()}
           {/* Kasus: shipmentType kosong, menampilkan hanya vendor yg punya etalase */}
           {filterMode === "etalase" && (
             <div className="mb-3 px-3 py-2 rounded-lg bg-blue-50 border border-blue-200 text-xs text-blue-700">
@@ -289,10 +370,11 @@ function ReviewOrderView({ token, data }: { token: string; data: ReviewData }) {
           )}
 
           {data.vendors.length === 0 ? (
-            <p className="text-sm text-slate-500">Tidak ada vendor aktif yang bisa dihubungi.</p>
+            <p className="text-sm text-slate-500 mt-2">Tidak ada vendor aktif yang terdaftar di sistem.</p>
           ) : (
             <div className="space-y-2 mt-3">
-              {data.vendors.map((v) => (
+              {/* Vendor dengan WA/phone — bisa diblast */}
+              {vendorsWithPhone.map((v) => (
                 <label key={v.id} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${selectedIds.includes(v.id) ? "border-blue-400 bg-blue-50" : "border-slate-200 hover:bg-slate-50"}`}>
                   <input
                     type="checkbox"
@@ -310,11 +392,67 @@ function ReviewOrderView({ token, data }: { token: string; data: ReviewData }) {
                         <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 border border-blue-200">✓ Layanan</span>
                       )}
                     </div>
-                    {v.serviceType && <p className="text-xs text-slate-400 truncate">{v.serviceType}</p>}
+                    {v.priceBase != null && (
+                      <div className="text-xs text-slate-500 mt-1 space-y-0.5">
+                        <div className="flex justify-between gap-2">
+                          <span>Harga Dasar{v.orderUnit ? ` / ${v.orderUnit}` : ""}</span>
+                          <span className="font-semibold text-slate-700">Rp {Math.round(v.priceBase).toLocaleString("id-ID")}{v.orderUnit ? `/${v.orderUnit}` : ""}</span>
+                        </div>
+                        {v.vendorEstSubtotal != null && v.orderQty != null && (
+                          <>
+                            <div className="flex justify-between gap-2">
+                              <span className="text-slate-400">Subtotal <span className="text-slate-300">({Math.round(v.priceBase).toLocaleString("id-ID")} × {v.orderQty}{v.orderUnit ? ` ${v.orderUnit}` : ""})</span></span>
+                              <span className="font-semibold text-slate-700">Rp {v.vendorEstSubtotal.toLocaleString("id-ID")}</span>
+                            </div>
+                            {v.vendorEstTax != null && (
+                              <div className="flex justify-between gap-2">
+                                <span className="text-slate-400">PPN {v.taxRate ?? 11}% <span className="text-slate-300">({v.vendorEstSubtotal.toLocaleString("id-ID")} × {v.taxRate ?? 11}%)</span></span>
+                                <span className="text-slate-600">Rp {v.vendorEstTax.toLocaleString("id-ID")}</span>
+                              </div>
+                            )}
+                            {v.vendorEstTotal != null && (
+                              <div className="flex justify-between gap-2 font-semibold border-t border-slate-100 pt-1 mt-0.5">
+                                <span className="text-slate-700">Est. Grand Total</span>
+                                <span className="text-slate-800">IDR {v.vendorEstTotal.toLocaleString("id-ID")}</span>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
                   {v.phone && <span className="text-xs text-slate-400 shrink-0">{v.phone}</span>}
                 </label>
               ))}
+
+              {/* Vendor tanpa WA — tidak bisa diblast, tampil greyed out */}
+              {vendorsWithoutPhone.length > 0 && (
+                <>
+                  {vendorsWithPhone.length > 0 && (
+                    <p className="text-[11px] text-slate-400 pt-1 pb-0.5">Vendor berikut tidak memiliki nomor WA — tidak bisa di-blast:</p>
+                  )}
+                  {vendorsWithPhone.length === 0 && (
+                    <div className="mb-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-700">
+                      ⚠️ Semua vendor aktif belum memiliki nomor WhatsApp. Tambahkan nomor WA vendor di menu Pembelian → Vendor agar bisa di-blast.
+                    </div>
+                  )}
+                  {vendorsWithoutPhone.map((v) => (
+                    <div key={v.id} className="flex items-center gap-3 p-3 rounded-xl border border-slate-100 bg-slate-50 opacity-60">
+                      <div className="w-4 h-4 rounded border border-slate-300 bg-slate-200 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className="font-medium text-slate-500 text-sm">{v.name}</p>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-200 text-slate-500">Tanpa WA</span>
+                          {v.hasCommodityMatch && (
+                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-green-100 text-green-600 border border-green-200">✓ Komoditi</span>
+                          )}
+                        </div>
+                        {v.serviceType && <p className="text-xs text-slate-400 mt-0.5">{v.serviceType}</p>}
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
             </div>
           )}
         </div>
@@ -342,13 +480,12 @@ function ReviewOrderView({ token, data }: { token: string; data: ReviewData }) {
 
         <button
           onClick={handleBlast}
-          disabled={submitting || selectedIds.length === 0}
+          disabled={submitting || selectedCount === 0}
           className="w-full py-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-semibold text-sm transition-colors"
         >
-          {submitting ? "Mengirim..." : `🚀 Blast RFQ ke ${selectedIds.length} Vendor`}
+          {submitting ? "Mengirim..." : `🚀 Blast RFQ ke ${selectedCount} Vendor`}
         </button>
 
-        <p className="text-center text-xs text-slate-400 pb-4">CST Logistics · Admin Action</p>
       </div>
     </div>
   );
@@ -501,7 +638,6 @@ function CompareVendorsView({ token, data }: { token: string; data: CompareData 
           {submitting ? "Memproses..." : "✅ Konfirmasi Pilihan Vendor"}
         </button>
 
-        <p className="text-center text-xs text-slate-400 pb-4">CST Logistics · Admin Action</p>
       </div>
     </div>
   );
@@ -613,7 +749,137 @@ function ForwardVendorView({ token, data }: { token: string; data: ForwardData }
           {submitting ? "Mengirim..." : "📨 Kirim Link Fulfillment ke Vendor"}
         </button>
 
-        <p className="text-center text-xs text-slate-400 pb-4">CST Logistics · Admin Action</p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Confirm Fulfillment View ─────────────────────────────────────────────────
+
+function ConfirmFulfillmentView({ token, data }: { token: string; data: ConfirmFulfillmentData }) {
+  const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const vfl = data.vendorFulfillmentLink;
+
+  const STOCK_MAP: Record<string, string> = {
+    all: "✅ Tersedia Semua", partial: "⚠️ Tersedia Sebagian", none: "❌ Tidak Tersedia",
+  };
+  const PRICE_MAP: Record<string, string> = {
+    agree: "✅ Setuju harga asal", revised: "✏️ Revisi harga",
+  };
+
+  const handleConfirm = async () => {
+    if (!confirm("Konfirmasi fulfillment? Order akan diubah ke In Progress dan WA dikirim ke customer.")) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch(`/api/admin-action/${token}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const d = await res.json() as { ok?: boolean; error?: string };
+      if (!res.ok) throw new Error(d.error ?? "Gagal");
+      setResult({ ok: true, message: "Order dikonfirmasi. WA otomatis dikirim ke customer." });
+    } catch (e: unknown) {
+      setResult({ ok: false, message: (e as Error).message });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (result?.ok) return <SuccessCard title="✅ Dikonfirmasi!" message={result.message} />;
+
+  const alreadyDone = data.order.status === "In Progress" || data.order.status === "Completed";
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 py-8 px-4">
+      <div className="max-w-lg mx-auto space-y-4">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-2xl">🚀</span>
+            <h1 className="text-xl font-bold text-slate-800">Konfirmasi Fulfillment Vendor</h1>
+          </div>
+          <p className="text-sm text-slate-500">Vendor telah submit data. Tinjau lalu konfirmasi untuk mulai pengiriman.</p>
+        </div>
+
+        <OrderCard order={data.order} />
+
+        {vfl ? (
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">📦</span>
+                <h2 className="font-semibold text-slate-800">Data dari Vendor</h2>
+              </div>
+              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${vfl.status === "submitted" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>
+                {vfl.status === "submitted" ? "✅ Submitted" : vfl.status}
+              </span>
+            </div>
+            <div className="space-y-0.5">
+              {vfl.stockConfirmed && <DetailRow label="Status Stok" value={STOCK_MAP[vfl.stockConfirmed] ?? vfl.stockConfirmed} />}
+              {vfl.qtyConfirmed && <DetailRow label="Qty Dipenuhi" value={vfl.qtyConfirmed} />}
+              {vfl.readyDate && <DetailRow label="Tanggal Siap Kirim" value={vfl.readyDate} />}
+              {vfl.leadTime && <DetailRow label="Lead Time" value={vfl.leadTime} />}
+              {vfl.warehouseLocation && <DetailRow label="Lokasi Gudang" value={vfl.warehouseLocation} />}
+              {vfl.priceConfirmed && <DetailRow label="Konfirmasi Harga" value={PRICE_MAP[vfl.priceConfirmed] ?? vfl.priceConfirmed} />}
+              {vfl.revisedPrice != null && vfl.priceConfirmed === "revised" && (
+                <DetailRow label="Harga Revisi (DPP)" value={idr(vfl.revisedPrice)} />
+              )}
+              {vfl.notes && <DetailRow label="Catatan" value={vfl.notes} />}
+              {vfl.stockPhotoUrl && (
+                <div className="flex justify-between gap-2 py-1 border-b border-slate-50">
+                  <span className="text-xs text-slate-400 shrink-0">Foto Stok</span>
+                  <a href={vfl.stockPhotoUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 underline">Lihat foto ↗</a>
+                </div>
+              )}
+              {vfl.invoiceUrl && (
+                <div className="flex justify-between gap-2 py-1 border-b border-slate-50">
+                  <span className="text-xs text-slate-400 shrink-0">Invoice</span>
+                  <a href={vfl.invoiceUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 underline">Lihat invoice ↗</a>
+                </div>
+              )}
+              {vfl.supportingDocUrl && (
+                <div className="flex justify-between gap-2 py-1 border-b border-slate-50">
+                  <span className="text-xs text-slate-400 shrink-0">Dok. Pendukung</span>
+                  <a href={vfl.supportingDocUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 underline">Lihat dokumen ↗</a>
+                </div>
+              )}
+              {vfl.submittedAt && (
+                <p className="text-[10px] text-slate-400 pt-2">
+                  Disubmit: {new Date(vfl.submittedAt).toLocaleString("id-ID")}
+                </p>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-700">
+            ⚠️ Belum ada data fulfillment dari vendor.
+          </div>
+        )}
+
+        {alreadyDone && (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-700">
+            ✅ Order sudah dikonfirmasi sebelumnya. Status: <strong>{data.order.status}</strong>
+          </div>
+        )}
+
+        {result && !result.ok && (
+          <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
+            ⚠️ {result.message}
+          </div>
+        )}
+
+        <button
+          onClick={handleConfirm}
+          disabled={submitting || !vfl || vfl.status !== "submitted" || alreadyDone}
+          className="w-full py-4 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold text-sm transition-colors"
+        >
+          {submitting
+            ? "Mengkonfirmasi..."
+            : alreadyDone
+            ? "✅ Sudah Dikonfirmasi"
+            : "🚀 Konfirmasi & Mulai Pengiriman"}
+        </button>
       </div>
     </div>
   );
@@ -623,7 +889,7 @@ function ForwardVendorView({ token, data }: { token: string; data: ForwardData }
 
 export default function AdminActionPage() {
   const { token } = useParams<{ token: string }>();
-  const [data, setData] = useState<ReviewData | CompareData | ForwardData | null>(null);
+  const [data, setData] = useState<ReviewData | CompareData | ForwardData | ConfirmFulfillmentData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -631,7 +897,7 @@ export default function AdminActionPage() {
     if (!token) return;
     fetch(`/api/admin-action/${token}`)
       .then(async (r) => {
-        const d = await r.json() as (ReviewData | CompareData | ForwardData) & { error?: string };
+        const d = await r.json() as (ReviewData | CompareData | ForwardData | ConfirmFulfillmentData) & { error?: string };
         if (!r.ok) throw new Error(d.error ?? "Terjadi kesalahan");
         setData(d);
       })
@@ -651,6 +917,9 @@ export default function AdminActionPage() {
   }
   if (data.actionType === "forward_vendor") {
     return <ForwardVendorView token={token!} data={data as ForwardData} />;
+  }
+  if (data.actionType === "confirm_fulfillment") {
+    return <ConfirmFulfillmentView token={token!} data={data as ConfirmFulfillmentData} />;
   }
 
   return <ErrorCard message={`Tipe aksi tidak dikenal: ${data.actionType}`} />;

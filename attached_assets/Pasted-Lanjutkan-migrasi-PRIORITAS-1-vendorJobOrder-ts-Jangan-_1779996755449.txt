@@ -1,0 +1,128 @@
+Lanjutkan migrasi PRIORITAS 1:
+vendorJobOrder.ts
+
+Jangan refactor besar.
+Migrasikan flow yang masih hardcoded agar memakai Settings → Template WA melalui whatsappTemplateService.
+
+Flow yang harus dimigrasikan:
+
+1. Vendor Assignment WA
+
+* buildVendorWaMessage()
+* line 136–153
+* dipakai line 236 & 295
+
+Workflow:
+vendor_assignment
+
+Recipient:
+vendor
+
+==================================================
+
+2. Vendor Accept Job → Admin Notification
+
+Hardcoded:
+✅ *Vendor Menerima Job Order*...
+
+Workflow:
+vendor_job_accepted
+
+Recipient:
+admin_personal
+
+==================================================
+
+3. Vendor Reject Job → Admin Notification
+
+Hardcoded:
+❌ *Vendor Menolak Job Order*...
+
+Workflow:
+vendor_job_rejected
+
+Recipient:
+admin_personal
+
+==================================================
+
+4. Vendor Progress Update
+
+Hardcoded:
+📍 *Update Progress Order*...
+
+Workflow:
+vendor_progress_update
+
+Recipient:
+admin_personal
+
+==================================================
+
+5. Vendor Upload POD → Admin
+
+Hardcoded:
+📎 *Vendor Upload POD*...
+
+Workflow:
+vendor_pod_uploaded
+
+Recipient:
+admin_personal
+
+==================================================
+
+6. Customer Progress Update
+
+buildCustomerProgressWaMessage()
+
+Workflow:
+customer_progress_update
+
+Recipient:
+customer
+
+==================================================
+
+7. Customer POD Notification
+
+buildCustomerPodWaMessage()
+
+Workflow:
+customer_pod_uploaded
+
+Recipient:
+customer
+
+==================================================
+
+8. Order Completed → Customer
+
+Hardcoded:
+✅ *Order Anda Telah Selesai*...
+
+Workflow:
+order_completed
+
+Recipient:
+customer
+
+==================================================
+
+ATURAN:
+
+* Semua flow WA wajib lewat whatsappTemplateService
+* Jangan pakai const message hardcoded
+* Jangan pakai encodeURIComponent manual
+* Ambil template dari Settings Template WA
+* Jika template kosong → fallback default template
+* Simpan log ke whatsapp_logs
+* Render variable + conditional block tetap jalan
+
+OUTPUT:
+
+1. file yang diubah
+2. hardcoded yang dihapus
+3. workflow yang berhasil connect
+4. test result per workflow
+5. regression check agar flow lama tidak rusak

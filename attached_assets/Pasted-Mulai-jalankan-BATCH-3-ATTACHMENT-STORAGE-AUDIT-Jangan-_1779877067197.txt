@@ -1,0 +1,127 @@
+Mulai jalankan BATCH 3 — ATTACHMENT / STORAGE AUDIT.
+
+Jangan fix dulu. Audit saja.
+
+Tujuan:
+Pastikan semua file/dokumen/gambar yang diupload tersimpan permanen, terhubung ke data yang benar, bisa dibuka kembali, dan permission aman.
+
+Area yang wajib diaudit:
+
+1. Upload Source Audit
+Cek semua fitur upload:
+- customer order attachment
+- invoice
+- packing list
+- AWB / BL
+- customs document
+- vendor quotation attachment
+- foto kendaraan
+- proof of delivery
+- product image
+- service image
+- payment proof
+- operational document
+
+2. Storage Destination Audit
+Untuk setiap upload, cek:
+- apakah masuk Supabase Storage
+- apakah masuk database table
+- bucket name
+- file path
+- public URL atau signed URL
+- apakah URL tersimpan permanen
+- apakah file tetap bisa dibuka setelah refresh/logout/login ulang
+
+3. Database Linking Audit
+Pastikan setiap file punya relasi jelas:
+- order_id
+- order_item_id
+- customer_id
+- vendor_id
+- sales_order_id
+- submission_id
+- document_type
+- uploaded_by
+- created_at
+
+4. Security Audit
+Pastikan:
+- customer tidak bisa lihat file order lain
+- vendor tidak bisa lihat file vendor lain
+- public mini form hanya bisa upload untuk token valid
+- attachment internal admin tidak tampil ke customer/vendor
+- signed URL digunakan untuk file private
+- public bucket hanya untuk asset yang aman seperti product image
+
+5. Validation Audit
+Cek:
+- file size limit
+- allowed MIME type
+- extension validation
+- duplicate filename handling
+- virus/malware basic prevention jika ada
+- upload gagal punya error message jelas
+
+6. Delete / Archive Audit
+Cek:
+- delete file dari UI apakah benar hapus storage juga
+- atau hanya archive metadata
+- orphan file risk
+- orphan database record risk
+- restore file jika perlu
+
+7. Refresh Persistence Audit
+Test:
+- upload file
+- refresh halaman
+- file masih tampil
+- klik file berhasil
+- logout/login ulang
+- file tetap sesuai permission
+
+8. Broken Link Audit
+Cari:
+- URL kosong
+- path salah
+- expired signed URL yang disimpan permanen
+- file metadata ada tapi storage file hilang
+- storage file ada tapi tidak ada database record
+
+9. Performance Audit
+Cek:
+- file terlalu besar
+- image belum compressed
+- thumbnail tidak dibuat
+- listing attachment terlalu berat
+- download file tanpa limit
+
+Output wajib:
+
+A. ATTACHMENT MATRIX
+Feature | File Type | Storage Bucket | DB Table | Linked ID | Public/Signed | Status | Issue
+
+B. UPLOAD FLOW
+Feature | Upload API/File | DB Insert | Storage Upload | UI Refresh | Status
+
+C. SECURITY FINDINGS
+Role | File Access Risk | Endpoint/Bucket | Risk Level | Recommendation
+
+D. VALIDATION FINDINGS
+Feature | Missing Validation | Risk | Fix Suggestion
+
+E. BROKEN / ORPHAN FILE FINDINGS
+File/Path | DB Record | Storage Exists | Issue | Fix Suggestion
+
+F. DELETE / ARCHIVE FINDINGS
+Feature | Delete Behavior | Storage Cleanup | Risk
+
+G. PRIORITY FIX PLAN
+Critical / High / Medium / Low
+
+H. FINAL VERDICT
+- Attachment persistence score
+- Storage security score
+- File lifecycle readiness score
+- Production readiness score
+
+Jangan implement fix sampai saya minta.

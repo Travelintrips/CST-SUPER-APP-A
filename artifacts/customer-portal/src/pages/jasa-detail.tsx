@@ -299,6 +299,7 @@ export default function JasaDetail() {
     const es = new EventSource("/api/ecommerce/events");
     es.addEventListener("price_sync", () => {
       qc.invalidateQueries({ queryKey: ["portal-trucking-rates"] });
+      qc.invalidateQueries({ queryKey: ["listPortalServicesDetail"] });
     });
     return () => es.close();
   }, [qc]);

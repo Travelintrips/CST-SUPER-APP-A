@@ -107,6 +107,11 @@ export default function LogisticsPortalOrderDetailPage() {
   });
   const [editDetailSaving, setEditDetailSaving] = useState(false);
 
+  // ── Konversi ke Shipment dialog ───────────────────────────────────────────
+  const [convertDialog, setConvertDialog] = useState(false);
+  const [convertForm, setConvertForm] = useState({ transportMode: "", cargoType: "" });
+  const [converting, setConverting] = useState(false);
+
   function openEditDetail() {
     if (!order) return;
     setEditDetailForm({
@@ -146,7 +151,7 @@ export default function LogisticsPortalOrderDetailPage() {
         }),
       });
       if (!res.ok) throw new Error(((await res.json()) as { message?: string }).message ?? "Gagal");
-      queryClient.invalidateQueries({ queryKey: getGetLogisticOrderQueryKey(orderId) });
+      qc.invalidateQueries({ queryKey: getGetLogisticOrderQueryKey(orderId) });
       setEditDetailDialog(false);
       toast({ title: "Detail order diperbarui" });
     } catch (e) {
@@ -207,14 +212,13 @@ export default function LogisticsPortalOrderDetailPage() {
   const [quoteDialog, setQuoteDialog] = useState<{ open: boolean; rfqId: number; vendorId?: number } | null>(null);
   const [quoteForm, setQuoteForm] = useState({
     vendorId: "", vendorPrice: "", estimatedPickup: "", estimatedDelivery: "",
-    estimatedDays: "", vendorNotes: "", markupType: "percentage", markupPercentage: "0",
-    fixedSellingPrice: "",
+    estimatedDays: "", vendorNotes: "", fixedSellingPrice: "",
   });
 
   const [editDialog, setEditDialog] = useState<LogisticQuote | null>(null);
   const [editForm, setEditForm] = useState({
     vendorPrice: "", estimatedPickup: "", estimatedDelivery: "", estimatedDays: "",
-    vendorNotes: "", markupType: "percentage", markupPercentage: "0", fixedSellingPrice: "",
+    vendorNotes: "", fixedSellingPrice: "",
   });
 
   const [approveDialog, setApproveDialog] = useState<LogisticQuote | null>(null);
@@ -317,6 +321,8 @@ export default function LogisticsPortalOrderDetailPage() {
       if (!res.ok) throw new Error("Failed to load vendors");
       return res.json() as Promise<VendorRow[]>;
     },
+    staleTime: 0,
+    refetchOnMount: "always",
   });
 
   // [MULTI-MODE] Vendor Offers query
@@ -470,7 +476,6 @@ export default function LogisticsPortalOrderDetailPage() {
       toast({ title: t.common.error, variant: "destructive" });
       return;
     }
-    const mp = parseFloat(quoteForm.markupPercentage) || 0;
     const fp = quoteForm.fixedSellingPrice ? parseFloat(quoteForm.fixedSellingPrice) : undefined;
     createQuote.mutate(
       {
@@ -483,8 +488,8 @@ export default function LogisticsPortalOrderDetailPage() {
           estimatedDelivery: quoteForm.estimatedDelivery || undefined,
           estimatedDays: quoteForm.estimatedDays ? parseInt(quoteForm.estimatedDays) : undefined,
           vendorNotes: quoteForm.vendorNotes || undefined,
-          markupType: quoteForm.markupType,
-          markupPercentage: mp,
+          markupType: "fixed_price",
+          markupPercentage: 0,
           fixedSellingPrice: fp,
         },
       },
@@ -492,7 +497,7 @@ export default function LogisticsPortalOrderDetailPage() {
         onSuccess: () => {
           toast({ title: t.common.success });
           setQuoteDialog(null);
-          setQuoteForm({ vendorId: "", vendorPrice: "", estimatedPickup: "", estimatedDelivery: "", estimatedDays: "", vendorNotes: "", markupType: "percentage", markupPercentage: "0", fixedSellingPrice: "" });
+          setQuoteForm({ vendorId: "", vendorPrice: "", estimatedPickup: "", estimatedDelivery: "", estimatedDays: "", vendorNotes: "", fixedSellingPrice: "" });
           invalidateAll();
         },
         onError: () => toast({ title: t.common.error, variant: "destructive" }),
@@ -508,9 +513,7 @@ export default function LogisticsPortalOrderDetailPage() {
       estimatedDelivery: q.estimatedDelivery ?? "",
       estimatedDays: q.estimatedDays != null ? String(q.estimatedDays) : "",
       vendorNotes: q.vendorNotes ?? "",
-      markupType: q.markupType,
-      markupPercentage: String(q.markupPercentage),
-      fixedSellingPrice: q.fixedSellingPrice != null ? String(q.fixedSellingPrice) : "",
+      fixedSellingPrice: q.fixedSellingPrice != null ? String(q.fixedSellingPrice) : (q.sellingPrice != null ? String(q.sellingPrice) : ""),
     });
   }
 
@@ -530,8 +533,8 @@ export default function LogisticsPortalOrderDetailPage() {
           estimatedDelivery: editForm.estimatedDelivery || undefined,
           estimatedDays: editForm.estimatedDays ? parseInt(editForm.estimatedDays) : undefined,
           vendorNotes: editForm.vendorNotes || undefined,
-          markupType: editForm.markupType,
-          markupPercentage: parseFloat(editForm.markupPercentage) || 0,
+          markupType: "fixed_price",
+          markupPercentage: 0,
           fixedSellingPrice: editForm.fixedSellingPrice ? parseFloat(editForm.fixedSellingPrice) : undefined,
         },
       },
@@ -560,11 +563,6 @@ export default function LogisticsPortalOrderDetailPage() {
         onError: () => toast({ title: t.common.error, variant: "destructive" }),
       }
     );
-  }
-
-  function previewSellingPrice(vp: number, mt: string, mp: number, fp: number | null): number {
-    if (mt === "fixed_price" && fp != null) return fp;
-    return vp + (vp * mp / 100);
   }
 
   async function openLinkFormDialog() {
@@ -603,6 +601,30 @@ export default function LogisticsPortalOrderDetailPage() {
       toast({ title: "Gagal kirim ulang", description: e instanceof Error ? e.message : "Coba lagi", variant: "destructive" });
     } finally {
       setResendingVendorIds((prev) => { const n = new Set(prev); n.delete(vendorId); return n; });
+    }
+  }
+
+  async function handleConvertToShipment() {
+    setConverting(true);
+    try {
+      const res = await fetch(`/api/logistics/freight-shipments/from-portal-order/${orderId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          transportMode: convertForm.transportMode || undefined,
+          cargoType: convertForm.cargoType || undefined,
+        }),
+      });
+      const data = await res.json() as { id?: number; shipmentNumber?: string; message?: string };
+      if (!res.ok) throw new Error(data.message ?? "Gagal");
+      toast({ title: `Freight Shipment ${data.shipmentNumber} berhasil dibuat` });
+      setConvertDialog(false);
+      navigate(`/logistics/freight/${data.id}`);
+    } catch (e) {
+      toast({ title: "Gagal konversi", description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setConverting(false);
     }
   }
 
@@ -699,6 +721,24 @@ export default function LogisticsPortalOrderDetailPage() {
                 }}
               >
                 <Plus className="h-4 w-4" /> Buat Sales Order
+              </Button>
+            )}
+            {(order.status === "Confirmed" || order.status === "In Progress") && !!(order as any).linkedSalesDocId && (
+              <Button
+                size="sm"
+                className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white"
+                onClick={() => {
+                  const st = (order.shipmentType ?? "").toLowerCase();
+                  let tm = "";
+                  if (st.includes("sea") || st.includes("laut")) tm = "sea";
+                  else if (st.includes("air") || st.includes("udara")) tm = "air";
+                  else if (st.includes("truck") || st.includes("darat") || st.includes("land")) tm = "land";
+                  else if (st.includes("multi")) tm = "multimodal";
+                  setConvertForm({ transportMode: tm, cargoType: "" });
+                  setConvertDialog(true);
+                }}
+              >
+                <Truck className="h-4 w-4" /> Konversi ke Shipment
               </Button>
             )}
           </div>
@@ -1021,7 +1061,7 @@ export default function LogisticsPortalOrderDetailPage() {
                     variant="outline"
                     className="h-7 gap-1.5 text-xs"
                     onClick={() => {
-                      setQuoteForm({ vendorId: "", vendorPrice: "", estimatedPickup: "", estimatedDelivery: "", estimatedDays: "", vendorNotes: "", markupType: "percentage", markupPercentage: "0", fixedSellingPrice: "" });
+                      setQuoteForm({ vendorId: "", vendorPrice: "", estimatedPickup: "", estimatedDelivery: "", estimatedDays: "", vendorNotes: "", fixedSellingPrice: "" });
                       setQuoteDialog({ open: true, rfqId: latestRfq.id });
                     }}
                   >
@@ -1069,9 +1109,9 @@ export default function LogisticsPortalOrderDetailPage() {
                               {idr(q.vendorPrice)}
                             </TableCell>
                             <TableCell className="text-sm text-muted-foreground">
-                              {q.markupType === "fixed_price"
-                                ? `Fix: ${idr(q.fixedSellingPrice)}`
-                                : `${q.markupPercentage}%`}
+                              {q.sellingPrice && q.vendorPrice
+                                ? `+${idr(q.sellingPrice - q.vendorPrice)}`
+                                : "—"}
                             </TableCell>
                             <TableCell className="text-right font-mono text-sm font-semibold">
                               {idr(q.sellingPrice)}
@@ -1627,32 +1667,12 @@ export default function LogisticsPortalOrderDetailPage() {
               </div>
             </div>
             <div>
-              <Label className="text-sm">Markup</Label>
-              <div className="flex gap-2 mt-1">
-                <select
-                  className="rounded-md border bg-background px-3 py-2 text-sm w-36"
-                  value={quoteForm.markupType}
-                  onChange={(e) => setQuoteForm((f) => ({ ...f, markupType: e.target.value }))}
-                >
-                  <option value="percentage">Persentase (%)</option>
-                  <option value="fixed_price">Harga Tetap</option>
-                </select>
-                {quoteForm.markupType === "percentage" ? (
-                  <Input placeholder="15" value={quoteForm.markupPercentage}
-                    onChange={(e) => setQuoteForm((f) => ({ ...f, markupPercentage: e.target.value }))} />
-                ) : (
-                  <Input placeholder="Harga jual (IDR)" value={quoteForm.fixedSellingPrice}
-                    onChange={(e) => setQuoteForm((f) => ({ ...f, fixedSellingPrice: e.target.value }))} />
-                )}
-              </div>
-              {quoteForm.vendorPrice && quoteForm.markupType === "percentage" && (
+              <Label className="text-sm">Harga Jual ke Customer (IDR)</Label>
+              <Input className="mt-1" placeholder="Masukkan harga jual..." value={quoteForm.fixedSellingPrice}
+                onChange={(e) => setQuoteForm((f) => ({ ...f, fixedSellingPrice: e.target.value }))} />
+              {quoteForm.vendorPrice && quoteForm.fixedSellingPrice && (
                 <p className="text-xs text-muted-foreground mt-1">
-                  Preview harga jual: {idr(previewSellingPrice(
-                    parseFloat(quoteForm.vendorPrice) || 0,
-                    "percentage",
-                    parseFloat(quoteForm.markupPercentage) || 0,
-                    null
-                  ))}
+                  Profit: {idr(parseFloat(quoteForm.fixedSellingPrice) - (parseFloat(quoteForm.vendorPrice) || 0))}
                 </p>
               )}
             </div>
@@ -1705,32 +1725,12 @@ export default function LogisticsPortalOrderDetailPage() {
               </div>
             </div>
             <div>
-              <Label className="text-sm">Markup</Label>
-              <div className="flex gap-2 mt-1">
-                <select
-                  className="rounded-md border bg-background px-3 py-2 text-sm w-36"
-                  value={editForm.markupType}
-                  onChange={(e) => setEditForm((f) => ({ ...f, markupType: e.target.value }))}
-                >
-                  <option value="percentage">Persentase (%)</option>
-                  <option value="fixed_price">Harga Tetap</option>
-                </select>
-                {editForm.markupType === "percentage" ? (
-                  <Input placeholder="15" value={editForm.markupPercentage}
-                    onChange={(e) => setEditForm((f) => ({ ...f, markupPercentage: e.target.value }))} />
-                ) : (
-                  <Input placeholder="Harga jual (IDR)" value={editForm.fixedSellingPrice}
-                    onChange={(e) => setEditForm((f) => ({ ...f, fixedSellingPrice: e.target.value }))} />
-                )}
-              </div>
-              {editForm.vendorPrice && editForm.markupType === "percentage" && (
+              <Label className="text-sm">Harga Jual ke Customer (IDR)</Label>
+              <Input className="mt-1" placeholder="Masukkan harga jual..." value={editForm.fixedSellingPrice}
+                onChange={(e) => setEditForm((f) => ({ ...f, fixedSellingPrice: e.target.value }))} />
+              {editForm.vendorPrice && editForm.fixedSellingPrice && (
                 <p className="text-xs text-muted-foreground mt-1">
-                  Preview harga jual: {idr(previewSellingPrice(
-                    parseFloat(editForm.vendorPrice) || 0,
-                    "percentage",
-                    parseFloat(editForm.markupPercentage) || 0,
-                    null
-                  ))}
+                  Profit: {idr(parseFloat(editForm.fixedSellingPrice) - (parseFloat(editForm.vendorPrice) || 0))}
                 </p>
               )}
             </div>
@@ -2126,6 +2126,64 @@ export default function LogisticsPortalOrderDetailPage() {
             <Button variant="outline" onClick={() => setEditDetailDialog(false)}>Batal</Button>
             <Button onClick={saveEditDetail} disabled={editDetailSaving}>
               {editDetailSaving ? <><Loader2 className="h-4 w-4 animate-spin mr-1" />Menyimpan...</> : "Simpan"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialog: Konversi ke Freight Shipment ── */}
+      <Dialog open={convertDialog} onOpenChange={setConvertDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Truck className="h-5 w-5 text-indigo-600" /> Konversi ke Freight Shipment
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2 text-sm">
+            <div className="rounded-lg border bg-slate-50 p-3 space-y-1.5">
+              <InfoRow label="Shipper" value={order?.customerName ?? "—"} />
+              <InfoRow label="Consignee" value={(order as any)?.companyName ?? order?.customerName ?? "—"} />
+              <InfoRow label="Rute" value={`${order?.origin ?? "—"} → ${order?.destination ?? "—"}`} />
+              <InfoRow label="Komoditi" value={order?.commodity ?? order?.shipmentType ?? "General Cargo"} />
+              {order?.grossWeight != null && <InfoRow label="Berat" value={`${order.grossWeight} kg`} />}
+              <InfoRow label="Sales Order" value={(order as any)?.linkedSalesDocNumber ?? "—"} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Mode Transportasi</Label>
+              <select
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                value={convertForm.transportMode}
+                onChange={e => setConvertForm(f => ({ ...f, transportMode: e.target.value }))}
+              >
+                <option value="">— Pilih (opsional) —</option>
+                <option value="sea">Sea (Laut)</option>
+                <option value="air">Air (Udara)</option>
+                <option value="land">Land (Darat)</option>
+                <option value="multimodal">Multimodal</option>
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Tipe Kargo</Label>
+              <select
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                value={convertForm.cargoType}
+                onChange={e => setConvertForm(f => ({ ...f, cargoType: e.target.value }))}
+              >
+                <option value="">— Pilih (opsional) —</option>
+                <option value="FCL">FCL</option>
+                <option value="LCL">LCL</option>
+                <option value="Air">Air</option>
+              </select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConvertDialog(false)} disabled={converting}>Batal</Button>
+            <Button
+              className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white"
+              onClick={handleConvertToShipment}
+              disabled={converting}
+            >
+              {converting ? <><Loader2 className="h-4 w-4 animate-spin" /> Memproses...</> : <><Truck className="h-4 w-4" /> Konversi</>}
             </Button>
           </DialogFooter>
         </DialogContent>

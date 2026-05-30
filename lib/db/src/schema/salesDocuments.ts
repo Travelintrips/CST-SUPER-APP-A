@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, numeric, timestamp, date, pgEnum, boolean } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, numeric, timestamp, date, pgEnum, boolean, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { customersTable } from "./customers";
@@ -71,7 +71,15 @@ export const salesDocumentsTable = pgTable("sales_documents", {
   warehouseId: integer("warehouse_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, (t) => [
+  // [H6-FIX] Prevent duplicate SO from same logistic order (nullable-safe: NULL != NULL in PG unique index)
+  uniqueIndex("sales_documents_logistic_order_id_unique_idx").on(t.logisticOrderId),
+  // [H10-FIX] Performance indexes for most-queried columns
+  index("sales_documents_customer_id_idx").on(t.customerId),
+  index("sales_documents_company_id_idx").on(t.companyId),
+  index("sales_documents_status_idx").on(t.status),
+  index("sales_documents_company_status_idx").on(t.companyId, t.status),
+]);
 
 export const salesDocumentLinesTable = pgTable("sales_document_lines", {
   id: serial("id").primaryKey(),

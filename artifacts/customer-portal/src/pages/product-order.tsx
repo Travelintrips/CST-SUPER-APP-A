@@ -5,12 +5,20 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/lib/utils";
 import {
   Package, Search, Plus, Minus, Trash2, ShoppingCart,
-  User, CheckCircle2, ChevronLeft, ChevronRight, Loader2,
+  User, CheckCircle2, ChevronLeft, ChevronRight, Loader2, Tag,
 } from "lucide-react";
+import { DynamicProductForm } from "@/components/DynamicProductForm";
+import type { ProductTemplate, DynamicFormValues } from "@workspace/product-templates";
+import {
+  getInCodeTemplate as getLocalTemplate,
+  getAllInCodeTemplates as getAllLocalTemplates,
+  validateTemplatePayload,
+} from "@workspace/product-templates";
 
 interface PortalProduct {
   id: number;
@@ -52,10 +60,22 @@ async function submitOrder(body: unknown): Promise<{ orderNumber: string }> {
   return res.json();
 }
 
+const EMPTY_FORM: DynamicFormValues = {
+  customFieldValues: {},
+  uploadedDocuments: [],
+  checklistStatus: {},
+  packagingNotes: "",
+  conditionalFlags: {},
+};
+
 export default function ProductOrderPage() {
   const [step, setStep] = useState<0 | 1 | 2>(0);
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+
+  // ── Templates from DB ──
+  const [allTemplates, setAllTemplates] = useState<ProductTemplate[]>([]);
+  const [templatesLoading, setTemplatesLoading] = useState(true);
 
   // Step 0: product browsing
   const [products, setProducts] = useState<PortalProduct[]>([]);
@@ -63,7 +83,11 @@ export default function ProductOrderPage() {
   const [search, setSearch] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
 
-  // Step 1: customer info
+  // Step 1: commodity category + dynamic form
+  const [productCategory, setProductCategory] = useState("general");
+  const [dynamicValues, setDynamicValues] = useState<DynamicFormValues>(EMPTY_FORM);
+
+  // Step 1 continued: customer info
   const [customerName, setCustomerName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -71,6 +95,19 @@ export default function ProductOrderPage() {
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [orderNumber, setOrderNumber] = useState("");
+
+  // ── Fetch templates from DB on mount ──
+  useEffect(() => {
+    fetch(`${BASE}/api/portal-product/templates`)
+      .then((r) => r.ok ? r.json() : Promise.reject())
+      .then((templates: ProductTemplate[]) => {
+        setAllTemplates(templates.length > 0 ? templates : getAllLocalTemplates());
+      })
+      .catch(() => {
+        setAllTemplates(getAllLocalTemplates());
+      })
+      .finally(() => setTemplatesLoading(false));
+  }, []);
 
   useEffect(() => {
     setLoadingProducts(true);
@@ -80,8 +117,18 @@ export default function ProductOrderPage() {
       .finally(() => setLoadingProducts(false));
   }, [search]);
 
+  // Reset dynamic form when category changes
+  useEffect(() => {
+    setDynamicValues(EMPTY_FORM);
+  }, [productCategory]);
+
   const cartTotal = cart.reduce((s, i) => s + i.product.price * i.qty, 0);
   const cartCount = cart.reduce((s, i) => s + i.qty, 0);
+
+  // Template lookup: DB first, fallback to hardcoded
+  const template: ProductTemplate =
+    allTemplates.find((t) => t.category === productCategory) ??
+    getLocalTemplate(productCategory);
 
   function addToCart(product: PortalProduct) {
     setCart((prev) => {
@@ -105,9 +152,16 @@ export default function ProductOrderPage() {
 
   async function handleSubmit() {
     if (!customerName.trim() || !email.trim() || !phone.trim() || !address.trim()) {
-      toast({ title: "Isi semua kolom wajib", variant: "destructive" });
+      toast({ title: "Isi semua kolom data pemesan", variant: "destructive" });
       return;
     }
+
+    const formErrors = validateTemplatePayload(template, dynamicValues);
+    if (formErrors.length > 0) {
+      toast({ title: formErrors[0], variant: "destructive" });
+      return;
+    }
+
     setSubmitting(true);
     try {
       const items = cart.map((i) => ({
@@ -126,6 +180,14 @@ export default function ProductOrderPage() {
         shippingAddress: address.trim(),
         notes: notes.trim() || undefined,
         items,
+        productCategory,
+        templateId: template.category,
+        templateVersion: template.version,
+        customFieldValues: dynamicValues.customFieldValues,
+        uploadedDocuments: dynamicValues.uploadedDocuments,
+        checklistStatus: dynamicValues.checklistStatus,
+        packagingNotes: dynamicValues.packagingNotes || undefined,
+        conditionalFlags: dynamicValues.conditionalFlags,
       });
       setOrderNumber(result.orderNumber);
       setStep(2);
@@ -136,7 +198,7 @@ export default function ProductOrderPage() {
     }
   }
 
-  // Step 0 — Pilih Produk
+  // ── Step 0 — Pilih Produk ──
   if (step === 0) {
     return (
       <div className="min-h-screen bg-background">
@@ -147,7 +209,6 @@ export default function ProductOrderPage() {
         </div>
 
         <div className="max-w-4xl mx-auto px-4 py-8">
-          {/* Search */}
           <div className="relative mb-6">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
@@ -158,7 +219,6 @@ export default function ProductOrderPage() {
             />
           </div>
 
-          {/* Product grid */}
           {loadingProducts ? (
             <div className="flex justify-center py-16">
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
@@ -221,7 +281,6 @@ export default function ProductOrderPage() {
             </div>
           )}
 
-          {/* Cart summary sticky */}
           {cart.length > 0 && (
             <div className="sticky bottom-4 z-10">
               <div className="bg-primary text-primary-foreground rounded-xl shadow-lg px-5 py-4 flex items-center justify-between">
@@ -243,7 +302,7 @@ export default function ProductOrderPage() {
     );
   }
 
-  // Step 1 — Data & Konfirmasi
+  // ── Step 1 — Informasi Produk + Data Pemesan ──
   if (step === 1) {
     return (
       <div className="min-h-screen bg-background">
@@ -253,16 +312,17 @@ export default function ProductOrderPage() {
               <ChevronLeft className="w-4 h-4" />
             </Button>
             <div>
-              <h1 className="text-xl font-bold">Konfirmasi Pesanan</h1>
-              <p className="text-primary-foreground/70 text-sm">Isi data pengiriman Anda</p>
+              <h1 className="text-xl font-bold">Detail Pesanan</h1>
+              <p className="text-primary-foreground/70 text-sm">Isi informasi produk dan data pengiriman</p>
             </div>
           </div>
         </div>
 
         <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
-          {/* Order summary */}
+
+          {/* Order Summary */}
           <div className="border rounded-xl p-5 bg-card">
-            <h2 className="font-semibold mb-4 flex items-center gap-2">
+            <h2 className="font-semibold mb-4 flex items-center gap-2 text-sm">
               <ShoppingCart className="w-4 h-4" /> Ringkasan Pesanan
             </h2>
             <div className="space-y-3">
@@ -277,42 +337,79 @@ export default function ProductOrderPage() {
               ))}
             </div>
             <Separator className="my-3" />
-            <div className="flex justify-between font-bold">
+            <div className="flex justify-between font-bold text-sm">
               <span>Total</span>
               <span className="text-primary">{formatCurrency(cartTotal)}</span>
             </div>
           </div>
 
-          {/* Customer data */}
+          {/* Category Selector */}
+          <div className="border rounded-xl p-5 bg-card space-y-3">
+            <h2 className="font-semibold flex items-center gap-2 text-sm">
+              <Tag className="w-4 h-4" /> Kategori Komoditas
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              Pilih kategori produk untuk menampilkan field dan dokumen yang relevan.
+            </p>
+            {templatesLoading ? (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
+                <Loader2 className="w-3 h-3 animate-spin" /> Memuat kategori...
+              </div>
+            ) : (
+              <Select value={productCategory} onValueChange={setProductCategory}>
+                <SelectTrigger className="h-10">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {allTemplates.map((t) => (
+                    <SelectItem key={t.category} value={t.category}>
+                      {t.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+
+          {/* Dynamic Product Form */}
+          {!templatesLoading && (
+            <DynamicProductForm
+              template={template}
+              values={dynamicValues}
+              onChange={setDynamicValues}
+            />
+          )}
+
+          {/* Customer Data */}
           <div className="border rounded-xl p-5 bg-card space-y-4">
-            <h2 className="font-semibold flex items-center gap-2">
+            <h2 className="font-semibold flex items-center gap-2 text-sm">
               <User className="w-4 h-4" /> Data Pemesan
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label>Nama Lengkap *</Label>
+                <Label className="text-xs">Nama Lengkap <span className="text-destructive">*</span></Label>
                 <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Nama lengkap" />
               </div>
               <div className="space-y-1.5">
-                <Label>No. WhatsApp *</Label>
+                <Label className="text-xs">No. WhatsApp <span className="text-destructive">*</span></Label>
                 <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="08xxxxxxxxxx" type="tel" />
               </div>
               <div className="space-y-1.5 sm:col-span-2">
-                <Label>Email *</Label>
+                <Label className="text-xs">Email <span className="text-destructive">*</span></Label>
                 <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email@example.com" type="email" />
               </div>
               <div className="space-y-1.5 sm:col-span-2">
-                <Label>Alamat Pengiriman *</Label>
+                <Label className="text-xs">Alamat Pengiriman <span className="text-destructive">*</span></Label>
                 <Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Jl. ..., Kota, Provinsi" />
               </div>
               <div className="space-y-1.5 sm:col-span-2">
-                <Label>Catatan (opsional)</Label>
+                <Label className="text-xs">Catatan Tambahan (opsional)</Label>
                 <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Catatan tambahan untuk pesanan..." />
               </div>
             </div>
           </div>
 
-          <Button className="w-full h-12 text-base" onClick={handleSubmit} disabled={submitting}>
+          <Button className="w-full h-12 text-base" onClick={handleSubmit} disabled={submitting || templatesLoading}>
             {submitting ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Mengirim...</> : "Kirim Pesanan"}
           </Button>
         </div>
@@ -320,7 +417,7 @@ export default function ProductOrderPage() {
     );
   }
 
-  // Step 2 — Sukses
+  // ── Step 2 — Sukses ──
   return (
     <div className="min-h-screen bg-background flex items-center justify-center px-4">
       <div className="max-w-md w-full text-center space-y-6">
@@ -338,7 +435,17 @@ export default function ProductOrderPage() {
           <Button variant="outline" onClick={() => setLocation("/products")}>
             Lihat Produk Lain
           </Button>
-          <Button onClick={() => { setCart([]); setStep(0); setCustomerName(""); setEmail(""); setPhone(""); setAddress(""); setNotes(""); }}>
+          <Button onClick={() => {
+            setCart([]);
+            setStep(0);
+            setCustomerName("");
+            setEmail("");
+            setPhone("");
+            setAddress("");
+            setNotes("");
+            setProductCategory("general");
+            setDynamicValues(EMPTY_FORM);
+          }}>
             Pesan Lagi
           </Button>
         </div>

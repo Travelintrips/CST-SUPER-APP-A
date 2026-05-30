@@ -184,6 +184,40 @@ export async function runVendorMiniFormMigration(): Promise<void> {
       ON vendor_mini_form_submissions(token)
     `);
 
+    // ── customer_invoice_links ─────────────────────────────────────────────────
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS customer_invoice_links (
+        id              SERIAL PRIMARY KEY,
+        token           TEXT NOT NULL UNIQUE,
+        sales_doc_id    INTEGER,
+        order_id        INTEGER,
+        order_number    TEXT,
+        invoice_number  TEXT,
+        customer_name   TEXT,
+        customer_phone  TEXT,
+        currency        TEXT DEFAULT 'IDR',
+        subtotal        NUMERIC(14,2),
+        tax_rate        NUMERIC(5,2) DEFAULT 11,
+        tax_amount      NUMERIC(14,2),
+        grand_total     NUMERIC(14,2),
+        amount_paid     NUMERIC(14,2) DEFAULT 0,
+        payment_status  TEXT NOT NULL DEFAULT 'unpaid',
+        payment_method  TEXT,
+        due_date        TIMESTAMP,
+        notes           TEXT,
+        line_items      JSONB DEFAULT '[]',
+        viewed_at       TIMESTAMP,
+        acknowledged_at TIMESTAMP,
+        status          TEXT NOT NULL DEFAULT 'sent',
+        created_by      TEXT,
+        created_at      TIMESTAMP NOT NULL DEFAULT NOW(),
+        expires_at      TIMESTAMP
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS cil_token_idx ON customer_invoice_links(token);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS cil_order_id_idx ON customer_invoice_links(order_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS cil_sales_doc_id_idx ON customer_invoice_links(sales_doc_id);`);
+
     logger.info("Vendor mini form migration: ok");
   } catch (err) {
     logger.error({ err }, "Vendor mini form migration failed");

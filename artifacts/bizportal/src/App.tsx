@@ -105,6 +105,7 @@ import ProductRecipesPage from "@/pages/products/recipes";
 
 import SettingsRolesPage from "@/pages/settings-roles";
 import SettingsApprovalRulesPage from "@/pages/settings-approval-rules";
+import ProductTemplatesPage from "@/pages/product-templates";
 import PurchaseRequestListPage from "@/pages/purchase/pr-list";
 import PurchaseRequestEditorPage from "@/pages/purchase/pr-editor";
 import GoodsReceiptListPage from "@/pages/purchase/gr-list";

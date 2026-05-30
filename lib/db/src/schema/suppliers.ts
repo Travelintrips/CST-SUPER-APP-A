@@ -25,6 +25,9 @@ export const suppliersTable = pgTable("suppliers", {
   sortOrder: integer("sort_order").notNull().default(0),
   yearVehicle: integer("year_vehicle"),
   supportedModes: text("supported_modes").array(),
+  // ── Phase 1: Structured ETA (replaces free-text eta field) ────────────────
+  etaDaysMin: integer("eta_days_min"),
+  etaDaysMax: integer("eta_days_max"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (t) => [
   index("suppliers_company_idx").on(t.companyId),

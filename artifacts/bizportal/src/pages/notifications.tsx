@@ -13,7 +13,8 @@ type NotifType =
   | "logistic" | "logistic_status" | "portal_sales" | "sales_update"
   | "freight_new" | "freight_status" | "freight_stage"
   | "ecommerce" | "product"
-  | "sales_new" | "purchase_rfq" | "purchase_po" | "vendor_quote";
+  | "sales_new" | "purchase_rfq" | "purchase_po" | "vendor_quote"
+  | "vendor_po_accepted";
 
 interface DbNotification {
   id: number;
@@ -38,9 +39,10 @@ const TYPE_LABELS: Record<string, string> = {
   freight_stage:   "Stage Freight",
   ecommerce:       "E-commerce",
   product:         "Order Produk",
-  purchase_rfq:    "RFQ Pembelian",
-  purchase_po:     "Purchase Order",
-  vendor_quote:    "Penawaran Vendor",
+  purchase_rfq:      "RFQ Pembelian",
+  purchase_po:       "Purchase Order",
+  vendor_quote:      "Penawaran Vendor",
+  vendor_po_accepted:"Vendor Konfirmasi PO",
 };
 
 const TYPE_COLORS: Record<string, string> = {
@@ -54,9 +56,10 @@ const TYPE_COLORS: Record<string, string> = {
   freight_stage:   "bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300",
   ecommerce:       "bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300",
   product:         "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
-  purchase_rfq:    "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
-  purchase_po:     "bg-lime-100 text-lime-700 dark:bg-lime-900/40 dark:text-lime-300",
-  vendor_quote:    "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300",
+  purchase_rfq:       "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+  purchase_po:        "bg-lime-100 text-lime-700 dark:bg-lime-900/40 dark:text-lime-300",
+  vendor_quote:       "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300",
+  vendor_po_accepted: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
 };
 
 const TYPE_HREFS: Record<string, (orderId: number | null) => string> = {
@@ -70,9 +73,10 @@ const TYPE_HREFS: Record<string, (orderId: number | null) => string> = {
   freight_stage:   (id) => id ? `/bizportal/logistics/freight/${id}` : "/bizportal/logistics/freight",
   ecommerce:       () => "/bizportal/ecommerce",
   product:         () => "/bizportal/portal-product-orders",
-  purchase_rfq:    (id) => id ? `/bizportal/purchase/documents/${id}` : "/bizportal/purchase/documents",
-  purchase_po:     (id) => id ? `/bizportal/purchase/documents/${id}` : "/bizportal/purchase/documents",
-  vendor_quote:    (id) => id ? `/bizportal/logistics/portal-orders/${id}` : "/bizportal/logistics/portal-orders",
+  purchase_rfq:       (id) => id ? `/bizportal/purchase/documents/${id}` : "/bizportal/purchase/documents",
+  purchase_po:        (id) => id ? `/bizportal/purchase/documents/${id}` : "/bizportal/purchase/documents",
+  vendor_quote:       (id) => id ? `/bizportal/logistics/portal-orders/${id}` : "/bizportal/logistics/portal-orders",
+  vendor_po_accepted: (id) => id ? `/bizportal/purchase/orders/${id}` : "/bizportal/purchase/orders",
 };
 
 function TypeIcon({ type }: { type: string }) {
@@ -86,9 +90,10 @@ function TypeIcon({ type }: { type: string }) {
   if (type === "freight_status")  return <RefreshCw size={15} className={`${cls} text-violet-500`} />;
   if (type === "freight_stage")   return <Layers size={15} className={`${cls} text-teal-500`} />;
   if (type === "ecommerce")       return <ShoppingCart size={15} className={`${cls} text-pink-500`} />;
-  if (type === "purchase_rfq")    return <ShoppingCart size={15} className={`${cls} text-amber-500`} />;
-  if (type === "purchase_po")     return <ShoppingCart size={15} className={`${cls} text-lime-600`} />;
-  if (type === "vendor_quote")    return <MessageSquare size={15} className={`${cls} text-sky-500`} />;
+  if (type === "purchase_rfq")      return <ShoppingCart size={15} className={`${cls} text-amber-500`} />;
+  if (type === "purchase_po")       return <ShoppingCart size={15} className={`${cls} text-lime-600`} />;
+  if (type === "vendor_quote")      return <MessageSquare size={15} className={`${cls} text-sky-500`} />;
+  if (type === "vendor_po_accepted") return <CheckCheck size={15} className={`${cls} text-green-600`} />;
   return <Package size={15} className={`${cls} text-green-500`} />;
 }
 
@@ -179,7 +184,8 @@ const ALL_TYPES: { value: string; label: string }[] = [
   { value: "sales_update",   label: "Update Sales" },
   { value: "purchase_rfq",   label: "RFQ Beli" },
   { value: "purchase_po",    label: "PO Beli" },
-  { value: "vendor_quote",   label: "Penawaran Vendor" },
+  { value: "vendor_quote",      label: "Penawaran Vendor" },
+  { value: "vendor_po_accepted", label: "Vendor Konfirmasi PO" },
   { value: "portal_sales",   label: "Order Portal" },
   { value: "ecommerce",      label: "E-commerce" },
   { value: "product",        label: "Order Produk" },
@@ -240,60 +246,49 @@ export default function NotificationsPage() {
   useEffect(() => { setPage(0); }, [typeFilter, readFilter, search]);
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  // ── SSE auto-refresh ──
+  // ── Polling auto-refresh (30 detik) ──
+  // Tidak pakai EventSource sendiri di sini karena useOrderNotifications di layout
+  // sudah subscribe ke endpoint yang sama — dua listener aktif menyebabkan event
+  // diproses ganda dan invalidateQueries dipanggil 2x.
   useEffect(() => {
-    let es: EventSource | null = null;
-    let retryTimer: ReturnType<typeof setTimeout> | null = null;
-    let retryDelay = 2000;
     let unmounted = false;
+    const POLL_MS = 30_000;
 
-    function connect() {
+    function poll() {
       if (unmounted) return;
-      es = new EventSource("/api/drivers/events", { withCredentials: true });
-
-      function onNotif() {
-        if (unmounted) return;
-        if (pageRef.current === 0) {
-          // On first page: silently refresh list
-          setLoading(true);
-          const params = new URLSearchParams({ type: "all", read: "all", limit: String(PAGE_SIZE), offset: "0" });
-          fetch(`/api/notifications?${params}`, { credentials: "include" })
-            .then((r) => r.ok ? r.json() : null)
-            .then((json) => {
-              if (!json) return;
-              setData(json.data ?? []);
-              setTotal(json.total ?? 0);
-              setUnreadTotal(json.unreadTotal ?? 0);
-              setNewArrived(0);
-            })
-            .finally(() => setLoading(false));
-        } else {
-          // On deeper pages: show banner
-          setNewArrived((n) => n + 1);
-          setUnreadTotal((n) => n + 1);
-        }
+      if (pageRef.current === 0) {
+        setLoading(true);
+        const params = new URLSearchParams({ type: "all", read: "all", limit: String(PAGE_SIZE), offset: "0" });
+        fetch(`/api/notifications?${params}`, { credentials: "include" })
+          .then((r) => r.ok ? r.json() : null)
+          .then((json) => {
+            if (!json || unmounted) return;
+            setData(json.data ?? []);
+            setTotal(json.total ?? 0);
+            setUnreadTotal(json.unreadTotal ?? 0);
+            setNewArrived(0);
+          })
+          .finally(() => { if (!unmounted) setLoading(false); });
+      } else {
+        // Halaman > 0: cek saja apakah ada yang baru tanpa replace data
+        const params = new URLSearchParams({ type: "all", read: "unread", limit: "1", offset: "0" });
+        fetch(`/api/notifications?${params}`, { credentials: "include" })
+          .then((r) => r.ok ? r.json() : null)
+          .then((json) => {
+            if (!json || unmounted) return;
+            const serverUnread = json.unreadTotal ?? 0;
+            setUnreadTotal((prev) => {
+              if (serverUnread > prev) setNewArrived((n) => n + (serverUnread - prev));
+              return serverUnread;
+            });
+          });
       }
-
-      SSE_EVENTS.forEach((evt) => es!.addEventListener(evt, onNotif));
-
-      es.onerror = () => {
-        es?.close();
-        if (!unmounted) {
-          retryTimer = setTimeout(() => {
-            retryDelay = Math.min(retryDelay * 2, 30_000);
-            connect();
-          }, retryDelay);
-        }
-      };
-
-      es.onopen = () => { retryDelay = 2000; };
     }
 
-    connect();
+    const timer = setInterval(poll, POLL_MS);
     return () => {
       unmounted = true;
-      if (retryTimer) clearTimeout(retryTimer);
-      es?.close();
+      clearInterval(timer);
     };
   }, []);
 

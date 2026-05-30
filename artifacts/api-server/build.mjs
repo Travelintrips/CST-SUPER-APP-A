@@ -9,6 +9,7 @@ import { rm } from "node:fs/promises";
 globalThis.require = createRequire(import.meta.url);
 
 const artifactDir = path.dirname(fileURLToPath(import.meta.url));
+const workspaceRoot = path.resolve(artifactDir, "../..");
 
 
 async function buildAll() {
@@ -51,10 +52,6 @@ async function buildAll() {
       "pg-native",
       "oracledb",
       "mongodb-client-encryption",
-      "nodemailer",
-      "imapflow",
-      "mailparser",
-      "handlebars",
       "knex",
       "typeorm",
       "protobufjs",
@@ -105,7 +102,13 @@ async function buildAll() {
       "puppeteer",
       "puppeteer-core",
       "electron",
+      "ws",
+      "web-push",
     ],
+    alias: {
+      "@workspace/logistics-constants": path.resolve(workspaceRoot, "lib/logistics-constants/src/index.ts"),
+      "@workspace/product-templates": path.resolve(workspaceRoot, "lib/product-templates/src/index.ts"),
+    },
     sourcemap: process.env.NODE_ENV !== "production" ? "linked" : false,
     plugins: [
       // pino relies on workers to handle logging, instead of externalizing it we use a plugin to handle it

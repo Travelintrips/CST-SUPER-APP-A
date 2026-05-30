@@ -155,7 +155,6 @@ export default function CustomerOrderPage() {
           </div>
         )}
 
-        <p className="text-center text-xs text-slate-400 pb-4">CST Logistics · Tracking Order Anda</p>
       </div>
     </div>
   );

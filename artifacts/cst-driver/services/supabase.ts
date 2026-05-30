@@ -1,6 +1,11 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
+const rawSupabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
+const SUPABASE_URL = rawSupabaseUrl.startsWith('http')
+  ? rawSupabaseUrl
+  : rawSupabaseUrl
+  ? `https://${rawSupabaseUrl}.supabase.co`
+  : '';
 const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
 
 export const supabase: SupabaseClient | null =

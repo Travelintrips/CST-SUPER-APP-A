@@ -36,6 +36,7 @@ import {
   Bot,
   ScanLine,
   MessageCircle,
+  MessageSquare,
   Layers,
   Network,
   ImageIcon,
@@ -55,6 +56,7 @@ import {
   ShieldCheck,
   Shield,
   Calendar,
+  ShieldAlert,
 
   Search,
   Bell,
@@ -63,6 +65,8 @@ import {
   SlidersHorizontal,
   Send,
   Link2,
+  Brain,
+  Trophy,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -94,6 +98,7 @@ import { CompanySwitcher } from "@/components/CompanySwitcher";
 import { useCompany } from "@/contexts/CompanyContext";
 import { cn } from "@/lib/utils";
 import { useNavPreferences } from "@/hooks/useNavPreferences";
+import { useAlertWebSocket } from "@/hooks/useAlertWebSocket";
 import {
   DndContext,
   closestCenter,
@@ -155,6 +160,8 @@ export function AppShell({ children }: AppShellProps) {
   });
   const { unreadCount, dbUnreadTotal } = useOrderNotificationsContext();
 
+  useAlertWebSocket();
+
   const getInitials = (name?: string) => {
     if (!name) return "U";
     return name.substring(0, 2).toUpperCase();
@@ -176,6 +183,51 @@ export function AppShell({ children }: AppShellProps) {
       titleKey: "Notifikasi",
       href: "/notifications",
       icon: Bell,
+      roles: ["admin", "owner"],
+    },
+
+    // ── VENDOR LEADERBOARD ────────────────────────────────────────────
+    {
+      type: "flat",
+      titleKey: "Vendor Leaderboard",
+      href: "/vendors",
+      icon: Trophy,
+      roles: ["admin", "owner", "manager"],
+    },
+
+    // ── INTELLIGENCE ALERTS ───────────────────────────────────────────
+    {
+      type: "flat",
+      titleKey: "Intelligence Alerts",
+      href: "/intelligence-alerts",
+      icon: ShieldAlert,
+      roles: ["admin", "owner"],
+    },
+
+    // ── AI APPROVAL QUEUE ─────────────────────────────────────────────
+    {
+      type: "flat",
+      titleKey: "AI Approval Queue",
+      href: "/ai-approvals",
+      icon: ShieldCheck,
+      roles: ["admin", "owner"],
+    },
+
+    // ── AI DECISION MEMORY ────────────────────────────────────────────
+    {
+      type: "flat",
+      titleKey: "Decision Memory",
+      href: "/ai/decision-memory",
+      icon: Brain,
+      roles: ["admin", "owner"],
+    },
+
+    // ── OPERATIONAL CONTEXT ───────────────────────────────────────────
+    {
+      type: "flat",
+      titleKey: "Operational Context",
+      href: "/operational-context",
+      icon: Layers,
       roles: ["admin", "owner"],
     },
 
@@ -271,6 +323,7 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "Landed Cost", href: "/purchase/landed-costs", icon: Calculator },
         { titleKey: "vendors", href: "/purchase/vendors", icon: UserCircle },
         { titleKey: "Vendor Forms", href: "/purchase/vendor-forms", icon: Send },
+        { titleKey: "Audit Trail VMF", href: "/purchase/vmf-audit-trail", icon: Activity },
         { titleKey: "Thai Tea Procurement", href: "/purchase/thai-tea", icon: ShoppingBag, companyCodes: ["CST"] },
       ],
     },
@@ -290,6 +343,7 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "generalLedger", href: "/accounting/reports/general-ledger", icon: BookOpen },
         { titleKey: "profitLoss", href: "/accounting/reports/profit-loss", icon: TrendingUp },
         { titleKey: "balanceSheet", href: "/accounting/reports/balance-sheet", icon: Wallet },
+        { titleKey: "Profitabilitas Freight", href: "/accounting/reports/freight-profitability", icon: Ship },
         { titleKey: "reconciliation", href: "/accounting/reconciliation", icon: GitMerge },
         { titleKey: "accountingSettings", href: "/accounting/settings", icon: Settings },
       ],
@@ -353,6 +407,8 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "correspondences", href: "/correspondences", icon: Mail },
         { titleKey: "emailInbox", href: "/email-inbox", icon: MessageCircle },
         { titleKey: "Riwayat Notifikasi", href: "/notification-history", icon: MessageCircle },
+        { titleKey: "WA Templates Logistik", href: "/settings/wa-templates", icon: MessageCircle },
+        { titleKey: "Enterprise WA Templates", href: "/settings/enterprise-wa-templates", icon: MessageSquare },
       ],
     },
 
@@ -369,6 +425,8 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "aiScanSettings", href: "/settings/ai-scan", icon: ScanLine },
         { titleKey: "Konfigurasi Menu", href: "/settings/nav-company-config", icon: LayoutGrid },
         { titleKey: "Short Links", href: "/settings/short-links", icon: Link2 },
+        { titleKey: "Product Templates", href: "/settings/product-templates", icon: Layers },
+        { titleKey: "Satuan Pengiriman", href: "/settings/logistics-units", icon: Package },
         { titleKey: "Image Manager", href: "/media", icon: ImageIcon },
       ],
     },

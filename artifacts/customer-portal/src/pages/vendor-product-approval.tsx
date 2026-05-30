@@ -130,7 +130,7 @@ export default function VendorProductApprovalPage() {
           <p className="text-slate-400 text-sm">
             No. order <span className="font-mono text-blue-400">{orderNumber}</span> tidak ditemukan atau link tidak valid.
           </p>
-          <p className="text-slate-500 text-xs">Pastikan link yang digunakan benar, atau hubungi admin CST Logistics.</p>
+          <p className="text-slate-500 text-xs">Pastikan link yang digunakan benar, atau hubungi admin.</p>
         </div>
       </div>
     );
@@ -159,7 +159,7 @@ export default function VendorProductApprovalPage() {
           <div className="space-y-2">
             <h2 className="text-white text-2xl font-bold">Response Terkirim!</h2>
             <p className="text-slate-400 text-sm">
-              Response Anda untuk order <span className="font-mono text-blue-400">{orderNumber}</span> telah dikirim ke admin CST Logistics.
+              Response Anda untuk order <span className="font-mono text-blue-400">{orderNumber}</span> telah dikirim ke admin.
             </p>
           </div>
           <div className="bg-slate-800/60 border border-slate-700 rounded-2xl p-5 w-full max-w-sm text-left space-y-3">
@@ -384,7 +384,7 @@ export default function VendorProductApprovalPage() {
             </button>
 
             <p className="text-xs text-slate-500 text-center">
-              Response Anda akan langsung diterima oleh tim admin CST Logistics.
+              Response Anda akan langsung diterima oleh tim admin.
             </p>
           </div>
         </div>

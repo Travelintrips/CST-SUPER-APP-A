@@ -1,0 +1,109 @@
+Fix price mismatch antara WA RFQ dan halaman RFQ vendor.
+
+Masalah:
+WA Vendor RFQ menampilkan harga benar:
+Kopi Arabika Grade A = Rp 132.000
+
+Tetapi halaman RFQ vendor menampilkan:
+Rp 100.000
+
+Root cause:
+GET /api/logistic/orders/rfq-form di:
+artifacts/api-server/src/routes/logisticRfq.ts
+
+Masih mengambil:
+catalogItems[0].priceBase
+
+Padahal harus memakai logic yang sama dengan WA blast:
+name-matching antara orderItemRows[].serviceName dengan vendor_catalog_items.name.
+
+==================================================
+FIX YANG DIMINTA
+================
+
+Ubah logic di GET /rfq-form:
+
+Dari:
+
+* matching by vehicleType/truckType
+* fallback catalogItems[0].priceBase
+
+Menjadi:
+
+1. Ambil orderItemRows yang sudah ada.
+
+2. Untuk setiap order item, cocokkan:
+   orderItem.serviceName atau orderItem.category
+   dengan
+   vendor_catalog_items.name
+
+3. Matching rule sama dengan WA:
+   const name = item.serviceName.toLowerCase().trim()
+   const cName = catalogItem.name.toLowerCase().trim()
+   match jika:
+   cName.includes(name) || name.includes(cName)
+
+4. Jika match ditemukan:
+   vendorBasePrice = catalogMatch.priceBase
+
+5. Jangan pakai catalogItems[0] jika ada order item name yang bisa dicocokkan.
+
+6. Fallback catalogItems[0] hanya boleh dipakai jika:
+
+   * orderItemRows kosong, atau
+   * tidak ada item name/category sama sekali, atau
+   * benar-benar tidak ada match
+
+7. Response RFQ page harus mengembalikan harga yang sama dengan WA.
+
+==================================================
+UNTUK MULTI ITEM
+================
+
+Jika ada beberapa item:
+
+* return detail item prices juga jika response mendukung
+* minimal vendorBasePrice harus mengikuti item pertama yang matched
+* lebih baik tambahkan field:
+  matchedCatalogItems: [
+  {
+  orderItemId,
+  serviceName,
+  catalogItemId,
+  catalogName,
+  priceBase
+  }
+  ]
+
+==================================================
+EXPECTED RESULT
+===============
+
+Untuk order:
+Kopi Arabika Grade A
+
+Vendor catalog:
+
+* item index 0 = Rp 100.000
+* Kopi Arabika Grade A = Rp 132.000
+
+Maka:
+
+* WA RFQ = Rp 132.000
+* RFQ Page = Rp 132.000
+* tidak boleh lagi Rp 100.000
+
+==================================================
+OUTPUT
+======
+
+1. File yang diubah
+2. Logic lama yang diganti
+3. Logic baru
+4. Test result:
+
+   * WA price
+   * RFQ page price
+   * matched catalog item
+5. Pastikan frontend tidak perlu diubah
+6. Pastikan trucking flow tidak rusak

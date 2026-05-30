@@ -263,7 +263,7 @@ export default function VendorResponsePage() {
           <AlertCircle className="w-16 h-16 text-red-400 mx-auto" />
           <h2 className="text-white text-xl font-bold">Order Tidak Ditemukan</h2>
           <p className="text-slate-400 text-sm">No. order <span className="font-mono text-blue-400">{orderNumber}</span> tidak ditemukan dalam sistem.</p>
-          <p className="text-slate-500 text-xs">Pastikan link yang Anda gunakan benar, atau hubungi admin CST Logistics.</p>
+          <p className="text-slate-500 text-xs">Pastikan link yang Anda gunakan benar, atau hubungi admin.</p>
         </div>
       </div>
     );
@@ -301,7 +301,7 @@ export default function VendorResponsePage() {
             </h2>
             <p className="text-slate-400 text-sm">
               {status
-                ? "Response Anda untuk order berikut telah berhasil dikirim ke admin CST Logistics."
+                ? "Response Anda untuk order berikut telah berhasil dikirim ke admin."
                 : "Response untuk order ini telah dikirimkan sebelumnya."}
             </p>
           </div>
@@ -614,7 +614,7 @@ export default function VendorResponsePage() {
             </button>
 
             <p className="text-xs text-slate-500 text-center">
-              Response Anda akan langsung diterima oleh tim admin CST Logistics.
+              Response Anda akan langsung diterima oleh tim admin.
             </p>
           </div>
         </div>

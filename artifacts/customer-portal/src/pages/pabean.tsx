@@ -456,7 +456,7 @@ export default function Pabean() {
             </div>
             <div>
               <p className="font-bold text-sm leading-tight" style={{ color: "rgba(255,255,255,0.97)" }}>Pengurusan Pabean / PPJK</p>
-              <p className="text-[10px] font-medium" style={{ color: "rgba(255,255,255,0.48)", letterSpacing: "0.05em" }}>CST Logistics · Layanan Kepabeanan</p>
+              <p className="text-[10px] font-medium" style={{ color: "rgba(255,255,255,0.48)", letterSpacing: "0.05em" }}>Layanan Kepabeanan</p>
             </div>
           </div>
         </div>

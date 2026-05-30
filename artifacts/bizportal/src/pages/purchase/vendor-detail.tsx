@@ -48,7 +48,7 @@ import {
 } from "@workspace/api-client-react";
 import type { Supplier, VendorCatalogItem } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Pencil, Plus, Search, Tag, Trash2, Upload, X } from "lucide-react";
+import { ArrowLeft, Link2, Pencil, Plus, Search, Tag, Trash2, Upload, X } from "lucide-react";
 import { useUpload } from "@workspace/object-storage-web";
 
 const SERVICE_TYPES = [
@@ -94,6 +94,7 @@ type CatalogForm = {
   unit: string;
   kategori: string;
   subcategory: string;
+  priceBase: string;
   isActive: boolean;
   isCommodityTag: boolean;
   sortOrder: string;
@@ -107,6 +108,7 @@ const emptyCatalogForm = (): CatalogForm => ({
   unit: "",
   kategori: "",
   subcategory: "",
+  priceBase: "0",
   isActive: true,
   isCommodityTag: false,
   sortOrder: "0",
@@ -183,10 +185,42 @@ export default function VendorDetailPage() {
     });
   }, [catalog, filterKategoriCatalog, filterSubcatCatalog, catalogSearch]);
 
+  const catalogSummary = useMemo(() => {
+    const all = catalog ?? [];
+    const activeItems = all.filter((i) => i.isActive);
+    const inactiveItems = all.filter((i) => !i.isActive);
+    const linkedItems = all.filter((i) => (i as any).masterItemId != null);
+    const withSell = all.filter((i) => (i as any).priceSell != null);
+
+    const totalPriceBase = activeItems.reduce((sum, i) => sum + Number(i.priceBase ?? 0), 0);
+
+    const avgMarginPct = withSell.length > 0
+      ? withSell.reduce((sum, i) => {
+          const sell = Number((i as any).priceSell ?? 0);
+          const base = Number(i.priceBase ?? 0);
+          return sum + (sell > 0 ? ((sell - base) / sell) * 100 : 0);
+        }, 0) / withSell.length
+      : null;
+
+    return {
+      totalPriceBase,
+      avgMarginPct,
+      activeCount: activeItems.length,
+      inactiveCount: inactiveItems.length,
+      linkedCount: linkedItems.length,
+      totalCount: all.length,
+    };
+  }, [catalog]);
+
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<VendorCatalogItem | null>(null);
   const [itemForm, setItemForm] = useState<CatalogForm>(emptyCatalogForm());
   const [masterItemSearch, setMasterItemSearch] = useState("");
+
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [linkingItem, setLinkingItem] = useState<VendorCatalogItem | null>(null);
+  const [linkMasterSearch, setLinkMasterSearch] = useState("");
+  const [linkPending, setLinkPending] = useState(false);
 
   const [vendorEditOpen, setVendorEditOpen] = useState(false);
   const [vendorForm, setVendorForm] = useState<VendorForm | null>(null);
@@ -244,6 +278,7 @@ export default function VendorDetailPage() {
       unit: item.unit ?? "",
       kategori: (item as any).kategori ?? "",
       subcategory: (item as any).subcategory ?? "",
+      priceBase: String(Number(item.priceBase ?? 0)),
       isActive: item.isActive,
       isCommodityTag: (item as any).isCommodityTag ?? false,
       sortOrder: String(item.sortOrder),
@@ -263,6 +298,7 @@ export default function VendorDetailPage() {
       return;
     }
     const body: Record<string, unknown> = {
+      priceBase: parseFloat(itemForm.priceBase) || 0,
       isActive: itemForm.isActive,
       isCommodityTag: itemForm.isCommodityTag,
       sortOrder: parseInt(itemForm.sortOrder) || 0,
@@ -282,13 +318,13 @@ export default function VendorDetailPage() {
     }
     try {
       if (editingItem) {
-        const updated = await updateItem.mutateAsync({ itemId: editingItem.id, data: body });
+        const updated = await updateItem.mutateAsync({ itemId: editingItem.id, data: body as Parameters<typeof updateItem.mutateAsync>[0]["data"] });
         qc.setQueryData<VendorCatalogItem[]>(getListVendorCatalogQueryKey(vendorId), (old) =>
           old ? old.map((i) => (i.id === updated.id ? updated : i)) : [updated]
         );
         toast({ title: t.common.success });
       } else {
-        const created = await createItem.mutateAsync({ id: vendorId, data: body });
+        const created = await createItem.mutateAsync({ id: vendorId, data: body as Parameters<typeof createItem.mutateAsync>[0]["data"] });
         qc.setQueryData<VendorCatalogItem[]>(getListVendorCatalogQueryKey(vendorId), (old) =>
           old ? [...old, created] : [created]
         );
@@ -298,6 +334,28 @@ export default function VendorDetailPage() {
       setEditingItem(null);
     } catch (e) {
       toast({ title: t.common.error, description: String(e), variant: "destructive" });
+    }
+  };
+
+  const openLinkItem = (item: VendorCatalogItem) => {
+    setLinkingItem(item);
+    setLinkMasterSearch("");
+    setLinkOpen(true);
+  };
+
+  const submitLink = async (masterId: number) => {
+    if (!linkingItem) return;
+    setLinkPending(true);
+    try {
+      await updateItem.mutateAsync({ itemId: linkingItem.id, data: { linkMasterItemId: masterId } });
+      await qc.invalidateQueries({ queryKey: getListVendorCatalogQueryKey(vendorId) });
+      toast({ title: "Item berhasil dihubungkan ke Master Item" });
+      setLinkOpen(false);
+      setLinkingItem(null);
+    } catch (e: any) {
+      toast({ title: t.common.error, description: e?.message ?? String(e), variant: "destructive" });
+    } finally {
+      setLinkPending(false);
     }
   };
 
@@ -439,6 +497,53 @@ export default function VendorDetailPage() {
           </Card>
         )}
 
+        {/* ── Summary Cards ── */}
+        {!catalogLoading && (catalog ?? []).length > 0 && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <Card>
+              <CardContent className="pt-4 pb-3">
+                <p className="text-xs text-muted-foreground">Total Item</p>
+                <p className="text-2xl font-bold mt-0.5">{catalogSummary.totalCount}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  <span className="text-green-600 font-medium">{catalogSummary.activeCount} aktif</span>
+                  {catalogSummary.inactiveCount > 0 && <> · {catalogSummary.inactiveCount} nonaktif</>}
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4 pb-3">
+                <p className="text-xs text-muted-foreground">Total Harga Dasar (Aktif)</p>
+                <p className="text-lg font-bold mt-0.5 font-mono">
+                  {catalogSummary.totalPriceBase > 0 ? fmt(catalogSummary.totalPriceBase) : "—"}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">Sum priceBase item aktif</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4 pb-3">
+                <p className="text-xs text-muted-foreground">Rata-rata Margin</p>
+                <p className="text-2xl font-bold mt-0.5">
+                  {catalogSummary.avgMarginPct != null
+                    ? <span className={catalogSummary.avgMarginPct >= 0 ? "text-green-600" : "text-destructive"}>{catalogSummary.avgMarginPct.toFixed(1)}%</span>
+                    : <span className="text-muted-foreground text-base">—</span>}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">Dari item terhubung master</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4 pb-3">
+                <p className="text-xs text-muted-foreground">Link Master Item</p>
+                <p className="text-2xl font-bold mt-0.5">{catalogSummary.linkedCount}<span className="text-base font-normal text-muted-foreground">/{catalogSummary.totalCount}</span></p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {catalogSummary.linkedCount < catalogSummary.totalCount
+                    ? <span className="text-amber-600">{catalogSummary.totalCount - catalogSummary.linkedCount} item belum terhubung</span>
+                    : <span className="text-green-600">Semua terhubung</span>}
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -507,7 +612,9 @@ export default function VendorDetailPage() {
                     <TableHead>Kategori</TableHead>
                     <TableHead>Tipe</TableHead>
                     <TableHead>Satuan</TableHead>
-                    <TableHead className="text-right">Harga</TableHead>
+                    <TableHead className="text-right">Harga Dasar</TableHead>
+                    <TableHead className="text-right">Harga Jual</TableHead>
+                    <TableHead className="text-right">Profit</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Tag</TableHead>
                     <TableHead className="w-[90px] text-right">Aksi</TableHead>
@@ -515,7 +622,9 @@ export default function VendorDetailPage() {
                 </TableHeader>
                 <TableBody>
                   {filteredCatalog.map((item) => {
-                    const price = Number(item.priceBase ?? 0);
+                    const priceBase = Number(item.priceBase ?? 0);
+                    const priceSell = (item as any).priceSell as number | null;
+                    const profit = (item as any).profit as number | null;
                     return (
                       <TableRow key={item.id}>
                         <TableCell>
@@ -536,8 +645,18 @@ export default function VendorDetailPage() {
                           <Badge variant="outline" className="text-xs capitalize">{item.type}</Badge>
                         </TableCell>
                         <TableCell className="text-sm">{item.unit ?? "-"}</TableCell>
+                        <TableCell className="text-right font-mono text-sm text-muted-foreground">
+                          {priceBase > 0 ? fmt(priceBase) : <span className="text-muted-foreground/50">—</span>}
+                        </TableCell>
                         <TableCell className="text-right font-mono text-sm font-semibold text-primary">
-                          {price > 0 ? fmt(price) : "-"}
+                          {priceSell != null
+                            ? fmt(priceSell)
+                            : <span className="text-xs text-amber-500 font-normal">Belum linked</span>}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-sm font-semibold">
+                          {profit != null
+                            ? <span className={profit >= 0 ? "text-green-600" : "text-destructive"}>{fmt(profit)}</span>
+                            : <span className="text-muted-foreground/40">—</span>}
                         </TableCell>
                         <TableCell>
                           {item.isActive
@@ -550,6 +669,16 @@ export default function VendorDetailPage() {
                           )}
                         </TableCell>
                         <TableCell className="text-right">
+                          {!(item as any).masterItemId && (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              title="Link ke Master Item"
+                              onClick={() => openLinkItem(item)}
+                            >
+                              <Link2 className="h-4 w-4 text-amber-500" />
+                            </Button>
+                          )}
                           <Button size="icon" variant="ghost" onClick={() => openEditItem(item)}>
                             <Pencil className="h-4 w-4" />
                           </Button>
@@ -703,6 +832,22 @@ export default function VendorDetailPage() {
               </>
             )}
 
+            {/* ── Harga Dasar — editable untuk semua item ── */}
+            <div className="grid gap-1.5">
+              <Label>Harga Dasar (Rp)</Label>
+              <Input
+                type="number"
+                min="0"
+                step="1000"
+                value={itemForm.priceBase}
+                onChange={(e) => setI("priceBase", e.target.value)}
+                placeholder="Harga yang vendor charge ke kita"
+              />
+              <p className="text-xs text-muted-foreground">
+                Harga beli / biaya vendor. Dipakai untuk RFQ blast. Profit = Harga Jual (master) − Harga Dasar.
+              </p>
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div className="grid gap-1.5">
                 <Label>Urutan Tampil</Label>
@@ -739,6 +884,82 @@ export default function VendorDetailPage() {
             <Button onClick={submitItem} disabled={createItem.isPending || updateItem.isPending}>
               {editingItem ? "Simpan" : "Tambah"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialog: Link Legacy Item ke Master Item ── */}
+      <Dialog open={linkOpen} onOpenChange={(v) => { setLinkOpen(v); if (!v) setLinkingItem(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Link ke Master Item</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-3">
+            {linkingItem && (
+              <div className="rounded-md border bg-muted/40 px-3 py-2">
+                <p className="text-xs text-muted-foreground mb-0.5">Item legacy yang akan dihubungkan</p>
+                <p className="font-medium text-sm">{linkingItem.name}</p>
+                <p className="text-xs text-muted-foreground">{linkingItem.type === "service" ? "Layanan" : "Produk"} · {linkingItem.unit ?? "-"}</p>
+              </div>
+            )}
+            <div className="grid gap-1.5">
+              <Label>Pilih Master Item</Label>
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                <Input
+                  value={linkMasterSearch}
+                  onChange={(e) => setLinkMasterSearch(e.target.value)}
+                  placeholder="Cari nama item..."
+                  className="pl-8 h-8 text-sm"
+                  autoFocus
+                />
+              </div>
+              <div className="border rounded-md overflow-y-auto max-h-60">
+                {(() => {
+                  const q = linkMasterSearch.toLowerCase();
+                  const linkedIds = new Set(
+                    (catalog ?? [])
+                      .map((i) => (i as any).masterItemId)
+                      .filter(Boolean)
+                  );
+                  const filtered = products.filter((p) =>
+                    !linkedIds.has(p.id) &&
+                    (p.name.toLowerCase().includes(q) || p.sku?.toLowerCase().includes(q))
+                  );
+                  if (filtered.length === 0) {
+                    return (
+                      <p className="text-center text-xs text-muted-foreground py-4">
+                        {q ? "Tidak ada item yang cocok." : "Semua item sudah ada di etalase ini."}
+                      </p>
+                    );
+                  }
+                  return filtered.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      disabled={linkPending}
+                      className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent transition-colors border-b last:border-b-0 disabled:opacity-50"
+                      onClick={() => submitLink(p.id)}
+                    >
+                      <p className="font-medium">{p.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {p.itemType === "jasa" ? "Layanan" : "Produk"} · {p.unit}
+                        {(p.categories as string[] | undefined)?.[0] && <> · {(p.categories as string[])[0]}</>}
+                        {p.price != null && Number(p.price) > 0 && (
+                          <> · <span className="text-primary font-medium">{fmt(Number(p.price))}</span></>
+                        )}
+                      </p>
+                    </button>
+                  ));
+                })()}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Nama, tipe, satuan, dan kategori akan disinkron dari master item. Harga Dasar tetap seperti semula.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLinkOpen(false)}>Batal</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -32,20 +32,23 @@ const RETRYABLE_CODES = new Set(["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENO
 
 const API_PORT = 18444;
 
+const BIZPORTAL_PORT = Number(process.env.BIZPORTAL_PORT ?? 18442);
+const CUSTOMER_PORT  = Number(process.env.CUSTOMER_PORT  ?? 5173);
+
 const ROUTES = [
   { prefix: "/api",          upstream: { host: "localhost", port: API_PORT } },
   { prefix: "/pos-images",   upstream: { host: "localhost", port: API_PORT } },
   { prefix: "/q",            upstream: { host: "localhost", port: API_PORT } },
-  { prefix: "/bizportal",    upstream: { host: "localhost", port: 18442 } },
-  { prefix: "/sport-center", upstream: { host: "localhost", port: 3002 } },
+  { prefix: "/bizportal",    upstream: { host: "localhost", port: BIZPORTAL_PORT } },
+  { prefix: "/sport-center", upstream: { host: "localhost", port: 3004 } },
 ];
-const DEFAULT_UPSTREAM = { host: "localhost", port: 3001 };
+const DEFAULT_UPSTREAM = { host: "localhost", port: CUSTOMER_PORT };
 
 const SERVICE_NAMES = {
-  18444: "API Server",
-  18442: "BizPortal",
-  3001:  "Customer Portal",
-  3002:  "Sport Center",
+  18444:            "API Server",
+  [BIZPORTAL_PORT]: "BizPortal",
+  [CUSTOMER_PORT]:  "Customer Portal",
+  3004:             "Sport Center",
 };
 
 function resolve(url) {
@@ -224,7 +227,7 @@ async function startGateway() {
           process.exit(1);
         }
       });
-      srv.listen(PORT, "0.0.0.0", () => {
+      srv.listen(PORT, () => {
         console.log(`Gateway listening on port ${PORT}`);
         console.log(`  /api/*          → :${API_PORT} (API Server)`);
         console.log(`  /bizportal/*    → :18442 (BizPortal)`);

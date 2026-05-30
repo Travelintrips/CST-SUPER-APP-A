@@ -1,19 +1,29 @@
 import { Router, type Request, type Response } from "express";
 import { eq } from "drizzle-orm";
 import { sql } from "drizzle-orm";
+import multer from "multer";
+import { randomUUID } from "crypto";
 import {
   db,
   vendorFulfillmentLinksTable,
   logisticOrdersTable,
+  logisticOrderItemsTable,
   suppliersTable,
   orderUpdatesTable,
 } from "@workspace/db";
 import { logger } from "../lib/logger";
-import { sendWhatsApp } from "../lib/fonnte";
+import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminWa } from "../lib/adminWa";
 import { getPreferredDomain } from "../lib/domain.js";
+import { resolveServiceCategory } from "@workspace/logistics-constants";
+import { ObjectStorageService } from "../lib/objectStorage.js";
+import { createAdminActionLink, getAdminActionUrl } from "./adminAction.js";
+import { generateShortLink } from "../lib/shortLink.js";
 
 export const vendorFulfillmentPublicRouter = Router();
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+const objectStorage = new ObjectStorageService();
 
 // ─── Boot migration ───────────────────────────────────────────────────────────
 let migrationDone = false;
@@ -52,11 +62,81 @@ async function ensureTables() {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `);
+    await db.execute(sql`ALTER TABLE vendor_fulfillment_links ADD COLUMN IF NOT EXISTS price_confirmed TEXT`);
+    await db.execute(sql`ALTER TABLE vendor_fulfillment_links ADD COLUMN IF NOT EXISTS revised_price TEXT`);
+    await db.execute(sql`ALTER TABLE vendor_fulfillment_links ADD COLUMN IF NOT EXISTS lead_time TEXT`);
+    await db.execute(sql`ALTER TABLE vendor_fulfillment_links ADD COLUMN IF NOT EXISTS stock_photo_url TEXT`);
+    await db.execute(sql`ALTER TABLE vendor_fulfillment_links ADD COLUMN IF NOT EXISTS invoice_url TEXT`);
+    await db.execute(sql`ALTER TABLE vendor_fulfillment_links ADD COLUMN IF NOT EXISTS supporting_doc_url TEXT`);
     migrationDone = true;
   } catch (err) {
     logger.error({ err }, "vendorFulfillment ensureTables error");
   }
 }
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function extractItemQty(inp: Record<string, unknown> | null | undefined): number | null {
+  if (!inp) return null;
+  const q = inp.quantity ?? inp.qty ?? inp.jumlah;
+  if (typeof q === "number") return q;
+  if (typeof q === "string") { const n = parseFloat(q); return isNaN(n) ? null : n; }
+  return null;
+}
+
+function extractItemUnit(inp: Record<string, unknown> | null | undefined): string | null {
+  if (!inp) return null;
+  const u = inp.unit ?? inp.satuan ?? inp.uom;
+  return typeof u === "string" ? u : null;
+}
+
+const fmtRp = (n: number | null | string | undefined) => {
+  const num = Number(n ?? 0);
+  return `Rp ${Math.round(num).toLocaleString("id-ID")}`;
+};
+
+// ─── Upload endpoint ──────────────────────────────────────────────────────────
+vendorFulfillmentPublicRouter.post(
+  "/:token/upload",
+  upload.single("file"),
+  async (req: Request, res: Response) => {
+    const { token } = req.params as { token: string };
+    const fileType = ((req.query.type as string) ?? "misc").replace(/[^a-z_]/g, "");
+    await ensureTables();
+
+    try {
+      const [link] = await db.select({
+        id: vendorFulfillmentLinksTable.id,
+        expiresAt: vendorFulfillmentLinksTable.expiresAt,
+        status: vendorFulfillmentLinksTable.status,
+      }).from(vendorFulfillmentLinksTable)
+        .where(eq(vendorFulfillmentLinksTable.token, token));
+
+      if (!link) return res.status(404).json({ error: "Link tidak ditemukan" });
+      if (link.expiresAt && link.expiresAt < new Date()) return res.status(410).json({ error: "Link kadaluarsa" });
+      if (link.status === "submitted") return res.status(409).json({ error: "Form sudah disubmit" });
+      if (!req.file) return res.status(400).json({ error: "File diperlukan" });
+
+      const ALLOWED = new Set([
+        "image/jpeg", "image/jpg", "image/png", "image/webp",
+        "image/heic", "image/heif", "application/pdf",
+      ]);
+      if (!ALLOWED.has(req.file.mimetype)) {
+        return res.status(400).json({ error: "Hanya JPG, PNG, WebP, HEIC, atau PDF yang diizinkan" });
+      }
+
+      const uuid = randomUUID();
+      const isPdf = req.file.mimetype === "application/pdf";
+      const ext = isPdf ? "pdf" : (req.file.originalname?.split(".").pop()?.toLowerCase() ?? "jpg");
+      const storagePath = `public/vendor-fulfillment/${token}/${fileType}-${uuid}.${ext}`;
+      await objectStorage.uploadFile(req.file.buffer, storagePath, req.file.mimetype);
+      const url = await objectStorage.getPublicUrl(storagePath);
+      return res.json({ url });
+    } catch (err) {
+      logger.error({ err }, "vendor-fulfillment upload error");
+      return res.status(500).json({ error: "Gagal upload file" });
+    }
+  }
+);
 
 // ─── GET /api/vendor-fulfillment/:token ──────────────────────────────────────
 vendorFulfillmentPublicRouter.get("/:token", async (req: Request, res: Response) => {
@@ -83,10 +163,27 @@ vendorFulfillmentPublicRouter.get("/:token", async (req: Request, res: Response)
       vendorName = v?.name ?? null;
     }
 
+    // Fetch order items
+    const orderItemRows = await db.select({
+      serviceName: logisticOrderItemsTable.serviceName,
+      category: logisticOrderItemsTable.category,
+      subtotal: logisticOrderItemsTable.subtotal,
+      inputData: logisticOrderItemsTable.inputData,
+    }).from(logisticOrderItemsTable)
+      .where(eq(logisticOrderItemsTable.orderId, order.id));
+
+    // Compute pricing breakdown
+    const TAX_RATE = 11;
+    const grandTotalNum = Number(order.grandTotal ?? 0);
+    const subtotalBeforeTax = grandTotalNum > 0 ? Math.round(grandTotalNum * 100 / (100 + TAX_RATE)) : null;
+    const taxAmount = subtotalBeforeTax != null ? grandTotalNum - subtotalBeforeTax : null;
+
     const orderInfo = {
       id: order.id,
       orderNumber: order.orderNumber,
+      customerName: order.customerName,
       serviceType: order.shipmentType,
+      orderType: (order as any).orderType ?? null,
       origin: order.origin,
       destination: order.destination,
       commodity: order.commodity ?? null,
@@ -94,6 +191,21 @@ vendorFulfillmentPublicRouter.get("/:token", async (req: Request, res: Response)
       requiredDate: (order as any).requiredDate ?? null,
       vehicleType: (order as any).vehicleType ?? null,
       status: order.status,
+      items: orderItemRows.map((it) => {
+        const inp = it.inputData as Record<string, unknown> | null;
+        const qty = extractItemQty(inp);
+        return {
+          serviceName: it.serviceName ?? "",
+          category: it.category ?? "",
+          subtotal: it.subtotal != null ? String(it.subtotal) : null,
+          quantity: qty != null ? String(qty) : null,
+          unit: extractItemUnit(inp) ?? null,
+        };
+      }),
+      grandTotal: order.grandTotal ? String(order.grandTotal) : null,
+      subtotalBeforeTax: subtotalBeforeTax != null ? String(subtotalBeforeTax) : null,
+      taxAmount: taxAmount != null ? String(taxAmount) : null,
+      taxRate: TAX_RATE,
     };
 
     if (link.status === "submitted") {
@@ -122,8 +234,14 @@ vendorFulfillmentPublicRouter.get("/:token", async (req: Request, res: Response)
           customsPicName:    link.customsPicName ?? null,
           customsDocuments:  link.customsDocuments ?? null,
           customsProcessEta: link.customsProcessEta ?? null,
+          priceConfirmed:    (link as any).priceConfirmed ?? null,
+          revisedPrice:      (link as any).revisedPrice ?? null,
+          leadTime:          (link as any).leadTime ?? null,
+          stockPhotoUrl:     (link as any).stockPhotoUrl ?? null,
+          invoiceUrl:        (link as any).invoiceUrl ?? null,
+          supportingDocUrl:  (link as any).supportingDocUrl ?? null,
           notes:             link.notes ?? null,
-          submittedAt:       link.submittedAt ?? null,
+          submittedAt:       link.submittedAt ? (link.submittedAt as Date).toISOString() : null,
         },
       });
     }
@@ -163,20 +281,21 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
 
     const body = req.body as Record<string, string>;
 
-    // Update fulfillment link with all provided fields
     const updateData: Record<string, string | null | Date> = {
       status: "submitted",
       submittedAt: new Date(),
     };
 
-    const fields = [
+    const FIELDS = [
       "driverName", "driverPhone", "plateNumber", "vehicleType", "pickupTime",
       "carrierName", "etd", "eta", "bookingNumber", "awbBlNumber", "flightVessel",
       "stockConfirmed", "qtyConfirmed", "readyDate", "warehouseLocation",
-      "customsPicName", "customsDocuments", "customsProcessEta", "notes",
+      "customsPicName", "customsDocuments", "customsProcessEta",
+      "priceConfirmed", "revisedPrice", "leadTime",
+      "stockPhotoUrl", "invoiceUrl", "supportingDocUrl",
+      "notes",
     ];
-
-    for (const f of fields) {
+    for (const f of FIELDS) {
       if (body[f] !== undefined) updateData[f] = body[f] || null;
     }
 
@@ -184,7 +303,6 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
       .set(updateData as any)
       .where(eq(vendorFulfillmentLinksTable.token, token));
 
-    // Get vendor name
     let vendorName: string | null = null;
     if (link.vendorId) {
       const [v] = await db.select({ name: suppliersTable.name }).from(suppliersTable)
@@ -192,80 +310,98 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
       vendorName = v?.name ?? null;
     }
 
-    // Build summary note for order updates
     const svcLabel = link.serviceType;
+    const STOCK_LABEL: Record<string, string> = {
+      all: "Tersedia Semua", partial: "Tersedia Sebagian", none: "Tidak Tersedia",
+    };
     const noteParts: string[] = [`Vendor fulfillment (${svcLabel}) telah dikirim`];
+    const svcCategory = resolveServiceCategory(link.serviceType);
 
-    if (link.serviceType.includes("trucking")) {
+    if (svcCategory === "trucking") {
       if (body.driverName) noteParts.push(`Driver: ${body.driverName}`);
       if (body.plateNumber) noteParts.push(`Plat: ${body.plateNumber}`);
       if (body.pickupTime) noteParts.push(`Estimasi pickup: ${body.pickupTime}`);
-    } else if (link.serviceType.includes("freight")) {
+    } else if (svcCategory === "freight") {
       if (body.carrierName) noteParts.push(`Carrier: ${body.carrierName}`);
       if (body.awbBlNumber) noteParts.push(`AWB/BL: ${body.awbBlNumber}`);
       if (body.etd) noteParts.push(`ETD: ${body.etd}`);
-      if (body.eta) noteParts.push(`ETA: ${body.eta}`);
-    } else if (link.serviceType.includes("product")) {
-      if (body.stockConfirmed) noteParts.push(`Stok: ${body.stockConfirmed}`);
-      if (body.readyDate) noteParts.push(`Ready: ${body.readyDate}`);
-    } else if (link.serviceType.includes("customs")) {
+    } else if (svcCategory === "product") {
+      if (body.stockConfirmed) noteParts.push(`Stok: ${STOCK_LABEL[body.stockConfirmed] ?? body.stockConfirmed}`);
+      if (body.qtyConfirmed) noteParts.push(`Qty: ${body.qtyConfirmed}`);
+      if (body.readyDate) noteParts.push(`Siap kirim: ${body.readyDate}`);
+      if (body.priceConfirmed === "revised" && body.revisedPrice) noteParts.push(`Revisi harga: ${fmtRp(body.revisedPrice)}`);
+    } else if (svcCategory === "customs") {
       if (body.customsPicName) noteParts.push(`PIC: ${body.customsPicName}`);
-      if (body.customsProcessEta) noteParts.push(`ETA proses: ${body.customsProcessEta}`);
     }
-
     if (body.notes) noteParts.push(`Catatan: ${body.notes}`);
 
-    // Log order update
+    // Update order status → "Vendor Confirmed" agar tombol konfirmasi di BizPortal muncul
+    await db.update(logisticOrdersTable)
+      .set({ status: "Vendor Confirmed" })
+      .where(eq(logisticOrdersTable.id, link.orderId));
+
     await db.insert(orderUpdatesTable).values({
       orderId: link.orderId,
       actorType: "vendor",
       actorName: vendorName,
-      status: "assigned_to_vendor",
+      status: "Vendor Confirmed",
       notes: noteParts.join("\n"),
-      isPublic: false,
+      isPublic: true,
     });
 
-    // Notify admin via WA — ringkasan lengkap + link mini form (public, no login needed)
+    // Notify admin via WA
     const adminWa = await getAdminWa();
     if (adminWa) {
       const domain = getPreferredDomain() || "cstlogistic.co.id";
-      const bizportalLink = `https://${domain}/vendor-fulfillment/${token}`;
 
-      // Build detailed field summary by service type
+      // Buat link mini form confirm_fulfillment untuk admin
+      let bizportalLink: string;
+      try {
+        const cfToken = await createAdminActionLink(order.id, "confirm_fulfillment", null, 168);
+        const cfUrl = getAdminActionUrl(cfToken);
+        bizportalLink = await generateShortLink(cfUrl, {
+          context: "admin_action",
+          refType: "order",
+          refId: order.orderNumber,
+        });
+      } catch (e) {
+        logger.warn({ e }, "vendor-fulfillment: gagal buat confirm_fulfillment link, fallback ke BizPortal URL");
+        bizportalLink = `https://${domain}/bizportal/logistics/orders/${order.id}`;
+      }
       const detailLines: string[] = [];
+      const cat = resolveServiceCategory(link.serviceType);
 
-      if (link.serviceType.toLowerCase().includes("trucking") ||
-          link.serviceType.toLowerCase().includes("land")) {
+      if (cat === "trucking") {
         if (body.driverName)   detailLines.push(`👤 Driver      : ${body.driverName}`);
         if (body.driverPhone)  detailLines.push(`📱 HP Driver   : ${body.driverPhone}`);
         if (body.plateNumber)  detailLines.push(`🚛 Plat Nomor  : ${body.plateNumber}`);
         if (body.vehicleType)  detailLines.push(`🚚 Kendaraan   : ${body.vehicleType}`);
         if (body.pickupTime)   detailLines.push(`⏰ Est. Pickup : ${body.pickupTime}`);
-      } else if (link.serviceType.toLowerCase().includes("freight") ||
-                 link.serviceType.toLowerCase().includes("sea") ||
-                 link.serviceType.toLowerCase().includes("air") ||
-                 link.serviceType.toLowerCase().includes("fcl") ||
-                 link.serviceType.toLowerCase().includes("lcl") ||
-                 link.serviceType.toLowerCase().includes("door")) {
+      } else if (cat === "freight") {
         if (body.carrierName)    detailLines.push(`🏢 Carrier     : ${body.carrierName}`);
         if (body.awbBlNumber)    detailLines.push(`📄 AWB/BL No.  : ${body.awbBlNumber}`);
         if (body.bookingNumber)  detailLines.push(`🔖 Booking No. : ${body.bookingNumber}`);
         if (body.flightVessel)   detailLines.push(`✈️ Kapal/Flight : ${body.flightVessel}`);
         if (body.etd)            detailLines.push(`📅 ETD         : ${body.etd}`);
         if (body.eta)            detailLines.push(`📅 ETA         : ${body.eta}`);
-      } else if (link.serviceType.toLowerCase().includes("warehouse") ||
-                 link.serviceType.toLowerCase().includes("product")) {
-        if (body.stockConfirmed)     detailLines.push(`📦 Stok        : ${body.stockConfirmed}`);
-        if (body.qtyConfirmed)       detailLines.push(`🔢 Qty         : ${body.qtyConfirmed}`);
-        if (body.readyDate)          detailLines.push(`📅 Ready Date  : ${body.readyDate}`);
-        if (body.warehouseLocation)  detailLines.push(`📍 Lokasi      : ${body.warehouseLocation}`);
-      } else if (link.serviceType.toLowerCase().includes("custom")) {
+      } else if (cat === "product") {
+        const SL: Record<string, string> = { all: "Tersedia Semua ✅", partial: "Tersedia Sebagian ⚠️", none: "Tidak Tersedia ❌" };
+        if (body.stockConfirmed)    detailLines.push(`📦 Stok        : ${SL[body.stockConfirmed] ?? body.stockConfirmed}`);
+        if (body.qtyConfirmed)      detailLines.push(`🔢 Qty         : ${body.qtyConfirmed}`);
+        if (body.readyDate)         detailLines.push(`📅 Siap Kirim  : ${body.readyDate}`);
+        if (body.leadTime)          detailLines.push(`⏱ Lead Time   : ${body.leadTime}`);
+        if (body.warehouseLocation) detailLines.push(`📍 Lokasi      : ${body.warehouseLocation}`);
+        if (body.priceConfirmed === "agree")   detailLines.push(`💰 Harga       : Setuju harga asal`);
+        else if (body.priceConfirmed === "revised") detailLines.push(`💰 Revisi Harga: ${fmtRp(body.revisedPrice)}`);
+        if (body.stockPhotoUrl)     detailLines.push(`🖼 Foto Stok   : ${body.stockPhotoUrl}`);
+        if (body.invoiceUrl)        detailLines.push(`📄 Invoice     : ${body.invoiceUrl}`);
+        if (body.supportingDocUrl)  detailLines.push(`📎 Dok. Lain   : ${body.supportingDocUrl}`);
+      } else if (cat === "customs") {
         if (body.customsPicName)     detailLines.push(`👤 PIC         : ${body.customsPicName}`);
         if (body.customsDocuments)   detailLines.push(`📋 Dokumen     : ${body.customsDocuments}`);
         if (body.customsProcessEta)  detailLines.push(`⏱ ETA Proses  : ${body.customsProcessEta}`);
       } else {
-        // Generic fallback — show all non-empty fields
-        const allFields: [string, string][] = [
+        const ALL_FIELDS: [string, string][] = [
           ["driverName", "Driver"], ["driverPhone", "HP Driver"], ["plateNumber", "Plat"],
           ["vehicleType", "Kendaraan"], ["pickupTime", "Pickup"], ["carrierName", "Carrier"],
           ["awbBlNumber", "AWB/BL"], ["bookingNumber", "Booking"], ["flightVessel", "Kapal/Flight"],
@@ -274,7 +410,7 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
           ["customsPicName", "PIC Customs"], ["customsDocuments", "Dokumen Customs"],
           ["customsProcessEta", "ETA Customs"],
         ];
-        for (const [key, label] of allFields) {
+        for (const [key, label] of ALL_FIELDS) {
           if (body[key]) detailLines.push(`• ${label}: ${body[key]}`);
         }
       }
@@ -291,7 +427,8 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
         `━━━━━━━━━━━━━━━━━━\n` +
         (detailLines.length > 0 ? detailLines.join("\n") + "\n" : "") +
         `━━━━━━━━━━━━━━━━━━\n` +
-        `📋 Buka form fulfillment:\n${bizportalLink}`;
+        `✅ *Tindak Lanjut:*\n` +
+        `Buka order di BizPortal dan klik *"Konfirmasi & Mulai Pengiriman"*:\n${bizportalLink}`;
 
       sendWhatsApp(adminWa, waMsg).catch((e) =>
         logger.warn({ e }, "vendor-fulfillment WA to admin failed")

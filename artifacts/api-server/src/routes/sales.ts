@@ -12,12 +12,20 @@ import {
 } from "@workspace/db";
 import { eq, sql, desc, and, count, inArray, or, ilike, type SQL } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
+import { auditFromReq } from "../lib/auditLog.js";
 import { streamInvoicePdf, buildInvoicePdfBuffer } from "../lib/pdfInvoice.js";
-import { postSalesInvoice, postSalesCogs, postSalesCogsReturn } from "../lib/accounting.js";
+import { postSalesInvoice, postSalesCogs, postSalesCogsReturn, postSalesInvoiceReversal } from "../lib/accounting.js";
 import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
 import { ensureAccountingSettings } from "../lib/accountingSeed.js";
-import { sendWhatsApp } from "../lib/fonnte.js";
+import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminWa } from "../lib/adminWa.js";
+import {
+  sendSalesOrderCreatedNotification,
+  sendQuotationSentNotification,
+  sendSalesOrderConfirmedNotification,
+  sendSalesOrderDeliveredNotification,
+  sendInvoiceIssuedNotification,
+} from "../lib/orderNotification.js";
 import { saveAndBroadcast } from "../lib/notificationStore.js";
 import { getVendorFilterMode } from "../lib/aiOrderIntake.js";
 import { StockShortageError, postStockOut, postStockIn } from "../lib/inventoryStock.js";
@@ -261,6 +269,9 @@ router.get("/documents/:id", async (req, res) => {
   if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
   const doc = await loadDocWithLines(id);
   if (!doc) return res.status(404).json({ message: "Document not found" });
+  // IDOR guard: ensure document belongs to the requesting user's company
+  const companyId = resolveCompanyId(req);
+  if (doc.companyId !== companyId) return res.status(404).json({ message: "Document not found" });
   return res.json(doc);
 });
 
@@ -353,21 +364,19 @@ router.post("/documents", async (req, res) => {
   );
   await db.insert(salesDocumentLinesTable).values(lineValues);
 
+  auditFromReq(req, {
+    action: "create",
+    module: "sales",
+    referenceId: String(doc.id),
+    newData: { docNumber, customerName, kind: docKind, grandTotal: String(grandTotal) },
+  });
+
   const detail = await loadDocWithLines(doc.id);
 
   // Notify admin via WhatsApp (fire-and-forget)
-  getAdminWa().then((adminWa) => {
-    if (!adminWa) return;
-    const docLabel = docKind === "quote" ? "Sales Quotation" : "Sales Order";
-    const tanggal = doc.createdAt.toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
-    const msg =
-      `📋 *${docLabel} Baru*\n` +
-      `No: ${docNumber}\n` +
-      `Customer: ${customerName}\n` +
-      `Total: Rp ${grandTotal.toLocaleString("id-ID")}\n` +
-      `Tanggal: ${tanggal}`;
-    return sendWhatsApp(adminWa, msg);
-  }).catch(() => undefined);
+  getAdminWa().then((adminWa) =>
+    sendSalesOrderCreatedNotification(docNumber, customerName, docKind, grandTotal, adminWa)
+  ).catch(() => undefined);
 
   saveAndBroadcast("sales_doc_created", {
     type: "sales_new",
@@ -451,6 +460,12 @@ router.delete("/documents/:id", async (req, res) => {
     .where(eq(salesDocumentsTable.id, id))
     .returning();
   if (!deleted) return res.status(404).json({ message: "Document not found" });
+  auditFromReq(req, {
+    action: "delete",
+    module: "sales",
+    referenceId: String(id),
+    oldData: { docNumber: deleted.docNumber, customerName: deleted.customerName, kind: deleted.kind },
+  });
   return res.json({ message: "Deleted", id });
 });
 
@@ -554,6 +569,16 @@ router.post("/documents/:id/action", async (req, res) => {
   }
 
   await db.update(salesDocumentsTable).set(patch).where(eq(salesDocumentsTable.id, id));
+
+  // Auto-reverse journal entry when a confirmed/invoiced SO is cancelled
+  if (action === "cancel" && (doc.status === "confirmed" || doc.invoiceStatus === "invoiced" || doc.invoiceStatus === "to_invoice")) {
+    void postSalesInvoiceReversal({
+      salesDocId: doc.id,
+      docNumber: doc.docNumber,
+      customerName: doc.customerName,
+      companyId: doc.companyId ?? null,
+    });
+  }
 
   // T005: When SO is delivered, deduct stock (awaited — pre-flight already passed)
   if (action === "mark_delivered" && doc.deliveryStatus !== "delivered") {
@@ -681,120 +706,33 @@ router.post("/documents/:id/action", async (req, res) => {
       }
 
       const grandTotal = Number(doc.totalAmount ?? 0) + Number(doc.taxAmount ?? 0);
-      const fmtRp = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
       const adminWa = await getAdminWa();
 
       if (action === "send" && doc.status !== "sent") {
-        // WA ke customer: penawaran dikirim
-        if (customerPhone) {
-          const validStr = doc.validUntil
-            ? new Date(doc.validUntil).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })
-            : "—";
-          await sendWhatsApp(
-            customerPhone,
-            `📄 *Sales Quotation — ${doc.docNumber}*\n\n` +
-            `Halo ${doc.customerName},\n\n` +
-            `Penawaran kami untuk Anda:\n` +
-            `Total: ${fmtRp(grandTotal)}\n` +
-            `Berlaku hingga: ${validStr}\n\n` +
-            `Silakan hubungi kami untuk konfirmasi. Terima kasih!`,
-          ).catch(() => undefined);
-        }
-        // WA ke admin: dokumen dikirim ke customer
-        if (adminWa) {
-          await sendWhatsApp(
-            adminWa,
-            `📤 *Quotation Dikirim ke Customer*\n` +
-            `No: ${doc.docNumber}\n` +
-            `Customer: ${doc.customerName}\n` +
-            `Total: ${fmtRp(grandTotal)}`,
-          ).catch(() => undefined);
-        }
+        const validStr = doc.validUntil
+          ? new Date(doc.validUntil).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })
+          : "—";
+        await sendQuotationSentNotification(doc.docNumber, doc.customerName, grandTotal, validStr, customerPhone, adminWa);
       }
 
       if (action === "confirm" && doc.status !== "confirmed") {
-        // WA ke admin: SO baru dikonfirmasi
-        if (adminWa) {
-          const tanggal = doc.createdAt.toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
-          await sendWhatsApp(
-            adminWa,
-            `📋 *Sales Order Baru (Dikonfirmasi)*\n` +
-            `No: ${doc.docNumber}\n` +
-            `Customer: ${doc.customerName}\n` +
-            `Total: ${fmtRp(grandTotal)}\n` +
-            `Tanggal: ${tanggal}`,
-          ).catch(() => undefined);
-        }
-        // WA ke customer: order dikonfirmasi
-        if (customerPhone) {
-          const expStr = doc.expectedDate
-            ? new Date(doc.expectedDate).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })
-            : "—";
-          await sendWhatsApp(
-            customerPhone,
-            `✅ *Sales Order Dikonfirmasi — ${doc.docNumber}*\n\n` +
-            `Halo ${doc.customerName},\n\n` +
-            `Order Anda telah dikonfirmasi:\n` +
-            `Total: ${fmtRp(grandTotal)}\n` +
-            `Estimasi pengiriman: ${expStr}\n\n` +
-            `Kami akan segera memproses pesanan Anda. Terima kasih!`,
-          ).catch(() => undefined);
-        }
+        const tanggal = doc.createdAt.toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
+        const expStr = doc.expectedDate
+          ? new Date(doc.expectedDate).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })
+          : "—";
+        await sendSalesOrderConfirmedNotification(doc.docNumber, doc.customerName, grandTotal, expStr, tanggal, customerPhone, adminWa);
       }
 
       if (action === "mark_delivered" && doc.deliveryStatus !== "delivered") {
-        // WA ke customer: pesanan terkirim
-        if (customerPhone) {
-          await sendWhatsApp(
-            customerPhone,
-            `🚚 *Pesanan Terkirim — ${doc.docNumber}*\n\n` +
-            `Halo ${doc.customerName},\n\n` +
-            `Pesanan Anda telah dikirim/diserahkan.\n` +
-            `Total: ${fmtRp(grandTotal)}\n\n` +
-            `Terima kasih telah berbelanja bersama kami!`,
-          ).catch(() => undefined);
-        }
-        // WA ke admin
-        if (adminWa) {
-          await sendWhatsApp(
-            adminWa,
-            `🚚 *SO Terkirim*\n` +
-            `No: ${doc.docNumber}\n` +
-            `Customer: ${doc.customerName}\n` +
-            `Total: ${fmtRp(grandTotal)}`,
-          ).catch(() => undefined);
-        }
+        await sendSalesOrderDeliveredNotification(doc.docNumber, doc.customerName, grandTotal, customerPhone, adminWa);
       }
 
       if (action === "mark_invoiced" && doc.invoiceStatus !== "invoiced") {
-        // Ambil nomor invoice dari patch (sudah di-assign di atas)
         const invNumber = (patch["invoiceNumber"] as string | undefined) ?? doc.docNumber;
         const dueStr = patch["dueDate"]
           ? new Date(patch["dueDate"] as string).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })
           : "—";
-        // WA ke customer: invoice dibuat
-        if (customerPhone) {
-          await sendWhatsApp(
-            customerPhone,
-            `🧾 *Invoice Diterbitkan — ${invNumber}*\n\n` +
-            `Halo ${doc.customerName},\n\n` +
-            `Invoice untuk order Anda telah diterbitkan:\n` +
-            `Total: ${fmtRp(grandTotal)}\n` +
-            `Jatuh tempo: ${dueStr}\n\n` +
-            `Silakan hubungi kami untuk informasi pembayaran. Terima kasih!`,
-          ).catch(() => undefined);
-        }
-        // WA ke admin
-        if (adminWa) {
-          await sendWhatsApp(
-            adminWa,
-            `🧾 *Invoice Dibuat*\n` +
-            `No Invoice: ${invNumber}\n` +
-            `Customer: ${doc.customerName}\n` +
-            `Total: ${fmtRp(grandTotal)}\n` +
-            `Jatuh tempo: ${dueStr}`,
-          ).catch(() => undefined);
-        }
+        await sendInvoiceIssuedNotification(doc.docNumber, invNumber, doc.customerName, grandTotal, dueStr, customerPhone, adminWa);
       }
     } catch (_e) {
       // fire-and-forget — jangan sampai gagal notif membatalkan response
@@ -843,6 +781,19 @@ router.post("/documents/:id/action", async (req, res) => {
     grandTotal: Number(doc.totalAmount ?? 0) + Number(doc.taxAmount ?? 0),
     updatedAt: new Date().toISOString(),
   }).catch(() => {});
+
+  auditFromReq(req, {
+    action,
+    module: "sales",
+    referenceId: String(id),
+    newData: {
+      docNumber: doc.docNumber,
+      customerName: doc.customerName,
+      fromStatus: doc.status,
+      toStatus: (patch["status"] as string | undefined) ?? doc.status,
+      ...(patch["invoiceNumber"] ? { invoiceNumber: patch["invoiceNumber"] } : {}),
+    },
+  });
 
   return res.json(detail);
 });
@@ -1105,6 +1056,25 @@ router.post("/documents/:id/email", async (req, res): Promise<void> => {
   });
 
   res.json({ message: "Email berhasil dikirim", to, filename });
+});
+
+// GET /api/sales/documents/:id/audit-log — riwayat aktivitas dokumen
+router.get("/documents/:id/audit-log", async (req, res) => {
+  const id = Number(req.params.id);
+  if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+  const rows = await db.execute(sql`
+    SELECT
+      id, user_id, user_email,
+      action, module, reference_id,
+      new_data, old_data,
+      created_at
+    FROM erp_audit_logs
+    WHERE module = 'sales'
+      AND reference_id = ${String(id)}
+    ORDER BY created_at DESC
+    LIMIT 200
+  `);
+  return res.json(rows.rows);
 });
 
 // GET /api/sales/ai-drafts — list AI-generated draft quotations

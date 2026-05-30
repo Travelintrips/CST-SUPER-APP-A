@@ -142,6 +142,8 @@ router.post("/pr", async (req, res) => {
         unit: String(l.unit ?? "pcs"),
         estimatedCost: String(l.estimatedCost ?? "0"),
         notes: l.notes ? String(l.notes) : undefined,
+        productCategory: l.productCategory ? String(l.productCategory) : undefined,
+        customFieldValues: l.customFieldValues ?? undefined,
       }))
     );
   }
@@ -172,6 +174,8 @@ router.put("/pr/:id", async (req, res) => {
           unit: String(l.unit ?? "pcs"),
           estimatedCost: String(l.estimatedCost ?? "0"),
           notes: l.notes ? String(l.notes) : undefined,
+          productCategory: l.productCategory ? String(l.productCategory) : undefined,
+          customFieldValues: l.customFieldValues ?? undefined,
         }))
       );
     }
@@ -295,6 +299,10 @@ router.post("/vq", async (req, res) => {
     totalAmount: String(body.totalAmount ?? "0"),
     taxAmount: String(body.taxAmount ?? "0"),
     grandTotal: String(body.grandTotal ?? "0"),
+    incoterm: body.incoterm ? String(body.incoterm) : undefined,
+    deliveryTerm: body.deliveryTerm ? String(body.deliveryTerm) : undefined,
+    availability: body.availability ? String(body.availability) : undefined,
+    documentRefs: body.documentRefs ?? undefined,
   }).returning();
   if (Array.isArray(body.lines) && body.lines.length > 0) {
     await db.insert(vendorQuotationLinesTable).values(
@@ -327,6 +335,10 @@ router.put("/vq/:id", async (req, res) => {
     totalAmount: body.totalAmount ? String(body.totalAmount) : undefined,
     taxAmount: body.taxAmount ? String(body.taxAmount) : undefined,
     grandTotal: body.grandTotal ? String(body.grandTotal) : undefined,
+    incoterm: body.incoterm !== undefined ? (body.incoterm ? String(body.incoterm) : null) : undefined,
+    deliveryTerm: body.deliveryTerm !== undefined ? (body.deliveryTerm ? String(body.deliveryTerm) : null) : undefined,
+    availability: body.availability !== undefined ? (body.availability ? String(body.availability) : null) : undefined,
+    documentRefs: body.documentRefs !== undefined ? (body.documentRefs ?? null) : undefined,
     updatedAt: new Date(),
   }).where(eq(vendorQuotationsTable.id, id)).returning();
   if (Array.isArray(body.lines)) {
@@ -380,6 +392,9 @@ router.post("/vq/:id/select", async (req, res) => {
     notes: `From RFQ ${rfq?.docNumber ?? ""} - Quotation by ${vq.supplierName}`,
     paymentTermDays: vq.paymentTermDays ?? 30,
     confirmedAt: new Date(),
+    incoterm: (vq as any).incoterm ?? null,
+    deliveryTerm: (vq as any).deliveryTerm ?? null,
+    productCategory: (rfq as any)?.productCategory ?? null,
   }).returning();
   if (vqLines.length > 0) {
     await db.insert(purchaseDocumentLinesTable).values(
@@ -459,6 +474,9 @@ router.post("/gr", async (req, res) => {
           subtotal: String(qty * cost),
           rackId: l.rackId ? Number(l.rackId) : undefined,
           notes: l.notes ? String(l.notes) : undefined,
+          condition: l.condition ? String(l.condition) : undefined,
+          receivingNotes: l.receivingNotes ? String(l.receivingNotes) : undefined,
+          attachments: l.attachments ?? undefined,
         };
       })
     );
@@ -496,6 +514,9 @@ router.put("/gr/:id", async (req, res) => {
             subtotal: String(qty * cost),
             rackId: l.rackId ? Number(l.rackId) : undefined,
             notes: l.notes ? String(l.notes) : undefined,
+            condition: l.condition ? String(l.condition) : undefined,
+            receivingNotes: l.receivingNotes ? String(l.receivingNotes) : undefined,
+            attachments: l.attachments ?? undefined,
           };
         })
       );

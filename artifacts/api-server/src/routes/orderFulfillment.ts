@@ -6,8 +6,9 @@
  * - Public: POST /api/fulfillment/:token                         → vendor submit
  */
 import { Router, type Request, type Response } from "express";
-import { randomBytes } from "crypto";
+import { randomBytes, randomUUID } from "crypto";
 import { eq, desc, sql } from "drizzle-orm";
+import multer from "multer";
 import {
   db,
   logisticOrdersTable,
@@ -15,12 +16,20 @@ import {
   orderFulfillmentLinksTable,
   orderFulfillmentSubmissionsTable,
   orderUpdatesTable,
+  vendorFulfillmentLinksTable,
 } from "@workspace/db";
 import { requireClerkUser } from "../lib/requireAdmin.js";
-import { sendWhatsApp } from "../lib/fonnte.js";
+import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminWa } from "../lib/adminWa.js";
 import { getPreferredDomain } from "../lib/domain.js";
 import { logger } from "../lib/logger.js";
+import { resolveServiceCategory } from "@workspace/logistics-constants";
+import { updateOrderProgress } from "../lib/orderProgress.js";
+import { ObjectStorageService } from "../lib/objectStorage.js";
+import { compressImageBuffer } from "../lib/imageCompress.js";
+
+const objectStorageService = new ObjectStorageService();
+const podUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Migration (idempotent)
@@ -52,10 +61,21 @@ export async function runOrderFulfillmentMigration() {
         created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
 
-      CREATE INDEX IF NOT EXISTS ofl_order_idx ON order_fulfillment_links(order_id);
-      CREATE INDEX IF NOT EXISTS ofl_token_idx ON order_fulfillment_links(token);
-      CREATE INDEX IF NOT EXISTS ofs_order_idx ON order_fulfillment_submissions(order_id);
-      CREATE INDEX IF NOT EXISTS ofs_link_idx  ON order_fulfillment_submissions(link_id);
+      CREATE TABLE IF NOT EXISTS order_pod_submissions (
+        id            SERIAL PRIMARY KEY,
+        order_id      INTEGER NOT NULL REFERENCES logistic_orders(id) ON DELETE CASCADE,
+        receiver_name TEXT,
+        photo_url     TEXT,
+        note          TEXT,
+        submitted_by  TEXT,
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS ofl_order_idx  ON order_fulfillment_links(order_id);
+      CREATE INDEX IF NOT EXISTS ofl_token_idx  ON order_fulfillment_links(token);
+      CREATE INDEX IF NOT EXISTS ofs_order_idx  ON order_fulfillment_submissions(order_id);
+      CREATE INDEX IF NOT EXISTS ofs_link_idx   ON order_fulfillment_submissions(link_id);
+      CREATE INDEX IF NOT EXISTS opod_order_idx ON order_pod_submissions(order_id);
     `);
     logger.info("Order fulfillment migration: ok");
   } catch (err) {
@@ -72,16 +92,6 @@ const tok = () => randomBytes(24).toString("hex");
 function getBaseUrl(): string {
   const d = getPreferredDomain();
   return d ? `https://${d}` : "";
-}
-
-/** Normalize shipmentType → fulfillment category */
-function resolveCategory(shipmentType: string): "trucking" | "freight" | "product" | "customs" {
-  const t = shipmentType.toLowerCase();
-  if (t.includes("truck") || t.includes("trucking")) return "trucking";
-  if (t.includes("sea") || t.includes("air") || t.includes("freight")) return "freight";
-  if (t.includes("product") || t.includes("barang")) return "product";
-  if (t.includes("custom") || t.includes("ppjk") || t.includes("handling") || t.includes("bea cukai")) return "customs";
-  return "freight"; // fallback
 }
 
 /** Field definitions per category */
@@ -149,7 +159,7 @@ fulfillmentAdminRouter.post("/orders/:orderId/send-fulfillment", async (req: Req
       ? (await db.select().from(suppliersTable).where(eq(suppliersTable.id, order.approvedVendorId)))[0] ?? null
       : null;
 
-    const category = resolveCategory(order.shipmentType);
+    const category = resolveServiceCategory(order.shipmentType);
     const token = tok();
     const expiresAt = expiresInDays
       ? new Date(Date.now() + expiresInDays * 86_400_000)
@@ -196,6 +206,9 @@ fulfillmentAdminRouter.post("/orders/:orderId/send-fulfillment", async (req: Req
       );
     }
 
+    updateOrderProgress(orderId, "SENT_TO_VENDOR_FULFILLMENT", "admin", "Admin",
+      `Form fulfillment dikirim ke vendor${vendor ? ` (${vendor.name})` : ""}`).catch(() => {});
+
     logger.info({ orderId, token, category }, "Fulfillment form sent");
     return res.status(201).json({
       ok: true, token, formUrl, link,
@@ -207,6 +220,27 @@ fulfillmentAdminRouter.post("/orders/:orderId/send-fulfillment", async (req: Req
   }
 });
 
+// ─── Helper: extract display data from vendor_fulfillment_links row ───────────
+const VF_FIELD_KEYS = [
+  "stockConfirmed", "qtyConfirmed", "readyDate", "leadTime", "warehouseLocation",
+  "priceConfirmed", "revisedPrice", "driverName", "driverPhone", "plateNumber",
+  "vehicleType", "pickupTime", "carrierName", "awbBlNumber", "flightVessel",
+  "bookingNumber", "etd", "eta", "customsPicName", "customsDocuments",
+  "customsProcessEta", "stockPhotoUrl", "invoiceUrl", "supportingDocUrl", "notes",
+] as const;
+
+function extractVfData(l: Record<string, unknown>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const k of VF_FIELD_KEYS) {
+    const v = l[k];
+    if (v != null && v !== "") out[k] = String(v);
+  }
+  return out;
+}
+
+// Offset to avoid ID collision between old (order_fulfillment_links) and new (vendor_fulfillment_links)
+const VF_ID_OFFSET = 10_000_000;
+
 // GET /api/logistic/orders/:orderId/fulfillment
 fulfillmentAdminRouter.get("/orders/:orderId/fulfillment", async (req: Request, res: Response) => {
   if (!(await requireClerkUser(req, res))) return;
@@ -214,18 +248,65 @@ fulfillmentAdminRouter.get("/orders/:orderId/fulfillment", async (req: Request, 
   if (isNaN(orderId)) return res.status(400).json({ message: "orderId tidak valid" });
 
   try {
-    const links = await db.select().from(orderFulfillmentLinksTable)
-      .where(eq(orderFulfillmentLinksTable.orderId, orderId))
-      .orderBy(desc(orderFulfillmentLinksTable.createdAt));
+    const [oldLinks, oldSubs, vfLinks] = await Promise.all([
+      db.select().from(orderFulfillmentLinksTable)
+        .where(eq(orderFulfillmentLinksTable.orderId, orderId))
+        .orderBy(desc(orderFulfillmentLinksTable.createdAt)),
+      db.select().from(orderFulfillmentSubmissionsTable)
+        .where(eq(orderFulfillmentSubmissionsTable.orderId, orderId))
+        .orderBy(desc(orderFulfillmentSubmissionsTable.createdAt)),
+      db.select().from(vendorFulfillmentLinksTable)
+        .where(eq(vendorFulfillmentLinksTable.orderId, orderId))
+        .orderBy(desc(vendorFulfillmentLinksTable.createdAt)),
+    ]);
 
-    const submissions = await db.select().from(orderFulfillmentSubmissionsTable)
-      .where(eq(orderFulfillmentSubmissionsTable.orderId, orderId))
-      .orderBy(desc(orderFulfillmentSubmissionsTable.createdAt));
+    const podRows = await db.execute(sql`
+      SELECT id, order_id, receiver_name, photo_url, note, submitted_by, created_at
+      FROM order_pod_submissions
+      WHERE order_id = ${orderId}
+      ORDER BY created_at DESC
+      LIMIT 5
+    `);
 
     const base = getBaseUrl();
+
+    const mergedLinks = [
+      ...oldLinks.map(l => ({ ...l, formUrl: `${base}/fulfillment/${l.token}` })),
+      ...vfLinks.map(l => ({
+        id: VF_ID_OFFSET + l.id,
+        orderId: l.orderId,
+        vendorId: l.vendorId ?? null,
+        serviceType: l.serviceType,
+        token: l.token,
+        status: l.status,
+        sentAt: null,
+        expiresAt: l.expiresAt?.toISOString() ?? null,
+        submittedAt: l.submittedAt?.toISOString() ?? null,
+        createdAt: (l.createdAt as Date | null)?.toISOString() ?? null,
+        formUrl: `${base}/vendor-fulfillment/${l.token}`,
+      })),
+    ];
+
+    const mergedSubs = [
+      ...oldSubs,
+      ...vfLinks
+        .filter(l => l.status === "submitted")
+        .map(l => ({
+          id: VF_ID_OFFSET + l.id,
+          linkId: VF_ID_OFFSET + l.id,
+          orderId: l.orderId,
+          serviceType: l.serviceType,
+          fulfillmentData: extractVfData(l as unknown as Record<string, unknown>),
+          submittedAt: l.submittedAt?.toISOString() ?? new Date().toISOString(),
+          createdAt: l.submittedAt?.toISOString() ?? null,
+        })),
+    ];
+
+    return res.json({ links: mergedLinks, submissions: mergedSubs });
     return res.json({
       links: links.map(l => ({ ...l, formUrl: `${base}/fulfillment/${l.token}` })),
       submissions,
+      pods: podRows.rows ?? [],
     });
   } catch (err) {
     logger.error({ err }, "get-fulfillment error");
@@ -262,7 +343,7 @@ fulfillmentPublicRouter.get("/:token", async (req: Request, res: Response) => {
           .from(suppliersTable).where(eq(suppliersTable.id, link.vendorId)))[0] ?? null
       : null;
 
-    const fields = FIELD_DEFS[link.serviceType] ?? FIELD_DEFS["freight"];
+    const fields = FIELD_DEFS[resolveServiceCategory(link.serviceType)];
 
     return res.json({
       token,
@@ -307,7 +388,7 @@ fulfillmentPublicRouter.post("/:token", async (req: Request, res: Response) => {
     if (!order) return res.status(404).json({ error: "Order tidak ditemukan." });
 
     // Validate required fields
-    const fields = FIELD_DEFS[link.serviceType] ?? FIELD_DEFS["freight"];
+    const fields = FIELD_DEFS[resolveServiceCategory(link.serviceType)];
     const missing = fields.filter(f => f.required && !String(body[f.key] ?? "").trim());
     if (missing.length > 0) {
       return res.status(400).json({ error: `Field wajib belum diisi: ${missing.map(f => f.label).join(", ")}` });
@@ -362,6 +443,9 @@ fulfillmentPublicRouter.post("/:token", async (req: Request, res: Response) => {
       );
     }
 
+    updateOrderProgress(link.orderId, "VENDOR_FULFILLMENT_CONFIRMED", "vendor_wa", "Vendor",
+      "Vendor mengisi form fulfillment").catch(() => {});
+
     logger.info({ orderId: link.orderId, token }, "Fulfillment submitted by vendor");
     return res.status(201).json({ ok: true, message: "Data berhasil disimpan. Terima kasih!" });
   } catch (err) {
@@ -369,3 +453,256 @@ fulfillmentPublicRouter.post("/:token", async (req: Request, res: Response) => {
     return res.status(500).json({ error: "Terjadi kesalahan server. Coba lagi." });
   }
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Admin: Konfirmasi fulfillment → In Progress + WA ke customer
+// POST /api/logistic/orders/:orderId/confirm-fulfillment
+// ─────────────────────────────────────────────────────────────────────────────
+
+fulfillmentAdminRouter.post("/orders/:orderId/confirm-fulfillment", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const orderId = Number(req.params["orderId"]);
+  if (isNaN(orderId)) return res.status(400).json({ message: "orderId tidak valid" });
+
+  try {
+    const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
+    if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+    const allowedStatuses = ["Vendor Confirmed", "Processing", "Customer Approved"];
+    if (!allowedStatuses.includes(order.status)) {
+      return res.status(400).json({ message: `Status saat ini "${order.status}" tidak bisa dikonfirmasi.` });
+    }
+
+    // Ambil submission terbaru: cek old system dulu, lalu vendor_fulfillment_links (new system)
+    const [latestOldSub] = await db.select()
+      .from(orderFulfillmentSubmissionsTable)
+      .where(eq(orderFulfillmentSubmissionsTable.orderId, orderId))
+      .orderBy(desc(orderFulfillmentSubmissionsTable.createdAt))
+      .limit(1);
+    const [latestVfLink] = await db.select()
+      .from(vendorFulfillmentLinksTable)
+      .where(eq(vendorFulfillmentLinksTable.orderId, orderId))
+      .orderBy(desc(vendorFulfillmentLinksTable.createdAt))
+      .limit(1);
+    const latestSub = latestOldSub ?? null;
+    // For WA detail lines, merge both sources
+    const vfFulfillmentData = latestVfLink?.status === "submitted"
+      ? extractVfData(latestVfLink as unknown as Record<string, unknown>)
+      : null;
+
+    await db.update(logisticOrdersTable)
+      .set({ status: "In Progress" })
+      .where(eq(logisticOrdersTable.id, orderId));
+
+    await db.insert(orderUpdatesTable).values({
+      orderId,
+      actorType: "admin",
+      actorName: "Admin",
+      status: "In Progress",
+      notes: "Admin mengkonfirmasi data fulfillment. Order sedang diproses / dalam perjalanan.",
+      isPublic: true,
+    });
+
+    // Kirim WA ke customer
+    const customerPhone = order.phone?.trim();
+    if (customerPhone) {
+      const domain = getBaseUrl();
+      let detailLines = "";
+      const FIELD_LABELS: Record<string, string> = {
+        driver_name: "Driver", driverName: "Driver",
+        driver_phone: "HP Driver", driverPhone: "HP Driver",
+        vehicle_plate: "Plat Nomor", plateNumber: "Plat Nomor",
+        vehicle_type: "Jenis Kendaraan", vehicleType: "Jenis Kendaraan",
+        pickup_time: "Waktu Pickup", pickupTime: "Waktu Pickup",
+        carrier_name: "Carrier", carrierName: "Carrier",
+        booking_number: "Nomor Booking", bookingNumber: "Nomor Booking",
+        awb_or_bl_number: "AWB / BL", awbBlNumber: "AWB / BL",
+        etd: "ETD", eta: "ETA",
+        ready_date: "Siap Kirim", readyDate: "Siap Kirim",
+        source_warehouse: "Gudang Asal", warehouseLocation: "Gudang Asal",
+        operational_note: "Catatan", notes: "Catatan",
+        stockConfirmed: "Status Stok", qtyConfirmed: "Qty Dipenuhi",
+        leadTime: "Lead Time", priceConfirmed: "Konfirmasi Harga",
+        revisedPrice: "Harga Revisi",
+      };
+      const fdSource: Record<string, string> = {
+        ...(latestSub?.fulfillmentData as Record<string, string> ?? {}),
+        ...(vfFulfillmentData ?? {}),
+      };
+      if (Object.keys(fdSource).length > 0) {
+        const lines = Object.entries(fdSource)
+          .filter(([, v]) => v?.trim() && !v.startsWith("http"))
+          .map(([k, v]) => `  • ${FIELD_LABELS[k] ?? k.replace(/_/g, " ")}: ${v}`)
+          .join("\n");
+        if (lines) detailLines = `\n\nDetail operasional:\n${lines}`;
+      }
+      const trackUrl = domain ? `\n\nCek status order: ${domain}/track` : "";
+      const waMsg =
+        `🚀 *Order Anda Sedang Diproses — CST Logistics*\n\n` +
+        `Halo ${order.customerName},\n\n` +
+        `Order *${order.orderNumber}* (${order.shipmentType}) sedang dalam proses pengiriman.\n` +
+        `Rute: ${order.origin} → ${order.destination}` +
+        detailLines +
+        trackUrl;
+      sendWhatsApp(customerPhone, waMsg).catch((e) =>
+        logger.warn({ e }, "confirm-fulfillment WA to customer failed")
+      );
+    }
+
+    logger.info({ orderId }, "Fulfillment confirmed → In Progress");
+    return res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err }, "confirm-fulfillment error");
+    return res.status(500).json({ message: "Gagal konfirmasi fulfillment" });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Admin: Selesaikan order → Completed + WA ke customer
+// POST /api/logistic/orders/:orderId/complete-order
+// ─────────────────────────────────────────────────────────────────────────────
+
+fulfillmentAdminRouter.post("/orders/:orderId/complete-order", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const orderId = Number(req.params["orderId"]);
+  if (isNaN(orderId)) return res.status(400).json({ message: "orderId tidak valid" });
+
+  const { note } = req.body as { note?: string };
+
+  try {
+    const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
+    if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+    const allowedStatuses = ["In Progress", "Vendor Confirmed", "Processing"];
+    if (!allowedStatuses.includes(order.status)) {
+      return res.status(400).json({ message: `Status saat ini "${order.status}" tidak bisa diselesaikan dari sini.` });
+    }
+
+    await db.update(logisticOrdersTable)
+      .set({ status: "Completed" })
+      .where(eq(logisticOrdersTable.id, orderId));
+
+    await db.insert(orderUpdatesTable).values({
+      orderId,
+      actorType: "admin",
+      actorName: "Admin",
+      status: "Completed",
+      notes: note?.trim()
+        ? `Order diselesaikan oleh admin. Catatan: ${note.trim()}`
+        : "Order telah diselesaikan oleh admin.",
+      isPublic: true,
+    });
+
+    // WA ke customer
+    const customerPhone = order.phone?.trim();
+    if (customerPhone) {
+      const waMsg =
+        `✅ *Order Selesai — CST Logistics*\n\n` +
+        `Halo ${order.customerName},\n\n` +
+        `Order *${order.orderNumber}* (${order.shipmentType}) telah *diselesaikan*.\n` +
+        `Rute: ${order.origin} → ${order.destination}\n\n` +
+        (note?.trim() ? `Catatan: ${note.trim()}\n\n` : "") +
+        `Terima kasih telah mempercayakan pengiriman Anda kepada CST Logistics! 🙏`;
+      sendWhatsApp(customerPhone, waMsg).catch((e) =>
+        logger.warn({ e }, "complete-order WA to customer failed")
+      );
+    }
+
+    updateOrderProgress(orderId, "COMPLETED", "admin", "Admin",
+      note?.trim() ? `Order diselesaikan: ${note.trim()}` : "Order diselesaikan oleh admin").catch(() => {});
+
+    logger.info({ orderId }, "Order completed by admin");
+    return res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err }, "complete-order error");
+    return res.status(500).json({ message: "Gagal menyelesaikan order" });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Admin: Upload Bukti Pengiriman (POD) → simpan foto, update status Completed
+// POST /api/logistic/orders/:orderId/pod   (multipart/form-data)
+// fields: photo (file, optional), receiverName (text), note (text)
+// ─────────────────────────────────────────────────────────────────────────────
+
+fulfillmentAdminRouter.post(
+  "/orders/:orderId/pod",
+  podUpload.single("photo") as any,
+  async (req: Request, res: Response) => {
+    if (!(await requireClerkUser(req, res))) return;
+    const orderId = Number(req.params["orderId"]);
+    if (isNaN(orderId)) return res.status(400).json({ message: "orderId tidak valid" });
+
+    const receiverName = (req.body?.receiverName as string | undefined)?.trim() ?? "";
+    const note = (req.body?.note as string | undefined)?.trim() ?? "";
+    const actor = (req as any).session?.user?.name ?? "Admin";
+
+    try {
+      const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
+      if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+      // Upload foto ke object storage jika ada
+      let photoUrl: string | null = null;
+      if (req.file) {
+        try {
+          const { buffer: compressed, contentType } = await compressImageBuffer(req.file.buffer, req.file.mimetype, "photo");
+          const filename = `${randomUUID()}.jpg`;
+          const storagePath = `public/pod-photos/${orderId}/${filename}`;
+          await objectStorageService.uploadFile(compressed, storagePath, contentType);
+          photoUrl = `/api/storage/public-objects/pod-photos/${orderId}/${filename}`;
+        } catch (uploadErr) {
+          logger.warn({ uploadErr }, "POD photo upload failed, continuing without photo");
+        }
+      }
+
+      // Simpan POD record
+      await db.execute(sql`
+        INSERT INTO order_pod_submissions (order_id, receiver_name, photo_url, note, submitted_by)
+        VALUES (${orderId}, ${receiverName || null}, ${photoUrl}, ${note || null}, ${actor})
+      `);
+
+      // Update status → Completed
+      await db.update(logisticOrdersTable)
+        .set({ status: "Completed" })
+        .where(eq(logisticOrdersTable.id, orderId));
+
+      // Activity log
+      const logNote = [
+        "Bukti pengiriman (POD) diupload oleh admin.",
+        receiverName ? `Penerima: ${receiverName}.` : "",
+        note ? `Catatan: ${note}` : "",
+      ].filter(Boolean).join(" ");
+
+      await db.insert(orderUpdatesTable).values({
+        orderId,
+        actorType: "admin",
+        actorName: actor,
+        status: "Completed",
+        notes: logNote,
+        isPublic: true,
+      });
+
+      // WA ke customer
+      const customerPhone = order.phone?.trim();
+      if (customerPhone) {
+        const waMsg =
+          `✅ *Order Selesai & Bukti Pengiriman Tersedia — CST Logistics*\n\n` +
+          `Halo ${order.customerName},\n\n` +
+          `Order *${order.orderNumber}* (${order.shipmentType}) telah *selesai* dan barang sudah diterima.\n` +
+          `Rute: ${order.origin} → ${order.destination}\n` +
+          (receiverName ? `Diterima oleh: *${receiverName}*\n` : "") +
+          (note ? `Catatan: ${note}\n` : "") +
+          `\nTerima kasih telah mempercayakan pengiriman Anda kepada CST Logistics! 🙏`;
+        sendWhatsApp(customerPhone, waMsg).catch((e) =>
+          logger.warn({ e }, "POD WA to customer failed")
+        );
+      }
+
+      logger.info({ orderId, photoUrl }, "POD submitted, order completed");
+      return res.json({ ok: true, photoUrl });
+    } catch (err) {
+      logger.error({ err }, "pod-submit error");
+      return res.status(500).json({ message: "Gagal menyimpan bukti pengiriman" });
+    }
+  }
+);

@@ -916,9 +916,51 @@ function guessMimeFromUrl(url: string): string {
   return "";
 }
 
+// SSRF guard: block fetches to private/loopback/link-local address ranges
+function isSsrfSafeUrl(rawUrl: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    return false;
+  }
+  // Only allow http/https
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
+
+  const hostname = parsed.hostname.toLowerCase();
+
+  // Block loopback, private, and reserved hostnames
+  const blockedHostnames = ["localhost", "metadata.google.internal"];
+  if (blockedHostnames.includes(hostname)) return false;
+
+  // Block private/reserved IPv4 CIDR ranges
+  const ipv4 = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (ipv4) {
+    const [, a, b] = ipv4.map(Number);
+    // 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 127.0.0.0/8, 169.254.0.0/16, 0.0.0.0/8
+    if (a === 10 || a === 127 || a === 0 || (a === 172 && b >= 16 && b <= 31) ||
+        (a === 192 && b === 168) || (a === 169 && b === 254)) {
+      return false;
+    }
+  }
+
+  // Block IPv6 loopback/link-local (::1, fe80::, fc00::, fd00::)
+  if (hostname === "::1" || hostname.startsWith("fe80") ||
+      hostname.startsWith("fc") || hostname.startsWith("fd")) {
+    return false;
+  }
+
+  return true;
+}
+
 async function downloadFileBuffer(
   url: string,
 ): Promise<{ buffer: Buffer; mimeType: string } | null> {
+  // SSRF protection: reject private/internal URLs from untrusted webhook payloads
+  if (!isSsrfSafeUrl(url)) {
+    logger.warn({ url }, "AI media intake: blocked SSRF-unsafe URL");
+    return null;
+  }
   try {
     const resp = await fetch(url, { signal: AbortSignal.timeout(30_000) });
     if (!resp.ok) {
