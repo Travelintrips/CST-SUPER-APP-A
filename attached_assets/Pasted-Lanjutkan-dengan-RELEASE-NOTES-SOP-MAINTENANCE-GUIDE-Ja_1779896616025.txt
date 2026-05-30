@@ -1,0 +1,193 @@
+Lanjutkan dengan RELEASE NOTES + SOP + MAINTENANCE GUIDE.
+
+Jangan tambah fitur baru.
+Fokus dokumentasi operasional dan maintenance setelah sistem stabil.
+
+==================================================
+1. RELEASE NOTES
+==================================================
+
+Buat file:
+docs/RELEASE_NOTES_v1.md
+
+Isi:
+- fitur utama yang sudah selesai
+- perbaikan penting
+- security improvement
+- price sync implementation
+- WA template integration
+- vendor mini form integration
+- customer approval flow
+- SO auto creation
+- attachment persistence
+- realtime/refetch improvements
+- duplicate prevention
+- timeline/logging
+
+Tambahkan:
+- breaking changes jika ada
+- migration yang dijalankan
+- fitur deprecated jika ada
+
+==================================================
+2. ADMIN USER GUIDE
+==================================================
+
+Buat file:
+docs/ADMIN_USER_GUIDE.md
+
+Jelaskan step-by-step:
+
+A. Product & Service Management
+- tambah/edit product
+- tambah/edit jasa
+- update harga
+- inactive/hide item
+- bulk import
+
+B. Customer Order Flow
+- lihat order masuk
+- approve/reject order
+- update status
+
+C. Vendor Mini Form
+- generate link
+- kirim WA ke vendor
+- lihat submission
+- pilih vendor
+
+D. Customer Approval
+- generate approval link
+- kirim ke customer
+- monitor approve/reject
+
+E. Sales Order
+- create/check SO
+- monitor operational flow
+
+F. WhatsApp Template Settings
+- edit template
+- variable usage
+- conditional block
+- preview template
+
+G. Attachment Handling
+- upload file
+- lihat attachment
+- download/open file
+
+H. Timeline & Logs
+- cek activity log
+- cek WA log
+- cek notification history
+
+==================================================
+3. VENDOR MINI FORM SOP
+==================================================
+
+Buat file:
+docs/VENDOR_MINI_FORM_SOP.md
+
+Isi:
+- flow vendor mini form
+- cara generate link
+- cara vendor submit
+- revise price flow
+- operational confirmation flow
+- troubleshooting umum
+
+==================================================
+4. CUSTOMER PORTAL SOP
+==================================================
+
+Buat file:
+docs/CUSTOMER_PORTAL_SOP.md
+
+Isi:
+- cara customer create order
+- upload attachment
+- approve quotation
+- lihat status order
+- download document
+- troubleshooting umum
+
+==================================================
+5. DEVELOPER MAINTENANCE GUIDE
+==================================================
+
+Buat file:
+docs/DEVELOPER_MAINTENANCE_GUIDE.md
+
+Isi:
+
+A. Architecture Overview
+- frontend
+- backend
+- Supabase
+- SSE/EventSource
+- storage
+- WA template system
+
+B. Important Tables
+- orders
+- order_items
+- vendors
+- submissions
+- approvals
+- sales_orders
+- timeline/logs
+- whatsapp templates
+
+C. Important Services
+- whatsappTemplateService
+- SSE manager
+- attachment service
+- order lifecycle flow
+
+D. Realtime / Cache Notes
+- query key
+- invalidateQueries
+- EventSource listeners
+- cleanup rules
+
+E. Security Notes
+- token validation
+- RLS
+- permission flow
+- public endpoint safety
+
+F. Regression Checklist
+- order lifecycle
+- price sync
+- WA template
+- attachment
+- duplicate prevention
+
+G. Deployment Notes
+- env variables
+- migration order
+- rollback notes
+
+==================================================
+6. KNOWN LIMITATIONS
+==================================================
+
+Buat section:
+"Known Limitations"
+
+Contoh:
+- calculator SSE masih code-verified untuk auth HTTPS-only
+- no offline mode
+- no queue retry system advanced
+- no multi-region storage
+- etc jika ada
+
+==================================================
+7. FINAL OUTPUT
+==================================================
+
+Berikan:
+- daftar file dokumentasi yang dibuat
+- ringkasan isi
+- apakah ada bagian yang masih perlu improvement
+- rekomendasi roadmap versi berikutnya

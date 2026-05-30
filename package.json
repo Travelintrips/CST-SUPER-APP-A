@@ -53,8 +53,10 @@
   "dependencies": {
     "@replit/connectors-sdk": "^0.4.0",
     "@types/pg": "^8.18.0",
+    "@types/web-push": "^3.6.4",
     "express-rate-limit": "^8.5.2",
     "pg": "^8.20.0",
-    "react-image-crop": "^11.0.10"
+    "react-image-crop": "^11.0.10",
+    "web-push": "^3.6.7"
   }
 }

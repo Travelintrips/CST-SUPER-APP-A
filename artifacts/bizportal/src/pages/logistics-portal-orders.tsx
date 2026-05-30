@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Fragment } from "react";
 import { useLocation } from "wouter";
 import {
   useListLogisticOrders,
@@ -31,6 +31,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { PackageOpen, Search, RefreshCw, FilePlus, X, Eye, Zap, Send, ExternalLink, Ship, ClipboardCheck, Trash2 } from "lucide-react";
+import { OrderProgressBar, PROGRESS_STEPS, deriveCompletedSteps } from "@/components/logistics/OrderProgressBar";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import { useOrderNotificationsContext } from "@/contexts/OrderNotificationsContext";
@@ -176,6 +177,7 @@ export default function LogisticsPortalOrdersPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [fulfillmentFilter, setFulfillmentFilter] = useState("all");
   const [koliFilter, setKoliFilter] = useState("all");
+  const [shipmentTypeFilter, setShipmentTypeFilter] = useState("all");
   const [updatingId, setUpdatingId] = useState<number | null>(null);
   const [updatingTypeId, setUpdatingTypeId] = useState<number | null>(null);
   const [soDialog, setSoDialog] = useState<LogisticOrder | null>(null);
@@ -184,6 +186,7 @@ export default function LogisticsPortalOrdersPage() {
 
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkDeleteDialog, setBulkDeleteDialog] = useState(false);
+  const [progressStepFilter, setProgressStepFilter] = useState<string | null>(null);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [bulkStatusValue, setBulkStatusValue] = useState("");
   const [isBulkUpdating, setIsBulkUpdating] = useState(false);
@@ -304,7 +307,7 @@ export default function LogisticsPortalOrdersPage() {
           queryClient.invalidateQueries({ queryKey: getListLogisticOrdersQueryKey() });
         },
         onError: (err: any) => {
-          const msg = err?.response?.data?.error ?? t.common.error;
+          const msg = err?.response?.data?.message ?? err?.response?.data?.error ?? t.common.error;
           toast({ title: msg, variant: "destructive" });
         },
         onSettled: () => setUpdatingId(null),
@@ -378,6 +381,42 @@ export default function LogisticsPortalOrdersPage() {
     );
   }
 
+  const fulfillmentOf = (o: typeof orders[number]) =>
+    (o as unknown as { fulfillmentStatus: string | null }).fulfillmentStatus;
+
+  const filtered = orders.filter((o) => {
+    if (search) {
+      const q = search.toLowerCase();
+      const matchSearch =
+        o.orderNumber.toLowerCase().includes(q) ||
+        o.customerName.toLowerCase().includes(q) ||
+        o.companyName.toLowerCase().includes(q) ||
+        o.email.toLowerCase().includes(q);
+      if (!matchSearch) return false;
+    }
+    if (fulfillmentFilter !== "all") {
+      const fs = fulfillmentOf(o);
+      if (fulfillmentFilter === "not_sent" && fs !== null) return false;
+      if (fulfillmentFilter === "pending" && fs !== "pending") return false;
+      if (fulfillmentFilter === "submitted" && fs !== "submitted") return false;
+    }
+    if (koliFilter !== "all") {
+      const k = o.jumlahKoli ?? null;
+      if (koliFilter === "has_koli" && k == null) return false;
+      if (koliFilter === "lt5" && (k == null || k >= 5)) return false;
+      if (koliFilter === "5to10" && (k == null || k < 5 || k > 10)) return false;
+      if (koliFilter === "gt10" && (k == null || k <= 10)) return false;
+    }
+    if (shipmentTypeFilter !== "all") {
+      const st = (o.shipmentType ?? "").toLowerCase();
+      if (!st.includes(shipmentTypeFilter.toLowerCase())) return false;
+    }
+    if (progressStepFilter) {
+      if (getActiveStepKey(o) !== progressStepFilter) return false;
+    }
+    return true;
+  });
+
   const allFilteredIds = filtered.map((o) => o.id);
   const allSelected = allFilteredIds.length > 0 && allFilteredIds.every((id) => selectedIds.has(id));
   const someSelected = allFilteredIds.some((id) => selectedIds.has(id)) && !allSelected;
@@ -449,34 +488,19 @@ export default function LogisticsPortalOrdersPage() {
     }
   }
 
-  const fulfillmentOf = (o: typeof orders[number]) =>
-    (o as unknown as { fulfillmentStatus: string | null }).fulfillmentStatus;
+  function getActiveStepKey(o: typeof orders[number]): string | null {
+    const done = deriveCompletedSteps(o as any);
+    const doneIdx = PROGRESS_STEPS.map((s, i) => done.has(s.key) ? i : -1).filter(i => i >= 0);
+    if (doneIdx.length === 0) return null;
+    return PROGRESS_STEPS[Math.max(...doneIdx)].key;
+  }
 
-  const filtered = orders.filter((o) => {
-    if (search) {
-      const q = search.toLowerCase();
-      const matchSearch =
-        o.orderNumber.toLowerCase().includes(q) ||
-        o.customerName.toLowerCase().includes(q) ||
-        o.companyName.toLowerCase().includes(q) ||
-        o.email.toLowerCase().includes(q);
-      if (!matchSearch) return false;
-    }
-    if (fulfillmentFilter !== "all") {
-      const fs = fulfillmentOf(o);
-      if (fulfillmentFilter === "not_sent" && fs !== null) return false;
-      if (fulfillmentFilter === "pending" && fs !== "pending") return false;
-      if (fulfillmentFilter === "submitted" && fs !== "submitted") return false;
-    }
-    if (koliFilter !== "all") {
-      const k = o.jumlahKoli ?? null;
-      if (koliFilter === "has_koli" && k == null) return false;
-      if (koliFilter === "lt5" && (k == null || k >= 5)) return false;
-      if (koliFilter === "5to10" && (k == null || k < 5 || k > 10)) return false;
-      if (koliFilter === "gt10" && (k == null || k <= 10)) return false;
-    }
-    return true;
-  });
+  const stepCounts: Record<string, number> = {};
+  for (const step of PROGRESS_STEPS) stepCounts[step.key] = 0;
+  for (const o of orders) {
+    const key = getActiveStepKey(o);
+    if (key) stepCounts[key] = (stepCounts[key] ?? 0) + 1;
+  }
 
   const counts = {
     total: orders.length,
@@ -522,31 +546,59 @@ export default function LogisticsPortalOrdersPage() {
           </div>
         </div>
 
-        {/* Stat Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        {/* Summary Stat Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           {[
-            { label: "Total", value: counts.total, color: "text-foreground", filter: "all" },
-            { label: "New Order", value: counts.newOrder, color: "text-yellow-700", filter: null },
-            { label: "In Progress", value: counts.inProgress, color: "text-orange-700", filter: null },
-            { label: "Completed", value: counts.completed, color: "text-green-700", filter: null },
-            { label: "Vendor Pending", value: counts.fulfillmentPending, color: "text-emerald-700", filter: "pending" },
+            { label: "Total", value: counts.total, color: "text-foreground", onClick: () => { setProgressStepFilter(null); setFulfillmentFilter("all"); setStatusFilter("all"); }, active: !progressStepFilter && fulfillmentFilter === "all" && statusFilter === "all" },
+            { label: "New Order", value: counts.newOrder, color: "text-yellow-700", onClick: () => { setProgressStepFilter(null); setStatusFilter(statusFilter === "New Order" ? "all" : "New Order"); setFulfillmentFilter("all"); }, active: statusFilter === "New Order" },
+            { label: "In Progress", value: counts.inProgress, color: "text-orange-700", onClick: () => { setProgressStepFilter(null); setStatusFilter(statusFilter === "In Progress" ? "all" : "In Progress"); setFulfillmentFilter("all"); }, active: statusFilter === "In Progress" },
+            { label: "Completed", value: counts.completed, color: "text-green-700", onClick: () => { setProgressStepFilter(null); setStatusFilter(statusFilter === "Completed" ? "all" : "Completed"); setFulfillmentFilter("all"); }, active: statusFilter === "Completed" },
+            { label: "Vendor Pending", value: counts.fulfillmentPending, color: "text-emerald-700", onClick: () => { setProgressStepFilter(null); setFulfillmentFilter(fulfillmentFilter === "pending" ? "all" : "pending"); setStatusFilter("all"); }, active: fulfillmentFilter === "pending", icon: <ClipboardCheck className="h-3 w-3 text-emerald-600" /> },
           ].map((s) => (
             <Card
               key={s.label}
-              className={`cursor-pointer transition-all hover:shadow-md ${s.filter && fulfillmentFilter === s.filter ? "ring-2 ring-emerald-500" : ""}`}
-              onClick={() => s.filter !== null ? setFulfillmentFilter(s.filter === fulfillmentFilter ? "all" : s.filter) : undefined}
+              className={`cursor-pointer transition-all hover:shadow-md ${s.active ? "ring-2 ring-primary" : ""}`}
+              onClick={s.onClick}
             >
-              <CardHeader className="pb-1 pt-4 px-4">
+              <CardHeader className="pb-1 pt-3 px-3">
                 <CardTitle className="text-xs text-muted-foreground flex items-center gap-1">
-                  {s.label === "Vendor Pending" && <ClipboardCheck className="h-3.5 w-3.5 text-emerald-600" />}
-                  {s.label}
+                  {s.icon ?? null}{s.label}
                 </CardTitle>
               </CardHeader>
-              <CardContent className="px-4 pb-4">
-                <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
+              <CardContent className="px-3 pb-3">
+                <p className={`text-xl font-bold ${s.color}`}>{s.value}</p>
               </CardContent>
             </Card>
           ))}
+        </div>
+
+        {/* Progress Step Cards — scrollable row */}
+        <div className="overflow-x-auto pb-1">
+          <div className="flex gap-2 min-w-max">
+            {PROGRESS_STEPS.map((step) => {
+              const count = stepCounts[step.key] ?? 0;
+              const isActive = progressStepFilter === step.key;
+              return (
+                <button
+                  key={step.key}
+                  onClick={() => setProgressStepFilter(isActive ? null : step.key)}
+                  className={`flex flex-col items-start gap-0.5 rounded-lg border px-3 py-2 min-w-[108px] transition-all hover:shadow-sm ${
+                    isActive
+                      ? "ring-2 ring-offset-1 ring-current border-transparent bg-white dark:bg-slate-900 shadow"
+                      : "border-border bg-card hover:bg-accent/50"
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 w-full">
+                    <span className={`inline-block w-2 h-2 rounded-full shrink-0 ${step.color}`} />
+                    <span className={`text-[10px] font-medium leading-tight truncate max-w-[80px] ${step.text}`}>
+                      {step.label}
+                    </span>
+                  </div>
+                  <span className={`text-lg font-bold leading-none mt-0.5 ${step.text}`}>{count}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* Filters */}
@@ -604,8 +656,20 @@ export default function LogisticsPortalOrdersPage() {
               <SelectItem value="gt10">&gt; 10 koli</SelectItem>
             </SelectContent>
           </Select>
-          {(fulfillmentFilter !== "all" || koliFilter !== "all") && (
-            <Button variant="ghost" size="sm" className="text-muted-foreground gap-1" onClick={() => { setFulfillmentFilter("all"); setKoliFilter("all"); }}>
+          <Select value={shipmentTypeFilter} onValueChange={setShipmentTypeFilter}>
+            <SelectTrigger className="w-44">
+              <SelectValue placeholder="Semua tipe" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Semua Tipe</SelectItem>
+              <SelectItem value="fcl">FCL</SelectItem>
+              <SelectItem value="lcl">LCL</SelectItem>
+              <SelectItem value="trucking">Trucking</SelectItem>
+              <SelectItem value="air">Air Freight</SelectItem>
+            </SelectContent>
+          </Select>
+          {(fulfillmentFilter !== "all" || koliFilter !== "all" || shipmentTypeFilter !== "all") && (
+            <Button variant="ghost" size="sm" className="text-muted-foreground gap-1" onClick={() => { setFulfillmentFilter("all"); setKoliFilter("all"); setShipmentTypeFilter("all"); }}>
               <X className="h-3.5 w-3.5" /> Reset
             </Button>
           )}
@@ -708,13 +772,17 @@ export default function LogisticsPortalOrdersPage() {
                   </TableRow>
                 ) : filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={12} className="text-center py-8 text-muted-foreground">
-                      Tidak ada pesanan
+                    <TableCell colSpan={12} className="text-center py-10 text-muted-foreground">
+                      <div className="flex flex-col items-center gap-1.5">
+                        <span className="text-2xl">📭</span>
+                        <span className="text-sm font-medium">Tidak ada pesanan ditemukan</span>
+                        <span className="text-xs">Coba ubah filter atau kata kunci pencarian</span>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ) : filtered.map((o) => (
+                  <Fragment key={o.id}>
                   <TableRow
-                    key={o.id}
                     className={`cursor-pointer hover:bg-muted/40 transition-colors ${selectedIds.has(o.id) ? "bg-destructive/5" : ""}`}
                     onClick={() => setDetailDialog(o)}
                     {...prefetchHover(getGetLogisticOrderQueryOptions(o.id))}
@@ -745,6 +813,21 @@ export default function LogisticsPortalOrdersPage() {
                         {(o as { orderType?: string }).orderType === "service" && (
                           <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold bg-violet-100 text-violet-700 border border-violet-200">Jasa</span>
                         )}
+                        {(() => {
+                          const fsId = (o as any).directFreightShipmentId ?? (o as any).latestRfq?.freightShipmentId;
+                          const fsNum = (o as any).directFreightShipmentNumber ?? (o as any).latestRfq?.freightShipmentNumber;
+                          if (!fsId) return null;
+                          return (
+                            <button
+                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-teal-100 text-teal-700 border border-teal-200 hover:bg-teal-200 transition-colors"
+                              onClick={(e) => { e.stopPropagation(); navigate(`/logistics/freight/${fsId}`); }}
+                              title={`Freight Shipment: ${fsNum ?? fsId}`}
+                            >
+                              <Ship className="h-2.5 w-2.5 shrink-0" />
+                              {fsNum ?? `FS#${fsId}`}
+                            </button>
+                          );
+                        })()}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -890,6 +973,21 @@ export default function LogisticsPortalOrdersPage() {
                       </div>
                     </TableCell>
                   </TableRow>
+                  <TableRow className="border-b hover:bg-transparent">
+                    <TableCell colSpan={12} className="py-1 px-4 pb-2 pt-0">
+                      <OrderProgressBar
+                        orderId={o.id}
+                        onUpdate={() => queryClient.invalidateQueries({ queryKey: getListLogisticOrdersQueryKey() })}
+                        order={{
+                          status: o.status,
+                          latestRfq: (o as any).latestRfq ?? null,
+                          fulfillmentStatus: (o as any).fulfillmentStatus ?? null,
+                          linkedSalesDocId: (o as any).linkedSalesDocId ?? null,
+                        }}
+                      />
+                    </TableCell>
+                  </TableRow>
+                  </Fragment>
                 ))}
               </TableBody>
             </Table>

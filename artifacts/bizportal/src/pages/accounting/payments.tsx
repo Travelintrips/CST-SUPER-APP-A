@@ -173,9 +173,20 @@ export default function PaymentsPage() {
     from?: string;
     to?: string;
     sourceType?: string;
-    sourceDocId?: number;
-  }>({});
-  const [sourceDocIdText, setSourceDocIdText] = useState("");
+    refDocNumber?: string;
+  }>(() => {
+    try {
+      const p = new URLSearchParams(window.location.search);
+      const refDocNumber = p.get("refDocNumber");
+      const sourceType = p.get("sourceType");
+      return {
+        ...(refDocNumber ? { refDocNumber } : {}),
+        ...(sourceType ? { sourceType } : {}),
+      };
+    } catch {
+      return {};
+    }
+  });
   const [refSearch, setRefSearch] = useState("");
 
   const { activeCompanyId, isConsolidated } = useCompany();
@@ -184,7 +195,7 @@ export default function PaymentsPage() {
     ...(filter.from ? { from: new Date(filter.from).toISOString() } : {}),
     ...(filter.to ? { to: new Date(filter.to + "T23:59:59").toISOString() } : {}),
     ...(filter.sourceType && filter.sourceType !== "all" ? { sourceType: filter.sourceType } : {}),
-    ...(filter.sourceDocId ? { sourceDocId: filter.sourceDocId } : {}),
+    ...(filter.refDocNumber ? { refDocNumber: filter.refDocNumber } : {}),
     company: (isConsolidated ? "all" : activeCompanyId) as unknown as number,
   }), [filter, activeCompanyId, isConsolidated]);
 
@@ -200,12 +211,6 @@ export default function PaymentsPage() {
       (p.partnerName ?? "").toLowerCase().includes(search)
     );
   }, [allPayments, refSearch]);
-
-  const applySourceDocId = (val: string) => {
-    setSourceDocIdText(val);
-    const num = parseInt(val, 10);
-    setFilter((f) => ({ ...f, sourceDocId: !Number.isNaN(num) && num > 0 ? num : undefined }));
-  };
 
   const { data: journals = [] } = useListJournals();
   const bankCashJournals = journals.filter((j) => j.type === "bank" || j.type === "cash");
@@ -319,11 +324,10 @@ export default function PaymentsPage() {
 
   const resetFilters = () => {
     setFilter({});
-    setSourceDocIdText("");
     setRefSearch("");
   };
 
-  const hasFilters = filter.paymentType || filter.from || filter.to || filter.sourceType || filter.sourceDocId || refSearch;
+  const hasFilters = filter.paymentType || filter.from || filter.to || filter.sourceType || filter.refDocNumber || refSearch;
 
   const handleVoided = async () => {
     await Promise.all([
@@ -772,7 +776,7 @@ export default function PaymentsPage() {
                 </Select>
               </div>
               <div className="flex items-center gap-2">
-                <Label className="text-slate-400 text-xs whitespace-nowrap">Dokumen</Label>
+                <Label className="text-slate-400 text-xs whitespace-nowrap">Tipe Dokumen</Label>
                 <Select
                   value={filter.sourceType ?? "all"}
                   onValueChange={(v) =>
@@ -783,29 +787,30 @@ export default function PaymentsPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">Semua</SelectItem>
-                    <SelectItem value="sales_order">Invoice Penjualan</SelectItem>
-                    <SelectItem value="purchase_order">Tagihan Pembelian</SelectItem>
+                    <SelectItem value="all">Semua Dokumen</SelectItem>
+                    <SelectItem value="sales_order">SO (Sales Order)</SelectItem>
+                    <SelectItem value="purchase_order">PO (Purchase Order)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="flex items-center gap-2">
-                <Label className="text-slate-400 text-xs whitespace-nowrap">ID Dokumen</Label>
+                <Label className="text-slate-400 text-xs whitespace-nowrap">No. Dokumen</Label>
                 <Input
-                  type="number"
-                  min="1"
-                  className="h-8 text-xs w-24"
-                  placeholder="ID #"
-                  value={sourceDocIdText}
-                  onChange={(e) => applySourceDocId(e.target.value)}
-                  data-testid="filter-source-doc-id"
+                  className="h-8 text-xs w-44"
+                  placeholder="cth: SO/2024/000001"
+                  value={filter.refDocNumber ?? ""}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setFilter((f) => ({ ...f, refDocNumber: val.trim() || undefined }));
+                  }}
+                  data-testid="filter-ref-doc-number"
                 />
               </div>
               <div className="flex items-center gap-2">
-                <Label className="text-slate-400 text-xs whitespace-nowrap">Cari Ref/Mitra</Label>
+                <Label className="text-slate-400 text-xs whitespace-nowrap">Cari Mitra</Label>
                 <Input
-                  className="h-8 text-xs w-40"
-                  placeholder="No. ref atau nama mitra..."
+                  className="h-8 text-xs w-36"
+                  placeholder="Nama mitra..."
                   value={refSearch}
                   onChange={(e) => setRefSearch(e.target.value)}
                 />

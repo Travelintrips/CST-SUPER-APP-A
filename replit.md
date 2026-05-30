@@ -39,6 +39,7 @@ Commands:
 - **Frontend (BizPortal)**: `artifacts/bizportal/`
 - **Customer Portal**: `artifacts/customer-portal/`
 - **CST Driver Mobile App**: `artifacts/cst-driver/`
+- **Logistic Order Shim**: `artifacts/logistic-order/` (redirect shim served at `/logistic-order/`, redirects to customer portal `/book`, `/track`, `/logistic-admin`)
 - **DB Schema & Migrations**: `lib/db/src/schema/`
 - **API Client (Orval-generated)**: `packages/api-client-react/`
 - **API Routes**: `artifacts/api-server/src/routes/`

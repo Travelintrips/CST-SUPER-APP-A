@@ -1,14 +1,46 @@
 import { Router, type Request, type Response } from "express";
 import { db, suppliersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, logisticOrdersTable } from "@workspace/db";
 import { eq, sql, and, desc } from "drizzle-orm";
-import { sendWhatsApp } from "../lib/fonnte.js";
-import { getAdminWa } from "../lib/adminWa.js";
+import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
+import { getAdminWa, getAdminPhones } from "../lib/adminWa.js";
 import { logger } from "../lib/logger.js";
 import { processWaForAiIntake, processWaMediaForAiIntake, buildAiReplyWa, getAiIntakeSettings } from "../lib/aiOrderIntake.js";
 import { getPreferredDomain } from "../lib/domain.js";
 import { normalizePhone } from "../lib/phoneUtils.js";
 
 const router = Router();
+
+// [H3-FIX] SSRF guard: only allow media URLs from Fonnte/WhatsApp CDN domains.
+// Rejects private IP ranges, localhost, and any non-allowlisted hostname.
+const ALLOWED_MEDIA_DOMAINS = [
+  "fonnte.com",
+  "whatsapp.net",
+  "cdn-whatsapp.net",
+  "mmg.whatsapp.net",
+  "whatsapp.com",
+  "wa.me",
+];
+const PRIVATE_HOST_RE = [
+  /^localhost$/i,
+  /^127\./,
+  /^10\./,
+  /^172\.(1[6-9]|2\d|3[01])\./,
+  /^192\.168\./,
+  /^169\.254\./,
+  /^0\./,
+  /^::1$/,
+  /^fc00:/i,
+  /^fe80:/i,
+  /metadata\.google\.internal/i,
+];
+function isAllowedMediaUrl(rawUrl: string): boolean {
+  let u: URL;
+  try { u = new URL(rawUrl); } catch { return false; }
+  if (u.protocol !== "https:" && u.protocol !== "http:") return false;
+  const host = u.hostname.toLowerCase();
+  if (PRIVATE_HOST_RE.some((re) => re.test(host))) return false;
+  return ALLOWED_MEDIA_DOMAINS.some((d) => host === d || host.endsWith(`.${d}`));
+}
 
 // ── In-memory dedup cache: prevent processing the same Fonnte webhook twice ──
 // Key = sender + "|" + message (first 100 chars) + "|" + mediaUrl
@@ -33,11 +65,6 @@ function calcSellingPrice(vendorPrice: number, markupType: string, markupPct: nu
 
 function fmt(n: number): string {
   return `Rp ${Math.round(n).toLocaleString("id-ID")}`;
-}
-
-function getAdminPhones(): string[] {
-  const raw = process.env.ADMIN_WA_PHONES ?? "";
-  return raw.split(",").map((s) => s.trim()).filter(Boolean).map(normalizePhone);
 }
 
 function getOrderUrl(orderId: number): string {
@@ -322,8 +349,13 @@ router.post("/webhook/fonnte", async (req: Request, res: Response) => {
 
     // Must have either a text message OR a media file to process
     const hasText = message.trim().length > 0;
-    const hasMedia = !!mediaUrl && (mediaType === "image" || mediaType === "document" || mediaType === "pdf"
-      || (mediaUrl.match(/\.(pdf|jpg|jpeg|png|webp)(\?|$)/i) !== null));
+    // [H3-FIX] Only treat as media if URL passes SSRF allowlist check
+    const mediaUrlSafe = mediaUrl && isAllowedMediaUrl(mediaUrl) ? mediaUrl : null;
+    if (mediaUrl && !mediaUrlSafe) {
+      logger.warn({ sender, mediaUrl }, "Fonnte webhook: media URL rejected by SSRF allowlist — ignoring");
+    }
+    const hasMedia = !!mediaUrlSafe && (mediaType === "image" || mediaType === "document" || mediaType === "pdf"
+      || (mediaUrlSafe.match(/\.(pdf|jpg|jpeg|png|webp)(\?|$)/i) !== null));
 
     if (!hasText && !hasMedia) {
       logger.info({ sender, mediaType }, "Fonnte webhook: no text or processable media, skipping");
@@ -336,13 +368,13 @@ router.post("/webhook/fonnte", async (req: Request, res: Response) => {
     const adminWa = await getAdminWa();
 
     // ─── 0. Media file processing (PDF / image) ───────────────────────────────
-    if (hasMedia && mediaUrl) {
+    if (hasMedia && mediaUrlSafe) {
       const displayName = senderName ?? actualSender;
-      logger.info({ sender, mediaUrl, mediaType }, "Fonnte webhook: processing media file");
+      logger.info({ sender, mediaUrl: mediaUrlSafe, mediaType }, "Fonnte webhook: processing media file");
 
       let mediaResult = null;
       try {
-        mediaResult = await processWaMediaForAiIntake(mediaUrl, normalizedSender, senderName, message || null);
+        mediaResult = await processWaMediaForAiIntake(mediaUrlSafe, normalizedSender, senderName, message || null);
       } catch (mediaErr) {
         logger.warn({ mediaErr, sender }, "AI media intake: processing failed");
       }
@@ -402,7 +434,7 @@ router.post("/webhook/fonnte", async (req: Request, res: Response) => {
             `Tipe   : ${fileLabel}\n` +
             (message ? `Caption: ${message}\n` : "") +
             `━━━━━━━━━━━━━━━━━━\n` +
-            `🔗 File: ${mediaUrl}\n\n` +
+            `🔗 File: ${mediaUrlSafe}\n\n` +
             `_Periksa file secara manual di BizPortal._`;
           sendWhatsApp(adminWa, forwardMsg).catch(() => undefined);
         }
@@ -424,7 +456,7 @@ router.post("/webhook/fonnte", async (req: Request, res: Response) => {
     }
 
     // ─── 1. Admin commands ───────────────────────────────────────────────────
-    const adminPhones = getAdminPhones();
+    const adminPhones = await getAdminPhones();
     const isAdmin = adminPhones.length > 0 && adminPhones.includes(normalizedSender);
 
     if (isAdmin) {

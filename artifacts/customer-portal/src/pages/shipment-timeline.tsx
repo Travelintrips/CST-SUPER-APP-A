@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useLocation, Link } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useListPortalLogisticOrders } from "@workspace/api-client-react";
 import { getAuthToken, getAuthHeaders } from "@/lib/auth";
 import { Badge } from "@/components/ui/badge";
@@ -371,6 +371,17 @@ export default function ShipmentTimelinePage() {
   useEffect(() => {
     if (!token) setLocation("/login");
   }, [token, setLocation]);
+
+  // Real-time: invalidasi saat status order berubah
+  const qc = useQueryClient();
+  useEffect(() => {
+    if (!token) return;
+    const es = new EventSource("/api/ecommerce/events");
+    es.addEventListener("logistic_order_status_changed", () => {
+      qc.invalidateQueries({ queryKey: ["listPortalLogisticOrders-timeline", token] });
+    });
+    return () => es.close();
+  }, [token, qc]);
 
   const { data, isLoading, isError, refetch, isFetching } = useListPortalLogisticOrders({
     query: {

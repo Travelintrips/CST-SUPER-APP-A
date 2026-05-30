@@ -31,5 +31,9 @@ export async function runNotificationLogMigration(): Promise<void> {
     WHERE ref_id IS NOT NULL
   `);
 
+  // Kolom dedup_key + unique index (dipakai logNotification onConflictDoNothing)
+  await db.execute(sql`ALTER TABLE notification_logs ADD COLUMN IF NOT EXISTS dedup_key TEXT`);
+  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS notif_logs_dedup_key_idx ON notification_logs (dedup_key)`);
+
   logger.info("Notification log migration: selesai (notification_logs table ready)");
 }

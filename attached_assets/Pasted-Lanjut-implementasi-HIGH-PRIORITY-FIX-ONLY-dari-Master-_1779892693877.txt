@@ -1,0 +1,87 @@
+Lanjut implementasi HIGH PRIORITY FIX ONLY dari Master Fix Plan.
+
+Jangan implement Medium/Low dulu.
+Jangan refactor besar.
+
+Aturan:
+1. Fix hanya issue priority High.
+2. Critical fix yang sudah PASS jangan diubah sembarangan.
+3. Jangan merusak:
+   - price_sync
+   - order existing
+   - mini form existing
+   - WA template settings
+   - customer portal display
+4. Semua fix harus backward-compatible.
+
+Area High Priority yang harus difix:
+
+A. Order Lifecycle Partial Sync
+- step order yang masih partial harus connect database penuh
+- status BizPortal dan Customer Portal harus sinkron
+- setelah admin update status, frontend/customer portal harus refetch/realtime jika perlu
+
+B. Vendor Mini Form Sync
+- link creation harus persist
+- vendor submission harus masuk database
+- admin page harus read dari database
+- setelah vendor submit, admin harus dapat update/refetch
+- tidak boleh hanya local state
+
+C. WhatsApp Template Integration
+- semua flow WA harus memakai Settings Template WA
+- hapus hardcoded React message
+- gunakan centralized whatsappTemplateService
+- fallback hanya default template
+- perubahan template harus langsung dipakai
+
+D. Attachment Persistence
+- file upload harus masuk storage/database
+- attachment harus linked ke order/vendor/customer/submission
+- file tetap bisa dibuka setelah refresh
+- jangan simpan temporary blob URL sebagai data final
+
+E. RLS / Permission High Risk
+- perbaiki policy yang terlalu terbuka
+- pastikan anon/public hanya akses token-based endpoint
+- pastikan customer/vendor tidak bisa baca data role lain
+
+F. Frontend Refetch / Cache Sync
+- query key mismatch harus diperbaiki
+- mutation harus invalidate query yang benar
+- stale cache penting harus dikurangi
+- local/dummy data production harus diganti ke database/API
+
+Output setelah implementasi:
+
+1. FIXED HIGH ISSUES
+Priority | Issue | File/API | Fix Applied | Test Result
+
+2. FILES CHANGED
+- file
+- reason
+
+3. DATABASE / STORAGE CHANGES
+- table/bucket/policy yang berubah
+- migration jika ada
+
+4. SYNC TEST RESULT
+- order status sync
+- vendor submission sync
+- customer approval sync
+- WA template sync
+- attachment persistence
+- frontend refetch
+
+5. REGRESSION TEST
+Pastikan tetap PASS:
+- Critical security tests
+- duplicate SO prevention
+- price_sync
+- customer portal product/service
+- existing mini form links
+- existing WA settings
+
+6. FINAL VERDICT
+- High priority fixed?
+- Safe to continue Medium priority?

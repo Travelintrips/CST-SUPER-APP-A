@@ -1,4 +1,5 @@
-import { pgTable, serial, integer, text, boolean, timestamp, jsonb, numeric } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, text, boolean, timestamp, jsonb, numeric, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { suppliersTable } from "./suppliers";
 
 export const vendorMiniFormLinksTable = pgTable("vendor_mini_form_links", {
@@ -33,7 +34,7 @@ export const vendorMiniFormLinksTable = pgTable("vendor_mini_form_links", {
 export const vendorMiniFormSubmissionsTable = pgTable("vendor_mini_form_submissions", {
   id: serial("id").primaryKey(),
   linkId: integer("link_id").references(() => vendorMiniFormLinksTable.id, { onDelete: "set null" }),
-  token: text("token").notNull(),
+  token: text("token").notNull().unique(),
   supplierId: integer("supplier_id").references(() => suppliersTable.id, { onDelete: "set null" }),
   serviceType: text("service_type").notNull(),
   vendorName: text("vendor_name"),
@@ -63,7 +64,13 @@ export const vendorMiniFormSubmissionsTable = pgTable("vendor_mini_form_submissi
   // Lock after customer approve
   locked: boolean("locked").default(false),
   unlockReason: text("unlock_reason"),
-});
+}, (t) => [
+  // Mencegah vendor yang sama (supplier_id tidak null) submit 2x untuk link yang sama.
+  // Vendor anonim (supplier_id IS NULL) dikecualikan karena diidentifikasi via token unik.
+  uniqueIndex("vmf_submissions_link_supplier_uidx")
+    .on(t.linkId, t.supplierId)
+    .where(sql`${t.supplierId} IS NOT NULL`),
+]);
 
 export const customerApprovalsTable = pgTable("customer_approvals", {
   id: serial("id").primaryKey(),
@@ -137,12 +144,41 @@ export const vmfActivityLogTable = pgTable("vmf_activity_log", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const customerInvoiceLinksTable = pgTable("customer_invoice_links", {
+  id: serial("id").primaryKey(),
+  token: text("token").notNull().unique(),
+  salesDocId: integer("sales_doc_id"),
+  orderId: integer("order_id"),
+  orderNumber: text("order_number"),
+  invoiceNumber: text("invoice_number"),
+  customerName: text("customer_name"),
+  customerPhone: text("customer_phone"),
+  currency: text("currency").default("IDR"),
+  subtotal: numeric("subtotal", { precision: 14, scale: 2 }),
+  taxRate: numeric("tax_rate", { precision: 5, scale: 2 }).default("11"),
+  taxAmount: numeric("tax_amount", { precision: 14, scale: 2 }),
+  grandTotal: numeric("grand_total", { precision: 14, scale: 2 }),
+  amountPaid: numeric("amount_paid", { precision: 14, scale: 2 }).default("0"),
+  paymentStatus: text("payment_status").notNull().default("unpaid"),
+  paymentMethod: text("payment_method"),
+  dueDate: timestamp("due_date"),
+  notes: text("notes"),
+  lineItems: jsonb("line_items").default([]),
+  viewedAt: timestamp("viewed_at"),
+  acknowledgedAt: timestamp("acknowledged_at"),
+  status: text("status").notNull().default("sent"),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  expiresAt: timestamp("expires_at"),
+});
+
 export type VendorMiniFormLink = typeof vendorMiniFormLinksTable.$inferSelect;
 export type InsertVendorMiniFormLink = typeof vendorMiniFormLinksTable.$inferInsert;
 export type VendorMiniFormSubmission = typeof vendorMiniFormSubmissionsTable.$inferSelect;
 export type InsertVendorMiniFormSubmission = typeof vendorMiniFormSubmissionsTable.$inferInsert;
 export type CustomerApproval = typeof customerApprovalsTable.$inferSelect;
 export type InsertCustomerApproval = typeof customerApprovalsTable.$inferInsert;
+export type CustomerInvoiceLink = typeof customerInvoiceLinksTable.$inferSelect;
 export type VendorOperationalConfirmation = typeof vendorOperationalConfirmationsTable.$inferSelect;
 export type InsertVendorOperationalConfirmation = typeof vendorOperationalConfirmationsTable.$inferInsert;
 export type VendorPriceHistory = typeof vendorPriceHistoryTable.$inferSelect;

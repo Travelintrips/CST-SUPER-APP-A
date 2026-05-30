@@ -30,31 +30,44 @@ const BASE_DELAY    = Number(process.env.GW_BASE_DELAY    ?? 200);
 
 const RETRYABLE_CODES = new Set(["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENOTFOUND"]);
 
-const API_PORT = 18444;
+const API_PORT = Number(process.env.API_PORT ?? 8080);
+
+const BIZPORTAL_PORT = Number(process.env.BIZPORTAL_PORT ?? 18442);
+const CUSTOMER_PORT  = Number(process.env.CUSTOMER_PORT  ?? 3001);
 
 const ROUTES = [
-  { prefix: "/api",          upstream: { host: "localhost", port: API_PORT } },
-  { prefix: "/pos-images",   upstream: { host: "localhost", port: API_PORT } },
-  { prefix: "/q",            upstream: { host: "localhost", port: API_PORT } },
-  { prefix: "/bizportal",    upstream: { host: "localhost", port: 18442 } },
-  { prefix: "/sport-center", upstream: { host: "localhost", port: 3002 } },
+  { prefix: "/api",             upstream: { host: "localhost", port: API_PORT } },
+  { prefix: "/pos-images",      upstream: { host: "localhost", port: API_PORT } },
+  { prefix: "/q",               upstream: { host: "localhost", port: API_PORT } },
+  { prefix: "/bizportal",       upstream: { host: "localhost", port: BIZPORTAL_PORT } },
+  { prefix: "/sport-center",    upstream: { host: "localhost", port: 3002 } },
+  // Canvas artifact iframe hits /customer-portal/* — redirect to strip the prefix
+  { prefix: "/customer-portal", upstream: null, redirectStrip: "/customer-portal" },
 ];
-const DEFAULT_UPSTREAM = { host: "localhost", port: 3001 };
+const DEFAULT_UPSTREAM = { host: "localhost", port: CUSTOMER_PORT };
 
 const SERVICE_NAMES = {
-  18444: "API Server",
-  18442: "BizPortal",
-  3001:  "Customer Portal",
-  3002:  "Sport Center",
+  18444:            "API Server",
+  [BIZPORTAL_PORT]: "BizPortal",
+  [CUSTOMER_PORT]:  "Customer Portal",
+  3002:             "Sport Center",
 };
 
 function resolve(url) {
   for (const route of ROUTES) {
     if (url === route.prefix || url.startsWith(route.prefix + "/") || url.startsWith(route.prefix + "?")) {
-      return route.upstream;
+      return { upstream: route.upstream, stripPrefix: route.stripPrefix ?? null, redirectStrip: route.redirectStrip ?? null };
     }
   }
-  return DEFAULT_UPSTREAM;
+  return { upstream: DEFAULT_UPSTREAM, stripPrefix: null, redirectStrip: null };
+}
+
+function rewritePath(url, stripPrefix) {
+  if (!stripPrefix) return url;
+  if (url === stripPrefix) return "/";
+  if (url.startsWith(stripPrefix + "/")) return url.slice(stripPrefix.length) || "/";
+  if (url.startsWith(stripPrefix + "?")) return "/" + url.slice(stripPrefix.length);
+  return url;
 }
 
 function delay(ms) {
@@ -103,12 +116,12 @@ function startingPage(port, attempt) {
 
 // ── HTTP proxy with retry ─────────────────────────────────────────────────────
 
-function proxyAttempt(req, upstream, body) {
+function proxyAttempt(req, upstream, body, rewrittenPath) {
   return new Promise((resolve, reject) => {
     const options = {
       hostname: upstream.host,
       port:     upstream.port,
-      path:     req.url,
+      path:     rewrittenPath ?? req.url,
       method:   req.method,
       headers: {
         ...req.headers,
@@ -126,7 +139,17 @@ function proxyAttempt(req, upstream, body) {
 // ── Request handler ───────────────────────────────────────────────────────────
 
 function handleRequest(req, res) {
-  const upstream = resolve(req.url ?? "/");
+  const { upstream, stripPrefix, redirectStrip } = resolve(req.url ?? "/");
+
+  // Redirect-strip: browser URL must change so client-side router sees correct path
+  if (redirectStrip) {
+    const target = rewritePath(req.url ?? "/", redirectStrip);
+    res.writeHead(302, { location: target });
+    res.end();
+    return;
+  }
+
+  const rewrittenPath = rewritePath(req.url ?? "/", stripPrefix);
   const chunks = [];
   req.on("data", c => chunks.push(c));
   req.on("end", async () => {
@@ -134,7 +157,7 @@ function handleRequest(req, res) {
     let lastErr;
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
       try {
-        const proxyRes = await proxyAttempt(req, upstream, body);
+        const proxyRes = await proxyAttempt(req, upstream, body, rewrittenPath);
         res.writeHead(proxyRes.statusCode ?? 502, proxyRes.headers);
         proxyRes.pipe(res, { end: true });
         return;
@@ -178,7 +201,7 @@ function wsConnect(upstream) {
 }
 
 async function handleUpgrade(req, socket, head) {
-  const upstream = resolve(req.url ?? "/");
+  const { upstream } = resolve(req.url ?? "/");
   let tunnel, lastErr;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     try {
@@ -224,12 +247,12 @@ async function startGateway() {
           process.exit(1);
         }
       });
-      srv.listen(PORT, "0.0.0.0", () => {
+      srv.listen(PORT, () => {
         console.log(`Gateway listening on port ${PORT}`);
         console.log(`  /api/*          → :${API_PORT} (API Server)`);
-        console.log(`  /bizportal/*    → :18442 (BizPortal)`);
+        console.log(`  /bizportal/*    → :${BIZPORTAL_PORT} (BizPortal)`);
         console.log(`  /sport-center/* → :3002 (Sport Center)`);
-        console.log(`  /*              → :3001 (Customer Portal)`);
+        console.log(`  /*              → :${CUSTOMER_PORT} (Customer Portal)`);
         resolve(true);
       });
     });

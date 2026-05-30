@@ -67,7 +67,13 @@ const ShipmentTimeline          = lazy(() => import("@/pages/shipment-timeline")
 const AdminReview               = lazy(() => import("@/pages/admin-review"));
 const VendorJobPage             = lazy(() => import("@/pages/vendor-job"));
 const OrderTrackPage            = lazy(() => import("@/pages/order-track"));
+const CustomerInvoicePage       = lazy(() => import("@/pages/customer-invoice"));
 const AccountSecurity           = lazy(() => import("@/pages/account-security"));
+const VendorPoAcceptPage        = lazy(() => import("@/pages/vendor-po-accept"));
+const CustomerFeedbackPage      = lazy(() => import("@/pages/customer-feedback"));
+const PurchaseRequestFormPage   = lazy(() => import("@/pages/purchase-request-form"));
+const VendorInvoiceFormPage     = lazy(() => import("@/pages/vendor-invoice-form"));
+const GoodsReceiptFormPage      = lazy(() => import("@/pages/goods-receipt-form"));
 const NotFound                  = lazy(() => import("@/pages/not-found"));
 
 const queryClient = new QueryClient();
@@ -86,7 +92,10 @@ const NO_SHELL_PREFIXES = [
   "/choose-option", "/onboarding", "/pending-approval",
   "/customer-quote", "/order-task", "/customer-order", "/admin-action",
   "/vendor-fulfillment", "/vendor-job", "/order-track",
-  "/customer-approval", "/op-confirm",
+  "/customer-approval", "/op-confirm", "/customer-invoice",
+  "/vendor-po-accept",
+  "/customer-feedback", "/purchase-request", "/vendor-invoice", "/goods-receipt",
+  "/q/",
 ];
 
 // Routes that should skip the Supabase auth check entirely (public/standalone pages)
@@ -97,7 +106,9 @@ const NO_AUTH_CHECK_PREFIXES = [
   "/approve", "/confirm", "/customer-quote", "/order-task", "/customer-order",
   "/admin-action", "/admin-review", "/order-track", "/fulfillment", "/q/",
   "/privacy-policy", "/contact",
-  "/customer-approval", "/op-confirm",
+  "/customer-approval", "/op-confirm", "/customer-invoice",
+  "/vendor-po-accept",
+  "/customer-feedback", "/purchase-request", "/vendor-invoice", "/goods-receipt",
 ];
 
 const BASE_PREFIX = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -229,7 +240,13 @@ function AppShell() {
         <Route path="/admin-review/:token" component={AdminReview} />
         <Route path="/vendor-job/:token" component={VendorJobPage} />
         <Route path="/order-track/:trackToken" component={OrderTrackPage} />
+        <Route path="/customer-invoice/:token" component={CustomerInvoicePage} />
         <Route path="/account-security" component={AccountSecurity} />
+        <Route path="/vendor-po-accept/:token" component={VendorPoAcceptPage} />
+        <Route path="/customer-feedback/:token" component={CustomerFeedbackPage} />
+        <Route path="/purchase-request/:token" component={PurchaseRequestFormPage} />
+        <Route path="/vendor-invoice/:token" component={VendorInvoiceFormPage} />
+        <Route path="/goods-receipt/:token" component={GoodsReceiptFormPage} />
         <Route component={NotFound} />
       </Switch>
     </Suspense>

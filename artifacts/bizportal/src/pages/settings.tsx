@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { User, Mail, Briefcase, Shield, MessageCircle, Save, Loader2, CheckCircle, Calculator, ChevronDown, ChevronUp, Package, Plus, X, Bot, Link2, RotateCcw, History, RefreshCw, Download } from "lucide-react";
+import { User, Mail, Briefcase, Shield, MessageCircle, Save, Loader2, CheckCircle, Calculator, ChevronDown, ChevronUp, Package, Plus, X, Bot, Link2, RotateCcw, History, RefreshCw, Download, Layers, ExternalLink } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -211,6 +211,106 @@ function CalculatorRatesCard() {
                   <Save className="h-4 w-4" />
                 )}
                 {saving ? "Menyimpan..." : saved ? "Tersimpan!" : "Simpan Tarif"}
+              </Button>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function LogisticsSubcategoriesCard() {
+  const { toast } = useToast();
+  const { t } = useLanguage();
+  const [cats, setCats] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [newCat, setNewCat] = useState("");
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch("/api/settings/logistics-subcategories", { credentials: "include" });
+        if (res.ok) setCats(await res.json() as string[]);
+      } catch { /* ignore */ }
+      finally { setLoading(false); }
+    })();
+  }, []);
+
+  function addCat() {
+    const v = newCat.trim();
+    if (!v || cats.includes(v)) { setNewCat(""); return; }
+    setCats((prev) => [...prev, v]);
+    setNewCat("");
+  }
+
+  function removeCat(idx: number) {
+    setCats((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/settings/logistics-subcategories", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" }, credentials: "include",
+        body: JSON.stringify(cats),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+      toast({ title: t.common.success });
+    } catch (err) {
+      toast({ title: t.common.error, description: String(err), variant: "destructive" });
+    } finally { setSaving(false); }
+  }
+
+  return (
+    <Card className="col-span-1 md:col-span-3 bg-card border-border">
+      <CardHeader>
+        <CardTitle className="text-xl flex items-center gap-2">
+          <Layers className="h-5 w-5 text-primary" />
+          Sub-Kategori Logistik
+        </CardTitle>
+        <CardDescription>
+          Daftar sub-kategori jasa logistik yang tersedia sebagai pilihan dropdown di BizPortal (Sales Items, Katalog, Quote Editor) dan Customer Portal Admin.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {loading ? (
+          <div className="space-y-2">{[1,2,3].map((i) => <div key={i} className="h-8 rounded bg-muted animate-pulse" />)}</div>
+        ) : (
+          <>
+            <div className="flex flex-wrap gap-2 min-h-[40px]">
+              {cats.length === 0 && <p className="text-sm text-muted-foreground italic">Belum ada item — tambahkan di bawah</p>}
+              {cats.map((c, i) => (
+                <span key={i} className="inline-flex items-center gap-1 text-sm bg-muted border border-border rounded-full px-3 py-1">
+                  {c}
+                  <button type="button" onClick={() => removeCat(i)} className="ml-1 text-muted-foreground hover:text-destructive transition-colors">
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+            <div className="flex gap-2 max-w-sm">
+              <Input
+                value={newCat}
+                onChange={(e) => setNewCat(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCat(); } }}
+                placeholder="cth: Cold Chain, Project Cargo"
+                className="flex-1"
+              />
+              <Button type="button" variant="outline" size="sm" onClick={addCat} className="gap-1 shrink-0">
+                <Plus className="h-4 w-4" /> Tambah
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">Tekan Enter atau klik Tambah. Klik × untuk hapus item.</p>
+            <div className="flex justify-end pt-1 border-t border-border">
+              <Button onClick={handleSave} disabled={saving} size="sm" className="gap-2">
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : saved ? <CheckCircle className="h-4 w-4 text-green-400" /> : <Save className="h-4 w-4" />}
+                {saving ? "Menyimpan..." : saved ? "Tersimpan!" : "Simpan Daftar"}
               </Button>
             </div>
           </>
@@ -518,6 +618,7 @@ function WhatsAppNotificationCard() {
   const { t } = useLanguage();
   const [adminWa, setAdminWa] = useState("");
   const [adminGroupWa, setAdminGroupWa] = useState("");
+  const [adminPhones, setAdminPhones] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -529,9 +630,10 @@ function WhatsAppNotificationCard() {
           credentials: "include",
         });
         if (res.ok) {
-          const data = await res.json() as { adminWa: string; adminGroupWa?: string };
+          const data = await res.json() as { adminWa: string; adminGroupWa?: string; adminPhones?: string };
           setAdminWa(data.adminWa ?? "");
           setAdminGroupWa(data.adminGroupWa ?? "");
+          setAdminPhones(data.adminPhones ?? "");
         }
       } catch {
         // ignore
@@ -547,7 +649,7 @@ function WhatsAppNotificationCard() {
       const res = await fetch("/api/settings/notifications", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ adminWa, adminGroupWa }),
+        body: JSON.stringify({ adminWa, adminGroupWa, adminPhones }),
       });
       if (!res.ok) throw new Error(await res.text());
       setSaved(true);
@@ -616,6 +718,30 @@ function WhatsAppNotificationCard() {
                 </p>
                 <p>
                   Cara cari Group ID: Kirim pesan dari grup ke bot Fonnte, lalu cek log di dashboard Fonnte — Group ID terlihat di kolom <em>target</em>.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="admin-phones" className="flex items-center gap-1.5">
+                Nomor Admin Perintah WA
+                <span className="text-[10px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400 rounded px-1.5 py-0.5">
+                  Whitelist Bot
+                </span>
+              </Label>
+              <Input
+                id="admin-phones"
+                value={adminPhones}
+                onChange={(e) => setAdminPhones(e.target.value)}
+                placeholder="628111111111,628222222222"
+              />
+              <div className="text-xs text-muted-foreground space-y-1">
+                <p>
+                  Daftar nomor yang diizinkan mengirim perintah ke bot WhatsApp (webhook Fonnte). Hanya pesan dari nomor-nomor ini yang akan diproses sebagai perintah admin.
+                </p>
+                <p className="text-amber-600 dark:text-amber-400">
+                  ⚠️ Pisahkan beberapa nomor dengan koma, tanpa spasi. Format: <code>628111111111,628222222222</code>.
+                  Kosongkan untuk menonaktifkan filter (semua pesan diproses).
                 </p>
               </div>
             </div>
@@ -829,6 +955,7 @@ function PageContentCard() {
     </Card>
   );
 }
+
 
 // ── Freight Stage Labels ──────────────────────────────────────────────────────
 
@@ -1358,6 +1485,7 @@ function WaTemplatesCard() {
   const filteredWorkflows = (Object.keys(WORKFLOW_META) as WorkflowKey[]).filter(
     w => category === "semua" || WORKFLOW_CATEGORY[w] === category
   );
+  const customCount = loading ? null : savedKeys.size;
 
   function handleCategoryChange(cat: WorkflowCategory) {
     setCategory(cat);
@@ -1419,22 +1547,44 @@ function WaTemplatesCard() {
   }
 
   const preview = renderWaPreview(currentBody, simSvc, workflow);
+  const HANDLEBAR_RE = /(\{\{[^\x7D]+\}\})/;
 
   return (
     <Card className="col-span-1 md:col-span-3 bg-card border-border">
       <CardHeader>
         <CardTitle className="text-xl flex items-center gap-2">
-          <MessageCircle className="h-5 w-5 text-primary" />
+          <MessageCircle className="h-5 w-5 text-green-500" />
           Template Pesan WhatsApp
+          {customCount !== null && customCount > 0 && (
+            <span className="text-xs font-normal bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 rounded-full px-2 py-0.5 ml-1">
+              {customCount} dikustomisasi
+            </span>
+          )}
         </CardTitle>
         <CardDescription>
-          Atur format pesan WA per workflow dan penerima. Gunakan{" "}
-          <code className="bg-muted px-1 rounded text-xs">{"{{variabel}}"}</code> untuk data dinamis dan{" "}
-          <code className="bg-muted px-1 rounded text-xs">{"{{#if trucking}}...{{/if}}"}</code> untuk blok kondisional per service type.
-          Baris dengan variabel kosong dihilangkan otomatis.
+          Atur format pesan WA per workflow dan penerima. Mendukung variabel dinamis{" "}
+          <code className="bg-muted px-1 rounded text-xs">{"{{variabel}}"}</code> dan blok kondisional per service type.
+          Baris dengan variabel kosong dihilangkan otomatis. Perubahan langsung aktif tanpa restart.
         </CardDescription>
       </CardHeader>
       <CardContent>
+        <div className="flex items-center justify-between gap-4 mb-4">
+          <div className="flex gap-6 text-sm text-muted-foreground">
+            <span>👤 Admin Pribadi</span>
+            <span>👥 Grup Admin</span>
+            <span>🛍️ Customer</span>
+            <span>🏭 Vendor</span>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-2 shrink-0"
+            onClick={() => { window.location.href = "/bizportal/settings/wa-templates"; }}
+          >
+            <MessageCircle className="h-4 w-4 text-green-500" />
+            Buka WA Template Manager
+          </Button>
+        </div>
         {loading ? (
           <div className="space-y-3">{[1,2,3,4].map(i => <div key={i} className="h-8 bg-muted rounded animate-pulse" />)}</div>
         ) : (
@@ -1617,7 +1767,7 @@ function WaTemplatesCard() {
               </div>
               <div className="font-mono text-xs bg-muted/40 border rounded-md p-3 whitespace-pre-wrap max-h-72 overflow-y-auto leading-relaxed">
                 {preview
-                  ? preview.split(/(\{\{[^}]+\}\})/).map((part, i) =>
+                  ? preview.split(HANDLEBAR_RE).map((part, i) =>
                       part.startsWith("{{")
                         ? <span key={i} className="bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 rounded px-0.5">{part}</span>
                         : part
@@ -1655,6 +1805,7 @@ function WaTemplatesCard() {
     </Card>
   );
 }
+
 
 interface WaLogEntry {
   id: number;
@@ -1763,6 +1914,11 @@ function WaLogsCard() {
             <Button size="sm" variant="outline" className="gap-1.5 text-xs" asChild>
               <a href={`/api/settings/wa-logs/export${statusFilter || search ? `?${new URLSearchParams([...(statusFilter ? [["status", statusFilter]] : []), ...(search ? [["search", search]] : [])]).toString()}` : ""}`} download>
                 <Download className="h-3.5 w-3.5" /> Export CSV
+              </a>
+            </Button>
+            <Button size="sm" variant="default" className="gap-1.5 text-xs" asChild>
+              <a href="/bizportal/notification-history">
+                <ExternalLink className="h-3.5 w-3.5" /> Halaman Penuh
               </a>
             </Button>
           </div>
@@ -2006,12 +2162,33 @@ export default function SettingsPage() {
           {isAdmin && <WhatsAppNotificationCard />}
           {isAdmin && <AiIntakeSettingsCard />}
           {isAdmin && <CargoTypesCard />}
+          {isAdmin && <LogisticsSubcategoriesCard />}
           {isAdmin && <CalculatorRatesCard />}
           {isAdmin && <VendorMiniFormCard />}
           {isAdmin && <PageContentCard />}
           {isAdmin && <FreightStageLabelsCard />}
           {isAdmin && <WaTemplatesCard />}
           {isAdmin && <WaLogsCard />}
+
+          {isAdmin && (
+            <Card className="col-span-1 md:col-span-3 bg-card border-border">
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-primary" /> Product Templates
+                </CardTitle>
+                <CardDescription>
+                  Kelola template komoditas — custom fields, dokumen wajib, checklist, dan aturan validasi per kategori.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <a href="/bizportal/settings/product-templates">
+                  <Button variant="outline" size="sm">
+                    <Layers className="w-4 h-4 mr-2" /> Kelola Product Templates
+                  </Button>
+                </a>
+              </CardContent>
+            </Card>
+          )}
 
           <Card className="col-span-1 md:col-span-3 bg-card border-border">
             <CardHeader>

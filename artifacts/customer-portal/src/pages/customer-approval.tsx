@@ -1,7 +1,16 @@
 import { useState, useEffect } from "react";
 import { useParams } from "wouter";
+import { PriceBreakdown } from "@/components/PriceBreakdown";
 
 type OfferItem = { label: string; value: string };
+
+type PriceItem = {
+  description: string;
+  qty: number;
+  unit: string;
+  unitPrice: number;
+  subtotal: number;
+};
 
 type ApprovalMeta = {
   token: string;
@@ -13,6 +22,11 @@ type ApprovalMeta = {
   termsNotes: string | null;
   status: string;
   soNumber: string | null;
+  priceItems?: PriceItem[] | null;
+  subtotal?: number | null;
+  taxRate?: number | null;
+  taxAmount?: number | null;
+  grandTotal?: number | null;
 };
 
 function Spinner() {
@@ -66,7 +80,7 @@ function ResultState({ action, soNumber }: { action: "approved" | "rejected"; so
         )}
         <p className="text-sm text-slate-500 mt-2">
           {isApproved
-            ? "Terima kasih! Tim CST Logistics akan segera memproses order Anda dan menghubungi Anda lebih lanjut."
+            ? "Terima kasih! Tim kami akan segera memproses order Anda dan menghubungi Anda lebih lanjut."
             : "Kami telah mencatat penolakan Anda. Tim kami akan segera menghubungi Anda untuk mendiskusikan opsi lain."}
         </p>
       </div>
@@ -99,10 +113,13 @@ function AlreadyRespondedState({ status, soNumber }: { status: string; soNumber:
   );
 }
 
-const fmt = (n: string | null, cur: string | null) => {
-  if (!n) return "—";
+const fmt = (n: string | number | null, cur: string | null) => {
+  if (n === null || n === undefined || n === "") return "—";
   return `${cur ?? "IDR"} ${Number(n).toLocaleString("id-ID")}`;
 };
+
+const fmtNum = (n: number, cur: string | null) =>
+  `${cur ?? "IDR"} ${n.toLocaleString("id-ID")}`;
 
 export default function CustomerApprovalPage() {
   const { token } = useParams<{ token: string }>();
@@ -181,11 +198,65 @@ export default function CustomerApprovalPage() {
           )}
         </div>
 
-        {/* Harga */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Total Penawaran</p>
-          <p className="text-3xl font-bold text-indigo-700">{fmt(meta.sellingPrice, meta.currency)}</p>
-        </div>
+        {/* Rincian harga jual + PPN */}
+        {meta.priceItems && meta.priceItems.length > 0 ? (
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-4">Rincian Harga Jual</p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100">
+                    <th className="text-left py-2 pr-2 text-xs font-semibold text-slate-500">Deskripsi</th>
+                    <th className="text-center py-2 px-2 text-xs font-semibold text-slate-500">Qty</th>
+                    <th className="text-center py-2 px-2 text-xs font-semibold text-slate-500">Sat.</th>
+                    <th className="text-right py-2 px-2 text-xs font-semibold text-slate-500">Harga Satuan</th>
+                    <th className="text-right py-2 pl-2 text-xs font-semibold text-slate-500">Subtotal</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {meta.priceItems.map((item, i) => (
+                    <tr key={i} className="border-b border-slate-50">
+                      <td className="py-2 pr-2 text-slate-800">{item.description}</td>
+                      <td className="py-2 px-2 text-center text-slate-600">{item.qty}</td>
+                      <td className="py-2 px-2 text-center text-slate-500">{item.unit || "—"}</td>
+                      <td className="py-2 px-2 text-right text-slate-700">{fmtNum(item.unitPrice, meta.currency)}</td>
+                      <td className="py-2 pl-2 text-right font-medium text-slate-800">{fmtNum(item.subtotal, meta.currency)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="mt-4 pt-3 border-t border-slate-100 space-y-1.5">
+              <div className="flex justify-between text-sm text-slate-600">
+                <span>Subtotal (belum PPN)</span>
+                <span>{fmtNum(meta.subtotal ?? 0, meta.currency)}</span>
+              </div>
+              <div className="flex justify-between text-sm text-slate-600">
+                <span>PPN {meta.taxRate ?? 11}% <span className="text-xs text-slate-400">(nominal)</span></span>
+                <span>{fmtNum(meta.taxAmount ?? 0, meta.currency)}</span>
+              </div>
+              <div className="flex justify-between font-bold text-base text-indigo-700 pt-1.5 border-t border-slate-200">
+                <span>Total (sudah termasuk PPN)</span>
+                <span>{fmtNum(meta.grandTotal ?? Number(meta.sellingPrice ?? 0), meta.currency)}</span>
+              </div>
+            </div>
+            <p className="mt-2 text-xs text-indigo-600 font-medium">* Harga di atas adalah HARGA JUAL (sudah termasuk PPN {meta.taxRate ?? 11}%)</p>
+          </div>
+        ) : (
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Total Harga Jual</p>
+            <p className="text-3xl font-bold text-indigo-700">{fmt(meta.sellingPrice, meta.currency)}</p>
+            <PriceBreakdown
+              grandTotal={meta.grandTotal ?? (meta.sellingPrice ? Number(meta.sellingPrice) : null)}
+              subtotal={meta.subtotal}
+              taxRate={meta.taxRate ?? 11}
+              taxAmount={meta.taxAmount}
+              currency={meta.currency ?? "IDR"}
+              grandTotalLabel="Grand Total (termasuk PPN)"
+              className="mt-3"
+            />
+          </div>
+        )}
 
         {/* Detail penawaran */}
         {summary.length > 0 && (
@@ -213,14 +284,20 @@ export default function CustomerApprovalPage() {
         {/* Reject form */}
         {showRejectForm && (
           <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 space-y-3">
-            <p className="text-sm font-medium text-slate-700">Catatan Penolakan (opsional)</p>
+            <p className="text-sm font-medium text-slate-700">
+              Alasan Penolakan <span className="text-red-500">*</span>
+            </p>
+            <p className="text-xs text-slate-400">Wajib diisi — jelaskan alasan penolakan atau permintaan revisi Anda.</p>
             <textarea
               value={notes}
               onChange={e => setNotes(e.target.value)}
-              rows={3}
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300 resize-none"
-              placeholder="Alasan penolakan atau request revisi..."
+              rows={4}
+              className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300 resize-none ${notes.trim() ? "border-slate-200" : "border-red-300 bg-red-50"}`}
+              placeholder="Contoh: Harga terlalu tinggi, mohon revisi menjadi Rp X / Saya tidak jadi menggunakan layanan ini karena..."
             />
+            {!notes.trim() && (
+              <p className="text-xs text-red-500">⚠️ Alasan penolakan harus diisi sebelum konfirmasi.</p>
+            )}
             <div className="flex gap-2">
               <button
                 onClick={() => { setShowRejectForm(false); setNotes(""); }}
@@ -228,8 +305,8 @@ export default function CustomerApprovalPage() {
               >Batal</button>
               <button
                 onClick={() => handleAction("reject")}
-                disabled={submitting}
-                className="flex-1 rounded-xl bg-red-600 hover:bg-red-700 disabled:bg-slate-300 text-white font-semibold py-2.5 text-sm"
+                disabled={submitting || !notes.trim()}
+                className="flex-1 rounded-xl bg-red-600 hover:bg-red-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-semibold py-2.5 text-sm"
               >{submitting ? "Mengirim..." : "Konfirmasi Tolak"}</button>
             </div>
           </div>

@@ -1,12 +1,10 @@
-#!/usr/bin/env bash
-set -e
-
-# Kill any stale process on API port before starting
-fuser -k 18444/tcp 2>/dev/null || true
-
-echo "==> Building API Server..."
-cd /home/runner/workspace/artifacts/api-server
-node ./build.mjs
-
-echo "==> Starting API Server on port 18444..."
-PORT=18444 NODE_ENV=development node --enable-source-maps ./dist/index.mjs
+#!/bin/bash
+# Gateway only — artifact workflows (API Server, BizPortal, Customer Portal)
+# are started separately by Replit's artifact runner.
+fuser -k 5000/tcp 2>/dev/null || true
+sleep 0.3
+export BIZPORTAL_PORT=18442
+export CUSTOMER_PORT=5173
+export API_PORT=18444
+export PORT=5000
+exec node gateway.mjs

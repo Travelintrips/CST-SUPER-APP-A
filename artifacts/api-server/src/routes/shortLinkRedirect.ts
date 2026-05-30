@@ -11,10 +11,41 @@ shortLinkRedirectRouter.get("/q/:code", async (req: Request, res: Response) => {
     return res.status(400).json({ error: "Invalid short link" });
   }
 
+  // Normalisasi URL: ekstrak path saja agar link tetap bekerja meski domain di DB sudah berubah/salah
+  function normalizeToPath(url: string): string {
+    try {
+      const parsed = new URL(url);
+      return parsed.pathname + parsed.search + parsed.hash;
+    } catch {
+      return url; // sudah relative
+    }
+  }
+
   // Happy path: link valid dan belum expired
   const target = await resolveShortLink(code);
   if (target) {
-    return res.redirect(302, target);
+    const redirectPath = normalizeToPath(target);
+
+    // Deteksi WhatsApp / social-media bot agar tidak membaca OG tags dari SPA
+    const ua = req.headers["user-agent"] ?? "";
+    const isBot = /whatsapp|facebookexternalhit|twitterbot|linkedinbot|slackbot|telegrambot|discordbot/i.test(ua);
+    if (isBot) {
+      // Sajikan halaman HTML minimal tanpa branding CST agar link preview bersih
+      const safeTarget = redirectPath.replace(/"/g, "&quot;");
+      return res
+        .set("Content-Type", "text/html; charset=utf-8")
+        .set("X-Robots-Tag", "noindex,nofollow")
+        .send(
+          `<!DOCTYPE html><html><head><meta charset="UTF-8">` +
+          `<title>Form Penawaran Vendor</title>` +
+          `<meta property="og:title" content="Form Penawaran Vendor">` +
+          `<meta property="og:description" content="Klik link untuk mengisi penawaran harga.">` +
+          `<meta name="robots" content="noindex,nofollow">` +
+          `<meta http-equiv="refresh" content="0;url=${safeTarget}">` +
+          `</head><body><p><a href="${safeTarget}">Klik untuk melanjutkan</a></p></body></html>`
+        );
+    }
+    return res.redirect(302, redirectPath);
   }
 
   // Cek apakah kode ada di DB (expired vs tidak ada sama sekali)
@@ -46,8 +77,8 @@ shortLinkRedirectRouter.get("/q/:code", async (req: Request, res: Response) => {
         "shortLink: expired admin_action link auto-refreshed"
       );
 
-      // Redirect langsung ke target URL (tanpa extra hop ke short link baru)
-      return res.redirect(302, row.targetUrl);
+      // Redirect langsung ke path (tanpa extra hop ke short link baru)
+      return res.redirect(302, normalizeToPath(row.targetUrl));
     } catch (err) {
       logger.warn({ err, code }, "shortLink: auto-refresh failed, returning expired error");
     }

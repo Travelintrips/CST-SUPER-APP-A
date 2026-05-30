@@ -1,5 +1,13 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "wouter";
+import type { ProductTemplate, DynamicFormValues } from "@workspace/product-templates";
+import {
+  TemplateFieldRenderer,
+  TemplateDocumentRenderer,
+  TemplateChecklistRenderer,
+  TemplateInstructionRenderer,
+  TemplatePriceBreakdown,
+} from "@/components/template";
 
 type FieldDef = {
   key: string; label: string;
@@ -10,12 +18,28 @@ type FieldDef = {
 
 type ServiceSchema = { label: string; emoji: string; fields: FieldDef[] };
 
+type OrderContextItem = {
+  serviceName: string;
+  qty: string | null;
+  unit: string | null;
+  subtotal: string | null;
+};
+
+type OrderContext = {
+  customerName: string | null;
+  requiredDate: string | null;
+  adminNotes: string | null;
+  items: OrderContextItem[];
+};
+
 type FormMeta = {
   id: number; serviceType: string; title: string | null; notes: string | null;
   vendorName: string | null; vendorPhone: string | null; vendorContactPerson: string | null;
   schema: ServiceSchema | null; mode: string; orderId: number | null;
   orderNumber: string | null; orderItemId: number | null; phase: string | null;
   alreadySubmitted?: boolean;
+  productTemplate?: ProductTemplate | null;
+  orderContext?: OrderContext | null;
 };
 
 // ── Skeleton ──────────────────────────────────────────────────────────────────
@@ -139,11 +163,21 @@ export default function VendorMiniFormPage() {
   const [contactPerson, setContactPerson] = useState("");
   const [contactPhone, setContactPhone] = useState("");
   // Order-based specific price fields
-  const [vendorPrice, setVendorPrice] = useState("");
+  const [vendorDesc, setVendorDesc] = useState("");
+  const [vendorQty, setVendorQty] = useState("1");
+  const [vendorUnit, setVendorUnit] = useState("Ls");
+  const [vendorUnitPrice, setVendorUnitPrice] = useState("");
   const [currency, setCurrency] = useState("IDR");
   const [eta, setEta] = useState("");
   const [validUntil, setValidUntil] = useState("");
 
+  const [templateValues, setTemplateValues] = useState<DynamicFormValues>({
+    customFieldValues: {},
+    uploadedDocuments: [],
+    checklistStatus: {},
+    packagingNotes: "",
+    conditionalFlags: {},
+  });
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -179,8 +213,8 @@ export default function VendorMiniFormPage() {
       .filter(f => f.required && !values[f.key]?.trim())
       .map(f => f.label);
     if (missing.length) { setSubmitError(`Field wajib belum diisi: ${missing.join(", ")}`); return; }
-    if (meta.mode === "order_based" && !vendorPrice) {
-      setSubmitError("Harga penawaran wajib diisi"); return;
+    if (meta.mode === "order_based" && (!vendorUnitPrice || Number(vendorUnitPrice) <= 0)) {
+      setSubmitError("Harga satuan dasar wajib diisi"); return;
     }
 
     setSubmitting(true);
@@ -198,15 +232,30 @@ export default function VendorMiniFormPage() {
         attachmentUrl = upData.objectPath;
       }
 
+      const qty = Math.max(1, Number(vendorQty) || 1);
+      const unitPrice = Number(vendorUnitPrice) || 0;
+      const subtotal = qty * unitPrice;
       const body: Record<string, unknown> = {
         vendorName: vendorName.trim() || null,
         contactPerson: contactPerson.trim() || null,
         contactPhone: contactPhone.trim() || null,
-        formData: values,
+        formData: {
+          ...values,
+          ...templateValues.customFieldValues,
+          ...Object.fromEntries(templateValues.uploadedDocuments.map((d) => [`_doc_${d.key}`, d.reference])),
+          ...Object.fromEntries(Object.entries(templateValues.checklistStatus).map(([k, v]) => [`_chk_${k}`, v])),
+          ...(templateValues.packagingNotes ? { _packagingNotes: templateValues.packagingNotes } : {}),
+          ...(meta.mode === "order_based" ? {
+            _deskripsi: vendorDesc.trim() || undefined,
+            _qty: vendorQty,
+            _satuan: vendorUnit,
+            _hargaSatuan: vendorUnitPrice,
+          } : {}),
+        },
         attachmentUrl,
       };
       if (meta.mode === "order_based") {
-        body["vendorPrice"] = vendorPrice ? Number(vendorPrice) : undefined;
+        body["vendorPrice"] = subtotal > 0 ? subtotal : undefined;
         body["currency"] = currency;
         body["eta"] = eta.trim() || undefined;
         body["validUntil"] = validUntil || undefined;
@@ -268,6 +317,78 @@ export default function VendorMiniFormPage() {
           )}
         </div>
 
+        {/* Order Context Card */}
+        {meta.orderContext && (meta.orderContext.customerName || meta.orderContext.items.length > 0 || meta.orderContext.adminNotes) && (
+          <div className="bg-blue-50 border border-blue-200 rounded-2xl p-5 mb-4">
+            <h2 className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-3">📋 Detail Order Customer</h2>
+            <div className="space-y-2">
+              {meta.orderNumber && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-500">No. Order</span>
+                  <span className="font-mono font-semibold text-slate-800">{meta.orderNumber}</span>
+                </div>
+              )}
+              {meta.orderContext.customerName && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-500">Customer</span>
+                  <span className="font-medium text-slate-800">{meta.orderContext.customerName}</span>
+                </div>
+              )}
+              {meta.orderContext.requiredDate && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-500">Target Pengiriman</span>
+                  <span className="font-medium text-slate-800">
+                    {(() => {
+                      try {
+                        const d = new Date(meta.orderContext.requiredDate + "T00:00:00");
+                        const BULAN = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agt","Sep","Okt","Nov","Des"];
+                        return `${d.getDate()} ${BULAN[d.getMonth()]} ${d.getFullYear()}`;
+                      } catch { return meta.orderContext!.requiredDate!; }
+                    })()}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {meta.orderContext.items.length > 0 && (
+              <div className="mt-3">
+                <p className="text-xs font-semibold text-blue-600 mb-2">Detail Item</p>
+                <div className="overflow-x-auto rounded-xl border border-blue-100 bg-white">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-slate-400 text-xs border-b border-slate-100">
+                        <th className="text-left px-3 py-2 font-medium">Nama</th>
+                        <th className="text-right px-3 py-2 font-medium">Qty</th>
+                        <th className="text-right px-3 py-2 font-medium">Satuan</th>
+                        <th className="text-right px-3 py-2 font-medium">Subtotal</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {meta.orderContext.items.map((item, i) => (
+                        <tr key={i}>
+                          <td className="px-3 py-2 text-slate-700">{item.serviceName || "—"}</td>
+                          <td className="px-3 py-2 text-right text-slate-600">{item.qty ?? "—"}</td>
+                          <td className="px-3 py-2 text-right text-slate-500">{item.unit ?? "—"}</td>
+                          <td className="px-3 py-2 text-right font-medium text-slate-700">
+                            {item.subtotal ? `Rp ${Number(item.subtotal).toLocaleString("id-ID")}` : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {meta.orderContext.adminNotes && (
+              <div className="mt-3 pt-3 border-t border-blue-200">
+                <p className="text-xs font-semibold text-blue-600 mb-1">Catatan Admin</p>
+                <p className="text-sm text-slate-700 whitespace-pre-line">{meta.orderContext.adminNotes}</p>
+              </div>
+            )}
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Identity */}
           <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
@@ -289,40 +410,72 @@ export default function VendorMiniFormPage() {
           </div>
 
           {/* Order-based: harga penawaran */}
-          {isOrderBased && (
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-              <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-4">💰 Penawaran Harga</h2>
-              <div className="space-y-4">
-                <FormField label="Harga Penawaran" required>
-                  <div className="flex gap-2">
-                    <select
-                      value={currency} onChange={e => setCurrency(e.target.value)}
-                      className="rounded-lg border border-slate-200 px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white w-24"
-                    >
-                      {["IDR", "USD", "SGD", "EUR"].map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                    <input
-                      type="number" value={vendorPrice} onChange={e => setVendorPrice(e.target.value)}
-                      required placeholder="Contoh: 5000000" className={`${INPUT_CLS} flex-1`}
-                    />
+          {isOrderBased && (() => {
+            const qty = Math.max(1, Number(vendorQty) || 1);
+            const unitPrice = Number(vendorUnitPrice) || 0;
+            const subtotal = qty * unitPrice;
+            const ppn = Math.round(subtotal * 0.11 * 100) / 100;
+            const total = subtotal + ppn;
+            const fmtIDR = (n: number) => n.toLocaleString("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 });
+            return (
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+                <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">💰 Rincian Harga Dasar</h2>
+                <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">
+                  Isi <strong>Harga Dasar</strong> Anda — belum termasuk margin & PPN. Harga jual ke customer ditentukan oleh admin.
+                </p>
+                <div className="space-y-4">
+                  <FormField label="Deskripsi Layanan / Produk">
+                    <input type="text" value={vendorDesc} onChange={e => setVendorDesc(e.target.value)}
+                      placeholder="Contoh: Jasa angkutan laut FCL Jakarta–Singapura" className={INPUT_CLS} />
+                  </FormField>
+                  <div className="grid grid-cols-2 gap-3">
+                    <FormField label="Qty">
+                      <input type="number" min="1" step="any" value={vendorQty}
+                        onChange={e => setVendorQty(e.target.value)}
+                        placeholder="1" className={INPUT_CLS} />
+                    </FormField>
+                    <FormField label="Satuan">
+                      <input type="text" value={vendorUnit} onChange={e => setVendorUnit(e.target.value)}
+                        placeholder="Ls / kg / CBM / unit" className={INPUT_CLS} />
+                    </FormField>
                   </div>
-                  {vendorPrice && currency === "IDR" && (
-                    <p className="text-xs text-slate-400 mt-1">
-                      {Number(vendorPrice).toLocaleString("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 })}
-                    </p>
-                  )}
-                </FormField>
-                <FormField label="Estimasi Pengiriman / Lead Time">
-                  <input type="text" value={eta} onChange={e => setEta(e.target.value)}
-                    placeholder="Contoh: H+2, 3 hari kerja, 15 Jan 2026" className={INPUT_CLS} />
-                </FormField>
-                <FormField label="Harga Berlaku Sampai">
-                  <input type="date" value={validUntil} onChange={e => setValidUntil(e.target.value)}
-                    className={INPUT_CLS} />
-                </FormField>
+                  <FormField label="Harga Satuan Dasar (belum PPN)" required>
+                    <div className="flex gap-2">
+                      <select
+                        value={currency} onChange={e => setCurrency(e.target.value)}
+                        className="rounded-lg border border-slate-200 px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white w-24"
+                      >
+                        {["IDR", "USD", "SGD", "EUR"].map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                      <input
+                        type="number" min="0" step="any"
+                        value={vendorUnitPrice} onChange={e => setVendorUnitPrice(e.target.value)}
+                        required placeholder="Contoh: 5000000" className={`${INPUT_CLS} flex-1`}
+                      />
+                    </div>
+                  </FormField>
+
+                  <TemplatePriceBreakdown
+                    role="vendor"
+                    basePrice={unitPrice}
+                    qty={qty}
+                    unit={vendorUnit || "Ls"}
+                    currency={currency}
+                    hint="Isi Harga Dasar Anda — belum termasuk margin & PPN. Harga jual ke customer ditentukan oleh admin."
+                  />
+
+                  <FormField label="Estimasi Pengiriman / Lead Time">
+                    <input type="text" value={eta} onChange={e => setEta(e.target.value)}
+                      placeholder="Contoh: H+2, 3 hari kerja, 15 Jan 2026" className={INPUT_CLS} />
+                  </FormField>
+                  <FormField label="Harga Berlaku Sampai">
+                    <input type="date" value={validUntil} onChange={e => setValidUntil(e.target.value)}
+                      className={INPUT_CLS} />
+                  </FormField>
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Dynamic service fields */}
           {schema.fields.length > 0 && (
@@ -388,6 +541,31 @@ export default function VendorMiniFormPage() {
               </button>
             )}
           </div>
+
+          {meta.productTemplate && (
+            <>
+              <TemplateFieldRenderer
+                template={meta.productTemplate}
+                values={templateValues}
+                onChange={setTemplateValues}
+              />
+              <TemplateDocumentRenderer
+                documents={meta.productTemplate.requiredDocuments}
+                values={templateValues.uploadedDocuments}
+                onChange={(docs) => setTemplateValues((v) => ({ ...v, uploadedDocuments: docs }))}
+              />
+              <TemplateChecklistRenderer
+                checklist={meta.productTemplate.checklist}
+                values={templateValues.checklistStatus}
+                onChange={(key, checked) => setTemplateValues((v) => ({ ...v, checklistStatus: { ...v.checklistStatus, [key]: checked } }))}
+              />
+              <TemplateInstructionRenderer
+                instructions={meta.productTemplate.packagingInstructions}
+                notes={templateValues.packagingNotes}
+                onNotesChange={(notes) => setTemplateValues((v) => ({ ...v, packagingNotes: notes }))}
+              />
+            </>
+          )}
 
           {/* Error */}
           {submitError && (

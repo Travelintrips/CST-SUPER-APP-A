@@ -3,7 +3,7 @@ import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { postStockIn } from "../lib/inventoryStock.js";
-import { sendWhatsApp } from "../lib/fonnte.js";
+import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
 
 const router = Router();

@@ -10,8 +10,9 @@ import {
   ArrowLeft, Search, Ship, Truck, CheckCircle2, Clock,
   MapPin, Package, RefreshCw, AlertCircle, FileText,
   Circle, ArrowRight, Loader2, ThumbsUp, ThumbsDown, RotateCcw, Tag,
-  Bell,
+  Bell, BellOff,
 } from "lucide-react";
+import { usePushNotification } from "@/hooks/usePushNotification";
 import { formatDate } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 
@@ -61,14 +62,58 @@ async function fetchTracking(orderNumber: string): Promise<TrackingData> {
 }
 
 const ORDER_STEPS = [
-  { key: "New Order",   label: "Order Masuk",        icon: FileText },
-  { key: "Processing",  label: "Diproses",            icon: Clock },
-  { key: "In Progress", label: "Dalam Pengerjaan",    icon: Truck },
-  { key: "Completed",   label: "Selesai",             icon: CheckCircle2 },
+  { key: "Order Received",    label: "Order Diterima",         icon: FileText },
+  { key: "Admin Review",      label: "Review Admin",           icon: Clock },
+  { key: "RFQ Sent",          label: "RFQ Terkirim",           icon: ArrowRight },
+  { key: "Quote Received",    label: "Penawaran Masuk",        icon: Tag },
+  { key: "Customer Approval", label: "Persetujuan",            icon: ThumbsUp },
+  { key: "Vendor Confirmed",  label: "Vendor Konfirmasi",      icon: CheckCircle2 },
+  { key: "In Progress",       label: "Diproses",               icon: RotateCcw },
+  { key: "Pickup",            label: "Penjemputan",            icon: MapPin },
+  { key: "In Transit",        label: "Dalam Perjalanan",       icon: Truck },
+  { key: "Arrived",           label: "Tiba",                   icon: MapPin },
+  { key: "Delivered",         label: "Terkirim",               icon: Package },
+  { key: "POD Uploaded",      label: "Bukti Upload",           icon: FileText },
+  { key: "Invoice Issued",    label: "Invoice",                icon: FileText },
+  { key: "Payment Received",  label: "Pembayaran",             icon: CheckCircle2 },
+  { key: "Completed",         label: "Selesai",                icon: CheckCircle2 },
 ];
 
 const ORDER_STATUS_RANK: Record<string, number> = {
-  "New Order": 0, "Processing": 1, "In Progress": 2, "Completed": 3,
+  "Order Received":    0,
+  "Admin Review":      1,
+  "RFQ Sent":          2,
+  "Quote Received":    3,
+  "Customer Approval": 4,
+  "Vendor Confirmed":  5,
+  "In Progress":       6,
+  "Pickup":            7,
+  "In Transit":        8,
+  "Arrived":           9,
+  "Delivered":         10,
+  "POD Uploaded":      11,
+  "Invoice Issued":    12,
+  "Payment Received":  13,
+  "Completed":         14,
+  // backward compat
+  "New Order":         0,
+  "Processing":        1,
+
+  // Step 0 — Order masuk
+  "New Order": 0,
+  // Step 1 — Sedang diproses (semua status review/vendor/quotation)
+  "Under Review": 1,
+  "Vendor Confirmed": 1,
+  "Vendor Rejected": 1,
+  "Quotation Sent": 1,
+  "Customer Approved": 1,
+  "Processing": 1,
+  // Step 2 — Dalam pengerjaan
+  "In Progress": 2,
+  // Step 3 — Selesai
+  "Completed": 3,
+  "Done": 3,
+
 };
 
 const DRIVER_STEPS: { key: DriverJobStatus; label: string }[] = [
@@ -88,24 +133,111 @@ const DRIVER_STATUS_RANK: Record<string, number> = Object.fromEntries(
 );
 
 const STATUS_COLORS: Record<string, string> = {
-  "New Order":   "bg-yellow-100 text-yellow-800 border-yellow-200",
-  "Processing":  "bg-blue-100 text-blue-800 border-blue-200",
-  "In Progress": "bg-indigo-100 text-indigo-800 border-indigo-200",
-  "Completed":   "bg-green-100 text-green-800 border-green-200",
-  "Cancelled":   "bg-red-100 text-red-800 border-red-200",
+
+  "Order Received":    "bg-slate-100 text-slate-700 border-slate-200",
+  "Admin Review":      "bg-amber-100 text-amber-800 border-amber-200",
+  "RFQ Sent":          "bg-blue-100 text-blue-700 border-blue-200",
+  "Quote Received":    "bg-purple-100 text-purple-800 border-purple-200",
+  "Customer Approval": "bg-violet-100 text-violet-800 border-violet-200",
+  "Vendor Confirmed":  "bg-green-100 text-green-800 border-green-200",
+  "In Progress":       "bg-blue-100 text-blue-800 border-blue-200",
+  "Pickup":            "bg-yellow-100 text-yellow-800 border-yellow-200",
+  "In Transit":        "bg-indigo-100 text-indigo-800 border-indigo-200",
+  "Arrived":           "bg-cyan-100 text-cyan-800 border-cyan-200",
+  "Delivered":         "bg-teal-100 text-teal-800 border-teal-200",
+  "POD Uploaded":      "bg-emerald-100 text-emerald-800 border-emerald-200",
+  "Invoice Issued":    "bg-orange-100 text-orange-800 border-orange-200",
+  "Payment Received":  "bg-lime-100 text-lime-800 border-lime-200",
+  "Completed":         "bg-green-200 text-green-900 border-green-300",
+  "Cancelled":         "bg-red-100 text-red-800 border-red-200",
+  // backward compat
+  "New Order":         "bg-yellow-100 text-yellow-800 border-yellow-200",
+  "Processing":        "bg-blue-100 text-blue-800 border-blue-200",
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  "New Order":   "Order Masuk",
-  "Processing":  "Sedang Diproses",
-  "In Progress": "Dalam Pengerjaan",
-  "Completed":   "Selesai",
-  "Cancelled":   "Dibatalkan",
+  "Order Received":    "Order Diterima",
+  "Admin Review":      "Ditinjau Admin",
+  "RFQ Sent":          "Mencari Vendor",
+  "Quote Received":    "Penawaran Masuk",
+  "Customer Approval": "Menunggu Persetujuan Anda",
+  "Vendor Confirmed":  "Vendor Dikonfirmasi",
+  "In Progress":       "Sedang Diproses",
+  "Pickup":            "Proses Penjemputan",
+  "In Transit":        "Dalam Perjalanan",
+  "Arrived":           "Tiba di Tujuan",
+  "Delivered":         "Terkirim",
+  "POD Uploaded":      "Bukti Pengiriman Diunggah",
+  "Invoice Issued":    "Invoice Diterbitkan",
+  "Payment Received":  "Pembayaran Diterima",
+  "Completed":         "Selesai",
+  "Cancelled":         "Dibatalkan",
+  // backward compat
+  "New Order":         "Order Masuk",
+  "Processing":        "Sedang Diproses",
+
+  "New Order":          "bg-yellow-100 text-yellow-800 border-yellow-200",
+  "Under Review":       "bg-blue-100 text-blue-800 border-blue-200",
+  "Vendor Confirmed":   "bg-indigo-100 text-indigo-800 border-indigo-200",
+  "Vendor Rejected":    "bg-red-100 text-red-800 border-red-200",
+  "Quotation Sent":     "bg-purple-100 text-purple-800 border-purple-200",
+  "Customer Approved":  "bg-emerald-100 text-emerald-800 border-emerald-200",
+  "Processing":         "bg-blue-100 text-blue-800 border-blue-200",
+  "In Progress":        "bg-indigo-100 text-indigo-800 border-indigo-200",
+  "Completed":          "bg-green-100 text-green-800 border-green-200",
+  "Done":               "bg-green-100 text-green-800 border-green-200",
+  "Cancelled":          "bg-red-100 text-red-800 border-red-200",
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  "New Order":          "Order Masuk",
+  "Under Review":       "Sedang Ditinjau",
+  "Vendor Confirmed":   "Vendor Dikonfirmasi",
+  "Vendor Rejected":    "Vendor Menolak",
+  "Quotation Sent":     "Penawaran Dikirim",
+  "Customer Approved":  "Customer Menyetujui",
+  "Processing":         "Sedang Diproses",
+  "In Progress":        "Dalam Pengerjaan",
+  "Completed":          "Selesai",
+  "Done":               "Selesai",
+  "Cancelled":          "Dibatalkan",
+
 };
 
 function isTerminalStatus(status: string) {
-  return status === "Completed" || status === "Cancelled";
+  return status === "Completed" || status === "Done" || status === "Cancelled";
 }
+
+const CUSTOMER_VISIBLE_STEPS = [
+  { key: "Order Received",    label: "Order\nDiterima" },
+  { key: "Admin Review",      label: "Review\nAdmin" },
+  { key: "Vendor Confirmed",  label: "Vendor\nKonfirmasi" },
+  { key: "In Progress",       label: "Diproses" },
+  { key: "In Transit",        label: "Dalam\nPerjalanan" },
+  { key: "Delivered",         label: "Terkirim" },
+  { key: "Invoice Issued",    label: "Invoice" },
+  { key: "Completed",         label: "Selesai" },
+];
+
+const CUSTOMER_STEP_RANK: Record<string, number> = {
+  "Order Received":    0,
+  "Admin Review":      1,
+  "RFQ Sent":          1,
+  "Quote Received":    1,
+  "Customer Approval": 1,
+  "Vendor Confirmed":  2,
+  "In Progress":       3,
+  "Pickup":            4,
+  "In Transit":        4,
+  "Arrived":           5,
+  "Delivered":         5,
+  "POD Uploaded":      6,
+  "Invoice Issued":    6,
+  "Payment Received":  7,
+  "Completed":         7,
+  "New Order":         0,
+  "Processing":        1,
+};
 
 function formatDateTime(iso: string) {
   return new Date(iso).toLocaleString("id-ID", {
@@ -120,40 +252,54 @@ function idr(n: number | null | undefined) {
 }
 
 function OrderStepper({ status }: { status: string }) {
-  const current = ORDER_STATUS_RANK[status] ?? 0;
+  const isCancelled = status === "Cancelled";
+  const current = CUSTOMER_STEP_RANK[status] ?? 0;
+
+  if (isCancelled) {
+    return (
+      <div className="flex items-center gap-2 rounded-lg bg-red-50 border border-red-200 px-4 py-3 my-1">
+        <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+        <span className="text-red-700 font-semibold text-sm">Order Dibatalkan</span>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex items-center w-full gap-0">
-      {ORDER_STEPS.map((step, i) => {
-        const done = i < current;
-        const active = i === current;
-        const Icon = step.icon;
-        return (
-          <div key={step.key} className="flex items-center flex-1 last:flex-none">
-            <div className="flex flex-col items-center gap-1">
-              <div className={cn(
-                "w-8 h-8 rounded-full flex items-center justify-center border-2 transition-all",
-                done  ? "bg-green-500 border-green-500 text-white" :
-                active ? "bg-primary border-primary text-primary-foreground shadow-md" :
-                          "bg-muted border-border text-muted-foreground"
-              )}>
-                {done ? <CheckCircle2 className="w-4 h-4" /> : <Icon className="w-4 h-4" />}
+    <div className="w-full overflow-x-auto pb-1">
+      <div className="flex items-start min-w-[480px]">
+        {CUSTOMER_VISIBLE_STEPS.map((step, i) => {
+          const done = i < current;
+          const active = i === current;
+          return (
+            <div key={step.key} className="flex items-start flex-1">
+              <div className="flex flex-col items-center gap-1 flex-1">
+                <div className={cn(
+                  "w-7 h-7 rounded-full flex items-center justify-center border-2 transition-all flex-shrink-0 text-[10px] font-bold",
+                  done   ? "bg-green-500 border-green-500 text-white" :
+                  active ? "bg-primary border-primary text-primary-foreground shadow-md ring-2 ring-primary/20" :
+                            "bg-muted border-border text-muted-foreground"
+                )}>
+                  {done ? <CheckCircle2 className="w-3.5 h-3.5" /> : <span>{i + 1}</span>}
+                </div>
+                <span className={cn(
+                  "text-[9px] font-medium text-center leading-tight whitespace-pre-line",
+                  active ? "text-primary font-semibold" :
+                  done   ? "text-green-600" :
+                            "text-muted-foreground"
+                )}>
+                  {step.label}
+                </span>
               </div>
-              <span className={cn(
-                "text-[10px] font-medium text-center leading-tight max-w-[60px]",
-                active ? "text-primary" : done ? "text-green-600" : "text-muted-foreground"
-              )}>
-                {step.label}
-              </span>
+              {i < CUSTOMER_VISIBLE_STEPS.length - 1 && (
+                <div className={cn(
+                  "h-0.5 flex-shrink-0 w-3 mt-3.5",
+                  i < current ? "bg-green-400" : "bg-border"
+                )} />
+              )}
             </div>
-            {i < ORDER_STEPS.length - 1 && (
-              <div className={cn(
-                "flex-1 h-0.5 mx-1 mb-4 rounded-full",
-                i < current ? "bg-green-400" : "bg-border"
-              )} />
-            )}
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -474,11 +620,13 @@ function AutoRefreshBar({
   isFetching,
   lastRefreshed,
   onRefresh,
+  sseConnected,
 }: {
   isTerminal: boolean;
   isFetching: boolean;
   lastRefreshed: Date | null;
   onRefresh: () => void;
+  sseConnected: boolean;
 }) {
   const intervalSec = isTerminal ? TERMINAL_INTERVAL : ACTIVE_INTERVAL;
   const [countdown, setCountdown] = useState(intervalSec);
@@ -502,10 +650,14 @@ function AutoRefreshBar({
           <RefreshCw className="w-3 h-3 animate-spin text-primary" />
         ) : isTerminal ? (
           <CheckCircle2 className="w-3 h-3 text-green-500" />
-        ) : (
+        ) : sseConnected ? (
           <span className="relative flex h-2 w-2">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
             <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+          </span>
+        ) : (
+          <span className="relative flex h-2 w-2">
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-gray-400" />
           </span>
         )}
         <span>
@@ -513,7 +665,9 @@ function AutoRefreshBar({
             ? "Memperbarui..."
             : isTerminal
               ? "Order selesai — tracking dihentikan"
-              : `Live tracking aktif — refresh dalam ${countdown}d`}
+              : sseConnected
+                ? `Live · SSE aktif — refresh dalam ${countdown}d`
+                : `Menghubungkan ulang... — refresh dalam ${countdown}d`}
         </span>
       </div>
       {!isTerminal && (
@@ -530,11 +684,55 @@ function AutoRefreshBar({
   );
 }
 
+// ── Push Notification Toggle ──────────────────────────────────────────────────
+function PushToggle({ orderNumber }: { orderNumber: string | null }) {
+  const { state, subscribe, unsubscribe } = usePushNotification(orderNumber);
+
+  if (state === "unsupported" || !orderNumber) return null;
+
+  if (state === "denied") {
+    return (
+      <div className="text-xs text-muted-foreground flex items-center gap-1.5 px-3 py-2 rounded-lg bg-muted/60">
+        <BellOff className="w-3.5 h-3.5 flex-shrink-0" />
+        Notifikasi diblokir — aktifkan di pengaturan browser
+      </div>
+    );
+  }
+
+  if (state === "subscribed") {
+    return (
+      <button
+        onClick={unsubscribe}
+        className="flex items-center gap-2 text-xs text-primary font-medium px-3 py-2 rounded-lg bg-primary/10 hover:bg-primary/20 transition-colors"
+      >
+        <Bell className="w-3.5 h-3.5 fill-primary" />
+        Notifikasi aktif — klik untuk matikan
+      </button>
+    );
+  }
+
+  return (
+    <button
+      onClick={subscribe}
+      disabled={state === "loading"}
+      className="flex items-center gap-2 text-xs text-muted-foreground font-medium px-3 py-2 rounded-lg border border-border hover:bg-muted/60 transition-colors disabled:opacity-50"
+    >
+      {state === "loading"
+        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+        : <Bell className="w-3.5 h-3.5" />}
+      Aktifkan notifikasi browser
+    </button>
+  );
+}
+
 export default function TrackPage() {
   const [, setLocation] = useLocation();
   const [input, setInput] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
+  const [sseConnected, setSseConnected] = useState(false);
+  const sseReconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const qc = useQueryClient();
 
   const prevStatusRef = useRef<string | null>(null);
   const prevDriverStatusRef = useRef<string | null>(null);
@@ -545,6 +743,48 @@ export default function TrackPage() {
     const o = params.get("order");
     if (o) { setInput(o); setSearchTerm(o.toUpperCase().trim()); }
   }, []);
+
+  // Real-time: SSE dengan auto-reconnect + connection state tracking
+  useEffect(() => {
+    let mounted = true;
+
+    function connect() {
+      const es = new EventSource("/api/ecommerce/events");
+
+      es.onopen = () => { if (mounted) setSseConnected(true); };
+      es.onerror = () => {
+        if (!mounted) return;
+        setSseConnected(false);
+        es.close();
+        // Auto-reconnect setelah 5 detik
+        sseReconnectRef.current = setTimeout(() => {
+          if (mounted) connect();
+        }, 5000);
+      };
+
+      const invalidateIfMatch = (e: MessageEvent) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (searchTerm && data.orderNumber === searchTerm) {
+            qc.invalidateQueries({ queryKey: ["tracking", searchTerm] });
+          }
+        } catch { }
+      };
+      es.addEventListener("logistic_order_status_changed", invalidateIfMatch);
+      es.addEventListener("vendor_quote_received", invalidateIfMatch);
+
+      return es;
+    }
+
+    const es = connect();
+
+    return () => {
+      mounted = false;
+      setSseConnected(false);
+      if (sseReconnectRef.current) clearTimeout(sseReconnectRef.current);
+      es.close();
+    };
+  }, [searchTerm, qc]);
 
   const isTerminal = !!(lastRefreshed && prevStatusRef.current && isTerminalStatus(prevStatusRef.current));
 
@@ -649,7 +889,11 @@ export default function TrackPage() {
               isFetching={isFetching}
               lastRefreshed={lastRefreshed}
               onRefresh={handleRefresh}
+              sseConnected={sseConnected}
             />
+
+            {/* Push notification toggle */}
+            <PushToggle orderNumber={searchTerm || null} />
 
             {/* Penawaran harga */}
             {tracking.rfqQuote && ["customer_quoted", "customer_approved", "customer_rejected", "customer_revision_requested"].includes(tracking.rfqQuote.rfqStatus) && (

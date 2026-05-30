@@ -67,6 +67,8 @@ if (h.indexOf('access_token') !== -1 || h.indexOf('error=') !== -1 ||
       "@": path.resolve(import.meta.dirname, "src"),
       "@assets": path.resolve(import.meta.dirname, "..", "..", "attached_assets"),
       "@workspace/replit-auth-web": path.resolve(import.meta.dirname, "../../lib/replit-auth-web/src/index.ts"),
+      "@workspace/product-templates": path.resolve(import.meta.dirname, "../../lib/product-templates/src/index.ts"),
+      "@workspace/logistics-constants": path.resolve(import.meta.dirname, "../../lib/logistics-constants/src/index.ts"),
     },
     dedupe: ["react", "react-dom"],
   },
@@ -89,7 +91,7 @@ if (h.indexOf('access_token') !== -1 || h.indexOf('error=') !== -1 ||
   },
   server: {
     port,
-    strictPort: false,
+    strictPort: true,
     host: "0.0.0.0",
     allowedHosts: true,
     hmr: process.env.REPLIT_DEV_DOMAIN ? false : { overlay: false },
@@ -110,6 +112,7 @@ if (h.indexOf('access_token') !== -1 || h.indexOf('error=') !== -1 ||
       "/api": {
         target: "http://localhost:18444",
         changeOrigin: true,
+        ws: true,
       },
     },
   },

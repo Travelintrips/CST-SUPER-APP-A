@@ -186,6 +186,24 @@ router.get("/freight-shipments/:id", async (req, res) => {
       }
     : null;
 
+  // Resolve portal order via salesDoc.logisticOrderId (for shipments created from "Konversi ke Shipment")
+  let linkedPortalOrder: { id: number; orderNumber: string } | null = null;
+  if (shipment.salesDocId) {
+    const [salesDoc] = await db
+      .select({ logisticOrderId: salesDocumentsTable.logisticOrderId })
+      .from(salesDocumentsTable)
+      .where(eq(salesDocumentsTable.id, shipment.salesDocId))
+      .limit(1);
+    if (salesDoc?.logisticOrderId) {
+      const [portalOrder] = await db
+        .select({ id: logisticOrdersTable.id, orderNumber: logisticOrdersTable.orderNumber })
+        .from(logisticOrdersTable)
+        .where(eq(logisticOrdersTable.id, salesDoc.logisticOrderId))
+        .limit(1);
+      if (portalOrder) linkedPortalOrder = { id: portalOrder.id, orderNumber: portalOrder.orderNumber };
+    }
+  }
+
   return res.json({
     ...serializeShipment(shipment),
     rfqs: rfqs.map((r) => ({
@@ -194,6 +212,7 @@ router.get("/freight-shipments/:id", async (req, res) => {
     })),
     stages: stages.map(serializeStage),
     linkedLogisticRfq,
+    linkedPortalOrder,
   });
 });
 
@@ -256,6 +275,75 @@ router.post("/freight-shipments", async (req, res) => {
     transportMode: shipment!.transportMode,
     createdAt: shipment!.createdAt.toISOString(),
   }).catch(() => {});
+  return res.status(201).json(serializeShipment(shipment!));
+});
+
+// POST /api/logistics/freight-shipments/from-portal-order/:orderId
+router.post("/freight-shipments/from-portal-order/:orderId", async (req, res) => {
+  const orderId = Number(req.params.orderId);
+  if (!Number.isInteger(orderId) || orderId <= 0)
+    return res.status(400).json({ message: "ID order tidak valid" });
+
+  const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
+  if (!order) return res.status(404).json({ message: "Portal order tidak ditemukan" });
+
+  const [linkedDoc] = await db
+    .select({ id: salesDocumentsTable.id, docNumber: salesDocumentsTable.docNumber })
+    .from(salesDocumentsTable)
+    .where(eq(salesDocumentsTable.logisticOrderId, orderId))
+    .limit(1);
+
+  if (!linkedDoc)
+    return res.status(400).json({ message: "Buat Sales Order terlebih dahulu sebelum mengkonversi ke Freight Shipment." });
+
+  const { transportMode: tmOverride, cargoType: ctOverride } = req.body as { transportMode?: string; cargoType?: string };
+
+  let validatedTM: TransportMode | null = null;
+  let validatedCT: CargoType | null = null;
+
+  if (tmOverride) {
+    try { validatedTM = validateTransportMode(tmOverride) ?? null; } catch { /* ignore */ }
+  } else {
+    const st = (order.shipmentType ?? "").toLowerCase();
+    if (st.includes("sea") || st.includes("laut")) validatedTM = "sea";
+    else if (st.includes("air") || st.includes("udara")) validatedTM = "air";
+    else if (st.includes("truck") || st.includes("darat") || st.includes("land")) validatedTM = "land";
+    else if (st.includes("multi")) validatedTM = "multimodal";
+  }
+
+  if (ctOverride) {
+    try { validatedCT = validateCargoType(ctOverride) ?? null; } catch { /* ignore */ }
+  }
+
+  const shipmentNumber = nextNumber("FS");
+  const [shipment] = await db.insert(freightShipmentsTable).values({
+    shipmentNumber,
+    shipperName: order.customerName,
+    consigneeName: order.companyName ?? order.customerName,
+    commodity: order.commodity ?? order.shipmentType ?? "General Cargo",
+    origin: order.origin ?? "",
+    destination: order.destination ?? "",
+    grossWeight: order.grossWeight != null ? String(order.grossWeight) : null,
+    quantity: order.jumlahKoli ?? null,
+    notes: order.notes ?? null,
+    transportMode: validatedTM,
+    cargoType: validatedCT,
+    salesDocId: linkedDoc.id,
+  }).returning();
+
+  saveAndBroadcast("freight_shipment_created", {
+    type: "freight_new",
+    orderId: shipment!.id,
+    orderNumber: shipment!.shipmentNumber,
+    customerName: shipment!.shipperName,
+    companyName: shipment!.consigneeName ?? null,
+    origin: shipment!.origin,
+    destination: shipment!.destination,
+    commodity: shipment!.commodity,
+    transportMode: shipment!.transportMode,
+    createdAt: shipment!.createdAt.toISOString(),
+  }).catch(() => {});
+
   return res.status(201).json(serializeShipment(shipment!));
 });
 
@@ -412,7 +500,16 @@ router.delete("/freight-shipments/:id", async (req, res) => {
   if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ message: "Invalid id" });
   const [existing] = await db.select().from(freightShipmentsTable).where(eq(freightShipmentsTable.id, id));
   if (!existing) return res.status(404).json({ message: "Shipment not found" });
+  // Ambil semua objectPath attachment sebelum DB cascade menghapus recordnya
+  const attachments = await db
+    .select({ objectPath: freightAttachmentsTable.objectPath })
+    .from(freightAttachmentsTable)
+    .where(eq(freightAttachmentsTable.shipmentId, id));
   await db.delete(freightShipmentsTable).where(eq(freightShipmentsTable.id, id));
+  // Cascade storage cleanup — hapus file fisik (non-fatal)
+  for (const a of attachments) {
+    if (a.objectPath) _freightObjectStorage.tryDeletePrivateEntity(a.objectPath).catch(() => {});
+  }
   return res.json({ message: "Berhasil dihapus" });
 });
 
