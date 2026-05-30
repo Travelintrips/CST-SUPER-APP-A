@@ -879,6 +879,8 @@ export default function DashboardPage() {
                         {/* Progress bar */}
                         <div className="mt-2">
                           <OrderProgressBar
+                            orderId={o.id}
+                            onUpdate={() => refetchPortal()}
                             order={{
                               status: o.status,
                               latestRfq: (o as any).latestRfq ?? null,

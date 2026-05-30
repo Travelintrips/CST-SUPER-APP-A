@@ -68,6 +68,17 @@ export async function getOrderProgressEvents(orderId: number): Promise<Array<{
   }
 }
 
+export async function deleteOrderProgress(orderId: number, stepKey: StepKey): Promise<void> {
+  try {
+    await db.execute(sql`
+      DELETE FROM order_progress_events
+      WHERE order_id = ${orderId} AND step_key = ${stepKey}
+    `);
+  } catch (err) {
+    logger.warn({ err, orderId, stepKey }, "deleteOrderProgress: non-fatal delete failed");
+  }
+}
+
 export async function runOrderProgressMigration(): Promise<void> {
   try {
     await db.execute(sql`

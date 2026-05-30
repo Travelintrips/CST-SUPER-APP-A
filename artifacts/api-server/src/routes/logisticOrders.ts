@@ -37,7 +37,7 @@ import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { saveAndBroadcast } from "../lib/notificationStore";
 import { broadcastToPortal } from "../lib/sseManager.js";
 import { sendPushToOrder } from "../lib/webPush.js";
-import { updateOrderProgress, getOrderProgressEvents } from "../lib/orderProgress.js";
+import { updateOrderProgress, getOrderProgressEvents, deleteOrderProgress, PROGRESS_STEPS, type StepKey } from "../lib/orderProgress.js";
 import {
   CreateLogisticOrderBody,
   ListLogisticOrdersQueryParams,
@@ -765,6 +765,32 @@ logisticOrdersRouter.get("/:id/progress", async (req: Request, res: Response) =>
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
   const events = await getOrderProgressEvents(id);
   return res.json({ events });
+});
+
+// POST /api/logistic/orders/:id/progress/set — admin set step manual
+logisticOrdersRouter.post("/:id/progress/set", requireClerkUser, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id), 10);
+  if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+  const { stepKey, notes } = req.body as { stepKey: string; notes?: string };
+  const validKeys = PROGRESS_STEPS.map((s) => s.key);
+  if (!validKeys.includes(stepKey as StepKey))
+    return res.status(400).json({ message: "Step tidak valid" });
+  const user = (req as any).user;
+  const actor = user?.name || user?.email || "Admin";
+  await updateOrderProgress(id, stepKey as StepKey, "admin", actor, notes ?? `Manual set oleh ${actor}`);
+  return res.json({ ok: true });
+});
+
+// DELETE /api/logistic/orders/:id/progress/:stepKey — admin undo step
+logisticOrdersRouter.delete("/:id/progress/:stepKey", requireClerkUser, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id), 10);
+  if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+  const { stepKey } = req.params;
+  const validKeys = PROGRESS_STEPS.map((s) => s.key);
+  if (!validKeys.includes(stepKey as StepKey))
+    return res.status(400).json({ message: "Step tidak valid" });
+  await deleteOrderProgress(id, stepKey as StepKey);
+  return res.json({ ok: true });
 });
 
 // GET /api/logistic/orders/:id — get order detail (admin)

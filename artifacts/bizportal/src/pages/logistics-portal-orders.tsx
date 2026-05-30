@@ -915,6 +915,8 @@ export default function LogisticsPortalOrdersPage() {
                   <TableRow className="border-b hover:bg-transparent">
                     <TableCell colSpan={12} className="py-1 px-4 pb-2 pt-0">
                       <OrderProgressBar
+                        orderId={o.id}
+                        onUpdate={() => queryClient.invalidateQueries({ queryKey: getListLogisticOrdersQueryKey() })}
                         order={{
                           status: o.status,
                           latestRfq: (o as any).latestRfq ?? null,
