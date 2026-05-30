@@ -61,14 +61,42 @@ async function fetchTracking(orderNumber: string): Promise<TrackingData> {
 }
 
 const ORDER_STEPS = [
-  { key: "New Order",   label: "Order Masuk",        icon: FileText },
-  { key: "Processing",  label: "Diproses",            icon: Clock },
-  { key: "In Progress", label: "Dalam Pengerjaan",    icon: Truck },
-  { key: "Completed",   label: "Selesai",             icon: CheckCircle2 },
+  { key: "Order Received",    label: "Order Diterima",         icon: FileText },
+  { key: "Admin Review",      label: "Review Admin",           icon: Clock },
+  { key: "RFQ Sent",          label: "RFQ Terkirim",           icon: ArrowRight },
+  { key: "Quote Received",    label: "Penawaran Masuk",        icon: Tag },
+  { key: "Customer Approval", label: "Persetujuan",            icon: ThumbsUp },
+  { key: "Vendor Confirmed",  label: "Vendor Konfirmasi",      icon: CheckCircle2 },
+  { key: "In Progress",       label: "Diproses",               icon: RotateCcw },
+  { key: "Pickup",            label: "Penjemputan",            icon: MapPin },
+  { key: "In Transit",        label: "Dalam Perjalanan",       icon: Truck },
+  { key: "Arrived",           label: "Tiba",                   icon: MapPin },
+  { key: "Delivered",         label: "Terkirim",               icon: Package },
+  { key: "POD Uploaded",      label: "Bukti Upload",           icon: FileText },
+  { key: "Invoice Issued",    label: "Invoice",                icon: FileText },
+  { key: "Payment Received",  label: "Pembayaran",             icon: CheckCircle2 },
+  { key: "Completed",         label: "Selesai",                icon: CheckCircle2 },
 ];
 
 const ORDER_STATUS_RANK: Record<string, number> = {
-  "New Order": 0, "Processing": 1, "In Progress": 2, "Completed": 3,
+  "Order Received":    0,
+  "Admin Review":      1,
+  "RFQ Sent":          2,
+  "Quote Received":    3,
+  "Customer Approval": 4,
+  "Vendor Confirmed":  5,
+  "In Progress":       6,
+  "Pickup":            7,
+  "In Transit":        8,
+  "Arrived":           9,
+  "Delivered":         10,
+  "POD Uploaded":      11,
+  "Invoice Issued":    12,
+  "Payment Received":  13,
+  "Completed":         14,
+  // backward compat
+  "New Order":         0,
+  "Processing":        1,
 };
 
 const DRIVER_STEPS: { key: DriverJobStatus; label: string }[] = [
@@ -88,24 +116,83 @@ const DRIVER_STATUS_RANK: Record<string, number> = Object.fromEntries(
 );
 
 const STATUS_COLORS: Record<string, string> = {
-  "New Order":   "bg-yellow-100 text-yellow-800 border-yellow-200",
-  "Processing":  "bg-blue-100 text-blue-800 border-blue-200",
-  "In Progress": "bg-indigo-100 text-indigo-800 border-indigo-200",
-  "Completed":   "bg-green-100 text-green-800 border-green-200",
-  "Cancelled":   "bg-red-100 text-red-800 border-red-200",
+  "Order Received":    "bg-slate-100 text-slate-700 border-slate-200",
+  "Admin Review":      "bg-amber-100 text-amber-800 border-amber-200",
+  "RFQ Sent":          "bg-blue-100 text-blue-700 border-blue-200",
+  "Quote Received":    "bg-purple-100 text-purple-800 border-purple-200",
+  "Customer Approval": "bg-violet-100 text-violet-800 border-violet-200",
+  "Vendor Confirmed":  "bg-green-100 text-green-800 border-green-200",
+  "In Progress":       "bg-blue-100 text-blue-800 border-blue-200",
+  "Pickup":            "bg-yellow-100 text-yellow-800 border-yellow-200",
+  "In Transit":        "bg-indigo-100 text-indigo-800 border-indigo-200",
+  "Arrived":           "bg-cyan-100 text-cyan-800 border-cyan-200",
+  "Delivered":         "bg-teal-100 text-teal-800 border-teal-200",
+  "POD Uploaded":      "bg-emerald-100 text-emerald-800 border-emerald-200",
+  "Invoice Issued":    "bg-orange-100 text-orange-800 border-orange-200",
+  "Payment Received":  "bg-lime-100 text-lime-800 border-lime-200",
+  "Completed":         "bg-green-200 text-green-900 border-green-300",
+  "Cancelled":         "bg-red-100 text-red-800 border-red-200",
+  // backward compat
+  "New Order":         "bg-yellow-100 text-yellow-800 border-yellow-200",
+  "Processing":        "bg-blue-100 text-blue-800 border-blue-200",
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  "New Order":   "Order Masuk",
-  "Processing":  "Sedang Diproses",
-  "In Progress": "Dalam Pengerjaan",
-  "Completed":   "Selesai",
-  "Cancelled":   "Dibatalkan",
+  "Order Received":    "Order Diterima",
+  "Admin Review":      "Ditinjau Admin",
+  "RFQ Sent":          "Mencari Vendor",
+  "Quote Received":    "Penawaran Masuk",
+  "Customer Approval": "Menunggu Persetujuan Anda",
+  "Vendor Confirmed":  "Vendor Dikonfirmasi",
+  "In Progress":       "Sedang Diproses",
+  "Pickup":            "Proses Penjemputan",
+  "In Transit":        "Dalam Perjalanan",
+  "Arrived":           "Tiba di Tujuan",
+  "Delivered":         "Terkirim",
+  "POD Uploaded":      "Bukti Pengiriman Diunggah",
+  "Invoice Issued":    "Invoice Diterbitkan",
+  "Payment Received":  "Pembayaran Diterima",
+  "Completed":         "Selesai",
+  "Cancelled":         "Dibatalkan",
+  // backward compat
+  "New Order":         "Order Masuk",
+  "Processing":        "Sedang Diproses",
 };
 
 function isTerminalStatus(status: string) {
   return status === "Completed" || status === "Cancelled";
 }
+
+const CUSTOMER_VISIBLE_STEPS = [
+  { key: "Order Received",    label: "Order\nDiterima" },
+  { key: "Admin Review",      label: "Review\nAdmin" },
+  { key: "Vendor Confirmed",  label: "Vendor\nKonfirmasi" },
+  { key: "In Progress",       label: "Diproses" },
+  { key: "In Transit",        label: "Dalam\nPerjalanan" },
+  { key: "Delivered",         label: "Terkirim" },
+  { key: "Invoice Issued",    label: "Invoice" },
+  { key: "Completed",         label: "Selesai" },
+];
+
+const CUSTOMER_STEP_RANK: Record<string, number> = {
+  "Order Received":    0,
+  "Admin Review":      1,
+  "RFQ Sent":          1,
+  "Quote Received":    1,
+  "Customer Approval": 1,
+  "Vendor Confirmed":  2,
+  "In Progress":       3,
+  "Pickup":            4,
+  "In Transit":        4,
+  "Arrived":           5,
+  "Delivered":         5,
+  "POD Uploaded":      6,
+  "Invoice Issued":    6,
+  "Payment Received":  7,
+  "Completed":         7,
+  "New Order":         0,
+  "Processing":        1,
+};
 
 function formatDateTime(iso: string) {
   return new Date(iso).toLocaleString("id-ID", {
@@ -120,40 +207,54 @@ function idr(n: number | null | undefined) {
 }
 
 function OrderStepper({ status }: { status: string }) {
-  const current = ORDER_STATUS_RANK[status] ?? 0;
+  const isCancelled = status === "Cancelled";
+  const current = CUSTOMER_STEP_RANK[status] ?? 0;
+
+  if (isCancelled) {
+    return (
+      <div className="flex items-center gap-2 rounded-lg bg-red-50 border border-red-200 px-4 py-3 my-1">
+        <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+        <span className="text-red-700 font-semibold text-sm">Order Dibatalkan</span>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex items-center w-full gap-0">
-      {ORDER_STEPS.map((step, i) => {
-        const done = i < current;
-        const active = i === current;
-        const Icon = step.icon;
-        return (
-          <div key={step.key} className="flex items-center flex-1 last:flex-none">
-            <div className="flex flex-col items-center gap-1">
-              <div className={cn(
-                "w-8 h-8 rounded-full flex items-center justify-center border-2 transition-all",
-                done  ? "bg-green-500 border-green-500 text-white" :
-                active ? "bg-primary border-primary text-primary-foreground shadow-md" :
-                          "bg-muted border-border text-muted-foreground"
-              )}>
-                {done ? <CheckCircle2 className="w-4 h-4" /> : <Icon className="w-4 h-4" />}
+    <div className="w-full overflow-x-auto pb-1">
+      <div className="flex items-start min-w-[480px]">
+        {CUSTOMER_VISIBLE_STEPS.map((step, i) => {
+          const done = i < current;
+          const active = i === current;
+          return (
+            <div key={step.key} className="flex items-start flex-1">
+              <div className="flex flex-col items-center gap-1 flex-1">
+                <div className={cn(
+                  "w-7 h-7 rounded-full flex items-center justify-center border-2 transition-all flex-shrink-0 text-[10px] font-bold",
+                  done   ? "bg-green-500 border-green-500 text-white" :
+                  active ? "bg-primary border-primary text-primary-foreground shadow-md ring-2 ring-primary/20" :
+                            "bg-muted border-border text-muted-foreground"
+                )}>
+                  {done ? <CheckCircle2 className="w-3.5 h-3.5" /> : <span>{i + 1}</span>}
+                </div>
+                <span className={cn(
+                  "text-[9px] font-medium text-center leading-tight whitespace-pre-line",
+                  active ? "text-primary font-semibold" :
+                  done   ? "text-green-600" :
+                            "text-muted-foreground"
+                )}>
+                  {step.label}
+                </span>
               </div>
-              <span className={cn(
-                "text-[10px] font-medium text-center leading-tight max-w-[60px]",
-                active ? "text-primary" : done ? "text-green-600" : "text-muted-foreground"
-              )}>
-                {step.label}
-              </span>
+              {i < CUSTOMER_VISIBLE_STEPS.length - 1 && (
+                <div className={cn(
+                  "h-0.5 flex-shrink-0 w-3 mt-3.5",
+                  i < current ? "bg-green-400" : "bg-border"
+                )} />
+              )}
             </div>
-            {i < ORDER_STEPS.length - 1 && (
-              <div className={cn(
-                "flex-1 h-0.5 mx-1 mb-4 rounded-full",
-                i < current ? "bg-green-400" : "bg-border"
-              )} />
-            )}
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 }

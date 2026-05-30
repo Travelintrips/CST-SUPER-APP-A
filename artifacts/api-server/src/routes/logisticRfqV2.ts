@@ -681,6 +681,17 @@ logisticRfqV2Router.post("/vendor-form/:token", async (req: Request, res: Respon
     : `${vendorName} submit penawaran: ${actionLabel}`;
   await logActivity(link.rfqId, "vendor", vendorName, isUpdate ? "vendor_update" : "vendor_submit", actDesc);
 
+  // Auto-advance order status to "Quote Received" when vendor submits (not reject, not late)
+  if (!isUpdate && action !== "reject" && !isLate) {
+    db.update(logisticOrdersTable)
+      .set({ status: "Quote Received" })
+      .where(and(
+        eq(logisticOrdersTable.id, rfq.orderId),
+        inArray(logisticOrdersTable.status as any, ["RFQ Sent", "Admin Review", "New Order", "Under Review"]),
+      ))
+      .catch(() => {});
+  }
+
   await sendAdminRecapWa(link.rfqId, rfq);
 
   // Notifikasi template ke admin saat vendor submit penawaran
@@ -807,10 +818,10 @@ logisticRfqV2Router.post("/orders/:orderId/rfq-blast", async (req: Request, res:
     responseDeadline: expiredAt,
   }).where(eq(logisticOrderRfqsTable.id, rfqId));
 
-  // Bump order status to Under Review if still New Order
-  if (order.status === "New Order") {
+  // Bump order status to RFQ Sent when admin blasts vendors
+  if (["Order Received", "Admin Review", "New Order", "Under Review"].includes(order.status)) {
     await db.update(logisticOrdersTable)
-      .set({ status: "Under Review" })
+      .set({ status: "RFQ Sent" })
       .where(eq(logisticOrdersTable.id, orderId));
   }
 
@@ -905,6 +916,13 @@ logisticRfqV2Router.post("/rfq/:rfqId/blast", async (req: Request, res: Response
     status: "vendor_blasted",
     responseDeadline: expiredAt,
   }).where(eq(logisticOrderRfqsTable.id, rfqId));
+
+  // Bump order status to RFQ Sent when admin blasts vendors
+  if (["Order Received", "Admin Review", "New Order", "Under Review"].includes(order.status)) {
+    await db.update(logisticOrdersTable)
+      .set({ status: "RFQ Sent" })
+      .where(eq(logisticOrdersTable.id, order.id));
+  }
 
   const sentCount = results.filter((r) => r.sent).length;
   await logActivity(rfqId, "admin", "Admin", "admin_blast", `Admin blast ke ${sentCount} vendor: ${eligible.map((v) => v.name).join(", ")}`);

@@ -77,6 +77,7 @@ export const logisticOrdersTable = pgTable("logistic_orders", {
   // Optimistic locking — incremented on every write; client must echo back current value to detect concurrent edits
   version: integer("version").notNull().default(1),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (t) => [
   index("logistic_orders_company_idx").on(t.companyId),
   index("logistic_orders_status_idx").on(t.status),

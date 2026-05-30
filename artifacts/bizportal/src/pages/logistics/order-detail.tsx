@@ -24,6 +24,7 @@ import {
 import { Link } from "wouter";
 import GpsTrackingPanel from "@/components/logistics/GpsTrackingPanel";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { OrderProgressBar } from "@/components/logistics/OrderProgressBar";
 
 const idr = (n: number | string | null | undefined) =>
   n == null ? "—" : `Rp ${Math.round(Number(n)).toLocaleString("id-ID")}`;
@@ -78,24 +79,33 @@ type DetailData = {
 };
 
 const ORDER_STATUSES = [
-  "New Order", "Pending Vendor", "Vendor Confirmed", "Quotation Sent",
-  "order_confirmed", "assigned_to_vendor", "waiting_pickup", "picked_up",
-  "in_progress", "delivered", "pod_uploaded", "invoice_created",
-  "payment_pending", "paid", "completed", "cancelled",
+  "Order Received", "Admin Review", "RFQ Sent", "Quote Received",
+  "Customer Approval", "Vendor Confirmed", "In Progress", "Pickup",
+  "In Transit", "Arrived", "Delivered", "POD Uploaded",
+  "Invoice Issued", "Payment Received", "Completed", "Cancelled",
 ];
 
 const STATUS_COLOR: Record<string, string> = {
-  order_confirmed: "bg-green-100 text-green-800",
-  assigned_to_vendor: "bg-blue-100 text-blue-800",
-  waiting_pickup: "bg-yellow-100 text-yellow-800",
-  picked_up: "bg-blue-100 text-blue-800",
-  in_progress: "bg-indigo-100 text-indigo-800",
-  delivered: "bg-teal-100 text-teal-800",
-  completed: "bg-green-200 text-green-900",
-  cancelled: "bg-red-100 text-red-800",
-  customer_quoted: "bg-purple-100 text-purple-800",
-  customer_approved: "bg-green-100 text-green-800",
-  customer_rejected: "bg-red-100 text-red-800",
+  "Order Received":    "bg-slate-100 text-slate-700",
+  "Admin Review":      "bg-amber-100 text-amber-800",
+  "RFQ Sent":          "bg-blue-100 text-blue-700",
+  "Quote Received":    "bg-purple-100 text-purple-800",
+  "Customer Approval": "bg-violet-100 text-violet-800",
+  "Vendor Confirmed":  "bg-green-100 text-green-800",
+  "In Progress":       "bg-blue-100 text-blue-800",
+  "Pickup":            "bg-yellow-100 text-yellow-800",
+  "In Transit":        "bg-indigo-100 text-indigo-800",
+  "Arrived":           "bg-cyan-100 text-cyan-800",
+  "Delivered":         "bg-teal-100 text-teal-800",
+  "POD Uploaded":      "bg-emerald-100 text-emerald-800",
+  "Invoice Issued":    "bg-orange-100 text-orange-800",
+  "Payment Received":  "bg-lime-100 text-lime-800",
+  "Completed":         "bg-green-200 text-green-900",
+  "Cancelled":         "bg-red-100 text-red-800",
+  // backward compat
+  customer_quoted:     "bg-purple-100 text-purple-800",
+  customer_approved:   "bg-green-100 text-green-800",
+  customer_rejected:   "bg-red-100 text-red-800",
   customer_revision_requested: "bg-amber-100 text-amber-800",
 };
 
@@ -986,6 +996,14 @@ export default function LogisticOrderDetailPage() {
               Resend WA Grup
             </Button>
           </div>
+        </div>
+
+        {/* Order Progress Bar — 15 canonical steps */}
+        <div className="rounded-xl border border-border bg-card px-4 py-3">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-1.5">
+            <ClipboardList className="w-3.5 h-3.5" /> Progress Order
+          </p>
+          <OrderProgressBar status={order.status} />
         </div>
 
         {/* Quote status banner */}

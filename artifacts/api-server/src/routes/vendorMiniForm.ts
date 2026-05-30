@@ -1000,10 +1000,10 @@ vendorMiniFormRouter.post("/customer-approval/:token", async (req: Request, res:
             ));
         }
 
-        // Update logistic order status
+        // Update logistic order status → Vendor Confirmed (canonical)
         if (locked.orderId) {
           await tx.update(logisticOrdersTable)
-            .set({ customerConfirmStatus: "confirmed", customerConfirmedAt: now, status: "Customer Approved" })
+            .set({ customerConfirmStatus: "confirmed", customerConfirmedAt: now, status: "Vendor Confirmed" })
             .where(eq(logisticOrdersTable.id, locked.orderId));
 
           // Update itemStatus di VMF links menjadi customer_approved
@@ -1029,7 +1029,7 @@ vendorMiniFormRouter.post("/customer-approval/:token", async (req: Request, res:
 
         if (locked.orderId) {
           await tx.update(logisticOrdersTable)
-            .set({ customerConfirmStatus: "rejected", status: "Customer Rejected" })
+            .set({ customerConfirmStatus: "rejected", status: "Admin Review" })
             .where(eq(logisticOrdersTable.id, locked.orderId));
         }
       }
@@ -1180,15 +1180,14 @@ vendorMiniFormRouter.post("/op-confirm/:token", async (req: Request, res: Respon
       .where(eq(vendorOperationalConfirmationsTable.token, token));
 
     // BF-2 FIX: Auto-advance order status to "In Progress" when vendor submits
-    // operational data. Only transitions from Customer Approved / Confirmed states
-    // to avoid overwriting terminal statuses (Completed, Cancelled).
+    // operational data. Only transitions from Vendor Confirmed / Customer Approval states.
     if (conf.orderId) {
       await db.update(logisticOrdersTable)
         .set({ status: "In Progress" })
         .where(
           and(
             eq(logisticOrdersTable.id, conf.orderId),
-            inArray(logisticOrdersTable.status as any, ["Customer Approved", "Confirmed"]),
+            inArray(logisticOrdersTable.status as any, ["Vendor Confirmed", "Customer Approval", "Customer Approved", "Confirmed"]),
           ),
         )
         .catch((e: unknown) => req.log?.error({ e }, "BF-2: auto-update order status to In Progress failed"));

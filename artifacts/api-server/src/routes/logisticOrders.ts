@@ -33,6 +33,13 @@ import {
   UpdateLogisticOrderStatusParams,
   UpdateLogisticOrderStatusBody,
 } from "@workspace/api-zod";
+import {
+  STATUS_LABEL_ID,
+  CUSTOMER_WA_MESSAGES,
+  VENDOR_WA_NOTES,
+  VENDOR_NOTIFY_STATUS_SET,
+  STATUS_NORMALIZATION_SQL,
+} from "../lib/logisticStatusConstants.js";
 
 export const logisticOrdersRouter = Router();
 
@@ -85,7 +92,7 @@ function toOrder(row: typeof logisticOrdersTable.$inferSelect, approvedVendorNam
     quotationSentAt: row.quotationSentAt?.toISOString() ?? null,
     version: (row as any).version ?? 1,
     createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
+    updatedAt: (row as any).updatedAt?.toISOString?.() ?? row.createdAt.toISOString(),
   };
 }
 
@@ -136,6 +143,13 @@ async function getTruckingRates() {
     return DEFAULT_TRUCKING_RATES;
   }
 }
+
+// ─── Boot migration: ensure updated_at column exists + normalize legacy statuses
+db.execute(sql.raw(`
+  ALTER TABLE logistic_orders ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+  UPDATE logistic_orders SET updated_at = created_at WHERE updated_at IS NULL;
+  ${STATUS_NORMALIZATION_SQL}
+`)).catch((e: unknown) => console.warn("[logistic_orders] boot migration warn:", e));
 
 // ─── PUBLIC ROUTES (no auth required) ────────────────────────────────────────
 
@@ -792,33 +806,25 @@ logisticOrdersRouter.post("/:id/resend-wa-group", async (req: Request, res: Resp
 });
 
 // ─── Vendor WA notification on status change ──────────────────────────────────
-const VENDOR_NOTIFY_STATUSES = new Set([
-  "Confirmed", "In Progress", "Completed", "Cancelled",
-]);
-
+// Use canonical status set from constants
 const VENDOR_STATUS_LABELS: Record<string, string> = {
-  "Confirmed":   "Dikonfirmasi ✅",
-  "In Progress": "Sedang Diproses 🔄",
-  "Completed":   "Selesai 🎉",
-  "Cancelled":   "Dibatalkan ❌",
-};
-
-const VENDOR_STATUS_NOTES: Record<string, string> = {
-  "Confirmed":
-    "Customer telah mengkonfirmasi order. Silakan lanjutkan proses pengiriman sesuai rencana.",
-  "In Progress":
-    "Order kini berstatus In Progress. Pastikan semua berjalan sesuai jadwal dan SOP.",
-  "Completed":
-    "Order telah diselesaikan oleh tim CST Logistics. Terima kasih atas kerja sama Anda.",
-  "Cancelled":
-    "⚠️ Order ini telah DIBATALKAN. Mohon hentikan semua proses terkait order ini segera.",
+  "Vendor Confirmed": "Vendor Dikonfirmasi ✅",
+  "In Progress":      "Sedang Diproses 🔄",
+  "Pickup":           "Proses Penjemputan 🚚",
+  "In Transit":       "Dalam Perjalanan 🛣️",
+  "Arrived":          "Tiba di Tujuan 📍",
+  "Delivered":        "Terkirim ✅",
+  "Completed":        "Selesai 🎉",
+  "Cancelled":        "Dibatalkan ❌",
+  // backward compat
+  "Confirmed":        "Dikonfirmasi ✅",
 };
 
 async function notifyVendorStatusChange(
   order: { orderNumber: string; customerName: string | null; origin: string | null; destination: string | null; approvedVendorId: number | null },
   status: string,
 ) {
-  if (!VENDOR_NOTIFY_STATUSES.has(status)) return;
+  if (!VENDOR_NOTIFY_STATUS_SET.has(status)) return;
   if (!order.approvedVendorId) return;
 
   try {
@@ -833,8 +839,8 @@ async function notifyVendorStatusChange(
     const phone = normalizePhone(vendor.phone);
     if (!phone) return;
 
-    const label = VENDOR_STATUS_LABELS[status] ?? status;
-    const note  = VENDOR_STATUS_NOTES[status] ?? "";
+    const label = VENDOR_STATUS_LABELS[status] ?? STATUS_LABEL_ID[status] ?? status;
+    const note  = VENDOR_WA_NOTES[status] ?? "";
     const route = order.origin && order.destination
       ? `${order.origin} → ${order.destination}`
       : "—";
@@ -944,23 +950,12 @@ logisticOrdersRouter.put("/:id/status", async (req: Request, res: Response) => {
     isPublic: true,
   }).catch(() => {});
 
-  // Notify customer via WhatsApp (fire-and-forget)
+  // Notify customer via WhatsApp (fire-and-forget) — use canonical messages
   if (updated.phone) {
-    const statusLabels: Record<string, string> = {
-      "New Order": "Order Baru",
-      "Under Review": "Sedang Ditinjau",
-      "Quotation Sent": "Penawaran Telah Dikirim",
-      "Confirmed": "Dikonfirmasi",
-      "In Progress": "Sedang Diproses",
-      "Completed": "Selesai",
-      "Cancelled": "Dibatalkan",
-    };
-    const label = statusLabels[status] ?? status;
-    const msg =
-      `📦 *Update Status Order Anda*\n` +
-      `No Order: ${updated.orderNumber}\n` +
-      `Status: *${label}*\n\n` +
-      `Terima kasih telah menggunakan layanan kami. Hubungi kami jika ada pertanyaan.`;
+    const waBuilder = CUSTOMER_WA_MESSAGES[status];
+    const msg = waBuilder
+      ? waBuilder(updated.orderNumber)
+      : `📦 *Update Status Order Anda*\nNo Order: ${updated.orderNumber}\nStatus: *${STATUS_LABEL_ID[status] ?? status}*\n\nTerima kasih telah menggunakan layanan kami.`;
     sendWhatsApp(updated.phone, msg, {
       context: "order_status_change",
       refType: "order",
@@ -1097,7 +1092,14 @@ logisticOrdersRouter.patch("/:id/type", async (req: Request, res: Response) => {
 logisticOrdersRouter.put("/bulk-status", async (req: Request, res: Response) => {
   const parsed = z.object({
     ids: z.array(z.number().int().positive()).min(1),
-    status: z.enum(["New Order", "Confirmed", "In Progress", "Completed", "Cancelled"]),
+    status: z.enum([
+      "Order Received", "Admin Review", "RFQ Sent", "Quote Received",
+      "Customer Approval", "Vendor Confirmed", "In Progress", "Pickup",
+      "In Transit", "Arrived", "Delivered", "POD Uploaded",
+      "Invoice Issued", "Payment Received", "Completed", "Cancelled",
+      // backward compat
+      "New Order", "Confirmed",
+    ]),
   }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ message: "ids dan status harus valid" });
   const { ids, status } = parsed.data;
