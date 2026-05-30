@@ -28,10 +28,6 @@ args = "API Server"
 task = "workflow.run"
 args = "BizPortal"
 
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Customer Portal"
-
 [[workflows.workflow]]
 name = "Gateway"
 author = "agent"
@@ -64,18 +60,6 @@ author = "agent"
 task = "shell.exec"
 args = "cd artifacts/bizportal && PORT=3000 BASE_PATH=/bizportal/ pnpm run dev"
 waitForPort = 3000
-
-[workflows.workflow.metadata]
-outputType = "console"
-
-[[workflows.workflow]]
-name = "Customer Portal"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd artifacts/customer-portal && PORT=5173 BASE_PATH=/ pnpm run dev"
-waitForPort = 5173
 
 [workflows.workflow.metadata]
 outputType = "console"
@@ -141,6 +125,14 @@ externalPort = 80
 [[ports]]
 localPort = 5173
 externalPort = 5173
+
+[[ports]]
+localPort = 8080
+externalPort = 8080
+
+[[ports]]
+localPort = 8081
+externalPort = 8081
 
 [[ports]]
 localPort = 18442
