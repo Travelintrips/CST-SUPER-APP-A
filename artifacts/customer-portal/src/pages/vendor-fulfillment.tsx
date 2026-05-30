@@ -558,6 +558,20 @@ function ProductFulfillmentForm({
 }) {
   const [uploading, setUploading] = useState<Record<string, boolean>>({});
 
+  useEffect(() => {
+    if (!fields.readyDate) return;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const ready = new Date(fields.readyDate + "T00:00:00");
+    const diffMs = ready.getTime() - today.getTime();
+    const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+    if (diffDays <= 0) {
+      setField("leadTime", "Hari ini");
+    } else {
+      setField("leadTime", `${diffDays} hari`);
+    }
+  }, [fields.readyDate]);
+
   const stockStatus = fields.stockConfirmed ?? "";
   const priceChoice = fields.priceConfirmed ?? "";
   const isPartial   = stockStatus === "partial";
@@ -728,13 +742,12 @@ function ProductFulfillmentForm({
               </p>
             )}
           </div>
-          <Field
-            label="Lead Time"
-            name="leadTime"
-            value={fields.leadTime ?? ""}
-            onChange={(v) => setField("leadTime", v)}
-            placeholder="Contoh: 3 hari kerja"
-          />
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-slate-700">Lead Time</label>
+            <div className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+              {fields.leadTime || <span className="text-slate-400 italic">Otomatis dihitung dari tanggal siap kirim</span>}
+            </div>
+          </div>
         </div>
       )}
 
