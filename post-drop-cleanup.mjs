@@ -11,10 +11,12 @@
  *   3. Hapus lib/db/src/schema/shipments.ts
  *   4. Hapus export keduanya dari lib/db/src/schema/index.ts
  *   5. Hapus artifacts/api-server/src/routes/logistics.ts
+ *   6. Jalankan drizzle-kit push agar schema Drizzle sinkron dengan DB
  *
  * Usage:
  *   node post-drop-cleanup.mjs
- *   node post-drop-cleanup.mjs --dry-run   (preview saja, tidak ada perubahan)
+ *   node post-drop-cleanup.mjs --dry-run      (preview saja, tidak ada perubahan)
+ *   node post-drop-cleanup.mjs --skip-push    (lewati drizzle-kit push)
  *
  * Env required:
  *   SUPABASE_PG_URL — connection string ke production DB
@@ -26,7 +28,8 @@ import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DRY_RUN = process.argv.includes("--dry-run");
+const DRY_RUN   = process.argv.includes("--dry-run");
+const SKIP_PUSH = process.argv.includes("--skip-push");
 
 // ─── Colours ─────────────────────────────────────────────────────────────────
 const c = {
@@ -168,11 +171,10 @@ if (!DRY_RUN && removed > 0) {
   warn("Tidak ada perubahan pada " + SCHEMA_INDEX + " (sudah bersih?)");
 }
 
-// ─── Step 4: Verifikasi akhir ─────────────────────────────────────────────────
-head("Step 4 — Verifikasi akhir");
+// ─── Step 4: Verifikasi file cleanup ─────────────────────────────────────────
+head("Step 4 — Verifikasi file cleanup");
 
 if (!DRY_RUN) {
-  // Pastikan file-file benar-benar sudah tidak ada
   let allGone = true;
   for (const rel of FILES_TO_DELETE) {
     if (existsSync(join(__dirname, rel))) {
@@ -181,7 +183,6 @@ if (!DRY_RUN) {
     }
   }
 
-  // Pastikan index.ts tidak lagi mengandung referensi lama
   const finalIdx = readFileSync(idxAbs, "utf8");
   for (const line of LINES_TO_REMOVE) {
     if (finalIdx.includes(line)) {
@@ -193,6 +194,61 @@ if (!DRY_RUN) {
   if (allGone) {
     ok("Semua file legacy sudah dihapus");
     ok("schema/index.ts bersih dari referensi legacy");
+  } else {
+    err("Verifikasi gagal — ada file/baris yang tidak terhapus.");
+    process.exit(1);
+  }
+}
+
+// ─── Step 5: drizzle-kit push ─────────────────────────────────────────────────
+head("Step 5 — Drizzle schema sync (drizzle-kit push)");
+
+if (SKIP_PUSH) {
+  warn("--skip-push: Drizzle push dilewati.");
+} else if (DRY_RUN) {
+  info("[dry-run] Akan dijalankan: pnpm --filter @workspace/db run push --force");
+} else {
+  console.log(c.dim("  Menjalankan: pnpm --filter @workspace/db run push --force"));
+  console.log(c.dim("  (Ini akan menyamakan schema Drizzle dengan kondisi DB setelah DROP)\n"));
+
+  let pushOk = false;
+  try {
+    const pushOutput = execSync(
+      "pnpm --filter @workspace/db run push --force",
+      {
+        encoding: "utf8",
+        cwd: __dirname,
+        env: { ...process.env },
+        stdio: ["pipe", "pipe", "pipe"],
+        timeout: 120_000,
+      }
+    );
+    // Print output baris per baris dengan indent
+    pushOutput.trim().split("\n").forEach((l) => info(l));
+    pushOk = true;
+  } catch (e) {
+    // drizzle-kit kadang exit non-zero tapi tetap berhasil — cek output
+    const out = (e.stdout || "") + (e.stderr || "");
+    out.trim().split("\n").forEach((l) => info(l));
+
+    // Deteksi success pattern dari output drizzle-kit
+    const successPatterns = [
+      /schema applied/i,
+      /no changes detected/i,
+      /successfully/i,
+      /up to date/i,
+    ];
+    if (successPatterns.some((p) => p.test(out))) {
+      pushOk = true;
+    } else {
+      warn("drizzle-kit push keluar dengan error. Cek output di atas.");
+      warn("Jalankan manual jika diperlukan:");
+      info("  pnpm --filter @workspace/db run push --force");
+    }
+  }
+
+  if (pushOk) {
+    ok("drizzle-kit push selesai — schema DB sinkron dengan codebase");
   }
 }
 
@@ -203,13 +259,20 @@ if (DRY_RUN) {
   console.log(c.yellow("  DRY-RUN SELESAI — tidak ada perubahan dilakukan."));
   console.log(c.yellow("  Jalankan tanpa --dry-run untuk eksekusi aktual:"));
   console.log(c.dim("    node post-drop-cleanup.mjs"));
+  console.log(c.dim("    node post-drop-cleanup.mjs --skip-push   (tanpa drizzle push)"));
 } else {
+  const skipNote = SKIP_PUSH ? c.yellow("  ⚠️  drizzle-kit push dilewati (--skip-push)") : "";
   console.log(c.green("  POST-DROP CLEANUP SELESAI ✅"));
+  if (skipNote) console.log(skipNote);
   console.log("");
   console.log(c.dim("  Langkah selanjutnya:"));
+  if (SKIP_PUSH) {
+    console.log(c.dim("  0. Sync schema Drizzle (karena --skip-push):"));
+    console.log(c.dim("       pnpm --filter @workspace/db run push --force"));
+  }
   console.log(c.dim("  1. Rebuild API server:"));
   console.log(c.dim("       cd artifacts/api-server && node build.mjs"));
-  console.log(c.dim("  2. Regenerate API client (jika ada perubahan schema export):"));
+  console.log(c.dim("  2. Regenerate API client:"));
   console.log(c.dim("       pnpm --filter @workspace/api-client-react run codegen"));
   console.log(c.dim("  3. Restart workflow API Server"));
   console.log(c.dim("  4. Verifikasi healthz: curl http://localhost:8080/healthz"));
