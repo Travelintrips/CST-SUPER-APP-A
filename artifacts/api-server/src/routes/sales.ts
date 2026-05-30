@@ -26,6 +26,7 @@ import {
   sendSalesOrderDeliveredNotification,
   sendInvoiceIssuedNotification,
 } from "../lib/orderNotification.js";
+import { notifyPaymentReminder } from "../lib/enterpriseWorkflowNotify.js";
 import { saveAndBroadcast } from "../lib/notificationStore.js";
 import { getVendorFilterMode } from "../lib/aiOrderIntake.js";
 import { StockShortageError, postStockOut, postStockIn } from "../lib/inventoryStock.js";
@@ -218,7 +219,7 @@ router.get("/documents", async (req, res) => {
     conds.push(eq(salesDocumentsTable.status, statusFilter as "draft" | "sent" | "confirmed" | "done" | "cancelled"));
   if (invoiceStatus === "none" || invoiceStatus === "to_invoice" || invoiceStatus === "invoiced")
     conds.push(eq(salesDocumentsTable.invoiceStatus, invoiceStatus));
-  if (paymentStatus === "unpaid" || paymentStatus === "partial" || paymentStatus === "paid")
+  if (paymentStatus === "unpaid" || paymentStatus === "partial" || paymentStatus === "paid" || paymentStatus === "overdue")
     conds.push(eq(salesDocumentsTable.paymentStatus, paymentStatus));
   if (search) {
     conds.push(or(
@@ -521,6 +522,9 @@ router.post("/documents/:id/action", async (req, res) => {
       patch["cancelledAt"] = new Date();
       break;
     }
+    case "send_reminder":
+      // Fire-and-forget: no status changes, only notifications
+      break;
     case "mark_delivered":
       patch["deliveryStatus"] = "delivered";
       if (doc.invoiceStatus === "invoiced") patch["status"] = "done" satisfies SalesDocStatus;
@@ -734,6 +738,44 @@ router.post("/documents/:id/action", async (req, res) => {
           : "—";
         await sendInvoiceIssuedNotification(doc.docNumber, invNumber, doc.customerName, grandTotal, dueStr, customerPhone, adminWa);
       }
+
+      if (action === "send_reminder") {
+        const invoiceRef = doc.invoiceNumber ?? doc.docNumber;
+        const dueStr = doc.dueDate
+          ? new Date(doc.dueDate).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })
+          : "—";
+        const reminderTotal = Number(doc.grandTotal ?? doc.totalAmount ?? 0);
+        const today = new Date();
+        const dueDate = doc.dueDate ? new Date(doc.dueDate) : null;
+        const daysOverdue = dueDate ? Math.floor((today.getTime() - dueDate.getTime()) / 86_400_000) : 0;
+        const custEmail = (doc.customerId != null
+          ? (await db.select({ email: customersTable.email }).from(customersTable).where(eq(customersTable.id, doc.customerId)).limit(1))[0]?.email
+          : null) ?? null;
+
+        await notifyPaymentReminder({
+          invoiceNumber: invoiceRef,
+          customerName: doc.customerName,
+          customerPhone: customerPhone ?? undefined,
+          dueDate: dueStr,
+          totalAmount: reminderTotal,
+          daysUntilDue: -daysOverdue,
+        });
+
+        if (custEmail && isSmtpConfigured()) {
+          const amountStr = `Rp ${Math.round(reminderTotal).toLocaleString("id-ID")}`;
+          sendMail({
+            to: custEmail,
+            subject: daysOverdue > 0
+              ? `Pengingat Pembayaran — Invoice ${invoiceRef} (${daysOverdue} hari jatuh tempo)`
+              : `Pengingat Pembayaran — Invoice ${invoiceRef}`,
+            text: `Kepada Yth. ${doc.customerName},\n\nIni adalah pengingat untuk pembayaran Invoice ${invoiceRef}.\nJumlah: ${amountStr}\nJatuh Tempo: ${dueStr}\n\nMohon segera melakukan pembayaran. Hubungi kami jika ada pertanyaan.\n\nTerima kasih,\nTim Finance`,
+            html: `<p>Kepada Yth. <strong>${doc.customerName}</strong>,</p><p>Ini adalah pengingat untuk pembayaran Invoice <strong>${invoiceRef}</strong>.</p><ul><li>Jumlah: <strong>${amountStr}</strong></li><li>Jatuh Tempo: ${dueStr}</li></ul><p>Mohon segera melakukan pembayaran. Hubungi kami jika ada pertanyaan.</p><p>Terima kasih,<br>Tim Finance</p>`,
+            context: `reminder_manual_${invoiceRef}`,
+            refType: "invoice",
+            refId: invoiceRef,
+          }).catch(() => {});
+        }
+      }
     } catch (_e) {
       // fire-and-forget — jangan sampai gagal notif membatalkan response
     }
@@ -768,6 +810,7 @@ router.post("/documents/:id/action", async (req, res) => {
     mark_invoiced: "Invoice Dibuat",
     cancel_invoice: "Invoice Dibatalkan",
     mark_delivered: "Tandai Terkirim",
+    send_reminder: "Reminder Pembayaran Dikirim",
   };
   saveAndBroadcast("sales_order_update", {
     type: "sales_update",

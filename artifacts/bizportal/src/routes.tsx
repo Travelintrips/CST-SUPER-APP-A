@@ -130,8 +130,10 @@ import LogisticsRfqListPage from "@/pages/logistics-rfq-list";
 import LogisticsRfqDetailPage from "@/pages/logistics-rfq-detail";
 import LogisticsRfqComparisonPage from "@/pages/logistics-rfq-comparison";
 import LogisticOrderDetailPage from "@/pages/logistics/order-detail";
+import OrderAuditTrailPage from "@/pages/logistics/order-audit-trail";
 import VendorPerformancePage from "@/pages/logistics/vendor-performance";
 import InternalTasksPage from "@/pages/logistics/internal-tasks";
+import ExceptionsPage from "@/pages/exceptions/index";
 // Misc
 import NotificationsPage from "@/pages/notifications";
 import IntelligenceAlertsPage from "@/pages/intelligence-alerts";
@@ -186,6 +188,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/logistics/rfq/:rfqId/comparison" component={PR(LogisticsRfqComparisonPage)} />
       <Route path="/logistics/rfq/:rfqId/detail" component={PR(LogisticsRfqDetailPage)} />
       <Route path="/logistics/rfq" component={PR(LogisticsRfqListPage)} />
+      <Route path="/logistics/orders/:orderId/audit-trail" component={PR(OrderAuditTrailPage)} />
       <Route path="/logistics/orders/:orderId" component={PR(LogisticOrderDetailPage)} />
       <Route path="/logistics/vendor-performance" component={PR(VendorPerformancePage)} />
       <Route path="/logistics/internal-tasks" component={PR(InternalTasksPage)} />
@@ -339,6 +342,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
 
       {/* ── Notifications & Analytics ──────────────────────────────────── */}
       <Route path="/notifications" component={PR(NotificationsPage)} />
+      <Route path="/exceptions" component={PR(ExceptionsPage)} />
       <Route path="/intelligence-alerts" component={PR(IntelligenceAlertsPage)} />
       <Route path="/ai-approvals" component={PR(AiApprovalsPage)} />
       <Route path="/operational-context" component={PR(OperationalContextPage)} />

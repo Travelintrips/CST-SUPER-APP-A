@@ -226,7 +226,7 @@ router.get("/documents", async (req, res) => {
   if (kind === "rfq" || kind === "order") conds.push(eq(purchaseDocumentsTable.kind, kind));
   if (billStatus === "none" || billStatus === "to_bill" || billStatus === "billed")
     conds.push(eq(purchaseDocumentsTable.billStatus, billStatus));
-  if (paymentStatus === "unpaid" || paymentStatus === "partial" || paymentStatus === "paid")
+  if (paymentStatus === "unpaid" || paymentStatus === "partial" || paymentStatus === "paid" || paymentStatus === "overdue")
     conds.push(eq(purchaseDocumentsTable.paymentStatus, paymentStatus));
   const rows = await db
     .select()
@@ -477,6 +477,9 @@ router.post("/documents/:id/action", async (req, res) => {
       if (doc.status === "done") patch["status"] = "confirmed" satisfies PurchaseStatus;
       break;
     }
+    case "send_reminder":
+      // Fire-and-forget: no status changes, only notifications
+      break;
     default:
       return res.status(400).json({ message: "Invalid action" });
   }
@@ -648,6 +651,52 @@ router.post("/documents/:id/action", async (req, res) => {
       } catch (e) {
         console.error("[accounting] postPurchaseBill error:", e);
       }
+    })();
+  }
+
+  if (action === "send_reminder") {
+    void (async () => {
+      try {
+        const billRef = (doc as any).billNumber ?? doc.docNumber;
+        const dueDate = (doc as any).dueDate ? new Date((doc as any).dueDate) : null;
+        const today = new Date();
+        const daysOverdue = dueDate ? Math.floor((today.getTime() - dueDate.getTime()) / 86_400_000) : 0;
+        const dueDateStr = dueDate
+          ? dueDate.toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })
+          : "—";
+        const totalAmount = Number(doc.grandTotal ?? doc.totalAmount ?? 0);
+        const amountStr = `Rp ${Math.round(totalAmount).toLocaleString("id-ID")}`;
+
+        let supplierEmail: string | null = null;
+        let supplierPhone: string | null = null;
+        if (doc.supplierId) {
+          const [sup] = await db.select({ contactEmail: suppliersTable.contactEmail, phone: suppliersTable.phone })
+            .from(suppliersTable).where(eq(suppliersTable.id, doc.supplierId)).limit(1);
+          supplierEmail = sup?.contactEmail ?? null;
+          supplierPhone = sup?.phone ?? null;
+        }
+
+        const adminGroupWa = await getAdminGroupWa();
+        if (adminGroupWa) {
+          const msg = `🔔 *Reminder Pembayaran Vendor*\n\nBill: *${billRef}*\nSupplier: ${doc.supplierName}\nJumlah: ${amountStr}\nJatuh Tempo: ${dueDateStr}${daysOverdue > 0 ? ` (${daysOverdue} hari)` : ""}\n\nReminder dikirim secara manual.`;
+          await sendWhatsApp(adminGroupWa, msg, { context: `bill_reminder_manual_${billRef}`, refType: "purchase_bill", refId: billRef });
+        }
+        if (supplierPhone) {
+          const msg = `Kepada Yth. *${doc.supplierName}*,\n\nPengingat: *${billRef}* telah jatuh tempo.\nJumlah: ${amountStr}\nJatuh Tempo: ${dueDateStr}\n\nPembayaran sedang kami proses. Terima kasih 🙏`;
+          await sendWhatsApp(supplierPhone, msg, { context: `bill_reminder_supplier_${billRef}`, refType: "purchase_bill", refId: billRef });
+        }
+        if (supplierEmail && isSmtpConfigured()) {
+          sendMail({
+            to: supplierEmail,
+            subject: `Informasi Pembayaran — Bill ${billRef}`,
+            text: `Kepada Yth. ${doc.supplierName},\n\nBill ${billRef} telah jatuh tempo.\nJumlah: ${amountStr}\nJatuh Tempo: ${dueDateStr}\n\nPembayaran sedang kami proses.\n\nTerima kasih,\nTim Finance`,
+            html: `<p>Kepada Yth. <strong>${doc.supplierName}</strong>,</p><p>Bill <strong>${billRef}</strong> telah jatuh tempo.</p><ul><li>Jumlah: <strong>${amountStr}</strong></li><li>Jatuh Tempo: ${dueDateStr}</li></ul><p>Pembayaran sedang kami proses.</p><p>Terima kasih,<br>Tim Finance</p>`,
+            context: `bill_reminder_email_${billRef}`,
+            refType: "purchase_bill",
+            refId: billRef,
+          }).catch(() => {});
+        }
+      } catch (e) { console.error("[send_reminder purchase]", e); }
     })();
   }
 

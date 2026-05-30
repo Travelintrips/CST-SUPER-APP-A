@@ -346,20 +346,45 @@ router.get("/rfq/:rfqId/recommend", async (req, res) => {
   if (links.length === 0) { res.json({ recommendation: null, scores: [] }); return; }
 
   // Normalize factors and compute scores
+  // Weights: Harga 35%, Lead Time 20%, Stok 15%, Performa 30%
   const prices = links.map(l => Number(l.link.offeredPrice));
   const minPrice = Math.min(...prices);
   const maxPrice = Math.max(...prices);
   const priceRange = maxPrice - minPrice || 1;
 
+  const leadTimes = links
+    .map(l => (l.link as any).leadTimeDays != null ? Number((l.link as any).leadTimeDays) : null)
+    .filter((v): v is number => v != null);
+  const minLeadTime = leadTimes.length > 0 ? Math.min(...leadTimes) : null;
+  const maxLeadTime = leadTimes.length > 0 ? Math.max(...leadTimes) : null;
+  const leadTimeRange = (minLeadTime != null && maxLeadTime != null) ? (maxLeadTime - minLeadTime || 1) : 1;
+
+  const STOCK_SCORES: Record<string, number> = {
+    available: 100,
+    limited: 50,
+    unavailable: 0,
+    unknown: 30,
+  };
+
   const scored = links.map(l => {
     const priceScore = 100 - ((Number(l.link.offeredPrice) - minPrice) / priceRange) * 100;
-    const perfScore = Number(l.perf?.recommendationScore ?? 50);
-    const responseBonus = l.link.submittedAt
-      ? Math.max(0, 100 - (new Date(l.link.submittedAt).getTime() - new Date(l.link.createdAt).getTime()) / 1000 / 60)
+
+    const leadTimeDaysVal = (l.link as any).leadTimeDays != null ? Number((l.link as any).leadTimeDays) : null;
+    const leadTimeScore = (leadTimeDaysVal != null && minLeadTime != null && maxLeadTime != null)
+      ? 100 - ((leadTimeDaysVal - minLeadTime) / leadTimeRange) * 100
       : 50;
-    const totalScore = (priceScore * 0.4) + (perfScore * 0.4) + (responseBonus * 0.2);
+
+    const stockVal = (l.link as any).stockAvailability ?? "unknown";
+    const stockScore = STOCK_SCORES[stockVal] ?? 30;
+
+    const perfScore = Number(l.perf?.recommendationScore ?? 50);
+
+    const totalScore = (priceScore * 0.35) + (leadTimeScore * 0.20) + (stockScore * 0.15) + (perfScore * 0.30);
+
     const reasons: string[] = [];
     if (priceScore >= 80) reasons.push("Best price");
+    if (leadTimeDaysVal != null && leadTimeDaysVal === minLeadTime) reasons.push("Lead time tercepat");
+    if (stockVal === "available") reasons.push("Stok tersedia");
     if (Number(l.perf?.ontimePercentage ?? 0) >= 90) reasons.push("Highest on-time rate");
     if (Number(l.perf?.averageResponseMinutes ?? 999) <= 30) reasons.push("Fastest response");
     if (Number(l.perf?.cancelRate ?? 100) <= 5) reasons.push("Low cancel rate");
@@ -368,6 +393,8 @@ router.get("/rfq/:rfqId/recommend", async (req, res) => {
       vendorName: l.vendor.name,
       offeredPrice: l.link.offeredPrice,
       eta: l.link.eta,
+      leadTimeDays: leadTimeDaysVal,
+      stockAvailability: stockVal,
       score: Number(totalScore.toFixed(2)),
       reasons,
     };

@@ -79,6 +79,11 @@ import logisticsUnitsRouter from "./logisticsUnits.js";
 import { enterpriseWorkflowRouter } from "./enterpriseWorkflow.js";
 import { customerFeedbackPublicRouter, customerFeedbackAdminRouter } from "./customerFeedback.js";
 import { purchaseMiniPublicRouter, purchaseMiniAdminRouter } from "./purchaseMiniFormRoute.js";
+
+import { orderAuditTrailRouter } from "./orderAuditTrail.js";
+
+import { exceptionsRouter } from "./exceptions.js";
+
 import type { Request, Response } from "express";
 
 const router: IRouter = Router();
@@ -181,6 +186,11 @@ router.use("/customer-feedback", customerFeedbackAdminRouter);
 router.use("/customer-feedback", customerFeedbackPublicRouter);
 router.use("/purchase-mini", purchaseMiniAdminRouter);
 router.use("/purchase-mini", purchaseMiniPublicRouter);
+
+router.use("/logistic", orderAuditTrailRouter);
+
+router.use("/exceptions", exceptionsRouter);
+
 
 router.get("/q/:code", async (req: Request, res: Response) => {
   const code = String(req.params.code ?? "").trim();

@@ -85,6 +85,7 @@ import LogisticsRfqComparisonPage from "@/pages/logistics-rfq-comparison"; // [N
 import LogisticsRfqListPage from "@/pages/logistics-rfq-list"; // [NEW-RFQ-FLOW]
 import LogisticsRfqDetailPage from "@/pages/logistics-rfq-detail"; // [NEW-RFQ-FLOW]
 import LogisticOrderDetailPage from "@/pages/logistics/order-detail";
+import OrderAuditTrailPage from "@/pages/logistics/order-audit-trail";
 import HoldingPage from "@/pages/HoldingPage";
 import HoldingDashboardPage from "@/pages/accounting/holding-dashboard";
 import HoldingPLReportPage from "@/pages/accounting/holding-pl-report";

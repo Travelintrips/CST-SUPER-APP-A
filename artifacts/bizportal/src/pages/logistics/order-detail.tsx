@@ -21,7 +21,7 @@ import {
   Package, Truck, User, ClipboardList, Clock, ShieldAlert, Ship,
   ClipboardCheck, CheckCircle2, XCircle, MapPin, MessageCircle,
   Link2, FileText, AlertTriangle, Eye, EyeOff, StickyNote, Globe,
-  RotateCcw, Bell, ChevronDown, ChevronUp, Download,
+  RotateCcw, Bell, ChevronDown, ChevronUp, Download, Shield,
 } from "lucide-react";
 import { Link } from "wouter";
 import GpsTrackingPanel from "@/components/logistics/GpsTrackingPanel";
@@ -2094,6 +2094,11 @@ export default function LogisticOrderDetailPage() {
             <Button variant="outline" size="sm" onClick={() => refetch()}>
               <RefreshCw className="w-4 h-4" />
             </Button>
+            <Link href={`/logistics/orders/${orderId}/audit-trail`}>
+              <Button variant="outline" size="sm" className="gap-1.5 text-violet-700 border-violet-200 hover:bg-violet-50">
+                <Shield className="w-4 h-4" /> Audit Trail
+              </Button>
+            </Link>
             <UpdateStatusDialog orderId={orderId} currentStatus={order.status} currentVersion={order.version} onUpdated={() => qc.invalidateQueries({ queryKey: ["order-detail", orderId] })} />
             <CreateTaskLinkDialog orderId={orderId} vendorId={order.approvedVendorId} onCreated={() => qc.invalidateQueries({ queryKey: ["order-detail", orderId] })} />
             {hasVendorSelected && (
