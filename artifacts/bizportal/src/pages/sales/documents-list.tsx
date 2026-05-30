@@ -54,13 +54,14 @@ const STAT_CARD_COLORS: Record<string, string> = {
   cancelled: "text-red-400",
 };
 
-type PaymentFilter = "all" | "unpaid" | "partial" | "paid";
+type PaymentFilter = "all" | "unpaid" | "partial" | "paid" | "overdue";
 
 const PAYMENT_LABELS: Record<PaymentFilter, string> = {
   all: "Semua",
   unpaid: "Belum Bayar",
   partial: "Sebagian",
   paid: "Lunas",
+  overdue: "Jatuh Tempo",
 };
 
 function StatusBadge({ status }: { status: string }) {
@@ -74,14 +75,15 @@ function StatusBadge({ status }: { status: string }) {
 function PaymentBadge({ status }: { status: string }) {
   if (status === "paid") return <Badge className="bg-emerald-900/50 text-emerald-300 border-emerald-700 text-xs">Lunas</Badge>;
   if (status === "partial") return <Badge className="bg-amber-900/50 text-amber-300 border-amber-700 text-xs">Sebagian</Badge>;
+  if (status === "overdue") return <Badge className="bg-red-900/50 text-red-300 border-red-700 text-xs">Jatuh Tempo</Badge>;
   return <Badge variant="outline" className="text-slate-400 border-slate-600 text-xs">Belum Bayar</Badge>;
 }
 
 function isOverdue(doc: SalesDocument): boolean {
-  if (!doc.expectedDate) return false;
+  if (!doc.dueDate) return false;
   if (doc.paymentStatus === "paid") return false;
   if (doc.invoiceStatus === "none") return false;
-  return new Date(doc.expectedDate) < new Date(new Date().toDateString());
+  return new Date(doc.dueDate as string) < new Date(new Date().toDateString());
 }
 
 interface Props { kind?: "quote" | "order" }
