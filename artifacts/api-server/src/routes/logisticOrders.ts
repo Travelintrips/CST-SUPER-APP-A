@@ -55,6 +55,10 @@ import {
   VENDOR_NOTIFY_STATUS_SET,
   STATUS_NORMALIZATION_SQL,
 } from "../lib/logisticStatusConstants.js";
+import {
+  transitionLogisticOrderStatus,
+  getAllowedTransitions,
+} from "../lib/services/logisticOrderStatusService.js";
 
 export const logisticOrdersRouter = Router();
 
@@ -122,7 +126,6 @@ function toOrder(row: typeof logisticOrdersTable.$inferSelect, approvedVendorNam
     quotationSentAt: row.quotationSentAt?.toISOString() ?? null,
     version: (row as any).version ?? 1,
     createdAt: row.createdAt.toISOString(),
-    updatedAt: (row as any).updatedAt?.toISOString?.() ?? row.createdAt.toISOString(),
     updatedAt: ((row as any).updatedAt ?? row.createdAt).toISOString(),
   };
 }
@@ -1054,10 +1057,6 @@ logisticOrdersRouter.put("/:id/status", async (req: Request, res: Response) => {
     });
   }
 
-  const whereClause =
-    clientVersion !== undefined
-      ? and(eq(logisticOrdersTable.id, id), eq(logisticOrdersTable.version, clientVersion))
-      : eq(logisticOrdersTable.id, id);
   if (clientUpdatedAt) {
     const [current] = await db
       .select({ updatedAt: logisticOrdersTable.updatedAt })
@@ -1075,20 +1074,43 @@ logisticOrdersRouter.put("/:id/status", async (req: Request, res: Response) => {
     }
   }
 
-  const [updated] = await db
-    .update(logisticOrdersTable)
-    .set({ status, updatedAt: new Date(), version: sql`${logisticOrdersTable.version} + 1` } as any)
-    .where(whereClause)
-    .returning();
-
-  if (!updated) {
-    const [exists] = await db.select({ id: logisticOrdersTable.id }).from(logisticOrdersTable).where(eq(logisticOrdersTable.id, id));
-    if (!exists) return res.status(404).json({ message: "Order tidak ditemukan" });
-    return res.status(409).json({ message: "Data sudah diubah oleh pengguna lain. Refresh halaman dan coba lagi." });
-  }
-
   const adminName = (req.user as { name?: string } | undefined)?.name ?? "Admin";
   const adminId   = (req.user as { id?: string } | undefined)?.id ?? null;
+
+  if (clientVersion !== undefined) {
+    const [currentRow] = await db
+      .select({ version: logisticOrdersTable.version })
+      .from(logisticOrdersTable)
+      .where(eq(logisticOrdersTable.id, id));
+    if (!currentRow) return res.status(404).json({ message: "Order tidak ditemukan" });
+    if (currentRow.version !== clientVersion) {
+      return res.status(409).json({ message: "Data sudah diubah oleh pengguna lain. Refresh halaman dan coba lagi." });
+    }
+  }
+
+  const svcResult = await transitionLogisticOrderStatus(id, status, {
+    actorType: "admin",
+    actorId: adminId,
+    actorName: adminName,
+    notes: (req.body as Record<string, unknown>).notes as string ?? undefined,
+    source: "PUT /logistic/orders/:id/status",
+    skipAudit: true,
+  });
+
+  if (!svcResult.ok) {
+    if (svcResult.allowedTransitions !== undefined) {
+      return res.status(422).json({
+        message: svcResult.error,
+        allowedTransitions: svcResult.allowedTransitions,
+        code: "INVALID_TRANSITION",
+      });
+    }
+    if (svcResult.error?.includes("tidak ditemukan")) return res.status(404).json({ message: svcResult.error });
+    return res.status(409).json({ message: svcResult.error ?? "Update status gagal" });
+  }
+
+  const [updated] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, id));
+  if (!updated) return res.status(404).json({ message: "Order tidak ditemukan" });
 
   logActivity({
     orderId: updated.id,
@@ -1197,6 +1219,19 @@ logisticOrdersRouter.put("/:id/status", async (req: Request, res: Response) => {
   });
 
   return res.json(toOrder(updated));
+});
+
+// GET /api/logistic/orders/:id/valid-transitions — daftar transisi status yang diizinkan
+logisticOrdersRouter.get("/:id/valid-transitions", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const id = parseInt(String(req.params["id"] ?? ""), 10);
+  if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+  const [order] = await db.select({ id: logisticOrdersTable.id, status: logisticOrdersTable.status })
+    .from(logisticOrdersTable)
+    .where(eq(logisticOrdersTable.id, id));
+  if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+  const allowedTransitions = getAllowedTransitions(order.status);
+  return res.json({ status: order.status, allowedTransitions });
 });
 
 // PATCH /api/logistic/orders/:id/details — update detail order (admin)
@@ -1323,19 +1358,29 @@ logisticOrdersRouter.put("/bulk-status", async (req: Request, res: Response) => 
   }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ message: "ids dan status harus valid" });
   const { ids, status } = parsed.data;
-  const updated = await db
-    .update(logisticOrdersTable)
-    .set({ status })
-    .where(inArray(logisticOrdersTable.id, ids))
-    .returning({ id: logisticOrdersTable.id, orderNumber: logisticOrdersTable.orderNumber });
-
   const adminName = (req.user as { name?: string } | undefined)?.name ?? "Admin";
   const adminId   = (req.user as { id?: string } | undefined)?.id ?? null;
 
-  // Log audit trail + timeline for each affected order (fire-and-forget)
-  for (const row of updated) {
+  const updatedIds: number[] = [];
+  const failedIds: number[] = [];
+
+  for (const oid of ids) {
+    const result = await transitionLogisticOrderStatus(oid, status, {
+      actorType: "admin",
+      actorId: adminId,
+      actorName: adminName,
+      source: "PUT /logistic/orders/bulk-status",
+      force: true,
+      skipAudit: false,
+    });
+    if (result.ok) updatedIds.push(oid);
+    else failedIds.push(oid);
+  }
+
+  // Log activity + timeline for each succeeded order (fire-and-forget)
+  for (const oid of updatedIds) {
     logActivity({
-      orderId: row.id,
+      orderId: oid,
       actorType: "admin",
       actorName: adminName,
       actorId: adminId,
@@ -1345,7 +1390,7 @@ logisticOrdersRouter.put("/bulk-status", async (req: Request, res: Response) => 
       ipAddress: req.ip ?? null,
     }).catch(() => {});
     db.insert(orderUpdatesTable).values({
-      orderId: row.id,
+      orderId: oid,
       actorType: "admin",
       actorId: adminId,
       actorName: adminName,
@@ -1355,7 +1400,7 @@ logisticOrdersRouter.put("/bulk-status", async (req: Request, res: Response) => 
     }).catch(() => {});
   }
 
-  return res.json({ message: "Updated", updatedIds: updated.map((r) => r.id), count: updated.length });
+  return res.json({ message: "Updated", updatedIds, failedIds, count: updatedIds.length });
 });
 
 // Helper: hapus file storage terkait logistic order (driver photos + vendor unit photos)

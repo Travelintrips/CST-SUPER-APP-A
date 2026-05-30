@@ -45,6 +45,7 @@ import {
   sendOpConfirmSubmittedNotification,
   type LogisticOrderData,
 } from "../lib/orderNotification.js";
+import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
 
 function buildOrderDataFromRow(row: typeof logisticOrdersTable.$inferSelect): LogisticOrderData {
   return {
@@ -1541,15 +1542,13 @@ vendorMiniFormRouter.post("/op-confirm/:token", async (req: Request, res: Respon
     // BF-2 FIX: Auto-advance order status to "In Progress" when vendor submits
     // operational data. Only transitions from Vendor Confirmed / Customer Approval states.
     if (conf.orderId) {
-      await db.update(logisticOrdersTable)
-        .set({ status: "In Progress" })
-        .where(
-          and(
-            eq(logisticOrdersTable.id, conf.orderId),
-            inArray(logisticOrdersTable.status as any, ["Vendor Confirmed", "Customer Approval", "Customer Approved", "Confirmed"]),
-          ),
-        )
-        .catch((e: unknown) => req.log?.error({ e }, "BF-2: auto-update order status to In Progress failed"));
+      transitionLogisticOrderStatus(conf.orderId, "In Progress", {
+        actorType: "vendor",
+        actorName: "Vendor",
+        source: "vendorMiniForm/BF-2-auto-advance",
+        force: true,
+        skipAudit: false,
+      }).catch((e: unknown) => req.log?.error({ e }, "BF-2: auto-update order status to In Progress failed"));
     }
 
     await logActivity("op_confirm", conf.id, "op_submitted", "vendor",
@@ -1823,11 +1822,15 @@ vendorMiniFormRouter.post("/admin/submissions/:id/select", async (req: Request, 
           .where(eq(vendorMiniFormLinksTable.id, sub.linkId));
       }
 
-      // Update logistic_orders.status agar admin bisa filter "Vendor Selected"
+      // Update logistic_orders.status agar admin bisa filter "Vendor Selected" (non-canonical: force=true)
       if (sub.orderId) {
-        await tx.update(logisticOrdersTable)
-          .set({ status: "Vendor Selected" })
-          .where(eq(logisticOrdersTable.id, sub.orderId));
+        void transitionLogisticOrderStatus(sub.orderId, "Vendor Selected", {
+          actorType: "admin",
+          actorName: "Admin",
+          source: "vendorMiniForm/select-vendor",
+          force: true,
+          skipAudit: false,
+        });
       }
     });
 

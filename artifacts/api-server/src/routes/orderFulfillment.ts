@@ -27,6 +27,7 @@ import { resolveServiceCategory } from "@workspace/logistics-constants";
 import { updateOrderProgress } from "../lib/orderProgress.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { compressImageBuffer } from "../lib/imageCompress.js";
+import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
 
 const objectStorageService = new ObjectStorageService();
 const podUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
@@ -185,8 +186,14 @@ fulfillmentAdminRouter.post("/orders/:orderId/send-fulfillment", async (req: Req
       isPublic: false,
     });
 
-    // Update order status to Processing
-    await db.update(logisticOrdersTable).set({ status: "Processing" }).where(eq(logisticOrdersTable.id, orderId));
+    // Update order status to Processing (non-canonical: force=true)
+    await transitionLogisticOrderStatus(orderId, "Processing", {
+      actorType: "admin",
+      actorName: "Admin",
+      source: "orderFulfillment/send-fulfillment",
+      force: true,
+      skipAudit: false,
+    });
 
     const formUrl = `${getBaseUrl()}/fulfillment/${token}`;
 
@@ -304,11 +311,6 @@ fulfillmentAdminRouter.get("/orders/:orderId/fulfillment", async (req: Request, 
     ];
 
     return res.json({ links: mergedLinks, submissions: mergedSubs });
-    return res.json({
-      links: links.map(l => ({ ...l, formUrl: `${base}/fulfillment/${l.token}` })),
-      submissions,
-      pods: podRows.rows ?? [],
-    });
   } catch (err) {
     logger.error({ err }, "get-fulfillment error");
     return res.status(500).json({ message: "Gagal memuat data fulfillment" });
@@ -410,9 +412,13 @@ fulfillmentPublicRouter.post("/:token", async (req: Request, res: Response) => {
       .where(eq(orderFulfillmentLinksTable.token, token));
 
     // Update order status → Vendor Confirmed
-    await db.update(logisticOrdersTable)
-      .set({ status: "Vendor Confirmed" })
-      .where(eq(logisticOrdersTable.id, link.orderId));
+    await transitionLogisticOrderStatus(link.orderId, "Vendor Confirmed", {
+      actorType: "vendor",
+      actorName: "Vendor",
+      source: "orderFulfillment/vendor-submit",
+      force: true,
+      skipAudit: false,
+    });
 
     // Activity log
     const summaryLines = fields
@@ -491,9 +497,12 @@ fulfillmentAdminRouter.post("/orders/:orderId/confirm-fulfillment", async (req: 
       ? extractVfData(latestVfLink as unknown as Record<string, unknown>)
       : null;
 
-    await db.update(logisticOrdersTable)
-      .set({ status: "In Progress" })
-      .where(eq(logisticOrdersTable.id, orderId));
+    await transitionLogisticOrderStatus(orderId, "In Progress", {
+      actorType: "admin",
+      actorName: "Admin",
+      source: "orderFulfillment/confirm-fulfillment",
+      skipAudit: false,
+    });
 
     await db.insert(orderUpdatesTable).values({
       orderId,
@@ -579,9 +588,13 @@ fulfillmentAdminRouter.post("/orders/:orderId/complete-order", async (req: Reque
       return res.status(400).json({ message: `Status saat ini "${order.status}" tidak bisa diselesaikan dari sini.` });
     }
 
-    await db.update(logisticOrdersTable)
-      .set({ status: "Completed" })
-      .where(eq(logisticOrdersTable.id, orderId));
+    await transitionLogisticOrderStatus(orderId, "Completed", {
+      actorType: "admin",
+      actorName: "Admin",
+      source: "orderFulfillment/complete-order",
+      force: true,
+      skipAudit: false,
+    });
 
     await db.insert(orderUpdatesTable).values({
       orderId,
@@ -663,9 +676,13 @@ fulfillmentAdminRouter.post(
       `);
 
       // Update status → Completed
-      await db.update(logisticOrdersTable)
-        .set({ status: "Completed" })
-        .where(eq(logisticOrdersTable.id, orderId));
+      await transitionLogisticOrderStatus(orderId, "Completed", {
+        actorType: "admin",
+        actorName: "Admin",
+        source: "orderFulfillment/pod-upload",
+        force: true,
+        skipAudit: false,
+      });
 
       // Activity log
       const logNote = [

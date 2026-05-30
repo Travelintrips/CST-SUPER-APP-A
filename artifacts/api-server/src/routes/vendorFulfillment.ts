@@ -20,6 +20,7 @@ import { resolveServiceCategory } from "@workspace/logistics-constants";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { createAdminActionLink, getAdminActionUrl } from "./adminAction.js";
 import { generateShortLink } from "../lib/shortLink.js";
+import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
 
 export const vendorFulfillmentPublicRouter = Router();
 
@@ -393,9 +394,13 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
     if (body.notes) noteParts.push(`Catatan: ${body.notes}`);
 
     // Update order status → "Vendor Confirmed" agar tombol konfirmasi di BizPortal muncul
-    await db.update(logisticOrdersTable)
-      .set({ status: "Vendor Confirmed" })
-      .where(eq(logisticOrdersTable.id, link.orderId));
+    await transitionLogisticOrderStatus(link.orderId, "Vendor Confirmed", {
+      actorType: "vendor",
+      actorName: vendorName,
+      source: "vendorFulfillment/submit",
+      force: true,
+      skipAudit: false,
+    });
 
     await db.insert(orderUpdatesTable).values({
       orderId: link.orderId,

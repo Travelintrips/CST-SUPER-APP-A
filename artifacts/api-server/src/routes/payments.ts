@@ -8,6 +8,7 @@ import { eq, desc } from "drizzle-orm";
 import crypto from "node:crypto";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { postPaymentReceived, postSalesInvoice } from "../lib/accounting.js";
+import { markSalesInvoiced } from "../lib/services/index.js";
 
 const router = Router();
 
@@ -232,23 +233,19 @@ router.post("/paylabs/webhook", async (req, res) => {
 
   if (newStatus === "paid" && payment.status !== "paid") {
     if (payment.refKind === "sales") {
-      const [doc] = await db
-        .select()
-        .from(salesDocumentsTable)
-        .where(eq(salesDocumentsTable.id, payment.refId));
-      if (doc && doc.invoiceStatus !== "invoiced") {
-        await db
-          .update(salesDocumentsTable)
-          .set({ invoiceStatus: "invoiced", updatedAt: new Date() })
-          .where(eq(salesDocumentsTable.id, payment.refId));
-        void postSalesInvoice({
-          salesDocId: doc.id,
-          docNumber: doc.docNumber,
-          customerName: doc.customerName,
-          netAmount: Number(doc.totalAmount),
-          taxAmount: Number(doc.taxAmount ?? 0),
-          taxAccountId: null,
-        });
+      const invoiceResult = await markSalesInvoiced(payment.refId, "paylabs");
+      if (invoiceResult.ok && !invoiceResult.alreadySet) {
+        const [doc] = await db.select().from(salesDocumentsTable).where(eq(salesDocumentsTable.id, payment.refId));
+        if (doc) {
+          void postSalesInvoice({
+            salesDocId: doc.id,
+            docNumber: doc.docNumber,
+            customerName: doc.customerName,
+            netAmount: Number(doc.totalAmount),
+            taxAmount: Number(doc.taxAmount ?? 0),
+            taxAccountId: null,
+          });
+        }
       }
     }
     void postPaymentReceived({
@@ -273,23 +270,19 @@ router.post("/:id/simulate-paid", async (req, res) => {
     .set({ status: "paid", paidAt: new Date(), updatedAt: new Date() })
     .where(eq(paymentsTable.id, id));
   if (payment.refKind === "sales" && payment.status !== "paid") {
-    const [doc] = await db
-      .select()
-      .from(salesDocumentsTable)
-      .where(eq(salesDocumentsTable.id, payment.refId));
-    if (doc && doc.invoiceStatus !== "invoiced") {
-      await db
-        .update(salesDocumentsTable)
-        .set({ invoiceStatus: "invoiced", updatedAt: new Date() })
-        .where(eq(salesDocumentsTable.id, payment.refId));
-      void postSalesInvoice({
-        salesDocId: doc.id,
-        docNumber: doc.docNumber,
-        customerName: doc.customerName,
-        netAmount: Number(doc.totalAmount),
-        taxAmount: Number(doc.taxAmount ?? 0),
-        taxAccountId: null,
-      });
+    const invoiceResult2 = await markSalesInvoiced(payment.refId, "paylabs");
+    if (invoiceResult2.ok && !invoiceResult2.alreadySet) {
+      const [doc] = await db.select().from(salesDocumentsTable).where(eq(salesDocumentsTable.id, payment.refId));
+      if (doc) {
+        void postSalesInvoice({
+          salesDocId: doc.id,
+          docNumber: doc.docNumber,
+          customerName: doc.customerName,
+          netAmount: Number(doc.totalAmount),
+          taxAmount: Number(doc.taxAmount ?? 0),
+          taxAccountId: null,
+        });
+      }
     }
   }
   if (payment.status !== "paid") {

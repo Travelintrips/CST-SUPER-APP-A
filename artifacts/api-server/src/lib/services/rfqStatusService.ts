@@ -27,13 +27,16 @@ import { logger } from "../logger.js";
 // V1 vocabulary (logisticRfq.ts) harus dimapping ke V2 sebelum memanggil service.
 //
 export const RFQ_VALID_TRANSITIONS: Record<string, string[]> = {
-  "admin_review":    ["vendor_blasted", "closed", "expired"],
-  "vendor_blasted":  ["Quote Received", "vendor_selected", "closed", "expired"],
-  "Quote Received":  ["vendor_selected", "vendor_blasted", "closed", "expired"],
-  "vendor_selected": ["customer_quoted", "closed", "expired"],
-  "customer_quoted": ["closed", "expired"],
-  "closed":          [],
-  "expired":         [],
+  "admin_review":                ["vendor_blasted", "closed", "expired"],
+  "vendor_blasted":              ["Quote Received", "vendor_selected", "closed", "expired"],
+  "Quote Received":              ["vendor_selected", "vendor_blasted", "closed", "expired"],
+  "vendor_selected":             ["customer_quoted", "closed", "expired"],
+  "customer_quoted":             ["closed", "expired", "customer_approved", "customer_revision_requested", "customer_rejected"],
+  "customer_approved":           ["closed", "expired"],
+  "customer_revision_requested": ["closed", "expired", "customer_quoted"],
+  "customer_rejected":           ["closed", "expired"],
+  "closed":                      [],
+  "expired":                     [],
 };
 
 // ── Vendor Link State Machine ─────────────────────────────────────────────────
@@ -55,6 +58,7 @@ export const VENDOR_LINK_VALID_TRANSITIONS: Record<string, string[]> = {
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface RfqTransitionOptions {
+  actorType?: "admin" | "vendor" | "customer" | "driver" | "system";
   actorId?: string | null;
   actorName?: string | null;
   source?: string;

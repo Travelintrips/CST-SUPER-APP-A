@@ -33,6 +33,14 @@ import {
   type LogisticOrderData,
 } from "../lib/orderNotification.js";
 
+import {
+  transitionLogisticOrderStatus,
+} from "../lib/services/logisticOrderStatusService.js";
+import {
+  transitionRfqStatus,
+  transitionVendorLinkStatus,
+} from "../lib/services/rfqStatusService.js";
+
 export const logisticRfqV2Router = Router();
 
 function buildOrderData(order: typeof logisticOrdersTable.$inferSelect): LogisticOrderData {
@@ -491,8 +499,7 @@ logisticRfqV2Router.get("/vendor-form/:token", async (req: Request, res: Respons
   if (!link) return res.status(404).json({ message: "Link tidak valid atau sudah kadaluarsa" });
 
   if (link.expiredAt && link.expiredAt < new Date() && link.status === "waiting_response") {
-    await db.update(rfqVendorLinksTable).set({ status: "expired" })
-      .where(eq(rfqVendorLinksTable.id, link.id));
+    await transitionVendorLinkStatus(link.id, "expired", { actorType: "system", actorName: "system", source: "vendor-form/lazy-expire", force: true });
     return res.status(410).json({ message: "Link sudah kadaluarsa" });
   }
   if (link.status === "expired") return res.status(410).json({ message: "Link sudah kadaluarsa" });
@@ -723,7 +730,7 @@ logisticRfqV2Router.post("/vendor-form/:token", async (req: Request, res: Respon
   if (!link) return res.status(404).json({ message: "Link tidak valid" });
 
   if (link.expiredAt && link.expiredAt < new Date() && link.status === "waiting_response") {
-    await db.update(rfqVendorLinksTable).set({ status: "expired" }).where(eq(rfqVendorLinksTable.id, link.id));
+    await transitionVendorLinkStatus(link.id, "expired", { actorType: "system", actorName: "system", source: "vendor-submit/lazy-expire", force: true });
     return res.status(410).json({ message: "Link sudah kadaluarsa" });
   }
   if (link.status === "expired") return res.status(410).json({ message: "Link sudah kadaluarsa" });
@@ -821,13 +828,13 @@ logisticRfqV2Router.post("/vendor-form/:token", async (req: Request, res: Respon
 
   // Auto-advance order status to "Quote Received" when vendor submits (not reject, not late)
   if (!isUpdate && action !== "reject" && !isLate) {
-    db.update(logisticOrdersTable)
-      .set({ status: "Quote Received" })
-      .where(and(
-        eq(logisticOrdersTable.id, rfq.orderId),
-        inArray(logisticOrdersTable.status as any, ["RFQ Sent", "Admin Review", "New Order", "Under Review"]),
-      ))
-      .catch(() => {});
+    void transitionLogisticOrderStatus(rfq.orderId, "Quote Received", {
+      actorType: "vendor",
+      actorName: "Vendor",
+      source: "vendor-rfq-submit/auto-advance",
+      force: true,
+      skipAudit: false,
+    }).catch(() => {});
   }
 
   await sendAdminRecapWa(link.rfqId, rfq);
@@ -974,17 +981,20 @@ logisticRfqV2Router.post("/orders/:orderId/rfq-blast", async (req: Request, res:
       ...eligible.map((v) => v.id),
     ]),
   ];
+  await transitionRfqStatus(rfqId, "vendor_blasted", { actorType: "admin", actorName: "Admin", force: true, source: "rfq-blast" });
   await db.update(logisticOrderRfqsTable).set({
     vendorIds: allVendorIds,
-    status: "vendor_blasted",
     responseDeadline: expiredAt,
   }).where(eq(logisticOrderRfqsTable.id, rfqId));
 
   // Bump order status to RFQ Sent when admin blasts vendors
   if (["Order Received", "Admin Review", "New Order", "Under Review"].includes(order.status)) {
-    await db.update(logisticOrdersTable)
-      .set({ status: "RFQ Sent" })
-      .where(eq(logisticOrdersTable.id, orderId));
+    await transitionLogisticOrderStatus(orderId, "RFQ Sent", {
+      actorType: "admin",
+      actorName: "Admin",
+      source: "rfq-blast",
+      skipAudit: false,
+    });
   }
 
   const sentCount = results.filter((r) => r.sent).length;
@@ -1093,17 +1103,20 @@ logisticRfqV2Router.post("/rfq/:rfqId/blast", async (req: Request, res: Response
   }
 
   const newVendorIds = [...new Set([...(Array.isArray(rfq.vendorIds) ? rfq.vendorIds as number[] : []), ...eligible.map((v) => v.id)])];
+  await transitionRfqStatus(rfqId, "vendor_blasted", { actorType: "admin", actorName: "Admin", force: true, source: "rfq/:rfqId/blast" });
   await db.update(logisticOrderRfqsTable).set({
     vendorIds: newVendorIds,
-    status: "vendor_blasted",
     responseDeadline: expiredAt,
   }).where(eq(logisticOrderRfqsTable.id, rfqId));
 
   // Bump order status to RFQ Sent when admin blasts vendors
   if (["Order Received", "Admin Review", "New Order", "Under Review"].includes(order.status)) {
-    await db.update(logisticOrdersTable)
-      .set({ status: "RFQ Sent" })
-      .where(eq(logisticOrdersTable.id, order.id));
+    await transitionLogisticOrderStatus(order.id, "RFQ Sent", {
+      actorType: "admin",
+      actorName: "Admin",
+      source: "rfq/:rfqId/blast",
+      skipAudit: false,
+    });
   }
 
   const sentCount = results.filter((r) => r.sent).length;
@@ -1184,9 +1197,16 @@ logisticRfqV2Router.post("/rfq/:rfqId/reblast-all", async (req: Request, res: Re
       .set({
         basicPrice: basicPrice ?? undefined,
         expiredAt,
-        status: link.status === "expired" ? "waiting_response" : link.status,
       })
       .where(eq(rfqVendorLinksTable.id, link.id));
+    if (link.status === "expired") {
+      await transitionVendorLinkStatus(link.id, "waiting_response", {
+        actorType: "admin",
+        actorName: "Admin",
+        source: "reblast-all",
+        force: true,
+      });
+    }
 
     try {
       await sendVendorRequestNotification(await buildOrderDataWithItems(order), vendor.name, vendor.phone!, getVendorFormUrl(link.token));
@@ -1198,8 +1218,8 @@ logisticRfqV2Router.post("/rfq/:rfqId/reblast-all", async (req: Request, res: Re
   }
 
   // Pastikan status RFQ tetap vendor_blasted & perbarui deadline
+  await transitionRfqStatus(rfqId, "vendor_blasted", { actorType: "admin", actorName: "Admin", force: true, source: "reblast-all" });
   await db.update(logisticOrderRfqsTable).set({
-    status: "vendor_blasted",
     responseDeadline: expiredAt,
   }).where(eq(logisticOrderRfqsTable.id, rfqId));
 
@@ -1344,8 +1364,7 @@ logisticRfqV2Router.get("/rfq/:rfqId/comparison", async (req: Request, res: Resp
   const now = new Date();
   for (const link of links) {
     if (link.status === "waiting_response" && link.expiredAt && link.expiredAt < now) {
-      await db.update(rfqVendorLinksTable).set({ status: "expired" })
-        .where(eq(rfqVendorLinksTable.id, link.id)).catch(() => {});
+      await transitionVendorLinkStatus(link.id, "expired", { actorType: "system", actorName: "system", source: "rfq-links/lazy-expire", force: true }).catch(() => {});
       link.status = "expired";
     }
   }
@@ -1590,8 +1609,12 @@ logisticRfqV2Router.post("/rfq/:rfqId/select-vendor", async (req: Request, res: 
     }).from(logisticOrderRfqsTable).where(eq(logisticOrderRfqsTable.id, rfqId)),
   ]);
 
-  await db.update(rfqVendorLinksTable).set({ status: "selected" })
-    .where(eq(rfqVendorLinksTable.id, linkId));
+  await transitionVendorLinkStatus(linkId, "selected", {
+    actorType: "admin",
+    actorName: "Admin",
+    source: "select-vendor",
+    force: true,
+  });
 
   const otherLinks = await db.select({ id: rfqVendorLinksTable.id, status: rfqVendorLinksTable.status })
     .from(rfqVendorLinksTable)
@@ -1599,13 +1622,20 @@ logisticRfqV2Router.post("/rfq/:rfqId/select-vendor", async (req: Request, res: 
 
   for (const other of otherLinks) {
     if (!["rejected", "expired", "late_response"].includes(other.status)) {
-      await db.update(rfqVendorLinksTable).set({ status: "not_selected" })
-        .where(eq(rfqVendorLinksTable.id, other.id));
+      await transitionVendorLinkStatus(other.id, "not_selected", {
+        actorType: "admin",
+        actorName: "Admin",
+        source: "select-vendor/deselect-others",
+        force: true,
+      });
     }
   }
 
-  await db.update(logisticOrderRfqsTable).set({ status: "vendor_selected" })
-    .where(eq(logisticOrderRfqsTable.id, rfqId));
+  await transitionRfqStatus(rfqId, "vendor_selected", {
+    actorType: "admin",
+    actorName: "Admin",
+    source: "select-vendor",
+  });
 
   const orderId = rfqRow?.orderId ?? 0;
 
@@ -1684,8 +1714,12 @@ logisticRfqV2Router.post("/rfq/:rfqId/vendor-link/:linkId/action", async (req: R
   }
 
   if (action === "reject") {
-    await db.update(rfqVendorLinksTable).set({ status: "not_selected" })
-      .where(eq(rfqVendorLinksTable.id, linkId));
+    await transitionVendorLinkStatus(linkId, "not_selected", {
+      actorType: "admin",
+      actorName: "Admin",
+      source: "vendor-link-action/reject",
+      force: true,
+    });
     await logActivity(rfqId, "admin", "Admin", "admin_reject_vendor",
       `Admin menolak vendor: ${vendorName}`);
     return res.json({ ok: true });
@@ -1770,10 +1804,14 @@ logisticRfqV2Router.post("/rfq/:rfqId/send-customer-quote", async (req: Request,
     : [];
 
   // Simpan quote ke RFQ
+  await transitionRfqStatus(rfqId, "customer_quoted", {
+    actorType: "admin",
+    actorName: "Admin",
+    source: "send-customer-quote",
+  });
   await db.execute(sql`
     UPDATE logistic_order_rfqs
-    SET status = 'customer_quoted',
-        quoted_price = ${sellingPrice},
+    SET quoted_price = ${sellingPrice},
         quoted_at = NOW(),
         quote_notes = ${quoteNotes ?? null}
     WHERE id = ${rfqId}
@@ -1851,10 +1889,14 @@ logisticRfqV2Router.post("/rfq/quote-respond", async (req: Request, res: Respons
     response === "revision_requested" ? "customer_revision_requested" :
     "customer_rejected";
 
+  await transitionRfqStatus(rfq.id, newStatus, {
+    actorType: "customer",
+    actorName: order?.customerName ?? "Customer",
+    source: "quote-respond",
+  });
   await db.execute(sql`
     UPDATE logistic_order_rfqs
-    SET status = ${newStatus},
-        customer_response_notes = ${notes ?? null},
+    SET customer_response_notes = ${notes ?? null},
         customer_responded_at = NOW()
     WHERE id = ${rfq.id}
   `);
@@ -1895,18 +1937,17 @@ logisticRfqV2Router.post("/rfq/:rfqId/close", async (req: Request, res: Response
 
   const { notes, updateOrderStatus } = req.body as { notes?: string; updateOrderStatus?: boolean };
 
-  await db.execute(sql`
-    UPDATE logistic_order_rfqs SET status = 'closed' WHERE id = ${rfqId}
-  `);
+  await transitionRfqStatus(rfqId, "closed", { actorType: "admin", actorName: "Admin", source: "close-rfq", force: true });
 
-  if (updateOrderStatus !== false) {
-    // Jika customer approved, update order ke Processing; jika rejected, biarkan
-    const targetStatus = rfq.status === "customer_approved" ? "Processing" : undefined;
-    if (targetStatus) {
-      await db.update(logisticOrdersTable)
-        .set({ status: targetStatus })
-        .where(eq(logisticOrdersTable.id, rfq.orderId));
-    }
+  if (updateOrderStatus !== false && rfq.status === "customer_approved") {
+    // customer_approved → close → Processing (non-canonical: force=true)
+    await transitionLogisticOrderStatus(rfq.orderId, "Processing", {
+      actorType: "admin",
+      actorName: "Admin",
+      source: "close-rfq",
+      force: true,
+      skipAudit: false,
+    });
   }
 
   const [order] = await db.select({ customerName: logisticOrdersTable.customerName, orderNumber: logisticOrdersTable.orderNumber })

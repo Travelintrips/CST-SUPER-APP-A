@@ -33,6 +33,7 @@ import { logger } from "./logger.js";
 import { broadcastNewAlert } from "./alertsBroadcast.js";
 import { sendMail, isSmtpConfigured } from "./mailer.js";
 import { notifyPaymentReminder } from "./enterpriseWorkflowNotify.js";
+import { markPaymentOverdue } from "./services/index.js";
 
 const POLL_INTERVAL_MS = 5 * 60 * 1000;  // 5 minutes
 const INITIAL_DELAY_MS = 3 * 60 * 1000;  // 3 min after boot
@@ -390,11 +391,7 @@ async function checkInvoiceOverdue(settings: AlertSettings): Promise<void> {
     const invoiceRef = doc.invoiceNumber ?? doc.docNumber;
 
     // Mark as overdue if not already
-    if (doc.paymentStatus !== "overdue") {
-      await db.update(salesDocumentsTable)
-        .set({ paymentStatus: "overdue", updatedAt: new Date() } as never)
-        .where(eq(salesDocumentsTable.id, doc.id));
-    }
+    await markPaymentOverdue(doc.id, "sales_order");
 
     const context = "invoice_overdue_reminder";
     if (await waAlreadySent(context, invoiceRef)) continue;
@@ -510,11 +507,7 @@ async function checkBillOverdue(settings: AlertSettings): Promise<void> {
   for (const doc of overdueBills) {
     const billRef = doc.billNumber ?? doc.docNumber;
 
-    if (doc.paymentStatus !== "overdue") {
-      await db.update(purchaseDocumentsTable)
-        .set({ paymentStatus: "overdue", updatedAt: new Date() } as never)
-        .where(eq(purchaseDocumentsTable.id, doc.id));
-    }
+    await markPaymentOverdue(doc.id, "purchase_order");
 
     const context = "bill_overdue_reminder";
     if (await waAlreadySent(context, billRef)) continue;

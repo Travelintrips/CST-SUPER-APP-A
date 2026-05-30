@@ -18,6 +18,7 @@ import { checkOrderGeofence } from "../lib/orderGeofenceChecker.js";
 import { updateOrderProgress } from "../lib/orderProgress.js";
 import { getWaTemplateConfig, renderTemplate, deriveServiceType } from "../lib/orderNotification.js";
 import { logOrderAudit, logCustomerApprovalEvent, logOrderStatusChange } from "../lib/auditTrail.js";
+import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
 
 const tok = () => randomBytes(24).toString("hex");
 const fmtRp = (n: number | null | undefined) =>
@@ -413,7 +414,24 @@ customerQuoteAdminRouter.patch("/orders/:orderId/status", async (req: Request, r
   if (!status) return res.status(400).json({ message: "status wajib" });
 
   try {
-    await db.update(logisticOrdersTable).set({ status }).where(eq(logisticOrdersTable.id, orderId));
+    const svcResult = await transitionLogisticOrderStatus(orderId, status, {
+      actorType: "admin",
+      actorId: (req.user as { id?: string } | undefined)?.id ?? undefined,
+      actorName: actorName ?? "Admin",
+      notes: notes ?? undefined,
+      source: "PATCH /logistic/orders/:orderId/status",
+      skipAudit: false,
+    });
+    if (!svcResult.ok) {
+      if (svcResult.allowedTransitions !== undefined) {
+        return res.status(422).json({
+          message: svcResult.error,
+          allowedTransitions: svcResult.allowedTransitions,
+          code: "INVALID_TRANSITION",
+        });
+      }
+      return res.status(400).json({ message: svcResult.error ?? "Gagal update status" });
+    }
     await db.insert(orderUpdatesTable).values({
       orderId, actorType: "admin", actorName: actorName ?? "Admin",
       status, notes: notes ?? `Status diubah ke: ${status}`, isPublic: true,
@@ -838,7 +856,14 @@ orderTaskPublicRouter.post("/:token/update", async (req: Request, res: Response)
 
     // Update order status if given
     if (status && ORDER_STATUSES.includes(status)) {
-      await db.update(logisticOrdersTable).set({ status }).where(eq(logisticOrdersTable.id, link.orderId));
+      const svcRes = await transitionLogisticOrderStatus(link.orderId, status, {
+        actorType: "vendor",
+        actorName: vendorName ?? "Vendor",
+        source: "POST /task-link/:token/update",
+        force: true,
+        skipAudit: false,
+      });
+      if (!svcRes.ok) logger.warn({ svcRes, status, orderId: link.orderId }, "task-link status update rejected");
     }
 
     // Log update

@@ -32,6 +32,7 @@ import { getVendorFilterMode } from "../lib/aiOrderIntake.js";
 import { StockShortageError, postStockOut, postStockIn } from "../lib/inventoryStock.js";
 import { resolveCompanyId } from "../lib/resolveCompany.js";
 import { convertQty } from "../lib/uomEngine.js";
+import { markSalesInvoiced } from "../lib/services/index.js";
 
 async function computeTax(subtotal: number, taxRateId: number | null | undefined): Promise<{ taxAmount: number; grandTotal: number }> {
   if (!taxRateId) return { taxAmount: 0, grandTotal: subtotal };
@@ -496,6 +497,14 @@ router.post("/documents/:id/action", async (req, res) => {
       patch["status"] = "draft" satisfies SalesDocStatus;
       break;
     case "mark_invoiced": {
+      // Idempotency guard via service
+      const invResult = await markSalesInvoiced(id, "manual");
+      if (!invResult.ok) {
+        return res.status(500).json({ message: invResult.error ?? "Gagal update invoice status" });
+      }
+      if (invResult.alreadySet) {
+        return res.status(409).json({ message: "Invoice sudah diterbitkan untuk dokumen ini" });
+      }
       // Auto-numbering: INV/YYYY/NNNN
       const invYear = new Date().getFullYear();
       const [{ invCount }] = await db
@@ -508,7 +517,7 @@ router.post("/documents/:id/action", async (req, res) => {
       // Auto due date: invoiceDate + paymentTermDays (default 30)
       const termDays = Number((doc as Record<string, unknown>)["paymentTermDays"] ?? 30);
       const dueDate = new Date(Date.now() + termDays * 24 * 60 * 60 * 1000).toISOString().split("T")[0]!;
-      patch["invoiceStatus"] = "invoiced" satisfies SalesInvoiceStatus;
+      // invoiceStatus already set by markSalesInvoiced() above
       patch["invoiceNumber"] = invoiceNumber;
       patch["invoiceDate"] = invoiceDate;
       patch["dueDate"] = dueDate;
