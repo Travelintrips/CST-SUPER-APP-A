@@ -598,8 +598,57 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
         selectedVendor = v ?? null;
       }
 
+      // Override harga order dengan catalog vendor — JANGAN tampilkan harga jual ke vendor
+      let vendorAdjustedOrder = base.order;
+      if (selected?.vendorId) {
+        const catItems = await db.select({
+          name: vendorCatalogItemsTable.name,
+          kategori: vendorCatalogItemsTable.kategori,
+          priceBase: vendorCatalogItemsTable.priceBase,
+        }).from(vendorCatalogItemsTable)
+          .where(and(eq(vendorCatalogItemsTable.vendorId, selected.vendorId), eq(vendorCatalogItemsTable.isActive, true)));
+
+        if (catItems.length > 0) {
+          const findVendorPrice = (svcName: string, catName: string): number | null => {
+            const svc = svcName.toLowerCase().trim();
+            const cat = catName.toLowerCase().trim();
+            const match = catItems.find(c =>
+              c.name.toLowerCase().trim() === svc ||
+              c.name.toLowerCase().trim() === cat ||
+              (c.kategori ?? "").toLowerCase().trim() === cat
+            );
+            if (match) return Number(match.priceBase);
+            if (catItems.length === 1) return Number(catItems[0].priceBase);
+            return null;
+          };
+
+          const vendorItems = base.order.items.map((it) => {
+            const vp = findVendorPrice(it.serviceName, it.category);
+            return { ...it, subtotal: vp != null ? String(vp) : it.subtotal };
+          });
+
+          const vendorPrices = vendorItems.map(i => i.subtotal != null ? parseFloat(i.subtotal) : null);
+          const allPriced = vendorPrices.length > 0 && vendorPrices.every(v => v != null);
+          const vendorGrandTotal = allPriced
+            ? vendorPrices.reduce((s, v) => s + (v ?? 0), 0)
+            : (order.grandTotal ? parseFloat(String(order.grandTotal)) : 0);
+
+          const vendorDpp = vendorGrandTotal > 0 ? Math.round(vendorGrandTotal * 100 / (100 + _TAX_RATE)) : null;
+          const vendorTax = vendorDpp != null ? vendorGrandTotal - vendorDpp : null;
+
+          vendorAdjustedOrder = {
+            ...base.order,
+            items: vendorItems,
+            grandTotal: String(vendorGrandTotal),
+            subtotalBeforeTax: vendorDpp != null ? String(vendorDpp) : base.order.subtotalBeforeTax,
+            taxAmount: vendorTax != null ? String(vendorTax) : base.order.taxAmount,
+          };
+        }
+      }
+
       return res.json({
         ...base,
+        order: vendorAdjustedOrder,
         rfq: rfq ? { id: rfq.id, rfqNumber: rfq.rfqNumber, status: rfq.status } : null,
         selectedVendor,
         selectedVendorLink: selected ?? null,

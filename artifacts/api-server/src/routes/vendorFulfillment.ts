@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from "express";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import multer from "multer";
 import { randomUUID } from "crypto";
@@ -10,6 +10,7 @@ import {
   logisticOrderItemsTable,
   suppliersTable,
   orderUpdatesTable,
+  vendorCatalogItemsTable,
 } from "@workspace/db";
 import { logger } from "../lib/logger";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
@@ -178,11 +179,64 @@ vendorFulfillmentPublicRouter.get("/:token", async (req: Request, res: Response)
     }).from(logisticOrderItemsTable)
       .where(eq(logisticOrderItemsTable.orderId, order.id));
 
-    // Compute pricing breakdown
+    // Fetch vendor catalog items (untuk harga dasar vendor — BUKAN harga jual order)
+    type CatalogRow = { name: string; kategori: string | null; priceBase: string; type: string };
+    let vendorCatalog: CatalogRow[] = [];
+    if (link.vendorId) {
+      vendorCatalog = await db.select({
+        name: vendorCatalogItemsTable.name,
+        kategori: vendorCatalogItemsTable.kategori,
+        priceBase: vendorCatalogItemsTable.priceBase,
+        type: vendorCatalogItemsTable.type,
+      }).from(vendorCatalogItemsTable)
+        .where(and(
+          eq(vendorCatalogItemsTable.vendorId, link.vendorId),
+          eq(vendorCatalogItemsTable.isActive, true)
+        ));
+    }
+
+    // Helper: cari catalog match untuk satu order item
+    const findCatalogMatch = (it: typeof orderItemRows[0]): CatalogRow | null => {
+      if (vendorCatalog.length === 0) return null;
+      const svc = (it.serviceName ?? "").toLowerCase().trim();
+      const cat = (it.category ?? "").toLowerCase().trim();
+      const exact = vendorCatalog.find(c =>
+        c.name.toLowerCase().trim() === svc ||
+        c.name.toLowerCase().trim() === cat ||
+        (c.kategori ?? "").toLowerCase().trim() === cat
+      );
+      if (exact) return exact;
+      // Fallback: jika hanya satu catalog item, pakai itu
+      if (vendorCatalog.length === 1) return vendorCatalog[0];
+      return null;
+    };
+
+    // Hitung harga dasar vendor per item (JANGAN pakai it.subtotal — itu harga jual ke customer)
     const TAX_RATE = 11;
-    const grandTotalNum = Number(order.grandTotal ?? 0);
-    const subtotalBeforeTax = grandTotalNum > 0 ? Math.round(grandTotalNum * 100 / (100 + TAX_RATE)) : null;
-    const taxAmount = subtotalBeforeTax != null ? grandTotalNum - subtotalBeforeTax : null;
+    const itemsWithVendorPrice = orderItemRows.map((it) => {
+      const inp = it.inputData as Record<string, unknown> | null;
+      const qty = extractItemQty(inp);
+      const catalogMatch = findCatalogMatch(it);
+      const vendorSubtotal = catalogMatch ? Number(catalogMatch.priceBase) : null;
+      return {
+        serviceName: it.serviceName ?? "",
+        category: it.category ?? "",
+        subtotal: vendorSubtotal != null ? String(vendorSubtotal) : (it.subtotal != null ? String(it.subtotal) : null),
+        quantity: qty != null ? String(qty) : null,
+        unit: extractItemUnit(inp) ?? null,
+        _vendorSubtotal: vendorSubtotal,
+      };
+    });
+
+    // Hitung grandTotal dari harga catalog vendor; fallback ke harga jual jika catalog tidak ada
+    const vendorPrices = itemsWithVendorPrice.map(i => i._vendorSubtotal);
+    const allPriced = vendorPrices.length > 0 && vendorPrices.every(v => v != null);
+    const vendorGrandTotal = allPriced
+      ? vendorPrices.reduce((s, v) => s + (v ?? 0), 0)
+      : Number(order.grandTotal ?? 0);
+
+    const subtotalBeforeTax = vendorGrandTotal > 0 ? Math.round(vendorGrandTotal * 100 / (100 + TAX_RATE)) : null;
+    const taxAmount = subtotalBeforeTax != null ? vendorGrandTotal - subtotalBeforeTax : null;
 
     const orderInfo = {
       id: order.id,
@@ -197,18 +251,8 @@ vendorFulfillmentPublicRouter.get("/:token", async (req: Request, res: Response)
       requiredDate: (order as any).requiredDate ?? null,
       vehicleType: (order as any).vehicleType ?? null,
       status: order.status,
-      items: orderItemRows.map((it) => {
-        const inp = it.inputData as Record<string, unknown> | null;
-        const qty = extractItemQty(inp);
-        return {
-          serviceName: it.serviceName ?? "",
-          category: it.category ?? "",
-          subtotal: it.subtotal != null ? String(it.subtotal) : null,
-          quantity: qty != null ? String(qty) : null,
-          unit: extractItemUnit(inp) ?? null,
-        };
-      }),
-      grandTotal: order.grandTotal ? String(order.grandTotal) : null,
+      items: itemsWithVendorPrice.map(({ _vendorSubtotal: _vs, ...rest }) => rest),
+      grandTotal: String(vendorGrandTotal || (order.grandTotal ?? 0)),
       subtotalBeforeTax: subtotalBeforeTax != null ? String(subtotalBeforeTax) : null,
       taxAmount: taxAmount != null ? String(taxAmount) : null,
       taxRate: TAX_RATE,
