@@ -40,7 +40,7 @@ const ROUTES = [
   { prefix: "/pos-images",   upstream: { host: "localhost", port: API_PORT } },
   { prefix: "/q",            upstream: { host: "localhost", port: API_PORT } },
   { prefix: "/bizportal",    upstream: { host: "localhost", port: BIZPORTAL_PORT } },
-  { prefix: "/sport-center", upstream: { host: "localhost", port: 3004 } },
+  { prefix: "/sport-center", upstream: { host: "localhost", port: 3002 } },
 ];
 const DEFAULT_UPSTREAM = { host: "localhost", port: CUSTOMER_PORT };
 
@@ -48,7 +48,7 @@ const SERVICE_NAMES = {
   18444:            "API Server",
   [BIZPORTAL_PORT]: "BizPortal",
   [CUSTOMER_PORT]:  "Customer Portal",
-  3004:             "Sport Center",
+  3002:             "Sport Center",
 };
 
 function resolve(url) {
