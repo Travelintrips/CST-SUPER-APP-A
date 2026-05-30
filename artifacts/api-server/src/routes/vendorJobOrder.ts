@@ -22,6 +22,7 @@ import { Router, type Request, type Response } from "express";
 import { randomBytes } from "crypto";
 import { eq, inArray, and, desc } from "drizzle-orm";
 import { sql } from "drizzle-orm";
+import { transitionLogisticOrderStatus, getAllowedTransitions } from "../lib/services/logisticOrderStatusService.js";
 import {
   db,
   logisticOrdersTable,
@@ -208,8 +209,8 @@ vendorJobAdminRouter.post("/orders/:orderId/assign-vendor", async (req: Request,
     await db.update(logisticOrdersTable).set({
       approvedVendorId: quote.vendorId,
       approvedQuoteId: quote.id,
-      status: "Vendor Assigned",
     } as any).where(eq(logisticOrdersTable.id, orderId));
+    await transitionLogisticOrderStatus(orderId, "Vendor Confirmed", { source: "vendorJobOrder:assign_vendor", actorType: "admin", force: true });
 
     // Set tracking_token (raw SQL karena kolom baru)
     await db.execute(sql`
@@ -387,9 +388,10 @@ vendorJobAdminRouter.post("/orders/:orderId/job-progress", async (req: Request, 
       VALUES (${orderId}, ${status}, ${notes ?? null}, 'admin', ${isPublic})
     `);
 
-    await db.update(logisticOrdersTable)
-      .set({ status } as any)
-      .where(eq(logisticOrdersTable.id, orderId));
+    const transitionResult = await transitionLogisticOrderStatus(orderId, status, { source: "vendorJobOrder:job-progress", actorType: "admin" });
+    if (!transitionResult.ok) {
+      return res.status(422).json({ message: transitionResult.error, allowedTransitions: transitionResult.allowedTransitions });
+    }
 
     await db.execute(sql`
       UPDATE logistic_orders SET job_status = ${status.toLowerCase().replace(/\s+/g, "_")}
@@ -427,10 +429,8 @@ vendorJobAdminRouter.post("/orders/:orderId/complete-review", async (req: Reques
       .where(eq(logisticOrdersTable.id, orderId));
     if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
 
-    // Update status
-    await db.update(logisticOrdersTable)
-      .set({ status: "Completed" } as any)
-      .where(eq(logisticOrdersTable.id, orderId));
+    // Update status via service
+    await transitionLogisticOrderStatus(orderId, "Completed", { source: "vendorJobOrder:complete_review", actorType: "admin", force: true });
 
     await db.execute(sql`
       UPDATE logistic_orders SET job_status = 'completed' WHERE id = ${orderId}
@@ -607,10 +607,8 @@ vendorJobPublicRouter.post("/:token/accept", async (req: Request, res: Response)
       WHERE token = ${token}
     `);
 
-    // Update order status
-    await db.update(logisticOrdersTable)
-      .set({ status: "Vendor Accepted" } as any)
-      .where(eq(logisticOrdersTable.id, job.order_id));
+    // Update order status via service
+    await transitionLogisticOrderStatus(job.order_id, "In Progress", { source: "vendorJobOrder:vendor_accept", actorType: "vendor", force: true });
 
     await db.execute(sql`
       UPDATE logistic_orders SET job_status = 'vendor_accepted' WHERE id = ${job.order_id}
@@ -684,9 +682,7 @@ vendorJobPublicRouter.post("/:token/reject", async (req: Request, res: Response)
       WHERE token = ${token}
     `);
 
-    await db.update(logisticOrdersTable)
-      .set({ status: "Vendor Rejected" } as any)
-      .where(eq(logisticOrdersTable.id, job.order_id));
+    await transitionLogisticOrderStatus(job.order_id, "Admin Review", { source: "vendorJobOrder:vendor_reject", actorType: "vendor", force: true });
 
     await db.execute(sql`
       INSERT INTO order_tracking_progress (order_id, status, notes, updated_by, is_public)
@@ -840,9 +836,7 @@ vendorJobPublicRouter.post("/:token/pod", upload.array("files", 10), async (req:
       WHERE token = ${token}
     `);
 
-    await db.update(logisticOrdersTable)
-      .set({ status: "POD Uploaded" } as any)
-      .where(eq(logisticOrdersTable.id, job.order_id));
+    await transitionLogisticOrderStatus(job.order_id, "POD Uploaded", { source: "vendorJobOrder:pod_upload", actorType: "vendor", force: true });
 
     await db.execute(sql`
       UPDATE logistic_orders SET job_status = 'pod_uploaded' WHERE id = ${job.order_id}

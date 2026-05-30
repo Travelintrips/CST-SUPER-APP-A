@@ -781,7 +781,6 @@ logisticRfqV2Router.post("/vendor-form/:token", async (req: Request, res: Respon
   const now = new Date();
   const isUpdate = !!link.submittedAt;
   await db.update(rfqVendorLinksTable).set({
-    status: newStatus,
     offeredPrice: action === "accept"
       ? (link.basicPrice ?? (await (async () => {
           // Fallback: gunakan harga catalog vendor (bukan subtotal selling price)
@@ -816,6 +815,7 @@ logisticRfqV2Router.post("/vendor-form/:token", async (req: Request, res: Respon
     submittedAt: link.submittedAt ?? now,
     lastUpdatedAt: now,
   }).where(eq(rfqVendorLinksTable.id, link.id));
+  await transitionVendorLinkStatus(link.id, newStatus, { source: "logisticRfqV2:vendor_response", actorType: "vendor", force: true });
 
   const actionLabel = action === "accept" ? "Terima Harga Basic"
     : action === "counter" ? `Counter Offer ${fmtRp(offeredPrice)}`

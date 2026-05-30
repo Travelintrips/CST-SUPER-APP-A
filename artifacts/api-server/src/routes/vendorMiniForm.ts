@@ -23,6 +23,7 @@ import {
 } from "@workspace/db";
 import { getInCodeTemplate } from "@workspace/product-templates";
 import { requireClerkUser } from "../lib/requireAdmin";
+import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
 import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminGroupWa } from "../lib/adminWa.js";
@@ -30,6 +31,7 @@ import { createSalesOrderFromVmfApproval } from "../lib/vmfSoIntegration.js";
 import { updateOrderProgress } from "../lib/orderProgress.js";
 import {
   sendCustomerApprovedNotification,
+
   sendSoCreatedNotification,
   sendOpRequestNotification,
   sendVendorRequestNotification,
@@ -45,7 +47,6 @@ import {
   sendOpConfirmSubmittedNotification,
   type LogisticOrderData,
 } from "../lib/orderNotification.js";
-import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
 
 function buildOrderDataFromRow(row: typeof logisticOrdersTable.$inferSelect): LogisticOrderData {
   return {
@@ -1303,10 +1304,10 @@ vendorMiniFormRouter.post("/customer-approval/:token", vmfApprovalLimiter, async
             ));
         }
 
-        // Update logistic order status → Vendor Confirmed (canonical)
+        // Update logistic order status — non-governance fields only inside tx
         if (locked.orderId) {
           await tx.update(logisticOrdersTable)
-            .set({ customerConfirmStatus: "confirmed", customerConfirmedAt: now, status: "Vendor Confirmed" })
+            .set({ customerConfirmStatus: "confirmed", customerConfirmedAt: now })
             .where(eq(logisticOrdersTable.id, locked.orderId));
 
           // Update itemStatus di VMF links menjadi customer_approved
@@ -1332,11 +1333,20 @@ vendorMiniFormRouter.post("/customer-approval/:token", vmfApprovalLimiter, async
 
         if (locked.orderId) {
           await tx.update(logisticOrdersTable)
-            .set({ customerConfirmStatus: "rejected", status: "Admin Review" })
+            .set({ customerConfirmStatus: "rejected" })
             .where(eq(logisticOrdersTable.id, locked.orderId));
         }
       }
     });
+
+    // Transisi status via service (di luar transaction untuk menghindari nested tx)
+    if (orderId) {
+      if (action === "approve") {
+        await transitionLogisticOrderStatus(orderId, "Vendor Confirmed", { source: "vmf:customer_approve", actorType: "customer" }).catch(() => {});
+      } else {
+        await transitionLogisticOrderStatus(orderId, "Admin Review", { source: "vmf:customer_reject", actorType: "customer" }).catch(() => {});
+      }
+    }
 
     // Progress events — customer approval
     if (action === "approve" && orderId) {

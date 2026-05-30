@@ -23,6 +23,7 @@ import { logger } from "../lib/logger.js";
 import { getPreferredDomain } from "../lib/domain.js";
 import { sendVendorWhatsApp } from "../lib/vendorQuoteWa.js";
 import { generateShortLink } from "../lib/shortLink.js";
+import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
 import { logActivity } from "../lib/activityLog.js";
@@ -129,15 +130,13 @@ export async function autoCreateRfqAndNotifyVendors(
   // [TRUCKING-FIX] Save pickup info + truck type on order for trucking orders
   if (isTrucking) {
     await db.update(logisticOrdersTable).set({
-      status: "Under Review",
       pickupDate: order.requiredDate ?? null,
       pickupTime: order.jamOrder ?? null,
       truckType: order.vehicleType ?? null,
     } as any).where(eq(logisticOrdersTable.id, orderId));
     console.log(`[TRUCKING-FLOW] State: PENDING → Under Review (order ${orderId})`);
-  } else {
-    await db.update(logisticOrdersTable).set({ status: "Under Review" }).where(eq(logisticOrdersTable.id, orderId));
   }
+  await transitionLogisticOrderStatus(orderId, "Admin Review", { source: "logisticRfq:auto_rfq", actorType: "system", force: true });
 
   // [NEW-FLOW] Auto-blast WA ke vendor dinonaktifkan.
   // Admin harus memilih vendor secara manual via halaman comparison.
@@ -404,7 +403,6 @@ logisticRfqRouter.post("/vendor-confirm", rfqRateLimit, async (req: Request, res
   const [rfq] = await db.select().from(logisticOrderRfqsTable).where(eq(logisticOrderRfqsTable.id, quote.rfqId));
 
   const newQuoteStatus = action === "accept" ? "vendor_confirmed" : "vendor_rejected";
-  const newOrderStatus = action === "accept" ? "Vendor Confirmed" : "Vendor Rejected";
 
   // If vendor submitted an updated price (accept only), validate and use it
   const updatedPrice =
@@ -441,22 +439,9 @@ logisticRfqRouter.post("/vendor-confirm", rfqRateLimit, async (req: Request, res
 
     if (action === "accept") {
       await tx.update(logisticOrdersTable).set({
-        status: newOrderStatus,
         markupPercent: String(markupPct),
         finalPrice: String(finalPrice),
-      } as any).where(and(
-        eq(logisticOrdersTable.id, orderId),
-        sql`${logisticOrdersTable.status} NOT IN ('Vendor Confirmed', 'Customer Confirmed', 'Completed', 'Done')`,
-      ));
-    } else {
-      // [CRITICAL-D] Reject action must also guard against terminal statuses.
-      // Without this guard, a late vendor-reject could overwrite "Customer Approved" with "Vendor Rejected".
-      await tx.update(logisticOrdersTable)
-        .set({ status: newOrderStatus } as any)
-        .where(and(
-          eq(logisticOrdersTable.id, orderId),
-          sql`${logisticOrdersTable.status} NOT IN ('Customer Confirmed', 'Customer Approved', 'Completed', 'Done')`,
-        ));
+      } as any).where(eq(logisticOrdersTable.id, orderId));
     }
     return q;
   });
@@ -465,7 +450,9 @@ logisticRfqRouter.post("/vendor-confirm", rfqRateLimit, async (req: Request, res
     return res.status(409).json({ message: "Konfirmasi sudah pernah dikirimkan" });
   }
 
+  // Transisi status via service (di luar transaction)
   if (action === "accept") {
+    await transitionLogisticOrderStatus(orderId, "Vendor Confirmed", { source: "logisticRfq:vendor_confirm_accept", actorType: "vendor", force: true });
     console.log(`[TRUCKING-FLOW] State: Under Review → Vendor Confirmed (order ${orderId}, vendor ${vendor?.name})`);
     const adminWa = await getAdminWa();
     sendTruckingVendorConfirmedAdminNotification(
@@ -473,6 +460,7 @@ logisticRfqRouter.post("/vendor-confirm", rfqRateLimit, async (req: Request, res
       getApproveFormUrl(order.orderNumber), adminWa,
     );
   } else {
+    await transitionLogisticOrderStatus(orderId, "Admin Review", { source: "logisticRfq:vendor_confirm_reject", actorType: "vendor", force: true });
     console.log(`[TRUCKING-FLOW] State: Under Review → Vendor Rejected (order ${orderId})`);
     const adminWa = await getAdminWa();
     sendTruckingVendorRejectedAdminNotification(
@@ -513,7 +501,7 @@ logisticRfqRouter.post("/vendor-confirm", rfqRateLimit, async (req: Request, res
     orderId,
     orderNumber: order.orderNumber,
     oldStatus: order.status,
-    newStatus: newOrderStatus,
+    newStatus: action === "accept" ? "Vendor Confirmed" : "Admin Review",
     changedByType: "vendor",
     changedByName: vendor?.name ?? null,
     notes: action === "accept" ? "Vendor confirm via vendor-confirm endpoint" : "Vendor reject via vendor-confirm endpoint",
@@ -810,7 +798,7 @@ logisticRfqRouter.post("/:id/rfq", async (req: Request, res: Response) => {
     ...(deadlineDate ? { responseDeadline: deadlineDate } : {}),
   } as any).returning();
 
-  await db.update(logisticOrdersTable).set({ status: "Under Review" }).where(eq(logisticOrdersTable.id, orderId));
+  await transitionLogisticOrderStatus(orderId, "Admin Review", { source: "logisticRfq:manual_blast", actorType: "system", force: true });
 
   const vendors = await db.select().from(suppliersTable).where(inArray(suppliersTable.id, vendorIds));
 
@@ -1366,7 +1354,7 @@ logisticRfqRouter.post("/:id/manual-rfq", async (req: Request, res: Response) =>
       .where(eq(logisticOrderRfqsTable.id, existingRfqs[0].id));
   }
 
-  await db.update(logisticOrdersTable).set({ status: "Under Review" }).where(eq(logisticOrdersTable.id, orderId));
+  await transitionLogisticOrderStatus(orderId, "Admin Review", { source: "logisticRfq:manual_rfq_v2", actorType: "system", force: true });
 
   const manualOrderItems = await db.select({ serviceName: logisticOrderItemsTable.serviceName, category: logisticOrderItemsTable.category, calculatorType: logisticOrderItemsTable.calculatorType, subtotal: logisticOrderItemsTable.subtotal, inputData: logisticOrderItemsTable.inputData })
     .from(logisticOrderItemsTable)
@@ -1713,9 +1701,9 @@ logisticRfqRouter.post("/:id/approve", async (req: Request, res: Response) => {
     .set({ quoteStatus: "approved" })
     .where(eq(logisticOrderQuotesTable.id, quoteId));
 
+  await transitionLogisticOrderStatus(orderId, "Customer Approval", { source: "logisticRfq:admin_approve_quote", actorType: "admin" });
   const [updatedOrder] = await db.update(logisticOrdersTable)
     .set({
-      status: "Quotation Sent",
       approvedQuoteId: quoteId,
       approvedVendorId: quote.vendorId,
       adminApprovalStatus: "approved",
@@ -1933,15 +1921,15 @@ logisticRfqRouter.post("/confirm/:token", async (req: Request, res: Response) =>
   }
 
   const now = new Date();
-  const newStatus = action === "confirmed" ? "Customer Approved" : "Quotation Sent";
-
   await db.update(logisticOrdersTable)
     .set({
       customerConfirmStatus: action,
       customerConfirmedAt: now,
-      ...(action === "confirmed" ? { status: newStatus } : {}),
     })
     .where(eq(logisticOrdersTable.id, order.id));
+  if (action === "confirmed") {
+    await transitionLogisticOrderStatus(order.id, "Vendor Confirmed", { source: "logisticRfq:customer_confirm", actorType: "customer" });
+  }
 
   // ── Auto-create Sales Order saat customer konfirmasi setuju ─────────────────
   // SO creation is NON-BLOCKING: failure is logged but does not cause HTTP 4xx/5xx.
@@ -2198,8 +2186,9 @@ logisticRfqRouter.post("/:id/send-customer-options", async (req: Request, res: R
   }
 
   await db.update(logisticOrdersTable)
-    .set({ optionsToken: token, optionsSentAt: new Date(), status: "Quotation Sent" } as any)
+    .set({ optionsToken: token, optionsSentAt: new Date() } as any)
     .where(eq(logisticOrdersTable.id, orderId));
+  await transitionLogisticOrderStatus(orderId, "Customer Approval", { source: "logisticRfq:options_sent", actorType: "admin", force: true });
 
   const fmt = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
   const orderAny = order as any;
@@ -2323,12 +2312,12 @@ logisticRfqRouter.post("/choose-option", async (req: Request, res: Response) => 
   // Update order: confirmed + final selling price
   const confirmToken = randomUUID();
   await db.update(logisticOrdersTable).set({
-    status: "Customer Approved",
     customerConfirmStatus: "confirmed",
     customerConfirmedAt: new Date(),
     finalSellingPrice: String(chosenPrice),
     customerConfirmToken: confirmToken,
   }).where(eq(logisticOrdersTable.id, order.id));
+  await transitionLogisticOrderStatus(order.id, "Vendor Confirmed", { source: "logisticRfq:customer_chose_option", actorType: "customer" });
 
   const orderUrl = getOrderUrl(order.id);
   const orderAny = order as any;

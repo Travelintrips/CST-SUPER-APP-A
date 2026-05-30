@@ -1,0 +1,91 @@
+LANJUTKAN PHASE 2B — HAPUS SEMUA DIRECT STATUS UPDATE TERSISA.
+
+Target:
+0 direct DB update untuk status governance fields.
+
+Field yang wajib 100% lewat service:
+1. logistic_orders.status
+2. logistic_order_rfqs.status
+3. rfq_vendor_links.status
+4. sales_documents.invoiceStatus
+5. sales_documents.paymentStatus
+6. purchase_documents.paymentStatus
+
+Migrasi titik berikut:
+
+A. logistic_orders.status — 21 direct update
+- routes/logisticRfq.ts semua direct update status:
+  Under Review
+  Quotation Sent
+  Customer Approved
+  newOrderStatus accept/reject quote
+- routes/vendorJobOrder.ts:
+  Vendor Assigned
+  req.body.status freeform
+  Completed
+  Vendor Accepted
+  Vendor Rejected
+  POD Uploaded
+- routes/vendorMiniForm.ts:
+  Vendor Confirmed
+  Admin Review
+- routes/webhooks.ts:
+  Quotation Sent
+- routes/portal.ts:
+  Cancelled
+
+Semua wajib diganti memakai:
+transitionLogisticOrderStatus()
+
+Tidak boleh ada db.update(logisticOrders).set({ status: ... }) langsung.
+
+Untuk req.body.status freeform:
+- jangan izinkan status arbitrary
+- validasi terhadap getAllowedTransitions()
+- jika invalid return HTTP 422
+- jika valid baru call transitionLogisticOrderStatus()
+
+B. RFQ status — 2 direct update
+- routes/adminAction.ts:
+  vendor_blasted
+  vendor_selected
+
+Ganti dengan:
+transitionRfqStatus()
+
+C. RFQ vendor link status — 3 direct update
+- routes/adminAction.ts:
+  selected
+  not_selected
+- routes/logisticRfqV2.ts:
+  accept/reject vendor response newStatus
+
+Ganti dengan:
+transitionVendorLinkStatus()
+
+D. sales_documents.invoiceStatus — 1 direct update
+- routes/sales.ts action=confirm:
+  invoiceStatus = 'to_invoice'
+
+Ganti dengan invoiceStatusService function yang sesuai.
+Jika belum ada method markSalesReadyToInvoice(), tambahkan method idempotent baru:
+markSalesReadyToInvoice(documentId, actorId, source)
+
+Jangan ubah UI.
+Jangan ubah DB schema.
+Jangan hapus file lama.
+Jangan cleanup legacy dulu.
+
+Setelah selesai:
+1. Jalankan TypeScript check.
+2. Jalankan audit ulang status field updates.
+3. Output wajib:
+   - total direct update sebelum
+   - total direct update sesudah
+   - file yang dimigrasi
+   - endpoint yang behavior-nya berubah
+   - status freeform yang berhasil dikunci
+   - error/risk tersisa
+
+Target akhir:
+DIRECT = 0 untuk semua governance fields.

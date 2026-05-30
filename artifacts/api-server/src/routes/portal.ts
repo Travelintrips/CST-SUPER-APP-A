@@ -12,6 +12,7 @@ import { getWaTemplateConfig, renderTemplate } from "../lib/orderNotification.js
 import { sendMail, isSmtpConfigured } from "../lib/mailer";
 import { requirePortalAuth, requirePortalAdmin, type PortalAuthReq } from "../lib/supabaseAuth";
 import { requireClerkUser } from "../lib/requireAdmin";
+import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
 import { broadcastToAdmins, broadcastToPortal } from "../lib/sseManager";
 import { saveAndBroadcast } from "../lib/notificationStore";
 import multer from "multer";
@@ -1678,20 +1679,19 @@ router.patch("/logistic-orders/:id/cancel", requirePortalAuth, async (req, res) 
   if (order.status === "Cancelled" || order.status === "Completed") {
     return res.status(400).json({ message: "Order cannot be cancelled" });
   }
-  const [updated] = await db
-    .update(logisticOrdersTable)
-    .set({ status: "Cancelled" })
-    .where(eq(logisticOrdersTable.id, id))
-    .returning();
+  const cancelResult = await transitionLogisticOrderStatus(id, "Cancelled", { source: "portal:customer_cancel", actorType: "customer" });
+  if (!cancelResult.ok) {
+    return res.status(400).json({ message: cancelResult.error ?? "Gagal membatalkan order" });
+  }
   return res.json({
-    id: updated.id,
-    orderNumber: updated.orderNumber,
-    status: updated.status,
-    grandTotal: parseFloat(updated.grandTotal),
-    createdAt: updated.createdAt.toISOString(),
-    shipmentType: updated.shipmentType,
-    origin: updated.origin,
-    destination: updated.destination,
+    id: order.id,
+    orderNumber: order.orderNumber,
+    status: "Cancelled",
+    grandTotal: parseFloat(order.grandTotal),
+    createdAt: order.createdAt.toISOString(),
+    shipmentType: order.shipmentType,
+    origin: order.origin,
+    destination: order.destination,
   });
 });
 

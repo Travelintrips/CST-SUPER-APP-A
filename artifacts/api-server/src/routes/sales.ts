@@ -18,6 +18,7 @@ import { postSalesInvoice, postSalesCogs, postSalesCogsReturn, postSalesInvoiceR
 import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
 import { ensureAccountingSettings } from "../lib/accountingSeed.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
+import { markSalesReadyToInvoice } from "../lib/services/invoiceStatusService.js";
 import { getAdminWa } from "../lib/adminWa.js";
 import {
   sendSalesOrderCreatedNotification,
@@ -487,7 +488,6 @@ router.post("/documents/:id/action", async (req, res) => {
       patch["status"] = "confirmed" satisfies SalesDocStatus;
       patch["kind"] = "order";
       patch["confirmedAt"] = new Date();
-      patch["invoiceStatus"] = "to_invoice" satisfies SalesInvoiceStatus;
       patch["deliveryStatus"] = "to_deliver";
       break;
     case "cancel":
@@ -582,6 +582,10 @@ router.post("/documents/:id/action", async (req, res) => {
   }
 
   await db.update(salesDocumentsTable).set(patch).where(eq(salesDocumentsTable.id, id));
+
+  if (action === "confirm") {
+    await markSalesReadyToInvoice(id, "system");
+  }
 
   // Auto-reverse journal entry when a confirmed/invoiced SO is cancelled
   if (action === "cancel" && (doc.status === "confirmed" || doc.invoiceStatus === "invoiced" || doc.invoiceStatus === "to_invoice")) {

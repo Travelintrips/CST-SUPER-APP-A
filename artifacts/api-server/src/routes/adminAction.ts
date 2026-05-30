@@ -22,6 +22,8 @@ import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminWa, getAdminGroupWa } from "../lib/adminWa.js";
 import { sendVendorRequestNotification, sendVendorSelectedAdminWa, sendVendorAwardedWa, type LogisticOrderData } from "../lib/orderNotification.js";
 import { generateShortLink } from "../lib/shortLink.js";
+import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
+import { transitionRfqStatus, transitionVendorLinkStatus } from "../lib/services/rfqStatusService.js";
 
 export const adminActionRouter: Router = Router();
 export const adminActionPublicRouter = Router();
@@ -868,10 +870,10 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
       }
 
       await db.update(logisticOrderRfqsTable).set({
-        status: "vendor_blasted",
         vendorIds,
         responseDeadline: expiredAt,
       }).where(eq(logisticOrderRfqsTable.id, rfq.id));
+      await transitionRfqStatus(rfq.id, "vendor_blasted", { source: "adminAction:rfq_blast", actorType: "admin", force: true });
 
       // Activity log
       const sentNames = results.filter(r => r.sent).map(r => r.vendorName).join(", ");
@@ -937,8 +939,7 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
         .where(eq(suppliersTable.id, vendorLink.vendorId));
 
       // Mark selected
-      await db.update(rfqVendorLinksTable).set({ status: "selected" })
-        .where(eq(rfqVendorLinksTable.id, linkId));
+      await transitionVendorLinkStatus(linkId, "selected", { source: "adminAction:compare_vendors_select", actorType: "admin", force: true });
 
       const otherLinks = await db.select({ id: rfqVendorLinksTable.id, status: rfqVendorLinksTable.status })
         .from(rfqVendorLinksTable)
@@ -946,13 +947,11 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
 
       for (const other of otherLinks) {
         if (other.id !== linkId && !["rejected", "expired", "late_response"].includes(other.status)) {
-          await db.update(rfqVendorLinksTable).set({ status: "not_selected" })
-            .where(eq(rfqVendorLinksTable.id, other.id));
+          await transitionVendorLinkStatus(other.id, "not_selected", { source: "adminAction:compare_vendors_deselect", actorType: "admin", force: true });
         }
       }
 
-      await db.update(logisticOrderRfqsTable).set({ status: "vendor_selected" })
-        .where(eq(logisticOrderRfqsTable.id, link.rfqId!));
+      await transitionRfqStatus(link.rfqId!, "vendor_selected", { source: "adminAction:compare_vendors", actorType: "admin", force: true });
 
       if (sellingPrice) {
         await db.update(logisticOrdersTable)
@@ -1158,9 +1157,7 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
         return res.status(409).json({ error: "Order sudah dikonfirmasi sebelumnya." });
       }
 
-      await db.update(logisticOrdersTable)
-        .set({ status: "In Progress" })
-        .where(eq(logisticOrdersTable.id, order.id));
+      await transitionLogisticOrderStatus(order.id, "In Progress", { source: "adminAction:confirm_fulfillment", actorType: "admin", force: true });
 
       await db.insert(orderUpdatesTable).values({
         orderId: order.id,

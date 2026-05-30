@@ -95,6 +95,9 @@ export const LEGACY_STATUS_MAP: Record<string, string> = {
   "cancelled":           "Cancelled",
   "Cancelled":           "Cancelled",
   "Customer Rejected":   "Admin Review",
+  "Vendor Assigned":     "Vendor Confirmed",
+  "Vendor Accepted":     "In Progress",
+  "Vendor Rejected":     "Admin Review",
 };
 
 export function normalizeStatus(raw: string): string {
