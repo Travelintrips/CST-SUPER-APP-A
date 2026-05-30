@@ -17,6 +17,8 @@ export const rfqVendorLinksTable = pgTable("rfq_vendor_links", {
   eta: text("eta"),
   notes: text("notes"),
   attachmentUrl: text("attachment_url"),
+  leadTimeDays: integer("lead_time_days"),
+  stockAvailability: text("stock_availability"),
   isNewUpdate: boolean("is_new_update").notNull().default(false),
   openedAt: timestamp("opened_at"),
   submittedAt: timestamp("submitted_at"),

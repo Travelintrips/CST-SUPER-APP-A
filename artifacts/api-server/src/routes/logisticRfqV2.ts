@@ -734,12 +734,14 @@ logisticRfqV2Router.post("/vendor-form/:token", async (req: Request, res: Respon
     .where(eq(logisticOrderRfqsTable.id, link.rfqId));
   if (!rfq) return res.status(404).json({ message: "RFQ tidak ditemukan" });
 
-  const { action, offeredPrice, eta, notes, attachmentUrl } = req.body as {
+  const { action, offeredPrice, eta, notes, attachmentUrl, leadTimeDays, stockAvailability } = req.body as {
     action: "accept" | "counter" | "reject";
     offeredPrice?: number;
     eta?: string;
     notes?: string;
     attachmentUrl?: string;
+    leadTimeDays?: number;
+    stockAvailability?: string;
   };
 
   if (!action || !["accept", "counter", "reject"].includes(action)) {
@@ -798,6 +800,8 @@ logisticRfqV2Router.post("/vendor-form/:token", async (req: Request, res: Respon
     eta: eta ?? null,
     notes: notes ?? null,
     attachmentUrl: attachmentUrl ?? link.attachmentUrl,
+    leadTimeDays: leadTimeDays != null ? Number(leadTimeDays) : (link.leadTimeDays ?? null),
+    stockAvailability: stockAvailability?.trim() || (link.stockAvailability ?? null),
     isNewUpdate: true,
     submittedAt: link.submittedAt ?? now,
     lastUpdatedAt: now,
@@ -1389,6 +1393,8 @@ logisticRfqV2Router.get("/rfq/:rfqId/comparison", async (req: Request, res: Resp
       eta: l.eta ?? null,
       notes: l.notes ?? null,
       attachmentUrl: l.attachmentUrl ?? null,
+      leadTimeDays: l.leadTimeDays ?? null,
+      stockAvailability: l.stockAvailability ?? null,
       isNewUpdate: l.isNewUpdate,
       openedAt: l.openedAt?.toISOString() ?? null,
       submittedAt: l.submittedAt?.toISOString() ?? null,

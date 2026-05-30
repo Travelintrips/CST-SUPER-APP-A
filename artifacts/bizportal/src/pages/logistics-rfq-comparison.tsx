@@ -68,6 +68,8 @@ interface VendorRow {
   eta: string | null;
   notes: string | null;
   attachmentUrl: string | null;
+  leadTimeDays: number | null;
+  stockAvailability: string | null;
   isNewUpdate: boolean;
   openedAt: string | null;
   submittedAt: string | null;
@@ -98,34 +100,56 @@ interface RankingBadge {
   color: string;
 }
 
-function getRankingBadges(vendor: VendorRow, allVendors: VendorRow[]): RankingBadge[] {
+function getRankingBadges(vendor: VendorRow, allVendors: VendorRow[], aiScores?: Map<number, VendorAiScore>): RankingBadge[] {
   const badges: RankingBadge[] = [];
   const answered = allVendors.filter(v => v.offeredPrice != null || v.basicPrice != null);
   if (answered.length < 2) return badges;
 
+  // 💰 Best Price
   const prices = answered.map(v => v.offeredPrice ?? v.basicPrice ?? Infinity);
   const minPrice = Math.min(...prices);
   const myPrice = vendor.offeredPrice ?? vendor.basicPrice;
-
   if (myPrice != null && myPrice === minPrice) {
     badges.push({ label: "💰 Best Price", color: "bg-green-100 text-green-700 border-green-200" });
   }
 
-  const answeredWithEta = answered.filter(v => v.eta);
-  if (answeredWithEta.length > 0 && vendor.eta) {
-    const sortedEtas = [...answeredWithEta].sort((a, b) => (a.eta ?? "").localeCompare(b.eta ?? ""));
-    if (sortedEtas[0]?.vendorId === vendor.vendorId) {
+  // ⚡ Tercepat (Lead Time Days — smaller is better)
+  const withLeadTime = answered.filter(v => v.leadTimeDays != null);
+  if (withLeadTime.length > 0 && vendor.leadTimeDays != null) {
+    const minLt = Math.min(...withLeadTime.map(v => v.leadTimeDays!));
+    if (vendor.leadTimeDays === minLt) {
       badges.push({ label: "⚡ Tercepat", color: "bg-blue-100 text-blue-700 border-blue-200" });
+    }
+  } else {
+    // Fallback: use eta string comparison
+    const answeredWithEta = answered.filter(v => v.eta);
+    if (answeredWithEta.length > 0 && vendor.eta) {
+      const sortedEtas = [...answeredWithEta].sort((a, b) => (a.eta ?? "").localeCompare(b.eta ?? ""));
+      if (sortedEtas[0]?.vendorId === vendor.vendorId) {
+        badges.push({ label: "⚡ Tercepat", color: "bg-blue-100 text-blue-700 border-blue-200" });
+      }
     }
   }
 
-  if (vendor.submittedAt) {
-    const answeredWithTime = answered.filter(v => v.submittedAt);
-    const sortedByTime = [...answeredWithTime].sort((a, b) =>
-      new Date(a.submittedAt!).getTime() - new Date(b.submittedAt!).getTime()
-    );
-    if (sortedByTime[0]?.vendorId === vendor.vendorId) {
-      badges.push({ label: "🏃 Respon Tercepat", color: "bg-purple-100 text-purple-700 border-purple-200" });
+  // 📦 Stok OK
+  if (vendor.stockAvailability === "available") {
+    const othersAvailable = answered.filter(v => v.vendorId !== vendor.vendorId && v.stockAvailability === "available");
+    if (othersAvailable.length === 0) {
+      badges.push({ label: "📦 Stok OK", color: "bg-orange-100 text-orange-700 border-orange-200" });
+    } else {
+      badges.push({ label: "📦 Stok OK", color: "bg-orange-100 text-orange-700 border-orange-200" });
+    }
+  }
+
+  // ⭐ Top Rated (highest AI score)
+  if (aiScores && aiScores.size >= 2) {
+    const myAi = aiScores.get(vendor.vendorId);
+    if (myAi) {
+      const allScores = [...aiScores.values()].map(s => s.aiScore);
+      const maxScore = Math.max(...allScores);
+      if (myAi.aiScore === maxScore && maxScore > 0) {
+        badges.push({ label: "⭐ Top Rated", color: "bg-yellow-100 text-yellow-700 border-yellow-200" });
+      }
     }
   }
 
@@ -179,6 +203,7 @@ export default function LogisticsRfqComparisonPage() {
   const [quoteSendWa, setQuoteSendWa] = useState(true);
 
   const [freightConfirmDialog, setFreightConfirmDialog] = useState(false);
+  const [sortBy, setSortBy] = useState<"price" | "leadtime" | "stock" | "score">("price");
 
   const { data, isLoading, refetch } = useQuery<ComparisonData>({
     queryKey: ["rfq-comparison", rfqId],
@@ -618,7 +643,30 @@ export default function LogisticsRfqComparisonPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Vendor comparison table */}
           <div className="lg:col-span-2 space-y-3">
-            <h2 className="font-semibold text-gray-800">Perbandingan Vendor</h2>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="font-semibold text-gray-800">Perbandingan Vendor</h2>
+              {data.vendors.length > 1 && (
+                <div className="flex items-center gap-1.5 text-xs">
+                  <span className="text-gray-500">Urutkan:</span>
+                  {(["price", "leadtime", "stock", "score"] as const).map((key) => {
+                    const labels: Record<string, string> = { price: "💰 Harga", leadtime: "⚡ Lead Time", stock: "📦 Stok", score: "⭐ Score" };
+                    return (
+                      <button
+                        key={key}
+                        onClick={() => setSortBy(key)}
+                        className={`px-2 py-1 rounded border text-xs font-medium transition-colors ${
+                          sortBy === key
+                            ? "bg-blue-600 text-white border-blue-600"
+                            : "bg-white text-gray-600 border-gray-200 hover:border-blue-300"
+                        }`}
+                      >
+                        {labels[key]}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
             {data.vendors.length === 0 ? (
               <Card>
                 <CardContent className="p-8 text-center text-gray-500">
@@ -627,27 +675,53 @@ export default function LogisticsRfqComparisonPage() {
                 </CardContent>
               </Card>
             ) : (
-              data.vendors.map((v, idx) => (
-                <VendorCard
-                  key={v.linkId}
-                  vendor={v}
-                  rank={idx + 1}
-                  rankingBadges={getRankingBadges(v, data.vendors)}
-                  aiScore={scoreMap.get(v.vendorId)}
-                  hasSelected={hasSelected}
-                  onSelect={() => {
-                    setSelectDialog({ linkId: v.linkId, vendorName: v.vendorName, price: v.offeredPrice ?? v.basicPrice });
-                    const _vp = v.offeredPrice ?? v.basicPrice;
-                    setSellingPrice(_vp ? String(_vp) : "");
-                  }}
-                  onRevision={() => { setRevisionDialog({ linkId: v.linkId, vendorName: v.vendorName }); setRevisionMsg(""); }}
-                  onReject={() => actionMut.mutate({ linkId: v.linkId, action: "reject" })}
-                  onMarkRead={() => actionMut.mutate({ linkId: v.linkId, action: "mark_read" })}
-                  onCopyLink={() => copyLink(window.location.origin + v.formUrl.replace(/^https?:\/\/[^/]+/, ""))}
-                  onRefreshPrice={() => refreshPriceMut.mutate(v.linkId)}
-                  isRefreshingPrice={refreshPriceMut.isPending && refreshPriceMut.variables === v.linkId}
-                />
-              ))
+              (() => {
+                const STOCK_ORDER: Record<string, number> = { available: 0, limited: 1, unknown: 2, unavailable: 3 };
+                const sorted = [...data.vendors].sort((a, b) => {
+                  if (a.status === "rejected" && b.status !== "rejected") return 1;
+                  if (b.status === "rejected" && a.status !== "rejected") return -1;
+                  if (a.status === "expired" && b.status !== "expired") return 1;
+                  if (b.status === "expired" && a.status !== "expired") return -1;
+                  if (sortBy === "price") {
+                    return (a.offeredPrice ?? a.basicPrice ?? 9e9) - (b.offeredPrice ?? b.basicPrice ?? 9e9);
+                  }
+                  if (sortBy === "leadtime") {
+                    const la = a.leadTimeDays ?? 999;
+                    const lb = b.leadTimeDays ?? 999;
+                    return la - lb;
+                  }
+                  if (sortBy === "stock") {
+                    return (STOCK_ORDER[a.stockAvailability ?? "unknown"] ?? 2) - (STOCK_ORDER[b.stockAvailability ?? "unknown"] ?? 2);
+                  }
+                  if (sortBy === "score") {
+                    const sa = scoreMap.get(a.vendorId)?.aiScore ?? 0;
+                    const sb = scoreMap.get(b.vendorId)?.aiScore ?? 0;
+                    return sb - sa;
+                  }
+                  return 0;
+                });
+                return sorted.map((v, idx) => (
+                  <VendorCard
+                    key={v.linkId}
+                    vendor={v}
+                    rank={idx + 1}
+                    rankingBadges={getRankingBadges(v, data.vendors, scoreMap)}
+                    aiScore={scoreMap.get(v.vendorId)}
+                    hasSelected={hasSelected}
+                    onSelect={() => {
+                      setSelectDialog({ linkId: v.linkId, vendorName: v.vendorName, price: v.offeredPrice ?? v.basicPrice });
+                      const _vp = v.offeredPrice ?? v.basicPrice;
+                      setSellingPrice(_vp ? String(_vp) : "");
+                    }}
+                    onRevision={() => { setRevisionDialog({ linkId: v.linkId, vendorName: v.vendorName }); setRevisionMsg(""); }}
+                    onReject={() => actionMut.mutate({ linkId: v.linkId, action: "reject" })}
+                    onMarkRead={() => actionMut.mutate({ linkId: v.linkId, action: "mark_read" })}
+                    onCopyLink={() => copyLink(window.location.origin + v.formUrl.replace(/^https?:\/\/[^/]+/, ""))}
+                    onRefreshPrice={() => refreshPriceMut.mutate(v.linkId)}
+                    isRefreshingPrice={refreshPriceMut.isPending && refreshPriceMut.variables === v.linkId}
+                  />
+                ));
+              })()
             )}
           </div>
 
@@ -1060,9 +1134,34 @@ function VendorCard({
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-3 mb-3 text-sm">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3 text-sm">
           <InfoItem label="Harga Penawaran" value={idr(price)} highlight={!!hasAnswer} />
           <InfoItem label="ETA" value={vendor.eta ?? "—"} />
+          <div>
+            <p className="text-xs text-gray-400">Lead Time</p>
+            <p className="font-medium text-gray-800">
+              {vendor.leadTimeDays != null ? `${vendor.leadTimeDays} hari` : "—"}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-400">Stok</p>
+            {vendor.stockAvailability ? (
+              <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full border ${
+                vendor.stockAvailability === "available" ? "bg-green-100 text-green-700 border-green-200" :
+                vendor.stockAvailability === "limited" ? "bg-yellow-100 text-yellow-700 border-yellow-200" :
+                vendor.stockAvailability === "unavailable" ? "bg-red-100 text-red-600 border-red-200" :
+                "bg-gray-100 text-gray-500 border-gray-200"
+              }`}>
+                {vendor.stockAvailability === "available" ? "✓ Tersedia" :
+                 vendor.stockAvailability === "limited" ? "⚠ Terbatas" :
+                 vendor.stockAvailability === "unavailable" ? "✕ Habis" : "? Tidak Diketahui"}
+              </span>
+            ) : (
+              <p className="font-medium text-gray-400">—</p>
+            )}
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3 mb-3 text-sm">
           <InfoItem label="Dibuka" value={vendor.openedAt ? timeSince(vendor.openedAt) : "Belum dibuka"} />
           <InfoItem label="Submit" value={vendor.submittedAt ? timeSince(vendor.submittedAt) : "Belum"} />
         </div>
