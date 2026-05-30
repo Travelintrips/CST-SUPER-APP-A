@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
@@ -21,7 +21,7 @@ import {
   Package, Truck, User, ClipboardList, Clock, ShieldAlert, Ship,
   ClipboardCheck, CheckCircle2, XCircle, MapPin, MessageCircle,
   Link2, FileText, AlertTriangle, Eye, EyeOff, StickyNote, Globe,
-  RotateCcw, Bell, ChevronDown, ChevronUp,
+  RotateCcw, Bell, ChevronDown, ChevronUp, Download,
 } from "lucide-react";
 import { Link } from "wouter";
 import GpsTrackingPanel from "@/components/logistics/GpsTrackingPanel";
@@ -63,6 +63,7 @@ type CustomerLink = { id: number; token: string; status: string; trackUrl: strin
 type QuoteLink = { id: number; token: string; status: string; quoteUrl: string; finalCustomerPrice: string | null; etaFinal: string | null; createdAt: string };
 type FulfillmentLink = { id: number; token: string; serviceType: string; status: string; formUrl: string; sentAt: string | null; expiresAt: string | null; submittedAt: string | null; createdAt: string };
 type FulfillmentSubmission = { id: number; linkId: number; serviceType: string; fulfillmentData: Record<string, string>; submittedAt: string };
+type PodSubmission = { id: number; order_id: number; receiver_name: string | null; photo_url: string | null; note: string | null; submitted_by: string | null; created_at: string };
 
 type FreightShipmentLink = {
   id: number; shipmentNumber: string; status: string;
@@ -1912,7 +1913,7 @@ export default function LogisticOrderDetailPage() {
     onError: (e: Error) => toast({ title: "Gagal kirim WA", description: e.message, variant: "destructive" }),
   });
 
-  const { data: fulfillmentData, refetch: refetchFulfillment } = useQuery<{ links: FulfillmentLink[]; submissions: FulfillmentSubmission[] }>({
+  const { data: fulfillmentData, refetch: refetchFulfillment } = useQuery<{ links: FulfillmentLink[]; submissions: FulfillmentSubmission[]; pods: PodSubmission[] }>({
     queryKey: ["order-fulfillment", orderId],
     queryFn: () => apiFetch(`/api/logistic/orders/${orderId}/fulfillment`),
     enabled: !isNaN(orderId),
@@ -1954,21 +1955,73 @@ export default function LogisticOrderDetailPage() {
   });
 
   const [completeNote, setCompleteNote] = useState("");
+  const [completeReceiver, setCompleteReceiver] = useState("");
+  const [podPhotoFile, setPodPhotoFile] = useState<File | null>(null);
+  const [podPhotoPreview, setPodPhotoPreview] = useState<string | null>(null);
   const [showCompleteDialog, setShowCompleteDialog] = useState(false);
+  const [isGeneratingPodPdf, setIsGeneratingPodPdf] = useState(false);
+  const podPdfRefs = useRef<Record<number, HTMLDivElement | null>>({});
+
   const completeOrderMut = useMutation({
-    mutationFn: (note: string) => apiFetch<{ ok: boolean }>(`/api/logistic/orders/${orderId}/complete-order`, {
-      method: "POST",
-      body: JSON.stringify({ note }),
-    }),
+    mutationFn: async ({ note, receiverName, photo }: { note: string; receiverName: string; photo: File | null }) => {
+      const fd = new FormData();
+      fd.append("note", note);
+      fd.append("receiverName", receiverName);
+      if (photo) fd.append("photo", photo);
+      const res = await fetch(`/api/logistic/orders/${orderId}/pod`, { method: "POST", body: fd });
+      const data = await res.json() as { ok?: boolean; message?: string };
+      if (!res.ok) throw new Error(data.message ?? "Gagal menyimpan POD");
+      return data;
+    },
     onSuccess: () => {
-      toast({ title: "✅ Order selesai", description: "WA konfirmasi dikirim ke customer." });
+      toast({ title: "✅ Order selesai & POD tersimpan", description: "WA konfirmasi dikirim ke customer." });
       setShowCompleteDialog(false);
       setCompleteNote("");
+      setCompleteReceiver("");
+      setPodPhotoFile(null);
+      setPodPhotoPreview(null);
       qc.invalidateQueries({ queryKey: ["order-detail", orderId] });
       void refetchFulfillment();
     },
     onError: (e: Error) => toast({ title: "Gagal selesaikan order", description: e.message, variant: "destructive" }),
   });
+
+  const handleDownloadPodPdf = async (pod: PodSubmission) => {
+    const el = podPdfRefs.current[pod.id];
+    if (!el) return;
+    setIsGeneratingPodPdf(true);
+    try {
+      const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+        import("html2canvas"),
+        import("jspdf"),
+      ]);
+      const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: "#ffffff", logging: false });
+      const imgData = canvas.toDataURL("image/png");
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+      if (pdfHeight <= pageHeight) {
+        pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
+      } else {
+        let heightLeft = pdfHeight;
+        let position = 0;
+        pdf.addImage(imgData, "PNG", 0, position, pdfWidth, pdfHeight);
+        heightLeft -= pageHeight;
+        while (heightLeft > 0) {
+          position -= pageHeight;
+          pdf.addPage();
+          pdf.addImage(imgData, "PNG", 0, position, pdfWidth, pdfHeight);
+          heightLeft -= pageHeight;
+        }
+      }
+      pdf.save(`POD-${order?.orderNumber ?? pod.order_id}-${pod.id}.pdf`);
+    } catch (err) {
+      toast({ title: "Gagal generate PDF", variant: "destructive" });
+    } finally {
+      setIsGeneratingPodPdf(false);
+    }
+  };
 
   const copyUrl = (url: string) => {
     navigator.clipboard.writeText(url);
@@ -2355,26 +2408,73 @@ export default function LogisticOrderDetailPage() {
               </Card>
             )}
 
-            {/* Dialog: Selesaikan Order */}
-            <Dialog open={showCompleteDialog} onOpenChange={setShowCompleteDialog}>
-              <DialogContent className="max-w-sm">
+            {/* Dialog: Selesaikan Order + POD */}
+            <Dialog open={showCompleteDialog} onOpenChange={(o) => {
+              if (!o) { setPodPhotoFile(null); setPodPhotoPreview(null); }
+              setShowCompleteDialog(o);
+            }}>
+              <DialogContent className="max-w-md">
                 <DialogHeader>
                   <DialogTitle className="flex items-center gap-2">
                     <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                    Selesaikan Order
+                    Selesaikan Order &amp; Upload POD
                   </DialogTitle>
                 </DialogHeader>
                 <div className="space-y-3 py-2">
-                  <p className="text-sm text-slate-600">
-                    Status akan berubah ke <strong>Completed</strong> dan WA konfirmasi dikirim ke customer.
+                  <p className="text-sm text-slate-500">
+                    Status → <strong>Completed</strong>. WA konfirmasi otomatis dikirim ke customer.
                   </p>
+
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Catatan penutup (opsional)</Label>
+                    <Label className="text-xs">Nama Penerima <span className="text-slate-400">(opsional)</span></Label>
+                    <Input
+                      value={completeReceiver}
+                      onChange={e => setCompleteReceiver(e.target.value)}
+                      placeholder="Contoh: Budi Santoso"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Foto Bukti Pengiriman <span className="text-slate-400">(opsional)</span></Label>
+                    {podPhotoPreview ? (
+                      <div className="relative inline-block">
+                        <img src={podPhotoPreview} alt="preview" className="w-full max-h-48 object-contain rounded-lg border border-slate-200" />
+                        <button
+                          className="absolute top-1 right-1 bg-white/80 rounded-full p-0.5 text-slate-500 hover:text-red-500"
+                          onClick={() => { setPodPhotoFile(null); setPodPhotoPreview(null); }}
+                          type="button"
+                        >
+                          <XCircle className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <label className="flex flex-col items-center justify-center gap-1.5 border-2 border-dashed border-slate-200 rounded-lg py-5 cursor-pointer hover:border-emerald-300 hover:bg-emerald-50/30 transition-colors">
+                        <ClipboardCheck className="w-6 h-6 text-slate-400" />
+                        <span className="text-xs text-slate-400">Klik untuk pilih foto</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={e => {
+                            const f = e.target.files?.[0] ?? null;
+                            setPodPhotoFile(f);
+                            if (f) {
+                              const url = URL.createObjectURL(f);
+                              setPodPhotoPreview(url);
+                            }
+                          }}
+                        />
+                      </label>
+                    )}
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Catatan <span className="text-slate-400">(opsional)</span></Label>
                     <Textarea
                       value={completeNote}
                       onChange={e => setCompleteNote(e.target.value)}
-                      rows={3}
-                      placeholder="Contoh: Barang telah diterima dengan baik di gudang tujuan."
+                      rows={2}
+                      placeholder="Contoh: Barang diterima dalam kondisi baik."
                     />
                   </div>
                 </div>
@@ -2386,16 +2486,172 @@ export default function LogisticOrderDetailPage() {
                     size="sm"
                     className="bg-emerald-600 hover:bg-emerald-700 text-white"
                     disabled={completeOrderMut.isPending}
-                    onClick={() => completeOrderMut.mutate(completeNote)}
+                    onClick={() => completeOrderMut.mutate({ note: completeNote, receiverName: completeReceiver, photo: podPhotoFile })}
                   >
                     {completeOrderMut.isPending
                       ? <Loader2 className="w-4 h-4 animate-spin mr-1" />
                       : <CheckCircle2 className="w-4 h-4 mr-1" />}
-                    Ya, Selesaikan
+                    Selesaikan &amp; Simpan POD
                   </Button>
                 </DialogFooter>
               </DialogContent>
             </Dialog>
+
+            {/* ── Panel POD (Bukti Pengiriman) ── */}
+            {(fulfillmentData?.pods?.length ?? 0) > 0 && (
+              <Card className="border-teal-200">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-semibold text-teal-700 uppercase tracking-wide flex items-center gap-1.5">
+                    <ClipboardCheck className="w-4 h-4" /> Bukti Pengiriman (POD)
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {fulfillmentData!.pods.map(pod => (
+                    <div key={pod.id} className="rounded-lg border border-teal-100 bg-teal-50/30 px-3 py-3 space-y-2">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <Badge className="bg-emerald-100 text-emerald-800">✅ POD Tersimpan</Badge>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] text-slate-400">
+                            {new Date(pod.created_at).toLocaleString("id-ID", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                          </span>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-6 px-2 text-[10px] gap-1 text-teal-700 border-teal-200 hover:bg-teal-50"
+                            disabled={isGeneratingPodPdf}
+                            onClick={() => handleDownloadPodPdf(pod)}
+                          >
+                            {isGeneratingPodPdf
+                              ? <Loader2 className="w-3 h-3 animate-spin" />
+                              : <Download className="w-3 h-3" />}
+                            PDF
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                        {pod.receiver_name && (
+                          <div>
+                            <span className="text-slate-400">Penerima</span>
+                            <p className="font-semibold text-slate-700">{pod.receiver_name}</p>
+                          </div>
+                        )}
+                        {pod.submitted_by && (
+                          <div>
+                            <span className="text-slate-400">Diupload oleh</span>
+                            <p className="font-medium text-slate-600">{pod.submitted_by}</p>
+                          </div>
+                        )}
+                        {pod.note && (
+                          <div className="col-span-2">
+                            <span className="text-slate-400">Catatan</span>
+                            <p className="text-slate-600">{pod.note}</p>
+                          </div>
+                        )}
+                      </div>
+                      {pod.photo_url && (
+                        <a href={pod.photo_url} target="_blank" rel="noopener noreferrer" className="block">
+                          <img
+                            src={pod.photo_url}
+                            alt="Bukti pengiriman"
+                            className="w-full max-h-56 object-contain rounded-lg border border-teal-100 hover:opacity-90 transition-opacity cursor-zoom-in"
+                          />
+                        </a>
+                      )}
+
+                      {/* Hidden printable template untuk PDF */}
+                      <div
+                        ref={el => { podPdfRefs.current[pod.id] = el; }}
+                        style={{
+                          position: "fixed", top: "-9999px", left: "-9999px",
+                          width: "794px", background: "#ffffff", fontFamily: "Arial, sans-serif",
+                          padding: "48px", boxSizing: "border-box",
+                        }}
+                      >
+                        {/* Header */}
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "2px solid #0d9488", paddingBottom: "16px", marginBottom: "24px" }}>
+                          <div>
+                            <div style={{ fontSize: "22px", fontWeight: 700, color: "#0f172a" }}>CST LOGISTICS</div>
+                            <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>Bukti Tanda Terima Pengiriman (Proof of Delivery)</div>
+                          </div>
+                          <div style={{ textAlign: "right" }}>
+                            <div style={{ fontSize: "13px", fontWeight: 700, color: "#0d9488" }}>POD-{order?.orderNumber ?? pod.order_id}</div>
+                            <div style={{ fontSize: "10px", color: "#94a3b8", marginTop: "2px" }}>
+                              {new Date(pod.created_at).toLocaleString("id-ID", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Order Info */}
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "24px" }}>
+                          {[
+                            { label: "Nomor Order", value: order?.orderNumber ?? "—" },
+                            { label: "Status", value: "Completed" },
+                            { label: "Customer", value: order?.customerName ?? "—" },
+                            { label: "Jenis Layanan", value: order?.shipmentType ?? "—" },
+                            { label: "Asal", value: order?.origin ?? "—" },
+                            { label: "Tujuan", value: order?.destination ?? "—" },
+                          ].map(({ label, value }) => (
+                            <div key={label} style={{ background: "#f8fafc", borderRadius: "6px", padding: "10px 12px" }}>
+                              <div style={{ fontSize: "9px", color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "2px" }}>{label}</div>
+                              <div style={{ fontSize: "12px", fontWeight: 600, color: "#1e293b" }}>{value}</div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* POD Details */}
+                        <div style={{ border: "1px solid #e2e8f0", borderRadius: "8px", padding: "16px 20px", marginBottom: "24px" }}>
+                          <div style={{ fontSize: "11px", fontWeight: 700, color: "#0d9488", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "12px" }}>Detail Penerimaan</div>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                            <div>
+                              <div style={{ fontSize: "9px", color: "#94a3b8", textTransform: "uppercase", marginBottom: "3px" }}>Nama Penerima</div>
+                              <div style={{ fontSize: "13px", fontWeight: 700, color: "#0f172a" }}>{pod.receiver_name ?? "—"}</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: "9px", color: "#94a3b8", textTransform: "uppercase", marginBottom: "3px" }}>Diverifikasi oleh</div>
+                              <div style={{ fontSize: "12px", color: "#475569" }}>{pod.submitted_by ?? "Admin"}</div>
+                            </div>
+                            {pod.note && (
+                              <div style={{ gridColumn: "1 / -1" }}>
+                                <div style={{ fontSize: "9px", color: "#94a3b8", textTransform: "uppercase", marginBottom: "3px" }}>Catatan</div>
+                                <div style={{ fontSize: "12px", color: "#475569" }}>{pod.note}</div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Photo */}
+                        {pod.photo_url && (
+                          <div style={{ marginBottom: "24px" }}>
+                            <div style={{ fontSize: "11px", fontWeight: 700, color: "#0d9488", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "10px" }}>Foto Bukti Pengiriman</div>
+                            <img
+                              src={pod.photo_url}
+                              alt="POD Photo"
+                              crossOrigin="anonymous"
+                              style={{ maxWidth: "100%", maxHeight: "360px", objectFit: "contain", borderRadius: "8px", border: "1px solid #e2e8f0" }}
+                            />
+                          </div>
+                        )}
+
+                        {/* Signature area */}
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "40px", marginTop: "32px", paddingTop: "24px", borderTop: "1px solid #e2e8f0" }}>
+                          {["Pengirim / Shipper", "Penerima / Receiver"].map(label => (
+                            <div key={label} style={{ textAlign: "center" }}>
+                              <div style={{ fontSize: "10px", color: "#64748b", marginBottom: "48px" }}>{label}</div>
+                              <div style={{ borderTop: "1px solid #94a3b8", paddingTop: "6px", fontSize: "10px", color: "#94a3b8" }}>(Tanda Tangan &amp; Stempel)</div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Footer */}
+                        <div style={{ marginTop: "24px", textAlign: "center", fontSize: "9px", color: "#94a3b8" }}>
+                          Dokumen ini diterbitkan secara otomatis oleh sistem CST Logistics • {new Date(pod.created_at).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
 
             {/* Job Order & Tracking Panel */}
             <JobOrderPanel orderId={orderId} />
