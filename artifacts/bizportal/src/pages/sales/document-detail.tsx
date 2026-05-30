@@ -36,7 +36,7 @@ import {
   ArrowLeft, FileEdit, Printer, CheckCircle, Send, XCircle,
   Truck, Receipt, User, Calendar, MapPin, Package, FileText,
   Clock, Loader2, Trash2, ExternalLink, PlusCircle, Ban,
-  CreditCard, AlertCircle, History, CircleDot, SquareArrowOutUpRight,
+  CreditCard, AlertCircle, History, CircleDot, SquareArrowOutUpRight, Bell,
 } from "lucide-react";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -90,12 +90,14 @@ const PAYMENT_LABELS: Record<string, string> = {
   unpaid: "Belum Bayar",
   partial: "Sebagian",
   paid: "Lunas",
+  overdue: "Jatuh Tempo",
 };
 
 const PAYMENT_COLORS: Record<string, string> = {
   unpaid: "bg-amber-100 text-amber-700 border-amber-200",
   partial: "bg-orange-100 text-orange-700 border-orange-200",
   paid: "bg-emerald-100 text-emerald-700 border-emerald-200",
+  overdue: "bg-red-100 text-red-700 border-red-200",
 };
 
 const INVOICE_LABELS: Record<string, string> = {
@@ -863,6 +865,16 @@ export default function SalesDocumentDetailPage() {
               >
                 {actionLoading === "mark_invoiced" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Receipt className="h-3.5 w-3.5" />}
                 Buat Invoice
+              </Button>
+            )}
+
+            {doc.invoiceStatus === "invoiced" && doc.paymentStatus !== "paid" && (
+              <Button size="sm" variant="outline" className="gap-2 text-violet-600 border-violet-200 hover:bg-violet-50"
+                onClick={() => handleAction("send_reminder", "Kirim reminder pembayaran ke customer")}
+                disabled={actionLoading === "send_reminder"}
+              >
+                {actionLoading === "send_reminder" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Bell className="h-3.5 w-3.5" />}
+                Kirim Reminder
               </Button>
             )}
 

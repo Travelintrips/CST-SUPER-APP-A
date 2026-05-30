@@ -28,6 +28,7 @@ export const purchasePaymentStatusEnum = pgEnum("purchase_payment_status", [
   "unpaid",
   "partial",
   "paid",
+  "overdue",
 ]);
 
 export const purchaseDocumentsTable = pgTable("purchase_documents", {

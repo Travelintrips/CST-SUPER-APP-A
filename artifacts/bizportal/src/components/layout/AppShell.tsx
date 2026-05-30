@@ -57,7 +57,7 @@ import {
   Shield,
   Calendar,
   ShieldAlert,
-
+  Database,
   Search,
   Bell,
   Eye,
@@ -137,7 +137,7 @@ interface GroupItem {
   basePath: string;
   icon: LucideIcon;
   roles: string[];
-  children: { titleKey: string; href: string; icon: LucideIcon; roles?: string[]; companyCodes?: string[] }[];
+  children: { titleKey: string; href: string; icon: LucideIcon; roles?: string[]; companyCodes?: string[]; devOnly?: boolean }[];
   companyCodes?: string[];
 }
 
@@ -170,143 +170,69 @@ export function AppShell({ children }: AppShellProps) {
   const navItems: NavItem[] = [
     // ── 1. DASHBOARD ──────────────────────────────────────────────────
     {
-      type: "flat",
+      type: "group",
       titleKey: "Dashboard",
-      href: "/dashboard",
+      basePath: "/dashboard",
       icon: LayoutDashboard,
       roles: ALL_ROLES,
+      children: [
+        { titleKey: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+        { titleKey: "approvals", href: "/approvals", icon: ClipboardCheck },
+        { titleKey: "Analytics", href: "/analytics", icon: BarChart2, roles: ["admin", "owner"] },
+      ],
     },
 
-    // ── NOTIFIKASI ────────────────────────────────────────────────────
-    {
-      type: "flat",
-      titleKey: "Notifikasi",
-      href: "/notifications",
-      icon: Bell,
-      roles: ["admin", "owner"],
-    },
-
-    // ── VENDOR LEADERBOARD ────────────────────────────────────────────
-    {
-      type: "flat",
-      titleKey: "Vendor Leaderboard",
-      href: "/vendors",
-      icon: Trophy,
-      roles: ["admin", "owner", "manager"],
-    },
-
-    // ── INTELLIGENCE ALERTS ───────────────────────────────────────────
-    {
-      type: "flat",
-      titleKey: "Intelligence Alerts",
-      href: "/intelligence-alerts",
-      icon: ShieldAlert,
-      roles: ["admin", "owner"],
-    },
-
-    // ── AI APPROVAL QUEUE ─────────────────────────────────────────────
-    {
-      type: "flat",
-      titleKey: "AI Approval Queue",
-      href: "/ai-approvals",
-      icon: ShieldCheck,
-      roles: ["admin", "owner"],
-    },
-
-    // ── AI DECISION MEMORY ────────────────────────────────────────────
-    {
-      type: "flat",
-      titleKey: "Decision Memory",
-      href: "/ai/decision-memory",
-      icon: Brain,
-      roles: ["admin", "owner"],
-    },
-
-    // ── OPERATIONAL CONTEXT ───────────────────────────────────────────
-    {
-      type: "flat",
-      titleKey: "Operational Context",
-      href: "/operational-context",
-      icon: Layers,
-      roles: ["admin", "owner"],
-    },
-
-    // ── 3. PRODUK & RECIPE/BOM ────────────────────────────────────────
+    // ── 1.5. EXCEPTION MANAGEMENT ─────────────────────────────────────
     {
       type: "group",
-      titleKey: "Produk & Recipe/BOM",
-      basePath: "/products",
-      icon: ChefHat,
+      titleKey: "Exception Management",
+      basePath: "/exceptions",
+      icon: AlertTriangle,
+      roles: ["manager", "admin", "owner"],
+      children: [
+        { titleKey: "Semua Exception", href: "/exceptions", icon: AlertTriangle },
+      ],
+    },
+
+    // ── 2. MASTER DATA ────────────────────────────────────────────────
+    {
+      type: "group",
+      titleKey: "Master Data",
+      basePath: "/master-data",
+      icon: Database,
       roles: ["manager", "admin", "owner"],
       children: [
         { titleKey: "Produk / Bahan Baku", href: "/products/items", icon: PackageSearch },
         { titleKey: "Recipe / BOM", href: "/products/recipes", icon: FlaskConical },
+        { titleKey: "Item Penjualan", href: "/sales/items", icon: Boxes },
+        { titleKey: "Katalog Terpadu", href: "/katalog-terpadu", icon: Layers, roles: ["admin", "owner"] },
+        { titleKey: "Satuan (UOM)", href: "/settings/uom", icon: Tags },
+        { titleKey: "Satuan Pengiriman", href: "/settings/logistics-units", icon: Package, roles: ["admin", "owner"] },
       ],
     },
 
-    // ── 4. USER & ROLE ────────────────────────────────────────────────
+    // ── 3. CRM & SALES ────────────────────────────────────────────────
     {
       type: "group",
-      titleKey: "User & Role",
-      basePath: "/users",
-      icon: Users,
-      roles: ["admin", "owner"],
-      children: [
-        { titleKey: "Pengguna", href: "/users", icon: UserCircle },
-        { titleKey: "Manajemen Role", href: "/settings/roles", icon: ShieldCheck },
-        { titleKey: "Aturan Approval", href: "/settings/approval-rules", icon: ClipboardCheck },
-        { titleKey: "Struktur Organisasi", href: "/org", icon: Network },
-      ],
-    },
-
-    // ── 7. LAPORAN ────────────────────────────────────────────────────
-    {
-      type: "group",
-      titleKey: "Laporan",
-      basePath: "/reports",
-      icon: BarChart2,
-      roles: ["manager", "admin", "owner"],
-      children: [
-        { titleKey: "Audit ERP", href: "/audit", icon: ClipboardCheck, roles: ["admin", "owner"] },
-        { titleKey: "Audit Log Keamanan", href: "/reports/audit-log", icon: Shield, roles: ["admin", "owner"] },
-        { titleKey: "Laporan Penjualan B2B", href: "/reports/sales", icon: TrendingUp, roles: ["manager", "admin", "owner"] },
-        { titleKey: "Laporan Pembelian", href: "/reports/purchase", icon: ShoppingBag, roles: ["admin", "owner"] },
-        { titleKey: "Valuasi Persediaan", href: "/reports/inventory-valuation", icon: PackageSearch, roles: ["admin", "owner"] },
-        { titleKey: "AR Aging", href: "/reports/ar-aging", icon: Receipt, roles: ["admin", "owner"] },
-        { titleKey: "AP Aging", href: "/reports/ap-aging", icon: FileText, roles: ["admin", "owner"] },
-      ],
-    },
-
-    // ── 8. SETTINGS ───────────────────────────────────────────────────
-    {
-      type: "flat",
-      titleKey: "settings",
-      href: "/settings",
-      icon: Settings,
-      roles: ["admin", "owner", "ecommerce", "trading", "logistics", "pos"],
-    },
-
-    // ── MODUL ERP LANJUTAN (admin / owner) ────────────────────────────
-    {
-      type: "group",
-      titleKey: "sales",
+      titleKey: "CRM & Sales",
       basePath: "/sales",
       icon: TrendingUp,
       roles: ["admin", "owner"],
       children: [
         { titleKey: "salesDashboard", href: "/sales", icon: LayoutDashboard },
-        { titleKey: "masterItem", href: "/sales/items", icon: Boxes },
+        { titleKey: "customers", href: "/sales/customers", icon: UserCircle },
         { titleKey: "quotations", href: "/sales/quotations", icon: FileText },
         { titleKey: "salesOrders", href: "/sales/orders", icon: ShoppingBag },
-        { titleKey: "aiDrafts", href: "/sales/ai-drafts", icon: Bot },
-        { titleKey: "customers", href: "/sales/customers", icon: UserCircle },
         { titleKey: "invoices", href: "/sales/invoices", icon: Receipt },
+        { titleKey: "aiDrafts", href: "/sales/ai-drafts", icon: Bot },
         { titleKey: "Portal Product Orders", href: "/portal-product-orders", icon: ShoppingBag, companyCodes: ["CST"] },
       ],
     },
+
+    // ── 4. PROCUREMENT ────────────────────────────────────────────────
     {
       type: "group",
-      titleKey: "purchase",
+      titleKey: "Procurement",
       basePath: "/purchase",
       icon: ClipboardList,
       roles: ["admin", "owner"],
@@ -327,11 +253,55 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "Thai Tea Procurement", href: "/purchase/thai-tea", icon: ShoppingBag, companyCodes: ["CST"] },
       ],
     },
+
+    // ── 5. LOGISTICS ──────────────────────────────────────────────────
     {
       type: "group",
-      titleKey: "accounting",
+      titleKey: "logistics",
+      basePath: "/logistics",
+      icon: Truck,
+      roles: ["admin", "owner", "logistics"],
+      children: [
+        { titleKey: "shipments", href: "/logistics", icon: Truck },
+        { titleKey: "freightForwarding", href: "/logistics/freight", icon: Ship, companyCodes: ["CST"] },
+        { titleKey: "RFQ Vendor", href: "/logistics/rfq", icon: Send, companyCodes: ["CST"] },
+        { titleKey: "Request Quote", href: "/logistics/quote-requests", icon: FileText, companyCodes: ["CST"] },
+        { titleKey: "portalOrders", href: "/logistics/portal-orders", icon: ClipboardList, companyCodes: ["CST"] },
+        { titleKey: "Performa Driver", href: "/logistics/driver-performance", icon: BarChart2, companyCodes: ["CST"] },
+        { titleKey: "Balasan Quotation WA", href: "/logistics/quotation-reply", icon: MessageCircle, companyCodes: ["CST"] },
+        { titleKey: "Margin Rules", href: "/logistics/margin-rules", icon: Calculator },
+        { titleKey: "Internal Tasks", href: "/logistics/internal-tasks", icon: ClipboardCheck },
+        { titleKey: "Pelanggan Portal", href: "/portal/customers", icon: Users },
+        { titleKey: "Persetujuan Onboarding", href: "/portal/onboarding-approvals", icon: Users },
+      ],
+    },
+
+    // ── 6. OPERATIONS ─────────────────────────────────────────────────
+    {
+      type: "group",
+      titleKey: "Operations",
+      basePath: "/operations",
+      icon: Activity,
+      roles: ["admin", "owner", "trading"],
+      children: [
+        { titleKey: "expenseList", href: "/expense", icon: Receipt, roles: ["admin", "owner"] },
+        { titleKey: "expenseCategories", href: "/expense/categories", icon: Tags, roles: ["admin", "owner"] },
+        { titleKey: "expenseReports", href: "/expense/reports", icon: BarChart2, roles: ["admin", "owner"] },
+        { titleKey: "trading", href: "/trading", icon: Package, roles: ["admin", "owner", "trading"] },
+        { titleKey: "Dashboard Thai Tea", href: "/thai-tea/dashboard", icon: LayoutDashboard, companyCodes: ["CST"], roles: ["admin", "owner"] },
+        { titleKey: "Stok Bahan Baku", href: "/thai-tea/stock", icon: Boxes, companyCodes: ["CST"], roles: ["admin", "owner"] },
+        { titleKey: "Monitoring Cabang", href: "/thai-tea/branches", icon: GitBranch, companyCodes: ["CST"], roles: ["admin", "owner"] },
+        { titleKey: "Produksi / Racikan", href: "/thai-tea/production", icon: FlaskConical, companyCodes: ["CST"], roles: ["admin", "owner"] },
+        { titleKey: "Laporan Thai Tea", href: "/thai-tea/reports", icon: BarChart2, companyCodes: ["CST"], roles: ["admin", "owner"] },
+      ],
+    },
+
+    // ── 7. FINANCE ────────────────────────────────────────────────────
+    {
+      type: "group",
+      titleKey: "Finance",
       basePath: "/accounting",
-      icon: BookOpen,
+      icon: Landmark,
       roles: ["admin", "owner"],
       children: [
         { titleKey: "chartOfAccounts", href: "/accounting/accounts", icon: Landmark },
@@ -344,106 +314,75 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "profitLoss", href: "/accounting/reports/profit-loss", icon: TrendingUp },
         { titleKey: "balanceSheet", href: "/accounting/reports/balance-sheet", icon: Wallet },
         { titleKey: "Profitabilitas Freight", href: "/accounting/reports/freight-profitability", icon: Ship },
-        { titleKey: "reconciliation", href: "/accounting/reconciliation", icon: GitMerge },
-        { titleKey: "accountingSettings", href: "/accounting/settings", icon: Settings },
-      ],
-    },
-    {
-      type: "group",
-      titleKey: "logistics",
-      basePath: "/logistics",
-      icon: Truck,
-      roles: ["admin", "owner", "logistics"],
-      children: [
-        { titleKey: "shipments", href: "/logistics", icon: Truck },
-        { titleKey: "freightForwarding", href: "/logistics/freight", icon: Ship, companyCodes: ["CST"] },
-        { titleKey: "Balasan Quotation WA", href: "/logistics/quotation-reply", icon: MessageCircle, companyCodes: ["CST"] },
-        { titleKey: "Performa Driver", href: "/logistics/driver-performance", icon: BarChart2, companyCodes: ["CST"] },
-        { titleKey: "RFQ Vendor", href: "/logistics/rfq", icon: Send, companyCodes: ["CST"] },
-        { titleKey: "Request Quote", href: "/logistics/quote-requests", icon: FileText, companyCodes: ["CST"] },
-        { titleKey: "portalOrders", href: "/logistics/portal-orders", icon: ClipboardList, companyCodes: ["CST"] },
-        { titleKey: "Pelanggan Portal", href: "/portal/customers", icon: Users },
-        { titleKey: "Persetujuan Onboarding", href: "/portal/onboarding-approvals", icon: Users },
-      ],
-    },
-    // ── HOLDING ────────────────────────────────────────────────────────
-    {
-      type: "group",
-      titleKey: "Holding",
-      basePath: "/holding",
-      icon: Building2,
-      roles: ["admin", "owner"],
-      children: [
-        { titleKey: "Overview Perusahaan", href: "/holding", icon: LayoutDashboard },
-        { titleKey: "Dashboard Holding", href: "/holding/dashboard", icon: BarChart2 },
-        { titleKey: "Laporan L/R Holding", href: "/holding/pl-report", icon: TrendingUp },
-        { titleKey: "Laporan Arus Kas", href: "/holding/cashflow-report", icon: Wallet },
+        { titleKey: "reconciliation", href: "/accounting/reconciliation", icon: GitMerge, devOnly: true },
+        { titleKey: "accountingSettings", href: "/accounting/settings", icon: Settings, devOnly: true },
+        { titleKey: "Overview Perusahaan", href: "/holding", icon: Building2, devOnly: true },
+        { titleKey: "Dashboard Holding", href: "/holding/dashboard", icon: BarChart2, devOnly: true },
+        { titleKey: "Laporan L/R Holding", href: "/holding/pl-report", icon: TrendingUp, devOnly: true },
+        { titleKey: "Laporan Arus Kas", href: "/holding/cashflow-report", icon: Wallet, devOnly: true },
       ],
     },
 
-    { type: "flat", titleKey: "trading", href: "/trading", icon: Package, roles: ["admin", "owner", "trading"] },
-    { type: "flat", titleKey: "Katalog Terpadu", href: "/katalog-terpadu", icon: Layers, roles: ["admin", "owner"] },
+    // ── 8. AI CENTER ──────────────────────────────────────────────────
     {
       type: "group",
-      titleKey: "expense",
-      basePath: "/expense",
-      icon: DollarSign,
-      roles: ["admin", "owner"],
-      children: [
-        { titleKey: "expenseList", href: "/expense", icon: Receipt },
-        { titleKey: "expenseCategories", href: "/expense/categories", icon: Tags },
-        { titleKey: "expenseReports", href: "/expense/reports", icon: BarChart2 },
-      ],
-    },
-
-    // ── KOMUNIKASI (gabungan Korespondensi + Email Inbox) ──────────────
-    {
-      type: "group",
-      titleKey: "Komunikasi",
-      basePath: "/correspondences",
-      icon: Mail,
-      roles: ["admin", "owner"],
-      children: [
-        { titleKey: "correspondences", href: "/correspondences", icon: Mail },
-        { titleKey: "emailInbox", href: "/email-inbox", icon: MessageCircle },
-        { titleKey: "Riwayat Notifikasi", href: "/notification-history", icon: MessageCircle },
-        { titleKey: "WA Templates Logistik", href: "/settings/wa-templates", icon: MessageCircle },
-        { titleKey: "Enterprise WA Templates", href: "/settings/enterprise-wa-templates", icon: MessageSquare },
-      ],
-    },
-
-    // ── AI & MEDIA (gabungan AI tools + Image Manager) ─────────────────
-    {
-      type: "group",
-      titleKey: "AI & Media",
-      basePath: "/settings/ai",
+      titleKey: "AI Center",
+      basePath: "/ai-center",
       icon: Bot,
       roles: ["admin", "owner"],
       children: [
+        { titleKey: "Intelligence Alerts", href: "/intelligence-alerts", icon: ShieldAlert },
+        { titleKey: "AI Approval Queue", href: "/ai-approvals", icon: ShieldCheck },
+        { titleKey: "Decision Memory", href: "/ai/decision-memory", icon: Brain },
+        { titleKey: "Operational Context", href: "/operational-context", icon: Layers },
         { titleKey: "aiChatbot", href: "/settings/ai-chatbot", icon: Bot },
         { titleKey: "aiKnowledgeBase", href: "/settings/ai-chatbot/knowledge", icon: BookOpen },
         { titleKey: "aiScanSettings", href: "/settings/ai-scan", icon: ScanLine },
-        { titleKey: "Konfigurasi Menu", href: "/settings/nav-company-config", icon: LayoutGrid },
-        { titleKey: "Short Links", href: "/settings/short-links", icon: Link2 },
-        { titleKey: "Product Templates", href: "/settings/product-templates", icon: Layers },
-        { titleKey: "Satuan Pengiriman", href: "/settings/logistics-units", icon: Package },
-        { titleKey: "Image Manager", href: "/media", icon: ImageIcon },
       ],
     },
 
+    // ── 9. REPORTS ────────────────────────────────────────────────────
     {
       type: "group",
-      titleKey: "Thai Tea CST",
-      basePath: "/thai-tea",
-      icon: ShoppingBag,
-      roles: ["admin", "owner"],
-      companyCodes: ["CST"],
+      titleKey: "Laporan",
+      basePath: "/reports",
+      icon: BarChart2,
+      roles: ["manager", "admin", "owner"],
       children: [
-        { titleKey: "Dashboard", href: "/thai-tea/dashboard", icon: LayoutDashboard },
-        { titleKey: "Stok Bahan Baku", href: "/thai-tea/stock", icon: Boxes },
-        { titleKey: "Monitoring Cabang", href: "/thai-tea/branches", icon: GitBranch },
-        { titleKey: "Produksi / Racikan", href: "/thai-tea/production", icon: FlaskConical },
-        { titleKey: "Laporan", href: "/thai-tea/reports", icon: BarChart2 },
+        { titleKey: "Laporan Penjualan B2B", href: "/reports/sales", icon: TrendingUp, roles: ["manager", "admin", "owner"] },
+        { titleKey: "Laporan Pembelian", href: "/reports/purchase", icon: ShoppingBag, roles: ["admin", "owner"] },
+        { titleKey: "AR Aging", href: "/reports/ar-aging", icon: Receipt, roles: ["admin", "owner"] },
+        { titleKey: "AP Aging", href: "/reports/ap-aging", icon: FileText, roles: ["admin", "owner"] },
+        { titleKey: "Valuasi Persediaan", href: "/reports/inventory-valuation", icon: PackageSearch, roles: ["admin", "owner"] },
+        { titleKey: "Audit ERP", href: "/audit", icon: ClipboardCheck, roles: ["admin", "owner"] },
+        { titleKey: "Audit Log Keamanan", href: "/reports/audit-log", icon: Shield, roles: ["admin", "owner"] },
+        { titleKey: "Vendor Leaderboard", href: "/vendors", icon: Trophy, roles: ["manager", "admin", "owner"] },
+      ],
+    },
+
+    // ── 10. ADMINISTRATION ────────────────────────────────────────────
+    {
+      type: "group",
+      titleKey: "Administration",
+      basePath: "/admin",
+      icon: Shield,
+      roles: ["admin", "owner"],
+      children: [
+        { titleKey: "Pengguna", href: "/users", icon: UserCircle },
+        { titleKey: "Manajemen Role", href: "/settings/roles", icon: ShieldCheck },
+        { titleKey: "Aturan Approval", href: "/settings/approval-rules", icon: ClipboardCheck },
+        { titleKey: "Struktur Organisasi", href: "/org", icon: Network },
+        { titleKey: "settings", href: "/settings", icon: Settings },
+        { titleKey: "correspondences", href: "/correspondences", icon: Mail },
+        { titleKey: "emailInbox", href: "/email-inbox", icon: MessageCircle },
+        { titleKey: "Riwayat Notifikasi", href: "/notification-history", icon: Bell },
+        { titleKey: "Notifikasi", href: "/notifications", icon: Bell },
+        { titleKey: "WA Templates Logistik", href: "/settings/wa-templates", icon: MessageCircle },
+        { titleKey: "Enterprise WA Templates", href: "/settings/enterprise-wa-templates", icon: MessageSquare },
+        { titleKey: "Image Manager", href: "/media", icon: ImageIcon },
+        { titleKey: "Short Links", href: "/settings/short-links", icon: Link2 },
+        { titleKey: "Konfigurasi Menu", href: "/settings/nav-company-config", icon: LayoutGrid },
+        { titleKey: "Product Templates", href: "/settings/product-templates", icon: Layers },
       ],
     },
   ];
@@ -471,6 +410,19 @@ export function AppShell({ children }: AppShellProps) {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
+  // Helper: apakah custom-role user punya akses ke path ini?
+  const canAccessPath = (p: string): boolean => {
+    if (!customRolePermissions) return true; // bukan custom-role, lolos
+    const seg = p.replace(/^\//, "").split("/")[0] ?? "";
+    const full = p.replace(/^\//, "");
+    return (
+      customRolePermissions.includes(`${seg}:view`) ||
+      customRolePermissions.includes(`${full}:view`) ||
+      customRolePermissions.includes(seg) ||
+      customRolePermissions.includes(full)
+    );
+  };
+
   const filteredNav = navItems.filter((item) => {
     if (!dbUser?.role) return false;
 
@@ -484,18 +436,17 @@ export function AppShell({ children }: AppShellProps) {
     if ((dbUser.role as string) === "owner") return true;
     if ((dbUser.role as string) === "admin") return true;
 
-    // Custom role permissions (format: "module" atau "module:view")
+    // Custom role permissions: tampilkan grup jika minimal satu child lolos
+    // semua filter (custom-permission + role + company + devOnly).
     if (customRolePermissions != null) {
-      const path = item.type === "group" ? item.basePath : item.href;
-      const seg = path.replace(/^\//, "").split("/")[0] ?? "";
-      const full = path.replace(/^\//, "");
-
-      // Cek format baru "segment:view" atau format lama "segment"
-      return (
-        customRolePermissions.includes(`${seg}:view`) ||
-        customRolePermissions.includes(`${full}:view`) ||
-        customRolePermissions.includes(seg) ||
-        customRolePermissions.includes(full)
+      if (item.type === "flat") return canAccessPath(item.href);
+      // Grup: tampil jika ada child yang lolos semua filter
+      return item.children.some(
+        (c) =>
+          canAccessPath(c.href) &&
+          (!c.roles || c.roles.includes(dbUser.role)) &&
+          filterChild(c) &&
+          (IS_DEV || !c.devOnly),
       );
     }
 
@@ -520,42 +471,17 @@ export function AppShell({ children }: AppShellProps) {
         return ia - ib;
       });
 
-  // Pisahkan nav utama (8 menu pokok) dan ERP lanjutan
-  const MAIN_PATHS = [
-    "/dashboard", "/notifications", "/products",
-    "/users", "/reports", "/settings",
-  ];
-  const mainNav = orderedNav.filter((item) => {
-    const p = getKey(item);
-    return MAIN_PATHS.includes(p);
-  });
-  const erpNav = orderedNav.filter((item) => {
-    const p = getKey(item);
-    return !MAIN_PATHS.includes(p);
-  });
-
-  const handleMainNavDragEnd = ({ active, over }: DragEndEvent) => {
+  const handleNavDragEnd = ({ active, over }: DragEndEvent) => {
     if (!over || active.id === over.id) return;
-    const keys = mainNav.map(getKey);
+    const keys = orderedNav.map(getKey);
     const oldIdx = keys.indexOf(String(active.id));
     const newIdx = keys.indexOf(String(over.id));
     if (oldIdx === -1 || newIdx === -1) return;
-    reorder([...arrayMove(keys, oldIdx, newIdx), ...erpNav.map(getKey)]);
+    reorder(arrayMove(keys, oldIdx, newIdx));
   };
 
-  const handleErpNavDragEnd = ({ active, over }: DragEndEvent) => {
-    if (!over || active.id === over.id) return;
-    const keys = erpNav.map(getKey);
-    const oldIdx = keys.indexOf(String(active.id));
-    const newIdx = keys.indexOf(String(over.id));
-    if (oldIdx === -1 || newIdx === -1) return;
-    reorder([...mainNav.map(getKey), ...arrayMove(keys, oldIdx, newIdx)]);
-  };
-
-  const DASHBOARD_CHILD_PATHS = ["/portal-product-orders"];
   const isGroupActive = (g: GroupItem) => {
     if (location === g.basePath || location.startsWith(`${g.basePath}/`)) return true;
-    if (g.basePath === "/dashboard" && DASHBOARD_CHILD_PATHS.some((p) => location === p || location.startsWith(`${p}/`))) return true;
     // Cek apakah salah satu child aktif (untuk grup dengan basePath virtual)
     if (g.children.some((c) => location === c.href || location.startsWith(`${c.href}/`))) return true;
     return false;
@@ -675,11 +601,11 @@ export function AppShell({ children }: AppShellProps) {
     const open = openGroups[`${companyKey}:${item.basePath}`] ?? false;
     const active = isGroupActive(item);
 
-    const ERP_MODULE_PATHS = ["/accounting", "/sales", "/purchase", "/logistics", "/expense"];
-    const isErpModule = ERP_MODULE_PATHS.includes(item.basePath);
-
     const roleFilteredChildren = item.children.filter((c) =>
-      (!c.roles || (dbUser?.role && c.roles.includes(dbUser.role))) && filterChild(c)
+      canAccessPath(c.href) &&
+      (!c.roles || (dbUser?.role && c.roles.includes(dbUser.role))) &&
+      filterChild(c) &&
+      (IS_DEV || !c.devOnly)
     );
     const visibleChildren = customizeMode
       ? roleFilteredChildren
@@ -781,27 +707,11 @@ export function AppShell({ children }: AppShellProps) {
           </SidebarHeader>
 
           <SidebarContent>
-            {/* Menu Utama */}
             <SidebarGroup>
-              <SidebarGroupLabel className="text-muted-foreground px-4 py-2 text-xs font-medium uppercase tracking-wider">
-                Menu Utama
-              </SidebarGroupLabel>
               <SidebarGroupContent>
-                {renderNavList(mainNav, handleMainNavDragEnd)}
+                {renderNavList(orderedNav, handleNavDragEnd)}
               </SidebarGroupContent>
             </SidebarGroup>
-
-            {/* Modul ERP (hanya tampil jika ada menu ERP) */}
-            {erpNav.length > 0 && (
-              <SidebarGroup>
-                <SidebarGroupLabel className="text-muted-foreground px-4 py-2 text-xs font-medium uppercase tracking-wider">
-                  Modul ERP
-                </SidebarGroupLabel>
-                <SidebarGroupContent>
-                  {renderNavList(erpNav, handleErpNavDragEnd)}
-                </SidebarGroupContent>
-              </SidebarGroup>
-            )}
           </SidebarContent>
 
           <SidebarFooter />
