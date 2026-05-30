@@ -52,6 +52,8 @@ interface V2FormData {
   currentOfferedPrice: number | null;
   currentEta: string | null;
   currentNotes: string | null;
+  currentLeadTimeDays: number | null;
+  currentStockAvailability: string | null;
   orderItems: OrderItem[];
 }
 
@@ -109,6 +111,8 @@ export default function LogisticsVendorQuotePage() {
           }
           setEta(json.currentEta ?? "");
           setNotes(json.currentNotes ?? "");
+          if (json.currentLeadTimeDays != null) setLeadTimeDays(String(json.currentLeadTimeDays));
+          if (json.currentStockAvailability) setStockAvailability(json.currentStockAvailability);
           if (json.currentStatus === "accepted_basic_price") setAction("accept");
           else if (json.currentStatus === "rejected") setAction("reject");
           else setAction("counter");

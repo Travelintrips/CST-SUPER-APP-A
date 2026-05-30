@@ -145,8 +145,14 @@ function getRankingBadges(vendor: VendorRow, allVendors: VendorRow[], aiScores?:
     }
   }
 
-  // ⭐ Top Rated (highest AI score)
-  if (aiScores && aiScores.size >= 2) {
+  // ⭐ Top Rated (highest vendorRating from vendor_performance; fallback to AI score)
+  const withRating = answered.filter(v => (v.vendorRating ?? 0) > 0);
+  if (withRating.length >= 2 && (vendor.vendorRating ?? 0) > 0) {
+    const maxRating = Math.max(...withRating.map(v => v.vendorRating!));
+    if (vendor.vendorRating === maxRating) {
+      badges.push({ label: "⭐ Top Rated", color: "bg-yellow-100 text-yellow-700 border-yellow-200" });
+    }
+  } else if (aiScores && aiScores.size >= 2) {
     const myAi = aiScores.get(vendor.vendorId);
     if (myAi) {
       const allScores = [...aiScores.values()].map(s => s.aiScore);
@@ -711,6 +717,7 @@ export default function LogisticsRfqComparisonPage() {
                     rank={idx + 1}
                     rankingBadges={getRankingBadges(v, data.vendors, scoreMap)}
                     aiScore={scoreMap.get(v.vendorId)}
+                    allVendors={data.vendors}
                     hasSelected={hasSelected}
                     onSelect={() => {
                       setSelectDialog({ linkId: v.linkId, vendorName: v.vendorName, price: v.offeredPrice ?? v.basicPrice });
@@ -1048,10 +1055,23 @@ function StatCard({ label, value, icon, color }: {
   );
 }
 
+function DimBar({ label, pct, color }: { label: string; pct: number; color: string }) {
+  return (
+    <div className="flex items-center gap-1.5 text-xs">
+      <span className="w-16 text-gray-400 shrink-0 truncate">{label}</span>
+      <div className="flex-1 bg-gray-100 rounded-full h-1.5 overflow-hidden">
+        <div className={`h-1.5 rounded-full ${color}`} style={{ width: `${Math.max(4, Math.min(100, pct))}%` }} />
+      </div>
+      <span className="w-7 text-right text-gray-500 font-mono">{Math.round(pct)}</span>
+    </div>
+  );
+}
+
 function VendorCard({
-  vendor, rank, rankingBadges, aiScore, hasSelected, onSelect, onRevision, onReject, onMarkRead, onCopyLink, onRefreshPrice, isRefreshingPrice,
+  vendor, rank, rankingBadges, aiScore, allVendors, hasSelected, onSelect, onRevision, onReject, onMarkRead, onCopyLink, onRefreshPrice, isRefreshingPrice,
 }: {
-  vendor: VendorRow; rank: number; rankingBadges?: RankingBadge[]; aiScore?: VendorAiScore; hasSelected: boolean;
+  vendor: VendorRow; rank: number; rankingBadges?: RankingBadge[]; aiScore?: VendorAiScore;
+  allVendors: VendorRow[]; hasSelected: boolean;
   onSelect: () => void; onRevision: () => void;
   onReject: () => void; onMarkRead: () => void; onCopyLink: () => void;
   onRefreshPrice: () => void; isRefreshingPrice?: boolean;
@@ -1060,6 +1080,29 @@ function VendorCard({
   const canAct = !hasSelected && !["rejected", "expired", "not_selected"].includes(vendor.status);
   const hasAnswer = !!vendor.submittedAt;
   const price = vendor.offeredPrice ?? vendor.basicPrice;
+
+  // Compute per-dimension normalized scores (0–100) relative to all answered vendors
+  const answered = allVendors.filter(v => v.offeredPrice != null || v.basicPrice != null);
+  const dimScores = (() => {
+    if (answered.length < 2 || !hasAnswer) return null;
+    // Price: lower is better
+    const prices = answered.map(v => v.offeredPrice ?? v.basicPrice ?? Infinity).filter(p => p < Infinity);
+    const minP = Math.min(...prices); const maxP = Math.max(...prices); const rangeP = maxP - minP || 1;
+    const myPrice = price ?? Infinity;
+    const priceScore = myPrice < Infinity ? 100 - ((myPrice - minP) / rangeP) * 100 : 0;
+    // Lead Time: lower is better
+    const lts = answered.filter(v => v.leadTimeDays != null).map(v => v.leadTimeDays!);
+    const minLt = lts.length ? Math.min(...lts) : null; const maxLt = lts.length ? Math.max(...lts) : null;
+    const ltRange = (minLt != null && maxLt != null) ? (maxLt - minLt || 1) : 1;
+    const ltScore = (vendor.leadTimeDays != null && minLt != null)
+      ? 100 - ((vendor.leadTimeDays - minLt) / ltRange) * 100 : null;
+    // Stock: categorical
+    const STOCK_MAP: Record<string, number> = { available: 100, limited: 50, unknown: 30, unavailable: 0 };
+    const stockScore = STOCK_MAP[vendor.stockAvailability ?? "unknown"] ?? 30;
+    // Rating: higher is better (0–5 → 0–100)
+    const ratingScore = vendor.vendorRating != null ? (vendor.vendorRating / 5) * 100 : null;
+    return { priceScore, ltScore, stockScore, ratingScore };
+  })();
   const [showScoreDetail, setShowScoreDetail] = useState(false);
 
   const tierCfg = aiScore ? AI_TIER[aiScore.tier] : null;
@@ -1184,6 +1227,16 @@ function VendorCard({
           <InfoItem label="Dibuka" value={vendor.openedAt ? timeSince(vendor.openedAt) : "Belum dibuka"} />
           <InfoItem label="Submit" value={vendor.submittedAt ? timeSince(vendor.submittedAt) : "Belum"} />
         </div>
+
+        {dimScores && (
+          <div className="mb-3 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2 space-y-1.5">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Skor Perbandingan</p>
+            <DimBar label="💰 Harga" pct={dimScores.priceScore} color="bg-green-500" />
+            <DimBar label="⚡ Lead Time" pct={dimScores.ltScore ?? 0} color={dimScores.ltScore != null ? "bg-blue-500" : "bg-gray-200"} />
+            <DimBar label="📦 Stok" pct={dimScores.stockScore} color="bg-orange-500" />
+            <DimBar label="⭐ Rating" pct={dimScores.ratingScore ?? 0} color={dimScores.ratingScore != null ? "bg-yellow-500" : "bg-gray-200"} />
+          </div>
+        )}
 
         {vendor.notes && (
           <div className="text-xs bg-gray-50 border border-gray-100 rounded-lg p-2 mb-3 text-gray-600">

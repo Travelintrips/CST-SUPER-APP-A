@@ -657,6 +657,8 @@ logisticRfqV2Router.get("/vendor-form/:token", async (req: Request, res: Respons
     currentOfferedPrice: link.offeredPrice ? Number(link.offeredPrice) : null,
     currentEta: link.eta ?? null,
     currentNotes: link.notes ?? null,
+    currentLeadTimeDays: link.leadTimeDays ?? null,
+    currentStockAvailability: link.stockAvailability ?? "unknown",
     orderItems: orderItems.map((i) => {
       const itemName = (i.serviceName || i.category || "").trim();
       const catalogMatch = matchCatalogItem(itemName);
