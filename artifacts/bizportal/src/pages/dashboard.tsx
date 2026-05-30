@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import { useLanguage } from "@/contexts/LanguageContext";
 import GeofenceAlertBanner from "@/components/logistics/GeofenceAlertBanner";
+import { OrderProgressBar } from "@/components/logistics/OrderProgressBar";
 
 interface ResponseTimeEntry {
   timestamp: string;
@@ -822,56 +823,69 @@ export default function DashboardPage() {
                 ) : (
                   <div className="divide-y divide-border/60">
                     {portalDetailOrders.map((o) => (
-                      <div key={o.id} className="px-4 py-3 flex flex-wrap md:flex-nowrap items-start md:items-center gap-3">
-                        {/* Order info */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-mono text-xs text-muted-foreground">{o.orderNumber}</span>
-                            <Badge className={`text-[10px] px-1.5 py-0 border ${STATUS_COLORS_PORTAL[o.status] ?? "bg-gray-100 text-gray-700 border-gray-200"}`}>
-                              {o.status}
-                            </Badge>
+                      <div key={o.id} className="px-4 pt-3 pb-2">
+                        <div className="flex flex-wrap md:flex-nowrap items-start md:items-center gap-3">
+                          {/* Order info */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-mono text-xs text-muted-foreground">{o.orderNumber}</span>
+                              <Badge className={`text-[10px] px-1.5 py-0 border ${STATUS_COLORS_PORTAL[o.status] ?? "bg-gray-100 text-gray-700 border-gray-200"}`}>
+                                {o.status}
+                              </Badge>
+                            </div>
+                            <p className="text-sm font-medium truncate mt-0.5">{o.customerName}
+                              {o.companyName ? <span className="text-muted-foreground font-normal"> · {o.companyName}</span> : null}
+                            </p>
+                            <p className="text-xs text-muted-foreground truncate">{o.origin} → {o.destination} · {o.shipmentType}</p>
                           </div>
-                          <p className="text-sm font-medium truncate mt-0.5">{o.customerName}
-                            {o.companyName ? <span className="text-muted-foreground font-normal"> · {o.companyName}</span> : null}
-                          </p>
-                          <p className="text-xs text-muted-foreground truncate">{o.origin} → {o.destination} · {o.shipmentType}</p>
-                        </div>
 
-                        {/* Amount + date */}
-                        <div className="text-right shrink-0 hidden sm:block">
-                          <p className="text-sm font-semibold">
-                            {new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(o.grandTotal)}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {new Date(o.createdAt).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })}
-                          </p>
-                        </div>
+                          {/* Amount + date */}
+                          <div className="text-right shrink-0 hidden sm:block">
+                            <p className="text-sm font-semibold">
+                              {new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(o.grandTotal)}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {new Date(o.createdAt).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })}
+                            </p>
+                          </div>
 
-                        {/* Actions */}
-                        <div className="flex items-center gap-2 shrink-0">
-                          <StatusSelect
-                            value={o.status}
-                            onValueChange={(v) => handlePortalStatusChange(o.id, v)}
-                            disabled={updatingId === o.id}
-                          >
-                            <StatusSelectTrigger className="h-7 w-32 text-xs">
-                              <StatusSelectValue />
-                            </StatusSelectTrigger>
-                            <StatusSelectContent>
-                              {STATUS_OPTIONS_PORTAL.map((s) => (
-                                <StatusSelectItem key={s} value={s} className="text-xs">{s}</StatusSelectItem>
-                              ))}
-                            </StatusSelectContent>
-                          </StatusSelect>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="gap-1.5 text-xs h-7 whitespace-nowrap"
-                            onClick={() => setSoDialog(o)}
-                            disabled={o.status === "Cancelled"}
-                          >
-                            <FilePlus className="h-3.5 w-3.5" /> {t.dashboard.createSalesOrder}
-                          </Button>
+                          {/* Actions */}
+                          <div className="flex items-center gap-2 shrink-0">
+                            <StatusSelect
+                              value={o.status}
+                              onValueChange={(v) => handlePortalStatusChange(o.id, v)}
+                              disabled={updatingId === o.id}
+                            >
+                              <StatusSelectTrigger className="h-7 w-32 text-xs">
+                                <StatusSelectValue />
+                              </StatusSelectTrigger>
+                              <StatusSelectContent>
+                                {STATUS_OPTIONS_PORTAL.map((s) => (
+                                  <StatusSelectItem key={s} value={s} className="text-xs">{s}</StatusSelectItem>
+                                ))}
+                              </StatusSelectContent>
+                            </StatusSelect>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="gap-1.5 text-xs h-7 whitespace-nowrap"
+                              onClick={() => setSoDialog(o)}
+                              disabled={o.status === "Cancelled"}
+                            >
+                              <FilePlus className="h-3.5 w-3.5" /> {t.dashboard.createSalesOrder}
+                            </Button>
+                          </div>
+                        </div>
+                        {/* Progress bar */}
+                        <div className="mt-2">
+                          <OrderProgressBar
+                            order={{
+                              status: o.status,
+                              latestRfq: (o as any).latestRfq ?? null,
+                              fulfillmentStatus: (o as any).fulfillmentStatus ?? null,
+                              linkedSalesDocId: (o as any).linkedSalesDocId ?? null,
+                            }}
+                          />
                         </div>
                       </div>
                     ))}
