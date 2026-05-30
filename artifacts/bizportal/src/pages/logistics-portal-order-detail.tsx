@@ -107,6 +107,11 @@ export default function LogisticsPortalOrderDetailPage() {
   });
   const [editDetailSaving, setEditDetailSaving] = useState(false);
 
+  // ── Konversi ke Shipment dialog ───────────────────────────────────────────
+  const [convertDialog, setConvertDialog] = useState(false);
+  const [convertForm, setConvertForm] = useState({ transportMode: "", cargoType: "" });
+  const [converting, setConverting] = useState(false);
+
   function openEditDetail() {
     if (!order) return;
     setEditDetailForm({
@@ -599,6 +604,30 @@ export default function LogisticsPortalOrderDetailPage() {
     }
   }
 
+  async function handleConvertToShipment() {
+    setConverting(true);
+    try {
+      const res = await fetch(`/api/logistics/freight-shipments/from-portal-order/${orderId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          transportMode: convertForm.transportMode || undefined,
+          cargoType: convertForm.cargoType || undefined,
+        }),
+      });
+      const data = await res.json() as { id?: number; shipmentNumber?: string; message?: string };
+      if (!res.ok) throw new Error(data.message ?? "Gagal");
+      toast({ title: `Freight Shipment ${data.shipmentNumber} berhasil dibuat` });
+      setConvertDialog(false);
+      navigate(`/logistics/freight/${data.id}`);
+    } catch (e) {
+      toast({ title: "Gagal konversi", description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setConverting(false);
+    }
+  }
+
   // Filter vendors: active + serviceType compatible with order shipment type
   // Vendors with null/empty serviceType ("Semua tipe") always appear
   const activeVendors = vendors.filter((v) => {
@@ -692,6 +721,24 @@ export default function LogisticsPortalOrderDetailPage() {
                 }}
               >
                 <Plus className="h-4 w-4" /> Buat Sales Order
+              </Button>
+            )}
+            {(order.status === "Confirmed" || order.status === "In Progress") && !!(order as any).linkedSalesDocId && (
+              <Button
+                size="sm"
+                className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white"
+                onClick={() => {
+                  const st = (order.shipmentType ?? "").toLowerCase();
+                  let tm = "";
+                  if (st.includes("sea") || st.includes("laut")) tm = "sea";
+                  else if (st.includes("air") || st.includes("udara")) tm = "air";
+                  else if (st.includes("truck") || st.includes("darat") || st.includes("land")) tm = "land";
+                  else if (st.includes("multi")) tm = "multimodal";
+                  setConvertForm({ transportMode: tm, cargoType: "" });
+                  setConvertDialog(true);
+                }}
+              >
+                <Truck className="h-4 w-4" /> Konversi ke Shipment
               </Button>
             )}
           </div>
@@ -2079,6 +2126,64 @@ export default function LogisticsPortalOrderDetailPage() {
             <Button variant="outline" onClick={() => setEditDetailDialog(false)}>Batal</Button>
             <Button onClick={saveEditDetail} disabled={editDetailSaving}>
               {editDetailSaving ? <><Loader2 className="h-4 w-4 animate-spin mr-1" />Menyimpan...</> : "Simpan"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialog: Konversi ke Freight Shipment ── */}
+      <Dialog open={convertDialog} onOpenChange={setConvertDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Truck className="h-5 w-5 text-indigo-600" /> Konversi ke Freight Shipment
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2 text-sm">
+            <div className="rounded-lg border bg-slate-50 p-3 space-y-1.5">
+              <InfoRow label="Shipper" value={order?.customerName ?? "—"} />
+              <InfoRow label="Consignee" value={(order as any)?.companyName ?? order?.customerName ?? "—"} />
+              <InfoRow label="Rute" value={`${order?.origin ?? "—"} → ${order?.destination ?? "—"}`} />
+              <InfoRow label="Komoditi" value={order?.commodity ?? order?.shipmentType ?? "General Cargo"} />
+              {order?.grossWeight != null && <InfoRow label="Berat" value={`${order.grossWeight} kg`} />}
+              <InfoRow label="Sales Order" value={(order as any)?.linkedSalesDocNumber ?? "—"} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Mode Transportasi</Label>
+              <select
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                value={convertForm.transportMode}
+                onChange={e => setConvertForm(f => ({ ...f, transportMode: e.target.value }))}
+              >
+                <option value="">— Pilih (opsional) —</option>
+                <option value="sea">Sea (Laut)</option>
+                <option value="air">Air (Udara)</option>
+                <option value="land">Land (Darat)</option>
+                <option value="multimodal">Multimodal</option>
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Tipe Kargo</Label>
+              <select
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                value={convertForm.cargoType}
+                onChange={e => setConvertForm(f => ({ ...f, cargoType: e.target.value }))}
+              >
+                <option value="">— Pilih (opsional) —</option>
+                <option value="FCL">FCL</option>
+                <option value="LCL">LCL</option>
+                <option value="Air">Air</option>
+              </select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConvertDialog(false)} disabled={converting}>Batal</Button>
+            <Button
+              className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white"
+              onClick={handleConvertToShipment}
+              disabled={converting}
+            >
+              {converting ? <><Loader2 className="h-4 w-4 animate-spin" /> Memproses...</> : <><Truck className="h-4 w-4" /> Konversi</>}
             </Button>
           </DialogFooter>
         </DialogContent>

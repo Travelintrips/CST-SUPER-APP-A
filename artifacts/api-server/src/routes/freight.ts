@@ -259,6 +259,75 @@ router.post("/freight-shipments", async (req, res) => {
   return res.status(201).json(serializeShipment(shipment!));
 });
 
+// POST /api/logistics/freight-shipments/from-portal-order/:orderId
+router.post("/freight-shipments/from-portal-order/:orderId", async (req, res) => {
+  const orderId = Number(req.params.orderId);
+  if (!Number.isInteger(orderId) || orderId <= 0)
+    return res.status(400).json({ message: "ID order tidak valid" });
+
+  const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
+  if (!order) return res.status(404).json({ message: "Portal order tidak ditemukan" });
+
+  const [linkedDoc] = await db
+    .select({ id: salesDocumentsTable.id, docNumber: salesDocumentsTable.docNumber })
+    .from(salesDocumentsTable)
+    .where(eq(salesDocumentsTable.logisticOrderId, orderId))
+    .limit(1);
+
+  if (!linkedDoc)
+    return res.status(400).json({ message: "Buat Sales Order terlebih dahulu sebelum mengkonversi ke Freight Shipment." });
+
+  const { transportMode: tmOverride, cargoType: ctOverride } = req.body as { transportMode?: string; cargoType?: string };
+
+  let validatedTM: TransportMode | null = null;
+  let validatedCT: CargoType | null = null;
+
+  if (tmOverride) {
+    try { validatedTM = validateTransportMode(tmOverride) ?? null; } catch { /* ignore */ }
+  } else {
+    const st = (order.shipmentType ?? "").toLowerCase();
+    if (st.includes("sea") || st.includes("laut")) validatedTM = "sea";
+    else if (st.includes("air") || st.includes("udara")) validatedTM = "air";
+    else if (st.includes("truck") || st.includes("darat") || st.includes("land")) validatedTM = "land";
+    else if (st.includes("multi")) validatedTM = "multimodal";
+  }
+
+  if (ctOverride) {
+    try { validatedCT = validateCargoType(ctOverride) ?? null; } catch { /* ignore */ }
+  }
+
+  const shipmentNumber = nextNumber("FS");
+  const [shipment] = await db.insert(freightShipmentsTable).values({
+    shipmentNumber,
+    shipperName: order.customerName,
+    consigneeName: order.companyName ?? order.customerName,
+    commodity: order.commodity ?? order.shipmentType ?? "General Cargo",
+    origin: order.origin ?? "",
+    destination: order.destination ?? "",
+    grossWeight: order.grossWeight != null ? String(order.grossWeight) : null,
+    quantity: order.jumlahKoli ?? null,
+    notes: order.notes ?? null,
+    transportMode: validatedTM,
+    cargoType: validatedCT,
+    salesDocId: linkedDoc.id,
+  }).returning();
+
+  saveAndBroadcast("freight_shipment_created", {
+    type: "freight_new",
+    orderId: shipment!.id,
+    orderNumber: shipment!.shipmentNumber,
+    customerName: shipment!.shipperName,
+    companyName: shipment!.consigneeName ?? null,
+    origin: shipment!.origin,
+    destination: shipment!.destination,
+    commodity: shipment!.commodity,
+    transportMode: shipment!.transportMode,
+    createdAt: shipment!.createdAt.toISOString(),
+  }).catch(() => {});
+
+  return res.status(201).json(serializeShipment(shipment!));
+});
+
 // PUT /api/logistics/freight-shipments/:id
 router.put("/freight-shipments/:id", async (req, res) => {
   const id = Number(req.params.id);
