@@ -992,6 +992,9 @@ async function notifyVendorStatusChange(
     }).catch(() => undefined);
 
     sendVendorOrderStatusChangeNotification(order, label, note, vendor.name ?? "—", phone);
+    const notifLabel = VENDOR_STATUS_LABELS[status] ?? status;
+    const notifNote  = VENDOR_STATUS_NOTES[status] ?? "";
+    sendVendorOrderStatusChangeNotification(order, notifLabel, notifNote, vendor.name ?? "—", phone);
 
   } catch {
     // fire-and-forget, never block the response
@@ -1097,6 +1100,13 @@ logisticOrdersRouter.put("/:id/status", async (req: Request, res: Response) => {
       refType: "order",
       refId: updated.orderNumber,
     }).catch(() => undefined);
+  }
+
+  // Progress bar event
+  if (status === "Confirmed") {
+    updateOrderProgress(updated.id, "ADMIN_CONFIRMED", "admin", adminName, `Status diubah ke Confirmed`).catch(() => {});
+  } else if (status === "Completed") {
+    updateOrderProgress(updated.id, "COMPLETED", "admin", adminName, `Order diselesaikan oleh admin`).catch(() => {});
   }
 
   // Progress bar event — record for all canonical statuses

@@ -190,6 +190,7 @@ const ORDER_STATUSES = [
 // Unknown statuses fall back to "bg-slate-100 text-slate-700" (neutral grey).
 // Keep this in sync with the status enum in the backend schema.
 const STATUS_COLOR: Record<string, string> = {
+  // Canonical 15 statuses
   "Order Received":    "bg-slate-100 text-slate-700",
   "Admin Review":      "bg-amber-100 text-amber-800",
   "RFQ Sent":          "bg-blue-100 text-blue-700",
@@ -206,34 +207,24 @@ const STATUS_COLOR: Record<string, string> = {
   "Payment Received":  "bg-lime-100 text-lime-800",
   "Completed":         "bg-green-200 text-green-900",
   "Cancelled":         "bg-red-100 text-red-800",
-  // backward compat
-  customer_quoted:     "bg-purple-100 text-purple-800",
-  customer_approved:   "bg-green-100 text-green-800",
-  customer_rejected:   "bg-red-100 text-red-800",
-  // Order lifecycle statuses
-  "New Order":           "bg-yellow-100 text-yellow-800",
-  "Under Review":        "bg-blue-100 text-blue-700",
-  "Vendor Confirmed":    "bg-indigo-100 text-indigo-800",
-  "Vendor Rejected":     "bg-red-100 text-red-800",
-  "Quotation Sent":      "bg-purple-100 text-purple-800",
-  "Customer Approved":   "bg-emerald-100 text-emerald-800",
-  "In Progress":         "bg-indigo-100 text-indigo-800",
-  "Completed":           "bg-green-200 text-green-900",
-  "Cancelled":           "bg-red-100 text-red-800",
-  "Done":                "bg-green-200 text-green-900",
-  // Legacy / internal status keys
-  order_confirmed: "bg-green-100 text-green-800",
-  assigned_to_vendor: "bg-blue-100 text-blue-800",
-  waiting_pickup: "bg-yellow-100 text-yellow-800",
-  picked_up: "bg-blue-100 text-blue-800",
-  in_progress: "bg-indigo-100 text-indigo-800",
-  delivered: "bg-teal-100 text-teal-800",
-  completed: "bg-green-200 text-green-900",
-  cancelled: "bg-red-100 text-red-800",
-  customer_quoted: "bg-purple-100 text-purple-800",
-  customer_approved: "bg-emerald-100 text-emerald-800",
-  customer_rejected: "bg-red-100 text-red-800",
-  customer_revision_requested: "bg-amber-100 text-amber-800",
+  // Legacy / backward compat
+  "New Order":                   "bg-yellow-100 text-yellow-800",
+  "Under Review":                "bg-blue-100 text-blue-700",
+  "Quotation Sent":              "bg-purple-100 text-purple-800",
+  "Customer Approved":           "bg-emerald-100 text-emerald-800",
+  "Done":                        "bg-green-200 text-green-900",
+  order_confirmed:               "bg-green-100 text-green-800",
+  assigned_to_vendor:            "bg-blue-100 text-blue-800",
+  waiting_pickup:                "bg-yellow-100 text-yellow-800",
+  picked_up:                     "bg-blue-100 text-blue-800",
+  in_progress:                   "bg-indigo-100 text-indigo-800",
+  delivered:                     "bg-teal-100 text-teal-800",
+  completed:                     "bg-green-200 text-green-900",
+  cancelled:                     "bg-red-100 text-red-800",
+  customer_quoted:               "bg-purple-100 text-purple-800",
+  customer_approved:             "bg-emerald-100 text-emerald-800",
+  customer_rejected:             "bg-red-100 text-red-800",
+  customer_revision_requested:   "bg-amber-100 text-amber-800",
 };
 
 async function apiFetch<T>(url: string, opts?: RequestInit): Promise<T> {

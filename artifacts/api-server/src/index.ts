@@ -46,6 +46,7 @@ import { runTrustedDevicesMigration } from "./lib/trustedDevicesMigration.js";
 import { runAuditReportsMigration } from "./lib/auditReportsMigration.js";
 import { runWaTemplateMigration } from "./lib/orderNotification.js";
 import { runRlsMigration } from "./lib/rlsMigration.js";
+import { runCommodityTemplateMigration } from "./lib/commodityTemplateMigration.js";
 import { migratePushSubscriptions } from "./lib/webPush.js";
 import { runPgTrgmMigration } from "./lib/pgTrgmMigration.js";
 import { runIntelligenceAlertSettingsMigration } from "./lib/intelligenceAlertSettingsMigration.js";
@@ -307,6 +308,7 @@ async function startServer() {
     .then(() => runWithRetry("ERP audit reports migration", runAuditReportsMigration))
     .then(() => runWithRetry("WA template migration", runWaTemplateMigration))
     .then(() => runWithRetry("RLS migration", runRlsMigration))
+    .then(() => runWithRetry("Commodity template migration", runCommodityTemplateMigration))
     .then(() => runWithRetry("Phase 1 migration", runPhase1Migration))
     .then(() => runWithRetry("Push subscriptions migration", migratePushSubscriptions))
     .then(() => runWithRetry("pg_trgm indexes migration", runPgTrgmMigration))
