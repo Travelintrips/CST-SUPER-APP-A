@@ -137,7 +137,7 @@ interface GroupItem {
   basePath: string;
   icon: LucideIcon;
   roles: string[];
-  children: { titleKey: string; href: string; icon: LucideIcon; roles?: string[]; companyCodes?: string[] }[];
+  children: { titleKey: string; href: string; icon: LucideIcon; roles?: string[]; companyCodes?: string[]; devOnly?: boolean }[];
   companyCodes?: string[];
 }
 
@@ -170,11 +170,16 @@ export function AppShell({ children }: AppShellProps) {
   const navItems: NavItem[] = [
     // ── 1. DASHBOARD ──────────────────────────────────────────────────
     {
-      type: "flat",
+      type: "group",
       titleKey: "Dashboard",
-      href: "/dashboard",
+      basePath: "/dashboard",
       icon: LayoutDashboard,
       roles: ALL_ROLES,
+      children: [
+        { titleKey: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+        { titleKey: "approvals", href: "/approvals", icon: ClipboardCheck },
+        { titleKey: "Analytics", href: "/analytics", icon: BarChart2, roles: ["admin", "owner"] },
+      ],
     },
 
     // ── 2. MASTER DATA ────────────────────────────────────────────────
@@ -296,13 +301,13 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "generalLedger", href: "/accounting/reports/general-ledger", icon: BookOpen },
         { titleKey: "profitLoss", href: "/accounting/reports/profit-loss", icon: TrendingUp },
         { titleKey: "balanceSheet", href: "/accounting/reports/balance-sheet", icon: Wallet },
-        { titleKey: "Profitabilitas Freight", href: "/accounting/reports/freight-profitability", icon: Ship },
-        { titleKey: "reconciliation", href: "/accounting/reconciliation", icon: GitMerge },
-        { titleKey: "accountingSettings", href: "/accounting/settings", icon: Settings },
-        { titleKey: "Overview Perusahaan", href: "/holding", icon: Building2 },
-        { titleKey: "Dashboard Holding", href: "/holding/dashboard", icon: BarChart2 },
-        { titleKey: "Laporan L/R Holding", href: "/holding/pl-report", icon: TrendingUp },
-        { titleKey: "Laporan Arus Kas", href: "/holding/cashflow-report", icon: Wallet },
+        { titleKey: "Profitabilitas Freight", href: "/accounting/reports/freight-profitability", icon: Ship, devOnly: true },
+        { titleKey: "reconciliation", href: "/accounting/reconciliation", icon: GitMerge, devOnly: true },
+        { titleKey: "accountingSettings", href: "/accounting/settings", icon: Settings, devOnly: true },
+        { titleKey: "Overview Perusahaan", href: "/holding", icon: Building2, devOnly: true },
+        { titleKey: "Dashboard Holding", href: "/holding/dashboard", icon: BarChart2, devOnly: true },
+        { titleKey: "Laporan L/R Holding", href: "/holding/pl-report", icon: TrendingUp, devOnly: true },
+        { titleKey: "Laporan Arus Kas", href: "/holding/cashflow-report", icon: Wallet, devOnly: true },
       ],
     },
 
@@ -573,7 +578,9 @@ export function AppShell({ children }: AppShellProps) {
     const active = isGroupActive(item);
 
     const roleFilteredChildren = item.children.filter((c) =>
-      (!c.roles || (dbUser?.role && c.roles.includes(dbUser.role))) && filterChild(c)
+      (!c.roles || (dbUser?.role && c.roles.includes(dbUser.role))) &&
+      filterChild(c) &&
+      (IS_DEV || !c.devOnly)
     );
     const visibleChildren = customizeMode
       ? roleFilteredChildren
