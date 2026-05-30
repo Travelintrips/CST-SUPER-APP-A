@@ -199,16 +199,18 @@ export default function CustomerQuotePage() {
           </div>
         )}
 
-        {/* Detail */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-          <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-4">Detail Pengiriman</h2>
-          <div className="space-y-3">
-            <Row label="Layanan" value={data.serviceType} />
-            <Row label="Asal" value={data.origin} />
-            <Row label="Tujuan" value={data.destination} />
-            <Row label="Kargo" value={data.cargoDetail} />
+        {/* Detail — hanya tampil jika ada minimal satu field yang terisi */}
+        {(data.serviceType || data.origin || data.destination || data.cargoDetail) && (
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+            <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-4">Detail Pengiriman</h2>
+            <div className="space-y-3">
+              <Row label="Layanan" value={data.serviceType} />
+              <Row label="Asal" value={data.origin} />
+              <Row label="Tujuan" value={data.destination} />
+              <Row label="Kargo" value={data.cargoDetail} />
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Pricing */}
         <div className="bg-white rounded-2xl shadow-sm border border-blue-100 p-6">
