@@ -83,6 +83,7 @@ import { purchaseMiniPublicRouter, purchaseMiniAdminRouter } from "./purchaseMin
 import { orderAuditTrailRouter } from "./orderAuditTrail.js";
 
 import { exceptionsRouter } from "./exceptions.js";
+import { systemRouter } from "./system.js";
 
 import type { Request, Response } from "express";
 
@@ -190,6 +191,7 @@ router.use("/purchase-mini", purchaseMiniPublicRouter);
 router.use("/logistic", orderAuditTrailRouter);
 
 router.use("/exceptions", exceptionsRouter);
+router.use("/system", systemRouter);
 
 
 router.get("/q/:code", async (req: Request, res: Response) => {

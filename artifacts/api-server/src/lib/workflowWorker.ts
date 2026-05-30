@@ -34,6 +34,7 @@ import { broadcastNewAlert } from "./alertsBroadcast.js";
 import { sendMail, isSmtpConfigured } from "./mailer.js";
 import { notifyPaymentReminder } from "./enterpriseWorkflowNotify.js";
 import { markPaymentOverdue } from "./services/index.js";
+import { createExceptionIdempotent } from "./services/exceptionService.js";
 
 const POLL_INTERVAL_MS = 5 * 60 * 1000;  // 5 minutes
 const INITIAL_DELAY_MS = 3 * 60 * 1000;  // 3 min after boot
@@ -468,6 +469,19 @@ async function checkInvoiceOverdue(settings: AlertSettings): Promise<void> {
       message: `Invoice ${invoiceRef} untuk ${doc.customerName} melewati jatuh tempo ${daysOverdue} hari. Total: Rp ${Math.round(totalAmount).toLocaleString("id-ID")}.`,
       contextJson: { invoiceNumber: invoiceRef, customerName: doc.customerName, daysOverdue, totalAmount },
     });
+
+    await createExceptionIdempotent({
+      companyId: doc.companyId,
+      exceptionType: "payment_overdue",
+      severity: daysOverdue > 7 ? "critical" : "high",
+      title: `Invoice Jatuh Tempo — ${invoiceRef} (+${daysOverdue} hari)`,
+      description: `Invoice ${invoiceRef} untuk ${doc.customerName} melewati jatuh tempo ${daysOverdue} hari. Total: Rp ${Math.round(totalAmount).toLocaleString("id-ID")}.`,
+      refType: "sales_order",
+      refId: String(doc.id),
+      refNumber: invoiceRef,
+      customerName: doc.customerName,
+      createdBy: "workflowWorker",
+    });
   }
 }
 
@@ -584,6 +598,19 @@ async function checkBillOverdue(settings: AlertSettings): Promise<void> {
       message: `Bill ${billRef} ke ${doc.supplierName} melewati jatuh tempo ${daysOverdue} hari. Total: Rp ${Math.round(totalAmount).toLocaleString("id-ID")}.`,
       contextJson: { billNumber: billRef, supplierName: doc.supplierName, daysOverdue, totalAmount },
     });
+
+    await createExceptionIdempotent({
+      companyId: doc.companyId,
+      exceptionType: "payment_overdue",
+      severity: daysOverdue > 7 ? "critical" : "high",
+      title: `Bill Jatuh Tempo — ${billRef} (+${daysOverdue} hari)`,
+      description: `Bill ${billRef} ke ${doc.supplierName} melewati jatuh tempo ${daysOverdue} hari. Total: Rp ${Math.round(totalAmount).toLocaleString("id-ID")}.`,
+      refType: "purchase_order",
+      refId: String(doc.id),
+      refNumber: billRef,
+      supplierName: doc.supplierName,
+      createdBy: "workflowWorker",
+    });
   }
 }
 
@@ -626,6 +653,19 @@ async function checkLateOrders(settings: AlertSettings): Promise<void> {
       title: `ETA Terlewat — ${order.orderNumber} (${hoursLate}j)`,
       message: `Order ${order.orderNumber} (${order.customerName}) melebihi ETA ${hoursLate} jam. Status saat ini: ${order.status}.`,
       contextJson: { orderNumber: order.orderNumber, customerName: order.customerName, status: order.status, hoursLate },
+    });
+
+    await createExceptionIdempotent({
+      companyId: order.companyId,
+      exceptionType: "delivery_delayed",
+      severity: "high",
+      title: `ETA Terlewat — ${order.orderNumber} (${hoursLate}j)`,
+      description: `Order ${order.orderNumber} (${order.customerName}) melebihi ETA ${hoursLate} jam. Status: ${order.status}.`,
+      refType: "logistic_order",
+      refId: String(order.id),
+      refNumber: order.orderNumber,
+      customerName: order.customerName,
+      createdBy: "workflowWorker",
     });
   }
 }

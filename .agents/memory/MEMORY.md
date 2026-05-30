@@ -12,3 +12,4 @@
 - [API Server Port Config](api-server-port.md) — API server langsung di port 18444 (hapus port-forwarder); Gateway port 5000
 - [Logistic Order 15-Step Workflow](logistic-order-statuses.md) — canonical 15 statuses in logisticStatusConstants.ts; OrderProgressBar, order-track.tsx, and BizPortal Status tab all now aligned
 - [Audit Trail System](audit-trail-system.md) — 4 new tables, helper lib, API routes, BizPortal page, hooks in logisticOrders/logisticRfq/customerQuoteFlow; routes.tsx is the real router (not App.tsx)
+- [Phase 3 Observability](phase3-observability.md) — audit trail di 3 service (rfq/invoice/payment via writeAuditLog → erp_audit_logs); exceptionService idempotent; exceptions di workflowWorker + vendorJobOrder; GET /api/system/governance-health admin-only

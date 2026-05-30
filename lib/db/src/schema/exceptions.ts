@@ -11,6 +11,8 @@ export const exceptionTypeEnum = pgEnum("exception_type", [
   "customer_complaint",
   "document_missing",
   "payment_overdue",
+  "vendor_rejected",
+  "pod_pending_review",
 ]);
 
 export const exceptionStatusEnum = pgEnum("exception_status", [

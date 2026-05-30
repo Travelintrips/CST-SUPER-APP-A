@@ -36,6 +36,7 @@ import {
 } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { logger } from "../logger.js";
+import { writeAuditLog } from "../auditLog.js";
 
 // ── Feature Flag ──────────────────────────────────────────────────────────────
 //
@@ -156,6 +157,14 @@ export async function recalculatePaymentStatus(
         { docId, docType, from: doc.paymentStatus, to: newStatus, totalPaid, grandTotal },
         "paymentStatusService: recalculated",
       );
+
+      writeAuditLog({
+        action: "status_transition",
+        module: "payment_status",
+        referenceId: String(docId),
+        oldData: { paymentStatus: doc.paymentStatus, amountPaid: doc.amountPaid },
+        newData: { paymentStatus: newStatus, amountPaid: totalPaid, docType, actorType: "system", source: "recalculate" },
+      });
     }
 
     return { ok: true, docId, docType, newStatus, totalPaid, grandTotal, unchanged };
@@ -192,6 +201,14 @@ export async function recalculatePaymentStatus(
         { docId, docType, from: doc.paymentStatus, to: newStatus, totalPaid, grandTotal },
         "paymentStatusService: recalculated",
       );
+
+      writeAuditLog({
+        action: "status_transition",
+        module: "payment_status",
+        referenceId: String(docId),
+        oldData: { paymentStatus: doc.paymentStatus, amountPaid: doc.amountPaid },
+        newData: { paymentStatus: newStatus, amountPaid: totalPaid, docType, actorType: "system", source: "recalculate" },
+      });
     }
 
     return { ok: true, docId, docType, newStatus, totalPaid, grandTotal, unchanged };
@@ -239,6 +256,15 @@ export async function markPaymentOverdue(
       .where(eq(salesDocumentsTable.id, docId));
 
     logger.info({ docId, docType, from: doc.paymentStatus }, "paymentStatusService: marked overdue");
+
+    writeAuditLog({
+      action: "status_transition",
+      module: "payment_status",
+      referenceId: String(docId),
+      oldData: { paymentStatus: doc.paymentStatus },
+      newData: { paymentStatus: "overdue", docType, actorType: "system", source: "workflowWorker:overdue" },
+    });
+
     return { ok: true, docId, docType, newStatus: "overdue" };
   } else {
     const [doc] = await db
@@ -264,6 +290,15 @@ export async function markPaymentOverdue(
       .where(eq(purchaseDocumentsTable.id, docId));
 
     logger.info({ docId, docType, from: doc.paymentStatus }, "paymentStatusService: marked overdue");
+
+    writeAuditLog({
+      action: "status_transition",
+      module: "payment_status",
+      referenceId: String(docId),
+      oldData: { paymentStatus: doc.paymentStatus },
+      newData: { paymentStatus: "overdue", docType, actorType: "system", source: "workflowWorker:overdue" },
+    });
+
     return { ok: true, docId, docType, newStatus: "overdue" };
   }
 }

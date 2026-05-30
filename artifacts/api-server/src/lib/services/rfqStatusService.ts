@@ -20,6 +20,7 @@ import { db } from "@workspace/db";
 import { logisticOrderRfqsTable, rfqVendorLinksTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "../logger.js";
+import { writeAuditLog } from "../auditLog.js";
 
 // ── RFQ Header State Machine ──────────────────────────────────────────────────
 //
@@ -129,6 +130,15 @@ export async function transitionRfqStatus(
 
   logger.info({ rfqId, from: row.status, to: newStatus, source: opts.source ?? "service" }, "RFQ status transitioned");
 
+  writeAuditLog({
+    action: "status_transition",
+    module: "rfq_header",
+    referenceId: String(rfqId),
+    userId: opts.actorId ?? null,
+    oldData: { status: row.status },
+    newData: { status: newStatus, actorType: opts.actorType ?? "system", source: opts.source ?? "service", actorName: opts.actorName ?? null },
+  });
+
   return { ok: true, rfqId, fromStatus: row.status, toStatus: newStatus };
 }
 
@@ -179,6 +189,15 @@ export async function transitionVendorLinkStatus(
     .where(eq(rfqVendorLinksTable.id, linkId));
 
   logger.info({ linkId, from: row.status, to: newStatus, source: opts.source ?? "service" }, "vendorLink status transitioned");
+
+  writeAuditLog({
+    action: "status_transition",
+    module: "rfq_vendor_link",
+    referenceId: String(linkId),
+    userId: opts.actorId ?? null,
+    oldData: { status: row.status },
+    newData: { status: newStatus, actorType: opts.actorType ?? "system", source: opts.source ?? "service", actorName: opts.actorName ?? null },
+  });
 
   return { ok: true, vendorLinkId: linkId, fromStatus: row.status, toStatus: newStatus };
 }

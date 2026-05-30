@@ -23,6 +23,7 @@ import { randomBytes } from "crypto";
 import { eq, inArray, and, desc } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { transitionLogisticOrderStatus, getAllowedTransitions } from "../lib/services/logisticOrderStatusService.js";
+import { createExceptionIdempotent } from "../lib/services/exceptionService.js";
 import {
   db,
   logisticOrdersTable,
@@ -697,6 +698,18 @@ vendorJobPublicRouter.post("/:token/reject", async (req: Request, res: Response)
       notes: reason ? `Vendor menolak job. Alasan: ${reason}` : "Vendor menolak job order.",
       isPublic: false,
     });
+
+    createExceptionIdempotent({
+      exceptionType: "vendor_rejected",
+      severity: "high",
+      title: `Vendor Menolak Job — ${job.order_number}`,
+      description: reason ? `Vendor ${job.vendor_name ?? "—"} menolak job order. Alasan: ${reason}` : `Vendor ${job.vendor_name ?? "—"} menolak job order.`,
+      refType: "logistic_order",
+      refId: String(job.order_id),
+      refNumber: job.order_number,
+      supplierName: job.vendor_name ?? null,
+      createdBy: "vendor",
+    }).catch(() => {});
 
     const adminWa = await getAdminWa();
     if (adminWa) {

@@ -24,6 +24,7 @@ import { db } from "@workspace/db";
 import { salesDocumentsTable, purchaseDocumentsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "../logger.js";
+import { writeAuditLog } from "../auditLog.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -91,6 +92,14 @@ export async function markSalesInvoiced(
     .where(eq(salesDocumentsTable.id, docId));
 
   logger.info({ docId, fromStatus: row.invoiceStatus, source }, "markSalesInvoiced: invoiceStatus set to invoiced");
+
+  writeAuditLog({
+    action: "status_transition",
+    module: "invoice_status",
+    referenceId: String(docId),
+    oldData: { invoiceStatus: row.invoiceStatus },
+    newData: { invoiceStatus: "invoiced", source, actorType: "system" },
+  });
 
   return {
     ok: true,
@@ -170,6 +179,14 @@ export async function markPurchaseBilled(
     .where(eq(purchaseDocumentsTable.id, docId));
 
   logger.info({ docId, fromStatus: row.billStatus, source }, "markPurchaseBilled: billStatus set to billed");
+
+  writeAuditLog({
+    action: "status_transition",
+    module: "bill_status",
+    referenceId: String(docId),
+    oldData: { billStatus: row.billStatus },
+    newData: { billStatus: "billed", source, actorType: "system" },
+  });
 
   return {
     ok: true,

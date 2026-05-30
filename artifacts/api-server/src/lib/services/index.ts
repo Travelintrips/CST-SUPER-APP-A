@@ -12,3 +12,4 @@ export * from "./logisticOrderStatusService.js";
 export * from "./rfqStatusService.js";
 export * from "./invoiceStatusService.js";
 export * from "./paymentStatusService.js";
+export * from "./exceptionService.js";
