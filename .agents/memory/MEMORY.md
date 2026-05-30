@@ -8,3 +8,5 @@
 - [JSX regex-in-expression pitfall](jsx-regex-pitfall.md) — bare `}` inside regex char class `[^}]` in a JSX expression can confuse esbuild JSX depth tracker; move regex to a const outside JSX.
 - [Unclosed stub function cascades](unclosed-stub-function.md) — a stub function without its closing `}` makes every top-level declaration after it appear inside its body; "Unexpected export" far from the real bug line is the symptom.
 - [WA Template Migration](wa-template-migration.md) — pattern & progress migrating hardcoded WA flows to Settings → Template WA via `whatsappTemplateService`
+- [NixOS Port Killing](nixos-port-killing.md) — `fuser`/`ss`/`lsof` tidak tersedia di NixOS/Replit; gunakan `kill-port.mjs` via `/proc/net/tcp`
+- [API Server Port Config](api-server-port.md) — API server langsung di port 18444 (hapus port-forwarder); Gateway port 5000
