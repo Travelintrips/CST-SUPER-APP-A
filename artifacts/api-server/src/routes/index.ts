@@ -136,10 +136,18 @@ router.use("/inventory", inventoryMainRouter);
 router.use("/inventory/receive", inventoryReceiveRouter);
 // CATATAN: inventoryStockRouter di-mount dua kali di path berbeda (by design).
 // /inventory/stock      → akses data stok per produk
-// /inventory/warehouses → akses data warehouse mapping
-// Jika ada state di router-level, pastikan tidak ada efek samping ganda.
+// /inventory/warehouses → DEPRECATED alias — tidak ada frontend caller aktif (audit Phase 5)
+// Jadwal hapus: release berikutnya setelah monitoring 1 sprint
 router.use("/inventory/stock", inventoryStockRouter);
-router.use("/inventory/warehouses", inventoryStockRouter);
+router.use(
+  "/inventory/warehouses",
+  (_req: any, res: any, next: any) => {
+    res.setHeader("Deprecation", "true");
+    res.setHeader("X-Deprecated-Route", "/inventory/warehouses is deprecated - use /inventory/stock instead");
+    next();
+  },
+  inventoryStockRouter,
+);
 router.use("/custom-roles", customRolesRouter);
 router.use("/thai-tea", thaiTeaSuppliesRouter);
 router.use("/purchase-workflow", purchaseWorkflowRouter);
