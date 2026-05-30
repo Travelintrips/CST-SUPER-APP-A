@@ -18,23 +18,50 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Start application"
+args = "BizPortal"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "API Server"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Customer Portal"
 
 [[workflows.workflow]]
-name = "Start application"
+name = "BizPortal"
 author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "bash start-all.sh"
-waitForPort = 5000
+args = "cd artifacts/bizportal && PORT=3000 BASE_PATH=/bizportal/ pnpm run dev"
+waitForPort = 3000
+
+[[workflows.workflow]]
+name = "API Server"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/api-server && node ./build.mjs && PORT=8080 NODE_ENV=development node --enable-source-maps ./dist/index.mjs"
+waitForPort = 8080
+
+[[workflows.workflow]]
+name = "Customer Portal"
+author = "agent"
 
 [workflows.workflow.metadata]
 outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "node artifacts/api-server/kill-port.mjs 5000; sleep 0.3; PORT=5000 node gateway.mjs"
+args = "cd artifacts/customer-portal && PORT=5000 BASE_PATH=/ pnpm exec vite --config vite.config.ts --host 0.0.0.0 --port 5000"
 waitForPort = 5000
 
 [agent]
@@ -71,7 +98,6 @@ FONNTE_TOKEN = "3hYIZghAc5N1!sUe3dMb"
 VAPID_PUBLIC_KEY = "BEAKgZOdT9HxFJLxVNxgtY-Dh2XzGptrjQwQibP2obUjPlLkfk0WR1TyzqbJvnhLlWrNGjiexhndtXZj9klZUPE"
 VAPID_PRIVATE_KEY = "Cu-0cxYEgT24fD8lVirlkz0qpFHj_kJNcGIj347kIJ4"
 VAPID_EMAIL = "mailto:admin@cstlogistics.co.id"
-PORTAL_ADMIN_KEY = "admin123"
 
 [userenv.development]
 ADMIN_EMAIL_DOMAINS = "example.com"
@@ -88,47 +114,37 @@ localPort = 3000
 externalPort = 3000
 
 [[ports]]
-localPort = 3001
-externalPort = 3001
+localPort = 3002
+externalPort = 5173
 
 [[ports]]
 localPort = 3003
-externalPort = 6800
+externalPort = 8000
 
 [[ports]]
-localPort = 5173
-externalPort = 6000
+localPort = 3004
+externalPort = 8099
+
+[[ports]]
+localPort = 3005
+externalPort = 9000
+
+[[ports]]
 localPort = 5000
 externalPort = 80
 
 [[ports]]
-localPort = 5173
-externalPort = 5173
+localPort = 19368
+externalPort = 4200
+
+[[ports]]
+localPort = 21170
+externalPort = 6000
+
+[[ports]]
+localPort = 23434
+externalPort = 3003
 
 [[ports]]
 localPort = 8080
 externalPort = 8080
-
-[[ports]]
-localPort = 8081
-externalPort = 8081
-
-[[ports]]
-localPort = 18442
-externalPort = 5000
-
-[[ports]]
-localPort = 18444
-externalPort = 3002
-
-[[ports]]
-localPort = 19368
-externalPort = 5173
-
-[[ports]]
-localPort = 21170
-externalPort = 6800
-
-[[ports]]
-localPort = 23434
-externalPort = 4200
