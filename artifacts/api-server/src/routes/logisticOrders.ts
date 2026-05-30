@@ -1099,42 +1099,24 @@ logisticOrdersRouter.put("/:id/status", async (req: Request, res: Response) => {
       refType: "order",
       refId: updated.orderNumber,
     }).catch(() => undefined);
-
-  // Progress bar event
-  if (status === "Confirmed") {
-    updateOrderProgress(updated.id, "ADMIN_CONFIRMED", "admin", adminName, `Status diubah ke Confirmed`).catch(() => {});
-  } else if (status === "Completed") {
-    updateOrderProgress(updated.id, "COMPLETED", "admin", adminName, `Order diselesaikan oleh admin`).catch(() => {});
   }
 
-  // Notify customer via WhatsApp (fire-and-forget)
-  if (updated.phone) {
-    const statusLabels: Record<string, string> = {
-      "New Order": "Order Baru",
-      "Under Review": "Sedang Ditinjau",
-      "Quotation Sent": "Penawaran Telah Dikirim",
-      "Confirmed": "Dikonfirmasi",
-      "In Progress": "Sedang Diproses",
-      "Completed": "Selesai",
-      "Cancelled": "Dibatalkan",
-    };
-    const label = statusLabels[status] ?? status;
-    sendLogisticOrderStatusCustomerNotification(updated.orderNumber, label, updated.phone);
-
-  }
+  // Progress bar event — record for all canonical statuses
+  updateOrderProgress(
+    updated.id,
+    status.toUpperCase().replace(/ /g, "_"),
+    "admin",
+    adminName,
+    `Status diubah ke ${STATUS_LABEL_ID[status] ?? status}`,
+  ).catch(() => {});
 
   // Notify vendor via WhatsApp (fire-and-forget)
   notifyVendorStatusChange(updated, status).catch(() => undefined);
 
   // Web Push ke subscriber halaman tracking (fire-and-forget)
-  const statusLabelsForPush: Record<string, string> = {
-    "New Order": "Order Baru", "Under Review": "Sedang Ditinjau",
-    "Quotation Sent": "Penawaran Dikirim", "Confirmed": "Dikonfirmasi",
-    "In Progress": "Sedang Diproses", "Completed": "Selesai", "Cancelled": "Dibatalkan",
-  };
   sendPushToOrder(updated.orderNumber, {
     title: "Update Status Order",
-    body: `Order ${updated.orderNumber}: ${statusLabelsForPush[status] ?? status}`,
+    body: `Order ${updated.orderNumber}: ${STATUS_LABEL_ID[status] ?? status}`,
     url: `/logistic-track?order=${encodeURIComponent(updated.orderNumber)}`,
     tag: `order-${updated.orderNumber}`,
   } as { title: string; body: string; url?: string }).catch(() => undefined);

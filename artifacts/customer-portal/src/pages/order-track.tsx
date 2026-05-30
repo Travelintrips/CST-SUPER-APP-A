@@ -45,22 +45,39 @@ type TrackData = {
 };
 
 const ALL_STEPS = [
-  { key: "order_received",    label: "Order Diterima",      icon: "📋", matchStatus: ["new order", "admin_review"] },
-  { key: "processing",        label: "Sedang Diproses",     icon: "🔍", matchStatus: ["rfq_sent", "quoted", "confirmed", "renegotiation"] },
-  { key: "vendor_assigned",   label: "Vendor Ditugaskan",   icon: "👤", matchStatus: ["vendor_assigned"] },
-  { key: "vendor_accepted",   label: "Vendor Menerima",     icon: "✅", matchStatus: ["vendor_accepted", "accepted"] },
-  { key: "pickup_scheduled",  label: "Pickup Dijadwalkan",  icon: "📅", matchStatus: ["pickup_scheduled"] },
-  { key: "in_progress",       label: "Dalam Perjalanan",    icon: "🚛", matchStatus: ["in_progress"] },
-  { key: "pod_uploaded",      label: "Dokumen Diunggah",    icon: "📎", matchStatus: ["pod_uploaded"] },
-  { key: "completed",         label: "Selesai",             icon: "🎉", matchStatus: ["completed", "done", "delivered"] },
+  { key: "Order Received",    label: "Order Diterima",          icon: "📋" },
+  { key: "Admin Review",      label: "Ditinjau Admin",          icon: "🔍" },
+  { key: "RFQ Sent",          label: "RFQ ke Vendor",           icon: "📤" },
+  { key: "Quote Received",    label: "Penawaran Masuk",         icon: "💬" },
+  { key: "Customer Approval", label: "Menunggu Persetujuan",    icon: "✋" },
+  { key: "Vendor Confirmed",  label: "Vendor Dikonfirmasi",     icon: "🤝" },
+  { key: "In Progress",       label: "Sedang Diproses",         icon: "🔄" },
+  { key: "Pickup",            label: "Penjemputan",             icon: "🚚" },
+  { key: "In Transit",        label: "Dalam Perjalanan",        icon: "🛣️" },
+  { key: "Arrived",           label: "Tiba di Tujuan",          icon: "📍" },
+  { key: "Delivered",         label: "Terkirim",                icon: "✅" },
+  { key: "POD Uploaded",      label: "Bukti Pengiriman",        icon: "📄" },
+  { key: "Invoice Issued",    label: "Invoice Diterbitkan",     icon: "🧾" },
+  { key: "Payment Received",  label: "Pembayaran Diterima",     icon: "💳" },
+  { key: "Completed",         label: "Selesai",                 icon: "🎉" },
 ];
 
-function mapStatusToStep(jobStatus: string | null | undefined, orderStatus: string): number {
-  const combined = (jobStatus || orderStatus || "").toLowerCase().replace(/\s+/g, "_");
-  for (let i = ALL_STEPS.length - 1; i >= 0; i--) {
-    if (ALL_STEPS[i].matchStatus.some(s => combined.includes(s.replace(/\s+/g, "_")))) return i;
-  }
-  return 0;
+const LEGACY_STATUS_MAP: Record<string, string> = {
+  "New Order": "Order Received", "Under Review": "Admin Review", "admin_review": "Admin Review",
+  "Pending Vendor": "RFQ Sent", "rfq_sent": "RFQ Sent", "vendor_blasted": "RFQ Sent",
+  "Quotation Sent": "Customer Approval", "customer_quoted": "Customer Approval",
+  "Customer Approved": "Vendor Confirmed", "order_confirmed": "Vendor Confirmed",
+  "assigned_to_vendor": "Vendor Confirmed", "Confirmed": "Vendor Confirmed",
+  "in_progress": "In Transit", "waiting_pickup": "Pickup", "picked_up": "Pickup",
+  "delivered": "Delivered", "pod_uploaded": "POD Uploaded",
+  "invoice_created": "Invoice Issued", "payment_pending": "Payment Received",
+  "paid": "Payment Received", "completed": "Completed",
+};
+
+function mapStatusToStep(_jobStatus: string | null | undefined, orderStatus: string): number {
+  const canonical = LEGACY_STATUS_MAP[orderStatus] ?? orderStatus;
+  const idx = ALL_STEPS.findIndex(s => s.key === canonical);
+  return idx >= 0 ? idx : 0;
 }
 
 function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {

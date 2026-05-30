@@ -44,13 +44,27 @@ const idr = (n: number | null | undefined) =>
     : new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
 
 const STATUS_COLORS: Record<string, string> = {
-  "New Order": "bg-yellow-100 text-yellow-800 border-yellow-200",
-  "Under Review": "bg-blue-100 text-blue-800 border-blue-200",
-  "Quotation Sent": "bg-purple-100 text-purple-800 border-purple-200",
-  "Confirmed": "bg-teal-100 text-teal-800 border-teal-200",
-  "In Progress": "bg-orange-100 text-orange-800 border-orange-200",
-  "Completed": "bg-green-100 text-green-800 border-green-200",
-  "Cancelled": "bg-red-100 text-red-800 border-red-200",
+  "Order Received":    "bg-slate-100 text-slate-800 border-slate-200",
+  "Admin Review":      "bg-blue-100 text-blue-800 border-blue-200",
+  "RFQ Sent":          "bg-indigo-100 text-indigo-800 border-indigo-200",
+  "Quote Received":    "bg-violet-100 text-violet-800 border-violet-200",
+  "Customer Approval": "bg-amber-100 text-amber-800 border-amber-200",
+  "Vendor Confirmed":  "bg-teal-100 text-teal-800 border-teal-200",
+  "In Progress":       "bg-orange-100 text-orange-800 border-orange-200",
+  "Pickup":            "bg-yellow-100 text-yellow-800 border-yellow-200",
+  "In Transit":        "bg-sky-100 text-sky-800 border-sky-200",
+  "Arrived":           "bg-cyan-100 text-cyan-800 border-cyan-200",
+  "Delivered":         "bg-emerald-100 text-emerald-800 border-emerald-200",
+  "POD Uploaded":      "bg-lime-100 text-lime-800 border-lime-200",
+  "Invoice Issued":    "bg-purple-100 text-purple-800 border-purple-200",
+  "Payment Received":  "bg-green-100 text-green-800 border-green-200",
+  "Completed":         "bg-green-200 text-green-900 border-green-300",
+  "Cancelled":         "bg-red-100 text-red-800 border-red-200",
+  // legacy aliases
+  "New Order":         "bg-slate-100 text-slate-800 border-slate-200",
+  "Under Review":      "bg-blue-100 text-blue-800 border-blue-200",
+  "Quotation Sent":    "bg-amber-100 text-amber-800 border-amber-200",
+  "Confirmed":         "bg-teal-100 text-teal-800 border-teal-200",
 };
 
 interface VendorRow {
@@ -688,7 +702,8 @@ export default function LogisticsPortalOrderDetailPage() {
             </p>
           </div>
           <div className="flex gap-2 flex-wrap">
-            {order.status === "New Order" || order.status === "Under Review" ? (
+            {(order.status === "Order Received" || order.status === "Admin Review" ||
+              order.status === "New Order" || order.status === "Under Review") ? (
               <Button size="sm" className="gap-2" onClick={() => setRfqDialog(true)}>
                 <Send className="h-4 w-4" /> Kirim RFQ ke Vendor
               </Button>
@@ -704,7 +719,7 @@ export default function LogisticsPortalOrderDetailPage() {
                 <ListChecks className="h-4 w-4" /> Comparison
               </Button>
             )}
-            {order.status === "Confirmed" && (
+            {(order.status === "Vendor Confirmed" || order.status === "Confirmed") && (
               <Button
                 size="sm"
                 className="gap-2 bg-green-600 hover:bg-green-700 text-white"
@@ -723,7 +738,8 @@ export default function LogisticsPortalOrderDetailPage() {
                 <Plus className="h-4 w-4" /> Buat Sales Order
               </Button>
             )}
-            {(order.status === "Confirmed" || order.status === "In Progress") && !!(order as any).linkedSalesDocId && (
+            {(order.status === "Vendor Confirmed" || order.status === "In Progress" ||
+              order.status === "Confirmed" || order.status === "Pickup" || order.status === "In Transit") && !!(order as any).linkedSalesDocId && (
               <Button
                 size="sm"
                 className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white"
@@ -1055,7 +1071,7 @@ export default function LogisticsPortalOrderDetailPage() {
                 <CardTitle className="text-sm">
                   Penawaran Vendor ({quotes.length})
                 </CardTitle>
-                {latestRfq && order.status !== "Quotation Sent" && order.status !== "Confirmed" && order.status !== "Completed" && (
+                {latestRfq && !["Customer Approval", "Quotation Sent", "Vendor Confirmed", "Confirmed", "In Progress", "Pickup", "In Transit", "Arrived", "Delivered", "POD Uploaded", "Invoice Issued", "Payment Received", "Completed"].includes(order.status ?? "") && (
                   <Button
                     size="sm"
                     variant="outline"
@@ -1137,7 +1153,7 @@ export default function LogisticsPortalOrderDetailPage() {
                               )}
                             </TableCell>
                             <TableCell>
-                              {!isApproved && order.status !== "Quotation Sent" && order.status !== "Confirmed" && order.status !== "Completed" && (
+                              {!isApproved && !["Vendor Confirmed", "Confirmed", "In Progress", "Pickup", "In Transit", "Arrived", "Delivered", "POD Uploaded", "Invoice Issued", "Payment Received", "Completed"].includes(order.status ?? "") && (
                                 <div className="flex gap-1.5 justify-end">
                                   <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Edit" onClick={() => openEditDialog(q)}>
                                     <Edit className="h-3.5 w-3.5" />
@@ -1269,61 +1285,161 @@ export default function LogisticsPortalOrderDetailPage() {
 
           {/* ── Tab Status: Timeline + Operational/Payment ── */}
           <TabsContent value="status" className="space-y-4 mt-4">
-            {/* Order Status Timeline */}
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <Activity className="h-4 w-4 text-indigo-600" />
-                  Timeline Status Order
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {(() => {
-                  const ORDER_STEPS = [
-                    { key: "New Order",        label: "Order Masuk",         icon: <Package className="h-4 w-4" /> },
-                    { key: "Under Review",     label: "Sedang Review",       icon: <Clock className="h-4 w-4" /> },
-                    { key: "Quotation Sent",   label: "Quotation Terkirim",  icon: <Send className="h-4 w-4" /> },
-                    { key: "Confirmed",        label: "Dikonfirmasi",        icon: <CheckCircle className="h-4 w-4" /> },
-                    { key: "In Progress",      label: "Dalam Proses",        icon: <Truck className="h-4 w-4" /> },
-                    { key: "Completed",        label: "Selesai",             icon: <Star className="h-4 w-4" /> },
-                  ];
-                  const STATUS_ORDER = ORDER_STEPS.map(s => s.key);
-                  const currentIdx = STATUS_ORDER.indexOf(order.status ?? "");
-                  const isCancelled = order.status === "Cancelled";
-                  return (
-                    <div className="relative">
-                      {/* Connector line */}
-                      <div className="absolute top-5 left-5 right-5 h-0.5 bg-gray-200 z-0" style={{ marginLeft: "24px", marginRight: "24px" }} />
-                      <div className="flex justify-between relative z-10">
-                        {ORDER_STEPS.map((step, i) => {
-                          const done = !isCancelled && currentIdx >= i;
+            {/* 15-Step Workflow Progress */}
+            {(() => {
+              const CANONICAL_STEPS = [
+                { key: "Order Received",    label: "Order Diterima",          icon: "📋" },
+                { key: "Admin Review",      label: "Ditinjau Admin",          icon: "🔍" },
+                { key: "RFQ Sent",          label: "RFQ ke Vendor",           icon: "📤" },
+                { key: "Quote Received",    label: "Penawaran Masuk",         icon: "💬" },
+                { key: "Customer Approval", label: "Menunggu Persetujuan",    icon: "✋" },
+                { key: "Vendor Confirmed",  label: "Vendor Dikonfirmasi",     icon: "🤝" },
+                { key: "In Progress",       label: "Sedang Diproses",         icon: "🔄" },
+                { key: "Pickup",            label: "Penjemputan",             icon: "🚚" },
+                { key: "In Transit",        label: "Dalam Perjalanan",        icon: "🛣️" },
+                { key: "Arrived",           label: "Tiba di Tujuan",          icon: "📍" },
+                { key: "Delivered",         label: "Terkirim",                icon: "✅" },
+                { key: "POD Uploaded",      label: "Bukti Pengiriman",        icon: "📄" },
+                { key: "Invoice Issued",    label: "Invoice Diterbitkan",     icon: "🧾" },
+                { key: "Payment Received",  label: "Pembayaran Diterima",     icon: "💳" },
+                { key: "Completed",         label: "Selesai",                 icon: "🎉" },
+              ];
+              const LEGACY_MAP: Record<string, string> = {
+                "New Order": "Order Received", "Under Review": "Admin Review",
+                "Quotation Sent": "Customer Approval", "Confirmed": "Vendor Confirmed",
+              };
+              const normalizedStatus = LEGACY_MAP[order.status ?? ""] ?? (order.status ?? "");
+              const currentIdx = CANONICAL_STEPS.findIndex(s => s.key === normalizedStatus);
+              const isCancelled = order.status === "Cancelled";
+              const nextStep = (!isCancelled && currentIdx >= 0 && currentIdx < CANONICAL_STEPS.length - 1)
+                ? CANONICAL_STEPS[currentIdx + 1] : null;
+
+              return (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                  {/* Left: Stepper */}
+                  <Card className="lg:col-span-2">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm flex items-center gap-2">
+                        <Activity className="h-4 w-4 text-indigo-600" />
+                        Alur Workflow Order (15 Tahap)
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-0">
+                        {CANONICAL_STEPS.map((step, i) => {
+                          const done = !isCancelled && currentIdx > i;
                           const active = !isCancelled && currentIdx === i;
                           return (
-                            <div key={step.key} className="flex flex-col items-center gap-1.5 flex-1">
-                              <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all
-                                ${isCancelled ? "bg-gray-100 border-gray-200 text-gray-400" :
-                                  done ? (active ? "bg-indigo-600 border-indigo-600 text-white shadow-md shadow-indigo-200 scale-110" : "bg-green-500 border-green-500 text-white") :
-                                  "bg-white border-gray-200 text-gray-400"}`}>
-                                {step.icon}
+                            <div key={step.key} className="flex items-start gap-2.5 py-1.5">
+                              <div className="flex flex-col items-center shrink-0">
+                                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 ${
+                                  isCancelled ? "bg-gray-100 border-gray-200 text-gray-400" :
+                                  active ? "bg-indigo-600 border-indigo-600 text-white shadow-sm shadow-indigo-200" :
+                                  done ? "bg-green-500 border-green-500 text-white" :
+                                  "bg-white border-gray-200 text-gray-400"
+                                }`}>
+                                  {done ? "✓" : step.icon}
+                                </div>
                               </div>
-                              <span className={`text-[10px] text-center font-medium leading-tight max-w-[60px] ${
-                                active ? "text-indigo-700" : done ? "text-green-700" : "text-gray-400"
-                              }`}>{step.label}</span>
+                              <div className="flex-1 min-w-0">
+                                <p className={`text-xs font-medium leading-tight ${
+                                  active ? "text-indigo-700" : done ? "text-green-700" : isCancelled ? "text-gray-400" : "text-gray-500"
+                                }`}>
+                                  {i + 1}. {step.label}
+                                </p>
+                                {active && (
+                                  <span className="text-[10px] text-indigo-500 font-medium">← sekarang</span>
+                                )}
+                              </div>
                             </div>
                           );
                         })}
+                        {isCancelled && (
+                          <div className="col-span-2 mt-2 flex items-center gap-2 text-red-600 text-sm font-medium bg-red-50 rounded-lg px-3 py-2">
+                            <span className="w-2 h-2 rounded-full bg-red-500 inline-block shrink-0" />
+                            Order dibatalkan
+                          </div>
+                        )}
                       </div>
-                      {isCancelled && (
-                        <div className="mt-4 flex items-center gap-2 text-red-600 text-sm font-medium">
-                          <span className="w-2 h-2 rounded-full bg-red-500 inline-block" />
-                          Order dibatalkan
+                    </CardContent>
+                  </Card>
+
+                  {/* Right: Advance Status */}
+                  <div className="space-y-4">
+                    <Card className="border-indigo-100 bg-indigo-50/40">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm flex items-center gap-2">
+                          <CheckCircle className="h-4 w-4 text-indigo-600" />
+                          Ubah Status
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        <div>
+                          <p className="text-xs text-muted-foreground mb-1">Status saat ini</p>
+                          <Badge className={`${STATUS_COLORS[order.status] ?? "bg-gray-100 text-gray-800"} border text-xs`}>
+                            {order.status}
+                          </Badge>
                         </div>
-                      )}
-                    </div>
-                  );
-                })()}
-              </CardContent>
-            </Card>
+                        {nextStep && !isCancelled && (
+                          <div>
+                            <p className="text-xs text-muted-foreground mb-1.5">Lanjutkan ke</p>
+                            <Button
+                              size="sm"
+                              className="w-full gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs"
+                              disabled={updateStatus.isPending}
+                              onClick={() => {
+                                updateStatus.mutate(
+                                  { id: orderId, data: { status: nextStep.key } },
+                                  {
+                                    onSuccess: () => {
+                                      toast({ title: `Status diubah ke "${nextStep.label}"` });
+                                      invalidateAll();
+                                    },
+                                    onError: () => toast({ title: t.common.error, variant: "destructive" }),
+                                  },
+                                );
+                              }}
+                            >
+                              {updateStatus.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <>{nextStep.icon} {nextStep.label}</>}
+                            </Button>
+                          </div>
+                        )}
+                        <div>
+                          <p className="text-xs text-muted-foreground mb-1.5">Atau pilih status lain</p>
+                          <select
+                            className="w-full text-xs border rounded-md px-2 py-1.5 bg-white"
+                            value=""
+                            onChange={(e) => {
+                              const newStatus = e.target.value;
+                              if (!newStatus) return;
+                              updateStatus.mutate(
+                                { id: orderId, data: { status: newStatus } },
+                                {
+                                  onSuccess: () => {
+                                    const label = CANONICAL_STEPS.find(s => s.key === newStatus)?.label ?? newStatus;
+                                    toast({ title: `Status diubah ke "${label}"` });
+                                    invalidateAll();
+                                  },
+                                  onError: () => toast({ title: t.common.error, variant: "destructive" }),
+                                },
+                              );
+                            }}
+                          >
+                            <option value="">— Pilih status —</option>
+                            {CANONICAL_STEPS.map(s => (
+                              <option key={s.key} value={s.key} disabled={s.key === normalizedStatus}>
+                                {s.icon} {s.label}
+                              </option>
+                            ))}
+                            <option value="Cancelled">❌ Batalkan Order</option>
+                          </select>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Operational + Payment Status */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

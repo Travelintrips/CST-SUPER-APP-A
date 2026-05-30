@@ -10,3 +10,4 @@
 - [WA Template Migration](wa-template-migration.md) — pattern & progress migrating hardcoded WA flows to Settings → Template WA via `whatsappTemplateService`
 - [NixOS Port Killing](nixos-port-killing.md) — `fuser`/`ss`/`lsof` tidak tersedia di NixOS/Replit; gunakan `kill-port.mjs` via `/proc/net/tcp`
 - [API Server Port Config](api-server-port.md) — API server langsung di port 18444 (hapus port-forwarder); Gateway port 5000
+- [Logistic Order 15-Step Workflow](logistic-order-statuses.md) — canonical 15 statuses in logisticStatusConstants.ts; OrderProgressBar, order-track.tsx, and BizPortal Status tab all now aligned
