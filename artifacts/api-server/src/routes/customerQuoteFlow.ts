@@ -62,7 +62,16 @@ customerQuoteAdminRouter.post("/rfq/:rfqId/send-customer-quote", async (req: Req
       ? Number(selectedLink.offeredPrice)
       : selectedLink?.basicPrice ? Number(selectedLink.basicPrice) : null;
 
-    const customerPrice = finalCustomerPrice ?? (order.finalSellingPrice ? Number(order.finalSellingPrice) : null);
+    const orderSubtotalNum = order.subtotal ? Number(order.subtotal) : 0;
+    const orderTaxNum = order.tax ? Number(order.tax) : 0;
+    const orderGrandTotalNum = order.grandTotal ? Number(order.grandTotal) : (orderSubtotalNum + orderTaxNum);
+
+    // Harga jual ke customer: pakai finalCustomerPrice dari request jika ada,
+    // fallback ke order.finalSellingPrice, fallback ke order grandTotal (subtotal+tax)
+    const customerPrice = finalCustomerPrice
+      ?? (order.finalSellingPrice ? Number(order.finalSellingPrice) : null)
+      ?? (orderGrandTotalNum > 0 ? orderGrandTotalNum : null);
+
     const margin = customerPrice && vendorCost ? customerPrice - vendorCost : null;
 
     const validUntil = validInDays
@@ -460,9 +469,9 @@ customerQuotePublicRouter.get("/:token", async (req: Request, res: Response) => 
     if (orderSubtotal > 0 && orderTax > 0) {
       displaySubtotal = orderSubtotal;
       displayTax = orderTax;
-      displayTotal = finalCustomerPrice ?? orderGrandTotal;
+      displayTotal = orderSubtotal + orderTax;
     } else if (finalCustomerPrice && finalCustomerPrice > 0) {
-      // finalCustomerPrice is the quoted total — show DPP + PPN breakdown
+      // finalCustomerPrice is the quoted total — show PPN breakdown
       displaySubtotal = Math.round(finalCustomerPrice / 1.11);
       displayTax = finalCustomerPrice - displaySubtotal;
       displayTotal = finalCustomerPrice;

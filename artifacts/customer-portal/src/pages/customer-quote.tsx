@@ -245,12 +245,8 @@ export default function CustomerQuotePage() {
             )}
 
             {/* Price breakdown */}
-            {data.displaySubtotal != null && data.displayTax != null ? (
+            {data.displayTax != null && data.displayTotal != null ? (
               <div className="space-y-2">
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-slate-500">DPP (Harga Dasar)</span>
-                  <span className="text-slate-700 font-medium">{idr(data.displaySubtotal)}</span>
-                </div>
                 <div className="flex justify-between items-center text-sm">
                   <span className="text-slate-500">PPN 11%</span>
                   <span className="text-slate-700 font-medium">{idr(data.displayTax)}</span>
