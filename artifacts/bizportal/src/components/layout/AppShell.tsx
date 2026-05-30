@@ -413,17 +413,28 @@ export function AppShell({ children }: AppShellProps) {
 
     // Custom role permissions (format: "module" atau "module:view")
     if (customRolePermissions != null) {
-      const path = item.type === "group" ? item.basePath : item.href;
-      const seg = path.replace(/^\//, "").split("/")[0] ?? "";
-      const full = path.replace(/^\//, "");
+      const checkPath = (p: string) => {
+        const seg = p.replace(/^\//, "").split("/")[0] ?? "";
+        const full = p.replace(/^\//, "");
+        return (
+          customRolePermissions.includes(`${seg}:view`) ||
+          customRolePermissions.includes(`${full}:view`) ||
+          customRolePermissions.includes(seg) ||
+          customRolePermissions.includes(full)
+        );
+      };
 
-      // Cek format baru "segment:view" atau format lama "segment"
-      return (
-        customRolePermissions.includes(`${seg}:view`) ||
-        customRolePermissions.includes(`${full}:view`) ||
-        customRolePermissions.includes(seg) ||
-        customRolePermissions.includes(full)
-      );
+      // Cek basePath / href langsung
+      const path = item.type === "group" ? item.basePath : item.href;
+      if (checkPath(path)) return true;
+
+      // Untuk grup dengan virtual basePath (tidak ada route nyata di sana),
+      // tampilkan grup jika minimal satu child lolos permission check
+      if (item.type === "group") {
+        return item.children.some((c) => checkPath(c.href));
+      }
+
+      return false;
     }
 
     // Built-in roles
