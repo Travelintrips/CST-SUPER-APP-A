@@ -182,6 +182,18 @@ export function AppShell({ children }: AppShellProps) {
       ],
     },
 
+    // ── 1.5. EXCEPTION MANAGEMENT ─────────────────────────────────────
+    {
+      type: "group",
+      titleKey: "Exception Management",
+      basePath: "/exceptions",
+      icon: AlertTriangle,
+      roles: ["manager", "admin", "owner"],
+      children: [
+        { titleKey: "Semua Exception", href: "/exceptions", icon: AlertTriangle },
+      ],
+    },
+
     // ── 2. MASTER DATA ────────────────────────────────────────────────
     {
       type: "group",

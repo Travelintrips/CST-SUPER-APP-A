@@ -132,6 +132,7 @@ import LogisticsRfqComparisonPage from "@/pages/logistics-rfq-comparison";
 import LogisticOrderDetailPage from "@/pages/logistics/order-detail";
 import VendorPerformancePage from "@/pages/logistics/vendor-performance";
 import InternalTasksPage from "@/pages/logistics/internal-tasks";
+import ExceptionsPage from "@/pages/exceptions/index";
 // Misc
 import NotificationsPage from "@/pages/notifications";
 import IntelligenceAlertsPage from "@/pages/intelligence-alerts";
@@ -338,6 +339,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
 
       {/* ── Notifications & Analytics ──────────────────────────────────── */}
       <Route path="/notifications" component={PR(NotificationsPage)} />
+      <Route path="/exceptions" component={PR(ExceptionsPage)} />
       <Route path="/intelligence-alerts" component={PR(IntelligenceAlertsPage)} />
       <Route path="/ai-approvals" component={PR(AiApprovalsPage)} />
       <Route path="/operational-context" component={PR(OperationalContextPage)} />
