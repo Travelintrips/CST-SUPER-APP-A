@@ -61,7 +61,7 @@ export function RecentActivitiesWidget() {
             <CardTitle className="text-sm font-medium">Aktivitas Terbaru</CardTitle>
           </div>
           <Button variant="ghost" size="sm" asChild className="h-7 text-xs">
-            <Link href="/admin/audit-log">
+            <Link href="/reports/audit-log">
               Semua Log <ArrowRight className="ml-1 h-3.5 w-3.5" />
             </Link>
           </Button>

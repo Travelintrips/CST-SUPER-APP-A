@@ -39,7 +39,7 @@ const QUICK_ACTIONS: QuickAction[] = [
   {
     label: "Upload Dokumen",
     description: "Kelola dokumen & lampiran",
-    href: "/storage",
+    href: "/media",
     icon: FolderOpen,
     color: "text-amber-600",
     bg: "bg-amber-50 hover:bg-amber-100 border-amber-200/60",
@@ -47,7 +47,7 @@ const QUICK_ACTIONS: QuickAction[] = [
   {
     label: "AI Chatbot",
     description: "Tanya AI asisten ERP",
-    href: "/ai-center",
+    href: "/settings/ai-chatbot",
     icon: Bot,
     color: "text-purple-600",
     bg: "bg-purple-50 hover:bg-purple-100 border-purple-200/60",

@@ -39,7 +39,7 @@ export function AiInsightsWidget() {
     },
   });
 
-  const { data: alertsData, isLoading: alertsLoading } = useQuery<{ alerts: IntelligenceAlert[]; total: number }>({
+  const { data: alertsData, isLoading: alertsLoading, error: alertsError } = useQuery<{ alerts: IntelligenceAlert[]; total: number }>({
     queryKey: ["dashboard-ai-alerts-list"],
     queryFn: async () => {
       const res = await fetch("/api/intelligence-alerts?status=open&limit=3", { credentials: "include" });
@@ -66,7 +66,7 @@ export function AiInsightsWidget() {
             )}
           </div>
           <Button variant="ghost" size="sm" asChild className="h-7 text-xs">
-            <Link href="/ai-center">
+            <Link href="/settings/ai-chatbot">
               Lihat Semua <ArrowRight className="ml-1 h-3.5 w-3.5" />
             </Link>
           </Button>
@@ -98,9 +98,14 @@ export function AiInsightsWidget() {
         {summaryError ? (
           <div className="flex items-center gap-2 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
             <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-            Gagal memuat AI insights
+            Gagal memuat ringkasan AI insights
           </div>
-        ) : isLoading ? (
+        ) : alertsError ? (
+          <div className="flex items-center gap-2 rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-700">
+            <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+            Gagal memuat daftar alert
+          </div>
+        ) : alertsLoading ? (
           <div className="space-y-2">
             {[1, 2].map((i) => <Skeleton key={i} className="h-12 w-full bg-muted" />)}
           </div>

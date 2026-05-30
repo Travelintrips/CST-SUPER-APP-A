@@ -61,7 +61,7 @@ export function TasksWidget() {
     },
   });
 
-  const { data: stats = [] } = useQuery<StatRow[]>({
+  const { data: stats = [], error: statsError } = useQuery<StatRow[]>({
     queryKey: ["dashboard-tasks-stats"],
     queryFn: async () => {
       const res = await fetch("/api/internal-tasks/stats/summary", { credentials: "include" });
@@ -91,24 +91,31 @@ export function TasksWidget() {
       </CardHeader>
       <CardContent className="space-y-3">
         {/* Stats row */}
-        <div className="grid grid-cols-3 gap-2">
-          {[
-            { label: "Open", value: totalOpen, color: "text-blue-700", bg: "bg-blue-50" },
-            { label: "In Progress", value: totalInProgress, color: "text-amber-700", bg: "bg-amber-50" },
-            { label: "Overdue", value: totalOverdue, color: "text-red-700", bg: "bg-red-50", icon: totalOverdue > 0 },
-          ].map((s) => (
-            <div key={s.label} className={`rounded-lg border border-border px-3 py-2 ${s.bg}`}>
-              <div className="flex items-center gap-1 mb-0.5">
-                {s.icon && <AlertCircle className="h-3 w-3 text-red-500" />}
-                <p className="text-[10px] text-muted-foreground font-medium">{s.label}</p>
+        {statsError ? (
+          <div className="flex items-center gap-2 rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-700">
+            <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+            Gagal memuat statistik tasks
+          </div>
+        ) : (
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { label: "Open", value: totalOpen, color: "text-blue-700", bg: "bg-blue-50" },
+              { label: "In Progress", value: totalInProgress, color: "text-amber-700", bg: "bg-amber-50" },
+              { label: "Overdue", value: totalOverdue, color: "text-red-700", bg: "bg-red-50", icon: totalOverdue > 0 },
+            ].map((s) => (
+              <div key={s.label} className={`rounded-lg border border-border px-3 py-2 ${s.bg}`}>
+                <div className="flex items-center gap-1 mb-0.5">
+                  {s.icon && <AlertCircle className="h-3 w-3 text-red-500" />}
+                  <p className="text-[10px] text-muted-foreground font-medium">{s.label}</p>
+                </div>
+                {isLoading
+                  ? <Skeleton className="h-5 w-8 bg-muted" />
+                  : <p className={`text-lg font-bold ${s.color}`}>{s.value}</p>
+                }
               </div>
-              {isLoading
-                ? <Skeleton className="h-5 w-8 bg-muted" />
-                : <p className={`text-lg font-bold ${s.color}`}>{s.value}</p>
-              }
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
 
         {/* Task list */}
         {error ? (
