@@ -928,6 +928,7 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
           (quoteShortUrl ? `📤 Penawaran terkirim ke customer\n` : "") +
           `\n📦 Forward ke vendor untuk eksekusi:\n${fwdShort}`
         ).catch(() => {});
+      }
       sendVendorSelectedAdminWa({
         rfqNumber: rfq.rfqNumber,
         orderNumber: order.orderNumber,

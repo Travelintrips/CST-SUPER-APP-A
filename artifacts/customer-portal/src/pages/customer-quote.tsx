@@ -5,6 +5,8 @@ type PriceItem = {
   name: string;
   category: string;
   subtotal: number;
+  qty: number | null;
+  unit: string | null;
 };
 
 type QuoteData = {
@@ -223,6 +225,8 @@ export default function CustomerQuotePage() {
                   <thead>
                     <tr className="bg-slate-50 text-slate-500 text-xs">
                       <th className="text-left px-3 py-2 font-medium">Item / Layanan</th>
+                      <th className="text-right px-3 py-2 font-medium">Qty</th>
+                      <th className="text-right px-3 py-2 font-medium">Satuan</th>
                       <th className="text-right px-3 py-2 font-medium">Subtotal</th>
                     </tr>
                   </thead>
@@ -230,6 +234,8 @@ export default function CustomerQuotePage() {
                     {data.priceItems.map((item, idx) => (
                       <tr key={idx}>
                         <td className="px-3 py-2 text-slate-700">{item.name}</td>
+                        <td className="px-3 py-2 text-right text-slate-500">{item.qty ?? "—"}</td>
+                        <td className="px-3 py-2 text-right text-slate-400 text-xs">{item.unit ?? "—"}</td>
                         <td className="px-3 py-2 text-right text-slate-700 font-medium">{idr(item.subtotal)}</td>
                       </tr>
                     ))}

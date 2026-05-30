@@ -128,12 +128,18 @@ vendorFulfillmentPublicRouter.post(
       const isPdf = req.file.mimetype === "application/pdf";
       const ext = isPdf ? "pdf" : (req.file.originalname?.split(".").pop()?.toLowerCase() ?? "jpg");
       const storagePath = `public/vendor-fulfillment/${token}/${fileType}-${uuid}.${ext}`;
-      await objectStorage.uploadFile(req.file.buffer, storagePath, req.file.mimetype);
-      const url = await objectStorage.getPublicUrl(storagePath);
+      try {
+        await objectStorage.uploadFile(req.file.buffer, storagePath, req.file.mimetype);
+      } catch (uploadErr: unknown) {
+        const msg = uploadErr instanceof Error ? uploadErr.message : String(uploadErr);
+        logger.error({ err: uploadErr, storagePath }, "vendor-fulfillment upload error");
+        return res.status(500).json({ error: `Gagal upload file: ${msg}` });
+      }
+      const url = objectStorage.getPublicUrl(storagePath);
       return res.json({ url });
     } catch (err) {
-      logger.error({ err }, "vendor-fulfillment upload error");
-      return res.status(500).json({ error: "Gagal upload file" });
+      logger.error({ err }, "vendor-fulfillment upload handler error");
+      return res.status(500).json({ error: "Terjadi kesalahan pada server" });
     }
   }
 );
