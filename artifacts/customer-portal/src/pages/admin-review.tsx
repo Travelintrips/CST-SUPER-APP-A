@@ -1541,6 +1541,11 @@ export default function AdminReviewPage() {
   if (error) return <ErrorScreen message={error} />;
   if (!data) return null;
 
+  if (data.actionType === "confirm_fulfillment") {
+    window.location.replace(`/admin-action/${token}`);
+    return <LoadingScreen />;
+  }
+
   if (data.actionType === "compare_vendors") {
     return <CompareVendorsView data={data as CompareData} token={token} />;
   }
