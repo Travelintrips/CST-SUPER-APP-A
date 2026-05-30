@@ -991,8 +991,6 @@ async function notifyVendorStatusChange(
       refId: order.orderNumber,
     }).catch(() => undefined);
 
-    const label = VENDOR_STATUS_LABELS[status] ?? status;
-    const note  = VENDOR_STATUS_NOTES[status] ?? "";
     sendVendorOrderStatusChangeNotification(order, label, note, vendor.name ?? "—", phone);
 
   } catch {

@@ -14,21 +14,28 @@ type FieldDef = {
   type: "text" | "number" | "select" | "textarea" | "date";
   options?: string[]; required?: boolean; placeholder?: string;
   section?: "quotation" | "operational" | "both";
+  isUpload?: boolean;
 };
 
 type ServiceSchema = { label: string; emoji: string; fields: FieldDef[] };
 
 type OrderContextItem = {
   serviceName: string;
+  sku?: string | null;
   qty: string | null;
   unit: string | null;
+  unitPrice?: string | null;
   subtotal: string | null;
+  category?: string | null;
 };
 
 type OrderContext = {
   customerName: string | null;
   requiredDate: string | null;
   adminNotes: string | null;
+  origin?: string | null;
+  destination?: string | null;
+  shipmentType?: string | null;
   items: OrderContextItem[];
 };
 
@@ -334,6 +341,20 @@ export default function VendorMiniFormPage() {
                   <span className="font-medium text-slate-800">{meta.orderContext.customerName}</span>
                 </div>
               )}
+              {meta.orderContext.shipmentType && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-500">Jenis Layanan</span>
+                  <span className="font-medium text-slate-800">{meta.orderContext.shipmentType}</span>
+                </div>
+              )}
+              {(meta.orderContext.origin || meta.orderContext.destination) && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-500">Rute</span>
+                  <span className="font-medium text-slate-800 text-right">
+                    {[meta.orderContext.origin, meta.orderContext.destination].filter(Boolean).join(" → ")}
+                  </span>
+                </div>
+              )}
               {meta.orderContext.requiredDate && (
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-500">Target Pengiriman</span>
@@ -357,18 +378,25 @@ export default function VendorMiniFormPage() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="text-slate-400 text-xs border-b border-slate-100">
-                        <th className="text-left px-3 py-2 font-medium">Nama</th>
-                        <th className="text-right px-3 py-2 font-medium">Qty</th>
-                        <th className="text-right px-3 py-2 font-medium">Satuan</th>
+                        <th className="text-left px-3 py-2 font-medium">Nama / SKU</th>
+                        <th className="text-right px-2 py-2 font-medium">Qty</th>
+                        <th className="text-right px-2 py-2 font-medium">Sat.</th>
+                        <th className="text-right px-2 py-2 font-medium">Harga Dasar</th>
                         <th className="text-right px-3 py-2 font-medium">Subtotal</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50">
                       {meta.orderContext.items.map((item, i) => (
                         <tr key={i}>
-                          <td className="px-3 py-2 text-slate-700">{item.serviceName || "—"}</td>
-                          <td className="px-3 py-2 text-right text-slate-600">{item.qty ?? "—"}</td>
-                          <td className="px-3 py-2 text-right text-slate-500">{item.unit ?? "—"}</td>
+                          <td className="px-3 py-2 text-slate-700">
+                            <div>{item.serviceName || "—"}</div>
+                            {item.sku && <div className="text-xs text-slate-400 font-mono">{item.sku}</div>}
+                          </td>
+                          <td className="px-2 py-2 text-right text-slate-600">{item.qty ?? "—"}</td>
+                          <td className="px-2 py-2 text-right text-slate-500">{item.unit ?? "—"}</td>
+                          <td className="px-2 py-2 text-right text-slate-600">
+                            {item.unitPrice ? `Rp ${Number(item.unitPrice).toLocaleString("id-ID")}` : "—"}
+                          </td>
                           <td className="px-3 py-2 text-right font-medium text-slate-700">
                             {item.subtotal ? `Rp ${Number(item.subtotal).toLocaleString("id-ID")}` : "—"}
                           </td>

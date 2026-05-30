@@ -224,6 +224,7 @@ export const SERVICE_SCHEMAS: Record<string, {
     type: "text" | "number" | "select" | "textarea" | "date";
     options?: string[]; required?: boolean; placeholder?: string;
     section?: "quotation" | "operational" | "both";
+    isUpload?: boolean;
   }[];
 }> = {
   product: {
@@ -541,6 +542,24 @@ export const SERVICE_SCHEMAS: Record<string, {
   },
 };
 
+// ── Universal operational fields (appended to all schemas for fulfillment form) ─
+const UNIVERSAL_OP_FIELDS: {
+  key: string; label: string;
+  type: "text" | "number" | "select" | "textarea" | "date";
+  options?: string[]; required?: boolean; placeholder?: string;
+  section?: "quotation" | "operational" | "both";
+  isUpload?: boolean;
+}[] = [
+  { key: "stock_status",       label: "Status Ketersediaan",     type: "select",   required: true,  options: ["Available", "Partial Available", "Not Available"],              section: "operational" },
+  { key: "ready_date",         label: "Tanggal Ready",           type: "date",                                                                                                 section: "operational" },
+  { key: "delivery_method",    label: "Metode Pengiriman",       type: "select",   required: true,  options: ["Vendor Delivery", "Customer Pickup", "Third Party Carrier"],    section: "operational" },
+  { key: "carrier_name",       label: "Carrier / Forwarder",     type: "text",                      placeholder: "Nama perusahaan pengiriman / carrier",                       section: "operational" },
+  { key: "foto_barang",        label: "Foto Barang",             type: "text",                      placeholder: "Upload foto barang / kargo",                                 section: "operational", isUpload: true },
+  { key: "packing_list_doc",   label: "Packing List",            type: "text",                      placeholder: "Upload packing list",                                        section: "operational", isUpload: true },
+  { key: "invoice_vendor_doc", label: "Invoice Vendor",          type: "text",                      placeholder: "Upload invoice vendor",                                      section: "operational", isUpload: true },
+  { key: "pod_doc",            label: "Proof of Delivery (POD)", type: "text",                      placeholder: "Upload bukti pengiriman / POD",                              section: "operational", isUpload: true },
+];
+
 // ── PUBLIC: GET /api/vendor-form/:token ───────────────────────────────────────
 
 vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
@@ -633,13 +652,18 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
     }
 
     const schema = SERVICE_SCHEMAS[row.serviceType] ?? null;
+    const _baseFields = schema ? schema.fields.filter(f => {
+      if (!f.section) return true;
+      if (row!.phase === "operational") return f.section === "operational" || f.section === "both";
+      return f.section === "quotation" || f.section === "both";
+    }) : [];
+    const _existingKeys = new Set(_baseFields.map(f => f.key));
+    const _universalFields = row!.phase === "operational"
+      ? UNIVERSAL_OP_FIELDS.filter(f => !_existingKeys.has(f.key))
+      : [];
     const filteredSchema = schema ? {
       ...schema,
-      fields: schema.fields.filter(f => {
-        if (!f.section) return true;
-        if (row!.phase === "operational") return f.section === "operational" || f.section === "both";
-        return f.section === "quotation" || f.section === "both";
-      }),
+      fields: [..._baseFields, ..._universalFields],
     } : null;
 
     let productTemplate = null;
@@ -647,7 +671,14 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
       customerName: string | null;
       requiredDate: string | null;
       adminNotes: string | null;
-      items: Array<{ serviceName: string; qty: string | null; unit: string | null; subtotal: string | null }>;
+      origin: string | null;
+      destination: string | null;
+      shipmentType: string | null;
+      items: Array<{
+        serviceName: string; sku: string | null;
+        qty: string | null; unit: string | null;
+        unitPrice: string | null; subtotal: string | null; category: string | null;
+      }>;
     } | null = null;
 
     if (row.orderId) {
@@ -658,6 +689,9 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
             customerName: logisticOrdersTable.customerName,
             requiredDate: logisticOrdersTable.requiredDate,
             notes: logisticOrdersTable.notes,
+            origin: logisticOrdersTable.origin,
+            destination: logisticOrdersTable.destination,
+            shipmentType: logisticOrdersTable.shipmentType,
           })
           .from(logisticOrdersTable)
           .where(eq(logisticOrdersTable.id, row.orderId));
@@ -672,6 +706,8 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
             serviceName: logisticOrderItemsTable.serviceName,
             subtotal: logisticOrderItemsTable.subtotal,
             inputData: logisticOrderItemsTable.inputData,
+            calculationResult: logisticOrderItemsTable.calculationResult,
+            category: logisticOrderItemsTable.category,
           })
           .from(logisticOrderItemsTable)
           .where(eq(logisticOrderItemsTable.orderId, row.orderId));
@@ -680,13 +716,27 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
           customerName: order?.customerName ?? null,
           requiredDate: order?.requiredDate ?? null,
           adminNotes: row.adminNotes ?? order?.notes ?? null,
+          origin: order?.origin ?? null,
+          destination: order?.destination ?? null,
+          shipmentType: order?.shipmentType ?? null,
           items: orderItems.map((it) => {
             const inp = (it.inputData ?? {}) as Record<string, unknown>;
+            const calc = ((it.calculationResult ?? {}) as Record<string, unknown>);
+            const qtyStr = inp["qty"] != null ? String(inp["qty"]) : inp["weight"] != null ? String(inp["weight"]) : null;
+            const qtyNum = parseFloat(qtyStr ?? "0") || 0;
+            const subtotalNum = it.subtotal ? parseFloat(it.subtotal) : 0;
+            const unitPriceCalc = (calc["unitPrice"] ?? calc["pricePerUnit"] ?? calc["rate"] ?? calc["baseRate"]) as string | number | undefined;
+            const unitPrice = unitPriceCalc
+              ? String(Math.round(Number(unitPriceCalc)))
+              : (qtyNum > 1 ? String(Math.round(subtotalNum / qtyNum)) : (subtotalNum > 0 ? String(subtotalNum) : null));
             return {
               serviceName: it.serviceName,
-              qty: inp["qty"] != null ? String(inp["qty"]) : inp["weight"] != null ? String(inp["weight"]) : null,
+              sku: (inp["sku"] as string | undefined) ?? (calc["sku"] as string | undefined) ?? null,
+              qty: qtyStr,
               unit: inp["unit"] != null ? String(inp["unit"]) : inp["weightUnit"] != null ? String(inp["weightUnit"]) : null,
+              unitPrice,
               subtotal: it.subtotal,
+              category: it.category,
             };
           }),
         };
@@ -705,6 +755,9 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
         customerName: null,
         requiredDate: null,
         adminNotes: row.adminNotes,
+        origin: null,
+        destination: null,
+        shipmentType: null,
         items: [],
       };
     }
@@ -746,9 +799,17 @@ vendorMiniFormRouter.post("/upload/:token", _vmfUploadRateLimit, _vmfUpload.sing
     const [link] = await db.select({ id: vendorMiniFormLinksTable.id, isActive: vendorMiniFormLinksTable.isActive, expiresAt: vendorMiniFormLinksTable.expiresAt })
       .from(vendorMiniFormLinksTable)
       .where(eq(vendorMiniFormLinksTable.token, token));
-    if (!link) return res.status(404).json({ error: "Link tidak ditemukan" });
-    if (!link.isActive) return res.status(410).json({ error: "Link sudah dinonaktifkan" });
-    if (link.expiresAt && link.expiresAt < new Date()) return res.status(410).json({ error: "Link sudah kadaluarsa" });
+    if (!link) {
+      // Juga terima token dari vendorOperationalConfirmationsTable (op-confirm form)
+      const [opConf] = await db.select({ token: vendorOperationalConfirmationsTable.token, status: vendorOperationalConfirmationsTable.status })
+        .from(vendorOperationalConfirmationsTable)
+        .where(eq(vendorOperationalConfirmationsTable.token, token));
+      if (!opConf) return res.status(404).json({ error: "Link tidak ditemukan" });
+      if (opConf.status === "submitted") return res.status(410).json({ error: "Form sudah dikirim" });
+    } else {
+      if (!link.isActive) return res.status(410).json({ error: "Link sudah dinonaktifkan" });
+      if (link.expiresAt && link.expiresAt < new Date()) return res.status(410).json({ error: "Link sudah kadaluarsa" });
+    }
     if (!req.file) return res.status(400).json({ error: "File diperlukan" });
 
     const allowed = ["application/pdf", "image/jpeg", "image/png", "image/webp", "application/msword",
@@ -1099,6 +1160,31 @@ vendorMiniFormRouter.get("/customer-approval/:token", async (req: Request, res: 
     const sellingNum = approval.sellingPrice ? Number(approval.sellingPrice) : null;
     const ppnNominal = approval.ppnNominal ? Number(approval.ppnNominal) : (sellingNum ? Math.round(sellingNum * ppnPct / (100 + ppnPct)) : null);
     const subtotalBeforePpn = sellingNum && ppnNominal ? sellingNum - ppnNominal : sellingNum;
+
+    // Per-item breakdown for customer view (proportional dari selling price)
+    let priceItems: Array<{ description: string; qty: number; unit: string; unitPrice: number; subtotal: number }> | null = null;
+    if (approval.orderId && subtotalBeforePpn && subtotalBeforePpn > 0) {
+      try {
+        const orderItems = await db.select({
+          serviceName: logisticOrderItemsTable.serviceName,
+          subtotal: logisticOrderItemsTable.subtotal,
+          inputData: logisticOrderItemsTable.inputData,
+        }).from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, approval.orderId));
+        if (orderItems.length > 0) {
+          const totalEst = orderItems.reduce((s, i) => s + (i.subtotal ? parseFloat(i.subtotal) : 0), 0);
+          priceItems = orderItems.map(it => {
+            const inp = (it.inputData ?? {}) as Record<string, unknown>;
+            const qtyNum = inp["qty"] != null ? (parseFloat(String(inp["qty"])) || 1) : 1;
+            const unit = inp["unit"] != null ? String(inp["unit"]) : inp["weightUnit"] != null ? String(inp["weightUnit"]) : "Ls";
+            const estSubtotal = it.subtotal ? parseFloat(it.subtotal) : 0;
+            const ratio = totalEst > 0 ? estSubtotal / totalEst : 1 / orderItems.length;
+            const itemSelling = Math.round(subtotalBeforePpn! * ratio);
+            return { description: it.serviceName, qty: qtyNum, unit, unitPrice: Math.round(itemSelling / qtyNum), subtotal: itemSelling };
+          });
+        }
+      } catch { /* non-critical */ }
+    }
+
     return res.json({
       token: approval.token, orderNumber: approval.orderNumber,
       customerName: approval.customerName,
@@ -1109,6 +1195,7 @@ vendorMiniFormRouter.get("/customer-approval/:token", async (req: Request, res: 
       taxAmount: ppnNominal,
       subtotal: subtotalBeforePpn,
       grandTotal: sellingNum,
+      priceItems,
     });
   } catch (err) {
     req.log?.error({ err }, "customer-approval GET error");
@@ -1375,9 +1462,11 @@ vendorMiniFormRouter.get("/op-confirm/:token", async (req: Request, res: Respons
     const [conf] = await db.select().from(vendorOperationalConfirmationsTable).where(eq(vendorOperationalConfirmationsTable.token, token));
     if (!conf) return res.status(404).json({ error: "Link tidak ditemukan" });
     const schema = SERVICE_SCHEMAS[conf.serviceType] ?? null;
+    const _opBaseFields = schema ? schema.fields.filter(f => f.section === "operational" || f.section === "both") : [];
+    const _existingOpKeys = new Set(_opBaseFields.map(f => f.key));
     const opFields = schema ? {
       ...schema,
-      fields: schema.fields.filter(f => f.section === "operational" || f.section === "both"),
+      fields: [..._opBaseFields, ...UNIVERSAL_OP_FIELDS.filter(f => !_existingOpKeys.has(f.key))],
     } : null;
     return res.json({
       token: conf.token, orderNumber: conf.orderNumber, vendorName: conf.vendorName,
