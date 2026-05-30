@@ -772,10 +772,27 @@ logisticRfqV2Router.post("/vendor-form/:token", async (req: Request, res: Respon
     status: newStatus,
     offeredPrice: action === "accept"
       ? (link.basicPrice ?? (await (async () => {
-          const items = await db.select({ subtotal: logisticOrderItemsTable.subtotal })
-            .from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, rfq.orderId));
-          const sum = items.reduce((s, i) => s + (i.subtotal ? parseFloat(i.subtotal) : 0), 0);
-          return sum > 0 ? String(Math.round(sum)) : null;
+          // Fallback: gunakan harga catalog vendor (bukan subtotal selling price)
+          const catItems = await db.select({
+            name: vendorCatalogItemsTable.name,
+            kategori: vendorCatalogItemsTable.kategori,
+            priceBase: vendorCatalogItemsTable.priceBase,
+          }).from(vendorCatalogItemsTable)
+            .where(and(eq(vendorCatalogItemsTable.vendorId, link.vendorId), eq(vendorCatalogItemsTable.isActive, true)));
+          if (catItems.length === 1) return String(catItems[0].priceBase);
+          if (catItems.length > 1) {
+            const orderItems = await db.select({ serviceName: logisticOrderItemsTable.serviceName })
+              .from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, rfq.orderId));
+            const prices = orderItems.map(i => {
+              const svc = (i.serviceName ?? "").toLowerCase().trim();
+              const match = catItems.find(c => c.name.toLowerCase().trim() === svc || (c.kategori ?? "").toLowerCase().trim() === svc);
+              return match ? Number(match.priceBase) : null;
+            });
+            if (prices.length > 0 && prices.every(p => p != null)) {
+              return String(prices.reduce((s, p) => s + (p ?? 0), 0));
+            }
+          }
+          return null;
         })()))
       : (offeredPrice ? String(offeredPrice) : null),
     eta: eta ?? null,

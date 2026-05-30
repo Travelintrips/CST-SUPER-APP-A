@@ -775,12 +775,41 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
         } else {
           const { randomUUID } = await import("crypto");
           linkToken = randomUUID();
+
+          // Hitung basicPrice dari katalog vendor agar vendor lihat harga dasar, BUKAN harga jual
+          const catItemsForVendor = await db.select({
+            name: vendorCatalogItemsTable.name,
+            kategori: vendorCatalogItemsTable.kategori,
+            priceBase: vendorCatalogItemsTable.priceBase,
+          }).from(vendorCatalogItemsTable)
+            .where(and(eq(vendorCatalogItemsTable.vendorId, vendor.id), eq(vendorCatalogItemsTable.isActive, true)));
+
+          let basicPriceForLink: string | null = null;
+          if (catItemsForVendor.length > 0) {
+            const rawItemsForPrice = await db.select({ serviceName: logisticOrderItemsTable.serviceName })
+              .from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, order.id));
+            const matchPrice = (svcName: string): number | null => {
+              const svc = (svcName ?? "").toLowerCase().trim();
+              const match = catItemsForVendor.find(c => c.name.toLowerCase().trim() === svc || (c.kategori ?? "").toLowerCase().trim() === svc);
+              if (match) return Number(match.priceBase);
+              if (catItemsForVendor.length === 1) return Number(catItemsForVendor[0].priceBase);
+              return null;
+            };
+            const prices = rawItemsForPrice.map(i => matchPrice(i.serviceName ?? ""));
+            if (prices.length > 0 && prices.every(p => p != null)) {
+              basicPriceForLink = String(prices.reduce((s, p) => s + (p ?? 0), 0));
+            } else if (catItemsForVendor.length === 1) {
+              basicPriceForLink = String(catItemsForVendor[0].priceBase);
+            }
+          }
+
           await db.insert(rfqVendorLinksTable).values({
             rfqId: rfq.id,
             vendorId: vendor.id,
             token: linkToken,
             status: "waiting_response",
             expiredAt,
+            basicPrice: basicPriceForLink ?? undefined,
           });
         }
 
