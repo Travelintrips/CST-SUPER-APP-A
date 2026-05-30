@@ -47,6 +47,8 @@ import GoodsReceiptEditorPage from "@/pages/purchase/gr-editor";
 import QcListPage from "@/pages/purchase/qc-list";
 import QcEditorPage from "@/pages/purchase/qc-editor";
 import { PurchaseReturnsListPage, PurchaseReturnEditorPage } from "@/pages/purchase/purchase-returns";
+import ProductTemplatesPage from "@/pages/product-templates/index";
+import ProductTemplateDetailPage from "@/pages/product-templates/detail";
 import { VendorInvoicesListPage, VendorInvoiceEditorPage } from "@/pages/purchase/vendor-invoices";
 import { PaymentRequestsListPage, PaymentRequestEditorPage } from "@/pages/purchase/payment-requests";
 import { LandedCostsListPage, LandedCostEditorPage } from "@/pages/purchase/landed-costs";
@@ -300,6 +302,10 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       {/* ── Products ───────────────────────────────────────────────────── */}
       <Route path="/products/items" component={PR(ProductItemsPage)} />
       <Route path="/products/recipes" component={PR(ProductRecipesPage)} />
+
+      {/* ── Product Template Engine ─────────────────────────────────────── */}
+      <Route path="/product-templates/:id" component={PR(ProductTemplateDetailPage)} />
+      <Route path="/product-templates" component={PR(ProductTemplatesPage)} />
 
       {/* ── Thai Tea ───────────────────────────────────────────────────── */}
       <Route path="/thai-tea/dashboard" component={PR(ThaiTeaDashboardPage)} />

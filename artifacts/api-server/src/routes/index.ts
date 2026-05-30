@@ -68,6 +68,7 @@ import { vendorFulfillmentPublicRouter } from "./vendorFulfillment";
 import { fulfillmentAdminRouter, fulfillmentPublicRouter } from "./orderFulfillment.js";
 import { vendorJobAdminRouter, vendorJobPublicRouter, orderTrackingPublicRouter } from "./vendorJobOrder.js";
 import { resolveShortLink } from "../lib/shortLink.js";
+import { commodityTemplatesRouter } from "./commodityTemplates.js";
 import type { Request, Response } from "express";
 
 const router: IRouter = Router();
@@ -151,6 +152,7 @@ router.use("/margin-rules", marginRulesRouter);
 router.use("/admin-action", adminActionAdminRouter);
 router.use("/admin-action", adminActionPublicRouter);
 router.use("/vendor-fulfillment", vendorFulfillmentPublicRouter);
+router.use("/commodity-templates", commodityTemplatesRouter);
 router.use("/logistic", fulfillmentAdminRouter);
 router.use("/fulfillment", fulfillmentPublicRouter);
 router.use("/logistic", vendorJobAdminRouter);
