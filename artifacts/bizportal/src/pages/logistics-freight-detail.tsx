@@ -629,7 +629,7 @@ export default function LogisticsFreightDetailPage() {
                     <p className="text-sm">{shipment.notes}</p>
                   </>
                 )}
-                {(salesDocId || purchaseDocId || (typedShipment as any)?.linkedLogisticRfq) && (
+                {(salesDocId || purchaseDocId || (typedShipment as any)?.linkedLogisticRfq || (typedShipment as any)?.linkedPortalOrder) && (
                   <>
                     <Separator className="my-2" />
                     <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Tautan</p>
@@ -655,6 +655,14 @@ export default function LogisticsFreightDetailPage() {
                           <span className="inline-flex items-center gap-1 text-xs text-teal-600 dark:text-teal-400 hover:underline font-mono">
                             <ArrowLeft size={10} />
                             {(typedShipment as any).linkedLogisticRfq.rfqNumber}
+                          </span>
+                        </Link>
+                      )}
+                      {(typedShipment as any)?.linkedPortalOrder && (
+                        <Link href={`/logistics/portal-orders/${(typedShipment as any).linkedPortalOrder.id}`}>
+                          <span className="inline-flex items-center gap-1 text-xs text-orange-600 dark:text-orange-400 hover:underline font-mono">
+                            <Package size={10} />
+                            {(typedShipment as any).linkedPortalOrder.orderNumber}
                           </span>
                         </Link>
                       )}

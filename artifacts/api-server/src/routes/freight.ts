@@ -186,6 +186,24 @@ router.get("/freight-shipments/:id", async (req, res) => {
       }
     : null;
 
+  // Resolve portal order via salesDoc.logisticOrderId (for shipments created from "Konversi ke Shipment")
+  let linkedPortalOrder: { id: number; orderNumber: string } | null = null;
+  if (shipment.salesDocId) {
+    const [salesDoc] = await db
+      .select({ logisticOrderId: salesDocumentsTable.logisticOrderId })
+      .from(salesDocumentsTable)
+      .where(eq(salesDocumentsTable.id, shipment.salesDocId))
+      .limit(1);
+    if (salesDoc?.logisticOrderId) {
+      const [portalOrder] = await db
+        .select({ id: logisticOrdersTable.id, orderNumber: logisticOrdersTable.orderNumber })
+        .from(logisticOrdersTable)
+        .where(eq(logisticOrdersTable.id, salesDoc.logisticOrderId))
+        .limit(1);
+      if (portalOrder) linkedPortalOrder = { id: portalOrder.id, orderNumber: portalOrder.orderNumber };
+    }
+  }
+
   return res.json({
     ...serializeShipment(shipment),
     rfqs: rfqs.map((r) => ({
@@ -194,6 +212,7 @@ router.get("/freight-shipments/:id", async (req, res) => {
     })),
     stages: stages.map(serializeStage),
     linkedLogisticRfq,
+    linkedPortalOrder,
   });
 });
 
