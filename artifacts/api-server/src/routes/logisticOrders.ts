@@ -37,6 +37,7 @@ import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { saveAndBroadcast } from "../lib/notificationStore";
 import { broadcastToPortal } from "../lib/sseManager.js";
 import { sendPushToOrder } from "../lib/webPush.js";
+import { updateOrderProgress, getOrderProgressEvents } from "../lib/orderProgress.js";
 import {
   CreateLogisticOrderBody,
   ListLogisticOrdersQueryParams,
@@ -758,6 +759,14 @@ logisticOrdersRouter.delete("/vendors/:id", async (req: Request, res: Response) 
   return res.json({ success: true });
 });
 
+// GET /api/logistic/orders/:id/progress — timeline events untuk order
+logisticOrdersRouter.get("/:id/progress", async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id), 10);
+  if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+  const events = await getOrderProgressEvents(id);
+  return res.json({ events });
+});
+
 // GET /api/logistic/orders/:id — get order detail (admin)
 logisticOrdersRouter.get("/:id", async (req: Request, res: Response) => {
   const parsed = GetLogisticOrderParams.safeParse({
@@ -999,6 +1008,13 @@ logisticOrdersRouter.put("/:id/status", async (req: Request, res: Response) => {
     notes: `Status diubah menjadi "${status}"`,
     isPublic: true,
   }).catch(() => {});
+
+  // Progress bar event
+  if (status === "Confirmed") {
+    updateOrderProgress(updated.id, "ADMIN_CONFIRMED", "admin", adminName, `Status diubah ke Confirmed`).catch(() => {});
+  } else if (status === "Completed") {
+    updateOrderProgress(updated.id, "COMPLETED", "admin", adminName, `Order diselesaikan oleh admin`).catch(() => {});
+  }
 
   // Notify customer via WhatsApp (fire-and-forget)
   if (updated.phone) {

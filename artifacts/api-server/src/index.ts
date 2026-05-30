@@ -52,6 +52,7 @@ import { runIntelligenceAlertSettingsMigration } from "./lib/intelligenceAlertSe
 import { runAiGovernanceMigration } from "./lib/aiGovernanceMigration.js";
 import { runPurchaseTemplateMigration } from "./lib/purchaseTemplateMigration.js";
 import { runEnterpriseWorkflowMigration } from "./lib/enterpriseWorkflowTemplates.js";
+import { runOrderProgressMigration } from "./lib/orderProgress.js";
 import { expireStaleApprovals } from "./lib/aiGovernance.js";
 import { startDbBackupScheduler } from "./lib/dbBackup.js";
 import { initAlertsBroadcast } from "./lib/alertsBroadcast.js";
@@ -313,6 +314,7 @@ async function startServer() {
     .then(() => runWithRetry("AI governance migration", runAiGovernanceMigration))
     .then(() => runWithRetry("Purchase template migration", runPurchaseTemplateMigration))
     .then(() => runWithRetry("Enterprise workflow template migration", runEnterpriseWorkflowMigration))
+    .then(() => runWithRetry("Order progress migration", runOrderProgressMigration))
     .then(() => enableRealtimeTables().catch((err) => {
       logger.warn({ err }, "Supabase Realtime table enable failed (non-fatal)");
     }))

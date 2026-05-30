@@ -27,6 +27,7 @@ import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminGroupWa } from "../lib/adminWa.js";
 import { createSalesOrderFromVmfApproval } from "../lib/vmfSoIntegration.js";
+import { updateOrderProgress } from "../lib/orderProgress.js";
 import {
   sendCustomerApprovedNotification,
   sendSoCreatedNotification,
@@ -952,6 +953,10 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
             .where(eq(logisticOrdersTable.id, orderId)).limit(1);
           if (!orderRow) return;
 
+          // Progress bar event
+          updateOrderProgress(link.orderId, "VENDOR_RESPONSE_RECEIVED", "vendor_wa",
+            (sub as any).vendorName ?? "Vendor").catch(() => {});
+
           // Hitung berapa vendor sudah submit vs berapa yang diundang
           const [submittedRow] = await db.select({ c: count() })
             .from(vendorMiniFormSubmissionsTable)
@@ -1153,6 +1158,12 @@ vendorMiniFormRouter.post("/customer-approval/:token", vmfApprovalLimiter, async
       }
     });
 
+    // Progress events — customer approval
+    if (action === "approve" && orderId) {
+      updateOrderProgress(orderId, "CUSTOMER_APPROVED", "customer_wa",
+        customerName ?? "Customer", notes ?? undefined).catch(() => {});
+    }
+
     // ── Buat Sales Order nyata di sales_documents (hanya saat approve) ────
     let salesDocId: number | null = null;
     if (action === "approve") {
@@ -1182,6 +1193,8 @@ vendorMiniFormRouter.post("/customer-approval/:token", vmfApprovalLimiter, async
               "system",
               false,
             ).catch(() => {});
+            updateOrderProgress(orderId, "SALES_ORDER_CREATED", "system",
+              "System", `SO ${soResult.docNumber} dibuat`).catch(() => {});
           }
         } else if (soResult.reason === "already_exists") {
           soNumber = soResult.docNumber;
@@ -1644,6 +1657,11 @@ vendorMiniFormRouter.post("/admin/submissions/:id/select", async (req: Request, 
     await logActivity("submission", id, "selected", userId,
       `Vendor ${sub.vendorName ?? "-"} dipilih oleh admin`,
       { vendorPrice: sub.vendorPrice, currency: sub.currency, linkId: sub.linkId });
+
+    if (sub.orderId) {
+      updateOrderProgress(sub.orderId, "PRICE_REVIEWED", "admin", userId,
+        `Vendor ${sub.vendorName ?? "-"} dipilih oleh admin`).catch(() => {});
+    }
 
     return res.json({ ...updated!, selectedAt: updated!.selectedAt?.toISOString() ?? null, submittedAt: updated!.submittedAt.toISOString() });
   } catch (err) {

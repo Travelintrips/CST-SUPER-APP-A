@@ -15,6 +15,7 @@ import { getAdminGroupWa } from "../lib/adminWa.js";
 import { getPreferredDomain } from "../lib/domain.js";
 import { logger } from "../lib/logger.js";
 import { checkOrderGeofence } from "../lib/orderGeofenceChecker.js";
+import { updateOrderProgress } from "../lib/orderProgress.js";
 import { getWaTemplateConfig, renderTemplate, deriveServiceType } from "../lib/orderNotification.js";
 
 const tok = () => randomBytes(24).toString("hex");
@@ -106,6 +107,8 @@ customerQuoteAdminRouter.post("/rfq/:rfqId/send-customer-quote", async (req: Req
       notes: `Penawaran dikirim ke customer. Harga: ${fmtRp(customerPrice)}. ETA: ${etaFinal ?? "—"}.`,
       isPublic: false,
     });
+
+    updateOrderProgress(order.id, "SENT_TO_CUSTOMER", "admin", "Admin", `Penawaran dikirim ke customer. Harga: ${fmtRp(customerPrice)}`).catch(() => {});
 
     const quoteUrl = `${getBaseUrl()}/customer-quote/${token}`;
 

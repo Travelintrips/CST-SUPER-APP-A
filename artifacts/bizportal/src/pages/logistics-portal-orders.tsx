@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Fragment } from "react";
 import { useLocation } from "wouter";
 import {
   useListLogisticOrders,
@@ -31,6 +31,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { PackageOpen, Search, RefreshCw, FilePlus, X, Eye, Zap, Send, ExternalLink, Ship, ClipboardCheck, Trash2 } from "lucide-react";
+import { OrderProgressBar } from "@/components/logistics/OrderProgressBar";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import { useOrderNotificationsContext } from "@/contexts/OrderNotificationsContext";
@@ -734,8 +735,8 @@ export default function LogisticsPortalOrdersPage() {
                     </TableCell>
                   </TableRow>
                 ) : filtered.map((o) => (
+                  <Fragment key={o.id}>
                   <TableRow
-                    key={o.id}
                     className={`cursor-pointer hover:bg-muted/40 transition-colors ${selectedIds.has(o.id) ? "bg-destructive/5" : ""}`}
                     onClick={() => setDetailDialog(o)}
                     {...prefetchHover(getGetLogisticOrderQueryOptions(o.id))}
@@ -911,6 +912,19 @@ export default function LogisticsPortalOrdersPage() {
                       </div>
                     </TableCell>
                   </TableRow>
+                  <TableRow className="border-b hover:bg-transparent">
+                    <TableCell colSpan={12} className="py-1 px-4 pb-2 pt-0">
+                      <OrderProgressBar
+                        order={{
+                          status: o.status,
+                          latestRfq: (o as any).latestRfq ?? null,
+                          fulfillmentStatus: (o as any).fulfillmentStatus ?? null,
+                          linkedSalesDocId: (o as any).linkedSalesDocId ?? null,
+                        }}
+                      />
+                    </TableCell>
+                  </TableRow>
+                  </Fragment>
                 ))}
               </TableBody>
             </Table>

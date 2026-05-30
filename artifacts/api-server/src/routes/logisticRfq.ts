@@ -26,6 +26,7 @@ import { generateShortLink } from "../lib/shortLink.js";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
 import { logActivity } from "../lib/activityLog.js";
+import { updateOrderProgress } from "../lib/orderProgress.js";
 
 function getConfirmFormUrl(token: string): string {
   const domain = getPreferredDomain();
@@ -884,6 +885,9 @@ logisticRfqRouter.post("/:id/rfq", async (req: Request, res: Response) => {
     description: `RFQ ${rfqNumber} dikirim ke ${vendors.length} vendor untuk order ${order.orderNumber}`,
     newValue: { rfqNumber, vendorCount: vendors.length, vendorIds },
   }).catch(() => {});
+
+  updateOrderProgress(orderId, "SENT_TO_VENDOR", "admin", "Admin",
+    `RFQ ${rfqNumber} dikirim ke ${vendors.length} vendor`).catch(() => {});
 
   logger.info({ rfqNumber, orderId, vendorCount: vendors.length }, "RFQ created and sent to vendors");
 

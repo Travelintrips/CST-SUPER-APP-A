@@ -24,6 +24,7 @@ import { getAdminWa } from "../lib/adminWa.js";
 import { getPreferredDomain } from "../lib/domain.js";
 import { logger } from "../lib/logger.js";
 import { resolveServiceCategory } from "@workspace/logistics-constants";
+import { updateOrderProgress } from "../lib/orderProgress.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { compressImageBuffer } from "../lib/imageCompress.js";
 
@@ -204,6 +205,9 @@ fulfillmentAdminRouter.post("/orders/:orderId/send-fulfillment", async (req: Req
         logger.warn({ e }, "fulfillment WA to vendor failed")
       );
     }
+
+    updateOrderProgress(orderId, "SENT_TO_VENDOR_FULFILLMENT", "admin", "Admin",
+      `Form fulfillment dikirim ke vendor${vendor ? ` (${vendor.name})` : ""}`).catch(() => {});
 
     logger.info({ orderId, token, category }, "Fulfillment form sent");
     return res.status(201).json({
@@ -439,6 +443,9 @@ fulfillmentPublicRouter.post("/:token", async (req: Request, res: Response) => {
       );
     }
 
+    updateOrderProgress(link.orderId, "VENDOR_FULFILLMENT_CONFIRMED", "vendor_wa", "Vendor",
+      "Vendor mengisi form fulfillment").catch(() => {});
+
     logger.info({ orderId: link.orderId, token }, "Fulfillment submitted by vendor");
     return res.status(201).json({ ok: true, message: "Data berhasil disimpan. Terima kasih!" });
   } catch (err) {
@@ -600,6 +607,9 @@ fulfillmentAdminRouter.post("/orders/:orderId/complete-order", async (req: Reque
         logger.warn({ e }, "complete-order WA to customer failed")
       );
     }
+
+    updateOrderProgress(orderId, "COMPLETED", "admin", "Admin",
+      note?.trim() ? `Order diselesaikan: ${note.trim()}` : "Order diselesaikan oleh admin").catch(() => {});
 
     logger.info({ orderId }, "Order completed by admin");
     return res.json({ ok: true });
