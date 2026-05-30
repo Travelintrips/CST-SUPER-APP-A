@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
@@ -17,6 +17,30 @@ export const PROGRESS_STEPS = [
 ] as const;
 
 type StepKey = typeof PROGRESS_STEPS[number]["key"];
+
+interface ProgressEvent {
+  step_key: string;
+  actor_name: string | null;
+  source: string;
+  notes: string | null;
+  created_at: string;
+}
+
+function formatAuditTime(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function sourceLabel(source: string): string {
+  switch (source) {
+    case "admin":       return "Admin";
+    case "customer_wa": return "WhatsApp Customer";
+    case "vendor_wa":   return "WhatsApp Vendor";
+    case "system":      return "Sistem";
+    default:            return source;
+  }
+}
 
 function deriveCompletedSteps(order: {
   status: string;
@@ -61,6 +85,25 @@ export function OrderProgressBar({ order, orderId, onUpdate }: OrderProgressBarP
   const [manualDone, setManualDone] = useState<Set<StepKey>>(new Set());
   const [manualRemoved, setManualRemoved] = useState<Set<StepKey>>(new Set());
   const [loading, setLoading] = useState<string | null>(null);
+  const [eventMap, setEventMap] = useState<Map<string, ProgressEvent>>(new Map());
+
+  const fetchEvents = useCallback(async () => {
+    if (!orderId) return;
+    try {
+      const res = await fetch(`/api/logistic/orders/${orderId}/progress`, { credentials: "include" });
+      if (!res.ok) return;
+      const data: { events: ProgressEvent[] } = await res.json();
+      const map = new Map<string, ProgressEvent>();
+      for (const ev of data.events) map.set(ev.step_key, ev);
+      setEventMap(map);
+    } catch {
+      // non-fatal
+    }
+  }, [orderId]);
+
+  useEffect(() => {
+    fetchEvents();
+  }, [fetchEvents]);
 
   const baseDone = deriveCompletedSteps(order);
   const completedSteps = new Set<StepKey>([
@@ -82,15 +125,14 @@ export function OrderProgressBar({ order, orderId, onUpdate }: OrderProgressBarP
     try {
       setLoading(step.key);
       if (isDone && isActive) {
-        // Undo step ini
         const res = await fetch(`/api/logistic/orders/${orderId}/progress/${step.key}`, { method: "DELETE", credentials: "include" });
         if (res.ok) {
           setManualDone(prev => { const n = new Set(prev); n.delete(step.key); return n; });
           setManualRemoved(prev => new Set([...prev, step.key]));
+          setEventMap(prev => { const n = new Map(prev); n.delete(step.key); return n; });
           onUpdate?.();
         }
       } else if (!isDone) {
-        // Tandai selesai — sekaligus set semua step sebelumnya yang belum done
         const stepsToSet = PROGRESS_STEPS.slice(0, idx + 1).filter(s => !completedSteps.has(s.key));
         for (const s of stepsToSet) {
           await fetch(`/api/logistic/orders/${orderId}/progress/set`, {
@@ -102,6 +144,7 @@ export function OrderProgressBar({ order, orderId, onUpdate }: OrderProgressBarP
           setManualDone(prev => new Set([...prev, s.key]));
           setManualRemoved(prev => { const n = new Set(prev); n.delete(s.key); return n; });
         }
+        await fetchEvents();
         onUpdate?.();
       }
     } finally {
@@ -112,7 +155,6 @@ export function OrderProgressBar({ order, orderId, onUpdate }: OrderProgressBarP
   return (
     <TooltipProvider delayDuration={80}>
       <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-        {/* Dot + line track */}
         <div className="flex items-center flex-1 min-w-0">
           {PROGRESS_STEPS.map((step, idx) => {
             const isDone = completedSteps.has(step.key);
@@ -120,6 +162,7 @@ export function OrderProgressBar({ order, orderId, onUpdate }: OrderProgressBarP
             const isLoading = loading === step.key;
             const isLast = idx === PROGRESS_STEPS.length - 1;
             const isClickable = clickable && (isDone ? isActive : true);
+            const event = eventMap.get(step.key);
 
             const dotClass = cn(
               "flex-shrink-0 rounded-full transition-all duration-200",
@@ -140,16 +183,6 @@ export function OrderProgressBar({ order, orderId, onUpdate }: OrderProgressBarP
               isCancelled && isDone ? "bg-red-200" : isDone && !isActive ? step.line : "bg-slate-200 dark:bg-slate-700"
             );
 
-            const tooltipText = isCancelled
-              ? step.label
-              : isDone && isActive
-              ? `${step.label} ✓\n${clickable ? "Klik untuk undo" : ""}`
-              : isDone
-              ? `${step.label} ✓`
-              : clickable
-              ? `Klik → tandai "${step.label}"`
-              : step.label;
-
             return (
               <div key={step.key} className="flex items-center flex-1 min-w-0">
                 <Tooltip>
@@ -159,8 +192,15 @@ export function OrderProgressBar({ order, orderId, onUpdate }: OrderProgressBarP
                       onClick={() => handleDotClick(step, idx)}
                     />
                   </TooltipTrigger>
-                  <TooltipContent side="top" className="text-xs max-w-[160px] text-center whitespace-pre-line">
-                    {tooltipText}
+                  <TooltipContent side="top" className="text-xs max-w-[200px] text-left p-0 overflow-hidden">
+                    <AuditTooltip
+                      label={step.label}
+                      isDone={isDone}
+                      isActive={isActive}
+                      isCancelled={isCancelled}
+                      clickable={clickable}
+                      event={event}
+                    />
                   </TooltipContent>
                 </Tooltip>
                 {!isLast && <div className={lineClass} />}
@@ -169,7 +209,6 @@ export function OrderProgressBar({ order, orderId, onUpdate }: OrderProgressBarP
           })}
         </div>
 
-        {/* Active step label */}
         {activeStep && (
           <span className={cn(
             "text-[10px] font-semibold whitespace-nowrap shrink-0 px-1.5 py-0.5 rounded-full border",
@@ -182,5 +221,72 @@ export function OrderProgressBar({ order, orderId, onUpdate }: OrderProgressBarP
         )}
       </div>
     </TooltipProvider>
+  );
+}
+
+interface AuditTooltipProps {
+  label: string;
+  isDone: boolean;
+  isActive: boolean;
+  isCancelled: boolean;
+  clickable: boolean;
+  event?: ProgressEvent;
+}
+
+function AuditTooltip({ label, isDone, isActive, isCancelled, clickable, event }: AuditTooltipProps) {
+  return (
+    <div className="min-w-[140px]">
+      {/* Header step label */}
+      <div className={cn(
+        "px-2.5 py-1.5 font-semibold text-[11px] border-b",
+        isDone
+          ? "bg-slate-700 text-white border-slate-600"
+          : "bg-slate-100 text-slate-500 border-slate-200"
+      )}>
+        {isDone ? "✓ " : ""}{label}
+      </div>
+
+      {/* Audit trail body */}
+      {event ? (
+        <div className="px-2.5 py-2 space-y-1 bg-slate-800 text-slate-200">
+          <div className="flex items-center gap-1.5">
+            <span className="text-slate-400 text-[10px]">👤</span>
+            <span className="text-[11px] font-medium truncate max-w-[150px]">
+              {event.actor_name ?? sourceLabel(event.source)}
+            </span>
+          </div>
+          {event.actor_name && event.source !== "admin" && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-slate-400 text-[10px]">🔗</span>
+              <span className="text-[10px] text-slate-400">{sourceLabel(event.source)}</span>
+            </div>
+          )}
+          <div className="flex items-center gap-1.5">
+            <span className="text-slate-400 text-[10px]">🕐</span>
+            <span className="text-[10px] text-slate-300">{formatAuditTime(event.created_at)}</span>
+          </div>
+          {event.notes && (
+            <div className="mt-1 pt-1 border-t border-slate-700 text-[10px] text-slate-400 italic line-clamp-2">
+              {event.notes}
+            </div>
+          )}
+        </div>
+      ) : isDone ? (
+        <div className="px-2.5 py-2 bg-slate-800 text-slate-400 text-[10px] italic">
+          Tidak ada rekaman audit
+        </div>
+      ) : (
+        <div className="px-2.5 py-2 bg-slate-50 text-slate-400 text-[10px]">
+          {clickable ? `Klik → tandai selesai` : "Belum dilakukan"}
+        </div>
+      )}
+
+      {/* Undo hint */}
+      {isDone && isActive && clickable && !isCancelled && (
+        <div className="px-2.5 py-1 bg-red-50 text-red-400 text-[10px] border-t border-red-100">
+          Klik untuk undo step ini
+        </div>
+      )}
+    </div>
   );
 }
