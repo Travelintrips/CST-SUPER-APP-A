@@ -1152,7 +1152,7 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
       return res.json({ ok: true, fulfillToken, fulfillUrl: shortUrl, vendorName: vendor?.name });
     }
 
-    // confirm_fulfillment: update order → "In Progress" + WA to customer
+    // confirm_fulfillment: update order → "In Progress" + WA to customer + WA to admin group
     if (actionType === "confirm_fulfillment") {
       if ((order as any).status === "In Progress") {
         return res.status(409).json({ error: "Order sudah dikonfirmasi sebelumnya." });
@@ -1176,9 +1176,68 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
           .where(eq(adminActionLinksTable.token, token));
       }
 
+      // Ambil data vendor fulfillment untuk dimasukkan ke WA admin
+      const [vfLink] = await db.select().from(vendorFulfillmentLinksTable)
+        .where(eq(vendorFulfillmentLinksTable.orderId, order.id))
+        .orderBy(desc(vendorFulfillmentLinksTable.createdAt))
+        .limit(1);
+
+      let vendorNameForMsg: string | null = null;
+      if (vfLink?.vendorId) {
+        const [vRow] = await db.select({ name: suppliersTable.name })
+          .from(suppliersTable).where(eq(suppliersTable.id, vfLink.vendorId));
+        vendorNameForMsg = vRow?.name ?? null;
+      }
+
+      const domain = getPreferredDomain() || "cstlogistic.co.id";
+      const bizportalOrderUrl = `https://${domain}/bizportal/logistics/orders/${order.id}`;
+
+      // WA ke admin group
+      const adminGroupWa3 = await getAdminGroupWa();
+      if (adminGroupWa3) {
+        const ln = "\n";
+        const sep = "━━━━━━━━━━━━━━━━━━";
+        let fulfillSummary = "";
+        if (vfLink) {
+          const STOCK_LABEL: Record<string, string> = {
+            all: "Tersedia Semua ✅", partial: "Tersedia Sebagian ⚠️", none: "Tidak Tersedia ❌",
+          };
+          const lines: string[] = [];
+          if (vfLink.stockConfirmed) lines.push(`📦 Stok       : ${STOCK_LABEL[vfLink.stockConfirmed as string] ?? vfLink.stockConfirmed}`);
+          if (vfLink.readyDate)      lines.push(`📅 Siap Kirim : ${vfLink.readyDate}`);
+          if (vfLink.leadTime)       lines.push(`⏱ Lead Time  : ${vfLink.leadTime}`);
+          if (vfLink.driverName)     lines.push(`👤 Driver     : ${vfLink.driverName}`);
+          if (vfLink.plateNumber)    lines.push(`🚛 Plat       : ${vfLink.plateNumber}`);
+          if (vfLink.pickupTime)     lines.push(`⏰ Pickup     : ${vfLink.pickupTime}`);
+          if (vfLink.carrierName)    lines.push(`🏢 Carrier    : ${vfLink.carrierName}`);
+          if (vfLink.awbBlNumber)    lines.push(`📄 AWB/BL     : ${vfLink.awbBlNumber}`);
+          if (vfLink.etd)            lines.push(`📅 ETD        : ${vfLink.etd}`);
+          if (vfLink.eta)            lines.push(`📅 ETA        : ${vfLink.eta}`);
+          if ((vfLink as any).priceConfirmed === "agree")   lines.push(`💰 Harga      : Setuju harga asal`);
+          else if ((vfLink as any).priceConfirmed === "revised") lines.push(`💰 Revisi Harga: ${fmtRp((vfLink as any).revisedPrice)}`);
+          if (vfLink.notes)          lines.push(`📝 Catatan    : ${vfLink.notes}`);
+          if (lines.length > 0) fulfillSummary = lines.join(ln) + ln;
+        }
+
+        const adminWaMsg =
+          `✅ *Fulfillment Dikonfirmasi — Order In Progress*` + ln + sep + ln +
+          `No. Order  : \`${order.orderNumber}\`` + ln +
+          `Customer   : ${order.customerName}` + ln +
+          ((order.origin && order.destination) ? `Rute       : ${order.origin} → ${order.destination}` + ln : "") +
+          (vendorNameForMsg ? `Vendor     : *${vendorNameForMsg}*` + ln : "") +
+          sep + ln +
+          fulfillSummary +
+          sep + ln +
+          `📋 Detail order:\n${bizportalOrderUrl}`;
+
+        sendWhatsApp(adminGroupWa3, adminWaMsg).catch((e) =>
+          logger.warn({ e }, "confirm_fulfillment WA to admin group failed")
+        );
+      }
+
+      // WA ke customer
       const customerPhone = ((order as any).phone ?? "").trim();
       if (customerPhone) {
-        const domain = getPreferredDomain() || "cstlogistic.co.id";
         const waMsg =
           `🚀 *Order Anda Sedang Diproses — CST Logistics*\n\n` +
           `Halo ${order.customerName},\n\n` +
