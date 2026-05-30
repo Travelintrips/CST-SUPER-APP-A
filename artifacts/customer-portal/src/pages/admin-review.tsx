@@ -90,6 +90,49 @@ type CompareResult = {
   forwardVendorUrl: string | null;
 };
 
+// ── Confirm-fulfillment types ─────────────────────────────────────────────────
+
+type VendorFulfillmentInfo = {
+  id: number;
+  serviceType: string;
+  status: string;
+  stockConfirmed: string | null;
+  qtyConfirmed: string | null;
+  readyDate: string | null;
+  leadTime: string | null;
+  warehouseLocation: string | null;
+  priceConfirmed: string | null;
+  revisedPrice: number | null;
+  notes: string | null;
+  stockPhotoUrl: string | null;
+  invoiceUrl: string | null;
+  supportingDocUrl: string | null;
+  submittedAt: string | null;
+  driverName?: string | null;
+  driverPhone?: string | null;
+  plateNumber?: string | null;
+  vehicleType?: string | null;
+  pickupTime?: string | null;
+  carrierName?: string | null;
+  awbBlNumber?: string | null;
+  bookingNumber?: string | null;
+  flightVessel?: string | null;
+  etd?: string | null;
+  eta?: string | null;
+  customsPicName?: string | null;
+  customsDocuments?: string | null;
+  customsProcessEta?: string | null;
+};
+
+type ConfirmFulfillmentData = {
+  token: string;
+  actionType: "confirm_fulfillment";
+  isUsed: boolean;
+  usedAt: string | null;
+  order: OrderInfo;
+  vendorFulfillmentLink: VendorFulfillmentInfo | null;
+};
+
 // ── Forward-vendor types ──────────────────────────────────────────────────────
 
 type SelectedVendorLink = {
@@ -1028,6 +1071,197 @@ function ReviewOrderView({ data, token }: { data: ReviewData; token: string }) {
   );
 }
 
+// ── ConfirmFulfillmentView ────────────────────────────────────────────────────
+
+const STOCK_LABEL: Record<string, string> = {
+  all: "Tersedia Semua ✅",
+  partial: "Tersedia Sebagian ⚠️",
+  none: "Tidak Tersedia ❌",
+};
+
+function FulfillmentDetailRow({ label, value }: { label: string; value: string | null | undefined }) {
+  if (!value) return null;
+  return (
+    <div className="flex items-start justify-between gap-3 py-2 border-b border-slate-50 last:border-0">
+      <span className="text-xs text-slate-400 shrink-0">{label}</span>
+      <span className="text-sm text-slate-700 font-medium text-right">{value}</span>
+    </div>
+  );
+}
+
+function ConfirmFulfillmentView({ data, token }: { data: ConfirmFulfillmentData; token: string }) {
+  const { order, vendorFulfillmentLink: vf } = data;
+  const [submitting, setSubmitting] = useState(false);
+  const [done, setDone] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const handleConfirm = async () => {
+    setSubmitting(true);
+    setErr(null);
+    try {
+      const r = await fetch(`/api/admin-action/${token}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const body = await r.json();
+      if (!r.ok) throw new Error(body.error ?? "Gagal konfirmasi");
+      setDone(true);
+    } catch (e: unknown) {
+      setErr((e as Error).message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (done) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-md p-8 max-w-md w-full space-y-5 text-center">
+          <div className="text-5xl">🚀</div>
+          <h2 className="text-xl font-bold text-slate-800">Order Dikonfirmasi!</h2>
+          <p className="text-slate-500 text-sm">
+            Order <strong>{order.orderNumber}</strong> sekarang berstatus <strong>In Progress</strong>.
+            Customer akan mendapat notifikasi WhatsApp.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (data.isUsed && data.usedAt) {
+    return (
+      <div className="min-h-screen bg-slate-50">
+        <PageHeader icon="✅" title="Konfirmasi Fulfillment" />
+        <div className="max-w-2xl mx-auto px-4 py-5 space-y-5">
+          <OrderCard order={order} label="Order" />
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-3">
+            <span className="text-xl mt-0.5">⚠️</span>
+            <div>
+              <p className="text-amber-800 font-semibold text-sm">Sudah Dikonfirmasi</p>
+              <p className="text-amber-700 text-xs mt-0.5">
+                Order ini sudah dikonfirmasi pada{" "}
+                {new Date(data.usedAt).toLocaleString("id-ID")}.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-50">
+      <PageHeader icon="✅" title="Konfirmasi Fulfillment Vendor" />
+      <div className="max-w-2xl mx-auto px-4 py-5 space-y-5">
+        <OrderCard order={order} label="Order" />
+
+        {vf ? (
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+            <div className="px-5 py-3 bg-emerald-50 border-b border-emerald-100">
+              <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">
+                📦 Data Fulfillment dari Vendor
+              </p>
+              {vf.submittedAt && (
+                <p className="text-[10px] text-emerald-600 mt-0.5">
+                  Dikirim: {new Date(vf.submittedAt).toLocaleString("id-ID")}
+                </p>
+              )}
+            </div>
+            <div className="px-5 py-3 space-y-0.5">
+              {/* Product fulfillment fields */}
+              <FulfillmentDetailRow label="Stok" value={vf.stockConfirmed ? (STOCK_LABEL[vf.stockConfirmed] ?? vf.stockConfirmed) : null} />
+              <FulfillmentDetailRow label="Qty Konfirmasi" value={vf.qtyConfirmed} />
+              <FulfillmentDetailRow label="Siap Kirim" value={vf.readyDate} />
+              <FulfillmentDetailRow label="Lead Time" value={vf.leadTime} />
+              <FulfillmentDetailRow label="Lokasi Gudang" value={vf.warehouseLocation} />
+              <FulfillmentDetailRow
+                label="Harga"
+                value={
+                  vf.priceConfirmed === "agree"
+                    ? "Setuju harga asal"
+                    : vf.priceConfirmed === "revised" && vf.revisedPrice
+                    ? `Revisi: Rp ${Math.round(vf.revisedPrice).toLocaleString("id-ID")}`
+                    : null
+                }
+              />
+              {/* Trucking fields */}
+              <FulfillmentDetailRow label="Driver" value={vf.driverName} />
+              <FulfillmentDetailRow label="HP Driver" value={vf.driverPhone} />
+              <FulfillmentDetailRow label="Plat Nomor" value={vf.plateNumber} />
+              <FulfillmentDetailRow label="Kendaraan" value={vf.vehicleType} />
+              <FulfillmentDetailRow label="Est. Pickup" value={vf.pickupTime} />
+              {/* Freight fields */}
+              <FulfillmentDetailRow label="Carrier" value={vf.carrierName} />
+              <FulfillmentDetailRow label="AWB/BL No." value={vf.awbBlNumber} />
+              <FulfillmentDetailRow label="Booking No." value={vf.bookingNumber} />
+              <FulfillmentDetailRow label="Kapal/Flight" value={vf.flightVessel} />
+              <FulfillmentDetailRow label="ETD" value={vf.etd} />
+              <FulfillmentDetailRow label="ETA" value={vf.eta} />
+              {/* Customs fields */}
+              <FulfillmentDetailRow label="PIC Customs" value={vf.customsPicName} />
+              <FulfillmentDetailRow label="Dokumen Customs" value={vf.customsDocuments} />
+              <FulfillmentDetailRow label="ETA Customs" value={vf.customsProcessEta} />
+              <FulfillmentDetailRow label="Catatan" value={vf.notes} />
+            </div>
+            {(vf.stockPhotoUrl || vf.invoiceUrl || vf.supportingDocUrl) && (
+              <div className="px-5 py-3 border-t border-slate-100 space-y-2">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Dokumen</p>
+                <div className="flex flex-wrap gap-2">
+                  {vf.stockPhotoUrl && (
+                    <a href={vf.stockPhotoUrl} target="_blank" rel="noopener noreferrer"
+                       className="text-xs text-blue-600 underline">📷 Foto Stok</a>
+                  )}
+                  {vf.invoiceUrl && (
+                    <a href={vf.invoiceUrl} target="_blank" rel="noopener noreferrer"
+                       className="text-xs text-blue-600 underline">📄 Invoice</a>
+                  )}
+                  {vf.supportingDocUrl && (
+                    <a href={vf.supportingDocUrl} target="_blank" rel="noopener noreferrer"
+                       className="text-xs text-blue-600 underline">📎 Dok. Pendukung</a>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
+            ⚠️ Belum ada data fulfillment dari vendor.
+          </div>
+        )}
+
+        {err && (
+          <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
+            ⚠️ {err}
+          </div>
+        )}
+
+        <button
+          onClick={handleConfirm}
+          disabled={submitting}
+          className={`w-full py-4 rounded-2xl font-bold text-base flex items-center justify-center gap-3 transition-all ${
+            submitting
+              ? "bg-slate-200 text-slate-400 cursor-not-allowed"
+              : "bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white shadow-md shadow-emerald-200"
+          }`}
+        >
+          {submitting ? (
+            <>
+              <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              Mengkonfirmasi…
+            </>
+          ) : (
+            <>🚀 Konfirmasi &amp; Mulai Pengiriman</>
+          )}
+        </button>
+        <p className="text-center text-xs text-slate-400 pb-8">
+          Customer akan mendapat notifikasi WhatsApp setelah dikonfirmasi
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // ── ForwardVendorView ─────────────────────────────────────────────────────────
 
 const SERVICE_TYPE_OPTIONS = [
@@ -1542,8 +1776,7 @@ export default function AdminReviewPage() {
   if (!data) return null;
 
   if (data.actionType === "confirm_fulfillment") {
-    window.location.replace(`/admin-action/${token}`);
-    return <LoadingScreen />;
+    return <ConfirmFulfillmentView data={data as ConfirmFulfillmentData} token={token} />;
   }
 
   if (data.actionType === "compare_vendors") {

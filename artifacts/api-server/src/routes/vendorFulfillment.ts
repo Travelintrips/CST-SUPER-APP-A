@@ -477,8 +477,8 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
         `━━━━━━━━━━━━━━━━━━\n` +
         (detailLines.length > 0 ? detailLines.join("\n") + "\n" : "") +
         `━━━━━━━━━━━━━━━━━━\n` +
-        `✅ *Tindak Lanjut:*\n` +
-        `Buka order di BizPortal dan klik *"Konfirmasi & Mulai Pengiriman"*:\n${bizportalLink}`;
+        `✅ *Konfirmasi & Mulai Pengiriman:*\n` +
+        `Klik link berikut untuk konfirmasi langsung:\n${bizportalLink}`;
 
       sendWhatsApp(adminWa, waMsg).catch((e) =>
         logger.warn({ e }, "vendor-fulfillment WA to admin failed")
