@@ -851,8 +851,8 @@ logisticRfqRouter.post("/:id/rfq", async (req: Request, res: Response) => {
 
       // Store blast-time price in rfq_vendor_links so rfq-form can show the exact same price
       // as the WA message, even if the catalog is updated later.
-      const blastBasicPrice = waItems2.find((it) => (it.subtotal ?? 0) > 0)?.subtotal
-        ?? vendorBasePrice;
+      // Gunakan vendorBasePrice (dari catalog) — JANGAN pakai subtotal order (harga jual customer).
+      const blastBasicPrice = vendorBasePrice;
       if (blastBasicPrice != null) {
         db.select({ id: rfqVendorLinksTable.id }).from(rfqVendorLinksTable)
           .where(and(eq(rfqVendorLinksTable.rfqId, rfq.id), eq(rfqVendorLinksTable.vendorId, vendor.id)))

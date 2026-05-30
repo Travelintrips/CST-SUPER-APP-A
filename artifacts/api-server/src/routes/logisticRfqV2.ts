@@ -860,46 +860,38 @@ logisticRfqV2Router.post("/orders/:orderId/rfq-blast", async (req: Request, res:
   const existingLinks = await db.select().from(rfqVendorLinksTable).where(eq(rfqVendorLinksTable.rfqId, rfqId));
   const results: { vendorId: number; vendorName: string; sent: boolean }[] = [];
 
-  // Fetch order items for both subtotal sum and name-matching
+  // Fetch order items for name-matching against vendor catalog
   const orderItemsForRfqV1 = await db.select({
     serviceName: logisticOrderItemsTable.serviceName,
     category: logisticOrderItemsTable.category,
-    subtotal: logisticOrderItemsTable.subtotal,
   }).from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, orderId));
-  const orderSubtotalSum = orderItemsForRfqV1.reduce(
-    (sum, i) => sum + (i.subtotal ? parseFloat(i.subtotal) : 0), 0
-  );
 
   for (const vendor of eligible) {
     let linkToken: string;
 
-    // Compute basic_price using name-matching against order items (same logic as WA blast)
+    // Compute basic_price dari catalog vendor — JANGAN gunakan subtotal order (harga jual customer)
     const catalogItemsV1 = await db.select().from(vendorCatalogItemsTable)
       .where(and(eq(vendorCatalogItemsTable.vendorId, vendor.id), eq(vendorCatalogItemsTable.isActive, true)));
 
     let basicPrice: string | null = null;
-    if (orderSubtotalSum > 0) {
-      basicPrice = String(Math.round(orderSubtotalSum));
-    } else {
-      // Name-match per order item (mirrors WA blast logic)
-      const matchedItem = orderItemsForRfqV1.find((it) => {
-        const name = (it.serviceName || it.category || "").toLowerCase().trim();
-        if (!name) return false;
-        return catalogItemsV1.some((c) => {
-          const cName = c.name.toLowerCase().trim();
-          return cName.includes(name) || name.includes(cName);
-        });
+    // Name-match per order item (mirrors WA blast logic)
+    const matchedItem = orderItemsForRfqV1.find((it) => {
+      const name = (it.serviceName || it.category || "").toLowerCase().trim();
+      if (!name) return false;
+      return catalogItemsV1.some((c) => {
+        const cName = c.name.toLowerCase().trim();
+        return cName.includes(name) || name.includes(cName);
       });
-      if (matchedItem) {
-        const name = (matchedItem.serviceName || matchedItem.category || "").toLowerCase().trim();
-        const cat = catalogItemsV1.find((c) => {
-          const cName = c.name.toLowerCase().trim();
-          return cName.includes(name) || name.includes(cName);
-        });
-        basicPrice = cat ? String(cat.priceBase) : (catalogItemsV1[0] ? String(catalogItemsV1[0].priceBase) : null);
-      } else {
-        basicPrice = catalogItemsV1[0] ? String(catalogItemsV1[0].priceBase) : null;
-      }
+    });
+    if (matchedItem) {
+      const name = (matchedItem.serviceName || matchedItem.category || "").toLowerCase().trim();
+      const cat = catalogItemsV1.find((c) => {
+        const cName = c.name.toLowerCase().trim();
+        return cName.includes(name) || name.includes(cName);
+      });
+      basicPrice = cat ? String(cat.priceBase) : (catalogItemsV1[0] ? String(catalogItemsV1[0].priceBase) : null);
+    } else {
+      basicPrice = catalogItemsV1[0] ? String(catalogItemsV1[0].priceBase) : null;
     }
 
     const existingLink = existingLinks.find((l) => l.vendorId === vendor.id);
@@ -990,15 +982,11 @@ logisticRfqV2Router.post("/rfq/:rfqId/blast", async (req: Request, res: Response
     .where(eq(rfqVendorLinksTable.rfqId, rfqId));
   const existingVendorIds = new Set(existingLinks.map((l) => l.vendorId));
 
-  // Fetch order items for subtotal sum and name-matching
+  // Fetch order items for name-matching against vendor catalog
   const orderItemsForRfqV2 = await db.select({
     serviceName: logisticOrderItemsTable.serviceName,
     category: logisticOrderItemsTable.category,
-    subtotal: logisticOrderItemsTable.subtotal,
   }).from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, rfq.orderId));
-  const orderSubtotalSum2 = orderItemsForRfqV2.reduce(
-    (sum, i) => sum + (i.subtotal ? parseFloat(i.subtotal) : 0), 0
-  );
 
   const results: { vendorId: number; vendorName: string; token: string; sent: boolean }[] = [];
 
@@ -1006,32 +994,28 @@ logisticRfqV2Router.post("/rfq/:rfqId/blast", async (req: Request, res: Response
     let linkToken: string;
     let linkId: number;
 
-    // Compute basic_price using name-matching (mirrors WA blast logic)
+    // Compute basic_price dari catalog vendor — JANGAN gunakan subtotal order (harga jual customer)
     const catalogItemsV2 = await db.select().from(vendorCatalogItemsTable)
       .where(and(eq(vendorCatalogItemsTable.vendorId, vendor.id), eq(vendorCatalogItemsTable.isActive, true)));
 
     let basicPrice: string | null = null;
-    if (orderSubtotalSum2 > 0) {
-      basicPrice = String(Math.round(orderSubtotalSum2));
-    } else {
-      const matchedItem = orderItemsForRfqV2.find((it) => {
-        const name = (it.serviceName || it.category || "").toLowerCase().trim();
-        if (!name) return false;
-        return catalogItemsV2.some((c) => {
-          const cName = c.name.toLowerCase().trim();
-          return cName.includes(name) || name.includes(cName);
-        });
+    const matchedItem = orderItemsForRfqV2.find((it) => {
+      const name = (it.serviceName || it.category || "").toLowerCase().trim();
+      if (!name) return false;
+      return catalogItemsV2.some((c) => {
+        const cName = c.name.toLowerCase().trim();
+        return cName.includes(name) || name.includes(cName);
       });
-      if (matchedItem) {
-        const name = (matchedItem.serviceName || matchedItem.category || "").toLowerCase().trim();
-        const cat = catalogItemsV2.find((c) => {
-          const cName = c.name.toLowerCase().trim();
-          return cName.includes(name) || name.includes(cName);
-        });
-        basicPrice = cat ? String(cat.priceBase) : (catalogItemsV2[0] ? String(catalogItemsV2[0].priceBase) : null);
-      } else {
-        basicPrice = catalogItemsV2[0] ? String(catalogItemsV2[0].priceBase) : null;
-      }
+    });
+    if (matchedItem) {
+      const name = (matchedItem.serviceName || matchedItem.category || "").toLowerCase().trim();
+      const cat = catalogItemsV2.find((c) => {
+        const cName = c.name.toLowerCase().trim();
+        return cName.includes(name) || name.includes(cName);
+      });
+      basicPrice = cat ? String(cat.priceBase) : (catalogItemsV2[0] ? String(catalogItemsV2[0].priceBase) : null);
+    } else {
+      basicPrice = catalogItemsV2[0] ? String(catalogItemsV2[0].priceBase) : null;
     }
 
     const existingLink = existingLinks.find((l) => l.vendorId === vendor.id);
@@ -1113,15 +1097,11 @@ logisticRfqV2Router.post("/rfq/:rfqId/reblast-all", async (req: Request, res: Re
 
   const expiredAt = new Date(Date.now() + deadlineHours * 60 * 60 * 1000);
 
-  // Fetch order items untuk kalkulasi basic_price
+  // Fetch order items untuk name-matching terhadap catalog vendor
   const orderItemsForReblast = await db.select({
     serviceName: logisticOrderItemsTable.serviceName,
     category: logisticOrderItemsTable.category,
-    subtotal: logisticOrderItemsTable.subtotal,
   }).from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, rfq.orderId));
-  const orderSubtotalSum = orderItemsForReblast.reduce(
-    (sum, i) => sum + (i.subtotal ? parseFloat(i.subtotal) : 0), 0
-  );
 
   const results: { vendorId: number; vendorName: string; token: string; sent: boolean }[] = [];
 
@@ -1129,32 +1109,28 @@ logisticRfqV2Router.post("/rfq/:rfqId/reblast-all", async (req: Request, res: Re
     const link = existingLinks.find((l) => l.vendorId === vendor.id);
     if (!link) continue;
 
-    // Recalculate basic_price (sama persis dengan logika blast)
+    // Recalculate basic_price dari catalog vendor — JANGAN gunakan subtotal order (harga jual customer)
     const catalogItems = await db.select().from(vendorCatalogItemsTable)
       .where(and(eq(vendorCatalogItemsTable.vendorId, vendor.id), eq(vendorCatalogItemsTable.isActive, true)));
 
     let basicPrice: string | null = null;
-    if (orderSubtotalSum > 0) {
-      basicPrice = String(Math.round(orderSubtotalSum));
-    } else {
-      const matchedItem = orderItemsForReblast.find((it) => {
-        const name = (it.serviceName || it.category || "").toLowerCase().trim();
-        if (!name) return false;
-        return catalogItems.some((c) => {
-          const cName = c.name.toLowerCase().trim();
-          return cName.includes(name) || name.includes(cName);
-        });
+    const matchedItem = orderItemsForReblast.find((it) => {
+      const name = (it.serviceName || it.category || "").toLowerCase().trim();
+      if (!name) return false;
+      return catalogItems.some((c) => {
+        const cName = c.name.toLowerCase().trim();
+        return cName.includes(name) || name.includes(cName);
       });
-      if (matchedItem) {
-        const name = (matchedItem.serviceName || matchedItem.category || "").toLowerCase().trim();
-        const cat = catalogItems.find((c) => {
-          const cName = c.name.toLowerCase().trim();
-          return cName.includes(name) || name.includes(cName);
-        });
-        basicPrice = cat ? String(cat.priceBase) : (catalogItems[0] ? String(catalogItems[0].priceBase) : null);
-      } else {
-        basicPrice = catalogItems[0] ? String(catalogItems[0].priceBase) : null;
-      }
+    });
+    if (matchedItem) {
+      const name = (matchedItem.serviceName || matchedItem.category || "").toLowerCase().trim();
+      const cat = catalogItems.find((c) => {
+        const cName = c.name.toLowerCase().trim();
+        return cName.includes(name) || name.includes(cName);
+      });
+      basicPrice = cat ? String(cat.priceBase) : (catalogItems[0] ? String(catalogItems[0].priceBase) : null);
+    } else {
+      basicPrice = catalogItems[0] ? String(catalogItems[0].priceBase) : null;
     }
 
     // Update basic_price & reset expired_at (selalu update, bukan hanya kalau null)
