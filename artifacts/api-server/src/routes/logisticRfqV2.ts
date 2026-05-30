@@ -12,6 +12,7 @@ import {
   suppliersTable,
   vendorCatalogItemsTable,
   freightShipmentsTable,
+  vendorPerformanceTable,
 } from "@workspace/db";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
@@ -1354,6 +1355,17 @@ logisticRfqV2Router.get("/rfq/:rfqId/comparison", async (req: Request, res: Resp
     : [];
   const vendorMap = new Map(vendors.map((v) => [v.id, v]));
 
+  const perfRows = vendorIds.length
+    ? await db.select({
+        vendorId: vendorPerformanceTable.vendorId,
+        customerRating: vendorPerformanceTable.customerRating,
+        recommendationScore: vendorPerformanceTable.recommendationScore,
+        ontimePercentage: vendorPerformanceTable.ontimePercentage,
+        totalOrders: vendorPerformanceTable.totalOrders,
+      }).from(vendorPerformanceTable).where(inArray(vendorPerformanceTable.vendorId, vendorIds))
+    : [];
+  const perfMap = new Map(perfRows.map((p) => [p.vendorId, p]));
+
   const activities = await db.select().from(rfqActivityLogsTable)
     .where(eq(rfqActivityLogsTable.rfqId, rfqId))
     .orderBy(sql`created_at DESC`).limit(50);
@@ -1394,7 +1406,11 @@ logisticRfqV2Router.get("/rfq/:rfqId/comparison", async (req: Request, res: Resp
       notes: l.notes ?? null,
       attachmentUrl: l.attachmentUrl ?? null,
       leadTimeDays: l.leadTimeDays ?? null,
-      stockAvailability: l.stockAvailability ?? null,
+      stockAvailability: l.stockAvailability ?? "unknown",
+      vendorRating: perfMap.get(l.vendorId)?.customerRating != null ? Number(perfMap.get(l.vendorId)!.customerRating) : null,
+      recommendationScore: perfMap.get(l.vendorId)?.recommendationScore != null ? Number(perfMap.get(l.vendorId)!.recommendationScore) : null,
+      ontimePercentage: perfMap.get(l.vendorId)?.ontimePercentage != null ? Number(perfMap.get(l.vendorId)!.ontimePercentage) : null,
+      totalOrders: perfMap.get(l.vendorId)?.totalOrders ?? null,
       isNewUpdate: l.isNewUpdate,
       openedAt: l.openedAt?.toISOString() ?? null,
       submittedAt: l.submittedAt?.toISOString() ?? null,

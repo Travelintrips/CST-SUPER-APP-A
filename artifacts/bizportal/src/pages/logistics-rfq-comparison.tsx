@@ -70,6 +70,10 @@ interface VendorRow {
   attachmentUrl: string | null;
   leadTimeDays: number | null;
   stockAvailability: string | null;
+  vendorRating: number | null;
+  recommendationScore: number | null;
+  ontimePercentage: number | null;
+  totalOrders: number | null;
   isNewUpdate: boolean;
   openedAt: string | null;
   submittedAt: string | null;
@@ -694,8 +698,8 @@ export default function LogisticsRfqComparisonPage() {
                     return (STOCK_ORDER[a.stockAvailability ?? "unknown"] ?? 2) - (STOCK_ORDER[b.stockAvailability ?? "unknown"] ?? 2);
                   }
                   if (sortBy === "score") {
-                    const sa = scoreMap.get(a.vendorId)?.aiScore ?? 0;
-                    const sb = scoreMap.get(b.vendorId)?.aiScore ?? 0;
+                    const sa = scoreMap.get(a.vendorId)?.aiScore ?? a.recommendationScore ?? a.vendorRating ?? 0;
+                    const sb = scoreMap.get(b.vendorId)?.aiScore ?? b.recommendationScore ?? b.vendorRating ?? 0;
                     return sb - sa;
                   }
                   return 0;
@@ -1136,7 +1140,6 @@ function VendorCard({
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3 text-sm">
           <InfoItem label="Harga Penawaran" value={idr(price)} highlight={!!hasAnswer} />
-          <InfoItem label="ETA" value={vendor.eta ?? "—"} />
           <div>
             <p className="text-xs text-gray-400">Lead Time</p>
             <p className="font-medium text-gray-800">
@@ -1145,7 +1148,7 @@ function VendorCard({
           </div>
           <div>
             <p className="text-xs text-gray-400">Stok</p>
-            {vendor.stockAvailability ? (
+            {vendor.stockAvailability && vendor.stockAvailability !== "unknown" ? (
               <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full border ${
                 vendor.stockAvailability === "available" ? "bg-green-100 text-green-700 border-green-200" :
                 vendor.stockAvailability === "limited" ? "bg-yellow-100 text-yellow-700 border-yellow-200" :
@@ -1160,8 +1163,24 @@ function VendorCard({
               <p className="font-medium text-gray-400">—</p>
             )}
           </div>
+          <div>
+            <p className="text-xs text-gray-400">Rating Vendor</p>
+            {vendor.vendorRating != null && vendor.vendorRating > 0 ? (
+              <div className="flex items-center gap-1">
+                <span className="text-yellow-400 text-sm leading-none">
+                  {"★".repeat(Math.round(vendor.vendorRating))}{"☆".repeat(5 - Math.round(vendor.vendorRating))}
+                </span>
+                <span className="text-xs text-gray-500 font-medium">{vendor.vendorRating.toFixed(1)}</span>
+              </div>
+            ) : vendor.totalOrders != null && vendor.totalOrders > 0 ? (
+              <p className="text-xs text-gray-500">{vendor.totalOrders} order</p>
+            ) : (
+              <p className="font-medium text-gray-400">Baru</p>
+            )}
+          </div>
         </div>
-        <div className="grid grid-cols-2 gap-3 mb-3 text-sm">
+        <div className="grid grid-cols-3 gap-3 mb-3 text-sm">
+          <InfoItem label="ETA" value={vendor.eta ?? "—"} />
           <InfoItem label="Dibuka" value={vendor.openedAt ? timeSince(vendor.openedAt) : "Belum dibuka"} />
           <InfoItem label="Submit" value={vendor.submittedAt ? timeSince(vendor.submittedAt) : "Belum"} />
         </div>

@@ -361,7 +361,7 @@ router.get("/rfq/:rfqId/recommend", async (req, res) => {
 
   const STOCK_SCORES: Record<string, number> = {
     available: 100,
-    limited: 60,
+    limited: 50,
     unavailable: 0,
     unknown: 30,
   };
