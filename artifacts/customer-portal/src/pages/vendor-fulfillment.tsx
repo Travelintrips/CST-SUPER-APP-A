@@ -71,6 +71,45 @@ type PageData = {
 
 /* ─── Helpers ─────────────────────────────────────────────────────────────── */
 
+function businessDaysDiff(from: Date, toDate: Date): number {
+  const d = new Date(from); d.setHours(0, 0, 0, 0);
+  const end = new Date(toDate); end.setHours(0, 0, 0, 0);
+  if (end <= d) return 0;
+  let count = 0;
+  while (d < end) {
+    d.setDate(d.getDate() + 1);
+    const dow = d.getDay();
+    if (dow !== 0 && dow !== 6) count++;
+  }
+  return count;
+}
+
+function getReadyDateWarning(readyDate: string): { level: "error" | "warn"; msg: string } | null {
+  if (!readyDate) return null;
+  const today = new Date();
+  const ready = new Date(readyDate + "T00:00:00");
+  const bdays = businessDaysDiff(today, ready);
+  if (bdays === 0) return { level: "error", msg: "⚠️ Tanggal hari ini — lead time kurang dari 1 hari kerja, pastikan barang benar-benar siap segera." };
+  if (bdays === 1) return { level: "warn", msg: "⏰ Lead time sangat singkat: hanya 1 hari kerja. Pastikan proses dapat diselesaikan tepat waktu." };
+  return null;
+}
+
+function getLeadTimeWarning(leadTime: string): string | null {
+  if (!leadTime) return null;
+  const lt = leadTime.toLowerCase();
+  const jamMatch = lt.match(/(\d+(?:[.,]\d+)?)\s*jam/);
+  if (jamMatch) {
+    const jam = parseFloat(jamMatch[1].replace(",", "."));
+    if (jam < 8) return `⚠️ Lead time ${jam} jam lebih pendek dari 1 hari kerja (8 jam).`;
+  }
+  const hariMatch = lt.match(/(\d+(?:[.,]\d+)?)\s*hari/);
+  if (hariMatch) {
+    const hari = parseFloat(hariMatch[1].replace(",", "."));
+    if (hari < 1) return `⚠️ Lead time kurang dari 1 hari kerja.`;
+  }
+  return null;
+}
+
 function getServiceIcon(svcType: string) {
   if (svcType.includes("trucking")) return "🚚";
   if (svcType.includes("air"))      return "✈️";
@@ -720,13 +759,32 @@ function ProductFulfillmentForm({
               value={fields.readyDate ?? ""}
               onChange={(e) => setField("readyDate", e.target.value)}
               min={new Date().toISOString().slice(0, 10)}
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
+              className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 ${
+                getReadyDateWarning(fields.readyDate ?? "")?.level === "error"
+                  ? "border-red-400 bg-red-50"
+                  : getReadyDateWarning(fields.readyDate ?? "")?.level === "warn"
+                  ? "border-amber-400 bg-amber-50"
+                  : "border-slate-200"
+              }`}
             />
             {fields.readyDate && (
               <p className="text-xs text-emerald-600 font-medium">
                 📅 {fmtDateLocal(fields.readyDate)}
               </p>
             )}
+            {(() => {
+              const w = getReadyDateWarning(fields.readyDate ?? "");
+              if (!w) return null;
+              return (
+                <p className={`text-xs font-medium rounded-lg px-3 py-2 ${
+                  w.level === "error"
+                    ? "bg-red-50 text-red-700 border border-red-200"
+                    : "bg-amber-50 text-amber-700 border border-amber-200"
+                }`}>
+                  {w.msg}
+                </p>
+              );
+            })()}
           </div>
           <Field
             label="Lead Time"
@@ -735,6 +793,11 @@ function ProductFulfillmentForm({
             onChange={(v) => setField("leadTime", v)}
             placeholder="Contoh: 3 hari kerja"
           />
+          {getLeadTimeWarning(fields.leadTime ?? "") && (
+            <p className="text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200 rounded-lg px-3 py-2">
+              {getLeadTimeWarning(fields.leadTime ?? "")}
+            </p>
+          )}
         </div>
       )}
 

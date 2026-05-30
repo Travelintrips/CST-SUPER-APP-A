@@ -18,11 +18,8 @@ import { requireClerkUser, requireAdmin } from "../lib/requireAdmin.js";
 import { runDbBackup } from "../lib/dbBackup.js";
 import { getPreferredDomain } from "../lib/domain.js";
 import { logger } from "../lib/logger.js";
-import { sendWhatsApp } from "../lib/fonnte.js";
-import { getAdminGroupWa } from "../lib/adminWa.js";
-import { sendVendorRequestNotification, type LogisticOrderData } from "../lib/orderNotification.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
-import { getAdminWa } from "../lib/adminWa.js";
+import { getAdminWa, getAdminGroupWa } from "../lib/adminWa.js";
 import { sendVendorRequestNotification, sendVendorSelectedAdminWa, sendVendorAwardedWa, type LogisticOrderData } from "../lib/orderNotification.js";
 import { generateShortLink } from "../lib/shortLink.js";
 
@@ -131,6 +128,35 @@ adminActionAdminRouter.post("/create", async (req: Request, res: Response) => {
     refId: String(orderId),
   });
   return res.json({ ok: true, token, url, shortUrl });
+});
+
+// ─── Admin: POST /api/admin-action/resend-confirm-wa ─────────────────────────
+adminActionAdminRouter.post("/resend-confirm-wa", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const body = req.body as { orderId?: number };
+  if (!body.orderId) return res.status(400).json({ error: "orderId diperlukan" });
+  await ensureTables();
+  const rows = await db.select({
+    id: logisticOrdersTable.id,
+    orderNumber: logisticOrdersTable.orderNumber,
+    customerName: logisticOrdersTable.customerName,
+  }).from(logisticOrdersTable).where(eq(logisticOrdersTable.id, Number(body.orderId))).limit(1);
+  const order = rows[0];
+  if (!order) return res.status(404).json({ error: "Order tidak ditemukan" });
+  const cfToken = await createAdminActionLink(order.id, "confirm_fulfillment", null, 168);
+  const cfUrl = getAdminActionUrl(cfToken);
+  const shortUrl = await generateShortLink(cfUrl, { context: "admin_action", refType: "order", refId: order.orderNumber });
+  const adminWa = await getAdminWa();
+  if (adminWa) {
+    const ln = "\n";
+    const sep = "-------------------";
+    const waMsg = "📦 *[Kirim Ulang] Konfirmasi Fulfillment Vendor*" + ln + sep + ln +
+      "No. Order  : *" + order.orderNumber + "*" + ln +
+      "Customer   : " + order.customerName + ln + sep + ln +
+      "Buka link berikut untuk konfirmasi:" + ln + shortUrl;
+    sendWhatsApp(adminWa, waMsg).catch((err2) => logger.warn({ err2 }, "resend-confirm-wa WA failed"));
+  }
+  return res.json({ ok: true, shortUrl, cfUrl, adminWaSent: !!adminWa });
 });
 
 // ─── Public: GET /api/admin-action/:token ────────────────────────────────────
@@ -928,6 +954,7 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
           (quoteShortUrl ? `📤 Penawaran terkirim ke customer\n` : "") +
           `\n📦 Forward ke vendor untuk eksekusi:\n${fwdShort}`
         ).catch(() => {});
+      }
       sendVendorSelectedAdminWa({
         rfqNumber: rfq.rfqNumber,
         orderNumber: order.orderNumber,

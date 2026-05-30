@@ -1954,6 +1954,22 @@ export default function LogisticOrderDetailPage() {
     onError: (e: Error) => toast({ title: "Gagal konfirmasi", description: e.message, variant: "destructive" }),
   });
 
+  const resendConfirmWaMut = useMutation({
+    mutationFn: () => apiFetch<{ ok: boolean; shortUrl: string; adminWaSent: boolean }>(
+      "/api/admin-action/resend-confirm-wa",
+      { method: "POST", body: JSON.stringify({ orderId: Number(orderId) }) }
+    ),
+    onSuccess: (data) => {
+      if (data.adminWaSent) {
+        toast({ title: "✅ WA konfirmasi terkirim ulang", description: `Link baru dikirim ke grup admin WA.` });
+      } else {
+        navigator.clipboard.writeText(data.shortUrl).catch(() => {});
+        toast({ title: "✅ Link konfirmasi dibuat", description: "Admin WA tidak terkonfigurasi — link disalin ke clipboard." });
+      }
+    },
+    onError: (e: Error) => toast({ title: "Gagal kirim ulang WA", description: e.message, variant: "destructive" }),
+  });
+
   const [completeNote, setCompleteNote] = useState("");
   const [completeReceiver, setCompleteReceiver] = useState("");
   const [podPhotoFile, setPodPhotoFile] = useState<File | null>(null);
@@ -2397,6 +2413,23 @@ export default function LogisticOrderDetailPage() {
                               >
                                 <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
                                 Selesaikan Order
+                              </Button>
+                            )}
+                            {!["In Progress", "Completed", "Cancelled"].includes(order.status) && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="border-orange-300 text-orange-700 hover:bg-orange-50 h-8 text-xs"
+                                disabled={resendConfirmWaMut.isPending}
+                                onClick={() => {
+                                  if (!confirm("Buat ulang link konfirmasi fulfillment dan kirim WA ke admin group?")) return;
+                                  resendConfirmWaMut.mutate();
+                                }}
+                              >
+                                {resendConfirmWaMut.isPending
+                                  ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                                  : <Bell className="w-3.5 h-3.5 mr-1" />}
+                                Kirim Ulang WA Konfirmasi
                               </Button>
                             )}
                           </div>
