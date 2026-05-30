@@ -11,14 +11,20 @@
  *     - ringkasan status audit log per module
  */
 
-import { Router } from "express";
+import { Router, type Request, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { logger } from "../lib/logger.js";
 
 const router = Router();
-router.use(requireAdmin as any);
+
+async function requireAdminMiddleware(req: Request, res: Response, next: NextFunction) {
+  const ok = await requireAdmin(req, res);
+  if (ok) next();
+}
+
+router.use(requireAdminMiddleware);
 
 router.get("/governance-health", async (req, res) => {
   try {
@@ -60,10 +66,10 @@ router.get("/governance-health", async (req, res) => {
         SELECT COUNT(*) AS count
         FROM sales_documents
         WHERE invoice_status = 'invoiced'
-          AND payment_status IN ('unpaid', 'partial', 'overdue')
+          AND payment_status IN ('unpaid', 'partial')
           AND status != 'cancelled'
           AND due_date IS NOT NULL
-          AND due_date < CURRENT_DATE::text
+          AND due_date < CURRENT_DATE
       `),
 
       // Overdue bills count
@@ -71,7 +77,7 @@ router.get("/governance-health", async (req, res) => {
         SELECT COUNT(*) AS count
         FROM purchase_documents
         WHERE bill_status = 'billed'
-          AND payment_status IN ('unpaid', 'partial', 'overdue')
+          AND payment_status IN ('unpaid', 'partial')
           AND status != 'cancelled'
           AND due_date IS NOT NULL
           AND due_date < CURRENT_DATE::text

@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request, type Response, type NextFunction } from "express";
 import { db, exceptionsTable } from "@workspace/db";
 import { eq, and, desc, ilike, or, sql, type SQL } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
@@ -6,7 +6,13 @@ import { resolveCompanyId } from "../lib/resolveCompany.js";
 import { auditFromReq } from "../lib/auditLog.js";
 
 const router = Router();
-router.use(requireAdmin);
+
+async function requireAdminMiddleware(req: Request, res: Response, next: NextFunction) {
+  const ok = await requireAdmin(req, res);
+  if (ok) next();
+}
+
+router.use(requireAdminMiddleware);
 
 // GET /api/exceptions/stats
 router.get("/stats", async (req, res) => {
@@ -73,8 +79,7 @@ router.get("/:id", async (req, res) => {
 // POST /api/exceptions
 router.post("/", async (req, res) => {
   const companyId = resolveCompanyId(req);
-  const session = (req as any).session;
-  const user = session?.user;
+  const user = req.user as { email?: string | null; firstName?: string | null; lastName?: string | null } | undefined;
   const {
     exceptionType, severity, title, description,
     refType, refId, refNumber,
@@ -116,8 +121,7 @@ router.put("/:id", async (req, res) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
-  const session = (req as any).session;
-  const user = session?.user;
+  const user = req.user as { email?: string | null; firstName?: string | null; lastName?: string | null } | undefined;
   const {
     title, description, severity, status, assignedTo,
     refType, refId, refNumber, customerName, supplierName,
