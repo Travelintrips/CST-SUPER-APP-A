@@ -352,6 +352,10 @@ function CompareVendorsView({ data, token }: { data: CompareData; token: string 
   const selectedVendor = vendors.find((v) => v.linkId === selectedLinkId) ?? null;
   const effectivePrice = selectedVendor?.offeredPrice ?? selectedVendor?.basicPrice;
 
+  useEffect(() => {
+    if (effectivePrice != null) setSellingPrice(String(effectivePrice));
+  }, [selectedLinkId]);
+
   const fillPrice = () => {
     if (effectivePrice != null) setSellingPrice(String(effectivePrice));
   };
@@ -407,20 +411,12 @@ function CompareVendorsView({ data, token }: { data: CompareData; token: string 
               <p className="text-xs text-slate-500 break-all">{result.quoteUrl}</p>
             </div>
           )}
-          {result.forwardVendorUrl && (
-            <div className="rounded-xl bg-blue-50 border border-blue-100 p-4 space-y-2">
-              <p className="text-xs text-blue-700 font-semibold uppercase tracking-wide">Langkah Selanjutnya</p>
-              <p className="text-sm text-slate-600">
-                Forward instruksi ke vendor untuk eksekusi pengiriman:
-              </p>
-              <a
-                href={result.forwardVendorUrl}
-                className="block text-center bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-4 rounded-lg text-sm transition-colors"
-              >
-                📦 Forward ke Vendor →
-              </a>
-            </div>
-          )}
+          <div className="rounded-xl bg-amber-50 border border-amber-100 p-4 space-y-1">
+            <p className="text-xs text-amber-700 font-semibold uppercase tracking-wide">⏳ Menunggu Persetujuan Customer</p>
+            <p className="text-sm text-slate-600">
+              Forward ke vendor akan tersedia setelah customer menyetujui penawaran.
+            </p>
+          </div>
         </div>
       </div>
     );
