@@ -284,14 +284,20 @@ export default function CustomerApprovalPage() {
         {/* Reject form */}
         {showRejectForm && (
           <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 space-y-3">
-            <p className="text-sm font-medium text-slate-700">Catatan Penolakan (opsional)</p>
+            <p className="text-sm font-medium text-slate-700">
+              Alasan Penolakan <span className="text-red-500">*</span>
+            </p>
+            <p className="text-xs text-slate-400">Wajib diisi — jelaskan alasan penolakan atau permintaan revisi Anda.</p>
             <textarea
               value={notes}
               onChange={e => setNotes(e.target.value)}
-              rows={3}
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300 resize-none"
-              placeholder="Alasan penolakan atau request revisi..."
+              rows={4}
+              className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300 resize-none ${notes.trim() ? "border-slate-200" : "border-red-300 bg-red-50"}`}
+              placeholder="Contoh: Harga terlalu tinggi, mohon revisi menjadi Rp X / Saya tidak jadi menggunakan layanan ini karena..."
             />
+            {!notes.trim() && (
+              <p className="text-xs text-red-500">⚠️ Alasan penolakan harus diisi sebelum konfirmasi.</p>
+            )}
             <div className="flex gap-2">
               <button
                 onClick={() => { setShowRejectForm(false); setNotes(""); }}
@@ -299,8 +305,8 @@ export default function CustomerApprovalPage() {
               >Batal</button>
               <button
                 onClick={() => handleAction("reject")}
-                disabled={submitting}
-                className="flex-1 rounded-xl bg-red-600 hover:bg-red-700 disabled:bg-slate-300 text-white font-semibold py-2.5 text-sm"
+                disabled={submitting || !notes.trim()}
+                className="flex-1 rounded-xl bg-red-600 hover:bg-red-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-semibold py-2.5 text-sm"
               >{submitting ? "Mengirim..." : "Konfirmasi Tolak"}</button>
             </div>
           </div>

@@ -53,8 +53,11 @@ type SubmittedData = {
   priceConfirmed: string | null;
   revisedPrice: string | null;
   leadTime: string | null;
+  deliveryMethod: string | null;
   stockPhotoUrl: string | null;
+  packingListUrl: string | null;
   invoiceUrl: string | null;
+  podUrl: string | null;
   supportingDocUrl: string | null;
   notes: string | null;
   submittedAt: string | null;
@@ -394,9 +397,17 @@ function SubmittedReview({
                     </div>
                   </div>
                 )}
+                {val("deliveryMethod") && (
+                  <Row label="Metode Pengiriman" value={
+                    val("deliveryMethod") === "vendor_delivery" ? "🚛 Vendor Delivery" :
+                    val("deliveryMethod") === "customer_pickup" ? "🏭 Customer Pickup" :
+                    val("deliveryMethod") === "third_party" ? "📦 Third Party Carrier" :
+                    val("deliveryMethod")
+                  } />
+                )}
                 {val("stockPhotoUrl") && (
                   <div className="mt-3">
-                    <p className="text-xs text-slate-400 mb-1.5">Foto Stok</p>
+                    <p className="text-xs text-slate-400 mb-1.5">Foto Barang / Stok</p>
                     {val("stockPhotoUrl")!.match(/\.(jpg|jpeg|png|webp|heic|heif)$/i) ? (
                       <img src={val("stockPhotoUrl")!} alt="Foto stok" className="max-h-40 rounded-lg border border-slate-200" />
                     ) : (
@@ -404,10 +415,24 @@ function SubmittedReview({
                     )}
                   </div>
                 )}
+                {val("packingListUrl") && (
+                  <div className="mt-2">
+                    <a href={val("packingListUrl")!} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-xs text-blue-600 underline">
+                      📋 Lihat Packing List
+                    </a>
+                  </div>
+                )}
                 {val("invoiceUrl") && (
                   <div className="mt-2">
                     <a href={val("invoiceUrl")!} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-xs text-blue-600 underline">
                       📄 Lihat Invoice
+                    </a>
+                  </div>
+                )}
+                {val("podUrl") && (
+                  <div className="mt-2">
+                    <a href={val("podUrl")!} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-xs text-blue-600 underline">
+                      ✅ Lihat POD (Proof of Delivery)
                     </a>
                   </div>
                 )}
@@ -703,7 +728,87 @@ function ProductFulfillmentForm({
         </div>
       )}
 
-      {/* ── 2. Konfirmasi Stok ── */}
+      {/* ── 2. Metode Pengiriman ── */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 px-5 py-5 space-y-4">
+        <div>
+          <h2 className="text-sm font-bold text-slate-800">🚚 Metode Pengiriman</h2>
+          <p className="text-xs text-slate-400 mt-0.5">Bagaimana barang akan dikirim ke customer?</p>
+        </div>
+        <div className="flex flex-col gap-2">
+          {[
+            { val: "vendor_delivery", label: "🚛 Vendor Delivery", desc: "Vendor mengirim langsung ke lokasi customer" },
+            { val: "customer_pickup", label: "🏭 Customer Pickup", desc: "Customer mengambil sendiri dari gudang vendor" },
+            { val: "third_party",     label: "📦 Third Party Carrier", desc: "Dikirim via jasa pengiriman pihak ketiga" },
+          ].map((opt) => (
+            <button
+              key={opt.val}
+              type="button"
+              onClick={() => setField("deliveryMethod", opt.val)}
+              className={`w-full text-left px-4 py-3 rounded-xl border-2 transition-all flex items-center justify-between gap-2 ${
+                fields.deliveryMethod === opt.val
+                  ? "border-emerald-500 bg-emerald-50"
+                  : "border-slate-200 bg-white hover:border-slate-300"
+              }`}
+            >
+              <div>
+                <p className={`text-sm font-semibold ${fields.deliveryMethod === opt.val ? "text-emerald-800" : "text-slate-700"}`}>
+                  {opt.label}
+                </p>
+                <p className={`text-xs mt-0.5 ${fields.deliveryMethod === opt.val ? "text-slate-600" : "text-slate-400"}`}>
+                  {opt.desc}
+                </p>
+              </div>
+              {fields.deliveryMethod === opt.val && <span className="text-emerald-500 shrink-0">✓</span>}
+            </button>
+          ))}
+        </div>
+        {fields.deliveryMethod === "third_party" && (
+          <div className="space-y-3 pt-1">
+            <Field
+              label="Nama Carrier / Ekspedisi"
+              name="carrierName"
+              value={fields.carrierName ?? ""}
+              onChange={(v) => setField("carrierName", v)}
+              placeholder="JNE, J&T, Sicepat, dll"
+              required
+            />
+            <Field
+              label="Tipe Kendaraan / Layanan"
+              name="vehicleType"
+              value={fields.vehicleType ?? ""}
+              onChange={(v) => setField("vehicleType", v)}
+              placeholder="Reguler, Express, Cargo, dll"
+            />
+          </div>
+        )}
+        {fields.deliveryMethod === "vendor_delivery" && (
+          <div className="space-y-3 pt-1">
+            <Field
+              label="Nama Driver"
+              name="driverName"
+              value={fields.driverName ?? ""}
+              onChange={(v) => setField("driverName", v)}
+              placeholder="Nama pengemudi"
+            />
+            <Field
+              label="No. HP Driver"
+              name="driverPhone"
+              value={fields.driverPhone ?? ""}
+              onChange={(v) => setField("driverPhone", v)}
+              placeholder="08xxxxxxxxxx"
+            />
+            <Field
+              label="Nomor Plat Kendaraan"
+              name="plateNumber"
+              value={fields.plateNumber ?? ""}
+              onChange={(v) => setField("plateNumber", v)}
+              placeholder="B 1234 XYZ"
+            />
+          </div>
+        )}
+      </div>
+
+      {/* ── 3. Konfirmasi Stok ── */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 px-5 py-5 space-y-4">
         <div>
           <h2 className="text-sm font-bold text-slate-800">📦 Konfirmasi Stok</h2>
@@ -921,10 +1026,17 @@ function ProductFulfillmentForm({
           <p className="text-xs text-slate-400 mt-0.5">JPG, PNG, WebP, HEIC, atau PDF — max 20 MB per file</p>
         </div>
         <UploadField
-          label="Foto Stok"
+          label="Foto Barang / Stok"
           fileType="stockPhoto"
           url={fields.stockPhotoUrl ?? ""}
           uploading={!!uploading["stockPhoto"]}
+          onUpload={handleUpload}
+        />
+        <UploadField
+          label="Packing List"
+          fileType="packingList"
+          url={fields.packingListUrl ?? ""}
+          uploading={!!uploading["packingList"]}
           onUpload={handleUpload}
         />
         <UploadField
@@ -932,6 +1044,13 @@ function ProductFulfillmentForm({
           fileType="invoice"
           url={fields.invoiceUrl ?? ""}
           uploading={!!uploading["invoice"]}
+          onUpload={handleUpload}
+        />
+        <UploadField
+          label="POD (Proof of Delivery)"
+          fileType="pod"
+          url={fields.podUrl ?? ""}
+          uploading={!!uploading["pod"]}
           onUpload={handleUpload}
         />
         <UploadField

@@ -226,7 +226,8 @@ const VF_FIELD_KEYS = [
   "priceConfirmed", "revisedPrice", "driverName", "driverPhone", "plateNumber",
   "vehicleType", "pickupTime", "carrierName", "awbBlNumber", "flightVessel",
   "bookingNumber", "etd", "eta", "customsPicName", "customsDocuments",
-  "customsProcessEta", "stockPhotoUrl", "invoiceUrl", "supportingDocUrl", "notes",
+  "customsProcessEta", "deliveryMethod",
+  "stockPhotoUrl", "packingListUrl", "invoiceUrl", "podUrl", "supportingDocUrl", "notes",
 ] as const;
 
 function extractVfData(l: Record<string, unknown>): Record<string, string> {

@@ -109,6 +109,12 @@ async function sendProductOrderNotification(order: ReturnType<typeof toOrder>, i
   const vendorToken = signVendorResponseToken(order.orderNumber);
   const vendorFormUrl = domain ? `https://${domain}/vendor-product-approval/${order.orderNumber}?t=${vendorToken}` : undefined;
 
+  const itemsSubtotal = items.reduce((s, i) => s + i.subtotal, 0);
+  const taxRate = order.grandTotal > itemsSubtotal
+    ? Math.round(((order.grandTotal - itemsSubtotal) / itemsSubtotal) * 100)
+    : 11;
+  const taxAmount = order.grandTotal - itemsSubtotal;
+
   sendProductOrderWaNotification({
     orderNumber: order.orderNumber,
     customerName: order.customerName,
@@ -117,11 +123,16 @@ async function sendProductOrderNotification(order: ReturnType<typeof toOrder>, i
     shippingAddress: order.shippingAddress,
     notes: order.notes ?? null,
     grandTotal: order.grandTotal,
+    subtotal: itemsSubtotal,
+    taxAmount,
+    taxRate,
     items: items.map((i) => ({
       productName: i.productName,
       qty: i.qty,
       unit: i.unit,
       subtotal: i.subtotal,
+      sku: i.productSku ?? null,
+      unitPrice: i.unitPrice,
     })),
     orderUrl,
     vendorFormUrl,

@@ -643,23 +643,70 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
     } : null;
 
     let productTemplate = null;
+    let orderContext: {
+      customerName: string | null;
+      requiredDate: string | null;
+      adminNotes: string | null;
+      items: Array<{ serviceName: string; qty: string | null; unit: string | null; subtotal: string | null }>;
+    } | null = null;
+
     if (row.orderId) {
       try {
         const [order] = await db
-          .select({ commodity: logisticOrdersTable.commodity })
+          .select({
+            commodity: logisticOrdersTable.commodity,
+            customerName: logisticOrdersTable.customerName,
+            requiredDate: logisticOrdersTable.requiredDate,
+            notes: logisticOrdersTable.notes,
+          })
           .from(logisticOrdersTable)
           .where(eq(logisticOrdersTable.id, row.orderId));
+
         if (order?.commodity) {
           const cat = order.commodity.trim().toLowerCase().replace(/[\s-]+/g, "_");
           productTemplate = getInCodeTemplate(cat);
         }
+
+        const orderItems = await db
+          .select({
+            serviceName: logisticOrderItemsTable.serviceName,
+            subtotal: logisticOrderItemsTable.subtotal,
+            inputData: logisticOrderItemsTable.inputData,
+          })
+          .from(logisticOrderItemsTable)
+          .where(eq(logisticOrderItemsTable.orderId, row.orderId));
+
+        orderContext = {
+          customerName: order?.customerName ?? null,
+          requiredDate: order?.requiredDate ?? null,
+          adminNotes: row.adminNotes ?? order?.notes ?? null,
+          items: orderItems.map((it) => {
+            const inp = (it.inputData ?? {}) as Record<string, unknown>;
+            return {
+              serviceName: it.serviceName,
+              qty: inp["qty"] != null ? String(inp["qty"]) : inp["weight"] != null ? String(inp["weight"]) : null,
+              unit: inp["unit"] != null ? String(inp["unit"]) : inp["weightUnit"] != null ? String(inp["weightUnit"]) : null,
+              subtotal: it.subtotal,
+            };
+          }),
+        };
       } catch { /* non-fatal */ }
     }
+
     if (!productTemplate && row.adminNotes) {
       const catMatch = /productCategory:(\w+)/.exec(row.adminNotes);
       if (catMatch?.[1]) {
         productTemplate = getInCodeTemplate(catMatch[1]);
       }
+    }
+
+    if (!orderContext && row.adminNotes) {
+      orderContext = {
+        customerName: null,
+        requiredDate: null,
+        adminNotes: row.adminNotes,
+        items: [],
+      };
     }
 
     res.setHeader("Cache-Control", PUBLIC_CACHE);
@@ -679,6 +726,7 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
       alreadySubmitted,
       schema: filteredSchema,
       productTemplate,
+      orderContext,
     });
   } catch (err) {
     req.log?.error({ err }, "vendor-mini-form GET error");

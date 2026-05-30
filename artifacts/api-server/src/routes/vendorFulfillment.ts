@@ -69,6 +69,9 @@ async function ensureTables() {
     await db.execute(sql`ALTER TABLE vendor_fulfillment_links ADD COLUMN IF NOT EXISTS stock_photo_url TEXT`);
     await db.execute(sql`ALTER TABLE vendor_fulfillment_links ADD COLUMN IF NOT EXISTS invoice_url TEXT`);
     await db.execute(sql`ALTER TABLE vendor_fulfillment_links ADD COLUMN IF NOT EXISTS supporting_doc_url TEXT`);
+    await db.execute(sql`ALTER TABLE vendor_fulfillment_links ADD COLUMN IF NOT EXISTS delivery_method TEXT`);
+    await db.execute(sql`ALTER TABLE vendor_fulfillment_links ADD COLUMN IF NOT EXISTS packing_list_url TEXT`);
+    await db.execute(sql`ALTER TABLE vendor_fulfillment_links ADD COLUMN IF NOT EXISTS pod_url TEXT`);
     migrationDone = true;
   } catch (err) {
     logger.error({ err }, "vendorFulfillment ensureTables error");
@@ -287,8 +290,11 @@ vendorFulfillmentPublicRouter.get("/:token", async (req: Request, res: Response)
           priceConfirmed:    (link as any).priceConfirmed ?? null,
           revisedPrice:      (link as any).revisedPrice ?? null,
           leadTime:          (link as any).leadTime ?? null,
+          deliveryMethod:    (link as any).deliveryMethod ?? null,
           stockPhotoUrl:     (link as any).stockPhotoUrl ?? null,
+          packingListUrl:    (link as any).packingListUrl ?? null,
           invoiceUrl:        (link as any).invoiceUrl ?? null,
+          podUrl:            (link as any).podUrl ?? null,
           supportingDocUrl:  (link as any).supportingDocUrl ?? null,
           notes:             link.notes ?? null,
           submittedAt:       link.submittedAt ? (link.submittedAt as Date).toISOString() : null,
@@ -342,7 +348,8 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
       "stockConfirmed", "qtyConfirmed", "readyDate", "warehouseLocation",
       "customsPicName", "customsDocuments", "customsProcessEta",
       "priceConfirmed", "revisedPrice", "leadTime",
-      "stockPhotoUrl", "invoiceUrl", "supportingDocUrl",
+      "deliveryMethod",
+      "stockPhotoUrl", "packingListUrl", "invoiceUrl", "podUrl", "supportingDocUrl",
       "notes",
     ];
     for (const f of FIELDS) {
@@ -443,8 +450,16 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
         if (body.warehouseLocation) detailLines.push(`📍 Lokasi      : ${body.warehouseLocation}`);
         if (body.priceConfirmed === "agree")   detailLines.push(`💰 Harga       : Setuju harga asal`);
         else if (body.priceConfirmed === "revised") detailLines.push(`💰 Revisi Harga: ${fmtRp(body.revisedPrice)}`);
-        if (body.stockPhotoUrl)     detailLines.push(`🖼 Foto Stok   : ${body.stockPhotoUrl}`);
+        const DELIVERY_LABEL: Record<string, string> = {
+          vendor_delivery: "🚛 Vendor Delivery",
+          customer_pickup: "🏭 Customer Pickup",
+          third_party: "📦 Third Party Carrier",
+        };
+        if (body.deliveryMethod)    detailLines.push(`🚚 Pengiriman  : ${DELIVERY_LABEL[body.deliveryMethod] ?? body.deliveryMethod}`);
+        if (body.stockPhotoUrl)     detailLines.push(`🖼 Foto Barang : ${body.stockPhotoUrl}`);
+        if (body.packingListUrl)    detailLines.push(`📋 Packing List: ${body.packingListUrl}`);
         if (body.invoiceUrl)        detailLines.push(`📄 Invoice     : ${body.invoiceUrl}`);
+        if (body.podUrl)            detailLines.push(`✅ POD         : ${body.podUrl}`);
         if (body.supportingDocUrl)  detailLines.push(`📎 Dok. Lain   : ${body.supportingDocUrl}`);
       } else if (cat === "customs") {
         if (body.customsPicName)     detailLines.push(`👤 PIC         : ${body.customsPicName}`);

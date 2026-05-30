@@ -18,6 +18,20 @@ type FieldDef = {
 
 type ServiceSchema = { label: string; emoji: string; fields: FieldDef[] };
 
+type OrderContextItem = {
+  serviceName: string;
+  qty: string | null;
+  unit: string | null;
+  subtotal: string | null;
+};
+
+type OrderContext = {
+  customerName: string | null;
+  requiredDate: string | null;
+  adminNotes: string | null;
+  items: OrderContextItem[];
+};
+
 type FormMeta = {
   id: number; serviceType: string; title: string | null; notes: string | null;
   vendorName: string | null; vendorPhone: string | null; vendorContactPerson: string | null;
@@ -25,6 +39,7 @@ type FormMeta = {
   orderNumber: string | null; orderItemId: number | null; phase: string | null;
   alreadySubmitted?: boolean;
   productTemplate?: ProductTemplate | null;
+  orderContext?: OrderContext | null;
 };
 
 // ── Skeleton ──────────────────────────────────────────────────────────────────
@@ -301,6 +316,78 @@ export default function VendorMiniFormPage() {
             </p>
           )}
         </div>
+
+        {/* Order Context Card */}
+        {meta.orderContext && (meta.orderContext.customerName || meta.orderContext.items.length > 0 || meta.orderContext.adminNotes) && (
+          <div className="bg-blue-50 border border-blue-200 rounded-2xl p-5 mb-4">
+            <h2 className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-3">📋 Detail Order Customer</h2>
+            <div className="space-y-2">
+              {meta.orderNumber && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-500">No. Order</span>
+                  <span className="font-mono font-semibold text-slate-800">{meta.orderNumber}</span>
+                </div>
+              )}
+              {meta.orderContext.customerName && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-500">Customer</span>
+                  <span className="font-medium text-slate-800">{meta.orderContext.customerName}</span>
+                </div>
+              )}
+              {meta.orderContext.requiredDate && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-500">Target Pengiriman</span>
+                  <span className="font-medium text-slate-800">
+                    {(() => {
+                      try {
+                        const d = new Date(meta.orderContext.requiredDate + "T00:00:00");
+                        const BULAN = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agt","Sep","Okt","Nov","Des"];
+                        return `${d.getDate()} ${BULAN[d.getMonth()]} ${d.getFullYear()}`;
+                      } catch { return meta.orderContext!.requiredDate!; }
+                    })()}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {meta.orderContext.items.length > 0 && (
+              <div className="mt-3">
+                <p className="text-xs font-semibold text-blue-600 mb-2">Detail Item</p>
+                <div className="overflow-x-auto rounded-xl border border-blue-100 bg-white">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-slate-400 text-xs border-b border-slate-100">
+                        <th className="text-left px-3 py-2 font-medium">Nama</th>
+                        <th className="text-right px-3 py-2 font-medium">Qty</th>
+                        <th className="text-right px-3 py-2 font-medium">Satuan</th>
+                        <th className="text-right px-3 py-2 font-medium">Subtotal</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {meta.orderContext.items.map((item, i) => (
+                        <tr key={i}>
+                          <td className="px-3 py-2 text-slate-700">{item.serviceName || "—"}</td>
+                          <td className="px-3 py-2 text-right text-slate-600">{item.qty ?? "—"}</td>
+                          <td className="px-3 py-2 text-right text-slate-500">{item.unit ?? "—"}</td>
+                          <td className="px-3 py-2 text-right font-medium text-slate-700">
+                            {item.subtotal ? `Rp ${Number(item.subtotal).toLocaleString("id-ID")}` : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {meta.orderContext.adminNotes && (
+              <div className="mt-3 pt-3 border-t border-blue-200">
+                <p className="text-xs font-semibold text-blue-600 mb-1">Catatan Admin</p>
+                <p className="text-sm text-slate-700 whitespace-pre-line">{meta.orderContext.adminNotes}</p>
+              </div>
+            )}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Identity */}
