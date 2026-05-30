@@ -17,7 +17,7 @@ import { requireClerkUser } from "../lib/requireAdmin.js";
 import { getPreferredDomain } from "../lib/domain.js";
 import { logger } from "../lib/logger.js";
 import { sendWhatsApp } from "../lib/fonnte.js";
-import { getAdminWa } from "../lib/adminWa.js";
+import { getAdminGroupWa } from "../lib/adminWa.js";
 import { sendVendorRequestNotification, type LogisticOrderData } from "../lib/orderNotification.js";
 import { generateShortLink } from "../lib/shortLink.js";
 
@@ -601,10 +601,10 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
       const compareUrl = getAdminActionUrl(compareToken);
       const compareShort = await generateShortLink(compareUrl, { context: "admin_action", refType: "rfq", refId: String(rfq.id) });
 
-      const adminWa = await getAdminWa();
-      if (adminWa) {
+      const adminGroupWa = await getAdminGroupWa();
+      if (adminGroupWa) {
         const sentCount = results.filter((r) => r.sent).length;
-        sendWhatsApp(adminWa,
+        sendWhatsApp(adminGroupWa,
           `✅ RFQ ${rfq.rfqNumber} telah di-blast ke ${sentCount} vendor\n` +
           `Order: ${order.orderNumber}\n` +
           `Bandingkan penawaran vendor:\n${compareShort}`
@@ -727,10 +727,10 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
       const fwdUrl = getAdminActionUrl(fwdToken);
       const fwdShort = await generateShortLink(fwdUrl, { context: "admin_action", refType: "rfq", refId: String(rfq.id) });
 
-      const adminWa = await getAdminWa();
-      if (adminWa) {
+      const adminGroupWa2 = await getAdminGroupWa();
+      if (adminGroupWa2) {
         const vendorName = vendor?.name ?? `Vendor #${vendorLink.vendorId}`;
-        sendWhatsApp(adminWa,
+        sendWhatsApp(adminGroupWa2,
           `✅ Vendor dipilih: *${vendorName}*\n` +
           `Order: ${order.orderNumber} | ${fmtRp(vendorLink.offeredPrice ?? vendorLink.basicPrice)}\n` +
           (quoteShortUrl ? `📤 Penawaran terkirim ke customer\n` : "") +
