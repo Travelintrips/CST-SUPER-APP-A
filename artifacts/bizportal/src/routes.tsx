@@ -105,7 +105,6 @@ import EnterpriseWaTemplatesPage from "@/pages/settings/enterprise-wa-templates"
 import LogisticsUnitsPage from "@/pages/settings/logistics-units";
 import SettingsRolesPage from "@/pages/settings-roles";
 import SettingsApprovalRulesPage from "@/pages/settings-approval-rules";
-import ProductTemplatesPage from "@/pages/product-templates";
 import UsersPage from "@/pages/users";
 import MediaManagerPage from "@/pages/media-manager";
 import OrgManagementPage from "@/pages/OrgManagementPage";
