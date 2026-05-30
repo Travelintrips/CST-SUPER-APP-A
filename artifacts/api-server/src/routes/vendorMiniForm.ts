@@ -145,7 +145,7 @@ type CachedForm = {
   isActive: boolean; expiresAt: Date | null; mode: string;
   orderId: number | null; orderNumber: string | null; orderItemId: number | null;
   phase: string | null; maxSubmissions: number | null; resubmitAllowed: boolean | null;
-  formTarget: string;
+  formTarget: string; adminNotes: string | null; commodityTemplateId: number | null;
   expiresCache: number;
 };
 
@@ -565,6 +565,8 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
           maxSubmissions: vendorMiniFormLinksTable.maxSubmissions,
           resubmitAllowed: vendorMiniFormLinksTable.resubmitAllowed,
           formTarget: vendorMiniFormLinksTable.formTarget,
+          adminNotes: vendorMiniFormLinksTable.adminNotes,
+          commodityTemplateId: vendorMiniFormLinksTable.commodityTemplateId,
           vendorName: suppliersTable.name,
           vendorPhone: suppliersTable.phone,
           vendorContactPerson: suppliersTable.contactPerson,
@@ -590,6 +592,8 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
         maxSubmissions: dbRow.maxSubmissions ?? null,
         resubmitAllowed: dbRow.resubmitAllowed ?? false,
         formTarget: dbRow.formTarget ?? "vendor",
+        adminNotes: dbRow.adminNotes ?? null,
+        commodityTemplateId: dbRow.commodityTemplateId ?? null,
         vendorName: dbRow.linkVendorName ?? dbRow.vendorName ?? null,
         vendorPhone: dbRow.vendorPhone ?? null,
         vendorContactPerson: dbRow.vendorContactPerson ?? null,
@@ -649,6 +653,46 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
       adminNotes: string | null;
       items: Array<{ serviceName: string; qty: string | null; unit: string | null; subtotal: string | null }>;
     } | null = null;
+
+    // Priority 1: commodity template dari DB (Product Template Engine)
+    if (row.commodityTemplateId) {
+      try {
+        const tplRes = await db.execute(sql`SELECT * FROM commodity_templates WHERE id = ${row.commodityTemplateId}`);
+        if (tplRes.rows.length) {
+          const t = tplRes.rows[0] as Record<string, unknown>;
+          const [fieldsRes, docsRes, clRes] = await Promise.all([
+            db.execute(sql`SELECT * FROM commodity_template_fields WHERE template_id = ${row.commodityTemplateId} ORDER BY sort_order`),
+            db.execute(sql`SELECT * FROM commodity_required_docs   WHERE template_id = ${row.commodityTemplateId} ORDER BY sort_order`),
+            db.execute(sql`SELECT * FROM commodity_checklists      WHERE template_id = ${row.commodityTemplateId} ORDER BY sort_order`),
+          ]);
+          productTemplate = {
+            category: String(t["key"]),
+            label: String(t["name"]),
+            version: "1.0.0",
+            packagingInstructions: "",
+            conditionalRules: [],
+            validationRules: [],
+            customFields: (fieldsRes.rows as Record<string, unknown>[]).map(f => ({
+              key: String(f["field_key"]),
+              label: String(f["label"]),
+              type: (String(f["field_type"] ?? "text")) as "text" | "number" | "select" | "textarea" | "date",
+              required: Boolean(f["required"]),
+              unit: f["unit"] != null ? String(f["unit"]) : undefined,
+              options: Array.isArray(f["options"]) ? (f["options"] as string[]) : undefined,
+            })),
+            requiredDocuments: (docsRes.rows as Record<string, unknown>[]).map(d => ({
+              key: `doc_${d["id"]}`,
+              label: String(d["doc_name"]),
+              required: Boolean(d["required"]),
+            })),
+            checklist: (clRes.rows as Record<string, unknown>[]).map(c => ({
+              key: `chk_${c["id"]}`,
+              label: String(c["item"]),
+            })),
+          };
+        }
+      } catch { /* non-fatal */ }
+    }
 
     if (row.orderId) {
       try {
@@ -1474,10 +1518,10 @@ vendorMiniFormRouter.get("/admin/links", async (req: Request, res: Response) => 
 vendorMiniFormRouter.post("/admin/links", async (req: Request, res: Response) => {
   if (!(await requireClerkUser(req, res))) return;
   try {
-    const { supplierId, serviceType, title, notes, expiresInDays, mode, orderId, orderNumber, orderItemId, vendorName, maxSubmissions, adminNotes } = req.body as {
+    const { supplierId, serviceType, title, notes, expiresInDays, mode, orderId, orderNumber, orderItemId, vendorName, maxSubmissions, adminNotes, commodityTemplateId } = req.body as {
       supplierId?: number; serviceType: string; title?: string; notes?: string; expiresInDays?: number;
       mode?: string; orderId?: number; orderNumber?: string; orderItemId?: number; vendorName?: string;
-      maxSubmissions?: number; adminNotes?: string;
+      maxSubmissions?: number; adminNotes?: string; commodityTemplateId?: number;
     };
 
     if (!serviceType || !SERVICE_SCHEMAS[serviceType]) return res.status(400).json({ error: "serviceType tidak valid" });
@@ -1519,6 +1563,7 @@ vendorMiniFormRouter.post("/admin/links", async (req: Request, res: Response) =>
       phase: "quotation",
       maxSubmissions: maxSubmissions ?? null,
       adminNotes: adminNotes ?? null,
+      commodityTemplateId: commodityTemplateId ?? null,
     }).returning();
 
     await logActivity("link", link.id, "created", userId,

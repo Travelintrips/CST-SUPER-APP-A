@@ -55,6 +55,11 @@ export async function runCommodityTemplateMigration(): Promise<void> {
   await db.execute(sql`CREATE INDEX IF NOT EXISTS ct_docs_tpl_idx        ON commodity_required_docs (template_id)`);
   await db.execute(sql`CREATE INDEX IF NOT EXISTS ct_checklists_tpl_idx  ON commodity_checklists (template_id)`);
 
+  await db.execute(sql`
+    ALTER TABLE vendor_mini_form_links
+    ADD COLUMN IF NOT EXISTS commodity_template_id INTEGER REFERENCES commodity_templates(id) ON DELETE SET NULL
+  `);
+
   await seedDefaultCommodityTemplates();
 
   logger.info("Commodity template migration: selesai");

@@ -29,6 +29,8 @@ export const vendorMiniFormLinksTable = pgTable("vendor_mini_form_links", {
   adminNotes: text("admin_notes"),
   // Target audience: vendor | customer | admin
   formTarget: text("form_target").notNull().default("vendor"),
+  // Commodity template integration
+  commodityTemplateId: integer("commodity_template_id"),
 });
 
 export const vendorMiniFormSubmissionsTable = pgTable("vendor_mini_form_submissions", {

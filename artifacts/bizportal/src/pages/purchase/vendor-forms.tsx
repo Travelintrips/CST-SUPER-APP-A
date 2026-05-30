@@ -448,6 +448,8 @@ function WaTemplateDialog({
 
 // ── Create Link Dialog ─────────────────────────────────────────────────────────
 
+type CommodityTemplateItem = { id: number; key: string; name: string; icon: string | null };
+
 function CreateLinkDialog({ suppliers, onCreated }: { suppliers: Supplier[]; onCreated: () => void }) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"rate_collection" | "order_based">("rate_collection");
@@ -460,6 +462,7 @@ function CreateLinkDialog({ suppliers, onCreated }: { suppliers: Supplier[]; onC
   const [orderId, setOrderId] = useState<string>("");
   const [orderItemId, setOrderItemId] = useState<string>("");
   const [maxSubmissions, setMaxSubmissions] = useState("");
+  const [commodityTemplateId, setCommodityTemplateId] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
@@ -475,11 +478,18 @@ function CreateLinkDialog({ suppliers, onCreated }: { suppliers: Supplier[]; onC
     enabled: !!orderId && mode === "order_based",
   });
 
+  const { data: commodityTemplates } = useQuery<CommodityTemplateItem[]>({
+    queryKey: ["commodity-templates-list"],
+    queryFn: () => apiFetch<CommodityTemplateItem[]>("/api/commodity-templates"),
+    enabled: open,
+  });
+
   const selectedOrder = orders?.find(o => String(o.id) === orderId);
 
   const reset = () => {
     setMode("rate_collection"); setServiceType(""); setSupplierId(""); setVendorName("");
-    setTitle(""); setNotes(""); setExpiresInDays(""); setOrderId(""); setOrderItemId(""); setMaxSubmissions("");
+    setTitle(""); setNotes(""); setExpiresInDays(""); setOrderId(""); setOrderItemId("");
+    setMaxSubmissions(""); setCommodityTemplateId("");
   };
 
   const handleCreate = async () => {
@@ -496,6 +506,7 @@ function CreateLinkDialog({ suppliers, onCreated }: { suppliers: Supplier[]; onC
           mode, orderId: orderId ? Number(orderId) : undefined,
           orderNumber: selectedOrder?.orderNumber, orderItemId: orderItemId ? Number(orderItemId) : undefined,
           maxSubmissions: maxSubmissions ? Number(maxSubmissions) : undefined,
+          commodityTemplateId: commodityTemplateId ? Number(commodityTemplateId) : undefined,
         }),
       });
       const deactivated = result?.deactivatedCount ?? 0;
@@ -595,6 +606,27 @@ function CreateLinkDialog({ suppliers, onCreated }: { suppliers: Supplier[]; onC
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          {/* Commodity Template */}
+          <div className="space-y-1.5">
+            <Label>Template Komoditas (opsional)</Label>
+            <Select value={commodityTemplateId || "__none__"} onValueChange={v => setCommodityTemplateId(v === "__none__" ? "" : v)}>
+              <SelectTrigger><SelectValue placeholder="Tanpa template komoditas" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">— Tanpa template —</SelectItem>
+                {commodityTemplates?.map(t => (
+                  <SelectItem key={t.id} value={String(t.id)}>
+                    {t.icon ?? "📦"} {t.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {commodityTemplateId && (
+              <p className="text-xs text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-1.5">
+                ✅ Vendor akan melihat custom fields, dokumen wajib, & checklist dari template ini.
+              </p>
+            )}
           </div>
 
           {/* Vendor name override */}
