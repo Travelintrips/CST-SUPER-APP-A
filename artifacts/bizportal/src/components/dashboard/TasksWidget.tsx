@@ -131,7 +131,7 @@ export function TasksWidget() {
           <p className="py-4 text-center text-xs text-muted-foreground">Tidak ada task aktif</p>
         ) : (
           <div className="space-y-1.5">
-            {taskRows.map(({ task, assignee }) => (
+            {taskRows.slice(0, 5).map(({ task, assignee }) => (
               <div key={task.id} className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-muted/50 transition-colors">
                 <StatusIcon status={task.status} />
                 <div className="flex-1 min-w-0">
