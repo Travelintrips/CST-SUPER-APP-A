@@ -398,6 +398,19 @@ export function AppShell({ children }: AppShellProps) {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
+  // Helper: apakah custom-role user punya akses ke path ini?
+  const canAccessPath = (p: string): boolean => {
+    if (!customRolePermissions) return true; // bukan custom-role, lolos
+    const seg = p.replace(/^\//, "").split("/")[0] ?? "";
+    const full = p.replace(/^\//, "");
+    return (
+      customRolePermissions.includes(`${seg}:view`) ||
+      customRolePermissions.includes(`${full}:view`) ||
+      customRolePermissions.includes(seg) ||
+      customRolePermissions.includes(full)
+    );
+  };
+
   const filteredNav = navItems.filter((item) => {
     if (!dbUser?.role) return false;
 
@@ -411,30 +424,18 @@ export function AppShell({ children }: AppShellProps) {
     if ((dbUser.role as string) === "owner") return true;
     if ((dbUser.role as string) === "admin") return true;
 
-    // Custom role permissions (format: "module" atau "module:view")
+    // Custom role permissions: tampilkan grup jika minimal satu child lolos
+    // semua filter (custom-permission + role + company + devOnly).
     if (customRolePermissions != null) {
-      const checkPath = (p: string) => {
-        const seg = p.replace(/^\//, "").split("/")[0] ?? "";
-        const full = p.replace(/^\//, "");
-        return (
-          customRolePermissions.includes(`${seg}:view`) ||
-          customRolePermissions.includes(`${full}:view`) ||
-          customRolePermissions.includes(seg) ||
-          customRolePermissions.includes(full)
-        );
-      };
-
-      // Cek basePath / href langsung
-      const path = item.type === "group" ? item.basePath : item.href;
-      if (checkPath(path)) return true;
-
-      // Untuk grup dengan virtual basePath (tidak ada route nyata di sana),
-      // tampilkan grup jika minimal satu child lolos permission check
-      if (item.type === "group") {
-        return item.children.some((c) => checkPath(c.href));
-      }
-
-      return false;
+      if (item.type === "flat") return canAccessPath(item.href);
+      // Grup: tampil jika ada child yang lolos semua filter
+      return item.children.some(
+        (c) =>
+          canAccessPath(c.href) &&
+          (!c.roles || c.roles.includes(dbUser.role)) &&
+          filterChild(c) &&
+          (IS_DEV || !c.devOnly),
+      );
     }
 
     // Built-in roles
@@ -589,6 +590,7 @@ export function AppShell({ children }: AppShellProps) {
     const active = isGroupActive(item);
 
     const roleFilteredChildren = item.children.filter((c) =>
+      canAccessPath(c.href) &&
       (!c.roles || (dbUser?.role && c.roles.includes(dbUser.role))) &&
       filterChild(c) &&
       (IS_DEV || !c.devOnly)
