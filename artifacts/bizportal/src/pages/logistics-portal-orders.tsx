@@ -31,7 +31,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { PackageOpen, Search, RefreshCw, FilePlus, X, Eye, Zap, Send, ExternalLink, Ship, ClipboardCheck, Trash2 } from "lucide-react";
-import { OrderProgressBar } from "@/components/logistics/OrderProgressBar";
+import { OrderProgressBar, PROGRESS_STEPS, deriveCompletedSteps } from "@/components/logistics/OrderProgressBar";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import { useOrderNotificationsContext } from "@/contexts/OrderNotificationsContext";
@@ -186,6 +186,7 @@ export default function LogisticsPortalOrdersPage() {
 
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkDeleteDialog, setBulkDeleteDialog] = useState(false);
+  const [progressStepFilter, setProgressStepFilter] = useState<string | null>(null);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [bulkStatusValue, setBulkStatusValue] = useState("");
   const [isBulkUpdating, setIsBulkUpdating] = useState(false);
@@ -410,6 +411,9 @@ export default function LogisticsPortalOrdersPage() {
       const st = (o.shipmentType ?? "").toLowerCase();
       if (!st.includes(shipmentTypeFilter.toLowerCase())) return false;
     }
+    if (progressStepFilter) {
+      if (getActiveStepKey(o) !== progressStepFilter) return false;
+    }
     return true;
   });
 
@@ -484,6 +488,20 @@ export default function LogisticsPortalOrdersPage() {
     }
   }
 
+  function getActiveStepKey(o: typeof orders[number]): string | null {
+    const done = deriveCompletedSteps(o as any);
+    const doneIdx = PROGRESS_STEPS.map((s, i) => done.has(s.key) ? i : -1).filter(i => i >= 0);
+    if (doneIdx.length === 0) return null;
+    return PROGRESS_STEPS[Math.max(...doneIdx)].key;
+  }
+
+  const stepCounts: Record<string, number> = {};
+  for (const step of PROGRESS_STEPS) stepCounts[step.key] = 0;
+  for (const o of orders) {
+    const key = getActiveStepKey(o);
+    if (key) stepCounts[key] = (stepCounts[key] ?? 0) + 1;
+  }
+
   const counts = {
     total: orders.length,
     newOrder: orders.filter((o) => o.status === "New Order").length,
@@ -528,31 +546,59 @@ export default function LogisticsPortalOrdersPage() {
           </div>
         </div>
 
-        {/* Stat Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        {/* Summary Stat Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           {[
-            { label: "Total", value: counts.total, color: "text-foreground", filter: "all" },
-            { label: "New Order", value: counts.newOrder, color: "text-yellow-700", filter: null },
-            { label: "In Progress", value: counts.inProgress, color: "text-orange-700", filter: null },
-            { label: "Completed", value: counts.completed, color: "text-green-700", filter: null },
-            { label: "Vendor Pending", value: counts.fulfillmentPending, color: "text-emerald-700", filter: "pending" },
+            { label: "Total", value: counts.total, color: "text-foreground", onClick: () => { setProgressStepFilter(null); setFulfillmentFilter("all"); setStatusFilter("all"); }, active: !progressStepFilter && fulfillmentFilter === "all" && statusFilter === "all" },
+            { label: "New Order", value: counts.newOrder, color: "text-yellow-700", onClick: () => { setProgressStepFilter(null); setStatusFilter(statusFilter === "New Order" ? "all" : "New Order"); setFulfillmentFilter("all"); }, active: statusFilter === "New Order" },
+            { label: "In Progress", value: counts.inProgress, color: "text-orange-700", onClick: () => { setProgressStepFilter(null); setStatusFilter(statusFilter === "In Progress" ? "all" : "In Progress"); setFulfillmentFilter("all"); }, active: statusFilter === "In Progress" },
+            { label: "Completed", value: counts.completed, color: "text-green-700", onClick: () => { setProgressStepFilter(null); setStatusFilter(statusFilter === "Completed" ? "all" : "Completed"); setFulfillmentFilter("all"); }, active: statusFilter === "Completed" },
+            { label: "Vendor Pending", value: counts.fulfillmentPending, color: "text-emerald-700", onClick: () => { setProgressStepFilter(null); setFulfillmentFilter(fulfillmentFilter === "pending" ? "all" : "pending"); setStatusFilter("all"); }, active: fulfillmentFilter === "pending", icon: <ClipboardCheck className="h-3 w-3 text-emerald-600" /> },
           ].map((s) => (
             <Card
               key={s.label}
-              className={`cursor-pointer transition-all hover:shadow-md ${s.filter && fulfillmentFilter === s.filter ? "ring-2 ring-emerald-500" : ""}`}
-              onClick={() => s.filter !== null ? setFulfillmentFilter(s.filter === fulfillmentFilter ? "all" : s.filter) : undefined}
+              className={`cursor-pointer transition-all hover:shadow-md ${s.active ? "ring-2 ring-primary" : ""}`}
+              onClick={s.onClick}
             >
-              <CardHeader className="pb-1 pt-4 px-4">
+              <CardHeader className="pb-1 pt-3 px-3">
                 <CardTitle className="text-xs text-muted-foreground flex items-center gap-1">
-                  {s.label === "Vendor Pending" && <ClipboardCheck className="h-3.5 w-3.5 text-emerald-600" />}
-                  {s.label}
+                  {s.icon ?? null}{s.label}
                 </CardTitle>
               </CardHeader>
-              <CardContent className="px-4 pb-4">
-                <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
+              <CardContent className="px-3 pb-3">
+                <p className={`text-xl font-bold ${s.color}`}>{s.value}</p>
               </CardContent>
             </Card>
           ))}
+        </div>
+
+        {/* Progress Step Cards — scrollable row */}
+        <div className="overflow-x-auto pb-1">
+          <div className="flex gap-2 min-w-max">
+            {PROGRESS_STEPS.map((step) => {
+              const count = stepCounts[step.key] ?? 0;
+              const isActive = progressStepFilter === step.key;
+              return (
+                <button
+                  key={step.key}
+                  onClick={() => setProgressStepFilter(isActive ? null : step.key)}
+                  className={`flex flex-col items-start gap-0.5 rounded-lg border px-3 py-2 min-w-[108px] transition-all hover:shadow-sm ${
+                    isActive
+                      ? "ring-2 ring-offset-1 ring-current border-transparent bg-white dark:bg-slate-900 shadow"
+                      : "border-border bg-card hover:bg-accent/50"
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 w-full">
+                    <span className={`inline-block w-2 h-2 rounded-full shrink-0 ${step.color}`} />
+                    <span className={`text-[10px] font-medium leading-tight truncate max-w-[80px] ${step.text}`}>
+                      {step.label}
+                    </span>
+                  </div>
+                  <span className={`text-lg font-bold leading-none mt-0.5 ${step.text}`}>{count}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* Filters */}
