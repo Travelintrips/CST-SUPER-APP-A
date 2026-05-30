@@ -423,10 +423,27 @@ customerQuotePublicRouter.get("/:token", async (req: Request, res: Response) => 
     const orderItems = await db.select().from(logisticOrderItemsTable)
       .where(eq(logisticOrderItemsTable.orderId, link.orderId));
 
+    function extractQty(inp: unknown): number | null {
+      if (!inp || typeof inp !== "object") return null;
+      const d = inp as Record<string, unknown>;
+      const q = d.quantity ?? d.qty ?? d.jumlah;
+      if (typeof q === "number") return q;
+      if (typeof q === "string") { const n = parseFloat(q); return isNaN(n) ? null : n; }
+      return null;
+    }
+    function extractUnit(inp: unknown): string | null {
+      if (!inp || typeof inp !== "object") return null;
+      const d = inp as Record<string, unknown>;
+      const u = d.unit ?? d.satuan ?? d.uom;
+      return typeof u === "string" ? u : null;
+    }
+
     const priceItems = orderItems.map((i) => ({
       name: i.serviceName,
       category: i.category,
       subtotal: i.subtotal ? Number(i.subtotal) : 0,
+      qty: extractQty(i.inputData),
+      unit: extractUnit(i.inputData),
     }));
 
     const orderSubtotal = order.subtotal ? Number(order.subtotal) : 0;

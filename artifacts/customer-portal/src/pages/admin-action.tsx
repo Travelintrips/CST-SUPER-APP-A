@@ -501,6 +501,20 @@ function CompareVendorsView({ token, data }: { token: string; data: CompareData 
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
 
+  // Auto-select vendor termurah saat mount
+  useEffect(() => {
+    const answered = data.vendors.filter((v) => v.offeredPrice !== null || v.status === "accepted_basic_price");
+    if (answered.length === 0) return;
+    const cheapest = answered.reduce((a, b) => {
+      const pa = a.offeredPrice ?? a.basicPrice ?? Infinity;
+      const pb = b.offeredPrice ?? b.basicPrice ?? Infinity;
+      return pa <= pb ? a : b;
+    });
+    setSelectedLinkId(cheapest.linkId);
+    const price = cheapest.offeredPrice ?? cheapest.basicPrice;
+    if (price != null) setSellingPrice(String(price));
+  }, [data.vendors]);
+
   const handleSelect = async () => {
     if (!selectedLinkId) { alert("Pilih vendor terlebih dahulu."); return; }
     if (sendToCustomer && !sellingPrice) { alert("Harga jual ke customer wajib diisi."); return; }
@@ -552,7 +566,12 @@ function CompareVendorsView({ token, data }: { token: string; data: CompareData 
             return (
               <button
                 key={v.linkId}
-                onClick={() => hasResponse && setSelectedLinkId(v.linkId)}
+                onClick={() => {
+                  if (!hasResponse) return;
+                  setSelectedLinkId(v.linkId);
+                  const p = v.offeredPrice ?? v.basicPrice;
+                  if (p != null) setSellingPrice(String(p));
+                }}
                 disabled={!hasResponse}
                 className={`w-full text-left p-4 rounded-2xl border transition-all ${
                   isSelected
