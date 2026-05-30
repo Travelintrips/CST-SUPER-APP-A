@@ -2,8 +2,7 @@
 ARTIFACT_PORT=${PORT:-3001}
 INTERNAL_PORT=${INTERNAL_PORT:-5173}
 
-fuser -k "${INTERNAL_PORT}/tcp" 2>/dev/null || true
-[ "$ARTIFACT_PORT" != "$INTERNAL_PORT" ] && fuser -k "${ARTIFACT_PORT}/tcp" 2>/dev/null || true
+node "$(dirname "$0")/../api-server/kill-port.mjs" "$INTERNAL_PORT" "$ARTIFACT_PORT" 2>/dev/null || true
 sleep 0.2
 
 if [ "$ARTIFACT_PORT" != "$INTERNAL_PORT" ]; then
