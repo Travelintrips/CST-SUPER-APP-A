@@ -437,12 +437,14 @@ router.post("/documents/:id/action", async (req, res) => {
       break;
     case "mark_received":
       patch["receiveStatus"] = "received" satisfies PurchaseReceiveStatus;
-      if (doc.billStatus === "billed") patch["status"] = "done" satisfies PurchaseStatus;
+      // Payment guard: PO hanya done jika sudah diterima + dibill + dibayar
+      if (doc.billStatus === "billed" && doc.paymentStatus === "paid") patch["status"] = "done" satisfies PurchaseStatus;
       break;
     case "receive_to_warehouse": {
       // Mark received + post stock movements to wh_stock
       patch["receiveStatus"] = "received" satisfies PurchaseReceiveStatus;
-      if (doc.billStatus === "billed") patch["status"] = "done" satisfies PurchaseStatus;
+      // Payment guard: PO hanya done jika sudah diterima + dibill + dibayar
+      if (doc.billStatus === "billed" && doc.paymentStatus === "paid") patch["status"] = "done" satisfies PurchaseStatus;
       break;
     }
     case "mark_billed": {
