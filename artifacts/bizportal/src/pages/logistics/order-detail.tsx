@@ -2412,7 +2412,8 @@ export default function LogisticOrderDetailPage() {
                                 flightVessel: "Kapal / Flight", bookingNumber: "No. Booking",
                                 etd: "ETD", eta: "ETA", customsPicName: "Nama PIC",
                                 customsDocuments: "Dokumen", customsProcessEta: "ETA Proses",
-                                stockPhotoUrl: "Foto Stok", invoiceUrl: "Invoice",
+                                stockPhotoUrl: "Foto Stok", packingListUrl: "Packing List",
+                                invoiceUrl: "Invoice", podUrl: "POD",
                                 supportingDocUrl: "Dok. Pendukung", notes: "Catatan",
                                 driver_name: "Nama Driver", driver_phone: "HP Driver",
                                 vehicle_plate: "Plat Nomor", vehicle_type: "Jenis Kendaraan",
@@ -2429,14 +2430,19 @@ export default function LogisticOrderDetailPage() {
                               };
                               const label = LABELS[k] ?? k.replace(/([A-Z])/g, " $1").replace(/_/g, " ").trim();
                               const display = STOCK_MAP[v] ?? PRICE_MAP[v] ?? v;
-                              const isUrl = v.startsWith("http");
+                              const isUrl = v.startsWith("http") || v.startsWith("/api/") || v.startsWith("/");
+                              const isImage = isUrl && /\.(jpg|jpeg|png|webp|heic|heif)(\?.*)?$/i.test(v);
                               return (
                                 <div key={k} className="flex gap-2 text-xs">
                                   <span className="text-slate-400 min-w-[140px] flex-shrink-0 capitalize">{label}</span>
                                   <span className="text-slate-700 font-medium">
-                                    {isUrl
-                                      ? <a href={v} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">Lihat file ↗</a>
-                                      : display}
+                                    {isImage ? (
+                                      <a href={v} target="_blank" rel="noopener noreferrer">
+                                        <img src={v} alt={label} className="max-h-28 max-w-[200px] rounded border border-slate-200 object-contain hover:opacity-80 transition-opacity" />
+                                      </a>
+                                    ) : isUrl ? (
+                                      <a href={v} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">Lihat file ↗</a>
+                                    ) : display}
                                   </span>
                                 </div>
                               );
