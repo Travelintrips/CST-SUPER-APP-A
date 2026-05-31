@@ -199,7 +199,7 @@ export function AppShell({ children }: AppShellProps) {
       titleKey: "Exception Management",
       basePath: "/exceptions",
       icon: AlertTriangle,
-      roles: ["manager", "admin", "owner"],
+      roles: ["admin", "owner"],
       children: [
         { titleKey: "Semua Exception", href: "/exceptions", icon: AlertTriangle },
       ],
