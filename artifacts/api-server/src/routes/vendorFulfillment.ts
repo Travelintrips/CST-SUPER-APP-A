@@ -400,8 +400,10 @@ vendorFulfillmentPublicRouter.get("/:token", async (req: Request, res: Response)
       ? vendorPrices.reduce((s, v) => s + (v ?? 0), 0)
       : Number(order.grandTotal ?? 0);
 
-    const subtotalBeforeTax = vendorGrandTotal > 0 ? Math.round(vendorGrandTotal * 100 / (100 + TAX_RATE)) : null;
-    const taxAmount = subtotalBeforeTax != null ? vendorGrandTotal - subtotalBeforeTax : null;
+    // Exclusive PPN: vendorGrandTotal IS the DPP (base/catalog price), PPN dihitung di atasnya
+    const subtotalBeforeTax = vendorGrandTotal > 0 ? vendorGrandTotal : null;
+    const taxAmount = subtotalBeforeTax != null ? Math.round(subtotalBeforeTax * TAX_RATE / 100) : null;
+    const vendorTotalWithTax = subtotalBeforeTax != null && taxAmount != null ? subtotalBeforeTax + taxAmount : vendorGrandTotal;
 
     const orderInfo = {
       id: order.id,
@@ -417,7 +419,7 @@ vendorFulfillmentPublicRouter.get("/:token", async (req: Request, res: Response)
       vehicleType: (order as any).vehicleType ?? null,
       status: order.status,
       items: itemsWithVendorPrice.map(({ _vendorSubtotal: _vs, ...rest }) => rest),
-      grandTotal: String(vendorGrandTotal || (order.grandTotal ?? 0)),
+      grandTotal: String(vendorTotalWithTax || (order.grandTotal ?? 0)),
       subtotalBeforeTax: subtotalBeforeTax != null ? String(subtotalBeforeTax) : null,
       taxAmount: taxAmount != null ? String(taxAmount) : null,
       taxRate: TAX_RATE,

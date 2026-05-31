@@ -712,13 +712,15 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
             ? vendorPrices.reduce((s, v) => s + (v ?? 0), 0)
             : (order.grandTotal ? parseFloat(String(order.grandTotal)) : 0);
 
-          const vendorDpp = vendorGrandTotal > 0 ? Math.round(vendorGrandTotal * 100 / (100 + _TAX_RATE)) : null;
-          const vendorTax = vendorDpp != null ? vendorGrandTotal - vendorDpp : null;
+          // Exclusive PPN: vendorGrandTotal IS the DPP (base price), PPN dihitung di atasnya
+          const vendorDpp = vendorGrandTotal > 0 ? vendorGrandTotal : null;
+          const vendorTax = vendorDpp != null ? Math.round(vendorDpp * _TAX_RATE / 100) : null;
+          const vendorGrandWithTax = vendorDpp != null && vendorTax != null ? vendorDpp + vendorTax : vendorGrandTotal;
 
           vendorAdjustedOrder = {
             ...base.order,
             items: vendorItems,
-            grandTotal: String(vendorGrandTotal),
+            grandTotal: String(vendorGrandWithTax),
             subtotalBeforeTax: vendorDpp != null ? String(vendorDpp) : base.order.subtotalBeforeTax,
             taxAmount: vendorTax != null ? String(vendorTax) : base.order.taxAmount,
           };

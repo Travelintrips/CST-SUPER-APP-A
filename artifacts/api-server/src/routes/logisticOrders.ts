@@ -258,9 +258,10 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
       etd: body.etd ? new Date(body.etd) : null,
       eta: body.eta ? new Date(body.eta) : null,
       source: "portal",
+      // Exclusive PPN: subtotal = DPP, tax = DPP × 11%, grandTotal = DPP + tax
       subtotal: String(body.subtotal),
-      tax: String(body.tax),
-      grandTotal: String(body.grandTotal),
+      tax: String(Math.round(Number(body.subtotal) * 0.11)),
+      grandTotal: String(Number(body.subtotal) + Math.round(Number(body.subtotal) * 0.11)),
       status: "New Order",
       publicRfqToken: randomBytes(16).toString("hex"),
     })
