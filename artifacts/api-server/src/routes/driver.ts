@@ -22,6 +22,7 @@ import {
 } from "../lib/sseManager";
 import { checkGeofence } from "../lib/geofence";
 import { upsertAlert, resolveAlert, getActiveAlerts, hasActiveAlert } from "../lib/geofenceAlertStore";
+import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
 
 const router = Router();
 const adminRouter = Router();
@@ -84,6 +85,39 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
   COMPLETED:              [],
   CANCELLED:              [],
 };
+
+// ── Driver → Logistic Order Propagation ──────────────────────────────────────
+//
+// Mapping driver job status → logistic_orders.status (canonical).
+// Satu arah, non-fatal.
+//
+const DRIVER_TO_LOGISTIC_STATUS: Partial<Record<string, string>> = {
+  ON_THE_WAY_TO_PICKUP:     "Pickup",
+  ARRIVED_AT_PICKUP:        "Pickup",
+  PICKED_UP:                "Pickup",
+  IN_TRANSIT:               "In Transit",
+  ARRIVED_AT_DESTINATION:   "Arrived",
+  DELIVERED:                "Delivered",
+  COMPLETED:                "Delivered",
+};
+
+async function syncDriverToLogisticOrder(
+  logisticOrderId: number | null,
+  driverJobStatus: string,
+): Promise<void> {
+  if (!logisticOrderId) return;
+  const targetStatus = DRIVER_TO_LOGISTIC_STATUS[driverJobStatus];
+  if (!targetStatus) return;
+
+  transitionLogisticOrderStatus(logisticOrderId, targetStatus, {
+    actorType: "driver",
+    source: `driver:${driverJobStatus.toLowerCase()}`,
+    force: false,
+    skipAudit: false,
+  }).catch((e) => {
+    console.warn("[driver] syncDriverToLogisticOrder failed — non-fatal", { logisticOrderId, driverJobStatus, e });
+  });
+}
 
 // Sync parent freight shipment status based on driver job status changes
 async function syncParentFreightStatus(
@@ -304,6 +338,7 @@ router.put("/jobs/:jobId/status", requireDriverAuth, async (req, res) => {
   });
 
   await syncParentFreightStatus(job.freightShipmentId, String(status));
+  await syncDriverToLogisticOrder(job.logisticOrderId, String(status));
 
   // Push real-time event to all admin/dispatcher connections
   broadcastToAdmins("job_status_changed", {
@@ -391,6 +426,7 @@ router.post("/jobs/:jobId/pod", requireDriverAuth, async (req, res) => {
   });
 
   await syncParentFreightStatus(job.freightShipmentId, "DELIVERED");
+  await syncDriverToLogisticOrder(job.logisticOrderId, "DELIVERED");
 
   // Notifikasi delivery completed ke customer
   if (job.logisticOrderId) {
@@ -918,6 +954,7 @@ adminRouter.put("/jobs/:jobId", async (req, res) => {
       timestamp: new Date(),
     });
     await syncParentFreightStatus(job.freightShipmentId, String(status));
+    await syncDriverToLogisticOrder(job.logisticOrderId ?? null, String(status));
   }
 
   res.json(serializeJob(job));

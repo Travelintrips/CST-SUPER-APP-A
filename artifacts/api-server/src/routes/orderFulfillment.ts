@@ -181,13 +181,12 @@ fulfillmentAdminRouter.post("/orders/:orderId/send-fulfillment", async (req: Req
       orderId,
       actorType: "admin",
       actorName: "Admin",
-      status: "Processing",
+      status: "In Progress",
       notes: `Form fulfillment dikirim ke vendor${vendor ? ` (${vendor.name})` : ""}. Tipe: ${CATEGORY_LABELS[category] ?? category}.`,
       isPublic: false,
     });
 
-    // Update order status to Processing (non-canonical: force=true)
-    await transitionLogisticOrderStatus(orderId, "Processing", {
+    await transitionLogisticOrderStatus(orderId, "In Progress", {
       actorType: "admin",
       actorName: "Admin",
       source: "orderFulfillment/send-fulfillment",
@@ -269,7 +268,7 @@ fulfillmentAdminRouter.post("/orders/:orderId/resend-fulfillment-wa", async (req
       orderId,
       actorType: "admin",
       actorName: "Admin",
-      status: order.status ?? "Processing",
+      status: order.status ?? "In Progress",
       notes: `WA fulfillment dikirim ulang ke vendor${vendor ? ` (${vendor.name})` : ""}.`,
       isPublic: false,
     }).catch(() => {});
@@ -571,7 +570,7 @@ fulfillmentAdminRouter.post("/orders/:orderId/confirm-fulfillment", async (req: 
     const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
     if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
 
-    const allowedStatuses = ["Vendor Confirmed", "Processing", "Customer Approved"];
+    const allowedStatuses = ["Vendor Confirmed", "In Progress"];
     if (!allowedStatuses.includes(order.status)) {
       return res.status(400).json({ message: `Status saat ini "${order.status}" tidak bisa dikonfirmasi.` });
     }
@@ -679,7 +678,7 @@ fulfillmentAdminRouter.post("/orders/:orderId/complete-order", async (req: Reque
     const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
     if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
 
-    const allowedStatuses = ["In Progress", "Vendor Confirmed", "Processing"];
+    const allowedStatuses = ["In Progress", "Vendor Confirmed"];
     if (!allowedStatuses.includes(order.status)) {
       return res.status(400).json({ message: `Status saat ini "${order.status}" tidak bisa diselesaikan dari sini.` });
     }

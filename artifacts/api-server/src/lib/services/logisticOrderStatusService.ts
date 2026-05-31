@@ -261,3 +261,64 @@ export function isTransitionAllowed(fromRaw: string, toRaw: string): boolean {
   const to = normalizeStatus(toRaw);
   return (LOGISTIC_ORDER_VALID_TRANSITIONS[from] ?? []).includes(to);
 }
+
+// ── Freight → Logistic Propagation ───────────────────────────────────────────
+//
+// Satu arah: freight_shipments.status berubah → logistic_orders.status ikut.
+// Tidak ada propagasi balik (anti infinite-loop).
+// "draft" tidak memiliki padanan → diabaikan.
+//
+const FREIGHT_TO_LOGISTIC_MAP: Record<string, string> = {
+  rfq_sent:   "RFQ Sent",
+  confirmed:  "Vendor Confirmed",
+  in_transit: "In Transit",
+  completed:  "Delivered",
+  cancelled:  "Cancelled",
+};
+
+/**
+ * Saat freight_shipments.status berubah, cari logistic_order yang terhubung
+ * via logistic_order_rfqs.freight_shipment_id dan transisi statusnya.
+ *
+ * NON-FATAL : error di sini TIDAK membatalkan operasi freight.
+ * ONE-WAY   : fungsi ini TIDAK mengupdate freight_shipments → anti-loop.
+ * IDEMPOTENT: transitionLogisticOrderStatus() punya guard alreadyAt.
+ */
+export async function propagateFreightToLogistic(
+  freightShipmentId: number,
+  newFreightStatus: string,
+  opts: { source?: string; actorType?: string; actorName?: string | null } = {},
+): Promise<void> {
+  const targetLogisticStatus = FREIGHT_TO_LOGISTIC_MAP[newFreightStatus];
+  if (!targetLogisticStatus) return; // "draft" dan status tak dikenal → skip
+
+  try {
+    // freight_shipment_id adalah kolom migrasi — harus pakai raw SQL
+    const result = await db.execute(sql`
+      SELECT lo.id, lo.order_number AS "orderNumber", lo.status
+      FROM logistic_orders lo
+      JOIN logistic_order_rfqs lor ON lor.order_id = lo.id
+      WHERE lor.freight_shipment_id = ${freightShipmentId}
+      ORDER BY lor.created_at DESC
+      LIMIT 1
+    `);
+
+    const row = result.rows[0] as
+      | { id: number; orderNumber: string; status: string }
+      | undefined;
+    if (!row) return; // tidak ada logistic order terhubung → skip
+
+    await transitionLogisticOrderStatus(row.id, targetLogisticStatus, {
+      actorType: opts.actorType ?? "system",
+      actorName: opts.actorName ?? null,
+      source: opts.source ?? `freight:${newFreightStatus}`,
+      force: false,    // ikuti state machine; jika status sudah lebih maju → idempotency guard
+      skipAudit: false,
+    });
+  } catch (e) {
+    logger.warn(
+      { e, freightShipmentId, newFreightStatus },
+      "propagateFreightToLogistic failed — non-fatal",
+    );
+  }
+}

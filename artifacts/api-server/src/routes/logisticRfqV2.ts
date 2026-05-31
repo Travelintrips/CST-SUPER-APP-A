@@ -1998,8 +1998,7 @@ logisticRfqV2Router.post("/rfq/:rfqId/close", async (req: Request, res: Response
   await transitionRfqStatus(rfqId, "closed", { actorType: "admin", actorName: "Admin", source: "close-rfq", force: true });
 
   if (updateOrderStatus !== false && rfq.status === "customer_approved") {
-    // customer_approved → close → Processing (non-canonical: force=true)
-    await transitionLogisticOrderStatus(rfq.orderId, "Processing", {
+    await transitionLogisticOrderStatus(rfq.orderId, "In Progress", {
       actorType: "admin",
       actorName: "Admin",
       source: "close-rfq",

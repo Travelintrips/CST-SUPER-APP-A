@@ -1927,9 +1927,9 @@ vendorMiniFormRouter.post("/admin/submissions/:id/select", async (req: Request, 
           .where(eq(vendorMiniFormLinksTable.id, sub.linkId));
       }
 
-      // Update logistic_orders.status agar admin bisa filter "Vendor Selected" (non-canonical: force=true)
+      // Update logistic_orders.status → "Vendor Confirmed" saat vendor dipilih
       if (sub.orderId) {
-        void transitionLogisticOrderStatus(sub.orderId, "Vendor Selected", {
+        void transitionLogisticOrderStatus(sub.orderId, "Vendor Confirmed", {
           actorType: "admin",
           actorName: "Admin",
           source: "vendorMiniForm/select-vendor",
