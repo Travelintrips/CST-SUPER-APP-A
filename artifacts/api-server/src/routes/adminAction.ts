@@ -1126,9 +1126,11 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
           `✅ Vendor dipilih: *${vendorName}*\n` +
           `Order: ${order.orderNumber} | ${fmtRp(vendorLink.offeredPrice ?? vendorLink.basicPrice)}\n` +
           (quoteShortUrl ? `📤 Penawaran terkirim ke customer\n` : "") +
-          `\n📦 Forward ke vendor untuk eksekusi:\n${fwdShort}`
+          `\nMenunggu konfirmasi customer sebelum diteruskan ke vendor.`
         ).catch(() => {});
       }
+      const _vendorCostNum = Number(vendorLink.offeredPrice ?? vendorLink.basicPrice ?? 0);
+      const _sellingPriceForWa = (sellingPrice != null && sellingPrice > _vendorCostNum) ? sellingPrice : null;
       sendVendorSelectedAdminWa({
         rfqNumber: rfq.rfqNumber,
         orderNumber: order.orderNumber,
@@ -1139,10 +1141,10 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
         destination: order.destination ?? "—",
         vendorName: vendor?.name ?? `Vendor #${vendorLink.vendorId}`,
         vendorCost: vendorLink.offeredPrice ?? vendorLink.basicPrice,
-        sellingPrice: sellingPrice ?? null,
+        sellingPrice: _sellingPriceForWa,
         eta: vendorLink.eta ?? null,
         quoteSentToCustomer: sendQuoteToCustomer && !!quoteShortUrl,
-        forwardVendorUrl: fwdShort,
+        forwardVendorUrl: null,
       }).catch(() => {});
 
       if (vendor?.phone) {

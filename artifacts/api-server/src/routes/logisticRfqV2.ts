@@ -1738,6 +1738,8 @@ logisticRfqV2Router.post("/rfq/:rfqId/select-vendor", async (req: Request, res: 
     `Admin memilih vendor: ${vendorName} — ${fmtRp(link.offeredPrice ?? link.basicPrice)}`);
 
   if (orderRow && rfqRow) {
+    const _vcNum = Number(link.offeredPrice ?? link.basicPrice ?? 0);
+    const _spForWa = (sellingPrice != null && sellingPrice > _vcNum) ? sellingPrice : null;
     sendVendorSelectedAdminWa({
       rfqNumber: rfqRow.rfqNumber,
       orderNumber: orderRow.orderNumber,
@@ -1748,7 +1750,7 @@ logisticRfqV2Router.post("/rfq/:rfqId/select-vendor", async (req: Request, res: 
       destination: orderRow.destination ?? "—",
       vendorName,
       vendorCost: link.offeredPrice ?? link.basicPrice,
-      sellingPrice: sellingPrice ?? null,
+      sellingPrice: _spForWa,
       eta: link.eta ?? null,
     }).catch((e: unknown) => logger.error({ e }, "sendVendorSelectedAdminWa failed (select-vendor)"));
 
