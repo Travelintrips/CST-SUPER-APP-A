@@ -476,10 +476,14 @@ const DEFAULT_TPL = {
     ].join("\n"),
     vendor_job_rejected: [
       "❌ *Vendor Menolak Job Order*",
-      "",
-      "Order  : {{orderNumber}}",
+      "━━━━━━━━━━━━━━━━━━",
+      "Order  : *{{orderNumber}}*",
       "Vendor : {{vendorName}}",
+      "Rute   : {{route}}",
       "Alasan : {{reason}}",
+      "━━━━━━━━━━━━━━━━━━",
+      "⚠️ Silakan re-assign vendor segera:",
+      "{{adminOrderUrl}}",
       "",
       "_{{timestamp}}_",
     ].join("\n"),
@@ -2352,11 +2356,15 @@ export async function sendVendorJobRejectedNotification(
   vendorName: string,
   adminWaPhone: string,
   reason?: string,
+  route?: string,
+  adminOrderUrl?: string,
 ): Promise<void> {
   const tpl = await getWaTemplateConfig("admin_personal", "vendor_job_rejected", DEFAULT_TPL.admin_personal.vendor_job_rejected);
   const msg = renderTemplate(tpl, {
     orderNumber, vendorName,
-    reason: reason || null,
+    reason: reason || "—",
+    route: route || null,
+    adminOrderUrl: adminOrderUrl || null,
     timestamp: nowWIB(),
   });
   sendWhatsApp(adminWaPhone, msg).catch((e: unknown) => logger.error({ e }, "WA vendor_job_rejected failed"));

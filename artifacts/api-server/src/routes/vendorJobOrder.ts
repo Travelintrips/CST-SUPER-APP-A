@@ -718,7 +718,7 @@ vendorJobPublicRouter.post("/:token/reject", async (req: Request, res: Response)
 
   try {
     const result = await db.execute(
-      sql`SELECT vjo.*, o.order_number, s.name as vendor_name
+      sql`SELECT vjo.*, o.order_number, o.origin, o.destination, s.name as vendor_name
           FROM vendor_job_orders vjo
           LEFT JOIN logistic_orders o ON o.id = vjo.order_id
           LEFT JOIN suppliers s ON s.id = vjo.vendor_id
@@ -764,7 +764,10 @@ vendorJobPublicRouter.post("/:token/reject", async (req: Request, res: Response)
 
     const adminWa = await getAdminWa();
     if (adminWa) {
-      sendVendorJobRejectedNotification(job.order_number, job.vendor_name ?? "—", adminWa, reason).catch(() => {});
+      const _domain = getPreferredDomain();
+      const _adminOrderUrl = _domain ? `https://${_domain}/logistic-admin/orders/${job.order_id}` : undefined;
+      const _route = [job.origin, job.destination].filter(Boolean).join(" → ") || undefined;
+      sendVendorJobRejectedNotification(job.order_number, job.vendor_name ?? "—", adminWa, reason, _route, _adminOrderUrl).catch(() => {});
     }
 
     return res.json({ ok: true, message: "Job ditolak. Admin akan segera ditindaklanjuti." });
