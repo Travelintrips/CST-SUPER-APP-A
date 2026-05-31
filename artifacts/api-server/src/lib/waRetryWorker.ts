@@ -13,11 +13,14 @@
  *
  * Setelah retry ke-3 gagal, retryCount = 3 sehingga tidak akan diquery lagi.
  * Pada retry sukses, status diupdate ke 'sent'.
+ *
+ * Jika row memiliki mediaUrl (pesan media/gambar), retry menggunakan endpoint
+ * Fonnte dengan parameter `url` sehingga gambar ikut terkirim ulang.
  */
 
 import { db } from "@workspace/db";
 import { notificationLogsTable } from "@workspace/db/schema";
-import { and, eq, isNull, lte, lt, or, sql } from "drizzle-orm";
+import { and, eq, isNull, lte, lt, or } from "drizzle-orm";
 import { logger } from "./logger.js";
 
 const FONNTE_TOKEN = process.env.FONNTE_TOKEN ?? "";
@@ -27,19 +30,26 @@ const MAX_RETRIES   = 3;
 const INTERVAL_MS   = 5 * 60 * 1000;
 const BACKOFF_BASE  = 5 * 60 * 1000;
 
-/** Kirim ke Fonnte langsung (bypass dedup/logging) — worker mengelola log sendiri. */
-async function fonnteRawSend(target: string, message: string): Promise<{ ok: boolean; errorMsg: string }> {
+/** Kirim ke Fonnte langsung — teks saja atau teks + media. Worker mengelola log sendiri. */
+async function fonnteRawSend(
+  target: string,
+  message: string,
+  mediaUrl?: string | null,
+): Promise<{ ok: boolean; errorMsg: string }> {
   if (!FONNTE_TOKEN) {
     return { ok: false, errorMsg: "FONNTE_TOKEN not configured" };
   }
   try {
+    const params: Record<string, string> = { target, message };
+    if (mediaUrl?.trim()) params.url = mediaUrl.trim();
+
     const res = await fetch(FONNTE_URL, {
       method: "POST",
       headers: {
         Authorization: FONNTE_TOKEN,
         "Content-Type": "application/x-www-form-urlencoded",
       },
-      body: new URLSearchParams({ target, message }).toString(),
+      body: new URLSearchParams(params).toString(),
     });
     const body = await res.json() as Record<string, unknown>;
     if (!res.ok) {
@@ -66,6 +76,7 @@ async function runRetryTick(): Promise<void> {
         retryCount: notificationLogsTable.retryCount,
         context:   notificationLogsTable.context,
         refId:     notificationLogsTable.refId,
+        mediaUrl:  notificationLogsTable.mediaUrl,
       })
       .from(notificationLogsTable)
       .where(
@@ -86,7 +97,7 @@ async function runRetryTick(): Promise<void> {
     logger.info({ count: rows.length }, "[waRetryWorker] processing failed WA entries");
 
     for (const row of rows) {
-      const { ok, errorMsg } = await fonnteRawSend(row.recipient, row.message);
+      const { ok, errorMsg } = await fonnteRawSend(row.recipient, row.message, row.mediaUrl);
       const newRetryCount = (row.retryCount ?? 0) + 1;
 
       if (ok) {
@@ -101,7 +112,14 @@ async function runRetryTick(): Promise<void> {
           .where(eq(notificationLogsTable.id, row.id));
 
         logger.info(
-          { id: row.id, recipient: row.recipient, retryCount: newRetryCount, context: row.context, refId: row.refId },
+          {
+            id: row.id,
+            recipient: row.recipient,
+            retryCount: newRetryCount,
+            context: row.context,
+            refId: row.refId,
+            hasMedia: !!row.mediaUrl,
+          },
           "[waRetryWorker] retry sukses",
         );
       } else {
@@ -118,7 +136,7 @@ async function runRetryTick(): Promise<void> {
           .where(eq(notificationLogsTable.id, row.id));
 
         logger.warn(
-          { id: row.id, recipient: row.recipient, retryCount: newRetryCount, nextRetry, errorMsg },
+          { id: row.id, recipient: row.recipient, retryCount: newRetryCount, nextRetry, errorMsg, hasMedia: !!row.mediaUrl },
           "[waRetryWorker] retry gagal",
         );
       }

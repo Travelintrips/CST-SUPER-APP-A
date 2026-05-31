@@ -98,6 +98,7 @@ export async function sendWhatsAppMedia(
         channel: "wa", recipient: phone, message,
         status: "failed", errorMsg: `HTTP ${res.status}`,
         context: opts?.context, refType: opts?.refType, refId: opts?.refId,
+        mediaUrl,
       });
     } else {
       const b = body as Record<string, unknown>;
@@ -107,6 +108,7 @@ export async function sendWhatsAppMedia(
           channel: "wa", recipient: phone, message,
           status: "failed", errorMsg: String(b.reason ?? b.message ?? "Fonnte status:false"),
           context: opts?.context, refType: opts?.refType, refId: opts?.refId,
+          mediaUrl,
         });
       } else {
         logger.info({ phone, mediaUrl }, "WhatsApp media sent via Fonnte");
@@ -114,6 +116,7 @@ export async function sendWhatsAppMedia(
           channel: "wa", recipient: phone, message,
           status: "sent",
           context: opts?.context, refType: opts?.refType, refId: opts?.refId,
+          mediaUrl,
         });
       }
     }
@@ -123,6 +126,7 @@ export async function sendWhatsAppMedia(
       channel: "wa", recipient: phone, message,
       status: "failed", errorMsg: String(err),
       context: opts?.context, refType: opts?.refType, refId: opts?.refId,
+      mediaUrl,
     });
   }
 }
