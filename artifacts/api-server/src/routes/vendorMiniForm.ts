@@ -1315,6 +1315,8 @@ vendorMiniFormRouter.post("/customer-approval/:token", vmfApprovalLimiter, async
     let orderId: number | null = null;
     let orderNumber: string | null = null;
     let customerName: string | null = null;
+    let vmfSellingPrice: string | null = null;
+    let vmfVendorCost: string | null = null;
 
     // Semua operasi dalam satu transaksi atomik
     await db.transaction(async (tx) => {
@@ -1334,6 +1336,8 @@ vendorMiniFormRouter.post("/customer-approval/:token", vmfApprovalLimiter, async
         orderId = locked.orderId;
         orderNumber = locked.orderNumber;
         customerName = locked.customerName;
+        vmfSellingPrice = locked.sellingPrice ?? null;
+        vmfVendorCost = locked.vendorCost ?? null;
 
         // Lock submissions
         if (locked.submissionId) {
@@ -1493,7 +1497,7 @@ vendorMiniFormRouter.post("/customer-approval/:token", vmfApprovalLimiter, async
       db.select().from(logisticOrdersTable)
         .where(eq(logisticOrdersTable.id, orderId))
         .limit(1)
-        .then(([orderRow]) => {
+        .then(async ([orderRow]) => {
           if (!orderRow) return;
           const orderData: LogisticOrderData = {
             id: orderRow.id,
@@ -1521,7 +1525,34 @@ vendorMiniFormRouter.post("/customer-approval/:token", vmfApprovalLimiter, async
             publicRfqToken: orderRow.publicRfqToken ?? null,
           };
           if (action === "approve") {
-            sendCustomerApprovedNotification(orderData).catch(() => {});
+            // Compute price breakdown for admin group WA
+            const fmtRpLocal = (n: number | null) =>
+              n != null ? `Rp ${Math.round(n).toLocaleString("id-ID")}` : "—";
+            const _selling = vmfSellingPrice ? Number(vmfSellingPrice) : null;
+            const _cost = vmfVendorCost ? Number(vmfVendorCost) : null;
+            const _margin = _selling != null && _cost != null ? _selling - _cost : null;
+            const marginStr = _margin != null
+              ? `${fmtRpLocal(_margin)}${_selling ? ` (${Math.round((_margin / _selling) * 100)}%)` : ""}`
+              : "—";
+
+            // Generate forward vendor link (no-login) for admin
+            let fwdUrlStr = "";
+            try {
+              const { createAdminActionLink, getAdminActionUrl } = await import("./adminAction.js");
+              const { generateShortLink } = await import("../lib/shortLink.js");
+              const fwdToken = await createAdminActionLink(orderRow.id, "forward_vendor", undefined, 72);
+              const fwdUrl = getAdminActionUrl(fwdToken);
+              const short = await generateShortLink(fwdUrl, { context: "admin_action", refType: "order", refId: String(orderRow.id) });
+              fwdUrlStr = `📦 *Forward ke vendor (tanpa login):*\n${short}`;
+            } catch { /* non-critical */ }
+
+            sendCustomerApprovedNotification(orderData, {
+              sellingPrice: fmtRpLocal(_selling),
+              vendorCost: fmtRpLocal(_cost),
+              margin: marginStr,
+              fwdUrl: fwdUrlStr,
+            }).catch(() => {});
+
             if (soNumber) {
               const sellingPriceStr = orderRow.finalSellingPrice
                 ? `Rp ${Number(orderRow.finalSellingPrice).toLocaleString("id-ID")}`

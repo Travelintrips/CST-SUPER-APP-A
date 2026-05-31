@@ -604,7 +604,19 @@ const DEFAULT_TPL = {
     vendor_submission: ["📩 *VENDOR SUBMIT — {{orderNumber}}*","RFQ: {{rfqNumber}} | Vendor *{{vendorName}}*{{quotePosition}}","💰 Harga: {{vendorPrice}}","ETA: {{estimatedPickup}} → {{estimatedDelivery}}","Segera review!","_{{timestamp}}_"].join("\n"),
     vendor_confirmed: ["🔔 *VENDOR CONFIRMED — {{orderNumber}}*","Vendor: *{{vendorName}}* | Harga Final: {{finalCustomerPrice}}","{{approveUrl}}","_{{timestamp}}_"].join("\n"),
     vendor_rejected: ["🔴 *VENDOR REJECTED — {{orderNumber}}*","Vendor *{{vendorName}}* menolak. Pilih vendor lain:","{{approveUrl}}","_{{timestamp}}_"].join("\n"),
-    customer_approved: ["🎉 *CUSTOMER APPROVED — {{orderNumber}}*","Customer *{{customerName}}* menyetujui penawaran.","Proses operasional sekarang!","_{{timestamp}}_"].join("\n"),
+    customer_approved: [
+      "🎉 *CUSTOMER APPROVED — {{orderNumber}}*",
+      "━━━━━━━━━━━━━━━━",
+      "Customer   : *{{customerName}}*",
+      "Order      : {{orderNumber}}",
+      "━━━━━━━━━━━━━━━━",
+      "💰 Harga Jual  : *{{sellingPrice}}*",
+      "📦 Harga Basic : {{vendorCost}}",
+      "📈 Margin      : {{margin}}",
+      "━━━━━━━━━━━━━━━━",
+      "{{fwdUrl}}",
+      "_{{timestamp}}_",
+    ].join("\n"),
     customer_revised: ["🟡 *CUSTOMER REVISI — {{rfqNumber}}*","Customer: {{customerName}}","Catatan: {{revisionNotes}}","{{rfqLink}}","_{{timestamp}}_"].join("\n"),
     customer_rejected: ["🔴 *CUSTOMER TOLAK — {{rfqNumber}}*","Customer: {{customerName}}","Alasan: {{rejectionReason}}","{{rfqLink}}","_{{timestamp}}_"].join("\n"),
     task_update: ["📦 *Update Order — {{orderNumber}}*","Dari: {{vendorName}} | Status: {{status}}","_{{timestamp}}_"].join("\n"),
@@ -1579,13 +1591,25 @@ export async function sendCustomerApprovalNotification(
 // ── Customer Approved (notif admin + customer saat customer menyetujui) ──────
 export async function sendCustomerApprovedNotification(
   order: LogisticOrderData,
+  extras: {
+    sellingPrice?: string | null;
+    vendorCost?: string | null;
+    margin?: string | null;
+    fwdUrl?: string | null;
+  } = {},
 ): Promise<void> {
   const [tplG, custTpl, group] = await Promise.all([
     getWaTemplateConfig("admin_group", "customer_approved", DEFAULT_TPL.admin_group.customer_approved),
     getWaTemplateConfig("customer", "customer_approved", DEFAULT_TPL.customer.customer_approved),
     getAdminGroupWa(),
   ]);
-  if (group) sendWhatsApp(group, renderWf(tplG, order)).catch((e: unknown) => logger.error({ e }, "WA customer_approved (group) failed"));
+  const groupExtras: Record<string, string | null | undefined> = {
+    sellingPrice: extras.sellingPrice ?? "—",
+    vendorCost: extras.vendorCost ?? "—",
+    margin: extras.margin ?? "—",
+    fwdUrl: extras.fwdUrl ?? "",
+  };
+  if (group) sendWhatsApp(group, renderWf(tplG, order, groupExtras)).catch((e: unknown) => logger.error({ e }, "WA customer_approved (group) failed"));
   if (order.phone) sendWhatsApp(order.phone, renderWf(custTpl, order)).catch((e: unknown) => logger.error({ e }, "WA customer_approved (customer) failed"));
 }
 
