@@ -599,21 +599,21 @@ customerQuotePublicRouter.get("/:token", async (req: Request, res: Response) => 
     const totalEst = rawItems.reduce((s, it) => s + it.estSubtotal, 0);
 
     const priceItems = rawItems.map((it) => {
-      if (displaySubtotal != null && displaySubtotal > 0) {
-        // Proporsi dari harga jual admin
+      if (displayTotal != null && displayTotal > 0) {
+        // Alokasi proporsional dari harga jual FINAL ke customer (sudah include PPN)
         const ratio = totalEst > 0 ? it.estSubtotal / totalEst : 1 / rawItems.length;
-        const itemSelling = Math.round(displaySubtotal * ratio);
-        const unitPrice = it.qty && it.qty > 0 ? Math.round(itemSelling / it.qty) : null;
+        const itemTotal = Math.round(displayTotal * ratio);
+        const unitPrice = it.qty && it.qty > 0 ? Math.round(itemTotal / it.qty) : null;
         return {
           name: it.name,
           category: it.category,
-          subtotal: itemSelling,
+          subtotal: itemTotal,
           unitPrice,
           qty: it.qty,
           unit: it.unit,
         };
       }
-      // Fallback: gunakan harga estimasi mentah
+      // Fallback: belum ada finalCustomerPrice
       const subtotal = it.estSubtotal;
       const unitPrice = it.qty && it.qty > 0 && subtotal > 0
         ? Math.round(subtotal / it.qty)
