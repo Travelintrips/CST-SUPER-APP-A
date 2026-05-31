@@ -35,6 +35,10 @@ const STEP_TO_LOGISTIC_STATUS: Record<string, string> = {
   COMPLETED:  "Delivered",
 };
 
+const LOGISTIC_STATUS_RANK: Record<string, number> = {
+  "Pickup": 7, "In Transit": 8, "Arrived": 9, "Delivered": 10,
+};
+
 const ALLOWED_PHOTO_MIME = new Set([
   "image/jpeg", "image/jpg", "image/png", "image/webp", "image/heic", "image/heif",
 ]);
@@ -95,7 +99,10 @@ driverProgressPublicRouter.get("/:token", async (req: Request, res: Response) =>
       driverName: row.driver_name ?? null,
       completedSteps,
       completedStepsMeta,
-      allowedSteps: ALLOWED_STEPS.filter((s) => !completedSteps.includes(s)),
+      allowedSteps: (() => {
+        const next = ALLOWED_STEPS.find((s) => !completedSteps.includes(s));
+        return next ? [next] : [];
+      })(),
       stepLabel: STEP_LABEL,
     });
   } catch (err) {
@@ -159,6 +166,22 @@ driverProgressPublicRouter.post("/:token", async (req: Request, res: Response) =
     const orderId = Number(row.order_id);
     const driverName = (row.driver_name as string | null) ?? "Driver";
 
+    // Validate stepKey harus next step berikutnya (strict order)
+    const evCheck = await db.execute(sql`
+      SELECT step_key FROM order_progress_events
+      WHERE order_id = ${orderId} ORDER BY created_at ASC
+    `);
+    const doneSteps = ((evCheck.rows ?? []) as any[]).map((e) => e.step_key as string);
+    const nextStep = ALLOWED_STEPS.find((s) => !doneSteps.includes(s));
+    if (!nextStep) {
+      return res.status(409).json({ error: "Semua step sudah selesai." });
+    }
+    if (String(stepKey) !== nextStep) {
+      return res.status(400).json({
+        error: `Step tidak sesuai urutan. Step berikutnya: ${STEP_LABEL[nextStep] ?? nextStep}.`,
+      });
+    }
+
     await updateOrderProgress(
       orderId,
       String(stepKey),
@@ -170,11 +193,17 @@ driverProgressPublicRouter.post("/:token", async (req: Request, res: Response) =
 
     const logisticStatus = STEP_TO_LOGISTIC_STATUS[String(stepKey)];
     if (logisticStatus) {
-      transitionLogisticOrderStatus(orderId, logisticStatus, {
-        actorType: "driver",
-        source: `driver-progress-link:${String(stepKey).toLowerCase()}`,
-        force: false,
-      }).catch(() => {});
+      const [cur] = await db.select({ status: logisticOrdersTable.status })
+        .from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
+      const curRank = LOGISTIC_STATUS_RANK[cur?.status ?? ""] ?? -1;
+      const newRank = LOGISTIC_STATUS_RANK[logisticStatus] ?? -1;
+      if (newRank > curRank) {
+        transitionLogisticOrderStatus(orderId, logisticStatus, {
+          actorType: "driver",
+          source: `driver-progress-link:${String(stepKey).toLowerCase()}`,
+          force: false,
+        }).catch((e: unknown) => logger.warn({ e, orderId, logisticStatus }, "driver-progress: status transition failed"));
+      }
     }
 
     // WA ke customer
