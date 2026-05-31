@@ -933,6 +933,8 @@ const DEFAULT_TPL = {
       "Order  : *{{orderNumber}}*",
       "Layanan: {{shipmentType}}",
       "Rute   : {{origin}} → {{destination}}",
+      "{{estimatedPickupLine}}",
+      "{{estimatedDeliveryLine}}",
       "Catatan Admin: {{adminNote}}",
       "",
       "✅ Anda telah dipilih sebagai vendor untuk order ini.",
@@ -2222,6 +2224,8 @@ export async function sendVendorAssignmentNotification(
   vendorPhone: string | null | undefined,
   adminNote?: string,
   items?: VendorAssignmentItem[],
+  estimatedPickup?: string | null,
+  estimatedDelivery?: string | null,
 ): Promise<string> {
   const fmtRp = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
   let itemsBlock = "";
@@ -2239,6 +2243,8 @@ export async function sendVendorAssignmentNotification(
     orderNumber, origin, destination, shipmentType, jobUrl,
     adminNote: adminNote || null,
     itemsBlock: itemsBlock || null,
+    estimatedPickupLine: estimatedPickup ? `📅 Est. Pickup  : ${estimatedPickup}` : null,
+    estimatedDeliveryLine: estimatedDelivery ? `🏁 Est. Delivery: ${estimatedDelivery}` : null,
     timestamp: nowWIB(),
   };
   const msg = renderTemplate(tpl, vars);
