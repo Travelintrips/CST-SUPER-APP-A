@@ -239,6 +239,13 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
       if (!input) return null;
       return input.unit != null ? String(input.unit) : null;
     };
+    const extractItemUnitPrice = (input: Record<string, unknown> | null): number | null => {
+      if (!input) return null;
+      const pRaw = input.price ?? input.productPrice ?? input.unitPrice ?? input.sellingPrice ?? null;
+      if (typeof pRaw === "number") return pRaw > 0 ? pRaw : null;
+      if (typeof pRaw === "string") { const n = parseFloat(pRaw); return !isNaN(n) && n > 0 ? n : null; }
+      return null;
+    };
 
     // Hitung total qty untuk estimasi harga vendor (hanya berlaku jika semua item satu unit)
     let totalQtyForVendor: number | null = null;
@@ -264,8 +271,14 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
     }
 
     // Compute tax breakdown — source of truth for all views
+    // Hitung subtotal per item dengan benar: unitPrice × qty (bukan raw DB subtotal yang bisa jadi unit price saja)
     const _itemsSubtotal = orderItemRows.reduce((sum, it) => {
-      return sum + (it.subtotal != null ? parseFloat(String(it.subtotal)) : 0);
+      const inp = it.inputData as Record<string, unknown> | null;
+      const qty = extractItemQty(inp);
+      const unitPrice = extractItemUnitPrice(inp);
+      const dbSubtotal = it.subtotal != null ? parseFloat(String(it.subtotal)) : 0;
+      const computed = (unitPrice != null && qty != null) ? unitPrice * qty : dbSubtotal;
+      return sum + computed;
     }, 0);
     const _grandTotalNum = order.grandTotal ? parseFloat(String(order.grandTotal)) : null;
     const _TAX_RATE = 11;
@@ -312,12 +325,16 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
           const inp = it.inputData as Record<string, unknown> | null;
           const qty = extractItemQty(inp);
           const unit = extractItemUnit(inp);
+          const unitPrice = extractItemUnitPrice(inp);
+          const dbSubtotal = it.subtotal != null ? Number(it.subtotal) : null;
+          const subtotal = (unitPrice != null && qty != null) ? unitPrice * qty : dbSubtotal;
           return {
             serviceName: it.serviceName ?? "",
             category: it.category ?? "",
-            subtotal: it.subtotal != null ? String(it.subtotal) : null,
+            subtotal: subtotal != null ? String(subtotal) : null,
             quantity: qty != null ? String(qty) : null,
             unit: unit ?? null,
+            unitPrice: unitPrice != null ? String(unitPrice) : null,
           };
         }),
       },

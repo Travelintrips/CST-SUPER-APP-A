@@ -9,6 +9,7 @@ type OrderItemInfo = {
   subtotal: string | null;
   quantity: string | null;
   unit: string | null;
+  unitPrice?: string | null;
 };
 
 type OrderInfo = {
@@ -1492,18 +1493,26 @@ function ForwardVendorView({ data, token }: { data: ForwardVendorData; token: st
                         <th className="text-left px-4 py-2 font-medium">Nama Produk</th>
                         <th className="text-right px-4 py-2 font-medium">Qty</th>
                         <th className="text-right px-4 py-2 font-medium">Satuan</th>
+                        <th className="text-right px-4 py-2 font-medium">Harga/Unit</th>
                         <th className="text-right px-4 py-2 font-medium">Subtotal</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50">
-                      {order.items.map((item, idx) => (
+                      {order.items.map((item, idx) => {
+                        const qty = item.quantity != null ? Number(item.quantity) : null;
+                        const up = item.unitPrice != null ? Number(item.unitPrice) : null;
+                        const subtotal = (up != null && qty != null) ? up * qty
+                          : item.subtotal != null ? Number(item.subtotal) : null;
+                        return (
                         <tr key={idx}>
                           <td className="px-4 py-3 text-slate-700 font-medium">{item.serviceName || "—"}</td>
                           <td className="px-4 py-3 text-right text-slate-600">{item.quantity ?? "—"}</td>
                           <td className="px-4 py-3 text-right text-slate-500">{item.unit ?? "—"}</td>
-                          <td className="px-4 py-3 text-right font-semibold text-slate-700">{idr(item.subtotal)}</td>
+                          <td className="px-4 py-3 text-right text-slate-500">{up != null ? idr(up) : "—"}</td>
+                          <td className="px-4 py-3 text-right font-semibold text-slate-700">{subtotal != null ? idr(subtotal) : "—"}</td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
