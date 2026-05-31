@@ -29,6 +29,7 @@ import {
   logisticOrdersTable,
   logisticOrderQuotesTable,
   logisticOrderRfqsTable,
+  logisticOrderItemsTable,
   suppliersTable,
   orderUpdatesTable,
 } from "@workspace/db";
@@ -45,6 +46,7 @@ import {
   sendCustomerProgressUpdateNotification,
   sendCustomerPodUploadedNotification,
   sendOrderCompletedNotification,
+  type VendorAssignmentItem,
 } from "../lib/orderNotification.js";
 import { logger } from "../lib/logger.js";
 import { recordDecision, updateDecisionOutcome } from "../lib/decisionMemory.js";
@@ -185,6 +187,21 @@ vendorJobAdminRouter.post("/orders/:orderId/assign-vendor", async (req: Request,
       .where(eq(suppliersTable.id, quote.vendorId));
     if (!vendor) return res.status(404).json({ message: "Vendor tidak ditemukan" });
 
+    // Fetch order items untuk breakdown harga di WA
+    const _itemRows = await db.select({
+      serviceName: logisticOrderItemsTable.serviceName,
+      inputData: logisticOrderItemsTable.inputData,
+    }).from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, orderId));
+    const _xQty = (inp: Record<string, unknown> | null): number => { if (!inp) return 1; const v = inp.qty ?? inp.quantity; const n = parseFloat(String(v ?? "")); return isNaN(n) || n <= 0 ? 1 : n; };
+    const _xUnit = (inp: Record<string, unknown> | null): string => { if (!inp) return "unit"; return inp.unit != null ? String(inp.unit) : "unit"; };
+    const _xPrice = (inp: Record<string, unknown> | null): number | null => { if (!inp) return null; const p = inp.price ?? inp.productPrice ?? inp.unitPrice ?? inp.sellingPrice ?? null; if (typeof p === "number") return p > 0 ? p : null; if (typeof p === "string") { const n = parseFloat(p); return !isNaN(n) && n > 0 ? n : null; } return null; };
+    const assignmentItems: VendorAssignmentItem[] = _itemRows.flatMap((row) => {
+      const inp = row.inputData as Record<string, unknown> | null;
+      const price = _xPrice(inp);
+      if (!price) return [];
+      return [{ name: row.serviceName ?? "Produk", qty: _xQty(inp), unit: _xUnit(inp), basicPrice: price, taxRate: 0.11 }];
+    });
+
     // Cek apakah sudah ada job order untuk order ini
     const existing = await db.execute(
       sql`SELECT id, token FROM vendor_job_orders WHERE order_id = ${orderId} LIMIT 1`
@@ -192,7 +209,7 @@ vendorJobAdminRouter.post("/orders/:orderId/assign-vendor", async (req: Request,
     if ((existing.rows ?? []).length > 0) {
       const row = existing.rows[0] as { id: number; token: string };
       const jobUrl = `${baseUrl()}/vendor-job/${row.token}`;
-      const waMsg = await sendVendorAssignmentNotification(order.orderNumber, order.origin, order.destination, order.shipmentType, jobUrl, vendor.phone, adminNote);
+      const waMsg = await sendVendorAssignmentNotification(order.orderNumber, order.origin, order.destination, order.shipmentType, jobUrl, vendor.phone, adminNote, assignmentItems);
       return res.json({ ok: true, jobToken: row.token, jobUrl, waMessage: waMsg, vendorPhone: vendor.phone, alreadyExists: true });
     }
 
@@ -251,7 +268,7 @@ vendorJobAdminRouter.post("/orders/:orderId/assign-vendor", async (req: Request,
     });
 
     const jobUrl = `${baseUrl()}/vendor-job/${jobToken}`;
-    const waMsg = await sendVendorAssignmentNotification(order.orderNumber, order.origin, order.destination, order.shipmentType, jobUrl, vendor.phone, adminNote);
+    const waMsg = await sendVendorAssignmentNotification(order.orderNumber, order.origin, order.destination, order.shipmentType, jobUrl, vendor.phone, adminNote, assignmentItems);
 
     // Notify admin group
     const adminWa = await getAdminWa();

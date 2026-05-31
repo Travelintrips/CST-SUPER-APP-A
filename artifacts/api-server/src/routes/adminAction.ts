@@ -1162,6 +1162,21 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
       const [vendor] = await db.select().from(suppliersTable)
         .where(eq(suppliersTable.id, vendorId));
 
+      // Fetch items untuk breakdown harga di WA vendor
+      const _fwdItemRows = await db.select({
+        serviceName: logisticOrderItemsTable.serviceName,
+        inputData: logisticOrderItemsTable.inputData,
+      }).from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, order.id));
+      const _fxPrice = (inp: Record<string, unknown> | null): number | null => { if (!inp) return null; const p = inp.price ?? inp.productPrice ?? inp.unitPrice ?? inp.sellingPrice ?? null; if (typeof p === "number") return p > 0 ? p : null; if (typeof p === "string") { const n = parseFloat(p); return !isNaN(n) && n > 0 ? n : null; } return null; };
+      const _fwdItems = _fwdItemRows.flatMap((row) => {
+        const inp = row.inputData as Record<string, unknown> | null;
+        const price = _fxPrice(inp);
+        if (!price) return [];
+        const qty = (() => { if (!inp) return 1; const v = inp.qty ?? inp.quantity; const n = parseFloat(String(v ?? "")); return isNaN(n) || n <= 0 ? 1 : n; })();
+        const unit = inp?.unit != null ? String(inp.unit) : "unit";
+        return [{ name: row.serviceName ?? "Produk", qty, unit, basicPrice: price, taxRate: 0.11 }];
+      });
+
       if (vendor?.phone) {
         sendVendorAssignmentNotification(
           order.orderNumber,
@@ -1170,6 +1185,8 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
           order.shipmentType ?? serviceType,
           shortUrl,
           vendor.phone,
+          undefined,
+          _fwdItems,
         ).catch(() => {});
       }
 

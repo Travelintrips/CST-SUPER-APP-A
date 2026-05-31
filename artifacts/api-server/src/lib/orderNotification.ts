@@ -937,6 +937,7 @@ const DEFAULT_TPL = {
       "",
       "✅ Anda telah dipilih sebagai vendor untuk order ini.",
       "",
+      "{{itemsBlock}}",
       "Silakan buka link berikut untuk menerima atau menolak job, dan mengisi detail operasional:",
       "{{jobUrl}}",
       "",
@@ -2204,6 +2205,14 @@ export async function sendVendorSelectedAdminWa(data: VendorSelectedAdminData): 
 }
 
 // ── Vendor Assignment (kirim job order ke vendor, kembalikan pesan untuk preview API) ──
+export interface VendorAssignmentItem {
+  name: string;
+  qty: number;
+  unit: string;
+  basicPrice: number;
+  taxRate: number; // 0.11 = 11%
+}
+
 export async function sendVendorAssignmentNotification(
   orderNumber: string,
   origin: string,
@@ -2212,11 +2221,24 @@ export async function sendVendorAssignmentNotification(
   jobUrl: string,
   vendorPhone: string | null | undefined,
   adminNote?: string,
+  items?: VendorAssignmentItem[],
 ): Promise<string> {
+  const fmtRp = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
+  let itemsBlock = "";
+  if (items && items.length > 0) {
+    const lines = items.map((it) => {
+      const ppnPerUnit = it.basicPrice * it.taxRate;
+      const total = (it.basicPrice + ppnPerUnit) * it.qty;
+      const ppnPct = Math.round(it.taxRate * 100);
+      return `• ${it.name}: ${it.qty} ${it.unit} × ${fmtRp(it.basicPrice)} + PPN ${ppnPct}% = *${fmtRp(total)}*`;
+    });
+    itemsBlock = `📋 *Detail Produk:*\n${lines.join("\n")}\n\n`;
+  }
   const tpl = await getWaTemplateConfig("vendor", "vendor_assignment", DEFAULT_TPL.vendor.vendor_assignment);
   const vars: Record<string, string | null | undefined> = {
     orderNumber, origin, destination, shipmentType, jobUrl,
     adminNote: adminNote || null,
+    itemsBlock: itemsBlock || null,
     timestamp: nowWIB(),
   };
   const msg = renderTemplate(tpl, vars);
