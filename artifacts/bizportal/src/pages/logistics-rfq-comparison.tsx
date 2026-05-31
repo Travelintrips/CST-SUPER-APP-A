@@ -104,7 +104,7 @@ interface RankingBadge {
   color: string;
 }
 
-function getRankingBadges(vendor: VendorRow, allVendors: VendorRow[], aiScores?: Map<number, VendorAiScore>): RankingBadge[] {
+function getRankingBadges(vendor: VendorRow, allVendors: VendorRow[], aiScores?: Map<number, VendorAiScore>, sellingPriceRef?: number | null): RankingBadge[] {
   const badges: RankingBadge[] = [];
   const answered = allVendors.filter(v => v.offeredPrice != null || v.basicPrice != null);
   if (answered.length < 2) return badges;
@@ -115,6 +115,20 @@ function getRankingBadges(vendor: VendorRow, allVendors: VendorRow[], aiScores?:
   const myPrice = vendor.offeredPrice ?? vendor.basicPrice;
   if (myPrice != null && myPrice === minPrice) {
     badges.push({ label: "💰 Best Price", color: "bg-green-100 text-green-700 border-green-200" });
+  }
+
+  // 📈 Best Margin (highest margin vs selling price ref)
+  if (sellingPriceRef != null && sellingPriceRef > 0) {
+    const margins = answered
+      .map(v => ({ id: v.vendorId, m: sellingPriceRef - (v.offeredPrice ?? v.basicPrice ?? sellingPriceRef) }))
+      .filter(x => x.m > -Infinity);
+    if (margins.length >= 2) {
+      const maxMargin = Math.max(...margins.map(x => x.m));
+      const myMargin = sellingPriceRef - (myPrice ?? sellingPriceRef);
+      if (myPrice != null && myMargin === maxMargin) {
+        badges.push({ label: "📈 Best Margin", color: "bg-purple-100 text-purple-700 border-purple-200" });
+      }
+    }
   }
 
   // ⚡ Tercepat (Lead Time Days — smaller is better)
@@ -213,7 +227,7 @@ export default function LogisticsRfqComparisonPage() {
   const [quoteSendWa, setQuoteSendWa] = useState(true);
 
   const [freightConfirmDialog, setFreightConfirmDialog] = useState(false);
-  const [sortBy, setSortBy] = useState<"price" | "leadtime" | "stock" | "score">("price");
+  const [sortBy, setSortBy] = useState<"price" | "leadtime" | "stock" | "score" | "margin">("price");
 
   const { data, isLoading, refetch } = useQuery<ComparisonData>({
     queryKey: ["rfq-comparison", rfqId],
@@ -653,13 +667,22 @@ export default function LogisticsRfqComparisonPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Vendor comparison table */}
           <div className="lg:col-span-2 space-y-3">
+            {(data.finalSellingPrice ?? data.quotedPrice) != null && (
+              <div className="flex items-center gap-2 px-3 py-2 bg-purple-50 border border-purple-100 rounded-lg text-xs text-purple-800">
+                <span className="font-medium">📈 Referensi Margin:</span>
+                <span>Harga jual ke customer = <strong>{idr(data.finalSellingPrice ?? data.quotedPrice)}</strong></span>
+                <span className="text-purple-500">— margin tiap vendor dihitung terhadap nilai ini</span>
+              </div>
+            )}
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="font-semibold text-gray-800">Perbandingan Vendor</h2>
               {data.vendors.length > 1 && (
                 <div className="flex items-center gap-1.5 text-xs">
                   <span className="text-gray-500">Urutkan:</span>
-                  {(["price", "leadtime", "stock", "score"] as const).map((key) => {
-                    const labels: Record<string, string> = { price: "💰 Harga", leadtime: "⚡ Lead Time", stock: "📦 Stok", score: "⭐ Score" };
+                  {(["price", "margin", "leadtime", "stock", "score"] as const).map((key) => {
+                    const hasSellingRef = !!(data.finalSellingPrice ?? data.quotedPrice);
+                    if (key === "margin" && !hasSellingRef) return null;
+                    const labels: Record<string, string> = { price: "💰 Harga", leadtime: "⚡ Lead Time", stock: "📦 Stok", score: "⭐ Score", margin: "📈 Margin" };
                     return (
                       <button
                         key={key}
@@ -708,17 +731,25 @@ export default function LogisticsRfqComparisonPage() {
                     const sb = scoreMap.get(b.vendorId)?.aiScore ?? b.recommendationScore ?? b.vendorRating ?? 0;
                     return sb - sa;
                   }
+                  if (sortBy === "margin") {
+                    const ref = data.finalSellingPrice ?? data.quotedPrice ?? 0;
+                    const ma = ref - (a.offeredPrice ?? a.basicPrice ?? 0);
+                    const mb = ref - (b.offeredPrice ?? b.basicPrice ?? 0);
+                    return mb - ma;
+                  }
                   return 0;
                 });
+                const sellingRef = data.finalSellingPrice ?? data.quotedPrice ?? null;
                 return sorted.map((v, idx) => (
                   <VendorCard
                     key={v.linkId}
                     vendor={v}
                     rank={idx + 1}
-                    rankingBadges={getRankingBadges(v, data.vendors, scoreMap)}
+                    rankingBadges={getRankingBadges(v, data.vendors, scoreMap, sellingRef)}
                     aiScore={scoreMap.get(v.vendorId)}
                     allVendors={data.vendors}
                     hasSelected={hasSelected}
+                    sellingPriceRef={sellingRef}
                     onSelect={() => {
                       setSelectDialog({ linkId: v.linkId, vendorName: v.vendorName, price: v.offeredPrice ?? v.basicPrice });
                       const _vp = v.offeredPrice ?? v.basicPrice;
@@ -1068,10 +1099,10 @@ function DimBar({ label, pct, color }: { label: string; pct: number; color: stri
 }
 
 function VendorCard({
-  vendor, rank, rankingBadges, aiScore, allVendors, hasSelected, onSelect, onRevision, onReject, onMarkRead, onCopyLink, onRefreshPrice, isRefreshingPrice,
+  vendor, rank, rankingBadges, aiScore, allVendors, hasSelected, sellingPriceRef, onSelect, onRevision, onReject, onMarkRead, onCopyLink, onRefreshPrice, isRefreshingPrice,
 }: {
   vendor: VendorRow; rank: number; rankingBadges?: RankingBadge[]; aiScore?: VendorAiScore;
-  allVendors: VendorRow[]; hasSelected: boolean;
+  allVendors: VendorRow[]; hasSelected: boolean; sellingPriceRef: number | null;
   onSelect: () => void; onRevision: () => void;
   onReject: () => void; onMarkRead: () => void; onCopyLink: () => void;
   onRefreshPrice: () => void; isRefreshingPrice?: boolean;
@@ -1080,6 +1111,12 @@ function VendorCard({
   const canAct = !hasSelected && !["rejected", "expired", "not_selected"].includes(vendor.status);
   const hasAnswer = !!vendor.submittedAt;
   const price = vendor.offeredPrice ?? vendor.basicPrice;
+
+  // Margin computation vs selling price reference
+  const marginRp = (sellingPriceRef != null && sellingPriceRef > 0 && price != null)
+    ? sellingPriceRef - price : null;
+  const marginPct = (marginRp != null && sellingPriceRef != null && sellingPriceRef > 0)
+    ? (marginRp / sellingPriceRef) * 100 : null;
 
   // Compute per-dimension normalized scores (0–100) relative to all answered vendors
   const answered = allVendors.filter(v => v.offeredPrice != null || v.basicPrice != null);
@@ -1101,7 +1138,19 @@ function VendorCard({
     const stockScore = STOCK_MAP[vendor.stockAvailability ?? "unknown"] ?? 30;
     // Rating: higher is better (0–5 → 0–100)
     const ratingScore = vendor.vendorRating != null ? (vendor.vendorRating / 5) * 100 : null;
-    return { priceScore, ltScore, stockScore, ratingScore };
+    // Margin: higher is better (normalized against all vendors' margins)
+    let marginScore: number | null = null;
+    if (sellingPriceRef != null && sellingPriceRef > 0) {
+      const vendorMargins = answered
+        .map(v => sellingPriceRef - (v.offeredPrice ?? v.basicPrice ?? sellingPriceRef))
+        .filter(m => isFinite(m));
+      if (vendorMargins.length >= 2 && price != null) {
+        const minM = Math.min(...vendorMargins); const maxM = Math.max(...vendorMargins); const rangeM = maxM - minM || 1;
+        const myM = sellingPriceRef - price;
+        marginScore = ((myM - minM) / rangeM) * 100;
+      }
+    }
+    return { priceScore, ltScore, stockScore, ratingScore, marginScore };
   })();
   const [showScoreDetail, setShowScoreDetail] = useState(false);
 
@@ -1182,7 +1231,15 @@ function VendorCard({
         )}
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3 text-sm">
-          <InfoItem label="Harga Penawaran" value={idr(price)} highlight={!!hasAnswer} />
+          <div>
+            <p className="text-xs text-gray-400">Harga Penawaran</p>
+            <p className={`font-semibold ${hasAnswer ? "text-gray-900" : "text-gray-400"}`}>{idr(price)}</p>
+            {marginRp != null && (
+              <p className={`text-xs font-medium mt-0.5 ${marginRp >= 0 ? "text-green-600" : "text-red-600"}`}>
+                Margin: {marginPct != null ? `${marginPct.toFixed(1)}%` : "—"} ({marginRp >= 0 ? "+" : ""}{idr(Math.round(marginRp))})
+              </p>
+            )}
+          </div>
           <div>
             <p className="text-xs text-gray-400">Lead Time</p>
             <p className="font-medium text-gray-800">
@@ -1235,6 +1292,9 @@ function VendorCard({
             <DimBar label="⚡ Lead Time" pct={dimScores.ltScore ?? 0} color={dimScores.ltScore != null ? "bg-blue-500" : "bg-gray-200"} />
             <DimBar label="📦 Stok" pct={dimScores.stockScore} color="bg-orange-500" />
             <DimBar label="⭐ Rating" pct={dimScores.ratingScore ?? 0} color={dimScores.ratingScore != null ? "bg-yellow-500" : "bg-gray-200"} />
+            {dimScores.marginScore != null && (
+              <DimBar label="📈 Margin" pct={dimScores.marginScore} color="bg-purple-500" />
+            )}
           </div>
         )}
 
