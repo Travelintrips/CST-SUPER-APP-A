@@ -21,7 +21,7 @@ import {
   Package, Truck, User, ClipboardList, Clock, ShieldAlert, Ship,
   ClipboardCheck, CheckCircle2, XCircle, MapPin, MessageCircle,
   Link2, FileText, AlertTriangle, Eye, EyeOff, StickyNote, Globe,
-  RotateCcw, Bell, ChevronDown, ChevronUp, Download, Shield,
+  RotateCcw, Bell, ChevronDown, ChevronUp, Download, Shield, ZoomIn,
 } from "lucide-react";
 import { Link } from "wouter";
 import GpsTrackingPanel from "@/components/logistics/GpsTrackingPanel";
@@ -1900,6 +1900,7 @@ export default function LogisticOrderDetailPage() {
   const orderId = Number(orderIdStr);
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const qc = useQueryClient();
 
   const { data, isLoading, refetch } = useQuery<DetailData>({
@@ -2437,9 +2438,16 @@ export default function LogisticOrderDetailPage() {
                                   <span className="text-slate-400 min-w-[140px] flex-shrink-0 capitalize">{label}</span>
                                   <span className="text-slate-700 font-medium">
                                     {isImage ? (
-                                      <a href={v} target="_blank" rel="noopener noreferrer">
-                                        <img src={v} alt={label} className="max-h-28 max-w-[200px] rounded border border-slate-200 object-contain hover:opacity-80 transition-opacity" />
-                                      </a>
+                                      <button
+                                        type="button"
+                                        onClick={() => setLightboxUrl(v)}
+                                        className="relative group block"
+                                      >
+                                        <img src={v} alt={label} className="max-h-28 max-w-[200px] rounded border border-slate-200 object-contain transition-opacity group-hover:opacity-75" />
+                                        <span className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                          <ZoomIn className="w-6 h-6 text-white drop-shadow-lg" />
+                                        </span>
+                                      </button>
                                     ) : isUrl ? (
                                       <a href={v} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">Lihat file ↗</a>
                                     ) : display}
@@ -3018,6 +3026,44 @@ export default function LogisticOrderDetailPage() {
       <ErrorBoundary label="GPS Tracking">
         <GpsTrackingPanel orderId={orderId} orderNumber={order.orderNumber} />
       </ErrorBoundary>
+
+      {/* Lightbox */}
+      {lightboxUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
+          onClick={() => setLightboxUrl(null)}
+        >
+          <div
+            className="relative max-w-[90vw] max-h-[90vh] flex flex-col items-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={lightboxUrl}
+              alt="Preview"
+              className="max-w-[90vw] max-h-[80vh] rounded-lg object-contain shadow-2xl"
+            />
+            <div className="flex gap-3 mt-4">
+              <a
+                href={lightboxUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-white text-slate-800 text-sm font-medium hover:bg-slate-100 transition-colors shadow"
+              >
+                <ExternalLink className="w-4 h-4" />
+                Buka di tab baru
+              </a>
+              <button
+                type="button"
+                onClick={() => setLightboxUrl(null)}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-slate-700 text-white text-sm font-medium hover:bg-slate-600 transition-colors shadow"
+              >
+                <XCircle className="w-4 h-4" />
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppShell>
   );
 }
