@@ -284,9 +284,10 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
     const _TAX_RATE = 11;
     let _subtotalBeforeTax: number | null = null;
     let _taxAmount: number | null = null;
-    if (_itemsSubtotal > 0 && _grandTotalNum != null) {
+    if (_itemsSubtotal > 0) {
+      // Items subtotal IS the DPP (pre-tax). PPN dihitung di atas DPP.
       _subtotalBeforeTax = _itemsSubtotal;
-      _taxAmount = Math.round(_grandTotalNum - _itemsSubtotal);
+      _taxAmount = Math.round(_itemsSubtotal * _TAX_RATE / 100);
     } else if (_grandTotalNum != null && _grandTotalNum > 0) {
       _subtotalBeforeTax = Math.round(_grandTotalNum * 100 / (100 + _TAX_RATE));
       _taxAmount = _grandTotalNum - _subtotalBeforeTax;
@@ -316,7 +317,9 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
         requiredDate: (order as any).requiredDate ?? null,
         notes: (order as any).notes ?? null,
         paymentType: (order as any).paymentType ?? null,
-        grandTotal: order.grandTotal ? String(order.grandTotal) : null,
+        grandTotal: (_subtotalBeforeTax != null && _taxAmount != null)
+          ? String(Math.round(_subtotalBeforeTax + _taxAmount))
+          : (order.grandTotal ? String(order.grandTotal) : null),
         subtotalBeforeTax: _subtotalBeforeTax != null ? String(_subtotalBeforeTax) : null,
         taxRate: _TAX_RATE,
         taxAmount: _taxAmount != null ? String(_taxAmount) : null,

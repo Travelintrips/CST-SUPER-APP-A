@@ -719,14 +719,24 @@ customerQuotePublicRouter.post("/:token/respond", async (req: Request, res: Resp
           "━━━━━━━━━━━━━━━━\n" +
           "Order      : *{{orderNumber}}*\n" +
           "Customer   : *{{customerName}}*\n" +
-          "Total Harga: *{{sellingPrice}}*\n" +
+          "━━━━━━━━━━━━━━━━\n" +
+          "💰 Harga Jual  : *{{sellingPrice}}*\n" +
+          "📦 Harga Basic : {{vendorCost}}\n" +
+          "📈 Margin      : {{margin}}\n" +
           "━━━━━━━━━━━━━━━━\n" +
           "{{fwdUrl}}\n" +
           "_{{timestamp}}_"
         );
+        const _selling = link.finalCustomerPrice ? Number(link.finalCustomerPrice) : null;
+        const _cost = link.vendorCost ? Number(link.vendorCost) : null;
+        const _margin = (_selling != null && _cost != null) ? _selling - _cost : null;
         const approvedVars = {
           rfqNumber: rfqNum, orderNumber: order.orderNumber, customerName: order.customerName,
-          sellingPrice: fmtRp(link.finalCustomerPrice ? Number(link.finalCustomerPrice) : null),
+          sellingPrice: fmtRp(_selling),
+          vendorCost: fmtRp(_cost),
+          margin: _margin != null
+            ? `${fmtRp(_margin)}${_selling ? ` (${Math.round((_margin / _selling) * 100)}%)` : ""}`
+            : "—",
           fwdUrl: fwdShort ? `📦 Forward ke vendor (tanpa login):\n${fwdShort}` : `Lihat order:\n${adminLink}`,
           timestamp: ts,
         };
