@@ -369,7 +369,7 @@ export default function CustomerQuotePage() {
                 {(data.origin || data.destination) && (
                   <p className="text-green-700">{data.origin || "—"} → {data.destination || "—"}</p>
                 )}
-                <p className="text-lg font-bold text-green-700 mt-1">{idr(data.finalCustomerPrice)}</p>
+                <p className="text-lg font-bold text-green-700 mt-1">{idr(data.displayTotal ?? data.finalCustomerPrice)}</p>
               </div>
               <p className="text-xs text-slate-400 mb-4">Dengan menekan Setuju, Anda menyetujui penawaran dan syarat yang berlaku.</p>
               <div className="flex gap-2">
