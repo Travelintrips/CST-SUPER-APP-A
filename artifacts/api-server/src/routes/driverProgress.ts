@@ -32,11 +32,11 @@ const STEP_TO_LOGISTIC_STATUS: Record<string, string> = {
   IN_TRANSIT: "In Transit",
   ARRIVED:    "Arrived",
   DELIVERED:  "Delivered",
-  COMPLETED:  "Delivered",
+  COMPLETED:  "POD Uploaded",
 };
 
 const LOGISTIC_STATUS_RANK: Record<string, number> = {
-  "Pickup": 7, "In Transit": 8, "Arrived": 9, "Delivered": 10,
+  "Pickup": 7, "In Transit": 8, "Arrived": 9, "Delivered": 10, "POD Uploaded": 11,
 };
 
 const ALLOWED_PHOTO_MIME = new Set([
