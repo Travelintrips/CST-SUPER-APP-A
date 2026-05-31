@@ -1394,6 +1394,38 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
         );
       }
 
+      // WA ke driver (jika driverPhone tersedia di vendor fulfillment link)
+      if (vfLink?.driverPhone) {
+        const driverToken = randomBytes(18).toString("hex");
+        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+        await db.execute(sql`
+          CREATE TABLE IF NOT EXISTS driver_progress_tokens (
+            id           SERIAL PRIMARY KEY,
+            token        TEXT NOT NULL UNIQUE,
+            order_id     INTEGER NOT NULL,
+            driver_name  TEXT,
+            driver_phone TEXT,
+            created_at   TIMESTAMPTZ DEFAULT NOW(),
+            expires_at   TIMESTAMPTZ NOT NULL
+          )
+        `);
+        await db.execute(sql`
+          INSERT INTO driver_progress_tokens (token, order_id, driver_name, driver_phone, expires_at)
+          VALUES (${driverToken}, ${order.id}, ${vfLink.driverName ?? null}, ${vfLink.driverPhone}, ${expiresAt})
+          ON CONFLICT (token) DO NOTHING
+        `);
+        const driverLink = `https://${domain}/driver-progress/${driverToken}`;
+        const driverWaMsg =
+          `🚚 *Tugas Pengiriman — CST Logistics*\n\n` +
+          `Halo${vfLink.driverName ? ` ${vfLink.driverName}` : ""},\n\n` +
+          `Order *${order.orderNumber}* siap untuk proses pengiriman.\n` +
+          ((order.origin && order.destination) ? `Rute: ${order.origin} → ${order.destination}\n` : "") +
+          `\nUpdate status pengiriman via link berikut:\n${driverLink}`;
+        sendWhatsApp(vfLink.driverPhone, driverWaMsg).catch((e) =>
+          logger.warn({ e }, "confirm_fulfillment WA to driver failed")
+        );
+      }
+
       return res.json({ ok: true });
     }
 
