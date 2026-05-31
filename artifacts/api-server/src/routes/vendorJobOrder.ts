@@ -808,10 +808,9 @@ vendorJobPublicRouter.post("/:token/progress", upload.single("photo"), async (re
     const photoFile = (req as any).file as Express.Multer.File | undefined;
     if (photoFile && photoFile.mimetype.startsWith("image/")) {
       try {
-        const domain = getPreferredDomain() || "cstlogistic.co.id";
         const pubSubPath = `progress-photos/${job.order_id}/${Date.now()}_${photoFile.originalname}`;
-        const pubRelUrl = await pubObjStore.uploadPublicRaw(pubSubPath, photoFile.buffer, photoFile.mimetype);
-        progressPhotoUrl = `https://${domain}${pubRelUrl.startsWith("/") ? pubRelUrl : "/" + pubRelUrl}`;
+        await pubObjStore.uploadPublicRaw(pubSubPath, photoFile.buffer, photoFile.mimetype);
+        progressPhotoUrl = pubObjStore.toSupabasePublicUrl(pubSubPath);
         // Simpan photo_url ke row progress yang baru diinsert
         await db.execute(sql`
           UPDATE order_tracking_progress
@@ -897,9 +896,8 @@ vendorJobPublicRouter.post("/:token/pod", upload.array("files", 10), async (req:
       if (file.mimetype.startsWith("image/")) {
         try {
           const pubSubPath = `pod-photos/${job.order_id}/${ts}_${file.originalname}`;
-          const pubRelUrl = await pubObjStore.uploadPublicRaw(pubSubPath, file.buffer, file.mimetype);
-          const fullPubUrl = `https://${domain}${pubRelUrl.startsWith("/") ? pubRelUrl : "/" + pubRelUrl}`;
-          // Simpan ke entry terakhir yang baru saja di-push
+          await pubObjStore.uploadPublicRaw(pubSubPath, file.buffer, file.mimetype);
+          const fullPubUrl = pubObjStore.toSupabasePublicUrl(pubSubPath);
           const last = uploadedUrls[uploadedUrls.length - 1];
           if (last) last.publicUrl = fullPubUrl;
           if (!firstPublicImageUrl) firstPublicImageUrl = fullPubUrl;

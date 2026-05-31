@@ -231,6 +231,16 @@ export class ObjectStorageService {
     return `/api/storage/public-objects/${subPath}`;
   }
 
+  /**
+   * Kembalikan URL langsung Supabase CDN untuk file di public bucket.
+   * URL ini dapat diakses dari internet tanpa proxy API server — cocok untuk Fonnte/WA.
+   * Format: ${SUPABASE_URL}/storage/v1/object/public/${PUBLIC_BUCKET}/${subPath}
+   */
+  toSupabasePublicUrl(subPath: string): string {
+    const cleaned = subPath.replace(/^\/+/, "");
+    return `${SUPABASE_URL}/storage/v1/object/public/${PUBLIC_BUCKET}/${cleaned}`;
+  }
+
   // ── Generic public upload ────────────────────────────────────────────────────
   async uploadFile(buffer: Buffer, storagePath: string, contentType: string): Promise<void> {
     const cleaned = storagePath.replace(/^\/+/, "");

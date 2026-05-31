@@ -713,14 +713,22 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
         `Klik link berikut untuk konfirmasi langsung:\n${bizportalLink}`;
 
       // Bangun URL publik foto barang (jika ada)
+      // Gunakan URL langsung Supabase CDN agar Fonnte bisa download tanpa proxy server
       const rawPhotoUrl = body.stockPhotoUrl as string | undefined;
       let publicPhotoUrl = "";
       if (rawPhotoUrl?.trim()) {
         if (/^https?:\/\//i.test(rawPhotoUrl)) {
+          // Sudah URL penuh (mungkin sudah Supabase CDN)
           publicPhotoUrl = rawPhotoUrl;
         } else {
-          // Path relatif seperti /api/storage/... → jadikan URL publik penuh
-          publicPhotoUrl = `https://${domain}${rawPhotoUrl.startsWith("/") ? rawPhotoUrl : "/" + rawPhotoUrl}`;
+          // Path relatif seperti /api/storage/public-objects/${subPath}
+          // → konversi ke Supabase CDN langsung agar Fonnte bisa akses
+          const match = rawPhotoUrl.match(/^\/api\/storage\/public-objects\/(.+)$/);
+          if (match) {
+            publicPhotoUrl = objectStorage.toSupabasePublicUrl(match[1]);
+          } else {
+            publicPhotoUrl = `https://${domain}${rawPhotoUrl.startsWith("/") ? rawPhotoUrl : "/" + rawPhotoUrl}`;
+          }
         }
       }
 
