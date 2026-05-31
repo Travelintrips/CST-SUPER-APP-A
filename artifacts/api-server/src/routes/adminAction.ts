@@ -1360,12 +1360,33 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
           logger.warn({ e }, "confirm_fulfillment: gagal ambil/buat tracking token, pakai fallback URL");
         }
 
+        // Ringkasan fulfillment yang relevan untuk customer
+        const STOCK_LABEL_C: Record<string, string> = {
+          all: "Tersedia Semua ✅", partial: "Tersedia Sebagian ⚠️", none: "Tidak Tersedia ❌",
+        };
+        const fulfillLines: string[] = [];
+        if (vfLink?.stockConfirmed) fulfillLines.push(`📦 Status Stok  : ${STOCK_LABEL_C[vfLink.stockConfirmed as string] ?? vfLink.stockConfirmed}`);
+        if (vfLink?.readyDate)     fulfillLines.push(`📅 Siap Kirim   : ${vfLink.readyDate}`);
+        if (vfLink?.leadTime)      fulfillLines.push(`⏱ Lead Time    : ${vfLink.leadTime}`);
+        if (vfLink?.driverName)    fulfillLines.push(`👤 Driver       : ${vfLink.driverName}`);
+        if (vfLink?.plateNumber)   fulfillLines.push(`🚛 Plat Nomor   : ${vfLink.plateNumber}`);
+        if (vfLink?.pickupTime)    fulfillLines.push(`⏰ Est. Pickup  : ${vfLink.pickupTime}`);
+        if (vfLink?.carrierName)   fulfillLines.push(`🏢 Carrier      : ${vfLink.carrierName}`);
+        if (vfLink?.awbBlNumber)   fulfillLines.push(`📄 AWB/BL No.   : ${vfLink.awbBlNumber}`);
+        if (vfLink?.etd)           fulfillLines.push(`📅 ETD          : ${vfLink.etd}`);
+        if (vfLink?.eta)           fulfillLines.push(`📅 ETA          : ${vfLink.eta}`);
+        if (vfLink?.notes)         fulfillLines.push(`📝 Catatan      : ${vfLink.notes}`);
+        const fulfillSummaryC = fulfillLines.length > 0
+          ? `\n━━━━━━━━━━━━━━━━━━\n${fulfillLines.join("\n")}\n━━━━━━━━━━━━━━━━━━`
+          : "";
+
         const waMsg =
           `🚀 *Order Anda Sedang Diproses — CST Logistics*\n\n` +
           `Halo ${order.customerName},\n\n` +
           `Order *${order.orderNumber}* (${order.shipmentType || "—"}) telah dikonfirmasi dan sedang diproses.\n` +
           ((order.origin && order.destination) ? `Rute: ${order.origin} → ${order.destination}\n` : "") +
-          `\nPantau status order Anda:\n${trackingUrl}`;
+          fulfillSummaryC +
+          `\n\nPantau status order Anda:\n${trackingUrl}`;
         sendWhatsApp(customerPhone, waMsg).catch((e) =>
           logger.warn({ e }, "confirm_fulfillment WA to customer failed")
         );
