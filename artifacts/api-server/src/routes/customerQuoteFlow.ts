@@ -662,22 +662,48 @@ customerQuotePublicRouter.post("/:token/respond", async (req: Request, res: Resp
           sendWhatsApp(vendor.phone, waVendor).catch(() => {});
         }
       }
-    } else if (response === "revise" && adminGroupWa) {
-      const tpl = await getWaTemplateConfig("admin_group", "customer_revised", "🟡 *CUSTOMER REVISI — {{rfqNumber}}*\nCustomer: {{customerName}}\nCatatan: {{revisionNotes}}\n{{rfqLink}}\n_{{timestamp}}_");
-      const waAdmin = renderTemplate(tpl, {
-        rfqNumber: rfqNum, customerName: order.customerName,
-        revisionNotes: revisionNotes ?? "—", rfqLink,
-        timestamp: new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" }),
-      });
-      sendWhatsApp(adminGroupWa, waAdmin).catch(() => {});
-    } else if (response === "reject" && adminGroupWa) {
-      const tpl = await getWaTemplateConfig("admin_group", "customer_rejected", "🔴 *CUSTOMER TOLAK — {{rfqNumber}}*\nCustomer: {{customerName}}\nAlasan: {{rejectionReason}}\n{{rfqLink}}\n_{{timestamp}}_");
-      const waAdmin = renderTemplate(tpl, {
-        rfqNumber: rfqNum, customerName: order.customerName,
-        rejectionReason: rejectionReason ?? "—", rfqLink,
-        timestamp: new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" }),
-      });
-      sendWhatsApp(adminGroupWa, waAdmin).catch(() => {});
+    } else if (response === "revise") {
+      const ts = new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" });
+      if (adminGroupWa) {
+        const tpl = await getWaTemplateConfig("admin_group", "customer_revised", "🟡 *CUSTOMER REVISI — {{rfqNumber}}*\nCustomer: {{customerName}}\nCatatan: {{revisionNotes}}\n{{rfqLink}}\n_{{timestamp}}_");
+        const waAdmin = renderTemplate(tpl, {
+          rfqNumber: rfqNum, customerName: order.customerName,
+          revisionNotes: revisionNotes ?? "—", rfqLink, timestamp: ts,
+        });
+        sendWhatsApp(adminGroupWa, waAdmin).catch(() => {});
+      }
+      if (order.phone) {
+        const custTpl = await getWaTemplateConfig("customer", "quote_revision_sent",
+          "🔄 *Revisi Penawaran Dikirim*\n\nHalo *{{customerName}}*,\n\nCatatan revisi Anda untuk order *{{orderNumber}}* telah kami terima.\n\nCatatan: {{revisionNotes}}\n\nTim kami akan segera menindaklanjuti dan mengirimkan penawaran baru.\n\nTerima kasih 🙏\n_CST Logistics_"
+        );
+        sendWhatsApp(order.phone, renderTemplate(custTpl, {
+          customerName: order.customerName ?? "Customer",
+          orderNumber: order.orderNumber,
+          revisionNotes: revisionNotes ?? "—",
+          timestamp: ts,
+        })).catch(() => {});
+      }
+    } else if (response === "reject") {
+      const ts = new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" });
+      if (adminGroupWa) {
+        const tpl = await getWaTemplateConfig("admin_group", "customer_rejected", "🔴 *CUSTOMER TOLAK — {{rfqNumber}}*\nCustomer: {{customerName}}\nAlasan: {{rejectionReason}}\n{{rfqLink}}\n_{{timestamp}}_");
+        const waAdmin = renderTemplate(tpl, {
+          rfqNumber: rfqNum, customerName: order.customerName,
+          rejectionReason: rejectionReason ?? "—", rfqLink, timestamp: ts,
+        });
+        sendWhatsApp(adminGroupWa, waAdmin).catch(() => {});
+      }
+      if (order.phone) {
+        const custTpl = await getWaTemplateConfig("customer", "quote_rejected_confirmation",
+          "❌ *Penolakan Penawaran Tercatat*\n\nHalo *{{customerName}}*,\n\nPenolakan penawaran untuk order *{{orderNumber}}* telah kami catat.\n\nAlasan: {{rejectionReason}}\n\nJika ada pertanyaan atau ingin melanjutkan proses dengan syarat lain, silakan hubungi kami.\n\nTerima kasih 🙏\n_CST Logistics_"
+        );
+        sendWhatsApp(order.phone, renderTemplate(custTpl, {
+          customerName: order.customerName ?? "Customer",
+          orderNumber: order.orderNumber,
+          rejectionReason: rejectionReason ?? "—",
+          timestamp: ts,
+        })).catch(() => {});
+      }
     }
 
     // Audit trail: customer_approval_history + order_audit_logs

@@ -169,6 +169,19 @@ export class ObjectStorageService {
     return `/api/storage/public-objects/portal-assets/${objectId}`;
   }
 
+  /**
+   * Upload buffer to the public bucket under `subPath` (e.g. "vendor-fulfillment/token/file.jpg").
+   * Prepends the first PUBLIC_OBJECT_SEARCH_PATHS entry so the correct bucket is used.
+   * Returns the serving URL: /api/storage/public-objects/{subPath}.
+   */
+  async uploadPublicRaw(subPath: string, buffer: Buffer, contentType: string): Promise<string> {
+    const publicPath = this.getPublicObjectSearchPaths()[0];
+    const fullPath = `${publicPath}/${subPath}`;
+    const { bucketName, objectName } = parseObjectPath(fullPath);
+    await objectStorageClient.bucket(bucketName).file(objectName).save(buffer, { contentType, resumable: false });
+    return `/api/storage/public-objects/${subPath}`;
+  }
+
   /** Generic upload: writes buffer to storagePath (e.g. "public/vendor-photos/uuid"). */
   async uploadFile(buffer: Buffer, storagePath: string, contentType: string): Promise<void> {
     const { bucketName, objectName } = parseObjectPath(storagePath);

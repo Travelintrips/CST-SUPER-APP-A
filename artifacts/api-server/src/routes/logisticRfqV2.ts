@@ -711,9 +711,8 @@ logisticRfqV2Router.post("/vendor-form/:token/upload", upload.single("file") as 
   if (!req.file) return res.status(400).json({ message: "Tidak ada file" });
   try {
     const objectId = randomUUID();
-    const storagePath = `public/rfq-attachments/${objectId}`;
-    await objectStorage.uploadFile(req.file.buffer, storagePath, req.file.mimetype);
-    const url = objectStorage.getPublicUrl(storagePath);
+    const subPath = `rfq-attachments/${objectId}`;
+    const url = await objectStorage.uploadPublicRaw(subPath, req.file.buffer, req.file.mimetype);
     return res.json({ url });
   } catch (e) {
     logger.error({ e }, "rfq attachment upload failed");
