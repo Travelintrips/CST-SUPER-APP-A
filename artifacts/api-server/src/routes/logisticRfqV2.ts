@@ -1737,39 +1737,6 @@ logisticRfqV2Router.post("/rfq/:rfqId/select-vendor", async (req: Request, res: 
   await logActivity(rfqId, "admin", "Admin", "admin_select_vendor",
     `Admin memilih vendor: ${vendorName} — ${fmtRp(link.offeredPrice ?? link.basicPrice)}`);
 
-  if (orderRow && rfqRow) {
-    const _vcNum = Number(link.offeredPrice ?? link.basicPrice ?? 0);
-    const _spForWa = (sellingPrice != null && sellingPrice > _vcNum) ? sellingPrice : null;
-    sendVendorSelectedAdminWa({
-      rfqNumber: rfqRow.rfqNumber,
-      orderNumber: orderRow.orderNumber,
-      customerName: orderRow.customerName ?? "—",
-      companyName: orderRow.companyName ?? null,
-      shipmentType: orderRow.shipmentType ?? "—",
-      origin: orderRow.origin ?? "—",
-      destination: orderRow.destination ?? "—",
-      vendorName,
-      vendorCost: link.offeredPrice ?? link.basicPrice,
-      sellingPrice: _spForWa,
-      eta: link.eta ?? null,
-    }).catch((e: unknown) => logger.error({ e }, "sendVendorSelectedAdminWa failed (select-vendor)"));
-
-    if (vendor?.phone) {
-      sendVendorAwardedWa({
-        vendorName,
-        vendorPhone: vendor.phone,
-        rfqNumber: rfqRow.rfqNumber,
-        orderNumber: orderRow.orderNumber,
-        shipmentType: orderRow.shipmentType ?? "—",
-        origin: orderRow.origin ?? "—",
-        destination: orderRow.destination ?? "—",
-        vendorCost: link.offeredPrice ?? link.basicPrice,
-        eta: link.eta ?? null,
-        notes: link.notes ?? null,
-      }).catch((e: unknown) => logger.error({ e }, "sendVendorAwardedWa failed (select-vendor)"));
-    }
-  }
-
   return res.json({ ok: true, selectedVendorName: vendorName });
 });
 

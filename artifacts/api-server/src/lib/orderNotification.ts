@@ -211,7 +211,15 @@ function buildOrderVars(
   const productListDetail: string | null = (() => {
     if (!order.orderItems?.length) {
       if (isProduct && order.serviceList) return order.serviceList;
-      return null;
+      // Fallback untuk semua tipe order: tampilkan info kargo/komoditi
+      const parts: string[] = [];
+      if (order.commodity)       parts.push(`• Komoditi      : ${order.commodity}`);
+      if (order.cargoDescription) parts.push(`• Kargo         : ${order.cargoDescription}`);
+      if (order.grossWeight)     parts.push(`• Berat         : ${order.grossWeight} kg`);
+      if (order.volumeCbm)       parts.push(`• Volume        : ${order.volumeCbm} CBM`);
+      if (order.jumlahKoli)      parts.push(`• Jumlah Koli   : ${order.jumlahKoli}`);
+      if (order.serviceList && !isProduct) parts.push(`• Layanan       : ${order.serviceList}`);
+      return parts.length > 0 ? parts.join("\n") : null;
     }
     const PPN_RATE = 0.11;
     return order.orderItems.map(i => {
