@@ -1414,7 +1414,7 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
           VALUES (${driverToken}, ${order.id}, ${vfLink.driverName ?? null}, ${vfLink.driverPhone}, ${expiresAt})
           ON CONFLICT (token) DO NOTHING
         `);
-        const driverLink = `https://${domain}/driver-progress/${driverToken}`;
+        const driverLink = `https://${process.env.REPLIT_DEV_DOMAIN || domain}/driver-progress/${driverToken}`;
         const driverWaMsg =
           `🚚 *Tugas Pengiriman — CST Logistics*\n\n` +
           `Halo${vfLink.driverName ? ` ${vfLink.driverName}` : ""},\n\n` +
