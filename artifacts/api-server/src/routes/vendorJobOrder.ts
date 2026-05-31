@@ -34,6 +34,7 @@ import {
   orderUpdatesTable,
 } from "@workspace/db";
 import { requireClerkUser } from "../lib/requireAdmin.js";
+import { TAX_RATE_DECIMAL } from "../lib/taxHelper.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminWa } from "../lib/adminWa.js";
 import { getPreferredDomain } from "../lib/domain.js";
@@ -207,7 +208,7 @@ vendorJobAdminRouter.post("/orders/:orderId/assign-vendor", async (req: Request,
       const subtotalVal = Number(row.subtotal ?? 0);
       const price = _xPrice(inp) ?? (subtotalVal > 0 && qty > 0 ? Math.round(subtotalVal / qty) : null);
       if (!price) return [];
-      return [{ name: row.serviceName ?? "Produk", qty, unit: _xUnit(inp), basicPrice: price, taxRate: 0.11 }];
+      return [{ name: row.serviceName ?? "Produk", qty, unit: _xUnit(inp), basicPrice: price, taxRate: TAX_RATE_DECIMAL }];
     });
 
     // Fallback untuk freight order: gunakan harga dari approved quote + info cargo

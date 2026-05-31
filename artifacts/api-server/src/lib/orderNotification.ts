@@ -6,6 +6,7 @@ import { getPreferredDomain } from "./domain";
 import { sendMail, isSmtpConfigured } from "./mailer";
 import { logger } from "./logger";
 import { generateShortLink } from "./shortLink";
+import { TAX_RATE_DECIMAL as PPN_RATE, TAX_RATE_PCT } from "./taxHelper.js";
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? "admcst001@gmail.com";
 
@@ -221,7 +222,6 @@ function buildOrderVars(
       if (order.serviceList && !isProduct) parts.push(`• Layanan       : ${order.serviceList}`);
       return parts.length > 0 ? parts.join("\n") : null;
     }
-    const PPN_RATE = 0.11;
     return order.orderItems.map(i => {
       const qty = i.qty ?? 1;
       const unit = i.unit ?? "Unit";
@@ -1606,7 +1606,7 @@ export async function sendCustomerApprovalNotification(
 
   // Build financial breakdown
   const sellingNum = opts?.sellingPriceNum ?? null;
-  const ppnPct = opts?.ppnPct ?? 11;
+  const ppnPct = opts?.ppnPct ?? TAX_RATE_PCT;
   const ppnNominal = opts?.ppnNominalNum != null
     ? opts.ppnNominalNum
     : sellingNum != null

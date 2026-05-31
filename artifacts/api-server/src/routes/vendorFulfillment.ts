@@ -5,6 +5,7 @@ import multer from "multer";
 import { randomUUID } from "crypto";
 import { promises as fs } from "fs";
 import path from "path";
+import { TAX_RATE_DECIMAL as PPN_RATE } from "../lib/taxHelper.js";
 import {
   db,
   vendorFulfillmentLinksTable,
@@ -617,7 +618,6 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
           const vendorCatalog = await db.select().from(vendorCatalogItemsTable)
             .where(and(eq(vendorCatalogItemsTable.vendorId, link.vendorId), eq(vendorCatalogItemsTable.isActive, true)));
 
-          const PPN_RATE = 0.11;
           const revisedTotal = (body.priceConfirmed === "revised" && body.revisedPrice)
             ? (parseFloat(String(body.revisedPrice).replace(/[^\d.]/g, "")) || null)
             : null;

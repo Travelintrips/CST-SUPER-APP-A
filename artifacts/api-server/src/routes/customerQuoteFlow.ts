@@ -13,6 +13,7 @@ import { requireClerkUser } from "../lib/requireAdmin.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminGroupWa } from "../lib/adminWa.js";
 import { getPreferredDomain } from "../lib/domain.js";
+import { calcTax } from "../lib/taxHelper.js";
 import { logger } from "../lib/logger.js";
 import { checkOrderGeofence } from "../lib/orderGeofenceChecker.js";
 import { updateOrderProgress } from "../lib/orderProgress.js";
@@ -577,7 +578,7 @@ customerQuotePublicRouter.get("/:token", async (req: Request, res: Response) => 
     } else if (finalCustomerPrice && finalCustomerPrice > 0) {
       // Fallback: belum ada data catalog — pakai harga admin (belum PPN) + PPN
       displaySubtotal = finalCustomerPrice;
-      displayTax = Math.round(finalCustomerPrice * 0.11);
+      displayTax = calcTax(finalCustomerPrice);
       displayTotal = finalCustomerPrice + displayTax;
     }
 

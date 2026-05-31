@@ -17,6 +17,7 @@ import {
   sendLogisticOperationalStatusNotification,
 } from "../lib/orderNotification.js";
 import { saveAndBroadcast } from "../lib/notificationStore.js";
+import { TAX_RATE_DECIMAL as PPN_RATE } from "../lib/taxHelper.js";
 import { broadcastToPortal } from "../lib/sseManager.js";
 import { getAdminWa, getAdminGroupWa } from "../lib/adminWa.js";
 import { logger } from "../lib/logger.js";
@@ -1220,8 +1221,6 @@ logisticRfqRouter.get("/rfq-form", rfqRateLimit, async (req: Request, res: Respo
   }
 
   // ── Build per-item breakdown for product orders ──────────────────────────
-  const PPN_RATE = 0.11;
-
   const items = orderItemRows.map((it) => {
     const inputData = (it.inputData as Record<string, unknown>) ?? {};
     const quantity = Number(inputData.qty ?? inputData.quantity ?? 1) || 1;

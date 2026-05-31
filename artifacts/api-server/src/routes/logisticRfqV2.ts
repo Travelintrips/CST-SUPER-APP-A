@@ -15,6 +15,7 @@ import {
   vendorPerformanceTable,
 } from "@workspace/db";
 import { requireClerkUser } from "../lib/requireAdmin.js";
+import { TAX_RATE_DECIMAL as PPN_RATE } from "../lib/taxHelper.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminGroupWa } from "../lib/adminWa.js";
 import { getPreferredDomain } from "../lib/domain.js";
@@ -565,8 +566,6 @@ logisticRfqV2Router.get("/vendor-form/:token", async (req: Request, res: Respons
 
   const [vendor] = await db.select({ name: suppliersTable.name })
     .from(suppliersTable).where(eq(suppliersTable.id, link.vendorId));
-
-  const PPN_RATE = 0.11;
 
   // Fetch order items + vendor's own catalog items (for price reference per etalase)
   const [orderItems, vendorCatalog] = await Promise.all([

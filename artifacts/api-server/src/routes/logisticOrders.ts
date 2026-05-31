@@ -21,6 +21,7 @@ import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { eq, ilike, and, gte, lte, or, sql, desc, inArray, isNotNull } from "drizzle-orm";
 import { salesDocumentsTable } from "@workspace/db";
 import { requireClerkUser, requireRole } from "../lib/requireAdmin.js";
+import { calcTax, calcGrandTotal } from "../lib/taxHelper.js";
 import { resolveCompanyId } from "../lib/resolveCompany.js";
 import { requirePortalAdmin } from "../lib/supabaseAuth.js";
 import {
@@ -260,8 +261,8 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
       source: "portal",
       // Exclusive PPN: subtotal = DPP, tax = DPP × 11%, grandTotal = DPP + tax
       subtotal: String(body.subtotal),
-      tax: String(Math.round(Number(body.subtotal) * 0.11)),
-      grandTotal: String(Number(body.subtotal) + Math.round(Number(body.subtotal) * 0.11)),
+      tax: String(calcTax(Number(body.subtotal))),
+      grandTotal: String(calcGrandTotal(Number(body.subtotal))),
       status: "New Order",
       publicRfqToken: randomBytes(16).toString("hex"),
     })

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { calcTax, TAX_RATE_PCT } from "../lib/taxHelper";
 import { useParams } from "wouter";
 import type { ProductTemplate, DynamicFormValues } from "@workspace/product-templates";
 import {
@@ -442,7 +443,7 @@ export default function VendorMiniFormPage() {
             const qty = Math.max(1, Number(vendorQty) || 1);
             const unitPrice = Number(vendorUnitPrice) || 0;
             const subtotal = qty * unitPrice;
-            const ppn = Math.round(subtotal * 0.11 * 100) / 100;
+            const ppn = calcTax(subtotal);
             const total = subtotal + ppn;
             const fmtIDR = (n: number) => n.toLocaleString("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 });
             return (

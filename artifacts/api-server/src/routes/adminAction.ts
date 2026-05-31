@@ -20,6 +20,7 @@ import { requireClerkUser, requireAdmin } from "../lib/requireAdmin.js";
 import { runDbBackup } from "../lib/dbBackup.js";
 import { getPreferredDomain } from "../lib/domain.js";
 import { logger } from "../lib/logger.js";
+import { TAX_RATE_DECIMAL as PPN_RATE, TAX_RATE_DECIMAL } from "../lib/taxHelper.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminWa, getAdminGroupWa } from "../lib/adminWa.js";
 import { sendVendorRequestNotification, sendVendorSelectedAdminWa, sendVendorAwardedWa, sendVendorAssignmentNotification, type LogisticOrderData } from "../lib/orderNotification.js";
@@ -603,7 +604,6 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
         }).from(vendorCatalogItemsTable)
           .where(and(eq(vendorCatalogItemsTable.vendorId, vfLink.vendorId), eq(vendorCatalogItemsTable.isActive, true)));
 
-        const PPN_RATE = 0.11;
         const isSingle = rawItems.length === 1;
         const revisedTotal = (vfLink.priceConfirmed === "revised" && vfLink.revisedPrice)
           ? Number(vfLink.revisedPrice) : null;
@@ -1203,7 +1203,7 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
         const price = _fxPrice(inp) ?? (subtotalVal > 0 && qty > 0 ? Math.round(subtotalVal / qty) : null);
         if (!price) return [];
         const unit = inp?.unit != null ? String(inp.unit) : "unit";
-        return [{ name: row.serviceName ?? "Produk", qty, unit, basicPrice: price, taxRate: 0.11 }];
+        return [{ name: row.serviceName ?? "Produk", qty, unit, basicPrice: price, taxRate: TAX_RATE_DECIMAL }];
       });
 
       if (vendor?.phone) {
