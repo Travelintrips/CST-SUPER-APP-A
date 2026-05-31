@@ -21,7 +21,7 @@ import { getPreferredDomain } from "../lib/domain.js";
 import { logger } from "../lib/logger.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminWa, getAdminGroupWa } from "../lib/adminWa.js";
-import { sendVendorRequestNotification, sendVendorSelectedAdminWa, sendVendorAwardedWa, type LogisticOrderData } from "../lib/orderNotification.js";
+import { sendVendorRequestNotification, sendVendorSelectedAdminWa, sendVendorAwardedWa, sendVendorAssignmentNotification, type LogisticOrderData } from "../lib/orderNotification.js";
 import { generateShortLink } from "../lib/shortLink.js";
 import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
 import { transitionRfqStatus, transitionVendorLinkStatus } from "../lib/services/rfqStatusService.js";
@@ -1090,6 +1090,13 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
       }).catch(() => {});
 
       if (vendor?.phone) {
+        const _awardDomain = getPreferredDomain() || "cstlogistic.co.id";
+        const _vendorFormUrl = `https://${_awardDomain}/vendor-form/${vendorLink.token}`;
+        const _vendorFormShort = await generateShortLink(_vendorFormUrl, {
+          context: "vendor_rfq",
+          refType: "rfq",
+          refId: String(rfq.id),
+        }).catch(() => _vendorFormUrl);
         sendVendorAwardedWa({
           vendorName: vendor.name ?? `Vendor #${vendorLink.vendorId}`,
           vendorPhone: vendor.phone,
@@ -1101,6 +1108,7 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
           vendorCost: vendorLink.offeredPrice ?? vendorLink.basicPrice,
           eta: vendorLink.eta ?? null,
           notes: vendorLink.notes ?? null,
+          fulfillUrl: _vendorFormShort,
         }).catch(() => {});
       }
 
@@ -1150,30 +1158,14 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
         .where(eq(suppliersTable.id, vendorId));
 
       if (vendor?.phone) {
-        const isProductOrder = ((order as any).orderType ?? "").toLowerCase() === "product";
-        const waMsg = isProductOrder
-          ? `🛒 *Penugasan Pemenuhan Produk — CST Logistics*\n\n` +
-            `Kepada Yth. *${vendor.name}*,\n\n` +
-            `Anda mendapat tugas pemenuhan produk:\n\n` +
-            `No. Order   : *${order.orderNumber}*\n` +
-            `Customer    : ${order.customerName}\n` +
-            (order.grandTotal ? `Total       : ${fmtRp(order.grandTotal)}\n` : "") +
-            `\n📋 *Instruksi:*\n` +
-            `1. Konfirmasi ketersediaan stok\n` +
-            `2. Konfirmasi harga penawaran\n` +
-            `3. Konfirmasi estimasi waktu siap kirim\n` +
-            `4. Upload invoice/dokumen jika ada\n\n` +
-            `📱 *Isi form konfirmasi di sini:*\n${shortUrl}\n\n` +
-            `⏰ Batas waktu: ${expiresInHours} jam\n\nTerima kasih 🙏`
-          : `📦 *Penugasan Fulfillment — CST Logistics*\n\n` +
-            `Kepada Yth. *${vendor.name}*,\n\n` +
-            `Order Anda telah dikonfirmasi. Mohon lengkapi detail fulfillment:\n\n` +
-            `No. Order   : *${order.orderNumber}*\n` +
-            `Layanan     : ${order.shipmentType}\n` +
-            `Rute        : ${order.origin} → ${order.destination}\n\n` +
-            `📱 *Isi data fulfillment di sini:*\n${shortUrl}\n\n` +
-            `⏰ Batas waktu: ${expiresInHours} jam\n\nTerima kasih 🙏`;
-        sendWhatsApp(vendor.phone, waMsg).catch(() => {});
+        sendVendorAssignmentNotification(
+          order.orderNumber,
+          order.origin ?? "—",
+          order.destination ?? "—",
+          order.shipmentType ?? serviceType,
+          shortUrl,
+          vendor.phone,
+        ).catch(() => {});
       }
 
       // Activity log

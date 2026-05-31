@@ -940,6 +940,10 @@ const DEFAULT_TPL = {
       "Status     : *{{statusLabel}}*",
       "━━━━━━━━━━━━━━━━━━",
       "{{statusNote}}",
+      "{{#if miniFormUrl}}",
+      "",
+      "📱 Buka mini form: {{miniFormUrl}}",
+      "{{/if}}",
       "",
       "_CST Logistics — Notifikasi Otomatis_",
     ].join("\n"),
@@ -1029,8 +1033,11 @@ const DEFAULT_TPL = {
       "⏱ ETA      : {{eta}}",
       "📝 Catatan  : {{notes}}",
       "━━━━━━━━━━━━━━━━━━",
-      "Tim kami akan segera menghubungi Anda dengan instruksi dan detail selanjutnya.",
+      "{{#if fulfillUrl}}",
+      "📱 Buka mini form Anda di sini:",
+      "{{fulfillUrl}}",
       "",
+      "{{/if}}",
       "Terima kasih atas kepercayaan dan kerja sama Anda 🙏",
       "_CST Logistics_",
     ].join("\n"),
@@ -2080,6 +2087,7 @@ export interface VendorAwardedData {
   vendorCost: number | string | null;
   eta?: string | null;
   notes?: string | null;
+  fulfillUrl?: string | null;
 }
 
 export async function sendVendorAwardedWa(data: VendorAwardedData): Promise<void> {
@@ -2104,6 +2112,7 @@ export async function sendVendorAwardedWa(data: VendorAwardedData): Promise<void
     vendorCost: fmtCost(data.vendorCost),
     eta: data.eta ?? null,
     notes: data.notes ?? null,
+    fulfillUrl: data.fulfillUrl ?? null,
   });
 
   sendWhatsApp(data.vendorPhone, msg, {
@@ -2334,6 +2343,7 @@ export async function sendVendorOrderStatusChangeNotification(
   statusNote: string,
   vendorName: string,
   vendorPhone: string,
+  miniFormUrl?: string | null,
 ): Promise<void> {
   const tpl = await getWaTemplateConfig("vendor", "vendor_order_status_change", DEFAULT_TPL.vendor.vendor_order_status_change);
   const route = order.origin && order.destination ? `${order.origin} → ${order.destination}` : "—";
@@ -2344,6 +2354,7 @@ export async function sendVendorOrderStatusChangeNotification(
     vendorName,
     statusLabel,
     statusNote: statusNote || null,
+    miniFormUrl: miniFormUrl ?? null,
     timestamp: nowWIB(),
   };
   const msg = renderTemplate(tpl, vars);
