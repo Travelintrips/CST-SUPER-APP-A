@@ -201,7 +201,7 @@ vendorJobAdminRouter.post("/orders/:orderId/assign-vendor", async (req: Request,
     const _xQty = (inp: Record<string, unknown> | null): number => { if (!inp) return 1; const v = inp.qty ?? inp.quantity; const n = parseFloat(String(v ?? "")); return isNaN(n) || n <= 0 ? 1 : n; };
     const _xUnit = (inp: Record<string, unknown> | null): string => { if (!inp) return "unit"; return inp.unit != null ? String(inp.unit) : "unit"; };
     const _xPrice = (inp: Record<string, unknown> | null): number | null => { if (!inp) return null; const p = inp.price ?? inp.productPrice ?? inp.unitPrice ?? inp.sellingPrice ?? inp.basicPrice ?? null; if (typeof p === "number") return p > 0 ? p : null; if (typeof p === "string") { const n = parseFloat(p); return !isNaN(n) && n > 0 ? n : null; } return null; };
-    const assignmentItems: VendorAssignmentItem[] = _itemRows.flatMap((row) => {
+    let assignmentItems: VendorAssignmentItem[] = _itemRows.flatMap((row) => {
       const inp = row.inputData as Record<string, unknown> | null;
       const qty = _xQty(inp);
       const subtotalVal = Number(row.subtotal ?? 0);
@@ -209,6 +209,31 @@ vendorJobAdminRouter.post("/orders/:orderId/assign-vendor", async (req: Request,
       if (!price) return [];
       return [{ name: row.serviceName ?? "Produk", qty, unit: _xUnit(inp), basicPrice: price, taxRate: 0.11 }];
     });
+
+    // Fallback untuk freight order: gunakan harga dari approved quote + info cargo
+    if (assignmentItems.length === 0) {
+      const vendorPrice = Number(quote.vendorPrice ?? 0);
+      if (vendorPrice > 0) {
+        // Buat deskripsi muatan dari kolom order
+        const cargoParts: string[] = [];
+        if (order.cargoDescription) cargoParts.push(order.cargoDescription);
+        if (order.commodity && order.commodity !== order.cargoDescription) cargoParts.push(order.commodity);
+        const cargoLabel = cargoParts.join(", ") || order.shipmentType || "Jasa Pengiriman";
+        // Detail fisik muatan untuk unit
+        const weightParts: string[] = [];
+        if (order.grossWeight) weightParts.push(`${Number(order.grossWeight).toLocaleString("id-ID")} kg`);
+        if (order.volumeCbm) weightParts.push(`${Number(order.volumeCbm).toLocaleString("id-ID")} CBM`);
+        if (order.jumlahKoli) weightParts.push(`${order.jumlahKoli} koli`);
+        const unitLabel = weightParts.length > 0 ? weightParts.join(" / ") : "shipment";
+        assignmentItems = [{
+          name: cargoLabel,
+          qty: 1,
+          unit: unitLabel,
+          basicPrice: vendorPrice,
+          taxRate: 0.11,
+        }];
+      }
+    }
 
     // Cek apakah sudah ada job order untuk order ini
     const existing = await db.execute(
