@@ -125,12 +125,23 @@ type VendorFulfillmentInfo = {
   customsProcessEta?: string | null;
 };
 
+type FulfillmentOrderItem = {
+  name: string;
+  qty: number;
+  unit: string;
+  priceBase: number | null;
+  subtotal: number | null;
+  ppn: number | null;
+  total: number | null;
+};
+
 type ConfirmFulfillmentData = {
   token: string;
   actionType: "confirm_fulfillment";
   isUsed: boolean;
   usedAt: string | null;
   order: OrderInfo;
+  orderItems: FulfillmentOrderItem[];
   vendorFulfillmentLink: VendorFulfillmentInfo | null;
 };
 
@@ -1091,7 +1102,7 @@ function FulfillmentDetailRow({ label, value }: { label: string; value: string |
 }
 
 function ConfirmFulfillmentView({ data, token }: { data: ConfirmFulfillmentData; token: string }) {
-  const { order, vendorFulfillmentLink: vf } = data;
+  const { order, vendorFulfillmentLink: vf, orderItems = [] } = data;
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -1169,6 +1180,45 @@ function ConfirmFulfillmentView({ data, token }: { data: ConfirmFulfillmentData;
                 </p>
               )}
             </div>
+            {/* Item breakdown */}
+            {orderItems.length > 0 && (
+              <div className="px-5 py-3 border-b border-slate-100 space-y-3">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Detail Barang</p>
+                {orderItems.map((it, i) => (
+                  <div key={i} className="rounded-xl bg-slate-50 border border-slate-100 px-3 py-2.5 space-y-1.5">
+                    <p className="text-sm font-semibold text-slate-800">{it.name}</p>
+                    <div className="flex justify-between text-xs text-slate-500">
+                      <span>Qty</span>
+                      <span className="font-medium text-slate-700">{it.qty} {it.unit}</span>
+                    </div>
+                    {it.priceBase != null && (
+                      <div className="flex justify-between text-xs text-slate-500">
+                        <span>Harga Dasar</span>
+                        <span className="font-medium text-slate-700">Rp {Math.round(it.priceBase).toLocaleString("id-ID")}/unit</span>
+                      </div>
+                    )}
+                    {it.subtotal != null && (
+                      <div className="flex justify-between text-xs text-slate-500">
+                        <span>Subtotal</span>
+                        <span className="font-medium text-slate-700">Rp {it.subtotal.toLocaleString("id-ID")}</span>
+                      </div>
+                    )}
+                    {it.ppn != null && (
+                      <div className="flex justify-between text-xs text-slate-500">
+                        <span>PPN 11%</span>
+                        <span className="font-medium text-slate-700">Rp {it.ppn.toLocaleString("id-ID")}</span>
+                      </div>
+                    )}
+                    {it.total != null && (
+                      <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
+                        <span className="font-semibold text-slate-700">Total</span>
+                        <span className="font-bold text-emerald-700">Rp {it.total.toLocaleString("id-ID")}</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="px-5 py-3 space-y-0.5">
               {/* Product fulfillment fields */}
               <FulfillmentDetailRow label="Stok" value={vf.stockConfirmed ? (STOCK_LABEL[vf.stockConfirmed] ?? vf.stockConfirmed) : null} />

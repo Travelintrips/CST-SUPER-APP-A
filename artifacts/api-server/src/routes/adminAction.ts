@@ -582,8 +582,57 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
         .orderBy(desc(vendorFulfillmentLinksTable.createdAt))
         .limit(1);
 
+      // Build item breakdown for product orders
+      let orderItemsBreakdown: {
+        name: string; qty: number; unit: string;
+        priceBase: number | null; subtotal: number | null; ppn: number | null; total: number | null;
+      }[] = [];
+
+      const rawItems = await db.select({
+        serviceName: logisticOrderItemsTable.serviceName,
+        category: logisticOrderItemsTable.category,
+        inputData: logisticOrderItemsTable.inputData,
+      }).from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, order.id));
+
+      if (rawItems.length > 0 && vfLink?.vendorId) {
+        const vendorCatalog = await db.select({
+          name: vendorCatalogItemsTable.name,
+          priceBase: vendorCatalogItemsTable.priceBase,
+          unit: vendorCatalogItemsTable.unit,
+        }).from(vendorCatalogItemsTable)
+          .where(and(eq(vendorCatalogItemsTable.vendorId, vfLink.vendorId), eq(vendorCatalogItemsTable.isActive, true)));
+
+        const PPN_RATE = 0.11;
+        const isSingle = rawItems.length === 1;
+        const revisedTotal = (vfLink.priceConfirmed === "revised" && vfLink.revisedPrice)
+          ? Number(vfLink.revisedPrice) : null;
+
+        orderItemsBreakdown = rawItems.map((item) => {
+          const inputData = (item.inputData as Record<string, unknown>) ?? {};
+          const qty = (() => {
+            const q = inputData.qty ?? inputData.quantity ?? inputData.jumlah;
+            return q != null ? (Number(q) || 1) : 1;
+          })();
+          const name = item.serviceName || item.category || "—";
+          const nameLower = name.toLowerCase().trim();
+          const catItem = vendorCatalog.find((c) => {
+            const cn = c.name.toLowerCase().trim();
+            return cn.includes(nameLower) || nameLower.includes(cn);
+          }) ?? vendorCatalog[0];
+          const priceBase = catItem ? parseFloat(String(catItem.priceBase)) : null;
+          const unit = String(inputData.unit ?? catItem?.unit ?? "Unit");
+          let subtotal: number | null = null;
+          if (isSingle && revisedTotal != null) subtotal = revisedTotal;
+          else if (priceBase != null) subtotal = Math.round(priceBase * qty);
+          const ppn = subtotal != null ? Math.round(subtotal * PPN_RATE) : null;
+          const total = subtotal != null && ppn != null ? subtotal + ppn : null;
+          return { name, qty, unit, priceBase, subtotal, ppn, total };
+        });
+      }
+
       return res.json({
         ...base,
+        orderItems: orderItemsBreakdown,
         vendorFulfillmentLink: vfLink ? {
           id: vfLink.id,
           serviceType: vfLink.serviceType,
