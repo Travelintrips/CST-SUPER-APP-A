@@ -202,6 +202,17 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
   }
   const body = parsed.data;
 
+  // Server-side subtotal validation: jumlahkan subtotal per item, jangan percaya nilai agregat dari client
+  const computedSubtotal = body.items.reduce((sum, item) => sum + Number(item.subtotal ?? 0), 0);
+  const clientSubtotal = Number(body.subtotal);
+  if (Math.abs(computedSubtotal - clientSubtotal) > 1) {
+    req.log.warn(
+      { clientSubtotal, computedSubtotal, diff: clientSubtotal - computedSubtotal, email: body.email },
+      "AUDIT: frontend subtotal mismatch — menggunakan nilai server-computed",
+    );
+  }
+  const verifiedSubtotal = computedSubtotal;
+
   // Anti-duplicate: tolak jika email yang sama sudah membuat order dalam 60 detik terakhir
   const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
   const [recentDuplicate] = await db
@@ -259,10 +270,10 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
       etd: body.etd ? new Date(body.etd) : null,
       eta: body.eta ? new Date(body.eta) : null,
       source: "portal",
-      // Exclusive PPN: subtotal = DPP, tax = DPP × 11%, grandTotal = DPP + tax
-      subtotal: String(body.subtotal),
-      tax: String(calcTax(Number(body.subtotal))),
-      grandTotal: String(calcGrandTotal(Number(body.subtotal))),
+      // Exclusive PPN: subtotal = DPP (server-verified), tax = DPP × 11%, grandTotal = DPP + tax
+      subtotal: String(verifiedSubtotal),
+      tax: String(calcTax(verifiedSubtotal)),
+      grandTotal: String(calcGrandTotal(verifiedSubtotal)),
       status: "New Order",
       publicRfqToken: randomBytes(16).toString("hex"),
     })
