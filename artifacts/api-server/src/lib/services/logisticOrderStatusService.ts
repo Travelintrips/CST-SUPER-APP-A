@@ -16,11 +16,16 @@
  */
 
 import { db } from "@workspace/db";
-import { logisticOrdersTable } from "@workspace/db";
-import { eq, sql } from "drizzle-orm";
-import { normalizeStatus } from "../logisticStatusConstants.js";
+import { logisticOrdersTable, customerOrderLinksTable } from "@workspace/db";
+import { eq, sql, desc } from "drizzle-orm";
+import { normalizeStatus, CUSTOMER_WA_MESSAGES } from "../logisticStatusConstants.js";
 import { logOrderStatusChange } from "../auditTrail.js";
 import { logger } from "../logger.js";
+
+/** Status yang memicu notifikasi WA ke customer (In Progress sudah ditangani di confirm_fulfillment) */
+const CUSTOMER_NOTIFY_STATUS_SET = new Set([
+  "Pickup", "In Transit", "Arrived", "Delivered", "Completed", "Cancelled",
+]);
 
 // ── State Machine ─────────────────────────────────────────────────────────────
 //
@@ -188,6 +193,13 @@ export async function transitionLogisticOrderStatus(
     "logisticOrder status transitioned",
   );
 
+  // ── Customer WA notification (non-blocking) ───────────────────────────────
+  if (CUSTOMER_NOTIFY_STATUS_SET.has(newStatus) && CUSTOMER_WA_MESSAGES[newStatus]) {
+    sendCustomerStatusWa(orderId, row.orderNumber ?? "", newStatus).catch((e) =>
+      logger.warn({ e, orderId, newStatus }, "sendCustomerStatusWa failed — non-fatal"),
+    );
+  }
+
   return {
     ok: true,
     orderId,
@@ -195,6 +207,44 @@ export async function transitionLogisticOrderStatus(
     fromStatus: row.status,
     toStatus: newStatus,
   };
+}
+
+// ── Customer WA helper ────────────────────────────────────────────────────────
+
+async function sendCustomerStatusWa(orderId: number, orderNumber: string, newStatus: string) {
+  // Ambil phone + nama customer
+  const [order] = await db
+    .select({
+      phone:        logisticOrdersTable.phone,
+      customerName: logisticOrdersTable.customerName,
+    })
+    .from(logisticOrdersTable)
+    .where(eq(logisticOrdersTable.id, orderId));
+
+  const customerPhone = (order?.phone ?? "").trim();
+  if (!customerPhone) return;
+
+  // Ambil tracking token (jika ada)
+  const { getPreferredDomain } = await import("../domain.js");
+  const domain = getPreferredDomain() || "cstlogistic.co.id";
+  let trackingUrl: string | undefined;
+  try {
+    const [link] = await db
+      .select({ token: customerOrderLinksTable.token })
+      .from(customerOrderLinksTable)
+      .where(eq(customerOrderLinksTable.orderId, orderId))
+      .orderBy(desc(customerOrderLinksTable.createdAt))
+      .limit(1);
+    if (link?.token) trackingUrl = `https://${domain}/order-track/${link.token}`;
+  } catch {
+    // Tidak fatal — kirim tanpa link
+  }
+
+  const msgFn = CUSTOMER_WA_MESSAGES[newStatus];
+  if (!msgFn) return;
+
+  const { sendViaService } = await import("../waTransport.js");
+  await sendViaService(customerPhone, msgFn(orderNumber, trackingUrl));
 }
 
 // ── Convenience Helpers ───────────────────────────────────────────────────────
