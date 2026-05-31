@@ -24,7 +24,7 @@ import { ObjectStorageService } from "../lib/objectStorage.js";
 import { createAdminActionLink, getAdminActionUrl } from "./adminAction.js";
 import { generateShortLink } from "../lib/shortLink.js";
 import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
-import { updateOrderProgress } from "../lib/orderProgress.js";
+import { updateOrderProgress, getOrderProgressEvents } from "../lib/orderProgress.js";
 
 export const vendorFulfillmentPublicRouter = Router();
 
@@ -427,6 +427,8 @@ vendorFulfillmentPublicRouter.get("/:token", async (req: Request, res: Response)
       taxRate: TAX_RATE,
     };
 
+    const progressEvents = await getOrderProgressEvents(order.id);
+
     if (link.status === "submitted") {
       return res.json({
         token,
@@ -434,6 +436,7 @@ vendorFulfillmentPublicRouter.get("/:token", async (req: Request, res: Response)
         serviceType: link.serviceType,
         vendorName,
         order: orderInfo,
+        progressEvents: progressEvents.map((e) => ({ step_key: e.step_key, created_at: e.created_at })),
         submittedData: {
           driverName:        link.driverName ?? null,
           driverPhone:       link.driverPhone ?? null,
@@ -474,6 +477,7 @@ vendorFulfillmentPublicRouter.get("/:token", async (req: Request, res: Response)
       serviceType: link.serviceType,
       vendorName,
       order: orderInfo,
+      progressEvents: progressEvents.map((e) => ({ step_key: e.step_key, created_at: e.created_at })),
     });
   } catch (err) {
     logger.error({ err }, "vendor-fulfillment GET error");

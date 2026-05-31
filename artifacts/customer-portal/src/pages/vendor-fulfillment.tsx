@@ -64,6 +64,11 @@ type SubmittedData = {
   submittedAt: string | null;
 };
 
+type ProgressEvent = {
+  step_key: string;
+  created_at: string;
+};
+
 type PageData = {
   token: string;
   isSubmitted: boolean;
@@ -71,6 +76,7 @@ type PageData = {
   vendorName: string | null;
   order: OrderInfo;
   submittedData?: SubmittedData;
+  progressEvents?: ProgressEvent[];
 };
 
 /* ─── Helpers ─────────────────────────────────────────────────────────────── */
@@ -251,18 +257,7 @@ function SubmittedReview({
   localFields?: Record<string, string>;
   justSubmitted?: boolean;
 }) {
-  const [progressEvents, setProgressEvents] = useState<
-    { step_key: string; created_at: string }[]
-  >([]);
-
-  useEffect(() => {
-    fetch(`/api/logistic/orders/${data.order.id}/progress`)
-      .then((r) => r.json())
-      .then((d: { events?: { step_key: string; created_at: string }[] }) =>
-        setProgressEvents(d.events ?? [])
-      )
-      .catch(() => {});
-  }, [data.order.id]);
+  const progressEvents = data.progressEvents ?? [];
 
   const svc = data.serviceType;
   const icon = getServiceIcon(svc);
