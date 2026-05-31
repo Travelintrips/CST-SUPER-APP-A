@@ -39,6 +39,7 @@ const ROUTES = [
   { prefix: "/api",             upstream: { host: "localhost", port: API_PORT } },
   { prefix: "/pos-images",      upstream: { host: "localhost", port: API_PORT } },
   { prefix: "/q",               upstream: { host: "localhost", port: API_PORT } },
+  { prefix: "/s",               upstream: { host: "localhost", port: API_PORT } },
   { prefix: "/bizportal",       upstream: { host: "localhost", port: BIZPORTAL_PORT } },
   { prefix: "/sport-center",    upstream: { host: "localhost", port: 3002 } },
   // Canvas artifact iframe hits /customer-portal/* — redirect to strip the prefix

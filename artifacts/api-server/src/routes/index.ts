@@ -209,7 +209,7 @@ router.get("/alerts/stream", async (req: Request, res: Response) => {
   handleAlertSse(req, res);
 });
 
-router.get("/q/:code", async (req: Request, res: Response) => {
+async function handleShortLink(req: Request, res: Response) {
   const code = String(req.params.code ?? "").trim();
   if (!code || !/^[A-Z0-9]{4,32}$/i.test(code)) {
     return res.status(400).json({ error: "Invalid short link" });
@@ -218,13 +218,15 @@ router.get("/q/:code", async (req: Request, res: Response) => {
   if (!target) {
     return res.status(404).json({ error: "Link tidak ditemukan atau sudah kedaluwarsa." });
   }
-  // Normalisasi: kembalikan path saja agar domain lama/salah di DB tidak jadi masalah
   let targetUrl = target;
   try {
     const parsed = new URL(target);
     targetUrl = parsed.pathname + parsed.search + parsed.hash;
   } catch { /* sudah relative */ }
   return res.json({ targetUrl });
-});
+}
+
+router.get("/q/:code", handleShortLink);
+router.get("/s/:code", handleShortLink);
 
 export default router;
