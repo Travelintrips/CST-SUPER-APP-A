@@ -36,6 +36,67 @@ const MIME_EXT: Record<string, string> = {
   "application/pdf": "pdf",
 };
 
+// ─── GET /api/vendor-fulfillment/:token/drivers ───────────────────────────────
+vendorFulfillmentPublicRouter.get("/:token/drivers", async (req: Request, res: Response) => {
+  const { token } = req.params as { token: string };
+  await ensureTables();
+  try {
+    const [link] = await db.select({
+      vendorId: vendorFulfillmentLinksTable.vendorId,
+      expiresAt: vendorFulfillmentLinksTable.expiresAt,
+    }).from(vendorFulfillmentLinksTable).where(eq(vendorFulfillmentLinksTable.token, token));
+    if (!link) return res.status(404).json({ error: "Link tidak ditemukan" });
+    if (link.expiresAt && link.expiresAt < new Date()) return res.status(410).json({ error: "Link kadaluarsa" });
+
+    const vendorId = link.vendorId;
+    let drivers: { id: number; name: string; phone: string | null; vehiclePlate: string | null; vehicleType: string | null }[] = [];
+    if (vendorId) {
+      const rows = await db.execute(sql`
+        SELECT id, name, phone, vehicle_plate AS "vehiclePlate", vehicle_type AS "vehicleType"
+        FROM vendor_drivers
+        WHERE supplier_id = ${vendorId} AND is_active = TRUE
+        ORDER BY name ASC
+      `);
+      drivers = rows.rows as typeof drivers;
+    }
+    return res.json({ drivers });
+  } catch (err) {
+    logger.error({ err }, "vendor-fulfillment GET drivers error");
+    return res.status(500).json({ error: "Gagal memuat data driver" });
+  }
+});
+
+// ─── POST /api/vendor-fulfillment/:token/drivers ──────────────────────────────
+vendorFulfillmentPublicRouter.post("/:token/drivers", async (req: Request, res: Response) => {
+  const { token } = req.params as { token: string };
+  await ensureTables();
+  try {
+    const [link] = await db.select({
+      vendorId: vendorFulfillmentLinksTable.vendorId,
+      expiresAt: vendorFulfillmentLinksTable.expiresAt,
+      status: vendorFulfillmentLinksTable.status,
+    }).from(vendorFulfillmentLinksTable).where(eq(vendorFulfillmentLinksTable.token, token));
+    if (!link) return res.status(404).json({ error: "Link tidak ditemukan" });
+    if (link.expiresAt && link.expiresAt < new Date()) return res.status(410).json({ error: "Link kadaluarsa" });
+
+    const { name, phone, vehiclePlate, vehicleType } = req.body as {
+      name?: string; phone?: string; vehiclePlate?: string; vehicleType?: string;
+    };
+    if (!name?.trim()) return res.status(400).json({ error: "Nama driver wajib diisi" });
+
+    const vendorId = link.vendorId ?? null;
+    const result = await db.execute(sql`
+      INSERT INTO vendor_drivers (supplier_id, name, phone, vehicle_plate, vehicle_type)
+      VALUES (${vendorId}, ${name.trim()}, ${phone?.trim() || null}, ${vehiclePlate?.trim() || null}, ${vehicleType?.trim() || null})
+      RETURNING id, name, phone, vehicle_plate AS "vehiclePlate", vehicle_type AS "vehicleType"
+    `);
+    return res.status(201).json({ driver: result.rows[0] });
+  } catch (err) {
+    logger.error({ err }, "vendor-fulfillment POST driver error");
+    return res.status(500).json({ error: "Gagal menyimpan driver" });
+  }
+});
+
 // ─── Serve local fallback uploads ─────────────────────────────────────────────
 vendorFulfillmentPublicRouter.get("/local-file/:filename", async (req: Request, res: Response) => {
   const { filename } = req.params as { filename: string };
@@ -100,6 +161,19 @@ async function ensureTables() {
     await db.execute(sql`ALTER TABLE vendor_fulfillment_links ADD COLUMN IF NOT EXISTS delivery_method TEXT`);
     await db.execute(sql`ALTER TABLE vendor_fulfillment_links ADD COLUMN IF NOT EXISTS packing_list_url TEXT`);
     await db.execute(sql`ALTER TABLE vendor_fulfillment_links ADD COLUMN IF NOT EXISTS pod_url TEXT`);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS vendor_drivers (
+        id          SERIAL PRIMARY KEY,
+        supplier_id INTEGER REFERENCES suppliers(id) ON DELETE CASCADE,
+        name        TEXT NOT NULL,
+        phone       TEXT,
+        vehicle_plate TEXT,
+        vehicle_type  TEXT,
+        is_active   BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS vendor_drivers_supplier_idx ON vendor_drivers(supplier_id)`);
     migrationDone = true;
   } catch (err) {
     logger.error({ err }, "vendorFulfillment ensureTables error");

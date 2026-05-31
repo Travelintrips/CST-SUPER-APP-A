@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams } from "wouter";
 
 /* ─── Types ───────────────────────────────────────────────────────────────── */
@@ -480,6 +480,16 @@ function SubmittedReview({
   );
 }
 
+/* ─── Driver Types ────────────────────────────────────────────────────────── */
+
+type VendorDriver = {
+  id: number;
+  name: string;
+  phone: string | null;
+  vehiclePlate: string | null;
+  vehicleType: string | null;
+};
+
 /* ─── Field primitives ────────────────────────────────────────────────────── */
 
 function Field({
@@ -573,15 +583,238 @@ function UploadField({
   );
 }
 
+/* ─── DriverPicker ────────────────────────────────────────────────────────── */
+
+function DriverPicker({
+  token,
+  driverName,
+  driverPhone,
+  plateNumber,
+  vehicleType,
+  onSelect,
+}: {
+  token: string;
+  driverName: string;
+  driverPhone: string;
+  plateNumber: string;
+  vehicleType: string;
+  onSelect: (d: { name: string; phone: string; plate: string; vehicleType: string }) => void;
+}) {
+  const [drivers, setDrivers] = useState<VendorDriver[]>([]);
+  const [search, setSearch] = useState("");
+  const [open, setOpen] = useState(false);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newPhone, setNewPhone] = useState("");
+  const [newPlate, setNewPlate] = useState("");
+  const [newVehicleType, setNewVehicleType] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
+
+  // Fetch driver list
+  useEffect(() => {
+    fetch(`/api/vendor-fulfillment/${token}/drivers`)
+      .then((r) => r.json())
+      .then((d: { drivers?: VendorDriver[] }) => { if (d.drivers) setDrivers(d.drivers); })
+      .catch(() => {});
+  }, [token]);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (dropRef.current && !dropRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const filtered = drivers.filter((d) =>
+    d.name.toLowerCase().includes(search.toLowerCase()) ||
+    (d.vehiclePlate ?? "").toLowerCase().includes(search.toLowerCase()) ||
+    (d.phone ?? "").includes(search)
+  );
+
+  const handleSelect = useCallback((d: VendorDriver) => {
+    onSelect({ name: d.name, phone: d.phone ?? "", plate: d.vehiclePlate ?? "", vehicleType: d.vehicleType ?? "" });
+    setSearch("");
+    setOpen(false);
+  }, [onSelect]);
+
+  const handleSaveNew = async () => {
+    if (!newName.trim()) { setSaveError("Nama driver wajib diisi"); return; }
+    setSaving(true); setSaveError(null);
+    try {
+      const r = await fetch(`/api/vendor-fulfillment/${token}/drivers`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newName.trim(), phone: newPhone.trim(), vehiclePlate: newPlate.trim(), vehicleType: newVehicleType.trim() }),
+      });
+      const d = await r.json() as { driver?: VendorDriver; error?: string };
+      if (!r.ok) throw new Error(d.error ?? "Gagal menyimpan driver");
+      if (d.driver) {
+        setDrivers((prev) => [...prev, d.driver!]);
+        handleSelect(d.driver!);
+      }
+      setShowAddForm(false);
+      setNewName(""); setNewPhone(""); setNewPlate(""); setNewVehicleType("");
+    } catch (e) {
+      setSaveError((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const inputCls = "w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400";
+  const selectedLabel = driverName ? `${driverName}${plateNumber ? ` · ${plateNumber}` : ""}` : "";
+
+  return (
+    <div className="space-y-3">
+      {/* Driver Combobox */}
+      <div className="space-y-1.5" ref={dropRef}>
+        <label className="text-sm font-medium text-slate-700">
+          Pilih Driver<span className="text-red-500 ml-0.5">*</span>
+        </label>
+        {/* Selected preview */}
+        {selectedLabel && !open && (
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm">
+            <div>
+              <span className="font-medium text-emerald-800">{driverName}</span>
+              {driverPhone && <span className="text-slate-500 ml-2">· {driverPhone}</span>}
+              {plateNumber && <span className="text-slate-500 ml-2">· {plateNumber}</span>}
+            </div>
+            <button type="button" onClick={() => { setOpen(true); setSearch(""); }}
+              className="text-xs text-emerald-600 hover:text-emerald-800 underline shrink-0">Ganti</button>
+          </div>
+        )}
+        {/* Search + dropdown */}
+        {(!selectedLabel || open) && (
+          <div className="relative">
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setOpen(true); }}
+              onFocus={() => setOpen(true)}
+              placeholder={drivers.length > 0 ? "Cari nama driver atau plat..." : "Belum ada driver terdaftar"}
+              className={inputCls}
+              autoComplete="off"
+            />
+            {open && (
+              <div className="absolute z-20 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg max-h-52 overflow-y-auto">
+                {filtered.length > 0 ? (
+                  filtered.map((d) => (
+                    <button
+                      key={d.id}
+                      type="button"
+                      onClick={() => handleSelect(d)}
+                      className="w-full text-left px-3 py-2.5 hover:bg-emerald-50 border-b border-slate-50 last:border-0"
+                    >
+                      <div className="text-sm font-medium text-slate-800">{d.name}</div>
+                      <div className="text-xs text-slate-400 mt-0.5 flex gap-2">
+                        {d.phone && <span>📱 {d.phone}</span>}
+                        {d.vehiclePlate && <span>🚛 {d.vehiclePlate}</span>}
+                        {d.vehicleType && <span>{d.vehicleType}</span>}
+                      </div>
+                    </button>
+                  ))
+                ) : (
+                  <div className="px-3 py-3 text-sm text-slate-400 text-center">
+                    {search ? `"${search}" tidak ditemukan` : "Belum ada driver terdaftar"}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => { setOpen(false); setShowAddForm(true); setNewName(search); setSearch(""); }}
+                  className="w-full text-left px-3 py-2.5 text-sm text-emerald-700 font-medium bg-emerald-50 hover:bg-emerald-100 border-t border-emerald-100 flex items-center gap-2"
+                >
+                  <span className="text-base">＋</span> Tambah driver baru
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Add new driver mini form */}
+      {showAddForm && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-4 space-y-3">
+          <p className="text-sm font-semibold text-emerald-800">➕ Tambah Driver Baru</p>
+          {saveError && <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{saveError}</p>}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-600">Nama Driver <span className="text-red-500">*</span></label>
+            <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)}
+              placeholder="Nama lengkap driver" className={inputCls} />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-600">No. HP</label>
+            <input type="text" value={newPhone} onChange={(e) => setNewPhone(e.target.value)}
+              placeholder="08xxxxxxxxxx" className={inputCls} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-slate-600">Plat Nomor</label>
+              <input type="text" value={newPlate} onChange={(e) => setNewPlate(e.target.value)}
+                placeholder="B 1234 XYZ" className={inputCls} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-slate-600">Jenis Kendaraan</label>
+              <input type="text" value={newVehicleType} onChange={(e) => setNewVehicleType(e.target.value)}
+                placeholder="Engkel, CDD, dll" className={inputCls} />
+            </div>
+          </div>
+          <div className="flex gap-2 pt-1">
+            <button
+              type="button"
+              onClick={handleSaveNew}
+              disabled={saving}
+              className="flex-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white text-sm font-medium py-2 transition-colors flex items-center justify-center gap-2"
+            >
+              {saving && <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+              {saving ? "Menyimpan..." : "Simpan & Pilih"}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setShowAddForm(false); setSaveError(null); }}
+              className="px-4 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 py-2"
+            >
+              Batal
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Readonly detail fields after driver selected */}
+      {driverName && (
+        <div className="grid grid-cols-1 gap-3">
+          <Field label="No. HP Driver" name="driverPhone" value={driverPhone} onChange={(v) => onSelect({ name: driverName, phone: v, plate: plateNumber, vehicleType })} placeholder="08xxxxxxxxxx" />
+          <Field label="Nomor Plat Kendaraan" name="plateNumber" value={plateNumber} onChange={(v) => onSelect({ name: driverName, phone: driverPhone, plate: v, vehicleType })} placeholder="B 1234 XYZ" required />
+          <Field label="Tipe Kendaraan" name="vehicleType" value={vehicleType} onChange={(v) => onSelect({ name: driverName, phone: driverPhone, plate: plateNumber, vehicleType: v })} placeholder="Engkel, Tronton, CDD, dll" />
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ─── Trucking & Freight & Customs (unchanged) ────────────────────────────── */
 
-function TruckingFields({ fields, setField }: { fields: Record<string, string>; setField: (k: string, v: string) => void }) {
+function TruckingFields({ fields, setField, token }: { fields: Record<string, string>; setField: (k: string, v: string) => void; token: string }) {
+  const handleDriverSelect = useCallback((d: { name: string; phone: string; plate: string; vehicleType: string }) => {
+    setField("driverName", d.name);
+    setField("driverPhone", d.phone);
+    setField("plateNumber", d.plate);
+    setField("vehicleType", d.vehicleType);
+  }, [setField]);
+
   return (
     <>
-      <Field label="Nama Driver" name="driverName" value={fields.driverName ?? ""} onChange={(v) => setField("driverName", v)} placeholder="Contoh: Budi Santoso" required />
-      <Field label="No. HP Driver" name="driverPhone" value={fields.driverPhone ?? ""} onChange={(v) => setField("driverPhone", v)} placeholder="08xxxxxxxxxx" />
-      <Field label="Nomor Plat Kendaraan" name="plateNumber" value={fields.plateNumber ?? ""} onChange={(v) => setField("plateNumber", v)} placeholder="B 1234 XYZ" required />
-      <Field label="Tipe Kendaraan" name="vehicleType" value={fields.vehicleType ?? ""} onChange={(v) => setField("vehicleType", v)} placeholder="Engkel, Tronton, CDD, dll" />
+      <DriverPicker
+        token={token}
+        driverName={fields.driverName ?? ""}
+        driverPhone={fields.driverPhone ?? ""}
+        plateNumber={fields.plateNumber ?? ""}
+        vehicleType={fields.vehicleType ?? ""}
+        onSelect={handleDriverSelect}
+      />
       <Field label="Estimasi Waktu Pickup" name="pickupTime" value={fields.pickupTime ?? ""} onChange={(v) => setField("pickupTime", v)} placeholder="Contoh: 14 Jun 2026, 09:00 WIB" />
     </>
   );
@@ -788,26 +1021,18 @@ function ProductFulfillmentForm({
         )}
         {fields.deliveryMethod === "vendor_delivery" && (
           <div className="space-y-3 pt-1">
-            <Field
-              label="Nama Driver"
-              name="driverName"
-              value={fields.driverName ?? ""}
-              onChange={(v) => setField("driverName", v)}
-              placeholder="Nama pengemudi"
-            />
-            <Field
-              label="No. HP Driver"
-              name="driverPhone"
-              value={fields.driverPhone ?? ""}
-              onChange={(v) => setField("driverPhone", v)}
-              placeholder="08xxxxxxxxxx"
-            />
-            <Field
-              label="Nomor Plat Kendaraan"
-              name="plateNumber"
-              value={fields.plateNumber ?? ""}
-              onChange={(v) => setField("plateNumber", v)}
-              placeholder="B 1234 XYZ"
+            <DriverPicker
+              token={token}
+              driverName={fields.driverName ?? ""}
+              driverPhone={fields.driverPhone ?? ""}
+              plateNumber={fields.plateNumber ?? ""}
+              vehicleType={fields.vehicleType ?? ""}
+              onSelect={(d) => {
+                setField("driverName", d.name);
+                setField("driverPhone", d.phone);
+                setField("plateNumber", d.plate);
+                setField("vehicleType", d.vehicleType);
+              }}
             />
           </div>
         )}
@@ -1228,7 +1453,7 @@ export default function VendorFulfillmentPage() {
                 {icon} Data Fulfillment
               </h2>
             )}
-            {svc.includes("trucking") && <TruckingFields fields={fields} setField={setField} />}
+            {svc.includes("trucking") && <TruckingFields fields={fields} setField={setField} token={token!} />}
             {(svc.includes("freight_air") || svc.includes("freight_sea") || svc.includes("freight")) &&
               !svc.includes("trucking") && <FreightFields fields={fields} setField={setField} />}
             {isProduct && (

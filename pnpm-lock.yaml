@@ -233,11 +233,8 @@ importers:
       sharp:
         specifier: ^0.34.5
         version: 0.34.5
-      web-push:
-        specifier: ^3.6.7
-        version: 3.6.7
       ws:
-        specifier: 8.20.1
+        specifier: ^8.20.1
         version: 8.20.1
     devDependencies:
       '@types/compression':
