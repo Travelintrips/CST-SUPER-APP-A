@@ -3,6 +3,8 @@ import { eq, and } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import multer from "multer";
 import { randomUUID } from "crypto";
+import { promises as fs } from "fs";
+import path from "path";
 import {
   db,
   vendorFulfillmentLinksTable,
@@ -26,6 +28,31 @@ export const vendorFulfillmentPublicRouter = Router();
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 const objectStorage = new ObjectStorageService();
+const LOCAL_UPLOAD_DIR = "/tmp/vendor-uploads";
+
+const MIME_EXT: Record<string, string> = {
+  "image/jpeg": "jpg", "image/jpg": "jpg", "image/png": "png",
+  "image/webp": "webp", "image/heic": "heic", "image/heif": "heic",
+  "application/pdf": "pdf",
+};
+
+// ─── Serve local fallback uploads ─────────────────────────────────────────────
+vendorFulfillmentPublicRouter.get("/local-file/:filename", async (req: Request, res: Response) => {
+  const { filename } = req.params as { filename: string };
+  if (!/^[a-zA-Z0-9_\-]+\.(jpg|jpeg|png|webp|heic|pdf)$/i.test(filename)) {
+    return res.status(400).send("Invalid filename");
+  }
+  try {
+    const data = await fs.readFile(path.join(LOCAL_UPLOAD_DIR, filename));
+    const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+    const mime = Object.entries(MIME_EXT).find(([, e]) => e === ext)?.[0] ?? "application/octet-stream";
+    res.setHeader("Content-Type", mime);
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    return res.send(data);
+  } catch {
+    return res.status(404).send("Not found");
+  }
+});
 
 // ─── Boot migration ───────────────────────────────────────────────────────────
 let migrationDone = false;
@@ -137,9 +164,16 @@ vendorFulfillmentPublicRouter.post(
       try {
         url = await objectStorage.uploadPublicRaw(subPath, req.file.buffer, req.file.mimetype);
       } catch (uploadErr: unknown) {
-        const msg = uploadErr instanceof Error ? uploadErr.message : String(uploadErr);
-        logger.error({ err: uploadErr, subPath }, "vendor-fulfillment upload error");
-        return res.status(500).json({ error: `Gagal upload file: ${msg}` });
+        logger.warn({ err: uploadErr, subPath }, "GCS upload gagal, fallback ke local storage");
+        try {
+          await fs.mkdir(LOCAL_UPLOAD_DIR, { recursive: true });
+          const localFile = `${fileType}-${uuid}.${ext}`;
+          await fs.writeFile(path.join(LOCAL_UPLOAD_DIR, localFile), req.file.buffer);
+          url = `/api/vendor-fulfillment/local-file/${localFile}`;
+        } catch (localErr: unknown) {
+          logger.error({ err: localErr }, "Local fallback upload juga gagal");
+          return res.status(500).json({ error: "Upload file gagal. Coba lagi atau hubungi admin." });
+        }
       }
       return res.json({ url });
     } catch (err) {

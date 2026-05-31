@@ -562,6 +562,23 @@ const UNIVERSAL_OP_FIELDS: {
   { key: "pod_doc",            label: "Proof of Delivery (POD)", type: "text",                      placeholder: "Upload bukti pengiriman / POD",                              section: "operational", isUpload: true },
 ];
 
+// ── PUBLIC: GET /api/vendor-form/local-file/:filename ─────────────────────────
+vendorMiniFormRouter.get("/local-file/:filename", async (req: Request, res: Response) => {
+  const { filename } = req.params as { filename: string };
+  if (!/^[a-zA-Z0-9_\-]+\.[a-z0-9]+$/i.test(filename)) return res.status(400).send("Invalid");
+  try {
+    const { promises: fs } = await import("fs");
+    const path = await import("path");
+    const data = await fs.readFile(path.join("/tmp/vmf-uploads", filename));
+    const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+    const mimeMap: Record<string, string> = { pdf: "application/pdf", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp" };
+    res.setHeader("Content-Type", mimeMap[ext] ?? "application/octet-stream");
+    return res.send(data);
+  } catch {
+    return res.status(404).send("Not found");
+  }
+});
+
 // ── PUBLIC: GET /api/vendor-form/:token ───────────────────────────────────────
 
 vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
@@ -865,7 +882,28 @@ vendorMiniFormRouter.post("/upload/:token", _vmfUploadRateLimit, _vmfUpload.sing
       return res.status(400).json({ error: "Tipe file tidak didukung. Gunakan PDF, gambar, atau dokumen Office." });
     }
 
-    const objectPath = await _vmfStorage.uploadPrivateEntity(req.file.buffer, req.file.mimetype);
+    let objectPath: string;
+    try {
+      objectPath = await _vmfStorage.uploadPrivateEntity(req.file.buffer, req.file.mimetype);
+    } catch (storErr: unknown) {
+      req.log?.warn({ err: storErr }, "GCS upload gagal, fallback ke local storage");
+      try {
+        const { promises: fs } = await import("fs");
+        const path = await import("path");
+        const { randomUUID } = await import("crypto");
+        const LOCAL_VMF_DIR = "/tmp/vmf-uploads";
+        await fs.mkdir(LOCAL_VMF_DIR, { recursive: true });
+        const ext = req.file.mimetype === "application/pdf" ? "pdf"
+          : req.file.mimetype.startsWith("image/") ? req.file.mimetype.split("/")[1]
+          : "bin";
+        const fname = `${randomUUID()}.${ext}`;
+        await fs.writeFile(path.join(LOCAL_VMF_DIR, fname), req.file.buffer);
+        objectPath = `/api/vendor-form/local-file/${fname}`;
+      } catch (localErr: unknown) {
+        req.log?.error({ err: localErr }, "Local fallback upload juga gagal");
+        return res.status(500).json({ error: "Upload file gagal. Coba lagi atau hubungi admin." });
+      }
+    }
     return res.json({ objectPath });
   } catch (err) {
     req.log?.error({ err }, "vmf upload error");
