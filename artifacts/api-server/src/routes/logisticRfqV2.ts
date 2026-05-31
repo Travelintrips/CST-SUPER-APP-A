@@ -837,14 +837,11 @@ logisticRfqV2Router.post("/vendor-form/:token", async (req: Request, res: Respon
     }).catch(() => {});
   }
 
-  await sendAdminRecapWa(link.rfqId, rfq);
-
   // Hitung harga yang ditampilkan di notif
   const finalPriceNum = action === "accept"
     ? (link.basicPrice ? Number(link.basicPrice) : (offeredPrice ? Number(offeredPrice) : null))
     : (offeredPrice ? Number(offeredPrice) : null);
   const submitterPriceStr = finalPriceNum != null ? fmtRp(finalPriceNum) : "Harga Dasar";
-
 
   await sendAdminRecapWa(link.rfqId, rfq, {
     vendorName,

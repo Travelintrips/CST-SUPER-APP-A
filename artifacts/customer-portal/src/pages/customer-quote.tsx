@@ -247,6 +247,12 @@ export default function CustomerQuotePage() {
             {/* Price breakdown */}
             {data.displayTax != null && data.displayTotal != null ? (
               <div className="space-y-2">
+                {data.displaySubtotal != null && (
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-slate-500">Jumlah Pemesanan</span>
+                    <span className="text-slate-700 font-medium">{idr(data.displaySubtotal)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between items-center text-sm">
                   <span className="text-slate-500">PPN 11%</span>
                   <span className="text-slate-700 font-medium">{idr(data.displayTax)}</span>
