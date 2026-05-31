@@ -73,6 +73,7 @@ vendorFulfillmentPublicRouter.post("/:token/drivers", async (req: Request, res: 
   try {
     const [link] = await db.select({
       vendorId: vendorFulfillmentLinksTable.vendorId,
+      orderId: vendorFulfillmentLinksTable.orderId,
       expiresAt: vendorFulfillmentLinksTable.expiresAt,
       status: vendorFulfillmentLinksTable.status,
     }).from(vendorFulfillmentLinksTable).where(eq(vendorFulfillmentLinksTable.token, token));
@@ -90,6 +91,55 @@ vendorFulfillmentPublicRouter.post("/:token/drivers", async (req: Request, res: 
       VALUES (${vendorId}, ${name.trim()}, ${phone?.trim() || null}, ${vehiclePlate?.trim() || null}, ${vehicleType?.trim() || null})
       RETURNING id, name, phone, vehicle_plate AS "vehiclePlate", vehicle_type AS "vehicleType"
     `);
+
+    // ── Notify admin via WA (fire-and-forget) ─────────────────────────────
+    (async () => {
+      try {
+        const adminWa = await getAdminWa();
+        if (!adminWa) return;
+
+        // Ambil nama vendor dan nomor order secara paralel
+        const [vendorRow, orderRow] = await Promise.all([
+          vendorId
+            ? db.select({ name: suppliersTable.name })
+                .from(suppliersTable)
+                .where(eq(suppliersTable.id, vendorId))
+                .then((r) => r[0])
+            : Promise.resolve(null),
+          db.select({ orderNumber: logisticOrdersTable.orderNumber, customerName: logisticOrdersTable.customerName })
+            .from(logisticOrdersTable)
+            .where(eq(logisticOrdersTable.id, link.orderId))
+            .then((r) => r[0]),
+        ]);
+
+        const vendorName = vendorRow?.name ?? "—";
+        const orderNumber = orderRow?.orderNumber ?? "—";
+        const customerName = orderRow?.customerName ?? "—";
+
+        const lines: string[] = [
+          `👤 Nama   : *${name.trim()}*`,
+        ];
+        if (phone?.trim())        lines.push(`📱 HP     : ${phone.trim()}`);
+        if (vehiclePlate?.trim()) lines.push(`🚛 Plat   : ${vehiclePlate.trim().toUpperCase()}`);
+        if (vehicleType?.trim())  lines.push(`🚚 Kend.  : ${vehicleType.trim()}`);
+
+        const waMsg =
+          `🆕 *Driver Baru Ditambahkan*\n` +
+          `━━━━━━━━━━━━━━━━━━\n` +
+          `Vendor    : *${vendorName}*\n` +
+          `No. Order : \`${orderNumber}\`\n` +
+          `Customer  : ${customerName}\n` +
+          `━━━━━━━━━━━━━━━━━━\n` +
+          lines.join("\n") + "\n" +
+          `━━━━━━━━━━━━━━━━━━\n` +
+          `Driver ini kini tersedia di dropdown pemilihan driver pada form fulfillment vendor.`;
+
+        await sendWhatsApp(adminWa, waMsg);
+      } catch (e) {
+        logger.warn({ e }, "vendor-fulfillment POST driver: WA notify failed");
+      }
+    })();
+
     return res.status(201).json({ driver: result.rows[0] });
   } catch (err) {
     logger.error({ err }, "vendor-fulfillment POST driver error");
