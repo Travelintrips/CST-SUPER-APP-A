@@ -14,6 +14,7 @@ import {
   orderUpdatesTable,
   vendorFulfillmentLinksTable,
   vendorMiniFormLinksTable,
+  customerOrderLinksTable,
 } from "@workspace/db";
 import { requireClerkUser, requireAdmin } from "../lib/requireAdmin.js";
 import { runDbBackup } from "../lib/dbBackup.js";
@@ -1338,15 +1339,33 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
         );
       }
 
-      // WA ke customer
+      // WA ke customer — sertakan link tracking spesifik order
       const customerPhone = ((order as any).phone ?? "").trim();
       if (customerPhone) {
+        // Ambil atau buat customer tracking token
+        let trackingUrl = `https://${domain}/track`;
+        try {
+          let [existingLink] = await db.select({ token: customerOrderLinksTable.token })
+            .from(customerOrderLinksTable)
+            .where(eq(customerOrderLinksTable.orderId, order.id))
+            .orderBy(desc(customerOrderLinksTable.createdAt))
+            .limit(1);
+          if (!existingLink) {
+            const newToken = randomBytes(18).toString("hex");
+            await db.insert(customerOrderLinksTable).values({ orderId: order.id, token: newToken });
+            existingLink = { token: newToken };
+          }
+          trackingUrl = `https://${domain}/order-track/${existingLink.token}`;
+        } catch (e) {
+          logger.warn({ e }, "confirm_fulfillment: gagal ambil/buat tracking token, pakai fallback URL");
+        }
+
         const waMsg =
           `🚀 *Order Anda Sedang Diproses — CST Logistics*\n\n` +
           `Halo ${order.customerName},\n\n` +
           `Order *${order.orderNumber}* (${order.shipmentType || "—"}) telah dikonfirmasi dan sedang diproses.\n` +
           ((order.origin && order.destination) ? `Rute: ${order.origin} → ${order.destination}\n` : "") +
-          `\nCek status order: https://${domain}/track`;
+          `\nPantau status order Anda:\n${trackingUrl}`;
         sendWhatsApp(customerPhone, waMsg).catch((e) =>
           logger.warn({ e }, "confirm_fulfillment WA to customer failed")
         );
