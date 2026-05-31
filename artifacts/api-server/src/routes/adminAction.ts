@@ -1298,22 +1298,29 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
 
       const domain = getPreferredDomain() || "cstlogistic.co.id";
 
-      // Cari VMF link terbaru untuk order ini (order_based mode)
-      const [vmfLink] = await db.select({
-        token: vendorMiniFormLinksTable.token,
-        shortUrl: vendorMiniFormLinksTable.shortUrl,
-      }).from(vendorMiniFormLinksTable)
-        .where(and(
-          eq(vendorMiniFormLinksTable.orderId, order.id),
-          eq(vendorMiniFormLinksTable.mode, "order_based"),
-        ))
-        .orderBy(desc(vendorMiniFormLinksTable.createdAt))
+      // Cari vendor fulfillment link terbaru untuk order ini
+      const [vfLinkForUrl] = await db.select({
+        token: vendorFulfillmentLinksTable.token,
+      }).from(vendorFulfillmentLinksTable)
+        .where(eq(vendorFulfillmentLinksTable.orderId, order.id))
+        .orderBy(desc(vendorFulfillmentLinksTable.createdAt))
         .limit(1);
 
-      // Gunakan VMF short link jika ada, fallback ke full URL VMF, terakhir bizportal
-      const detailOrderUrl = vmfLink?.shortUrl
-        ?? (vmfLink?.token ? `https://${domain}/vendor-mini-form/${vmfLink.token}` : null)
-        ?? `https://${domain}/bizportal/logistics/orders/${order.id}`;
+      // Cari short link vendor fulfillment dari tabel short_links
+      let detailOrderUrl: string;
+      if (vfLinkForUrl?.token) {
+        const { shortLinksTable } = await import("@workspace/db/schema");
+        const vfLongUrl = `https://${domain}/vendor-fulfillment/${vfLinkForUrl.token}`;
+        const [sl] = await db.select({ code: shortLinksTable.code })
+          .from(shortLinksTable)
+          .where(eq(shortLinksTable.targetUrl, vfLongUrl))
+          .limit(1);
+        detailOrderUrl = sl?.code
+          ? `https://${domain}/s/${sl.code}`
+          : vfLongUrl;
+      } else {
+        detailOrderUrl = `https://${domain}/bizportal/logistics/orders/${order.id}`;
+      }
 
       // WA ke admin group
       const adminGroupWa3 = await getAdminGroupWa();
