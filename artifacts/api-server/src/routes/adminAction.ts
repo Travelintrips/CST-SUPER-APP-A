@@ -1214,14 +1214,16 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
       // Fetch items untuk breakdown harga di WA vendor
       const _fwdItemRows = await db.select({
         serviceName: logisticOrderItemsTable.serviceName,
+        subtotal: logisticOrderItemsTable.subtotal,
         inputData: logisticOrderItemsTable.inputData,
       }).from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, order.id));
-      const _fxPrice = (inp: Record<string, unknown> | null): number | null => { if (!inp) return null; const p = inp.price ?? inp.productPrice ?? inp.unitPrice ?? inp.sellingPrice ?? null; if (typeof p === "number") return p > 0 ? p : null; if (typeof p === "string") { const n = parseFloat(p); return !isNaN(n) && n > 0 ? n : null; } return null; };
+      const _fxPrice = (inp: Record<string, unknown> | null): number | null => { if (!inp) return null; const p = inp.price ?? inp.productPrice ?? inp.unitPrice ?? inp.sellingPrice ?? inp.basicPrice ?? null; if (typeof p === "number") return p > 0 ? p : null; if (typeof p === "string") { const n = parseFloat(p); return !isNaN(n) && n > 0 ? n : null; } return null; };
       const _fwdItems = _fwdItemRows.flatMap((row) => {
         const inp = row.inputData as Record<string, unknown> | null;
-        const price = _fxPrice(inp);
-        if (!price) return [];
         const qty = (() => { if (!inp) return 1; const v = inp.qty ?? inp.quantity; const n = parseFloat(String(v ?? "")); return isNaN(n) || n <= 0 ? 1 : n; })();
+        const subtotalVal = Number(row.subtotal ?? 0);
+        const price = _fxPrice(inp) ?? (subtotalVal > 0 && qty > 0 ? Math.round(subtotalVal / qty) : null);
+        if (!price) return [];
         const unit = inp?.unit != null ? String(inp.unit) : "unit";
         return [{ name: row.serviceName ?? "Produk", qty, unit, basicPrice: price, taxRate: 0.11 }];
       });

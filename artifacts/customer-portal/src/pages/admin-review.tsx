@@ -1566,27 +1566,35 @@ function ForwardVendorView({ data, token }: { data: ForwardVendorData; token: st
                     </tbody>
                   </table>
                 </div>
-                {/* Price breakdown */}
-                <div className="px-5 py-4 border-t border-slate-100 space-y-2">
-                  {order.subtotalBeforeTax && Number(order.subtotalBeforeTax) > 0 && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-slate-500">DPP (Harga Dasar)</span>
-                      <span className="text-slate-700">{idr(order.subtotalBeforeTax)}</span>
+                {/* Price breakdown — exclusive PPN */}
+                {(() => {
+                  const _taxRateVal = order.taxRate ?? 11;
+                  const _dppFromItems = (order.items ?? []).reduce((s, i) => {
+                    const qty = i.quantity != null ? Number(i.quantity) : 1;
+                    const up = i.unitPrice != null ? Number(i.unitPrice) : null;
+                    return s + (up != null ? up * qty : Number(i.subtotal ?? 0));
+                  }, 0);
+                  const _dpp = _dppFromItems > 0 ? _dppFromItems : Number(order.subtotalBeforeTax ?? order.grandTotal ?? 0);
+                  const _ppn = Math.round(_dpp * _taxRateVal / 100);
+                  const _grand = _dpp + _ppn;
+                  if (_dpp <= 0) return null;
+                  return (
+                    <div className="px-5 py-4 border-t border-slate-100 space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-slate-500">DPP (Harga Dasar)</span>
+                        <span className="text-slate-700">{idr(_dpp)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-slate-500">PPN {_taxRateVal}%</span>
+                        <span className="text-slate-700">{idr(_ppn)}</span>
+                      </div>
+                      <div className="flex justify-between font-bold border-t border-slate-200 pt-2">
+                        <span className="text-slate-700">Grand Total</span>
+                        <span className="text-emerald-700 text-lg">{idr(_grand)}</span>
+                      </div>
                     </div>
-                  )}
-                  {order.taxAmount && Number(order.taxAmount) > 0 && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-slate-500">PPN {order.taxRate ?? 11}%</span>
-                      <span className="text-slate-700">{idr(order.taxAmount)}</span>
-                    </div>
-                  )}
-                  {order.grandTotal && Number(order.grandTotal) > 0 && (
-                    <div className="flex justify-between font-bold border-t border-slate-200 pt-2">
-                      <span className="text-slate-700">Grand Total</span>
-                      <span className="text-emerald-700 text-lg">{idr(order.grandTotal)}</span>
-                    </div>
-                  )}
-                </div>
+                  );
+                })()}
               </div>
             ) : order.grandTotal && Number(order.grandTotal) > 0 ? (
               <div className="bg-white rounded-2xl shadow-sm border border-slate-100 px-5 py-4 space-y-2">

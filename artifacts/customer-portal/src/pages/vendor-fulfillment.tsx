@@ -879,9 +879,10 @@ function ProductFulfillmentForm({
   const showWarehouse = needsPickup(order.serviceType ?? "");
   const TAX_RATE = order.taxRate ?? 11;
 
-  const origGrand = Number(order.grandTotal ?? 0);
-  const origDpp   = Number(order.subtotalBeforeTax ?? Math.round(origGrand * 100 / (100 + TAX_RATE)));
-  const origPpn   = Number(order.taxAmount ?? origGrand - origDpp);
+  const _itemsSum = (order.items ?? []).reduce((s, i) => s + Number(i.subtotal ?? 0), 0);
+  const origDpp   = _itemsSum > 0 ? _itemsSum : Number(order.subtotalBeforeTax ?? Number(order.grandTotal ?? 0));
+  const origPpn   = Math.round(origDpp * TAX_RATE / 100);
+  const origGrand = origDpp + origPpn;
 
   let summaryDpp = origDpp, summaryPpn = origPpn, summaryTotal = origGrand;
   if (isRevised && fields.revisedPrice && Number(fields.revisedPrice) > 0) {

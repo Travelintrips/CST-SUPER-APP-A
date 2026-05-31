@@ -190,16 +190,19 @@ vendorJobAdminRouter.post("/orders/:orderId/assign-vendor", async (req: Request,
     // Fetch order items untuk breakdown harga di WA
     const _itemRows = await db.select({
       serviceName: logisticOrderItemsTable.serviceName,
+      subtotal: logisticOrderItemsTable.subtotal,
       inputData: logisticOrderItemsTable.inputData,
     }).from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, orderId));
     const _xQty = (inp: Record<string, unknown> | null): number => { if (!inp) return 1; const v = inp.qty ?? inp.quantity; const n = parseFloat(String(v ?? "")); return isNaN(n) || n <= 0 ? 1 : n; };
     const _xUnit = (inp: Record<string, unknown> | null): string => { if (!inp) return "unit"; return inp.unit != null ? String(inp.unit) : "unit"; };
-    const _xPrice = (inp: Record<string, unknown> | null): number | null => { if (!inp) return null; const p = inp.price ?? inp.productPrice ?? inp.unitPrice ?? inp.sellingPrice ?? null; if (typeof p === "number") return p > 0 ? p : null; if (typeof p === "string") { const n = parseFloat(p); return !isNaN(n) && n > 0 ? n : null; } return null; };
+    const _xPrice = (inp: Record<string, unknown> | null): number | null => { if (!inp) return null; const p = inp.price ?? inp.productPrice ?? inp.unitPrice ?? inp.sellingPrice ?? inp.basicPrice ?? null; if (typeof p === "number") return p > 0 ? p : null; if (typeof p === "string") { const n = parseFloat(p); return !isNaN(n) && n > 0 ? n : null; } return null; };
     const assignmentItems: VendorAssignmentItem[] = _itemRows.flatMap((row) => {
       const inp = row.inputData as Record<string, unknown> | null;
-      const price = _xPrice(inp);
+      const qty = _xQty(inp);
+      const subtotalVal = Number(row.subtotal ?? 0);
+      const price = _xPrice(inp) ?? (subtotalVal > 0 && qty > 0 ? Math.round(subtotalVal / qty) : null);
       if (!price) return [];
-      return [{ name: row.serviceName ?? "Produk", qty: _xQty(inp), unit: _xUnit(inp), basicPrice: price, taxRate: 0.11 }];
+      return [{ name: row.serviceName ?? "Produk", qty, unit: _xUnit(inp), basicPrice: price, taxRate: 0.11 }];
     });
 
     // Cek apakah sudah ada job order untuk order ini
