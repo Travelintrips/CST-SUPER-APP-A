@@ -973,6 +973,8 @@ logisticRfqV2Router.post("/orders/:orderId/rfq-blast", async (req: Request, res:
     category: logisticOrderItemsTable.category,
   }).from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, orderId));
 
+  const baseOrderDataV1 = await buildOrderDataWithItems(order);
+
   for (const vendor of eligible) {
     let linkToken: string;
 
@@ -1023,11 +1025,19 @@ logisticRfqV2Router.post("/orders/:orderId/rfq-blast", async (req: Request, res:
     }
 
     const formUrl = getVendorFormUrl(linkToken);
-    const basicPriceNum = basicPrice;
-    const fmtBasic = basicPriceNum ? ` (Harga Dasar: ${fmtRp(basicPriceNum)})` : "";
+
+    // Build vendor-specific orderData: override subtotal dengan basicPrice × qty (bukan harga jual customer)
+    const vendorOrderDataV1 = { ...baseOrderDataV1 };
+    if (basicPrice && baseOrderDataV1.orderItems?.length) {
+      const bpNum = parseFloat(basicPrice);
+      vendorOrderDataV1.orderItems = baseOrderDataV1.orderItems.map((it) => ({
+        ...it,
+        subtotal: it.qty && it.qty > 0 ? Math.round(bpNum * it.qty) : it.subtotal,
+      }));
+    }
 
     try {
-      await sendVendorRequestNotification(await buildOrderDataWithItems(order), vendor.name, vendor.phone!, formUrl);
+      await sendVendorRequestNotification(vendorOrderDataV1, vendor.name, vendor.phone!, formUrl);
       results.push({ vendorId: vendor.id, vendorName: vendor.name, sent: true });
     } catch (e) {
       logger.error({ e, vendorId: vendor.id }, "rfq-blast WA failed");
@@ -1098,6 +1108,8 @@ logisticRfqV2Router.post("/rfq/:rfqId/blast", async (req: Request, res: Response
     category: logisticOrderItemsTable.category,
   }).from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, rfq.orderId));
 
+  const baseOrderDataV2 = await buildOrderDataWithItems(order);
+
   const results: { vendorId: number; vendorName: string; token: string; sent: boolean }[] = [];
 
   for (const vendor of eligible) {
@@ -1152,10 +1164,19 @@ logisticRfqV2Router.post("/rfq/:rfqId/blast", async (req: Request, res: Response
     }
 
     const formUrl = getVendorFormUrl(linkToken);
-    const fmtBasic = basicPrice ? ` (Harga Dasar: ${fmtRp(basicPrice)})` : "";
+
+    // Build vendor-specific orderData: override subtotal dengan basicPrice × qty (bukan harga jual customer)
+    const vendorOrderDataV2 = { ...baseOrderDataV2 };
+    if (basicPrice && baseOrderDataV2.orderItems?.length) {
+      const bpNum = parseFloat(basicPrice);
+      vendorOrderDataV2.orderItems = baseOrderDataV2.orderItems.map((it) => ({
+        ...it,
+        subtotal: it.qty && it.qty > 0 ? Math.round(bpNum * it.qty) : it.subtotal,
+      }));
+    }
 
     try {
-      await sendVendorRequestNotification(await buildOrderDataWithItems(order), vendor.name, vendor.phone!, formUrl);
+      await sendVendorRequestNotification(vendorOrderDataV2, vendor.name, vendor.phone!, formUrl);
       results.push({ vendorId: vendor.id, vendorName: vendor.name, token: linkToken, sent: true });
     } catch (e) {
       logger.error({ e, vendorId: vendor.id }, "blast WA vendor failed");

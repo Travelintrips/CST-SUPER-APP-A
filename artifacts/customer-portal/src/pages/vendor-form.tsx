@@ -308,11 +308,6 @@ export default function VendorFormPage() {
                 <div key={i} className="rounded-xl border border-gray-100 bg-gray-50 p-3 space-y-1.5">
                   <div className="flex justify-between items-start">
                     <span className="font-semibold text-gray-800 text-sm">{item.serviceName || item.category || "—"}</span>
-                    {item.sellingUnitPrice != null && (
-                      <span className="text-xs text-gray-400 ml-2 shrink-0">
-                        Ref jual: {idr(item.sellingUnitPrice)}/Unit
-                      </span>
-                    )}
                   </div>
                   <div className="flex justify-between text-xs text-gray-500">
                     <span>Qty</span>
