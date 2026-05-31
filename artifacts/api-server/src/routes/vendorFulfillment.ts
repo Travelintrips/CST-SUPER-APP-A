@@ -580,6 +580,16 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
     if (adminWa) {
       const domain = getPreferredDomain() || "cstlogistic.co.id";
 
+      // Helper: konversi path relatif ke URL absolut yang bisa diakses publik (Fonnte/WA)
+      function toAbsoluteUrl(rawUrl: string | null | undefined): string {
+        if (!rawUrl?.trim()) return "";
+        const url = rawUrl.trim();
+        if (/^https?:\/\//i.test(url)) return url;
+        const match = url.match(/^\/api\/storage\/public-objects\/(.+)$/);
+        if (match) return objectStorage.toSupabasePublicUrl(match[1]);
+        return `https://${domain}${url.startsWith("/") ? url : "/" + url}`;
+      }
+
       // Buat link mini form confirm_fulfillment untuk admin
       let bizportalLink: string;
       try {
@@ -674,10 +684,11 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
           third_party: "📦 Third Party Carrier",
         };
         if (body.deliveryMethod)    detailLines.push(`🚚 Pengiriman  : ${DELIVERY_LABEL[body.deliveryMethod] ?? body.deliveryMethod}`);
-        if (body.packingListUrl)    detailLines.push(`📋 Packing List: ${body.packingListUrl}`);
-        if (body.invoiceUrl)        detailLines.push(`📄 Invoice     : ${body.invoiceUrl}`);
-        if (body.podUrl)            detailLines.push(`✅ POD         : ${body.podUrl}`);
-        if (body.supportingDocUrl)  detailLines.push(`📎 Dok. Lain   : ${body.supportingDocUrl}`);
+        if (body.stockPhotoUrl)     detailLines.push(`📷 Foto Barang : ${toAbsoluteUrl(body.stockPhotoUrl)}`);
+        if (body.packingListUrl)    detailLines.push(`📋 Packing List: ${toAbsoluteUrl(body.packingListUrl)}`);
+        if (body.invoiceUrl)        detailLines.push(`📄 Invoice     : ${toAbsoluteUrl(body.invoiceUrl)}`);
+        if (body.podUrl)            detailLines.push(`✅ POD         : ${toAbsoluteUrl(body.podUrl)}`);
+        if (body.supportingDocUrl)  detailLines.push(`📎 Dok. Lain   : ${toAbsoluteUrl(body.supportingDocUrl)}`);
       } else if (cat === "customs") {
         if (body.customsPicName)     detailLines.push(`👤 PIC         : ${body.customsPicName}`);
         if (body.customsDocuments)   detailLines.push(`📋 Dokumen     : ${body.customsDocuments}`);
@@ -712,26 +723,8 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
         `✅ *Konfirmasi & Mulai Pengiriman:*\n` +
         `Klik link berikut untuk konfirmasi langsung:\n${bizportalLink}`;
 
-      // Bangun URL publik foto barang (jika ada)
-      // Gunakan URL langsung Supabase CDN agar Fonnte bisa download tanpa proxy server
-      const rawPhotoUrl = body.stockPhotoUrl as string | undefined;
-      let publicPhotoUrl = "";
-      if (rawPhotoUrl?.trim()) {
-        if (/^https?:\/\//i.test(rawPhotoUrl)) {
-          // Sudah URL penuh (mungkin sudah Supabase CDN)
-          publicPhotoUrl = rawPhotoUrl;
-        } else {
-          // Path relatif seperti /api/storage/public-objects/${subPath}
-          // → konversi ke Supabase CDN langsung agar Fonnte bisa akses
-          const match = rawPhotoUrl.match(/^\/api\/storage\/public-objects\/(.+)$/);
-          if (match) {
-            publicPhotoUrl = objectStorage.toSupabasePublicUrl(match[1]);
-          } else {
-            publicPhotoUrl = `https://${domain}${rawPhotoUrl.startsWith("/") ? rawPhotoUrl : "/" + rawPhotoUrl}`;
-          }
-        }
-      }
-
+      // Kirim WA ke admin — jika ada foto barang, kirim sebagai media attachment Fonnte
+      const publicPhotoUrl = toAbsoluteUrl(body.stockPhotoUrl as string | undefined);
       sendMediaViaService(adminWa, waMsg, publicPhotoUrl).catch((e) =>
         logger.warn({ e }, "vendor-fulfillment WA to admin failed")
       );
