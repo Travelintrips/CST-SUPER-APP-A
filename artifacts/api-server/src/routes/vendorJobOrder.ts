@@ -481,8 +481,22 @@ vendorJobAdminRouter.post("/orders/:orderId/complete-review", async (req: Reques
       .where(eq(logisticOrdersTable.id, orderId));
     if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
 
+    // ── Guard: hanya boleh complete jika Payment Received ────────────────────
+    const currentStatus = (order.status ?? "").trim();
+    if (currentStatus !== "Payment Received") {
+      return res.status(400).json({
+        message: `Order tidak dapat diselesaikan dari status "${currentStatus}". ` +
+          `Order harus dalam status "Payment Received" terlebih dahulu (Invoice diterbitkan → Pembayaran diterima → Selesai).`,
+        currentStatus,
+        requiredStatus: "Payment Received",
+      });
+    }
+
     // Update status via service
-    await transitionLogisticOrderStatus(orderId, "Completed", { source: "vendorJobOrder:complete_review", actorType: "admin", force: true });
+    const transition = await transitionLogisticOrderStatus(orderId, "Completed", { source: "vendorJobOrder:complete_review", actorType: "admin" });
+    if (!transition.ok) {
+      return res.status(400).json({ message: transition.error ?? "Gagal mengubah status ke Completed" });
+    }
 
     await db.execute(sql`
       UPDATE logistic_orders SET job_status = 'completed' WHERE id = ${orderId}

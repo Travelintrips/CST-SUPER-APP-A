@@ -3040,6 +3040,20 @@ vendorMiniFormRouter.post("/admin/customer-invoices", async (req: Request, res: 
       await sendWhatsApp(customerPhone, waMsg, { context: "customer-invoice-send", refType: "customer_invoice", refId: String(link.id) });
     }
 
+    // ── AUTO STATUS: Invoice Issued ──────────────────────────────────────────
+    // Jika ada orderId, transisi ke "Invoice Issued" secara otomatis.
+    // Hanya berlaku jika status order saat ini adalah "POD Uploaded" atau lebih awal
+    // dalam urutan invoice flow (state machine akan menolak jika tidak valid).
+    if (orderId) {
+      transitionLogisticOrderStatus(orderId, "Invoice Issued", {
+        source: "vendorMiniForm:create_customer_invoice",
+        actorType: "admin",
+        notes: `Invoice ${invoiceNumber ?? token} diterbitkan ke customer`,
+      }).catch((e: unknown) =>
+        req.log?.warn({ e, orderId }, "auto Invoice Issued transition failed — non-fatal"),
+      );
+    }
+
     return res.json({ success: true, token, url: invoiceUrl, id: link.id });
   } catch (err) {
     req.log?.error({ err }, "create customer-invoice error");

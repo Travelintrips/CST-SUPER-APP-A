@@ -44,16 +44,13 @@ export const LOGISTIC_ORDER_VALID_TRANSITIONS: Record<string, string[]> = {
   "RFQ Sent":          ["Quote Received", "Admin Review", "Cancelled"],
   "Quote Received":    ["Customer Approval", "RFQ Sent", "Admin Review", "Cancelled"],
   "Customer Approval": ["Vendor Confirmed", "Admin Review", "Cancelled"],
-  // Vendor Confirmed → Completed: untuk complete-order shortcut (tanpa lewat semua tahap)
-  "Vendor Confirmed":  ["In Progress", "Customer Approval", "Cancelled", "Completed"],
-  // In Progress → Completed: untuk complete-order & POD upload shortcut
-  "In Progress":       ["Pickup", "Vendor Confirmed", "Cancelled", "Completed"],
+  "Vendor Confirmed":  ["In Progress", "Customer Approval", "Cancelled"],
+  "In Progress":       ["Pickup", "Vendor Confirmed", "Cancelled"],
   "Pickup":            ["In Transit", "In Progress", "Cancelled"],
   "In Transit":        ["Arrived", "Pickup", "Cancelled"],
   "Arrived":           ["Delivered", "In Transit", "Cancelled"],
-  // Delivered → Completed: untuk POD upload shortcut (langsung selesai tanpa invoice)
-  "Delivered":         ["POD Uploaded", "Arrived", "Cancelled", "Completed"],
-  "POD Uploaded":      ["Invoice Issued", "Delivered", "Cancelled", "Completed"],
+  "Delivered":         ["POD Uploaded", "Arrived", "Cancelled"],
+  "POD Uploaded":      ["Invoice Issued", "Delivered", "Cancelled"],
   "Invoice Issued":    ["Payment Received", "POD Uploaded", "Cancelled"],
   "Payment Received":  ["Completed", "Invoice Issued", "Cancelled"],
   "Completed":         [],
