@@ -491,7 +491,7 @@ logisticOrdersRouter.get(
     if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
 
     // Run all independent queries in parallel — eliminates N+1 sequential awaits
-    const [items, [driverJob], [latestRfq]] = await Promise.all([
+    const [items, [driverJob], [latestRfq], orderUpdates] = await Promise.all([
       db.select().from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, order.id)),
       db.select().from(driverJobsTable)
         .where(eq(driverJobsTable.logisticOrderId, order.id))
@@ -501,6 +501,10 @@ logisticOrdersRouter.get(
         .where(eq(logisticOrderRfqsTable.orderId, order.id))
         .orderBy(desc(logisticOrderRfqsTable.createdAt))
         .limit(1),
+      db.select().from(orderUpdatesTable)
+        .where(and(eq(orderUpdatesTable.orderId, order.id), eq(orderUpdatesTable.isPublic, true)))
+        .orderBy(desc(orderUpdatesTable.createdAt))
+        .limit(50),
     ]);
 
     let driverJobData = null;
@@ -535,22 +539,37 @@ logisticOrdersRouter.get(
       };
     }
 
-    // Security: quotedPrice is financial/margin data — never expose on public tracking endpoint.
-    // Only status and timing info is safe for unauthenticated callers.
+    // quotedPrice = customer-facing sell price (NOT vendor cost/margin) — safe to show order owner
     const rfqQuote = latestRfq ? {
       rfqId: latestRfq.id,
       rfqStatus: latestRfq.status,
+      quotedPrice: latestRfq.quotedPrice ? parseFloat(latestRfq.quotedPrice) : null,
       quotedAt: latestRfq.quotedAt?.toISOString() ?? null,
+      quoteNotes: (latestRfq as any).quoteNotes ?? null,
       customerResponseNotes: (latestRfq as any).customerResponseNotes ?? null,
       customerRespondedAt: (latestRfq as any).customerRespondedAt
         ? new Date((latestRfq as any).customerRespondedAt).toISOString() : null,
     } : null;
 
+    const updatesData = orderUpdates.map((u) => ({
+      id: u.id,
+      status: u.status ?? null,
+      notes: u.notes ?? null,
+      actorType: u.actorType,
+      actorName: u.actorName ?? null,
+      createdAt: u.createdAt.toISOString(),
+    }));
+
     return res.json({
       ...toPublicOrder(order),
+      customerName: order.customerName,
+      grandTotal: order.grandTotal ? parseFloat(order.grandTotal) : null,
+      subtotal: order.subtotal ? parseFloat(order.subtotal) : null,
+      tax: order.tax ? parseFloat(order.tax) : null,
       items: items.map(toPublicItem),
       driverJob: driverJobData,
       rfqQuote,
+      orderUpdates: updatesData,
     });
   }
 );
@@ -1196,7 +1215,7 @@ logisticOrdersRouter.put("/:id/status", async (req: Request, res: Response) => {
   sendPushToOrder(updated.orderNumber, {
     title: "Update Status Order",
     body: `Order ${updated.orderNumber}: ${STATUS_LABEL_ID[status] ?? status}`,
-    url: `/logistic-track?order=${encodeURIComponent(updated.orderNumber)}`,
+    url: `/track/${updated.orderNumber}`,
     tag: `order-${updated.orderNumber}`,
   } as { title: string; body: string; url?: string }).catch(() => undefined);
 

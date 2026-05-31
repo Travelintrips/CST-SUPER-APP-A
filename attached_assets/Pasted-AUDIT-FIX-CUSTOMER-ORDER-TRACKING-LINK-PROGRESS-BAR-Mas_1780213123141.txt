@@ -1,0 +1,97 @@
+AUDIT & FIX CUSTOMER ORDER TRACKING LINK + PROGRESS BAR
+
+Masalah:
+Setelah customer menerima WhatsApp konfirmasi order, link "Cek status order" hanya membuka halaman /track yang berisi form lacak. Customer harus input nomor order lagi dan tidak bisa melihat progress order secara langsung.
+
+Target:
+Saat customer klik link WhatsApp, langsung masuk ke halaman detail tracking order sesuai orderNumber/token, menampilkan progress bar lengkap dan status order real-time.
+
+Yang harus diperbaiki:
+
+1. Ubah link WA confirmation
+   Dari:
+   /track
+   Menjadi:
+   /track/:orderNumber
+   atau:
+   /track?order=LOG-xxxx
+   Pastikan orderNumber ikut dikirim otomatis di link WA.
+
+2. Buat public tracking detail page
+   Route:
+   GET /track/:orderNumber
+
+   Halaman harus menampilkan:
+   - Nomor order
+   - Nama customer
+   - Status aktif
+   - Progress bar/timeline
+   - Detail item order
+   - Quantity
+   - Harga jual
+   - PPN
+   - Grand total
+   - Estimasi proses
+   - Riwayat update status
+
+3. Progress bar wajib berisi tahapan:
+   - Order diterima
+   - Admin konfirmasi
+   - RFQ / diteruskan ke vendor
+   - Vendor respon
+   - Penawaran ke customer
+   - Customer approve
+   - Fulfillment / stok / pickup
+   - Shipment / delivery jika ada
+   - Completed
+
+4. Progress bar harus otomatis membaca status dari database order.
+   Jangan hardcode.
+   Mapping status order ke step progress harus jelas.
+
+5. Jika customer klik link dari WhatsApp:
+   - Tidak boleh hanya muncul form pencarian
+   - Langsung tampil detail progress order
+   - Form pencarian tetap boleh ada, tapi hanya sebagai fallback kalau URL tidak punya orderNumber
+
+6. Sambungkan dengan mini form/WA
+   Setiap aksi dari mini form harus update status order:
+   - Admin confirm
+   - Vendor submit quote
+   - Vendor confirm stock
+   - Customer approve
+   - Fulfillment update
+   - Delivery update
+
+7. Tambahkan clickable progress untuk admin
+   Di admin portal, setiap step progress bisa diklik untuk membuka aksi terkait:
+   - Confirm order
+   - Send RFQ vendor
+   - View vendor quote
+   - Send quote customer
+   - Confirm customer approval
+   - Forward fulfillment/vendor
+   - Update delivery
+   - Complete order
+
+8. Untuk customer public tracking:
+   Progress hanya view-only, tidak bisa edit.
+   Customer hanya boleh klik action yang memang diperlukan, contoh:
+   - Approve quotation
+   - Reject quotation
+   - Upload document jika diminta
+
+9. Validasi security:
+   Public tracking boleh pakai orderNumber + token agar tidak semua orang bisa akses sembarang order.
+   Format ideal:
+   /track/LOG-260531-71563?token=xxxxx
+
+10. Setelah selesai, test end-to-end:
+   - Buat order baru
+   - Kirim WA konfirmasi
+   - Klik link WA
+   - Pastikan langsung masuk ke detail progress order
+   - Update status dari mini form vendor/admin
+   - Pastikan progress berubah otomatis di tracking customer
+
+Jangan menghapus tracking page lama. Jadikan /track sebagai search page, dan /track/:orderNumber sebagai detail progress page.

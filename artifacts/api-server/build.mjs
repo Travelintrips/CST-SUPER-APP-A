@@ -98,11 +98,11 @@ async function buildAll() {
       "wrangler",
       "zeromq",
       "zeromq-prebuilt",
+      "ws",
       "playwright",
       "puppeteer",
       "puppeteer-core",
       "electron",
-      "ws",
       "web-push",
     ],
     alias: {
