@@ -289,8 +289,9 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
       _subtotalBeforeTax = _itemsSubtotal;
       _taxAmount = Math.round(_itemsSubtotal * _TAX_RATE / 100);
     } else if (_grandTotalNum != null && _grandTotalNum > 0) {
-      _subtotalBeforeTax = Math.round(_grandTotalNum * 100 / (100 + _TAX_RATE));
-      _taxAmount = _grandTotalNum - _subtotalBeforeTax;
+      // grandTotal adalah DPP (harga dasar sebelum PPN). PPN dihitung di atas (exclusive).
+      _subtotalBeforeTax = _grandTotalNum;
+      _taxAmount = Math.round(_grandTotalNum * _TAX_RATE / 100);
     }
 
     const base = {
