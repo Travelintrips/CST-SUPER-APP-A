@@ -1004,11 +1004,19 @@ orderTrackingPublicRouter.get("/:trackToken", async (req: Request, res: Response
   const { trackToken } = req.params as { trackToken: string };
 
   try {
+    // Lookup by logistic_orders.tracking_token ATAU customer_order_links.token
     const orderResult = await db.execute(
       sql`SELECT o.*, s.name as vendor_name
           FROM logistic_orders o
           LEFT JOIN suppliers s ON s.id = o.approved_vendor_id
-          WHERE o.tracking_token = ${trackToken}`
+          WHERE o.tracking_token = ${trackToken}
+          UNION
+          SELECT o.*, s.name as vendor_name
+          FROM logistic_orders o
+          LEFT JOIN suppliers s ON s.id = o.approved_vendor_id
+          INNER JOIN customer_order_links col ON col.order_id = o.id
+          WHERE col.token = ${trackToken}
+          LIMIT 1`
     );
     if (!orderResult.rows.length) {
       return res.status(404).json({ error: "Link tracking tidak ditemukan" });
