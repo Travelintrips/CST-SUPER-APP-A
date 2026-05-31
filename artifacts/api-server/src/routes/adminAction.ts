@@ -1290,7 +1290,7 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
           .where(eq(shortLinksTable.targetUrl, vfLongUrl))
           .limit(1);
         detailOrderUrl = sl?.code
-          ? `https://${domain}/s/${sl.code}`
+          ? `https://${domain}/q/${sl.code}`
           : vfLongUrl;
       } else {
         detailOrderUrl = `https://${domain}/logistic-admin/orders/${order.id}`;
