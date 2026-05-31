@@ -758,8 +758,13 @@ logisticRfqV2Router.post("/vendor-form/:token", async (req: Request, res: Respon
     return res.status(400).json({ message: "action harus accept, counter, atau reject" });
   }
   if (action === "counter") {
-    if (!offeredPrice || Number(offeredPrice) <= 0) return res.status(400).json({ message: "Harga penawaran harus diisi" });
+    if (!offeredPrice || isNaN(Number(offeredPrice)) || Number(offeredPrice) <= 0) {
+      return res.status(400).json({ message: "Harga penawaran harus diisi dan harus lebih dari Rp 0" });
+    }
     if (!eta) return res.status(400).json({ message: "ETA harus diisi" });
+  }
+  if (offeredPrice !== undefined && Number(offeredPrice) < 0) {
+    return res.status(400).json({ message: "Harga penawaran tidak boleh negatif" });
   }
 
   const isLate = !!(rfq.status && ["vendor_selected", "closed"].includes(rfq.status));
