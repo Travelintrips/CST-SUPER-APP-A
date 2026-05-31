@@ -81,9 +81,10 @@ async function buildOrderDataWithItems(order: typeof logisticOrdersTable.$inferS
     }).from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, order.id));
     base.orderItems = items.map(i => {
       const input = (i.inputData as Record<string, unknown> | null) ?? {};
+      const qtyRaw = input.qty ?? input.quantity ?? input.jumlah;
       return {
         name: i.name,
-        qty: input.qty != null ? Number(input.qty) : null,
+        qty: qtyRaw != null ? Number(qtyRaw) || null : null,
         unit: input.unit ? String(input.unit) : null,
         subtotal: i.subtotal ? parseFloat(i.subtotal) : null,
       };
@@ -820,32 +821,57 @@ logisticRfqV2Router.post("/vendor-form/:token", async (req: Request, res: Respon
 
   const now = new Date();
   const isUpdate = !!link.submittedAt;
+  // Hitung offeredPrice: untuk product orders, unit_price × total_qty; untuk freight/trucking, gunakan unit price
+  const computedOfferedPrice: string | null = await (async () => {
+    if (action !== "accept") return offeredPrice ? String(offeredPrice) : null;
+
+    // Ambil order items dengan qty untuk product orders
+    const oItems = await db.select({
+      serviceName: logisticOrderItemsTable.serviceName,
+      inputData: logisticOrderItemsTable.inputData,
+    }).from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, rfq.orderId));
+
+    const catItems = await db.select({
+      name: vendorCatalogItemsTable.name,
+      kategori: vendorCatalogItemsTable.kategori,
+      priceBase: vendorCatalogItemsTable.priceBase,
+    }).from(vendorCatalogItemsTable)
+      .where(and(eq(vendorCatalogItemsTable.vendorId, link.vendorId), eq(vendorCatalogItemsTable.isActive, true)));
+
+    // Jika ada basicPrice (unit price dari catalog), kalikan dengan total qty per item
+    if (link.basicPrice) {
+      if (oItems.length === 0) return String(link.basicPrice);
+      let total = 0;
+      for (const it of oItems) {
+        const inp = (it.inputData as Record<string, unknown>) ?? {};
+        const qty = Number(inp.qty ?? inp.quantity ?? inp.jumlah ?? 1) || 1;
+        const nm = (it.serviceName ?? "").toLowerCase().trim();
+        const matched = catItems.find(c => {
+          const cn = c.name.toLowerCase().trim();
+          return cn === nm || cn.includes(nm) || nm.includes(cn);
+        });
+        total += (matched ? Number(matched.priceBase) : Number(link.basicPrice)) * qty;
+      }
+      return String(total > 0 ? total : link.basicPrice);
+    }
+
+    // Fallback: tidak ada basicPrice — gunakan katalog langsung
+    if (catItems.length === 1) return String(catItems[0].priceBase);
+    if (catItems.length > 1 && oItems.length > 0) {
+      const prices = oItems.map(i => {
+        const svc = (i.serviceName ?? "").toLowerCase().trim();
+        const m = catItems.find(c => c.name.toLowerCase().trim() === svc || (c.kategori ?? "").toLowerCase().trim() === svc);
+        return m ? Number(m.priceBase) : null;
+      });
+      if (prices.length > 0 && prices.every(p => p != null)) {
+        return String(prices.reduce((s, p) => s + (p ?? 0), 0));
+      }
+    }
+    return null;
+  })();
+
   await db.update(rfqVendorLinksTable).set({
-    offeredPrice: action === "accept"
-      ? (link.basicPrice ?? (await (async () => {
-          // Fallback: gunakan harga catalog vendor (bukan subtotal selling price)
-          const catItems = await db.select({
-            name: vendorCatalogItemsTable.name,
-            kategori: vendorCatalogItemsTable.kategori,
-            priceBase: vendorCatalogItemsTable.priceBase,
-          }).from(vendorCatalogItemsTable)
-            .where(and(eq(vendorCatalogItemsTable.vendorId, link.vendorId), eq(vendorCatalogItemsTable.isActive, true)));
-          if (catItems.length === 1) return String(catItems[0].priceBase);
-          if (catItems.length > 1) {
-            const orderItems = await db.select({ serviceName: logisticOrderItemsTable.serviceName })
-              .from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, rfq.orderId));
-            const prices = orderItems.map(i => {
-              const svc = (i.serviceName ?? "").toLowerCase().trim();
-              const match = catItems.find(c => c.name.toLowerCase().trim() === svc || (c.kategori ?? "").toLowerCase().trim() === svc);
-              return match ? Number(match.priceBase) : null;
-            });
-            if (prices.length > 0 && prices.every(p => p != null)) {
-              return String(prices.reduce((s, p) => s + (p ?? 0), 0));
-            }
-          }
-          return null;
-        })()))
-      : (offeredPrice ? String(offeredPrice) : null),
+    offeredPrice: computedOfferedPrice,
     eta: eta ?? null,
     notes: notes ?? null,
     attachmentUrl: attachmentUrl ?? link.attachmentUrl,
@@ -877,10 +903,8 @@ logisticRfqV2Router.post("/vendor-form/:token", async (req: Request, res: Respon
     }).catch(() => {});
   }
 
-  // Hitung harga yang ditampilkan di notif
-  const finalPriceNum = action === "accept"
-    ? (link.basicPrice ? Number(link.basicPrice) : (offeredPrice ? Number(offeredPrice) : null))
-    : (offeredPrice ? Number(offeredPrice) : null);
+  // Hitung harga yang ditampilkan di notif (gunakan computedOfferedPrice yang sudah × qty)
+  const finalPriceNum = computedOfferedPrice ? Number(computedOfferedPrice) : (offeredPrice ? Number(offeredPrice) : null);
   const submitterPriceStr = finalPriceNum != null ? fmtRp(finalPriceNum) : "Harga Dasar";
 
   await sendAdminRecapWa(link.rfqId, rfq, {
