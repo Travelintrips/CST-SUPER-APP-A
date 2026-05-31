@@ -234,6 +234,7 @@ function AppShell() {
         <Route path="/admin-action/:token" component={AdminActionPage} />
         <Route path="/vendor-fulfillment/:token" component={VendorFulfillmentPage} />
         <Route path="/q/:code" component={ShortLinkRedirect} />
+        <Route path="/s/:code" component={ShortLinkRedirect} />
         <Route path="/privacy-policy" component={PrivacyPolicy} />
         <Route path="/contact" component={Contact} />
         <Route path="/shipment-timeline" component={ShipmentTimeline} />
