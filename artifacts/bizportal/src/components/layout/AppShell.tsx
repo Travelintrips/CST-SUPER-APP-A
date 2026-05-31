@@ -191,59 +191,6 @@ export function AppShell({ children }: AppShellProps) {
       roles: ["admin", "owner"],
     },
 
-    // ── NOTIFIKASI ────────────────────────────────────────────────────
-    {
-      type: "flat",
-      titleKey: "Notifikasi",
-      href: "/notifications",
-      icon: Bell,
-      roles: ["admin", "owner"],
-    },
-
-    // ── VENDOR LEADERBOARD ────────────────────────────────────────────
-    {
-      type: "flat",
-      titleKey: "Vendor Leaderboard",
-      href: "/vendors",
-      icon: Trophy,
-      roles: ["admin", "owner", "manager"],
-    },
-
-    // ── INTELLIGENCE ALERTS ───────────────────────────────────────────
-    {
-      type: "flat",
-      titleKey: "Intelligence Alerts",
-      href: "/intelligence-alerts",
-      icon: ShieldAlert,
-      roles: ["admin", "owner"],
-    },
-
-    // ── AI APPROVAL QUEUE ─────────────────────────────────────────────
-    {
-      type: "flat",
-      titleKey: "AI Approval Queue",
-      href: "/ai-approvals",
-      icon: ShieldCheck,
-      roles: ["admin", "owner"],
-    },
-
-    // ── AI DECISION MEMORY ────────────────────────────────────────────
-    {
-      type: "flat",
-      titleKey: "Decision Memory",
-      href: "/ai/decision-memory",
-      icon: Brain,
-      roles: ["admin", "owner"],
-    },
-
-    // ── OPERATIONAL CONTEXT ───────────────────────────────────────────
-    {
-      type: "flat",
-      titleKey: "Operational Context",
-      href: "/operational-context",
-      icon: Layers,
-      roles: ["admin", "owner"],
-    },
 
     // ── 3. PRODUK & RECIPE/BOM ────────────────────────────────────────
     // ── 1.5. EXCEPTION MANAGEMENT ─────────────────────────────────────
@@ -314,7 +261,6 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "vendors", href: "/purchase/vendors", icon: UserCircle },
         { titleKey: "Vendor Forms", href: "/purchase/vendor-forms", icon: Send },
         { titleKey: "Audit Trail VMF", href: "/purchase/vmf-audit-trail", icon: Activity },
-        { titleKey: "Thai Tea Procurement", href: "/purchase/thai-tea", icon: ShoppingBag, companyCodes: ["CST"] },
       ],
     },
 
@@ -352,11 +298,6 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "expenseCategories", href: "/expense/categories", icon: Tags, roles: ["admin", "owner"] },
         { titleKey: "expenseReports", href: "/expense/reports", icon: BarChart2, roles: ["admin", "owner"] },
         { titleKey: "trading", href: "/trading", icon: Package, roles: ["admin", "owner", "trading"] },
-        { titleKey: "Dashboard Thai Tea", href: "/thai-tea/dashboard", icon: LayoutDashboard, companyCodes: ["CST"], roles: ["admin", "owner"] },
-        { titleKey: "Stok Bahan Baku", href: "/thai-tea/stock", icon: Boxes, companyCodes: ["CST"], roles: ["admin", "owner"] },
-        { titleKey: "Monitoring Cabang", href: "/thai-tea/branches", icon: GitBranch, companyCodes: ["CST"], roles: ["admin", "owner"] },
-        { titleKey: "Produksi / Racikan", href: "/thai-tea/production", icon: FlaskConical, companyCodes: ["CST"], roles: ["admin", "owner"] },
-        { titleKey: "Laporan Thai Tea", href: "/thai-tea/reports", icon: BarChart2, companyCodes: ["CST"], roles: ["admin", "owner"] },
       ],
     },
 
@@ -424,6 +365,19 @@ export function AppShell({ children }: AppShellProps) {
       ],
     },
 
+    // ── 9.5. NOTIFICATIONS ────────────────────────────────────────────
+    {
+      type: "group",
+      titleKey: "Notifications",
+      basePath: "/notifications",
+      icon: Bell,
+      roles: ["admin", "owner"],
+      children: [
+        { titleKey: "Inbox", href: "/notifications", icon: Bell },
+        { titleKey: "History", href: "/notification-history", icon: MessageCircle },
+      ],
+    },
+
     // ── 10. ADMINISTRATION ────────────────────────────────────────────
     {
       type: "group",
@@ -439,8 +393,6 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "settings", href: "/settings", icon: Settings },
         { titleKey: "correspondences", href: "/correspondences", icon: Mail },
         { titleKey: "emailInbox", href: "/email-inbox", icon: MessageCircle },
-        { titleKey: "Riwayat Notifikasi", href: "/notification-history", icon: Bell },
-        { titleKey: "Notifikasi", href: "/notifications", icon: Bell },
         { titleKey: "WA Templates Logistik", href: "/settings/wa-templates", icon: MessageCircle },
         { titleKey: "Enterprise WA Templates", href: "/settings/enterprise-wa-templates", icon: MessageSquare },
         { titleKey: "Image Manager", href: "/media", icon: ImageIcon },

@@ -1,0 +1,253 @@
+PHASE 2A — FIX CRITICAL ISSUES ONLY
+
+
+
+Gunakan hasil audit Phase 1.
+
+
+
+Fokus hanya pada item FAIL.
+
+JANGAN mengerjakan item WARN terlebih dahulu.
+
+
+
+PERBAIKI:
+
+
+
+1. DUPLICATE MENU
+
+
+
+Hapus duplikasi sidebar berikut:
+
+
+
+- Intelligence Alerts
+
+- AI Approval Queue
+
+- Decision Memory
+
+- Operational Context
+
+- Vendor Leaderboard
+
+- Notifikasi
+
+
+
+Aturan:
+
+
+
+- Pertahankan hanya 1 sumber menu.
+
+- Untuk AI menu:
+
+  pindahkan seluruhnya ke dalam AI Center.
+
+- Untuk Vendor Leaderboard:
+
+  pilih hanya 1 lokasi yang paling tepat.
+
+- Untuk Notifikasi:
+
+  gabungkan menjadi:
+
+    Notifications
+
+      - Inbox
+
+      - History
+
+
+
+Pastikan tidak ada route yang hilang setelah penghapusan.
+
+
+
+--------------------------------------------------
+
+
+
+2. FIX MISSING ROUTE
+
+
+
+Temuan audit:
+
+
+
+/logistics/quotation-reply
+
+
+
+Sidebar mengarah ke route yang tidak ada.
+
+
+
+Periksa:
+
+
+
+- apakah memang harus ada list page?
+
+- apakah route token-only?
+
+
+
+Lakukan salah satu:
+
+
+
+A.
+
+Buat page list quotation reply:
+
+
+
+/logistics/quotation-reply
+
+
+
+atau
+
+
+
+B.
+
+Jika memang token-only:
+
+
+
+hapus menu sidebar tersebut
+
+dan pindahkan akses hanya melalui link WA.
+
+
+
+Jangan biarkan route 404.
+
+
+
+--------------------------------------------------
+
+
+
+3. FIX THAI TEA MODULE
+
+
+
+Audit menemukan endpoint hilang:
+
+
+
+GET /api/thai-tea/movements
+
+GET /api/thai-tea/products
+
+POST /api/thai-tea/production
+
+
+
+Hapus saja Tahi tea module 
+
+
+
+--------------------------------------------------
+
+
+
+4. FIX RBAC MISMATCH
+
+
+
+AI Decision Memory
+
+
+
+Saat ini:
+
+
+
+Sidebar:
+
+admin, owner
+
+
+
+API:
+
+apakah bisa diganti selain clerk user 
+
+
+
+Tentukan policy yang benar.
+
+
+
+Jika fitur memang admin-only:
+
+
+
+ubah API menjadi admin-only.
+
+
+
+Jika fitur untuk semua user:
+
+
+
+ubah sidebar agar sesuai.
+
+
+
+RBAC frontend dan backend harus identik.
+
+
+
+--------------------------------------------------
+
+
+
+5. VALIDASI
+
+
+
+Setelah perbaikan:
+
+
+
+- npm run build
+
+- cek route
+
+- cek sidebar render
+
+- cek permission
+
+- cek console error
+
+
+
+OUTPUT WAJIB:
+
+
+
+A. Fixed Duplicate Menu Report
+
+B. Fixed Route Report
+
+C. Fixed Thai Tea API Report
+
+D. Fixed RBAC Report
+
+E. PASS/WARN/FAIL terbaru
+
+
+
+JANGAN mengerjakan item WARN lainnya dulu.
+
+Fokus hanya pada FAIL sampai semuanya PASS.

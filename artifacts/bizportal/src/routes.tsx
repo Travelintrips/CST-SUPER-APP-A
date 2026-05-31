@@ -55,7 +55,6 @@ import { PaymentRequestsListPage, PaymentRequestEditorPage } from "@/pages/purch
 import { LandedCostsListPage, LandedCostEditorPage } from "@/pages/purchase/landed-costs";
 import VendorComparisonPage from "@/pages/purchase/vendor-comparison";
 import PurchaseReceivePage from "@/pages/purchase/receive";
-import ThaiTeaPurchasePage from "@/pages/purchase/thai-tea";
 // Reports
 import ReportsSalesPage from "@/pages/reports/sales";
 import ReportsPurchasePage from "@/pages/reports/purchase";
@@ -115,13 +114,6 @@ import AuditComparePage from "@/pages/audit/compare";
 // Products
 import ProductItemsPage from "@/pages/products/items";
 import ProductRecipesPage from "@/pages/products/recipes";
-// Thai Tea
-import ThaiTeaDashboardPage from "@/pages/thai-tea/dashboard";
-import ThaiTeaStockPage from "@/pages/thai-tea/stock";
-import ThaiTeaBranchesPage from "@/pages/thai-tea/branches";
-import ThaiTeaProductionPage from "@/pages/thai-tea/production";
-import ThaiTeaRecipesPage from "@/pages/thai-tea/recipes";
-import ThaiTeaReportsPage from "@/pages/thai-tea/reports";
 // Portal
 import PortalCustomersPage from "@/pages/portal-customers";
 import PortalOnboardingApprovalsPage from "@/pages/portal-onboarding-approvals";
@@ -183,6 +175,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/logistics/driver-performance" component={PR(LogisticsDriverPerformancePage)} />
       <Route path="/logistics/quote-requests" component={PR(LogisticsQuoteRequestsPage)} />
       <Route path="/logistics/vendor-quote/:token" component={LogisticsVendorQuotePage} />
+      <Route path="/logistics/quotation-reply" component={PR(LogisticsQuotationReplyPage)} />
       <Route path="/logistics/quotation-reply/:token" component={LogisticsQuotationReplyPage} />
       <Route path="/logistics/margin-rules" component={PR(LogisticsMarginRulesPage)} />
       <Route path="/logistics/rfq/:rfqId/comparison" component={PR(LogisticsRfqComparisonPage)} />
@@ -252,7 +245,6 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/purchase/landed-costs/:id" component={PR(LandedCostEditorPage)} />
       <Route path="/purchase/landed-costs" component={PR(LandedCostsListPage)} />
       <Route path="/purchase/receive" component={PR(PurchaseReceivePage)} />
-      <Route path="/purchase/thai-tea" component={PR(ThaiTeaPurchasePage)} />
       <Route path="/purchase" component={PR(PurchaseDashboardPage)} />
 
       {/* ── Reports ────────────────────────────────────────────────────── */}
@@ -327,14 +319,6 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/product-templates/:id" component={PR(ProductTemplateDetailPage)} />
       <Route path="/product-templates" component={PR(ProductTemplatesPage)} />
 
-      {/* ── Thai Tea ───────────────────────────────────────────────────── */}
-      <Route path="/thai-tea/dashboard" component={PR(ThaiTeaDashboardPage)} />
-      <Route path="/thai-tea/stock" component={PR(ThaiTeaStockPage)} />
-      <Route path="/thai-tea/branches" component={PR(ThaiTeaBranchesPage)} />
-      <Route path="/thai-tea/production" component={PR(ThaiTeaProductionPage)} />
-      <Route path="/thai-tea/recipes" component={PR(ThaiTeaRecipesPage)} />
-      <Route path="/thai-tea/reports" component={PR(ThaiTeaReportsPage)} />
-      <Route path="/thai-tea" component={PR(ThaiTeaDashboardPage)} />
 
 
       {/* ── Vendor Leaderboard ─────────────────────────────────────────── */}
