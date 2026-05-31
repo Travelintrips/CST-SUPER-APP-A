@@ -106,6 +106,7 @@ export default function VendorJobPage() {
   const [showProgressForm, setShowProgressForm] = useState(false);
   const [progressStatus, setProgressStatus] = useState("");
   const [progressNotes, setProgressNotes] = useState("");
+  const [progressPhoto, setProgressPhoto] = useState<File | null>(null);
   const [updatingProgress, setUpdatingProgress] = useState(false);
 
   // POD upload
@@ -181,12 +182,13 @@ export default function VendorJobPage() {
     if (!progressStatus) return;
     setUpdatingProgress(true);
     try {
-      await fetch(`/api/vendor-job/${token}/progress`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: progressStatus, notes: progressNotes }),
-      });
+      const form = new FormData();
+      form.append("status", progressStatus);
+      if (progressNotes) form.append("notes", progressNotes);
+      if (progressPhoto) form.append("photo", progressPhoto);
+      await fetch(`/api/vendor-job/${token}/progress`, { method: "POST", body: form });
       setShowProgressForm(false);
-      setProgressNotes(""); setProgressStatus("");
+      setProgressNotes(""); setProgressStatus(""); setProgressPhoto(null);
       fetchData();
     } finally {
       setUpdatingProgress(false);
@@ -440,6 +442,18 @@ export default function VendorJobPage() {
                 </FormField>
                 <FormField label="Keterangan">
                   <textarea rows={2} className={textareaCls} value={progressNotes} onChange={e => setProgressNotes(e.target.value)} placeholder="Informasi tambahan..." />
+                </FormField>
+                <FormField label="Foto (opsional)">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="w-full text-sm text-slate-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
+                    onChange={e => setProgressPhoto(e.target.files?.[0] ?? null)}
+                  />
+                  {progressPhoto && (
+                    <p className="text-xs text-slate-500 mt-1">📷 {progressPhoto.name}</p>
+                  )}
                 </FormField>
                 <div className="flex gap-3">
                   <button type="button" onClick={() => setShowProgressForm(false)} className="flex-1 rounded-xl border border-slate-200 text-slate-600 py-2.5 text-sm">Batal</button>

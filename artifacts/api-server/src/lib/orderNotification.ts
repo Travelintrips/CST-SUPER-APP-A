@@ -2299,6 +2299,7 @@ export async function sendVendorProgressUpdateNotification(
   status: string,
   adminWaPhone: string,
   notes?: string,
+  photoUrl?: string,
 ): Promise<void> {
   const tpl = await getWaTemplateConfig("admin_personal", "vendor_progress_update", DEFAULT_TPL.admin_personal.vendor_progress_update);
   const msg = renderTemplate(tpl, {
@@ -2306,7 +2307,11 @@ export async function sendVendorProgressUpdateNotification(
     notes: notes || null,
     timestamp: nowWIB(),
   });
-  sendWhatsApp(adminWaPhone, msg).catch((e: unknown) => logger.error({ e }, "WA vendor_progress_update failed"));
+  if (photoUrl) {
+    sendMediaViaService(adminWaPhone, msg, photoUrl).catch((e: unknown) => logger.error({ e }, "WA vendor_progress_update (media) failed"));
+  } else {
+    sendWhatsApp(adminWaPhone, msg).catch((e: unknown) => logger.error({ e }, "WA vendor_progress_update failed"));
+  }
 }
 
 // ── Vendor POD Uploaded (notif admin saat vendor upload POD) ─────────────────

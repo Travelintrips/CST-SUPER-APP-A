@@ -745,8 +745,8 @@ vendorJobPublicRouter.post("/:token/reject", async (req: Request, res: Response)
   }
 });
 
-/** POST /api/vendor-job/:token/progress — vendor update progress */
-vendorJobPublicRouter.post("/:token/progress", async (req: Request, res: Response) => {
+/** POST /api/vendor-job/:token/progress — vendor update progress (multipart: status, notes, foto opsional) */
+vendorJobPublicRouter.post("/:token/progress", upload.single("photo"), async (req: Request, res: Response) => {
   await ensureTables();
   const { token } = req.params as { token: string };
   const { status, notes } = req.body as { status: string; notes?: string };
@@ -797,11 +797,25 @@ vendorJobPublicRouter.post("/:token/progress", async (req: Request, res: Respons
       isPublic: true,
     });
 
+    // Upload foto progress ke public storage (jika ada)
+    let progressPhotoUrl = "";
+    const photoFile = (req as any).file as Express.Multer.File | undefined;
+    if (photoFile && photoFile.mimetype.startsWith("image/")) {
+      try {
+        const domain = getPreferredDomain() || "cstlogistic.co.id";
+        const pubSubPath = `progress-photos/${job.order_id}/${Date.now()}_${photoFile.originalname}`;
+        const pubRelUrl = await pubObjStore.uploadPublicRaw(pubSubPath, photoFile.buffer, photoFile.mimetype);
+        progressPhotoUrl = `https://${domain}${pubRelUrl.startsWith("/") ? pubRelUrl : "/" + pubRelUrl}`;
+      } catch (e) {
+        logger.warn({ e }, "progress photo public upload failed — WA dikirim tanpa gambar");
+      }
+    }
+
     // Notify admin
     const adminWa = await getAdminWa();
     if (adminWa) {
       const statusLabel = JOB_STATUS_LABEL[status.toLowerCase().replace(/\s+/g, "_")] ?? status;
-      sendVendorProgressUpdateNotification(job.order_number, job.vendor_name ?? "—", statusLabel, adminWa, notes).catch(() => {});
+      sendVendorProgressUpdateNotification(job.order_number, job.vendor_name ?? "—", statusLabel, adminWa, notes, progressPhotoUrl || undefined).catch(() => {});
     }
 
     // Notify customer via WA
