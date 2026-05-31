@@ -533,7 +533,7 @@ fulfillmentPublicRouter.post("/:token", async (req: Request, res: Response) => {
     // Notify admin via WA
     const adminWa = await getAdminWa();
     if (adminWa) {
-      const adminLink = `${getBaseUrl()}/bizportal/logistics/orders/${link.orderId}`;
+      const adminLink = `${getBaseUrl()}/logistic-admin/orders/${link.orderId}`;
       const waMsg =
         `✅ *Vendor Mengisi Form Fulfillment*\n\n` +
         `Order: *${order.orderNumber}*\n` +

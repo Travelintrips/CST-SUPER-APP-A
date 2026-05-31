@@ -1175,7 +1175,7 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
           const { getPreferredDomain } = await import("../lib/domain.js");
           const { generateShortLink } = await import("../lib/shortLink.js");
           const domain = getPreferredDomain() || "cstlogistic.co.id";
-          const longUrl = `https://${domain}/bizportal/logistics/orders/${orderId}`;
+          const longUrl = `https://${domain}/logistic-admin/orders/${orderId}`;
           const vendorComparisonLink = await generateShortLink(longUrl, {
             context: "vendor_comparison",
             refType: "order",

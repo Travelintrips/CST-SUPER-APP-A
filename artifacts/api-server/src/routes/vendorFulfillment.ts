@@ -591,7 +591,7 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
         });
       } catch (e) {
         logger.warn({ e }, "vendor-fulfillment: gagal buat confirm_fulfillment link, fallback ke BizPortal URL");
-        bizportalLink = `https://${domain}/bizportal/logistics/orders/${order.id}`;
+        bizportalLink = `https://${domain}/logistic-admin/orders/${order.id}`;
       }
       const detailLines: string[] = [];
       const cat = resolveServiceCategory(link.serviceType);

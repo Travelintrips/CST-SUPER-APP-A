@@ -1292,7 +1292,7 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
           ? `https://${domain}/s/${sl.code}`
           : vfLongUrl;
       } else {
-        detailOrderUrl = `https://${domain}/bizportal/logistics/orders/${order.id}`;
+        detailOrderUrl = `https://${domain}/logistic-admin/orders/${order.id}`;
       }
 
       // WA ke admin group
