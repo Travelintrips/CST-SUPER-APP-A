@@ -1716,7 +1716,26 @@ vendorMiniFormRouter.post("/admin/links", async (req: Request, res: Response) =>
       );
     }
 
-    return res.status(201).json({ ...link, expiresAt: link.expiresAt?.toISOString() ?? null, createdAt: link.createdAt.toISOString(), deactivatedCount });
+    // Auto-generate short link saat link pertama kali dibuat
+    let shortUrl: string | null = null;
+    try {
+      const { generateShortLink } = await import("../lib/shortLink.js");
+      const { getPreferredDomain } = await import("../lib/domain.js");
+      const domain = getPreferredDomain();
+      const formPath = (link.formTarget ?? "vendor") === "customer" ? "customer-mini-form"
+        : (link.formTarget ?? "vendor") === "admin" ? "admin-mini-form"
+        : "vendor-mini-form";
+      const longUrl = domain ? `https://${domain}/${formPath}/${link.token}` : `/${formPath}/${link.token}`;
+      shortUrl = await generateShortLink(longUrl, { context: "vendor_mini_form", refType: "vendor_mini_form_link", refId: String(link.id) });
+      await db.update(vendorMiniFormLinksTable).set({ shortUrl }).where(eq(vendorMiniFormLinksTable.id, link.id));
+      await logActivity("link", link.id, "link_generated", userId,
+        `Short link di-generate otomatis untuk ${serviceType}${orderNumber ? ` (Order: ${orderNumber})` : ""}`,
+        { shortUrl });
+    } catch (shortErr) {
+      req.log?.warn({ err: shortErr }, "Auto short link generation failed (non-fatal)");
+    }
+
+    return res.status(201).json({ ...link, shortUrl, expiresAt: link.expiresAt?.toISOString() ?? null, createdAt: link.createdAt.toISOString(), deactivatedCount });
   } catch (err) {
     req.log?.error({ err }, "vendor-mini-form admin POST links error");
     return res.status(500).json({ error: "Gagal membuat link" });
