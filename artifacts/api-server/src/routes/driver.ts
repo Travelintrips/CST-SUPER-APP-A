@@ -23,6 +23,7 @@ import {
 import { checkGeofence } from "../lib/geofence";
 import { upsertAlert, resolveAlert, getActiveAlerts, hasActiveAlert } from "../lib/geofenceAlertStore";
 import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
+import { updateOrderProgress } from "../lib/orderProgress.js";
 
 const router = Router();
 const adminRouter = Router();
@@ -99,6 +100,14 @@ const DRIVER_TO_LOGISTIC_STATUS: Partial<Record<string, string>> = {
   ARRIVED_AT_DESTINATION:   "Arrived",
   DELIVERED:                "Delivered",
   COMPLETED:                "Delivered",
+};
+
+const DRIVER_STATUS_TO_PROGRESS_STEP: Partial<Record<string, string>> = {
+  ON_THE_WAY_TO_PICKUP:   "PICKUP",
+  IN_TRANSIT:             "IN_TRANSIT",
+  ARRIVED_AT_DESTINATION: "ARRIVED",
+  DELIVERED:              "DELIVERED",
+  COMPLETED:              "COMPLETED",
 };
 
 async function syncDriverToLogisticOrder(
@@ -339,6 +348,19 @@ router.put("/jobs/:jobId/status", requireDriverAuth, async (req, res) => {
 
   await syncParentFreightStatus(job.freightShipmentId, String(status));
   await syncDriverToLogisticOrder(job.logisticOrderId, String(status));
+
+  const progressStep = DRIVER_STATUS_TO_PROGRESS_STEP[String(status)];
+  if (progressStep && job.logisticOrderId) {
+    const [driverRow] = await db.select({ name: driversTable.name })
+      .from(driversTable).where(eq(driversTable.id, driverId));
+    updateOrderProgress(
+      job.logisticOrderId,
+      progressStep,
+      "driver",
+      driverRow?.name ?? "Driver",
+      note ? String(note) : `Driver update: ${status}`,
+    ).catch(() => {});
+  }
 
   // Push real-time event to all admin/dispatcher connections
   broadcastToAdmins("job_status_changed", {
