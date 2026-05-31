@@ -24,6 +24,7 @@ import { ObjectStorageService } from "../lib/objectStorage.js";
 import { createAdminActionLink, getAdminActionUrl } from "./adminAction.js";
 import { generateShortLink } from "../lib/shortLink.js";
 import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
+import { updateOrderProgress } from "../lib/orderProgress.js";
 
 export const vendorFulfillmentPublicRouter = Router();
 
@@ -565,6 +566,7 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
       force: true,
       skipAudit: false,
     });
+    updateOrderProgress(link.orderId, "VENDOR_CONFIRMED", "vendor_wa", vendorName ?? "Vendor", "Vendor mengkonfirmasi fulfillment order").catch(() => {});
 
     await db.insert(orderUpdatesTable).values({
       orderId: link.orderId,

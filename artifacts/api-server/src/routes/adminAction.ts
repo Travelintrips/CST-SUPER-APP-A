@@ -27,6 +27,7 @@ import { sendVendorRequestNotification, sendVendorSelectedAdminWa, sendVendorAwa
 import { generateShortLink } from "../lib/shortLink.js";
 import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
 import { transitionRfqStatus, transitionVendorLinkStatus } from "../lib/services/rfqStatusService.js";
+import { updateOrderProgress } from "../lib/orderProgress.js";
 
 export const adminActionRouter: Router = Router();
 export const adminActionPublicRouter = Router();
@@ -1242,6 +1243,7 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
       }
 
       await transitionLogisticOrderStatus(order.id, "In Progress", { source: "adminAction:confirm_fulfillment", actorType: "admin", force: true });
+      updateOrderProgress(order.id, "IN_PROGRESS", "admin", "Admin", "Admin mengkonfirmasi fulfillment vendor. Order sedang diproses.").catch(() => {});
 
       await db.insert(orderUpdatesTable).values({
         orderId: order.id,
