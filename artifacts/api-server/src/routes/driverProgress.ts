@@ -1,16 +1,23 @@
 import { Router, type Request, type Response } from "express";
 import { eq } from "drizzle-orm";
 import { sql } from "drizzle-orm";
+import { randomUUID } from "crypto";
+import multer from "multer";
 import { db, logisticOrdersTable } from "@workspace/db";
 import { updateOrderProgress } from "../lib/orderProgress.js";
 import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getPreferredDomain } from "../lib/domain.js";
+import { ObjectStorageService } from "../lib/objectStorage.js";
 import { logger } from "../lib/logger.js";
 
 export const driverProgressPublicRouter = Router();
 
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
+const objectStorage = new ObjectStorageService();
+
 const ALLOWED_STEPS = ["PICKUP", "IN_TRANSIT", "ARRIVED", "DELIVERED", "COMPLETED"] as const;
+const PHOTO_REQUIRED_STEPS = new Set(["PICKUP", "ARRIVED", "DELIVERED"]);
 
 const STEP_LABEL: Record<string, string> = {
   PICKUP:     "Penjemputan",
@@ -27,6 +34,10 @@ const STEP_TO_LOGISTIC_STATUS: Record<string, string> = {
   DELIVERED:  "Delivered",
   COMPLETED:  "Delivered",
 };
+
+const ALLOWED_PHOTO_MIME = new Set([
+  "image/jpeg", "image/jpg", "image/png", "image/webp", "image/heic", "image/heif",
+]);
 
 db.execute(sql`
   CREATE TABLE IF NOT EXISTS driver_progress_tokens (
@@ -64,11 +75,17 @@ driverProgressPublicRouter.get("/:token", async (req: Request, res: Response) =>
     if (!order) return res.status(404).json({ error: "Order tidak ditemukan." });
 
     const evRows = await db.execute(sql`
-      SELECT step_key FROM order_progress_events
+      SELECT step_key, metadata FROM order_progress_events
       WHERE order_id = ${orderId} ORDER BY created_at ASC
     `);
-    const completedSteps = ((evRows.rows ?? []) as any[]).map((e) => e.step_key as string);
-    const allowedSteps = ALLOWED_STEPS.filter((s) => !completedSteps.includes(s));
+    const evData = (evRows.rows ?? []) as any[];
+    const completedSteps = evData.map((e) => e.step_key as string);
+    const completedStepsMeta: Record<string, { photoUrl?: string }> = {};
+    evData.forEach((e) => {
+      if (e.metadata?.photoUrl) {
+        completedStepsMeta[e.step_key as string] = { photoUrl: e.metadata.photoUrl as string };
+      }
+    });
 
     return res.json({
       orderNumber: order.orderNumber,
@@ -77,7 +94,8 @@ driverProgressPublicRouter.get("/:token", async (req: Request, res: Response) =>
       destination: order.destination ?? null,
       driverName: row.driver_name ?? null,
       completedSteps,
-      allowedSteps,
+      completedStepsMeta,
+      allowedSteps: ALLOWED_STEPS.filter((s) => !completedSteps.includes(s)),
       stepLabel: STEP_LABEL,
     });
   } catch (err) {
@@ -86,12 +104,46 @@ driverProgressPublicRouter.get("/:token", async (req: Request, res: Response) =>
   }
 });
 
-// POST /api/driver-progress/:token  { stepKey, note? }
+// POST /api/driver-progress/:token/photo
+driverProgressPublicRouter.post("/:token/photo", upload.single("file"), async (req: Request, res: Response) => {
+  const { token } = req.params;
+  const stepKey = String(req.body?.stepKey ?? "");
+  if (!stepKey || !(ALLOWED_STEPS as readonly string[]).includes(stepKey)) {
+    return res.status(400).json({ error: "stepKey tidak valid." });
+  }
+  try {
+    const rows = await db.execute(sql`
+      SELECT id, expires_at FROM driver_progress_tokens WHERE token = ${token} LIMIT 1
+    `);
+    const [row] = (rows.rows ?? []) as any[];
+    if (!row) return res.status(404).json({ error: "Link tidak valid." });
+    if (new Date(row.expires_at as string) < new Date()) {
+      return res.status(410).json({ error: "Link sudah kadaluarsa." });
+    }
+    if (!req.file) return res.status(400).json({ error: "File diperlukan." });
+    if (!ALLOWED_PHOTO_MIME.has(req.file.mimetype)) {
+      return res.status(400).json({ error: "Hanya JPG, PNG, WebP, atau HEIC yang diizinkan." });
+    }
+
+    const ext = req.file.originalname?.split(".").pop()?.toLowerCase() ?? "jpg";
+    const subPath = `driver-progress/${token}/${stepKey}-${randomUUID()}.${ext}`;
+    const url = await objectStorage.uploadPublicRaw(subPath, req.file.buffer, req.file.mimetype);
+    return res.json({ url });
+  } catch (err) {
+    logger.error({ err }, "driver-progress photo upload error");
+    return res.status(500).json({ error: "Upload foto gagal." });
+  }
+});
+
+// POST /api/driver-progress/:token  { stepKey, note?, photoUrl? }
 driverProgressPublicRouter.post("/:token", async (req: Request, res: Response) => {
   const { token } = req.params;
-  const { stepKey, note } = req.body ?? {};
+  const { stepKey, note, photoUrl } = req.body ?? {};
   if (!stepKey || !(ALLOWED_STEPS as readonly string[]).includes(String(stepKey))) {
     return res.status(400).json({ error: "stepKey tidak valid." });
+  }
+  if (PHOTO_REQUIRED_STEPS.has(String(stepKey)) && !photoUrl) {
+    return res.status(400).json({ error: `Foto wajib untuk step ${STEP_LABEL[String(stepKey)] ?? stepKey}.` });
   }
   try {
     const rows = await db.execute(sql`
@@ -113,6 +165,7 @@ driverProgressPublicRouter.post("/:token", async (req: Request, res: Response) =
       "driver",
       driverName,
       note ? String(note) : `Driver update via WA link: ${stepKey}`,
+      photoUrl ? { photoUrl: String(photoUrl) } : undefined,
     );
 
     const logisticStatus = STEP_TO_LOGISTIC_STATUS[String(stepKey)];
@@ -133,7 +186,7 @@ driverProgressPublicRouter.post("/:token", async (req: Request, res: Response) =
       }).from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
 
       if (order?.phone) {
-        const domain = getPreferredDomain() || "cstlogistic.co.id";
+        const domain = process.env.REPLIT_DEV_DOMAIN || getPreferredDomain() || "cstlogistic.co.id";
         const waMsg =
           `🚚 *Update Pengiriman — CST Logistics*\n\n` +
           `Halo ${order.customerName},\n\n` +
