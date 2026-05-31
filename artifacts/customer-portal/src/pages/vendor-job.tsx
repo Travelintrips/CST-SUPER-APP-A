@@ -1,37 +1,79 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useParams } from "wouter";
 import { resolveServiceCategory } from "@workspace/logistics-constants";
 
 type LightboxItem = { url: string; title: string; subtitle?: string };
 
-function Lightbox({ item, onClose }: { item: LightboxItem; onClose: () => void }) {
+function Lightbox({
+  items, index, onNavigate, onClose,
+}: {
+  items: LightboxItem[];
+  index: number;
+  onNavigate: (i: number) => void;
+  onClose: () => void;
+}) {
   const overlayRef = useRef<HTMLDivElement>(null);
+  const total = items.length;
+  const item = items[index];
+  const hasPrev = index > 0;
+  const hasNext = index < total - 1;
+
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { onClose(); return; }
+      if (e.key === "ArrowLeft"  && hasPrev) onNavigate(index - 1);
+      if (e.key === "ArrowRight" && hasNext) onNavigate(index + 1);
+    };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [onClose]);
+  }, [onClose, onNavigate, index, hasPrev, hasNext]);
+
+  if (!item) return null;
   return (
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/85 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4"
       onClick={e => { if (e.target === overlayRef.current) onClose(); }}
     >
+      {/* Prev */}
+      {hasPrev && (
+        <button
+          onClick={() => onNavigate(index - 1)}
+          className="absolute left-3 top-1/2 -translate-y-1/2 z-10 w-10 h-10 rounded-full bg-white/20 hover:bg-white/40 text-white text-xl flex items-center justify-center transition"
+          aria-label="Foto sebelumnya"
+        >‹</button>
+      )}
+      {/* Next */}
+      {hasNext && (
+        <button
+          onClick={() => onNavigate(index + 1)}
+          className="absolute right-3 top-1/2 -translate-y-1/2 z-10 w-10 h-10 rounded-full bg-white/20 hover:bg-white/40 text-white text-xl flex items-center justify-center transition"
+          aria-label="Foto berikutnya"
+        >›</button>
+      )}
+
       <div className="relative flex flex-col items-center gap-3 max-w-full">
+        {/* Close */}
         <button
           onClick={onClose}
           className="absolute -top-3 -right-3 z-10 w-8 h-8 rounded-full bg-white/90 text-slate-800 text-lg font-bold leading-none flex items-center justify-center shadow-lg hover:bg-white"
           aria-label="Tutup"
         >×</button>
+
         <img
+          key={item.url}
           src={item.url}
           alt={item.title}
-          className="max-h-[78vh] max-w-[90vw] rounded-xl shadow-2xl object-contain"
+          className="max-h-[78vh] max-w-[85vw] rounded-xl shadow-2xl object-contain"
         />
-        <div className="text-center">
+
+        <div className="text-center space-y-0.5">
+          {total > 1 && (
+            <p className="text-white/50 text-xs">{index + 1} / {total}</p>
+          )}
           <p className="text-white text-sm font-semibold drop-shadow">{item.title}</p>
           {item.subtitle && (
-            <p className="text-white/60 text-xs mt-0.5 drop-shadow">{item.subtitle}</p>
+            <p className="text-white/60 text-xs drop-shadow">{item.subtitle}</p>
           )}
         </div>
       </div>
@@ -128,7 +170,30 @@ export default function VendorJobPage() {
   const [data, setData] = useState<JobData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [lightbox, setLightbox] = useState<LightboxItem | null>(null);
+  const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
+
+  const lightboxItems = useMemo<LightboxItem[]>(() => {
+    if (!data) return [];
+    const podPhotos: LightboxItem[] = data.podFiles
+      .filter(f => f.publicUrl)
+      .map(f => ({ url: f.publicUrl!, title: f.name, subtitle: "Foto POD" }));
+    const progressPhotos: LightboxItem[] = [...data.progress]
+      .reverse()
+      .filter(p => p.photo_url)
+      .map(p => ({
+        url: p.photo_url!,
+        title: p.status,
+        subtitle:
+          new Date(p.created_at).toLocaleString("id-ID", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) +
+          (p.notes ? ` · ${p.notes}` : ""),
+      }));
+    return [...podPhotos, ...progressPhotos];
+  }, [data]);
+
+  const lightboxIdxByUrl = useMemo(
+    () => new Map(lightboxItems.map((item, i) => [item.url, i])),
+    [lightboxItems],
+  );
 
   // Accept form
   const [showAcceptForm, setShowAcceptForm] = useState(false);
@@ -294,7 +359,14 @@ export default function VendorJobPage() {
 
   return (
     <>
-    {lightbox && <Lightbox item={lightbox} onClose={() => setLightbox(null)} />}
+    {lightboxIdx !== null && (
+      <Lightbox
+        items={lightboxItems}
+        index={lightboxIdx}
+        onNavigate={setLightboxIdx}
+        onClose={() => setLightboxIdx(null)}
+      />
+    )}
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-slate-50 py-8 px-4">
       <div className="max-w-xl mx-auto space-y-4">
         {/* Header */}
@@ -524,7 +596,7 @@ export default function VendorJobPage() {
                 {data.podFiles.some(f => f.publicUrl) && (
                   <div className="flex flex-wrap gap-2">
                     {data.podFiles.filter(f => f.publicUrl).map((f, i) => (
-                      <button key={i} type="button" onClick={() => setLightbox({ url: f.publicUrl!, title: f.name, subtitle: f.type?.startsWith("image/") ? "Foto POD" : "Dokumen" })} className="focus:outline-none">
+                      <button key={i} type="button" onClick={() => { const idx = lightboxIdxByUrl.get(f.publicUrl!); if (idx !== undefined) setLightboxIdx(idx); }} className="focus:outline-none">
                         <img
                           src={f.publicUrl}
                           alt={f.name}
@@ -579,7 +651,7 @@ export default function VendorJobPage() {
                     <p className="font-semibold text-slate-800">{p.status}</p>
                     {p.notes && <p className="text-slate-600 text-xs mt-0.5">{p.notes}</p>}
                     {p.photo_url && (
-                      <button type="button" onClick={() => setLightbox({ url: p.photo_url!, title: p.status, subtitle: new Date(p.created_at).toLocaleString("id-ID", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) + (p.notes ? ` · ${p.notes}` : "") })} className="inline-block mt-1 focus:outline-none">
+                      <button type="button" onClick={() => { const idx = lightboxIdxByUrl.get(p.photo_url!); if (idx !== undefined) setLightboxIdx(idx); }} className="inline-block mt-1 focus:outline-none">
                         <img
                           src={p.photo_url}
                           alt="Foto progress"
