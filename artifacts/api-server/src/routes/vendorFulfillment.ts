@@ -608,6 +608,56 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
         if (body.etd)            detailLines.push(`📅 ETD         : ${body.etd}`);
         if (body.eta)            detailLines.push(`📅 ETA         : ${body.eta}`);
       } else if (cat === "product") {
+        // ── Item breakdown: barang + harga vendor + PPN + total ──
+        if (link.vendorId) {
+          const orderItems = await db.select().from(logisticOrderItemsTable)
+            .where(eq(logisticOrderItemsTable.orderId, order.id));
+          const vendorCatalog = await db.select().from(vendorCatalogItemsTable)
+            .where(and(eq(vendorCatalogItemsTable.vendorId, link.vendorId), eq(vendorCatalogItemsTable.isActive, true)));
+
+          const PPN_RATE = 0.11;
+          const revisedTotal = (body.priceConfirmed === "revised" && body.revisedPrice)
+            ? (parseFloat(String(body.revisedPrice).replace(/[^\d.]/g, "")) || null)
+            : null;
+          const isSingle = orderItems.length === 1;
+
+          const itemLines: string[] = [];
+          for (const item of orderItems) {
+            const inputData = (item.inputData as Record<string, unknown>) ?? {};
+            const qty = (() => {
+              const q = inputData.qty ?? inputData.quantity ?? inputData.jumlah;
+              return q != null ? (Number(q) || 1) : 1;
+            })();
+            const unit = String(inputData.unit ?? (item as any).unit ?? "Unit");
+            const name = item.serviceName || item.category || "—";
+            const nameLower = name.toLowerCase().trim();
+            const catItem = vendorCatalog.find((c) => {
+              const cn = c.name.toLowerCase().trim();
+              return cn.includes(nameLower) || nameLower.includes(cn);
+            }) ?? vendorCatalog[0];
+            const priceBase = catItem ? parseFloat(String(catItem.priceBase)) : null;
+
+            let subtotal: number | null = null;
+            if (isSingle && revisedTotal != null) subtotal = revisedTotal;
+            else if (priceBase != null) subtotal = Math.round(priceBase * qty);
+
+            itemLines.push(`• ${name}`);
+            itemLines.push(`  Qty      : ${qty} ${unit}`);
+            if (priceBase != null) itemLines.push(`  Harga    : ${fmtRp(priceBase)}/unit`);
+            if (subtotal != null) {
+              const ppn = Math.round(subtotal * PPN_RATE);
+              const total = subtotal + ppn;
+              itemLines.push(`  Subtotal : ${fmtRp(subtotal)}`);
+              itemLines.push(`  PPN 11%  : ${fmtRp(ppn)}`);
+              itemLines.push(`  *Total   : ${fmtRp(total)}*`);
+            }
+          }
+          if (itemLines.length > 0) {
+            detailLines.push(...itemLines);
+            detailLines.push("──────────────────");
+          }
+        }
+
         const SL: Record<string, string> = { all: "Tersedia Semua ✅", partial: "Tersedia Sebagian ⚠️", none: "Tidak Tersedia ❌" };
         if (body.stockConfirmed)    detailLines.push(`📦 Stok        : ${SL[body.stockConfirmed] ?? body.stockConfirmed}`);
         if (body.qtyConfirmed)      detailLines.push(`🔢 Qty         : ${body.qtyConfirmed}`);
