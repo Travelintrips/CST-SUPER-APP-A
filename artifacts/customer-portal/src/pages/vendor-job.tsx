@@ -6,6 +6,7 @@ type ProgressEntry = {
   id: number;
   status: string;
   notes: string | null;
+  photo_url: string | null;
   updated_by: string;
   is_public: boolean;
   created_at: string;
@@ -46,7 +47,7 @@ type JobData = {
     status: string;
   };
   operationalDetails: OperationalDetails;
-  podFiles: { name: string; url: string; type: string }[];
+  podFiles: { name: string; url: string; type: string; publicUrl?: string }[];
   completionNotes?: string | null;
   acceptedAt?: string | null;
   rejectedAt?: string | null;
@@ -478,10 +479,26 @@ export default function VendorJobPage() {
               )}
             </div>
             {data.podFiles.length > 0 && (
-              <div className="space-y-1">
+              <div className="space-y-2">
+                {/* Thumbnail grid untuk file gambar */}
+                {data.podFiles.some(f => f.publicUrl) && (
+                  <div className="flex flex-wrap gap-2">
+                    {data.podFiles.filter(f => f.publicUrl).map((f, i) => (
+                      <a key={i} href={f.publicUrl} target="_blank" rel="noopener noreferrer">
+                        <img
+                          src={f.publicUrl}
+                          alt={f.name}
+                          className="w-20 h-20 object-cover rounded-lg border border-slate-200 shadow-sm hover:opacity-90 transition-opacity"
+                        />
+                      </a>
+                    ))}
+                  </div>
+                )}
+                {/* Daftar semua file */}
                 {data.podFiles.map((f, i) => (
                   <div key={i} className="flex items-center gap-2 text-xs text-slate-600">
-                    <span>📄</span><span>{f.name}</span>
+                    <span>{f.type?.startsWith("image/") ? "🖼" : "📄"}</span>
+                    <span>{f.name}</span>
                   </div>
                 ))}
               </div>
@@ -521,6 +538,15 @@ export default function VendorJobPage() {
                     <div className={`absolute -left-[15px] top-1 w-2.5 h-2.5 rounded-full border-2 border-white ${i === 0 ? "bg-blue-500" : "bg-slate-300"}`} />
                     <p className="font-semibold text-slate-800">{p.status}</p>
                     {p.notes && <p className="text-slate-600 text-xs mt-0.5">{p.notes}</p>}
+                    {p.photo_url && (
+                      <a href={p.photo_url} target="_blank" rel="noopener noreferrer" className="inline-block mt-1">
+                        <img
+                          src={p.photo_url}
+                          alt="Foto progress"
+                          className="w-28 h-28 object-cover rounded-lg border border-slate-200 shadow-sm hover:opacity-90 transition-opacity"
+                        />
+                      </a>
+                    )}
                     <p className="text-xs text-slate-400 mt-0.5">
                       {new Date(p.created_at).toLocaleString("id-ID", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
                       {" · "}{p.updated_by === "admin" ? "Admin" : "Vendor"}

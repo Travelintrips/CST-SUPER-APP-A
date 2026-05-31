@@ -107,10 +107,13 @@ async function ensureTables() {
         job_order_id INTEGER REFERENCES vendor_job_orders(id) ON DELETE CASCADE,
         status       TEXT NOT NULL,
         notes        TEXT,
+        photo_url    TEXT,
         updated_by   TEXT NOT NULL DEFAULT 'admin',
         is_public    BOOLEAN NOT NULL DEFAULT TRUE,
         created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+
+      ALTER TABLE order_tracking_progress ADD COLUMN IF NOT EXISTS photo_url TEXT;
 
       ALTER TABLE logistic_orders
         ADD COLUMN IF NOT EXISTS tracking_token TEXT UNIQUE,
@@ -788,6 +791,9 @@ vendorJobPublicRouter.post("/:token/progress", upload.single("photo"), async (re
       FROM vendor_job_orders WHERE token = ${token}
     `);
 
+    // Simpan photo_url di progress entry (update row yang baru saja diinsert)
+    // dilakukan setelah foto di-upload agar photo_url tersedia
+
     await db.insert(orderUpdatesTable).values({
       orderId: job.order_id,
       actorType: "vendor",
@@ -806,6 +812,17 @@ vendorJobPublicRouter.post("/:token/progress", upload.single("photo"), async (re
         const pubSubPath = `progress-photos/${job.order_id}/${Date.now()}_${photoFile.originalname}`;
         const pubRelUrl = await pubObjStore.uploadPublicRaw(pubSubPath, photoFile.buffer, photoFile.mimetype);
         progressPhotoUrl = `https://${domain}${pubRelUrl.startsWith("/") ? pubRelUrl : "/" + pubRelUrl}`;
+        // Simpan photo_url ke row progress yang baru diinsert
+        await db.execute(sql`
+          UPDATE order_tracking_progress
+          SET photo_url = ${progressPhotoUrl}
+          WHERE id = (
+            SELECT id FROM order_tracking_progress
+            WHERE order_id = ${job.order_id} AND updated_by = 'vendor' AND photo_url IS NULL
+            ORDER BY created_at DESC
+            LIMIT 1
+          )
+        `);
       } catch (e) {
         logger.warn({ e }, "progress photo public upload failed — WA dikirim tanpa gambar");
       }
@@ -869,20 +886,25 @@ vendorJobPublicRouter.post("/:token/pod", upload.array("files", 10), async (req:
             name: file.originalname,
             url: key,
             type: file.mimetype,
+            publicUrl: "", // diisi di bawah jika gambar
           });
         }
       } catch (e) {
         logger.warn({ e, key }, "POD upload to objstore failed");
       }
 
-      // Jika file adalah gambar, juga simpan ke public storage untuk notifikasi WA
-      if (!firstPublicImageUrl && file.mimetype.startsWith("image/")) {
+      // Jika file adalah gambar, juga simpan ke public storage untuk notifikasi WA dan thumbnail
+      if (file.mimetype.startsWith("image/")) {
         try {
           const pubSubPath = `pod-photos/${job.order_id}/${ts}_${file.originalname}`;
           const pubRelUrl = await pubObjStore.uploadPublicRaw(pubSubPath, file.buffer, file.mimetype);
-          firstPublicImageUrl = `https://${domain}${pubRelUrl.startsWith("/") ? pubRelUrl : "/" + pubRelUrl}`;
+          const fullPubUrl = `https://${domain}${pubRelUrl.startsWith("/") ? pubRelUrl : "/" + pubRelUrl}`;
+          // Simpan ke entry terakhir yang baru saja di-push
+          const last = uploadedUrls[uploadedUrls.length - 1];
+          if (last) last.publicUrl = fullPubUrl;
+          if (!firstPublicImageUrl) firstPublicImageUrl = fullPubUrl;
         } catch (e) {
-          logger.warn({ e }, "POD image public upload for WA failed — will send text-only notification");
+          logger.warn({ e }, "POD image public upload failed — thumbnail tidak tersedia");
         }
       }
     }
