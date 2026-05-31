@@ -722,6 +722,9 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
         `━━━━━━━━━━━━━━━━━━\n` +
         (detailLines.length > 0 ? detailLines.join("\n") + "\n" : "") +
         `━━━━━━━━━━━━━━━━━━\n` +
+        `📊 Status     : *Vendor Confirmed*\n` +
+        `⏭ Selanjutnya: Konfirmasi admin → Order In Progress\n` +
+        `━━━━━━━━━━━━━━━━━━\n` +
         `✅ *Konfirmasi & Mulai Pengiriman:*\n` +
         `Klik link berikut untuk konfirmasi langsung:\n${bizportalLink}`;
 
