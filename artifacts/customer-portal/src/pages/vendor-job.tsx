@@ -4,6 +4,8 @@ import { resolveServiceCategory } from "@workspace/logistics-constants";
 
 type LightboxItem = { url: string; title: string; subtitle?: string };
 
+const SWIPE_THRESHOLD = 50;
+
 function Lightbox({
   items, index, onNavigate, onClose,
 }: {
@@ -13,6 +15,8 @@ function Lightbox({
   onClose: () => void;
 }) {
   const overlayRef = useRef<HTMLDivElement>(null);
+  const touchStartX = useRef<number | null>(null);
+  const touchStartY = useRef<number | null>(null);
   const total = items.length;
   const item = items[index];
   const hasPrev = index > 0;
@@ -28,12 +32,31 @@ function Lightbox({
     return () => window.removeEventListener("keydown", handler);
   }, [onClose, onNavigate, index, hasPrev, hasNext]);
 
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX.current === null || touchStartY.current === null) return;
+    const dx = e.changedTouches[0].clientX - touchStartX.current;
+    const dy = e.changedTouches[0].clientY - touchStartY.current;
+    touchStartX.current = null;
+    touchStartY.current = null;
+    // Abaikan jika gerakan lebih dominan vertikal (scroll)
+    if (Math.abs(dy) > Math.abs(dx)) return;
+    if (dx < -SWIPE_THRESHOLD && hasNext) onNavigate(index + 1);
+    if (dx >  SWIPE_THRESHOLD && hasPrev) onNavigate(index - 1);
+  };
+
   if (!item) return null;
   return (
     <div
       ref={overlayRef}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4"
       onClick={e => { if (e.target === overlayRef.current) onClose(); }}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
     >
       {/* Prev */}
       {hasPrev && (
