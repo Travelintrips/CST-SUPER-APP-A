@@ -1119,33 +1119,6 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
       const fwdUrl = getAdminActionUrl(fwdToken);
       const fwdShort = await generateShortLink(fwdUrl, { context: "admin_action", refType: "rfq", refId: String(rfq.id) });
 
-      const adminGroupWa2 = await getAdminGroupWa();
-      if (adminGroupWa2) {
-        const vendorName = vendor?.name ?? `Vendor #${vendorLink.vendorId}`;
-        sendWhatsApp(adminGroupWa2,
-          `✅ Vendor dipilih: *${vendorName}*\n` +
-          `Order: ${order.orderNumber} | ${fmtRp(vendorLink.offeredPrice ?? vendorLink.basicPrice)}\n` +
-          (quoteShortUrl ? `📤 Penawaran terkirim ke customer\n` : "") +
-          `\nMenunggu konfirmasi customer sebelum diteruskan ke vendor.`
-        ).catch(() => {});
-      }
-      const _vendorCostNum = Number(vendorLink.offeredPrice ?? vendorLink.basicPrice ?? 0);
-      const _sellingPriceForWa = (sellingPrice != null && sellingPrice > _vendorCostNum) ? sellingPrice : null;
-      sendVendorSelectedAdminWa({
-        rfqNumber: rfq.rfqNumber,
-        orderNumber: order.orderNumber,
-        customerName: order.customerName ?? "—",
-        companyName: (order as any).companyName ?? null,
-        shipmentType: order.shipmentType ?? "—",
-        origin: order.origin ?? "—",
-        destination: order.destination ?? "—",
-        vendorName: vendor?.name ?? `Vendor #${vendorLink.vendorId}`,
-        vendorCost: vendorLink.offeredPrice ?? vendorLink.basicPrice,
-        sellingPrice: _sellingPriceForWa,
-        eta: vendorLink.eta ?? null,
-        quoteSentToCustomer: sendQuoteToCustomer && !!quoteShortUrl,
-        forwardVendorUrl: null,
-      }).catch(() => {});
 
       if (vendor?.phone) {
         const _awardDomain = getPreferredDomain() || "cstlogistic.co.id";
