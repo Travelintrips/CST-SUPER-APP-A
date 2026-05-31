@@ -555,43 +555,78 @@ customerQuotePublicRouter.get("/:token", async (req: Request, res: Response) => 
       return null;
     }
 
-    const priceItems = orderItems.map((i) => {
-      const qty = extractQty(i.inputData);
-      const unitPrice = extractUnitPrice(i.inputData);
-      const subtotal = i.subtotal ? Number(i.subtotal) : 0;
-      // Jika unitPrice tersedia dan qty ada, hitung subtotal yang benar; else gunakan DB subtotal
-      const computedSubtotal = (unitPrice != null && qty != null) ? unitPrice * qty : subtotal;
-      return {
-        name: i.serviceName,
-        category: i.category,
-        subtotal: computedSubtotal,
-        unitPrice,
-        qty,
-        unit: extractUnit(i.inputData),
-      };
-    });
-
+    const finalCustomerPrice = link.finalCustomerPrice ? Number(link.finalCustomerPrice) : null;
     const orderSubtotal = order.subtotal ? Number(order.subtotal) : 0;
     const orderTax = order.tax ? Number(order.tax) : 0;
-    const orderGrandTotal = order.grandTotal ? Number(order.grandTotal) : 0;
-    const finalCustomerPrice = link.finalCustomerPrice ? Number(link.finalCustomerPrice) : null;
 
-    // Derive subtotal/tax breakdown when order fields aren't set
-    // but finalCustomerPrice is known (assume 11% PPN inclusive)
+    // finalCustomerPrice (harga jual ke customer yang admin set) SELALU prioritas utama.
+    // orderSubtotal/orderTax adalah harga estimasi internal — tidak boleh tampil ke customer.
     let displaySubtotal: number | null = null;
     let displayTax: number | null = null;
     let displayTotal: number | null = finalCustomerPrice;
 
-    if (orderSubtotal > 0 && orderTax > 0) {
-      displaySubtotal = orderSubtotal;
-      displayTax = orderTax;
-      displayTotal = orderSubtotal + orderTax;
-    } else if (finalCustomerPrice && finalCustomerPrice > 0) {
-      // finalCustomerPrice is the quoted total — show PPN breakdown
+    if (finalCustomerPrice && finalCustomerPrice > 0) {
       displaySubtotal = Math.round(finalCustomerPrice / 1.11);
       displayTax = finalCustomerPrice - displaySubtotal;
       displayTotal = finalCustomerPrice;
+    } else if (orderSubtotal > 0 && orderTax > 0) {
+      // Fallback: belum ada sellingPrice — tampilkan estimasi internal
+      displaySubtotal = orderSubtotal;
+      displayTax = orderTax;
+      displayTotal = orderSubtotal + orderTax;
     }
+
+    // Bangun priceItems: jika finalCustomerPrice tersedia, alokasikan proporsional
+    // dari displaySubtotal ke tiap item (bukan dari harga produk raw)
+    const rawItems = orderItems.map((i) => {
+      const qty = extractQty(i.inputData);
+      const estSubtotal = i.subtotal ? Number(i.subtotal) : 0;
+      // Fallback: hitung dari unitPrice jika subtotal 0
+      const unitPriceRaw = extractUnitPrice(i.inputData);
+      const computedEst = estSubtotal > 0
+        ? estSubtotal
+        : (unitPriceRaw != null && qty != null ? unitPriceRaw * qty : 0);
+      return {
+        name: i.serviceName,
+        category: i.category,
+        qty,
+        unit: extractUnit(i.inputData),
+        estSubtotal: computedEst,
+        unitPriceRaw,
+      };
+    });
+
+    const totalEst = rawItems.reduce((s, it) => s + it.estSubtotal, 0);
+
+    const priceItems = rawItems.map((it) => {
+      if (displaySubtotal != null && displaySubtotal > 0) {
+        // Proporsi dari harga jual admin
+        const ratio = totalEst > 0 ? it.estSubtotal / totalEst : 1 / rawItems.length;
+        const itemSelling = Math.round(displaySubtotal * ratio);
+        const unitPrice = it.qty && it.qty > 0 ? Math.round(itemSelling / it.qty) : null;
+        return {
+          name: it.name,
+          category: it.category,
+          subtotal: itemSelling,
+          unitPrice,
+          qty: it.qty,
+          unit: it.unit,
+        };
+      }
+      // Fallback: gunakan harga estimasi mentah
+      const subtotal = it.estSubtotal;
+      const unitPrice = it.qty && it.qty > 0 && subtotal > 0
+        ? Math.round(subtotal / it.qty)
+        : it.unitPriceRaw;
+      return {
+        name: it.name,
+        category: it.category,
+        subtotal,
+        unitPrice,
+        qty: it.qty,
+        unit: it.unit,
+      };
+    });
 
     return res.json({
       token,
