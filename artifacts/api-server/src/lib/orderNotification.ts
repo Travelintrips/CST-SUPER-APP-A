@@ -2774,7 +2774,7 @@ export async function sendInvoiceIssuedNotification(
 
 // ── runWaTemplateMigration ─────────────────────────────────────────────────────
 // Creates the whatsapp_template_configs table if missing, seeds default templates,
-// and upgrades stale rows that are missing required markers (e.g. {{productList}}).
+// and upgrades stale rows that are missing required markers.
 export async function runWaTemplateMigration(): Promise<void> {
   try {
     // 1. Ensure table exists
@@ -2809,7 +2809,7 @@ export async function runWaTemplateMigration(): Promise<void> {
 
     // Required marker per pair — if missing from the DB row, force-upgrade it
     const markerMap: Record<string, string> = {
-      "vendor__vendor_request": "{{productList}}",
+      "vendor__vendor_request": "{{productListNoPrice}}",
       "vendor__order_new":      "{{productList}}",
       "admin_personal__order_new": "{{productList}}",
       "admin_group__order_new":    "{{productList}}",
