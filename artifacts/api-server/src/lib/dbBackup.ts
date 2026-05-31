@@ -27,10 +27,16 @@ let lastBackupDate = ""; // "YYYY-MM-DD" of last successful backup
 
 // ── Supabase client ───────────────────────────────────────────────────────────
 function getSupabase() {
-  const raw = process.env.VITE_SUPABASE_URL ?? process.env.SUPABASE_URL ?? "";
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
-  if (!raw || !key) return null;
-  const url = raw.startsWith("https://") ? raw : `https://${raw}.supabase.co`;
+  const rawKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+  const devKey = process.env.SUPABASE_SERVICE_ROLE_KEY_DEV ?? "";
+  const key = rawKey.length > 100 ? rawKey : devKey;
+
+  const rawUrl = rawKey.length > 100
+    ? (process.env.VITE_SUPABASE_URL ?? process.env.SUPABASE_URL ?? "")
+    : (process.env.SUPABASE_URL_DEV ?? "").replace(/\/rest\/v1\/?$/, "");
+
+  if (!rawUrl || !key) return null;
+  const url = rawUrl.startsWith("https://") ? rawUrl : `https://${rawUrl}.supabase.co`;
   return createClient(url, key, {
     auth: { autoRefreshToken: false, persistSession: false },
     realtime: { transport: WebSocket as unknown as typeof globalThis.WebSocket },

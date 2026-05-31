@@ -16,10 +16,17 @@ function normalizeSupabaseUrl(raw: string): string {
   return `https://${raw}.supabase.co`;
 }
 
+// Use production key if valid (>100 chars), else fallback to DEV key/URL
+const _rawKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+const _devKey = process.env.SUPABASE_SERVICE_ROLE_KEY_DEV ?? "";
+const _devUrl = process.env.SUPABASE_URL_DEV ?? "";
+
+const SUPABASE_KEY = _rawKey.length > 100 ? _rawKey : _devKey;
 const SUPABASE_URL = normalizeSupabaseUrl(
-  process.env.VITE_SUPABASE_URL ?? process.env.SUPABASE_URL ?? ""
+  _rawKey.length > 100
+    ? (process.env.VITE_SUPABASE_URL ?? process.env.SUPABASE_URL ?? "")
+    : _devUrl.replace(/\/rest\/v1\/?$/, "") // strip /rest/v1 suffix from DEV URL
 );
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
 const PUBLIC_BUCKET = "public-assets";
 const PRIVATE_BUCKET = "private-uploads";
