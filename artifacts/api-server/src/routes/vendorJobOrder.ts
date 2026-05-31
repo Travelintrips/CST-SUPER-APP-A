@@ -52,6 +52,7 @@ import { logger } from "../lib/logger.js";
 import { recordDecision, updateDecisionOutcome } from "../lib/decisionMemory.js";
 import multer from "multer";
 import { Client as ObjStoreClient } from "@replit/object-storage";
+import { ObjectStorageService } from "../lib/objectStorage.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Migration (idempotent)
@@ -153,6 +154,7 @@ const JOB_STATUS_LABEL: Record<string, string> = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const objStore = new ObjStoreClient();
+const pubObjStore = new ObjectStorageService();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -840,8 +842,12 @@ vendorJobPublicRouter.post("/:token/pod", upload.array("files", 10), async (req:
 
     // Upload files ke object storage
     const uploadedUrls: { name: string; url: string; type: string }[] = [];
+    let firstPublicImageUrl = "";
+    const domain = getPreferredDomain() || "cstlogistic.co.id";
+
     for (const file of files) {
-      const key = `private/pod/${job.order_id}/${Date.now()}_${file.originalname}`;
+      const ts = Date.now();
+      const key = `private/pod/${job.order_id}/${ts}_${file.originalname}`;
       try {
         const uploadResult = await objStore.uploadFromBytes(key, file.buffer);
         if (uploadResult.ok) {
@@ -853,6 +859,17 @@ vendorJobPublicRouter.post("/:token/pod", upload.array("files", 10), async (req:
         }
       } catch (e) {
         logger.warn({ e, key }, "POD upload to objstore failed");
+      }
+
+      // Jika file adalah gambar, juga simpan ke public storage untuk notifikasi WA
+      if (!firstPublicImageUrl && file.mimetype.startsWith("image/")) {
+        try {
+          const pubSubPath = `pod-photos/${job.order_id}/${ts}_${file.originalname}`;
+          const pubRelUrl = await pubObjStore.uploadPublicRaw(pubSubPath, file.buffer, file.mimetype);
+          firstPublicImageUrl = `https://${domain}${pubRelUrl.startsWith("/") ? pubRelUrl : "/" + pubRelUrl}`;
+        } catch (e) {
+          logger.warn({ e }, "POD image public upload for WA failed — will send text-only notification");
+        }
       }
     }
 
@@ -893,7 +910,7 @@ vendorJobPublicRouter.post("/:token/pod", upload.array("files", 10), async (req:
 
     const adminWa = await getAdminWa();
     if (adminWa) {
-      sendVendorPodUploadedNotification(job.order_number, job.vendor_name ?? "—", files.length, adminWa, completionNotes).catch(() => {});
+      sendVendorPodUploadedNotification(job.order_number, job.vendor_name ?? "—", files.length, adminWa, completionNotes, firstPublicImageUrl || undefined).catch(() => {});
     }
 
     // Notify customer via WA

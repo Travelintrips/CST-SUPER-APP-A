@@ -1,6 +1,6 @@
 import { db, suppliersTable, vendorCatalogItemsTable, waTemplateConfigsTable } from "@workspace/db";
 import { eq, and, ilike, sql } from "drizzle-orm";
-import { sendViaService as sendWhatsApp } from "./waTransport.js";
+import { sendViaService as sendWhatsApp, sendMediaViaService } from "./waTransport.js";
 import { getAdminGroupWa } from "./adminWa";
 import { getPreferredDomain } from "./domain";
 import { sendMail, isSmtpConfigured } from "./mailer";
@@ -2316,6 +2316,7 @@ export async function sendVendorPodUploadedNotification(
   fileCount: number,
   adminWaPhone: string,
   completionNotes?: string,
+  photoUrl?: string,
 ): Promise<void> {
   const tpl = await getWaTemplateConfig("admin_personal", "vendor_pod_uploaded", DEFAULT_TPL.admin_personal.vendor_pod_uploaded);
   const msg = renderTemplate(tpl, {
@@ -2324,7 +2325,11 @@ export async function sendVendorPodUploadedNotification(
     completionNotes: completionNotes || null,
     timestamp: nowWIB(),
   });
-  sendWhatsApp(adminWaPhone, msg).catch((e: unknown) => logger.error({ e }, "WA vendor_pod_uploaded failed"));
+  if (photoUrl) {
+    sendMediaViaService(adminWaPhone, msg, photoUrl).catch((e: unknown) => logger.error({ e }, "WA vendor_pod_uploaded (media) failed"));
+  } else {
+    sendWhatsApp(adminWaPhone, msg).catch((e: unknown) => logger.error({ e }, "WA vendor_pod_uploaded failed"));
+  }
 }
 
 // ── Customer Progress Update (notif customer saat ada update progress) ────────
