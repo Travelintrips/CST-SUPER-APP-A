@@ -1982,6 +1982,23 @@ export default function LogisticOrderDetailPage() {
     onError: (e: Error) => toast({ title: "Gagal kirim ulang WA", description: e.message, variant: "destructive" }),
   });
 
+  const resendFulfillWaMut = useMutation({
+    mutationFn: () => apiFetch<{ ok: boolean; formUrl: string; vendorPhone: string | null; vendorName: string | null }>(
+      `/api/logistic/orders/${orderId}/resend-fulfillment-wa`,
+      { method: "POST" }
+    ),
+    onSuccess: (data) => {
+      navigator.clipboard.writeText(data.formUrl).catch(() => {});
+      toast({
+        title: "✅ WA fulfillment dikirim ulang",
+        description: data.vendorPhone
+          ? `WA dikirim ke ${data.vendorName ?? "vendor"}. Link disalin ke clipboard.`
+          : "Vendor tidak punya nomor WA — link disalin ke clipboard.",
+      });
+    },
+    onError: (e: Error) => toast({ title: "Gagal kirim ulang WA", description: e.message, variant: "destructive" }),
+  });
+
   const [completeNote, setCompleteNote] = useState("");
   const [completeReceiver, setCompleteReceiver] = useState("");
   const [podPhotoFile, setPodPhotoFile] = useState<File | null>(null);
@@ -2414,6 +2431,27 @@ export default function LogisticOrderDetailPage() {
                             <p className="text-[10px] text-slate-400 pt-1">
                               Diterima: {new Date(sub.submittedAt).toLocaleString("id-ID")}
                             </p>
+                          </div>
+                        )}
+
+                        {/* ── Kirim ulang WA ke vendor jika belum submit ── */}
+                        {!isSubmitted && (
+                          <div className="pt-1 flex flex-wrap gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 h-8 text-xs"
+                              disabled={resendFulfillWaMut.isPending}
+                              onClick={() => {
+                                if (!confirm("Kirim ulang WA form fulfillment ke vendor?")) return;
+                                resendFulfillWaMut.mutate();
+                              }}
+                            >
+                              {resendFulfillWaMut.isPending
+                                ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                                : <MessageCircle className="w-3.5 h-3.5 mr-1" />}
+                              Kirim Ulang WA ke Vendor
+                            </Button>
                           </div>
                         )}
 

@@ -227,6 +227,60 @@ fulfillmentAdminRouter.post("/orders/:orderId/send-fulfillment", async (req: Req
   }
 });
 
+// POST /api/logistic/orders/:orderId/resend-fulfillment-wa
+fulfillmentAdminRouter.post("/orders/:orderId/resend-fulfillment-wa", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const orderId = Number(req.params["orderId"]);
+  if (isNaN(orderId)) return res.status(400).json({ message: "orderId tidak valid" });
+
+  try {
+    const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
+    if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+    // Cari vendor fulfillment link terbaru (belum submitted) untuk order ini
+    const [vfLink] = await db.select().from(vendorFulfillmentLinksTable)
+      .where(eq(vendorFulfillmentLinksTable.orderId, orderId))
+      .orderBy(desc(vendorFulfillmentLinksTable.createdAt))
+      .limit(1);
+
+    if (!vfLink) return res.status(404).json({ message: "Tidak ada link fulfillment vendor untuk order ini" });
+
+    const domain = getPreferredDomain() || "cstlogistic.co.id";
+    const formUrl = `https://${domain}/vendor-fulfillment/${vfLink.token}`;
+
+    const vendor = vfLink.vendorId
+      ? (await db.select().from(suppliersTable).where(eq(suppliersTable.id, vfLink.vendorId)))[0] ?? null
+      : null;
+
+    const vendorPhone = vendor?.phone ?? null;
+    if (vendorPhone) {
+      const waMsg =
+        `📋 *[Kirim Ulang] Form Fulfillment Order — CST Logistics*\n\n` +
+        `Order: *${order.orderNumber}*\n` +
+        `Layanan: ${order.shipmentType ?? "—"}\n` +
+        ((order.origin && order.destination) ? `Rute: ${order.origin} → ${order.destination}\n` : "") +
+        `\nSilakan isi form fulfillment melalui link berikut:\n${formUrl}`;
+      sendWhatsApp(vendorPhone, waMsg).catch((e) =>
+        logger.warn({ e }, "resend-fulfillment-wa to vendor failed")
+      );
+    }
+
+    await db.insert(orderUpdatesTable).values({
+      orderId,
+      actorType: "admin",
+      actorName: "Admin",
+      status: order.status ?? "Processing",
+      notes: `WA fulfillment dikirim ulang ke vendor${vendor ? ` (${vendor.name})` : ""}.`,
+      isPublic: false,
+    }).catch(() => {});
+
+    return res.json({ ok: true, formUrl, vendorPhone, vendorName: vendor?.name ?? null });
+  } catch (err) {
+    logger.error({ err }, "resend-fulfillment-wa error");
+    return res.status(500).json({ message: "Gagal kirim ulang WA fulfillment" });
+  }
+});
+
 // ─── Helper: extract display data from vendor_fulfillment_links row ───────────
 const VF_FIELD_KEYS = [
   "stockConfirmed", "qtyConfirmed", "readyDate", "leadTime", "warehouseLocation",
