@@ -13,6 +13,7 @@ import {
   customerQuoteLinksTable,
   orderUpdatesTable,
   vendorFulfillmentLinksTable,
+  vendorMiniFormLinksTable,
 } from "@workspace/db";
 import { requireClerkUser, requireAdmin } from "../lib/requireAdmin.js";
 import { runDbBackup } from "../lib/dbBackup.js";
@@ -1210,7 +1211,23 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
       }
 
       const domain = getPreferredDomain() || "cstlogistic.co.id";
-      const bizportalOrderUrl = `https://${domain}/bizportal/logistics/orders/${order.id}`;
+
+      // Cari VMF link terbaru untuk order ini (order_based mode)
+      const [vmfLink] = await db.select({
+        token: vendorMiniFormLinksTable.token,
+        shortUrl: vendorMiniFormLinksTable.shortUrl,
+      }).from(vendorMiniFormLinksTable)
+        .where(and(
+          eq(vendorMiniFormLinksTable.orderId, order.id),
+          eq(vendorMiniFormLinksTable.mode, "order_based"),
+        ))
+        .orderBy(desc(vendorMiniFormLinksTable.createdAt))
+        .limit(1);
+
+      // Gunakan VMF short link jika ada, fallback ke full URL VMF, terakhir bizportal
+      const detailOrderUrl = vmfLink?.shortUrl
+        ?? (vmfLink?.token ? `https://${domain}/vendor-mini-form/${vmfLink.token}` : null)
+        ?? `https://${domain}/bizportal/logistics/orders/${order.id}`;
 
       // WA ke admin group
       const adminGroupWa3 = await getAdminGroupWa();
@@ -1248,7 +1265,7 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
           sep + ln +
           fulfillSummary +
           sep + ln +
-          `📋 Detail order:\n${bizportalOrderUrl}`;
+          `📋 Detail order:\n${detailOrderUrl}`;
 
         sendWhatsApp(adminGroupWa3, adminWaMsg).catch((e) =>
           logger.warn({ e }, "confirm_fulfillment WA to admin group failed")
