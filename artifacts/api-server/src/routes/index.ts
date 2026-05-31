@@ -84,6 +84,8 @@ import { orderAuditTrailRouter } from "./orderAuditTrail.js";
 
 import { exceptionsRouter } from "./exceptions.js";
 import { systemRouter } from "./system.js";
+import { handleAlertSse } from "../lib/alertsBroadcast.js";
+import { requireAdmin } from "../lib/requireAdmin.js";
 
 import type { Request, Response } from "express";
 
@@ -201,6 +203,11 @@ router.use("/logistic", orderAuditTrailRouter);
 router.use("/exceptions", exceptionsRouter);
 router.use("/system", systemRouter);
 
+router.get("/alerts/stream", async (req: Request, res: Response) => {
+  const ok = await requireAdmin(req, res);
+  if (!ok) return;
+  handleAlertSse(req, res);
+});
 
 router.get("/q/:code", async (req: Request, res: Response) => {
   const code = String(req.params.code ?? "").trim();

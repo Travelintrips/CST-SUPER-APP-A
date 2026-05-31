@@ -22,7 +22,7 @@ const SEVERITY_LABELS: Record<string, string> = {
 
 export function useAlertWebSocket() {
   const qc = useQueryClient();
-  const wsRef = useRef<WebSocket | null>(null);
+  const esRef = useRef<EventSource | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const destroyedRef = useRef(false);
 
@@ -32,11 +32,10 @@ export function useAlertWebSocket() {
     function connect() {
       if (destroyedRef.current) return;
 
-      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const ws = new WebSocket(`${protocol}//${window.location.host}/api/alerts/ws`);
-      wsRef.current = ws;
+      const es = new EventSource("/api/alerts/stream");
+      esRef.current = es;
 
-      ws.onmessage = (event) => {
+      es.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data as string) as { type: string; alert?: AlertPayload };
           if (msg.type !== "new_alert" || !msg.alert) return;
@@ -56,15 +55,12 @@ export function useAlertWebSocket() {
         }
       };
 
-      ws.onclose = () => {
-        wsRef.current = null;
+      es.onerror = () => {
+        es.close();
+        esRef.current = null;
         if (!destroyedRef.current) {
           reconnectTimer.current = setTimeout(connect, 5_000);
         }
-      };
-
-      ws.onerror = () => {
-        ws.close();
       };
     }
 
@@ -73,9 +69,9 @@ export function useAlertWebSocket() {
     return () => {
       destroyedRef.current = true;
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
-      if (wsRef.current) {
-        wsRef.current.close();
-        wsRef.current = null;
+      if (esRef.current) {
+        esRef.current.close();
+        esRef.current = null;
       }
     };
   }, [qc]);
