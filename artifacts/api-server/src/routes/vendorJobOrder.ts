@@ -923,7 +923,7 @@ orderTrackingPublicRouter.get("/:trackToken", async (req: Request, res: Response
           ORDER BY created_at ASC`
     );
 
-    // Job order (operational details, only show if vendor accepted)
+    // Job order (operational details + POD files, only show operational if vendor accepted)
     const jobResult = await db.execute(
       sql`SELECT vjo.*, s.name as vendor_name
           FROM vendor_job_orders vjo
@@ -934,6 +934,48 @@ orderTrackingPublicRouter.get("/:trackToken", async (req: Request, res: Response
     const jobOrder = jobResult.rows[0] as any ?? null;
 
     const showOperational = jobOrder && ["accepted", "in_progress", "pickup_scheduled", "completed"].includes(jobOrder.status);
+
+    // Order items (service items with qty/subtotal)
+    const itemsResult = await db.execute(
+      sql`SELECT service_name, category, subtotal, input_data
+          FROM logistic_order_items
+          WHERE order_id = ${order.id}
+          ORDER BY id ASC`
+    );
+
+    function extractQtyUnit(inp: unknown): { qty: number | null; unit: string | null } {
+      if (!inp || typeof inp !== "object") return { qty: null, unit: null };
+      const d = inp as Record<string, unknown>;
+      const qRaw = d.quantity ?? d.qty ?? d.jumlah ?? null;
+      const qty = typeof qRaw === "number" ? qRaw : (typeof qRaw === "string" ? (parseFloat(qRaw) || null) : null);
+      const uRaw = d.unit ?? d.satuan ?? d.uom ?? null;
+      const unit = typeof uRaw === "string" ? uRaw : null;
+      return { qty, unit };
+    }
+
+    const orderItems = (itemsResult.rows as any[]).map((i) => {
+      const { qty, unit } = extractQtyUnit(i.input_data);
+      return {
+        name: i.service_name,
+        category: i.category,
+        subtotal: i.subtotal ? Number(i.subtotal) : 0,
+        qty,
+        unit,
+      };
+    });
+
+    // Pricing summary from order
+    const orderSubtotal = order.subtotal ? Number(order.subtotal) : null;
+    const orderTax = order.tax ? Number(order.tax) : null;
+    const orderGrandTotal = order.grand_total ? Number(order.grand_total) : null;
+
+    // POD files (public-facing — only include if order is at POD stage or beyond)
+    const podFiles: Array<{ url: string; type: string; name: string }> = [];
+    if (jobOrder?.pod_files && Array.isArray(jobOrder.pod_files)) {
+      for (const f of jobOrder.pod_files as any[]) {
+        podFiles.push({ url: f.url ?? f.publicUrl ?? "", type: f.type ?? "document", name: f.name ?? f.originalname ?? "Dokumen" });
+      }
+    }
 
     return res.json({
       order: {
@@ -964,6 +1006,13 @@ orderTrackingPublicRouter.get("/:trackToken", async (req: Request, res: Response
         awbBlNumber: jobOrder.awb_bl_number,
         schedule: jobOrder.schedule,
       } : null,
+      items: orderItems,
+      pricing: {
+        subtotal: orderSubtotal,
+        tax: orderTax,
+        grandTotal: orderGrandTotal,
+      },
+      podFiles,
     });
   } catch (err) {
     logger.error({ err }, "order-tracking error");

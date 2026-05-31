@@ -637,7 +637,16 @@ customerQuotePublicRouter.post("/:token/respond", async (req: Request, res: Resp
       // Send WA to admin group only
       const ts = new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" });
       if (adminGroupWa) {
-        const tplApproveGroup = await getWaTemplateConfig("admin_group", "customer_approved", "🎉 *CUSTOMER APPROVED — {{orderNumber}}*\nCustomer *{{customerName}}* menyetujui. Proses operasional!\n_{{timestamp}}_");
+        const tplApproveGroup = await getWaTemplateConfig("admin_group", "customer_approved",
+          "🎉 *CUSTOMER APPROVED*\n" +
+          "━━━━━━━━━━━━━━━━\n" +
+          "Order      : *{{orderNumber}}*\n" +
+          "Customer   : *{{customerName}}*\n" +
+          "Total Harga: *{{sellingPrice}}*\n" +
+          "━━━━━━━━━━━━━━━━\n" +
+          "{{fwdUrl}}\n" +
+          "_{{timestamp}}_"
+        );
         const approvedVars = {
           rfqNumber: rfqNum, orderNumber: order.orderNumber, customerName: order.customerName,
           sellingPrice: fmtRp(link.finalCustomerPrice ? Number(link.finalCustomerPrice) : null),

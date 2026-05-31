@@ -335,9 +335,13 @@ sendLogisticOrderNotification({
     vehicleType,
     createdAt: order.createdAt,
     publicRfqToken: order.publicRfqToken ?? null,
+    trackingToken,
   }).catch((err: unknown) => {
     req.log.error({ err }, "sendLogisticOrderNotification failed");
   });
+
+  // Progress bar: ORDER_RECEIVED — set immediately when order is created
+  updateOrderProgress(order.id, "ORDER_RECEIVED", "system", body.customerName, "Order baru dibuat oleh customer").catch(() => {});
 
   // [FLOW BARU] Auto-blast ke vendor DINONAKTIFKAN.
   // Order masuk → status admin_review → Admin review → Admin blast ke vendor.
@@ -1179,12 +1183,21 @@ logisticOrdersRouter.put("/:id/status", async (req: Request, res: Response) => {
   }).catch(() => {});
 
 
-  // Notify customer via WhatsApp (fire-and-forget) — use canonical messages
+  // Notify customer via WhatsApp (fire-and-forget) — use canonical messages with tracking link
   if (updated.phone) {
+    // Fetch tracking token untuk link direct tracking di WA
+    const trackingResult = await db.execute(sql`SELECT tracking_token FROM logistic_orders WHERE id = ${updated.id} LIMIT 1`).catch(() => null);
+    const trackingToken = (trackingResult?.rows?.[0] as any)?.tracking_token ?? null;
+    const domain = getPreferredDomain();
+    const trackUrl = (domain && trackingToken)
+      ? `https://${domain}/order-track/${trackingToken}`
+      : domain ? `https://${domain}/track/${updated.orderNumber}` : null;
+
     const waBuilder = CUSTOMER_WA_MESSAGES[status];
     const msg = waBuilder
-      ? waBuilder(updated.orderNumber)
-      : `📦 *Update Status Order Anda*\nNo Order: ${updated.orderNumber}\nStatus: *${STATUS_LABEL_ID[status] ?? status}*\n\nTerima kasih telah menggunakan layanan kami.`;
+      ? waBuilder(updated.orderNumber, trackUrl ?? undefined)
+      : `📦 *Update Status Order Anda*\nNo Order: ${updated.orderNumber}\nStatus: *${STATUS_LABEL_ID[status] ?? status}*\n\nTerima kasih telah menggunakan layanan kami.` +
+        (trackUrl ? `\n\n🔗 Pantau status:\n${trackUrl}` : "");
     sendWhatsApp(updated.phone, msg, {
       context: "order_status_change",
       refType: "order",
@@ -1192,14 +1205,7 @@ logisticOrdersRouter.put("/:id/status", async (req: Request, res: Response) => {
     }).catch(() => undefined);
   }
 
-  // Progress bar event
-  if (status === "Confirmed") {
-    updateOrderProgress(updated.id, "ADMIN_CONFIRMED", "admin", adminName, `Status diubah ke Confirmed`).catch(() => {});
-  } else if (status === "Completed") {
-    updateOrderProgress(updated.id, "COMPLETED", "admin", adminName, `Order diselesaikan oleh admin`).catch(() => {});
-  }
-
-  // Progress bar event — record for all canonical statuses
+  // Progress bar event — record for all canonical statuses (generic, covers all status keys)
   updateOrderProgress(
     updated.id,
     status.toUpperCase().replace(/ /g, "_"),

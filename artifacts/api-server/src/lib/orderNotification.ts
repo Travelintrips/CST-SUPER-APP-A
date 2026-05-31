@@ -36,6 +36,7 @@ export interface LogisticOrderData {
   vehicleType?: string | null;
   createdAt?: Date | string | null;
   publicRfqToken?: string | null;
+  trackingToken?: string | null;
 }
 
 const BULAN_ID = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agt","Sep","Okt","Nov","Des"];
@@ -244,6 +245,7 @@ function buildOrderVars(
     trackUrl: (() => {
       const domain = getPreferredDomain();
       if (!domain) return null;
+      if (order.trackingToken) return `https://${domain}/order-track/${order.trackingToken}`;
       return `https://${domain}/track/${order.orderNumber}`;
     })(),
     ...extras,
