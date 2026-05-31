@@ -827,6 +827,7 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
         const rawItems = await db.select({
           serviceName: logisticOrderItemsTable.serviceName,
           subtotal: logisticOrderItemsTable.subtotal,
+          inputData: logisticOrderItemsTable.inputData,
         }).from(logisticOrderItemsTable)
           .where(eq(logisticOrderItemsTable.orderId, order.id));
 
@@ -835,10 +836,16 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
           ? rawItems.map(i => `• ${i.serviceName}`).join("\n")
           : "";
         const orderItems = rawItems.length
-          ? rawItems.map(i => ({
-              name: i.serviceName ?? "",
-              subtotal: i.subtotal != null ? parseFloat(String(i.subtotal)) : null,
-            }))
+          ? rawItems.map(i => {
+              const inp = (i.inputData as Record<string, unknown> | null) ?? {};
+              const qtyRaw = inp.qty ?? inp.quantity ?? inp.jumlah;
+              return {
+                name: i.serviceName ?? "",
+                qty: qtyRaw != null ? Number(qtyRaw) || null : null,
+                unit: inp.unit ? String(inp.unit) : null,
+                subtotal: i.subtotal != null ? parseFloat(String(i.subtotal)) : null,
+              };
+            })
           : undefined;
 
         const orderData: LogisticOrderData = {

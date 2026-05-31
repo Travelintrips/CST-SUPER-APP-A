@@ -82,11 +82,18 @@ async function buildOrderDataFromRowWithItems(row: typeof logisticOrdersTable.$i
     const items = await db.select({
       name: logisticOrderItemsTable.serviceName,
       subtotal: logisticOrderItemsTable.subtotal,
+      inputData: logisticOrderItemsTable.inputData,
     }).from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, row.id));
-    base.orderItems = items.map(i => ({
-      name: i.name,
-      subtotal: i.subtotal ? parseFloat(i.subtotal) : null,
-    }));
+    base.orderItems = items.map(i => {
+      const inp = (i.inputData as Record<string, unknown> | null) ?? {};
+      const qtyRaw = inp.qty ?? inp.quantity ?? inp.jumlah;
+      return {
+        name: i.name,
+        qty: qtyRaw != null ? Number(qtyRaw) || null : null,
+        unit: inp.unit ? String(inp.unit) : null,
+        subtotal: i.subtotal ? parseFloat(i.subtotal) : null,
+      };
+    });
   } catch { /* non-critical, skip */ }
   return base;
 }
