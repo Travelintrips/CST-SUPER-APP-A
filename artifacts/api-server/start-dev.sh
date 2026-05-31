@@ -8,5 +8,6 @@ sleep 0.5
 # Build
 node build.mjs
 
-# Start API server directly on 18444
-PORT=18444 NODE_ENV=development node --enable-source-maps ./dist/index.mjs
+# Start API server on 8080 (gateway default API_PORT).
+# index.ts will also bind on 18444 (GATEWAY_PORT secondary binding).
+PORT=8080 NODE_ENV=development node --enable-source-maps ./dist/index.mjs
