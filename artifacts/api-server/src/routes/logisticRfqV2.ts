@@ -270,14 +270,47 @@ async function sendAdminRecapWa(
   const adminTarget = await getAdminGroupWa();
   if (!adminTarget) return;
 
-  const [order] = await db.select({
-    orderNumber: logisticOrdersTable.orderNumber,
-    customerName: logisticOrdersTable.customerName,
-    companyName: logisticOrdersTable.companyName,
-    shipmentType: logisticOrdersTable.shipmentType,
-    origin: logisticOrdersTable.origin,
-    destination: logisticOrdersTable.destination,
-  }).from(logisticOrdersTable).where(eq(logisticOrdersTable.id, rfq.orderId));
+  const [[order], rawItems] = await Promise.all([
+    db.select({
+      orderNumber: logisticOrdersTable.orderNumber,
+      customerName: logisticOrdersTable.customerName,
+      companyName: logisticOrdersTable.companyName,
+      shipmentType: logisticOrdersTable.shipmentType,
+      origin: logisticOrdersTable.origin,
+      destination: logisticOrdersTable.destination,
+    }).from(logisticOrdersTable).where(eq(logisticOrdersTable.id, rfq.orderId)),
+    db.select({
+      serviceName: logisticOrderItemsTable.serviceName,
+      inputData: logisticOrderItemsTable.inputData,
+      subtotal: logisticOrderItemsTable.subtotal,
+    }).from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, rfq.orderId)),
+  ]);
+
+  // Build items block: nama, qty, unit, harga jual, subtotal
+  const fmtRpLocal = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
+  let itemsBlock: string | null = null;
+  if (rawItems.length > 0) {
+    const lines = rawItems.map((i, idx) => {
+      const input = (i.inputData as Record<string, unknown> | null) ?? {};
+      const qty = input.qty != null ? Number(input.qty) : null;
+      const unit = input.unit ? String(input.unit) : null;
+      const subtotal = i.subtotal ? parseFloat(i.subtotal) : null;
+      const qtyStr = qty != null ? `${qty}${unit ? ` ${unit}` : ""}` : null;
+      const parts = [`${idx + 1}. ${i.serviceName}`];
+      if (qtyStr) parts.push(`   Qty: ${qtyStr}`);
+      if (subtotal != null && subtotal > 0) {
+        if (qty != null && qty > 1) {
+          const unitPrice = subtotal / qty;
+          parts.push(`   Harga: ${fmtRpLocal(unitPrice)}/${unit ?? "unit"}`);
+          parts.push(`   Total: ${fmtRpLocal(subtotal)}`);
+        } else {
+          parts.push(`   Total: ${fmtRpLocal(subtotal)}`);
+        }
+      }
+      return parts.join("\n");
+    });
+    itemsBlock = `🛒 *Item Order:*\n${lines.join("\n\n")}`;
+  }
 
   const links = await db.select().from(rfqVendorLinksTable)
     .where(eq(rfqVendorLinksTable.rfqId, rfqId))
@@ -360,6 +393,7 @@ async function sendAdminRecapWa(
     rfqNumber: rfq.rfqNumber,
     shipmentType: order?.shipmentType ?? "—",
     route: order ? `${order.origin ?? ""} → ${order.destination ?? ""}` : "—",
+    itemsBlock,
     newSubmitterInfo,
     vendorListWithHeader,
     waitingListWithHeader,

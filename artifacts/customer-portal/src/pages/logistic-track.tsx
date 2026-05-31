@@ -109,25 +109,14 @@ const ORDER_STATUS_RANK: Record<string, number> = {
   "Invoice Issued":    12,
   "Payment Received":  13,
   "Completed":         14,
-  // backward compat
+  // backward compat aliases
   "New Order":         0,
+  "Under Review":      1,
   "Processing":        1,
-
-  // Step 0 — Order masuk
-  "New Order": 0,
-  // Step 1 — Sedang diproses (semua status review/vendor/quotation)
-  "Under Review": 1,
-  "Vendor Confirmed": 1,
-  "Vendor Rejected": 1,
-  "Quotation Sent": 1,
-  "Customer Approved": 1,
-  "Processing": 1,
-  // Step 2 — Dalam pengerjaan
-  "In Progress": 2,
-  // Step 3 — Selesai
-  "Completed": 3,
-  "Done": 3,
-
+  "Quotation Sent":    3,
+  "Customer Approved": 4,
+  "Vendor Rejected":   2,
+  "Done":              14,
 };
 
 const DRIVER_STEPS: { key: DriverJobStatus; label: string }[] = [

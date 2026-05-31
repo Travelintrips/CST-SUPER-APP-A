@@ -74,6 +74,41 @@ customerQuoteAdminRouter.post("/rfq/:rfqId/send-customer-quote", async (req: Req
       ?? (order.finalSellingPrice ? Number(order.finalSellingPrice) : null)
       ?? (orderGrandTotalNum > 0 ? orderGrandTotalNum : null);
 
+    // Fetch order items untuk breakdown WA
+    const rawOrderItems = await db.select({
+      serviceName: logisticOrderItemsTable.serviceName,
+      inputData: logisticOrderItemsTable.inputData,
+      subtotal: logisticOrderItemsTable.subtotal,
+    }).from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, order.id));
+
+    let itemsBlock: string | null = null;
+    if (rawOrderItems.length > 0) {
+      const lines = rawOrderItems.map((it, idx) => {
+        const inp = (it.inputData as Record<string, unknown> | null) ?? {};
+        const qtyRaw = inp.qty ?? inp.quantity ?? inp.jumlah;
+        const qty = qtyRaw != null ? Number(qtyRaw) : null;
+        const unit = inp.unit ? String(inp.unit) : null;
+        const sub = it.subtotal ? parseFloat(it.subtotal) : null;
+        const parts = [`${idx + 1}. ${it.serviceName}`];
+        if (qty != null) parts.push(`   Qty: ${qty}${unit ? ` ${unit}` : ""}`);
+        if (sub != null && sub > 0) {
+          if (qty != null && qty > 1) {
+            parts.push(`   Harga/Unit: ${fmtRp(sub / qty)}`);
+          }
+          parts.push(`   Subtotal: ${fmtRp(sub)}`);
+        }
+        return parts.join("\n");
+      });
+      itemsBlock = lines.join("\n\n");
+    }
+
+    // Hitung breakdown subtotal/tax/total untuk WA
+    const displaySubtotal = orderSubtotalNum > 0 ? orderSubtotalNum
+      : customerPrice ? Math.round(customerPrice / 1.11) : null;
+    const displayTax = orderTaxNum > 0 ? orderTaxNum
+      : displaySubtotal ? (customerPrice! - displaySubtotal) : null;
+    const displayTotal = customerPrice ?? (displaySubtotal != null && displayTax != null ? displaySubtotal + displayTax : null);
+
     const margin = customerPrice && vendorCost ? customerPrice - vendorCost : null;
 
     const validUntil = validInDays
@@ -151,13 +186,28 @@ customerQuoteAdminRouter.post("/rfq/:rfqId/send-customer-quote", async (req: Req
 
     // Send WhatsApp to customer
     if (order.phone) {
-      const defaultTpl =
-        `Halo {{customerName}},\n\n` +
-        `Berikut penawaran untuk permintaan Anda:\n\n` +
-        `RFQ: {{rfqNumber}}\nLayanan: {{shipmentType}}\nRute: {{route}}\n` +
-        `Harga: {{sellingPrice}}\nETA: {{etaFinal}}\nValid s/d: {{validUntil}}\n\n` +
-        `Silakan review dan konfirmasi:\n{{customerApprovalLink}}`;
-      const tplBody = await getWaTemplateConfig("customer", "customer_approval", defaultTpl);
+      const tplBody = await getWaTemplateConfig("customer", "customer_approval",
+        `✅ *PENAWARAN SIAP — CST LOGISTICS*\n` +
+        `━━━━━━━━━━━━━━━━━━\n` +
+        `Halo *{{customerName}}*,\n\n` +
+        `Penawaran untuk order *{{orderNumber}}* telah siap.\n` +
+        `No. RFQ    : {{rfqNumber}}\n` +
+        `Layanan    : {{shipmentType}}\n` +
+        `Rute       : {{route}}\n` +
+        `━━━━━━━━━━━━━━━━━━\n` +
+        `{{itemsBlock}}\n` +
+        `━━━━━━━━━━━━━━━━━━\n` +
+        `💵 Subtotal : {{subtotalDisplay}}\n` +
+        `🧾 PPN 11%  : {{taxDisplay}}\n` +
+        `💰 Total    : *{{totalDisplay}}*\n` +
+        `ETA         : {{etaFinal}}\n` +
+        `Valid s/d   : {{validUntil}}\n` +
+        `━━━━━━━━━━━━━━━━━━\n` +
+        `Silakan review dan konfirmasi melalui link berikut:\n` +
+        `🔗 {{customerApprovalLink}}\n\n` +
+        `Penawaran berlaku {{validUntil}}.\n` +
+        `Terima kasih 🙏\n_CST Logistics_`
+      );
       const svcType = deriveServiceType(order.shipmentType ?? "", (order as any).orderType ?? undefined);
       const origin = order.origin || null;
       const destination = order.destination || null;
@@ -172,6 +222,10 @@ customerQuoteAdminRouter.post("/rfq/:rfqId/send-customer-quote", async (req: Req
         commodity: order.commodity ?? null,
         cargoDescription: order.cargoDescription ?? null,
         route: (origin && destination) ? `${origin} → ${destination}` : (origin || destination || null),
+        itemsBlock,
+        subtotalDisplay: displaySubtotal != null ? fmtRp(displaySubtotal) : null,
+        taxDisplay: displayTax != null ? fmtRp(displayTax) : null,
+        totalDisplay: fmtRp(displayTotal),
         sellingPrice: fmtRp(customerPrice),
         etaFinal: etaFinal ?? null,
         validUntil: validUntil.toLocaleDateString("id-ID"),
