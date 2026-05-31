@@ -1241,7 +1241,7 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
         return res.status(409).json({ error: "Order sudah dikonfirmasi sebelumnya." });
       }
 
-      await transitionLogisticOrderStatus(order.id, "In Progress", { source: "adminAction:confirm_fulfillment", actorType: "admin", force: true });
+      await transitionLogisticOrderStatus(order.id, "In Progress", { source: "adminAction:confirm_fulfillment", actorType: "admin" });
 
       await db.insert(orderUpdatesTable).values({
         orderId: order.id,

@@ -1632,7 +1632,6 @@ vendorMiniFormRouter.post("/op-confirm/:token", async (req: Request, res: Respon
         actorType: "vendor",
         actorName: "Vendor",
         source: "vendorMiniForm/BF-2-auto-advance",
-        force: true,
         skipAudit: false,
       }).catch((e: unknown) => req.log?.error({ e }, "BF-2: auto-update order status to In Progress failed"));
     }
@@ -1933,7 +1932,6 @@ vendorMiniFormRouter.post("/admin/submissions/:id/select", async (req: Request, 
           actorType: "admin",
           actorName: "Admin",
           source: "vendorMiniForm/select-vendor",
-          force: true,
           skipAudit: false,
         });
       }

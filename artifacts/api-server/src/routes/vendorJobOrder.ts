@@ -262,7 +262,7 @@ vendorJobAdminRouter.post("/orders/:orderId/assign-vendor", async (req: Request,
       approvedVendorId: quote.vendorId,
       approvedQuoteId: quote.id,
     } as any).where(eq(logisticOrdersTable.id, orderId));
-    await transitionLogisticOrderStatus(orderId, "Vendor Confirmed", { source: "vendorJobOrder:assign_vendor", actorType: "admin", force: true });
+    await transitionLogisticOrderStatus(orderId, "Vendor Confirmed", { source: "vendorJobOrder:assign_vendor", actorType: "admin" });
 
     // Set tracking_token (raw SQL karena kolom baru)
     await db.execute(sql`
@@ -674,7 +674,7 @@ vendorJobPublicRouter.post("/:token/accept", async (req: Request, res: Response)
     `);
 
     // Update order status via service
-    await transitionLogisticOrderStatus(job.order_id, "In Progress", { source: "vendorJobOrder:vendor_accept", actorType: "vendor", force: true });
+    await transitionLogisticOrderStatus(job.order_id, "In Progress", { source: "vendorJobOrder:vendor_accept", actorType: "vendor" });
 
     await db.execute(sql`
       UPDATE logistic_orders SET job_status = 'vendor_accepted' WHERE id = ${job.order_id}
@@ -748,7 +748,7 @@ vendorJobPublicRouter.post("/:token/reject", async (req: Request, res: Response)
       WHERE token = ${token}
     `);
 
-    await transitionLogisticOrderStatus(job.order_id, "Admin Review", { source: "vendorJobOrder:vendor_reject", actorType: "vendor", force: true });
+    await transitionLogisticOrderStatus(job.order_id, "Admin Review", { source: "vendorJobOrder:vendor_reject", actorType: "vendor" });
 
     await db.execute(sql`
       INSERT INTO order_tracking_progress (order_id, status, notes, updated_by, is_public)
@@ -903,7 +903,7 @@ vendorJobPublicRouter.post("/:token/pod", upload.array("files", 10), async (req:
 
   try {
     const result = await db.execute(
-      sql`SELECT vjo.*, o.order_number, o.id as order_id_num, o.phone, o.tracking_token, s.name as vendor_name
+      sql`SELECT vjo.*, o.order_number, o.id as order_id_num, o.phone, o.tracking_token, o.status as order_status, s.name as vendor_name
           FROM vendor_job_orders vjo
           LEFT JOIN logistic_orders o ON o.id = vjo.order_id
           LEFT JOIN suppliers s ON s.id = vjo.vendor_id
@@ -912,6 +912,17 @@ vendorJobPublicRouter.post("/:token/pod", upload.array("files", 10), async (req:
     if (!result.rows.length) return res.status(404).json({ error: "Link tidak ditemukan" });
 
     const job = result.rows[0] as any;
+
+    // Guard: POD tidak boleh diupload jika order sudah melewati tahap POD
+    // (Invoice Issued, Payment Received, Completed, Cancelled).
+    // Mencegah transisi mundur yang merusak audit trail keuangan.
+    const BLOCK_POD_FROM = ["Invoice Issued", "Payment Received", "Completed", "Cancelled"];
+    if (BLOCK_POD_FROM.includes(job.order_status ?? "")) {
+      return res.status(409).json({
+        error: `POD tidak dapat diunggah karena order sudah dalam status "${job.order_status}". Hubungi admin jika ada kekeliruan.`,
+        currentStatus: job.order_status,
+      });
+    }
 
     // Upload files ke object storage
     const uploadedUrls: { name: string; url: string; type: string }[] = [];
@@ -963,7 +974,7 @@ vendorJobPublicRouter.post("/:token/pod", upload.array("files", 10), async (req:
       WHERE token = ${token}
     `);
 
-    await transitionLogisticOrderStatus(job.order_id, "POD Uploaded", { source: "vendorJobOrder:pod_upload", actorType: "vendor", force: true });
+    await transitionLogisticOrderStatus(job.order_id, "POD Uploaded", { source: "vendorJobOrder:pod_upload", actorType: "vendor" });
 
     await db.execute(sql`
       UPDATE logistic_orders SET job_status = 'pod_uploaded' WHERE id = ${job.order_id}

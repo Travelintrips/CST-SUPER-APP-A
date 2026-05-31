@@ -137,7 +137,7 @@ export async function autoCreateRfqAndNotifyVendors(
     } as any).where(eq(logisticOrdersTable.id, orderId));
     console.log(`[TRUCKING-FLOW] State: PENDING → Under Review (order ${orderId})`);
   }
-  await transitionLogisticOrderStatus(orderId, "Admin Review", { source: "logisticRfq:auto_rfq", actorType: "system", force: true });
+  await transitionLogisticOrderStatus(orderId, "Admin Review", { source: "logisticRfq:auto_rfq", actorType: "system" });
 
   // [NEW-FLOW] Auto-blast WA ke vendor dinonaktifkan.
   // Admin harus memilih vendor secara manual via halaman comparison.
@@ -453,7 +453,7 @@ logisticRfqRouter.post("/vendor-confirm", rfqRateLimit, async (req: Request, res
 
   // Transisi status via service (di luar transaction)
   if (action === "accept") {
-    await transitionLogisticOrderStatus(orderId, "Vendor Confirmed", { source: "logisticRfq:vendor_confirm_accept", actorType: "vendor", force: true });
+    await transitionLogisticOrderStatus(orderId, "Vendor Confirmed", { source: "logisticRfq:vendor_confirm_accept", actorType: "vendor" });
     console.log(`[TRUCKING-FLOW] State: Under Review → Vendor Confirmed (order ${orderId}, vendor ${vendor?.name})`);
     const adminWa = await getAdminWa();
     sendTruckingVendorConfirmedAdminNotification(
@@ -461,7 +461,7 @@ logisticRfqRouter.post("/vendor-confirm", rfqRateLimit, async (req: Request, res
       getApproveFormUrl(order.orderNumber), adminWa,
     );
   } else {
-    await transitionLogisticOrderStatus(orderId, "Admin Review", { source: "logisticRfq:vendor_confirm_reject", actorType: "vendor", force: true });
+    await transitionLogisticOrderStatus(orderId, "Admin Review", { source: "logisticRfq:vendor_confirm_reject", actorType: "vendor" });
     console.log(`[TRUCKING-FLOW] State: Under Review → Vendor Rejected (order ${orderId})`);
     const adminWa = await getAdminWa();
     sendTruckingVendorRejectedAdminNotification(
@@ -799,7 +799,7 @@ logisticRfqRouter.post("/:id/rfq", async (req: Request, res: Response) => {
     ...(deadlineDate ? { responseDeadline: deadlineDate } : {}),
   } as any).returning();
 
-  await transitionLogisticOrderStatus(orderId, "Admin Review", { source: "logisticRfq:manual_blast", actorType: "system", force: true });
+  await transitionLogisticOrderStatus(orderId, "Admin Review", { source: "logisticRfq:manual_blast", actorType: "system" });
 
   const vendors = await db.select().from(suppliersTable).where(inArray(suppliersTable.id, vendorIds));
 
@@ -1353,7 +1353,7 @@ logisticRfqRouter.post("/:id/manual-rfq", async (req: Request, res: Response) =>
       .where(eq(logisticOrderRfqsTable.id, existingRfqs[0].id));
   }
 
-  await transitionLogisticOrderStatus(orderId, "Admin Review", { source: "logisticRfq:manual_rfq_v2", actorType: "system", force: true });
+  await transitionLogisticOrderStatus(orderId, "Admin Review", { source: "logisticRfq:manual_rfq_v2", actorType: "system" });
 
   const manualOrderItems = await db.select({ serviceName: logisticOrderItemsTable.serviceName, category: logisticOrderItemsTable.category, calculatorType: logisticOrderItemsTable.calculatorType, subtotal: logisticOrderItemsTable.subtotal, inputData: logisticOrderItemsTable.inputData })
     .from(logisticOrderItemsTable)
@@ -2187,7 +2187,7 @@ logisticRfqRouter.post("/:id/send-customer-options", async (req: Request, res: R
   await db.update(logisticOrdersTable)
     .set({ optionsToken: token, optionsSentAt: new Date() } as any)
     .where(eq(logisticOrdersTable.id, orderId));
-  await transitionLogisticOrderStatus(orderId, "Customer Approval", { source: "logisticRfq:options_sent", actorType: "admin", force: true });
+  await transitionLogisticOrderStatus(orderId, "Customer Approval", { source: "logisticRfq:options_sent", actorType: "admin" });
 
   const fmt = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
   const orderAny = order as any;
