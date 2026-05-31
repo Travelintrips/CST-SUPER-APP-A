@@ -281,6 +281,48 @@ fulfillmentAdminRouter.post("/orders/:orderId/resend-fulfillment-wa", async (req
   }
 });
 
+// PATCH /api/logistic/orders/:orderId/extend-fulfillment
+fulfillmentAdminRouter.patch("/orders/:orderId/extend-fulfillment", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const orderId = Number(req.params["orderId"]);
+  if (isNaN(orderId)) return res.status(400).json({ message: "orderId tidak valid" });
+
+  const { extraHours = 72 } = req.body as { extraHours?: number };
+  const hours = Math.min(Math.max(Number(extraHours) || 72, 1), 720);
+
+  try {
+    const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
+    if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+    const [vfLink] = await db.select().from(vendorFulfillmentLinksTable)
+      .where(eq(vendorFulfillmentLinksTable.orderId, orderId))
+      .orderBy(desc(vendorFulfillmentLinksTable.createdAt))
+      .limit(1);
+
+    if (!vfLink) return res.status(404).json({ message: "Tidak ada link fulfillment untuk order ini" });
+    if (vfLink.status !== "pending") return res.status(400).json({ message: "Link fulfillment sudah disubmit, tidak bisa diperpanjang" });
+
+    const newExpiry = new Date(Date.now() + hours * 3600_000);
+    await db.update(vendorFulfillmentLinksTable)
+      .set({ expiresAt: newExpiry })
+      .where(eq(vendorFulfillmentLinksTable.id, vfLink.id));
+
+    await db.insert(orderUpdatesTable).values({
+      orderId,
+      actorType: "admin",
+      actorName: "Admin",
+      status: order.status ?? "Processing",
+      notes: `Expiry link fulfillment vendor diperpanjang +${hours} jam (sampai ${newExpiry.toLocaleString("id-ID")}).`,
+      isPublic: false,
+    }).catch(() => {});
+
+    return res.json({ ok: true, newExpiresAt: newExpiry.toISOString(), hours });
+  } catch (err) {
+    logger.error({ err }, "extend-fulfillment error");
+    return res.status(500).json({ message: "Gagal memperpanjang expiry link" });
+  }
+});
+
 // ─── Helper: extract display data from vendor_fulfillment_links row ───────────
 const VF_FIELD_KEYS = [
   "stockConfirmed", "qtyConfirmed", "readyDate", "leadTime", "warehouseLocation",

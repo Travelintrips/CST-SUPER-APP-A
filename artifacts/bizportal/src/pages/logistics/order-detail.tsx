@@ -1999,6 +1999,19 @@ export default function LogisticOrderDetailPage() {
     onError: (e: Error) => toast({ title: "Gagal kirim ulang WA", description: e.message, variant: "destructive" }),
   });
 
+  const extendFulfillMut = useMutation({
+    mutationFn: () => apiFetch<{ ok: boolean; newExpiresAt: string; hours: number }>(
+      `/api/logistic/orders/${orderId}/extend-fulfillment`,
+      { method: "PATCH", body: JSON.stringify({ extraHours: 72 }) }
+    ),
+    onSuccess: (data) => {
+      const exp = new Date(data.newExpiresAt).toLocaleString("id-ID", { dateStyle: "short", timeStyle: "short" });
+      toast({ title: "✅ Expiry diperpanjang", description: `Link berlaku sampai ${exp}.` });
+      void refetchFulfillment();
+    },
+    onError: (e: Error) => toast({ title: "Gagal perpanjang expiry", description: e.message, variant: "destructive" }),
+  });
+
   const [completeNote, setCompleteNote] = useState("");
   const [completeReceiver, setCompleteReceiver] = useState("");
   const [podPhotoFile, setPodPhotoFile] = useState<File | null>(null);
@@ -2451,6 +2464,21 @@ export default function LogisticOrderDetailPage() {
                                 ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
                                 : <MessageCircle className="w-3.5 h-3.5 mr-1" />}
                               Kirim Ulang WA ke Vendor
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="border-amber-300 text-amber-700 hover:bg-amber-50 h-8 text-xs"
+                              disabled={extendFulfillMut.isPending}
+                              onClick={() => {
+                                if (!confirm("Perpanjang masa berlaku link fulfillment +72 jam?")) return;
+                                extendFulfillMut.mutate();
+                              }}
+                            >
+                              {extendFulfillMut.isPending
+                                ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                                : <Clock className="w-3.5 h-3.5 mr-1" />}
+                              Perpanjang (+72 jam)
                             </Button>
                           </div>
                         )}
