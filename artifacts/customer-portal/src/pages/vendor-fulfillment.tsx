@@ -231,6 +231,17 @@ function SummaryRow({ label, value, bold }: { label: string; value: string; bold
 
 /* ─── Submitted Review ────────────────────────────────────────────────────── */
 
+const STEP_LABELS: Record<string, string> = {
+  ORDER_RECEIVED:   "Order Diterima",
+  VENDOR_CONFIRMED: "Vendor Dikonfirmasi",
+  IN_PROGRESS:      "Sedang Diproses",
+  PICKUP:           "Penjemputan",
+  IN_TRANSIT:       "Dalam Perjalanan",
+  ARRIVED:          "Tiba di Tujuan",
+  DELIVERED:        "Terkirim",
+  COMPLETED:        "Selesai",
+};
+
 function SubmittedReview({
   data,
   localFields,
@@ -240,6 +251,19 @@ function SubmittedReview({
   localFields?: Record<string, string>;
   justSubmitted?: boolean;
 }) {
+  const [progressEvents, setProgressEvents] = useState<
+    { step_key: string; created_at: string }[]
+  >([]);
+
+  useEffect(() => {
+    fetch(`/api/logistic/orders/${data.order.id}/progress`)
+      .then((r) => r.json())
+      .then((d: { events?: { step_key: string; created_at: string }[] }) =>
+        setProgressEvents(d.events ?? [])
+      )
+      .catch(() => {});
+  }, [data.order.id]);
+
   const svc = data.serviceType;
   const icon = getServiceIcon(svc);
   const svcLabel = getServiceLabel(svc);
@@ -302,6 +326,25 @@ function SubmittedReview({
             )}
           </div>
         </div>
+
+        {progressEvents.length > 0 && (
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+            <h3 className="text-sm font-semibold text-slate-700 mb-3">📊 Progress Order</h3>
+            <div className="space-y-2">
+              {progressEvents.map((ev) => (
+                <div key={ev.step_key} className="flex items-center gap-3">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                  <span className="text-sm text-slate-700 flex-1">
+                    {STEP_LABELS[ev.step_key] ?? ev.step_key}
+                  </span>
+                  <span className="text-xs text-slate-400">
+                    {new Date(ev.created_at).toLocaleString("id-ID", { dateStyle: "short", timeStyle: "short" })}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
           <div className="flex items-center gap-2 mb-4">
