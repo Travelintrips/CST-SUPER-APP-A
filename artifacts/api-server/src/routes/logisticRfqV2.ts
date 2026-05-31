@@ -1881,10 +1881,17 @@ logisticRfqV2Router.post("/rfq/:rfqId/send-customer-quote", async (req: Request,
       ? `https://${domain}/approve/${order.orderNumber}`
       : `/approve/${order.orderNumber}`;
     const waTotal = order.grandTotal ? Number(order.grandTotal) : sellingPrice;
+    const waPpnPct = 11;
+    const waPpnNominal = Math.round(waTotal * waPpnPct / (100 + waPpnPct));
     sendCustomerApprovalNotification(
       buildOrderData(order),
       fmtRp(waTotal),
       customerApprovalLink,
+      {
+        sellingPriceNum: waTotal,
+        ppnNominalNum: waPpnNominal,
+        ppnPct: waPpnPct,
+      },
     ).then(() => { waSent = true; }).catch(() => {});
   }
 

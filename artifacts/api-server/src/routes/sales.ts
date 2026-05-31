@@ -1036,6 +1036,11 @@ router.get("/documents/:id/pdf", async (req, res): Promise<void> => {
       subtotal: Number(l.subtotal),
     })),
     totalAmount: Number(detail.totalAmount),
+    taxAmount: detail.taxAmount > 0 ? detail.taxAmount : null,
+    grandTotal: detail.taxAmount > 0 ? detail.grandTotal : null,
+    taxRate: detail.taxAmount > 0 && detail.totalAmount > 0
+      ? Math.round(detail.taxAmount / detail.totalAmount * 100)
+      : null,
     invoiceStatus: detail.invoiceStatus,
     deliveryStatus: detail.deliveryStatus,
   });
@@ -1094,6 +1099,11 @@ router.post("/documents/:id/email", async (req, res): Promise<void> => {
       subtotal: Number(l.subtotal),
     })),
     totalAmount: Number(detail.totalAmount),
+    taxAmount: detail.taxAmount > 0 ? detail.taxAmount : null,
+    grandTotal: detail.taxAmount > 0 ? detail.grandTotal : null,
+    taxRate: detail.taxAmount > 0 && detail.totalAmount > 0
+      ? Math.round(detail.taxAmount / detail.totalAmount * 100)
+      : null,
     invoiceStatus: detail.invoiceStatus,
     deliveryStatus: detail.deliveryStatus,
   };

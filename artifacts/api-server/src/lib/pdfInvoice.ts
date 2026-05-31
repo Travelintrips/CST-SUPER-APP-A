@@ -30,6 +30,9 @@ export interface InvoiceData {
   notes?: string | null;
   lines: InvoiceLine[];
   totalAmount: number;
+  taxAmount?: number | null;
+  grandTotal?: number | null;
+  taxRate?: number | null;
   invoiceStatus?: string | null;
   deliveryStatus?: string | null;
   receiveStatus?: string | null;
@@ -179,14 +182,52 @@ function _renderInvoiceDoc(doc: InstanceType<typeof PDFDocument>, data: InvoiceD
     doc.addPage();
     y = 48;
   }
-  doc
-    .moveDown(1)
-    .fontSize(11)
-    .fillColor("#0f172a")
-    .text("TOTAL", 380, y + 10, { width: 90, align: "right" })
-    .font("Helvetica-Bold")
-    .fontSize(14)
-    .text(idr(data.totalAmount), 470, y + 8, { width: 77, align: "right" });
+
+  const hasTaxBreakdown = (data.taxAmount ?? 0) > 0 && (data.grandTotal ?? 0) > 0;
+  const taxPct = data.taxRate ?? 11;
+
+  if (hasTaxBreakdown) {
+    // Subtotal row
+    doc
+      .font("Helvetica")
+      .fontSize(10)
+      .fillColor("#475569")
+      .text("Subtotal", 320, y + 10, { width: 147, align: "right" })
+      .text(idr(data.totalAmount), 470, y + 10, { width: 77, align: "right" });
+    y += 22;
+
+    // PPN row
+    doc
+      .text(`PPN ${taxPct}%`, 320, y + 6, { width: 147, align: "right" })
+      .text(idr(data.taxAmount!), 470, y + 6, { width: 77, align: "right" });
+    y += 20;
+
+    // Separator
+    doc
+      .moveTo(320, y)
+      .lineTo(547, y)
+      .strokeColor("#cbd5e1")
+      .stroke();
+    y += 6;
+
+    // Grand Total row
+    doc
+      .fillColor("#0f172a")
+      .fontSize(11)
+      .text("Grand Total", 320, y + 6, { width: 147, align: "right" })
+      .font("Helvetica-Bold")
+      .fontSize(14)
+      .text(idr(data.grandTotal!), 470, y + 4, { width: 77, align: "right" });
+  } else {
+    doc
+      .moveDown(1)
+      .fontSize(11)
+      .fillColor("#0f172a")
+      .text("TOTAL", 380, y + 10, { width: 90, align: "right" })
+      .font("Helvetica-Bold")
+      .fontSize(14)
+      .text(idr(data.totalAmount), 470, y + 8, { width: 77, align: "right" });
+  }
 
   if (data.notes) {
     doc

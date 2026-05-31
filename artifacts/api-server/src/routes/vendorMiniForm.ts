@@ -2713,7 +2713,20 @@ vendorMiniFormRouter.post("/admin/customer-approvals/:id/send-wa", async (req: R
       const [orderRow] = await db.select().from(logisticOrdersTable)
         .where(eq(logisticOrdersTable.id, approval.orderId)).limit(1);
       if (orderRow) {
-        await sendCustomerApprovalNotification(buildOrderDataFromRow(orderRow), priceStr, approvalUrl);
+        const orderData = await buildOrderDataFromRowWithItems(orderRow);
+        const ppnPct2 = approval.ppnPct ? Number(approval.ppnPct) : 11;
+        const sellingNum2 = approval.sellingPrice ? Number(approval.sellingPrice) : null;
+        const ppnNominalNum2 = approval.ppnNominal
+          ? Number(approval.ppnNominal)
+          : sellingNum2 != null
+            ? Math.round(sellingNum2 * ppnPct2 / (100 + ppnPct2))
+            : null;
+        await sendCustomerApprovalNotification(orderData, priceStr, approvalUrl, {
+          rfqNumber: approval.orderNumber ?? null,
+          sellingPriceNum: sellingNum2,
+          ppnNominalNum: ppnNominalNum2,
+          ppnPct: ppnPct2,
+        });
         const userId2b = (req.user as { id: string } | undefined)?.id ?? "admin";
         await logActivity("customer_approval", id, "sent_wa", userId2b,
           `WA penawaran dikirim ke customer ${approval.customerName ?? "-"}`, { phone: target });

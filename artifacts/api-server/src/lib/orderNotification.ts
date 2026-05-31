@@ -1592,10 +1592,63 @@ export async function sendCustomerApprovalNotification(
   order: LogisticOrderData,
   sellingPrice: string,
   customerApprovalLink: string,
+  opts?: {
+    rfqNumber?: string | null;
+    sellingPriceNum?: number | null;
+    ppnNominalNum?: number | null;
+    ppnPct?: number;
+    etaFinal?: string | null;
+    validUntil?: string | null;
+  },
 ): Promise<void> {
   if (!order.phone) return;
   const tpl = await getWaTemplateConfig("customer", "customer_approval", DEFAULT_TPL.customer.customer_approval);
-  const msg = renderWf(tpl, order, { sellingPrice, customerApprovalLink });
+
+  // Build financial breakdown
+  const sellingNum = opts?.sellingPriceNum ?? null;
+  const ppnPct = opts?.ppnPct ?? 11;
+  const ppnNominal = opts?.ppnNominalNum != null
+    ? opts.ppnNominalNum
+    : sellingNum != null
+      ? Math.round(sellingNum * ppnPct / (100 + ppnPct))
+      : null;
+  const subtotalBeforePpn = sellingNum != null && ppnNominal != null
+    ? sellingNum - ppnNominal
+    : null;
+
+  // Build per-item block (each item: name + qty + subtotal)
+  const itemsBlock: string | null = (() => {
+    if (!order.orderItems?.length) return null;
+    return order.orderItems.map(i => {
+      const qty = i.qty ?? 1;
+      const unit = i.unit ?? "unit";
+      const lines: string[] = [`• ${i.name} (${qty} ${unit})`];
+      if (i.subtotal != null && i.subtotal > 0) {
+        lines.push(`  Subtotal : Rp ${Math.round(i.subtotal).toLocaleString("id-ID")}`);
+      }
+      return lines.join("\n");
+    }).join("\n");
+  })();
+
+  const extras: Record<string, string | null | undefined> = {
+    sellingPrice,
+    customerApprovalLink,
+    rfqNumber: opts?.rfqNumber ?? null,
+    itemsBlock,
+    subtotalDisplay: subtotalBeforePpn != null
+      ? `Rp ${Math.round(subtotalBeforePpn).toLocaleString("id-ID")}`
+      : null,
+    taxDisplay: ppnNominal != null
+      ? `Rp ${Math.round(ppnNominal).toLocaleString("id-ID")}`
+      : null,
+    totalDisplay: sellingNum != null
+      ? `Rp ${Math.round(sellingNum).toLocaleString("id-ID")}`
+      : sellingPrice,
+    etaFinal: opts?.etaFinal ?? null,
+    validUntil: opts?.validUntil != null ? formatISODate(opts.validUntil) : null,
+  };
+
+  const msg = renderWf(tpl, order, extras);
   sendWhatsApp(order.phone, msg).catch((e: unknown) => logger.error({ e }, "WA customer_approval failed"));
 }
 
