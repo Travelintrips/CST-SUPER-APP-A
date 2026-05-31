@@ -9,6 +9,7 @@ type OrderItemInfo = {
   subtotal: string | null;
   quantity: string | null;
   unit: string | null;
+  unitPrice?: string | null;
 };
 
 type OrderInfo = {
@@ -358,6 +359,7 @@ function SubmittedReview({
                           <th className="text-left px-3 py-2 font-medium">Produk</th>
                           <th className="text-right px-3 py-2 font-medium">Qty</th>
                           <th className="text-right px-3 py-2 font-medium">Satuan</th>
+                          <th className="text-right px-3 py-2 font-medium">Harga/Unit</th>
                           <th className="text-right px-3 py-2 font-medium">Subtotal</th>
                         </tr>
                       </thead>
@@ -367,6 +369,7 @@ function SubmittedReview({
                             <td className="px-3 py-2 text-slate-700">{it.serviceName || "—"}</td>
                             <td className="px-3 py-2 text-right text-slate-600">{it.quantity ?? "—"}</td>
                             <td className="px-3 py-2 text-right text-slate-500">{it.unit ?? "—"}</td>
+                            <td className="px-3 py-2 text-right text-slate-500">{it.unitPrice ? idr(it.unitPrice) : "—"}</td>
                             <td className="px-3 py-2 text-right font-medium text-slate-700">{idr(it.subtotal)}</td>
                           </tr>
                         ))}
@@ -690,6 +693,7 @@ function ProductFulfillmentForm({
                   <th className="text-left px-4 py-2.5 font-medium">Nama Produk</th>
                   <th className="text-right px-4 py-2.5 font-medium">Qty Order</th>
                   <th className="text-right px-4 py-2.5 font-medium">Satuan</th>
+                  <th className="text-right px-4 py-2.5 font-medium">Harga/Unit</th>
                   <th className="text-right px-4 py-2.5 font-medium">Subtotal</th>
                 </tr>
               </thead>
@@ -699,6 +703,7 @@ function ProductFulfillmentForm({
                     <td className="px-4 py-3 text-slate-700 font-medium">{item.serviceName || "—"}</td>
                     <td className="px-4 py-3 text-right text-slate-600">{item.quantity ?? "—"}</td>
                     <td className="px-4 py-3 text-right text-slate-500">{item.unit ?? "—"}</td>
+                    <td className="px-4 py-3 text-right text-slate-500">{item.unitPrice ? idr(item.unitPrice) : "—"}</td>
                     <td className="px-4 py-3 text-right font-semibold text-slate-700">{idr(item.subtotal)}</td>
                   </tr>
                 ))}

@@ -626,7 +626,13 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
 
           const vendorItems = base.order.items.map((it) => {
             const vp = findVendorPrice(it.serviceName, it.category);
-            return { ...it, subtotal: vp != null ? String(vp) : it.subtotal };
+            const qty = it.quantity != null ? parseFloat(it.quantity) : 1;
+            const vendorSubtotal = vp != null ? vp * qty : null;
+            return {
+              ...it,
+              unitPrice: vp != null ? String(vp) : null,
+              subtotal: vendorSubtotal != null ? String(vendorSubtotal) : it.subtotal,
+            };
           });
 
           const vendorPrices = vendorItems.map(i => i.subtotal != null ? parseFloat(i.subtotal) : null);
