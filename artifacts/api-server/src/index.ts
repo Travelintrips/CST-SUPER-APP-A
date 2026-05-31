@@ -7,6 +7,7 @@ import { seedDemoData, seedDemoDrivers } from "./lib/seedDemoData";
 import { startImapPoller } from "./lib/imapPoller";
 import { startOcrTempCleanup } from "./lib/ocrTempCleanup";
 import { startVmfGapNotifier, runVmfGapCheck } from "./lib/vmfGapNotifier";
+import { startFulfillmentExpiryNotifier } from "./lib/fulfillmentExpiryNotifier";
 import { runPhase1Migration } from "./lib/phase1Migration";
 import { startWorkflowWorker } from "./lib/workflowWorker";
 import { startWaRetryWorker } from "./lib/waRetryWorker";
@@ -258,6 +259,7 @@ async function startServer() {
   startImapPoller(3 * 60 * 1000);
   startOcrTempCleanup();
   startVmfGapNotifier();
+  startFulfillmentExpiryNotifier();
   startWorkflowWorker();
   startDbBackupScheduler();
   startWaRetryWorker();
