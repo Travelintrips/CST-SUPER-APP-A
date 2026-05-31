@@ -104,24 +104,124 @@ export function normalizeStatus(raw: string): string {
   return LEGACY_STATUS_MAP[raw] ?? raw;
 }
 
-/** WA message sent to customer when order reaches a given status */
-export const CUSTOMER_WA_MESSAGES: Record<string, (orderNumber: string) => string> = {
-  "Order Received":   (n) => `📦 *Order Anda Diterima*\nNo Order: ${n}\nOrder Anda sudah kami terima dan sedang kami proses. Terima kasih telah menggunakan CST Logistics.`,
-  "Admin Review":     (n) => `🔍 *Order Sedang Ditinjau*\nNo Order: ${n}\nTim admin kami sedang meninjau order Anda. Kami akan segera menghubungi Anda.`,
-  "RFQ Sent":         (n) => `📋 *Permintaan Penawaran Dikirim*\nNo Order: ${n}\nKami sedang mengumpulkan penawaran terbaik dari vendor kami untuk Anda.`,
-  "Quote Received":   (n) => `💰 *Penawaran Vendor Diterima*\nNo Order: ${n}\nKami telah menerima penawaran dari vendor. Tim kami sedang menyiapkan proposal untuk Anda.`,
-  "Customer Approval":(n) => `✅ *Penawaran Siap untuk Anda Setujui*\nNo Order: ${n}\nPenawaran kami sudah siap. Silakan cek link yang dikirimkan untuk menyetujui atau menolak.`,
-  "Vendor Confirmed": (n) => `🤝 *Vendor Dikonfirmasi*\nNo Order: ${n}\nVendor telah dikonfirmasi untuk menangani pengiriman Anda. Persiapan pengiriman segera dimulai.`,
-  "In Progress":      (n) => `🔄 *Pengiriman Sedang Diproses*\nNo Order: ${n}\nOrder Anda sedang dalam proses persiapan pengiriman.`,
-  "Pickup":           (n) => `🚚 *Proses Penjemputan*\nNo Order: ${n}\nDriver sedang dalam perjalanan atau sedang mengambil muatan Anda.`,
-  "In Transit":       (n) => `🛣️ *Muatan Dalam Perjalanan*\nNo Order: ${n}\nMuatan Anda sedang dalam perjalanan menuju tujuan.`,
-  "Arrived":          (n) => `📍 *Muatan Tiba di Tujuan*\nNo Order: ${n}\nMuatan Anda telah tiba di lokasi tujuan.`,
-  "Delivered":        (n) => `✅ *Muatan Berhasil Dikirim*\nNo Order: ${n}\nMuatan Anda telah berhasil dikirim. Terima kasih telah menggunakan CST Logistics!`,
-  "POD Uploaded":     (n) => `📄 *Bukti Pengiriman Diunggah*\nNo Order: ${n}\nBukti pengiriman (POD) telah diunggah. Kami sedang memproses invoice untuk Anda.`,
-  "Invoice Issued":   (n) => `🧾 *Invoice Diterbitkan*\nNo Order: ${n}\nInvoice untuk order Anda telah diterbitkan. Silakan cek email Anda.`,
-  "Payment Received": (n) => `💳 *Pembayaran Diterima*\nNo Order: ${n}\nPembayaran Anda telah kami terima. Terima kasih!`,
-  "Completed":        (n) => `🎉 *Order Selesai*\nNo Order: ${n}\nOrder Anda telah selesai sepenuhnya. Terima kasih telah menggunakan layanan CST Logistics!`,
-  "Cancelled":        (n) => `❌ *Order Dibatalkan*\nNo Order: ${n}\nOrder Anda telah dibatalkan. Hubungi kami jika ada pertanyaan.`,
+/** WA message sent to customer when order reaches a given status.
+ *  @param orderNumber  Nomor order (e.g. LOG-260531-12345)
+ *  @param trackUrl     URL tracking publik langsung ke detail order (opsional)
+ */
+export const CUSTOMER_WA_MESSAGES: Record<string, (orderNumber: string, trackUrl?: string) => string> = {
+  "Order Received": (n, u) =>
+    `📦 *Order Anda Diterima*\n` +
+    `━━━━━━━━━━━━━━━━\n` +
+    `No Order : *${n}*\n` +
+    `Status   : Order Diterima\n\n` +
+    `Order Anda sudah kami terima dan sedang kami proses.\n` +
+    (u ? `\n🔗 Pantau status order Anda:\n${u}\n` : "") +
+    `\nTerima kasih telah menggunakan CST Logistics.`,
+
+  "Admin Review": (n, u) =>
+    `🔍 *Order Sedang Ditinjau*\n` +
+    `━━━━━━━━━━━━━━━━\n` +
+    `No Order : *${n}*\n\n` +
+    `Tim admin kami sedang meninjau order Anda. Kami akan segera menghubungi Anda.` +
+    (u ? `\n\n🔗 Pantau status:\n${u}` : ""),
+
+  "RFQ Sent": (n, u) =>
+    `📋 *Permintaan Penawaran Dikirim*\n` +
+    `━━━━━━━━━━━━━━━━\n` +
+    `No Order : *${n}*\n\n` +
+    `Kami sedang mengumpulkan penawaran terbaik dari vendor kami untuk Anda.` +
+    (u ? `\n\n🔗 Pantau status:\n${u}` : ""),
+
+  "Quote Received": (n, u) =>
+    `💰 *Penawaran Vendor Diterima*\n` +
+    `━━━━━━━━━━━━━━━━\n` +
+    `No Order : *${n}*\n\n` +
+    `Kami telah menerima penawaran dari vendor. Tim kami sedang menyiapkan proposal untuk Anda.` +
+    (u ? `\n\n🔗 Pantau status:\n${u}` : ""),
+
+  "Customer Approval": (n, u) =>
+    `✅ *Penawaran Siap untuk Anda Setujui*\n` +
+    `━━━━━━━━━━━━━━━━\n` +
+    `No Order : *${n}*\n\n` +
+    `Penawaran kami sudah siap. Silakan cek link yang dikirimkan untuk menyetujui atau menolak.` +
+    (u ? `\n\n🔗 Detail order:\n${u}` : ""),
+
+  "Vendor Confirmed": (n, u) =>
+    `🤝 *Vendor Dikonfirmasi*\n` +
+    `━━━━━━━━━━━━━━━━\n` +
+    `No Order : *${n}*\n\n` +
+    `Vendor telah dikonfirmasi untuk menangani pengiriman Anda. Persiapan pengiriman segera dimulai.` +
+    (u ? `\n\n🔗 Pantau status:\n${u}` : ""),
+
+  "In Progress": (n, u) =>
+    `🔄 *Pengiriman Sedang Diproses*\n` +
+    `━━━━━━━━━━━━━━━━\n` +
+    `No Order : *${n}*\n\n` +
+    `Order Anda sedang dalam proses persiapan pengiriman.` +
+    (u ? `\n\n🔗 Pantau status:\n${u}` : ""),
+
+  "Pickup": (n, u) =>
+    `🚚 *Proses Penjemputan*\n` +
+    `━━━━━━━━━━━━━━━━\n` +
+    `No Order : *${n}*\n\n` +
+    `Driver sedang dalam perjalanan atau sedang mengambil muatan Anda.` +
+    (u ? `\n\n🔗 Pantau status:\n${u}` : ""),
+
+  "In Transit": (n, u) =>
+    `🛣️ *Muatan Dalam Perjalanan*\n` +
+    `━━━━━━━━━━━━━━━━\n` +
+    `No Order : *${n}*\n\n` +
+    `Muatan Anda sedang dalam perjalanan menuju tujuan.` +
+    (u ? `\n\n🔗 Pantau status:\n${u}` : ""),
+
+  "Arrived": (n, u) =>
+    `📍 *Muatan Tiba di Tujuan*\n` +
+    `━━━━━━━━━━━━━━━━\n` +
+    `No Order : *${n}*\n\n` +
+    `Muatan Anda telah tiba di lokasi tujuan.` +
+    (u ? `\n\n🔗 Pantau status:\n${u}` : ""),
+
+  "Delivered": (n, u) =>
+    `✅ *Muatan Berhasil Dikirim*\n` +
+    `━━━━━━━━━━━━━━━━\n` +
+    `No Order : *${n}*\n\n` +
+    `Muatan Anda telah berhasil dikirim. Terima kasih telah menggunakan CST Logistics!` +
+    (u ? `\n\n🔗 Detail pengiriman:\n${u}` : ""),
+
+  "POD Uploaded": (n, u) =>
+    `📄 *Bukti Pengiriman Diunggah*\n` +
+    `━━━━━━━━━━━━━━━━\n` +
+    `No Order : *${n}*\n\n` +
+    `Bukti pengiriman (POD) telah diunggah. Kami sedang memproses invoice untuk Anda.` +
+    (u ? `\n\n🔗 Lihat dokumen:\n${u}` : ""),
+
+  "Invoice Issued": (n, u) =>
+    `🧾 *Invoice Diterbitkan*\n` +
+    `━━━━━━━━━━━━━━━━\n` +
+    `No Order : *${n}*\n\n` +
+    `Invoice untuk order Anda telah diterbitkan. Silakan cek email Anda.` +
+    (u ? `\n\n🔗 Detail order:\n${u}` : ""),
+
+  "Payment Received": (n, u) =>
+    `💳 *Pembayaran Diterima*\n` +
+    `━━━━━━━━━━━━━━━━\n` +
+    `No Order : *${n}*\n\n` +
+    `Pembayaran Anda telah kami terima. Terima kasih!` +
+    (u ? `\n\n🔗 Detail order:\n${u}` : ""),
+
+  "Completed": (n, u) =>
+    `🎉 *Order Selesai*\n` +
+    `━━━━━━━━━━━━━━━━\n` +
+    `No Order : *${n}*\n\n` +
+    `Order Anda telah selesai sepenuhnya. Terima kasih telah menggunakan layanan CST Logistics!` +
+    (u ? `\n\n🔗 Detail order:\n${u}` : ""),
+
+  "Cancelled": (n, u) =>
+    `❌ *Order Dibatalkan*\n` +
+    `━━━━━━━━━━━━━━━━\n` +
+    `No Order : *${n}*\n\n` +
+    `Order Anda telah dibatalkan. Hubungi kami jika ada pertanyaan.` +
+    (u ? `\n\n🔗 Detail order:\n${u}` : ""),
 };
 
 /** WA message note for vendor when status changes */

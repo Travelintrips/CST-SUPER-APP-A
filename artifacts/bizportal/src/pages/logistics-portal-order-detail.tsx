@@ -839,31 +839,77 @@ export default function LogisticsPortalOrderDetailPage() {
               </Card>
             </div>
 
-            {(order.items ?? []).length > 0 && (
-              <Card>
-                <CardHeader className="pb-2"><CardTitle className="text-sm">Item Layanan</CardTitle></CardHeader>
-                <CardContent className="p-0">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Layanan</TableHead>
-                        <TableHead>Kategori</TableHead>
-                        <TableHead className="text-right">Subtotal</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {(order.items ?? []).map((item) => (
-                        <TableRow key={item.id}>
-                          <TableCell className="font-medium text-sm">{item.serviceName}</TableCell>
-                          <TableCell className="text-sm text-muted-foreground">{item.category}</TableCell>
-                          <TableCell className="text-right text-sm">{idr(item.subtotal)}</TableCell>
+            {(order.items ?? []).length > 0 && (() => {
+              const approvedQuote = quotes.find((q) => q.quoteStatus === "approved");
+              const approvedVendorPrice = approvedQuote?.vendorPrice ?? 0;
+              const totalSubtotal = (order.items ?? []).reduce((s, i) => s + (i.subtotal ?? 0), 0);
+              const showMargin = approvedVendorPrice > 0 && totalSubtotal > 0;
+              return (
+                <Card>
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <CardTitle className="text-sm">Item Layanan</CardTitle>
+                      {showMargin && (
+                        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                          <span>Vendor Total: <span className="font-mono text-foreground">{idr(approvedVendorPrice)}</span></span>
+                          <span>Margin Total: <span className={`font-mono font-semibold ${(totalSubtotal - approvedVendorPrice) >= 0 ? "text-green-700" : "text-red-600"}`}>{idr(totalSubtotal - approvedVendorPrice)}</span></span>
+                          <span className={`font-semibold ${totalSubtotal > 0 && ((totalSubtotal - approvedVendorPrice) / totalSubtotal) >= 0 ? "text-green-700" : "text-red-600"}`}>
+                            {totalSubtotal > 0 ? `${(((totalSubtotal - approvedVendorPrice) / totalSubtotal) * 100).toFixed(1)}%` : "—"}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Layanan</TableHead>
+                          <TableHead>Kategori</TableHead>
+                          <TableHead className="text-right">Harga Jual</TableHead>
+                          {showMargin && <TableHead className="text-right">Harga Vendor*</TableHead>}
+                          {showMargin && <TableHead className="text-right">Margin</TableHead>}
+                          {showMargin && <TableHead className="text-right">%</TableHead>}
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
-            )}
+                      </TableHeader>
+                      <TableBody>
+                        {(order.items ?? []).map((item) => {
+                          const sellingPrice = item.subtotal ?? 0;
+                          const itemVendorCost = showMargin ? (approvedVendorPrice * (sellingPrice / totalSubtotal)) : 0;
+                          const margin = sellingPrice - itemVendorCost;
+                          const marginPct = sellingPrice > 0 ? (margin / sellingPrice) * 100 : 0;
+                          return (
+                            <TableRow key={item.id}>
+                              <TableCell className="font-medium text-sm">{item.serviceName}</TableCell>
+                              <TableCell className="text-sm text-muted-foreground">{item.category}</TableCell>
+                              <TableCell className="text-right text-sm font-mono">{idr(sellingPrice)}</TableCell>
+                              {showMargin && (
+                                <TableCell className="text-right text-sm font-mono text-muted-foreground">{idr(Math.round(itemVendorCost))}</TableCell>
+                              )}
+                              {showMargin && (
+                                <TableCell className={`text-right text-sm font-mono font-semibold ${margin >= 0 ? "text-green-700" : "text-red-600"}`}>
+                                  {idr(Math.round(margin))}
+                                </TableCell>
+                              )}
+                              {showMargin && (
+                                <TableCell className={`text-right text-sm font-semibold ${marginPct >= 0 ? "text-green-700" : "text-red-600"}`}>
+                                  {marginPct.toFixed(1)}%
+                                </TableCell>
+                              )}
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                    {showMargin && (
+                      <p className="text-[11px] text-muted-foreground px-4 py-2">
+                        * Harga Vendor dialokasikan proporsional dari total harga vendor ({idr(approvedVendorPrice)}) berdasarkan bobot harga jual tiap item.
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })()}
           </TabsContent>
 
           {/* ── Tab 2: RFQ & Quotes ── */}

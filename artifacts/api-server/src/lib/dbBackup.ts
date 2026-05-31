@@ -11,7 +11,8 @@
 import { spawn } from "child_process";
 import { gzip } from "zlib";
 import { promisify } from "util";
-import { objectStorageClient } from "./objectStorage.js";
+import { createClient } from "@supabase/supabase-js";
+import WebSocket from "ws";
 import { logger } from "./logger.js";
 
 const gzipAsync = promisify(gzip);
@@ -20,17 +21,26 @@ const KEEP_BACKUPS = 7;
 const PG_DUMP_BIN = process.env["PG_DUMP_BIN"] ?? "pg_dump";
 const BACKUP_HOUR_UTC = 19; // 02:00 WIB
 const CHECK_INTERVAL_MS = 60 * 60 * 1000; // check every hour
+const PRIVATE_BUCKET = "private-uploads";
 
 let lastBackupDate = ""; // "YYYY-MM-DD" of last successful backup
 
-// ── helpers ──────────────────────────────────────────────────────────────────
+// ── Supabase client ───────────────────────────────────────────────────────────
+function getSupabase() {
+  const rawKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+  const devKey = process.env.SUPABASE_SERVICE_ROLE_KEY_DEV ?? "";
+  const key = rawKey.length > 100 ? rawKey : devKey;
 
-/** Parse Replit Object Storage path into { bucketName, objectName }. */
-function parsePath(path: string): { bucketName: string; objectName: string } {
-  if (!path.startsWith("/")) path = `/${path}`;
-  const parts = path.split("/");
-  if (parts.length < 3) throw new Error(`Invalid object storage path: ${path}`);
-  return { bucketName: parts[1], objectName: parts.slice(2).join("/") };
+  const rawUrl = rawKey.length > 100
+    ? (process.env.VITE_SUPABASE_URL ?? process.env.SUPABASE_URL ?? "")
+    : (process.env.SUPABASE_URL_DEV ?? "").replace(/\/rest\/v1\/?$/, "");
+
+  if (!rawUrl || !key) return null;
+  const url = rawUrl.startsWith("https://") ? rawUrl : `https://${rawUrl}.supabase.co`;
+  return createClient(url, key, {
+    auth: { autoRefreshToken: false, persistSession: false },
+    realtime: { transport: WebSocket as unknown as typeof globalThis.WebSocket },
+  });
 }
 
 /** Run pg_dump and return stdout as a Buffer. */
@@ -66,56 +76,50 @@ function runPgDump(databaseUrl: string): Promise<Buffer> {
 
 export async function runDbBackup(): Promise<{ ok: boolean; key?: string; sizeKb?: number; error?: string }> {
   const databaseUrl = process.env["DATABASE_URL"];
-  const privateDir = process.env["PRIVATE_OBJECT_DIR"];
-
   if (!databaseUrl) {
     logger.warn("DB backup: DATABASE_URL not set — skipping");
     return { ok: false, error: "DATABASE_URL not set" };
   }
-  if (!privateDir) {
-    logger.warn("DB backup: PRIVATE_OBJECT_DIR not set — skipping");
-    return { ok: false, error: "PRIVATE_OBJECT_DIR not set" };
+
+  const sb = getSupabase();
+  if (!sb) {
+    logger.warn("DB backup: Supabase not configured — skipping");
+    return { ok: false, error: "Supabase not configured" };
   }
 
   const now = new Date();
-  const ts = now.toISOString().replace(/[:.]/g, "-").slice(0, 19); // 2026-05-27T19-00-00
+  const ts = now.toISOString().replace(/[:.]/g, "-").slice(0, 19);
   const filename = `backup-${ts}.sql.gz`;
-  const fullPath = `${privateDir}/db-backups/${filename}`;
-  const { bucketName, objectName } = parsePath(fullPath);
-  const prefix = parsePath(`${privateDir}/db-backups/`).objectName;
+  const objectName = `db-backups/${filename}`;
 
   logger.info({ filename }, "DB backup: starting pg_dump");
 
   try {
-    // 1. Dump
     const sqlBuffer = await runPgDump(databaseUrl);
-
-    // 2. Compress
     const gzBuffer = await gzipAsync(sqlBuffer);
     const sizeKb = Math.round(gzBuffer.byteLength / 1024);
 
-    // 3. Upload
-    const bucket = objectStorageClient.bucket(bucketName);
-    await bucket.file(objectName).save(gzBuffer, {
-      contentType: "application/gzip",
-      resumable: false,
-      metadata: { cacheControl: "private, no-store" },
-    });
+    const { error: uploadErr } = await sb.storage
+      .from(PRIVATE_BUCKET)
+      .upload(objectName, gzBuffer, { contentType: "application/gzip", upsert: true });
+    if (uploadErr) throw new Error(`Upload failed: ${uploadErr.message}`);
 
     logger.info({ filename, sizeKb }, "DB backup: uploaded successfully");
 
-    // 4. Rotate — delete old backups beyond KEEP_BACKUPS
+    // Rotate — delete old backups beyond KEEP_BACKUPS
     try {
-      const [files] = await bucket.getFiles({ prefix });
-      // Sort by name ascending (timestamps are lexicographic)
-      const backupFiles = files
-        .filter((f) => f.name.endsWith(".sql.gz"))
-        .sort((a, b) => a.name.localeCompare(b.name));
-
-      const toDelete = backupFiles.slice(0, Math.max(0, backupFiles.length - KEEP_BACKUPS));
-      for (const f of toDelete) {
-        await f.delete().catch((e: unknown) => logger.warn({ err: e, name: f.name }, "DB backup: rotation delete failed"));
-        logger.info({ name: f.name }, "DB backup: rotated old backup");
+      const { data: files } = await sb.storage.from(PRIVATE_BUCKET).list("db-backups");
+      if (files) {
+        const backupFiles = files
+          .filter((f) => f.name.endsWith(".sql.gz"))
+          .sort((a, b) => a.name.localeCompare(b.name));
+        const toDelete = backupFiles
+          .slice(0, Math.max(0, backupFiles.length - KEEP_BACKUPS))
+          .map((f) => `db-backups/${f.name}`);
+        if (toDelete.length > 0) {
+          await sb.storage.from(PRIVATE_BUCKET).remove(toDelete);
+          logger.info({ count: toDelete.length }, "DB backup: rotated old backups");
+        }
       }
     } catch (rotateErr) {
       logger.warn({ err: rotateErr }, "DB backup: rotation failed (non-fatal)");

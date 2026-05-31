@@ -206,6 +206,7 @@ function AppShell() {
         <Route path="/pabean" component={Pabean} />
         <Route path="/book" component={LogisticBook} />
         <Route path="/logistic-order-success" component={LogisticOrderSuccess} />
+        <Route path="/track/:orderNumber" component={LogisticTrack} />
         <Route path="/track" component={LogisticTrack} />
         <Route path="/logistic-admin" component={LogisticAdmin} />
         <Route path="/logistic-admin/orders/:id" component={LogisticAdminOrderDetail} />

@@ -1,0 +1,263 @@
+AUDIT & FIX E2E — ALUR PEMESANAN CUSTOMER + NOTIFIKASI LINK WA
+
+Tujuan:
+Pastikan alur pemesanan customer dari awal sampai selesai berjalan end-to-end, dan semua notifikasi WhatsApp berisi link mini form/public tracking yang benar, bukan link kosong atau hanya halaman lacak umum.
+
+Scope utama:
+1. Customer order masuk
+2. Admin menerima notifikasi WA
+3. Admin konfirmasi order
+4. RFQ diteruskan ke vendor jika perlu
+5. Vendor submit penawaran/konfirmasi stok
+6. Admin review vendor response
+7. Customer menerima penawaran
+8. Customer approve/reject via link WA
+9. Admin menerima hasil approval customer
+10. Fulfillment/vendor lanjut proses
+11. Delivery/POD/upload dokumen
+12. Customer bisa tracking progress order sampai complete
+
+WAJIB AUDIT FILE/ROUTE:
+- artifacts/api-server/src/routes/logisticOrders*
+- artifacts/api-server/src/routes/logisticRfqV2.ts
+- artifacts/api-server/src/routes/vendorFulfillment.ts
+- artifacts/api-server/src/routes/vendorResponse.ts
+- artifacts/api-server/src/routes/customerQuote*
+- artifacts/api-server/src/lib/wa*
+- artifacts/api-server/src/lib/vendorQuoteWa.ts
+- artifacts/api-server/src/lib/objectStorage.ts
+- artifacts/customer-portal/src/pages/customer-quote.tsx
+- artifacts/customer-portal/src/pages/tracking/order tracking page
+- artifacts/bizportal/src/pages/order/detail/progress related page
+
+PERBAIKAN WAJIB:
+
+A. Customer Order → Admin WA
+Saat customer submit order:
+- Simpan orderNumber
+- Simpan customer name, phone, item, quantity, harga jual, PPN, total
+- Kirim WA ke admin group
+- Notifikasi WA admin wajib berisi:
+  - Nomor order
+  - Nama customer
+  - Jenis order/service
+  - Item + quantity
+  - Jumlah pemesanan
+  - PPN
+  - Total
+  - Link admin action/order detail
+  - Link mini form admin jika tersedia
+
+B. Admin Confirm Order
+Saat admin klik/confirm order:
+- Status order berubah menjadi ADMIN_CONFIRMED
+- Insert ke order_stage_logs / workflow_events
+- Progress customer berubah otomatis
+- Kirim WA ke customer:
+  - Order diterima
+  - Nomor order
+  - Ringkasan pesanan
+  - Link tracking detail langsung, bukan /track umum
+  - Format ideal:
+    /track/{orderNumber}?token={publicOrderToken}
+
+C. Customer Tracking Link
+Perbaiki link WA customer:
+- Jangan hanya arahkan ke /track
+- Harus langsung ke detail order:
+  /track/:orderNumber?token=xxx
+atau:
+  /track?order=LOG-xxx&token=xxx
+
+Halaman public tracking harus menampilkan:
+- Nomor order
+- Status aktif
+- Progress bar
+- Timeline riwayat
+- Item order
+- Quantity
+- Harga jual
+- Jumlah Pemesanan
+- PPN
+- Grand Total
+- Dokumen/POD jika ada
+- Estimasi proses
+
+D. RFQ ke Vendor
+Saat order perlu vendor:
+- Admin klik Send RFQ
+- Sistem kirim WA ke vendor
+- WA vendor wajib berisi:
+  - Nomor RFQ/order
+  - Item/service
+  - Quantity
+  - Lokasi pickup/delivery jika ada
+  - Due date response
+  - Link mini form vendor yang valid
+- Link vendor harus memakai token unik:
+  /vendor-form/{token}
+- Jangan duplicate WA admin recap.
+
+E. Vendor Submit Response
+Saat vendor submit:
+- Simpan harga dasar/vendor price
+- Simpan stock confirmation
+- Simpan tanggal ready/pickup
+- Simpan attachment/foto jika ada
+- Update status order menjadi VENDOR_RESPONDED
+- Kirim WA recap ke admin group hanya 1 kali
+- WA admin recap wajib berisi:
+  - [BARU] Vendor submit
+  - Nama vendor
+  - Nomor order/RFQ
+  - Item + quantity
+  - Harga vendor
+  - Catatan vendor
+  - Attachment link jika ada
+  - Link compare/review vendor
+
+F. Admin Kirim Penawaran ke Customer
+Saat admin pilih vendor / buat quote:
+- Harga customer harus harga jual, bukan harga vendor
+- Tampilkan breakdown:
+  - Item
+  - Quantity
+  - Unit price jual
+  - Jumlah Pemesanan / subtotal
+  - PPN 11%
+  - Total Penawaran
+- Kirim WA ke customer dengan link:
+  /customer-quote/{token}
+- Link customer quote harus langsung membuka form approval, bukan halaman tracking umum.
+
+G. Customer Approve/Reject
+Saat customer approve:
+- Update status menjadi CUSTOMER_APPROVED
+- Insert order_stage_logs
+- Kirim WA ke admin:
+  - Customer approve
+  - Nomor order
+  - Total approved
+  - Link lanjut fulfillment/vendor
+
+Saat customer reject:
+- Update status menjadi CUSTOMER_REJECTED
+- Simpan alasan reject
+- Kirim WA ke admin dengan alasan reject
+
+H. Fulfillment / Vendor Execution
+Saat admin forward ke vendor/fulfillment:
+- Kirim WA ke vendor fulfillment
+- Link fulfillment harus valid:
+  /vendor-fulfillment/{token}
+- Mini form fulfillment wajib menampilkan:
+  - Nomor order
+  - Nama customer
+  - Breakdown barang
+  - Quantity
+  - Harga dasar/vendor jika internal vendor
+  - Lokasi gudang jika customer tidak pilih shipment
+  - Tanggal ready dibuat date picker/calendar
+  - Konfirmasi stok dibuat button pilihan:
+    Ada stok
+    Sebagian tersedia
+    Tidak tersedia
+  - Upload Foto Barang
+  - Upload Packing List
+  - Upload Invoice
+  - Upload POD/Bukti Kirim jika selesai
+
+I. Upload Attachment
+Pastikan semua upload public memakai:
+  objectStorage.uploadPublicRaw(subPath, buffer, contentType)
+
+Tidak boleh ada:
+  uploadFile("public/...")
+
+Audit:
+  grep -R "uploadFile.*public/" artifacts/api-server/src -n
+
+Harus kosong.
+
+J. Progress Mapping
+Buat mapping status → progress step:
+- ORDER_CREATED
+- ADMIN_CONFIRMED
+- RFQ_SENT
+- VENDOR_RESPONDED
+- QUOTE_SENT_TO_CUSTOMER
+- CUSTOMER_APPROVED
+- FULFILLMENT_STARTED
+- DELIVERY_IN_PROGRESS
+- POD_UPLOADED
+- COMPLETED
+- CANCELLED / REJECTED
+
+Pastikan setiap update status:
+- update orders.status
+- insert order_stage_logs
+- insert workflow_events jika digunakan
+- trigger notification jika perlu
+- tampil di public customer tracking
+
+K. Prevent Duplicate WA
+Audit semua handler yang memanggil WA send function:
+- Jangan ada function WA dipanggil dua kali untuk event yang sama
+- Tambahkan idempotency key:
+  eventType + orderId + recipient + token
+- Jika notification_logs sudah ada untuk event yang sama, jangan kirim ulang kecuali force resend.
+
+L. Token & Security
+Semua link public harus pakai token:
+- Customer quote token
+- Vendor form token
+- Vendor fulfillment token
+- Public tracking token
+
+Validasi:
+- token expired/invalid tampilkan halaman error yang jelas
+- jangan expose harga vendor ke customer
+- jangan expose harga jual ke vendor jika tidak perlu
+
+M. Testing E2E
+Buat script/manual checklist:
+1. Customer buat order produk dengan quantity 2
+2. Admin menerima WA order lengkap
+3. Admin confirm order
+4. Customer menerima WA tracking detail langsung
+5. Admin send RFQ ke vendor
+6. Vendor menerima WA link mini form
+7. Vendor submit quote + attachment
+8. Admin menerima 1 WA recap saja
+9. Admin kirim quote ke customer
+10. Customer link menampilkan:
+    - Jumlah Pemesanan
+    - PPN
+    - Total
+11. Customer approve
+12. Admin menerima WA approval
+13. Admin forward fulfillment
+14. Vendor fulfillment upload foto/packing list/POD
+15. Customer tracking progress berubah sampai completed
+
+Output yang diminta:
+- Tampilkan daftar file yang diubah
+- Tampilkan route yang diperbaiki
+- Tampilkan mapping status progress
+- Tampilkan contoh WA message final untuk:
+  1. Admin order masuk
+  2. Customer order confirmation
+  3. Vendor RFQ
+  4. Admin vendor recap
+  5. Customer quotation
+  6. Admin customer approval
+  7. Vendor fulfillment
+- Jalankan grep/audit:
+  grep -R "uploadFile.*public/" artifacts/api-server/src -n
+  grep -R "sendAdminRecapWa" artifacts/api-server/src -n
+  grep -R "/track" artifacts/api-server/src artifacts/customer-portal/src -n
+- Jalankan typecheck/build:
+  pnpm run typecheck
+  pnpm -r --if-present run build
+
+Jangan menghapus fitur lama. Perbaiki routing, notification payload, token link, progress logs, dan WA message agar alur customer order benar-benar end-to-end.

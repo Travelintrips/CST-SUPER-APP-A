@@ -492,13 +492,30 @@ customerQuotePublicRouter.get("/:token", async (req: Request, res: Response) => 
       return typeof u === "string" ? u : null;
     }
 
-    const priceItems = orderItems.map((i) => ({
-      name: i.serviceName,
-      category: i.category,
-      subtotal: i.subtotal ? Number(i.subtotal) : 0,
-      qty: extractQty(i.inputData),
-      unit: extractUnit(i.inputData),
-    }));
+    function extractUnitPrice(inp: unknown): number | null {
+      if (!inp || typeof inp !== "object") return null;
+      const d = inp as Record<string, unknown>;
+      const raw = d.price ?? d.productPrice ?? d.unitPrice ?? d.sellingPrice ?? null;
+      if (typeof raw === "number") return raw;
+      if (typeof raw === "string") { const n = parseFloat(raw); return isNaN(n) ? null : n; }
+      return null;
+    }
+
+    const priceItems = orderItems.map((i) => {
+      const qty = extractQty(i.inputData);
+      const unitPrice = extractUnitPrice(i.inputData);
+      const subtotal = i.subtotal ? Number(i.subtotal) : 0;
+      // Jika unitPrice tersedia dan qty ada, hitung subtotal yang benar; else gunakan DB subtotal
+      const computedSubtotal = (unitPrice != null && qty != null) ? unitPrice * qty : subtotal;
+      return {
+        name: i.serviceName,
+        category: i.category,
+        subtotal: computedSubtotal,
+        unitPrice,
+        qty,
+        unit: extractUnit(i.inputData),
+      };
+    });
 
     const orderSubtotal = order.subtotal ? Number(order.subtotal) : 0;
     const orderTax = order.tax ? Number(order.tax) : 0;
@@ -637,7 +654,16 @@ customerQuotePublicRouter.post("/:token/respond", async (req: Request, res: Resp
       // Send WA to admin group only
       const ts = new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" });
       if (adminGroupWa) {
-        const tplApproveGroup = await getWaTemplateConfig("admin_group", "customer_approved", "🎉 *CUSTOMER APPROVED — {{orderNumber}}*\nCustomer *{{customerName}}* menyetujui. Proses operasional!\n_{{timestamp}}_");
+        const tplApproveGroup = await getWaTemplateConfig("admin_group", "customer_approved",
+          "🎉 *CUSTOMER APPROVED*\n" +
+          "━━━━━━━━━━━━━━━━\n" +
+          "Order      : *{{orderNumber}}*\n" +
+          "Customer   : *{{customerName}}*\n" +
+          "Total Harga: *{{sellingPrice}}*\n" +
+          "━━━━━━━━━━━━━━━━\n" +
+          "{{fwdUrl}}\n" +
+          "_{{timestamp}}_"
+        );
         const approvedVars = {
           rfqNumber: rfqNum, orderNumber: order.orderNumber, customerName: order.customerName,
           sellingPrice: fmtRp(link.finalCustomerPrice ? Number(link.finalCustomerPrice) : null),

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useLocation } from "wouter";
+import { useLocation, useParams } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,13 +43,27 @@ interface RfqQuote {
   customerRespondedAt: string | null;
 }
 
+interface OrderUpdateItem {
+  id: number;
+  status: string | null;
+  notes: string | null;
+  actorType: string;
+  actorName: string | null;
+  createdAt: string;
+}
+
 interface TrackingData {
   id: number; orderNumber: string;
+  customerName: string;
   shipmentType: string; origin: string; destination: string;
   status: string; createdAt: string;
+  grandTotal: number | null;
+  subtotal: number | null;
+  tax: number | null;
   items: { id: number; category: string; serviceName: string }[];
   driverJob: DriverJob | null;
   rfqQuote: RfqQuote | null;
+  orderUpdates: OrderUpdateItem[];
 }
 
 async function fetchTracking(orderNumber: string): Promise<TrackingData> {
@@ -705,6 +719,7 @@ function PushToggle({ orderNumber }: { orderNumber: string | null }) {
 
 export default function TrackPage() {
   const [, setLocation] = useLocation();
+  const { orderNumber: pathOrderNumber } = useParams<{ orderNumber?: string }>();
   const [input, setInput] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
@@ -717,10 +732,16 @@ export default function TrackPage() {
   const [statusChangeBanner, setStatusChangeBanner] = useState<{ prev: string; next: string } | null>(null);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const o = params.get("order");
+    if (pathOrderNumber) {
+      const n = pathOrderNumber.toUpperCase().trim();
+      setInput(n);
+      setSearchTerm(n);
+      return;
+    }
+    const qp = new URLSearchParams(window.location.search);
+    const o = qp.get("order");
     if (o) { setInput(o); setSearchTerm(o.toUpperCase().trim()); }
-  }, []);
+  }, [pathOrderNumber]);
 
   // Real-time: SSE dengan auto-reconnect + connection state tracking
   useEffect(() => {
@@ -918,8 +939,28 @@ export default function TrackPage() {
 
               <Separator className="mt-5 mb-4" />
               <div className="grid grid-cols-2 gap-y-2 text-sm">
+                <span className="text-muted-foreground">Customer</span>
+                <span className="font-medium text-foreground text-right">{tracking.customerName}</span>
                 <span className="text-muted-foreground">Tgl Order</span>
                 <span className="font-medium text-foreground text-right">{formatDate(tracking.createdAt)}</span>
+                {tracking.subtotal != null && (
+                  <>
+                    <span className="text-muted-foreground">Subtotal Est.</span>
+                    <span className="font-medium text-foreground text-right">{idr(tracking.subtotal)}</span>
+                  </>
+                )}
+                {tracking.tax != null && tracking.tax > 0 && (
+                  <>
+                    <span className="text-muted-foreground">PPN</span>
+                    <span className="font-medium text-foreground text-right">{idr(tracking.tax)}</span>
+                  </>
+                )}
+                {tracking.grandTotal != null && (
+                  <>
+                    <span className="text-muted-foreground font-semibold">Total Est.</span>
+                    <span className="font-bold text-foreground text-right">{idr(tracking.grandTotal)}</span>
+                  </>
+                )}
               </div>
             </div>
 
@@ -983,6 +1024,46 @@ export default function TrackPage() {
                       <div>
                         <Badge variant="outline" className="text-xs mr-1">{item.category}</Badge>
                         <span className="text-sm text-foreground">{item.serviceName}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Riwayat Update */}
+            {tracking.orderUpdates && tracking.orderUpdates.length > 0 && (
+              <div className="bg-card border border-border rounded-xl p-5">
+                <h3 className="font-semibold text-foreground text-sm mb-4 flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-primary" />
+                  Riwayat Status
+                </h3>
+                <div className="space-y-0">
+                  {[...tracking.orderUpdates].reverse().map((update, i) => (
+                    <div key={update.id} className="flex gap-3">
+                      <div className="flex flex-col items-center">
+                        <div className={cn(
+                          "w-6 h-6 rounded-full flex items-center justify-center border-2 flex-shrink-0 mt-0.5",
+                          i === tracking.orderUpdates.length - 1
+                            ? "bg-primary border-primary text-primary-foreground"
+                            : "bg-green-500 border-green-500 text-white"
+                        )}>
+                          <CheckCircle2 className="w-3 h-3" />
+                        </div>
+                        {i < tracking.orderUpdates.length - 1 && (
+                          <div className="w-0.5 flex-1 my-1 bg-border" />
+                        )}
+                      </div>
+                      <div className={cn("pb-4", i === tracking.orderUpdates.length - 1 && "pb-0")}>
+                        {update.status && (
+                          <p className="text-sm font-medium text-foreground">
+                            {STATUS_LABELS[update.status] ?? update.status}
+                          </p>
+                        )}
+                        {update.notes && (
+                          <p className="text-xs text-muted-foreground mt-0.5">{update.notes}</p>
+                        )}
+                        <p className="text-xs text-muted-foreground mt-0.5">{formatDateTime(update.createdAt)}</p>
                       </div>
                     </div>
                   ))}

@@ -19,6 +19,7 @@ import { logger } from "../lib/logger.js";
 
 const router = Router();
 
+
 async function requireAdminMiddleware(req: Request, res: Response, next: NextFunction) {
   const ok = await requireAdmin(req, res);
   if (ok) next();
@@ -123,6 +124,46 @@ router.get("/governance-health", async (req, res) => {
   } catch (err) {
     logger.error({ err }, "governance-health error");
     res.status(500).json({ error: "Gagal memuat governance health" });
+  }
+});
+
+router.get("/init-storage", async (_req, res) => {
+  try {
+    const url = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "";
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+    const baseUrl = url.startsWith("http") ? url : `https://${url}.supabase.co`;
+
+    if (!key || key.length < 100) {
+      return res.status(500).json({ error: "SUPABASE_SERVICE_ROLE_KEY tidak valid", keyLen: key.length });
+    }
+
+    async function apiBucket(method: string, path: string, body?: object) {
+      const r = await fetch(`${baseUrl}/storage/v1${path}`, {
+        method,
+        headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      return { status: r.status, body: await r.json() };
+    }
+
+    const list = await apiBucket("GET", "/bucket");
+    const existing = new Set((Array.isArray(list.body) ? list.body : []).map((b: { id: string }) => b.id));
+
+    const results: Record<string, unknown> = { keyLen: key.length, existing: [...existing] };
+
+    if (!existing.has("public-assets")) {
+      const r = await apiBucket("POST", "/bucket", { id: "public-assets", name: "public-assets", public: true, file_size_limit: 52428800 });
+      results["public-assets"] = r;
+    } else results["public-assets"] = "already exists";
+
+    if (!existing.has("private-uploads")) {
+      const r = await apiBucket("POST", "/bucket", { id: "private-uploads", name: "private-uploads", public: false, file_size_limit: 104857600 });
+      results["private-uploads"] = r;
+    } else results["private-uploads"] = "already exists";
+
+    res.json(results);
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
   }
 });
 

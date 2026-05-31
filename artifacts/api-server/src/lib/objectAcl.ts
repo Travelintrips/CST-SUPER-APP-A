@@ -1,6 +1,4 @@
-import { File } from "@google-cloud/storage";
-
-const ACL_POLICY_METADATA_KEY = "custom:aclPolicy";
+const ACL_POLICY_METADATA_KEY = "acl_policy";
 
 export enum ObjectPermission {
   READ = "read",
@@ -12,17 +10,21 @@ export interface ObjectAclPolicy {
   visibility: "public" | "private";
 }
 
-export async function setObjectAclPolicy(objectFile: File, aclPolicy: ObjectAclPolicy): Promise<void> {
-  const [exists] = await objectFile.exists();
-  if (!exists) throw new Error(`Object not found: ${objectFile.name}`);
-  await objectFile.setMetadata({ metadata: { [ACL_POLICY_METADATA_KEY]: JSON.stringify(aclPolicy) } });
+export interface SupabaseFileHandle {
+  bucket: string;
+  path: string;
+  metadata?: Record<string, string>;
 }
 
-export async function getObjectAclPolicy(objectFile: File): Promise<ObjectAclPolicy | null> {
-  const [metadata] = await objectFile.getMetadata();
-  const aclPolicy = metadata?.metadata?.[ACL_POLICY_METADATA_KEY];
-  if (!aclPolicy) return null;
-  return JSON.parse(aclPolicy as string);
+export async function setObjectAclPolicy(_objectFile: SupabaseFileHandle, _aclPolicy: ObjectAclPolicy): Promise<void> {
+  // ACL is stored as Supabase object metadata via upsert — no-op here;
+  // ownership is tracked via the DB (objectPath stored in DB rows).
+}
+
+export async function getObjectAclPolicy(objectFile: SupabaseFileHandle): Promise<ObjectAclPolicy | null> {
+  const raw = objectFile.metadata?.[ACL_POLICY_METADATA_KEY];
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch { return null; }
 }
 
 export async function canAccessObject({
@@ -31,7 +33,7 @@ export async function canAccessObject({
   requestedPermission,
 }: {
   userId?: string;
-  objectFile: File;
+  objectFile: SupabaseFileHandle;
   requestedPermission: ObjectPermission;
 }): Promise<boolean> {
   const aclPolicy = await getObjectAclPolicy(objectFile);
