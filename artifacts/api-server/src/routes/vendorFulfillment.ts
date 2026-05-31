@@ -15,7 +15,7 @@ import {
   vendorCatalogItemsTable,
 } from "@workspace/db";
 import { logger } from "../lib/logger";
-import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
+import { sendViaService as sendWhatsApp, sendMediaViaService } from "../lib/waTransport.js";
 import { getAdminWa } from "../lib/adminWa";
 import { getPreferredDomain } from "../lib/domain.js";
 import { resolveServiceCategory } from "@workspace/logistics-constants";
@@ -674,7 +674,6 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
           third_party: "📦 Third Party Carrier",
         };
         if (body.deliveryMethod)    detailLines.push(`🚚 Pengiriman  : ${DELIVERY_LABEL[body.deliveryMethod] ?? body.deliveryMethod}`);
-        if (body.stockPhotoUrl)     detailLines.push(`🖼 Foto Barang : ${body.stockPhotoUrl}`);
         if (body.packingListUrl)    detailLines.push(`📋 Packing List: ${body.packingListUrl}`);
         if (body.invoiceUrl)        detailLines.push(`📄 Invoice     : ${body.invoiceUrl}`);
         if (body.podUrl)            detailLines.push(`✅ POD         : ${body.podUrl}`);
@@ -713,7 +712,19 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
         `✅ *Konfirmasi & Mulai Pengiriman:*\n` +
         `Klik link berikut untuk konfirmasi langsung:\n${bizportalLink}`;
 
-      sendWhatsApp(adminWa, waMsg).catch((e) =>
+      // Bangun URL publik foto barang (jika ada)
+      const rawPhotoUrl = body.stockPhotoUrl as string | undefined;
+      let publicPhotoUrl = "";
+      if (rawPhotoUrl?.trim()) {
+        if (/^https?:\/\//i.test(rawPhotoUrl)) {
+          publicPhotoUrl = rawPhotoUrl;
+        } else {
+          // Path relatif seperti /api/storage/... → jadikan URL publik penuh
+          publicPhotoUrl = `https://${domain}${rawPhotoUrl.startsWith("/") ? rawPhotoUrl : "/" + rawPhotoUrl}`;
+        }
+      }
+
+      sendMediaViaService(adminWa, waMsg, publicPhotoUrl).catch((e) =>
         logger.warn({ e }, "vendor-fulfillment WA to admin failed")
       );
     }
