@@ -48,7 +48,7 @@ driverProgressPublicRouter.get("/:token", async (req: Request, res: Response) =>
       SELECT id, order_id, driver_name, expires_at
       FROM driver_progress_tokens WHERE token = ${token} LIMIT 1
     `);
-    const [row] = rows as any[];
+    const [row] = (rows.rows ?? []) as any[];
     if (!row) return res.status(404).json({ error: "Link tidak valid." });
     if (new Date(row.expires_at as string) < new Date()) {
       return res.status(410).json({ error: "Link sudah kadaluarsa." });
@@ -67,7 +67,7 @@ driverProgressPublicRouter.get("/:token", async (req: Request, res: Response) =>
       SELECT step_key FROM order_progress_events
       WHERE order_id = ${orderId} ORDER BY created_at ASC
     `);
-    const completedSteps = (evRows as any[]).map((e) => e.step_key as string);
+    const completedSteps = ((evRows.rows ?? []) as any[]).map((e) => e.step_key as string);
     const allowedSteps = ALLOWED_STEPS.filter((s) => !completedSteps.includes(s));
 
     return res.json({
@@ -98,7 +98,7 @@ driverProgressPublicRouter.post("/:token", async (req: Request, res: Response) =
       SELECT id, order_id, driver_name, driver_phone, expires_at
       FROM driver_progress_tokens WHERE token = ${token} LIMIT 1
     `);
-    const [row] = rows as any[];
+    const [row] = (rows.rows ?? []) as any[];
     if (!row) return res.status(404).json({ error: "Link tidak valid." });
     if (new Date(row.expires_at as string) < new Date()) {
       return res.status(410).json({ error: "Link sudah kadaluarsa." });
