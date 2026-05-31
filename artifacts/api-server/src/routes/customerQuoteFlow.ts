@@ -558,73 +558,44 @@ customerQuotePublicRouter.get("/:token", async (req: Request, res: Response) => 
     const finalCustomerPrice = link.finalCustomerPrice ? Number(link.finalCustomerPrice) : null;
     const orderSubtotal = order.subtotal ? Number(order.subtotal) : 0;
     const orderTax = order.tax ? Number(order.tax) : 0;
+    const orderGrandTotal = order.grandTotal ? Number(order.grandTotal) : 0;
 
-    // finalCustomerPrice (harga jual ke customer yang admin set) SELALU prioritas utama.
-    // orderSubtotal/orderTax adalah harga estimasi internal — tidak boleh tampil ke customer.
+    // Prioritas: gunakan harga dari catalog (order.subtotal + order.tax = grand_total).
+    // finalCustomerPrice (override admin) hanya sebagai fallback jika data catalog belum ada.
     let displaySubtotal: number | null = null;
     let displayTax: number | null = null;
-    let displayTotal: number | null = finalCustomerPrice;
+    let displayTotal: number | null = null;
 
-    if (finalCustomerPrice && finalCustomerPrice > 0) {
-      displaySubtotal = Math.round(finalCustomerPrice / 1.11);
-      displayTax = finalCustomerPrice - displaySubtotal;
-      displayTotal = finalCustomerPrice;
-    } else if (orderSubtotal > 0 && orderTax > 0) {
-      // Fallback: belum ada sellingPrice — tampilkan estimasi internal
+    if (orderSubtotal > 0 && orderTax > 0) {
       displaySubtotal = orderSubtotal;
       displayTax = orderTax;
-      displayTotal = orderSubtotal + orderTax;
+      displayTotal = orderGrandTotal > 0 ? orderGrandTotal : orderSubtotal + orderTax;
+    } else if (orderGrandTotal > 0) {
+      displaySubtotal = Math.round(orderGrandTotal / 1.11);
+      displayTax = orderGrandTotal - displaySubtotal;
+      displayTotal = orderGrandTotal;
+    } else if (finalCustomerPrice && finalCustomerPrice > 0) {
+      // Fallback: belum ada data catalog — pakai harga admin (belum PPN) + PPN
+      displaySubtotal = finalCustomerPrice;
+      displayTax = Math.round(finalCustomerPrice * 0.11);
+      displayTotal = finalCustomerPrice + displayTax;
     }
 
-    // Bangun priceItems: jika finalCustomerPrice tersedia, alokasikan proporsional
-    // dari displaySubtotal ke tiap item (bukan dari harga produk raw)
-    const rawItems = orderItems.map((i) => {
+    // Bangun priceItems: gunakan harga catalog (productPrice dari inputData, sebelum PPN)
+    const priceItems = orderItems.map((i) => {
       const qty = extractQty(i.inputData);
-      const estSubtotal = i.subtotal ? Number(i.subtotal) : 0;
-      // Fallback: hitung dari unitPrice jika subtotal 0
-      const unitPriceRaw = extractUnitPrice(i.inputData);
-      const computedEst = estSubtotal > 0
-        ? estSubtotal
-        : (unitPriceRaw != null && qty != null ? unitPriceRaw * qty : 0);
+      const unitPrice = extractUnitPrice(i.inputData); // harga catalog (sebelum PPN)
+      const dbSubtotal = i.subtotal ? Number(i.subtotal) : 0;
+      const subtotal = unitPrice != null && qty != null
+        ? unitPrice * qty
+        : dbSubtotal;
       return {
         name: i.serviceName,
         category: i.category,
-        qty,
-        unit: extractUnit(i.inputData),
-        estSubtotal: computedEst,
-        unitPriceRaw,
-      };
-    });
-
-    const totalEst = rawItems.reduce((s, it) => s + it.estSubtotal, 0);
-
-    const priceItems = rawItems.map((it) => {
-      if (displayTotal != null && displayTotal > 0) {
-        // Alokasi proporsional dari harga jual FINAL ke customer (sudah include PPN)
-        const ratio = totalEst > 0 ? it.estSubtotal / totalEst : 1 / rawItems.length;
-        const itemTotal = Math.round(displayTotal * ratio);
-        const unitPrice = it.qty && it.qty > 0 ? Math.round(itemTotal / it.qty) : null;
-        return {
-          name: it.name,
-          category: it.category,
-          subtotal: itemTotal,
-          unitPrice,
-          qty: it.qty,
-          unit: it.unit,
-        };
-      }
-      // Fallback: belum ada finalCustomerPrice
-      const subtotal = it.estSubtotal;
-      const unitPrice = it.qty && it.qty > 0 && subtotal > 0
-        ? Math.round(subtotal / it.qty)
-        : it.unitPriceRaw;
-      return {
-        name: it.name,
-        category: it.category,
         subtotal,
         unitPrice,
-        qty: it.qty,
-        unit: it.unit,
+        qty,
+        unit: extractUnit(i.inputData),
       };
     });
 

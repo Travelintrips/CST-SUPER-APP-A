@@ -1029,8 +1029,9 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
           if (order.shipmentType) _routeParts.push(order.shipmentType);
           if (_origin || _destination) _routeParts.push(`${_origin ?? "—"} → ${_destination ?? "—"}`);
           const _routeLine = _routeParts.length ? `📦 ${_routeParts.join(" — ")}\n` : "";
-          const _displaySubtotal = Math.round(finalPrice / 1.11);
-          const _displayTax = finalPrice - _displaySubtotal;
+          const _grandTotal = order.grandTotal ? parseFloat(String(order.grandTotal)) : finalPrice * 1.11;
+          const _displaySubtotal = order.subtotal ? parseFloat(String(order.subtotal)) : Math.round(_grandTotal / 1.11);
+          const _displayTax = order.tax ? parseFloat(String(order.tax)) : _grandTotal - _displaySubtotal;
           sendWhatsApp(order.phone,
             `✅ *Penawaran Harga Siap — CST Logistics*\n\n` +
             `Halo *${order.customerName}*,\n\n` +
@@ -1038,7 +1039,7 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
             _routeLine +
             `💰 Jumlah Pemesanan: ${fmtRp(_displaySubtotal)}\n` +
             `🧾 PPN 11%: ${fmtRp(_displayTax)}\n` +
-            `💳 Total: *${fmtRp(finalPrice)}*\n` +
+            `💳 Total: *${fmtRp(_grandTotal)}*\n` +
             (vendorLink.eta ? `⏱ ETA: ${vendorLink.eta}\n` : "") +
             `\nSilakan review dan konfirmasi:\n${quoteShortUrl}`
           ).catch(() => {});

@@ -1890,9 +1890,10 @@ logisticRfqV2Router.post("/rfq/:rfqId/send-customer-quote", async (req: Request,
     const customerApprovalLink = domain
       ? `https://${domain}/approve/${order.orderNumber}`
       : `/approve/${order.orderNumber}`;
+    const waTotal = order.grandTotal ? Number(order.grandTotal) : sellingPrice;
     sendCustomerApprovalNotification(
       buildOrderData(order),
-      fmtRp(sellingPrice),
+      fmtRp(waTotal),
       customerApprovalLink,
     ).then(() => { waSent = true; }).catch(() => {});
   }
