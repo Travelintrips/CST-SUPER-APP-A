@@ -5,6 +5,7 @@ type PriceItem = {
   name: string;
   category: string;
   subtotal: number;
+  unitPrice: number | null;
   qty: number | null;
   unit: string | null;
 };
@@ -227,6 +228,7 @@ export default function CustomerQuotePage() {
                       <th className="text-left px-3 py-2 font-medium">Item / Layanan</th>
                       <th className="text-right px-3 py-2 font-medium">Qty</th>
                       <th className="text-right px-3 py-2 font-medium">Satuan</th>
+                      <th className="text-right px-3 py-2 font-medium">Harga Jual</th>
                       <th className="text-right px-3 py-2 font-medium">Subtotal</th>
                     </tr>
                   </thead>
@@ -236,6 +238,7 @@ export default function CustomerQuotePage() {
                         <td className="px-3 py-2 text-slate-700">{item.name}</td>
                         <td className="px-3 py-2 text-right text-slate-500">{item.qty ?? "—"}</td>
                         <td className="px-3 py-2 text-right text-slate-400 text-xs">{item.unit ?? "—"}</td>
+                        <td className="px-3 py-2 text-right text-slate-500">{item.unitPrice != null ? idr(item.unitPrice) : "—"}</td>
                         <td className="px-3 py-2 text-right text-slate-700 font-medium">{idr(item.subtotal)}</td>
                       </tr>
                     ))}

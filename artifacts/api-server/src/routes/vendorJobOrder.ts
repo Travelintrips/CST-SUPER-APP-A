@@ -943,22 +943,27 @@ orderTrackingPublicRouter.get("/:trackToken", async (req: Request, res: Response
           ORDER BY id ASC`
     );
 
-    function extractQtyUnit(inp: unknown): { qty: number | null; unit: string | null } {
-      if (!inp || typeof inp !== "object") return { qty: null, unit: null };
+    function extractQtyUnit(inp: unknown): { qty: number | null; unit: string | null; unitPrice: number | null } {
+      if (!inp || typeof inp !== "object") return { qty: null, unit: null, unitPrice: null };
       const d = inp as Record<string, unknown>;
       const qRaw = d.quantity ?? d.qty ?? d.jumlah ?? null;
       const qty = typeof qRaw === "number" ? qRaw : (typeof qRaw === "string" ? (parseFloat(qRaw) || null) : null);
       const uRaw = d.unit ?? d.satuan ?? d.uom ?? null;
       const unit = typeof uRaw === "string" ? uRaw : null;
-      return { qty, unit };
+      const pRaw = d.price ?? d.productPrice ?? d.unitPrice ?? d.sellingPrice ?? null;
+      const unitPrice = typeof pRaw === "number" ? pRaw : (typeof pRaw === "string" ? (parseFloat(pRaw) || null) : null);
+      return { qty, unit, unitPrice };
     }
 
     const orderItems = (itemsResult.rows as any[]).map((i) => {
-      const { qty, unit } = extractQtyUnit(i.input_data);
+      const { qty, unit, unitPrice } = extractQtyUnit(i.input_data);
+      const subtotalFromDb = i.subtotal ? Number(i.subtotal) : 0;
+      const subtotal = (unitPrice != null && qty != null) ? unitPrice * qty : subtotalFromDb;
       return {
         name: i.service_name,
         category: i.category,
-        subtotal: i.subtotal ? Number(i.subtotal) : 0,
+        subtotal,
+        unitPrice,
         qty,
         unit,
       };

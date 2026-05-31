@@ -671,10 +671,12 @@ logisticRfqV2Router.get("/vendor-form/:token", async (req: Request, res: Respons
       const catalogMatch = matchCatalogItem(itemName);
       const input = (i.inputData as Record<string, unknown> | null) ?? {};
 
-      const qty = input.qty != null ? Number(input.qty) : 1;
+      const qtyRaw = input.qty ?? input.quantity ?? input.jumlah;
+      const qty = qtyRaw != null ? Number(qtyRaw) || 1 : 1;
       const unit = input.unit ? String(input.unit) : "Unit";
       const sellingUnitPrice = input.price != null ? Number(input.price)
-        : input.productPrice != null ? Number(input.productPrice) : null;
+        : input.productPrice != null ? Number(input.productPrice)
+        : input.unitPrice != null ? Number(input.unitPrice) : null;
       const sellingSubtotal = sellingUnitPrice != null ? sellingUnitPrice * qty
         : (i.subtotal ? Number(i.subtotal) : null);
 

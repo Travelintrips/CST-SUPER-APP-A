@@ -28,6 +28,7 @@ type OrderItem = {
   name: string;
   category?: string | null;
   subtotal: number;
+  unitPrice?: number | null;
   qty?: number | null;
   unit?: string | null;
 };
@@ -267,11 +268,14 @@ export default function OrderTrackPage() {
                 <div key={i} className="py-2.5 flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-slate-800 truncate">{item.name}</p>
-                    {(item.qty != null) && (
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        Qty: {item.qty}{item.unit ? ` ${item.unit}` : ""}
-                      </p>
-                    )}
+                    <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
+                      {item.qty != null && (
+                        <span className="text-xs text-slate-500">Qty: {item.qty}{item.unit ? ` ${item.unit}` : ""}</span>
+                      )}
+                      {item.unitPrice != null && (
+                        <span className="text-xs text-slate-500">Harga Jual: {idr(item.unitPrice)}</span>
+                      )}
+                    </div>
                   </div>
                   <p className="text-sm font-semibold text-slate-700 whitespace-nowrap">{idr(item.subtotal)}</p>
                 </div>

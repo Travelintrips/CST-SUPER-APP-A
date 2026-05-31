@@ -219,14 +219,17 @@ vendorFulfillmentPublicRouter.get("/:token", async (req: Request, res: Response)
     const TAX_RATE = 11;
     const itemsWithVendorPrice = orderItemRows.map((it) => {
       const inp = it.inputData as Record<string, unknown> | null;
-      const qty = extractItemQty(inp);
+      const qty = extractItemQty(inp) ?? 1;
       const catalogMatch = findCatalogMatch(it);
-      const vendorSubtotal = catalogMatch ? Number(catalogMatch.priceBase) : null;
+      const vendorUnitPrice = catalogMatch ? Number(catalogMatch.priceBase) : null;
+      // PENTING: subtotal = harga_dasar × qty — jangan pakai priceBase tanpa qty
+      const vendorSubtotal = vendorUnitPrice != null ? vendorUnitPrice * qty : null;
       return {
         serviceName: it.serviceName ?? "",
         category: it.category ?? "",
+        unitPrice: vendorUnitPrice != null ? String(vendorUnitPrice) : null,
         subtotal: vendorSubtotal != null ? String(vendorSubtotal) : (it.subtotal != null ? String(it.subtotal) : null),
-        quantity: qty != null ? String(qty) : null,
+        quantity: String(qty),
         unit: extractItemUnit(inp) ?? null,
         _vendorSubtotal: vendorSubtotal,
       };
