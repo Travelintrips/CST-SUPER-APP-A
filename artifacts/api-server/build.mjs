@@ -108,6 +108,7 @@ async function buildAll() {
     alias: {
       "@workspace/logistics-constants": path.resolve(workspaceRoot, "lib/logistics-constants/src/index.ts"),
       "@workspace/product-templates": path.resolve(workspaceRoot, "lib/product-templates/src/index.ts"),
+      "@workspace/service-templates": path.resolve(workspaceRoot, "lib/service-templates/src/index.ts"),
       "zod": path.resolve(workspaceRoot, "node_modules/.pnpm/zod@3.25.76/node_modules/zod"),
     },
     sourcemap: process.env.NODE_ENV !== "production" ? "linked" : false,
