@@ -2830,7 +2830,13 @@ vendorMiniFormRouter.post("/admin/links/:id/send-wa", async (req: Request, res: 
       const [orderRow] = await db.select().from(logisticOrdersTable)
         .where(eq(logisticOrdersTable.id, link.orderId)).limit(1);
       if (orderRow) {
-        await sendVendorRequestNotification(await buildOrderDataFromRowWithItems(orderRow), link.vendorName, phone.trim(), formUrl);
+        await sendVendorRequestNotification(
+          await buildOrderDataFromRowWithItems(orderRow),
+          link.vendorName,
+          phone.trim(),
+          formUrl,
+          link.templateSnapshot ?? null,
+        );
         await logActivity("link", id, "sent_wa", (req.user as { id: string } | undefined)?.id ?? "admin", `WA dikirim ke ${phone}`, { phone });
         return res.json({ success: true, message: "Pesan WA berhasil dikirim" });
       }
@@ -2923,11 +2929,13 @@ vendorMiniFormRouter.post("/admin/customer-approvals/:id/send-wa", async (req: R
           : sellingNum2 != null
             ? Math.round(sellingNum2 * ppnPct2 / (100 + ppnPct2))
             : null;
+        const approvalTSnap = (approval as any).templateSnapshot as Record<string, unknown> | null ?? null;
         await sendCustomerApprovalNotification(orderData, priceStr, approvalUrl, {
           rfqNumber: approval.orderNumber ?? null,
           sellingPriceNum: sellingNum2,
           ppnNominalNum: ppnNominalNum2,
           ppnPct: ppnPct2,
+          templateSnapshot: approvalTSnap,
         });
         const userId2b = (req.user as { id: string } | undefined)?.id ?? "admin";
         await logActivity("customer_approval", id, "sent_wa", userId2b,

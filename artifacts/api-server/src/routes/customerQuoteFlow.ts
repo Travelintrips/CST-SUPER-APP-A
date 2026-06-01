@@ -237,6 +237,18 @@ customerQuoteAdminRouter.post("/rfq/:rfqId/send-customer-quote", async (req: Req
       const svcType = deriveServiceType(order.shipmentType ?? "", (order as any).orderType ?? undefined);
       const origin = order.origin || null;
       const destination = order.destination || null;
+      // Build commodity context from resolved templateSnapshot — never exposes base price/margin
+      const { buildCommodityContext } = await import("../lib/orderNotification.js");
+      const firstItemForCtx = itemsBlock
+        ? (() => {
+            const raw = (order as any).items ?? (order as any).orderItems ?? [];
+            return Array.isArray(raw) ? raw[0] : null;
+          })()
+        : null;
+      const commodityCtxCQ = buildCommodityContext(templateSnapshot ?? null, {
+        quantity: firstItemForCtx?.qty ?? firstItemForCtx?.quantity ?? null,
+        unit: firstItemForCtx?.unit ?? null,
+      });
       const waMsg = renderTemplate(tplBody, {
         customerName: order.customerName ?? "Customer",
         rfqNumber: rfq.rfqNumber,
@@ -257,6 +269,7 @@ customerQuoteAdminRouter.post("/rfq/:rfqId/send-customer-quote", async (req: Req
         validUntil: validUntil.toLocaleDateString("id-ID"),
         customerApprovalLink: quoteUrl,
         timestamp: new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" }),
+        ...commodityCtxCQ,
       }, svcType);
       sendWhatsApp(order.phone, waMsg).catch((e) =>
         logger.warn({ e }, "customerQuote WA to customer failed")

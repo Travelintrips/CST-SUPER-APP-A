@@ -1,7 +1,7 @@
 import { sendViaService as sendWhatsApp } from "./waTransport.js";
 import { generateShortLink } from "./shortLink.js";
 import { logger } from "./logger.js";
-import { getWaTemplateConfig, renderTemplate, deriveServiceType } from "./orderNotification.js";
+import { getWaTemplateConfig, renderTemplate, deriveServiceType, buildCommodityContext } from "./orderNotification.js";
 
 const TZ = "Asia/Jakarta";
 
@@ -240,6 +240,13 @@ export async function sendVendorWhatsApp(input: SendVendorWhatsAppInput): Promis
   const conditions: string[] = svcType ? [svcType] : [];
   if (productList && !conditions.includes("product")) conditions.push("product");
 
+  // Build commodity context from templateSnapshot — never exposes base price/margin
+  const firstItem = input.orderItems?.[0];
+  const commodityCtx = buildCommodityContext(input.templateSnapshot ?? null, {
+    quantity: firstItem?.quantity ?? null,
+    unit: firstItem?.unit ?? null,
+  });
+
   const vars: Record<string, string | null | undefined> = {
     rfqNumber: input.rfqNumber,
     orderNumber: input.orderNumber,
@@ -261,6 +268,7 @@ export async function sendVendorWhatsApp(input: SendVendorWhatsAppInput): Promis
     tanggal: tgl,
     jam,
     timestamp: new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" }),
+    ...commodityCtx,
   };
 
   const message = renderTemplate(tplBody, vars, conditions);
