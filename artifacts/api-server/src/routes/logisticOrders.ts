@@ -629,6 +629,7 @@ logisticOrdersRouter.get(
         dueDate: customerInvoiceLinksTable.dueDate,
         paymentStatus: customerInvoiceLinksTable.paymentStatus,
         status: customerInvoiceLinksTable.status,
+        confirmedAt: customerInvoiceLinksTable.confirmedAt,
         createdAt: customerInvoiceLinksTable.createdAt,
       }).from(customerInvoiceLinksTable)
         .where(eq(customerInvoiceLinksTable.orderId, order.id))
@@ -750,6 +751,7 @@ logisticOrdersRouter.get(
       dueDate: r.dueDate ? r.dueDate.toISOString() : null,
       paymentStatus: r.paymentStatus,
       status: r.status,
+      confirmedAt: r.confirmedAt ? r.confirmedAt.toISOString() : null,
       createdAt: r.createdAt.toISOString(),
     }));
 

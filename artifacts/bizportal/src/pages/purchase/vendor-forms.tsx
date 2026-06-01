@@ -2293,6 +2293,7 @@ function ProductTemplateEngine() {
 function CreateInvoiceDialog({ onCreated }: { onCreated: () => void }) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
+  const [orderId, setOrderId] = useState("");
   const [orderNumber, setOrderNumber] = useState("");
   const [invoiceNumber, setInvoiceNumber] = useState("");
   const [customerName, setCustomerName] = useState("");
@@ -2306,6 +2307,7 @@ function CreateInvoiceDialog({ onCreated }: { onCreated: () => void }) {
     mutationFn: () => apiFetch("/api/vendor-form/admin/customer-invoices", {
       method: "POST",
       body: JSON.stringify({
+        orderId: orderId ? Number(orderId) : undefined,
         orderNumber: orderNumber || undefined,
         invoiceNumber: invoiceNumber || undefined,
         customerName: customerName || undefined,
@@ -2319,7 +2321,7 @@ function CreateInvoiceDialog({ onCreated }: { onCreated: () => void }) {
     onSuccess: () => {
       toast({ title: "Invoice berhasil dibuat!" });
       setOpen(false);
-      setOrderNumber(""); setInvoiceNumber(""); setCustomerName("");
+      setOrderId(""); setOrderNumber(""); setInvoiceNumber(""); setCustomerName("");
       setCustomerPhone(""); setGrandTotal(""); setDueDate(""); setNotes("");
       onCreated();
     },
@@ -2362,6 +2364,11 @@ function CreateInvoiceDialog({ onCreated }: { onCreated: () => void }) {
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">ID Order <span className="text-slate-400 font-normal">(opsional, untuk link ke order)</span></Label>
+              <Input value={orderId} onChange={e => setOrderId(e.target.value)}
+                placeholder="ID angka order" type="number" className="h-9 text-sm" />
+            </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Nama Customer</Label>
               <Input value={customerName} onChange={e => setCustomerName(e.target.value)}

@@ -67,6 +67,8 @@ interface InvoiceLink {
   grandTotal: number | null;
   dueDate: string | null;
   paymentStatus: string;
+  status?: string | null;
+  confirmedAt?: string | null;
   createdAt: string;
 }
 
@@ -1325,6 +1327,12 @@ export default function TrackPage() {
                             <>
                               <span className="text-muted-foreground">Jatuh Tempo</span>
                               <span className="font-medium text-right">{formatDateTime(inv.dueDate)}</span>
+                            </>
+                          )}
+                          {inv.confirmedAt && (
+                            <>
+                              <span className="text-muted-foreground">Tgl Bayar</span>
+                              <span className="font-medium text-right text-green-700">{formatDateTime(inv.confirmedAt)}</span>
                             </>
                           )}
                         </div>

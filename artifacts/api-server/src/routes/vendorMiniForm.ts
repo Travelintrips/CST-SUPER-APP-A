@@ -3514,6 +3514,40 @@ vendorMiniFormRouter.post("/admin/customer-invoices", async (req: Request, res: 
   };
 
   try {
+    // ── Guard: duplicate invoice per orderId + nomor invoice unik ──────────
+    if (orderId) {
+      const [existing] = await db.select({
+        id: customerInvoiceLinksTable.id,
+        token: customerInvoiceLinksTable.token,
+        invoiceNumber: customerInvoiceLinksTable.invoiceNumber,
+        status: customerInvoiceLinksTable.status,
+      }).from(customerInvoiceLinksTable)
+        .where(and(
+          eq(customerInvoiceLinksTable.orderId, orderId),
+          ne(customerInvoiceLinksTable.status, "completed"),
+        ));
+      if (existing) {
+        return res.status(409).json({
+          error: "Invoice aktif untuk order ini sudah ada",
+          existingId: existing.id,
+          existingToken: existing.token,
+          existingInvoiceNumber: existing.invoiceNumber,
+          existingStatus: existing.status,
+        });
+      }
+    }
+    if (invoiceNumber) {
+      const [dupInv] = await db.select({ id: customerInvoiceLinksTable.id })
+        .from(customerInvoiceLinksTable)
+        .where(eq(customerInvoiceLinksTable.invoiceNumber, invoiceNumber));
+      if (dupInv) {
+        return res.status(409).json({
+          error: `Nomor invoice "${invoiceNumber}" sudah digunakan`,
+          existingId: dupInv.id,
+        });
+      }
+    }
+
     let subtotal: number | null = null;
     let taxRate = 11;
     let taxAmount: number | null = null;
@@ -3744,7 +3778,9 @@ vendorMiniFormRouter.post("/admin/customer-invoices/:id/send-wa", async (req: Re
       notes: link.notes,
     }, invoiceUrl);
 
-    await sendWhatsApp(phone, waMsg, { context: "customer-invoice-send", refType: "customer_invoice", refId: String(link.id) });
+    const skipWa = await wasRecentlyNotified("customer-invoice-send-wa", `inv:${link.id}`, 5 * 60 * 1000);
+    if (skipWa) return res.json({ success: true, skipped: "recently sent" });
+    await sendWhatsApp(phone, waMsg, { context: "customer-invoice-send-wa", refType: "customer_invoice", refId: String(link.id) });
     return res.json({ success: true });
   } catch (err) {
     req.log?.error({ err }, "send-wa customer-invoice error");
@@ -3815,29 +3851,32 @@ vendorMiniFormRouter.post("/admin/customer-invoices/:id/confirm-payment", async 
       );
     }
 
-    // WA ke customer
+    // WA ke customer (dedup 5 menit)
     if (link.customerPhone) {
-      const msg = [
-        `✅ *Pembayaran Diterima*`,
-        `━━━━━━━━━━━━━━━━━━`,
-        `Halo ${link.customerName ?? "Customer"},`,
-        ``,
-        `Pembayaran Anda telah kami terima & dikonfirmasi.`,
-        ``,
-        `No. Order   : ${link.orderNumber ?? "—"}`,
-        `No. Invoice : ${link.invoiceNumber ?? "—"}`,
-        `Jumlah Bayar: *${fmtRp(paid)}*`,
-        `Metode      : ${paymentMethod ?? "—"}`,
-        `Status      : *Lunas ✅*`,
-        ``,
-        `Terima kasih atas pembayaran Anda 🙏`,
-        `_CST Logistics_`,
-      ].join("\n");
-      sendWhatsApp(link.customerPhone, msg, {
-        context: "vmf-payment-confirmed",
-        refType: "customer_invoice",
-        refId: String(link.id),
-      }).catch(() => {});
+      const skipCustWa = await wasRecentlyNotified("vmf-payment-confirmed", `inv:${link.id}`, 5 * 60 * 1000);
+      if (!skipCustWa) {
+        const msg = [
+          `✅ *Pembayaran Diterima*`,
+          `━━━━━━━━━━━━━━━━━━`,
+          `Halo ${link.customerName ?? "Customer"},`,
+          ``,
+          `Pembayaran Anda telah kami terima & dikonfirmasi.`,
+          ``,
+          `No. Order   : ${link.orderNumber ?? "—"}`,
+          `No. Invoice : ${link.invoiceNumber ?? "—"}`,
+          `Jumlah Bayar: *${fmtRp(paid)}*`,
+          `Metode      : ${paymentMethod ?? "—"}`,
+          `Status      : *Lunas ✅*`,
+          ``,
+          `Terima kasih atas pembayaran Anda 🙏`,
+          `_CST Logistics_`,
+        ].join("\n");
+        sendWhatsApp(link.customerPhone, msg, {
+          context: "vmf-payment-confirmed",
+          refType: "customer_invoice",
+          refId: String(link.id),
+        }).catch(() => {});
+      }
     }
 
     // WA ke admin group
@@ -3865,6 +3904,7 @@ vendorMiniFormRouter.post("/admin/customer-invoices/:id/mark-completed", async (
     const [link] = await db.select().from(customerInvoiceLinksTable)
       .where(eq(customerInvoiceLinksTable.id, id));
     if (!link) return res.status(404).json({ error: "Invoice tidak ditemukan" });
+    if (link.status === "completed") return res.json({ success: true, alreadyCompleted: true });
 
     await db.update(customerInvoiceLinksTable)
       .set({ status: "completed" } as any)
@@ -3881,27 +3921,30 @@ vendorMiniFormRouter.post("/admin/customer-invoices/:id/mark-completed", async (
       );
     }
 
-    // WA ke customer
+    // WA ke customer (dedup 10 menit)
     if (link.customerPhone) {
-      const msg = [
-        `🎉 *Order Selesai!*`,
-        `━━━━━━━━━━━━━━━━━━`,
-        `Halo ${link.customerName ?? "Customer"},`,
-        ``,
-        `Order Anda telah selesai diproses.`,
-        ``,
-        `No. Order : ${link.orderNumber ?? "—"}`,
-        `Status    : *Selesai ✅*`,
-        ``,
-        `Terima kasih telah menggunakan layanan kami.`,
-        `Sampai jumpa kembali! 🙏`,
-        `_CST Logistics_`,
-      ].join("\n");
-      sendWhatsApp(link.customerPhone, msg, {
-        context: "vmf-order-completed",
-        refType: "customer_invoice",
-        refId: String(link.id),
-      }).catch(() => {});
+      const skipCustWa = await wasRecentlyNotified("vmf-order-completed", `inv:${link.id}`, 10 * 60 * 1000);
+      if (!skipCustWa) {
+        const msg = [
+          `🎉 *Order Selesai!*`,
+          `━━━━━━━━━━━━━━━━━━`,
+          `Halo ${link.customerName ?? "Customer"},`,
+          ``,
+          `Order Anda telah selesai diproses.`,
+          ``,
+          `No. Order : ${link.orderNumber ?? "—"}`,
+          `Status    : *Selesai ✅*`,
+          ``,
+          `Terima kasih telah menggunakan layanan kami.`,
+          `Sampai jumpa kembali! 🙏`,
+          `_CST Logistics_`,
+        ].join("\n");
+        sendWhatsApp(link.customerPhone, msg, {
+          context: "vmf-order-completed",
+          refType: "customer_invoice",
+          refId: String(link.id),
+        }).catch(() => {});
+      }
     }
 
     // WA ke admin group
