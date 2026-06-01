@@ -17,6 +17,7 @@ import {
   suppliersTable,
   logisticOrdersTable,
   logisticOrderItemsTable,
+  logisticOrderRfqsTable,
   salesDocumentsTable,
   salesDocumentLinesTable,
   orderUpdatesTable,
@@ -51,6 +52,16 @@ import {
   sendOpConfirmSubmittedNotification,
   type LogisticOrderData,
 } from "../lib/orderNotification.js";
+
+// Boot migration: add template columns to customer_approvals
+db.execute(sql.raw(`
+  ALTER TABLE customer_approvals ADD COLUMN IF NOT EXISTS category_key TEXT;
+  ALTER TABLE customer_approvals ADD COLUMN IF NOT EXISTS template_id TEXT;
+  ALTER TABLE customer_approvals ADD COLUMN IF NOT EXISTS template_version TEXT;
+  ALTER TABLE customer_approvals ADD COLUMN IF NOT EXISTS template_snapshot JSONB;
+  ALTER TABLE customer_approvals ADD COLUMN IF NOT EXISTS required_documents_from_template JSONB;
+  ALTER TABLE customer_approvals ADD COLUMN IF NOT EXISTS checklist_from_template JSONB;
+`)).catch((e: unknown) => console.warn("customer_approvals migration warn:", e));
 
 function buildOrderDataFromRow(row: typeof logisticOrdersTable.$inferSelect): LogisticOrderData {
   return {
@@ -1369,6 +1380,14 @@ vendorMiniFormRouter.get("/customer-approval/:token", async (req: Request, res: 
       } catch { /* non-critical */ }
     }
 
+    const tSnap = (approval as any).templateSnapshot as Record<string, unknown> | null ?? null;
+    const requiredDocs: string[] | null = (approval as any).requiredDocumentsFromTemplate
+      ?? (tSnap?.requiredDocuments as string[] | undefined)
+      ?? null;
+    const checklist: string[] | null = (approval as any).checklistFromTemplate
+      ?? (tSnap?.checklist as string[] | undefined)
+      ?? null;
+
     return res.json({
       token: approval.token, orderNumber: approval.orderNumber,
       customerName: approval.customerName,
@@ -1380,6 +1399,12 @@ vendorMiniFormRouter.get("/customer-approval/:token", async (req: Request, res: 
       subtotal: subtotalBeforePpn,
       grandTotal: sellingNum,
       priceItems,
+      categoryKey: (approval as any).categoryKey ?? null,
+      templateId: (approval as any).templateId ?? null,
+      templateVersion: (approval as any).templateVersion ?? null,
+      templateSnapshot: tSnap,
+      requiredDocuments: requiredDocs,
+      checklist,
     });
   } catch (err) {
     req.log?.error({ err }, "customer-approval GET error");
@@ -2394,11 +2419,15 @@ vendorMiniFormRouter.post("/admin/customer-approvals", async (req: Request, res:
       offerSummary, sellingPrice, currency, termsNotes, expiresInDays,
       submissionId, vendorCost, markupPct, markupNominal, ppnPct, ppnNominal,
       profitMarginPct, adminNotes,
+      categoryKey: reqCategoryKey, templateId: reqTemplateId,
+      templateVersion: reqTemplateVersion, templateSnapshot: reqTemplateSnapshot,
     } = req.body as {
       orderId?: number; orderNumber?: string; customerName?: string; customerPhone?: string; customerEmail?: string;
       offerSummary?: object; sellingPrice?: number; currency?: string; termsNotes?: string; expiresInDays?: number;
       submissionId?: number; vendorCost?: number; markupPct?: number; markupNominal?: number;
       ppnPct?: number; ppnNominal?: number; profitMarginPct?: number; adminNotes?: string;
+      categoryKey?: string; templateId?: string; templateVersion?: string;
+      templateSnapshot?: Record<string, unknown>;
     };
 
     // DA-1 FIX: Prevent duplicate pending approvals for the same order.
@@ -2422,6 +2451,56 @@ vendorMiniFormRouter.post("/admin/customer-approvals", async (req: Request, res:
     const effectiveExpiry = expiresInDays ?? 7;
     const expiresAt = new Date(Date.now() + effectiveExpiry * 24 * 60 * 60 * 1000);
 
+    // Resolve template info: from request body, or auto-lookup from order's latest RFQ
+    let resolvedCategoryKey = reqCategoryKey ?? null;
+    let resolvedTemplateId = reqTemplateId ?? null;
+    let resolvedTemplateVersion = reqTemplateVersion ?? null;
+    let resolvedTemplateSnapshot: Record<string, unknown> | null = reqTemplateSnapshot ?? null;
+    let resolvedRequiredDocs: string[] | null = null;
+    let resolvedChecklist: string[] | null = null;
+
+    if (!resolvedTemplateSnapshot && orderId) {
+      try {
+        const rfqRows = await db.execute(sql`
+          SELECT template_id, template_version, template_snapshot, category_key
+          FROM logistic_order_rfqs
+          WHERE order_id = ${orderId} AND template_snapshot IS NOT NULL
+          ORDER BY created_at DESC LIMIT 1
+        `);
+        const rfqRow = rfqRows.rows?.[0] as Record<string, unknown> | undefined;
+        if (rfqRow?.template_snapshot) {
+          resolvedTemplateSnapshot = rfqRow.template_snapshot as Record<string, unknown>;
+          resolvedTemplateId = resolvedTemplateId ?? (rfqRow.template_id ? String(rfqRow.template_id) : null);
+          resolvedTemplateVersion = resolvedTemplateVersion ?? (rfqRow.template_version as string | null) ?? null;
+        }
+        if (!resolvedCategoryKey && rfqRow?.category_key) {
+          resolvedCategoryKey = rfqRow.category_key as string;
+        }
+      } catch { /* non-critical */ }
+    }
+
+    // Also auto-lookup order's categoryKey if still missing
+    if (!resolvedCategoryKey && orderId) {
+      try {
+        const orderRows = await db.execute(sql`SELECT category_key FROM logistic_orders WHERE id = ${orderId} LIMIT 1`);
+        const oRow = orderRows.rows?.[0] as Record<string, unknown> | undefined;
+        if (oRow?.category_key) resolvedCategoryKey = oRow.category_key as string;
+      } catch { /* non-critical */ }
+    }
+
+    // If still no snapshot but we have categoryKey, resolve from template engine
+    if (!resolvedTemplateSnapshot && resolvedCategoryKey) {
+      try {
+        const tpl = await resolveTemplate(resolvedCategoryKey);
+        if (tpl) resolvedTemplateSnapshot = tpl as unknown as Record<string, unknown>;
+      } catch { /* non-critical */ }
+    }
+
+    if (resolvedTemplateSnapshot) {
+      resolvedRequiredDocs = (resolvedTemplateSnapshot.requiredDocuments as string[] | undefined) ?? null;
+      resolvedChecklist = (resolvedTemplateSnapshot.checklist as string[] | undefined) ?? null;
+    }
+
     const [approval] = await db.insert(customerApprovalsTable).values({
       token, orderId: orderId ?? null, orderNumber: orderNumber ?? null,
       customerName: customerName ?? null, customerPhone: customerPhone ?? null, customerEmail: customerEmail ?? null,
@@ -2437,7 +2516,13 @@ vendorMiniFormRouter.post("/admin/customer-approvals", async (req: Request, res:
       ppnNominal: ppnNominal ? String(ppnNominal) : null,
       profitMarginPct: profitMarginPct ? String(profitMarginPct) : null,
       adminNotes: adminNotes ?? null,
-    }).returning();
+      categoryKey: resolvedCategoryKey,
+      templateId: resolvedTemplateId,
+      templateVersion: resolvedTemplateVersion,
+      templateSnapshot: resolvedTemplateSnapshot ?? undefined,
+      requiredDocumentsFromTemplate: resolvedRequiredDocs ?? undefined,
+      checklistFromTemplate: resolvedChecklist ?? undefined,
+    } as any).returning();
 
     await logActivity("customer_approval", approval.id, "created", userId,
       `Link approval dibuat untuk ${customerName ?? "customer"}`,

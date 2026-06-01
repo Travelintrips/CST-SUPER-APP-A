@@ -9,6 +9,7 @@ import {
   driverLocationsTable,
   logisticOrderItemsTable,
 } from "@workspace/db";
+import { resolveTemplate } from "@workspace/product-templates";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminGroupWa } from "../lib/adminWa.js";
@@ -35,6 +36,14 @@ function getBaseUrl(): string {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const customerQuoteAdminRouter = Router();
+
+// Boot migration: add template columns to customer_quote_links
+db.execute(sql.raw(`
+  ALTER TABLE customer_quote_links ADD COLUMN IF NOT EXISTS category_key TEXT;
+  ALTER TABLE customer_quote_links ADD COLUMN IF NOT EXISTS template_id TEXT;
+  ALTER TABLE customer_quote_links ADD COLUMN IF NOT EXISTS template_version TEXT;
+  ALTER TABLE customer_quote_links ADD COLUMN IF NOT EXISTS template_snapshot JSONB;
+`)).catch((e: unknown) => logger.warn({ e }, "customer_quote_links migration warn"));
 
 // POST /api/logistic/rfq/:rfqId/send-customer-quote
 customerQuoteAdminRouter.post("/rfq/:rfqId/send-customer-quote", async (req: Request, res: Response) => {
@@ -118,6 +127,18 @@ customerQuoteAdminRouter.post("/rfq/:rfqId/send-customer-quote", async (req: Req
 
     const token = tok();
 
+    // Resolve templateSnapshot from RFQ (saved in STEP 2) or from order's categoryKey
+    let templateSnapshot: Record<string, unknown> | null = (rfq as any).templateSnapshot ?? null;
+    const orderCategoryKey: string | null = (order as any).categoryKey ?? null;
+    const rfqTemplateId: string | null = (rfq as any).templateId ? String((rfq as any).templateId) : null;
+    const rfqTemplateVersion: string | null = (rfq as any).templateVersion ?? null;
+    if (!templateSnapshot && orderCategoryKey) {
+      try {
+        const resolved = await resolveTemplate(orderCategoryKey);
+        if (resolved) templateSnapshot = resolved as unknown as Record<string, unknown>;
+      } catch { /* non-critical */ }
+    }
+
     // Create customer_quote_links record
     const [link] = await db.insert(customerQuoteLinksTable).values({
       rfqId,
@@ -131,6 +152,10 @@ customerQuoteAdminRouter.post("/rfq/:rfqId/send-customer-quote", async (req: Req
       vendorCost: vendorCost ? String(vendorCost) : null,
       margin: margin ? String(margin) : null,
       validUntil,
+      categoryKey: orderCategoryKey,
+      templateId: rfqTemplateId,
+      templateVersion: rfqTemplateVersion,
+      templateSnapshot: templateSnapshot ?? undefined,
     } as any).returning();
 
     // Update logistic_order with new status + columns (raw SQL for added columns not in Drizzle schema)
@@ -624,6 +649,10 @@ customerQuotePublicRouter.get("/:token", async (req: Request, res: Response) => 
       termsConditions: link.termsConditions,
       quoteNotes: link.quoteNotes,
       validUntil: link.validUntil?.toISOString() ?? null,
+      categoryKey: (link as any).categoryKey ?? null,
+      templateId: (link as any).templateId ?? null,
+      templateVersion: (link as any).templateVersion ?? null,
+      templateSnapshot: (link as any).templateSnapshot ?? null,
     });
   } catch (err) {
     logger.error({ err }, "get customer-quote error");

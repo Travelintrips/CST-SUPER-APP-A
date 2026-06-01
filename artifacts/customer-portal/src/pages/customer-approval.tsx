@@ -12,6 +12,24 @@ type PriceItem = {
   subtotal: number;
 };
 
+type TemplateField = {
+  key: string;
+  label: string;
+  type: string;
+  required?: boolean;
+  options?: string[];
+  unit?: string;
+};
+
+type TemplateSnapshot = {
+  name?: string;
+  categoryKey?: string;
+  customFields?: TemplateField[];
+  requiredDocuments?: string[];
+  checklist?: string[];
+  [key: string]: unknown;
+};
+
 type ApprovalMeta = {
   token: string;
   orderNumber: string | null;
@@ -27,6 +45,12 @@ type ApprovalMeta = {
   taxRate?: number | null;
   taxAmount?: number | null;
   grandTotal?: number | null;
+  categoryKey?: string | null;
+  templateId?: string | null;
+  templateVersion?: string | null;
+  templateSnapshot?: TemplateSnapshot | null;
+  requiredDocuments?: string[] | null;
+  checklist?: string[] | null;
 };
 
 function Spinner() {
@@ -181,6 +205,11 @@ export default function CustomerApprovalPage() {
       ? Object.entries(meta.offerSummary).map(([k, v]) => ({ label: k, value: String(v) }))
       : [];
 
+  const tSnap = meta.templateSnapshot ?? null;
+  const specFields = tSnap?.customFields ?? [];
+  const requiredDocs = meta.requiredDocuments ?? tSnap?.requiredDocuments ?? [];
+  const checklist = meta.checklist ?? tSnap?.checklist ?? [];
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 py-10 px-4">
       <div className="max-w-xl mx-auto space-y-4">
@@ -196,7 +225,67 @@ export default function CustomerApprovalPage() {
           {meta.customerName && (
             <p className="mt-2 text-sm text-slate-600">Untuk: <span className="font-medium">{meta.customerName}</span></p>
           )}
+          {tSnap?.name && (
+            <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-3 py-1">
+              <span className="text-xs font-medium text-indigo-700">📦 {tSnap.name}</span>
+              {meta.templateVersion && <span className="text-xs text-indigo-400">v{meta.templateVersion}</span>}
+            </div>
+          )}
         </div>
+
+        {/* Spesifikasi Produk — dari templateSnapshot.customFields */}
+        {specFields.length > 0 && (
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Spesifikasi Produk</p>
+            <div className="space-y-2">
+              {specFields.map((field, i) => (
+                <div key={i} className="flex justify-between text-sm border-b border-slate-50 py-1.5">
+                  <span className="text-slate-500">
+                    {field.label}
+                    {field.unit && <span className="text-slate-400 ml-1">({field.unit})</span>}
+                  </span>
+                  <span className="font-medium text-slate-700 text-right text-xs text-slate-400 italic">—</span>
+                </div>
+              ))}
+            </div>
+            <p className="mt-3 text-xs text-slate-400 italic">
+              Spesifikasi sesuai permintaan Anda. Detail teknis akan dikonfirmasi oleh tim kami.
+            </p>
+          </div>
+        )}
+
+        {/* Dokumen Wajib */}
+        {requiredDocs.length > 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5">
+            <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-3">📋 Dokumen Wajib</p>
+            <ul className="space-y-1.5">
+              {requiredDocs.map((doc, i) => (
+                <li key={i} className="flex items-start gap-2 text-sm text-amber-900">
+                  <span className="mt-0.5 text-amber-500">•</span>
+                  <span>{doc}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-3 text-xs text-amber-600">
+              Harap siapkan dokumen di atas sebelum pengiriman dilaksanakan.
+            </p>
+          </div>
+        )}
+
+        {/* Checklist */}
+        {checklist.length > 0 && (
+          <div className="bg-blue-50 border border-blue-200 rounded-2xl p-5">
+            <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-3">✅ Checklist</p>
+            <ul className="space-y-1.5">
+              {checklist.map((item, i) => (
+                <li key={i} className="flex items-start gap-2 text-sm text-blue-900">
+                  <span className="mt-0.5 text-blue-400">☐</span>
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {/* Rincian harga jual + PPN */}
         {meta.priceItems && meta.priceItems.length > 0 ? (

@@ -1,0 +1,164 @@
+IMPLEMENT STEP 3 — CUSTOMER QUOTE & CUSTOMER APPROVAL TEMPLATE INTEGRATION
+
+Tujuan:
+Customer Quote dan Customer Approval harus membaca Product Template Engine agar customer melihat spesifikasi produk, dokumen wajib, checklist, quantity, harga jual, PPN, dan grand total secara jelas.
+
+Kondisi saat ini:
+- Step 1F selesai: Vendor Mini Form sudah memakai product_templates.
+- Step 2 selesai: Logistic Orders dan RFQ sudah memiliki categoryKey, templateId, templateVersion, templateSnapshot.
+- WA RFQ Vendor sudah menyertakan spec template.
+
+Tugas:
+
+1. Schema Update
+
+Tambahkan ke customer_quote_links:
+- categoryKey
+- templateId
+- templateVersion
+- templateSnapshot jsonb
+
+Tambahkan ke customer_approvals:
+- categoryKey
+- templateId
+- templateVersion
+- templateSnapshot jsonb
+- requiredDocumentsFromTemplate jsonb
+- checklistFromTemplate jsonb
+
+Gunakan ALTER TABLE ADD COLUMN IF NOT EXISTS agar backward compatible.
+
+2. Customer Quote Creation
+
+Saat admin membuat/send customer quote dari RFQ:
+- ambil templateSnapshot dari logistic_order_rfqs
+- jika tidak ada, fallback resolve dari parent order.categoryKey
+- simpan ke customer_quote_links
+
+Customer Quote harus membawa:
+- nama produk
+- categoryKey
+- quantity
+- unit
+- spesifikasi produk
+- dokumen wajib
+- checklist
+- harga jual
+- subtotal
+- PPN
+- grand total
+
+3. Customer Approval Creation
+
+Saat customer approval dibuat:
+- copy templateSnapshot dari customer_quote_links atau RFQ
+- simpan ke customer_approvals
+- jangan hanya simpan offerSummary raw json
+
+4. Customer Approval UI
+
+Update customer approval mini form agar menampilkan:
+
+A. Detail Produk
+- Nama produk
+- Komoditas / categoryKey
+- Quantity
+- Unit
+- Template version
+
+B. Spesifikasi Produk
+- render dari templateSnapshot
+- read-only
+
+C. Dokumen Wajib
+- render dari templateSnapshot.requiredDocuments
+
+D. Checklist
+- render dari templateSnapshot.checklist
+
+E. Breakdown Harga
+- Harga jual per unit
+- Quantity
+- Subtotal = harga jual × quantity
+- PPN
+- Grand total
+
+F. Tombol
+- Approve
+- Reject
+- Request Revision
+
+5. Pricing Rule
+
+Customer hanya boleh melihat:
+- harga jual
+- subtotal
+- PPN
+- grand total
+
+Customer tidak boleh melihat:
+- price_base
+- harga dasar vendor
+- margin internal
+
+6. WA Customer Quote / Approval
+
+Update pesan WA customer agar menampilkan:
+- produk
+- quantity
+- unit
+- spesifikasi utama
+- harga jual
+- PPN
+- grand total
+- link approval
+
+7. Backward Compatibility
+
+Jika quote lama tidak memiliki templateSnapshot:
+- tetap tampilkan flow lama
+- jangan error
+- jangan tampil blank page
+
+8. Audit & Test
+
+Test minimal:
+- Batubara
+- Besi & Baja
+- Kopi
+- Minyak Sawit
+- Karet
+
+Test scenario:
+- RFQ vendor selesai
+- admin buat customer quote
+- customer buka approval link
+- customer approve
+- cek data tersimpan
+- cek WA customer
+
+9. Output Report
+
+Buat report:
+
+STEP 3 RESULT REPORT
+
+Isi:
+- file diubah
+- schema diubah
+- endpoint diubah
+- UI diubah
+- WA message diubah
+- test result per komoditas
+- issue tersisa
+- rollback plan
+
+Acceptance Criteria:
+- Customer approval tidak hanya menampilkan harga.
+- Customer melihat spesifikasi produk lengkap.
+- Customer melihat dokumen wajib.
+- Customer melihat checklist.
+- Customer melihat harga jual × quantity.
+- Customer melihat PPN dan grand total.
+- Customer tidak melihat harga dasar vendor.
+- Quote/approval lama tetap bisa dibuka.

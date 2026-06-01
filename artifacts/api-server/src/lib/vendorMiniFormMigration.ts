@@ -120,6 +120,14 @@ export async function runVendorMiniFormMigration(): Promise<void> {
     await db.execute(sql`ALTER TABLE customer_approvals ADD COLUMN IF NOT EXISTS admin_notes TEXT;`);
     await db.execute(sql`ALTER TABLE customer_approvals ADD COLUMN IF NOT EXISTS locked BOOLEAN DEFAULT FALSE;`);
 
+    // ── Product Template Engine columns for customer_approvals (Step 3) ────────
+    await db.execute(sql`ALTER TABLE customer_approvals ADD COLUMN IF NOT EXISTS category_key TEXT;`);
+    await db.execute(sql`ALTER TABLE customer_approvals ADD COLUMN IF NOT EXISTS template_id TEXT;`);
+    await db.execute(sql`ALTER TABLE customer_approvals ADD COLUMN IF NOT EXISTS template_version TEXT;`);
+    await db.execute(sql`ALTER TABLE customer_approvals ADD COLUMN IF NOT EXISTS template_snapshot JSONB;`);
+    await db.execute(sql`ALTER TABLE customer_approvals ADD COLUMN IF NOT EXISTS required_documents_from_template JSONB;`);
+    await db.execute(sql`ALTER TABLE customer_approvals ADD COLUMN IF NOT EXISTS checklist_from_template JSONB;`);
+
     // ── vendor_operational_confirmations ───────────────────────────────────────
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS vendor_operational_confirmations (

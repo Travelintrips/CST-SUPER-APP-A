@@ -110,6 +110,12 @@ export const customerApprovalsTable = pgTable("customer_approvals", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   createdBy: text("created_by"),
   expiresAt: timestamp("expires_at"),
+  categoryKey: text("category_key"),
+  templateId: text("template_id"),
+  templateVersion: text("template_version"),
+  templateSnapshot: jsonb("template_snapshot").$type<Record<string, unknown> | null>(),
+  requiredDocumentsFromTemplate: jsonb("required_documents_from_template").$type<string[] | null>(),
+  checklistFromTemplate: jsonb("checklist_from_template").$type<string[] | null>(),
 });
 
 export const vendorOperationalConfirmationsTable = pgTable("vendor_operational_confirmations", {
