@@ -26,6 +26,7 @@ import {
   uomConversionsTable,
   purchaseDocumentsTable,
   purchaseDocumentLinesTable,
+  productTemplatesTable,
   suppliersTable,
   productsTable,
   accountingSettingsTable,
@@ -33,6 +34,7 @@ import {
   whMovementsTable,
 } from "@workspace/db";
 import { eq, desc, and, sql, inArray } from "drizzle-orm";
+import { getInCodeTemplate, resolveTemplate, type ProductTemplateOverride } from "@workspace/product-templates";
 
 const router = Router();
 
@@ -218,6 +220,34 @@ router.post("/pr/:id/action", async (req, res) => {
     const countRow = ((rfqResult as any).rows?.[0] ?? (Array.isArray(rfqResult) ? rfqResult[0] : { seq: 0 })) as { seq: number };
     const seq = (Number(countRow.seq) + 1).toString().padStart(5, "0");
     const docNumber = `RFQ/${year}/${seq}`;
+
+    // Resolve template from PR lines
+    const categoryKey = (lines.find((l) => (l as any).productCategory)?.productCategory as string | null) ?? (pr as any).categoryKey ?? null;
+    let templateSnapshot: Record<string, unknown> | null = null;
+    let templateId: string | null = null;
+    let templateVersion: string | null = null;
+    if (categoryKey) {
+      const dbOverrides = await db.select().from(productTemplatesTable).where(eq(productTemplatesTable.categoryKey, categoryKey)).limit(1);
+      const override = dbOverrides[0] ? {
+        categoryKey: dbOverrides[0].categoryKey,
+        label: dbOverrides[0].label,
+        version: dbOverrides[0].version,
+        isActive: dbOverrides[0].isActive,
+        requiredDocuments: dbOverrides[0].requiredDocuments as ProductTemplateOverride["requiredDocuments"],
+        checklist: dbOverrides[0].checklist as ProductTemplateOverride["checklist"],
+        customFields: dbOverrides[0].customFields as ProductTemplateOverride["customFields"],
+        packagingInstructions: dbOverrides[0].packagingInstructions ?? null,
+        conditionalRules: dbOverrides[0].conditionalRules as ProductTemplateOverride["conditionalRules"],
+        validationRules: dbOverrides[0].validationRules as ProductTemplateOverride["validationRules"],
+      } satisfies ProductTemplateOverride : null;
+      const resolved = resolveTemplate(categoryKey, override ? [override] : []);
+      if (resolved) {
+        templateSnapshot = resolved as unknown as Record<string, unknown>;
+        templateId = resolved.category;
+        templateVersion = resolved.version;
+      }
+    }
+
     const [rfq] = await db.insert(purchaseDocumentsTable).values({
       docNumber,
       kind: "rfq",
@@ -229,6 +259,7 @@ router.post("/pr/:id/action", async (req, res) => {
       grandTotal: "0",
       notes: `Converted from PR ${pr.prNumber}`,
       createdById: pr.createdBy ?? undefined,
+      ...(categoryKey ? { categoryKey, templateId, templateVersion, templateSnapshot } : {}),
     }).returning();
     if (lines.length > 0) {
       await db.insert(purchaseDocumentLinesTable).values(
@@ -859,6 +890,22 @@ router.post("/vendor-invoices", async (req, res) => {
   const dueDate = body.dueDate
     ? new Date(String(body.dueDate))
     : new Date(Date.now() + (Number(body.paymentTermDays ?? 30)) * 86400000);
+
+  // Inherit template fields from linked PO
+  let poCategoryKey: string | null = null;
+  let poTemplateId: string | null = null;
+  let poTemplateVersion: string | null = null;
+  let poTemplateSnapshot: Record<string, unknown> | null = null;
+  if (body.poId) {
+    const [po] = await db.select().from(purchaseDocumentsTable).where(eq(purchaseDocumentsTable.id, Number(body.poId))).limit(1);
+    if (po) {
+      poCategoryKey = po.categoryKey ?? null;
+      poTemplateId = po.templateId ?? null;
+      poTemplateVersion = po.templateVersion ?? null;
+      poTemplateSnapshot = (po.templateSnapshot as Record<string, unknown> | null) ?? null;
+    }
+  }
+
   const [vi] = await db.insert(vendorInvoicesTable).values({
     invoiceNumber,
     vendorInvoiceRef: body.vendorInvoiceRef ? String(body.vendorInvoiceRef) : undefined,
@@ -875,6 +922,7 @@ router.post("/vendor-invoices", async (req, res) => {
     grandTotal: String(totalAmount + taxAmount),
     notes: body.notes ? String(body.notes) : undefined,
     createdBy: body.createdBy ? String(body.createdBy) : undefined,
+    ...(poCategoryKey ? { categoryKey: poCategoryKey, templateId: poTemplateId, templateVersion: poTemplateVersion, templateSnapshot: poTemplateSnapshot } : {}),
   }).returning();
   if (lines.length > 0) {
     await db.insert(vendorInvoiceLinesTable).values(
