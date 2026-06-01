@@ -118,6 +118,14 @@ export async function autoCreateRfqAndNotifyVendors(
     return;
   }
 
+  // Ambil template fields dari order untuk disimpan ke RFQ
+  const [orderTplInfo] = await db.select({
+    categoryKey: logisticOrdersTable.categoryKey,
+    templateId: logisticOrdersTable.templateId,
+    templateVersion: logisticOrdersTable.templateVersion,
+    templateSnapshot: logisticOrdersTable.templateSnapshot,
+  }).from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
+
   const rfqNumber = generateRfqNumber();
   const [rfq] = await db.insert(logisticOrderRfqsTable).values({  // [TRUCKING-FIX] capture rfq id
     orderId,
@@ -125,7 +133,13 @@ export async function autoCreateRfqAndNotifyVendors(
     vendorIds: eligible.map((v) => v.id),
     notes: null,
     status: "open",
-  }).returning();
+    ...(orderTplInfo?.templateSnapshot ? {
+      categoryKey: orderTplInfo.categoryKey ?? null,
+      templateId: orderTplInfo.templateId ? String(orderTplInfo.templateId) : null,
+      templateVersion: orderTplInfo.templateVersion ?? null,
+      templateSnapshot: orderTplInfo.templateSnapshot,
+    } : {}),
+  } as any).returning();
 
   const isTrucking = isTruckingOrder(order);                                                 // [TRUCKING-FIX]
 
@@ -1381,7 +1395,13 @@ logisticRfqRouter.post("/:id/manual-rfq", async (req: Request, res: Response) =>
       vendorIds: eligible.map((v) => v.id),
       notes: null,
       status: "open",
-    });
+      ...((order as any).templateSnapshot ? {
+        categoryKey: (order as any).categoryKey ?? null,
+        templateId: (order as any).templateId ? String((order as any).templateId) : null,
+        templateVersion: (order as any).templateVersion ?? null,
+        templateSnapshot: (order as any).templateSnapshot,
+      } : {}),
+    } as any);
   } else {
     await db.update(logisticOrderRfqsTable)
       .set({ vendorIds: [...new Set([...(existingRfqs[0].vendorIds ?? []), ...eligible.map((v) => v.id)])] })
