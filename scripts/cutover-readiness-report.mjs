@@ -19,6 +19,34 @@ const API_BASE = "http://localhost:8080";
 const TARGET_KEYS = ["coal", "iron_steel", "coffee", "palm_oil", "rubber"];
 const LABELS = { coal: "Batubara", iron_steel: "Besi & Baja", coffee: "Kopi", palm_oil: "Minyak Sawit", rubber: "Karet" };
 
+/**
+ * Canonical field key aliases per category.
+ * Setelah Step 1E, key lama di-rename ke canonical key.
+ * key   = key lama (di commodity_templates)
+ * alias = canonical key baru (di product_templates setelah cleanup)
+ */
+const FIELD_KEY_ALIASES = {
+  coal:    { total_moisture: "moisture", ash_content: "ash", sulfur_content: "sulfur" },
+  coffee:  { moisture: "moisture_pct" },
+};
+
+/**
+ * Option value aliases per category+field.
+ * Opsi lama yang diganti nama jadi lebih deskriptif di sistem baru.
+ * key = opsi lama, value = opsi baru (canonical)
+ */
+const OPTIONS_ALIASES = {
+  palm_oil: {
+    product_type: {
+      "CPO":            "CPO (Crude Palm Oil)",
+      "CPKO":           "CPKO (Crude Palm Kernel Oil)",
+      "PKO":            "Palm Kernel Oil (PKO)",
+      "RBD Palm Olein": "RBD Palm Olein",
+      "RBD Palm Stearin": "RBD Palm Stearin",
+    },
+  },
+};
+
 // ── HTTP helper ───────────────────────────────────────────────────────────────
 function httpGet(url) {
   return new Promise((resolve, reject) => {
@@ -110,20 +138,41 @@ function compareTemplates(key, oldTpl, newTpl) {
     return { issues, warnings, summary: "ERROR" };
   }
 
+  // Build alias-aware lookup helpers
+  const catAliases  = FIELD_KEY_ALIASES[key] || {};     // oldKey → newCanonicalKey
+  const catOptAlias = (OPTIONS_ALIASES[key] || {});     // fieldKey → { oldOpt → newOpt }
+
   const oldFieldKeys = new Set(oldTpl.fields.map(f => f.key));
   const newFieldKeys = new Set(newTpl.fields.map(f => f.key));
   const oldDocLabels = new Set(oldTpl.docs.map(d => d.label.toLowerCase().trim()));
   const newDocLabels = new Set(newTpl.docs.map(d => d.label.toLowerCase().trim()));
-  const oldClLabels = new Set(oldTpl.checklist.map(c => c.label.toLowerCase().trim()));
-  const newClLabels = new Set(newTpl.checklist.map(c => c.label.toLowerCase().trim()));
+  const oldClLabels  = new Set(oldTpl.checklist.map(c => c.label.toLowerCase().trim()));
+  const newClLabels  = new Set(newTpl.checklist.map(c => c.label.toLowerCase().trim()));
 
-  // Fields: missing in new
-  const missingFields = oldTpl.fields.filter(f => !newFieldKeys.has(f.key));
+  // Helper: resolve effective key in new system (accounting for canonical rename)
+  const resolveNewKey = (oldKey) => {
+    const alias = catAliases[oldKey];
+    if (alias && newFieldKeys.has(alias)) return alias;  // canonical alias exists
+    if (newFieldKeys.has(oldKey)) return oldKey;         // original key still exists
+    return null;
+  };
+
+  // Fields: missing in new (alias-aware)
+  const missingFields = oldTpl.fields.filter(f => resolveNewKey(f.key) === null);
   if (missingFields.length) {
     issues.push(`❌ FIELD HILANG (${missingFields.length}): ${missingFields.map(f => f.key).join(", ")}`);
   }
 
-  // Fields: semantic duplicates (same label, different keys)
+  // Fields: note canonical renames
+  const renamedFields = oldTpl.fields.filter(f => {
+    const alias = catAliases[f.key];
+    return alias && newFieldKeys.has(alias) && !newFieldKeys.has(f.key);
+  });
+  if (renamedFields.length) {
+    warnings.push(`ℹ️  CANONICAL RENAME (${renamedFields.length}): ${renamedFields.map(f => `${f.key}→${catAliases[f.key]}`).join(", ")}`);
+  }
+
+  // Fields: semantic duplicates (same label, different keys) in new system
   const labelToNewKeys = {};
   for (const f of newTpl.fields) {
     const lbl = f.label.toLowerCase().trim();
@@ -135,18 +184,24 @@ function compareTemplates(key, oldTpl, newTpl) {
     warnings.push(`⚠️  DUPLIKAT LABEL (${semanticDupes.length}): ${semanticDupes.map(([lbl, keys]) => `"${lbl}" (${keys.join(" + ")})`).join("; ")}`);
   }
 
-  // Fields: option mismatch for matching keys
+  // Fields: option mismatch (alias-aware)
   for (const oldField of oldTpl.fields) {
-    const newField = newTpl.fields.find(f => f.key === oldField.key);
+    const effectiveKey = resolveNewKey(oldField.key);
+    if (!effectiveKey) continue;
+    const newField = newTpl.fields.find(f => f.key === effectiveKey);
     if (!newField) continue;
     if (oldField.options && newField.options) {
-      const missing = oldField.options.filter(o => !newField.options.includes(o));
+      const fieldOptAliases = catOptAlias[effectiveKey] || catOptAlias[oldField.key] || {};
+      const missing = oldField.options.filter(o => {
+        const aliased = fieldOptAliases[o];
+        return !newField.options.includes(o) && !(aliased && newField.options.includes(aliased));
+      });
       if (missing.length) {
-        warnings.push(`⚠️  OPTIONS HILANG untuk "${oldField.key}": ${missing.join(", ")}`);
+        warnings.push(`⚠️  OPTIONS HILANG untuk "${effectiveKey}": ${missing.join(", ")}`);
       }
     }
     if (oldField.required && !newField.required) {
-      warnings.push(`⚠️  REQUIRED berubah jadi optional: "${oldField.key}"`);
+      warnings.push(`⚠️  REQUIRED berubah jadi optional: "${effectiveKey}" (dari "${oldField.key}")`);
     }
   }
 
@@ -179,6 +234,10 @@ function compareTemplates(key, oldTpl, newTpl) {
   }
 
   const hasIssues = issues.length > 0;
+
+  // For stats, count "missing" using alias-aware logic
+  const aliasAwareOldFieldKeys = new Set(oldTpl.fields.map(f => catAliases[f.key] || f.key));
+
   return {
     issues,
     warnings,
@@ -186,7 +245,8 @@ function compareTemplates(key, oldTpl, newTpl) {
       old: oldTpl.fields.length,
       new: newTpl.fields.length,
       missing: missingFields.length,
-      extra: newTpl.fields.filter(f => !oldFieldKeys.has(f.key)).length,
+      renames: renamedFields.length,
+      extra: newTpl.fields.filter(f => !aliasAwareOldFieldKeys.has(f.key)).length,
     },
     docStats: {
       old: oldTpl.docs.length,
@@ -338,27 +398,41 @@ async function run() {
       }
       console.log(`  └──────────────┴────────┴────────┴─────────┴────────┘`);
 
-      // Field detail comparison
+      // Field detail comparison (alias-aware)
+      const catAliases2  = FIELD_KEY_ALIASES[key] || {};
+      const catOptAlias2 = (OPTIONS_ALIASES[key] || {});
       console.log(`\n  Custom Fields:`);
-      console.log(`  ${"Key".padEnd(28)} ${"Type".padEnd(10)} ${"Req?".padEnd(5)} ${"Status"}`);
-      console.log(`  ${"─".repeat(62)}`);
+      console.log(`  ${"Key (Lama)".padEnd(24)} ${"→ Canonical".padEnd(20)} ${"Type".padEnd(10)} ${"Req?".padEnd(5)} ${"Status"}`);
+      console.log(`  ${"─".repeat(72)}`);
       const newFieldMap = new Map((newTpl?.fields || []).map(f => [f.key, f]));
       for (const of_ of oldTpl.fields) {
-        const nf = newFieldMap.get(of_.key);
+        const aliasKey = catAliases2[of_.key];
+        const effectiveKey = aliasKey && newFieldMap.has(aliasKey) ? aliasKey
+                           : newFieldMap.has(of_.key) ? of_.key : null;
+        const nf = effectiveKey ? newFieldMap.get(effectiveKey) : null;
+        const canonicalNote = aliasKey && effectiveKey === aliasKey ? `→ ${aliasKey}` : "=";
         let status = nf ? "✅ Ada" : "❌ HILANG";
+        if (nf && aliasKey && effectiveKey === aliasKey) status = `✅ Renamed→${aliasKey}`;
         if (nf && of_.options && nf.options) {
-          const lost = of_.options.filter(o => !nf.options.includes(o));
+          const fieldOptAliases2 = catOptAlias2[effectiveKey] || catOptAlias2[of_.key] || {};
+          const lost = of_.options.filter(o => {
+            const al = fieldOptAliases2[o];
+            return !nf.options.includes(o) && !(al && nf.options.includes(al));
+          });
           if (lost.length) status = `⚠️  options hilang: ${lost.join(", ")}`;
         }
         if (nf && of_.required && !nf.required) status += " ⚠️ req→opt";
-        console.log(`  ${of_.key.padEnd(28)} ${of_.type.padEnd(10)} ${String(of_.required).padEnd(5)} ${status}`);
+        console.log(`  ${of_.key.padEnd(24)} ${canonicalNote.padEnd(20)} ${of_.type.padEnd(10)} ${String(of_.required).padEnd(5)} ${status}`);
       }
 
-      // Extra new fields
-      const oldFieldKeys = new Set(oldTpl.fields.map(f => f.key));
-      const extraFields = (newTpl?.fields || []).filter(f => !oldFieldKeys.has(f.key));
+      // Extra new fields (exclude canonical aliases of old fields)
+      const aliasAwareOldKeys2 = new Set([
+        ...oldTpl.fields.map(f => f.key),
+        ...oldTpl.fields.map(f => catAliases2[f.key]).filter(Boolean),
+      ]);
+      const extraFields = (newTpl?.fields || []).filter(f => !aliasAwareOldKeys2.has(f.key));
       if (extraFields.length) {
-        console.log(`\n  (+) Field baru di Sistem Baru:`);
+        console.log(`\n  (+) Field baru di Sistem Baru (enrichment):`);
         for (const ef of extraFields) {
           console.log(`    + ${ef.key.padEnd(26)} ${ef.type.padEnd(10)} req=${ef.required}`);
         }
