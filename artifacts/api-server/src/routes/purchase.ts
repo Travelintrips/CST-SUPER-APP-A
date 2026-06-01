@@ -445,12 +445,14 @@ router.post("/documents/:id/action", async (req, res) => {
       break;
     case "mark_received":
       patch["receiveStatus"] = "received" satisfies PurchaseReceiveStatus;
-      if (doc.billStatus === "billed") patch["status"] = "done" satisfies PurchaseStatus;
+      // PAYMENT GUARD: PO hanya boleh done jika sudah billed DAN sudah paid
+      if (doc.billStatus === "billed" && doc.paymentStatus === "paid") patch["status"] = "done" satisfies PurchaseStatus;
       break;
     case "receive_to_warehouse": {
       // Mark received + post stock movements to wh_stock
       patch["receiveStatus"] = "received" satisfies PurchaseReceiveStatus;
-      if (doc.billStatus === "billed") patch["status"] = "done" satisfies PurchaseStatus;
+      // PAYMENT GUARD: PO hanya boleh done jika sudah billed DAN sudah paid
+      if (doc.billStatus === "billed" && doc.paymentStatus === "paid") patch["status"] = "done" satisfies PurchaseStatus;
       break;
     }
     case "mark_billed": {
@@ -470,7 +472,8 @@ router.post("/documents/:id/action", async (req, res) => {
       patch["billNumber"] = billNumber;
       patch["billDate"] = billDate;
       patch["dueDate"] = dueDate;
-      if (doc.receiveStatus === "received") patch["status"] = "done" satisfies PurchaseStatus;
+      // PAYMENT GUARD: PO hanya boleh done jika sudah received DAN sudah paid
+      if (doc.receiveStatus === "received" && doc.paymentStatus === "paid") patch["status"] = "done" satisfies PurchaseStatus;
       break;
     }
     case "cancel_bill": {
