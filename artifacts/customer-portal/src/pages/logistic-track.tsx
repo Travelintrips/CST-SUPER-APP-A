@@ -10,7 +10,7 @@ import {
   ArrowLeft, Search, Ship, Truck, CheckCircle2, Clock,
   MapPin, Package, RefreshCw, AlertCircle, FileText,
   Circle, ArrowRight, Loader2, ThumbsUp, ThumbsDown, RotateCcw, Tag,
-  Bell, BellOff,
+  Bell, BellOff, Navigation, ExternalLink,
 } from "lucide-react";
 import { usePushNotification } from "@/hooks/usePushNotification";
 import { formatDate } from "@/lib/utils";
@@ -66,6 +66,21 @@ interface TrackingData {
   orderUpdates: OrderUpdateItem[];
 }
 
+interface ProgressEvent {
+  id: number;
+  stepKey: string;
+  stepLabel: string;
+  source: string;
+  actorName: string | null;
+  notes: string | null;
+  gpsLatitude: number | null;
+  gpsLongitude: number | null;
+  deviceTimestamp: string | null;
+  mapUrl: string | null;
+  streetViewUrl: string | null;
+  createdAt: string;
+}
+
 async function fetchTracking(orderNumber: string): Promise<TrackingData> {
   const res = await fetch(`${BASE}/api/logistic/orders/track/${encodeURIComponent(orderNumber)}`);
   if (!res.ok) {
@@ -73,6 +88,13 @@ async function fetchTracking(orderNumber: string): Promise<TrackingData> {
     throw new Error((body as { message?: string }).message ?? "Order tidak ditemukan");
   }
   return res.json() as Promise<TrackingData>;
+}
+
+async function fetchProgress(orderId: number): Promise<ProgressEvent[]> {
+  const res = await fetch(`${BASE}/api/logistic/orders/${orderId}/progress`);
+  if (!res.ok) return [];
+  const data = await res.json() as { events: ProgressEvent[] };
+  return data.events ?? [];
 }
 
 const ORDER_STEPS = [
@@ -706,6 +728,106 @@ function PushToggle({ orderNumber }: { orderNumber: string | null }) {
   );
 }
 
+function DriverGpsTimeline({ events }: { events: ProgressEvent[] }) {
+  const gpsEvents = events.filter((e) => e.gpsLatitude != null && e.gpsLongitude != null);
+  if (gpsEvents.length === 0) return null;
+
+  return (
+    <div className="bg-card border border-border rounded-xl p-5">
+      <h3 className="font-semibold text-foreground text-sm mb-4 flex items-center gap-2">
+        <Navigation className="w-4 h-4 text-primary" />
+        Riwayat Lokasi Driver
+        <Badge variant="outline" className="text-xs ml-auto">{gpsEvents.length} titik</Badge>
+      </h3>
+      <div className="space-y-0">
+        {[...gpsEvents].reverse().map((ev, i) => {
+          const isFirst = i === 0;
+          const isLast = i === gpsEvents.length - 1;
+          const ts = ev.deviceTimestamp
+            ? new Date(ev.deviceTimestamp).toLocaleString("id-ID", {
+                day: "numeric", month: "short", year: "numeric",
+                hour: "2-digit", minute: "2-digit",
+                timeZone: "Asia/Jakarta",
+              })
+            : new Date(ev.createdAt).toLocaleString("id-ID", {
+                day: "numeric", month: "short", year: "numeric",
+                hour: "2-digit", minute: "2-digit",
+                timeZone: "Asia/Jakarta",
+              });
+
+          return (
+            <div key={ev.id} className="flex gap-3">
+              <div className="flex flex-col items-center">
+                <div className={cn(
+                  "w-7 h-7 rounded-full flex items-center justify-center border-2 flex-shrink-0 mt-0.5",
+                  isFirst
+                    ? "bg-primary border-primary text-primary-foreground"
+                    : "bg-green-500 border-green-500 text-white"
+                )}>
+                  <MapPin className="w-3.5 h-3.5" />
+                </div>
+                {!isLast && (
+                  <div className="w-0.5 flex-1 my-1 bg-border" />
+                )}
+              </div>
+              <div className={cn("pb-4 flex-1 min-w-0", isLast && "pb-0")}>
+                <div className="flex items-start justify-between gap-2 flex-wrap">
+                  <div>
+                    <p className={cn(
+                      "text-sm font-semibold",
+                      isFirst ? "text-primary" : "text-foreground"
+                    )}>
+                      {ev.stepLabel}
+                    </p>
+                    {ev.actorName && (
+                      <p className="text-xs text-muted-foreground">
+                        👤 {ev.actorName}
+                      </p>
+                    )}
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      🕐 {ts}
+                      {ev.deviceTimestamp && " (waktu perangkat)"}
+                    </p>
+                    <p className="text-xs font-mono text-muted-foreground mt-0.5">
+                      📍 {ev.gpsLatitude!.toFixed(6)}, {ev.gpsLongitude!.toFixed(6)}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-2 mt-2 flex-wrap">
+                  {ev.mapUrl && (
+                    <a
+                      href={ev.mapUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline bg-primary/10 px-2 py-1 rounded-md"
+                    >
+                      <MapPin className="w-3 h-3" />
+                      Google Maps
+                      <ExternalLink className="w-2.5 h-2.5" />
+                    </a>
+                  )}
+                  {ev.streetViewUrl && (
+                    <a
+                      href={ev.streetViewUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs font-medium text-sky-600 hover:underline bg-sky-50 px-2 py-1 rounded-md"
+                    >
+                      <Navigation className="w-3 h-3" />
+                      Street View
+                      <ExternalLink className="w-2.5 h-2.5" />
+                    </a>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function TrackPage() {
   const [, setLocation] = useLocation();
   const { orderNumber: pathOrderNumber } = useParams<{ orderNumber?: string }>();
@@ -786,6 +908,14 @@ export default function TrackPage() {
       ? false
       : (ACTIVE_INTERVAL * 1000),
     staleTime: 5_000,
+  });
+
+  const { data: progressEvents = [] } = useQuery<ProgressEvent[], Error>({
+    queryKey: ["tracking-progress", tracking?.id],
+    queryFn: () => fetchProgress(tracking!.id),
+    enabled: !!tracking?.id,
+    refetchInterval: isTerminal ? false : (ACTIVE_INTERVAL * 1000),
+    staleTime: 10_000,
   });
 
   useEffect(() => {
@@ -999,6 +1129,9 @@ export default function TrackPage() {
                 </div>
               )
             )}
+
+            {/* GPS History Timeline */}
+            <DriverGpsTimeline events={progressEvents} />
 
             {/* Services */}
             {tracking.items.length > 0 && (
