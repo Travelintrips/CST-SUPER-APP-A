@@ -56,6 +56,7 @@ import { runPurchaseTemplateMigration } from "./lib/purchaseTemplateMigration.js
 import { runEnterpriseWorkflowMigration } from "./lib/enterpriseWorkflowTemplates.js";
 import { runOrderProgressMigration } from "./lib/orderProgress.js";
 import { runExceptionEnumMigration } from "./lib/services/exceptionService.js";
+import { runStep4TemplateMigration } from "./lib/step4TemplateMigration.js";
 import { expireStaleApprovals } from "./lib/aiGovernance.js";
 import { startDbBackupScheduler } from "./lib/dbBackup.js";
 import { initAlertsBroadcast } from "./lib/alertsBroadcast.js";
@@ -320,6 +321,7 @@ async function startServer() {
     .then(() => runWithRetry("Enterprise workflow template migration", runEnterpriseWorkflowMigration))
     .then(() => runWithRetry("Order progress migration", runOrderProgressMigration))
     .then(() => runWithRetry("Exception enum migration", runExceptionEnumMigration))
+    .then(() => runWithRetry("Step 4 template snapshot migration", runStep4TemplateMigration))
     .then(() => enableRealtimeTables().catch((err) => {
       logger.warn({ err }, "Supabase Realtime table enable failed (non-fatal)");
     }))

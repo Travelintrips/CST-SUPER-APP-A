@@ -263,7 +263,7 @@ router.get("/documents/:id", async (req, res) => {
 
 router.post("/documents", async (req, res) => {
   const companyId = resolveCompanyId(req);
-  const { kind, supplierId, supplierName, supplierAddress, expectedDate, notes, lines, taxRateId, warehouseId, productCategory, incoterm, deliveryTerm, targetPrice, commoditySpecs, requiredDocuments } = req.body ?? {};
+  const { kind, supplierId, supplierName, supplierAddress, expectedDate, notes, lines, taxRateId, warehouseId, productCategory, incoterm, deliveryTerm, targetPrice, commoditySpecs, requiredDocuments, categoryKey, templateId, templateVersion, templateSnapshot } = req.body ?? {};
   if (typeof supplierName !== "string" || !supplierName.trim())
     return res.status(400).json({ message: "supplierName required" });
   if (!Array.isArray(lines) || lines.length === 0)
@@ -306,6 +306,10 @@ router.post("/documents", async (req, res) => {
       targetPrice: targetPrice ? String(targetPrice) : null,
       commoditySpecs: commoditySpecs ?? null,
       requiredDocuments: requiredDocuments ?? null,
+      categoryKey: categoryKey ? String(categoryKey) : null,
+      templateId: templateId ? String(templateId) : null,
+      templateVersion: templateVersion ? String(templateVersion) : null,
+      templateSnapshot: templateSnapshot ?? null,
     })
     .returning();
 
@@ -341,7 +345,7 @@ router.put("/documents/:id", async (req, res) => {
   const existing = await loadDocWithLines(id);
   if (!existing) return res.status(404).json({ message: "Document not found" });
 
-  const { supplierId, supplierName, supplierAddress, expectedDate, notes, lines, kind, taxRateId, warehouseId, productCategory, incoterm, deliveryTerm, targetPrice, commoditySpecs, requiredDocuments } = req.body ?? {};
+  const { supplierId, supplierName, supplierAddress, expectedDate, notes, lines, kind, taxRateId, warehouseId, productCategory, incoterm, deliveryTerm, targetPrice, commoditySpecs, requiredDocuments, categoryKey, templateId, templateVersion, templateSnapshot } = req.body ?? {};
   const patch: Record<string, unknown> = { updatedAt: new Date() };
   if (typeof supplierName === "string") patch["supplierName"] = supplierName;
   if (supplierAddress !== undefined) patch["supplierAddress"] = supplierAddress ?? null;
@@ -357,6 +361,10 @@ router.put("/documents/:id", async (req, res) => {
   if (targetPrice !== undefined) patch["targetPrice"] = targetPrice ? String(targetPrice) : null;
   if (commoditySpecs !== undefined) patch["commoditySpecs"] = commoditySpecs ?? null;
   if (requiredDocuments !== undefined) patch["requiredDocuments"] = requiredDocuments ?? null;
+  if (categoryKey !== undefined) patch["categoryKey"] = categoryKey ? String(categoryKey) : null;
+  if (templateId !== undefined) patch["templateId"] = templateId ? String(templateId) : null;
+  if (templateVersion !== undefined) patch["templateVersion"] = templateVersion ? String(templateVersion) : null;
+  if (templateSnapshot !== undefined) patch["templateSnapshot"] = templateSnapshot ?? null;
 
   if (Array.isArray(lines)) {
     const total = (lines as LineInput[]).reduce(

@@ -54,6 +54,7 @@ interface FormData {
   currentEta: string | null;
   currentNotes: string | null;
   orderItems?: OrderItem[] | null;
+  templateSnapshot?: Record<string, unknown> | null;
 }
 
 function useCountdown(targetIso: string | null | undefined) {
@@ -403,6 +404,25 @@ export default function VendorFormPage() {
                   )}
                 </>
               )}
+            </div>
+          )}
+          {data.templateSnapshot && (data.templateSnapshot as any).label && (
+            <div className="mt-3 pt-3 border-t border-blue-100">
+              <p className="text-xs text-blue-600 font-semibold uppercase tracking-wide mb-2">📋 Template Produk</p>
+              <div className="bg-blue-50 rounded-lg px-3 py-2 space-y-1">
+                <p className="text-sm font-medium text-blue-800">{String((data.templateSnapshot as any).label)}</p>
+                {Array.isArray((data.templateSnapshot as any).requiredDocuments) &&
+                  ((data.templateSnapshot as any).requiredDocuments as any[]).filter((d) => d.required).length > 0 && (
+                  <div>
+                    <p className="text-xs text-blue-500 mt-1">Dokumen wajib:</p>
+                    <ul className="text-xs text-blue-700 list-disc pl-4 mt-0.5">
+                      {((data.templateSnapshot as any).requiredDocuments as any[]).filter((d) => d.required).map((d, i) => (
+                        <li key={i}>{d.label}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>

@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
+import { TemplateSnapshotCard } from "@/components/TemplateSnapshotCard";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -1036,6 +1037,10 @@ export default function SalesDocumentDetailPage() {
                 </Card>
               )}
             </div>
+
+            {(doc as any).templateSnapshot && (
+              <TemplateSnapshotCard templateSnapshot={(doc as any).templateSnapshot} />
+            )}
 
             {/* Line Items */}
             <Card>

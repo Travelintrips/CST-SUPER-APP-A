@@ -503,6 +503,7 @@ const DEFAULT_TPL = {
       "",
       "Order         : {{orderNumber}}",
       "Vendor        : {{vendorName}}",
+      "Komoditi      : {{commodity}}",
       "File diunggah : {{fileCount}}",
       "Catatan       : {{completionNotes}}",
       "",
@@ -2423,10 +2424,12 @@ export async function sendVendorPodUploadedNotification(
   adminWaPhone: string,
   completionNotes?: string,
   photoUrl?: string,
+  commodity?: string | null,
 ): Promise<void> {
   const tpl = await getWaTemplateConfig("admin_personal", "vendor_pod_uploaded", DEFAULT_TPL.admin_personal.vendor_pod_uploaded);
   const msg = renderTemplate(tpl, {
     orderNumber, vendorName,
+    commodity: commodity || null,
     fileCount: String(fileCount),
     completionNotes: completionNotes || null,
     timestamp: nowWIB(),

@@ -30,6 +30,7 @@ type OrderInfo = {
   subtotalBeforeTax?: string | null;
   taxAmount?: string | null;
   taxRate?: number | null;
+  templateSnapshot?: Record<string, unknown> | null;
 };
 
 type SubmittedData = {
@@ -357,6 +358,20 @@ function SubmittedReview({
             <OrderRow label="Layanan" value={order.serviceType} />
             {!isProduct && <OrderRow label="Rute" value={`${order.origin} → ${order.destination}`} />}
             {order.commodity && <OrderRow label="Komoditi" value={order.commodity} />}
+            {order.templateSnapshot && (order.templateSnapshot as any).label && (
+              <div className="mt-2 pt-2 border-t border-slate-100">
+                <p className="text-xs text-slate-400 uppercase tracking-wide mb-1">📋 Template Produk</p>
+                <p className="text-sm font-medium text-slate-700">{String((order.templateSnapshot as any).label)}</p>
+                {Array.isArray((order.templateSnapshot as any).requiredDocuments) &&
+                  ((order.templateSnapshot as any).requiredDocuments as any[]).filter((d) => d.required).length > 0 && (
+                  <ul className="text-xs text-slate-500 list-disc pl-4 mt-0.5">
+                    {((order.templateSnapshot as any).requiredDocuments as any[]).filter((d) => d.required).map((d, i) => (
+                      <li key={i}>{d.label}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

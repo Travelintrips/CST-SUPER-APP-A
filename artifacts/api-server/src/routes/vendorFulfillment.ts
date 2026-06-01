@@ -14,6 +14,8 @@ import {
   suppliersTable,
   orderUpdatesTable,
   vendorCatalogItemsTable,
+  customerApprovalsTable,
+  logisticOrderRfqsTable,
 } from "@workspace/db";
 import { logger } from "../lib/logger";
 import { sendViaService as sendWhatsApp, sendMediaViaService } from "../lib/waTransport.js";
@@ -327,6 +329,30 @@ vendorFulfillmentPublicRouter.get("/:token", async (req: Request, res: Response)
       .where(eq(logisticOrdersTable.id, link.orderId));
     if (!order) return res.status(404).json({ error: "Order tidak ditemukan" });
 
+    // Fetch templateSnapshot: prioritize customer_approval, fallback to rfq
+    let templateSnapshot: Record<string, unknown> | null = null;
+    {
+      const [approvalRow] = await db
+        .select({ templateSnapshot: customerApprovalsTable.templateSnapshot })
+        .from(customerApprovalsTable)
+        .where(eq(customerApprovalsTable.orderId, order.id))
+        .orderBy(customerApprovalsTable.id)
+        .limit(1);
+      if (approvalRow?.templateSnapshot) {
+        templateSnapshot = approvalRow.templateSnapshot as Record<string, unknown>;
+      } else {
+        const [rfqRow] = await db
+          .select({ templateSnapshot: logisticOrderRfqsTable.templateSnapshot })
+          .from(logisticOrderRfqsTable)
+          .where(eq(logisticOrderRfqsTable.orderId, order.id))
+          .orderBy(logisticOrderRfqsTable.id)
+          .limit(1);
+        if (rfqRow?.templateSnapshot) {
+          templateSnapshot = rfqRow.templateSnapshot as Record<string, unknown>;
+        }
+      }
+    }
+
     let vendorName: string | null = null;
     if (link.vendorId) {
       const [v] = await db.select({ name: suppliersTable.name }).from(suppliersTable)
@@ -425,6 +451,7 @@ vendorFulfillmentPublicRouter.get("/:token", async (req: Request, res: Response)
       subtotalBeforeTax: subtotalBeforeTax != null ? String(subtotalBeforeTax) : null,
       taxAmount: taxAmount != null ? String(taxAmount) : null,
       taxRate: TAX_RATE,
+      templateSnapshot,
     };
 
     const progressEvents = await getOrderProgressEvents(order.id);

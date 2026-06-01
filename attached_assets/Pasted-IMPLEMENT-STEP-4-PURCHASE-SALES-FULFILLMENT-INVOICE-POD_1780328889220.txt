@@ -1,0 +1,177 @@
+IMPLEMENT STEP 4 — PURCHASE, SALES, FULFILLMENT, INVOICE & POD TEMPLATE INTEGRATION
+
+Tujuan:
+Semua proses setelah customer approval harus tetap membawa Product Template Snapshot agar data produk tidak hilang di tahap operasional, purchase, sales, fulfillment, invoice, dan POD.
+
+Kondisi saat ini:
+- Step 1F selesai: Vendor Mini Form memakai product_templates.
+- Step 2 selesai: Logistic Orders & RFQ memakai templateSnapshot.
+- Step 3 selesai: Customer Quote & Customer Approval memakai templateSnapshot.
+- Customer tidak melihat harga dasar vendor.
+
+Tugas:
+
+1. Purchase Documents
+
+Tambahkan ke purchase_documents:
+- categoryKey
+- templateId
+- templateVersion
+- templateSnapshot jsonb
+
+Saat membuat Purchase Document dari order/RFQ/vendor quote:
+- copy templateSnapshot dari RFQ / customer approval
+- simpan ke purchase_documents
+
+UI Purchase harus menampilkan:
+- nama produk
+- komoditas
+- spesifikasi produk
+- dokumen wajib
+- checklist
+- harga dasar vendor
+- quantity
+- subtotal vendor
+
+2. Sales Documents
+
+Tambahkan ke sales_documents:
+- categoryKey
+- templateId
+- templateVersion
+- templateSnapshot jsonb
+
+Saat membuat Sales Order / Invoice dari customer approval:
+- copy templateSnapshot dari customer approval
+- simpan ke sales_documents
+
+UI Sales harus menampilkan:
+- nama produk
+- komoditas
+- spesifikasi produk
+- dokumen wajib
+- checklist
+- harga jual
+- quantity
+- PPN
+- grand total
+
+3. Fulfillment
+
+Fulfillment Form harus membaca templateSnapshot dari:
+- order
+- RFQ
+- customer approval
+- sales document
+
+Prioritas:
+customer_approval.templateSnapshot
+→ customer_quote.templateSnapshot
+→ rfq.templateSnapshot
+→ logistic_order.categoryKey fallback
+
+Tampilkan:
+- detail produk
+- quantity
+- unit
+- spesifikasi produk
+- checklist fulfillment
+- dokumen wajib
+- delivery/pickup data
+- POD upload
+
+4. Invoice
+
+Invoice tidak boleh hanya menampilkan nama item dan harga.
+
+Invoice harus menampilkan:
+- nama produk
+- quantity
+- unit
+- harga jual
+- subtotal
+- PPN
+- grand total
+- ringkasan spesifikasi utama
+
+Invoice tidak boleh menampilkan:
+- harga dasar vendor
+- margin internal
+
+5. POD
+
+POD form harus membawa:
+- orderId
+- product detail
+- quantity
+- unit
+- templateSnapshot summary
+- upload foto/dokumen POD
+
+POD notification WA ke admin harus menampilkan:
+- order number
+- vendor/driver
+- produk
+- quantity
+- status delivery
+- link POD/file
+
+6. WhatsApp Notification
+
+Update semua WA berikut agar membaca templateSnapshot:
+- vendor confirmation
+- customer approval confirmed
+- fulfillment instruction
+- invoice issued
+- POD uploaded
+- payment received jika ada
+
+7. Backward Compatibility
+
+Jika dokumen lama tidak punya templateSnapshot:
+- tetap pakai flow lama
+- jangan blank page
+- jangan error
+
+8. Audit & Test
+
+Test minimal:
+- Batubara
+- Besi & Baja
+- Kopi
+- Minyak Sawit
+- Karet
+
+Scenario test:
+- customer approve quote
+- buat purchase
+- buat sales order
+- buat invoice
+- fulfillment update
+- upload POD
+- cek semua WA
+- pastikan customer tidak melihat harga dasar vendor
+
+9. Output Report
+
+Buat:
+
+STEP 4 RESULT REPORT
+
+Isi:
+- schema diubah
+- endpoint diubah
+- UI diubah
+- WA diubah
+- test result per komoditas
+- issue tersisa
+- rollback plan
+
+Acceptance Criteria:
+- TemplateSnapshot tidak hilang setelah customer approval.
+- Purchase melihat harga dasar vendor.
+- Sales/Invoice melihat harga jual.
+- Customer tidak melihat price_base.
+- Vendor tidak melihat margin.
+- Fulfillment dan POD menampilkan detail produk lengkap.
+- Semua WA penting membawa nama produk, quantity, dan ringkasan spesifikasi.

@@ -395,6 +395,10 @@ router.post("/vq/:id/select", async (req, res) => {
     incoterm: (vq as any).incoterm ?? null,
     deliveryTerm: (vq as any).deliveryTerm ?? null,
     productCategory: (rfq as any)?.productCategory ?? null,
+    categoryKey: (rfq as any)?.categoryKey ?? null,
+    templateId: (rfq as any)?.templateId ?? null,
+    templateVersion: (rfq as any)?.templateVersion ?? null,
+    templateSnapshot: (rfq as any)?.templateSnapshot ?? null,
   }).returning();
   if (vqLines.length > 0) {
     await db.insert(purchaseDocumentLinesTable).values(

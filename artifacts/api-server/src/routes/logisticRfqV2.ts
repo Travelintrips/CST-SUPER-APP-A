@@ -735,6 +735,7 @@ logisticRfqV2Router.get("/vendor-form/:token", async (req: Request, res: Respons
     currentNotes: link.notes ?? null,
     currentLeadTimeDays: link.leadTimeDays ?? null,
     currentStockAvailability: link.stockAvailability ?? "unknown",
+    templateSnapshot: (rfqRaw.template_snapshot as Record<string, unknown> | null) ?? null,
     orderItems: orderItems.map((i) => {
       const itemName = (i.serviceName || i.category || "").trim();
       const catalogMatch = matchCatalogItem(itemName);
