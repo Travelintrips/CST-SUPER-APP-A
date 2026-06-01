@@ -86,7 +86,7 @@ const TMPL_TO_BACKEND: Record<string, keyof SubmittedData | "_extra"> = {
   plate_number: "plateNumber",
   vehicle_type: "vehicleType",
   pickup_time: "pickupTime",
-  delivery_time: "pickupTime",
+  delivery_time: "_extra",
   booking_number: "bookingNumber",
   vessel_name: "flightVessel",
   flight_number: "flightVessel",
