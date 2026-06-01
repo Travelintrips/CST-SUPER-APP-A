@@ -1,0 +1,102 @@
+HOTFIX #2 — CUSTOMER APPROVAL SPEC VALUES
+
+Tujuan:
+Customer Approval menampilkan nilai spesifikasi aktual, bukan hanya label atau tanda "-".
+
+Masalah:
+Saat ini customer melihat field seperti:
+- Grade: —
+- Moisture: —
+- Origin: —
+
+Padahal value seharusnya bisa diambil dari templateValues, vendor submission, RFQ/order data, atau approval offerSummary.
+
+Tugas:
+
+1. Audit:
+artifacts/customer-portal/src/pages/customer-approval.tsx
+
+2. Audit backend response:
+GET /api/vendor-form/customer-approval/:token
+atau endpoint customer approval terkait.
+
+Pastikan response membawa data:
+- templateSnapshot
+- templateValues
+- offerSummary
+- order items / RFQ data jika ada
+- vendor submission formData jika ada
+
+3. Buat helper frontend:
+
+getSpecValue(fieldKey)
+
+Priority:
+A. templateValues[fieldKey]
+B. offerSummary.specifications[fieldKey]
+C. offerSummary.productSpecifications[fieldKey]
+D. offerSummary[fieldKey]
+E. vendorSubmission.formData[fieldKey]
+F. order.inputData[fieldKey]
+
+4. Product Template:
+Render customFields:
+
+{field.label}: {value}
+
+5. Service Template:
+Render fields:
+
+{field.label}: {value}
+
+Pisahkan jika memungkinkan:
+- Quotation fields
+- Operational fields
+
+6. Jika value tidak ditemukan:
+Jangan tampilkan field tersebut.
+
+Jangan tampilkan:
+- "-"
+- null
+- undefined
+- empty string
+
+7. Jangan tampilkan informasi internal:
+- priceBase
+- vendorCost
+- margin
+- basicPrice
+- internalCost
+
+8. Format value:
+- array → join ", "
+- boolean → Ya/Tidak
+- objectPath/upload → tampilkan "Dokumen terunggah"
+- number + unit → "12 %", "5 Ton", dll jika field.unit ada
+
+9. Test:
+- Kopi
+- Batubara
+- Trucking
+- Sea Freight
+
+10. Output:
+
+CUSTOMER APPROVAL SPEC VALUE REPORT
+
+Isi:
+- file diubah
+- backend field tersedia/tidak
+- helper yang dibuat
+- test result product
+- test result service
+- leakage check
+- issue tersisa
+
+Acceptance Criteria:
+- Customer melihat spesifikasi dengan nilai aktual.
+- Field kosong tidak ditampilkan.
+- Tidak ada tanda "-".
+- Tidak ada internal pricing bocor.
+- Customer Approval tetap bisa dibuka untuk data lama.

@@ -1493,6 +1493,18 @@ vendorMiniFormRouter.get("/customer-approval/:token", async (req: Request, res: 
       ?? (tSnap?.checklist as string[] | undefined)
       ?? null;
 
+    // Fetch vendor submission formData for spec value lookup (non-critical)
+    let vendorFormData: Record<string, unknown> | null = null;
+    if (approval.submissionId) {
+      try {
+        const [sub] = await db
+          .select({ formData: vendorMiniFormSubmissionsTable.formData })
+          .from(vendorMiniFormSubmissionsTable)
+          .where(eq(vendorMiniFormSubmissionsTable.id, approval.submissionId));
+        vendorFormData = (sub?.formData as Record<string, unknown>) ?? null;
+      } catch { /* non-critical — spec values just won't be shown */ }
+    }
+
     return res.json({
       token: approval.token, orderNumber: approval.orderNumber,
       customerName: approval.customerName,
@@ -1510,6 +1522,7 @@ vendorMiniFormRouter.get("/customer-approval/:token", async (req: Request, res: 
       templateSnapshot: tSnap,
       requiredDocuments: requiredDocs,
       checklist,
+      vendorFormData,
     });
   } catch (err) {
     req.log?.error({ err }, "customer-approval GET error");
