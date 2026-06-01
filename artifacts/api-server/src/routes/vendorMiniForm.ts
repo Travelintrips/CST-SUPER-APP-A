@@ -1342,6 +1342,7 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
               quoteDeadline: (fd["quote_deadline"] as string | undefined)?.trim() ?? null,
               notesToVendor: (fd["notes_to_vendor"] as string | undefined)?.trim() ?? null,
               vendorFormUrl,
+              templateSnapshot: link.templateSnapshot as Record<string, unknown> | null ?? null,
             },
             token,
           ).catch(() => {});

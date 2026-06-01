@@ -1219,6 +1219,10 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
           vendor.phone,
           undefined,
           _fwdItems,
+          undefined,
+          undefined,
+          undefined,
+          order.templateSnapshot as Record<string, unknown> | null,
         ).catch(() => {});
       }
 

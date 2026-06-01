@@ -2135,16 +2135,23 @@ export async function sendVendorRfqForwardNotification(
     quoteDeadline?: string | null;
     notesToVendor?: string | null;
     vendorFormUrl: string;
+    templateSnapshot?: Record<string, unknown> | null;
   },
   refToken: string,
 ): Promise<void> {
+  const serviceCtx = buildServiceContext(vars.templateSnapshot ?? null);
+  // serviceLabel: snapshot takes priority, fallback to manual serviceNeeded
+  const serviceLabel = serviceCtx.serviceLabel ?? vars.serviceNeeded ?? null;
   const tpl = await getWaTemplateConfig("vendor", "vendor_rfq_forward", DEFAULT_TPL.vendor.vendor_rfq_forward);
   const route = (vars.origin && vars.destination) ? `${vars.origin} → ${vars.destination}` : null;
   const msg = renderTemplate(tpl, {
     vendorLabel,
     rfqRef: vars.rfqRef ?? null,
     customerName: vars.customerName ?? null,
-    serviceNeeded: vars.serviceNeeded ?? null,
+    // serviceNeeded populated from snapshot-first for backward-compat with existing templates
+    serviceNeeded: serviceLabel,
+    // serviceLabel also available for new/custom templates using {{serviceLabel}}
+    serviceLabel,
     route,
     weightVolume: vars.weightVolume ?? null,
     cargoDesc: vars.cargoDesc ?? null,
@@ -2153,6 +2160,7 @@ export async function sendVendorRfqForwardNotification(
     notesToVendor: vars.notesToVendor ?? null,
     vendorFormUrl: vars.vendorFormUrl,
     timestamp: nowWIB(),
+    ...serviceCtx,
   });
   sendWhatsApp(vendorPhone, msg, {
     context: "admin-rfq-forward-vendor-notif",
@@ -2467,6 +2475,7 @@ export async function sendVendorAssignmentNotification(
   estimatedPickup?: string | null,
   estimatedDelivery?: string | null,
   estimatedDays?: number | null,
+  templateSnapshot?: Record<string, unknown> | null,
 ): Promise<string> {
   const fmtRp = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
   let itemsBlock = "";
@@ -2479,6 +2488,7 @@ export async function sendVendorAssignmentNotification(
     });
     itemsBlock = `📋 *Detail Produk:*\n${lines.join("\n")}\n\n`;
   }
+  const serviceCtx = buildServiceContext(templateSnapshot ?? null);
   const tpl = await getWaTemplateConfig("vendor", "vendor_assignment", DEFAULT_TPL.vendor.vendor_assignment);
   const vars: Record<string, string | null | undefined> = {
     orderNumber, origin, destination, shipmentType, jobUrl,
@@ -2488,6 +2498,7 @@ export async function sendVendorAssignmentNotification(
     estimatedDeliveryLine: estimatedDelivery ? `🏁 Est. Delivery: ${estimatedDelivery}` : null,
     estimatedDaysLine: estimatedDays != null ? `⏱️ Transit      : ${estimatedDays} hari` : null,
     timestamp: nowWIB(),
+    ...serviceCtx,
   };
   const msg = renderTemplate(tpl, vars);
   if (vendorPhone) {
