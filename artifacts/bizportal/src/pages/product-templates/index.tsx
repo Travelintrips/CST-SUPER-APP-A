@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { AppShell } from "@/components/layout/AppShell";
@@ -26,7 +26,26 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Search, Plus, ChevronRight, FileText, ListChecks, Layout, Trash2, Link2, Copy } from "lucide-react";
+import {
+  Search, Plus, ChevronRight, FileText, Layout, Trash2, Link2, Copy, GripVertical,
+} from "lucide-react";
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  rectSortingStrategy,
+  useSortable,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 interface ProductTemplateRow {
   id: number;
@@ -84,6 +103,144 @@ async function duplicateTemplate(id: number): Promise<ProductTemplateRow> {
   return res.json();
 }
 
+async function reorderTemplates(items: { id: number; sortOrder: number }[]): Promise<void> {
+  const res = await fetch(`${API_BASE}/reorder`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ items }),
+  });
+  if (!res.ok) throw new Error("Gagal menyimpan urutan");
+}
+
+// ── Sortable Card ──────────────────────────────────────────────────────────────
+
+function SortableCard({
+  tpl,
+  onCopyLink,
+  onDuplicate,
+  onDelete,
+}: {
+  tpl: ProductTemplateRow;
+  onCopyLink: (tpl: ProductTemplateRow, e: React.MouseEvent) => void;
+  onDuplicate: (id: number) => void;
+  onDelete: (id: number) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: tpl.id,
+  });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.45 : 1,
+    position: "relative",
+    zIndex: isDragging ? 50 : undefined,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes}>
+      <Card className={`border group transition-shadow ${isDragging ? "shadow-xl ring-2 ring-primary/30" : "hover:shadow-md"}`}>
+        <CardContent className="p-5 space-y-3">
+          {/* Header row */}
+          <div className="flex items-start justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-2xl">{tpl.icon ?? "📦"}</span>
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <span className="font-semibold text-foreground group-hover:text-primary transition-colors">
+                    {tpl.label}
+                  </span>
+                  {!tpl.isActive && (
+                    <Badge variant="secondary" className="text-[10px] py-0 px-1">Nonaktif</Badge>
+                  )}
+                </div>
+                <div className="text-xs text-muted-foreground font-mono">{tpl.categoryKey}</div>
+              </div>
+            </div>
+            <div className="flex items-center gap-1">
+              {/* Drag handle */}
+              <button
+                {...listeners}
+                className="text-muted-foreground/50 hover:text-muted-foreground cursor-grab active:cursor-grabbing touch-none p-0.5 rounded"
+                title="Seret untuk mengurutkan"
+                tabIndex={-1}
+              >
+                <GripVertical className="w-4 h-4" />
+              </button>
+              <Link href={`/product-templates/${tpl.id}`}>
+                <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
+              </Link>
+            </div>
+          </div>
+
+          {tpl.description && (
+            <p className="text-xs text-muted-foreground line-clamp-2">{tpl.description}</p>
+          )}
+
+          {/* Stats row */}
+          <div className="grid grid-cols-3 gap-2 text-center">
+            {[
+              { label: "Fields", value: tpl.customFields?.length ?? 0, color: "text-blue-600" },
+              { label: "Dok Wajib", value: tpl.requiredDocuments?.length ?? 0, color: "text-orange-600" },
+              { label: "Checklist", value: tpl.checklist?.length ?? 0, color: "text-green-600" },
+            ].map((s) => (
+              <div key={s.label} className="bg-muted/50 rounded-md p-1.5">
+                <div className={`text-base font-bold ${s.color}`}>{s.value}</div>
+                <div className="text-[10px] text-muted-foreground">{s.label}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Version + Sort */}
+          <div className="flex items-center justify-between pt-0.5">
+            <Badge variant="outline" className="text-[10px] py-0 font-mono">v{tpl.version}</Badge>
+            <span className="text-[10px] text-muted-foreground font-mono">Sort: {tpl.sortOrder}</span>
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-2 pt-1" onClick={(e) => e.preventDefault()}>
+            <Link href={`/product-templates/${tpl.id}`}>
+              <Button size="sm" variant="outline" className="flex-1 gap-1.5 text-xs">
+                <FileText className="w-3.5 h-3.5" />
+                Detail
+              </Button>
+            </Link>
+            <Button
+              size="sm"
+              variant="outline"
+              className="flex-1 gap-1.5 text-xs"
+              onClick={(e) => onCopyLink(tpl, e)}
+            >
+              <Link2 className="w-3.5 h-3.5" />
+              Buat Link
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="px-2 text-muted-foreground hover:text-foreground"
+              onClick={(e) => { e.preventDefault(); onDuplicate(tpl.id); }}
+              title="Duplikasi"
+            >
+              <Copy className="w-3.5 h-3.5" />
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-destructive hover:text-destructive px-2"
+              onClick={(e) => { e.preventDefault(); onDelete(tpl.id); }}
+              title="Hapus"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ── Main Page ──────────────────────────────────────────────────────────────────
+
 export default function ProductTemplatesPage() {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -91,11 +248,22 @@ export default function ProductTemplatesPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [form, setForm] = useState({ categoryKey: "", label: "", icon: "", description: "", sortOrder: "" });
+  const [localTemplates, setLocalTemplates] = useState<ProductTemplateRow[]>([]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   const { data: templates = [], isLoading } = useQuery({
     queryKey: QUERY_KEY,
     queryFn: fetchTemplates,
   });
+
+  // Sync local order with server data (only when server data changes, not on drag)
+  useEffect(() => {
+    setLocalTemplates(templates);
+  }, [templates]);
 
   const createMut = useMutation({
     mutationFn: createTemplate,
@@ -133,14 +301,38 @@ export default function ProductTemplatesPage() {
     },
   });
 
-  const filtered = templates.filter(
-    (t) =>
-      t.label.toLowerCase().includes(search.toLowerCase()) ||
-      t.categoryKey.toLowerCase().includes(search.toLowerCase())
-  );
+  const reorderMut = useMutation({
+    mutationFn: reorderTemplates,
+    onError: (err) => {
+      toast({ title: "Gagal menyimpan urutan", description: String(err), variant: "destructive" });
+      setLocalTemplates(templates);
+    },
+  });
+
+  const isSearching = search.trim().length > 0;
+  const displayList = isSearching
+    ? localTemplates.filter(
+        (t) =>
+          t.label.toLowerCase().includes(search.toLowerCase()) ||
+          t.categoryKey.toLowerCase().includes(search.toLowerCase()),
+      )
+    : localTemplates;
 
   const totalFields = templates.reduce((s, t) => s + (t.customFields?.length ?? 0), 0);
   const totalDocs = templates.reduce((s, t) => s + (t.requiredDocuments?.length ?? 0), 0);
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    setLocalTemplates((prev) => {
+      const oldIndex = prev.findIndex((t) => t.id === active.id);
+      const newIndex = prev.findIndex((t) => t.id === over.id);
+      const reordered = arrayMove(prev, oldIndex, newIndex);
+      const items = reordered.map((t, i) => ({ id: t.id, sortOrder: (i + 1) * 10 }));
+      reorderMut.mutate(items);
+      return reordered.map((t, i) => ({ ...t, sortOrder: (i + 1) * 10 }));
+    });
+  };
 
   const handleCreate = () => {
     if (!form.categoryKey.trim() || !form.label.trim()) {
@@ -163,7 +355,7 @@ export default function ProductTemplatesPage() {
     toast({ title: "Link disalin", description: tpl.label });
   };
 
-  const deleteTarget = templates.find((t) => t.id === deleteId);
+  const deleteTarget = localTemplates.find((t) => t.id === deleteId);
 
   return (
     <AppShell>
@@ -211,14 +403,22 @@ export default function ProductTemplatesPage() {
         </div>
 
         {/* Search */}
-        <div className="relative max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            className="pl-9"
-            placeholder="Cari template..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+        <div className="flex items-center gap-3">
+          <div className="relative max-w-xs flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              className="pl-9"
+              placeholder="Cari template..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          {!isSearching && localTemplates.length > 1 && (
+            <p className="text-xs text-muted-foreground flex items-center gap-1">
+              <GripVertical className="w-3.5 h-3.5" />
+              Seret kartu untuk mengubah urutan
+            </p>
+          )}
         </div>
 
         {/* Grid */}
@@ -234,107 +434,40 @@ export default function ProductTemplatesPage() {
               </Card>
             ))}
           </div>
-        ) : filtered.length === 0 ? (
+        ) : displayList.length === 0 ? (
           <Card>
             <CardContent className="p-10 text-center text-muted-foreground">
-              {search ? `Tidak ada template untuk "${search}"` : "Belum ada template. Tambah sekarang!"}
+              {isSearching ? `Tidak ada template untuk "${search}"` : "Belum ada template. Tambah sekarang!"}
             </CardContent>
           </Card>
-        ) : (
+        ) : isSearching ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filtered.map((tpl) => (
-              <Link key={tpl.id} href={`/product-templates/${tpl.id}`}>
-                <Card className="cursor-pointer hover:shadow-md transition-shadow border group">
-                  <CardContent className="p-5 space-y-3">
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="text-2xl">{tpl.icon ?? "📦"}</span>
-                        <div>
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-semibold text-foreground group-hover:text-primary transition-colors">
-                              {tpl.label}
-                            </span>
-                            {!tpl.isActive && (
-                              <Badge variant="secondary" className="text-[10px] py-0 px-1">Nonaktif</Badge>
-                            )}
-                          </div>
-                          <div className="text-xs text-muted-foreground font-mono">{tpl.categoryKey}</div>
-                        </div>
-                      </div>
-                      <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors shrink-0 mt-1" />
-                    </div>
-
-                    {tpl.description && (
-                      <p className="text-xs text-muted-foreground line-clamp-2">{tpl.description}</p>
-                    )}
-
-                    {/* Stats row */}
-                    <div className="grid grid-cols-3 gap-2 text-center">
-                      {[
-                        { label: "Fields", value: tpl.customFields?.length ?? 0, color: "text-blue-600" },
-                        { label: "Dok Wajib", value: tpl.requiredDocuments?.length ?? 0, color: "text-orange-600" },
-                        { label: "Checklist", value: tpl.checklist?.length ?? 0, color: "text-green-600" },
-                      ].map((s) => (
-                        <div key={s.label} className="bg-muted/50 rounded-md p-1.5">
-                          <div className={`text-base font-bold ${s.color}`}>{s.value}</div>
-                          <div className="text-[10px] text-muted-foreground">{s.label}</div>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Version + Sort */}
-                    <div className="flex items-center justify-between pt-0.5">
-                      <Badge variant="outline" className="text-[10px] py-0 font-mono">v{tpl.version}</Badge>
-                      <span className="text-[10px] text-muted-foreground font-mono">Sort: {tpl.sortOrder}</span>
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex gap-2 pt-1" onClick={(e) => e.preventDefault()}>
-                      <Link href={`/product-templates/${tpl.id}`}>
-                        <Button size="sm" variant="outline" className="flex-1 gap-1.5 text-xs">
-                          <FileText className="w-3.5 h-3.5" />
-                          Detail
-                        </Button>
-                      </Link>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="flex-1 gap-1.5 text-xs"
-                        onClick={(e) => handleCopyLink(tpl, e)}
-                      >
-                        <Link2 className="w-3.5 h-3.5" />
-                        Buat Link
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="px-2 text-muted-foreground hover:text-foreground"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          duplicateMut.mutate(tpl.id);
-                        }}
-                        title="Duplikasi"
-                      >
-                        <Copy className="w-3.5 h-3.5" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="text-destructive hover:text-destructive px-2"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          setDeleteId(tpl.id);
-                        }}
-                        title="Hapus"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              </Link>
+            {displayList.map((tpl) => (
+              <SortableCard
+                key={tpl.id}
+                tpl={tpl}
+                onCopyLink={handleCopyLink}
+                onDuplicate={(id) => duplicateMut.mutate(id)}
+                onDelete={(id) => setDeleteId(id)}
+              />
             ))}
           </div>
+        ) : (
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={displayList.map((t) => t.id)} strategy={rectSortingStrategy}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {displayList.map((tpl) => (
+                  <SortableCard
+                    key={tpl.id}
+                    tpl={tpl}
+                    onCopyLink={handleCopyLink}
+                    onDuplicate={(id) => duplicateMut.mutate(id)}
+                    onDelete={(id) => setDeleteId(id)}
+                  />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
         )}
       </div>
 

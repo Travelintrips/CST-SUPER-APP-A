@@ -28,6 +28,7 @@ import { requireClerkUser } from "../lib/requireAdmin";
 import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
 import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
+import { getWaTemplateConfig, renderTemplate } from "../lib/orderNotification.js";
 import { getAdminGroupWa } from "../lib/adminWa.js";
 import { wasRecentlyNotified } from "../lib/notificationLog.js";
 import { createSalesOrderFromVmfApproval } from "../lib/vmfSoIntegration.js";
@@ -3010,8 +3011,71 @@ vendorMiniFormRouter.post("/customer-invoice/:token", async (req: Request, res: 
   }
 });
 
+// ── Helper: bangun pesan WA invoice dari template ─────────────────────────────
+const INVOICE_CUSTOMER_DEFAULT_TPL = [
+  "🧾 *Invoice Diterbitkan — {{invNumber}}*",
+  "━━━━━━━━━━━━━━━━━━",
+  "Halo {{customerName}},",
+  "",
+  "Invoice untuk order Anda telah diterbitkan.",
+  "",
+  "No. Order   : {{orderNumber}}",
+  "No. Invoice : *{{invNumber}}*",
+  "Jatuh Tempo : *{{dueStr}}*",
+  "━━━━━━━━━━━━━━━━━━",
+  "💰 Subtotal : {{subtotalDisplay}}",
+  "🧾 PPN      : {{taxAmountDisplay}}",
+  "💵 *Total   : {{grandTotal}}*",
+  "━━━━━━━━━━━━━━━━━━",
+  "🔗 Lihat & Bayar:",
+  "{{invoiceUrl}}",
+  "",
+  "📝 Catatan: {{notes}}",
+  "",
+  "Terima kasih atas kepercayaan Anda 🙏",
+  "_CST Logistics_",
+].join("\n");
+
+async function buildInvoiceWaMsg(
+  link: {
+    invoiceNumber: string | null;
+    orderNumber: string | null;
+    customerName: string | null;
+    subtotal: string | null;
+    taxRate: string | null;
+    taxAmount: string | null;
+    grandTotal: string | null;
+    dueDate: Date | null;
+    notes: string | null;
+  },
+  invoiceUrl: string,
+): Promise<string> {
+  const tpl = await getWaTemplateConfig("customer", "invoice_issued", INVOICE_CUSTOMER_DEFAULT_TPL);
+  const fmtRp = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
+  const grandTotalNum = link.grandTotal ? Number(link.grandTotal) : null;
+  const subtotalNum = link.subtotal ? Number(link.subtotal) : null;
+  const taxAmountNum = link.taxAmount ? Number(link.taxAmount) : null;
+  const taxRate = Number(link.taxRate ?? 11);
+  const dueStr = link.dueDate
+    ? new Date(link.dueDate).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })
+    : null;
+  const vars: Record<string, string | null | undefined> = {
+    invNumber: link.invoiceNumber ?? null,
+    orderNumber: link.orderNumber ?? null,
+    customerName: link.customerName ?? "Customer",
+    subtotalDisplay: subtotalNum ? fmtRp(subtotalNum) : null,
+    taxAmountDisplay: taxAmountNum ? `${fmtRp(taxAmountNum)} (PPN ${taxRate}%)` : null,
+    grandTotal: grandTotalNum ? fmtRp(grandTotalNum) : null,
+    dueStr,
+    invoiceUrl,
+    notes: link.notes ?? null,
+    timestamp: new Date().toLocaleString("id-ID"),
+  };
+  return renderTemplate(tpl, vars);
+}
+
 // ── ADMIN: POST /api/vendor-form/admin/customer-invoices ──────────────────────
-// Buat link invoice publik + kirim WA ke customer
+// Buat link invoice publik + kirim WA otomatis ke customer
 vendorMiniFormRouter.post("/admin/customer-invoices", async (req: Request, res: Response) => {
   if (!(await requireClerkUser(req, res))) return;
   const {
@@ -3083,37 +3147,25 @@ vendorMiniFormRouter.post("/admin/customer-invoices", async (req: Request, res: 
     const domain = getPreferredDomain();
     const invoiceUrl = domain ? `https://${domain}/customer-invoice/${token}` : `/customer-invoice/${token}`;
 
-    // Kirim WA ke customer jika diminta (dedup: skip jika sudah dikirim 30 menit terakhir dari jalur apapun)
-    if (sendWa && customerPhone) {
+    // Kirim WA ke customer otomatis jika nomor tersedia (dedup 30 menit per order)
+    if (customerPhone) {
       const WA_CTX = "customer-invoice-wa";
       const WA_REF = orderId ? `order:${orderId}` : `inv:${link.id}`;
       const alreadySent = orderId
         ? await wasRecentlyNotified(WA_CTX, WA_REF, 30 * 60 * 1000)
         : false;
       if (!alreadySent) {
-        const fmtRpLocal = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
-        const invoiceNumLabel = invoiceNumber ? `No. Invoice   : *${invoiceNumber}*\n` : "";
-        const orderNumLabel = orderNumber ? `No. Order     : *${orderNumber}*\n` : "";
-        const dueDateLabel = dueDate
-          ? `Jatuh Tempo   : *${new Date(dueDate).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}*\n`
-          : "";
-        const subtotalLabel = subtotal ? `💰 Subtotal   : ${fmtRpLocal(subtotal)}\n` : "";
-        const taxLabel = taxAmount ? `🧾 PPN (${taxRate}%): ${fmtRpLocal(taxAmount)}\n` : "";
-        const totalLabel = grandTotal
-          ? `💵 *Total     : ${fmtRpLocal(grandTotal)}*\n`
-          : "";
-        const waMsg =
-          `🧾 *Invoice Pembayaran*\n` +
-          `━━━━━━━━━━━━━━━━━━\n` +
-          `Kepada Yth. ${customerName ?? "Customer"},\n\n` +
-          `Invoice untuk order Anda telah diterbitkan.\n\n` +
-          invoiceNumLabel + orderNumLabel + dueDateLabel +
-          `━━━━━━━━━━━━━━━━━━\n` +
-          subtotalLabel + taxLabel + totalLabel +
-          `━━━━━━━━━━━━━━━━━━\n` +
-          `🔗 Lihat & Bayar Invoice:\n${invoiceUrl}` +
-          (notes ? `\n\n📝 Catatan: ${notes}` : "") +
-          `\n\nTerima kasih atas kepercayaan Anda 🙏\n_CST Logistics_`;
+        const waMsg = await buildInvoiceWaMsg({
+          invoiceNumber: invoiceNumber ?? null,
+          orderNumber: orderNumber ?? null,
+          customerName: customerName ?? null,
+          subtotal: subtotal ? String(subtotal) : null,
+          taxRate: String(taxRate),
+          taxAmount: taxAmount ? String(taxAmount) : null,
+          grandTotal: grandTotal ? String(grandTotal) : null,
+          dueDate: dueDate ? new Date(dueDate) : null,
+          notes: notes ?? null,
+        }, invoiceUrl);
         await sendWhatsApp(customerPhone, waMsg, {
           context: WA_CTX,
           refType: "customer_invoice",
@@ -3176,17 +3228,17 @@ vendorMiniFormRouter.post("/admin/customer-invoices/:id/send-wa", async (req: Re
     const domain = getPreferredDomain();
     const invoiceUrl = domain ? `https://${domain}/customer-invoice/${link.token}` : `/customer-invoice/${link.token}`;
 
-    const invoiceNumLabel = link.invoiceNumber ? `No. Invoice: *${link.invoiceNumber}*\n` : "";
-    const orderNumLabel = link.orderNumber ? `No. Order: *${link.orderNumber}*\n` : "";
-    const totalLabel = link.grandTotal ? `Total: *${link.currency ?? "IDR"} ${Math.round(Number(link.grandTotal)).toLocaleString("id-ID")}*\n` : "";
-    const dueDateLabel = link.dueDate ? `Jatuh Tempo: *${new Date(link.dueDate).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}*\n` : "";
-
-    const waMsg = `📄 *Invoice Pembayaran*\n\n` +
-      `Kepada Yth. ${link.customerName ?? "Customer"},\n\n` +
-      invoiceNumLabel + orderNumLabel + totalLabel + dueDateLabel +
-      `\nSilakan lihat detail invoice dan konfirmasi penerimaan melalui link berikut:\n${invoiceUrl}` +
-      (link.notes ? `\n\n📝 Catatan: ${link.notes}` : "") +
-      `\n\nTerima kasih atas kepercayaan Anda.`;
+    const waMsg = await buildInvoiceWaMsg({
+      invoiceNumber: link.invoiceNumber,
+      orderNumber: link.orderNumber,
+      customerName: link.customerName,
+      subtotal: link.subtotal,
+      taxRate: link.taxRate,
+      taxAmount: link.taxAmount,
+      grandTotal: link.grandTotal,
+      dueDate: link.dueDate ? new Date(link.dueDate) : null,
+      notes: link.notes,
+    }, invoiceUrl);
 
     await sendWhatsApp(phone, waMsg, { context: "customer-invoice-send", refType: "customer_invoice", refId: String(link.id) });
     return res.json({ success: true });
