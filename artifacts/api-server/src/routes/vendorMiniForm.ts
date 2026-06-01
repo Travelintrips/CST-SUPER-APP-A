@@ -196,6 +196,9 @@ type CachedForm = {
   orderId: number | null; orderNumber: string | null; orderItemId: number | null;
   phase: string | null; maxSubmissions: number | null; resubmitAllowed: boolean | null;
   formTarget: string; adminNotes: string | null; commodityTemplateId: number | null;
+  // Product Template Engine (Step 1F)
+  categoryKey: string | null; templateId: string | null;
+  templateVersion: string | null; templateSnapshot: Record<string, unknown> | null;
   expiresCache: number;
 };
 
@@ -653,6 +656,10 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
           formTarget: vendorMiniFormLinksTable.formTarget,
           adminNotes: vendorMiniFormLinksTable.adminNotes,
           commodityTemplateId: vendorMiniFormLinksTable.commodityTemplateId,
+          categoryKey: vendorMiniFormLinksTable.categoryKey,
+          templateId: vendorMiniFormLinksTable.templateId,
+          templateVersion: vendorMiniFormLinksTable.templateVersion,
+          templateSnapshot: vendorMiniFormLinksTable.templateSnapshot,
           vendorName: suppliersTable.name,
           vendorPhone: suppliersTable.phone,
           vendorContactPerson: suppliersTable.contactPerson,
@@ -680,6 +687,10 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
         formTarget: dbRow.formTarget ?? "vendor",
         adminNotes: dbRow.adminNotes ?? null,
         commodityTemplateId: dbRow.commodityTemplateId ?? null,
+        categoryKey: dbRow.categoryKey ?? null,
+        templateId: dbRow.templateId ?? null,
+        templateVersion: dbRow.templateVersion ?? null,
+        templateSnapshot: (dbRow.templateSnapshot as Record<string, unknown> | null) ?? null,
         vendorName: dbRow.linkVendorName ?? dbRow.vendorName ?? null,
         vendorPhone: dbRow.vendorPhone ?? null,
         vendorContactPerson: dbRow.vendorContactPerson ?? null,
@@ -737,7 +748,8 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
       fields: [..._baseFields, ..._universalFields],
     } : null;
 
-    let productTemplate = null;
+    let productTemplate: import("@workspace/product-templates").ProductTemplate | null = null;
+    let templateMissing = false;
     let orderContext: {
       customerName: string | null;
       requiredDate: string | null;
@@ -752,10 +764,27 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
       }>;
     } | null = null;
 
+    // Priority 0 (Step 1F): Gunakan templateSnapshot tersimpan di link (paling reliable)
+    // Snapshot diambil saat link dibuat → vendor selalu lihat spec yg sama walau template diedit
+    if (row.templateSnapshot && USE_PRODUCT_TEMPLATE_ENGINE) {
+      try {
+        productTemplate = row.templateSnapshot as unknown as import("@workspace/product-templates").ProductTemplate;
+      } catch { /* fallthrough */ }
+    }
+
+    // Priority 0.5: categoryKey tersimpan di link → resolve fresh dari product_templates
+    if (!productTemplate && row.categoryKey && USE_PRODUCT_TEMPLATE_ENGINE) {
+      try {
+        productTemplate = await resolveFromProductTemplates(row.categoryKey);
+      } catch {
+        templateMissing = true;
+      }
+    }
+
     // Priority 1: commodity template dari DB
     // Bila USE_PRODUCT_TEMPLATE_ENGINE=true → baca product_templates via resolveTemplate()
     // Bila false (default) → fallback ke commodity_templates (tabel lama)
-    if (row.commodityTemplateId) {
+    if (!productTemplate && row.commodityTemplateId) {
       if (USE_PRODUCT_TEMPLATE_ENGINE) {
         try {
           const ctRes = await db.execute(sql`SELECT key FROM commodity_templates WHERE id = ${row.commodityTemplateId}`);
@@ -819,10 +848,10 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
           .from(logisticOrdersTable)
           .where(eq(logisticOrdersTable.id, row.orderId));
 
-        if (order?.commodity) {
+        if (!productTemplate && order?.commodity) {
           const cat = order.commodity.trim().toLowerCase().replace(/[\s-]+/g, "_");
           if (USE_PRODUCT_TEMPLATE_ENGINE) {
-            productTemplate = await resolveFromProductTemplates(cat);
+            try { productTemplate = await resolveFromProductTemplates(cat); } catch { /* non-fatal */ }
           } else {
             productTemplate = getInCodeTemplate(cat);
           }
@@ -911,6 +940,9 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
       schema: filteredSchema,
       productTemplate,
       orderContext,
+      templateMissing: USE_PRODUCT_TEMPLATE_ENGINE && (!!row.categoryKey || !!row.templateSnapshot) && !productTemplate ? templateMissing : false,
+      templateVersion: row.templateVersion ?? null,
+      templateCategory: row.categoryKey ?? null,
     });
   } catch (err) {
     req.log?.error({ err }, "vendor-mini-form GET error");
@@ -1752,10 +1784,10 @@ vendorMiniFormRouter.get("/admin/links", async (req: Request, res: Response) => 
 vendorMiniFormRouter.post("/admin/links", async (req: Request, res: Response) => {
   if (!(await requireClerkUser(req, res))) return;
   try {
-    const { supplierId, serviceType, title, notes, expiresInDays, mode, orderId, orderNumber, orderItemId, vendorName, maxSubmissions, adminNotes, commodityTemplateId } = req.body as {
+    const { supplierId, serviceType, title, notes, expiresInDays, mode, orderId, orderNumber, orderItemId, vendorName, maxSubmissions, adminNotes, commodityTemplateId, categoryKey: reqCategoryKey } = req.body as {
       supplierId?: number; serviceType: string; title?: string; notes?: string; expiresInDays?: number;
       mode?: string; orderId?: number; orderNumber?: string; orderItemId?: number; vendorName?: string;
-      maxSubmissions?: number; adminNotes?: string; commodityTemplateId?: number;
+      maxSubmissions?: number; adminNotes?: string; commodityTemplateId?: number; categoryKey?: string;
     };
 
     if (!serviceType || !SERVICE_SCHEMAS[serviceType]) return res.status(400).json({ error: "serviceType tidak valid" });
@@ -1763,6 +1795,24 @@ vendorMiniFormRouter.post("/admin/links", async (req: Request, res: Response) =>
     const token = randomBytes(24).toString("hex");
     const expiresAt = expiresInDays ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000) : null;
     const userId = (req.user as { id: string } | undefined)?.id ?? null;
+
+    // ── Step 1F: Resolve & snapshot template if categoryKey provided ──────────
+    let resolvedCategoryKey: string | null = reqCategoryKey ?? null;
+    let resolvedTemplateId: string | null = reqCategoryKey ?? null;
+    let resolvedTemplateVersion: string | null = null;
+    let resolvedTemplateSnapshot: Record<string, unknown> | null = null;
+    let templateWarning: string | null = null;
+
+    if (reqCategoryKey && USE_PRODUCT_TEMPLATE_ENGINE) {
+      try {
+        const tpl = await resolveFromProductTemplates(reqCategoryKey);
+        resolvedTemplateVersion = tpl.version ?? null;
+        resolvedTemplateSnapshot = tpl as unknown as Record<string, unknown>;
+      } catch {
+        templateWarning = `Template untuk kategori "${reqCategoryKey}" tidak ditemukan di product_templates`;
+        req.log?.warn({ categoryKey: reqCategoryKey }, templateWarning);
+      }
+    }
 
     // Auto-deactivate existing active links for the same order (order_based mode only)
     let deactivatedCount = 0;
@@ -1798,6 +1848,10 @@ vendorMiniFormRouter.post("/admin/links", async (req: Request, res: Response) =>
       maxSubmissions: maxSubmissions ?? null,
       adminNotes: adminNotes ?? null,
       commodityTemplateId: commodityTemplateId ?? null,
+      categoryKey: resolvedCategoryKey,
+      templateId: resolvedTemplateId,
+      templateVersion: resolvedTemplateVersion,
+      templateSnapshot: resolvedTemplateSnapshot,
     }).returning();
 
     await logActivity("link", link.id, "created", userId,
@@ -1833,7 +1887,7 @@ vendorMiniFormRouter.post("/admin/links", async (req: Request, res: Response) =>
       req.log?.warn({ err: shortErr }, "Auto short link generation failed (non-fatal)");
     }
 
-    return res.status(201).json({ ...link, shortUrl, expiresAt: link.expiresAt?.toISOString() ?? null, createdAt: link.createdAt.toISOString(), deactivatedCount });
+    return res.status(201).json({ ...link, shortUrl, expiresAt: link.expiresAt?.toISOString() ?? null, createdAt: link.createdAt.toISOString(), deactivatedCount, templateWarning: templateWarning ?? undefined });
   } catch (err) {
     req.log?.error({ err }, "vendor-mini-form admin POST links error");
     return res.status(500).json({ error: "Gagal membuat link" });

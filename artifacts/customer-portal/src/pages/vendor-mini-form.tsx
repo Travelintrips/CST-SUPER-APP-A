@@ -48,6 +48,9 @@ type FormMeta = {
   alreadySubmitted?: boolean;
   productTemplate?: ProductTemplate | null;
   orderContext?: OrderContext | null;
+  templateMissing?: boolean;
+  templateVersion?: string | null;
+  templateCategory?: string | null;
 };
 
 // ── Skeleton ──────────────────────────────────────────────────────────────────
@@ -186,6 +189,12 @@ export default function VendorMiniFormPage() {
     packagingNotes: "",
     conditionalFlags: {},
   });
+  // Vendor-only fields when productTemplate is active
+  const [tplStockStatus, setTplStockStatus] = useState("");
+  const [tplHarga, setTplHarga] = useState("");
+  const [tplLeadTime, setTplLeadTime] = useState("");
+  const [tplMoq, setTplMoq] = useState("");
+  const [tplNotes, setTplNotes] = useState("");
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -215,13 +224,18 @@ export default function VendorMiniFormPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!meta?.schema) return;
+    if (!meta?.schema && !meta?.productTemplate) return;
 
-    const missing = meta.schema.fields
-      .filter(f => f.required && !values[f.key]?.trim())
-      .map(f => f.label);
-    if (missing.length) { setSubmitError(`Field wajib belum diisi: ${missing.join(", ")}`); return; }
-    if (meta.mode === "order_based" && (!vendorUnitPrice || Number(vendorUnitPrice) <= 0)) {
+    if (meta?.schema) {
+      const missing = meta.schema.fields
+        .filter(f => f.required && !values[f.key]?.trim())
+        .map(f => f.label);
+      if (missing.length) { setSubmitError(`Field wajib belum diisi: ${missing.join(", ")}`); return; }
+    }
+    if (meta?.productTemplate && (!tplHarga || Number(tplHarga) <= 0)) {
+      setSubmitError("Harga dasar wajib diisi"); return;
+    }
+    if (meta?.mode === "order_based" && !meta?.productTemplate && (!vendorUnitPrice || Number(vendorUnitPrice) <= 0)) {
       setSubmitError("Harga satuan dasar wajib diisi"); return;
     }
 
@@ -241,7 +255,9 @@ export default function VendorMiniFormPage() {
       }
 
       const qty = Math.max(1, Number(vendorQty) || 1);
-      const unitPrice = Number(vendorUnitPrice) || 0;
+      const unitPrice = meta.productTemplate
+        ? (Number(tplHarga) || 0)
+        : (Number(vendorUnitPrice) || 0);
       const subtotal = qty * unitPrice;
       const body: Record<string, unknown> = {
         vendorName: vendorName.trim() || null,
@@ -253,7 +269,14 @@ export default function VendorMiniFormPage() {
           ...Object.fromEntries(templateValues.uploadedDocuments.map((d) => [`_doc_${d.key}`, d.reference])),
           ...Object.fromEntries(Object.entries(templateValues.checklistStatus).map(([k, v]) => [`_chk_${k}`, v])),
           ...(templateValues.packagingNotes ? { _packagingNotes: templateValues.packagingNotes } : {}),
-          ...(meta.mode === "order_based" ? {
+          ...(meta.productTemplate ? {
+            _stockStatus: tplStockStatus || undefined,
+            _hargaDasar: tplHarga || undefined,
+            _leadTime: tplLeadTime || undefined,
+            _moq: tplMoq || undefined,
+            _vendorNotes: tplNotes || undefined,
+          } : {}),
+          ...(meta.mode === "order_based" && !meta.productTemplate ? {
             _deskripsi: vendorDesc.trim() || undefined,
             _qty: vendorQty,
             _satuan: vendorUnit,
@@ -265,7 +288,12 @@ export default function VendorMiniFormPage() {
       if (meta.mode === "order_based") {
         body["vendorPrice"] = subtotal > 0 ? subtotal : undefined;
         body["currency"] = currency;
-        body["eta"] = eta.trim() || undefined;
+        body["eta"] = tplLeadTime.trim() || eta.trim() || undefined;
+        body["validUntil"] = validUntil || undefined;
+      } else if (meta.productTemplate) {
+        body["vendorPrice"] = unitPrice > 0 ? unitPrice : undefined;
+        body["currency"] = currency;
+        body["eta"] = tplLeadTime.trim() || undefined;
         body["validUntil"] = validUntil || undefined;
       }
       const res = await fetch(`/api/vendor-form/${token}`, {
@@ -289,23 +317,35 @@ export default function VendorMiniFormPage() {
   if (submitted) return <SuccessState orderNumber={meta?.orderNumber} />;
   if (meta?.alreadySubmitted) return <AlreadySubmittedState />;
 
-  if (!meta?.schema) {
+  if (!meta?.schema && !meta?.productTemplate) {
     return <ErrorState message="Form tidak tersedia untuk link ini." />;
   }
 
-  const { schema } = meta;
+  const schema = meta.schema;
   const isOrderBased = meta.mode === "order_based";
+  const hasProductTemplate = !!meta.productTemplate;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-blue-50 py-10 px-4">
       <div className="max-w-xl mx-auto">
+        {/* Template Missing Warning */}
+        {meta.templateMissing && (
+          <div className="rounded-xl bg-amber-50 border border-amber-300 text-amber-800 text-sm px-4 py-3 mb-4 flex items-start gap-2">
+            <span className="mt-0.5">⚠️</span>
+            <div>
+              <p className="font-semibold">Template produk tidak ditemukan</p>
+              <p className="text-xs mt-0.5">Spesifikasi untuk kategori ini belum tersedia. Hubungi admin untuk memperbarui template.</p>
+            </div>
+          </div>
+        )}
+
         {/* Header */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 mb-4">
           <div className="flex items-center gap-3 mb-1">
-            <span className="text-3xl leading-none">{schema.emoji}</span>
+            <span className="text-3xl leading-none">{schema?.emoji ?? "📦"}</span>
             <div>
               <h1 className="text-xl font-bold text-slate-800">
-                {meta.title ?? `Form Penawaran ${schema.label}`}
+                {meta.title ?? `Form Penawaran ${schema?.label ?? meta.productTemplate?.label ?? ""}`}
               </h1>
               {meta.vendorName && <p className="text-sm text-slate-500">Untuk: {meta.vendorName}</p>}
               {meta.orderNumber && (
@@ -313,9 +353,19 @@ export default function VendorMiniFormPage() {
               )}
             </div>
           </div>
-          {isOrderBased && (
-            <div className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 px-3 py-1.5 rounded-lg">
-              <span>📋</span> Form ini terkait dengan order customer spesifik
+          {(isOrderBased || hasProductTemplate) && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {isOrderBased && (
+                <span className="inline-flex items-center gap-1.5 text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 px-3 py-1.5 rounded-lg">
+                  <span>📋</span> Form ini terkait dengan order customer spesifik
+                </span>
+              )}
+              {hasProductTemplate && (
+                <span className="inline-flex items-center gap-1.5 text-xs font-medium bg-violet-50 text-violet-700 border border-violet-200 px-3 py-1.5 rounded-lg">
+                  <span>🧩</span> Spesifikasi: {meta.productTemplate!.label}
+                  {meta.templateVersion && <span className="opacity-60 ml-1">v{meta.templateVersion}</span>}
+                </span>
+              )}
             </div>
           )}
           {meta.notes && (
@@ -506,8 +556,8 @@ export default function VendorMiniFormPage() {
             );
           })()}
 
-          {/* Dynamic service fields */}
-          {schema.fields.length > 0 && (
+          {/* Dynamic service fields — hidden when productTemplate active (spec rendered below as read-only) */}
+          {schema && schema.fields.length > 0 && !hasProductTemplate && (
             <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
               <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-4">
                 {schema.emoji} Detail {schema.label}
@@ -539,6 +589,52 @@ export default function VendorMiniFormPage() {
                     )}
                   </FormField>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* Vendor penawaran section — hanya tampil saat productTemplate aktif */}
+          {hasProductTemplate && (
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+              <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">💰 Penawaran Vendor</h2>
+              <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">
+                Isi <strong>Harga Dasar</strong> dan detail penawaran Anda. Harga jual ke customer ditentukan oleh admin.
+              </p>
+              <div className="space-y-4">
+                <FormField label="Harga Dasar (Rp, belum PPN)" required>
+                  <div className="flex gap-2">
+                    <select value={currency} onChange={e => setCurrency(e.target.value)}
+                      className="rounded-lg border border-slate-200 px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white w-24">
+                      {["IDR","USD","SGD","EUR"].map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                    <input type="number" min="0" step="any" value={tplHarga} onChange={e => setTplHarga(e.target.value)}
+                      required placeholder="Contoh: 5000000" className={`${INPUT_CLS} flex-1`} />
+                  </div>
+                </FormField>
+                <FormField label="Status Stok">
+                  <select value={tplStockStatus} onChange={e => setTplStockStatus(e.target.value)}
+                    className={`${INPUT_CLS} bg-white`}>
+                    <option value="">— Pilih —</option>
+                    {["Ready Stock","Indent","Pre-order"].map(o => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                </FormField>
+                <FormField label="Lead Time / Estimasi Pengiriman">
+                  <input type="text" value={tplLeadTime} onChange={e => setTplLeadTime(e.target.value)}
+                    placeholder="Contoh: 7 hari kerja, H+3" className={INPUT_CLS} />
+                </FormField>
+                <FormField label="Minimum Order (MOQ)">
+                  <input type="text" value={tplMoq} onChange={e => setTplMoq(e.target.value)}
+                    placeholder="Contoh: 100 MT, 1 truk" className={INPUT_CLS} />
+                </FormField>
+                <FormField label="Harga Berlaku Sampai">
+                  <input type="date" value={validUntil} onChange={e => setValidUntil(e.target.value)}
+                    className={INPUT_CLS} />
+                </FormField>
+                <FormField label="Catatan Tambahan">
+                  <textarea value={tplNotes} onChange={e => setTplNotes(e.target.value)}
+                    rows={3} placeholder="Catatan kondisi, syarat, atau info tambahan..."
+                    className={`${INPUT_CLS} resize-none`} />
+                </FormField>
               </div>
             </div>
           )}
@@ -577,6 +673,7 @@ export default function VendorMiniFormPage() {
                 template={meta.productTemplate}
                 values={templateValues}
                 onChange={setTemplateValues}
+                readOnly={true}
               />
               <TemplateDocumentRenderer
                 documents={meta.productTemplate.requiredDocuments}

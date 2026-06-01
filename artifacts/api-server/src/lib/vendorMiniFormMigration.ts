@@ -184,6 +184,12 @@ export async function runVendorMiniFormMigration(): Promise<void> {
       ON vendor_mini_form_submissions(token)
     `);
 
+    // ── Product Template Engine columns (Step 1F) ─────────────────────────────
+    await db.execute(sql`ALTER TABLE vendor_mini_form_links ADD COLUMN IF NOT EXISTS category_key TEXT;`);
+    await db.execute(sql`ALTER TABLE vendor_mini_form_links ADD COLUMN IF NOT EXISTS template_id TEXT;`);
+    await db.execute(sql`ALTER TABLE vendor_mini_form_links ADD COLUMN IF NOT EXISTS template_version TEXT;`);
+    await db.execute(sql`ALTER TABLE vendor_mini_form_links ADD COLUMN IF NOT EXISTS template_snapshot JSONB;`);
+
     // ── customer_invoice_links ─────────────────────────────────────────────────
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS customer_invoice_links (
