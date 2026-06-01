@@ -22,9 +22,16 @@ import {
   salesDocumentLinesTable,
   orderUpdatesTable,
   productTemplatesTable,
+  serviceTemplatesTable,
 } from "@workspace/db";
 import { getInCodeTemplate, resolveTemplate } from "@workspace/product-templates";
 import type { ProductTemplateOverride } from "@workspace/product-templates";
+import {
+  resolveServiceTemplate,
+  getInCodeServiceTemplate,
+  hasInCodeServiceTemplate,
+} from "@workspace/service-templates";
+import type { ServiceTemplate, ServiceTemplateField, ServiceTemplateOverride as SvcTemplateOverride } from "@workspace/service-templates";
 import { requireClerkUser } from "../lib/requireAdmin";
 import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
 import { deleteFromSupabase } from "../lib/supabaseStorage.js";
@@ -124,6 +131,12 @@ const PUBLIC_CACHE = "public, max-age=300, stale-while-revalidate=600";
 // commodity_templates (tabel lama) tetap dipakai.
 const USE_PRODUCT_TEMPLATE_ENGINE = process.env.USE_PRODUCT_TEMPLATE_ENGINE === "true";
 
+// ── Feature flag: Service Template Engine ─────────────────────────────────────
+// Set USE_SERVICE_TEMPLATE_ENGINE=true untuk mengaktifkan resolver berbasis
+// service_templates (DB + in-code). Bila false (default), SERVICE_SCHEMAS tetap
+// menjadi satu-satunya sumber. Flag OFF = zero behavior change.
+const USE_SERVICE_TEMPLATE_ENGINE = process.env.USE_SERVICE_TEMPLATE_ENGINE === "true";
+
 /**
  * Resolve ProductTemplate dari product_templates DB menggunakan resolveTemplate().
  * Basis: in-code template (shapes & defaults), layer: DB override (customizations).
@@ -153,6 +166,79 @@ async function resolveFromProductTemplates(categoryKey: string): Promise<ReturnT
   } catch {
     return resolveTemplate(categoryKey, null);
   }
+}
+
+// ── Service Template Engine: Resolver & normalized output ─────────────────────
+
+type ResolvedServiceTemplate = ServiceTemplate & { source: "db" | "in-code" | "fallback" };
+
+/**
+ * Resolve ServiceTemplate untuk VMF rendering.
+ * Priority (USE_SERVICE_TEMPLATE_ENGINE=true): DB → in-code → SERVICE_SCHEMAS fallback.
+ * Jika flag OFF atau error: SERVICE_SCHEMAS fallback (tidak pernah throw).
+ */
+async function resolveFromServiceTemplates(serviceType: string): Promise<ResolvedServiceTemplate> {
+  if (USE_SERVICE_TEMPLATE_ENGINE) {
+    try {
+      const [row] = await db
+        .select()
+        .from(serviceTemplatesTable)
+        .where(eq(serviceTemplatesTable.serviceType, serviceType));
+
+      if (row && row.isActive !== false) {
+        const override: SvcTemplateOverride = {
+          serviceType: row.serviceType,
+          label:             row.label             ?? undefined,
+          emoji:             row.emoji             ?? undefined,
+          version:           row.version           ?? undefined,
+          isActive:          row.isActive          ?? undefined,
+          fields:            (row.fields            as ServiceTemplateField[] | null) ?? undefined,
+          requiredDocuments: (row.requiredDocuments as ServiceTemplate["requiredDocuments"] | null) ?? undefined,
+          checklist:         (row.checklist         as ServiceTemplate["checklist"] | null) ?? undefined,
+          conditionalRules:  (row.conditionalRules  as ServiceTemplate["conditionalRules"] | null) ?? undefined,
+          validationRules:   (row.validationRules   as ServiceTemplate["validationRules"] | null) ?? undefined,
+        };
+        return { ...resolveServiceTemplate(serviceType, override), source: "db" };
+      }
+
+      if (hasInCodeServiceTemplate(serviceType)) {
+        return { ...getInCodeServiceTemplate(serviceType), source: "in-code" };
+      }
+    } catch { /* non-fatal — fall through to SERVICE_SCHEMAS */ }
+  }
+
+  // Fallback: SERVICE_SCHEMAS → shape-normalize ke ServiceTemplate
+  const s = SERVICE_SCHEMAS[serviceType];
+  if (s) {
+    return {
+      serviceType,
+      label:             s.label,
+      emoji:             s.emoji,
+      version:           "1.0.0",
+      isActive:          true,
+      fields:            s.fields as ServiceTemplateField[],
+      requiredDocuments: [],
+      checklist:         [],
+      conditionalRules:  [],
+      validationRules:   [],
+      source:            "fallback",
+    };
+  }
+
+  // Last resort — tidak pernah throw
+  return {
+    serviceType,
+    label:             serviceType,
+    emoji:             "📋",
+    version:           "1.0.0",
+    isActive:          true,
+    fields:            [],
+    requiredDocuments: [],
+    checklist:         [],
+    conditionalRules:  [],
+    validationRules:   [],
+    source:            "fallback",
+  };
 }
 
 // ── Activity log helper ────────────────────────────────────────────────────────
@@ -936,6 +1022,14 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
       };
     }
 
+    // ── Service Template Engine: resolve saat flag ON ────────────────────────
+    let resolvedServiceTemplate: ResolvedServiceTemplate | null = null;
+    if (USE_SERVICE_TEMPLATE_ENGINE) {
+      try {
+        resolvedServiceTemplate = await resolveFromServiceTemplates(row.serviceType);
+      } catch { /* non-fatal */ }
+    }
+
     res.setHeader("Cache-Control", PUBLIC_CACHE);
     return res.json({
       id: row.id,
@@ -957,6 +1051,8 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
       templateMissing: USE_PRODUCT_TEMPLATE_ENGINE && (!!row.categoryKey || !!row.templateSnapshot) && !productTemplate ? templateMissing : false,
       templateVersion: row.templateVersion ?? null,
       templateCategory: row.categoryKey ?? null,
+      // Service Template Engine — null jika flag OFF (zero behavior change)
+      serviceTemplate: resolvedServiceTemplate,
     });
   } catch (err) {
     req.log?.error({ err }, "vendor-mini-form GET error");
@@ -1844,6 +1940,30 @@ vendorMiniFormRouter.post("/admin/links", async (req: Request, res: Response) =>
       } catch {
         templateWarning = `Template untuk kategori "${reqCategoryKey}" tidak ditemukan di product_templates`;
         req.log?.warn({ categoryKey: reqCategoryKey }, templateWarning);
+      }
+    }
+
+    // ── Service Template Engine: snapshot serviceType jika flag ON ────────────
+    // Gunakan kolom templateId/templateVersion/templateSnapshot yang sudah ada.
+    // templateId = serviceType, snapshot mencakup templateKind="service" untuk identifikasi.
+    if (USE_SERVICE_TEMPLATE_ENGINE && !resolvedTemplateSnapshot) {
+      try {
+        const stpl = await resolveFromServiceTemplates(serviceType);
+        resolvedTemplateId = serviceType;
+        resolvedTemplateVersion = stpl.version ?? null;
+        resolvedTemplateSnapshot = {
+          templateKind: "service",
+          serviceType: stpl.serviceType,
+          label: stpl.label,
+          emoji: stpl.emoji,
+          version: stpl.version,
+          fields: stpl.fields,
+          requiredDocuments: stpl.requiredDocuments,
+          checklist: stpl.checklist,
+          source: stpl.source,
+        };
+      } catch {
+        /* non-fatal — link tetap dibuat tanpa snapshot */
       }
     }
 
