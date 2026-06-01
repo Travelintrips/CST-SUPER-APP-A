@@ -26,34 +26,38 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Search, Plus, ChevronRight, FileText, ListChecks, Layout, Trash2, Pencil, Link2 } from "lucide-react";
+import { Search, Plus, ChevronRight, FileText, ListChecks, Layout, Trash2, Link2, Copy } from "lucide-react";
 
-interface CommodityTemplate {
+interface ProductTemplateRow {
   id: number;
-  key: string;
-  name: string;
+  categoryKey: string;
+  label: string;
   icon: string | null;
   description: string | null;
   sortOrder: number;
-  fieldCount?: number;
-  docCount?: number;
-  checklistCount?: number;
+  isActive: boolean;
+  version: string;
+  customFields: unknown[];
+  requiredDocuments: unknown[];
+  checklist: unknown[];
 }
 
-const API_BASE = "/api/commodity-templates";
+const API_BASE = "/api/product-templates";
+const QUERY_KEY = ["product-templates-raw"];
 
-async function fetchTemplates(): Promise<CommodityTemplate[]> {
-  const res = await fetch(API_BASE);
+async function fetchTemplates(): Promise<ProductTemplateRow[]> {
+  const res = await fetch(`${API_BASE}?raw=1`);
   if (!res.ok) throw new Error("Gagal mengambil data template");
   return res.json();
 }
 
 async function createTemplate(body: {
-  key: string;
-  name: string;
+  categoryKey: string;
+  label: string;
   icon?: string;
   description?: string;
-}): Promise<CommodityTemplate> {
+  sortOrder?: number;
+}): Promise<ProductTemplateRow> {
   const res = await fetch(API_BASE, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -68,10 +72,17 @@ async function createTemplate(body: {
 
 async function deleteTemplate(id: number): Promise<void> {
   const res = await fetch(`${API_BASE}/${id}`, { method: "DELETE" });
-  if (!res.ok) throw new Error("Gagal menghapus template");
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { message?: string }).message ?? "Gagal menghapus template");
+  }
 }
 
-const QUERY_KEY = ["commodity-templates"];
+async function duplicateTemplate(id: number): Promise<ProductTemplateRow> {
+  const res = await fetch(`${API_BASE}/${id}/duplicate`, { method: "POST" });
+  if (!res.ok) throw new Error("Gagal menduplikasi template");
+  return res.json();
+}
 
 export default function ProductTemplatesPage() {
   const { toast } = useToast();
@@ -79,7 +90,7 @@ export default function ProductTemplatesPage() {
   const [search, setSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<number | null>(null);
-  const [form, setForm] = useState({ key: "", name: "", icon: "", description: "" });
+  const [form, setForm] = useState({ categoryKey: "", label: "", icon: "", description: "", sortOrder: "" });
 
   const { data: templates = [], isLoading } = useQuery({
     queryKey: QUERY_KEY,
@@ -88,10 +99,10 @@ export default function ProductTemplatesPage() {
 
   const createMut = useMutation({
     mutationFn: createTemplate,
-    onSuccess: (created) => {
-      qc.setQueryData<CommodityTemplate[]>(QUERY_KEY, (old = []) => [...old, created]);
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: QUERY_KEY });
       setCreateOpen(false);
-      setForm({ key: "", name: "", icon: "", description: "" });
+      setForm({ categoryKey: "", label: "", icon: "", description: "", sortOrder: "" });
       toast({ title: "Template berhasil dibuat" });
     },
     onError: (err) => {
@@ -101,8 +112,8 @@ export default function ProductTemplatesPage() {
 
   const deleteMut = useMutation({
     mutationFn: deleteTemplate,
-    onSuccess: (_, id) => {
-      qc.setQueryData<CommodityTemplate[]>(QUERY_KEY, (old = []) => old.filter((t) => t.id !== id));
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: QUERY_KEY });
       toast({ title: "Template dihapus" });
       setDeleteId(null);
     },
@@ -111,34 +122,48 @@ export default function ProductTemplatesPage() {
     },
   });
 
+  const duplicateMut = useMutation({
+    mutationFn: duplicateTemplate,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: QUERY_KEY });
+      toast({ title: "Template diduplikasi" });
+    },
+    onError: (err) => {
+      toast({ title: "Gagal duplikasi", description: String(err), variant: "destructive" });
+    },
+  });
+
   const filtered = templates.filter(
     (t) =>
-      t.name.toLowerCase().includes(search.toLowerCase()) ||
-      t.key.toLowerCase().includes(search.toLowerCase())
+      t.label.toLowerCase().includes(search.toLowerCase()) ||
+      t.categoryKey.toLowerCase().includes(search.toLowerCase())
   );
 
-  const totalFields = templates.reduce((s, t) => s + (t.fieldCount ?? 0), 0);
-  const totalDocs = templates.reduce((s, t) => s + (t.docCount ?? 0), 0);
+  const totalFields = templates.reduce((s, t) => s + (t.customFields?.length ?? 0), 0);
+  const totalDocs = templates.reduce((s, t) => s + (t.requiredDocuments?.length ?? 0), 0);
 
   const handleCreate = () => {
-    if (!form.key.trim() || !form.name.trim()) {
-      toast({ title: "Key dan Nama wajib diisi", variant: "destructive" });
+    if (!form.categoryKey.trim() || !form.label.trim()) {
+      toast({ title: "Category Key dan Label wajib diisi", variant: "destructive" });
       return;
     }
     createMut.mutate({
-      key: form.key.trim(),
-      name: form.name.trim(),
+      categoryKey: form.categoryKey.trim(),
+      label: form.label.trim(),
       icon: form.icon.trim() || undefined,
       description: form.description.trim() || undefined,
+      sortOrder: form.sortOrder.trim() ? Number(form.sortOrder) : 0,
     });
   };
 
-  const handleCopyLink = (tpl: CommodityTemplate, e: React.MouseEvent) => {
+  const handleCopyLink = (tpl: ProductTemplateRow, e: React.MouseEvent) => {
     e.preventDefault();
     const url = `${window.location.origin}/bizportal/product-templates/${tpl.id}`;
     navigator.clipboard.writeText(url);
-    toast({ title: "Link disalin", description: tpl.name });
+    toast({ title: "Link disalin", description: tpl.label });
   };
+
+  const deleteTarget = templates.find((t) => t.id === deleteId);
 
   return (
     <AppShell>
@@ -152,13 +177,13 @@ export default function ProductTemplatesPage() {
             <div>
               <h1 className="text-xl font-semibold text-foreground">Product Template Engine</h1>
               <p className="text-sm text-muted-foreground">
-                Referensi template komoditas multi-jenis — custom fields, dokumen wajib, checklist operasional, dan instruksi pengemasan per kategori barang.
+                Referensi template komoditas — custom fields, dokumen wajib, checklist, dan instruksi pengemasan per kategori barang.
               </p>
             </div>
           </div>
           <Button onClick={() => setCreateOpen(true)} className="gap-2">
             <Plus className="w-4 h-4" />
-            Tambah Komoditas
+            Tambah Template
           </Button>
         </div>
 
@@ -190,7 +215,7 @@ export default function ProductTemplatesPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
             className="pl-9"
-            placeholder="Cari komoditas..."
+            placeholder="Cari template..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -212,7 +237,7 @@ export default function ProductTemplatesPage() {
         ) : filtered.length === 0 ? (
           <Card>
             <CardContent className="p-10 text-center text-muted-foreground">
-              {search ? `Tidak ada template untuk "${search}"` : "Belum ada template komoditas. Tambah sekarang!"}
+              {search ? `Tidak ada template untuk "${search}"` : "Belum ada template. Tambah sekarang!"}
             </CardContent>
           </Card>
         ) : (
@@ -225,27 +250,41 @@ export default function ProductTemplatesPage() {
                       <div className="flex items-center gap-2">
                         <span className="text-2xl">{tpl.icon ?? "📦"}</span>
                         <div>
-                          <div className="font-semibold text-foreground group-hover:text-primary transition-colors">
-                            {tpl.name}
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-semibold text-foreground group-hover:text-primary transition-colors">
+                              {tpl.label}
+                            </span>
+                            {!tpl.isActive && (
+                              <Badge variant="secondary" className="text-[10px] py-0 px-1">Nonaktif</Badge>
+                            )}
                           </div>
-                          <div className="text-xs text-muted-foreground font-mono">{tpl.key}</div>
+                          <div className="text-xs text-muted-foreground font-mono">{tpl.categoryKey}</div>
                         </div>
                       </div>
                       <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors shrink-0 mt-1" />
                     </div>
 
+                    {tpl.description && (
+                      <p className="text-xs text-muted-foreground line-clamp-2">{tpl.description}</p>
+                    )}
+
                     {/* Stats row */}
                     <div className="grid grid-cols-3 gap-2 text-center">
                       {[
-                        { label: "Fields", value: tpl.fieldCount ?? 0, color: "text-blue-600" },
-                        { label: "Dok Wajib", value: tpl.docCount ?? 0, color: "text-orange-600" },
-                        { label: "Checklist", value: tpl.checklistCount ?? 0, color: "text-green-600" },
+                        { label: "Fields", value: tpl.customFields?.length ?? 0, color: "text-blue-600" },
+                        { label: "Dok Wajib", value: tpl.requiredDocuments?.length ?? 0, color: "text-orange-600" },
+                        { label: "Checklist", value: tpl.checklist?.length ?? 0, color: "text-green-600" },
                       ].map((s) => (
                         <div key={s.label} className="bg-muted/50 rounded-md p-1.5">
                           <div className={`text-base font-bold ${s.color}`}>{s.value}</div>
                           <div className="text-[10px] text-muted-foreground">{s.label}</div>
                         </div>
                       ))}
+                    </div>
+
+                    {/* Version */}
+                    <div className="flex items-center justify-between pt-0.5">
+                      <Badge variant="outline" className="text-[10px] py-0 font-mono">v{tpl.version}</Badge>
                     </div>
 
                     {/* Actions */}
@@ -268,11 +307,24 @@ export default function ProductTemplatesPage() {
                       <Button
                         size="sm"
                         variant="ghost"
+                        className="px-2 text-muted-foreground hover:text-foreground"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          duplicateMut.mutate(tpl.id);
+                        }}
+                        title="Duplikasi"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
                         className="text-destructive hover:text-destructive px-2"
                         onClick={(e) => {
                           e.preventDefault();
                           setDeleteId(tpl.id);
                         }}
+                        title="Hapus"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </Button>
@@ -289,23 +341,24 @@ export default function ProductTemplatesPage() {
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Tambah Komoditas Baru</DialogTitle>
+            <DialogTitle>Tambah Template Baru</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">
-              <Label>Key (unik, huruf kecil, underscore)</Label>
+              <Label>Category Key <span className="text-destructive">*</span></Label>
               <Input
                 placeholder="cth. crude_oil"
-                value={form.key}
-                onChange={(e) => setForm((f) => ({ ...f, key: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_") }))}
+                value={form.categoryKey}
+                onChange={(e) => setForm((f) => ({ ...f, categoryKey: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_") }))}
               />
+              <p className="text-xs text-muted-foreground">Unik, huruf kecil dan underscore saja</p>
             </div>
             <div className="space-y-1.5">
-              <Label>Nama Komoditas</Label>
+              <Label>Label / Nama <span className="text-destructive">*</span></Label>
               <Input
                 placeholder="cth. Minyak Mentah"
-                value={form.name}
-                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                value={form.label}
+                onChange={(e) => setForm((f) => ({ ...f, label: e.target.value }))}
               />
             </div>
             <div className="space-y-1.5">
@@ -325,6 +378,15 @@ export default function ProductTemplatesPage() {
                 onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
               />
             </div>
+            <div className="space-y-1.5">
+              <Label>Urutan (opsional)</Label>
+              <Input
+                type="number"
+                placeholder="0"
+                value={form.sortOrder}
+                onChange={(e) => setForm((f) => ({ ...f, sortOrder: e.target.value }))}
+              />
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>Batal</Button>
@@ -341,17 +403,21 @@ export default function ProductTemplatesPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Hapus Template?</AlertDialogTitle>
             <AlertDialogDescription>
-              Semua field, dokumen wajib, dan checklist pada template ini akan ikut terhapus. Tindakan ini tidak bisa dibatalkan.
+              {deleteTarget?.isActive
+                ? "Template aktif tidak dapat dihapus. Nonaktifkan terlebih dahulu melalui halaman detail."
+                : "Semua konfigurasi pada template ini akan ikut terhapus. Tindakan ini tidak bisa dibatalkan."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Batal</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => deleteId !== null && deleteMut.mutate(deleteId)}
-              className="bg-destructive hover:bg-destructive/90"
-            >
-              Hapus
-            </AlertDialogAction>
+            {!deleteTarget?.isActive && (
+              <AlertDialogAction
+                onClick={() => deleteId !== null && deleteMut.mutate(deleteId)}
+                className="bg-destructive hover:bg-destructive/90"
+              >
+                Hapus
+              </AlertDialogAction>
+            )}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

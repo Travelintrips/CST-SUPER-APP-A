@@ -40,6 +40,9 @@ db.execute(sql`
     label TEXT NOT NULL,
     version TEXT NOT NULL DEFAULT '1.0.0',
     is_active BOOLEAN NOT NULL DEFAULT true,
+    icon TEXT,
+    description TEXT,
+    sort_order INTEGER NOT NULL DEFAULT 0,
     required_documents JSONB NOT NULL DEFAULT '[]',
     checklist JSONB NOT NULL DEFAULT '[]',
     custom_fields JSONB NOT NULL DEFAULT '[]',
@@ -51,6 +54,15 @@ db.execute(sql`
   )
 `).catch((err) => {
   logger.warn("product_templates table creation failed (non-fatal)", { err: String(err) });
+});
+
+// Idempotent column additions for existing deployments
+Promise.all([
+  db.execute(sql`ALTER TABLE product_templates ADD COLUMN IF NOT EXISTS icon TEXT`),
+  db.execute(sql`ALTER TABLE product_templates ADD COLUMN IF NOT EXISTS description TEXT`),
+  db.execute(sql`ALTER TABLE product_templates ADD COLUMN IF NOT EXISTS sort_order INTEGER NOT NULL DEFAULT 0`),
+]).catch((err) => {
+  logger.warn("product_templates column migration failed (non-fatal)", { err: String(err) });
 });
 
 
@@ -724,7 +736,7 @@ productTemplatesRouter.get("/", async (req: Request, res: Response) => {
     const rows = await db
       .select()
       .from(productTemplatesTable)
-      .orderBy(asc(productTemplatesTable.categoryKey));
+      .orderBy(asc(productTemplatesTable.sortOrder), asc(productTemplatesTable.categoryKey));
 
     if (req.query.raw === "1") {
       return res.json(rows);
@@ -772,6 +784,7 @@ productTemplatesRouter.post("/", requireAdmin, async (req: Request, res: Respons
   try {
     const body = req.body as Record<string, unknown>;
     const { categoryKey, label, version = "1.0.0", isActive = true,
+      icon, description, sortOrder = 0,
       requiredDocuments = [], checklist = [], customFields = [],
       packagingInstructions = "", conditionalRules = [], validationRules = [] } = body;
 
@@ -784,6 +797,9 @@ productTemplatesRouter.post("/", requireAdmin, async (req: Request, res: Respons
       label: String(label),
       version: String(version),
       isActive: Boolean(isActive),
+      icon: icon != null ? String(icon) : null,
+      description: description != null ? String(description) : null,
+      sortOrder: Number(sortOrder) || 0,
       requiredDocuments: requiredDocuments as unknown as Record<string, unknown>[],
       checklist: checklist as unknown as Record<string, unknown>[],
       customFields: customFields as unknown as Record<string, unknown>[],
@@ -821,6 +837,9 @@ productTemplatesRouter.put("/:id", requireAdmin, async (req: Request, res: Respo
         label: typeof body.label === "string" ? body.label : existing[0]!.label,
         version: newVersion,
         isActive: typeof body.isActive === "boolean" ? body.isActive : existing[0]!.isActive,
+        icon: "icon" in body ? (body.icon != null ? String(body.icon) : null) : existing[0]!.icon,
+        description: "description" in body ? (body.description != null ? String(body.description) : null) : existing[0]!.description,
+        sortOrder: typeof body.sortOrder === "number" ? body.sortOrder : existing[0]!.sortOrder,
         requiredDocuments: Array.isArray(body.requiredDocuments) ? body.requiredDocuments as unknown as Record<string, unknown>[] : existing[0]!.requiredDocuments as unknown as Record<string, unknown>[],
         checklist: Array.isArray(body.checklist) ? body.checklist as unknown as Record<string, unknown>[] : existing[0]!.checklist as unknown as Record<string, unknown>[],
         customFields: Array.isArray(body.customFields) ? body.customFields as unknown as Record<string, unknown>[] : existing[0]!.customFields as unknown as Record<string, unknown>[],
@@ -855,6 +874,9 @@ productTemplatesRouter.post("/:id/duplicate", requireAdmin, async (req: Request,
       label: `${src.label} (Salinan)`,
       version: "1.0.0",
       isActive: false,
+      icon: src.icon,
+      description: src.description,
+      sortOrder: src.sortOrder,
       requiredDocuments: src.requiredDocuments as unknown as Record<string, unknown>[],
       checklist: src.checklist as unknown as Record<string, unknown>[],
       customFields: src.customFields as unknown as Record<string, unknown>[],

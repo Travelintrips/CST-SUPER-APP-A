@@ -1,4 +1,4 @@
-import { pgTable, serial, text, boolean, jsonb, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, boolean, jsonb, timestamp, integer } from "drizzle-orm/pg-core";
 
 export const productTemplatesTable = pgTable("product_templates", {
   id: serial("id").primaryKey(),
@@ -6,6 +6,9 @@ export const productTemplatesTable = pgTable("product_templates", {
   label: text("label").notNull(),
   version: text("version").notNull().default("1.0.0"),
   isActive: boolean("is_active").notNull().default(true),
+  icon: text("icon"),
+  description: text("description"),
+  sortOrder: integer("sort_order").notNull().default(0),
   requiredDocuments: jsonb("required_documents").notNull().default([]),
   checklist: jsonb("checklist").notNull().default([]),
   customFields: jsonb("custom_fields").notNull().default([]),
