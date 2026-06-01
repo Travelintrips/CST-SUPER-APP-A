@@ -1,5 +1,5 @@
-import { db, suppliersTable, vendorCatalogItemsTable, waTemplateConfigsTable } from "@workspace/db";
-import { eq, and, ilike, sql } from "drizzle-orm";
+import { db, suppliersTable, vendorCatalogItemsTable, waTemplateConfigsTable, logisticOrderRfqsTable, vendorMiniFormLinksTable } from "@workspace/db";
+import { eq, and, ilike, sql, desc } from "drizzle-orm";
 import { sendViaService as sendWhatsApp, sendMediaViaService } from "./waTransport.js";
 import { getAdminGroupWa } from "./adminWa";
 import { getPreferredDomain } from "./domain";
@@ -430,6 +430,40 @@ export function buildServiceContext(
 
     return { serviceLabel: label, serviceVersion: version, specSummary, serviceChecklistSummary };
   } catch { return empty; }
+}
+
+/**
+ * Resolve templateSnapshot untuk order dengan priority lookup:
+ * A. order.templateSnapshot (paling reliable, sudah di-denormalisasi)
+ * B. RFQ.templateSnapshot terbaru untuk orderId
+ * C. vendorMiniFormLink.templateSnapshot terbaru untuk orderId
+ * D. null → caller fallback ke shipmentType
+ */
+export async function resolveTemplateSnapshot(
+  orderId: number,
+  orderSnapshot: Record<string, unknown> | null | undefined,
+): Promise<Record<string, unknown> | null> {
+  if (orderSnapshot) return orderSnapshot;
+  try {
+    const [rfq] = await db
+      .select({ templateSnapshot: logisticOrderRfqsTable.templateSnapshot })
+      .from(logisticOrderRfqsTable)
+      .where(eq(logisticOrderRfqsTable.orderId, orderId))
+      .orderBy(desc(logisticOrderRfqsTable.id))
+      .limit(1);
+    if ((rfq as any)?.templateSnapshot) return (rfq as any).templateSnapshot as Record<string, unknown>;
+
+    const [vmf] = await db
+      .select({ templateSnapshot: vendorMiniFormLinksTable.templateSnapshot })
+      .from(vendorMiniFormLinksTable)
+      .where(eq(vendorMiniFormLinksTable.orderId, orderId))
+      .orderBy(desc(vendorMiniFormLinksTable.id))
+      .limit(1);
+    if (vmf?.templateSnapshot) return vmf.templateSnapshot as Record<string, unknown>;
+  } catch (e) {
+    logger.warn({ e, orderId }, "resolveTemplateSnapshot: DB lookup failed, falling back to null");
+  }
+  return null;
 }
 
 /** Returns true for air/sea freight types that need per-unit pricing hints */
@@ -1082,7 +1116,8 @@ const DEFAULT_TPL = {
       "",
       "Order  : *{{orderNumber}}*",
       "Layanan: {{shipmentType}}",
-      "Jenis  : {{serviceLabel}}",
+      "Jenis Layanan: {{serviceLabel}}",
+      "{{serviceVersionLine}}",
       "Rute   : {{origin}} → {{destination}}",
       "{{estimatedPickupLine}}",
       "{{estimatedDeliveryLine}}",
@@ -1091,6 +1126,8 @@ const DEFAULT_TPL = {
       "",
       "✅ Anda telah dipilih sebagai vendor untuk order ini.",
       "",
+      "{{specSummaryBlock}}",
+      "{{serviceChecklistSummary}}",
       "{{itemsBlock}}",
       "Silakan buka link berikut untuk menerima atau menolak job, dan mengisi detail operasional:",
       "{{jobUrl}}",
@@ -2489,6 +2526,8 @@ export async function sendVendorAssignmentNotification(
     itemsBlock = `📋 *Detail Produk:*\n${lines.join("\n")}\n\n`;
   }
   const serviceCtx = buildServiceContext(templateSnapshot ?? null);
+  const serviceVersionLine = serviceCtx.serviceVersion ? `Versi  : ${serviceCtx.serviceVersion}` : null;
+  const specSummaryBlock = serviceCtx.specSummary ? `📋 *Ringkasan:*\n${serviceCtx.specSummary}` : null;
   const tpl = await getWaTemplateConfig("vendor", "vendor_assignment", DEFAULT_TPL.vendor.vendor_assignment);
   const vars: Record<string, string | null | undefined> = {
     orderNumber, origin, destination, shipmentType, jobUrl,
@@ -2499,6 +2538,8 @@ export async function sendVendorAssignmentNotification(
     estimatedDaysLine: estimatedDays != null ? `⏱️ Transit      : ${estimatedDays} hari` : null,
     timestamp: nowWIB(),
     ...serviceCtx,
+    serviceVersionLine,
+    specSummaryBlock,
   };
   const msg = renderTemplate(tpl, vars);
   if (vendorPhone) {

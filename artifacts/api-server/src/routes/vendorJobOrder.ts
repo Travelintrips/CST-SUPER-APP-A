@@ -47,6 +47,7 @@ import {
   sendCustomerProgressUpdateNotification,
   sendCustomerPodUploadedNotification,
   sendOrderCompletedNotification,
+  resolveTemplateSnapshot,
   type VendorAssignmentItem,
 } from "../lib/orderNotification.js";
 import { logger } from "../lib/logger.js";
@@ -236,6 +237,9 @@ vendorJobAdminRouter.post("/orders/:orderId/assign-vendor", async (req: Request,
       }
     }
 
+    // Resolve templateSnapshot: A. order → B. RFQ → C. VMF → D. null (fallback ke shipmentType)
+    const resolvedSnapshot = await resolveTemplateSnapshot(orderId, order.templateSnapshot as Record<string, unknown> | null);
+
     // Cek apakah sudah ada job order untuk order ini
     const existing = await db.execute(
       sql`SELECT id, token FROM vendor_job_orders WHERE order_id = ${orderId} LIMIT 1`
@@ -243,7 +247,7 @@ vendorJobAdminRouter.post("/orders/:orderId/assign-vendor", async (req: Request,
     if ((existing.rows ?? []).length > 0) {
       const row = existing.rows[0] as { id: number; token: string };
       const jobUrl = `${baseUrl()}/vendor-job/${row.token}`;
-      const waMsg = await sendVendorAssignmentNotification(order.orderNumber, order.origin, order.destination, order.shipmentType, jobUrl, vendor.phone, adminNote, assignmentItems, quote.estimatedPickup, quote.estimatedDelivery, quote.estimatedDays, order.templateSnapshot as Record<string, unknown> | null);
+      const waMsg = await sendVendorAssignmentNotification(order.orderNumber, order.origin, order.destination, order.shipmentType, jobUrl, vendor.phone, adminNote, assignmentItems, quote.estimatedPickup, quote.estimatedDelivery, quote.estimatedDays, resolvedSnapshot);
       return res.json({ ok: true, jobToken: row.token, jobUrl, waMessage: waMsg, vendorPhone: vendor.phone, alreadyExists: true });
     }
 
@@ -302,7 +306,7 @@ vendorJobAdminRouter.post("/orders/:orderId/assign-vendor", async (req: Request,
     });
 
     const jobUrl = `${baseUrl()}/vendor-job/${jobToken}`;
-    const waMsg = await sendVendorAssignmentNotification(order.orderNumber, order.origin, order.destination, order.shipmentType, jobUrl, vendor.phone, adminNote, assignmentItems, quote.estimatedPickup, quote.estimatedDelivery, quote.estimatedDays, order.templateSnapshot as Record<string, unknown> | null);
+    const waMsg = await sendVendorAssignmentNotification(order.orderNumber, order.origin, order.destination, order.shipmentType, jobUrl, vendor.phone, adminNote, assignmentItems, quote.estimatedPickup, quote.estimatedDelivery, quote.estimatedDays, resolvedSnapshot);
 
     // Notify admin group
     const adminWa = await getAdminWa();

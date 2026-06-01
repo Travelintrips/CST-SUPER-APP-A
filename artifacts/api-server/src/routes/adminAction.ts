@@ -23,7 +23,7 @@ import { logger } from "../lib/logger.js";
 import { TAX_RATE_DECIMAL as PPN_RATE, TAX_RATE_DECIMAL } from "../lib/taxHelper.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminWa, getAdminGroupWa } from "../lib/adminWa.js";
-import { sendVendorRequestNotification, sendVendorSelectedAdminWa, sendVendorAwardedWa, sendVendorAssignmentNotification, type LogisticOrderData } from "../lib/orderNotification.js";
+import { sendVendorRequestNotification, sendVendorSelectedAdminWa, sendVendorAwardedWa, sendVendorAssignmentNotification, resolveTemplateSnapshot, type LogisticOrderData } from "../lib/orderNotification.js";
 import { generateShortLink } from "../lib/shortLink.js";
 import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
 import { transitionRfqStatus, transitionVendorLinkStatus } from "../lib/services/rfqStatusService.js";
@@ -1209,6 +1209,7 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
         return [{ name: row.serviceName ?? "Produk", qty, unit, basicPrice: price, taxRate: TAX_RATE_DECIMAL }];
       });
 
+      const _resolvedSnapshot = await resolveTemplateSnapshot(order.id, order.templateSnapshot as Record<string, unknown> | null);
       if (vendor?.phone) {
         sendVendorAssignmentNotification(
           order.orderNumber,
@@ -1222,7 +1223,7 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
           undefined,
           undefined,
           undefined,
-          order.templateSnapshot as Record<string, unknown> | null,
+          _resolvedSnapshot,
         ).catch(() => {});
       }
 
