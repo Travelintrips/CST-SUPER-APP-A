@@ -117,8 +117,8 @@ function TimelineEntry({ entry, index }: { entry: AuditEntry; index: number }) {
           )}
 
           {/* Description */}
-          {description && (
-            <p className="text-xs text-slate-600 leading-relaxed">{description}</p>
+          {!!description && (
+            <p className="text-xs text-slate-600 leading-relaxed">{String(description)}</p>
           )}
 
           {/* Vendor price info */}
@@ -321,10 +321,10 @@ export default function OrderAuditTrailPage() {
                       <div className="w-1.5 h-1.5 rounded-full bg-violet-400 flex-shrink-0" />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1">
-                          {e["old_status"] && (
+                          {!!e["old_status"] && (
                             <span className="text-slate-400 truncate">{e["old_status"] as string}</span>
                           )}
-                          {e["old_status"] && <ChevronRight className="w-3 h-3 text-slate-300 flex-shrink-0" />}
+                          {!!e["old_status"] && <ChevronRight className="w-3 h-3 text-slate-300 flex-shrink-0" />}
                           <span className="font-medium text-slate-700 truncate">{e["new_status"] as string}</span>
                         </div>
                         <span className="text-slate-400 text-[10px]">
@@ -352,7 +352,7 @@ export default function OrderAuditTrailPage() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1 flex-wrap">
                           <span className="font-medium text-slate-700">{e["event_type"] as string}</span>
-                          {e["vendor_name"] && (
+                          {!!e["vendor_name"] && (
                             <span className="text-orange-600 text-[10px]">· {e["vendor_name"] as string}</span>
                           )}
                         </div>
@@ -388,7 +388,7 @@ export default function OrderAuditTrailPage() {
                       }`} />
                       <div className="flex-1 min-w-0">
                         <span className="font-medium text-slate-700">{e["event_type"] as string}</span>
-                        {e["customer_name"] && (
+                        {!!e["customer_name"] && (
                           <span className="block text-slate-500 text-[10px]">{e["customer_name"] as string}</span>
                         )}
                         <span className="block text-slate-400 text-[10px]">{dt(e["created_at"] as string)}</span>
