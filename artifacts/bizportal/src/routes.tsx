@@ -97,6 +97,7 @@ import AiChatbotSettingsPage from "@/pages/ai-chatbot-settings";
 import AiChatbotKnowledgePage from "@/pages/ai-chatbot-knowledge";
 import AiScanSettingsPage from "@/pages/ai-scan-settings";
 import UomPage from "@/pages/settings/uom";
+import ServiceTemplatesSettingsPage from "@/pages/settings/service-templates";
 import NavCompanyConfigPage from "@/pages/settings/nav-company-config";
 import ShortLinksPage from "@/pages/settings/short-links";
 import WaTemplatesPage from "@/pages/settings/wa-templates";
@@ -313,6 +314,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/settings/roles" component={PR(SettingsRolesPage)} />
       <Route path="/settings/approval-rules" component={PR(SettingsApprovalRulesPage)} />
       <Route path="/settings/product-templates" component={PR(ProductTemplatesPage)} />
+      <Route path="/settings/service-templates" component={PR(ServiceTemplatesSettingsPage)} />
       <Route path="/settings" component={PR(SettingsPage)} />
 
       {/* ── Users & Org ────────────────────────────────────────────────── */}

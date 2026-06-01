@@ -423,6 +423,7 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "Short Links", href: "/settings/short-links", icon: Link2 },
         { titleKey: "Konfigurasi Menu", href: "/settings/nav-company-config", icon: LayoutGrid },
         { titleKey: "Product Templates", href: "/settings/product-templates", icon: Layers },
+        { titleKey: "Service Templates", href: "/settings/service-templates", icon: Layers },
       ],
     },
   ];
