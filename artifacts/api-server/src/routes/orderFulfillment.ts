@@ -770,12 +770,12 @@ fulfillmentAdminRouter.post(
         VALUES (${orderId}, ${receiverName || null}, ${photoUrl}, ${note || null}, ${actor})
       `);
 
-      // Update status → Completed
-      await transitionLogisticOrderStatus(orderId, "Completed", {
+      // Update status → POD Uploaded (invoice + payment harus diproses sebelum Completed)
+      await transitionLogisticOrderStatus(orderId, "POD Uploaded", {
         actorType: "admin",
-        actorName: "Admin",
+        actorName: actor,
         source: "orderFulfillment/pod-upload",
-        force: true,
+        force: false,
         skipAudit: false,
       });
 
@@ -790,7 +790,7 @@ fulfillmentAdminRouter.post(
         orderId,
         actorType: "admin",
         actorName: actor,
-        status: "Completed",
+        status: "POD Uploaded",
         notes: logNote,
         isPublic: true,
       });
@@ -799,19 +799,19 @@ fulfillmentAdminRouter.post(
       const customerPhone = order.phone?.trim();
       if (customerPhone) {
         const waMsg =
-          `✅ *Order Selesai & Bukti Pengiriman Tersedia — CST Logistics*\n\n` +
+          `📄 *Bukti Pengiriman Diunggah — CST Logistics*\n\n` +
           `Halo ${order.customerName},\n\n` +
-          `Order *${order.orderNumber}* (${order.shipmentType}) telah *selesai* dan barang sudah diterima.\n` +
+          `Bukti pengiriman untuk order *${order.orderNumber}* telah diunggah oleh tim kami.\n` +
           `Rute: ${order.origin} → ${order.destination}\n` +
           (receiverName ? `Diterima oleh: *${receiverName}*\n` : "") +
           (note ? `Catatan: ${note}\n` : "") +
-          `\nTerima kasih telah mempercayakan pengiriman Anda kepada CST Logistics! 🙏`;
+          `\nAdmin kami sedang memproses invoice. Anda akan mendapat notifikasi saat invoice diterbitkan. 🙏`;
         sendWhatsApp(customerPhone, waMsg).catch((e) =>
           logger.warn({ e }, "POD WA to customer failed")
         );
       }
 
-      logger.info({ orderId, photoUrl }, "POD submitted, order completed");
+      logger.info({ orderId, photoUrl }, "POD submitted, status → POD Uploaded");
       return res.json({ ok: true, photoUrl });
     } catch (err) {
       logger.error({ err }, "pod-submit error");

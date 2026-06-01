@@ -2055,7 +2055,7 @@ export default function LogisticOrderDetailPage() {
       return data;
     },
     onSuccess: () => {
-      toast({ title: "✅ Order selesai & POD tersimpan", description: "WA konfirmasi dikirim ke customer." });
+      toast({ title: "✅ Bukti pengiriman tersimpan", description: "Status → Bukti Pengiriman. WA dikirim ke customer." });
       setShowCompleteDialog(false);
       setCompleteNote("");
       setCompleteReceiver("");
@@ -2064,7 +2064,34 @@ export default function LogisticOrderDetailPage() {
       qc.invalidateQueries({ queryKey: ["order-detail", orderId] });
       void refetchFulfillment();
     },
-    onError: (e: Error) => toast({ title: "Gagal selesaikan order", description: e.message, variant: "destructive" }),
+    onError: (e: Error) => toast({ title: "Gagal upload bukti pengiriman", description: e.message, variant: "destructive" }),
+  });
+
+  const invoiceIssuedMut = useMutation({
+    mutationFn: () => apiFetch<{ ok: boolean }>(`/api/logistic/orders/${orderId}/delivery/invoice-issued`, { method: "POST" }),
+    onSuccess: () => {
+      toast({ title: "✅ Invoice Diterbitkan", description: "WA dikirim ke customer." });
+      qc.invalidateQueries({ queryKey: ["order-detail", orderId] });
+    },
+    onError: (e: Error) => toast({ title: "Gagal", description: e.message, variant: "destructive" }),
+  });
+
+  const paymentReceivedMut = useMutation({
+    mutationFn: () => apiFetch<{ ok: boolean }>(`/api/logistic/orders/${orderId}/delivery/payment-received`, { method: "POST" }),
+    onSuccess: () => {
+      toast({ title: "✅ Pembayaran Dikonfirmasi", description: "Status → Pembayaran Diterima. WA dikirim ke customer." });
+      qc.invalidateQueries({ queryKey: ["order-detail", orderId] });
+    },
+    onError: (e: Error) => toast({ title: "Gagal konfirmasi pembayaran", description: e.message, variant: "destructive" }),
+  });
+
+  const completedMut = useMutation({
+    mutationFn: () => apiFetch<{ ok: boolean }>(`/api/logistic/orders/${orderId}/delivery/completed`, { method: "POST" }),
+    onSuccess: () => {
+      toast({ title: "✅ Order Selesai!", description: "WA konfirmasi terkirim ke customer." });
+      qc.invalidateQueries({ queryKey: ["order-detail", orderId] });
+    },
+    onError: (e: Error) => toast({ title: "Gagal tandai selesai", description: e.message, variant: "destructive" }),
   });
 
   const handleDownloadPodPdf = async (pod: PodSubmission) => {
@@ -2538,14 +2565,14 @@ export default function LogisticOrderDetailPage() {
                                 Konfirmasi &amp; Mulai Pengiriman
                               </Button>
                             )}
-                            {order.status === "In Progress" && (
+                            {["In Progress", "Pickup", "In Transit", "Arrived", "Delivered"].includes(order.status) && (
                               <Button
                                 size="sm"
-                                className="bg-emerald-600 hover:bg-emerald-700 text-white h-8 text-xs"
+                                className="bg-teal-600 hover:bg-teal-700 text-white h-8 text-xs"
                                 onClick={() => setShowCompleteDialog(true)}
                               >
-                                <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
-                                Selesaikan Order
+                                <ClipboardCheck className="w-3.5 h-3.5 mr-1" />
+                                Upload Bukti Pengiriman
                               </Button>
                             )}
                             {!["In Progress", "Completed", "Cancelled"].includes(order.status) && (
@@ -2582,13 +2609,13 @@ export default function LogisticOrderDetailPage() {
               <DialogContent className="max-w-md">
                 <DialogHeader>
                   <DialogTitle className="flex items-center gap-2">
-                    <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                    Selesaikan Order &amp; Upload POD
+                    <ClipboardCheck className="w-5 h-5 text-teal-600" />
+                    Upload Bukti Pengiriman (POD)
                   </DialogTitle>
                 </DialogHeader>
                 <div className="space-y-3 py-2">
                   <p className="text-sm text-slate-500">
-                    Status → <strong>Completed</strong>. WA konfirmasi otomatis dikirim ke customer.
+                    Status → <strong>Bukti Pengiriman (POD Uploaded)</strong>. Selanjutnya admin buat invoice lalu konfirmasi pembayaran sebelum order Selesai.
                   </p>
 
                   <div className="space-y-1.5">
@@ -2656,8 +2683,8 @@ export default function LogisticOrderDetailPage() {
                   >
                     {completeOrderMut.isPending
                       ? <Loader2 className="w-4 h-4 animate-spin mr-1" />
-                      : <CheckCircle2 className="w-4 h-4 mr-1" />}
-                    Selesaikan &amp; Simpan POD
+                      : <ClipboardCheck className="w-4 h-4 mr-1" />}
+                    Simpan Bukti Pengiriman
                   </Button>
                 </DialogFooter>
               </DialogContent>
@@ -2815,6 +2842,78 @@ export default function LogisticOrderDetailPage() {
                       </div>
                     </div>
                   ))}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* ── Panel Aksi Pengiriman Post-POD ── */}
+            {["POD Uploaded", "Invoice Issued", "Payment Received"].includes(order.status) && (
+              <Card className="border-orange-200">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-semibold text-orange-700 uppercase tracking-wide flex items-center gap-1.5">
+                    <FileText className="w-4 h-4" /> Aksi Pengiriman
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="text-xs text-slate-500 bg-orange-50 rounded-lg px-3 py-2">
+                    Status saat ini: <strong className="text-orange-700">{order.status}</strong>
+                    {order.status === "POD Uploaded" && " — Silakan buat & kirim invoice ke customer, lalu tandai Invoice Diterbitkan."}
+                    {order.status === "Invoice Issued" && " — Setelah pembayaran diterima, klik Konfirmasi Pembayaran."}
+                    {order.status === "Payment Received" && " — Semua proses selesai, klik Tandai Selesai untuk menutup order."}
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {order.status === "POD Uploaded" && (
+                      <Button
+                        size="sm"
+                        className="bg-orange-600 hover:bg-orange-700 text-white h-8 text-xs"
+                        disabled={invoiceIssuedMut.isPending}
+                        onClick={() => {
+                          if (!confirm("Tandai Invoice sudah diterbitkan ke customer? Pastikan sudah membuat & mengirim link invoice via panel Invoice & Pembayaran di bawah.")) return;
+                          invoiceIssuedMut.mutate();
+                        }}
+                      >
+                        {invoiceIssuedMut.isPending
+                          ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                          : <FileText className="w-3.5 h-3.5 mr-1" />}
+                        Tandai Invoice Diterbitkan
+                      </Button>
+                    )}
+
+                    {order.status === "Invoice Issued" && (
+                      <Button
+                        size="sm"
+                        className="bg-lime-600 hover:bg-lime-700 text-white h-8 text-xs"
+                        disabled={paymentReceivedMut.isPending}
+                        onClick={() => {
+                          if (!confirm("Konfirmasi pembayaran sudah diterima? Status akan berubah ke Pembayaran Diterima dan WA dikirim ke customer.")) return;
+                          paymentReceivedMut.mutate();
+                        }}
+                      >
+                        {paymentReceivedMut.isPending
+                          ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                          : <CheckCircle2 className="w-3.5 h-3.5 mr-1" />}
+                        Konfirmasi Pembayaran
+                      </Button>
+                    )}
+
+                    {order.status === "Payment Received" && (
+                      <Button
+                        size="sm"
+                        className="bg-green-600 hover:bg-green-700 text-white h-8 text-xs"
+                        disabled={completedMut.isPending}
+                        onClick={() => {
+                          if (!confirm("Tandai order sebagai Selesai? Ini tindakan final — WA notifikasi dikirim ke customer.")) return;
+                          completedMut.mutate();
+                        }}
+                      >
+                        {completedMut.isPending
+                          ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                          : <CheckCircle2 className="w-3.5 h-3.5 mr-1" />}
+                        Tandai Selesai
+                      </Button>
+                    )}
+                  </div>
                 </CardContent>
               </Card>
             )}

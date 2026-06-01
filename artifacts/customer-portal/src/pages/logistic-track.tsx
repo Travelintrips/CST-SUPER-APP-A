@@ -52,6 +52,24 @@ interface OrderUpdateItem {
   createdAt: string;
 }
 
+interface PodSubmission {
+  id: number;
+  receiverName: string | null;
+  photoUrl: string | null;
+  note: string | null;
+  submittedBy: string | null;
+  createdAt: string;
+}
+
+interface InvoiceLink {
+  token: string;
+  invoiceNumber: string | null;
+  grandTotal: number | null;
+  dueDate: string | null;
+  paymentStatus: string;
+  createdAt: string;
+}
+
 interface TrackingData {
   id: number; orderNumber: string;
   customerName: string;
@@ -65,6 +83,8 @@ interface TrackingData {
   rfqQuote: RfqQuote | null;
   orderUpdates: OrderUpdateItem[];
   progressEvents?: ProgressEvent[];
+  podSubmissions?: PodSubmission[];
+  invoiceLinks?: InvoiceLink[];
 }
 
 interface ProgressEvent {
@@ -1224,6 +1244,110 @@ export default function TrackPage() {
 
             {/* GPS History Timeline */}
             <DriverGpsTimeline events={tracking.progressEvents ?? []} />
+
+            {/* ── Bukti Pengiriman (POD) — tampil jika ada submission ── */}
+            {(tracking.podSubmissions ?? []).length > 0 && (
+              <div className="bg-card border border-teal-200 rounded-xl p-5">
+                <h3 className="font-semibold text-teal-800 text-sm mb-4 flex items-center gap-2">
+                  <FileText className="w-4 h-4" />
+                  Bukti Pengiriman (POD)
+                </h3>
+                {(tracking.podSubmissions ?? []).map((pod) => (
+                  <div key={pod.id} className="space-y-3">
+                    <div className="grid grid-cols-2 gap-y-2 text-sm">
+                      {pod.receiverName && (
+                        <>
+                          <span className="text-muted-foreground">Diterima oleh</span>
+                          <span className="font-semibold text-foreground text-right">{pod.receiverName}</span>
+                        </>
+                      )}
+                      {pod.submittedBy && (
+                        <>
+                          <span className="text-muted-foreground">Diverifikasi</span>
+                          <span className="font-medium text-right">{pod.submittedBy}</span>
+                        </>
+                      )}
+                      <span className="text-muted-foreground">Tanggal</span>
+                      <span className="font-medium text-right">{formatDateTime(pod.createdAt)}</span>
+                    </div>
+                    {pod.note && (
+                      <p className="text-sm text-muted-foreground bg-muted/40 rounded-lg px-3 py-2">
+                        {pod.note}
+                      </p>
+                    )}
+                    {pod.photoUrl && (
+                      <a href={pod.photoUrl} target="_blank" rel="noopener noreferrer" className="block">
+                        <img
+                          src={pod.photoUrl}
+                          alt="Bukti pengiriman"
+                          className="w-full max-h-64 object-contain rounded-lg border border-teal-100 hover:opacity-90 transition-opacity cursor-zoom-in"
+                        />
+                        <p className="text-xs text-center text-muted-foreground mt-1">Klik untuk perbesar foto</p>
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* ── Invoice — tampil jika ada invoice link atau status sudah Invoice Issued+ ── */}
+            {(["Invoice Issued", "Payment Received", "Completed"].includes(tracking.status) || (tracking.invoiceLinks ?? []).length > 0) && (
+              <div className="bg-card border border-orange-200 rounded-xl p-5">
+                <h3 className="font-semibold text-orange-800 text-sm mb-3 flex items-center gap-2">
+                  <FileText className="w-4 h-4" />
+                  Invoice
+                </h3>
+                {(tracking.invoiceLinks ?? []).length > 0 ? (
+                  <div className="space-y-3">
+                    {(tracking.invoiceLinks ?? []).map((inv) => (
+                      <div key={inv.token} className="rounded-lg border border-orange-100 bg-orange-50/40 px-3 py-3 space-y-2">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          {inv.invoiceNumber && (
+                            <span className="text-xs font-mono font-semibold text-orange-800">{inv.invoiceNumber}</span>
+                          )}
+                          <span className={cn(
+                            "text-xs font-semibold px-2 py-0.5 rounded-full",
+                            inv.paymentStatus === "paid"
+                              ? "bg-green-100 text-green-700"
+                              : "bg-amber-100 text-amber-700"
+                          )}>
+                            {inv.paymentStatus === "paid" ? "✅ Lunas" : "⏳ Belum Bayar"}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-y-1 text-sm">
+                          {inv.grandTotal != null && (
+                            <>
+                              <span className="text-muted-foreground">Total</span>
+                              <span className="font-semibold text-right">{idr(inv.grandTotal)}</span>
+                            </>
+                          )}
+                          {inv.dueDate && (
+                            <>
+                              <span className="text-muted-foreground">Jatuh Tempo</span>
+                              <span className="font-medium text-right">{formatDateTime(inv.dueDate)}</span>
+                            </>
+                          )}
+                        </div>
+                        <a
+                          href={`/customer-invoice/${inv.token}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 text-xs font-medium text-orange-700 bg-orange-100 hover:bg-orange-200 px-3 py-1.5 rounded-md transition-colors"
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                          Lihat Invoice
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-sm text-muted-foreground bg-orange-50/40 rounded-lg px-3 py-3">
+                    <p>Invoice untuk order ini telah diterbitkan. Silakan cek <strong>email</strong> atau hubungi tim CST Logistics untuk menerima invoice Anda.</p>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Services */}
             {tracking.items.length > 0 && (

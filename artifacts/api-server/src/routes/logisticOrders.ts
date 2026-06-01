@@ -19,7 +19,7 @@ import {
 } from "@workspace/db";
 import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { eq, ilike, and, gte, lte, or, sql, desc, inArray, isNotNull } from "drizzle-orm";
-import { salesDocumentsTable } from "@workspace/db";
+import { salesDocumentsTable, customerInvoiceLinksTable } from "@workspace/db";
 import { requireClerkUser, requireRole } from "../lib/requireAdmin.js";
 import { calcTax, calcGrandTotal } from "../lib/taxHelper.js";
 import { resolveCompanyId } from "../lib/resolveCompany.js";
@@ -511,7 +511,7 @@ logisticOrdersRouter.get(
     if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
 
     // Run all independent queries in parallel — eliminates N+1 sequential awaits
-    const [items, [driverJob], [latestRfq], orderUpdates, progressEvents] = await Promise.all([
+    const [items, [driverJob], [latestRfq], orderUpdates, progressEvents, podSubmissionsRaw, invoiceLinksRaw] = await Promise.all([
       db.select().from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, order.id)),
       db.select().from(driverJobsTable)
         .where(eq(driverJobsTable.logisticOrderId, order.id))
@@ -526,6 +526,18 @@ logisticOrdersRouter.get(
         .orderBy(desc(orderUpdatesTable.createdAt))
         .limit(50),
       getOrderProgressEvents(order.id),
+      db.execute(sql`SELECT id, receiver_name, photo_url, note, submitted_by, created_at FROM order_pod_submissions WHERE order_id = ${order.id} ORDER BY created_at DESC LIMIT 5`),
+      db.select({
+        token: customerInvoiceLinksTable.token,
+        invoiceNumber: customerInvoiceLinksTable.invoiceNumber,
+        grandTotal: customerInvoiceLinksTable.grandTotal,
+        dueDate: customerInvoiceLinksTable.dueDate,
+        paymentStatus: customerInvoiceLinksTable.paymentStatus,
+        createdAt: customerInvoiceLinksTable.createdAt,
+      }).from(customerInvoiceLinksTable)
+        .where(eq(customerInvoiceLinksTable.orderId, order.id))
+        .orderBy(desc(customerInvoiceLinksTable.createdAt))
+        .limit(3),
     ]);
 
     let driverJobData = null;
@@ -626,6 +638,24 @@ logisticOrdersRouter.get(
       progressEventsCount: progressEventsMapped.length,
     }, "tracking: progressEvents debug");
 
+    const podSubmissions = (podSubmissionsRaw.rows as any[]).map((r) => ({
+      id: r.id as number,
+      receiverName: r.receiver_name as string | null,
+      photoUrl: r.photo_url as string | null,
+      note: r.note as string | null,
+      submittedBy: r.submitted_by as string | null,
+      createdAt: r.created_at ? new Date(r.created_at as string).toISOString() : new Date().toISOString(),
+    }));
+
+    const invoiceLinks = invoiceLinksRaw.map((r) => ({
+      token: r.token,
+      invoiceNumber: r.invoiceNumber,
+      grandTotal: r.grandTotal ? parseFloat(r.grandTotal) : null,
+      dueDate: r.dueDate ? r.dueDate.toISOString() : null,
+      paymentStatus: r.paymentStatus,
+      createdAt: r.createdAt.toISOString(),
+    }));
+
     return res.json({
       ...toPublicOrder(order),
       customerName: order.customerName,
@@ -637,6 +667,8 @@ logisticOrdersRouter.get(
       rfqQuote,
       orderUpdates: updatesData,
       progressEvents: progressEventsMapped,
+      podSubmissions,
+      invoiceLinks,
     });
   }
 );
