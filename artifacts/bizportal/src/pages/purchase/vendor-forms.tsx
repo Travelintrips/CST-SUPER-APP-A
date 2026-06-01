@@ -26,6 +26,7 @@ import {
   Layers, ChevronDown, ChevronRight, AlertCircle, ClipboardList, PackageCheck, Info,
   Search,
 } from "lucide-react";
+import { TemplateSnapshotCard } from "@/components/TemplateSnapshotCard";
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
 } from "@/components/ui/sheet";
@@ -61,6 +62,8 @@ type Submission = {
   selectedAt: string | null; locked: boolean | null; revisionCount: number | null;
   adminNotes: string | null; submittedIp: string | null;
   orderId: number | null;
+  templateId: string | null; templateVersion: string | null;
+  templateSnapshot: Record<string, unknown> | null;
 };
 
 type CustomerApproval = {
@@ -1066,13 +1069,20 @@ function SubmissionCard({
         </div>
       </div>
       {showDetail && (
-        <div className="px-4 py-3 grid grid-cols-2 gap-x-6 gap-y-2 bg-white text-xs">
-          {fields.map(([k, v]) => (
-            <div key={k}>
-              <span className="text-slate-400 capitalize block">{k.replace(/_/g, " ")}</span>
-              <span className="font-medium text-slate-800 break-words">{String(v)}</span>
+        <div className="px-4 py-3 bg-white space-y-3">
+          {sub.templateSnapshot && (
+            <TemplateSnapshotCard templateSnapshot={sub.templateSnapshot} className="text-xs" />
+          )}
+          {fields.length > 0 && (
+            <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
+              {fields.map(([k, v]) => (
+                <div key={k}>
+                  <span className="text-slate-400 capitalize block">{k.replace(/_/g, " ")}</span>
+                  <span className="font-medium text-slate-800 break-words">{String(v)}</span>
+                </div>
+              ))}
             </div>
-          ))}
+          )}
         </div>
       )}
     </div>
@@ -1318,6 +1328,13 @@ function CompareVendorsSheet({
                           </p>
                         </div>
                       </div>
+
+                      {/* Template Snapshot */}
+                      {sub.templateSnapshot && (
+                        <div className="mt-3 pt-3 border-t border-dashed border-slate-200">
+                          <TemplateSnapshotCard templateSnapshot={sub.templateSnapshot} />
+                        </div>
+                      )}
 
                       {/* Form data snippet */}
                       {Object.keys(sub.formData).length > 0 && (

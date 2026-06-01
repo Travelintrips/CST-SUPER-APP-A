@@ -63,6 +63,7 @@ db.execute(sql.raw(`
   ALTER TABLE customer_approvals ADD COLUMN IF NOT EXISTS checklist_from_template JSONB;
   ALTER TABLE vendor_mini_form_submissions ADD COLUMN IF NOT EXISTS template_id TEXT;
   ALTER TABLE vendor_mini_form_submissions ADD COLUMN IF NOT EXISTS template_version TEXT;
+  ALTER TABLE vendor_mini_form_submissions ADD COLUMN IF NOT EXISTS template_snapshot JSONB;
 `)).catch((e: unknown) => console.warn("customer_approvals migration warn:", e));
 
 function buildOrderDataFromRow(row: typeof logisticOrdersTable.$inferSelect): LogisticOrderData {
@@ -1134,6 +1135,8 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
           attachmentUrl: attachmentUrl ?? undefined,
           submittedIp, submittedUa,
           revisionCount: (prev?.revisionCount ?? 0) + 1,
+          // Refresh snapshot from link on resubmit (captures template updates)
+          templateSnapshot: (link.templateSnapshot as Record<string, unknown> | null) ?? undefined,
         })
         .where(eq(vendorMiniFormSubmissionsTable.id, existing.id))
         .returning();
@@ -1184,6 +1187,7 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
           submittedIp, submittedUa,
           templateId: link.templateId ?? null,
           templateVersion: link.templateVersion ?? null,
+          templateSnapshot: (link.templateSnapshot as Record<string, unknown> | null) ?? null,
         }).returning();
         return row;
       });
