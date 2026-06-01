@@ -9,6 +9,7 @@ import { eq, and, desc, ne } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
+import { getAdminGroupWa } from "../lib/adminWa.js";
 import { logActivity } from "../lib/activityLog";
 import { getPreferredDomain } from "../lib/domain";
 import {
@@ -224,6 +225,33 @@ function serializeJob(job: typeof driverJobsTable.$inferSelect) {
   };
 }
 
+// ─── Driver POD extended columns migration ───────────────────────────────────
+
+export async function runDriverPodMigration(): Promise<void> {
+  const { sql } = await import("drizzle-orm");
+  try {
+    await db.execute(sql`
+      ALTER TABLE driver_jobs ADD COLUMN IF NOT EXISTS pod_receiver_position TEXT;
+      ALTER TABLE driver_jobs ADD COLUMN IF NOT EXISTS pod_notes TEXT;
+      ALTER TABLE driver_jobs ADD COLUMN IF NOT EXISTS pod_photos TEXT;
+      ALTER TABLE driver_jobs ADD COLUMN IF NOT EXISTS pod_submitted_at TIMESTAMPTZ;
+      ALTER TABLE driver_jobs ADD COLUMN IF NOT EXISTS pod_geo_lat TEXT;
+      ALTER TABLE driver_jobs ADD COLUMN IF NOT EXISTS pod_geo_lng TEXT;
+    `);
+    logger.info("Driver POD migration: ok");
+  } catch (err) {
+    logger.warn({ err }, "Driver POD migration warn (non-fatal)");
+  }
+}
+
+function nowWIB(): string {
+  return new Date().toLocaleString("id-ID", {
+    timeZone: "Asia/Jakarta",
+    day: "2-digit", month: "long", year: "numeric",
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  }) + " WIB";
+}
+
 // ─── MOBILE DRIVER ROUTES ────────────────────────────────────────────────────
 
 // POST /api/driver/login
@@ -415,11 +443,42 @@ router.post("/jobs/:jobId/photos", requireDriverAuth, upload.single("photo"), as
   res.json({ ...photo, takenAt: photo.takenAt.toISOString() });
 });
 
+// POST /api/driver/jobs/:jobId/pod/upload — upload single POD photo, return URL
+router.post("/jobs/:jobId/pod/upload", requireDriverAuth, upload.single("photo"), async (req, res) => {
+  const driverId = (req as DriverAuthReq).driverId;
+  const jobId = Number(req.params.jobId);
+
+  const [job] = await db
+    .select({ id: driverJobsTable.id })
+    .from(driverJobsTable)
+    .where(and(eq(driverJobsTable.id, jobId), eq(driverJobsTable.driverId, driverId)));
+  if (!job) { res.status(404).json({ message: "Job not found" }); return; }
+  if (!req.file) { res.status(400).json({ message: "Tidak ada foto yang diunggah" }); return; }
+
+  let fileUrl: string;
+  try {
+    fileUrl = await uploadPhotoToStorage(req.file.buffer, req.file.mimetype, jobId);
+  } catch {
+    res.status(500).json({ message: "Gagal mengunggah foto POD" });
+    return;
+  }
+
+  res.json({ fileUrl, filename: req.file.originalname ?? `pod_${Date.now()}.jpg` });
+});
+
 // POST /api/driver/jobs/:jobId/pod
 router.post("/jobs/:jobId/pod", requireDriverAuth, async (req, res) => {
   const driverId = (req as DriverAuthReq).driverId;
   const jobId = Number(req.params.jobId);
-  const { receiverName } = req.body ?? {};
+  const {
+    receiverName,
+    receiverPosition,
+    deliveryNotes,
+    podPhotos,
+    submittedAt,
+    geoLocation,
+  } = req.body ?? {};
+
   if (!receiverName) { res.status(400).json({ message: "Nama penerima wajib diisi" }); return; }
 
   const [job] = await db
@@ -434,35 +493,75 @@ router.post("/jobs/:jobId/pod", requireDriverAuth, async (req, res) => {
     return;
   }
 
+  const photoUrls: string[] = Array.isArray(podPhotos) ? podPhotos.filter((u: unknown) => typeof u === "string") : [];
+  const podSubmittedAt = submittedAt ? new Date(String(submittedAt)) : new Date();
+  const geoLat = geoLocation?.lat ? String(geoLocation.lat) : null;
+  const geoLng = geoLocation?.lng ? String(geoLocation.lng) : null;
+
   const [updated] = await db
     .update(driverJobsTable)
-    .set({ podReceiverName: String(receiverName), status: "DELIVERED" })
+    .set({
+      podReceiverName: String(receiverName),
+      podReceiverPosition: receiverPosition ? String(receiverPosition) : null,
+      podNotes: deliveryNotes ? String(deliveryNotes) : null,
+      podPhotos: photoUrls.length ? JSON.stringify(photoUrls) : null,
+      podSubmittedAt,
+      podGeoLat: geoLat,
+      podGeoLng: geoLng,
+      status: "DELIVERED",
+    })
     .where(eq(driverJobsTable.id, jobId))
     .returning();
 
   await db.insert(driverJobLogsTable).values({
     driverJobId: jobId,
     status: "DELIVERED",
-    note: `POD diterima oleh: ${receiverName}`,
-    timestamp: new Date(),
+    note: `POD diterima oleh: ${receiverName}${receiverPosition ? ` (${receiverPosition})` : ""}`,
+    timestamp: podSubmittedAt,
   });
 
   await syncParentFreightStatus(job.freightShipmentId, "DELIVERED");
   await syncDriverToLogisticOrder(job.logisticOrderId, "DELIVERED");
 
-  // Notifikasi delivery completed ke customer
+  // Lookup driver info for WA notification
+  const [driverInfo] = await db
+    .select({ name: driversTable.name, vehiclePlate: driversTable.vehiclePlate, phone: driversTable.phone })
+    .from(driversTable)
+    .where(eq(driversTable.id, driverId));
+
   if (job.logisticOrderId) {
-    fetchOrderData(job.logisticOrderId).then((orderData) => {
+    fetchOrderData(job.logisticOrderId).then(async (orderData) => {
       if (!orderData) return;
+      // Standard delivery completed notification to customer
       sendDeliveryCompletedNotification(orderData).catch(() => {});
+
+      // Enhanced POD WA notification to admin group — no pricing data
+      const adminGroupWa = await getAdminGroupWa().catch(() => null);
+      if (adminGroupWa) {
+        const photoCount = photoUrls.length;
+        const lines: string[] = [
+          `📦 *Proof of Delivery Diterima*`,
+          ``,
+          `No. Order: *${orderData.orderNumber}*`,
+          `Pelanggan: ${orderData.customerName}`,
+          `Driver: *${driverInfo?.name ?? job.cargoDescription ?? "-"}*${driverInfo?.vehiclePlate ? ` | ${driverInfo.vehiclePlate}` : ""}`,
+          ``,
+          `✅ Diterima oleh: *${receiverName}*`,
+        ];
+        if (receiverPosition) lines.push(`🏷️ Jabatan: ${receiverPosition}`);
+        if (deliveryNotes) lines.push(`📝 Catatan: ${deliveryNotes}`);
+        if (photoCount > 0) lines.push(`📸 Foto POD: ${photoCount} foto`);
+        lines.push(``, `🕐 ${nowWIB()}`);
+        sendWhatsApp(adminGroupWa, lines.join("\n")).catch(() => {});
+      }
     }).catch(() => {});
 
     logActivity({
       orderId: job.logisticOrderId,
       actorType: "driver",
       action: "pod_submitted",
-      description: `Proof of Delivery disubmit — diterima oleh: ${receiverName}`,
-      newValue: { jobId, jobNumber: updated.jobNumber, receiverName, status: "DELIVERED" },
+      description: `Proof of Delivery disubmit — diterima oleh: ${receiverName}${receiverPosition ? ` (${receiverPosition})` : ""}${photoUrls.length ? ` | ${photoUrls.length} foto` : ""}`,
+      newValue: { jobId, jobNumber: updated.jobNumber, receiverName, receiverPosition, photoCount: photoUrls.length, status: "DELIVERED" },
     }).catch(() => {});
   }
 

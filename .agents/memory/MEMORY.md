@@ -20,3 +20,4 @@
 - [Zod build alias](zod-build-alias.md) — zod not hoisted to workspace root by pnpm; must alias in build.mjs pointing to pnpm store directory.
 - [FASE 4A Service Context WA](fase4a-service-context-wa.md) — buildServiceContext() di orderNotification.ts; serviceChecklistSummary embed header; renderTemplate auto-skip null; op_request pakai SERVICE_SCHEMAS untuk derive snapshot.
 - [VMF Invoice Lifecycle](vmf-invoice-lifecycle.md) — 6 endpoints (create/list/detail/send-wa/confirm-payment/mark-completed); confirmedAt boot migration; invoiceLinks.status must be explicit in tracking SELECT.
+- [Driver App POD Modernization](driver-pod-modernization.md) — FASE 5B: 6 kolom baru di driver_jobs, upload endpoint, extended POD fields, foto, geo; WA grup via getAdminGroupWa; pod.tsx ScrollView + foto picker.

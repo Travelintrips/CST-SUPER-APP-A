@@ -4,7 +4,7 @@ import { Platform } from 'react-native';
 import { api, API_BASE_URL } from '@/services/api';
 import { supabase } from '@/services/supabase';
 import { useAuth } from './AuthContext';
-import { Job, ShipmentStatus } from '@/types';
+import { Job, PODPayload, ShipmentStatus } from '@/types';
 import { notifyNewJob } from '@/services/notifications';
 
 interface JobsContextType {
@@ -18,7 +18,7 @@ interface JobsContextType {
   getJob: (id: string) => Job | undefined;
   updateJobStatus: (id: string, status: ShipmentStatus, note?: string) => Promise<void>;
   addJobPhoto: (id: string, uri: string, type?: string) => Promise<void>;
-  submitPOD: (id: string, receiverName: string) => Promise<void>;
+  submitPOD: (id: string, payload: PODPayload) => Promise<void>;
   rejectJob: (id: string) => Promise<void>;
   refreshJobs: () => Promise<void>;
 }
@@ -34,7 +34,7 @@ const JobsContext = createContext<JobsContextType>({
   getJob: () => undefined,
   updateJobStatus: async () => {},
   addJobPhoto: async () => {},
-  submitPOD: async () => {},
+  submitPOD: async (_id: string, _payload: PODPayload) => {},
   rejectJob: async () => {},
   refreshJobs: async () => {},
 });
@@ -208,9 +208,9 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
     );
   }
 
-  async function submitPOD(id: string, receiverName: string) {
+  async function submitPOD(id: string, payload: PODPayload) {
     if (!token) return;
-    const updated = await api.submitPOD(token, id, receiverName);
+    const updated = await api.submitPOD(token, id, payload);
     setJobs((prev) =>
       prev.map((j) => (j.id === id ? mergeJobUpdate(j, updated as Record<string, unknown>) : j))
     );
@@ -274,6 +274,15 @@ function mapApiJob(d: Record<string, unknown>): Job {
     })),
     podSigned: !!d.podReceiverName,
     receiverName: d.podReceiverName ? String(d.podReceiverName) : undefined,
+    receiverPosition: d.podReceiverPosition ? String(d.podReceiverPosition) : undefined,
+    deliveryNotes: d.podNotes ? String(d.podNotes) : undefined,
+    podPhotos: (() => {
+      try {
+        if (d.podPhotos && typeof d.podPhotos === 'string') return JSON.parse(d.podPhotos) as string[];
+        if (Array.isArray(d.podPhotos)) return d.podPhotos.map(String);
+      } catch { /* ignore */ }
+      return undefined;
+    })(),
     weight: d.weight ? String(d.weight) : undefined,
     distance: d.distance ? String(d.distance) : undefined,
   };
@@ -285,6 +294,8 @@ function mergeJobUpdate(existing: Job, updated: Record<string, unknown>): Job {
     status: String(updated.status ?? existing.status) as ShipmentStatus,
     podSigned: !!updated.podReceiverName || existing.podSigned,
     receiverName: updated.podReceiverName ? String(updated.podReceiverName) : existing.receiverName,
+    receiverPosition: updated.podReceiverPosition ? String(updated.podReceiverPosition) : existing.receiverPosition,
+    deliveryNotes: updated.podNotes ? String(updated.podNotes) : existing.deliveryNotes,
     statusLogs: [
       ...existing.statusLogs,
       ...(updated.status && updated.status !== existing.status
