@@ -46,7 +46,8 @@
     "pino-http": "^10",
     "resend": "^6.12.3",
     "sharp": "^0.34.5",
-    "ws": "^8.20.1"
+    "ws": "^8.20.1",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@types/compression": "^1.8.1",

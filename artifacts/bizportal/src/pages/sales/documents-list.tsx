@@ -80,10 +80,10 @@ function PaymentBadge({ status }: { status: string }) {
 }
 
 function isOverdue(doc: SalesDocument): boolean {
-  if (!doc.dueDate) return false;
+  if (!(doc as any).dueDate) return false;
   if (doc.paymentStatus === "paid") return false;
   if (doc.invoiceStatus === "none") return false;
-  return new Date(doc.dueDate as string) < new Date(new Date().toDateString());
+  return new Date((doc as any).dueDate as string) < new Date(new Date().toDateString());
 }
 
 interface Props { kind?: "quote" | "order" }
@@ -118,7 +118,7 @@ export default function SalesDocumentsListPage({ kind = "quote" }: Props) {
     limit: PAGE_SIZE,
   };
 
-  const { data: result, refetch } = useListSalesDocuments(apiParams);
+  const { data: result, refetch } = useListSalesDocuments(apiParams as any);
   const filtered = result?.data ?? [];
   const pagination = result?.pagination;
 

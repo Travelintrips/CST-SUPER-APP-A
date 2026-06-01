@@ -58,9 +58,9 @@ intelligenceAlertsRouter.get("/", async (req: Request, res: Response) => {
       total: countResult[0]?.count ?? 0,
       limit,
       offset,
-    });
+    }); return;
   } catch (err) {
-    res.status(500).json({ error: "Gagal mengambil alerts" });
+    res.status(500).json({ error: "Gagal mengambil alerts" }); return;
   }
 });
 
@@ -92,9 +92,9 @@ intelligenceAlertsRouter.get("/summary", async (req: Request, res: Response) => 
       }
     }
 
-    res.json(summary);
+    res.json(summary); return;
   } catch {
-    res.status(500).json({ error: "Gagal mengambil summary" });
+    res.status(500).json({ error: "Gagal mengambil summary" }); return;
   }
 });
 
@@ -113,9 +113,9 @@ intelligenceAlertsRouter.put("/bulk-acknowledge", async (req: Request, res: Resp
       .set({ status: "acknowledged", isRead: true, acknowledgedAt: new Date(), acknowledgedBy: actor })
       .where(inArray(intelligenceAlertsTable.id, ids));
 
-    res.json({ success: true });
+    res.json({ success: true }); return;
   } catch {
-    res.status(500).json({ error: "Gagal bulk acknowledge" });
+    res.status(500).json({ error: "Gagal bulk acknowledge" }); return;
   }
 });
 
@@ -136,9 +136,9 @@ intelligenceAlertsRouter.put("/:id/acknowledge", async (req: Request, res: Respo
       })
       .where(eq(intelligenceAlertsTable.id, id));
 
-    res.json({ success: true });
+    res.json({ success: true }); return;
   } catch {
-    res.status(500).json({ error: "Gagal acknowledge alert" });
+    res.status(500).json({ error: "Gagal acknowledge alert" }); return;
   }
 });
 
@@ -159,9 +159,9 @@ intelligenceAlertsRouter.put("/:id/resolve", async (req: Request, res: Response)
       })
       .where(eq(intelligenceAlertsTable.id, id));
 
-    res.json({ success: true });
+    res.json({ success: true }); return;
   } catch {
-    res.status(500).json({ error: "Gagal resolve alert" });
+    res.status(500).json({ error: "Gagal resolve alert" }); return;
   }
 });
 
@@ -197,7 +197,7 @@ intelligenceAlertsRouter.get("/settings", async (req: Request, res: Response) =>
       });
     }
   } catch {
-    res.status(500).json({ error: "Gagal mengambil pengaturan alert" });
+    res.status(500).json({ error: "Gagal mengambil pengaturan alert" }); return;
   }
 });
 
@@ -249,8 +249,8 @@ intelligenceAlertsRouter.put("/settings", async (req: Request, res: Response) =>
       await db.insert(intelligenceAlertSettingsTable).values({ ...payload, companyId: null });
     }
 
-    res.json({ success: true });
+    res.json({ success: true }); return;
   } catch (err) {
-    res.status(500).json({ error: "Gagal menyimpan pengaturan alert" });
+    res.status(500).json({ error: "Gagal menyimpan pengaturan alert" }); return;
   }
 });

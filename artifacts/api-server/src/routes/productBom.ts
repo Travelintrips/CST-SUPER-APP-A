@@ -30,7 +30,7 @@ router.get("/categories", async (req: Request, res: Response) => {
 
 router.put("/categories/:name", async (req: Request, res: Response) => {
   const companyId = resolveCompanyId(req);
-  const oldName = decodeURIComponent(req.params.name);
+  const oldName = decodeURIComponent(String(req.params.name));
   const { newName } = req.body as { newName?: string };
   if (!newName || !newName.trim()) {
     res.status(400).json({ message: "newName wajib diisi" }); return;
@@ -45,7 +45,7 @@ router.put("/categories/:name", async (req: Request, res: Response) => {
 
 router.delete("/categories/:name", async (req: Request, res: Response) => {
   const companyId = resolveCompanyId(req);
-  const name = decodeURIComponent(req.params.name);
+  const name = decodeURIComponent(String(req.params.name));
   const result = await db.execute(sql`
     UPDATE products
     SET subcategory = NULL
@@ -88,7 +88,7 @@ router.post("/products", async (req: Request, res: Response) => {
 
 router.put("/products/:id", async (req: Request, res: Response) => {
   const companyId = resolveCompanyId(req);
-  const id = Number(req.params.id);
+  const id = Number(String(req.params.id));
   const { name, sku, unit, price, costPrice, itemType, subcategory, isActive } = req.body as {
     name?: string; sku?: string; unit?: string; price?: number; costPrice?: number;
     itemType?: string; subcategory?: string; isActive?: boolean;
@@ -113,7 +113,7 @@ router.put("/products/:id", async (req: Request, res: Response) => {
 
 router.delete("/products/:id", async (req: Request, res: Response) => {
   const companyId = resolveCompanyId(req);
-  const id = Number(req.params.id);
+  const id = Number(String(req.params.id));
   const check = await db.execute(sql`SELECT id, image_url, media_items FROM products WHERE id = ${id} AND company_id = ${companyId}`);
   if (check.rows.length === 0) { res.status(404).json({ message: "Produk tidak ditemukan" }); return; }
   await db.execute(sql`DELETE FROM products WHERE id = ${id} AND company_id = ${companyId}`);
@@ -162,7 +162,7 @@ router.post("/raw-materials", async (req: Request, res: Response) => {
 
 router.put("/raw-materials/:id", async (req: Request, res: Response) => {
   const companyId = resolveCompanyId(req);
-  const id = Number(req.params.id);
+  const id = Number(String(req.params.id));
   const { name, sku, unit, costPrice, description, isActive } = req.body as {
     name?: string; sku?: string; unit?: string; costPrice?: number; description?: string; isActive?: boolean;
   };
@@ -188,7 +188,7 @@ router.put("/raw-materials/:id", async (req: Request, res: Response) => {
 
 router.delete("/raw-materials/:id", async (req: Request, res: Response) => {
   const companyId = resolveCompanyId(req);
-  const id = Number(req.params.id);
+  const id = Number(String(req.params.id));
   const check = await db.execute(sql`SELECT id FROM raw_materials WHERE id = ${id} AND company_id = ${companyId}`);
   if (check.rows.length === 0) { res.status(404).json({ message: "Bahan baku tidak ditemukan" }); return; }
   await db.execute(sql`DELETE FROM raw_materials WHERE id = ${id} AND company_id = ${companyId}`);
@@ -235,7 +235,7 @@ router.get("/recipes", async (req: Request, res: Response) => {
 
 router.get("/recipes/:id", async (req: Request, res: Response) => {
   const companyId = resolveCompanyId(req);
-  const id = Number(req.params.id);
+  const id = Number(String(req.params.id));
   const rows = await db.execute(sql`
     SELECT r.id, r.company_id, r.product_id, r.note, r.is_active, r.created_at, r.updated_at,
            p.name AS product_name, p.sku AS product_sku
@@ -310,7 +310,7 @@ router.post("/recipes", async (req: Request, res: Response) => {
 
 router.delete("/recipes/:id", async (req: Request, res: Response) => {
   const companyId = resolveCompanyId(req);
-  const id = Number(req.params.id);
+  const id = Number(String(req.params.id));
   const check = await db.execute(sql`SELECT id FROM recipes WHERE id = ${id} AND company_id = ${companyId}`);
   if (check.rows.length === 0) { res.status(404).json({ message: "Recipe tidak ditemukan" }); return; }
   await db.execute(sql`DELETE FROM recipes WHERE id = ${id} AND company_id = ${companyId}`);

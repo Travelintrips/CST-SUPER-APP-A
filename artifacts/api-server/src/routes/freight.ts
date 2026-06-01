@@ -451,28 +451,28 @@ router.put("/freight-shipments/:id", async (req, res) => {
         if (!row?.phone) return;
         const orderData: LogisticOrderData = {
           id: Number(row.id),
-          orderNumber: String(row.order_number ?? ""),
-          customerName: String(row.customer_name ?? ""),
-          companyName: String(row.company_name ?? ""),
+          orderNumber: String(row.orderNumber ?? ""),
+          customerName: String(row.customerName ?? ""),
+          companyName: String(row.companyName ?? ""),
           email: String(row.email ?? ""),
           phone: String(row.phone ?? ""),
-          orderType: row.order_type ? String(row.order_type) : undefined,
-          shipmentType: String(row.shipment_type ?? ""),
+          orderType: row.orderType ? String(row.orderType) : undefined,
+          shipmentType: String(row.shipmentType ?? ""),
           origin: String(row.origin ?? ""),
           destination: String(row.destination ?? ""),
           commodity: row.commodity ? String(row.commodity) : null,
-          cargoDescription: row.cargo_description ? String(row.cargo_description) : null,
-          grossWeight: row.gross_weight ? Number(row.gross_weight) : null,
-          volumeCbm: row.volume_cbm ? Number(row.volume_cbm) : null,
-          jumlahKoli: row.jumlah_koli ? Number(row.jumlah_koli) : null,
-          grandTotal: row.grand_total ? Number(row.grand_total) : 0,
-          serviceList: String(row.shipment_type ?? ""),
-          requiredDate: row.required_date ? String(row.required_date) : null,
+          cargoDescription: row.cargoDescription ? String(row.cargoDescription) : null,
+          grossWeight: row.grossWeight ? Number(row.grossWeight) : null,
+          volumeCbm: row.volumeCbm ? Number(row.volumeCbm) : null,
+          jumlahKoli: row.jumlahKoli ? Number(row.jumlahKoli) : null,
+          grandTotal: row.grandTotal ? Number(row.grandTotal) : 0,
+          serviceList: String(row.shipmentType ?? ""),
+          requiredDate: row.requiredDate ? String(row.requiredDate) : null,
           notes: row.notes ? String(row.notes) : null,
-          jamOrder: row.jam_order ? String(row.jam_order) : null,
-          vehicleType: row.truck_type ? String(row.truck_type) : null,
-          createdAt: row.created_at ? new Date(String(row.created_at)) : null,
-          publicRfqToken: row.public_rfq_token ? String(row.public_rfq_token) : null,
+          jamOrder: row.jamOrder ? String(row.jamOrder) : null,
+          vehicleType: row.truckType ? String(row.truckType) : null,
+          createdAt: row.createdAt ? new Date(String(row.createdAt)) : null,
+          publicRfqToken: row.publicRfqToken ? String(row.publicRfqToken) : null,
         };
         if (newStatus === "in_transit") {
           sendShipmentUpdateNotification(orderData, {
@@ -536,7 +536,7 @@ router.post("/freight-shipments/:shipmentId/stages", async (req, res) => {
   const shipmentId = Number(req.params.shipmentId);
   if (!Number.isInteger(shipmentId) || shipmentId <= 0) return res.status(400).json({ message: "Invalid shipmentId" });
   const { stageType, vendorName, date, status, notes } = req.body;
-  let validatedStageType: StageType;
+  let validatedStageType: ShipmentStageType;
   let validatedStatus: StageStatus | undefined;
   try { validatedStageType = validateStageType(stageType); }
   catch (e: any) { return res.status(400).json({ message: e.message }); }

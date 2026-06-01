@@ -1020,7 +1020,7 @@ export default function SalesDocumentDetailPage() {
                 </Card>
               )}
 
-              {doc.logisticOrderId && (
+              {!!(doc as any).logisticOrderId && (
                 <Card className="border-indigo-200/60 bg-indigo-50/30">
                   <CardContent className="px-4 py-3 flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -1028,7 +1028,7 @@ export default function SalesDocumentDetailPage() {
                       <span className="text-sm text-indigo-700 font-medium">Terhubung ke Logistic Order</span>
                     </div>
                     <Button variant="outline" size="sm" asChild className="gap-1.5 text-indigo-600 border-indigo-200 hover:bg-indigo-100">
-                      <Link href={`/logistics/orders/${doc.logisticOrderId}`}>
+                      <Link href={`/logistics/orders/${(doc as any).logisticOrderId}`}>
                         Lihat <ExternalLink className="h-3 w-3" />
                       </Link>
                     </Button>

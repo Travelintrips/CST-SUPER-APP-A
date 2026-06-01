@@ -749,18 +749,20 @@ export default function BookPage() {
       nomorPenerima: customerForm.nomorPenerima || null,
       jamOrder: str(truckingInputData.pickupTime) || null,
       // [MULTI-MODE] transport mode fields
-      ...((customerForm.transportMode) ? { transportMode: customerForm.transportMode as "sea" | "air" | "land" | "multimodal" } : {}),
-      originDistrict: customerForm.originDistrict || undefined,
-      destDistrict: customerForm.destDistrict || undefined,
-      pickupDate: customerForm.pickupDate || str(truckingInputData.pickupDate) || undefined,
-      pickupTime: customerForm.pickupTime || str(truckingInputData.pickupTime) || undefined,
-      truckType: customerForm.truckType || str(truckingInputData.vehicleType) || undefined,
-      originPort: customerForm.originPort || undefined,
-      destPort: customerForm.destPort || undefined,
-      weightKg: customerForm.weightKg ? parseFloat(customerForm.weightKg) : undefined,
-      incoterm: customerForm.incoterm || undefined,
-      etd: customerForm.etd || undefined,
-      eta: customerForm.eta || undefined,
+      ...(({
+        ...(customerForm.transportMode ? { transportMode: customerForm.transportMode } : {}),
+        originDistrict: customerForm.originDistrict || undefined,
+        destDistrict: customerForm.destDistrict || undefined,
+        pickupDate: customerForm.pickupDate || str(truckingInputData.pickupDate) || undefined,
+        pickupTime: customerForm.pickupTime || str(truckingInputData.pickupTime) || undefined,
+        truckType: customerForm.truckType || str(truckingInputData.vehicleType) || undefined,
+        originPort: customerForm.originPort || undefined,
+        destPort: customerForm.destPort || undefined,
+        weightKg: customerForm.weightKg ? parseFloat(customerForm.weightKg) : undefined,
+        incoterm: customerForm.incoterm || undefined,
+        etd: customerForm.etd || undefined,
+        eta: customerForm.eta || undefined,
+      }) as Record<string, unknown>),
       paymentMethod: paymentType === "gateway"
         ? "payment_gateway"
         : paymentType === "transfer"

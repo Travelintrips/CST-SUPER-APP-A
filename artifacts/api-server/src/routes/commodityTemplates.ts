@@ -100,7 +100,7 @@ commodityTemplatesRouter.get("/", async (_req: Request, res: Response) => {
 /* ─────────────── GET DETAIL ─────────────── */
 
 commodityTemplatesRouter.get("/:id", async (req: Request, res: Response) => {
-  const id = numId(req.params["id"]);
+  const id = numId(req.params["id"] as string);
   if (!id) return res.status(400).json({ message: "ID tidak valid" });
 
   try {
@@ -158,7 +158,7 @@ commodityTemplatesRouter.post("/", async (req: Request, res: Response) => {
 /* ─────────────── UPDATE TEMPLATE ─────────────── */
 
 commodityTemplatesRouter.put("/:id", async (req: Request, res: Response) => {
-  const id = numId(req.params["id"]);
+  const id = numId(req.params["id"] as string);
   if (!id) return res.status(400).json({ message: "ID tidak valid" });
 
   const { name, icon, description, sortOrder } = req.body as Record<string, unknown>;
@@ -182,7 +182,7 @@ commodityTemplatesRouter.put("/:id", async (req: Request, res: Response) => {
 /* ─────────────── DELETE TEMPLATE ─────────────── */
 
 commodityTemplatesRouter.delete("/:id", async (req: Request, res: Response) => {
-  const id = numId(req.params["id"]);
+  const id = numId(req.params["id"] as string);
   if (!id) return res.status(400).json({ message: "ID tidak valid" });
 
   try {
@@ -197,7 +197,7 @@ commodityTemplatesRouter.delete("/:id", async (req: Request, res: Response) => {
 /* ─────────────── FIELDS ─────────────── */
 
 commodityTemplatesRouter.post("/:id/fields", async (req: Request, res: Response) => {
-  const id = numId(req.params["id"]);
+  const id = numId(req.params["id"] as string);
   if (!id) return res.status(400).json({ message: "ID tidak valid" });
 
   const { fieldKey, label, fieldType, unit, required, options, sortOrder } = req.body as Record<string, unknown>;
@@ -220,7 +220,7 @@ commodityTemplatesRouter.post("/:id/fields", async (req: Request, res: Response)
 });
 
 commodityTemplatesRouter.put("/fields/:fieldId", async (req: Request, res: Response) => {
-  const fieldId = numId(req.params["fieldId"]);
+  const fieldId = numId(req.params["fieldId"] as string);
   if (!fieldId) return res.status(400).json({ message: "ID tidak valid" });
 
   const { label, fieldType, unit, required, options, sortOrder } = req.body as Record<string, unknown>;
@@ -247,7 +247,7 @@ commodityTemplatesRouter.put("/fields/:fieldId", async (req: Request, res: Respo
 });
 
 commodityTemplatesRouter.delete("/fields/:fieldId", async (req: Request, res: Response) => {
-  const fieldId = numId(req.params["fieldId"]);
+  const fieldId = numId(req.params["fieldId"] as string);
   if (!fieldId) return res.status(400).json({ message: "ID tidak valid" });
   try {
     await db.execute(sql`DELETE FROM commodity_template_fields WHERE id = ${fieldId}`);
@@ -260,7 +260,7 @@ commodityTemplatesRouter.delete("/fields/:fieldId", async (req: Request, res: Re
 /* ─────────────── REQUIRED DOCS ─────────────── */
 
 commodityTemplatesRouter.post("/:id/docs", async (req: Request, res: Response) => {
-  const id = numId(req.params["id"]);
+  const id = numId(req.params["id"] as string);
   if (!id) return res.status(400).json({ message: "ID tidak valid" });
 
   const { docName, description, required, sortOrder } = req.body as Record<string, unknown>;
@@ -279,7 +279,7 @@ commodityTemplatesRouter.post("/:id/docs", async (req: Request, res: Response) =
 });
 
 commodityTemplatesRouter.put("/docs/:docId", async (req: Request, res: Response) => {
-  const docId = numId(req.params["docId"]);
+  const docId = numId(req.params["docId"] as string);
   if (!docId) return res.status(400).json({ message: "ID tidak valid" });
 
   const { docName, description, required, sortOrder } = req.body as Record<string, unknown>;
@@ -300,7 +300,7 @@ commodityTemplatesRouter.put("/docs/:docId", async (req: Request, res: Response)
 });
 
 commodityTemplatesRouter.delete("/docs/:docId", async (req: Request, res: Response) => {
-  const docId = numId(req.params["docId"]);
+  const docId = numId(req.params["docId"] as string);
   if (!docId) return res.status(400).json({ message: "ID tidak valid" });
   try {
     await db.execute(sql`DELETE FROM commodity_required_docs WHERE id = ${docId}`);
@@ -313,7 +313,7 @@ commodityTemplatesRouter.delete("/docs/:docId", async (req: Request, res: Respon
 /* ─────────────── CHECKLISTS ─────────────── */
 
 commodityTemplatesRouter.post("/:id/checklists", async (req: Request, res: Response) => {
-  const id = numId(req.params["id"]);
+  const id = numId(req.params["id"] as string);
   if (!id) return res.status(400).json({ message: "ID tidak valid" });
 
   const { item, category, sortOrder } = req.body as Record<string, unknown>;
@@ -332,7 +332,7 @@ commodityTemplatesRouter.post("/:id/checklists", async (req: Request, res: Respo
 });
 
 commodityTemplatesRouter.put("/checklists/:itemId", async (req: Request, res: Response) => {
-  const itemId = numId(req.params["itemId"]);
+  const itemId = numId(String(req.params["itemId"] ?? ""));
   if (!itemId) return res.status(400).json({ message: "ID tidak valid" });
 
   const { item, category, sortOrder } = req.body as Record<string, unknown>;
@@ -352,7 +352,7 @@ commodityTemplatesRouter.put("/checklists/:itemId", async (req: Request, res: Re
 });
 
 commodityTemplatesRouter.delete("/checklists/:itemId", async (req: Request, res: Response) => {
-  const itemId = numId(req.params["itemId"]);
+  const itemId = numId(String(req.params["itemId"] ?? ""));
   if (!itemId) return res.status(400).json({ message: "ID tidak valid" });
   try {
     await db.execute(sql`DELETE FROM commodity_checklists WHERE id = ${itemId}`);

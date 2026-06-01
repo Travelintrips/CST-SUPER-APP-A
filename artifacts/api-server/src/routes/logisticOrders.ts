@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { Router, Request, Response } from "express";
 import { randomBytes } from "crypto";
 import { db } from "@workspace/db";
@@ -1014,11 +1015,11 @@ logisticOrdersRouter.post("/:id/progress/set", requireClerkUser, async (req: Req
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
   const { stepKey, notes } = req.body as { stepKey: string; notes?: string };
   const validKeys = PROGRESS_STEPS.map((s) => s.key);
-  if (!validKeys.includes(stepKey as StepKey))
+  if (!validKeys.includes(stepKey as any))
     return res.status(400).json({ message: "Step tidak valid" });
   const user = (req as any).user;
   const actor = user?.name || user?.email || "Admin";
-  await updateOrderProgress(id, stepKey as StepKey, "admin", actor, notes ?? `Manual set oleh ${actor}`);
+  await updateOrderProgress(id, stepKey as any, "admin", actor, notes ?? `Manual set oleh ${actor}`);
   return res.json({ ok: true });
 });
 
@@ -1028,7 +1029,7 @@ logisticOrdersRouter.put("/:id/progress/:stepKey/photo", requireClerkUser, async
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
   const { stepKey } = req.params;
   const validKeys = PROGRESS_STEPS.map((s) => s.key);
-  if (!validKeys.includes(stepKey as StepKey))
+  if (!validKeys.includes(stepKey as any))
     return res.status(400).json({ message: "Step tidak valid" });
   const { photoUrl } = req.body as { photoUrl?: string };
   if (!photoUrl || typeof photoUrl !== "string" || !photoUrl.startsWith("http"))
@@ -1045,7 +1046,7 @@ logisticOrdersRouter.put("/:id/progress/:stepKey/photo", requireClerkUser, async
       return res.status(404).json({ message: "Progress event tidak ditemukan untuk order + step ini" });
     return res.json({ ok: true, updated: (result.rows as any[])[0] });
   } catch (err) {
-    logger.error({ err, id, stepKey }, "admin set progress photo failed");
+    console.error("admin set progress photo failed", { err, id, stepKey });
     return res.status(500).json({ message: "Gagal update foto" });
   }
 });
@@ -1056,9 +1057,9 @@ logisticOrdersRouter.delete("/:id/progress/:stepKey", requireClerkUser, async (r
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
   const { stepKey } = req.params;
   const validKeys = PROGRESS_STEPS.map((s) => s.key);
-  if (!validKeys.includes(stepKey as StepKey))
+  if (!validKeys.includes(stepKey as any))
     return res.status(400).json({ message: "Step tidak valid" });
-  await deleteOrderProgress(id, stepKey as StepKey);
+  await deleteOrderProgress(id, stepKey as any);
   return res.json({ ok: true });
 });
 
@@ -1228,7 +1229,7 @@ async function notifyVendorStatusChange(
 
     sendVendorOrderStatusChangeNotification(order, label, note, vendor.name ?? "—", phone);
     const notifLabel = VENDOR_STATUS_LABELS[status] ?? status;
-    const notifNote  = VENDOR_STATUS_NOTES[status] ?? "";
+    const notifNote  = VENDOR_WA_NOTES[status as keyof typeof VENDOR_WA_NOTES] ?? "";
     sendVendorOrderStatusChangeNotification(order, notifLabel, notifNote, vendor.name ?? "—", phone);
 
   } catch {

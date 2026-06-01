@@ -300,8 +300,9 @@ export function invalidateWaTemplateCache() {
 export async function getWaTemplateConfig(
   recipient: string,
   workflow: string,
-  defaultBody: string,
+  defaultBody: string | string[],
 ): Promise<string> {
+  const _defaultBody = Array.isArray(defaultBody) ? defaultBody.join("\n") : defaultBody;
   if (!_wfTemplateCache || Date.now() - _wfTemplateCacheAt > WA_TEMPLATE_TTL) {
     _wfTemplateCache = new Map();
     _wfTemplateCacheAt = Date.now();
@@ -310,7 +311,7 @@ export async function getWaTemplateConfig(
       for (const row of rows) _wfTemplateCache.set(`${row.recipient}__${row.workflow}`, row.body);
     } catch { /* use hardcoded defaults if DB unavailable */ }
   }
-  return _wfTemplateCache.get(`${recipient}__${workflow}`) ?? defaultBody;
+  return _wfTemplateCache.get(`${recipient}__${workflow}`) ?? _defaultBody;
 }
 
 function getApproveFormUrl(orderNumber: string): string {

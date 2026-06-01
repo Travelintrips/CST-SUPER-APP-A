@@ -2957,8 +2957,8 @@ router.get("/calculator-rates", async (_req, res) => {
 // Returns role-based stats: customer gets order/invoice stats, vendor gets RFQ stats
 router.get("/me/dashboard-stats", requirePortalAuth, async (req, res) => {
   const portalReq = req as PortalAuthReq;
-  const customerId = portalReq.portalUser.id;
-  const role = portalReq.portalUser.role;
+  const customerId = portalReq.portalCustomerId;
+  const role = portalReq.portalRole;
 
   try {
     if (role === "vendor") {

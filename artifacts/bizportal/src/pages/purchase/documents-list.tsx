@@ -87,10 +87,7 @@ export default function PurchaseDocumentsListPage({ kind }: Props) {
   const deleteMut = useDeletePurchaseDocument();
   const actionMut = usePurchaseDocumentAction();
 
-  const { data: docs } = useListPurchaseDocuments({
-    kind,
-    ...(!isRfq && paymentFilter !== "all" ? { paymentStatus: paymentFilter as "paid" | "unpaid" | "partial" | "overdue" } : {}),
-  });
+  const { data: docs } = (useListPurchaseDocuments as any)({ kind, ...(!isRfq && paymentFilter !== "all" ? { paymentStatus: paymentFilter } : {}) });
 
   const allDocs = docs ?? [];
 
