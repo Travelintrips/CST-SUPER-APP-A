@@ -50,6 +50,7 @@ export const driverJobsTable = pgTable("driver_jobs", {
   podSubmittedAt: timestamp("pod_submitted_at"),
   podGeoLat: text("pod_geo_lat"),
   podGeoLng: text("pod_geo_lng"),
+  podSignatureDataUrl: text("pod_signature_data_url"),
   assignedAt: timestamp("assigned_at").defaultNow().notNull(),
   completedAt: timestamp("completed_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

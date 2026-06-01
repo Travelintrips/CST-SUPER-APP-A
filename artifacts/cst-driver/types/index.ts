@@ -86,6 +86,7 @@ export interface PODPayload {
   receiverPosition?: string;
   deliveryNotes?: string;
   podPhotos?: string[];
+  signatureDataUrl?: string;
   submittedAt?: string;
   geoLocation?: { lat: number; lng: number };
 }

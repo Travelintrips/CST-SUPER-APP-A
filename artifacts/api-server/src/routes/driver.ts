@@ -237,6 +237,7 @@ export async function runDriverPodMigration(): Promise<void> {
       ALTER TABLE driver_jobs ADD COLUMN IF NOT EXISTS pod_submitted_at TIMESTAMPTZ;
       ALTER TABLE driver_jobs ADD COLUMN IF NOT EXISTS pod_geo_lat TEXT;
       ALTER TABLE driver_jobs ADD COLUMN IF NOT EXISTS pod_geo_lng TEXT;
+      ALTER TABLE driver_jobs ADD COLUMN IF NOT EXISTS pod_signature_data_url TEXT;
     `);
     logger.info("Driver POD migration: ok");
   } catch (err) {
@@ -475,6 +476,7 @@ router.post("/jobs/:jobId/pod", requireDriverAuth, async (req, res) => {
     receiverPosition,
     deliveryNotes,
     podPhotos,
+    signatureDataUrl,
     submittedAt,
     geoLocation,
   } = req.body ?? {};
@@ -508,6 +510,7 @@ router.post("/jobs/:jobId/pod", requireDriverAuth, async (req, res) => {
       podSubmittedAt,
       podGeoLat: geoLat,
       podGeoLng: geoLng,
+      podSignatureDataUrl: signatureDataUrl ? String(signatureDataUrl) : null,
       status: "DELIVERED",
     })
     .where(eq(driverJobsTable.id, jobId))
