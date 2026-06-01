@@ -11,6 +11,14 @@
  *   /sport-center/*    → Sport Center    :3002
  *   /customer-portal/* → redirect strip prefix
  *   /*                 → Customer Portal :5173
+ *   /api/*              → API Server      :8080
+ *   /pos-images/*       → API Server      :8080
+ *   /q/*                → API Server      :8080
+ *   /s/*                → API Server      :8080
+ *   /bizportal/*        → BizPortal       :3000
+ *   /sport-center/*     → Sport Center    :3002
+ *   /customer-portal/*  → redirect strip  (removes prefix)
+ *   /*                  → Customer Portal :5173
  *
  * Retry behaviour:
  *   When an upstream is not yet ready (ECONNREFUSED / ECONNRESET / ETIMEDOUT),
@@ -34,6 +42,7 @@ const RETRYABLE_CODES = new Set(["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENO
 
 const API_PORT           = Number(process.env.API_PORT           ?? 8080);
 const BIZPORTAL_PORT     = Number(process.env.BIZPORTAL_PORT     ?? 18442);
+const BIZPORTAL_PORT     = Number(process.env.BIZPORTAL_PORT     ?? 3000);
 const CUSTOMER_PORT      = Number(process.env.CUSTOMER_PORT      ?? 5173);
 const LOGISTIC_ORDER_PORT = Number(process.env.LOGISTIC_ORDER_PORT ?? 19368);
 
@@ -56,6 +65,11 @@ const SERVICE_NAMES = {
   [CUSTOMER_PORT]:       "Customer Portal",
   [LOGISTIC_ORDER_PORT]: "Logistic Order",
   3002:                  "Sport Center",
+  [API_PORT]:             "API Server",
+  [BIZPORTAL_PORT]:       "BizPortal",
+  [CUSTOMER_PORT]:        "Customer Portal",
+  [LOGISTIC_ORDER_PORT]:  "Logistic Order",
+  3002:                   "Sport Center",
 };
 
 function resolve(url) {
