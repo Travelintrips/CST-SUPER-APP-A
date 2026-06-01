@@ -126,7 +126,7 @@ export default function VendorPoAcceptPage() {
                 <div key={i} className="flex justify-between items-start py-2 border-b border-gray-100 last:border-0">
                   <div className="flex-1">
                     <p className="font-medium text-gray-800 text-sm">{String(line.name ?? "")}</p>
-                    {line.description && <p className="text-xs text-gray-500">{String(line.description)}</p>}
+                    {!!line.description && <p className="text-xs text-gray-500">{String(line.description)}</p>}
                     <p className="text-xs text-gray-500">
                       {Number(line.quantity).toLocaleString("id-ID")} × {idr(Number(line.unit_cost ?? 0))}
                     </p>

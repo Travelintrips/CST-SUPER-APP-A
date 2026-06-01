@@ -52,6 +52,7 @@ export default function Orders() {
   const [cancellingKey, setCancellingKey] = useState<string | null>(null);
   const { t } = useLanguage();
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     if (!token) setLocation("/login");
@@ -86,7 +87,6 @@ export default function Orders() {
   }
 
   const headers = getAuthHeaders() as Record<string, string>;
-  const queryClient = useQueryClient();
 
   const { data: crmResponse, isLoading: isLoadingCrm } = useListPortalOrders({
     query: { queryKey: ["listPortalOrders", token], enabled: !!token },

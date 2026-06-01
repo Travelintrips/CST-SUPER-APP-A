@@ -31,7 +31,7 @@ const WORKFLOW_VALID_RECIPIENTS: Partial<Record<WorkflowKey, RecipientKey[]>> = 
   customer_rejection:        ["admin_personal"],
   op_confirm_submitted:      ["admin_personal"],
   customer_rfq_response:     ["admin_personal"],
-  invoice_issued:            ["admin_personal", "customer"],
+  invoice_issued:            ["admin_personal", "admin_group", "customer"],
 };
 
 const RECIPIENT_META: Record<RecipientKey, { label: string; icon: string }> = {

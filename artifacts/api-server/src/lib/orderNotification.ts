@@ -651,6 +651,13 @@ const DEFAULT_TPL = {
       "{{vendorComparisonLink}}",
       "_{{timestamp}}_",
     ].join("\n"),
+    invoice_issued: [
+      "🧾 *Invoice Diterbitkan — {{invNumber}}*",
+      "Order: {{orderNumber}} | Customer: *{{customerName}}*",
+      "Subtotal: {{subtotalDisplay}} | PPN: {{taxAmountDisplay}}",
+      "Total: *{{grandTotal}}* | Jatuh Tempo: {{dueStr}}",
+      "_{{timestamp}}_",
+    ].join("\n"),
   },
   customer: {
     order_new: ["✅ *PESANAN ANDA DITERIMA*","━━━━━━━━━━━━━━━━━━","Halo *{{customerName}}*,","","Terima kasih telah mempercayakan kepercayaan Anda kepada CST Logistics.","","No. Order       : *{{orderNumber}}*","Tanggal         : {{tanggal}}","Jam             : {{jam}}","Status          : Menunggu Konfirmasi","Rute            : {{route}}","Kategori Barang : {{commodity}}","Berat           : {{grossWeightDisplay}}","Volume          : {{volumeDisplay}}","{{#if product}}","🛍️ Produk       :","{{productList}}","{{/if}}","Layanan         : {{serviceList}}","Tgl Butuh       : {{requiredDate}}","━━━━━━━━━━━━━━━━━━","💵 Subtotal      : Rp {{subtotalEst}}","🧾 {{taxLabel}}  : Rp {{taxEst}}","💰 Total Est.    : Rp {{totalEst}}","━━━━━━━━━━━━━━━━━━","Tim kami sedang memproses permintaan Anda dan akan segera menghubungi Anda.","","📞 Jakarta: (021) 6241234 | Tangerang: (021) 5591234","","🔗 Pantau status order Anda:","{{trackUrl}}","","_Dikirim: {{timestamp}}_"].join("\n"),
@@ -1159,6 +1166,7 @@ export function getWaDefaultTemplatesFlatMap(): Record<string, string> {
   add("admin_group", "shipment_update", ag.shipment_update);
   add("admin_group", "customs_update", ag.customs_update);
   add("admin_group", "vendor_submission_summary", ag.vendor_submission_summary);
+  add("admin_group", "invoice_issued", ag.invoice_issued);
 
   // customer
   const cu = DEFAULT_TPL.customer;
@@ -2987,6 +2995,13 @@ export async function sendInvoiceIssuedNotification(
     const msg = renderTemplate(tpl, vars);
     sendWhatsApp(adminWaPhone, msg, { context: `invoice_issued_admin`, refType: "invoice", refId: dedupRef })
       .catch((e: unknown) => logger.error({ e }, "WA invoice_issued admin failed"));
+  }
+  const adminGroupWa = await getAdminGroupWa();
+  if (adminGroupWa) {
+    const tpl = await getWaTemplateConfig("admin_group", "invoice_issued", DEFAULT_TPL.admin_group.invoice_issued);
+    const msg = renderTemplate(tpl, vars);
+    sendWhatsApp(adminGroupWa, msg, { context: `invoice_issued_group`, refType: "invoice", refId: dedupRef })
+      .catch((e: unknown) => logger.error({ e }, "WA invoice_issued group failed"));
   }
 }
 
