@@ -24,6 +24,10 @@ args = "Gateway"
 task = "workflow.run"
 args = "API Server"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "BizPortal"
+
 [[workflows.workflow]]
 name = "Gateway"
 author = "agent"
@@ -44,6 +48,18 @@ author = "agent"
 task = "shell.exec"
 args = "cd artifacts/api-server && bash start-dev.sh"
 waitForPort = 18444
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow]]
+name = "BizPortal"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/bizportal && bash start-dev.sh"
+waitForPort = 8080
 
 [workflows.workflow.metadata]
 outputType = "console"
@@ -113,10 +129,6 @@ externalPort = 5173
 [[ports]]
 localPort = 8080
 externalPort = 8080
-
-[[ports]]
-localPort = 8081
-externalPort = 8081
 
 [[ports]]
 localPort = 18442
