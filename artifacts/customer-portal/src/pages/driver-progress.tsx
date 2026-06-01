@@ -18,10 +18,10 @@ const STEP_ICON: Record<string, string> = {
   IN_TRANSIT: "🛣️",
   ARRIVED:    "📍",
   DELIVERED:  "📦",
-  COMPLETED:  "✅",
+  COMPLETED:  "📋",
 };
 
-const PHOTO_REQUIRED = new Set(["PICKUP", "ARRIVED", "DELIVERED"]);
+const PHOTO_REQUIRED = new Set(["PICKUP", "ARRIVED", "DELIVERED", "COMPLETED"]);
 
 export default function DriverProgressPage() {
   const { token } = useParams<{ token: string }>();

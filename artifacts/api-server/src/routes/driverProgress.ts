@@ -17,14 +17,14 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 
 const objectStorage = new ObjectStorageService();
 
 const ALLOWED_STEPS = ["PICKUP", "IN_TRANSIT", "ARRIVED", "DELIVERED", "COMPLETED"] as const;
-const PHOTO_REQUIRED_STEPS = new Set(["PICKUP", "ARRIVED", "DELIVERED"]);
+const PHOTO_REQUIRED_STEPS = new Set(["PICKUP", "ARRIVED", "DELIVERED", "COMPLETED"]);
 
 const STEP_LABEL: Record<string, string> = {
   PICKUP:     "Penjemputan",
   IN_TRANSIT: "Dalam Perjalanan",
   ARRIVED:    "Tiba di Tujuan",
   DELIVERED:  "Terkirim",
-  COMPLETED:  "Selesai",
+  COMPLETED:  "Bukti Pengiriman",
 };
 
 const STEP_TO_LOGISTIC_STATUS: Record<string, string> = {
