@@ -1885,6 +1885,106 @@ vendorMiniFormRouter.get("/admin/schemas", async (req: Request, res: Response) =
   return res.json(SERVICE_SCHEMAS);
 });
 
+// ── ADMIN: GET /api/vendor-form/admin/orders/:orderId/snapshot ────────────────
+// Debug endpoint — lihat template snapshot aktif pada sebuah order.
+// Menggabungkan snapshot dari logistic_orders + semua VMF link aktif milik order.
+
+vendorMiniFormRouter.get("/admin/orders/:orderId/snapshot", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const orderId = Number(req.params["orderId"]);
+  if (isNaN(orderId)) return res.status(400).json({ error: "orderId tidak valid" });
+  try {
+    // 1. Ambil data order
+    const [order] = await db
+      .select({
+        id:              logisticOrdersTable.id,
+        orderNumber:     logisticOrdersTable.orderNumber,
+        shipmentType:    logisticOrdersTable.shipmentType,
+        categoryKey:     logisticOrdersTable.categoryKey,
+        templateId:      logisticOrdersTable.templateId,
+        templateVersion: logisticOrdersTable.templateVersion,
+        templateSnapshot: logisticOrdersTable.templateSnapshot,
+      })
+      .from(logisticOrdersTable)
+      .where(eq(logisticOrdersTable.id, orderId));
+    if (!order) return res.status(404).json({ error: "Order tidak ditemukan" });
+
+    // 2. Ambil semua VMF links (aktif + non-aktif) untuk order ini
+    const links = await db
+      .select({
+        id:              vendorMiniFormLinksTable.id,
+        token:           vendorMiniFormLinksTable.token,
+        serviceType:     vendorMiniFormLinksTable.serviceType,
+        isActive:        vendorMiniFormLinksTable.isActive,
+        categoryKey:     vendorMiniFormLinksTable.categoryKey,
+        templateId:      vendorMiniFormLinksTable.templateId,
+        templateVersion: vendorMiniFormLinksTable.templateVersion,
+        templateSnapshot: vendorMiniFormLinksTable.templateSnapshot,
+        createdAt:       vendorMiniFormLinksTable.createdAt,
+      })
+      .from(vendorMiniFormLinksTable)
+      .where(eq(vendorMiniFormLinksTable.orderId, orderId))
+      .orderBy(vendorMiniFormLinksTable.createdAt);
+
+    // 3. Tentukan sumber snapshot aktif
+    const orderHasSnapshot = !!order.templateSnapshot;
+    const activeLinks = links.filter(l => l.isActive);
+    const activeLinksWithSnapshot = activeLinks.filter(l => !!l.templateSnapshot);
+    const snapshotSource: "order" | "active_link" | "none" =
+      orderHasSnapshot ? "order"
+      : activeLinksWithSnapshot.length > 0 ? "active_link"
+      : "none";
+
+    // 4. Helper: ringkasan snapshot
+    function summarizeSnapshot(snap: Record<string, unknown> | null | undefined) {
+      if (!snap) return null;
+      return {
+        templateKind:    snap["templateKind"] ?? null,
+        label:           snap["label"] ?? snap["category"] ?? null,
+        version:         snap["version"] ?? null,
+        serviceType:     snap["serviceType"] ?? null,
+        fieldCount:      Array.isArray(snap["fields"]) ? (snap["fields"] as unknown[]).length
+                         : Array.isArray(snap["customFields"]) ? (snap["customFields"] as unknown[]).length
+                         : null,
+        checklistCount:  Array.isArray(snap["checklist"]) ? (snap["checklist"] as unknown[]).length : null,
+        requiredDocsCount: Array.isArray(snap["requiredDocuments"]) ? (snap["requiredDocuments"] as unknown[]).length : null,
+        source:          snap["source"] ?? null,
+      };
+    }
+
+    return res.json({
+      orderId:         order.id,
+      orderNumber:     order.orderNumber,
+      shipmentType:    order.shipmentType,
+      snapshotSource,
+      order: {
+        categoryKey:     order.categoryKey,
+        templateId:      order.templateId,
+        templateVersion: order.templateVersion,
+        hasSnapshot:     orderHasSnapshot,
+        snapshotSummary: summarizeSnapshot(order.templateSnapshot as Record<string, unknown> | null),
+        snapshotFull:    order.templateSnapshot ?? null,
+      },
+      links: links.map(l => ({
+        id:              l.id,
+        token:           l.token,
+        serviceType:     l.serviceType,
+        isActive:        l.isActive,
+        categoryKey:     l.categoryKey,
+        templateId:      l.templateId,
+        templateVersion: l.templateVersion,
+        hasSnapshot:     !!l.templateSnapshot,
+        snapshotSummary: summarizeSnapshot(l.templateSnapshot as Record<string, unknown> | null),
+        snapshotFull:    l.templateSnapshot ?? null,
+        createdAt:       l.createdAt,
+      })),
+    });
+  } catch (err) {
+    req.log?.error({ err }, "GET /admin/orders/:orderId/snapshot error");
+    return res.status(500).json({ error: "Gagal mengambil snapshot" });
+  }
+});
+
 // ── ADMIN: GET /api/vendor-form/admin/links ───────────────────────────────────
 
 vendorMiniFormRouter.get("/admin/links", async (req: Request, res: Response) => {
