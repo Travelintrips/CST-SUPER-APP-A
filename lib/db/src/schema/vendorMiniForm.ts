@@ -29,8 +29,13 @@ export const vendorMiniFormLinksTable = pgTable("vendor_mini_form_links", {
   adminNotes: text("admin_notes"),
   // Target audience: vendor | customer | admin
   formTarget: text("form_target").notNull().default("vendor"),
-  // Commodity template integration
+  // Commodity template integration (legacy)
   commodityTemplateId: integer("commodity_template_id"),
+  // Product Template Engine columns (Step 1F cutover)
+  categoryKey: text("category_key"),
+  templateId: text("template_id"),
+  templateVersion: text("template_version"),
+  templateSnapshot: jsonb("template_snapshot").$type<Record<string, unknown> | null>(),
 });
 
 export const vendorMiniFormSubmissionsTable = pgTable("vendor_mini_form_submissions", {

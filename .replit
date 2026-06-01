@@ -44,13 +44,13 @@ waitForPort = 5000
 name = "API Server"
 author = "agent"
 
+[workflows.workflow.metadata]
+outputType = "console"
+
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "cd artifacts/api-server && bash start-dev.sh"
-waitForPort = 8080
-
-[workflows.workflow.metadata]
-outputType = "console"
+waitForPort = 18444
 
 [[workflows.workflow]]
 name = "Customer Portal"
@@ -114,3 +114,11 @@ defaultBucketID = "replit-objstore-e357cc66-19c3-4d73-9ca9-3069d78355d1"
 [[ports]]
 localPort = 3001
 externalPort = 80
+
+[[ports]]
+localPort = 8080
+externalPort = 8080
+
+[[ports]]
+localPort = 18444
+externalPort = 3000
