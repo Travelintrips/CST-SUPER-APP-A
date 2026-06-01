@@ -196,6 +196,7 @@ const CUSTOMER_VISIBLE_STEPS = [
   { key: "In Progress",       label: "Diproses" },
   { key: "In Transit",        label: "Dalam\nPerjalanan" },
   { key: "Delivered",         label: "Terkirim" },
+  { key: "POD Uploaded",      label: "Bukti\nPengiriman" },
   { key: "Invoice Issued",    label: "Invoice" },
   { key: "Completed",         label: "Selesai" },
 ];
@@ -213,9 +214,9 @@ const CUSTOMER_STEP_RANK: Record<string, number> = {
   "Arrived":           5,
   "Delivered":         5,
   "POD Uploaded":      6,
-  "Invoice Issued":    6,
-  "Payment Received":  7,
-  "Completed":         7,
+  "Invoice Issued":    7,
+  "Payment Received":  8,
+  "Completed":         8,
   "New Order":         0,
   "Processing":        1,
 };
