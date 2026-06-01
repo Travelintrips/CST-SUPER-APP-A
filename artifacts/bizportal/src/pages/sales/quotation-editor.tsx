@@ -70,6 +70,7 @@ import {
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Plus, Send, Check, CheckCircle, X, Receipt, Truck, Trash2, FileEdit, Save, Printer, CreditCard, Wallet, FileText, ScanLine, Mail, Search, Package, Wrench, ExternalLink, MessageSquare, Bot, SendHorizonal, Pencil, Loader2 } from "lucide-react";
 import { CorrespondenceTab } from "@/components/CorrespondenceTab";
+import { TemplateSnapshotCard } from "@/components/TemplateSnapshotCard";
 import { useCreateSalesPaymentLink } from "@workspace/api-client-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { LOGISTICS_SUBCATEGORIES } from "@workspace/logistics-constants";
@@ -1053,6 +1054,10 @@ export default function SalesDocumentEditorPage({ kind: propKind }: EditorProps 
             </div>
           </CardContent>
         </Card>
+
+        {(doc as any)?.templateSnapshot && (
+          <TemplateSnapshotCard templateSnapshot={(doc as any).templateSnapshot} />
+        )}
 
         <Card>
           <CardHeader className="flex-row items-center justify-between">
