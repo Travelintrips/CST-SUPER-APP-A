@@ -89,7 +89,7 @@ driverProgressPublicRouter.get("/:token", async (req: Request, res: Response) =>
     if (!order) return res.status(404).json({ error: "Order tidak ditemukan." });
 
     const evRows = await db.execute(sql`
-      SELECT step_key, metadata, gps_latitude, gps_longitude, device_timestamp, map_url, street_view_url
+      SELECT step_key, metadata, gps_latitude, gps_longitude, device_timestamp, map_url, street_view_url, photo_url
       FROM order_progress_events
       WHERE order_id = ${orderId} ORDER BY created_at ASC
     `);
@@ -105,7 +105,11 @@ driverProgressPublicRouter.get("/:token", async (req: Request, res: Response) =>
     }> = {};
     evData.forEach((e) => {
       const meta: typeof completedStepsMeta[string] = {};
-      if (e.metadata?.photoUrl) meta.photoUrl = e.metadata.photoUrl as string;
+      // photo_url column takes priority; fall back to legacy metadata.photoUrl
+      const resolvedPhoto = (e.photo_url as string | null)
+        ?? (e.metadata?.photoUrl as string | undefined)
+        ?? null;
+      if (resolvedPhoto) meta.photoUrl = resolvedPhoto;
       if (e.gps_latitude != null) meta.gpsLatitude = parseFloat(String(e.gps_latitude));
       if (e.gps_longitude != null) meta.gpsLongitude = parseFloat(String(e.gps_longitude));
       if (e.device_timestamp) meta.deviceTimestamp = e.device_timestamp as string;
@@ -168,11 +172,19 @@ driverProgressPublicRouter.post("/:token/photo", upload.single("file"), async (r
 // POST /api/driver-progress/:token  { stepKey, note?, photoUrl?, gpsLatitude?, gpsLongitude?, deviceTimestamp? }
 driverProgressPublicRouter.post("/:token", async (req: Request, res: Response) => {
   const { token } = req.params;
-  const { stepKey, note, photoUrl, gpsLatitude, gpsLongitude, deviceTimestamp } = req.body ?? {};
+  const {
+    stepKey,
+    note,
+    photoUrl, photo_url, proofPhotoUrl, proof_photo_url, attachmentUrl,
+    gpsLatitude, gpsLongitude, deviceTimestamp,
+  } = req.body ?? {};
+  // Accept any of the recognised photo field names from the driver app
+  const resolvedPhotoUrl: string | null =
+    photoUrl ?? photo_url ?? proofPhotoUrl ?? proof_photo_url ?? attachmentUrl ?? null;
   if (!stepKey || !(ALLOWED_STEPS as readonly string[]).includes(String(stepKey))) {
     return res.status(400).json({ error: "stepKey tidak valid." });
   }
-  if (PHOTO_REQUIRED_STEPS.has(String(stepKey)) && !photoUrl) {
+  if (PHOTO_REQUIRED_STEPS.has(String(stepKey)) && !resolvedPhotoUrl) {
     return res.status(400).json({ error: `Foto wajib untuk step ${STEP_LABEL[String(stepKey)] ?? stepKey}.` });
   }
 
@@ -233,8 +245,8 @@ driverProgressPublicRouter.post("/:token", async (req: Request, res: Response) =
       "driver",
       driverName,
       note ? String(note) : `Driver update via WA link: ${stepKey}`,
-      photoUrl ? { photoUrl: String(photoUrl) } : undefined,
-      { gpsLatitude: lat, gpsLongitude: lng, deviceTimestamp: parsedDeviceTs, mapUrl, streetViewUrl },
+      resolvedPhotoUrl ? { photoUrl: resolvedPhotoUrl } : undefined,
+      { gpsLatitude: lat, gpsLongitude: lng, deviceTimestamp: parsedDeviceTs, mapUrl, streetViewUrl, photoUrl: resolvedPhotoUrl },
     );
 
     const logisticStatus = STEP_TO_LOGISTIC_STATUS[String(stepKey)];
@@ -294,7 +306,7 @@ driverProgressPublicRouter.post("/:token", async (req: Request, res: Response) =
             1,
             adminWa,
             note ? String(note) : undefined,
-            photoUrl ? String(photoUrl) : undefined,
+            resolvedPhotoUrl ?? undefined,
           ).catch(() => {});
         }
 

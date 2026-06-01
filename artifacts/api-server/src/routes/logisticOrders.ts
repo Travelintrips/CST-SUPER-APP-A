@@ -615,7 +615,7 @@ logisticOrdersRouter.get(
         deviceTimestamp: ev.device_timestamp ? new Date(ev.device_timestamp).toISOString() : null,
         mapUrl:          ev.map_url ?? (hasGps ? `https://www.google.com/maps?q=${lat},${lng}` : null),
         streetViewUrl:   ev.street_view_url ?? null,
-        photoUrl:        ev.photo_url ?? null,
+        photoUrl:        ev.photo_url ?? (ev.metadata as any)?.photoUrl ?? null,
         createdAt:       ev.created_at ? new Date(ev.created_at).toISOString() : new Date().toISOString(),
       };
     });

@@ -29,6 +29,7 @@ export interface GpsFields {
   deviceTimestamp?: string | null;
   mapUrl?: string | null;
   streetViewUrl?: string | null;
+  photoUrl?: string | null;
 }
 
 export async function updateOrderProgress(
@@ -44,13 +45,15 @@ export async function updateOrderProgress(
     await db.execute(sql`
       INSERT INTO order_progress_events
         (order_id, step_key, status, source, actor_name, notes, metadata,
-         gps_latitude, gps_longitude, device_timestamp, map_url, street_view_url)
+         gps_latitude, gps_longitude, device_timestamp, map_url, street_view_url,
+         photo_url)
       VALUES
         (${orderId}, ${stepKey}, 'completed', ${source}, ${actorName},
          ${notes ?? null}, ${metadata ? JSON.stringify(metadata) : null}::jsonb,
          ${gps?.gpsLatitude ?? null}, ${gps?.gpsLongitude ?? null},
          ${gps?.deviceTimestamp ?? null},
-         ${gps?.mapUrl ?? null}, ${gps?.streetViewUrl ?? null})
+         ${gps?.mapUrl ?? null}, ${gps?.streetViewUrl ?? null},
+         ${gps?.photoUrl ?? null})
       ON CONFLICT (order_id, step_key) DO UPDATE
         SET status          = 'completed',
             actor_name      = EXCLUDED.actor_name,
@@ -61,6 +64,7 @@ export async function updateOrderProgress(
             device_timestamp= COALESCE(EXCLUDED.device_timestamp, order_progress_events.device_timestamp),
             map_url         = COALESCE(EXCLUDED.map_url, order_progress_events.map_url),
             street_view_url = COALESCE(EXCLUDED.street_view_url, order_progress_events.street_view_url),
+            photo_url       = COALESCE(EXCLUDED.photo_url, order_progress_events.photo_url),
             created_at      = NOW()
     `);
   } catch (err) {
