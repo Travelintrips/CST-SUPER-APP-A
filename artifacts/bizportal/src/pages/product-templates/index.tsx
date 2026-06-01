@@ -282,9 +282,10 @@ export default function ProductTemplatesPage() {
                       ))}
                     </div>
 
-                    {/* Version */}
+                    {/* Version + Sort */}
                     <div className="flex items-center justify-between pt-0.5">
                       <Badge variant="outline" className="text-[10px] py-0 font-mono">v{tpl.version}</Badge>
+                      <span className="text-[10px] text-muted-foreground font-mono">Sort: {tpl.sortOrder}</span>
                     </div>
 
                     {/* Actions */}

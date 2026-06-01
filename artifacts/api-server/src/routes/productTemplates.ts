@@ -736,7 +736,7 @@ productTemplatesRouter.get("/", async (req: Request, res: Response) => {
     const rows = await db
       .select()
       .from(productTemplatesTable)
-      .orderBy(asc(productTemplatesTable.sortOrder), asc(productTemplatesTable.categoryKey));
+      .orderBy(asc(productTemplatesTable.sortOrder), asc(productTemplatesTable.label));
 
     if (req.query.raw === "1") {
       return res.json(rows);
@@ -744,8 +744,22 @@ productTemplatesRouter.get("/", async (req: Request, res: Response) => {
 
     const overrides = rows.map(dbRowToOverride);
     const resolved = resolveAllTemplates(overrides);
-    // Frontend code expects camelCase ProductTemplate shape — resolveAllTemplates
-    // already returns that. Filter inactive DB-only categories already handled.
+
+    // Sort resolved templates by DB sortOrder (ASC), then label (ASC).
+    // DB rows are keyed by categoryKey; in-code-only templates (no DB row) get sortOrder=Infinity.
+    const sortMap = new Map<string, { sortOrder: number; label: string }>();
+    for (const row of rows) {
+      sortMap.set(row.categoryKey, { sortOrder: row.sortOrder, label: row.label });
+    }
+    resolved.sort((a, b) => {
+      const aEntry = sortMap.get(a.category);
+      const bEntry = sortMap.get(b.category);
+      const aSO = aEntry?.sortOrder ?? Infinity;
+      const bSO = bEntry?.sortOrder ?? Infinity;
+      if (aSO !== bSO) return aSO - bSO;
+      return (aEntry?.label ?? a.label).localeCompare(bEntry?.label ?? b.label);
+    });
+
     res.json(resolved);
   } catch (err) {
     res.status(500).json({ message: String(err) });
