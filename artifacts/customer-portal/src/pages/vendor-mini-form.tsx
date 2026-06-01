@@ -40,6 +40,17 @@ type OrderContext = {
   items: OrderContextItem[];
 };
 
+type ServiceTemplateInfo = {
+  serviceType: string;
+  label: string;
+  emoji: string;
+  fields: FieldDef[];
+  requiredDocuments: Array<{ key: string; label: string; required: boolean }>;
+  checklist: Array<{ key: string; label: string }>;
+  version: string;
+  source: string;
+};
+
 type FormMeta = {
   id: number; serviceType: string; title: string | null; notes: string | null;
   vendorName: string | null; vendorPhone: string | null; vendorContactPerson: string | null;
@@ -47,6 +58,7 @@ type FormMeta = {
   orderNumber: string | null; orderItemId: number | null; phase: string | null;
   alreadySubmitted?: boolean;
   productTemplate?: ProductTemplate | null;
+  serviceTemplate?: ServiceTemplateInfo | null;
   orderContext?: OrderContext | null;
   templateMissing?: boolean;
   templateVersion?: string | null;
@@ -353,7 +365,7 @@ export default function VendorMiniFormPage() {
               )}
             </div>
           </div>
-          {(isOrderBased || hasProductTemplate) && (
+          {(isOrderBased || hasProductTemplate || !!meta.serviceTemplate) && (
             <div className="mt-3 flex flex-wrap gap-2">
               {isOrderBased && (
                 <span className="inline-flex items-center gap-1.5 text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 px-3 py-1.5 rounded-lg">
@@ -364,6 +376,12 @@ export default function VendorMiniFormPage() {
                 <span className="inline-flex items-center gap-1.5 text-xs font-medium bg-violet-50 text-violet-700 border border-violet-200 px-3 py-1.5 rounded-lg">
                   <span>🧩</span> Spesifikasi: {meta.productTemplate!.label}
                   {meta.templateVersion && <span className="opacity-60 ml-1">v{meta.templateVersion}</span>}
+                </span>
+              )}
+              {!hasProductTemplate && meta.serviceTemplate && (
+                <span className="inline-flex items-center gap-1.5 text-xs font-medium bg-teal-50 text-teal-700 border border-teal-200 px-3 py-1.5 rounded-lg">
+                  <span>{meta.serviceTemplate.emoji}</span> {meta.serviceTemplate.label}
+                  <span className="opacity-50 ml-1">v{meta.serviceTemplate.version}</span>
                 </span>
               )}
             </div>
@@ -637,6 +655,26 @@ export default function VendorMiniFormPage() {
                 </FormField>
               </div>
             </div>
+          )}
+
+          {/* Service Template: Required Documents */}
+          {!hasProductTemplate && meta.serviceTemplate && (meta.serviceTemplate.requiredDocuments?.length ?? 0) > 0 && (
+            <TemplateDocumentRenderer
+              documents={meta.serviceTemplate.requiredDocuments}
+              values={templateValues.uploadedDocuments}
+              onChange={(docs) => setTemplateValues((v) => ({ ...v, uploadedDocuments: docs }))}
+            />
+          )}
+
+          {/* Service Template: Checklist */}
+          {!hasProductTemplate && meta.serviceTemplate && (meta.serviceTemplate.checklist?.length ?? 0) > 0 && (
+            <TemplateChecklistRenderer
+              checklist={meta.serviceTemplate.checklist}
+              values={templateValues.checklistStatus}
+              onChange={(key, checked) =>
+                setTemplateValues((v) => ({ ...v, checklistStatus: { ...v.checklistStatus, [key]: checked } }))
+              }
+            />
           )}
 
           {/* Attachment upload (optional) */}
