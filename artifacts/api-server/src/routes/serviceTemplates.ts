@@ -5,30 +5,98 @@ import { eq } from "drizzle-orm";
 import {
   resolveServiceTemplate,
   resolveAllServiceTemplates,
-  getInCodeServiceTemplate,
   getAllInCodeServiceTemplates,
   hasInCodeServiceTemplate,
 } from "@workspace/service-templates";
-import type { ServiceTemplateOverride } from "@workspace/service-templates";
+import type {
+  ServiceTemplateOverride,
+  ServiceTemplateField,
+  ServiceTemplateDocument,
+  ServiceTemplateChecklist,
+  ServiceConditionalRule,
+  ServiceValidationRule,
+} from "@workspace/service-templates";
+import { requireAdmin } from "../lib/requireAdmin.js";
 import type { Request, Response } from "express";
 
 export const serviceTemplatesRouter = Router();
 
-/* ── DB row → ServiceTemplateOverride ── */
-function rowToOverride(row: typeof serviceTemplatesTable.$inferSelect): ServiceTemplateOverride {
+/* ─── Constants ─────────────────────────────────────────────────────────── */
+
+const SERVICE_TYPE_RE = /^[a-z0-9_]+$/;
+const VALID_SECTIONS  = new Set(["quotation", "operational", "both"]);
+const VALID_FIELD_TYPES = new Set(["text", "number", "select", "textarea", "date"]);
+
+/* ─── Helpers ────────────────────────────────────────────────────────────── */
+
+type DbRow = typeof serviceTemplatesTable.$inferSelect;
+
+function rowToOverride(row: DbRow): ServiceTemplateOverride {
   return {
     serviceType:       row.serviceType,
     label:             row.label,
     emoji:             row.emoji,
     version:           row.version,
     isActive:          row.isActive,
-    fields:            (row.fields as ServiceTemplateOverride["fields"]) ?? null,
-    requiredDocuments: (row.requiredDocuments as ServiceTemplateOverride["requiredDocuments"]) ?? null,
-    checklist:         (row.checklist as ServiceTemplateOverride["checklist"]) ?? null,
-    conditionalRules:  (row.conditionalRules as ServiceTemplateOverride["conditionalRules"]) ?? null,
-    validationRules:   (row.validationRules as ServiceTemplateOverride["validationRules"]) ?? null,
+    fields:            (row.fields            as ServiceTemplateOverride["fields"])            ?? null,
+    requiredDocuments: (row.requiredDocuments  as ServiceTemplateOverride["requiredDocuments"]) ?? null,
+    checklist:         (row.checklist          as ServiceTemplateOverride["checklist"])          ?? null,
+    conditionalRules:  (row.conditionalRules   as ServiceTemplateOverride["conditionalRules"])   ?? null,
+    validationRules:   (row.validationRules    as ServiceTemplateOverride["validationRules"])    ?? null,
   };
 }
+
+/** Bump minor version: "1.0.0" → "1.1.0", "2.3.7" → "2.4.0" */
+function bumpMinor(version: string): string {
+  const parts = version.split(".");
+  if (parts.length !== 3) return "1.1.0";
+  const major = parseInt(parts[0]!, 10) || 1;
+  const minor = (parseInt(parts[1]!, 10) || 0) + 1;
+  return `${major}.${minor}.0`;
+}
+
+/** Deep-equal check for structure fields to decide if version should bump. */
+function structureChanged(
+  oldRow: DbRow,
+  newFields: ServiceTemplateField[] | null | undefined,
+  newDocs:   ServiceTemplateDocument[] | null | undefined,
+  newCl:     ServiceTemplateChecklist[] | null | undefined,
+): boolean {
+  const serialise = (v: unknown) => JSON.stringify(v ?? []);
+  return (
+    serialise(oldRow.fields)            !== serialise(newFields) ||
+    serialise(oldRow.requiredDocuments) !== serialise(newDocs)   ||
+    serialise(oldRow.checklist)         !== serialise(newCl)
+  );
+}
+
+/* ─── Field-level validation ─────────────────────────────────────────────── */
+
+type VResult = { ok: true } | { ok: false; error: string };
+
+function validateFields(fields: unknown): VResult {
+  if (!Array.isArray(fields)) return { ok: false, error: "fields harus berupa array" };
+  for (let i = 0; i < fields.length; i++) {
+    const f = fields[i] as Record<string, unknown>;
+    if (!f || typeof f !== "object") return { ok: false, error: `fields[${i}] bukan object` };
+    if (!f["key"] || typeof f["key"] !== "string")   return { ok: false, error: `fields[${i}].key wajib diisi` };
+    if (!f["label"] || typeof f["label"] !== "string") return { ok: false, error: `fields[${i}].label wajib diisi` };
+    if (!f["type"] || !VALID_FIELD_TYPES.has(String(f["type"]))) {
+      return { ok: false, error: `fields[${i}].type tidak valid (${f["type"]}). Harus salah satu dari: ${[...VALID_FIELD_TYPES].join(", ")}` };
+    }
+    if (!f["section"] || !VALID_SECTIONS.has(String(f["section"]))) {
+      return { ok: false, error: `fields[${i}].section tidak valid (${f["section"]}). Harus salah satu dari: quotation, operational, both` };
+    }
+    if (f["isUpload"] !== undefined && typeof f["isUpload"] !== "boolean") {
+      return { ok: false, error: `fields[${i}].isUpload harus boolean` };
+    }
+  }
+  return { ok: true };
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PUBLIC READ ENDPOINTS (no auth required)
+═══════════════════════════════════════════════════════════════════════════ */
 
 /* ── GET /api/service-templates ── */
 serviceTemplatesRouter.get("/", async (_req: Request, res: Response) => {
@@ -42,7 +110,7 @@ serviceTemplatesRouter.get("/", async (_req: Request, res: Response) => {
     let source: "db" | "in-code";
 
     if (dbRows.length > 0) {
-      const overrides = dbRows.map(rowToOverride);
+      const overrides  = dbRows.map(rowToOverride);
       const overrideMap = new Map(overrides.map((o) => [o.serviceType, o]));
       templates = resolveAllServiceTemplates(overrides).map((tpl) => ({
         ...tpl,
@@ -66,38 +134,271 @@ serviceTemplatesRouter.get("/", async (_req: Request, res: Response) => {
 /* ── GET /api/service-templates/:serviceType ── */
 serviceTemplatesRouter.get("/:serviceType", async (req: Request, res: Response) => {
   const serviceType = String(req.params["serviceType"] ?? "").trim();
-  if (!serviceType) {
-    return res.status(400).json({ error: "serviceType wajib diisi" });
-  }
+  if (!serviceType) return res.status(400).json({ error: "serviceType wajib diisi" });
 
   try {
-    let dbOverride: ServiceTemplateOverride | null = null;
-
     const rows = await db
       .select()
       .from(serviceTemplatesTable)
       .where(eq(serviceTemplatesTable.serviceType, serviceType))
       .limit(1);
 
-    if (rows.length > 0) {
-      dbOverride = rowToOverride(rows[0]!);
-    }
-
+    const dbOverride = rows.length > 0 ? rowToOverride(rows[0]!) : null;
     const inCodeExists = hasInCodeServiceTemplate(serviceType);
-
-    let source: "db" | "in-code" | "fallback";
-    if (dbOverride) {
-      source = "db";
-    } else if (inCodeExists) {
-      source = "in-code";
-    } else {
-      source = "fallback";
-    }
-
+    const source: "db" | "in-code" | "fallback" = dbOverride ? "db" : inCodeExists ? "in-code" : "fallback";
     const resolved = resolveServiceTemplate(serviceType, dbOverride);
 
     return res.json({ ...resolved, source });
   } catch (err) {
     return res.status(500).json({ error: "Gagal mengambil service template", detail: String(err) });
+  }
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ADMIN WRITE ENDPOINTS — requireAdmin gate
+═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── POST /api/service-templates — create ── */
+serviceTemplatesRouter.post("/", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+
+  const body = req.body as Record<string, unknown>;
+  const serviceType = String(body["serviceType"] ?? "").trim().toLowerCase();
+  const label       = String(body["label"] ?? "").trim();
+
+  if (!serviceType) return res.status(400).json({ error: "serviceType wajib diisi" });
+  if (!SERVICE_TYPE_RE.test(serviceType)) {
+    return res.status(400).json({ error: "serviceType hanya boleh huruf kecil a-z, angka 0-9, dan underscore (_)" });
+  }
+  if (!label) return res.status(400).json({ error: "label wajib diisi" });
+
+  const fields            = (body["fields"]            ?? []) as ServiceTemplateField[];
+  const requiredDocuments = (body["requiredDocuments"]  ?? []) as ServiceTemplateDocument[];
+  const checklist         = (body["checklist"]          ?? []) as ServiceTemplateChecklist[];
+  const conditionalRules  = (body["conditionalRules"]   ?? []) as ServiceConditionalRule[];
+  const validationRules   = (body["validationRules"]    ?? []) as ServiceValidationRule[];
+
+  const fieldCheck = validateFields(fields);
+  if (!fieldCheck.ok) return res.status(400).json({ error: fieldCheck.error });
+
+  const emoji     = String(body["emoji"]       ?? "📋").trim() || "📋";
+  const version   = String(body["version"]     ?? "1.0.0").trim() || "1.0.0";
+  const isActive  = body["isActive"] !== false;
+  const description = body["description"] != null ? String(body["description"]).trim() : null;
+  const sortOrder   = body["sortOrder"] != null ? Number(body["sortOrder"]) : 0;
+
+  try {
+    const existing = await db
+      .select({ id: serviceTemplatesTable.id })
+      .from(serviceTemplatesTable)
+      .where(eq(serviceTemplatesTable.serviceType, serviceType))
+      .limit(1);
+
+    if (existing.length > 0) {
+      return res.status(409).json({ error: `serviceType '${serviceType}' sudah ada` });
+    }
+
+    const inserted = await db
+      .insert(serviceTemplatesTable)
+      .values({
+        serviceType,
+        label,
+        emoji,
+        version,
+        isActive,
+        description,
+        sortOrder,
+        fields:            fields            as unknown as typeof serviceTemplatesTable.$inferInsert["fields"],
+        requiredDocuments: requiredDocuments as unknown as typeof serviceTemplatesTable.$inferInsert["requiredDocuments"],
+        checklist:         checklist         as unknown as typeof serviceTemplatesTable.$inferInsert["checklist"],
+        conditionalRules:  conditionalRules  as unknown as typeof serviceTemplatesTable.$inferInsert["conditionalRules"],
+        validationRules:   validationRules   as unknown as typeof serviceTemplatesTable.$inferInsert["validationRules"],
+      })
+      .returning();
+
+    return res.status(201).json({ ...rowToOverride(inserted[0]!), source: "db" });
+  } catch (err) {
+    const msg = String(err);
+    if (msg.includes("unique") || msg.includes("duplicate")) {
+      return res.status(409).json({ error: `serviceType '${serviceType}' sudah ada` });
+    }
+    return res.status(500).json({ error: "Gagal membuat service template", detail: msg });
+  }
+});
+
+/* ── PUT /api/service-templates/:serviceType — update ── */
+serviceTemplatesRouter.put("/:serviceType", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+
+  const serviceType = String(req.params["serviceType"] ?? "").trim();
+  if (!serviceType) return res.status(400).json({ error: "serviceType wajib diisi" });
+
+  const existing = await db
+    .select()
+    .from(serviceTemplatesTable)
+    .where(eq(serviceTemplatesTable.serviceType, serviceType))
+    .limit(1);
+
+  if (existing.length === 0) {
+    return res.status(404).json({ error: `serviceType '${serviceType}' tidak ditemukan` });
+  }
+
+  const current = existing[0]!;
+  const body    = req.body as Record<string, unknown>;
+
+  const newFields  = body["fields"]            !== undefined ? (body["fields"] as ServiceTemplateField[])            : undefined;
+  const newDocs    = body["requiredDocuments"]  !== undefined ? (body["requiredDocuments"] as ServiceTemplateDocument[]) : undefined;
+  const newCl      = body["checklist"]          !== undefined ? (body["checklist"] as ServiceTemplateChecklist[])     : undefined;
+  const newCRules  = body["conditionalRules"]   !== undefined ? (body["conditionalRules"] as ServiceConditionalRule[])  : undefined;
+  const newVRules  = body["validationRules"]    !== undefined ? (body["validationRules"] as ServiceValidationRule[])    : undefined;
+
+  if (newFields !== undefined) {
+    const fieldCheck = validateFields(newFields);
+    if (!fieldCheck.ok) return res.status(400).json({ error: fieldCheck.error });
+  }
+
+  /* Auto-bump minor version if structure changed and caller didn't specify version */
+  let resolvedVersion = body["version"] != null ? String(body["version"]).trim() : undefined;
+  if (!resolvedVersion && structureChanged(current, newFields, newDocs, newCl)) {
+    resolvedVersion = bumpMinor(current.version);
+  }
+
+  const updatePayload: Partial<typeof serviceTemplatesTable.$inferInsert> = {
+    updatedAt: new Date(),
+  };
+  if (body["label"]       != null) updatePayload.label       = String(body["label"]).trim();
+  if (body["emoji"]       != null) updatePayload.emoji       = String(body["emoji"]).trim();
+  if (body["isActive"]    != null) updatePayload.isActive    = Boolean(body["isActive"]);
+  if (body["description"] != null) updatePayload.description = String(body["description"]).trim();
+  if (body["sortOrder"]   != null) updatePayload.sortOrder   = Number(body["sortOrder"]);
+  if (resolvedVersion)             updatePayload.version     = resolvedVersion;
+  if (newFields  !== undefined)    updatePayload.fields            = newFields  as unknown as typeof updatePayload["fields"];
+  if (newDocs    !== undefined)    updatePayload.requiredDocuments = newDocs    as unknown as typeof updatePayload["requiredDocuments"];
+  if (newCl      !== undefined)    updatePayload.checklist         = newCl      as unknown as typeof updatePayload["checklist"];
+  if (newCRules  !== undefined)    updatePayload.conditionalRules  = newCRules  as unknown as typeof updatePayload["conditionalRules"];
+  if (newVRules  !== undefined)    updatePayload.validationRules   = newVRules  as unknown as typeof updatePayload["validationRules"];
+
+  try {
+    const updated = await db
+      .update(serviceTemplatesTable)
+      .set(updatePayload)
+      .where(eq(serviceTemplatesTable.serviceType, serviceType))
+      .returning();
+
+    const versionBumped = resolvedVersion !== undefined && resolvedVersion !== current.version;
+    return res.json({
+      ...rowToOverride(updated[0]!),
+      source: "db",
+      versionBumped,
+      previousVersion: versionBumped ? current.version : undefined,
+    });
+  } catch (err) {
+    return res.status(500).json({ error: "Gagal update service template", detail: String(err) });
+  }
+});
+
+/* ── POST /api/service-templates/:serviceType/duplicate ── */
+serviceTemplatesRouter.post("/:serviceType/duplicate", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+
+  const sourceType = String(req.params["serviceType"] ?? "").trim();
+  const body = req.body as Record<string, unknown>;
+  const newServiceType = String(body["newServiceType"] ?? "").trim().toLowerCase();
+  const newLabel       = String(body["newLabel"]       ?? "").trim();
+
+  if (!newServiceType) return res.status(400).json({ error: "newServiceType wajib diisi" });
+  if (!SERVICE_TYPE_RE.test(newServiceType)) {
+    return res.status(400).json({ error: "newServiceType hanya boleh huruf kecil a-z, angka 0-9, dan underscore (_)" });
+  }
+  if (!newLabel) return res.status(400).json({ error: "newLabel wajib diisi" });
+
+  try {
+    /* Find source */
+    const sourceRows = await db
+      .select()
+      .from(serviceTemplatesTable)
+      .where(eq(serviceTemplatesTable.serviceType, sourceType))
+      .limit(1);
+
+    if (sourceRows.length === 0) {
+      return res.status(404).json({ error: `sourceType '${sourceType}' tidak ditemukan` });
+    }
+    const src = sourceRows[0]!;
+
+    /* Check target uniqueness */
+    const targetExists = await db
+      .select({ id: serviceTemplatesTable.id })
+      .from(serviceTemplatesTable)
+      .where(eq(serviceTemplatesTable.serviceType, newServiceType))
+      .limit(1);
+
+    if (targetExists.length > 0) {
+      return res.status(409).json({ error: `serviceType '${newServiceType}' sudah ada` });
+    }
+
+    /* Insert duplicate */
+    const inserted = await db
+      .insert(serviceTemplatesTable)
+      .values({
+        serviceType:       newServiceType,
+        label:             newLabel,
+        emoji:             src.emoji,
+        version:           "1.0.0",
+        isActive:          true,
+        description:       src.description ? `Duplikat dari ${sourceType}: ${src.description}` : `Duplikat dari ${sourceType}`,
+        sortOrder:         (src.sortOrder ?? 0) + 1,
+        fields:            src.fields,
+        requiredDocuments: src.requiredDocuments,
+        checklist:         src.checklist,
+        conditionalRules:  src.conditionalRules,
+        validationRules:   src.validationRules,
+      })
+      .returning();
+
+    return res.status(201).json({
+      ...rowToOverride(inserted[0]!),
+      source: "db",
+      duplicatedFrom: sourceType,
+    });
+  } catch (err) {
+    const msg = String(err);
+    if (msg.includes("unique") || msg.includes("duplicate")) {
+      return res.status(409).json({ error: `serviceType '${newServiceType}' sudah ada` });
+    }
+    return res.status(500).json({ error: "Gagal duplicate service template", detail: msg });
+  }
+});
+
+/* ── PATCH /api/service-templates/:serviceType/toggle-active ── */
+serviceTemplatesRouter.patch("/:serviceType/toggle-active", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+
+  const serviceType = String(req.params["serviceType"] ?? "").trim();
+  if (!serviceType) return res.status(400).json({ error: "serviceType wajib diisi" });
+
+  const body = req.body as Record<string, unknown>;
+  if (body["isActive"] === undefined) {
+    return res.status(400).json({ error: "isActive wajib dikirim (true atau false)" });
+  }
+  const isActive = Boolean(body["isActive"]);
+
+  try {
+    const updated = await db
+      .update(serviceTemplatesTable)
+      .set({ isActive, updatedAt: new Date() })
+      .where(eq(serviceTemplatesTable.serviceType, serviceType))
+      .returning();
+
+    if (updated.length === 0) {
+      return res.status(404).json({ error: `serviceType '${serviceType}' tidak ditemukan` });
+    }
+
+    return res.json({
+      serviceType,
+      isActive,
+      message: isActive ? `Template '${serviceType}' diaktifkan` : `Template '${serviceType}' dinonaktifkan`,
+    });
+  } catch (err) {
+    return res.status(500).json({ error: "Gagal toggle isActive", detail: String(err) });
   }
 });
