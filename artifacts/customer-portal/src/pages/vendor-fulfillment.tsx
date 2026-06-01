@@ -33,6 +33,95 @@ type OrderInfo = {
   templateSnapshot?: Record<string, unknown> | null;
 };
 
+type TmplField = {
+  key: string;
+  label: string;
+  type: "text" | "number" | "date" | "select" | "textarea";
+  required?: boolean;
+  options?: string[];
+  section?: string;
+  placeholder?: string;
+};
+
+type TmplServiceSnapshot = {
+  templateKind: "service";
+  serviceTemplate: {
+    serviceType: string;
+    label: string;
+    fields: TmplField[];
+    requiredDocuments?: { key: string; label: string; required?: boolean }[];
+    checklist?: { key: string; label: string }[];
+  };
+};
+
+type TmplProductSnapshot = {
+  templateKind: "product";
+  label?: string;
+  customFields?: TmplField[];
+  requiredDocuments?: { key: string; label: string; required?: boolean }[];
+  checklist?: { key: string; label: string }[];
+  packagingInstructions?: string;
+};
+
+type TmplSnapshot = TmplServiceSnapshot | TmplProductSnapshot | null;
+
+function parseTemplateSnapshot(raw: Record<string, unknown> | null | undefined): TmplSnapshot {
+  if (!raw) return null;
+  const kind = raw.templateKind as string | undefined;
+  if (kind === "service") return raw as unknown as TmplServiceSnapshot;
+  if (kind === "product") return raw as unknown as TmplProductSnapshot;
+  return null;
+}
+
+function getOperationalFields(snap: TmplSnapshot): TmplField[] {
+  if (!snap || snap.templateKind !== "service") return [];
+  return (snap.serviceTemplate?.fields ?? []).filter(
+    (f) => f.section === "operational" || f.section === "both"
+  );
+}
+
+const TMPL_TO_BACKEND: Record<string, keyof SubmittedData | "_extra"> = {
+  driver_name: "driverName",
+  driver_phone: "driverPhone",
+  plate_number: "plateNumber",
+  vehicle_type: "vehicleType",
+  pickup_time: "pickupTime",
+  delivery_time: "pickupTime",
+  booking_number: "bookingNumber",
+  vessel_name: "flightVessel",
+  flight_number: "flightVessel",
+  bl_number: "awbBlNumber",
+  awb_number: "awbBlNumber",
+  op_etd: "etd",
+  op_eta: "eta",
+  shipping_line: "carrierName",
+  airline: "carrierName",
+  nomor_aju: "customsPicName",
+  status_customs: "customsDocuments",
+  wh_receipt_number: "bookingNumber",
+  op_notes: "_extra",
+};
+
+function buildTemplateSubmitBody(
+  fields: Record<string, string>,
+  notes: string
+): Record<string, string> {
+  const body: Record<string, string> = {};
+  const extraLines: string[] = [];
+  for (const [k, v] of Object.entries(fields)) {
+    if (!v) continue;
+    const bk = TMPL_TO_BACKEND[k];
+    if (bk && bk !== "_extra") {
+      body[bk as string] = v;
+    } else {
+      extraLines.push(`${k}: ${v}`);
+    }
+  }
+  const allNotes = [notes, ...extraLines].filter(Boolean).join("\n");
+  if (allNotes) body.notes = allNotes;
+  return body;
+}
+
 type SubmittedData = {
   driverName: string | null;
   driverPhone: string | null;
@@ -272,11 +361,15 @@ function SubmittedReview({
     return null;
   }
 
-  const isTrucking = svc.includes("trucking");
-  const isFreight  = (svc.includes("freight_air") || svc.includes("freight_sea") || svc.includes("freight")) && !isTrucking;
-  const isProduct  = svc.includes("product");
-  const isCustoms  = svc.includes("customs");
   const order      = data.order;
+  const tmplSnap   = parseTemplateSnapshot(order.templateSnapshot);
+  const isTemplateService = tmplSnap?.templateKind === "service";
+  const isTemplateProduct = tmplSnap?.templateKind === "product";
+
+  const isTrucking = !isTemplateService && svc.includes("trucking");
+  const isFreight  = !isTemplateService && (svc.includes("freight_air") || svc.includes("freight_sea") || svc.includes("freight")) && !svc.includes("trucking");
+  const isProduct  = !isTemplateService && svc.includes("product");
+  const isCustoms  = !isTemplateService && svc.includes("customs");
 
   const TAX_RATE = order.taxRate ?? 11;
   const stockStatus = val("stockConfirmed");
@@ -298,6 +391,7 @@ function SubmittedReview({
   }
 
   const hasAnyData =
+    isTemplateService ||
     val("driverName") || val("carrierName") || val("stockConfirmed") ||
     val("customsPicName") || val("plateNumber") || val("awbBlNumber");
 
@@ -382,6 +476,17 @@ function SubmittedReview({
             </h2>
             <p className="text-xs text-slate-400 mb-4">Read-only — tidak dapat diubah.</p>
 
+            {isTemplateService && (() => {
+              const snap = tmplSnap as TmplServiceSnapshot;
+              const opFields = getOperationalFields(snap);
+              return opFields.map((f) => {
+                const bk = TMPL_TO_BACKEND[f.key];
+                const v = bk && bk !== "_extra"
+                  ? val(bk as keyof SubmittedData)
+                  : (lf[f.key] ?? null);
+                return <Row key={f.key} label={f.label} value={v} />;
+              });
+            })()}
             {isTrucking && (
               <>
                 <Row label="Nama Driver"    value={val("driverName")} />
@@ -892,6 +997,116 @@ function CustomsFields({ fields, setField }: { fields: Record<string, string>; s
       <Field label="Nama PIC Kepabeanan" name="customsPicName" value={fields.customsPicName ?? ""} onChange={(v) => setField("customsPicName", v)} placeholder="Nama PIC / PPJK" required />
       <Field label="Dokumen Dibutuhkan" name="customsDocuments" value={fields.customsDocuments ?? ""} onChange={(v) => setField("customsDocuments", v)} placeholder="PIB, BC 2.3, Invoice, Packing List, dll" />
       <Field label="Estimasi Selesai Proses Bea Cukai" name="customsProcessEta" value={fields.customsProcessEta ?? ""} onChange={(v) => setField("customsProcessEta", v)} placeholder="dd/mm/yyyy atau rentang waktu" />
+    </>
+  );
+}
+
+/* ─── Template-Driven Components ─────────────────────────────────────────── */
+
+function TemplateSelectField({
+  field, value, onChange,
+}: { field: TmplField; value: string; onChange: (v: string) => void }) {
+  return (
+    <div className="space-y-1.5">
+      <label className="text-sm font-medium text-slate-700">
+        {field.label}{field.required && <span className="text-red-500 ml-0.5">*</span>}
+      </label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        required={field.required}
+        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-white"
+      >
+        <option value="">— Pilih —</option>
+        {(field.options ?? []).map((opt) => (
+          <option key={opt} value={opt}>{opt}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function TemplateTextareaField({
+  field, value, onChange,
+}: { field: TmplField; value: string; onChange: (v: string) => void }) {
+  return (
+    <div className="space-y-1.5">
+      <label className="text-sm font-medium text-slate-700">
+        {field.label}{field.required && <span className="text-red-500 ml-0.5">*</span>}
+      </label>
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={field.placeholder ?? ""}
+        required={field.required}
+        rows={3}
+        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 resize-none"
+      />
+    </div>
+  );
+}
+
+const DRIVER_TMPL_KEYS = new Set(["driver_name", "driver_phone", "plate_number", "vehicle_type"]);
+
+function TemplateDrivenServiceForm({
+  snap,
+  fields,
+  setField,
+  token,
+}: {
+  snap: TmplServiceSnapshot;
+  fields: Record<string, string>;
+  setField: (k: string, v: string) => void;
+  token: string;
+}) {
+  const opFields = (snap.serviceTemplate?.fields ?? []).filter(
+    (f) => f.section === "operational" || f.section === "both"
+  );
+  const isTruckingTmpl = snap.serviceTemplate?.serviceType === "trucking";
+  const hasDriverGroup = isTruckingTmpl && opFields.some((f) => DRIVER_TMPL_KEYS.has(f.key));
+
+  const handleDriverSelect = useCallback(
+    (d: { name: string; phone: string; plate: string; vehicleType: string }) => {
+      setField("driver_name", d.name);
+      setField("driver_phone", d.phone);
+      setField("plate_number", d.plate);
+      setField("vehicle_type", d.vehicleType);
+    },
+    [setField]
+  );
+
+  return (
+    <>
+      {hasDriverGroup && (
+        <DriverPicker
+          token={token}
+          driverName={fields.driver_name ?? ""}
+          driverPhone={fields.driver_phone ?? ""}
+          plateNumber={fields.plate_number ?? ""}
+          vehicleType={fields.vehicle_type ?? ""}
+          onSelect={handleDriverSelect}
+        />
+      )}
+      {opFields
+        .filter((f) => !hasDriverGroup || !DRIVER_TMPL_KEYS.has(f.key))
+        .map((f) => {
+          const val = fields[f.key] ?? "";
+          const onChange = (v: string) => setField(f.key, v);
+          if (f.type === "select") return <TemplateSelectField key={f.key} field={f} value={val} onChange={onChange} />;
+          if (f.type === "textarea") return <TemplateTextareaField key={f.key} field={f} value={val} onChange={onChange} />;
+          return (
+            <Field
+              key={f.key}
+              label={f.label}
+              name={f.key}
+              value={val}
+              onChange={onChange}
+              placeholder={f.placeholder ?? ""}
+              required={!!f.required}
+              type={f.type === "date" ? "date" : f.type === "number" ? "number" : "text"}
+            />
+          );
+        })}
     </>
   );
 }
@@ -1412,7 +1627,9 @@ export default function VendorFulfillmentPage() {
     if (!data) return;
 
     const svc = data.serviceType;
-    const isProduct = svc.includes("product");
+    const tmplSnapH = parseTemplateSnapshot(data.order.templateSnapshot);
+    const isTemplateServiceH = tmplSnapH?.templateKind === "service";
+    const isProduct = !isTemplateServiceH && svc.includes("product");
 
     if (isProduct) {
       if (!fields.stockConfirmed) { alert("Pilih status konfirmasi stok terlebih dahulu."); return; }
@@ -1425,12 +1642,16 @@ export default function VendorFulfillmentPage() {
       }
     }
 
+    const submitBody = isTemplateServiceH
+      ? buildTemplateSubmitBody(fields, notes)
+      : { ...fields, notes };
+
     setSubmitting(true);
     try {
       const res = await fetch(`/api/vendor-fulfillment/${token}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...fields, notes }),
+        body: JSON.stringify(submitBody),
       });
       const d = await res.json() as { ok?: boolean; error?: string };
       if (!res.ok) throw new Error(d.error ?? "Gagal mengirim");
@@ -1457,8 +1678,17 @@ export default function VendorFulfillmentPage() {
   const svc      = data.serviceType;
   const icon     = getServiceIcon(svc);
   const svcLabel = getServiceLabel(svc);
-  const isProduct = svc.includes("product");
   const order    = data.order;
+  const tmplSnapR = parseTemplateSnapshot(order.templateSnapshot);
+  const isTemplateServiceR = tmplSnapR?.templateKind === "service";
+  const isTemplateProductR = tmplSnapR?.templateKind === "product";
+  const isProduct = !isTemplateServiceR && svc.includes("product");
+
+  const tmplLabel = isTemplateServiceR
+    ? ((tmplSnapR as TmplServiceSnapshot).serviceTemplate?.label ?? svcLabel)
+    : isTemplateProductR
+    ? ((tmplSnapR as TmplProductSnapshot).label ?? svcLabel)
+    : null;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-teal-50 py-10 px-4">
@@ -1471,7 +1701,7 @@ export default function VendorFulfillmentPage() {
               <span className="text-3xl">{icon}</span>
               <div>
                 <h1 className="text-xl font-bold text-slate-800">
-                  {isProduct ? "Konfirmasi Pemenuhan Produk" : `Form Fulfillment ${svcLabel}`}
+                  {isProduct ? "Konfirmasi Pemenuhan Produk" : `Form Fulfillment ${tmplLabel ?? svcLabel}`}
                 </h1>
                 {data.vendorName && (
                   <p className="text-sm text-slate-500">Vendor: {data.vendorName}</p>
@@ -1491,7 +1721,7 @@ export default function VendorFulfillmentPage() {
             <div className="space-y-2.5">
               <OrderRow label="No. Order" value={order.orderNumber} />
               {order.customerName && <OrderRow label="Customer" value={order.customerName} />}
-              {!isProduct && <OrderRow label="Layanan" value={order.serviceType} />}
+              {!isProduct && <OrderRow label="Layanan" value={tmplLabel ?? order.serviceType} />}
               {!isProduct && <OrderRow label="Rute" value={`${order.origin} → ${order.destination}`} />}
               {order.commodity && <OrderRow label="Komoditi" value={order.commodity} />}
               {order.grossWeight && !isProduct && <OrderRow label="Berat" value={`${order.grossWeight} kg`} />}
@@ -1502,13 +1732,26 @@ export default function VendorFulfillmentPage() {
 
           {/* Fulfillment fields */}
           <div className={`${isProduct ? "" : "bg-white rounded-2xl shadow-sm border border-emerald-100 p-5 space-y-4"}`}>
-            {!isProduct && (
+            {!isProduct && !isTemplateServiceR && (
               <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">
                 {icon} Data Fulfillment
               </h2>
             )}
-            {svc.includes("trucking") && <TruckingFields fields={fields} setField={setField} token={token!} />}
-            {(svc.includes("freight_air") || svc.includes("freight_sea") || svc.includes("freight")) &&
+            {!isProduct && isTemplateServiceR && (
+              <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">
+                {icon} Data Fulfillment — {tmplLabel}
+              </h2>
+            )}
+            {isTemplateServiceR && (
+              <TemplateDrivenServiceForm
+                snap={tmplSnapR as TmplServiceSnapshot}
+                fields={fields}
+                setField={setField}
+                token={token!}
+              />
+            )}
+            {!isTemplateServiceR && svc.includes("trucking") && <TruckingFields fields={fields} setField={setField} token={token!} />}
+            {!isTemplateServiceR && (svc.includes("freight_air") || svc.includes("freight_sea") || svc.includes("freight")) &&
               !svc.includes("trucking") && <FreightFields fields={fields} setField={setField} />}
             {isProduct && (
               <ProductFulfillmentForm
@@ -1518,8 +1761,8 @@ export default function VendorFulfillmentPage() {
                 token={token!}
               />
             )}
-            {svc.includes("customs") && <CustomsFields fields={fields} setField={setField} />}
-            {svc.includes("general") && (
+            {!isTemplateServiceR && svc.includes("customs") && <CustomsFields fields={fields} setField={setField} />}
+            {!isTemplateServiceR && svc.includes("general") && (
               <p className="text-sm text-slate-500">Isi catatan di bawah untuk mendeskripsikan detail fulfillment.</p>
             )}
 
