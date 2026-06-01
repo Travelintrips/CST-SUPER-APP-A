@@ -82,6 +82,7 @@ import { customerFeedbackPublicRouter, customerFeedbackAdminRouter } from "./cus
 import { purchaseMiniPublicRouter, purchaseMiniAdminRouter } from "./purchaseMiniFormRoute.js";
 
 import { orderAuditTrailRouter } from "./orderAuditTrail.js";
+import { serviceTemplatesRouter } from "./serviceTemplates.js";
 
 import { exceptionsRouter } from "./exceptions.js";
 import { systemRouter } from "./system.js";
@@ -200,6 +201,8 @@ router.use("/customer-feedback", customerFeedbackAdminRouter);
 router.use("/customer-feedback", customerFeedbackPublicRouter);
 router.use("/purchase-mini", purchaseMiniAdminRouter);
 router.use("/purchase-mini", purchaseMiniPublicRouter);
+
+router.use("/service-templates", serviceTemplatesRouter);
 
 router.use("/logistic", orderAuditTrailRouter);
 
