@@ -183,6 +183,7 @@ export const customerInvoiceLinksTable = pgTable("customer_invoice_links", {
   lineItems: jsonb("line_items").default([]),
   viewedAt: timestamp("viewed_at"),
   acknowledgedAt: timestamp("acknowledged_at"),
+  confirmedAt: timestamp("confirmed_at"),
   status: text("status").notNull().default("sent"),
   createdBy: text("created_by"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

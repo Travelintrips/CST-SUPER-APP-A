@@ -61,7 +61,7 @@ import {
   type LogisticOrderData,
 } from "../lib/orderNotification.js";
 
-// Boot migration: add template columns to customer_approvals + vendor_mini_form_submissions
+// Boot migration: add template columns to customer_approvals + vendor_mini_form_submissions + confirmed_at to customer_invoice_links
 db.execute(sql.raw(`
   ALTER TABLE customer_approvals ADD COLUMN IF NOT EXISTS category_key TEXT;
   ALTER TABLE customer_approvals ADD COLUMN IF NOT EXISTS template_id TEXT;
@@ -72,7 +72,8 @@ db.execute(sql.raw(`
   ALTER TABLE vendor_mini_form_submissions ADD COLUMN IF NOT EXISTS template_id TEXT;
   ALTER TABLE vendor_mini_form_submissions ADD COLUMN IF NOT EXISTS template_version TEXT;
   ALTER TABLE vendor_mini_form_submissions ADD COLUMN IF NOT EXISTS template_snapshot JSONB;
-`)).catch((e: unknown) => console.warn("customer_approvals migration warn:", e));
+  ALTER TABLE customer_invoice_links ADD COLUMN IF NOT EXISTS confirmed_at TIMESTAMPTZ;
+`)).catch((e: unknown) => console.warn("boot migration warn:", e));
 
 function buildOrderDataFromRow(row: typeof logisticOrdersTable.$inferSelect): LogisticOrderData {
   return {
@@ -3799,6 +3800,7 @@ vendorMiniFormRouter.post("/admin/customer-invoices/:id/confirm-payment", async 
         paymentMethod: paymentMethod ?? link.paymentMethod ?? null,
         paymentStatus: newPaymentStatus,
         status: newPaymentStatus === "paid" ? "paid" : link.status,
+        confirmedAt: new Date(),
       } as any)
       .where(eq(customerInvoiceLinksTable.id, id));
 

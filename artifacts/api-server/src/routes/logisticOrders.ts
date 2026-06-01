@@ -628,6 +628,7 @@ logisticOrdersRouter.get(
         grandTotal: customerInvoiceLinksTable.grandTotal,
         dueDate: customerInvoiceLinksTable.dueDate,
         paymentStatus: customerInvoiceLinksTable.paymentStatus,
+        status: customerInvoiceLinksTable.status,
         createdAt: customerInvoiceLinksTable.createdAt,
       }).from(customerInvoiceLinksTable)
         .where(eq(customerInvoiceLinksTable.orderId, order.id))
@@ -748,6 +749,7 @@ logisticOrdersRouter.get(
       grandTotal: r.grandTotal ? parseFloat(r.grandTotal) : null,
       dueDate: r.dueDate ? r.dueDate.toISOString() : null,
       paymentStatus: r.paymentStatus,
+      status: r.status,
       createdAt: r.createdAt.toISOString(),
     }));
 
