@@ -49,6 +49,11 @@ type Order = {
   vendorCost: string | null; orderMargin: string | null;
   version?: number;
   createdAt: string;
+  // Step 2: Product Template Engine
+  categoryKey?: string | null;
+  templateId?: number | null;
+  templateVersion?: string | null;
+  requiredDocs?: string[] | null;
 };
 
 type Vendor = { id: number; name: string; phone: string | null } | null;
@@ -2254,6 +2259,34 @@ export default function LogisticOrderDetailPage() {
                 <Field label="Order Dibuat" value={dt(order.createdAt)} />
               </CardContent>
             </Card>
+
+            {/* Step 2: Product Template Info */}
+            {order.categoryKey && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-semibold text-slate-600 uppercase tracking-wide flex items-center gap-1.5">
+                    <ClipboardList className="w-4 h-4" /> Template Produk
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3 text-sm">
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="Category Key" value={order.categoryKey} />
+                    {order.templateVersion && <Field label="Versi Template" value={order.templateVersion} />}
+                    {order.templateId && <Field label="Template ID" value={String(order.templateId)} />}
+                  </div>
+                  {order.requiredDocs && order.requiredDocs.length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1.5">Dokumen Wajib</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {order.requiredDocs.map((doc, i) => (
+                          <Badge key={i} variant="outline" className="text-xs text-blue-700 border-blue-200 bg-blue-50">{doc}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
 
             {/* Financial */}
             <Card>

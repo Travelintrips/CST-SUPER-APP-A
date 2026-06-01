@@ -16,7 +16,9 @@ import {
   podOcrResultsTable,
   rfqVendorLinksTable,
   freightShipmentsTable,
+  productTemplatesTable,
 } from "@workspace/db";
+import { resolveTemplate } from "@workspace/product-templates";
 import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { eq, ilike, and, gte, lte, or, sql, desc, inArray, isNotNull } from "drizzle-orm";
 import { salesDocumentsTable, customerInvoiceLinksTable } from "@workspace/db";
@@ -116,7 +118,6 @@ function toOrder(row: typeof logisticOrdersTable.$inferSelect, approvedVendorNam
     nomorPenerima: row.nomorPenerima ?? null,
     jamOrder: row.jamOrder ?? null,
     source: row.source ?? "manual",
-
     subtotal: parseFloat(row.subtotal),
     tax: parseFloat(row.tax),
     grandTotal: parseFloat(row.grandTotal),
@@ -129,6 +130,11 @@ function toOrder(row: typeof logisticOrdersTable.$inferSelect, approvedVendorNam
     finalSellingPrice: row.finalSellingPrice ? parseFloat(row.finalSellingPrice) : null,
     quotationSentAt: row.quotationSentAt?.toISOString() ?? null,
     version: (row as any).version ?? 1,
+    // Step 2: Product Template Engine fields
+    categoryKey: (row as any).categoryKey ?? null,
+    templateId: (row as any).templateId ?? null,
+    templateVersion: (row as any).templateVersion ?? null,
+    requiredDocs: (row as any).requiredDocs ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: ((row as any).updatedAt ?? row.createdAt).toISOString(),
   };
@@ -182,12 +188,58 @@ async function getTruckingRates() {
   }
 }
 
-// ─── Boot migration: ensure updated_at column exists + normalize legacy statuses
+// ─── Boot migration: ensure updated_at column exists + normalize legacy statuses + Step 2 template columns
 db.execute(sql.raw(`
   ALTER TABLE logistic_orders ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
   UPDATE logistic_orders SET updated_at = created_at WHERE updated_at IS NULL;
+  ALTER TABLE logistic_orders ADD COLUMN IF NOT EXISTS category_key TEXT;
+  ALTER TABLE logistic_orders ADD COLUMN IF NOT EXISTS template_id INTEGER;
+  ALTER TABLE logistic_orders ADD COLUMN IF NOT EXISTS template_version TEXT;
+  ALTER TABLE logistic_order_rfqs ADD COLUMN IF NOT EXISTS template_id INTEGER;
+  ALTER TABLE logistic_order_rfqs ADD COLUMN IF NOT EXISTS template_version TEXT;
+  ALTER TABLE logistic_order_rfqs ADD COLUMN IF NOT EXISTS template_snapshot JSONB;
   ${STATUS_NORMALIZATION_SQL}
 `)).catch((e: unknown) => console.warn("[logistic_orders] boot migration warn:", e));
+
+// ─── Step 2: Helper — resolve ProductTemplate for a given categoryKey ─────────
+async function resolveTemplateForCategory(categoryKey: string | null | undefined): Promise<{
+  resolvedCategoryKey: string | null;
+  templateId: number | null;
+  templateVersion: string | null;
+  templateSnapshot: Record<string, unknown> | null;
+  requiredDocs: string[] | null;
+}> {
+  const empty = { resolvedCategoryKey: null, templateId: null, templateVersion: null, templateSnapshot: null, requiredDocs: null };
+  if (!categoryKey?.trim()) return empty;
+  try {
+    const [row] = await db.select().from(productTemplatesTable)
+      .where(eq(productTemplatesTable.categoryKey, categoryKey));
+    const override = row ? {
+      categoryKey: row.categoryKey,
+      label: row.label,
+      version: row.version,
+      isActive: row.isActive,
+      requiredDocuments: row.requiredDocuments as import("@workspace/product-templates").RequiredDocument[],
+      checklist: row.checklist as import("@workspace/product-templates").ChecklistItem[],
+      customFields: row.customFields as import("@workspace/product-templates").CustomField[],
+      packagingInstructions: row.packagingInstructions ?? undefined,
+      conditionalRules: row.conditionalRules as import("@workspace/product-templates").ConditionalRule[],
+      validationRules: row.validationRules as import("@workspace/product-templates").ValidationRule[],
+    } : null;
+    const template = resolveTemplate(categoryKey, override);
+    const requiredDocs = template.requiredDocuments.filter(d => d.required).map(d => d.label);
+    return {
+      resolvedCategoryKey: categoryKey,
+      templateId: row?.id ?? null,
+      templateVersion: template.version,
+      templateSnapshot: template as unknown as Record<string, unknown>,
+      requiredDocs: requiredDocs.length > 0 ? requiredDocs : null,
+    };
+  } catch (e) {
+    console.warn("[resolveTemplateForCategory] error:", e);
+    return empty;
+  }
+}
 
 // ─── PUBLIC ROUTES (no auth required) ────────────────────────────────────────
 
@@ -235,6 +287,9 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
 
   const orderNumber = generateOrderNumber();
 
+  // Step 2: resolve Product Template jika categoryKey dikirim
+  const templateInfo = await resolveTemplateForCategory(body.categoryKey ?? null);
+
   const [order] = await db
     .insert(logisticOrdersTable)
     .values({
@@ -279,7 +334,14 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
       grandTotal: String(calcGrandTotal(verifiedSubtotal)),
       status: "New Order",
       publicRfqToken: randomBytes(16).toString("hex"),
-    })
+      // Step 2: Product Template Engine
+      ...(templateInfo.resolvedCategoryKey ? {
+        categoryKey: templateInfo.resolvedCategoryKey,
+        templateId: templateInfo.templateId,
+        templateVersion: templateInfo.templateVersion,
+        requiredDocs: templateInfo.requiredDocs,
+      } : {}),
+    } as any)
     .returning();
 
   // Auto-generate tracking token saat order dibuat agar customer langsung bisa akses tracking
