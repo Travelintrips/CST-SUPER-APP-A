@@ -928,6 +928,34 @@ logisticOrdersRouter.post("/:id/progress/set", requireClerkUser, async (req: Req
   return res.json({ ok: true });
 });
 
+// PUT /api/logistic/orders/:id/progress/:stepKey/photo — admin set/replace foto untuk step tertentu
+logisticOrdersRouter.put("/:id/progress/:stepKey/photo", requireClerkUser, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id), 10);
+  if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+  const { stepKey } = req.params;
+  const validKeys = PROGRESS_STEPS.map((s) => s.key);
+  if (!validKeys.includes(stepKey as StepKey))
+    return res.status(400).json({ message: "Step tidak valid" });
+  const { photoUrl } = req.body as { photoUrl?: string };
+  if (!photoUrl || typeof photoUrl !== "string" || !photoUrl.startsWith("http"))
+    return res.status(400).json({ message: "photoUrl tidak valid (harus URL http/https)" });
+
+  try {
+    const result = await db.execute(sql`
+      UPDATE order_progress_events
+        SET photo_url = ${photoUrl}
+      WHERE order_id = ${id} AND step_key = ${stepKey}
+      RETURNING id, step_key, photo_url
+    `);
+    if ((result.rows ?? []).length === 0)
+      return res.status(404).json({ message: "Progress event tidak ditemukan untuk order + step ini" });
+    return res.json({ ok: true, updated: (result.rows as any[])[0] });
+  } catch (err) {
+    logger.error({ err, id, stepKey }, "admin set progress photo failed");
+    return res.status(500).json({ message: "Gagal update foto" });
+  }
+});
+
 // DELETE /api/logistic/orders/:id/progress/:stepKey — admin undo step
 logisticOrdersRouter.delete("/:id/progress/:stepKey", requireClerkUser, async (req: Request, res: Response) => {
   const id = parseInt(String(req.params.id), 10);

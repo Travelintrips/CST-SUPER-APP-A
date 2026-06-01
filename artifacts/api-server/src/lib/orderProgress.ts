@@ -144,6 +144,16 @@ export async function runOrderProgressMigration(): Promise<void> {
         ADD COLUMN IF NOT EXISTS photo_url       TEXT
     `);
 
+    // Backfill: copy photoUrl dari JSONB metadata → kolom photo_url untuk row lama
+    await db.execute(sql`
+      UPDATE order_progress_events
+        SET photo_url = metadata->>'photoUrl'
+      WHERE photo_url IS NULL
+        AND metadata IS NOT NULL
+        AND metadata->>'photoUrl' IS NOT NULL
+        AND metadata->>'photoUrl' <> ''
+    `);
+
     logger.info("Order progress migration: ok");
   } catch (err) {
     logger.warn({ err }, "Order progress migration warn");
