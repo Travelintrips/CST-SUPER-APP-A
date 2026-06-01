@@ -32,13 +32,13 @@ args = "BizPortal"
 name = "Gateway"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "fuser -k 5000/tcp 2>/dev/null; sleep 0.3; PORT=5000 node gateway.mjs"
-waitForPort = 5000
-
 [workflows.workflow.metadata]
 outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "fuser -k 5000/tcp 2>/dev/null; sleep 0.3; API_PORT=8080 CUSTOMER_PORT=5173 BIZPORTAL_PORT=3000 PORT=5000 node gateway.mjs"
+waitForPort = 5000
 
 [[workflows.workflow]]
 name = "API Server"
@@ -58,8 +58,8 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd artifacts/bizportal && bash start-dev.sh"
-waitForPort = 8080
+args = "cd artifacts/bizportal && PORT=3000 bash start-dev.sh"
+waitForPort = 3000
 
 [workflows.workflow.metadata]
 outputType = "console"
@@ -112,11 +112,7 @@ defaultBucketID = "replit-objstore-e357cc66-19c3-4d73-9ca9-3069d78355d1"
 
 [[ports]]
 localPort = 3000
-externalPort = 3003
-
-[[ports]]
-localPort = 3001
-externalPort = 3001
+externalPort = 3000
 
 [[ports]]
 localPort = 5000
@@ -157,3 +153,4 @@ externalPort = 6000
 [[ports]]
 localPort = 23434
 externalPort = 6800
+externalPort = 3001

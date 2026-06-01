@@ -74,6 +74,7 @@ export const vendorMiniFormSubmissionsTable = pgTable("vendor_mini_form_submissi
   // ── Template Engine: version snapshot of the form template used at submission time ─
   templateId: text("template_id"),
   templateVersion: text("template_version"),
+  templateSnapshot: jsonb("template_snapshot").$type<Record<string, unknown> | null>(),
 }, (t) => [
   // Mencegah vendor yang sama (supplier_id tidak null) submit 2x untuk link yang sama.
   // Vendor anonim (supplier_id IS NULL) dikecualikan karena diidentifikasi via token unik.

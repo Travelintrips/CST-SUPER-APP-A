@@ -704,7 +704,9 @@ const DEFAULT_TPL = {
       "Layanan   : {{serviceType}}",
       "Rute      : {{route}}",
       "Komoditi  : {{commodity}}",
+      "Komoditas : {{templateLabel}}",
       "PIC       : {{picLabel}}",
+      "{{specSummary}}",
       "━━━━━━━━━━━━━━━━━━",
       "📊 {{submittedVendorCount}} / {{totalVendorInvited}} vendor sudah submit",
       "{{compareMessage}}",
@@ -987,7 +989,7 @@ const DEFAULT_TPL = {
     order_new: ["📦 *PERMINTAAN ORDER BARU — CST LOGISTICS*","━━━━━━━━━━━━━━━━━━━━","Kepada Yth. *{{vendorName}}*,","","No. Order       : *{{orderNumber}}*","Tanggal         : {{tanggal}}","Jenis           : {{shipmentType}}","Rute            : {{route}}","Kategori Barang : {{commodity}}","Deskripsi       : {{cargoDescription}}","Berat           : {{grossWeightDisplay}}","Volume          : {{volumeDisplay}}","Jumlah Koli     : {{jumlahKoliDisplay}}","{{#if product}}","🛍️ Produk       :","{{productList}}","{{/if}}","Tgl Butuh       : {{requiredDate}}","{{#if trucking}}","🚛 Jenis Kendaraan: {{vehicleType}}","📅 Jadwal Pickup  : {{pickupSchedule}}","💰 Contract Rate  : {{contractRate}}","{{/if}}","Layanan         : {{serviceList}}","Catatan         : {{notes}}","━━━━━━━━━━━━━━━━━━━━","🔗 *Aksi Cepat (klik link):*","✅ Terima  → {{responseUrl}}?action=accept","❌ Tolak   → {{responseUrl}}?action=reject","💬 Form    → {{responseUrl}}","","✏️ *Atau balas WA dengan format:*","📌 Harga: `{{orderNumber}} [HARGA] [TGL_PICKUP]`","📌 Terima: `TERIMA {{orderNumber}}`","📌 Tolak:  `TOLAK {{orderNumber}}`","","Terima kasih 🙏","_Dikirim: {{timestamp}}_"].join("\n"),
     vendor_request: ["📦 *PERMINTAAN PENAWARAN VENDOR*","━━━━━━━━━━━━━━━━━━","Kepada Yth. *{{vendorName}}*,","","No. RFQ       : *{{rfqNumber}}*","No. Order     : {{orderNumber}}","Customer      : {{customerDisplay}}","Tanggal       : {{tanggal}}","Jenis         : {{shipmentType}}","Rute          : {{route}}","Komoditi      : {{commodity}}","Komoditas     : {{templateLabel}}","Deskripsi     : {{cargoDescription}}","Berat         : {{grossWeightDisplay}}","Volume        : {{volumeDisplay}}","Qty           : {{quantityDisplay}}","━━━━━━━━━━━━━━━━━━","📋 Detail Item / Layanan:","{{productListDetail}}","","📋 *Spesifikasi Produk:*","{{specSummary}}","","📄 *Dokumen Wajib:*","{{requiredDocsSummary}}","","Tgl Butuh     : {{requiredDate}}","Catatan Admin : {{notes}}","","📝 Silakan isi penawaran melalui link berikut:","","🔗 *[ ISI PENAWARAN VENDOR ]*","👉 {{vendorMiniFormLink}}","","━━━━━━━━━━━━━━━━━━","Terima kasih atas kerja sama Anda 🙏","_CST Logistics_"].join("\n"),
     task_link: ["🚚 *Tugas Order Baru — CST Logistics*","","Order: {{orderNumber}}","Rute: {{route}}","Keterangan: {{label}}","","Silakan buka link berikut untuk konfirmasi dan update status:","{{taskUrl}}","_{{timestamp}}_"].join("\n"),
-    vendor_revision: ["↩️ *REVISI PENAWARAN — {{orderNumber}}*","━━━━━━━━━━━━━━━━━━","Kepada Yth. *{{vendorName}}*,","","Kami memerlukan revisi harga untuk order *{{orderNumber}}*.","Harga saat ini: {{vendorPrice}}","","Mohon kirim penawaran terbaik Anda kembali:","🔗 {{vendorMiniFormLink}}","","Terima kasih 🙏"].join("\n"),
+    vendor_revision: ["↩️ *REVISI PENAWARAN — {{orderNumber}}*","━━━━━━━━━━━━━━━━━━","Kepada Yth. *{{vendorName}}*,","","Kami memerlukan revisi harga untuk order *{{orderNumber}}*.","Komoditas     : {{templateLabel}}","Harga saat ini: {{vendorPrice}}","","📋 *Spesifikasi:*","{{specSummary}}","","Mohon kirim penawaran terbaik Anda kembali:","🔗 {{vendorMiniFormLink}}","","Terima kasih 🙏"].join("\n"),
     op_request: ["⚙️ *KONFIRMASI OPERASIONAL — CST LOGISTICS*","━━━━━━━━━━━━━━━━━━","Kepada Yth. *{{vendorName}}*,","","Customer telah menyetujui penawaran untuk order *{{orderNumber}}*.","Mohon lengkapi data operasional:","","🔗 {{operationalFormLink}}","","{{#if trucking}}","Data dibutuhkan: Driver, No. Plat, jadwal pickup.","{{/if}}","","{{#if freight_sea}}","Data dibutuhkan: Vessel, Voyage, ETA/ETD, BL.","{{/if}}","","{{#if freight_air}}","Data dibutuhkan: Airline, AWB, jadwal penerbangan.","{{/if}}","","{{#if ppjk}}","Data dibutuhkan: No. Aju, BC type, SPPB.","{{/if}}","","Terima kasih atas kerjasamanya 🙏"].join("\n"),
     vendor_submit_confirm: [
       "Halo *{{picLabel}}* dari *{{vendorLabel}}*,",
@@ -1147,9 +1149,12 @@ const DEFAULT_TPL = {
       "📄 No. Order: {{orderNumber}}",
       "🚚 Jenis    : {{shipmentType}}",
       "📍 Rute     : {{route}}",
+      "📦 Komoditas: {{templateLabel}}",
       "💰 Harga    : {{vendorCost}}",
       "⏱ ETA      : {{eta}}",
       "📝 Catatan  : {{notes}}",
+      "📋 *Spesifikasi:*",
+      "{{specSummary}}",
       "━━━━━━━━━━━━━━━━━━",
       "{{#if fulfillUrl}}",
       "📱 Buka mini form Anda di sini:",
@@ -1166,6 +1171,7 @@ const DEFAULT_TPL = {
       "👤 Customer: {{customerName}}",
       "🚚 Jenis   : {{shipmentType}}",
       "📍 Rute    : {{route}}",
+      "📦 Komoditas: {{templateLabel}}",
       "━━━━━━━━━━━━━━━━━━",
       "🏢 Vendor  : *{{vendorName}}*",
       "💰 Harga Vendor: {{vendorCost}}",
@@ -1622,12 +1628,14 @@ export async function sendVendorSubmissionNotification(
   order: LogisticOrderData,
   vendorName: string,
   vendorPrice: string,
+  templateSnapshot?: Record<string, unknown> | null,
 ): Promise<void> {
   const [tplG, group] = await Promise.all([
     getWaTemplateConfig("admin_group", "vendor_submission", DEFAULT_TPL.admin_group.vendor_submission),
     getAdminGroupWa(),
   ]);
-  const extras = { vendorName, vendorPrice };
+  const commodityCtx = buildCommodityContext(templateSnapshot ?? null);
+  const extras = { vendorName, vendorPrice, ...commodityCtx };
   if (group) sendWhatsApp(group, renderWf(tplG, order, extras)).catch((e: unknown) => logger.error({ e }, "WA vendor_submission (group) failed"));
 }
 
@@ -1645,6 +1653,7 @@ export async function sendVendorSubmissionGroupNotification(
     submittedVendorCount: number;
     totalVendorInvited: number;
     vendorComparisonLink?: string | null;
+    templateSnapshot?: Record<string, unknown> | null;
   },
   refToken: string,
 ): Promise<void> {
@@ -1657,6 +1666,7 @@ export async function sendVendorSubmissionGroupNotification(
     vars.submittedVendorCount >= 2
       ? `✅ *${vars.submittedVendorCount} vendor* sudah submit — segera *bandingkan penawaran*!`
       : `📥 Penawaran pertama masuk. Menunggu vendor lain.`;
+  const commodityCtx = buildCommodityContext(vars.templateSnapshot ?? null);
   const msg = renderTemplate(tpl, {
     orderNumber: vars.orderNumber,
     vendorName: vars.vendorName,
@@ -1670,6 +1680,7 @@ export async function sendVendorSubmissionGroupNotification(
     compareMessage,
     vendorComparisonLink: vars.vendorComparisonLink ?? null,
     timestamp: nowWIB(),
+    ...commodityCtx,
   });
   sendWhatsApp(adminGroupWa, msg, {
     context: "vendor-submission-group",
@@ -1685,9 +1696,11 @@ export async function sendVendorRevisionNotification(
   vendorPhone: string,
   vendorPrice: string,
   vendorMiniFormLink: string,
+  templateSnapshot?: Record<string, unknown> | null,
 ): Promise<void> {
   const tpl = await getWaTemplateConfig("vendor", "vendor_revision", DEFAULT_TPL.vendor.vendor_revision);
-  const msg = renderWf(tpl, order, { vendorName, vendorPhone, vendorPrice, vendorMiniFormLink });
+  const commodityCtx = buildCommodityContext(templateSnapshot ?? null);
+  const msg = renderWf(tpl, order, { vendorName, vendorPhone, vendorPrice, vendorMiniFormLink, ...commodityCtx });
   sendWhatsApp(vendorPhone, msg).catch((e: unknown) => logger.error({ e, vendorName }, "WA vendor_revision failed"));
 }
 
