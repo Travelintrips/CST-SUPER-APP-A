@@ -260,13 +260,32 @@ driverProgressPublicRouter.post("/:token", async (req: Request, res: Response) =
 
       if (order?.phone) {
         const domain = process.env.REPLIT_DEV_DOMAIN || getPreferredDomain() || "cstlogistic.co.id";
-        const gpsLine = mapUrl ? `\n🗺️ Lokasi: ${mapUrl}` : "";
+
+        // Build GPS block
+        let gpsBlock = "";
+        if (lat != null && lng != null) {
+          const tsLine = parsedDeviceTs
+            ? `🕐 Waktu: ${new Date(parsedDeviceTs).toLocaleString("id-ID", {
+                day: "numeric", month: "short", year: "numeric",
+                hour: "2-digit", minute: "2-digit", second: "2-digit",
+                timeZone: "Asia/Jakarta",
+              })} WIB`
+            : "";
+          gpsBlock =
+            `\n\n📍 *Lokasi Driver*\n` +
+            `Koordinat: ${lat.toFixed(6)}, ${lng.toFixed(6)}\n` +
+            (tsLine ? `${tsLine}\n` : "") +
+            (mapUrl ? `🗺️ Google Maps: ${mapUrl}\n` : "") +
+            (streetViewUrl ? `🏙️ Street View: ${streetViewUrl}` : "");
+        }
+
         const waMsg =
           `🚚 *Update Pengiriman — CST Logistics*\n\n` +
           `Halo ${order.customerName},\n\n` +
           `Order *${order.orderNumber}* telah diperbarui:\n` +
-          `📍 Status: *${STEP_LABEL[String(stepKey)] ?? stepKey}*` +
-          `${gpsLine}\n\n` +
+          `📦 Status: *${STEP_LABEL[String(stepKey)] ?? stepKey}*` +
+          (driverName !== "Driver" ? `\n👤 Driver: ${driverName}` : "") +
+          `${gpsBlock}\n\n` +
           `Pantau pengiriman:\nhttps://${domain}/track`;
         sendWhatsApp(order.phone, waMsg).catch(() => {});
       }
