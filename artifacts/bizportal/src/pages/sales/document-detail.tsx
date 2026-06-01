@@ -621,19 +621,19 @@ function ActivityLogTab({ docId }: { docId: number }) {
                       </p>
                     )}
                     {/* Extra detail from new_data */}
-                    {nd && entry.action === "create" && nd.docNumber && (
+                    {nd && entry.action === "create" && !!nd.docNumber && (
                       <p className="text-xs text-muted-foreground mt-1">
                         Nomor dokumen: <span className="font-mono font-medium">{String(nd.docNumber)}</span>
                       </p>
                     )}
-                    {nd && (entry.action === "confirm" || entry.action === "send" || entry.action === "cancel" || entry.action === "draft") && nd.fromStatus && nd.toStatus && (
+                    {nd && (entry.action === "confirm" || entry.action === "send" || entry.action === "cancel" || entry.action === "draft") && !!nd.fromStatus && !!nd.toStatus && (
                       <p className="text-xs text-muted-foreground mt-1">
                         Status: <span className="line-through opacity-60">{String(nd.fromStatus)}</span>
                         {" → "}
                         <span className="font-medium">{String(nd.toStatus)}</span>
                       </p>
                     )}
-                    {nd && entry.action === "mark_invoiced" && nd.invoiceNumber && (
+                    {nd && entry.action === "mark_invoiced" && !!nd.invoiceNumber && (
                       <p className="text-xs text-muted-foreground mt-1">
                         Invoice: <span className="font-mono font-medium">{String(nd.invoiceNumber)}</span>
                       </p>
@@ -981,11 +981,11 @@ export default function SalesDocumentDetailPage() {
                       />
                     </>
                   )}
-                  {doc.invoiceNumber && (
-                    <InfoRow label="No. Invoice" value={doc.invoiceNumber} mono />
+                  {!!(doc as any).invoiceNumber && (
+                    <InfoRow label="No. Invoice" value={(doc as any).invoiceNumber} mono />
                   )}
-                  {doc.dueDate && (
-                    <InfoRow label="Jatuh tempo" value={dateStr(doc.dueDate)} />
+                  {!!(doc as any).dueDate && (
+                    <InfoRow label="Jatuh tempo" value={dateStr((doc as any).dueDate)} />
                   )}
                 </CardContent>
               </Card>

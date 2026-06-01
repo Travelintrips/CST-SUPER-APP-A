@@ -749,7 +749,7 @@ export default function BookPage() {
       nomorPenerima: customerForm.nomorPenerima || null,
       jamOrder: str(truckingInputData.pickupTime) || null,
       // [MULTI-MODE] transport mode fields
-      transportMode: (customerForm.transportMode || undefined) as "sea" | "air" | "land" | "multimodal" | undefined,
+      ...((customerForm.transportMode) ? { transportMode: customerForm.transportMode as "sea" | "air" | "land" | "multimodal" } : {}),
       originDistrict: customerForm.originDistrict || undefined,
       destDistrict: customerForm.destDistrict || undefined,
       pickupDate: customerForm.pickupDate || str(truckingInputData.pickupDate) || undefined,

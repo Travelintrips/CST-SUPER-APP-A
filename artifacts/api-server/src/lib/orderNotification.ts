@@ -1172,6 +1172,7 @@ export function getWaDefaultTemplatesFlatMap(): Record<string, string> {
   add("admin_group", "customs_update", ag.customs_update);
   add("admin_group", "vendor_submission_summary", ag.vendor_submission_summary);
   add("admin_group", "invoice_issued", ag.invoice_issued);
+  add("admin_group", "delivery_completed", ag.delivery_completed);
 
   // customer
   const cu = DEFAULT_TPL.customer;
