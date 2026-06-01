@@ -144,6 +144,7 @@ router.put("/wa-template-configs", async (req: Request, res: Response) => {
     "product_order_status_update",
     "product_vendor_response", "vendor_awarded", "vendor_selected_admin",
     "quotation_send",
+    "invoice_issued",
     // ── PROCUREMENT ───────────────────────────────────────────────────────
     "procurement_purchase_request",
     "procurement_vendor_comparison",
