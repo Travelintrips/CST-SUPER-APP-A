@@ -1390,6 +1390,12 @@ importers:
         specifier: 'catalog:'
         version: 19.2.14
 
+  lib/service-templates:
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 25.3.5
+
   scripts:
     dependencies:
       '@replit/connectors-sdk':
