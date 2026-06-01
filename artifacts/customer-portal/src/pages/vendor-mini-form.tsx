@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { calcTax, TAX_RATE_PCT } from "../lib/taxHelper";
+
 import { useParams } from "wouter";
 import type { ProductTemplate, DynamicFormValues } from "@workspace/product-templates";
 import {
@@ -236,14 +236,22 @@ export default function VendorMiniFormPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!meta?.schema && !meta?.productTemplate) return;
+    // Allow submission when serviceTemplate is available even without schema/productTemplate
+    if (!meta?.schema && !meta?.productTemplate && !meta?.serviceTemplate) return;
 
-    if (meta?.schema) {
+    // Validate required fields — prefer serviceTemplate fields, fallback to schema
+    if (meta?.serviceTemplate && !meta?.productTemplate) {
+      const missing = (meta.serviceTemplate.fields ?? [])
+        .filter(f => f.required && !f.isUpload && !values[f.key]?.trim())
+        .map(f => f.label);
+      if (missing.length) { setSubmitError(`Field wajib belum diisi: ${missing.join(", ")}`); return; }
+    } else if (meta?.schema) {
       const missing = meta.schema.fields
         .filter(f => f.required && !values[f.key]?.trim())
         .map(f => f.label);
       if (missing.length) { setSubmitError(`Field wajib belum diisi: ${missing.join(", ")}`); return; }
     }
+
     if (meta?.productTemplate && (!tplHarga || Number(tplHarga) <= 0)) {
       setSubmitError("Harga dasar wajib diisi"); return;
     }
@@ -329,13 +337,15 @@ export default function VendorMiniFormPage() {
   if (submitted) return <SuccessState orderNumber={meta?.orderNumber} />;
   if (meta?.alreadySubmitted) return <AlreadySubmittedState />;
 
-  if (!meta?.schema && !meta?.productTemplate) {
+  // Allow rendering when any of schema, productTemplate, or serviceTemplate is available
+  if (!meta?.schema && !meta?.productTemplate && !meta?.serviceTemplate) {
     return <ErrorState message="Form tidak tersedia untuk link ini." />;
   }
 
   const schema = meta.schema;
   const isOrderBased = meta.mode === "order_based";
   const hasProductTemplate = !!meta.productTemplate;
+  const hasServiceTemplate = !hasProductTemplate && !!meta.serviceTemplate && (meta.serviceTemplate.fields?.length ?? 0) > 0;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-blue-50 py-10 px-4">
@@ -354,10 +364,12 @@ export default function VendorMiniFormPage() {
         {/* Header */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 mb-4">
           <div className="flex items-center gap-3 mb-1">
-            <span className="text-3xl leading-none">{schema?.emoji ?? "📦"}</span>
+            <span className="text-3xl leading-none">
+              {schema?.emoji ?? meta.serviceTemplate?.emoji ?? "📦"}
+            </span>
             <div>
               <h1 className="text-xl font-bold text-slate-800">
-                {meta.title ?? `Form Penawaran ${schema?.label ?? meta.productTemplate?.label ?? ""}`}
+                {meta.title ?? `Form Penawaran ${schema?.label ?? meta.productTemplate?.label ?? meta.serviceTemplate?.label ?? ""}`}
               </h1>
               {meta.vendorName && <p className="text-sm text-slate-500">Untuk: {meta.vendorName}</p>}
               {meta.orderNumber && (
@@ -379,10 +391,18 @@ export default function VendorMiniFormPage() {
                 </span>
               )}
               {!hasProductTemplate && meta.serviceTemplate && (
-                <span className="inline-flex items-center gap-1.5 text-xs font-medium bg-teal-50 text-teal-700 border border-teal-200 px-3 py-1.5 rounded-lg">
-                  <span>{meta.serviceTemplate.emoji}</span> {meta.serviceTemplate.label}
-                  <span className="opacity-50 ml-1">v{meta.serviceTemplate.version}</span>
-                </span>
+                <>
+                  <span className="inline-flex items-center gap-1.5 text-xs font-medium bg-teal-50 text-teal-700 border border-teal-200 px-3 py-1.5 rounded-lg">
+                    <span>{meta.serviceTemplate.emoji}</span> {meta.serviceTemplate.label}
+                    <span className="opacity-50 ml-1">v{meta.serviceTemplate.version}</span>
+                  </span>
+                  {hasServiceTemplate && (
+                    <span className="inline-flex items-center gap-1 text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1.5 rounded-lg">
+                      ⚙️ Service Template Runtime Active
+                      <span className="opacity-60 ml-0.5 font-normal capitalize">[{meta.serviceTemplate.source}]</span>
+                    </span>
+                  )}
+                </>
               )}
             </div>
           )}
@@ -511,9 +531,6 @@ export default function VendorMiniFormPage() {
             const qty = Math.max(1, Number(vendorQty) || 1);
             const unitPrice = Number(vendorUnitPrice) || 0;
             const subtotal = qty * unitPrice;
-            const ppn = calcTax(subtotal);
-            const total = subtotal + ppn;
-            const fmtIDR = (n: number) => n.toLocaleString("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 });
             return (
               <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
                 <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">💰 Rincian Harga Dasar</h2>
@@ -574,42 +591,136 @@ export default function VendorMiniFormPage() {
             );
           })()}
 
-          {/* Dynamic service fields — hidden when productTemplate active (spec rendered below as read-only) */}
-          {schema && schema.fields.length > 0 && !hasProductTemplate && (
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-              <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-4">
-                {schema.emoji} Detail {schema.label}
-              </h2>
-              <div className="space-y-4">
-                {schema.fields.map(field => (
+          {/* ── Dynamic service fields ─────────────────────────────────────────
+              Priority: serviceTemplate.fields (when USE_SERVICE_TEMPLATE_ENGINE=true
+              and serviceTemplate is present in GET response).
+              Fallback: SERVICE_SCHEMAS fields (schema.fields) — unchanged behavior.
+          ─────────────────────────────────────────────────────────────────── */}
+          {!hasProductTemplate && (() => {
+            const stpl = meta.serviceTemplate;
+            const phase = meta.phase ?? "quotation";
+
+            // Shared field renderer — handles all types incl. upload
+            const renderField = (field: FieldDef) => {
+              if (field.isUpload) {
+                return (
                   <FormField key={field.key} label={field.label} required={field.required}>
-                    {field.type === "select" ? (
-                      <select
-                        value={values[field.key] ?? ""} onChange={e => handleChange(field.key, e.target.value)}
-                        required={field.required}
-                        className={`${INPUT_CLS} bg-white`}
-                      >
-                        <option value="">— Pilih —</option>
-                        {field.options?.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                      </select>
-                    ) : field.type === "textarea" ? (
-                      <textarea
-                        value={values[field.key] ?? ""} onChange={e => handleChange(field.key, e.target.value)}
-                        required={field.required} placeholder={field.placeholder} rows={3}
-                        className={`${INPUT_CLS} resize-none`}
-                      />
-                    ) : (
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <span className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 transition-colors">
+                        <span>📎</span> Pilih File
+                      </span>
                       <input
-                        type={field.type === "number" ? "number" : field.type === "date" ? "date" : "text"}
-                        value={values[field.key] ?? ""} onChange={e => handleChange(field.key, e.target.value)}
-                        required={field.required} placeholder={field.placeholder ?? ""} className={INPUT_CLS}
+                        type="file"
+                        accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx"
+                        className="hidden"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          const fd = new FormData();
+                          fd.append("file", file);
+                          try {
+                            const res = await fetch(`/api/vendor-form/upload/${token}`, { method: "POST", body: fd });
+                            const data = await res.json() as { objectPath?: string };
+                            if (res.ok && data.objectPath) handleChange(field.key, data.objectPath);
+                          } catch { /* non-fatal upload error */ }
+                        }}
                       />
-                    )}
+                      {values[field.key]
+                        ? <span className="text-xs text-emerald-600 font-medium">✓ File terupload</span>
+                        : <span className="text-xs text-slate-400">Belum ada file dipilih</span>
+                      }
+                    </label>
                   </FormField>
-                ))}
-              </div>
-            </div>
-          )}
+                );
+              }
+              if (field.type === "select") {
+                return (
+                  <FormField key={field.key} label={field.label} required={field.required}>
+                    <select
+                      value={values[field.key] ?? ""}
+                      onChange={e => handleChange(field.key, e.target.value)}
+                      required={field.required}
+                      className={`${INPUT_CLS} bg-white`}
+                    >
+                      <option value="">— Pilih —</option>
+                      {field.options?.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                    </select>
+                  </FormField>
+                );
+              }
+              if (field.type === "textarea") {
+                return (
+                  <FormField key={field.key} label={field.label} required={field.required}>
+                    <textarea
+                      value={values[field.key] ?? ""}
+                      onChange={e => handleChange(field.key, e.target.value)}
+                      required={field.required}
+                      placeholder={field.placeholder}
+                      rows={3}
+                      className={`${INPUT_CLS} resize-none`}
+                    />
+                  </FormField>
+                );
+              }
+              return (
+                <FormField key={field.key} label={field.label} required={field.required}>
+                  <input
+                    type={field.type === "number" ? "number" : field.type === "date" ? "date" : "text"}
+                    value={values[field.key] ?? ""}
+                    onChange={e => handleChange(field.key, e.target.value)}
+                    required={field.required}
+                    placeholder={field.placeholder ?? ""}
+                    className={INPUT_CLS}
+                  />
+                </FormField>
+              );
+            };
+
+            // ── PATH A: serviceTemplate.fields (USE_SERVICE_TEMPLATE_ENGINE=true) ──
+            if (stpl && (stpl.fields?.length ?? 0) > 0) {
+              // Filter by phase: quotation shows quotation+both, operational shows operational+both
+              const fieldsToShow = stpl.fields.filter(f =>
+                phase === "operational"
+                  ? (f.section === "operational" || f.section === "both")
+                  : (f.section === "quotation" || f.section === "both" || !f.section)
+              );
+
+              if (fieldsToShow.length === 0) return null;
+
+              return (
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                      {stpl.emoji} Detail {stpl.label}
+                    </h2>
+                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full uppercase tracking-wide">
+                      ⚙️ Template Active
+                      <span className="opacity-60 font-normal normal-case ml-0.5">[{stpl.source}]</span>
+                    </span>
+                  </div>
+                  <div className="space-y-4">
+                    {fieldsToShow.map(renderField)}
+                  </div>
+                </div>
+              );
+            }
+
+            // ── PATH B: SERVICE_SCHEMAS fallback (USE_SERVICE_TEMPLATE_ENGINE=false or null) ──
+            if (schema && schema.fields.length > 0) {
+              return (
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+                  <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-4">
+                    {schema.emoji} Detail {schema.label}
+                  </h2>
+                  <div className="space-y-4">
+                    {schema.fields.map(renderField)}
+                  </div>
+                </div>
+              );
+            }
+
+            return null;
+          })()}
 
           {/* Vendor penawaran section — hanya tampil saat productTemplate aktif */}
           {hasProductTemplate && (

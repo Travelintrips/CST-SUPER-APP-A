@@ -1,0 +1,109 @@
+FASE 3D — RENDER SERVICE TEMPLATE FIELDS IN VMF
+
+Tujuan:
+Vendor Mini Form harus menggunakan serviceTemplate.fields sebagai form utama ketika USE_SERVICE_TEMPLATE_ENGINE=true dan serviceTemplate tersedia.
+
+Kondisi:
+- Fase 3C selesai.
+- serviceTemplate.requiredDocuments dan checklist sudah tampil.
+- serviceTemplate.fields belum dirender.
+- Form vendor masih memakai SERVICE_SCHEMAS hardcoded.
+
+Tugas:
+
+1. Update:
+artifacts/customer-portal/src/pages/vendor-mini-form.tsx
+
+2. Jika serviceTemplate tersedia:
+
+Gunakan:
+serviceTemplate.fields
+
+sebagai sumber utama field form.
+
+Jangan gunakan SERVICE_SCHEMAS fields untuk service tersebut kecuali fallback.
+
+3. Pisahkan field berdasarkan section:
+
+Quotation Section:
+- section = quotation
+- section = both
+
+Operational Section:
+- section = operational
+- section = both
+
+4. Render field type:
+
+- text
+- number
+- select
+- textarea
+- date
+- upload jika isUpload=true
+
+5. Pastikan value masuk ke payload submit yang sama dengan form lama.
+
+Jangan ubah struktur submit besar-besaran.
+Gunakan key field dari serviceTemplate.fields.
+
+6. Jika serviceTemplate tidak tersedia:
+pakai render lama dari SERVICE_SCHEMAS.
+
+7. Jika USE_SERVICE_TEMPLATE_ENGINE=false:
+pakai render lama dari SERVICE_SCHEMAS.
+
+8. Jangan hapus SERVICE_SCHEMAS.
+
+9. UX:
+
+Tampilkan badge:
+Service Template Runtime Active
+
+Tampilkan source:
+db / in-code / fallback
+
+10. Backward compatibility:
+
+- link lama tetap bisa dibuka
+- form lama tetap submit
+- unknown serviceType tidak blank
+
+11. Test:
+
+Dengan USE_SERVICE_TEMPLATE_ENGINE=true:
+
+- trucking
+- sea_freight
+- air_freight
+- ppjk
+
+Pastikan:
+- fields dari serviceTemplate tampil
+- required docs tampil
+- checklist tampil
+- submit berhasil
+- data tersimpan
+
+Dengan USE_SERVICE_TEMPLATE_ENGINE=false:
+
+- trucking tetap tampil lama
+
+12. Output:
+
+SERVICE TEMPLATE FIELD RENDER REPORT
+
+Isi:
+- file diubah
+- cara render baru
+- fallback behavior
+- test result
+- issue tersisa
+- rollback plan
+
+Acceptance Criteria:
+- Admin edit field di Service Template CMS → field tampil di VMF.
+- Vendor mengisi field dari serviceTemplate.
+- Required docs dan checklist tetap tampil.
+- SERVICE_SCHEMAS tetap fallback.
+- Rollback cukup USE_SERVICE_TEMPLATE_ENGINE=false.
