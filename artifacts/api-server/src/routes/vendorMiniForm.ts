@@ -3166,7 +3166,18 @@ vendorMiniFormRouter.post("/admin/op-confirms/:id/send-wa", async (req: Request,
           createdAt: orderRow.createdAt ?? null,
           publicRfqToken: orderRow.publicRfqToken ?? null,
         };
-        await sendOpRequestNotification(orderData, conf.vendorName ?? "Vendor", phone.trim(), confirmUrl);
+        // Derive service template snapshot from conf.serviceType for rich WA context
+        const svcSchema = (SERVICE_SCHEMAS as Record<string, unknown>)[conf.serviceType] as Record<string, unknown> | undefined;
+        const opTemplateSnap = svcSchema ? {
+          templateKind: "service" as const,
+          serviceType: conf.serviceType,
+          label: (svcSchema["label"] as string | undefined) ?? conf.serviceType,
+          version: (svcSchema["version"] as string | undefined) ?? "1.0",
+          fields: (svcSchema["fields"] as unknown[]) ?? [],
+          requiredDocuments: (svcSchema["requiredDocuments"] as unknown[]) ?? [],
+          checklist: (svcSchema["checklist"] as unknown[]) ?? [],
+        } : null;
+        await sendOpRequestNotification(orderData, conf.vendorName ?? "Vendor", phone.trim(), confirmUrl, opTemplateSnap);
       } else {
         // Order tidak ditemukan — fallback ke hardcoded
         const svcLabel = SERVICE_SCHEMAS[conf.serviceType]?.label ?? conf.serviceType;

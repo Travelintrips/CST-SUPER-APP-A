@@ -390,6 +390,48 @@ export function buildCommodityContext(
   } catch { return empty; }
 }
 
+/**
+ * Extract service context from a SERVICE template snapshot (templateKind="service").
+ * Supplements buildCommodityContext(): fills specSummary from service `fields[]`,
+ * adds serviceLabel and serviceChecklistSummary.
+ * For non-service snapshots returns only the new-var nulls — safe to spread without
+ * overriding commodity-template's specSummary.
+ *
+ * Safe-by-design: NEVER exposes internal pricing or margin.
+ */
+export function buildServiceContext(
+  snapshot: Record<string, unknown> | null | undefined,
+): Record<string, string | null> {
+  // Non-service: return new-var nulls ONLY (no specSummary key) so commodity specSummary
+  // is preserved when spreading for product templates.
+  const empty: Record<string, string | null> = {
+    serviceLabel: null, serviceVersion: null, serviceChecklistSummary: null,
+  };
+  if (!snapshot || snapshot["templateKind"] !== "service") return empty;
+  try {
+    const label   = typeof snapshot["label"]   === "string" ? snapshot["label"]   : null;
+    const version = typeof snapshot["version"] === "string" ? snapshot["version"] : null;
+    const fields  = Array.isArray(snapshot["fields"])
+      ? (snapshot["fields"] as Array<Record<string, unknown>>) : [];
+    const checklist = Array.isArray(snapshot["checklist"])
+      ? (snapshot["checklist"] as Array<Record<string, unknown>>) : [];
+
+    const reqFields = fields.filter(f => f["required"] === true && !f["isUpload"]).slice(0, 5);
+    const specSummary = reqFields.length > 0
+      ? reqFields.map(f => {
+          const u = f["unit"] ? ` (${String(f["unit"])})` : "";
+          return `• ${String(f["label"] ?? "")}${u}`;
+        }).join("\n")
+      : null;
+
+    const serviceChecklistSummary = checklist.length > 0
+      ? `✅ *Checklist Layanan:*\n` + checklist.map(c => `☐ ${String(c["label"] ?? "")}`).join("\n")
+      : null;
+
+    return { serviceLabel: label, serviceVersion: version, specSummary, serviceChecklistSummary };
+  } catch { return empty; }
+}
+
 /** Returns true for air/sea freight types that need per-unit pricing hints */
 function isFreightWithDimensions(shipmentType: string): boolean {
   const t = shipmentType.toLowerCase();
@@ -560,9 +602,11 @@ const DEFAULT_TPL = {
       "Vendor        : {{vendorName}}",
       "Komoditi      : {{commodity}}",
       "Produk        : {{templateLabel}}",
+      "Jenis Layanan : {{serviceLabel}}",
       "Qty           : {{quantityDisplay}}",
       "File diunggah : {{fileCount}}",
       "Catatan       : {{completionNotes}}",
+      "{{serviceChecklistSummary}}",
       "",
       "_{{timestamp}}_",
     ].join("\n"),
@@ -741,6 +785,7 @@ const DEFAULT_TPL = {
       "Layanan    : {{shipmentType}}",
       "Rute       : {{route}}",
       "Produk     : {{templateLabel}}",
+      "Jenis      : {{serviceLabel}}",
       "━━━━━━━━━━━━━━━━━━",
       "📋 *Spesifikasi:*",
       "{{specSummary}}",
@@ -784,6 +829,7 @@ const DEFAULT_TPL = {
       "",
       "Order: *{{orderNumber}}*",
       "Produk: {{templateLabel}}",
+      "Jenis Layanan: {{serviceLabel}}",
       "Vendor *{{vendorName}}* telah mengunggah dokumen bukti pengiriman (POD).",
       "Catatan: {{completionNotes}}",
       "",
@@ -987,10 +1033,10 @@ const DEFAULT_TPL = {
   },
   vendor: {
     order_new: ["📦 *PERMINTAAN ORDER BARU — CST LOGISTICS*","━━━━━━━━━━━━━━━━━━━━","Kepada Yth. *{{vendorName}}*,","","No. Order       : *{{orderNumber}}*","Tanggal         : {{tanggal}}","Jenis           : {{shipmentType}}","Rute            : {{route}}","Kategori Barang : {{commodity}}","Deskripsi       : {{cargoDescription}}","Berat           : {{grossWeightDisplay}}","Volume          : {{volumeDisplay}}","Jumlah Koli     : {{jumlahKoliDisplay}}","{{#if product}}","🛍️ Produk       :","{{productList}}","{{/if}}","Tgl Butuh       : {{requiredDate}}","{{#if trucking}}","🚛 Jenis Kendaraan: {{vehicleType}}","📅 Jadwal Pickup  : {{pickupSchedule}}","💰 Contract Rate  : {{contractRate}}","{{/if}}","Layanan         : {{serviceList}}","Catatan         : {{notes}}","━━━━━━━━━━━━━━━━━━━━","🔗 *Aksi Cepat (klik link):*","✅ Terima  → {{responseUrl}}?action=accept","❌ Tolak   → {{responseUrl}}?action=reject","💬 Form    → {{responseUrl}}","","✏️ *Atau balas WA dengan format:*","📌 Harga: `{{orderNumber}} [HARGA] [TGL_PICKUP]`","📌 Terima: `TERIMA {{orderNumber}}`","📌 Tolak:  `TOLAK {{orderNumber}}`","","Terima kasih 🙏","_Dikirim: {{timestamp}}_"].join("\n"),
-    vendor_request: ["📦 *PERMINTAAN PENAWARAN VENDOR*","━━━━━━━━━━━━━━━━━━","Kepada Yth. *{{vendorName}}*,","","No. RFQ       : *{{rfqNumber}}*","No. Order     : {{orderNumber}}","Customer      : {{customerDisplay}}","Tanggal       : {{tanggal}}","Jenis         : {{shipmentType}}","Rute          : {{route}}","Komoditi      : {{commodity}}","Komoditas     : {{templateLabel}}","Deskripsi     : {{cargoDescription}}","Berat         : {{grossWeightDisplay}}","Volume        : {{volumeDisplay}}","Qty           : {{quantityDisplay}}","━━━━━━━━━━━━━━━━━━","📋 Detail Item / Layanan:","{{productListDetail}}","","📋 *Spesifikasi Produk:*","{{specSummary}}","","📄 *Dokumen Wajib:*","{{requiredDocsSummary}}","","Tgl Butuh     : {{requiredDate}}","Catatan Admin : {{notes}}","","📝 Silakan isi penawaran melalui link berikut:","","🔗 *[ ISI PENAWARAN VENDOR ]*","👉 {{vendorMiniFormLink}}","","━━━━━━━━━━━━━━━━━━","Terima kasih atas kerja sama Anda 🙏","_CST Logistics_"].join("\n"),
+    vendor_request: ["📦 *PERMINTAAN PENAWARAN VENDOR*","━━━━━━━━━━━━━━━━━━","Kepada Yth. *{{vendorName}}*,","","No. RFQ       : *{{rfqNumber}}*","No. Order     : {{orderNumber}}","Customer      : {{customerDisplay}}","Tanggal       : {{tanggal}}","Jenis         : {{shipmentType}}","Jenis Layanan : {{serviceLabel}}","Rute          : {{route}}","Komoditi      : {{commodity}}","Komoditas     : {{templateLabel}}","Deskripsi     : {{cargoDescription}}","Berat         : {{grossWeightDisplay}}","Volume        : {{volumeDisplay}}","Qty           : {{quantityDisplay}}","━━━━━━━━━━━━━━━━━━","📋 Detail Item / Layanan:","{{productListDetail}}","","📋 *Spesifikasi:*","{{specSummary}}","","📄 *Dokumen Wajib:*","{{requiredDocsSummary}}","","{{serviceChecklistSummary}}","","Tgl Butuh     : {{requiredDate}}","Catatan Admin : {{notes}}","","📝 Silakan isi penawaran melalui link berikut:","","🔗 *[ ISI PENAWARAN VENDOR ]*","👉 {{vendorMiniFormLink}}","","━━━━━━━━━━━━━━━━━━","Terima kasih atas kerja sama Anda 🙏","_CST Logistics_"].join("\n"),
     task_link: ["🚚 *Tugas Order Baru — CST Logistics*","","Order: {{orderNumber}}","Rute: {{route}}","Keterangan: {{label}}","","Silakan buka link berikut untuk konfirmasi dan update status:","{{taskUrl}}","_{{timestamp}}_"].join("\n"),
     vendor_revision: ["↩️ *REVISI PENAWARAN — {{orderNumber}}*","━━━━━━━━━━━━━━━━━━","Kepada Yth. *{{vendorName}}*,","","Kami memerlukan revisi harga untuk order *{{orderNumber}}*.","Komoditas     : {{templateLabel}}","Harga saat ini: {{vendorPrice}}","","📋 *Spesifikasi:*","{{specSummary}}","","Mohon kirim penawaran terbaik Anda kembali:","🔗 {{vendorMiniFormLink}}","","Terima kasih 🙏"].join("\n"),
-    op_request: ["⚙️ *KONFIRMASI OPERASIONAL — CST LOGISTICS*","━━━━━━━━━━━━━━━━━━","Kepada Yth. *{{vendorName}}*,","","Customer telah menyetujui penawaran untuk order *{{orderNumber}}*.","Mohon lengkapi data operasional:","","🔗 {{operationalFormLink}}","","{{#if trucking}}","Data dibutuhkan: Driver, No. Plat, jadwal pickup.","{{/if}}","","{{#if freight_sea}}","Data dibutuhkan: Vessel, Voyage, ETA/ETD, BL.","{{/if}}","","{{#if freight_air}}","Data dibutuhkan: Airline, AWB, jadwal penerbangan.","{{/if}}","","{{#if ppjk}}","Data dibutuhkan: No. Aju, BC type, SPPB.","{{/if}}","","Terima kasih atas kerjasamanya 🙏"].join("\n"),
+    op_request: ["⚙️ *KONFIRMASI OPERASIONAL — CST LOGISTICS*","━━━━━━━━━━━━━━━━━━","Kepada Yth. *{{vendorName}}*,","","Customer telah menyetujui penawaran untuk order *{{orderNumber}}*.","Jenis Layanan : {{serviceLabel}}","","Mohon lengkapi data operasional:","","🔗 {{operationalFormLink}}","","{{#if trucking}}","Data dibutuhkan: Driver, No. Plat, jadwal pickup.","{{/if}}","","{{#if freight_sea}}","Data dibutuhkan: Vessel, Voyage, ETA/ETD, BL.","{{/if}}","","{{#if freight_air}}","Data dibutuhkan: Airline, AWB, jadwal penerbangan.","{{/if}}","","{{#if ppjk}}","Data dibutuhkan: No. Aju, BC type, SPPB.","{{/if}}","","{{serviceChecklistSummary}}","","Terima kasih atas kerjasamanya 🙏"].join("\n"),
     vendor_submit_confirm: [
       "Halo *{{picLabel}}* dari *{{vendorLabel}}*,",
       "",
@@ -1036,6 +1082,7 @@ const DEFAULT_TPL = {
       "",
       "Order  : *{{orderNumber}}*",
       "Layanan: {{shipmentType}}",
+      "Jenis  : {{serviceLabel}}",
       "Rute   : {{origin}} → {{destination}}",
       "{{estimatedPickupLine}}",
       "{{estimatedDeliveryLine}}",
@@ -1615,11 +1662,10 @@ export async function sendVendorRequestNotification(
   const tpl = await getWaTemplateConfig("vendor", "vendor_request", DEFAULT_TPL.vendor.vendor_request);
   // Derive qty/unit from first order item for context
   const firstItem = order.orderItems?.[0];
-  const commodityCtx = buildCommodityContext(templateSnapshot ?? null, {
-    quantity: firstItem?.qty ?? null,
-    unit: firstItem?.unit ?? null,
-  });
-  const msg = renderWf(tpl, order, { vendorName, vendorPhone, vendorMiniFormLink, ...commodityCtx });
+  const quantityOpts = { quantity: firstItem?.qty ?? null, unit: firstItem?.unit ?? null };
+  const commodityCtx = buildCommodityContext(templateSnapshot ?? null, quantityOpts);
+  const serviceCtx   = buildServiceContext(templateSnapshot ?? null);
+  const msg = renderWf(tpl, order, { vendorName, vendorPhone, vendorMiniFormLink, ...commodityCtx, ...serviceCtx });
   sendWhatsApp(vendorPhone, msg).catch((e: unknown) => logger.error({ e, vendorName }, "WA vendor_request failed"));
 }
 
@@ -1635,7 +1681,8 @@ export async function sendVendorSubmissionNotification(
     getAdminGroupWa(),
   ]);
   const commodityCtx = buildCommodityContext(templateSnapshot ?? null);
-  const extras = { vendorName, vendorPrice, ...commodityCtx };
+  const serviceCtx   = buildServiceContext(templateSnapshot ?? null);
+  const extras = { vendorName, vendorPrice, ...commodityCtx, ...serviceCtx };
   if (group) sendWhatsApp(group, renderWf(tplG, order, extras)).catch((e: unknown) => logger.error({ e }, "WA vendor_submission (group) failed"));
 }
 
@@ -1667,6 +1714,7 @@ export async function sendVendorSubmissionGroupNotification(
       ? `✅ *${vars.submittedVendorCount} vendor* sudah submit — segera *bandingkan penawaran*!`
       : `📥 Penawaran pertama masuk. Menunggu vendor lain.`;
   const commodityCtx = buildCommodityContext(vars.templateSnapshot ?? null);
+  const serviceCtx   = buildServiceContext(vars.templateSnapshot ?? null);
   const msg = renderTemplate(tpl, {
     orderNumber: vars.orderNumber,
     vendorName: vars.vendorName,
@@ -1681,6 +1729,7 @@ export async function sendVendorSubmissionGroupNotification(
     vendorComparisonLink: vars.vendorComparisonLink ?? null,
     timestamp: nowWIB(),
     ...commodityCtx,
+    ...serviceCtx,
   });
   sendWhatsApp(adminGroupWa, msg, {
     context: "vendor-submission-group",
@@ -1700,7 +1749,8 @@ export async function sendVendorRevisionNotification(
 ): Promise<void> {
   const tpl = await getWaTemplateConfig("vendor", "vendor_revision", DEFAULT_TPL.vendor.vendor_revision);
   const commodityCtx = buildCommodityContext(templateSnapshot ?? null);
-  const msg = renderWf(tpl, order, { vendorName, vendorPhone, vendorPrice, vendorMiniFormLink, ...commodityCtx });
+  const serviceCtx   = buildServiceContext(templateSnapshot ?? null);
+  const msg = renderWf(tpl, order, { vendorName, vendorPhone, vendorPrice, vendorMiniFormLink, ...commodityCtx, ...serviceCtx });
   sendWhatsApp(vendorPhone, msg).catch((e: unknown) => logger.error({ e, vendorName }, "WA vendor_revision failed"));
 }
 
@@ -1753,6 +1803,7 @@ export async function sendCustomerApprovalNotification(
     quantity: firstItem?.qty ?? null,
     unit: firstItem?.unit ?? null,
   });
+  const serviceCtx = buildServiceContext(opts?.templateSnapshot ?? null);
 
   const extras: Record<string, string | null | undefined> = {
     sellingPrice,
@@ -1771,6 +1822,7 @@ export async function sendCustomerApprovalNotification(
     etaFinal: opts?.etaFinal ?? null,
     validUntil: opts?.validUntil != null ? formatISODate(opts.validUntil) : null,
     ...commodityCtx,
+    ...serviceCtx,
   };
 
   const msg = renderWf(tpl, order, extras);
@@ -1819,13 +1871,15 @@ export async function sendOpRequestNotification(
   vendorName: string,
   vendorPhone: string,
   operationalFormLink: string,
+  templateSnapshot?: Record<string, unknown> | null,
 ): Promise<void> {
   const [vendorTpl, groupTpl, adminGroupWa] = await Promise.all([
     getWaTemplateConfig("vendor", "op_request", DEFAULT_TPL.vendor.op_request),
     getWaTemplateConfig("admin_group", "op_request", DEFAULT_TPL.admin_group.op_request),
     getAdminGroupWa(),
   ]);
-  const extras = { vendorName, vendorPhone, operationalFormLink };
+  const serviceCtx = buildServiceContext(templateSnapshot ?? null);
+  const extras = { vendorName, vendorPhone, operationalFormLink, ...serviceCtx };
   sendWhatsApp(vendorPhone, renderWf(vendorTpl, order, extras)).catch((e: unknown) =>
     logger.error({ e, vendorName }, "WA op_request (vendor) failed"),
   );
@@ -2526,6 +2580,7 @@ export async function sendVendorPodUploadedNotification(
 ): Promise<void> {
   const tpl = await getWaTemplateConfig("admin_personal", "vendor_pod_uploaded", DEFAULT_TPL.admin_personal.vendor_pod_uploaded);
   const commodityCtx = buildCommodityContext(templateSnapshot ?? null, quantityOpts);
+  const serviceCtx   = buildServiceContext(templateSnapshot ?? null);
   const msg = renderTemplate(tpl, {
     orderNumber, vendorName,
     commodity: commodity || null,
@@ -2533,6 +2588,7 @@ export async function sendVendorPodUploadedNotification(
     completionNotes: completionNotes || null,
     timestamp: nowWIB(),
     ...commodityCtx,
+    ...serviceCtx,
   });
   if (photoUrl) {
     sendMediaViaService(adminWaPhone, msg, photoUrl).catch((e: unknown) => logger.error({ e }, "WA vendor_pod_uploaded (media) failed"));
@@ -2570,12 +2626,14 @@ export async function sendCustomerPodUploadedNotification(
 ): Promise<void> {
   const tpl = await getWaTemplateConfig("customer", "customer_pod_uploaded", DEFAULT_TPL.customer.customer_pod_uploaded);
   const commodityCtx = buildCommodityContext(templateSnapshot ?? null);
+  const serviceCtx   = buildServiceContext(templateSnapshot ?? null);
   const msg = renderTemplate(tpl, {
     orderNumber, vendorName,
     completionNotes: completionNotes || null,
     trackingUrl: trackingUrl || null,
     timestamp: nowWIB(),
     ...commodityCtx,
+    ...serviceCtx,
   });
   sendWhatsApp(customerPhone, msg).catch((e: unknown) => logger.error({ e }, "WA customer_pod_uploaded failed"));
 }

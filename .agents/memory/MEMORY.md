@@ -18,3 +18,4 @@
 - [ws Package & Customer Portal Port](ws-port-config.md) — api-server needs ws in externals AND pnpm install; customer portal proxy runs on port 23434 (Replit auto-assigns PORT); Gateway needs CUSTOMER_PORT=23434
 - [Supabase Storage Migration](supabase-storage-migration.md) — GCS→Supabase; DEV key fallback; bucket names; upload path format `/objects/uploads/<uuid>.<ext>`
 - [Zod build alias](zod-build-alias.md) — zod not hoisted to workspace root by pnpm; must alias in build.mjs pointing to pnpm store directory.
+- [FASE 4A Service Context WA](fase4a-service-context-wa.md) — buildServiceContext() di orderNotification.ts; serviceChecklistSummary embed header; renderTemplate auto-skip null; op_request pakai SERVICE_SCHEMAS untuk derive snapshot.
