@@ -3485,10 +3485,13 @@ vendorMiniFormRouter.post("/admin/customer-invoices", async (req: Request, res: 
   const {
     salesDocId, orderId, orderNumber, invoiceNumber, customerName, customerPhone,
     currency, dueDate, notes, sendWa,
+    manualGrandTotal, manualSubtotal, manualTaxRate, manualTaxAmount,
   } = req.body as {
     salesDocId?: number; orderId?: number; orderNumber?: string;
     invoiceNumber?: string; customerName?: string; customerPhone?: string;
     currency?: string; dueDate?: string; notes?: string; sendWa?: boolean;
+    manualGrandTotal?: number; manualSubtotal?: number;
+    manualTaxRate?: number; manualTaxAmount?: number;
   };
 
   try {
@@ -3521,6 +3524,14 @@ vendorMiniFormRouter.post("/admin/customer-invoices", async (req: Request, res: 
           subtotal: Number(l.subtotal),
         }));
       }
+    }
+
+    // Manual amounts jika tidak ada salesDocId
+    if (!salesDocId && manualGrandTotal) {
+      grandTotal = manualGrandTotal;
+      if (manualSubtotal) subtotal = manualSubtotal;
+      if (manualTaxRate !== undefined) taxRate = manualTaxRate;
+      if (manualTaxAmount) taxAmount = manualTaxAmount;
     }
 
     const token = randomBytes(24).toString("hex");
@@ -3649,5 +3660,172 @@ vendorMiniFormRouter.post("/admin/customer-invoices/:id/send-wa", async (req: Re
   } catch (err) {
     req.log?.error({ err }, "send-wa customer-invoice error");
     return res.status(500).json({ error: "Gagal mengirim WA" });
+  }
+});
+
+// ── ADMIN: GET /api/vendor-form/admin/customer-invoices/:id ──────────────────
+vendorMiniFormRouter.get("/admin/customer-invoices/:id", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const id = Number(req.params["id"]);
+  if (isNaN(id)) return res.status(400).json({ error: "ID tidak valid" });
+  try {
+    const [link] = await db.select().from(customerInvoiceLinksTable)
+      .where(eq(customerInvoiceLinksTable.id, id));
+    if (!link) return res.status(404).json({ error: "Invoice tidak ditemukan" });
+    return res.json({
+      ...link,
+      subtotal:   link.subtotal   ? Number(link.subtotal)   : null,
+      taxRate:    link.taxRate    ? Number(link.taxRate)    : 11,
+      taxAmount:  link.taxAmount  ? Number(link.taxAmount)  : null,
+      grandTotal: link.grandTotal ? Number(link.grandTotal) : null,
+      amountPaid: link.amountPaid ? Number(link.amountPaid) : 0,
+    });
+  } catch (err) {
+    req.log?.error({ err }, "get customer-invoice detail error");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── ADMIN: POST /api/vendor-form/admin/customer-invoices/:id/confirm-payment ──
+vendorMiniFormRouter.post("/admin/customer-invoices/:id/confirm-payment", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const id = Number(req.params["id"]);
+  if (isNaN(id)) return res.status(400).json({ error: "ID tidak valid" });
+  const { amountPaid, paymentMethod, notes } = req.body as {
+    amountPaid?: number; paymentMethod?: string; notes?: string;
+  };
+  try {
+    const [link] = await db.select().from(customerInvoiceLinksTable)
+      .where(eq(customerInvoiceLinksTable.id, id));
+    if (!link) return res.status(404).json({ error: "Invoice tidak ditemukan" });
+    if (link.paymentStatus === "paid") return res.status(409).json({ error: "Invoice sudah lunas" });
+
+    const grandTotal = link.grandTotal ? Number(link.grandTotal) : 0;
+    const paid = amountPaid ?? grandTotal;
+    const newPaymentStatus = paid >= grandTotal ? "paid" : "partial";
+    const fmtRp = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
+
+    await db.update(customerInvoiceLinksTable)
+      .set({
+        amountPaid: String(paid),
+        paymentMethod: paymentMethod ?? link.paymentMethod ?? null,
+        paymentStatus: newPaymentStatus,
+        status: newPaymentStatus === "paid" ? "paid" : link.status,
+      } as any)
+      .where(eq(customerInvoiceLinksTable.id, id));
+
+    // Transisi order → Payment Received
+    if (link.orderId) {
+      transitionLogisticOrderStatus(link.orderId, "Payment Received", {
+        source: "vendorMiniForm:confirm_payment",
+        actorType: "admin",
+        notes: `Pembayaran dikonfirmasi${paymentMethod ? ` via ${paymentMethod}` : ""}${notes ? ` — ${notes}` : ""}`,
+      }).catch((e: unknown) =>
+        req.log?.warn({ e, orderId: link.orderId }, "Payment Received transition non-fatal"),
+      );
+    }
+
+    // WA ke customer
+    if (link.customerPhone) {
+      const msg = [
+        `✅ *Pembayaran Diterima*`,
+        `━━━━━━━━━━━━━━━━━━`,
+        `Halo ${link.customerName ?? "Customer"},`,
+        ``,
+        `Pembayaran Anda telah kami terima & dikonfirmasi.`,
+        ``,
+        `No. Order   : ${link.orderNumber ?? "—"}`,
+        `No. Invoice : ${link.invoiceNumber ?? "—"}`,
+        `Jumlah Bayar: *${fmtRp(paid)}*`,
+        `Metode      : ${paymentMethod ?? "—"}`,
+        `Status      : *Lunas ✅*`,
+        ``,
+        `Terima kasih atas pembayaran Anda 🙏`,
+        `_CST Logistics_`,
+      ].join("\n");
+      sendWhatsApp(link.customerPhone, msg, {
+        context: "vmf-payment-confirmed",
+        refType: "customer_invoice",
+        refId: String(link.id),
+      }).catch(() => {});
+    }
+
+    // WA ke admin group
+    const adminGroupWa = await getAdminGroupWa();
+    if (adminGroupWa) {
+      sendWhatsApp(adminGroupWa,
+        `💰 *Pembayaran Dikonfirmasi*\n\nOrder: ${link.orderNumber ?? "—"}\nInvoice: ${link.invoiceNumber ?? "—"}\nCustomer: ${link.customerName ?? "—"}\nJumlah: ${fmtRp(paid)}\nMetode: ${paymentMethod ?? "—"}`,
+        { context: "vmf-payment-admin", refType: "customer_invoice", refId: String(link.id) }
+      ).catch(() => {});
+    }
+
+    return res.json({ success: true, paymentStatus: newPaymentStatus });
+  } catch (err) {
+    req.log?.error({ err }, "confirm-payment error");
+    return res.status(500).json({ error: "Gagal konfirmasi pembayaran" });
+  }
+});
+
+// ── ADMIN: POST /api/vendor-form/admin/customer-invoices/:id/mark-completed ──
+vendorMiniFormRouter.post("/admin/customer-invoices/:id/mark-completed", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const id = Number(req.params["id"]);
+  if (isNaN(id)) return res.status(400).json({ error: "ID tidak valid" });
+  try {
+    const [link] = await db.select().from(customerInvoiceLinksTable)
+      .where(eq(customerInvoiceLinksTable.id, id));
+    if (!link) return res.status(404).json({ error: "Invoice tidak ditemukan" });
+
+    await db.update(customerInvoiceLinksTable)
+      .set({ status: "completed" } as any)
+      .where(eq(customerInvoiceLinksTable.id, id));
+
+    // Transisi order → Completed
+    if (link.orderId) {
+      transitionLogisticOrderStatus(link.orderId, "Completed", {
+        source: "vendorMiniForm:mark_completed",
+        actorType: "admin",
+        notes: `Order ditandai Selesai dari invoice ${link.invoiceNumber ?? link.token}`,
+      }).catch((e: unknown) =>
+        req.log?.warn({ e, orderId: link.orderId }, "Completed transition non-fatal"),
+      );
+    }
+
+    // WA ke customer
+    if (link.customerPhone) {
+      const msg = [
+        `🎉 *Order Selesai!*`,
+        `━━━━━━━━━━━━━━━━━━`,
+        `Halo ${link.customerName ?? "Customer"},`,
+        ``,
+        `Order Anda telah selesai diproses.`,
+        ``,
+        `No. Order : ${link.orderNumber ?? "—"}`,
+        `Status    : *Selesai ✅*`,
+        ``,
+        `Terima kasih telah menggunakan layanan kami.`,
+        `Sampai jumpa kembali! 🙏`,
+        `_CST Logistics_`,
+      ].join("\n");
+      sendWhatsApp(link.customerPhone, msg, {
+        context: "vmf-order-completed",
+        refType: "customer_invoice",
+        refId: String(link.id),
+      }).catch(() => {});
+    }
+
+    // WA ke admin group
+    const adminGroupWa = await getAdminGroupWa();
+    if (adminGroupWa) {
+      sendWhatsApp(adminGroupWa,
+        `✅ *Order Selesai*\n\nOrder: ${link.orderNumber ?? "—"}\nInvoice: ${link.invoiceNumber ?? "—"}\nCustomer: ${link.customerName ?? "—"}\n\nOrder ditandai Selesai oleh admin.`,
+        { context: "vmf-order-completed-admin", refType: "customer_invoice", refId: String(link.id) }
+      ).catch(() => {});
+    }
+
+    return res.json({ success: true });
+  } catch (err) {
+    req.log?.error({ err }, "mark-completed error");
+    return res.status(500).json({ error: "Gagal tandai selesai" });
   }
 });

@@ -24,7 +24,7 @@ import {
   Clock, SendHorizonal, Pencil, CheckCircle, Package, Star, Building2, FileText,
   BarChart2, TrendingDown, TrendingUp, Minus, Award,
   Layers, ChevronDown, ChevronRight, AlertCircle, ClipboardList, PackageCheck, Info,
-  Search,
+  Search, DollarSign, CreditCard, BadgeCheck,
 } from "lucide-react";
 import { TemplateSnapshotCard } from "@/components/TemplateSnapshotCard";
 import {
@@ -101,6 +101,18 @@ type OpConfirm = {
 type Supplier = { id: number; name: string; serviceType: string | null; phone: string | null };
 type Order = { id: number; orderNumber: string; customerName: string; status: string; createdAt: string };
 type OrderItem = { id: number; orderId: number; category: string; serviceName: string; calculatorType: string; subtotal: string };
+
+type CustomerInvoice = {
+  id: number; token: string; orderId: number | null; orderNumber: string | null;
+  salesDocId: number | null; invoiceNumber: string | null;
+  customerName: string | null; customerPhone: string | null;
+  currency: string; subtotal: string | null; taxRate: string;
+  taxAmount: string | null; grandTotal: string | null; amountPaid: string;
+  paymentStatus: string; paymentMethod: string | null;
+  dueDate: string | null; notes: string | null;
+  viewedAt: string | null; acknowledgedAt: string | null;
+  status: string; createdAt: string; expiresAt: string | null;
+};
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -2276,6 +2288,215 @@ function ProductTemplateEngine() {
   );
 }
 
+// ── Create Invoice Dialog ─────────────────────────────────────────────────────
+
+function CreateInvoiceDialog({ onCreated }: { onCreated: () => void }) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [orderNumber, setOrderNumber] = useState("");
+  const [invoiceNumber, setInvoiceNumber] = useState("");
+  const [customerName, setCustomerName] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [grandTotal, setGrandTotal] = useState("");
+  const [taxRate, setTaxRate] = useState("11");
+  const [dueDate, setDueDate] = useState("");
+  const [notes, setNotes] = useState("");
+
+  const mut = useMutation({
+    mutationFn: () => apiFetch("/api/vendor-form/admin/customer-invoices", {
+      method: "POST",
+      body: JSON.stringify({
+        orderNumber: orderNumber || undefined,
+        invoiceNumber: invoiceNumber || undefined,
+        customerName: customerName || undefined,
+        customerPhone: customerPhone || undefined,
+        manualGrandTotal: grandTotal ? Number(grandTotal) : undefined,
+        manualTaxRate: taxRate ? Number(taxRate) : 11,
+        dueDate: dueDate || undefined,
+        notes: notes || undefined,
+      }),
+    }),
+    onSuccess: () => {
+      toast({ title: "Invoice berhasil dibuat!" });
+      setOpen(false);
+      setOrderNumber(""); setInvoiceNumber(""); setCustomerName("");
+      setCustomerPhone(""); setGrandTotal(""); setDueDate(""); setNotes("");
+      onCreated();
+    },
+    onError: (e: Error) => toast({ title: "Gagal buat invoice", description: e.message, variant: "destructive" }),
+  });
+
+  const suggestInvNum = () => {
+    const yr = new Date().getFullYear();
+    const num = String(Math.floor(Math.random() * 900000) + 100000);
+    setInvoiceNumber(`INV/${yr}/${num}`);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" className="gap-1.5">
+          <Plus className="h-4 w-4" />
+          Buat Invoice
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Buat Invoice Customer</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 py-1">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">No. Invoice <span className="text-red-500">*</span></Label>
+              <div className="flex gap-1.5">
+                <Input value={invoiceNumber} onChange={e => setInvoiceNumber(e.target.value)}
+                  placeholder="INV/2025/..." className="h-9 text-sm" />
+                <Button type="button" variant="outline" size="sm" className="h-9 px-2 shrink-0"
+                  onClick={suggestInvNum} title="Generate otomatis">✨</Button>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">No. Order</Label>
+              <Input value={orderNumber} onChange={e => setOrderNumber(e.target.value)}
+                placeholder="LOG/2025/..." className="h-9 text-sm" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Nama Customer</Label>
+              <Input value={customerName} onChange={e => setCustomerName(e.target.value)}
+                placeholder="PT. Contoh" className="h-9 text-sm" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">WA Customer</Label>
+              <Input value={customerPhone} onChange={e => setCustomerPhone(e.target.value)}
+                placeholder="628xxxxxxx" className="h-9 text-sm" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Grand Total (IDR)</Label>
+              <Input type="number" value={grandTotal} onChange={e => setGrandTotal(e.target.value)}
+                placeholder="0" className="h-9 text-sm" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">PPN (%)</Label>
+              <Input type="number" value={taxRate} onChange={e => setTaxRate(e.target.value)}
+                placeholder="11" className="h-9 text-sm" />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Jatuh Tempo</Label>
+            <Input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)}
+              className="h-9 text-sm" />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Catatan</Label>
+            <Textarea value={notes} onChange={e => setNotes(e.target.value)}
+              placeholder="Instruksi pembayaran, rekening bank, dll." rows={2}
+              className="text-sm resize-none" />
+          </div>
+          {customerPhone && (
+            <p className="text-xs text-green-600">✓ WA invoice akan dikirim otomatis ke {customerPhone}</p>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>Batal</Button>
+          <Button onClick={() => mut.mutate()} disabled={mut.isPending || !invoiceNumber.trim()}>
+            {mut.isPending
+              ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Membuat...</>
+              : "Buat Invoice"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Confirm Payment Dialog ────────────────────────────────────────────────────
+
+function ConfirmPaymentDialog({ invoice, onConfirmed }: { invoice: CustomerInvoice; onConfirmed: () => void }) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [amountPaid, setAmountPaid] = useState(String(Number(invoice.grandTotal ?? 0)));
+  const [paymentMethod, setPaymentMethod] = useState("Transfer Bank");
+  const [notes, setNotes] = useState("");
+
+  const mut = useMutation({
+    mutationFn: () => apiFetch(`/api/vendor-form/admin/customer-invoices/${invoice.id}/confirm-payment`, {
+      method: "POST",
+      body: JSON.stringify({
+        amountPaid: amountPaid ? Number(amountPaid) : undefined,
+        paymentMethod: paymentMethod || undefined,
+        notes: notes || undefined,
+      }),
+    }),
+    onSuccess: () => {
+      toast({ title: "Pembayaran dikonfirmasi!" });
+      setOpen(false);
+      onConfirmed();
+    },
+    onError: (e: Error) => toast({ title: "Gagal", description: e.message, variant: "destructive" }),
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="outline"
+          className="h-7 text-xs gap-1 text-amber-700 border-amber-300 hover:bg-amber-50">
+          <DollarSign className="h-3.5 w-3.5" />
+          Konfirmasi Bayar
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Konfirmasi Pembayaran</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 py-1">
+          <div className="bg-slate-50 rounded-lg px-3 py-2 text-sm">
+            <p className="text-slate-500 text-xs">Invoice</p>
+            <p className="font-semibold text-slate-800">{invoice.invoiceNumber ?? `#${invoice.id}`}</p>
+            <p className="text-xs text-slate-400">
+              {invoice.orderNumber ?? ""}{invoice.orderNumber && invoice.customerName ? " • " : ""}{invoice.customerName ?? ""}
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Jumlah Dibayar (IDR)</Label>
+            <Input type="number" value={amountPaid} onChange={e => setAmountPaid(e.target.value)}
+              className="h-9 text-sm" />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Metode Pembayaran</Label>
+            <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+              <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Transfer Bank">Transfer Bank</SelectItem>
+                <SelectItem value="Cash">Cash</SelectItem>
+                <SelectItem value="Cek/Giro">Cek/Giro</SelectItem>
+                <SelectItem value="Virtual Account">Virtual Account</SelectItem>
+                <SelectItem value="QRIS">QRIS</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Catatan (opsional)</Label>
+            <Textarea value={notes} onChange={e => setNotes(e.target.value)}
+              rows={2} className="text-sm resize-none" placeholder="No. bukti transfer, dll." />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>Batal</Button>
+          <Button onClick={() => mut.mutate()} disabled={mut.isPending}>
+            {mut.isPending
+              ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Konfirmasi...</>
+              : "✅ Konfirmasi Pembayaran"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function VendorFormsPage() {
@@ -2291,6 +2512,7 @@ export default function VendorFormsPage() {
   const [filterMode, setFilterMode] = useState("all");
   const [approvalSearch, setApprovalSearch] = useState("");
   const [approvalStatusFilter, setApprovalStatusFilter] = useState("all");
+  const [invoiceSearch, setInvoiceSearch] = useState("");
 
   // ── Queries ──
   const { data: links = [], isLoading: linksLoading } = useQuery<FormLink[]>({
@@ -2362,6 +2584,21 @@ export default function VendorFormsPage() {
     enabled: tab === "activity-log",
     refetchInterval: tab === "activity-log" ? 20_000 : false,
   });
+  const { data: invoices = [], isLoading: invoicesLoading } = useQuery<CustomerInvoice[]>({
+    queryKey: ["vmf-invoices"],
+    queryFn: () => apiFetch<CustomerInvoice[]>("/api/vendor-form/admin/customer-invoices"),
+    refetchInterval: tab === "invoices" ? 20_000 : false,
+  });
+  const filteredInvoices = useMemo(() => {
+    const q = invoiceSearch.trim().toLowerCase();
+    if (!q) return invoices;
+    return invoices.filter(inv =>
+      inv.invoiceNumber?.toLowerCase().includes(q) ||
+      inv.customerName?.toLowerCase().includes(q) ||
+      inv.orderNumber?.toLowerCase().includes(q) ||
+      inv.customerPhone?.toLowerCase().includes(q)
+    );
+  }, [invoices, invoiceSearch]);
   const { data: suppliers = [] } = useQuery<Supplier[]>({
     queryKey: ["suppliers-simple"],
     queryFn: () => apiFetch<Supplier[]>("/api/trading/suppliers"),
@@ -2478,6 +2715,7 @@ export default function VendorFormsPage() {
             <TabsTrigger value="submissions">📝 Submissions ({submissions.length})</TabsTrigger>
             <TabsTrigger value="approvals">✅ Customer Approval ({approvals.length})</TabsTrigger>
             <TabsTrigger value="op-confirms">🚚 Konfirmasi Operasional ({opConfirms.length})</TabsTrigger>
+            <TabsTrigger value="invoices">🧾 Invoice ({invoices.length})</TabsTrigger>
             <TabsTrigger value="product-templates">🏭 Product Templates</TabsTrigger>
             <TabsTrigger value="activity-log">📋 Log Aktivitas</TabsTrigger>
           </TabsList>
@@ -3046,6 +3284,198 @@ export default function VendorFormsPage() {
                                   </Button>
                                 }
                               />
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
+
+          {/* ── INVOICE TAB ── */}
+          <TabsContent value="invoices" className="space-y-4">
+            <div className="flex items-center gap-3 flex-wrap">
+              <Input
+                placeholder="Cari invoice, customer, order, WA..."
+                className="max-w-xs h-9 text-sm"
+                value={invoiceSearch}
+                onChange={e => setInvoiceSearch(e.target.value)}
+              />
+              <div className="ml-auto">
+                <CreateInvoiceDialog
+                  onCreated={() => queryClient.invalidateQueries({ queryKey: ["vmf-invoices"] })}
+                />
+              </div>
+            </div>
+            {invoicesLoading ? (
+              <div className="flex items-center justify-center py-12 text-slate-400">
+                <Loader2 className="h-5 w-5 animate-spin mr-2" />Memuat...
+              </div>
+            ) : (
+              <Card>
+                <CardContent className="p-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Invoice</TableHead>
+                        <TableHead>Customer</TableHead>
+                        <TableHead>Order</TableHead>
+                        <TableHead className="text-right">Total</TableHead>
+                        <TableHead>Status Bayar</TableHead>
+                        <TableHead>Jatuh Tempo</TableHead>
+                        <TableHead>Aksi</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredInvoices.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={7} className="text-center py-10 text-slate-400 text-sm">
+                            {invoices.length === 0
+                              ? 'Belum ada invoice. Klik "Buat Invoice" untuk membuat.'
+                              : "Tidak ada invoice yang cocok."}
+                          </TableCell>
+                        </TableRow>
+                      ) : filteredInvoices.map(inv => {
+                        const isOverdue = !!inv.dueDate && new Date(inv.dueDate) < new Date() && inv.paymentStatus !== "paid";
+                        const isPaid = inv.paymentStatus === "paid";
+                        const isCompleted = inv.status === "completed";
+                        const grandTotalNum = inv.grandTotal ? Number(inv.grandTotal) : null;
+                        const PAY_STATUS: Record<string, { label: string; cls: string }> = {
+                          unpaid:  { label: "Belum Bayar", cls: "bg-red-100 text-red-700 border-red-200" },
+                          partial: { label: "Sebagian",    cls: "bg-amber-100 text-amber-700 border-amber-200" },
+                          paid:    { label: "Lunas ✅",    cls: "bg-green-100 text-green-700 border-green-200" },
+                        };
+                        const payInfo = PAY_STATUS[inv.paymentStatus] ?? { label: inv.paymentStatus, cls: "bg-slate-100 text-slate-700 border-slate-200" };
+                        const invoiceUrl = `/customer-invoice/${inv.token}`;
+
+                        return (
+                          <TableRow key={inv.id} className={isCompleted ? "opacity-60 bg-green-50/40" : ""}>
+                            <TableCell>
+                              <div>
+                                <p className="font-medium text-sm text-slate-800 font-mono">
+                                  {inv.invoiceNumber ?? `#${inv.id}`}
+                                </p>
+                                <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                                  {isCompleted && (
+                                    <span className="text-xs text-green-700 font-semibold flex items-center gap-0.5">
+                                      <BadgeCheck className="h-3 w-3" />Selesai
+                                    </span>
+                                  )}
+                                  {inv.viewedAt && !isCompleted && (
+                                    <span className="text-xs text-blue-500">👁 Dilihat</span>
+                                  )}
+                                  {inv.acknowledgedAt && (
+                                    <span className="text-xs text-indigo-500">✔ Dikonfirmasi</span>
+                                  )}
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <p className="text-sm text-slate-800">{inv.customerName ?? "—"}</p>
+                              {inv.customerPhone && (
+                                <p className="text-xs text-slate-400 font-mono">{inv.customerPhone}</p>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              {inv.orderNumber
+                                ? <span className="text-xs text-blue-600 font-mono">{inv.orderNumber}</span>
+                                : <span className="text-slate-400 text-xs">—</span>}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {grandTotalNum != null
+                                ? <span className="font-semibold text-sm">
+                                    {(inv.currency ?? "IDR")} {Math.round(grandTotalNum).toLocaleString("id-ID")}
+                                  </span>
+                                : "—"}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-col gap-1">
+                                <span className={`inline-flex text-xs px-2 py-0.5 rounded-full border font-semibold w-fit ${payInfo.cls}`}>
+                                  {payInfo.label}
+                                </span>
+                                {isOverdue && (
+                                  <span className="text-xs text-red-500 font-medium flex items-center gap-1">
+                                    <AlertCircle className="h-3 w-3" />Jatuh tempo
+                                  </span>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              {inv.dueDate
+                                ? <span className={`text-xs ${isOverdue ? "text-red-600 font-semibold" : "text-slate-600"}`}>
+                                    {new Date(inv.dueDate).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })}
+                                  </span>
+                                : <span className="text-slate-400 text-xs">—</span>}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1 flex-wrap">
+                                {/* Kirim WA */}
+                                <Button
+                                  variant="ghost" size="icon" className="h-7 w-7 text-green-600"
+                                  title="Kirim WA invoice ke customer"
+                                  onClick={async () => {
+                                    if (!inv.customerPhone) {
+                                      toast({ title: "Nomor WA customer tidak ada", variant: "destructive" });
+                                      return;
+                                    }
+                                    try {
+                                      await apiFetch(`/api/vendor-form/admin/customer-invoices/${inv.id}/send-wa`, { method: "POST" });
+                                      toast({ title: "WA invoice terkirim!" });
+                                    } catch (e: unknown) {
+                                      toast({ title: "Gagal kirim WA", description: (e as Error).message, variant: "destructive" });
+                                    }
+                                  }}
+                                >
+                                  <MessageCircle className="h-3.5 w-3.5" />
+                                </Button>
+                                {/* Lihat Invoice */}
+                                <a href={invoiceUrl} target="_blank" rel="noopener noreferrer">
+                                  <Button variant="ghost" size="icon" className="h-7 w-7 text-blue-600" title="Lihat invoice">
+                                    <ExternalLink className="h-3.5 w-3.5" />
+                                  </Button>
+                                </a>
+                                {/* Konfirmasi Pembayaran */}
+                                {!isPaid && !isCompleted && (
+                                  <ConfirmPaymentDialog
+                                    invoice={inv}
+                                    onConfirmed={() => queryClient.invalidateQueries({ queryKey: ["vmf-invoices"] })}
+                                  />
+                                )}
+                                {/* Tandai Selesai */}
+                                {isPaid && !isCompleted && (
+                                  <Button
+                                    size="sm" variant="outline"
+                                    className="h-7 text-xs gap-1 text-green-700 border-green-300 hover:bg-green-50"
+                                    onClick={async () => {
+                                      if (!confirm("Tandai order ini sebagai Selesai? WA notifikasi akan dikirim ke customer.")) return;
+                                      try {
+                                        await apiFetch(`/api/vendor-form/admin/customer-invoices/${inv.id}/mark-completed`, { method: "POST" });
+                                        toast({ title: "Order ditandai Selesai! ✅" });
+                                        queryClient.invalidateQueries({ queryKey: ["vmf-invoices"] });
+                                      } catch (e: unknown) {
+                                        toast({ title: "Gagal", description: (e as Error).message, variant: "destructive" });
+                                      }
+                                    }}
+                                  >
+                                    <BadgeCheck className="h-3.5 w-3.5" />
+                                    Selesai
+                                  </Button>
+                                )}
+                                {/* Salin link invoice */}
+                                <Button
+                                  variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-slate-700"
+                                  title="Salin link invoice"
+                                  onClick={() => {
+                                    const url = window.location.origin + invoiceUrl;
+                                    navigator.clipboard.writeText(url).then(() => toast({ title: "Link disalin!" }));
+                                  }}
+                                >
+                                  <Copy className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
                             </TableCell>
                           </TableRow>
                         );
