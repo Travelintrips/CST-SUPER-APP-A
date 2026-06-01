@@ -23,6 +23,7 @@ import {
   orderUpdatesTable,
   productTemplatesTable,
   serviceTemplatesTable,
+  customerQuoteLinksTable,
 } from "@workspace/db";
 import { getInCodeTemplate, resolveTemplate } from "@workspace/product-templates";
 import type { ProductTemplateOverride } from "@workspace/product-templates";
@@ -3393,6 +3394,10 @@ vendorMiniFormRouter.get("/customer-invoice/:token", async (req: Request, res: R
       lineItems: link.lineItems ?? [],
       acknowledgedAt: link.acknowledgedAt,
       status: link.status,
+      categoryKey: (link as any).categoryKey ?? null,
+      templateId: (link as any).templateId ?? null,
+      templateVersion: (link as any).templateVersion ?? null,
+      templateSnapshot: (link as any).templateSnapshot ?? null,
     });
   } catch (err) {
     req.log?.error({ err }, "customer-invoice GET error");
@@ -3551,6 +3556,72 @@ vendorMiniFormRouter.post("/admin/customer-invoices", async (req: Request, res: 
     const expiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 hari
     const createdBy = (req.user as { id?: string } | undefined)?.id ?? "admin";
 
+    // ── Resolve templateSnapshot: priority A→E ────────────────────────────────
+    let tplCategoryKey: string | null = null;
+    let tplTemplateId: string | null = null;
+    let tplTemplateVersion: string | null = null;
+    let tplSnapshot: Record<string, unknown> | null = null;
+
+    const setTpl = (snap: Record<string, unknown> | null | undefined, catKey?: string | null, tid?: string | null, tver?: string | null) => {
+      if (snap && !tplSnapshot) {
+        tplSnapshot = snap;
+        tplCategoryKey = catKey ?? null;
+        tplTemplateId = tid ?? null;
+        tplTemplateVersion = tver ?? null;
+      }
+    };
+
+    // A. sales_documents.templateSnapshot (already fetched above if salesDocId)
+    if (salesDocId) {
+      const [sdoc] = await db
+        .select({ templateSnapshot: salesDocumentsTable.templateSnapshot, categoryKey: salesDocumentsTable.categoryKey, templateId: salesDocumentsTable.templateId, templateVersion: salesDocumentsTable.templateVersion })
+        .from(salesDocumentsTable)
+        .where(eq(salesDocumentsTable.id, salesDocId));
+      if (sdoc) setTpl(sdoc.templateSnapshot, sdoc.categoryKey, sdoc.templateId, sdoc.templateVersion);
+    }
+
+    // B. customer_approvals.templateSnapshot (most recent approved for this order)
+    if (!tplSnapshot && orderId) {
+      const [appr] = await db
+        .select({ templateSnapshot: customerApprovalsTable.templateSnapshot, categoryKey: customerApprovalsTable.categoryKey, templateId: customerApprovalsTable.templateId, templateVersion: customerApprovalsTable.templateVersion })
+        .from(customerApprovalsTable)
+        .where(and(eq(customerApprovalsTable.orderId, orderId), eq(customerApprovalsTable.status, "approved")))
+        .orderBy(desc(customerApprovalsTable.createdAt))
+        .limit(1);
+      if (appr) setTpl(appr.templateSnapshot, appr.categoryKey, appr.templateId, appr.templateVersion);
+    }
+
+    // C. customer_quote_links.templateSnapshot (most recent approved for this order)
+    if (!tplSnapshot && orderId) {
+      const [qlink] = await db
+        .select({ templateSnapshot: customerQuoteLinksTable.templateSnapshot, categoryKey: customerQuoteLinksTable.categoryKey, templateId: customerQuoteLinksTable.templateId, templateVersion: customerQuoteLinksTable.templateVersion })
+        .from(customerQuoteLinksTable)
+        .where(and(eq(customerQuoteLinksTable.orderId, orderId), eq(customerQuoteLinksTable.status, "approved")))
+        .orderBy(desc(customerQuoteLinksTable.createdAt))
+        .limit(1);
+      if (qlink) setTpl(qlink.templateSnapshot, qlink.categoryKey, qlink.templateId, qlink.templateVersion);
+    }
+
+    // D. logistic_order_rfqs.templateSnapshot (most recent for this order)
+    if (!tplSnapshot && orderId) {
+      const [rfq] = await db
+        .select({ templateSnapshot: logisticOrderRfqsTable.templateSnapshot, templateId: logisticOrderRfqsTable.templateId, templateVersion: logisticOrderRfqsTable.templateVersion })
+        .from(logisticOrderRfqsTable)
+        .where(eq(logisticOrderRfqsTable.orderId, orderId))
+        .orderBy(desc(logisticOrderRfqsTable.createdAt))
+        .limit(1);
+      if (rfq) setTpl(rfq.templateSnapshot, null, rfq.templateId ? String(rfq.templateId) : null, rfq.templateVersion);
+    }
+
+    // E. logistic_orders.templateSnapshot
+    if (!tplSnapshot && orderId) {
+      const [ord] = await db
+        .select({ templateSnapshot: logisticOrdersTable.templateSnapshot, categoryKey: logisticOrdersTable.categoryKey, templateVersion: logisticOrdersTable.templateVersion })
+        .from(logisticOrdersTable)
+        .where(eq(logisticOrdersTable.id, orderId));
+      if (ord) setTpl(ord.templateSnapshot as Record<string, unknown> | null, ord.categoryKey, null, ord.templateVersion);
+    }
+
     const [link] = await db.insert(customerInvoiceLinksTable).values({
       token,
       salesDocId: salesDocId ?? null,
@@ -3569,6 +3640,10 @@ vendorMiniFormRouter.post("/admin/customer-invoices", async (req: Request, res: 
       dueDate: dueDate ? new Date(dueDate) : null,
       expiresAt: expiry,
       createdBy,
+      categoryKey: tplCategoryKey,
+      templateId: tplTemplateId,
+      templateVersion: tplTemplateVersion,
+      templateSnapshot: tplSnapshot,
     } as any).returning();
 
     const { getPreferredDomain } = await import("../lib/domain.js");

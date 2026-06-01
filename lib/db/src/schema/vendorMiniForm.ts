@@ -187,6 +187,11 @@ export const customerInvoiceLinksTable = pgTable("customer_invoice_links", {
   createdBy: text("created_by"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   expiresAt: timestamp("expires_at"),
+  // Template context snapshot (immutable at creation time)
+  categoryKey: text("category_key"),
+  templateId: text("template_id"),
+  templateVersion: text("template_version"),
+  templateSnapshot: jsonb("template_snapshot").$type<Record<string, unknown> | null>(),
 });
 
 export type VendorMiniFormLink = typeof vendorMiniFormLinksTable.$inferSelect;

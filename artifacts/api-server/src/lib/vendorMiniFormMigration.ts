@@ -232,6 +232,12 @@ export async function runVendorMiniFormMigration(): Promise<void> {
     await db.execute(sql`CREATE INDEX IF NOT EXISTS cil_order_id_idx ON customer_invoice_links(order_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS cil_sales_doc_id_idx ON customer_invoice_links(sales_doc_id);`);
 
+    // ── Template snapshot columns for customer_invoice_links (HOTFIX #3) ────────
+    await db.execute(sql`ALTER TABLE customer_invoice_links ADD COLUMN IF NOT EXISTS category_key TEXT;`);
+    await db.execute(sql`ALTER TABLE customer_invoice_links ADD COLUMN IF NOT EXISTS template_id TEXT;`);
+    await db.execute(sql`ALTER TABLE customer_invoice_links ADD COLUMN IF NOT EXISTS template_version TEXT;`);
+    await db.execute(sql`ALTER TABLE customer_invoice_links ADD COLUMN IF NOT EXISTS template_snapshot JSONB;`);
+
     logger.info("Vendor mini form migration: ok");
   } catch (err) {
     logger.error({ err }, "Vendor mini form migration failed");
