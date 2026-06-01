@@ -64,6 +64,7 @@ interface TrackingData {
   driverJob: DriverJob | null;
   rfqQuote: RfqQuote | null;
   orderUpdates: OrderUpdateItem[];
+  progressEvents?: ProgressEvent[];
 }
 
 interface ProgressEvent {
@@ -90,12 +91,6 @@ async function fetchTracking(orderNumber: string): Promise<TrackingData> {
   return res.json() as Promise<TrackingData>;
 }
 
-async function fetchProgress(orderId: number): Promise<ProgressEvent[]> {
-  const res = await fetch(`${BASE}/api/logistic/orders/${orderId}/progress`);
-  if (!res.ok) return [];
-  const data = await res.json() as { events: ProgressEvent[] };
-  return data.events ?? [];
-}
 
 const ORDER_STEPS = [
   { key: "Order Received",    label: "Order Diterima",         icon: FileText },
@@ -728,6 +723,96 @@ function PushToggle({ orderNumber }: { orderNumber: string | null }) {
   );
 }
 
+function GpsMapEmbed({ events }: { events: ProgressEvent[] }) {
+  const pts = events.filter((e) => e.gpsLatitude != null && e.gpsLongitude != null);
+  if (pts.length === 0) return null;
+
+  const markers = pts.map((e, i) => ({
+    lat: e.gpsLatitude!,
+    lng: e.gpsLongitude!,
+    label: e.stepLabel,
+    num: i + 1,
+    ts: e.deviceTimestamp
+      ? new Date(e.deviceTimestamp).toLocaleString("id-ID", {
+          day: "numeric", month: "short", year: "numeric",
+          hour: "2-digit", minute: "2-digit",
+          timeZone: "Asia/Jakarta",
+        }) + " WIB"
+      : new Date(e.createdAt).toLocaleString("id-ID", {
+          day: "numeric", month: "short", year: "numeric",
+          hour: "2-digit", minute: "2-digit",
+          timeZone: "Asia/Jakarta",
+        }),
+    isLast: i === pts.length - 1,
+  }));
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\/script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body,#map { width:100%; height:100%; }
+  .pin-icon { background:#2563eb; color:#fff; border-radius:50% 50% 50% 0; transform:rotate(-45deg);
+    width:28px; height:28px; display:flex; align-items:center; justify-content:center;
+    font-size:11px; font-weight:700; border:2px solid #fff;
+    box-shadow:0 2px 6px rgba(0,0,0,0.35); }
+  .pin-icon.last { background:#16a34a; }
+  .pin-inner { transform:rotate(45deg); }
+  .leaflet-popup-content { font-size:12px; line-height:1.5; min-width:140px; }
+  .popup-title { font-weight:700; margin-bottom:2px; color:#1e293b; }
+  .popup-ts { color:#64748b; font-size:11px; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<script>
+  var pts = ${JSON.stringify(markers)};
+  var map = L.map('map', { zoomControl:true, attributionControl:false });
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:19 }).addTo(map);
+
+  var latlngs = pts.map(function(p){ return [p.lat, p.lng]; });
+
+  if (latlngs.length > 1) {
+    L.polyline(latlngs, { color:'#2563eb', weight:3, opacity:0.75, dashArray:'6,4' }).addTo(map);
+  }
+
+  pts.forEach(function(p) {
+    var div = document.createElement('div');
+    div.className = 'pin-icon' + (p.isLast ? ' last' : '');
+    var inner = document.createElement('div');
+    inner.className = 'pin-inner';
+    inner.textContent = p.num;
+    div.appendChild(inner);
+    var icon = L.divIcon({ html:div.outerHTML, className:'', iconSize:[28,28], iconAnchor:[14,28], popupAnchor:[0,-30] });
+    var popup = '<div class="popup-title">' + p.label + '</div><div class="popup-ts">' + p.ts + '</div>';
+    L.marker([p.lat, p.lng], { icon:icon }).addTo(map).bindPopup(popup);
+  });
+
+  if (latlngs.length === 1) {
+    map.setView(latlngs[0], 15);
+  } else {
+    map.fitBounds(latlngs, { padding:[24,24] });
+  }
+<\/script>
+</body>
+</html>`;
+
+  return (
+    <div className="rounded-lg overflow-hidden border border-border mb-4" style={{ height: "220px" }}>
+      <iframe
+        srcDoc={html}
+        title="Peta Rute Driver"
+        className="w-full h-full border-0"
+        sandbox="allow-scripts"
+      />
+    </div>
+  );
+}
+
 function DriverGpsTimeline({ events }: { events: ProgressEvent[] }) {
   const gpsEvents = events.filter((e) => e.gpsLatitude != null && e.gpsLongitude != null);
   if (gpsEvents.length === 0) return null;
@@ -739,6 +824,7 @@ function DriverGpsTimeline({ events }: { events: ProgressEvent[] }) {
         Riwayat Lokasi Driver
         <Badge variant="outline" className="text-xs ml-auto">{gpsEvents.length} titik</Badge>
       </h3>
+      <GpsMapEmbed events={gpsEvents} />
       <div className="space-y-0">
         {[...gpsEvents].reverse().map((ev, i) => {
           const isFirst = i === 0;
@@ -908,14 +994,6 @@ export default function TrackPage() {
       ? false
       : (ACTIVE_INTERVAL * 1000),
     staleTime: 5_000,
-  });
-
-  const { data: progressEvents = [] } = useQuery<ProgressEvent[], Error>({
-    queryKey: ["tracking-progress", tracking?.id],
-    queryFn: () => fetchProgress(tracking!.id),
-    enabled: !!tracking?.id,
-    refetchInterval: isTerminal ? false : (ACTIVE_INTERVAL * 1000),
-    staleTime: 10_000,
   });
 
   useEffect(() => {
@@ -1131,7 +1209,7 @@ export default function TrackPage() {
             )}
 
             {/* GPS History Timeline */}
-            <DriverGpsTimeline events={progressEvents} />
+            <DriverGpsTimeline events={tracking.progressEvents ?? []} />
 
             {/* Services */}
             {tracking.items.length > 0 && (

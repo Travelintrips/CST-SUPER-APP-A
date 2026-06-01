@@ -508,7 +508,7 @@ logisticOrdersRouter.get(
     if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
 
     // Run all independent queries in parallel — eliminates N+1 sequential awaits
-    const [items, [driverJob], [latestRfq], orderUpdates] = await Promise.all([
+    const [items, [driverJob], [latestRfq], orderUpdates, progressEvents] = await Promise.all([
       db.select().from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, order.id)),
       db.select().from(driverJobsTable)
         .where(eq(driverJobsTable.logisticOrderId, order.id))
@@ -522,6 +522,7 @@ logisticOrdersRouter.get(
         .where(and(eq(orderUpdatesTable.orderId, order.id), eq(orderUpdatesTable.isPublic, true)))
         .orderBy(desc(orderUpdatesTable.createdAt))
         .limit(50),
+      getOrderProgressEvents(order.id),
     ]);
 
     let driverJobData = null;
@@ -587,6 +588,7 @@ logisticOrdersRouter.get(
       driverJob: driverJobData,
       rfqQuote,
       orderUpdates: updatesData,
+      progressEvents,
     });
   }
 );
