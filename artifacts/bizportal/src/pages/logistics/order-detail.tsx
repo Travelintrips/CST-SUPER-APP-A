@@ -66,6 +66,21 @@ type FulfillmentLink = { id: number; token: string; serviceType: string; status:
 type FulfillmentSubmission = { id: number; linkId: number; serviceType: string; fulfillmentData: Record<string, string>; submittedAt: string };
 type PodSubmission = { id: number; order_id: number; receiver_name: string | null; photo_url: string | null; note: string | null; submitted_by: string | null; created_at: string };
 
+type DriverProgressEvent = {
+  id: number;
+  step_key: string;
+  status: string;
+  source: string;
+  actor_name: string | null;
+  notes: string | null;
+  created_at: string;
+  gps_latitude: number | null;
+  gps_longitude: number | null;
+  device_timestamp: string | null;
+  map_url: string | null;
+  street_view_url: string | null;
+};
+
 type FreightShipmentLink = {
   id: number; shipmentNumber: string; status: string;
   origin: string; destination: string; shipperName: string;
@@ -1940,6 +1955,13 @@ export default function LogisticOrderDetailPage() {
     refetchInterval: 30000,
   });
 
+  const { data: driverProgressData } = useQuery<{ events: DriverProgressEvent[] }>({
+    queryKey: ["order-driver-progress", orderId],
+    queryFn: () => apiFetch(`/api/logistic/orders/${orderId}/progress`),
+    enabled: !isNaN(orderId),
+    refetchInterval: 30000,
+  });
+
   const retrySoMut = useMutation({
     mutationFn: (approvalId: number) =>
       apiFetch<{ ok: boolean; docNumber: string; already?: boolean }>(
@@ -2796,6 +2818,82 @@ export default function LogisticOrderDetailPage() {
                 </CardContent>
               </Card>
             )}
+
+            {/* ── Panel Driver Progress GPS ── */}
+            {(() => {
+              const gpsEvents = (driverProgressData?.events ?? []).filter(
+                (e) => e.gps_latitude != null && e.gps_longitude != null,
+              );
+              if (gpsEvents.length === 0) return null;
+              const STEP_LABEL: Record<string, string> = {
+                PICKUP: "Penjemputan", IN_TRANSIT: "Dalam Perjalanan",
+                ARRIVED: "Tiba di Tujuan", DELIVERED: "Terkirim", COMPLETED: "Selesai",
+              };
+              return (
+                <Card className="border-blue-200">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-semibold text-blue-700 uppercase tracking-wide flex items-center gap-1.5">
+                      <MapPin className="w-4 h-4" /> Lokasi GPS Driver
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {gpsEvents.map((ev) => (
+                      <div key={ev.id} className="rounded-lg border border-blue-100 bg-blue-50/30 px-3 py-3 space-y-2">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <Badge className="bg-blue-100 text-blue-800 font-mono text-xs">
+                            {STEP_LABEL[ev.step_key] ?? ev.step_key}
+                          </Badge>
+                          <span className="text-[10px] text-slate-400">
+                            {ev.device_timestamp
+                              ? new Date(ev.device_timestamp).toLocaleString("id-ID", {
+                                  day: "numeric", month: "short", year: "numeric",
+                                  hour: "2-digit", minute: "2-digit", second: "2-digit",
+                                })
+                              : new Date(ev.created_at).toLocaleString("id-ID", {
+                                  day: "numeric", month: "short", year: "numeric",
+                                  hour: "2-digit", minute: "2-digit",
+                                })}
+                          </span>
+                        </div>
+                        <div className="text-xs text-slate-600 space-y-1">
+                          <div className="flex items-center gap-1 font-mono">
+                            <MapPin className="w-3 h-3 text-blue-500 flex-shrink-0" />
+                            <span>
+                              {Number(ev.gps_latitude).toFixed(6)}, {Number(ev.gps_longitude).toFixed(6)}
+                            </span>
+                          </div>
+                          {ev.actor_name && (
+                            <div className="text-slate-400">Driver: {ev.actor_name}</div>
+                          )}
+                        </div>
+                        <div className="flex gap-2 pt-1">
+                          {ev.map_url && (
+                            <a
+                              href={ev.map_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-xs text-blue-600 underline underline-offset-2 hover:text-blue-800"
+                            >
+                              <ExternalLink className="w-3 h-3" /> Lihat di Maps
+                            </a>
+                          )}
+                          {ev.street_view_url && (
+                            <a
+                              href={ev.street_view_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-xs text-blue-600 underline underline-offset-2 hover:text-blue-800"
+                            >
+                              <Eye className="w-3 h-3" /> Street View
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              );
+            })()}
 
             {/* Job Order & Tracking Panel */}
             <JobOrderPanel orderId={orderId} />
