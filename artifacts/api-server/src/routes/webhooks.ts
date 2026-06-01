@@ -7,6 +7,7 @@ import { logger } from "../lib/logger.js";
 import { processWaForAiIntake, processWaMediaForAiIntake, buildAiReplyWa, getAiIntakeSettings } from "../lib/aiOrderIntake.js";
 import { getPreferredDomain } from "../lib/domain.js";
 import { normalizePhone } from "../lib/phoneUtils.js";
+import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
 
 const router = Router();
 
@@ -254,7 +255,6 @@ async function doApproveOrder(
     .where(eq(logisticOrderQuotesTable.id, best.id));
 
   await db.update(logisticOrdersTable).set({
-    status: "Quotation Sent",
     approvedQuoteId: best.id,
     approvedVendorId: best.vendorId,
     adminApprovalStatus: "approved",
@@ -262,6 +262,7 @@ async function doApproveOrder(
     finalSellingPrice: String(sellingPrice),
     quotationSentAt: now,
   }).where(eq(logisticOrdersTable.id, orderId));
+  await transitionLogisticOrderStatus(orderId, "Customer Approval", { source: "webhooks:auto_approve", actorType: "system", force: true });
 
   const [vendor] = await db.select().from(suppliersTable).where(eq(suppliersTable.id, best.vendorId));
   const vendorName = vendor?.name ?? `Vendor #${best.vendorId}`;

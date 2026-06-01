@@ -3,6 +3,7 @@ import { db, freightShipmentsTable, freightRfqsTable, freightQuotesTable, freigh
 import { eq, desc, inArray, sum, and, sql } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { saveAndBroadcast } from "../lib/notificationStore.js";
+import { propagateFreightToLogistic } from "../lib/services/logisticOrderStatusService.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import {
   sendShipmentUpdateNotification,
@@ -427,6 +428,13 @@ router.put("/freight-shipments/:id", async (req, res) => {
       destination: updated!.destination,
       status: updated!.status,
       updatedAt: new Date().toISOString(),
+    }).catch(() => {});
+
+    // Propagasi freight status → logistic_orders.status (one-way, non-fatal)
+    propagateFreightToLogistic(updated!.id, updated!.status, {
+      source: "freight:patch",
+      actorType: "admin",
+      actorName: actor.name,
     }).catch(() => {});
 
     // Notifikasi template ke customer berdasarkan status baru

@@ -12,6 +12,7 @@ import { getWaTemplateConfig, renderTemplate } from "../lib/orderNotification.js
 import { sendMail, isSmtpConfigured } from "../lib/mailer";
 import { requirePortalAuth, requirePortalAdmin, type PortalAuthReq } from "../lib/supabaseAuth";
 import { requireClerkUser } from "../lib/requireAdmin";
+import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
 import { broadcastToAdmins, broadcastToPortal } from "../lib/sseManager";
 import { saveAndBroadcast } from "../lib/notificationStore";
 import multer from "multer";
@@ -1678,20 +1679,19 @@ router.patch("/logistic-orders/:id/cancel", requirePortalAuth, async (req, res) 
   if (order.status === "Cancelled" || order.status === "Completed") {
     return res.status(400).json({ message: "Order cannot be cancelled" });
   }
-  const [updated] = await db
-    .update(logisticOrdersTable)
-    .set({ status: "Cancelled" })
-    .where(eq(logisticOrdersTable.id, id))
-    .returning();
+  const cancelResult = await transitionLogisticOrderStatus(id, "Cancelled", { source: "portal:customer_cancel", actorType: "customer" });
+  if (!cancelResult.ok) {
+    return res.status(400).json({ message: cancelResult.error ?? "Gagal membatalkan order" });
+  }
   return res.json({
-    id: updated.id,
-    orderNumber: updated.orderNumber,
-    status: updated.status,
-    grandTotal: parseFloat(updated.grandTotal),
-    createdAt: updated.createdAt.toISOString(),
-    shipmentType: updated.shipmentType,
-    origin: updated.origin,
-    destination: updated.destination,
+    id: order.id,
+    orderNumber: order.orderNumber,
+    status: "Cancelled",
+    grandTotal: parseFloat(order.grandTotal),
+    createdAt: order.createdAt.toISOString(),
+    shipmentType: order.shipmentType,
+    origin: order.origin,
+    destination: order.destination,
   });
 });
 
@@ -2948,6 +2948,125 @@ router.get("/calculator-rates", async (_req, res) => {
       customs:     { baseCost: 1500000, ratePerKg: 5000,     handlingFee: 500000, customsPct: 0.5 },
       domestic:    { baseCost: 500000,  ratePerKg: 8500,     handlingPct: 5 },
       warehousing: { baseCost: 5000000, ratePerCbm: 2500000, handlingFee: 500000 },
+    });
+  }
+});
+
+// ── Customer / Vendor Dashboard Stats ──────────────────────────────────────
+// GET /api/portal/me/dashboard-stats
+// Returns role-based stats: customer gets order/invoice stats, vendor gets RFQ stats
+router.get("/me/dashboard-stats", requirePortalAuth, async (req, res) => {
+  const portalReq = req as PortalAuthReq;
+  const customerId = portalReq.portalUser.id;
+  const role = portalReq.portalUser.role;
+
+  try {
+    if (role === "vendor") {
+      // ── Vendor Stats ───────────────────────────────────────────────────
+      // Find linked supplier
+      // Find linked supplier via email/phone match (same as /vendor/profile endpoint)
+      const [customer] = await db.select().from(portalCustomersTable).where(eq(portalCustomersTable.id, customerId));
+      if (!customer) return res.json({ rfqReceived: 0, rfqSubmitted: 0, fulfillmentPending: 0, completedOrders: 0 });
+
+      const normalizePhone = (p: string | null) => p ? p.replace(/[^\d]/g, "").replace(/^0/, "62") : null;
+      const cPhone = normalizePhone(customer.phone);
+      const allSuppliers = await db.select({ id: suppliersTable.id, email: suppliersTable.contactEmail, phone: suppliersTable.phone }).from(suppliersTable);
+      const linked = allSuppliers.find((s) =>
+        (s.email && s.email.toLowerCase() === customer.email.toLowerCase()) ||
+        (cPhone && normalizePhone(s.phone) === cPhone)
+      );
+      if (!linked) return res.json({ rfqReceived: 0, rfqSubmitted: 0, fulfillmentPending: 0, completedOrders: 0 });
+
+      const vendorId = linked.id;
+
+      const [rfqReceived, rfqSubmitted, fulfillmentPending, completedOrders] = await Promise.all([
+        db.execute<{ cnt: string }>(sql`
+          SELECT count(*)::text AS cnt FROM logistic_order_rfqs
+          WHERE ${vendorId} = ANY(vendor_ids) AND status IN ('pending','open','sent','blasted')
+        `),
+        db.execute<{ cnt: string }>(sql`
+          SELECT count(*)::text AS cnt FROM logistic_order_quotes
+          WHERE vendor_id = ${vendorId}
+        `),
+        db.execute<{ cnt: string }>(sql`
+          SELECT count(*)::text AS cnt FROM logistic_order_quotes q
+          JOIN logistic_orders o ON o.id = q.order_id
+          WHERE q.vendor_id = ${vendorId}
+            AND q.quote_status = 'approved'
+            AND o.status NOT IN ('Completed','Cancelled','cancelled')
+        `),
+        db.execute<{ cnt: string }>(sql`
+          SELECT count(*)::text AS cnt FROM logistic_order_quotes q
+          JOIN logistic_orders o ON o.id = q.order_id
+          WHERE q.vendor_id = ${vendorId}
+            AND o.status IN ('Completed','delivered','Delivered')
+        `),
+      ]);
+
+      return res.json({
+        rfqReceived: Number(rfqReceived.rows[0]?.cnt ?? 0),
+        rfqSubmitted: Number(rfqSubmitted.rows[0]?.cnt ?? 0),
+        fulfillmentPending: Number(fulfillmentPending.rows[0]?.cnt ?? 0),
+        completedOrders: Number(completedOrders.rows[0]?.cnt ?? 0),
+      });
+    }
+
+    // ── Customer Stats ─────────────────────────────────────────────────
+    const [totalOrdersRes, activeOrdersRes, completedOrdersRes, invoiceOutstandingRes, trackingRes] = await Promise.all([
+      db.execute<{ cnt: string }>(sql`
+        SELECT count(*)::text AS cnt FROM logistic_orders
+        WHERE portal_customer_id = ${customerId}
+      `),
+      db.execute<{ cnt: string }>(sql`
+        SELECT count(*)::text AS cnt FROM logistic_orders
+        WHERE portal_customer_id = ${customerId}
+          AND status IN ('In Progress','in_transit','In Transit','New Order','processing')
+      `),
+      db.execute<{ cnt: string }>(sql`
+        SELECT count(*)::text AS cnt FROM logistic_orders
+        WHERE portal_customer_id = ${customerId}
+          AND status IN ('Completed','delivered','Delivered')
+      `),
+      db.execute<{ total: string; cnt: string }>(sql`
+        SELECT
+          COALESCE(SUM(grand_total::numeric), 0)::text AS total,
+          count(*)::text AS cnt
+        FROM sales_documents
+        WHERE status NOT IN ('cancelled','draft')
+          AND invoice_status = 'to_invoice'
+          AND (
+            SELECT id FROM portal_customers pc
+            WHERE LOWER(pc.email) = LOWER(sales_documents.customer_email)
+            LIMIT 1
+          ) = ${customerId}
+      `),
+      db.execute<{ cnt: string }>(sql`
+        SELECT count(*)::text AS cnt FROM logistic_orders
+        WHERE portal_customer_id = ${customerId}
+          AND status IN ('In Progress','in_transit','In Transit')
+          AND EXISTS (
+            SELECT 1 FROM driver_locations dl WHERE dl.order_id = logistic_orders.id
+          )
+      `),
+    ]);
+
+    return res.json({
+      totalOrders: Number(totalOrdersRes.rows[0]?.cnt ?? 0),
+      activeOrders: Number(activeOrdersRes.rows[0]?.cnt ?? 0),
+      completedOrders: Number(completedOrdersRes.rows[0]?.cnt ?? 0),
+      invoiceOutstandingCount: Number(invoiceOutstandingRes.rows[0]?.cnt ?? 0),
+      invoiceOutstandingAmount: Number(invoiceOutstandingRes.rows[0]?.total ?? 0),
+      trackingActive: Number(trackingRes.rows[0]?.cnt ?? 0),
+    });
+  } catch (err) {
+    req.log?.error({ err }, "dashboard-stats error");
+    // Graceful fallback — don't break the dashboard if tables don't exist yet
+    if (role === "vendor") {
+      return res.json({ rfqReceived: 0, rfqSubmitted: 0, fulfillmentPending: 0, completedOrders: 0 });
+    }
+    return res.json({
+      totalOrders: 0, activeOrders: 0, completedOrders: 0,
+      invoiceOutstandingCount: 0, invoiceOutstandingAmount: 0, trackingActive: 0,
     });
   }
 });

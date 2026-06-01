@@ -22,15 +22,19 @@ import { Router, type Request, type Response } from "express";
 import { randomBytes } from "crypto";
 import { eq, inArray, and, desc } from "drizzle-orm";
 import { sql } from "drizzle-orm";
+import { transitionLogisticOrderStatus, getAllowedTransitions } from "../lib/services/logisticOrderStatusService.js";
+import { createExceptionIdempotent } from "../lib/services/exceptionService.js";
 import {
   db,
   logisticOrdersTable,
   logisticOrderQuotesTable,
   logisticOrderRfqsTable,
+  logisticOrderItemsTable,
   suppliersTable,
   orderUpdatesTable,
 } from "@workspace/db";
 import { requireClerkUser } from "../lib/requireAdmin.js";
+import { TAX_RATE_DECIMAL } from "../lib/taxHelper.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminWa } from "../lib/adminWa.js";
 import { getPreferredDomain } from "../lib/domain.js";
@@ -43,11 +47,13 @@ import {
   sendCustomerProgressUpdateNotification,
   sendCustomerPodUploadedNotification,
   sendOrderCompletedNotification,
+  type VendorAssignmentItem,
 } from "../lib/orderNotification.js";
 import { logger } from "../lib/logger.js";
 import { recordDecision, updateDecisionOutcome } from "../lib/decisionMemory.js";
 import multer from "multer";
 import { Client as ObjStoreClient } from "@replit/object-storage";
+import { ObjectStorageService } from "../lib/objectStorage.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Migration (idempotent)
@@ -102,10 +108,13 @@ async function ensureTables() {
         job_order_id INTEGER REFERENCES vendor_job_orders(id) ON DELETE CASCADE,
         status       TEXT NOT NULL,
         notes        TEXT,
+        photo_url    TEXT,
         updated_by   TEXT NOT NULL DEFAULT 'admin',
         is_public    BOOLEAN NOT NULL DEFAULT TRUE,
         created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+
+      ALTER TABLE order_tracking_progress ADD COLUMN IF NOT EXISTS photo_url TEXT;
 
       ALTER TABLE logistic_orders
         ADD COLUMN IF NOT EXISTS tracking_token TEXT UNIQUE,
@@ -149,6 +158,7 @@ const JOB_STATUS_LABEL: Record<string, string> = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const objStore = new ObjStoreClient();
+const pubObjStore = new ObjectStorageService();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -183,6 +193,49 @@ vendorJobAdminRouter.post("/orders/:orderId/assign-vendor", async (req: Request,
       .where(eq(suppliersTable.id, quote.vendorId));
     if (!vendor) return res.status(404).json({ message: "Vendor tidak ditemukan" });
 
+    // Fetch order items untuk breakdown harga di WA
+    const _itemRows = await db.select({
+      serviceName: logisticOrderItemsTable.serviceName,
+      subtotal: logisticOrderItemsTable.subtotal,
+      inputData: logisticOrderItemsTable.inputData,
+    }).from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, orderId));
+    const _xQty = (inp: Record<string, unknown> | null): number => { if (!inp) return 1; const v = inp.qty ?? inp.quantity; const n = parseFloat(String(v ?? "")); return isNaN(n) || n <= 0 ? 1 : n; };
+    const _xUnit = (inp: Record<string, unknown> | null): string => { if (!inp) return "unit"; return inp.unit != null ? String(inp.unit) : "unit"; };
+    const _xPrice = (inp: Record<string, unknown> | null): number | null => { if (!inp) return null; const p = inp.price ?? inp.productPrice ?? inp.unitPrice ?? inp.sellingPrice ?? inp.basicPrice ?? null; if (typeof p === "number") return p > 0 ? p : null; if (typeof p === "string") { const n = parseFloat(p); return !isNaN(n) && n > 0 ? n : null; } return null; };
+    let assignmentItems: VendorAssignmentItem[] = _itemRows.flatMap((row) => {
+      const inp = row.inputData as Record<string, unknown> | null;
+      const qty = _xQty(inp);
+      const subtotalVal = Number(row.subtotal ?? 0);
+      const price = _xPrice(inp) ?? (subtotalVal > 0 && qty > 0 ? Math.round(subtotalVal / qty) : null);
+      if (!price) return [];
+      return [{ name: row.serviceName ?? "Produk", qty, unit: _xUnit(inp), basicPrice: price, taxRate: TAX_RATE_DECIMAL }];
+    });
+
+    // Fallback untuk freight order: gunakan harga dari approved quote + info cargo
+    if (assignmentItems.length === 0) {
+      const vendorPrice = Number(quote.vendorPrice ?? 0);
+      if (vendorPrice > 0) {
+        // Buat deskripsi muatan dari kolom order
+        const cargoParts: string[] = [];
+        if (order.cargoDescription) cargoParts.push(order.cargoDescription);
+        if (order.commodity && order.commodity !== order.cargoDescription) cargoParts.push(order.commodity);
+        const cargoLabel = cargoParts.join(", ") || order.shipmentType || "Jasa Pengiriman";
+        // Detail fisik muatan untuk unit
+        const weightParts: string[] = [];
+        if (order.grossWeight) weightParts.push(`${Number(order.grossWeight).toLocaleString("id-ID")} kg`);
+        if (order.volumeCbm) weightParts.push(`${Number(order.volumeCbm).toLocaleString("id-ID")} CBM`);
+        if (order.jumlahKoli) weightParts.push(`${order.jumlahKoli} koli`);
+        const unitLabel = weightParts.length > 0 ? weightParts.join(" / ") : "shipment";
+        assignmentItems = [{
+          name: cargoLabel,
+          qty: 1,
+          unit: unitLabel,
+          basicPrice: vendorPrice,
+          taxRate: 0.11,
+        }];
+      }
+    }
+
     // Cek apakah sudah ada job order untuk order ini
     const existing = await db.execute(
       sql`SELECT id, token FROM vendor_job_orders WHERE order_id = ${orderId} LIMIT 1`
@@ -190,7 +243,7 @@ vendorJobAdminRouter.post("/orders/:orderId/assign-vendor", async (req: Request,
     if ((existing.rows ?? []).length > 0) {
       const row = existing.rows[0] as { id: number; token: string };
       const jobUrl = `${baseUrl()}/vendor-job/${row.token}`;
-      const waMsg = await sendVendorAssignmentNotification(order.orderNumber, order.origin, order.destination, order.shipmentType, jobUrl, vendor.phone, adminNote);
+      const waMsg = await sendVendorAssignmentNotification(order.orderNumber, order.origin, order.destination, order.shipmentType, jobUrl, vendor.phone, adminNote, assignmentItems, quote.estimatedPickup, quote.estimatedDelivery, quote.estimatedDays);
       return res.json({ ok: true, jobToken: row.token, jobUrl, waMessage: waMsg, vendorPhone: vendor.phone, alreadyExists: true });
     }
 
@@ -208,8 +261,8 @@ vendorJobAdminRouter.post("/orders/:orderId/assign-vendor", async (req: Request,
     await db.update(logisticOrdersTable).set({
       approvedVendorId: quote.vendorId,
       approvedQuoteId: quote.id,
-      status: "Vendor Assigned",
     } as any).where(eq(logisticOrdersTable.id, orderId));
+    await transitionLogisticOrderStatus(orderId, "Vendor Confirmed", { source: "vendorJobOrder:assign_vendor", actorType: "admin" });
 
     // Set tracking_token (raw SQL karena kolom baru)
     await db.execute(sql`
@@ -249,7 +302,7 @@ vendorJobAdminRouter.post("/orders/:orderId/assign-vendor", async (req: Request,
     });
 
     const jobUrl = `${baseUrl()}/vendor-job/${jobToken}`;
-    const waMsg = await sendVendorAssignmentNotification(order.orderNumber, order.origin, order.destination, order.shipmentType, jobUrl, vendor.phone, adminNote);
+    const waMsg = await sendVendorAssignmentNotification(order.orderNumber, order.origin, order.destination, order.shipmentType, jobUrl, vendor.phone, adminNote, assignmentItems, quote.estimatedPickup, quote.estimatedDelivery, quote.estimatedDays);
 
     // Notify admin group
     const adminWa = await getAdminWa();
@@ -387,9 +440,10 @@ vendorJobAdminRouter.post("/orders/:orderId/job-progress", async (req: Request, 
       VALUES (${orderId}, ${status}, ${notes ?? null}, 'admin', ${isPublic})
     `);
 
-    await db.update(logisticOrdersTable)
-      .set({ status } as any)
-      .where(eq(logisticOrdersTable.id, orderId));
+    const transitionResult = await transitionLogisticOrderStatus(orderId, status, { source: "vendorJobOrder:job-progress", actorType: "admin" });
+    if (!transitionResult.ok) {
+      return res.status(422).json({ message: transitionResult.error, allowedTransitions: transitionResult.allowedTransitions });
+    }
 
     await db.execute(sql`
       UPDATE logistic_orders SET job_status = ${status.toLowerCase().replace(/\s+/g, "_")}
@@ -427,10 +481,22 @@ vendorJobAdminRouter.post("/orders/:orderId/complete-review", async (req: Reques
       .where(eq(logisticOrdersTable.id, orderId));
     if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
 
-    // Update status
-    await db.update(logisticOrdersTable)
-      .set({ status: "Completed" } as any)
-      .where(eq(logisticOrdersTable.id, orderId));
+    // ── Guard: hanya boleh complete jika Payment Received ────────────────────
+    const currentStatus = (order.status ?? "").trim();
+    if (currentStatus !== "Payment Received") {
+      return res.status(400).json({
+        message: `Order tidak dapat diselesaikan dari status "${currentStatus}". ` +
+          `Order harus dalam status "Payment Received" terlebih dahulu (Invoice diterbitkan → Pembayaran diterima → Selesai).`,
+        currentStatus,
+        requiredStatus: "Payment Received",
+      });
+    }
+
+    // Update status via service
+    const transition = await transitionLogisticOrderStatus(orderId, "Completed", { source: "vendorJobOrder:complete_review", actorType: "admin" });
+    if (!transition.ok) {
+      return res.status(400).json({ message: transition.error ?? "Gagal mengubah status ke Completed" });
+    }
 
     await db.execute(sql`
       UPDATE logistic_orders SET job_status = 'completed' WHERE id = ${orderId}
@@ -607,10 +673,8 @@ vendorJobPublicRouter.post("/:token/accept", async (req: Request, res: Response)
       WHERE token = ${token}
     `);
 
-    // Update order status
-    await db.update(logisticOrdersTable)
-      .set({ status: "Vendor Accepted" } as any)
-      .where(eq(logisticOrdersTable.id, job.order_id));
+    // Update order status via service
+    await transitionLogisticOrderStatus(job.order_id, "In Progress", { source: "vendorJobOrder:vendor_accept", actorType: "vendor" });
 
     await db.execute(sql`
       UPDATE logistic_orders SET job_status = 'vendor_accepted' WHERE id = ${job.order_id}
@@ -668,7 +732,7 @@ vendorJobPublicRouter.post("/:token/reject", async (req: Request, res: Response)
 
   try {
     const result = await db.execute(
-      sql`SELECT vjo.*, o.order_number, s.name as vendor_name
+      sql`SELECT vjo.*, o.order_number, o.origin, o.destination, s.name as vendor_name
           FROM vendor_job_orders vjo
           LEFT JOIN logistic_orders o ON o.id = vjo.order_id
           LEFT JOIN suppliers s ON s.id = vjo.vendor_id
@@ -684,9 +748,7 @@ vendorJobPublicRouter.post("/:token/reject", async (req: Request, res: Response)
       WHERE token = ${token}
     `);
 
-    await db.update(logisticOrdersTable)
-      .set({ status: "Vendor Rejected" } as any)
-      .where(eq(logisticOrdersTable.id, job.order_id));
+    await transitionLogisticOrderStatus(job.order_id, "Admin Review", { source: "vendorJobOrder:vendor_reject", actorType: "vendor" });
 
     await db.execute(sql`
       INSERT INTO order_tracking_progress (order_id, status, notes, updated_by, is_public)
@@ -702,9 +764,24 @@ vendorJobPublicRouter.post("/:token/reject", async (req: Request, res: Response)
       isPublic: false,
     });
 
+    createExceptionIdempotent({
+      exceptionType: "vendor_rejected",
+      severity: "high",
+      title: `Vendor Menolak Job — ${job.order_number}`,
+      description: reason ? `Vendor ${job.vendor_name ?? "—"} menolak job order. Alasan: ${reason}` : `Vendor ${job.vendor_name ?? "—"} menolak job order.`,
+      refType: "logistic_order",
+      refId: String(job.order_id),
+      refNumber: job.order_number,
+      supplierName: job.vendor_name ?? null,
+      createdBy: "vendor",
+    }).catch(() => {});
+
     const adminWa = await getAdminWa();
     if (adminWa) {
-      sendVendorJobRejectedNotification(job.order_number, job.vendor_name ?? "—", adminWa, reason).catch(() => {});
+      const _domain = getPreferredDomain();
+      const _adminOrderUrl = _domain ? `https://${_domain}/logistic-admin/orders/${job.order_id}` : undefined;
+      const _route = [job.origin, job.destination].filter(Boolean).join(" → ") || undefined;
+      sendVendorJobRejectedNotification(job.order_number, job.vendor_name ?? "—", adminWa, reason, _route, _adminOrderUrl).catch(() => {});
     }
 
     return res.json({ ok: true, message: "Job ditolak. Admin akan segera ditindaklanjuti." });
@@ -714,8 +791,8 @@ vendorJobPublicRouter.post("/:token/reject", async (req: Request, res: Response)
   }
 });
 
-/** POST /api/vendor-job/:token/progress — vendor update progress */
-vendorJobPublicRouter.post("/:token/progress", async (req: Request, res: Response) => {
+/** POST /api/vendor-job/:token/progress — vendor update progress (multipart: status, notes, foto opsional) */
+vendorJobPublicRouter.post("/:token/progress", upload.single("photo"), async (req: Request, res: Response) => {
   await ensureTables();
   const { token } = req.params as { token: string };
   const { status, notes } = req.body as { status: string; notes?: string };
@@ -757,6 +834,9 @@ vendorJobPublicRouter.post("/:token/progress", async (req: Request, res: Respons
       FROM vendor_job_orders WHERE token = ${token}
     `);
 
+    // Simpan photo_url di progress entry (update row yang baru saja diinsert)
+    // dilakukan setelah foto di-upload agar photo_url tersedia
+
     await db.insert(orderUpdatesTable).values({
       orderId: job.order_id,
       actorType: "vendor",
@@ -766,11 +846,35 @@ vendorJobPublicRouter.post("/:token/progress", async (req: Request, res: Respons
       isPublic: true,
     });
 
+    // Upload foto progress ke public storage (jika ada)
+    let progressPhotoUrl = "";
+    const photoFile = (req as any).file as Express.Multer.File | undefined;
+    if (photoFile && photoFile.mimetype.startsWith("image/")) {
+      try {
+        const pubSubPath = `progress-photos/${job.order_id}/${Date.now()}_${photoFile.originalname}`;
+        await pubObjStore.uploadPublicRaw(pubSubPath, photoFile.buffer, photoFile.mimetype);
+        progressPhotoUrl = pubObjStore.toSupabasePublicUrl(pubSubPath);
+        // Simpan photo_url ke row progress yang baru diinsert
+        await db.execute(sql`
+          UPDATE order_tracking_progress
+          SET photo_url = ${progressPhotoUrl}
+          WHERE id = (
+            SELECT id FROM order_tracking_progress
+            WHERE order_id = ${job.order_id} AND updated_by = 'vendor' AND photo_url IS NULL
+            ORDER BY created_at DESC
+            LIMIT 1
+          )
+        `);
+      } catch (e) {
+        logger.warn({ e }, "progress photo public upload failed — WA dikirim tanpa gambar");
+      }
+    }
+
     // Notify admin
     const adminWa = await getAdminWa();
     if (adminWa) {
       const statusLabel = JOB_STATUS_LABEL[status.toLowerCase().replace(/\s+/g, "_")] ?? status;
-      sendVendorProgressUpdateNotification(job.order_number, job.vendor_name ?? "—", statusLabel, adminWa, notes).catch(() => {});
+      sendVendorProgressUpdateNotification(job.order_number, job.vendor_name ?? "—", statusLabel, adminWa, notes, progressPhotoUrl || undefined).catch(() => {});
     }
 
     // Notify customer via WA
@@ -799,7 +903,7 @@ vendorJobPublicRouter.post("/:token/pod", upload.array("files", 10), async (req:
 
   try {
     const result = await db.execute(
-      sql`SELECT vjo.*, o.order_number, o.id as order_id_num, o.phone, o.tracking_token, s.name as vendor_name
+      sql`SELECT vjo.*, o.order_number, o.id as order_id_num, o.phone, o.tracking_token, o.status as order_status, s.name as vendor_name
           FROM vendor_job_orders vjo
           LEFT JOIN logistic_orders o ON o.id = vjo.order_id
           LEFT JOIN suppliers s ON s.id = vjo.vendor_id
@@ -809,10 +913,25 @@ vendorJobPublicRouter.post("/:token/pod", upload.array("files", 10), async (req:
 
     const job = result.rows[0] as any;
 
+    // Guard: POD tidak boleh diupload jika order sudah melewati tahap POD
+    // (Invoice Issued, Payment Received, Completed, Cancelled).
+    // Mencegah transisi mundur yang merusak audit trail keuangan.
+    const BLOCK_POD_FROM = ["Invoice Issued", "Payment Received", "Completed", "Cancelled"];
+    if (BLOCK_POD_FROM.includes(job.order_status ?? "")) {
+      return res.status(409).json({
+        error: `POD tidak dapat diunggah karena order sudah dalam status "${job.order_status}". Hubungi admin jika ada kekeliruan.`,
+        currentStatus: job.order_status,
+      });
+    }
+
     // Upload files ke object storage
     const uploadedUrls: { name: string; url: string; type: string }[] = [];
+    let firstPublicImageUrl = "";
+    const domain = getPreferredDomain() || "cstlogistic.co.id";
+
     for (const file of files) {
-      const key = `private/pod/${job.order_id}/${Date.now()}_${file.originalname}`;
+      const ts = Date.now();
+      const key = `private/pod/${job.order_id}/${ts}_${file.originalname}`;
       try {
         const uploadResult = await objStore.uploadFromBytes(key, file.buffer);
         if (uploadResult.ok) {
@@ -820,10 +939,25 @@ vendorJobPublicRouter.post("/:token/pod", upload.array("files", 10), async (req:
             name: file.originalname,
             url: key,
             type: file.mimetype,
+            publicUrl: "", // diisi di bawah jika gambar
           });
         }
       } catch (e) {
         logger.warn({ e, key }, "POD upload to objstore failed");
+      }
+
+      // Jika file adalah gambar, juga simpan ke public storage untuk notifikasi WA dan thumbnail
+      if (file.mimetype.startsWith("image/")) {
+        try {
+          const pubSubPath = `pod-photos/${job.order_id}/${ts}_${file.originalname}`;
+          await pubObjStore.uploadPublicRaw(pubSubPath, file.buffer, file.mimetype);
+          const fullPubUrl = pubObjStore.toSupabasePublicUrl(pubSubPath);
+          const last = uploadedUrls[uploadedUrls.length - 1];
+          if (last) last.publicUrl = fullPubUrl;
+          if (!firstPublicImageUrl) firstPublicImageUrl = fullPubUrl;
+        } catch (e) {
+          logger.warn({ e }, "POD image public upload failed — thumbnail tidak tersedia");
+        }
       }
     }
 
@@ -840,9 +974,7 @@ vendorJobPublicRouter.post("/:token/pod", upload.array("files", 10), async (req:
       WHERE token = ${token}
     `);
 
-    await db.update(logisticOrdersTable)
-      .set({ status: "POD Uploaded" } as any)
-      .where(eq(logisticOrdersTable.id, job.order_id));
+    await transitionLogisticOrderStatus(job.order_id, "POD Uploaded", { source: "vendorJobOrder:pod_upload", actorType: "vendor" });
 
     await db.execute(sql`
       UPDATE logistic_orders SET job_status = 'pod_uploaded' WHERE id = ${job.order_id}
@@ -866,7 +998,7 @@ vendorJobPublicRouter.post("/:token/pod", upload.array("files", 10), async (req:
 
     const adminWa = await getAdminWa();
     if (adminWa) {
-      sendVendorPodUploadedNotification(job.order_number, job.vendor_name ?? "—", files.length, adminWa, completionNotes).catch(() => {});
+      sendVendorPodUploadedNotification(job.order_number, job.vendor_name ?? "—", files.length, adminWa, completionNotes, firstPublicImageUrl || undefined).catch(() => {});
     }
 
     // Notify customer via WA
@@ -897,11 +1029,19 @@ orderTrackingPublicRouter.get("/:trackToken", async (req: Request, res: Response
   const { trackToken } = req.params as { trackToken: string };
 
   try {
+    // Lookup by logistic_orders.tracking_token ATAU customer_order_links.token
     const orderResult = await db.execute(
       sql`SELECT o.*, s.name as vendor_name
           FROM logistic_orders o
           LEFT JOIN suppliers s ON s.id = o.approved_vendor_id
-          WHERE o.tracking_token = ${trackToken}`
+          WHERE o.tracking_token = ${trackToken}
+          UNION
+          SELECT o.*, s.name as vendor_name
+          FROM logistic_orders o
+          LEFT JOIN suppliers s ON s.id = o.approved_vendor_id
+          INNER JOIN customer_order_links col ON col.order_id = o.id
+          WHERE col.token = ${trackToken}
+          LIMIT 1`
     );
     if (!orderResult.rows.length) {
       return res.status(404).json({ error: "Link tracking tidak ditemukan" });
@@ -916,7 +1056,7 @@ orderTrackingPublicRouter.get("/:trackToken", async (req: Request, res: Response
           ORDER BY created_at ASC`
     );
 
-    // Job order (operational details, only show if vendor accepted)
+    // Job order (operational details + POD files, only show operational if vendor accepted)
     const jobResult = await db.execute(
       sql`SELECT vjo.*, s.name as vendor_name
           FROM vendor_job_orders vjo
@@ -927,6 +1067,53 @@ orderTrackingPublicRouter.get("/:trackToken", async (req: Request, res: Response
     const jobOrder = jobResult.rows[0] as any ?? null;
 
     const showOperational = jobOrder && ["accepted", "in_progress", "pickup_scheduled", "completed"].includes(jobOrder.status);
+
+    // Order items (service items with qty/subtotal)
+    const itemsResult = await db.execute(
+      sql`SELECT service_name, category, subtotal, input_data
+          FROM logistic_order_items
+          WHERE order_id = ${order.id}
+          ORDER BY id ASC`
+    );
+
+    function extractQtyUnit(inp: unknown): { qty: number | null; unit: string | null; unitPrice: number | null } {
+      if (!inp || typeof inp !== "object") return { qty: null, unit: null, unitPrice: null };
+      const d = inp as Record<string, unknown>;
+      const qRaw = d.quantity ?? d.qty ?? d.jumlah ?? null;
+      const qty = typeof qRaw === "number" ? qRaw : (typeof qRaw === "string" ? (parseFloat(qRaw) || null) : null);
+      const uRaw = d.unit ?? d.satuan ?? d.uom ?? null;
+      const unit = typeof uRaw === "string" ? uRaw : null;
+      const pRaw = d.price ?? d.productPrice ?? d.unitPrice ?? d.sellingPrice ?? null;
+      const unitPrice = typeof pRaw === "number" ? pRaw : (typeof pRaw === "string" ? (parseFloat(pRaw) || null) : null);
+      return { qty, unit, unitPrice };
+    }
+
+    const orderItems = (itemsResult.rows as any[]).map((i) => {
+      const { qty, unit, unitPrice } = extractQtyUnit(i.input_data);
+      const subtotalFromDb = i.subtotal ? Number(i.subtotal) : 0;
+      const subtotal = (unitPrice != null && qty != null) ? unitPrice * qty : subtotalFromDb;
+      return {
+        name: i.service_name,
+        category: i.category,
+        subtotal,
+        unitPrice,
+        qty,
+        unit,
+      };
+    });
+
+    // Pricing summary from order
+    const orderSubtotal = order.subtotal ? Number(order.subtotal) : null;
+    const orderTax = order.tax ? Number(order.tax) : null;
+    const orderGrandTotal = order.grand_total ? Number(order.grand_total) : null;
+
+    // POD files (public-facing — only include if order is at POD stage or beyond)
+    const podFiles: Array<{ url: string; type: string; name: string }> = [];
+    if (jobOrder?.pod_files && Array.isArray(jobOrder.pod_files)) {
+      for (const f of jobOrder.pod_files as any[]) {
+        podFiles.push({ url: f.url ?? f.publicUrl ?? "", type: f.type ?? "document", name: f.name ?? f.originalname ?? "Dokumen" });
+      }
+    }
 
     return res.json({
       order: {
@@ -957,6 +1144,13 @@ orderTrackingPublicRouter.get("/:trackToken", async (req: Request, res: Response
         awbBlNumber: jobOrder.awb_bl_number,
         schedule: jobOrder.schedule,
       } : null,
+      items: orderItems,
+      pricing: {
+        subtotal: orderSubtotal,
+        tax: orderTax,
+        grandTotal: orderGrandTotal,
+      },
+      podFiles,
     });
   } catch (err) {
     logger.error({ err }, "order-tracking error");

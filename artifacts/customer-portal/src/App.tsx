@@ -74,6 +74,7 @@ const CustomerFeedbackPage      = lazy(() => import("@/pages/customer-feedback")
 const PurchaseRequestFormPage   = lazy(() => import("@/pages/purchase-request-form"));
 const VendorInvoiceFormPage     = lazy(() => import("@/pages/vendor-invoice-form"));
 const GoodsReceiptFormPage      = lazy(() => import("@/pages/goods-receipt-form"));
+const DriverProgressPage        = lazy(() => import("@/pages/driver-progress"));
 const NotFound                  = lazy(() => import("@/pages/not-found"));
 
 const queryClient = new QueryClient();
@@ -95,6 +96,7 @@ const NO_SHELL_PREFIXES = [
   "/customer-approval", "/op-confirm", "/customer-invoice",
   "/vendor-po-accept",
   "/customer-feedback", "/purchase-request", "/vendor-invoice", "/goods-receipt",
+  "/driver-progress",
   "/q/",
 ];
 
@@ -109,6 +111,7 @@ const NO_AUTH_CHECK_PREFIXES = [
   "/customer-approval", "/op-confirm", "/customer-invoice",
   "/vendor-po-accept",
   "/customer-feedback", "/purchase-request", "/vendor-invoice", "/goods-receipt",
+  "/driver-progress",
 ];
 
 const BASE_PREFIX = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -206,6 +209,7 @@ function AppShell() {
         <Route path="/pabean" component={Pabean} />
         <Route path="/book" component={LogisticBook} />
         <Route path="/logistic-order-success" component={LogisticOrderSuccess} />
+        <Route path="/track/:orderNumber" component={LogisticTrack} />
         <Route path="/track" component={LogisticTrack} />
         <Route path="/logistic-admin" component={LogisticAdmin} />
         <Route path="/logistic-admin/orders/:id" component={LogisticAdminOrderDetail} />
@@ -232,7 +236,9 @@ function AppShell() {
         <Route path="/customer-order/:token" component={CustomerOrderPage} />
         <Route path="/admin-action/:token" component={AdminActionPage} />
         <Route path="/vendor-fulfillment/:token" component={VendorFulfillmentPage} />
+        <Route path="/driver-progress/:token" component={DriverProgressPage} />
         <Route path="/q/:code" component={ShortLinkRedirect} />
+        <Route path="/s/:code" component={ShortLinkRedirect} />
         <Route path="/privacy-policy" component={PrivacyPolicy} />
         <Route path="/contact" component={Contact} />
         <Route path="/shipment-timeline" component={ShipmentTimeline} />

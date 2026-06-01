@@ -10,7 +10,7 @@
 import { Router, type Request, type Response } from "express";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
-import { requireClerkUser } from "../lib/requireAdmin.js";
+import { requireAdmin } from "../lib/requireAdmin.js";
 import { logger } from "../lib/logger.js";
 import { updateDecisionOutcome, getDecisionContextString } from "../lib/decisionMemory.js";
 
@@ -71,7 +71,7 @@ async function ensureTable() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 aiDecisionMemoryRouter.get("/", async (req: Request, res: Response) => {
-  if (!(await requireClerkUser(req, res))) return;
+  if (!(await requireAdmin(req, res))) return;
   await ensureTable();
 
   const {
@@ -136,7 +136,7 @@ aiDecisionMemoryRouter.get("/", async (req: Request, res: Response) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 aiDecisionMemoryRouter.get("/stats", async (req: Request, res: Response) => {
-  if (!(await requireClerkUser(req, res))) return;
+  if (!(await requireAdmin(req, res))) return;
   await ensureTable();
 
   const { decisionType, vendorId } = req.query as Record<string, string>;
@@ -235,7 +235,7 @@ aiDecisionMemoryRouter.get("/stats", async (req: Request, res: Response) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 aiDecisionMemoryRouter.get("/context", async (req: Request, res: Response) => {
-  if (!(await requireClerkUser(req, res))) return;
+  if (!(await requireAdmin(req, res))) return;
   await ensureTable();
 
   const { origin, destination, shipmentType, vendorId, decisionType, limit } = req.query as Record<string, string>;
@@ -263,7 +263,7 @@ aiDecisionMemoryRouter.get("/context", async (req: Request, res: Response) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 aiDecisionMemoryRouter.patch("/:id/outcome", async (req: Request, res: Response) => {
-  if (!(await requireClerkUser(req, res))) return;
+  if (!(await requireAdmin(req, res))) return;
   await ensureTable();
 
   const id = parseInt(req.params["id"]);
@@ -303,7 +303,7 @@ aiDecisionMemoryRouter.patch("/:id/outcome", async (req: Request, res: Response)
 // ─────────────────────────────────────────────────────────────────────────────
 
 aiDecisionMemoryRouter.get("/:id", async (req: Request, res: Response) => {
-  if (!(await requireClerkUser(req, res))) return;
+  if (!(await requireAdmin(req, res))) return;
   await ensureTable();
 
   const id = parseInt(req.params["id"]);

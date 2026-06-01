@@ -8,3 +8,11 @@
 - [JSX regex-in-expression pitfall](jsx-regex-pitfall.md) — bare `}` inside regex char class `[^}]` in a JSX expression can confuse esbuild JSX depth tracker; move regex to a const outside JSX.
 - [Unclosed stub function cascades](unclosed-stub-function.md) — a stub function without its closing `}` makes every top-level declaration after it appear inside its body; "Unexpected export" far from the real bug line is the symptom.
 - [WA Template Migration](wa-template-migration.md) — pattern & progress migrating hardcoded WA flows to Settings → Template WA via `whatsappTemplateService`
+- [NixOS Port Killing](nixos-port-killing.md) — `fuser`/`ss`/`lsof` tidak tersedia di NixOS/Replit; gunakan `kill-port.mjs` via `/proc/net/tcp`
+- [API Server Port Config](api-server-port.md) — API server langsung di port 18444 (hapus port-forwarder); Gateway port 5000
+- [Logistic Order 15-Step Workflow](logistic-order-statuses.md) — canonical 15 statuses in logisticStatusConstants.ts; OrderProgressBar, order-track.tsx, and BizPortal Status tab all now aligned
+- [Audit Trail System](audit-trail-system.md) — 4 new tables, helper lib, API routes, BizPortal page, hooks in logisticOrders/logisticRfq/customerQuoteFlow; routes.tsx is the real router (not App.tsx)
+- [Phase 3 Observability](phase3-observability.md) — audit trail di 3 service (rfq/invoice/payment via writeAuditLog → erp_audit_logs); exceptionService idempotent; exceptions di workflowWorker + vendorJobOrder; GET /api/system/governance-health admin-only
+- [Phase 5 Cleanup Decisions](phase5-cleanup.md) — shipments legacy table safe to drop (0 rows, dashboard.ts fixed to freightShipmentsTable); workflow_events safe to drop (0 rows, no callers); /inventory/warehouses deprecated (header added); logisticRfq.ts V1 KEEP (customer portal active); regression: scripts/regression-phase5.mjs (32/32)
+- [ws Package & Customer Portal Port](ws-port-config.md) — api-server needs ws in externals AND pnpm install; customer portal proxy runs on port 23434 (Replit auto-assigns PORT); Gateway needs CUSTOMER_PORT=23434
+- [Supabase Storage Migration](supabase-storage-migration.md) — GCS→Supabase; DEV key fallback; bucket names; upload path format `/objects/uploads/<uuid>.<ext>`

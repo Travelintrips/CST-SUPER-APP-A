@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { calcTax, TAX_RATE_PCT } from "../lib/taxHelper";
 import { useParams } from "wouter";
 import type { ProductTemplate, DynamicFormValues } from "@workspace/product-templates";
 import {
@@ -14,9 +15,30 @@ type FieldDef = {
   type: "text" | "number" | "select" | "textarea" | "date";
   options?: string[]; required?: boolean; placeholder?: string;
   section?: "quotation" | "operational" | "both";
+  isUpload?: boolean;
 };
 
 type ServiceSchema = { label: string; emoji: string; fields: FieldDef[] };
+
+type OrderContextItem = {
+  serviceName: string;
+  sku?: string | null;
+  qty: string | null;
+  unit: string | null;
+  unitPrice?: string | null;
+  subtotal: string | null;
+  category?: string | null;
+};
+
+type OrderContext = {
+  customerName: string | null;
+  requiredDate: string | null;
+  adminNotes: string | null;
+  origin?: string | null;
+  destination?: string | null;
+  shipmentType?: string | null;
+  items: OrderContextItem[];
+};
 
 type FormMeta = {
   id: number; serviceType: string; title: string | null; notes: string | null;
@@ -25,6 +47,7 @@ type FormMeta = {
   orderNumber: string | null; orderItemId: number | null; phase: string | null;
   alreadySubmitted?: boolean;
   productTemplate?: ProductTemplate | null;
+  orderContext?: OrderContext | null;
 };
 
 // ── Skeleton ──────────────────────────────────────────────────────────────────
@@ -302,6 +325,99 @@ export default function VendorMiniFormPage() {
           )}
         </div>
 
+        {/* Order Context Card */}
+        {meta.orderContext && (meta.orderContext.customerName || meta.orderContext.items.length > 0 || meta.orderContext.adminNotes) && (
+          <div className="bg-blue-50 border border-blue-200 rounded-2xl p-5 mb-4">
+            <h2 className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-3">📋 Detail Order Customer</h2>
+            <div className="space-y-2">
+              {meta.orderNumber && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-500">No. Order</span>
+                  <span className="font-mono font-semibold text-slate-800">{meta.orderNumber}</span>
+                </div>
+              )}
+              {meta.orderContext.customerName && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-500">Customer</span>
+                  <span className="font-medium text-slate-800">{meta.orderContext.customerName}</span>
+                </div>
+              )}
+              {meta.orderContext.shipmentType && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-500">Jenis Layanan</span>
+                  <span className="font-medium text-slate-800">{meta.orderContext.shipmentType}</span>
+                </div>
+              )}
+              {(meta.orderContext.origin || meta.orderContext.destination) && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-500">Rute</span>
+                  <span className="font-medium text-slate-800 text-right">
+                    {[meta.orderContext.origin, meta.orderContext.destination].filter(Boolean).join(" → ")}
+                  </span>
+                </div>
+              )}
+              {meta.orderContext.requiredDate && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-500">Target Pengiriman</span>
+                  <span className="font-medium text-slate-800">
+                    {(() => {
+                      try {
+                        const d = new Date(meta.orderContext.requiredDate + "T00:00:00");
+                        const BULAN = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agt","Sep","Okt","Nov","Des"];
+                        return `${d.getDate()} ${BULAN[d.getMonth()]} ${d.getFullYear()}`;
+                      } catch { return meta.orderContext!.requiredDate!; }
+                    })()}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {meta.orderContext.items.length > 0 && (
+              <div className="mt-3">
+                <p className="text-xs font-semibold text-blue-600 mb-2">Detail Item</p>
+                <div className="overflow-x-auto rounded-xl border border-blue-100 bg-white">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-slate-400 text-xs border-b border-slate-100">
+                        <th className="text-left px-3 py-2 font-medium">Nama / SKU</th>
+                        <th className="text-right px-2 py-2 font-medium">Qty</th>
+                        <th className="text-right px-2 py-2 font-medium">Sat.</th>
+                        <th className="text-right px-2 py-2 font-medium">Harga Dasar</th>
+                        <th className="text-right px-3 py-2 font-medium">Subtotal</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {meta.orderContext.items.map((item, i) => (
+                        <tr key={i}>
+                          <td className="px-3 py-2 text-slate-700">
+                            <div>{item.serviceName || "—"}</div>
+                            {item.sku && <div className="text-xs text-slate-400 font-mono">{item.sku}</div>}
+                          </td>
+                          <td className="px-2 py-2 text-right text-slate-600">{item.qty ?? "—"}</td>
+                          <td className="px-2 py-2 text-right text-slate-500">{item.unit ?? "—"}</td>
+                          <td className="px-2 py-2 text-right text-slate-600">
+                            {item.unitPrice ? `Rp ${Number(item.unitPrice).toLocaleString("id-ID")}` : "—"}
+                          </td>
+                          <td className="px-3 py-2 text-right font-medium text-slate-700">
+                            {item.subtotal ? `Rp ${Number(item.subtotal).toLocaleString("id-ID")}` : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {meta.orderContext.adminNotes && (
+              <div className="mt-3 pt-3 border-t border-blue-200">
+                <p className="text-xs font-semibold text-blue-600 mb-1">Catatan Admin</p>
+                <p className="text-sm text-slate-700 whitespace-pre-line">{meta.orderContext.adminNotes}</p>
+              </div>
+            )}
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Identity */}
           <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
@@ -327,7 +443,7 @@ export default function VendorMiniFormPage() {
             const qty = Math.max(1, Number(vendorQty) || 1);
             const unitPrice = Number(vendorUnitPrice) || 0;
             const subtotal = qty * unitPrice;
-            const ppn = Math.round(subtotal * 0.11 * 100) / 100;
+            const ppn = calcTax(subtotal);
             const total = subtotal + ppn;
             const fmtIDR = (n: number) => n.toLocaleString("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 });
             return (

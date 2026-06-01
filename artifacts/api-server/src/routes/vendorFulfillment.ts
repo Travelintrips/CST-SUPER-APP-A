@@ -1,8 +1,11 @@
 import { Router, type Request, type Response } from "express";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import multer from "multer";
 import { randomUUID } from "crypto";
+import { promises as fs } from "fs";
+import path from "path";
+import { TAX_RATE_DECIMAL as PPN_RATE } from "../lib/taxHelper.js";
 import {
   db,
   vendorFulfillmentLinksTable,
@@ -10,20 +13,159 @@ import {
   logisticOrderItemsTable,
   suppliersTable,
   orderUpdatesTable,
+  vendorCatalogItemsTable,
 } from "@workspace/db";
 import { logger } from "../lib/logger";
-import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
+import { sendViaService as sendWhatsApp, sendMediaViaService } from "../lib/waTransport.js";
 import { getAdminWa } from "../lib/adminWa";
 import { getPreferredDomain } from "../lib/domain.js";
 import { resolveServiceCategory } from "@workspace/logistics-constants";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { createAdminActionLink, getAdminActionUrl } from "./adminAction.js";
 import { generateShortLink } from "../lib/shortLink.js";
+import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
+import { updateOrderProgress, getOrderProgressEvents } from "../lib/orderProgress.js";
 
 export const vendorFulfillmentPublicRouter = Router();
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 const objectStorage = new ObjectStorageService();
+const LOCAL_UPLOAD_DIR = "/tmp/vendor-uploads";
+
+const MIME_EXT: Record<string, string> = {
+  "image/jpeg": "jpg", "image/jpg": "jpg", "image/png": "png",
+  "image/webp": "webp", "image/heic": "heic", "image/heif": "heic",
+  "application/pdf": "pdf",
+};
+
+// ─── GET /api/vendor-fulfillment/:token/drivers ───────────────────────────────
+vendorFulfillmentPublicRouter.get("/:token/drivers", async (req: Request, res: Response) => {
+  const { token } = req.params as { token: string };
+  await ensureTables();
+  try {
+    const [link] = await db.select({
+      vendorId: vendorFulfillmentLinksTable.vendorId,
+      expiresAt: vendorFulfillmentLinksTable.expiresAt,
+    }).from(vendorFulfillmentLinksTable).where(eq(vendorFulfillmentLinksTable.token, token));
+    if (!link) return res.status(404).json({ error: "Link tidak ditemukan" });
+    if (link.expiresAt && link.expiresAt < new Date()) return res.status(410).json({ error: "Link kadaluarsa" });
+
+    const vendorId = link.vendorId;
+    let drivers: { id: number; name: string; phone: string | null; vehiclePlate: string | null; vehicleType: string | null }[] = [];
+    if (vendorId) {
+      const rows = await db.execute(sql`
+        SELECT id, name, phone, vehicle_plate AS "vehiclePlate", vehicle_type AS "vehicleType"
+        FROM vendor_drivers
+        WHERE supplier_id = ${vendorId} AND is_active = TRUE
+        ORDER BY name ASC
+      `);
+      drivers = rows.rows as typeof drivers;
+    }
+    return res.json({ drivers });
+  } catch (err) {
+    logger.error({ err }, "vendor-fulfillment GET drivers error");
+    return res.status(500).json({ error: "Gagal memuat data driver" });
+  }
+});
+
+// ─── POST /api/vendor-fulfillment/:token/drivers ──────────────────────────────
+vendorFulfillmentPublicRouter.post("/:token/drivers", async (req: Request, res: Response) => {
+  const { token } = req.params as { token: string };
+  await ensureTables();
+  try {
+    const [link] = await db.select({
+      vendorId: vendorFulfillmentLinksTable.vendorId,
+      orderId: vendorFulfillmentLinksTable.orderId,
+      expiresAt: vendorFulfillmentLinksTable.expiresAt,
+      status: vendorFulfillmentLinksTable.status,
+    }).from(vendorFulfillmentLinksTable).where(eq(vendorFulfillmentLinksTable.token, token));
+    if (!link) return res.status(404).json({ error: "Link tidak ditemukan" });
+    if (link.expiresAt && link.expiresAt < new Date()) return res.status(410).json({ error: "Link kadaluarsa" });
+
+    const { name, phone, vehiclePlate, vehicleType } = req.body as {
+      name?: string; phone?: string; vehiclePlate?: string; vehicleType?: string;
+    };
+    if (!name?.trim()) return res.status(400).json({ error: "Nama driver wajib diisi" });
+
+    const vendorId = link.vendorId ?? null;
+    const result = await db.execute(sql`
+      INSERT INTO vendor_drivers (supplier_id, name, phone, vehicle_plate, vehicle_type)
+      VALUES (${vendorId}, ${name.trim()}, ${phone?.trim() || null}, ${vehiclePlate?.trim() || null}, ${vehicleType?.trim() || null})
+      RETURNING id, name, phone, vehicle_plate AS "vehiclePlate", vehicle_type AS "vehicleType"
+    `);
+
+    // ── Notify admin via WA (fire-and-forget) ─────────────────────────────
+    (async () => {
+      try {
+        const adminWa = await getAdminWa();
+        if (!adminWa) return;
+
+        // Ambil nama vendor dan nomor order secara paralel
+        const [vendorRow, orderRow] = await Promise.all([
+          vendorId
+            ? db.select({ name: suppliersTable.name })
+                .from(suppliersTable)
+                .where(eq(suppliersTable.id, vendorId))
+                .then((r) => r[0])
+            : Promise.resolve(null),
+          db.select({ orderNumber: logisticOrdersTable.orderNumber, customerName: logisticOrdersTable.customerName })
+            .from(logisticOrdersTable)
+            .where(eq(logisticOrdersTable.id, link.orderId))
+            .then((r) => r[0]),
+        ]);
+
+        const vendorName = vendorRow?.name ?? "—";
+        const orderNumber = orderRow?.orderNumber ?? "—";
+        const customerName = orderRow?.customerName ?? "—";
+
+        const lines: string[] = [
+          `👤 Nama   : *${name.trim()}*`,
+        ];
+        if (phone?.trim())        lines.push(`📱 HP     : ${phone.trim()}`);
+        if (vehiclePlate?.trim()) lines.push(`🚛 Plat   : ${vehiclePlate.trim().toUpperCase()}`);
+        if (vehicleType?.trim())  lines.push(`🚚 Kend.  : ${vehicleType.trim()}`);
+
+        const waMsg =
+          `🆕 *Driver Baru Ditambahkan*\n` +
+          `━━━━━━━━━━━━━━━━━━\n` +
+          `Vendor    : *${vendorName}*\n` +
+          `No. Order : \`${orderNumber}\`\n` +
+          `Customer  : ${customerName}\n` +
+          `━━━━━━━━━━━━━━━━━━\n` +
+          lines.join("\n") + "\n" +
+          `━━━━━━━━━━━━━━━━━━\n` +
+          `Driver ini kini tersedia di dropdown pemilihan driver pada form fulfillment vendor.`;
+
+        await sendWhatsApp(adminWa, waMsg);
+      } catch (e) {
+        logger.warn({ e }, "vendor-fulfillment POST driver: WA notify failed");
+      }
+    })();
+
+    return res.status(201).json({ driver: result.rows[0] });
+  } catch (err) {
+    logger.error({ err }, "vendor-fulfillment POST driver error");
+    return res.status(500).json({ error: "Gagal menyimpan driver" });
+  }
+});
+
+// ─── Serve local fallback uploads ─────────────────────────────────────────────
+vendorFulfillmentPublicRouter.get("/local-file/:filename", async (req: Request, res: Response) => {
+  const { filename } = req.params as { filename: string };
+  if (!/^[a-zA-Z0-9_\-]+\.(jpg|jpeg|png|webp|heic|pdf)$/i.test(filename)) {
+    return res.status(400).send("Invalid filename");
+  }
+  try {
+    const data = await fs.readFile(path.join(LOCAL_UPLOAD_DIR, filename));
+    const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+    const mime = Object.entries(MIME_EXT).find(([, e]) => e === ext)?.[0] ?? "application/octet-stream";
+    res.setHeader("Content-Type", mime);
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    return res.send(data);
+  } catch {
+    return res.status(404).send("Not found");
+  }
+});
 
 // ─── Boot migration ───────────────────────────────────────────────────────────
 let migrationDone = false;
@@ -68,6 +210,22 @@ async function ensureTables() {
     await db.execute(sql`ALTER TABLE vendor_fulfillment_links ADD COLUMN IF NOT EXISTS stock_photo_url TEXT`);
     await db.execute(sql`ALTER TABLE vendor_fulfillment_links ADD COLUMN IF NOT EXISTS invoice_url TEXT`);
     await db.execute(sql`ALTER TABLE vendor_fulfillment_links ADD COLUMN IF NOT EXISTS supporting_doc_url TEXT`);
+    await db.execute(sql`ALTER TABLE vendor_fulfillment_links ADD COLUMN IF NOT EXISTS delivery_method TEXT`);
+    await db.execute(sql`ALTER TABLE vendor_fulfillment_links ADD COLUMN IF NOT EXISTS packing_list_url TEXT`);
+    await db.execute(sql`ALTER TABLE vendor_fulfillment_links ADD COLUMN IF NOT EXISTS pod_url TEXT`);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS vendor_drivers (
+        id          SERIAL PRIMARY KEY,
+        supplier_id INTEGER REFERENCES suppliers(id) ON DELETE CASCADE,
+        name        TEXT NOT NULL,
+        phone       TEXT,
+        vehicle_plate TEXT,
+        vehicle_type  TEXT,
+        is_active   BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS vendor_drivers_supplier_idx ON vendor_drivers(supplier_id)`);
     migrationDone = true;
   } catch (err) {
     logger.error({ err }, "vendorFulfillment ensureTables error");
@@ -127,13 +285,26 @@ vendorFulfillmentPublicRouter.post(
       const uuid = randomUUID();
       const isPdf = req.file.mimetype === "application/pdf";
       const ext = isPdf ? "pdf" : (req.file.originalname?.split(".").pop()?.toLowerCase() ?? "jpg");
-      const storagePath = `public/vendor-fulfillment/${token}/${fileType}-${uuid}.${ext}`;
-      await objectStorage.uploadFile(req.file.buffer, storagePath, req.file.mimetype);
-      const url = await objectStorage.getPublicUrl(storagePath);
+      const subPath = `vendor-fulfillment/${token}/${fileType}-${uuid}.${ext}`;
+      let url: string;
+      try {
+        url = await objectStorage.uploadPublicRaw(subPath, req.file.buffer, req.file.mimetype);
+      } catch (uploadErr: unknown) {
+        logger.warn({ err: uploadErr, subPath }, "GCS upload gagal, fallback ke local storage");
+        try {
+          await fs.mkdir(LOCAL_UPLOAD_DIR, { recursive: true });
+          const localFile = `${fileType}-${uuid}.${ext}`;
+          await fs.writeFile(path.join(LOCAL_UPLOAD_DIR, localFile), req.file.buffer);
+          url = `/api/vendor-fulfillment/local-file/${localFile}`;
+        } catch (localErr: unknown) {
+          logger.error({ err: localErr }, "Local fallback upload juga gagal");
+          return res.status(500).json({ error: "Upload file gagal. Coba lagi atau hubungi admin." });
+        }
+      }
       return res.json({ url });
     } catch (err) {
-      logger.error({ err }, "vendor-fulfillment upload error");
-      return res.status(500).json({ error: "Gagal upload file" });
+      logger.error({ err }, "vendor-fulfillment upload handler error");
+      return res.status(500).json({ error: "Terjadi kesalahan pada server" });
     }
   }
 );
@@ -172,11 +343,69 @@ vendorFulfillmentPublicRouter.get("/:token", async (req: Request, res: Response)
     }).from(logisticOrderItemsTable)
       .where(eq(logisticOrderItemsTable.orderId, order.id));
 
-    // Compute pricing breakdown
+    // Fetch vendor catalog items (untuk harga dasar vendor — BUKAN harga jual order)
+    type CatalogRow = { name: string; kategori: string | null; priceBase: string; type: string };
+    let vendorCatalog: CatalogRow[] = [];
+    if (link.vendorId) {
+      vendorCatalog = await db.select({
+        name: vendorCatalogItemsTable.name,
+        kategori: vendorCatalogItemsTable.kategori,
+        priceBase: vendorCatalogItemsTable.priceBase,
+        type: vendorCatalogItemsTable.type,
+      }).from(vendorCatalogItemsTable)
+        .where(and(
+          eq(vendorCatalogItemsTable.vendorId, link.vendorId),
+          eq(vendorCatalogItemsTable.isActive, true)
+        ));
+    }
+
+    // Helper: cari catalog match untuk satu order item
+    const findCatalogMatch = (it: typeof orderItemRows[0]): CatalogRow | null => {
+      if (vendorCatalog.length === 0) return null;
+      const svc = (it.serviceName ?? "").toLowerCase().trim();
+      const cat = (it.category ?? "").toLowerCase().trim();
+      const exact = vendorCatalog.find(c =>
+        c.name.toLowerCase().trim() === svc ||
+        c.name.toLowerCase().trim() === cat ||
+        (c.kategori ?? "").toLowerCase().trim() === cat
+      );
+      if (exact) return exact;
+      // Fallback: jika hanya satu catalog item, pakai itu
+      if (vendorCatalog.length === 1) return vendorCatalog[0];
+      return null;
+    };
+
+    // Hitung harga dasar vendor per item (JANGAN pakai it.subtotal — itu harga jual ke customer)
     const TAX_RATE = 11;
-    const grandTotalNum = Number(order.grandTotal ?? 0);
-    const subtotalBeforeTax = grandTotalNum > 0 ? Math.round(grandTotalNum * 100 / (100 + TAX_RATE)) : null;
-    const taxAmount = subtotalBeforeTax != null ? grandTotalNum - subtotalBeforeTax : null;
+    const itemsWithVendorPrice = orderItemRows.map((it) => {
+      const inp = it.inputData as Record<string, unknown> | null;
+      const qty = extractItemQty(inp) ?? 1;
+      const catalogMatch = findCatalogMatch(it);
+      const vendorUnitPrice = catalogMatch ? Number(catalogMatch.priceBase) : null;
+      // PENTING: subtotal = harga_dasar × qty — jangan pakai priceBase tanpa qty
+      const vendorSubtotal = vendorUnitPrice != null ? vendorUnitPrice * qty : null;
+      return {
+        serviceName: it.serviceName ?? "",
+        category: it.category ?? "",
+        unitPrice: vendorUnitPrice != null ? String(vendorUnitPrice) : null,
+        subtotal: vendorSubtotal != null ? String(vendorSubtotal) : (it.subtotal != null ? String(it.subtotal) : null),
+        quantity: String(qty),
+        unit: extractItemUnit(inp) ?? null,
+        _vendorSubtotal: vendorSubtotal,
+      };
+    });
+
+    // Hitung grandTotal dari harga catalog vendor; fallback ke harga jual jika catalog tidak ada
+    const vendorPrices = itemsWithVendorPrice.map(i => i._vendorSubtotal);
+    const allPriced = vendorPrices.length > 0 && vendorPrices.every(v => v != null);
+    const vendorGrandTotal = allPriced
+      ? vendorPrices.reduce((s, v) => s + (v ?? 0), 0)
+      : Number(order.grandTotal ?? 0);
+
+    // Exclusive PPN: vendorGrandTotal IS the DPP (base/catalog price), PPN dihitung di atasnya
+    const subtotalBeforeTax = vendorGrandTotal > 0 ? vendorGrandTotal : null;
+    const taxAmount = subtotalBeforeTax != null ? Math.round(subtotalBeforeTax * TAX_RATE / 100) : null;
+    const vendorTotalWithTax = subtotalBeforeTax != null && taxAmount != null ? subtotalBeforeTax + taxAmount : vendorGrandTotal;
 
     const orderInfo = {
       id: order.id,
@@ -191,22 +420,14 @@ vendorFulfillmentPublicRouter.get("/:token", async (req: Request, res: Response)
       requiredDate: (order as any).requiredDate ?? null,
       vehicleType: (order as any).vehicleType ?? null,
       status: order.status,
-      items: orderItemRows.map((it) => {
-        const inp = it.inputData as Record<string, unknown> | null;
-        const qty = extractItemQty(inp);
-        return {
-          serviceName: it.serviceName ?? "",
-          category: it.category ?? "",
-          subtotal: it.subtotal != null ? String(it.subtotal) : null,
-          quantity: qty != null ? String(qty) : null,
-          unit: extractItemUnit(inp) ?? null,
-        };
-      }),
-      grandTotal: order.grandTotal ? String(order.grandTotal) : null,
+      items: itemsWithVendorPrice.map(({ _vendorSubtotal: _vs, ...rest }) => rest),
+      grandTotal: String(vendorTotalWithTax || (order.grandTotal ?? 0)),
       subtotalBeforeTax: subtotalBeforeTax != null ? String(subtotalBeforeTax) : null,
       taxAmount: taxAmount != null ? String(taxAmount) : null,
       taxRate: TAX_RATE,
     };
+
+    const progressEvents = await getOrderProgressEvents(order.id);
 
     if (link.status === "submitted") {
       return res.json({
@@ -215,6 +436,7 @@ vendorFulfillmentPublicRouter.get("/:token", async (req: Request, res: Response)
         serviceType: link.serviceType,
         vendorName,
         order: orderInfo,
+        progressEvents: progressEvents.map((e) => ({ step_key: e.step_key, created_at: e.created_at })),
         submittedData: {
           driverName:        link.driverName ?? null,
           driverPhone:       link.driverPhone ?? null,
@@ -237,8 +459,11 @@ vendorFulfillmentPublicRouter.get("/:token", async (req: Request, res: Response)
           priceConfirmed:    (link as any).priceConfirmed ?? null,
           revisedPrice:      (link as any).revisedPrice ?? null,
           leadTime:          (link as any).leadTime ?? null,
+          deliveryMethod:    (link as any).deliveryMethod ?? null,
           stockPhotoUrl:     (link as any).stockPhotoUrl ?? null,
+          packingListUrl:    (link as any).packingListUrl ?? null,
           invoiceUrl:        (link as any).invoiceUrl ?? null,
+          podUrl:            (link as any).podUrl ?? null,
           supportingDocUrl:  (link as any).supportingDocUrl ?? null,
           notes:             link.notes ?? null,
           submittedAt:       link.submittedAt ? (link.submittedAt as Date).toISOString() : null,
@@ -252,6 +477,7 @@ vendorFulfillmentPublicRouter.get("/:token", async (req: Request, res: Response)
       serviceType: link.serviceType,
       vendorName,
       order: orderInfo,
+      progressEvents: progressEvents.map((e) => ({ step_key: e.step_key, created_at: e.created_at })),
     });
   } catch (err) {
     logger.error({ err }, "vendor-fulfillment GET error");
@@ -292,7 +518,8 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
       "stockConfirmed", "qtyConfirmed", "readyDate", "warehouseLocation",
       "customsPicName", "customsDocuments", "customsProcessEta",
       "priceConfirmed", "revisedPrice", "leadTime",
-      "stockPhotoUrl", "invoiceUrl", "supportingDocUrl",
+      "deliveryMethod",
+      "stockPhotoUrl", "packingListUrl", "invoiceUrl", "podUrl", "supportingDocUrl",
       "notes",
     ];
     for (const f of FIELDS) {
@@ -336,9 +563,14 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
     if (body.notes) noteParts.push(`Catatan: ${body.notes}`);
 
     // Update order status → "Vendor Confirmed" agar tombol konfirmasi di BizPortal muncul
-    await db.update(logisticOrdersTable)
-      .set({ status: "Vendor Confirmed" })
-      .where(eq(logisticOrdersTable.id, link.orderId));
+    await transitionLogisticOrderStatus(link.orderId, "Vendor Confirmed", {
+      actorType: "vendor",
+      actorName: vendorName,
+      source: "vendorFulfillment/submit",
+      force: true,
+      skipAudit: false,
+    });
+    updateOrderProgress(link.orderId, "VENDOR_CONFIRMED", "vendor_wa", vendorName ?? "Vendor", "Vendor mengkonfirmasi fulfillment order").catch(() => {});
 
     await db.insert(orderUpdatesTable).values({
       orderId: link.orderId,
@@ -354,6 +586,16 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
     if (adminWa) {
       const domain = getPreferredDomain() || "cstlogistic.co.id";
 
+      // Helper: konversi path relatif ke URL absolut yang bisa diakses publik (Fonnte/WA)
+      function toAbsoluteUrl(rawUrl: string | null | undefined): string {
+        if (!rawUrl?.trim()) return "";
+        const url = rawUrl.trim();
+        if (/^https?:\/\//i.test(url)) return url;
+        const match = url.match(/^\/api\/storage\/public-objects\/(.+)$/);
+        if (match) return objectStorage.toSupabasePublicUrl(match[1]);
+        return `https://${domain}${url.startsWith("/") ? url : "/" + url}`;
+      }
+
       // Buat link mini form confirm_fulfillment untuk admin
       let bizportalLink: string;
       try {
@@ -366,7 +608,7 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
         });
       } catch (e) {
         logger.warn({ e }, "vendor-fulfillment: gagal buat confirm_fulfillment link, fallback ke BizPortal URL");
-        bizportalLink = `https://${domain}/bizportal/logistics/orders/${order.id}`;
+        bizportalLink = `https://${domain}/logistic-admin/orders/${order.id}`;
       }
       const detailLines: string[] = [];
       const cat = resolveServiceCategory(link.serviceType);
@@ -385,6 +627,55 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
         if (body.etd)            detailLines.push(`📅 ETD         : ${body.etd}`);
         if (body.eta)            detailLines.push(`📅 ETA         : ${body.eta}`);
       } else if (cat === "product") {
+        // ── Item breakdown: barang + harga vendor + PPN + total ──
+        if (link.vendorId) {
+          const orderItems = await db.select().from(logisticOrderItemsTable)
+            .where(eq(logisticOrderItemsTable.orderId, order.id));
+          const vendorCatalog = await db.select().from(vendorCatalogItemsTable)
+            .where(and(eq(vendorCatalogItemsTable.vendorId, link.vendorId), eq(vendorCatalogItemsTable.isActive, true)));
+
+          const revisedTotal = (body.priceConfirmed === "revised" && body.revisedPrice)
+            ? (parseFloat(String(body.revisedPrice).replace(/[^\d.]/g, "")) || null)
+            : null;
+          const isSingle = orderItems.length === 1;
+
+          const itemLines: string[] = [];
+          for (const item of orderItems) {
+            const inputData = (item.inputData as Record<string, unknown>) ?? {};
+            const qty = (() => {
+              const q = inputData.qty ?? inputData.quantity ?? inputData.jumlah;
+              return q != null ? (Number(q) || 1) : 1;
+            })();
+            const unit = String(inputData.unit ?? (item as any).unit ?? "Unit");
+            const name = item.serviceName || item.category || "—";
+            const nameLower = name.toLowerCase().trim();
+            const catItem = vendorCatalog.find((c) => {
+              const cn = c.name.toLowerCase().trim();
+              return cn.includes(nameLower) || nameLower.includes(cn);
+            }) ?? vendorCatalog[0];
+            const priceBase = catItem ? parseFloat(String(catItem.priceBase)) : null;
+
+            let subtotal: number | null = null;
+            if (isSingle && revisedTotal != null) subtotal = revisedTotal;
+            else if (priceBase != null) subtotal = Math.round(priceBase * qty);
+
+            itemLines.push(`• ${name}`);
+            itemLines.push(`  Qty      : ${qty} ${unit}`);
+            if (priceBase != null) itemLines.push(`  Harga    : ${fmtRp(priceBase)}/unit`);
+            if (subtotal != null) {
+              const ppn = Math.round(subtotal * PPN_RATE);
+              const total = subtotal + ppn;
+              itemLines.push(`  Subtotal : ${fmtRp(subtotal)}`);
+              itemLines.push(`  PPN 11%  : ${fmtRp(ppn)}`);
+              itemLines.push(`  *Total   : ${fmtRp(total)}*`);
+            }
+          }
+          if (itemLines.length > 0) {
+            detailLines.push(...itemLines);
+            detailLines.push("──────────────────");
+          }
+        }
+
         const SL: Record<string, string> = { all: "Tersedia Semua ✅", partial: "Tersedia Sebagian ⚠️", none: "Tidak Tersedia ❌" };
         if (body.stockConfirmed)    detailLines.push(`📦 Stok        : ${SL[body.stockConfirmed] ?? body.stockConfirmed}`);
         if (body.qtyConfirmed)      detailLines.push(`🔢 Qty         : ${body.qtyConfirmed}`);
@@ -393,9 +684,17 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
         if (body.warehouseLocation) detailLines.push(`📍 Lokasi      : ${body.warehouseLocation}`);
         if (body.priceConfirmed === "agree")   detailLines.push(`💰 Harga       : Setuju harga asal`);
         else if (body.priceConfirmed === "revised") detailLines.push(`💰 Revisi Harga: ${fmtRp(body.revisedPrice)}`);
-        if (body.stockPhotoUrl)     detailLines.push(`🖼 Foto Stok   : ${body.stockPhotoUrl}`);
-        if (body.invoiceUrl)        detailLines.push(`📄 Invoice     : ${body.invoiceUrl}`);
-        if (body.supportingDocUrl)  detailLines.push(`📎 Dok. Lain   : ${body.supportingDocUrl}`);
+        const DELIVERY_LABEL: Record<string, string> = {
+          vendor_delivery: "🚛 Vendor Delivery",
+          customer_pickup: "🏭 Customer Pickup",
+          third_party: "📦 Third Party Carrier",
+        };
+        if (body.deliveryMethod)    detailLines.push(`🚚 Pengiriman  : ${DELIVERY_LABEL[body.deliveryMethod] ?? body.deliveryMethod}`);
+        if (body.stockPhotoUrl)     detailLines.push(`📷 Foto Barang : ${toAbsoluteUrl(body.stockPhotoUrl)}`);
+        if (body.packingListUrl)    detailLines.push(`📋 Packing List: ${toAbsoluteUrl(body.packingListUrl)}`);
+        if (body.invoiceUrl)        detailLines.push(`📄 Invoice     : ${toAbsoluteUrl(body.invoiceUrl)}`);
+        if (body.podUrl)            detailLines.push(`✅ POD         : ${toAbsoluteUrl(body.podUrl)}`);
+        if (body.supportingDocUrl)  detailLines.push(`📎 Dok. Lain   : ${toAbsoluteUrl(body.supportingDocUrl)}`);
       } else if (cat === "customs") {
         if (body.customsPicName)     detailLines.push(`👤 PIC         : ${body.customsPicName}`);
         if (body.customsDocuments)   detailLines.push(`📋 Dokumen     : ${body.customsDocuments}`);
@@ -427,10 +726,15 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
         `━━━━━━━━━━━━━━━━━━\n` +
         (detailLines.length > 0 ? detailLines.join("\n") + "\n" : "") +
         `━━━━━━━━━━━━━━━━━━\n` +
-        `✅ *Tindak Lanjut:*\n` +
-        `Buka order di BizPortal dan klik *"Konfirmasi & Mulai Pengiriman"*:\n${bizportalLink}`;
+        `📊 Status     : *Vendor Confirmed*\n` +
+        `⏭ Selanjutnya: Konfirmasi admin → Order In Progress\n` +
+        `━━━━━━━━━━━━━━━━━━\n` +
+        `✅ *Konfirmasi & Mulai Pengiriman:*\n` +
+        `Klik link berikut untuk konfirmasi langsung:\n${bizportalLink}`;
 
-      sendWhatsApp(adminWa, waMsg).catch((e) =>
+      // Kirim WA ke admin — jika ada foto barang, kirim sebagai media attachment Fonnte
+      const publicPhotoUrl = toAbsoluteUrl(body.stockPhotoUrl as string | undefined);
+      sendMediaViaService(adminWa, waMsg, publicPhotoUrl).catch((e) =>
         logger.warn({ e }, "vendor-fulfillment WA to admin failed")
       );
     }

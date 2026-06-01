@@ -19,6 +19,11 @@ import { Link } from "wouter";
 import { useLanguage } from "@/contexts/LanguageContext";
 import GeofenceAlertBanner from "@/components/logistics/GeofenceAlertBanner";
 import { OrderProgressBar } from "@/components/logistics/OrderProgressBar";
+import { TasksWidget } from "@/components/dashboard/TasksWidget";
+import { RecentActivitiesWidget } from "@/components/dashboard/RecentActivitiesWidget";
+import { AiInsightsWidget } from "@/components/dashboard/AiInsightsWidget";
+import { OrderPipelineWidget } from "@/components/dashboard/OrderPipelineWidget";
+import { QuickActionsWidget } from "@/components/dashboard/QuickActionsWidget";
 
 interface ResponseTimeEntry {
   timestamp: string;
@@ -266,6 +271,7 @@ export default function DashboardPage() {
   const portalNew = portalOrders.filter((o) => o.status === "New Order").length;
   const portalInProgress = portalOrders.filter((o) => o.status === "In Progress").length;
   const portalCompleted = portalOrders.filter((o) => o.status === "Completed").length;
+  const portalCancelled = portalOrders.filter((o) => o.status === "Cancelled").length;
 
   const [selectedPortalStatus, setSelectedPortalStatus] = useState<string | null>(null);
   const [soDialog, setSoDialog] = useState<LogisticOrder | null>(null);
@@ -1103,6 +1109,27 @@ export default function DashboardPage() {
             )}
           </CardContent>
         </Card>
+
+        {/* ── Dashboard Widgets ── */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <TasksWidget />
+          <RecentActivitiesWidget />
+          <AiInsightsWidget />
+          <OrderPipelineWidget
+            isLoading={isLoading || portalLoading}
+            portalNew={portalNew}
+            portalInProgress={portalInProgress}
+            portalCompleted={portalCompleted}
+            portalCancelled={portalCancelled}
+            portalTotal={portalOrders.length}
+            quotesActive={summary?.quotesActive ?? 0}
+            salesOrdersConfirmed={summary?.salesOrdersConfirmed ?? 0}
+            salesOrdersThisMonth={summary?.salesOrdersThisMonth ?? 0}
+          />
+          <div className="lg:col-span-2">
+            <QuickActionsWidget />
+          </div>
+        </div>
 
         {rtEntries.length > 0 && (
           <ResponseTimeTrendCard entries={rtEntries} />

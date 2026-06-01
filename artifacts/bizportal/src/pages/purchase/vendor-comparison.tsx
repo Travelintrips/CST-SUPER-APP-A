@@ -330,11 +330,19 @@ export default function VendorComparisonPage() {
                     <td className="py-2 px-4 font-medium">{itemName}</td>
                     {(quotations as Record<string, unknown>[]).map(q => {
                       const line = (q.lines as Record<string, unknown>[])?.find(l => String(l.name) === itemName);
+                      const lineQty = line ? Number(line.quantity) : 0;
+                      const lineUnitCost = line ? Number(line.unitCost) : 0;
+                      const lineTotal = lineQty * lineUnitCost;
                       return (
                         <td key={String(q.id)} className="py-2 px-4 text-center font-mono">
-                          {line ? idr(Number(line.unitCost)) : <span className="text-muted-foreground">-</span>}
-                          {line && Number(line.quantity) > 0 && (
-                            <div className="text-xs text-muted-foreground">× {Number(line.quantity)} {String(line.unit ?? "")}</div>
+                          {line ? idr(lineUnitCost) : <span className="text-muted-foreground">-</span>}
+                          {line && lineQty > 0 && (
+                            <div className="text-xs text-muted-foreground">× {lineQty} {String(line.unit ?? "")}</div>
+                          )}
+                          {line && lineQty > 0 && lineUnitCost > 0 && (
+                            <div className="text-xs font-semibold text-foreground border-t border-dashed border-muted-foreground/30 mt-1 pt-0.5">
+                              = {idr(lineTotal)}
+                            </div>
                           )}
                         </td>
                       );

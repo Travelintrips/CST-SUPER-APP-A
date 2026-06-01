@@ -1,11 +1,12 @@
 import { db, suppliersTable, vendorCatalogItemsTable, waTemplateConfigsTable } from "@workspace/db";
 import { eq, and, ilike, sql } from "drizzle-orm";
-import { sendViaService as sendWhatsApp } from "./waTransport.js";
+import { sendViaService as sendWhatsApp, sendMediaViaService } from "./waTransport.js";
 import { getAdminGroupWa } from "./adminWa";
 import { getPreferredDomain } from "./domain";
 import { sendMail, isSmtpConfigured } from "./mailer";
 import { logger } from "./logger";
 import { generateShortLink } from "./shortLink";
+import { TAX_RATE_DECIMAL as PPN_RATE, TAX_RATE_PCT } from "./taxHelper.js";
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? "admcst001@gmail.com";
 
@@ -36,6 +37,7 @@ export interface LogisticOrderData {
   vehicleType?: string | null;
   createdAt?: Date | string | null;
   publicRfqToken?: string | null;
+  trackingToken?: string | null;
 }
 
 const BULAN_ID = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agt","Sep","Okt","Nov","Des"];
@@ -207,6 +209,34 @@ function buildOrderVars(
     return null;
   })();
 
+  const productListDetail: string | null = (() => {
+    if (!order.orderItems?.length) {
+      if (isProduct && order.serviceList) return order.serviceList;
+      // Fallback untuk semua tipe order: tampilkan info kargo/komoditi
+      const parts: string[] = [];
+      if (order.commodity)       parts.push(`• Komoditi      : ${order.commodity}`);
+      if (order.cargoDescription) parts.push(`• Kargo         : ${order.cargoDescription}`);
+      if (order.grossWeight)     parts.push(`• Berat         : ${order.grossWeight} kg`);
+      if (order.volumeCbm)       parts.push(`• Volume        : ${order.volumeCbm} CBM`);
+      if (order.jumlahKoli)      parts.push(`• Jumlah Koli   : ${order.jumlahKoli}`);
+      if (order.serviceList && !isProduct) parts.push(`• Layanan       : ${order.serviceList}`);
+      return parts.length > 0 ? parts.join("\n") : null;
+    }
+    return order.orderItems.map(i => {
+      const qty = i.qty ?? 1;
+      const unit = i.unit ?? "Unit";
+      const lines: string[] = [`• ${i.name} (${qty} ${unit})`];
+      if (i.subtotal != null && i.subtotal > 0) {
+        const ppn = Math.round(i.subtotal * PPN_RATE);
+        const total = i.subtotal + ppn;
+        lines.push(`  Subtotal : Rp ${i.subtotal.toLocaleString("id-ID")}`);
+        lines.push(`  PPN 11%  : Rp ${ppn.toLocaleString("id-ID")}`);
+        lines.push(`  Total    : Rp ${total.toLocaleString("id-ID")}`);
+      }
+      return lines.join("\n");
+    }).join("\n");
+  })();
+
   return {
     orderNumber: order.orderNumber,
     tanggal: tgl,
@@ -230,6 +260,7 @@ function buildOrderVars(
     serviceList: isProduct ? null : order.serviceList,
     productList,
     productListNoPrice,
+    productListDetail,
     subtotalEst: order.subtotal != null ? formatRupiah(order.subtotal) : null,
     taxEst: order.tax != null ? formatRupiah(order.tax) : null,
     taxLabel: (() => {
@@ -241,6 +272,12 @@ function buildOrderVars(
     requiredDate: order.requiredDate ?? null,
     notes: order.notes ?? null,
     timestamp: nowWIB(),
+    trackUrl: (() => {
+      const domain = getPreferredDomain();
+      if (!domain) return null;
+      if (order.trackingToken) return `https://${domain}/order-track/${order.trackingToken}`;
+      return `https://${domain}/track/${order.orderNumber}`;
+    })(),
     ...extras,
   };
 }
@@ -349,7 +386,7 @@ function buildAdminGroupWaMessage(
   adminActionShortUrl?: string,
 ): string {
   const domain = getPreferredDomain() || "cstlogistic.co.id";
-  const fallbackUrl = `https://${domain}/bizportal/logistics/orders/${order.id}`;
+  const fallbackUrl = `https://${domain}/logistic-admin/orders/${order.id}`;
   const actionUrl = adminActionShortUrl || fallbackUrl;
   const svcType = deriveServiceType(order.shipmentType, order.orderType);
   return renderTemplate(tplBody, buildOrderVars(order, { adminActionUrl: actionUrl }), svcType);
@@ -439,10 +476,14 @@ const DEFAULT_TPL = {
     ].join("\n"),
     vendor_job_rejected: [
       "❌ *Vendor Menolak Job Order*",
-      "",
-      "Order  : {{orderNumber}}",
+      "━━━━━━━━━━━━━━━━━━",
+      "Order  : *{{orderNumber}}*",
       "Vendor : {{vendorName}}",
+      "Rute   : {{route}}",
       "Alasan : {{reason}}",
+      "━━━━━━━━━━━━━━━━━━",
+      "⚠️ Silakan re-assign vendor segera:",
+      "{{adminOrderUrl}}",
       "",
       "_{{timestamp}}_",
     ].join("\n"),
@@ -575,7 +616,19 @@ const DEFAULT_TPL = {
     vendor_submission: ["📩 *VENDOR SUBMIT — {{orderNumber}}*","RFQ: {{rfqNumber}} | Vendor *{{vendorName}}*{{quotePosition}}","💰 Harga: {{vendorPrice}}","ETA: {{estimatedPickup}} → {{estimatedDelivery}}","Segera review!","_{{timestamp}}_"].join("\n"),
     vendor_confirmed: ["🔔 *VENDOR CONFIRMED — {{orderNumber}}*","Vendor: *{{vendorName}}* | Harga Final: {{finalCustomerPrice}}","{{approveUrl}}","_{{timestamp}}_"].join("\n"),
     vendor_rejected: ["🔴 *VENDOR REJECTED — {{orderNumber}}*","Vendor *{{vendorName}}* menolak. Pilih vendor lain:","{{approveUrl}}","_{{timestamp}}_"].join("\n"),
-    customer_approved: ["🎉 *CUSTOMER APPROVED — {{orderNumber}}*","Customer *{{customerName}}* menyetujui penawaran.","Proses operasional sekarang!","_{{timestamp}}_"].join("\n"),
+    customer_approved: [
+      "🎉 *CUSTOMER APPROVED — {{orderNumber}}*",
+      "━━━━━━━━━━━━━━━━",
+      "Customer   : *{{customerName}}*",
+      "Order      : {{orderNumber}}",
+      "━━━━━━━━━━━━━━━━",
+      "💰 Harga Jual  : *{{sellingPrice}}*",
+      "📦 Harga Basic : {{vendorCost}}",
+      "📈 Margin      : {{margin}}",
+      "━━━━━━━━━━━━━━━━",
+      "{{fwdUrl}}",
+      "_{{timestamp}}_",
+    ].join("\n"),
     customer_revised: ["🟡 *CUSTOMER REVISI — {{rfqNumber}}*","Customer: {{customerName}}","Catatan: {{revisionNotes}}","{{rfqLink}}","_{{timestamp}}_"].join("\n"),
     customer_rejected: ["🔴 *CUSTOMER TOLAK — {{rfqNumber}}*","Customer: {{customerName}}","Alasan: {{rejectionReason}}","{{rfqLink}}","_{{timestamp}}_"].join("\n"),
     task_update: ["📦 *Update Order — {{orderNumber}}*","Dari: {{vendorName}} | Status: {{status}}","_{{timestamp}}_"].join("\n"),
@@ -601,8 +654,31 @@ const DEFAULT_TPL = {
     ].join("\n"),
   },
   customer: {
-    order_new: ["✅ *PESANAN ANDA DITERIMA*","━━━━━━━━━━━━━━━━━━","Halo *{{customerName}}*,","","Terima kasih telah mempercayakan kepercayaan Anda kepada CST Logistics.","","No. Order       : *{{orderNumber}}*","Tanggal         : {{tanggal}}","Jam             : {{jam}}","Status          : Menunggu Konfirmasi","Rute            : {{route}}","Kategori Barang : {{commodity}}","Berat           : {{grossWeightDisplay}}","Volume          : {{volumeDisplay}}","{{#if product}}","🛍️ Produk       :","{{productList}}","{{/if}}","Layanan         : {{serviceList}}","Tgl Butuh       : {{requiredDate}}","━━━━━━━━━━━━━━━━━━","💵 Subtotal      : Rp {{subtotalEst}}","🧾 {{taxLabel}}  : Rp {{taxEst}}","💰 Total Est.    : Rp {{totalEst}}","━━━━━━━━━━━━━━━━━━","Tim kami sedang memproses permintaan Anda dan akan segera menghubungi Anda.","","📞 Jakarta: (021) 6241234 | Tangerang: (021) 5591234","","_Dikirim: {{timestamp}}_"].join("\n"),
-    customer_approval: ["✅ *PENAWARAN SIAP — CST LOGISTICS*","━━━━━━━━━━━━━━━━━━","Halo *{{customerName}}*,","","Penawaran untuk order *{{orderNumber}}* telah siap.","No. RFQ    : {{rfqNumber}}","Layanan    : {{shipmentType}}","Rute       : {{route}}","💰 Harga   : *{{sellingPrice}}*","ETA        : {{etaFinal}}","Valid s/d  : {{validUntil}}","","Silakan review dan konfirmasi melalui link berikut:","🔗 {{customerApprovalLink}}","","Penawaran berlaku 24 jam.","Terima kasih 🙏","_CST Logistics_"].join("\n"),
+    order_new: ["✅ *PESANAN ANDA DITERIMA*","━━━━━━━━━━━━━━━━━━","Halo *{{customerName}}*,","","Terima kasih telah mempercayakan kepercayaan Anda kepada CST Logistics.","","No. Order       : *{{orderNumber}}*","Tanggal         : {{tanggal}}","Jam             : {{jam}}","Status          : Menunggu Konfirmasi","Rute            : {{route}}","Kategori Barang : {{commodity}}","Berat           : {{grossWeightDisplay}}","Volume          : {{volumeDisplay}}","{{#if product}}","🛍️ Produk       :","{{productList}}","{{/if}}","Layanan         : {{serviceList}}","Tgl Butuh       : {{requiredDate}}","━━━━━━━━━━━━━━━━━━","💵 Subtotal      : Rp {{subtotalEst}}","🧾 {{taxLabel}}  : Rp {{taxEst}}","💰 Total Est.    : Rp {{totalEst}}","━━━━━━━━━━━━━━━━━━","Tim kami sedang memproses permintaan Anda dan akan segera menghubungi Anda.","","📞 Jakarta: (021) 6241234 | Tangerang: (021) 5591234","","🔗 Pantau status order Anda:","{{trackUrl}}","","_Dikirim: {{timestamp}}_"].join("\n"),
+    customer_approval: [
+      "✅ *PENAWARAN SIAP — CST LOGISTICS*",
+      "━━━━━━━━━━━━━━━━━━",
+      "Halo *{{customerName}}*,",
+      "",
+      "Penawaran untuk order *{{orderNumber}}* telah siap.",
+      "No. RFQ    : {{rfqNumber}}",
+      "Layanan    : {{shipmentType}}",
+      "Rute       : {{route}}",
+      "━━━━━━━━━━━━━━━━━━",
+      "{{itemsBlock}}",
+      "━━━━━━━━━━━━━━━━━━",
+      "💵 Subtotal : {{subtotalDisplay}}",
+      "🧾 PPN 11%  : {{taxDisplay}}",
+      "💰 Total    : *{{totalDisplay}}*",
+      "ETA         : {{etaFinal}}",
+      "Valid s/d   : {{validUntil}}",
+      "━━━━━━━━━━━━━━━━━━",
+      "Silakan review dan konfirmasi melalui link berikut:",
+      "🔗 {{customerApprovalLink}}",
+      "",
+      "Terima kasih 🙏",
+      "_CST Logistics_",
+    ].join("\n"),
     customer_options: ["✅ *PENAWARAN {{shipmentType}} — CST Logistics*","📦 Order: {{orderNumber}}","📍 {{route}}","{{pickupInfo}}","━━━━━━━━━━━━━━","{{optionSummary}}","━━━━━━━━━━━━━━","👉 Pilih opsi Anda:","{{optionUrl}}","_{{timestamp}}_"].join("\n"),
     operational_update: ["{{statusEmoji}} *Update Status Pengiriman*","","No. Order: *{{orderNumber}}*","Customer: {{customerDisplay}}","Status: *{{statusLabel}}*","","CST Logistics — Terima kasih telah menggunakan layanan kami."].join("\n"),
     customer_approved: ["🎉 *TERIMA KASIH TELAH MENGKONFIRMASI!*","━━━━━━━━━━━━━━━━━━","Halo *{{customerName}}*,","","Penawaran order *{{orderNumber}}* telah diterima.","Tim operasional kami sedang memprosesnya.","","📞 Pertanyaan: (021) 6241234","_Dikirim: {{timestamp}}_"].join("\n"),
@@ -769,11 +845,15 @@ const DEFAULT_TPL = {
       "Email       : {{email}}",
       "HP          : {{phone}}",
       "Alamat      : {{shippingAddress}}",
-      "Produk      :",
-      "{{itemList}}",
-      "Total       : Rp {{grandTotal}}",
-      "Catatan     : {{notes}}",
       "━━━━━━━━━━━━━━━━━━",
+      "📦 Detail Produk:",
+      "{{itemList}}",
+      "────────────────",
+      "💵 Subtotal   : Rp {{subtotalDisplay}}",
+      "🧾 PPN {{taxRate}}%  : Rp {{taxAmountDisplay}}",
+      "💰 Grand Total: *Rp {{grandTotal}}*",
+      "━━━━━━━━━━━━━━━━━━",
+      "Catatan     : {{notes}}",
       "🔗 Lihat di BizPortal:",
       "{{orderUrl}}",
       "",
@@ -788,27 +868,34 @@ const DEFAULT_TPL = {
       "👤 Customer : *{{customerName}}*",
       "📞 HP       : {{phone}}",
       "📧 Email    : {{email}}",
-      "📦 Produk   :",
-      "{{itemList}}",
-      "💰 Total    : *Rp {{grandTotal}}*",
-      "Catatan     : {{notes}}",
       "━━━━━━━━━━━━━━━━━━",
+      "📦 Detail Produk:",
+      "{{itemList}}",
+      "────────────────",
+      "💵 Subtotal   : Rp {{subtotalDisplay}}",
+      "🧾 PPN {{taxRate}}%  : Rp {{taxAmountDisplay}}",
+      "💰 Grand Total: *Rp {{grandTotal}}*",
+      "━━━━━━━━━━━━━━━━━━",
+      "Catatan     : {{notes}}",
       "_Dikirim: {{timestamp}}_",
     ].join("\n"),
     customer: [
       "✅ *Pesanan Anda Berhasil Diterima!*",
       "No. Order: *{{orderNumber}}*",
       "",
+      "📦 Detail Pesanan:",
       "{{itemList}}",
-      "",
-      "Total: Rp {{grandTotal}}",
+      "────────────────",
+      "💵 Subtotal : Rp {{subtotalDisplay}}",
+      "🧾 PPN {{taxRate}}% : Rp {{taxAmountDisplay}}",
+      "💰 Total    : *Rp {{grandTotal}}*",
       "",
       "Tim kami akan segera menghubungi Anda untuk konfirmasi. Terima kasih! 🙏",
     ].join("\n"),
   },
   vendor: {
     order_new: ["📦 *PERMINTAAN ORDER BARU — CST LOGISTICS*","━━━━━━━━━━━━━━━━━━━━","Kepada Yth. *{{vendorName}}*,","","No. Order       : *{{orderNumber}}*","Tanggal         : {{tanggal}}","Jenis           : {{shipmentType}}","Rute            : {{route}}","Kategori Barang : {{commodity}}","Deskripsi       : {{cargoDescription}}","Berat           : {{grossWeightDisplay}}","Volume          : {{volumeDisplay}}","Jumlah Koli     : {{jumlahKoliDisplay}}","{{#if product}}","🛍️ Produk       :","{{productList}}","{{/if}}","Tgl Butuh       : {{requiredDate}}","{{#if trucking}}","🚛 Jenis Kendaraan: {{vehicleType}}","📅 Jadwal Pickup  : {{pickupSchedule}}","💰 Contract Rate  : {{contractRate}}","{{/if}}","Layanan         : {{serviceList}}","Catatan         : {{notes}}","━━━━━━━━━━━━━━━━━━━━","🔗 *Aksi Cepat (klik link):*","✅ Terima  → {{responseUrl}}?action=accept","❌ Tolak   → {{responseUrl}}?action=reject","💬 Form    → {{responseUrl}}","","✏️ *Atau balas WA dengan format:*","📌 Harga: `{{orderNumber}} [HARGA] [TGL_PICKUP]`","📌 Terima: `TERIMA {{orderNumber}}`","📌 Tolak:  `TOLAK {{orderNumber}}`","","Terima kasih 🙏","_Dikirim: {{timestamp}}_"].join("\n"),
-    vendor_request: ["📦 *PERMINTAAN PENAWARAN VENDOR*","━━━━━━━━━━━━━━━━━━","Kepada Yth. *{{vendorName}}*,","","No. RFQ    : *{{rfqNumber}}*","No. Order  : {{orderNumber}}","Tanggal    : {{tanggal}}","Jam        : {{jam}}","Jenis      : {{shipmentType}}","Rute       : {{route}}","Komoditi   : {{commodity}}","Deskripsi  : {{cargoDescription}}","Berat      : {{grossWeightDisplay}}","Volume     : {{volumeDisplay}}","{{#if product}}","🛍️ Produk  :","{{productListNoPrice}}","{{/if}}","Tgl Butuh  : {{requiredDate}}","Catatan    : {{notes}}","","📝 Silakan isi penawaran melalui link berikut:","","🔗 *[ ISI PENAWARAN VENDOR ]*","👉 {{vendorMiniFormLink}}","","━━━━━━━━━━━━━━━━━━","Terima kasih atas kerja sama Anda 🙏","_CST Logistics_"].join("\n"),
+    vendor_request: ["📦 *PERMINTAAN PENAWARAN VENDOR*","━━━━━━━━━━━━━━━━━━","Kepada Yth. *{{vendorName}}*,","","No. RFQ       : *{{rfqNumber}}*","No. Order     : {{orderNumber}}","Customer      : {{customerDisplay}}","Tanggal       : {{tanggal}}","Jenis         : {{shipmentType}}","Rute          : {{route}}","Komoditi      : {{commodity}}","Deskripsi     : {{cargoDescription}}","Berat         : {{grossWeightDisplay}}","Volume        : {{volumeDisplay}}","━━━━━━━━━━━━━━━━━━","📋 Detail Item / Layanan:","{{productListDetail}}","","Tgl Butuh     : {{requiredDate}}","Catatan Admin : {{notes}}","","📝 Silakan isi penawaran melalui link berikut:","","🔗 *[ ISI PENAWARAN VENDOR ]*","👉 {{vendorMiniFormLink}}","","━━━━━━━━━━━━━━━━━━","Terima kasih atas kerja sama Anda 🙏","_CST Logistics_"].join("\n"),
     task_link: ["🚚 *Tugas Order Baru — CST Logistics*","","Order: {{orderNumber}}","Rute: {{route}}","Keterangan: {{label}}","","Silakan buka link berikut untuk konfirmasi dan update status:","{{taskUrl}}","_{{timestamp}}_"].join("\n"),
     vendor_revision: ["↩️ *REVISI PENAWARAN — {{orderNumber}}*","━━━━━━━━━━━━━━━━━━","Kepada Yth. *{{vendorName}}*,","","Kami memerlukan revisi harga untuk order *{{orderNumber}}*.","Harga saat ini: {{vendorPrice}}","","Mohon kirim penawaran terbaik Anda kembali:","🔗 {{vendorMiniFormLink}}","","Terima kasih 🙏"].join("\n"),
     op_request: ["⚙️ *KONFIRMASI OPERASIONAL — CST LOGISTICS*","━━━━━━━━━━━━━━━━━━","Kepada Yth. *{{vendorName}}*,","","Customer telah menyetujui penawaran untuk order *{{orderNumber}}*.","Mohon lengkapi data operasional:","","🔗 {{operationalFormLink}}","","{{#if trucking}}","Data dibutuhkan: Driver, No. Plat, jadwal pickup.","{{/if}}","","{{#if freight_sea}}","Data dibutuhkan: Vessel, Voyage, ETA/ETD, BL.","{{/if}}","","{{#if freight_air}}","Data dibutuhkan: Airline, AWB, jadwal penerbangan.","{{/if}}","","{{#if ppjk}}","Data dibutuhkan: No. Aju, BC type, SPPB.","{{/if}}","","Terima kasih atas kerjasamanya 🙏"].join("\n"),
@@ -858,10 +945,14 @@ const DEFAULT_TPL = {
       "Order  : *{{orderNumber}}*",
       "Layanan: {{shipmentType}}",
       "Rute   : {{origin}} → {{destination}}",
+      "{{estimatedPickupLine}}",
+      "{{estimatedDeliveryLine}}",
+      "{{estimatedDaysLine}}",
       "Catatan Admin: {{adminNote}}",
       "",
       "✅ Anda telah dipilih sebagai vendor untuk order ini.",
       "",
+      "{{itemsBlock}}",
       "Silakan buka link berikut untuk menerima atau menolak job, dan mengisi detail operasional:",
       "{{jobUrl}}",
       "",
@@ -877,6 +968,10 @@ const DEFAULT_TPL = {
       "Status     : *{{statusLabel}}*",
       "━━━━━━━━━━━━━━━━━━",
       "{{statusNote}}",
+      "{{#if miniFormUrl}}",
+      "",
+      "📱 Buka mini form: {{miniFormUrl}}",
+      "{{/if}}",
       "",
       "_CST Logistics — Notifikasi Otomatis_",
     ].join("\n"),
@@ -900,6 +995,8 @@ const DEFAULT_TPL = {
       "👤 Customer: {{customerName}}",
       "🚚 Jenis   : {{shipmentType}}",
       "📍 Rute    : {{route}}",
+      "━━━━━━━━━━━━━━━━━━",
+      "{{itemsBlock}}",
       "━━━━━━━━━━━━━━━━━━",
       "{{newSubmitterInfo}}",
       "",
@@ -964,8 +1061,11 @@ const DEFAULT_TPL = {
       "⏱ ETA      : {{eta}}",
       "📝 Catatan  : {{notes}}",
       "━━━━━━━━━━━━━━━━━━",
-      "Tim kami akan segera menghubungi Anda dengan instruksi dan detail selanjutnya.",
+      "{{#if fulfillUrl}}",
+      "📱 Buka mini form Anda di sini:",
+      "{{fulfillUrl}}",
       "",
+      "{{/if}}",
       "Terima kasih atas kepercayaan dan kerja sama Anda 🙏",
       "_CST Logistics_",
     ].join("\n"),
@@ -1497,23 +1597,88 @@ export async function sendCustomerApprovalNotification(
   order: LogisticOrderData,
   sellingPrice: string,
   customerApprovalLink: string,
+  opts?: {
+    rfqNumber?: string | null;
+    sellingPriceNum?: number | null;
+    ppnNominalNum?: number | null;
+    ppnPct?: number;
+    etaFinal?: string | null;
+    validUntil?: string | null;
+  },
 ): Promise<void> {
   if (!order.phone) return;
   const tpl = await getWaTemplateConfig("customer", "customer_approval", DEFAULT_TPL.customer.customer_approval);
-  const msg = renderWf(tpl, order, { sellingPrice, customerApprovalLink });
+
+  // Build financial breakdown
+  const sellingNum = opts?.sellingPriceNum ?? null;
+  const ppnPct = opts?.ppnPct ?? TAX_RATE_PCT;
+  const ppnNominal = opts?.ppnNominalNum != null
+    ? opts.ppnNominalNum
+    : sellingNum != null
+      ? Math.round(sellingNum * ppnPct / (100 + ppnPct))
+      : null;
+  const subtotalBeforePpn = sellingNum != null && ppnNominal != null
+    ? sellingNum - ppnNominal
+    : null;
+
+  // Build per-item block (each item: name + qty + subtotal)
+  const itemsBlock: string | null = (() => {
+    if (!order.orderItems?.length) return null;
+    return order.orderItems.map(i => {
+      const qty = i.qty ?? 1;
+      const unit = i.unit ?? "unit";
+      const lines: string[] = [`• ${i.name} (${qty} ${unit})`];
+      if (i.subtotal != null && i.subtotal > 0) {
+        lines.push(`  Subtotal : Rp ${Math.round(i.subtotal).toLocaleString("id-ID")}`);
+      }
+      return lines.join("\n");
+    }).join("\n");
+  })();
+
+  const extras: Record<string, string | null | undefined> = {
+    sellingPrice,
+    customerApprovalLink,
+    rfqNumber: opts?.rfqNumber ?? null,
+    itemsBlock,
+    subtotalDisplay: subtotalBeforePpn != null
+      ? `Rp ${Math.round(subtotalBeforePpn).toLocaleString("id-ID")}`
+      : null,
+    taxDisplay: ppnNominal != null
+      ? `Rp ${Math.round(ppnNominal).toLocaleString("id-ID")}`
+      : null,
+    totalDisplay: sellingNum != null
+      ? `Rp ${Math.round(sellingNum).toLocaleString("id-ID")}`
+      : sellingPrice,
+    etaFinal: opts?.etaFinal ?? null,
+    validUntil: opts?.validUntil != null ? formatISODate(opts.validUntil) : null,
+  };
+
+  const msg = renderWf(tpl, order, extras);
   sendWhatsApp(order.phone, msg).catch((e: unknown) => logger.error({ e }, "WA customer_approval failed"));
 }
 
 // ── Customer Approved (notif admin + customer saat customer menyetujui) ──────
 export async function sendCustomerApprovedNotification(
   order: LogisticOrderData,
+  extras: {
+    sellingPrice?: string | null;
+    vendorCost?: string | null;
+    margin?: string | null;
+    fwdUrl?: string | null;
+  } = {},
 ): Promise<void> {
   const [tplG, custTpl, group] = await Promise.all([
     getWaTemplateConfig("admin_group", "customer_approved", DEFAULT_TPL.admin_group.customer_approved),
     getWaTemplateConfig("customer", "customer_approved", DEFAULT_TPL.customer.customer_approved),
     getAdminGroupWa(),
   ]);
-  if (group) sendWhatsApp(group, renderWf(tplG, order)).catch((e: unknown) => logger.error({ e }, "WA customer_approved (group) failed"));
+  const groupExtras: Record<string, string | null | undefined> = {
+    sellingPrice: extras.sellingPrice ?? "—",
+    vendorCost: extras.vendorCost ?? "—",
+    margin: extras.margin ?? "—",
+    fwdUrl: extras.fwdUrl ?? "",
+  };
+  if (group) sendWhatsApp(group, renderWf(tplG, order, groupExtras)).catch((e: unknown) => logger.error({ e }, "WA customer_approved (group) failed"));
   if (order.phone) sendWhatsApp(order.phone, renderWf(custTpl, order)).catch((e: unknown) => logger.error({ e }, "WA customer_approved (customer) failed"));
 }
 
@@ -1652,6 +1817,8 @@ export interface ProductOrderItem {
   qty: number;
   unit?: string | null;
   subtotal: number;
+  sku?: string | null;
+  unitPrice?: number | null;
 }
 
 export interface ProductOrderData {
@@ -1662,6 +1829,9 @@ export interface ProductOrderData {
   shippingAddress: string;
   notes?: string | null;
   grandTotal: number;
+  subtotal?: number | null;
+  taxAmount?: number | null;
+  taxRate?: number | null;
   items: ProductOrderItem[];
   orderUrl?: string;
   vendorFormUrl?: string;
@@ -1703,8 +1873,18 @@ export async function sendProductOrderStatusUpdateWa(order: ProductOrderStatusDa
 
 export async function sendProductOrderWaNotification(order: ProductOrderData): Promise<void> {
   const itemList = order.items
-    .map((i) => `• ${i.productName} × ${i.qty} (${i.unit ?? "pcs"}) — Rp ${formatRupiah(i.subtotal)}`)
+    .map((i) => {
+      const skuPart = i.sku ? ` [${i.sku}]` : "";
+      const pricePart = i.unitPrice != null && i.unitPrice > 0
+        ? ` | Harga: Rp ${formatRupiah(i.unitPrice)}/unit`
+        : "";
+      return `• ${i.productName}${skuPart}\n  Qty: ${i.qty} ${i.unit ?? "pcs"}${pricePart}\n  Subtotal: Rp ${formatRupiah(i.subtotal)}`;
+    })
     .join("\n");
+
+  const effectiveSubtotal = order.subtotal ?? order.items.reduce((s, i) => s + i.subtotal, 0);
+  const effectiveTaxRate = order.taxRate ?? 11;
+  const effectiveTaxAmount = order.taxAmount ?? Math.round(effectiveSubtotal * effectiveTaxRate / 100);
 
   const vars: Record<string, string | null | undefined> = {
     orderNumber: order.orderNumber,
@@ -1713,6 +1893,9 @@ export async function sendProductOrderWaNotification(order: ProductOrderData): P
     phone: order.phone,
     shippingAddress: order.shippingAddress,
     itemList,
+    subtotalDisplay: formatRupiah(effectiveSubtotal),
+    taxRate: String(effectiveTaxRate),
+    taxAmountDisplay: formatRupiah(effectiveTaxAmount),
     grandTotal: formatRupiah(order.grandTotal),
     notes: order.notes ?? null,
     orderUrl: order.orderUrl ?? null,
@@ -1997,6 +2180,7 @@ export interface VendorAwardedData {
   vendorCost: number | string | null;
   eta?: string | null;
   notes?: string | null;
+  fulfillUrl?: string | null;
 }
 
 export async function sendVendorAwardedWa(data: VendorAwardedData): Promise<void> {
@@ -2021,6 +2205,7 @@ export async function sendVendorAwardedWa(data: VendorAwardedData): Promise<void
     vendorCost: fmtCost(data.vendorCost),
     eta: data.eta ?? null,
     notes: data.notes ?? null,
+    fulfillUrl: data.fulfillUrl ?? null,
   });
 
   sendWhatsApp(data.vendorPhone, msg, {
@@ -2088,6 +2273,14 @@ export async function sendVendorSelectedAdminWa(data: VendorSelectedAdminData): 
 }
 
 // ── Vendor Assignment (kirim job order ke vendor, kembalikan pesan untuk preview API) ──
+export interface VendorAssignmentItem {
+  name: string;
+  qty: number;
+  unit: string;
+  basicPrice: number;
+  taxRate: number; // 0.11 = 11%
+}
+
 export async function sendVendorAssignmentNotification(
   orderNumber: string,
   origin: string,
@@ -2096,11 +2289,30 @@ export async function sendVendorAssignmentNotification(
   jobUrl: string,
   vendorPhone: string | null | undefined,
   adminNote?: string,
+  items?: VendorAssignmentItem[],
+  estimatedPickup?: string | null,
+  estimatedDelivery?: string | null,
+  estimatedDays?: number | null,
 ): Promise<string> {
+  const fmtRp = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
+  let itemsBlock = "";
+  if (items && items.length > 0) {
+    const lines = items.map((it) => {
+      const ppnPerUnit = it.basicPrice * it.taxRate;
+      const total = (it.basicPrice + ppnPerUnit) * it.qty;
+      const ppnPct = Math.round(it.taxRate * 100);
+      return `• ${it.name}: ${it.qty} ${it.unit} × ${fmtRp(it.basicPrice)} + PPN ${ppnPct}% = *${fmtRp(total)}*`;
+    });
+    itemsBlock = `📋 *Detail Produk:*\n${lines.join("\n")}\n\n`;
+  }
   const tpl = await getWaTemplateConfig("vendor", "vendor_assignment", DEFAULT_TPL.vendor.vendor_assignment);
   const vars: Record<string, string | null | undefined> = {
     orderNumber, origin, destination, shipmentType, jobUrl,
     adminNote: adminNote || null,
+    itemsBlock: itemsBlock || null,
+    estimatedPickupLine: estimatedPickup ? `📅 Est. Pickup  : ${estimatedPickup}` : null,
+    estimatedDeliveryLine: estimatedDelivery ? `🏁 Est. Delivery: ${estimatedDelivery}` : null,
+    estimatedDaysLine: estimatedDays != null ? `⏱️ Transit      : ${estimatedDays} hari` : null,
     timestamp: nowWIB(),
   };
   const msg = renderTemplate(tpl, vars);
@@ -2144,11 +2356,15 @@ export async function sendVendorJobRejectedNotification(
   vendorName: string,
   adminWaPhone: string,
   reason?: string,
+  route?: string,
+  adminOrderUrl?: string,
 ): Promise<void> {
   const tpl = await getWaTemplateConfig("admin_personal", "vendor_job_rejected", DEFAULT_TPL.admin_personal.vendor_job_rejected);
   const msg = renderTemplate(tpl, {
     orderNumber, vendorName,
-    reason: reason || null,
+    reason: reason || "—",
+    route: route || null,
+    adminOrderUrl: adminOrderUrl || null,
     timestamp: nowWIB(),
   });
   sendWhatsApp(adminWaPhone, msg).catch((e: unknown) => logger.error({ e }, "WA vendor_job_rejected failed"));
@@ -2161,6 +2377,7 @@ export async function sendVendorProgressUpdateNotification(
   status: string,
   adminWaPhone: string,
   notes?: string,
+  photoUrl?: string,
 ): Promise<void> {
   const tpl = await getWaTemplateConfig("admin_personal", "vendor_progress_update", DEFAULT_TPL.admin_personal.vendor_progress_update);
   const msg = renderTemplate(tpl, {
@@ -2168,7 +2385,11 @@ export async function sendVendorProgressUpdateNotification(
     notes: notes || null,
     timestamp: nowWIB(),
   });
-  sendWhatsApp(adminWaPhone, msg).catch((e: unknown) => logger.error({ e }, "WA vendor_progress_update failed"));
+  if (photoUrl) {
+    sendMediaViaService(adminWaPhone, msg, photoUrl).catch((e: unknown) => logger.error({ e }, "WA vendor_progress_update (media) failed"));
+  } else {
+    sendWhatsApp(adminWaPhone, msg).catch((e: unknown) => logger.error({ e }, "WA vendor_progress_update failed"));
+  }
 }
 
 // ── Vendor POD Uploaded (notif admin saat vendor upload POD) ─────────────────
@@ -2178,6 +2399,7 @@ export async function sendVendorPodUploadedNotification(
   fileCount: number,
   adminWaPhone: string,
   completionNotes?: string,
+  photoUrl?: string,
 ): Promise<void> {
   const tpl = await getWaTemplateConfig("admin_personal", "vendor_pod_uploaded", DEFAULT_TPL.admin_personal.vendor_pod_uploaded);
   const msg = renderTemplate(tpl, {
@@ -2186,7 +2408,11 @@ export async function sendVendorPodUploadedNotification(
     completionNotes: completionNotes || null,
     timestamp: nowWIB(),
   });
-  sendWhatsApp(adminWaPhone, msg).catch((e: unknown) => logger.error({ e }, "WA vendor_pod_uploaded failed"));
+  if (photoUrl) {
+    sendMediaViaService(adminWaPhone, msg, photoUrl).catch((e: unknown) => logger.error({ e }, "WA vendor_pod_uploaded (media) failed"));
+  } else {
+    sendWhatsApp(adminWaPhone, msg).catch((e: unknown) => logger.error({ e }, "WA vendor_pod_uploaded failed"));
+  }
 }
 
 // ── Customer Progress Update (notif customer saat ada update progress) ────────
@@ -2251,6 +2477,7 @@ export async function sendVendorOrderStatusChangeNotification(
   statusNote: string,
   vendorName: string,
   vendorPhone: string,
+  miniFormUrl?: string | null,
 ): Promise<void> {
   const tpl = await getWaTemplateConfig("vendor", "vendor_order_status_change", DEFAULT_TPL.vendor.vendor_order_status_change);
   const route = order.origin && order.destination ? `${order.origin} → ${order.destination}` : "—";
@@ -2261,6 +2488,7 @@ export async function sendVendorOrderStatusChangeNotification(
     vendorName,
     statusLabel,
     statusNote: statusNote || null,
+    miniFormUrl: miniFormUrl ?? null,
     timestamp: nowWIB(),
   };
   const msg = renderTemplate(tpl, vars);
@@ -2738,7 +2966,7 @@ export async function sendInvoiceIssuedNotification(
 
 // ── runWaTemplateMigration ─────────────────────────────────────────────────────
 // Creates the whatsapp_template_configs table if missing, seeds default templates,
-// and upgrades stale rows that are missing required markers (e.g. {{productList}}).
+// and upgrades stale rows that are missing required markers.
 export async function runWaTemplateMigration(): Promise<void> {
   try {
     // 1. Ensure table exists
@@ -2773,7 +3001,7 @@ export async function runWaTemplateMigration(): Promise<void> {
 
     // Required marker per pair — if missing from the DB row, force-upgrade it
     const markerMap: Record<string, string> = {
-      "vendor__vendor_request": "{{productList}}",
+      "vendor__vendor_request": "{{productListDetail}}",
       "vendor__order_new":      "{{productList}}",
       "admin_personal__order_new": "{{productList}}",
       "admin_group__order_new":    "{{productList}}",

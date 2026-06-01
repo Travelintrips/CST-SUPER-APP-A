@@ -25,6 +25,112 @@ function normalizePhoneID(raw: string): string {
   return "62" + digits;
 }
 
+/**
+ * Kirim pesan WhatsApp dengan lampiran gambar/media via Fonnte.
+ * Gambar dikirim sebagai media, teks sebagai caption.
+ * Jika mediaUrl kosong, fallback ke pesan teks biasa.
+ */
+export async function sendWhatsAppMedia(
+  target: string,
+  message: string,
+  mediaUrl: string,
+  opts?: { context?: string; refType?: string; refId?: string },
+): Promise<void> {
+  if (!mediaUrl?.trim()) {
+    return sendWhatsApp(target, message, opts);
+  }
+  if (!FONNTE_TOKEN) {
+    logger.warn("FONNTE_TOKEN not set — skipping WhatsApp media notification");
+    await logNotification({
+      channel: "wa", recipient: target, message,
+      status: "failed", errorMsg: "FONNTE_TOKEN not configured",
+      context: opts?.context, refType: opts?.refType, refId: opts?.refId,
+    });
+    return;
+  }
+  if (!target?.trim()) {
+    logger.warn("sendWhatsAppMedia: empty target — skipping");
+    return;
+  }
+
+  if (opts?.context && opts?.refId) {
+    const alreadySent = await wasRecentlyNotified(opts.context, opts.refId, DEDUP_WINDOW_MS);
+    if (alreadySent) {
+      logger.info(
+        { context: opts.context, refId: opts.refId, target, windowMs: DEDUP_WINDOW_MS },
+        "sendWhatsAppMedia: deduped — same context+refId already sent within window",
+      );
+      await logNotification({
+        channel: "wa", recipient: target, message,
+        status: "deduped",
+        errorMsg: `Deduped: context=${opts.context} refId=${opts.refId} within ${DEDUP_WINDOW_MS}ms`,
+        context: opts.context, refType: opts.refType, refId: opts.refId,
+      });
+      return;
+    }
+  }
+
+  const phone = normalizePhoneID(target);
+  if (!phone.includes("@") && phone.length < 10) {
+    logger.warn({ raw: target, normalized: phone }, "sendWhatsAppMedia: phone too short — skipping");
+    await logNotification({
+      channel: "wa", recipient: target, message,
+      status: "failed", errorMsg: "Phone number too short",
+      context: opts?.context, refType: opts?.refType, refId: opts?.refId,
+    });
+    return;
+  }
+
+  try {
+    const params: Record<string, string> = { target: phone, message, url: mediaUrl };
+    const res = await fetch(FONNTE_URL, {
+      method: "POST",
+      headers: {
+        Authorization: FONNTE_TOKEN,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams(params).toString(),
+    });
+    const body = await res.json() as unknown;
+    if (!res.ok) {
+      logger.warn({ status: res.status, body, phone, mediaUrl }, "Fonnte media: non-OK status");
+      await logNotification({
+        channel: "wa", recipient: phone, message,
+        status: "failed", errorMsg: `HTTP ${res.status}`,
+        context: opts?.context, refType: opts?.refType, refId: opts?.refId,
+        mediaUrl,
+      });
+    } else {
+      const b = body as Record<string, unknown>;
+      if (b.status === false || b.status === "false") {
+        logger.warn({ body, phone, mediaUrl }, "Fonnte media: status:false (send failed)");
+        await logNotification({
+          channel: "wa", recipient: phone, message,
+          status: "failed", errorMsg: String(b.reason ?? b.message ?? "Fonnte status:false"),
+          context: opts?.context, refType: opts?.refType, refId: opts?.refId,
+          mediaUrl,
+        });
+      } else {
+        logger.info({ phone, mediaUrl }, "WhatsApp media sent via Fonnte");
+        await logNotification({
+          channel: "wa", recipient: phone, message,
+          status: "sent",
+          context: opts?.context, refType: opts?.refType, refId: opts?.refId,
+          mediaUrl,
+        });
+      }
+    }
+  } catch (err) {
+    logger.error({ err, phone, mediaUrl }, "Failed to send WhatsApp media via Fonnte");
+    await logNotification({
+      channel: "wa", recipient: phone, message,
+      status: "failed", errorMsg: String(err),
+      context: opts?.context, refType: opts?.refType, refId: opts?.refId,
+      mediaUrl,
+    });
+  }
+}
+
 export async function sendWhatsApp(
   target: string,
   message: string,

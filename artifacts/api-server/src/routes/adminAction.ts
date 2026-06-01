@@ -13,15 +13,21 @@ import {
   customerQuoteLinksTable,
   orderUpdatesTable,
   vendorFulfillmentLinksTable,
+  vendorMiniFormLinksTable,
+  customerOrderLinksTable,
 } from "@workspace/db";
 import { requireClerkUser, requireAdmin } from "../lib/requireAdmin.js";
 import { runDbBackup } from "../lib/dbBackup.js";
 import { getPreferredDomain } from "../lib/domain.js";
 import { logger } from "../lib/logger.js";
+import { TAX_RATE_DECIMAL as PPN_RATE, TAX_RATE_DECIMAL } from "../lib/taxHelper.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
-import { getAdminWa } from "../lib/adminWa.js";
-import { sendVendorRequestNotification, sendVendorSelectedAdminWa, sendVendorAwardedWa, type LogisticOrderData } from "../lib/orderNotification.js";
+import { getAdminWa, getAdminGroupWa } from "../lib/adminWa.js";
+import { sendVendorRequestNotification, sendVendorSelectedAdminWa, sendVendorAwardedWa, sendVendorAssignmentNotification, type LogisticOrderData } from "../lib/orderNotification.js";
 import { generateShortLink } from "../lib/shortLink.js";
+import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
+import { transitionRfqStatus, transitionVendorLinkStatus } from "../lib/services/rfqStatusService.js";
+import { updateOrderProgress } from "../lib/orderProgress.js";
 
 export const adminActionRouter: Router = Router();
 export const adminActionPublicRouter = Router();
@@ -130,6 +136,35 @@ adminActionAdminRouter.post("/create", async (req: Request, res: Response) => {
   return res.json({ ok: true, token, url, shortUrl });
 });
 
+// ─── Admin: POST /api/admin-action/resend-confirm-wa ─────────────────────────
+adminActionAdminRouter.post("/resend-confirm-wa", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const body = req.body as { orderId?: number };
+  if (!body.orderId) return res.status(400).json({ error: "orderId diperlukan" });
+  await ensureTables();
+  const rows = await db.select({
+    id: logisticOrdersTable.id,
+    orderNumber: logisticOrdersTable.orderNumber,
+    customerName: logisticOrdersTable.customerName,
+  }).from(logisticOrdersTable).where(eq(logisticOrdersTable.id, Number(body.orderId))).limit(1);
+  const order = rows[0];
+  if (!order) return res.status(404).json({ error: "Order tidak ditemukan" });
+  const cfToken = await createAdminActionLink(order.id, "confirm_fulfillment", null, 168);
+  const cfUrl = getAdminActionUrl(cfToken);
+  const shortUrl = await generateShortLink(cfUrl, { context: "admin_action", refType: "order", refId: order.orderNumber });
+  const adminWa = await getAdminWa();
+  if (adminWa) {
+    const ln = "\n";
+    const sep = "-------------------";
+    const waMsg = "📦 *[Kirim Ulang] Konfirmasi Fulfillment Vendor*" + ln + sep + ln +
+      "No. Order  : *" + order.orderNumber + "*" + ln +
+      "Customer   : " + order.customerName + ln + sep + ln +
+      "Buka link berikut untuk konfirmasi:" + ln + shortUrl;
+    sendWhatsApp(adminWa, waMsg).catch((err2) => logger.warn({ err2 }, "resend-confirm-wa WA failed"));
+  }
+  return res.json({ ok: true, shortUrl, cfUrl, adminWaSent: !!adminWa });
+});
+
 // ─── Public: GET /api/admin-action/:token ────────────────────────────────────
 adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
   const { token } = req.params as { token: string };
@@ -207,6 +242,13 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
       if (!input) return null;
       return input.unit != null ? String(input.unit) : null;
     };
+    const extractItemUnitPrice = (input: Record<string, unknown> | null): number | null => {
+      if (!input) return null;
+      const pRaw = input.price ?? input.productPrice ?? input.unitPrice ?? input.sellingPrice ?? null;
+      if (typeof pRaw === "number") return pRaw > 0 ? pRaw : null;
+      if (typeof pRaw === "string") { const n = parseFloat(pRaw); return !isNaN(n) && n > 0 ? n : null; }
+      return null;
+    };
 
     // Hitung total qty untuk estimasi harga vendor (hanya berlaku jika semua item satu unit)
     let totalQtyForVendor: number | null = null;
@@ -232,19 +274,27 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
     }
 
     // Compute tax breakdown — source of truth for all views
+    // Hitung subtotal per item dengan benar: unitPrice × qty (bukan raw DB subtotal yang bisa jadi unit price saja)
     const _itemsSubtotal = orderItemRows.reduce((sum, it) => {
-      return sum + (it.subtotal != null ? parseFloat(String(it.subtotal)) : 0);
+      const inp = it.inputData as Record<string, unknown> | null;
+      const qty = extractItemQty(inp);
+      const unitPrice = extractItemUnitPrice(inp);
+      const dbSubtotal = it.subtotal != null ? parseFloat(String(it.subtotal)) : 0;
+      const computed = (unitPrice != null && qty != null) ? unitPrice * qty : dbSubtotal;
+      return sum + computed;
     }, 0);
     const _grandTotalNum = order.grandTotal ? parseFloat(String(order.grandTotal)) : null;
     const _TAX_RATE = 11;
     let _subtotalBeforeTax: number | null = null;
     let _taxAmount: number | null = null;
-    if (_itemsSubtotal > 0 && _grandTotalNum != null) {
+    if (_itemsSubtotal > 0) {
+      // Items subtotal IS the DPP (pre-tax). PPN dihitung di atas DPP.
       _subtotalBeforeTax = _itemsSubtotal;
-      _taxAmount = Math.round(_grandTotalNum - _itemsSubtotal);
+      _taxAmount = Math.round(_itemsSubtotal * _TAX_RATE / 100);
     } else if (_grandTotalNum != null && _grandTotalNum > 0) {
-      _subtotalBeforeTax = Math.round(_grandTotalNum * 100 / (100 + _TAX_RATE));
-      _taxAmount = _grandTotalNum - _subtotalBeforeTax;
+      // grandTotal adalah DPP (harga dasar sebelum PPN). PPN dihitung di atas (exclusive).
+      _subtotalBeforeTax = _grandTotalNum;
+      _taxAmount = Math.round(_grandTotalNum * _TAX_RATE / 100);
     }
 
     const base = {
@@ -271,7 +321,9 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
         requiredDate: (order as any).requiredDate ?? null,
         notes: (order as any).notes ?? null,
         paymentType: (order as any).paymentType ?? null,
-        grandTotal: order.grandTotal ? String(order.grandTotal) : null,
+        grandTotal: (_subtotalBeforeTax != null && _taxAmount != null)
+          ? String(Math.round(_subtotalBeforeTax + _taxAmount))
+          : (order.grandTotal ? String(order.grandTotal) : null),
         subtotalBeforeTax: _subtotalBeforeTax != null ? String(_subtotalBeforeTax) : null,
         taxRate: _TAX_RATE,
         taxAmount: _taxAmount != null ? String(_taxAmount) : null,
@@ -280,12 +332,16 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
           const inp = it.inputData as Record<string, unknown> | null;
           const qty = extractItemQty(inp);
           const unit = extractItemUnit(inp);
+          const unitPrice = extractItemUnitPrice(inp);
+          const dbSubtotal = it.subtotal != null ? Number(it.subtotal) : null;
+          const subtotal = (unitPrice != null && qty != null) ? unitPrice * qty : dbSubtotal;
           return {
             serviceName: it.serviceName ?? "",
             category: it.category ?? "",
-            subtotal: it.subtotal != null ? String(it.subtotal) : null,
+            subtotal: subtotal != null ? String(subtotal) : null,
             quantity: qty != null ? String(qty) : null,
             unit: unit ?? null,
+            unitPrice: unitPrice != null ? String(unitPrice) : null,
           };
         }),
       },
@@ -529,8 +585,56 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
         .orderBy(desc(vendorFulfillmentLinksTable.createdAt))
         .limit(1);
 
+      // Build item breakdown for product orders
+      let orderItemsBreakdown: {
+        name: string; qty: number; unit: string;
+        priceBase: number | null; subtotal: number | null; ppn: number | null; total: number | null;
+      }[] = [];
+
+      const rawItems = await db.select({
+        serviceName: logisticOrderItemsTable.serviceName,
+        category: logisticOrderItemsTable.category,
+        inputData: logisticOrderItemsTable.inputData,
+      }).from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, order.id));
+
+      if (rawItems.length > 0 && vfLink?.vendorId) {
+        const vendorCatalog = await db.select({
+          name: vendorCatalogItemsTable.name,
+          priceBase: vendorCatalogItemsTable.priceBase,
+          unit: vendorCatalogItemsTable.unit,
+        }).from(vendorCatalogItemsTable)
+          .where(and(eq(vendorCatalogItemsTable.vendorId, vfLink.vendorId), eq(vendorCatalogItemsTable.isActive, true)));
+
+        const isSingle = rawItems.length === 1;
+        const revisedTotal = (vfLink.priceConfirmed === "revised" && vfLink.revisedPrice)
+          ? Number(vfLink.revisedPrice) : null;
+
+        orderItemsBreakdown = rawItems.map((item) => {
+          const inputData = (item.inputData as Record<string, unknown>) ?? {};
+          const qty = (() => {
+            const q = inputData.qty ?? inputData.quantity ?? inputData.jumlah;
+            return q != null ? (Number(q) || 1) : 1;
+          })();
+          const name = item.serviceName || item.category || "—";
+          const nameLower = name.toLowerCase().trim();
+          const catItem = vendorCatalog.find((c) => {
+            const cn = c.name.toLowerCase().trim();
+            return cn.includes(nameLower) || nameLower.includes(cn);
+          }) ?? vendorCatalog[0];
+          const priceBase = catItem ? parseFloat(String(catItem.priceBase)) : null;
+          const unit = String(inputData.unit ?? catItem?.unit ?? "Unit");
+          let subtotal: number | null = null;
+          if (isSingle && revisedTotal != null) subtotal = revisedTotal;
+          else if (priceBase != null) subtotal = Math.round(priceBase * qty);
+          const ppn = subtotal != null ? Math.round(subtotal * PPN_RATE) : null;
+          const total = subtotal != null && ppn != null ? subtotal + ppn : null;
+          return { name, qty, unit, priceBase, subtotal, ppn, total };
+        });
+      }
+
       return res.json({
         ...base,
+        orderItems: orderItemsBreakdown,
         vendorFulfillmentLink: vfLink ? {
           id: vfLink.id,
           serviceType: vfLink.serviceType,
@@ -569,8 +673,65 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
         selectedVendor = v ?? null;
       }
 
+      // Override harga order dengan catalog vendor — JANGAN tampilkan harga jual ke vendor
+      let vendorAdjustedOrder = base.order;
+      if (selected?.vendorId) {
+        const catItems = await db.select({
+          name: vendorCatalogItemsTable.name,
+          kategori: vendorCatalogItemsTable.kategori,
+          priceBase: vendorCatalogItemsTable.priceBase,
+        }).from(vendorCatalogItemsTable)
+          .where(and(eq(vendorCatalogItemsTable.vendorId, selected.vendorId), eq(vendorCatalogItemsTable.isActive, true)));
+
+        if (catItems.length > 0) {
+          const findVendorPrice = (svcName: string, catName: string): number | null => {
+            const svc = svcName.toLowerCase().trim();
+            const cat = catName.toLowerCase().trim();
+            const match = catItems.find(c =>
+              c.name.toLowerCase().trim() === svc ||
+              c.name.toLowerCase().trim() === cat ||
+              (c.kategori ?? "").toLowerCase().trim() === cat
+            );
+            if (match) return Number(match.priceBase);
+            if (catItems.length === 1) return Number(catItems[0].priceBase);
+            return null;
+          };
+
+          const vendorItems = base.order.items.map((it) => {
+            const vp = findVendorPrice(it.serviceName, it.category);
+            const qty = it.quantity != null ? parseFloat(it.quantity) : 1;
+            const vendorSubtotal = vp != null ? vp * qty : null;
+            return {
+              ...it,
+              unitPrice: vp != null ? String(vp) : null,
+              subtotal: vendorSubtotal != null ? String(vendorSubtotal) : it.subtotal,
+            };
+          });
+
+          const vendorPrices = vendorItems.map(i => i.subtotal != null ? parseFloat(i.subtotal) : null);
+          const allPriced = vendorPrices.length > 0 && vendorPrices.every(v => v != null);
+          const vendorGrandTotal = allPriced
+            ? vendorPrices.reduce((s, v) => s + (v ?? 0), 0)
+            : (order.grandTotal ? parseFloat(String(order.grandTotal)) : 0);
+
+          // Exclusive PPN: vendorGrandTotal IS the DPP (base price), PPN dihitung di atasnya
+          const vendorDpp = vendorGrandTotal > 0 ? vendorGrandTotal : null;
+          const vendorTax = vendorDpp != null ? Math.round(vendorDpp * _TAX_RATE / 100) : null;
+          const vendorGrandWithTax = vendorDpp != null && vendorTax != null ? vendorDpp + vendorTax : vendorGrandTotal;
+
+          vendorAdjustedOrder = {
+            ...base.order,
+            items: vendorItems,
+            grandTotal: String(vendorGrandWithTax),
+            subtotalBeforeTax: vendorDpp != null ? String(vendorDpp) : base.order.subtotalBeforeTax,
+            taxAmount: vendorTax != null ? String(vendorTax) : base.order.taxAmount,
+          };
+        }
+      }
+
       return res.json({
         ...base,
+        order: vendorAdjustedOrder,
         rfq: rfq ? { id: rfq.id, rfqNumber: rfq.rfqNumber, status: rfq.status } : null,
         selectedVendor,
         selectedVendorLink: selected ?? null,
@@ -697,12 +858,41 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
         } else {
           const { randomUUID } = await import("crypto");
           linkToken = randomUUID();
+
+          // Hitung basicPrice dari katalog vendor agar vendor lihat harga dasar, BUKAN harga jual
+          const catItemsForVendor = await db.select({
+            name: vendorCatalogItemsTable.name,
+            kategori: vendorCatalogItemsTable.kategori,
+            priceBase: vendorCatalogItemsTable.priceBase,
+          }).from(vendorCatalogItemsTable)
+            .where(and(eq(vendorCatalogItemsTable.vendorId, vendor.id), eq(vendorCatalogItemsTable.isActive, true)));
+
+          let basicPriceForLink: string | null = null;
+          if (catItemsForVendor.length > 0) {
+            const rawItemsForPrice = await db.select({ serviceName: logisticOrderItemsTable.serviceName })
+              .from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, order.id));
+            const matchPrice = (svcName: string): number | null => {
+              const svc = (svcName ?? "").toLowerCase().trim();
+              const match = catItemsForVendor.find(c => c.name.toLowerCase().trim() === svc || (c.kategori ?? "").toLowerCase().trim() === svc);
+              if (match) return Number(match.priceBase);
+              if (catItemsForVendor.length === 1) return Number(catItemsForVendor[0].priceBase);
+              return null;
+            };
+            const prices = rawItemsForPrice.map(i => matchPrice(i.serviceName ?? ""));
+            if (prices.length > 0 && prices.every(p => p != null)) {
+              basicPriceForLink = String(prices.reduce((s, p) => s + (p ?? 0), 0));
+            } else if (catItemsForVendor.length === 1) {
+              basicPriceForLink = String(catItemsForVendor[0].priceBase);
+            }
+          }
+
           await db.insert(rfqVendorLinksTable).values({
             rfqId: rfq.id,
             vendorId: vendor.id,
             token: linkToken,
             status: "waiting_response",
             expiredAt,
+            basicPrice: basicPriceForLink ?? undefined,
           });
         }
 
@@ -712,6 +902,7 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
         const rawItems = await db.select({
           serviceName: logisticOrderItemsTable.serviceName,
           subtotal: logisticOrderItemsTable.subtotal,
+          inputData: logisticOrderItemsTable.inputData,
         }).from(logisticOrderItemsTable)
           .where(eq(logisticOrderItemsTable.orderId, order.id));
 
@@ -720,10 +911,16 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
           ? rawItems.map(i => `• ${i.serviceName}`).join("\n")
           : "";
         const orderItems = rawItems.length
-          ? rawItems.map(i => ({
-              name: i.serviceName ?? "",
-              subtotal: i.subtotal != null ? parseFloat(String(i.subtotal)) : null,
-            }))
+          ? rawItems.map(i => {
+              const inp = (i.inputData as Record<string, unknown> | null) ?? {};
+              const qtyRaw = inp.qty ?? inp.quantity ?? inp.jumlah;
+              return {
+                name: i.serviceName ?? "",
+                qty: qtyRaw != null ? Number(qtyRaw) || null : null,
+                unit: inp.unit ? String(inp.unit) : null,
+                subtotal: i.subtotal != null ? parseFloat(String(i.subtotal)) : null,
+              };
+            })
           : undefined;
 
         const orderData: LogisticOrderData = {
@@ -761,10 +958,10 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
       }
 
       await db.update(logisticOrderRfqsTable).set({
-        status: "vendor_blasted",
         vendorIds,
         responseDeadline: expiredAt,
       }).where(eq(logisticOrderRfqsTable.id, rfq.id));
+      await transitionRfqStatus(rfq.id, "vendor_blasted", { source: "adminAction:rfq_blast", actorType: "admin", force: true });
 
       // Activity log
       const sentNames = results.filter(r => r.sent).map(r => r.vendorName).join(", ");
@@ -787,13 +984,12 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
       const compareUrl = getAdminActionUrl(compareToken);
       const compareShort = await generateShortLink(compareUrl, { context: "admin_action", refType: "rfq", refId: String(rfq.id) });
 
-      const adminWa = await getAdminWa();
-      if (adminWa) {
+      const adminGroupWa = await getAdminGroupWa();
+      if (adminGroupWa) {
         const sentCount = results.filter((r) => r.sent).length;
-        sendWhatsApp(adminWa,
+        sendWhatsApp(adminGroupWa,
           `✅ RFQ ${rfq.rfqNumber} telah di-blast ke ${sentCount} vendor\n` +
-          `Order: ${order.orderNumber}\n` +
-          `Bandingkan penawaran vendor:\n${compareShort}`
+          `Order: ${order.orderNumber}`
         ).catch(() => {});
       }
 
@@ -831,8 +1027,7 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
         .where(eq(suppliersTable.id, vendorLink.vendorId));
 
       // Mark selected
-      await db.update(rfqVendorLinksTable).set({ status: "selected" })
-        .where(eq(rfqVendorLinksTable.id, linkId));
+      await transitionVendorLinkStatus(linkId, "selected", { source: "adminAction:compare_vendors_select", actorType: "admin", force: true });
 
       const otherLinks = await db.select({ id: rfqVendorLinksTable.id, status: rfqVendorLinksTable.status })
         .from(rfqVendorLinksTable)
@@ -840,13 +1035,11 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
 
       for (const other of otherLinks) {
         if (other.id !== linkId && !["rejected", "expired", "late_response"].includes(other.status)) {
-          await db.update(rfqVendorLinksTable).set({ status: "not_selected" })
-            .where(eq(rfqVendorLinksTable.id, other.id));
+          await transitionVendorLinkStatus(other.id, "not_selected", { source: "adminAction:compare_vendors_deselect", actorType: "admin", force: true });
         }
       }
 
-      await db.update(logisticOrderRfqsTable).set({ status: "vendor_selected" })
-        .where(eq(logisticOrderRfqsTable.id, link.rfqId!));
+      await transitionRfqStatus(link.rfqId!, "vendor_selected", { source: "adminAction:compare_vendors", actorType: "admin", force: true });
 
       if (sellingPrice) {
         await db.update(logisticOrdersTable)
@@ -887,12 +1080,23 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
         quoteShortUrl = await generateShortLink(quoteUrl, { context: "customer_quote", refType: "rfq", refId: String(rfq.id) });
 
         if (order.phone) {
+          const _origin = order.origin || null;
+          const _destination = order.destination || null;
+          const _routeParts: string[] = [];
+          if (order.shipmentType) _routeParts.push(order.shipmentType);
+          if (_origin || _destination) _routeParts.push(`${_origin ?? "—"} → ${_destination ?? "—"}`);
+          const _routeLine = _routeParts.length ? `📦 ${_routeParts.join(" — ")}\n` : "";
+          const _grandTotal = order.grandTotal ? parseFloat(String(order.grandTotal)) : finalPrice * 1.11;
+          const _displaySubtotal = order.subtotal ? parseFloat(String(order.subtotal)) : Math.round(_grandTotal / 1.11);
+          const _displayTax = order.tax ? parseFloat(String(order.tax)) : _grandTotal - _displaySubtotal;
           sendWhatsApp(order.phone,
             `✅ *Penawaran Harga Siap — CST Logistics*\n\n` +
             `Halo *${order.customerName}*,\n\n` +
             `Penawaran harga untuk order Anda telah siap:\n\n` +
-            `📦 ${order.shipmentType} — ${order.origin} → ${order.destination}\n` +
-            `💰 Harga: ${fmtRp(finalPrice)}\n` +
+            _routeLine +
+            `💰 Jumlah Pemesanan: ${fmtRp(_displaySubtotal)}\n` +
+            `🧾 PPN 11%: ${fmtRp(_displayTax)}\n` +
+            `💳 Total: *${fmtRp(_grandTotal)}*\n` +
             (vendorLink.eta ? `⏱ ETA: ${vendorLink.eta}\n` : "") +
             `\nSilakan review dan konfirmasi:\n${quoteShortUrl}`
           ).catch(() => {});
@@ -917,23 +1121,15 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
       const fwdUrl = getAdminActionUrl(fwdToken);
       const fwdShort = await generateShortLink(fwdUrl, { context: "admin_action", refType: "rfq", refId: String(rfq.id) });
 
-      sendVendorSelectedAdminWa({
-        rfqNumber: rfq.rfqNumber,
-        orderNumber: order.orderNumber,
-        customerName: order.customerName ?? "—",
-        companyName: (order as any).companyName ?? null,
-        shipmentType: order.shipmentType ?? "—",
-        origin: order.origin ?? "—",
-        destination: order.destination ?? "—",
-        vendorName: vendor?.name ?? `Vendor #${vendorLink.vendorId}`,
-        vendorCost: vendorLink.offeredPrice ?? vendorLink.basicPrice,
-        sellingPrice: sellingPrice ?? null,
-        eta: vendorLink.eta ?? null,
-        quoteSentToCustomer: sendQuoteToCustomer && !!quoteShortUrl,
-        forwardVendorUrl: fwdShort,
-      }).catch(() => {});
 
       if (vendor?.phone) {
+        const _awardDomain = getPreferredDomain() || "cstlogistic.co.id";
+        const _vendorFormUrl = `https://${_awardDomain}/vendor-form/${vendorLink.token}`;
+        const _vendorFormShort = await generateShortLink(_vendorFormUrl, {
+          context: "vendor_rfq",
+          refType: "rfq",
+          refId: String(rfq.id),
+        }).catch(() => _vendorFormUrl);
         sendVendorAwardedWa({
           vendorName: vendor.name ?? `Vendor #${vendorLink.vendorId}`,
           vendorPhone: vendor.phone,
@@ -945,6 +1141,7 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
           vendorCost: vendorLink.offeredPrice ?? vendorLink.basicPrice,
           eta: vendorLink.eta ?? null,
           notes: vendorLink.notes ?? null,
+          fulfillUrl: _vendorFormShort,
         }).catch(() => {});
       }
 
@@ -993,31 +1190,34 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
       const [vendor] = await db.select().from(suppliersTable)
         .where(eq(suppliersTable.id, vendorId));
 
+      // Fetch items untuk breakdown harga di WA vendor
+      const _fwdItemRows = await db.select({
+        serviceName: logisticOrderItemsTable.serviceName,
+        subtotal: logisticOrderItemsTable.subtotal,
+        inputData: logisticOrderItemsTable.inputData,
+      }).from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, order.id));
+      const _fxPrice = (inp: Record<string, unknown> | null): number | null => { if (!inp) return null; const p = inp.price ?? inp.productPrice ?? inp.unitPrice ?? inp.sellingPrice ?? inp.basicPrice ?? null; if (typeof p === "number") return p > 0 ? p : null; if (typeof p === "string") { const n = parseFloat(p); return !isNaN(n) && n > 0 ? n : null; } return null; };
+      const _fwdItems = _fwdItemRows.flatMap((row) => {
+        const inp = row.inputData as Record<string, unknown> | null;
+        const qty = (() => { if (!inp) return 1; const v = inp.qty ?? inp.quantity; const n = parseFloat(String(v ?? "")); return isNaN(n) || n <= 0 ? 1 : n; })();
+        const subtotalVal = Number(row.subtotal ?? 0);
+        const price = _fxPrice(inp) ?? (subtotalVal > 0 && qty > 0 ? Math.round(subtotalVal / qty) : null);
+        if (!price) return [];
+        const unit = inp?.unit != null ? String(inp.unit) : "unit";
+        return [{ name: row.serviceName ?? "Produk", qty, unit, basicPrice: price, taxRate: TAX_RATE_DECIMAL }];
+      });
+
       if (vendor?.phone) {
-        const isProductOrder = ((order as any).orderType ?? "").toLowerCase() === "product";
-        const waMsg = isProductOrder
-          ? `🛒 *Penugasan Pemenuhan Produk — CST Logistics*\n\n` +
-            `Kepada Yth. *${vendor.name}*,\n\n` +
-            `Anda mendapat tugas pemenuhan produk:\n\n` +
-            `No. Order   : *${order.orderNumber}*\n` +
-            `Customer    : ${order.customerName}\n` +
-            (order.grandTotal ? `Total       : ${fmtRp(order.grandTotal)}\n` : "") +
-            `\n📋 *Instruksi:*\n` +
-            `1. Konfirmasi ketersediaan stok\n` +
-            `2. Konfirmasi harga penawaran\n` +
-            `3. Konfirmasi estimasi waktu siap kirim\n` +
-            `4. Upload invoice/dokumen jika ada\n\n` +
-            `📱 *Isi form konfirmasi di sini:*\n${shortUrl}\n\n` +
-            `⏰ Batas waktu: ${expiresInHours} jam\n\nTerima kasih 🙏`
-          : `📦 *Penugasan Fulfillment — CST Logistics*\n\n` +
-            `Kepada Yth. *${vendor.name}*,\n\n` +
-            `Order Anda telah dikonfirmasi. Mohon lengkapi detail fulfillment:\n\n` +
-            `No. Order   : *${order.orderNumber}*\n` +
-            `Layanan     : ${order.shipmentType}\n` +
-            `Rute        : ${order.origin} → ${order.destination}\n\n` +
-            `📱 *Isi data fulfillment di sini:*\n${shortUrl}\n\n` +
-            `⏰ Batas waktu: ${expiresInHours} jam\n\nTerima kasih 🙏`;
-        sendWhatsApp(vendor.phone, waMsg).catch(() => {});
+        sendVendorAssignmentNotification(
+          order.orderNumber,
+          order.origin ?? "—",
+          order.destination ?? "—",
+          order.shipmentType ?? serviceType,
+          shortUrl,
+          vendor.phone,
+          undefined,
+          _fwdItems,
+        ).catch(() => {});
       }
 
       // Activity log
@@ -1036,15 +1236,15 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
       return res.json({ ok: true, fulfillToken, fulfillUrl: shortUrl, vendorName: vendor?.name });
     }
 
-    // confirm_fulfillment: update order → "In Progress" + WA to customer
+    // confirm_fulfillment: update order → "In Progress" + WA to customer + WA to admin group
     if (actionType === "confirm_fulfillment") {
       if ((order as any).status === "In Progress") {
         return res.status(409).json({ error: "Order sudah dikonfirmasi sebelumnya." });
       }
 
-      await db.update(logisticOrdersTable)
-        .set({ status: "In Progress" })
-        .where(eq(logisticOrdersTable.id, order.id));
+      await transitionLogisticOrderStatus(order.id, "In Progress", { source: "adminAction:confirm_fulfillment", actorType: "admin", force: true });
+      updateOrderProgress(order.id, "IN_PROGRESS", "admin", "Admin", "Admin mengkonfirmasi fulfillment vendor. Order sedang diproses.").catch(() => {});
+      await transitionLogisticOrderStatus(order.id, "In Progress", { source: "adminAction:confirm_fulfillment", actorType: "admin" });
 
       await db.insert(orderUpdatesTable).values({
         orderId: order.id,
@@ -1060,17 +1260,170 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
           .where(eq(adminActionLinksTable.token, token));
       }
 
+      // Ambil data vendor fulfillment untuk dimasukkan ke WA admin
+      const [vfLink] = await db.select().from(vendorFulfillmentLinksTable)
+        .where(eq(vendorFulfillmentLinksTable.orderId, order.id))
+        .orderBy(desc(vendorFulfillmentLinksTable.createdAt))
+        .limit(1);
+
+      let vendorNameForMsg: string | null = null;
+      if (vfLink?.vendorId) {
+        const [vRow] = await db.select({ name: suppliersTable.name })
+          .from(suppliersTable).where(eq(suppliersTable.id, vfLink.vendorId));
+        vendorNameForMsg = vRow?.name ?? null;
+      }
+
+      const domain = getPreferredDomain() || "cstlogistic.co.id";
+
+      // Cari vendor fulfillment link terbaru untuk order ini
+      const [vfLinkForUrl] = await db.select({
+        token: vendorFulfillmentLinksTable.token,
+      }).from(vendorFulfillmentLinksTable)
+        .where(eq(vendorFulfillmentLinksTable.orderId, order.id))
+        .orderBy(desc(vendorFulfillmentLinksTable.createdAt))
+        .limit(1);
+
+      // Cari short link vendor fulfillment dari tabel short_links
+      let detailOrderUrl: string;
+      if (vfLinkForUrl?.token) {
+        const { shortLinksTable } = await import("@workspace/db/schema");
+        const vfLongUrl = `https://${domain}/vendor-fulfillment/${vfLinkForUrl.token}`;
+        const [sl] = await db.select({ code: shortLinksTable.code })
+          .from(shortLinksTable)
+          .where(eq(shortLinksTable.targetUrl, vfLongUrl))
+          .limit(1);
+        detailOrderUrl = sl?.code
+          ? `https://${domain}/q/${sl.code}`
+          : vfLongUrl;
+      } else {
+        detailOrderUrl = `https://${domain}/logistic-admin/orders/${order.id}`;
+      }
+
+      // WA ke admin group
+      const adminGroupWa3 = await getAdminGroupWa();
+      if (adminGroupWa3) {
+        const ln = "\n";
+        const sep = "━━━━━━━━━━━━━━━━━━";
+        let fulfillSummary = "";
+        if (vfLink) {
+          const STOCK_LABEL: Record<string, string> = {
+            all: "Tersedia Semua ✅", partial: "Tersedia Sebagian ⚠️", none: "Tidak Tersedia ❌",
+          };
+          const lines: string[] = [];
+          if (vfLink.stockConfirmed) lines.push(`📦 Stok       : ${STOCK_LABEL[vfLink.stockConfirmed as string] ?? vfLink.stockConfirmed}`);
+          if (vfLink.readyDate)      lines.push(`📅 Siap Kirim : ${vfLink.readyDate}`);
+          if (vfLink.leadTime)       lines.push(`⏱ Lead Time  : ${vfLink.leadTime}`);
+          if (vfLink.driverName)     lines.push(`👤 Driver     : ${vfLink.driverName}`);
+          if (vfLink.plateNumber)    lines.push(`🚛 Plat       : ${vfLink.plateNumber}`);
+          if (vfLink.pickupTime)     lines.push(`⏰ Pickup     : ${vfLink.pickupTime}`);
+          if (vfLink.carrierName)    lines.push(`🏢 Carrier    : ${vfLink.carrierName}`);
+          if (vfLink.awbBlNumber)    lines.push(`📄 AWB/BL     : ${vfLink.awbBlNumber}`);
+          if (vfLink.etd)            lines.push(`📅 ETD        : ${vfLink.etd}`);
+          if (vfLink.eta)            lines.push(`📅 ETA        : ${vfLink.eta}`);
+          if ((vfLink as any).priceConfirmed === "agree")   lines.push(`💰 Harga      : Setuju harga asal`);
+          else if ((vfLink as any).priceConfirmed === "revised") lines.push(`💰 Revisi Harga: ${fmtRp((vfLink as any).revisedPrice)}`);
+          if (vfLink.notes)          lines.push(`📝 Catatan    : ${vfLink.notes}`);
+          if (lines.length > 0) fulfillSummary = lines.join(ln) + ln;
+        }
+
+        const adminWaMsg =
+          `✅ *Fulfillment Dikonfirmasi — Order In Progress*` + ln + sep + ln +
+          `No. Order  : \`${order.orderNumber}\`` + ln +
+          `Customer   : ${order.customerName}` + ln +
+          ((order.origin && order.destination) ? `Rute       : ${order.origin} → ${order.destination}` + ln : "") +
+          (vendorNameForMsg ? `Vendor     : *${vendorNameForMsg}*` + ln : "") +
+          sep + ln +
+          fulfillSummary +
+          sep + ln +
+          `📋 Detail order:\n${detailOrderUrl}`;
+
+        sendWhatsApp(adminGroupWa3, adminWaMsg).catch((e) =>
+          logger.warn({ e }, "confirm_fulfillment WA to admin group failed")
+        );
+      }
+
+      // WA ke customer — sertakan link tracking spesifik order
       const customerPhone = ((order as any).phone ?? "").trim();
       if (customerPhone) {
-        const domain = getPreferredDomain() || "cstlogistic.co.id";
+        // Ambil atau buat customer tracking token
+        let trackingUrl = `https://${domain}/track`;
+        try {
+          let [existingLink] = await db.select({ token: customerOrderLinksTable.token })
+            .from(customerOrderLinksTable)
+            .where(eq(customerOrderLinksTable.orderId, order.id))
+            .orderBy(desc(customerOrderLinksTable.createdAt))
+            .limit(1);
+          if (!existingLink) {
+            const newToken = randomBytes(18).toString("hex");
+            await db.insert(customerOrderLinksTable).values({ orderId: order.id, token: newToken });
+            existingLink = { token: newToken };
+          }
+          trackingUrl = `https://${domain}/order-track/${existingLink.token}`;
+        } catch (e) {
+          logger.warn({ e }, "confirm_fulfillment: gagal ambil/buat tracking token, pakai fallback URL");
+        }
+
+        // Ringkasan fulfillment yang relevan untuk customer
+        const STOCK_LABEL_C: Record<string, string> = {
+          all: "Tersedia Semua ✅", partial: "Tersedia Sebagian ⚠️", none: "Tidak Tersedia ❌",
+        };
+        const fulfillLines: string[] = [];
+        if (vfLink?.stockConfirmed) fulfillLines.push(`📦 Status Stok  : ${STOCK_LABEL_C[vfLink.stockConfirmed as string] ?? vfLink.stockConfirmed}`);
+        if (vfLink?.readyDate)     fulfillLines.push(`📅 Siap Kirim   : ${vfLink.readyDate}`);
+        if (vfLink?.leadTime)      fulfillLines.push(`⏱ Lead Time    : ${vfLink.leadTime}`);
+        if (vfLink?.driverName)    fulfillLines.push(`👤 Driver       : ${vfLink.driverName}`);
+        if (vfLink?.plateNumber)   fulfillLines.push(`🚛 Plat Nomor   : ${vfLink.plateNumber}`);
+        if (vfLink?.pickupTime)    fulfillLines.push(`⏰ Est. Pickup  : ${vfLink.pickupTime}`);
+        if (vfLink?.carrierName)   fulfillLines.push(`🏢 Carrier      : ${vfLink.carrierName}`);
+        if (vfLink?.awbBlNumber)   fulfillLines.push(`📄 AWB/BL No.   : ${vfLink.awbBlNumber}`);
+        if (vfLink?.etd)           fulfillLines.push(`📅 ETD          : ${vfLink.etd}`);
+        if (vfLink?.eta)           fulfillLines.push(`📅 ETA          : ${vfLink.eta}`);
+        if (vfLink?.notes)         fulfillLines.push(`📝 Catatan      : ${vfLink.notes}`);
+        const fulfillSummaryC = fulfillLines.length > 0
+          ? `\n━━━━━━━━━━━━━━━━━━\n${fulfillLines.join("\n")}\n━━━━━━━━━━━━━━━━━━`
+          : "";
+
         const waMsg =
           `🚀 *Order Anda Sedang Diproses — CST Logistics*\n\n` +
           `Halo ${order.customerName},\n\n` +
           `Order *${order.orderNumber}* (${order.shipmentType || "—"}) telah dikonfirmasi dan sedang diproses.\n` +
           ((order.origin && order.destination) ? `Rute: ${order.origin} → ${order.destination}\n` : "") +
-          `\nCek status order: https://${domain}/track`;
+          fulfillSummaryC +
+          `\n\nPantau status order Anda:\n${trackingUrl}`;
         sendWhatsApp(customerPhone, waMsg).catch((e) =>
           logger.warn({ e }, "confirm_fulfillment WA to customer failed")
+        );
+      }
+
+      // WA ke driver (jika driverPhone tersedia di vendor fulfillment link)
+      if (vfLink?.driverPhone) {
+        const driverToken = randomBytes(18).toString("hex");
+        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+        await db.execute(sql`
+          CREATE TABLE IF NOT EXISTS driver_progress_tokens (
+            id           SERIAL PRIMARY KEY,
+            token        TEXT NOT NULL UNIQUE,
+            order_id     INTEGER NOT NULL,
+            driver_name  TEXT,
+            driver_phone TEXT,
+            created_at   TIMESTAMPTZ DEFAULT NOW(),
+            expires_at   TIMESTAMPTZ NOT NULL
+          )
+        `);
+        await db.execute(sql`
+          INSERT INTO driver_progress_tokens (token, order_id, driver_name, driver_phone, expires_at)
+          VALUES (${driverToken}, ${order.id}, ${vfLink.driverName ?? null}, ${vfLink.driverPhone}, ${expiresAt})
+          ON CONFLICT (token) DO NOTHING
+        `);
+        const driverLink = `https://${process.env.REPLIT_DEV_DOMAIN || domain}/driver-progress/${driverToken}`;
+        const driverWaMsg =
+          `🚚 *Tugas Pengiriman — CST Logistics*\n\n` +
+          `Halo${vfLink.driverName ? ` ${vfLink.driverName}` : ""},\n\n` +
+          `Order *${order.orderNumber}* siap untuk proses pengiriman.\n` +
+          ((order.origin && order.destination) ? `Rute: ${order.origin} → ${order.destination}\n` : "") +
+          `\nUpdate status pengiriman via link berikut:\n${driverLink}`;
+        sendWhatsApp(vfLink.driverPhone, driverWaMsg).catch((e) =>
+          logger.warn({ e }, "confirm_fulfillment WA to driver failed")
         );
       }
 

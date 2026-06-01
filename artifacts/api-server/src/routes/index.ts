@@ -65,9 +65,11 @@ import { podOcrRouter } from "./podOcr";
 import { marginRulesRouter } from "./marginRules";
 import { adminActionPublicRouter, adminActionAdminRouter } from "./adminAction";
 import { vendorFulfillmentPublicRouter } from "./vendorFulfillment";
+import { driverProgressPublicRouter } from "./driverProgress.js";
 import { fulfillmentAdminRouter, fulfillmentPublicRouter } from "./orderFulfillment.js";
 import { vendorJobAdminRouter, vendorJobPublicRouter, orderTrackingPublicRouter } from "./vendorJobOrder.js";
 import { resolveShortLink } from "../lib/shortLink.js";
+import { commodityTemplatesRouter } from "./commodityTemplates.js";
 import pushRouter from "./push.js";
 import { intelligenceAlertsRouter } from "./intelligenceAlerts.js";
 import { aiApprovalsRouter } from "./aiApprovals.js";
@@ -78,6 +80,14 @@ import logisticsUnitsRouter from "./logisticsUnits.js";
 import { enterpriseWorkflowRouter } from "./enterpriseWorkflow.js";
 import { customerFeedbackPublicRouter, customerFeedbackAdminRouter } from "./customerFeedback.js";
 import { purchaseMiniPublicRouter, purchaseMiniAdminRouter } from "./purchaseMiniFormRoute.js";
+
+import { orderAuditTrailRouter } from "./orderAuditTrail.js";
+
+import { exceptionsRouter } from "./exceptions.js";
+import { systemRouter } from "./system.js";
+import { handleAlertSse } from "../lib/alertsBroadcast.js";
+import { requireAdmin } from "../lib/requireAdmin.js";
+
 import type { Request, Response } from "express";
 
 const router: IRouter = Router();
@@ -129,10 +139,18 @@ router.use("/inventory", inventoryMainRouter);
 router.use("/inventory/receive", inventoryReceiveRouter);
 // CATATAN: inventoryStockRouter di-mount dua kali di path berbeda (by design).
 // /inventory/stock      → akses data stok per produk
-// /inventory/warehouses → akses data warehouse mapping
-// Jika ada state di router-level, pastikan tidak ada efek samping ganda.
+// /inventory/warehouses → DEPRECATED alias — tidak ada frontend caller aktif (audit Phase 5)
+// Jadwal hapus: release berikutnya setelah monitoring 1 sprint
 router.use("/inventory/stock", inventoryStockRouter);
-router.use("/inventory/warehouses", inventoryStockRouter);
+router.use(
+  "/inventory/warehouses",
+  (_req: any, res: any, next: any) => {
+    res.setHeader("Deprecation", "true");
+    res.setHeader("X-Deprecated-Route", "/inventory/warehouses is deprecated - use /inventory/stock instead");
+    next();
+  },
+  inventoryStockRouter,
+);
 router.use("/custom-roles", customRolesRouter);
 router.use("/thai-tea", thaiTeaSuppliesRouter);
 router.use("/purchase-workflow", purchaseWorkflowRouter);
@@ -162,6 +180,8 @@ router.use("/margin-rules", marginRulesRouter);
 router.use("/admin-action", adminActionAdminRouter);
 router.use("/admin-action", adminActionPublicRouter);
 router.use("/vendor-fulfillment", vendorFulfillmentPublicRouter);
+router.use("/driver-progress", driverProgressPublicRouter);
+router.use("/commodity-templates", commodityTemplatesRouter);
 router.use("/logistic", fulfillmentAdminRouter);
 router.use("/fulfillment", fulfillmentPublicRouter);
 router.use("/logistic", vendorJobAdminRouter);
@@ -180,7 +200,18 @@ router.use("/customer-feedback", customerFeedbackPublicRouter);
 router.use("/purchase-mini", purchaseMiniAdminRouter);
 router.use("/purchase-mini", purchaseMiniPublicRouter);
 
-router.get("/q/:code", async (req: Request, res: Response) => {
+router.use("/logistic", orderAuditTrailRouter);
+
+router.use("/exceptions", exceptionsRouter);
+router.use("/system", systemRouter);
+
+router.get("/alerts/stream", async (req: Request, res: Response) => {
+  const ok = await requireAdmin(req, res);
+  if (!ok) return;
+  handleAlertSse(req, res);
+});
+
+async function handleShortLink(req: Request, res: Response) {
   const code = String(req.params.code ?? "").trim();
   if (!code || !/^[A-Z0-9]{4,32}$/i.test(code)) {
     return res.status(400).json({ error: "Invalid short link" });
@@ -189,13 +220,15 @@ router.get("/q/:code", async (req: Request, res: Response) => {
   if (!target) {
     return res.status(404).json({ error: "Link tidak ditemukan atau sudah kedaluwarsa." });
   }
-  // Normalisasi: kembalikan path saja agar domain lama/salah di DB tidak jadi masalah
   let targetUrl = target;
   try {
     const parsed = new URL(target);
     targetUrl = parsed.pathname + parsed.search + parsed.hash;
   } catch { /* sudah relative */ }
   return res.json({ targetUrl });
-});
+}
+
+router.get("/q/:code", handleShortLink);
+router.get("/s/:code", handleShortLink);
 
 export default router;

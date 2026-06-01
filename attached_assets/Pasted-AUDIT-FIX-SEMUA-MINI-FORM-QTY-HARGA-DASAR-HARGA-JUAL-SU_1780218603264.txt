@@ -1,0 +1,138 @@
+AUDIT & FIX SEMUA MINI FORM — QTY, HARGA DASAR, HARGA JUAL, SUBTOTAL, PPN
+
+Masalah:
+Beberapa mini form masih menampilkan harga dasar saja dan tidak mengalikan quantity. Ada juga form yang mengambil vendor/base price untuk customer, padahal customer harus melihat harga jual.
+
+Target:
+Semua mini form harus punya breakdown harga yang benar:
+- quantity wajib tampil
+- unit price wajib jelas
+- subtotal = unit price × quantity
+- PPN = 11% × subtotal jika taxable
+- total = subtotal + PPN
+
+ATURAN HARGA WAJIB:
+1. Customer mini form / customer quote / customer tracking:
+   Gunakan harga jual.
+   Formula:
+   displaySubtotal = sellingPrice × quantity
+   displayVat = displaySubtotal × 11%
+   displayTotal = displaySubtotal + displayVat
+
+2. Vendor mini form / RFQ vendor / fulfillment vendor:
+   Gunakan harga dasar/vendor/base price.
+   Formula:
+   vendorSubtotal = vendorBasePrice × quantity
+   Jangan tampilkan harga jual customer ke vendor.
+
+3. Admin/BizPortal:
+   Boleh tampilkan dua-duanya:
+   - harga dasar/vendor price
+   - harga jual/customer price
+   - margin
+   - quantity
+   - PPN
+   - total customer
+
+FILE YANG WAJIB DIAUDIT:
+- artifacts/api-server/src/routes/logisticRfqV2.ts
+- artifacts/api-server/src/routes/vendorFulfillment.ts
+- artifacts/api-server/src/routes/vendorResponse.ts
+- artifacts/api-server/src/routes/customerQuote*
+- artifacts/api-server/src/lib/vendorQuoteWa.ts
+- artifacts/customer-portal/src/pages/customer-quote.tsx
+- artifacts/customer-portal/src/pages/tracking*
+- artifacts/bizportal/src/**/*quote*
+- artifacts/bizportal/src/**/*order*
+- artifacts/bizportal/src/**/*fulfillment*
+
+CARI DAN PERBAIKI BUG INI:
+- price_base tampil sebagai total tanpa dikali quantity
+- basePrice tampil ke customer
+- displaySubtotal hanya memakai unit price tanpa quantity
+- totalPrice tidak mengalikan quantity
+- PPN dihitung dari unit price, bukan subtotal
+- quantity kosong/default 1 padahal order quantity lebih dari 1
+- vendor form mengambil selling price
+- customer quote mengambil vendor/base price
+
+COMMAND AUDIT:
+Jalankan:
+grep -R "price_base\|basePrice\|sellingPrice\|displaySubtotal\|displayTotal\|quantity\|qty" artifacts/api-server/src artifacts/customer-portal/src artifacts/bizportal/src -n
+
+Buat helper formula tunggal agar tidak beda-beda di tiap form:
+
+function calcLineTotal(unitPrice, quantity) {
+  return Number(unitPrice || 0) * Number(quantity || 1);
+}
+
+function calcVat(subtotal, vatRate = 0.11) {
+  return Math.round(Number(subtotal || 0) * vatRate);
+}
+
+function calcGrandTotal(subtotal, vatAmount) {
+  return Number(subtotal || 0) + Number(vatAmount || 0);
+}
+
+Pastikan semua response API mini form mengirim field:
+- quantity
+- unitPrice
+- unitPriceSource: "base" | "selling"
+- subtotal
+- vatRate
+- vatAmount
+- grandTotal
+- currency
+
+CUSTOMER RESPONSE WAJIB:
+Customer quote API harus mengembalikan:
+- displayUnitPrice = harga jual
+- displayQuantity = quantity order
+- displaySubtotal = displayUnitPrice × displayQuantity
+- displayVat = 11% × displaySubtotal
+- displayTotal = displaySubtotal + displayVat
+
+VENDOR RESPONSE WAJIB:
+Vendor mini form API harus mengembalikan:
+- vendorUnitPrice = harga dasar/vendor
+- quantity = quantity order
+- vendorSubtotal = vendorUnitPrice × quantity
+- Jangan tampilkan displayTotal customer
+
+UI MINI FORM WAJIB TAMPIL:
+Untuk customer:
+Item              Qty     Harga Jual     Subtotal
+Produk A          2       Rp 100.000     Rp 200.000
+
+Jumlah Pemesanan                  Rp 200.000
+PPN 11%                            Rp 22.000
+Total Penawaran                   Rp 222.000
+
+Untuk vendor:
+Item              Qty     Harga Dasar    Subtotal
+Produk A          2       Rp 50.000      Rp 100.000
+
+TEST CASE WAJIB:
+Order:
+- item: Produk A
+- quantity: 2
+- harga dasar: 50.000
+- harga jual: 100.000
+
+Hasil vendor mini form:
+- Harga Dasar: 50.000
+- Qty: 2
+- Subtotal Vendor: 100.000
+
+Hasil customer mini form:
+- Harga Jual: 100.000
+- Qty: 2
+- Jumlah Pemesanan: 200.000
+- PPN 11%: 22.000
+- Total: 222.000
+
+Jangan hardcode quantity = 1.
+Jangan tampilkan harga dasar ke customer.
+Jangan tampilkan harga jual ke vendor.
+Jangan hitung PPN dari unit price.
+PPN harus dihitung dari subtotal setelah quantity.

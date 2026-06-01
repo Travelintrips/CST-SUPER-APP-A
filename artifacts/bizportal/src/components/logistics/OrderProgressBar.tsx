@@ -8,20 +8,84 @@ import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const PROGRESS_STEPS = [
-  { key: "NEW_ORDER",                   label: "Order Masuk",           color: "bg-blue-400",    ring: "ring-blue-300",    text: "text-blue-600",    line: "bg-blue-300",    hover: "hover:bg-blue-500",    header: "bg-blue-600"    },
-  { key: "ADMIN_CONFIRMED",             label: "Dikonfirmasi Admin",    color: "bg-indigo-400",  ring: "ring-indigo-300",  text: "text-indigo-600",  line: "bg-indigo-300",  hover: "hover:bg-indigo-500",  header: "bg-indigo-600"  },
-  { key: "SENT_TO_VENDOR",              label: "Dikirim ke Vendor",     color: "bg-violet-400",  ring: "ring-violet-300",  text: "text-violet-600",  line: "bg-violet-300",  hover: "hover:bg-violet-500",  header: "bg-violet-600"  },
-  { key: "VENDOR_RESPONSE_RECEIVED",    label: "Vendor Merespon",       color: "bg-fuchsia-400", ring: "ring-fuchsia-300", text: "text-fuchsia-600", line: "bg-fuchsia-300", hover: "hover:bg-fuchsia-500", header: "bg-fuchsia-600" },
-  { key: "PRICE_REVIEWED",              label: "Harga Disetujui",       color: "bg-pink-400",    ring: "ring-pink-300",    text: "text-pink-600",    line: "bg-pink-300",    hover: "hover:bg-pink-500",    header: "bg-pink-600"    },
-  { key: "SENT_TO_CUSTOMER",            label: "Penawaran ke Customer", color: "bg-rose-400",    ring: "ring-rose-300",    text: "text-rose-600",    line: "bg-rose-300",    hover: "hover:bg-rose-500",    header: "bg-rose-600"    },
-  { key: "CUSTOMER_APPROVED",           label: "Customer Setuju",       color: "bg-orange-400",  ring: "ring-orange-300",  text: "text-orange-600",  line: "bg-orange-300",  hover: "hover:bg-orange-500",  header: "bg-orange-600"  },
-  { key: "SALES_ORDER_CREATED",         label: "Sales Order Dibuat",    color: "bg-amber-400",   ring: "ring-amber-300",   text: "text-amber-600",   line: "bg-amber-300",   hover: "hover:bg-amber-500",   header: "bg-amber-600"   },
-  { key: "SENT_TO_VENDOR_FULFILLMENT",  label: "Fulfillment ke Vendor", color: "bg-yellow-400",  ring: "ring-yellow-300",  text: "text-yellow-600",  line: "bg-yellow-300",  hover: "hover:bg-yellow-500",  header: "bg-yellow-600"  },
-  { key: "VENDOR_FULFILLMENT_CONFIRMED",label: "Vendor Konfirmasi",     color: "bg-lime-400",    ring: "ring-lime-300",    text: "text-lime-600",    line: "bg-lime-300",    hover: "hover:bg-lime-500",    header: "bg-lime-600"    },
-  { key: "COMPLETED",                   label: "Selesai",               color: "bg-emerald-500", ring: "ring-emerald-300", text: "text-emerald-600", line: "bg-emerald-400", hover: "hover:bg-emerald-600", header: "bg-emerald-600" },
+  { key: "ORDER_RECEIVED",    label: "Order Diterima",        color: "bg-blue-400",     ring: "ring-blue-300",    text: "text-blue-600",    line: "bg-blue-300",    hover: "hover:bg-blue-500",    header: "bg-blue-600"    },
+  { key: "ADMIN_REVIEW",      label: "Ditinjau Admin",        color: "bg-indigo-400",   ring: "ring-indigo-300",  text: "text-indigo-600",  line: "bg-indigo-300",  hover: "hover:bg-indigo-500",  header: "bg-indigo-600"  },
+  { key: "RFQ_SENT",          label: "RFQ ke Vendor",         color: "bg-violet-400",   ring: "ring-violet-300",  text: "text-violet-600",  line: "bg-violet-300",  hover: "hover:bg-violet-500",  header: "bg-violet-600"  },
+  { key: "QUOTE_RECEIVED",    label: "Penawaran Masuk",       color: "bg-fuchsia-400",  ring: "ring-fuchsia-300", text: "text-fuchsia-600",  line: "bg-fuchsia-300", hover: "hover:bg-fuchsia-500",  header: "bg-fuchsia-600" },
+  { key: "CUSTOMER_APPROVAL", label: "Menunggu Persetujuan",  color: "bg-pink-400",     ring: "ring-pink-300",    text: "text-pink-600",    line: "bg-pink-300",    hover: "hover:bg-pink-500",    header: "bg-pink-600"    },
+  { key: "VENDOR_CONFIRMED",  label: "Vendor Dikonfirmasi",   color: "bg-rose-400",     ring: "ring-rose-300",    text: "text-rose-600",    line: "bg-rose-300",    hover: "hover:bg-rose-500",    header: "bg-rose-600"    },
+  { key: "IN_PROGRESS",       label: "Sedang Diproses",       color: "bg-orange-400",   ring: "ring-orange-300",  text: "text-orange-600",  line: "bg-orange-300",  hover: "hover:bg-orange-500",  header: "bg-orange-600"  },
+  { key: "PICKUP",            label: "Penjemputan",           color: "bg-amber-400",    ring: "ring-amber-300",   text: "text-amber-600",   line: "bg-amber-300",   hover: "hover:bg-amber-500",   header: "bg-amber-600"   },
+  { key: "IN_TRANSIT",        label: "Dalam Perjalanan",      color: "bg-yellow-400",   ring: "ring-yellow-300",  text: "text-yellow-600",  line: "bg-yellow-300",  hover: "hover:bg-yellow-500",  header: "bg-yellow-600"  },
+  { key: "ARRIVED",           label: "Tiba di Tujuan",        color: "bg-lime-400",     ring: "ring-lime-300",    text: "text-lime-600",    line: "bg-lime-300",    hover: "hover:bg-lime-500",    header: "bg-lime-600"    },
+  { key: "DELIVERED",         label: "Terkirim",              color: "bg-green-400",    ring: "ring-green-300",   text: "text-green-600",   line: "bg-green-300",   hover: "hover:bg-green-500",   header: "bg-green-600"   },
+  { key: "POD_UPLOADED",      label: "Bukti Pengiriman",      color: "bg-teal-400",     ring: "ring-teal-300",    text: "text-teal-600",    line: "bg-teal-300",    hover: "hover:bg-teal-500",    header: "bg-teal-600"    },
+  { key: "INVOICE_ISSUED",    label: "Invoice Diterbitkan",   color: "bg-cyan-400",     ring: "ring-cyan-300",    text: "text-cyan-600",    line: "bg-cyan-300",    hover: "hover:bg-cyan-500",    header: "bg-cyan-600"    },
+  { key: "PAYMENT_RECEIVED",  label: "Pembayaran Diterima",   color: "bg-sky-400",      ring: "ring-sky-300",     text: "text-sky-600",     line: "bg-sky-300",     hover: "hover:bg-sky-500",     header: "bg-sky-600"     },
+  { key: "COMPLETED",         label: "Selesai",               color: "bg-emerald-500",  ring: "ring-emerald-300", text: "text-emerald-600",  line: "bg-emerald-400", hover: "hover:bg-emerald-600", header: "bg-emerald-600" },
 ] as const;
 
 type StepKey = typeof PROGRESS_STEPS[number]["key"];
+
+const STATUS_TO_STEP: Record<string, StepKey> = {
+  "Order Received":    "ORDER_RECEIVED",
+  "Admin Review":      "ADMIN_REVIEW",
+  "RFQ Sent":          "RFQ_SENT",
+  "Quote Received":    "QUOTE_RECEIVED",
+  "Customer Approval": "CUSTOMER_APPROVAL",
+  "Vendor Confirmed":  "VENDOR_CONFIRMED",
+  "In Progress":       "IN_PROGRESS",
+  "Pickup":            "PICKUP",
+  "In Transit":        "IN_TRANSIT",
+  "Arrived":           "ARRIVED",
+  "Delivered":         "DELIVERED",
+  "POD Uploaded":      "POD_UPLOADED",
+  "Invoice Issued":    "INVOICE_ISSUED",
+  "Payment Received":  "PAYMENT_RECEIVED",
+  "Completed":         "COMPLETED",
+  "New Order":         "ORDER_RECEIVED",
+  "Under Review":      "ADMIN_REVIEW",
+  "Quotation Sent":    "CUSTOMER_APPROVAL",
+  "Confirmed":         "VENDOR_CONFIRMED",
+};
+
+const STATUS_RANK: Record<string, number> = {
+  "Order Received":    0,
+  "Admin Review":      1,
+  "RFQ Sent":          2,
+  "Quote Received":    3,
+  "Customer Approval": 4,
+  "Vendor Confirmed":  5,
+  "In Progress":       6,
+  "Pickup":            7,
+  "In Transit":        8,
+  "Arrived":           9,
+  "Delivered":         10,
+  "POD Uploaded":      11,
+  "Invoice Issued":    12,
+  "Payment Received":  13,
+  "Completed":         14,
+  "New Order":         0,
+  "Under Review":      1,
+  "Quotation Sent":    3,
+  "Customer Approved": 5,
+  "Confirmed":         5,
+  "Done":              14,
+};
+
+export function deriveCompletedSteps(order: {
+  status: string;
+  latestRfq?: { rfqStatus?: string } | null;
+  fulfillmentStatus?: string | null;
+  linkedSalesDocId?: number | null;
+}): Set<StepKey> {
+  const done = new Set<StepKey>();
+  const stepKey = STATUS_TO_STEP[order.status];
+  if (!stepKey) return done;
+  const stepIdx = PROGRESS_STEPS.findIndex(s => s.key === stepKey);
+  for (let i = 0; i <= stepIdx; i++) done.add(PROGRESS_STEPS[i].key);
+  return done;
+}
 
 interface ProgressEvent {
   step_key: string;
@@ -47,35 +111,9 @@ function sourceLabel(source: string): string {
   }
 }
 
-export function deriveCompletedSteps(order: {
-  status: string;
-  latestRfq?: { rfqStatus?: string } | null;
-  fulfillmentStatus?: string | null;
-  linkedSalesDocId?: number | null;
-}): Set<StepKey> {
-  const done = new Set<StepKey>();
-  const rfq = (order.latestRfq as any)?.rfqStatus ?? "";
-  const fs = order.fulfillmentStatus ?? "";
-  const st = order.status;
-
-  done.add("NEW_ORDER");
-  if (!["New Order", "Under Review"].includes(st)) done.add("ADMIN_CONFIRMED");
-  if (["vendor_blasted", "rfq_sent", "vendor_selected", "customer_quoted", "customer_approved", "closed"].includes(rfq)) done.add("SENT_TO_VENDOR");
-  if (["vendor_selected", "customer_quoted", "customer_approved", "closed"].includes(rfq)) {
-    done.add("VENDOR_RESPONSE_RECEIVED");
-    done.add("PRICE_REVIEWED");
-  }
-  if (["customer_quoted", "customer_approved", "closed"].includes(rfq)) done.add("SENT_TO_CUSTOMER");
-  if (["customer_approved", "closed"].includes(rfq)) done.add("CUSTOMER_APPROVED");
-  if (order.linkedSalesDocId != null) done.add("SALES_ORDER_CREATED");
-  if (fs) done.add("SENT_TO_VENDOR_FULFILLMENT");
-  if (fs === "submitted") done.add("VENDOR_FULFILLMENT_CONFIRMED");
-  if (st === "Completed") done.add("COMPLETED");
-  return done;
-}
-
 interface OrderProgressBarProps {
-  order: {
+  status?: string;
+  order?: {
     status: string;
     latestRfq?: { rfqStatus?: string } | null;
     fulfillmentStatus?: string | null;
@@ -91,8 +129,11 @@ interface MiniFormState {
   isUndo: boolean;
 }
 
-export function OrderProgressBar({ order, orderId, onUpdate }: OrderProgressBarProps) {
-  const isCancelled = order.status === "Cancelled";
+export function OrderProgressBar({ status, order, orderId, onUpdate }: OrderProgressBarProps) {
+  const effectiveStatus = status ?? order?.status ?? "";
+  const effectiveOrder = order ?? { status: effectiveStatus };
+  const isCancelled = effectiveStatus === "Cancelled";
+
   const [manualDone, setManualDone] = useState<Set<StepKey>>(new Set());
   const [manualRemoved, setManualRemoved] = useState<Set<StepKey>>(new Set());
   const [loading, setLoading] = useState<string | null>(null);
@@ -114,13 +155,11 @@ export function OrderProgressBar({ order, orderId, onUpdate }: OrderProgressBarP
     }
   }, [orderId]);
 
-  useEffect(() => {
-    fetchEvents();
-  }, [fetchEvents]);
+  useEffect(() => { fetchEvents(); }, [fetchEvents]);
 
-  const baseDone = deriveCompletedSteps(order);
+  const baseDone = deriveCompletedSteps(effectiveOrder);
   const completedSteps = new Set<StepKey>([
-    ...Array.from(baseDone).filter((k) => !manualRemoved.has(k)),
+    ...Array.from(baseDone).filter(k => !manualRemoved.has(k)),
     ...Array.from(manualDone),
   ]);
 
@@ -181,14 +220,14 @@ export function OrderProgressBar({ order, orderId, onUpdate }: OrderProgressBarP
             {PROGRESS_STEPS.map((step, idx) => {
               const isDone = completedSteps.has(step.key);
               const isActive = idx === activeIdx;
-              const isLoading = loading === step.key;
+              const isLoadingThis = loading === step.key;
               const isLast = idx === PROGRESS_STEPS.length - 1;
               const isClickable = clickable && (isDone ? isActive : true);
               const event = eventMap.get(step.key);
 
               const dotClass = cn(
                 "flex-shrink-0 rounded-full transition-all duration-200",
-                isLoading ? "w-3 h-3 animate-pulse" : isActive ? "w-3.5 h-3.5" : "w-2.5 h-2.5",
+                isLoadingThis ? "w-3 h-3 animate-pulse" : isActive ? "w-3.5 h-3.5" : "w-2.5 h-2.5",
                 isCancelled && isDone
                   ? "bg-red-400"
                   : isDone && isActive
@@ -197,22 +236,19 @@ export function OrderProgressBar({ order, orderId, onUpdate }: OrderProgressBarP
                   ? step.color
                   : "bg-slate-200 dark:bg-slate-700",
                 isClickable && !isCancelled ? `cursor-pointer ${step.hover} transition-transform active:scale-90` : "",
-                !isDone && clickable ? "hover:bg-slate-400 cursor-pointer" : ""
+                !isDone && clickable ? "hover:bg-slate-400 cursor-pointer" : "",
               );
 
               const lineClass = cn(
                 "flex-1 h-0.5 min-w-[4px] transition-colors duration-200",
-                isCancelled && isDone ? "bg-red-200" : isDone && !isActive ? step.line : "bg-slate-200 dark:bg-slate-700"
+                isCancelled && isDone ? "bg-red-200" : isDone && !isActive ? step.line : "bg-slate-200 dark:bg-slate-700",
               );
 
               return (
                 <div key={step.key} className="flex items-center flex-1 min-w-0">
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <div
-                        className={dotClass}
-                        onClick={() => handleDotClick(step, idx)}
-                      />
+                      <div className={dotClass} onClick={() => handleDotClick(step, idx)} />
                     </TooltipTrigger>
                     <TooltipContent side="top" className="text-xs max-w-[200px] text-left p-0 overflow-hidden">
                       <AuditTooltip
@@ -236,7 +272,7 @@ export function OrderProgressBar({ order, orderId, onUpdate }: OrderProgressBarP
               "text-[10px] font-semibold whitespace-nowrap shrink-0 px-1.5 py-0.5 rounded-full border",
               isCancelled
                 ? "bg-red-50 text-red-500 border-red-200"
-                : `${activeStep.text} border-current bg-white dark:bg-transparent opacity-90`
+                : `${activeStep.text} border-current bg-white dark:bg-transparent opacity-90`,
             )}>
               {isCancelled ? "✗ Dibatalkan" : `● ${activeStep.label}`}
             </span>
@@ -244,7 +280,6 @@ export function OrderProgressBar({ order, orderId, onUpdate }: OrderProgressBarP
         </div>
       </TooltipProvider>
 
-      {/* ── Mini Form Dialog ── */}
       {miniForm && (
         <Dialog open onOpenChange={() => { setMiniForm(null); setNotes(""); }}>
           <DialogContent className="max-w-sm" onClick={(e) => e.stopPropagation()}>
@@ -308,9 +343,7 @@ function AuditTooltip({ label, isDone, isActive, isCancelled, clickable, event }
     <div className="min-w-[140px]">
       <div className={cn(
         "px-2.5 py-1.5 font-semibold text-[11px] border-b",
-        isDone
-          ? "bg-slate-700 text-white border-slate-600"
-          : "bg-slate-100 text-slate-500 border-slate-200"
+        isDone ? "bg-slate-700 text-white border-slate-600" : "bg-slate-100 text-slate-500 border-slate-200",
       )}>
         {isDone ? "✓ " : ""}{label}
       </div>
@@ -345,7 +378,7 @@ function AuditTooltip({ label, isDone, isActive, isCancelled, clickable, event }
         </div>
       ) : (
         <div className="px-2.5 py-2 bg-slate-50 text-slate-400 text-[10px]">
-          {clickable ? `Klik → isi & tandai selesai` : "Belum dilakukan"}
+          {clickable ? "Klik → isi & tandai selesai" : "Belum dilakukan"}
         </div>
       )}
 

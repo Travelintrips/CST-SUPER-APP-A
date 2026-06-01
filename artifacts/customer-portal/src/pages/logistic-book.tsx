@@ -525,7 +525,14 @@ export default function BookPage() {
     const truckingData = cartItems.find(c => c.calculatorType === "trucking")?.inputData;
     const deriveGrossWeight  = truckingData?.gross_weight_kg  ? String(truckingData.gross_weight_kg)  : "";
     const deriveVolumeCbm    = truckingData?.total_volume_m3  ? String(truckingData.total_volume_m3)  : "";
-    const deriveJumlahKoli   = truckingData?.koli_qty         ? String(truckingData.koli_qty)         : "";
+    const koli_from_trucking = truckingData?.koli_qty ? String(truckingData.koli_qty) : "";
+    const koli_from_other    = !koli_from_trucking
+      ? (cartItems.find(c => ["air_freight","sea_fcl","sea_lcl"].includes(c.calculatorType))?.inputData?.quantity
+          ? String(cartItems.find(c => ["air_freight","sea_fcl","sea_lcl"].includes(c.calculatorType))?.inputData?.quantity)
+          : "")
+      : "";
+    const deriveJumlahKoli   = koli_from_trucking || koli_from_other;
+    const hasShipmentItem    = cartItems.some(c => ["trucking","air_freight","sea_fcl","sea_lcl"].includes(c.calculatorType));
     const deriveNamaPenerima  = truckingData?.receiver_name  ? String(truckingData.receiver_name)  : "";
     const deriveNomorPenerima = truckingData?.receiver_phone ? String(truckingData.receiver_phone) : "";
     // Derive transport mode from cart service types
@@ -544,6 +551,7 @@ export default function BookPage() {
       ...prev,
       origin:          prev.origin         || deriveOrigin,
       destination:     prev.destination    || deriveDestination,
+      shippingAddress: prev.shippingAddress || (hasShipmentItem ? deriveDestination : prev.shippingAddress),
       grossWeight:     prev.grossWeight    || deriveGrossWeight,
       volumeCbm:       prev.volumeCbm      || deriveVolumeCbm,
       jumlahKoli:      prev.jumlahKoli     || deriveJumlahKoli,
@@ -1115,9 +1123,10 @@ export default function BookPage() {
       const set = (k: string, v: string) => setCustomerForm((p) => ({ ...p, [k]: v }));
       const isProductOrder = orderType === "product";
       const isServiceOrder = orderType === "service";
-      const hasLogisticService = !isProductOrder && cartItems.some(c =>
+      const hasShipmentInCart = cartItems.some(c =>
         ["trucking","air_freight","sea_fcl","sea_lcl"].includes(c.calculatorType)
       );
+      const hasLogisticService = !isProductOrder && hasShipmentInCart;
       const hasOriginDest = !isProductOrder && !isServiceOrder && cartItems.some(c =>
         c.inputData?.pickupCity || c.inputData?.originAirport || c.inputData?.originPort ||
         c.inputData?.destCity   || c.inputData?.destinationAirport || c.inputData?.destinationPort
@@ -1247,12 +1256,12 @@ export default function BookPage() {
                 </div>
               </>)}
 
-              {/* ── Alamat Pengiriman — hanya untuk product order ─── */}
-              {isProductOrder && (
+              {/* ── Alamat Pengiriman — tampil hanya jika product order + ada layanan shipment ─── */}
+              {isProductOrder && hasShipmentInCart && (
                 <div className="col-span-2">
                   <Label className="text-xs">Alamat Pengiriman (opsional)</Label>
                   <Input placeholder="Jl. ..., Kota, Provinsi (kosongkan jika pickup)" value={f.shippingAddress} onChange={e => set("shippingAddress", e.target.value)} />
-                  <p className="text-[11px] text-muted-foreground mt-1">Kosongkan jika akan pickup sendiri</p>
+                  <p className="text-[11px] text-muted-foreground mt-1">Terisi otomatis dari data layanan shipment. Kosongkan jika pickup sendiri.</p>
                 </div>
               )}
 
@@ -1268,17 +1277,24 @@ export default function BookPage() {
                 </div>
               </>)}
 
-              <div className="col-span-2 sm:col-span-1">
-                <Label className="text-xs">Jumlah Koli <span className="text-muted-foreground font-normal">(pcs/koli)</span></Label>
-                <Input
-                  type="number"
-                  min="1"
-                  placeholder="Contoh: 10"
-                  value={f.jumlahKoli}
-                  onChange={e => set("jumlahKoli", e.target.value)}
-                />
-                <p className="text-[11px] text-muted-foreground mt-1">Total jumlah koli / kotak / karton</p>
-              </div>
+              {/* ── Jumlah Koli — sembunyikan untuk product order tanpa shipment ─── */}
+              {(!isProductOrder || hasShipmentInCart) && (
+                <div className="col-span-2 sm:col-span-1">
+                  <Label className="text-xs">Jumlah Koli <span className="text-muted-foreground font-normal">(pcs/koli)</span></Label>
+                  <Input
+                    type="number"
+                    min="1"
+                    placeholder="Contoh: 10"
+                    value={f.jumlahKoli}
+                    onChange={e => set("jumlahKoli", e.target.value)}
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    {isProductOrder && hasShipmentInCart
+                      ? "Terisi otomatis dari data layanan shipment."
+                      : "Total jumlah koli / kotak / karton"}
+                  </p>
+                </div>
+              )}
 
               <div className="col-span-2">
                 <Label className="text-xs">Catatan Tambahan</Label>

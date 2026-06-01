@@ -34,6 +34,7 @@ export interface LogNotifOptions {
   context?: string;
   refType?: string;
   refId?: string;
+  mediaUrl?: string;
 }
 
 export async function logNotification(opts: LogNotifOptions): Promise<void> {
@@ -57,6 +58,7 @@ export async function logNotification(opts: LogNotifOptions): Promise<void> {
         context: opts.context ?? "general",
         refType: opts.refType ?? null,
         refId: opts.refId ?? null,
+        mediaUrl: opts.mediaUrl ?? null,
         dedupKey,
       })
       // Jika dedup_key sudah ada (concurrent duplicate lolos in-memory check), abaikan insert

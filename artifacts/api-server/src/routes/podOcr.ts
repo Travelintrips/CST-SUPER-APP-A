@@ -162,7 +162,7 @@ router.post("/scan", upload.single("file"), async (req, res) => {
   try {
     const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 100);
     const key = `pod-ocr/${Date.now()}-${safeName}`;
-    imageUrl = await objectStorage.uploadPublicFile(file.buffer, key, file.mimetype);
+    imageUrl = await objectStorage.uploadPublicRaw(key, file.buffer, file.mimetype);
   } catch (e) {
     logger.warn({ err: e }, "POD OCR: object storage upload failed, continuing with OCR");
   }

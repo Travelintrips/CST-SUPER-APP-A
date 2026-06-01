@@ -3,20 +3,24 @@ import { sql } from "drizzle-orm";
 import { logger } from "./logger.js";
 
 export const PROGRESS_STEPS = [
-  { key: "NEW_ORDER",                   label: "Order Masuk"           },
-  { key: "ADMIN_CONFIRMED",             label: "Dikonfirmasi Admin"    },
-  { key: "SENT_TO_VENDOR",              label: "Dikirim ke Vendor"     },
-  { key: "VENDOR_RESPONSE_RECEIVED",    label: "Vendor Merespon"       },
-  { key: "PRICE_REVIEWED",              label: "Harga Disetujui"       },
-  { key: "SENT_TO_CUSTOMER",            label: "Penawaran ke Customer" },
-  { key: "CUSTOMER_APPROVED",           label: "Customer Setuju"       },
-  { key: "SALES_ORDER_CREATED",         label: "Sales Order Dibuat"    },
-  { key: "SENT_TO_VENDOR_FULFILLMENT",  label: "Fulfillment ke Vendor" },
-  { key: "VENDOR_FULFILLMENT_CONFIRMED","label": "Vendor Konfirmasi"   },
-  { key: "COMPLETED",                   label: "Selesai"               },
+  { key: "ORDER_RECEIVED",   label: "Order Diterima"           },
+  { key: "ADMIN_REVIEW",     label: "Ditinjau Admin"           },
+  { key: "RFQ_SENT",         label: "RFQ ke Vendor"            },
+  { key: "QUOTE_RECEIVED",   label: "Penawaran Masuk"          },
+  { key: "CUSTOMER_APPROVAL",label: "Menunggu Persetujuan"     },
+  { key: "VENDOR_CONFIRMED", label: "Vendor Dikonfirmasi"      },
+  { key: "IN_PROGRESS",      label: "Sedang Diproses"          },
+  { key: "PICKUP",           label: "Penjemputan"              },
+  { key: "IN_TRANSIT",       label: "Dalam Perjalanan"         },
+  { key: "ARRIVED",          label: "Tiba di Tujuan"           },
+  { key: "DELIVERED",        label: "Terkirim"                 },
+  { key: "POD_UPLOADED",     label: "Bukti Pengiriman"         },
+  { key: "INVOICE_ISSUED",   label: "Invoice Diterbitkan"      },
+  { key: "PAYMENT_RECEIVED", label: "Pembayaran Diterima"      },
+  { key: "COMPLETED",        label: "Selesai"                  },
 ] as const;
 
-export type StepKey = typeof PROGRESS_STEPS[number]["key"];
+export type StepKey = typeof PROGRESS_STEPS[number]["key"] | (string & {});
 export type ProgressSource = "admin" | "customer_wa" | "vendor_wa" | "system";
 
 export async function updateOrderProgress(

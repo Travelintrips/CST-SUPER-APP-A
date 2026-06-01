@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams } from "wouter";
 
 /* ─── Types ───────────────────────────────────────────────────────────────── */
@@ -9,6 +9,7 @@ type OrderItemInfo = {
   subtotal: string | null;
   quantity: string | null;
   unit: string | null;
+  unitPrice?: string | null;
 };
 
 type OrderInfo = {
@@ -53,11 +54,19 @@ type SubmittedData = {
   priceConfirmed: string | null;
   revisedPrice: string | null;
   leadTime: string | null;
+  deliveryMethod: string | null;
   stockPhotoUrl: string | null;
+  packingListUrl: string | null;
   invoiceUrl: string | null;
+  podUrl: string | null;
   supportingDocUrl: string | null;
   notes: string | null;
   submittedAt: string | null;
+};
+
+type ProgressEvent = {
+  step_key: string;
+  created_at: string;
 };
 
 type PageData = {
@@ -67,9 +76,49 @@ type PageData = {
   vendorName: string | null;
   order: OrderInfo;
   submittedData?: SubmittedData;
+  progressEvents?: ProgressEvent[];
 };
 
 /* ─── Helpers ─────────────────────────────────────────────────────────────── */
+
+function businessDaysDiff(from: Date, toDate: Date): number {
+  const d = new Date(from); d.setHours(0, 0, 0, 0);
+  const end = new Date(toDate); end.setHours(0, 0, 0, 0);
+  if (end <= d) return 0;
+  let count = 0;
+  while (d < end) {
+    d.setDate(d.getDate() + 1);
+    const dow = d.getDay();
+    if (dow !== 0 && dow !== 6) count++;
+  }
+  return count;
+}
+
+function getReadyDateWarning(readyDate: string): { level: "error" | "warn"; msg: string } | null {
+  if (!readyDate) return null;
+  const today = new Date();
+  const ready = new Date(readyDate + "T00:00:00");
+  const bdays = businessDaysDiff(today, ready);
+  if (bdays === 0) return { level: "error", msg: "⚠️ Tanggal hari ini — lead time kurang dari 1 hari kerja, pastikan barang benar-benar siap segera." };
+  if (bdays === 1) return { level: "warn", msg: "⏰ Lead time sangat singkat: hanya 1 hari kerja. Pastikan proses dapat diselesaikan tepat waktu." };
+  return null;
+}
+
+function getLeadTimeWarning(leadTime: string): string | null {
+  if (!leadTime) return null;
+  const lt = leadTime.toLowerCase();
+  const jamMatch = lt.match(/(\d+(?:[.,]\d+)?)\s*jam/);
+  if (jamMatch) {
+    const jam = parseFloat(jamMatch[1].replace(",", "."));
+    if (jam < 8) return `⚠️ Lead time ${jam} jam lebih pendek dari 1 hari kerja (8 jam).`;
+  }
+  const hariMatch = lt.match(/(\d+(?:[.,]\d+)?)\s*hari/);
+  if (hariMatch) {
+    const hari = parseFloat(hariMatch[1].replace(",", "."));
+    if (hari < 1) return `⚠️ Lead time kurang dari 1 hari kerja.`;
+  }
+  return null;
+}
 
 function getServiceIcon(svcType: string) {
   if (svcType.includes("trucking")) return "🚚";
@@ -188,6 +237,17 @@ function SummaryRow({ label, value, bold }: { label: string; value: string; bold
 
 /* ─── Submitted Review ────────────────────────────────────────────────────── */
 
+const STEP_LABELS: Record<string, string> = {
+  ORDER_RECEIVED:   "Order Diterima",
+  VENDOR_CONFIRMED: "Vendor Dikonfirmasi",
+  IN_PROGRESS:      "Sedang Diproses",
+  PICKUP:           "Penjemputan",
+  IN_TRANSIT:       "Dalam Perjalanan",
+  ARRIVED:          "Tiba di Tujuan",
+  DELIVERED:        "Terkirim",
+  COMPLETED:        "Selesai",
+};
+
 function SubmittedReview({
   data,
   localFields,
@@ -197,6 +257,8 @@ function SubmittedReview({
   localFields?: Record<string, string>;
   justSubmitted?: boolean;
 }) {
+  const progressEvents = data.progressEvents ?? [];
+
   const svc = data.serviceType;
   const icon = getServiceIcon(svc);
   const svcLabel = getServiceLabel(svc);
@@ -260,6 +322,25 @@ function SubmittedReview({
           </div>
         </div>
 
+        {progressEvents.length > 0 && (
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+            <h3 className="text-sm font-semibold text-slate-700 mb-3">📊 Progress Order</h3>
+            <div className="space-y-2">
+              {progressEvents.map((ev) => (
+                <div key={ev.step_key} className="flex items-center gap-3">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                  <span className="text-sm text-slate-700 flex-1">
+                    {STEP_LABELS[ev.step_key] ?? ev.step_key}
+                  </span>
+                  <span className="text-xs text-slate-400">
+                    {new Date(ev.created_at).toLocaleString("id-ID", { dateStyle: "short", timeStyle: "short" })}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
           <div className="flex items-center gap-2 mb-4">
             <span className="text-xl">{icon}</span>
@@ -316,6 +397,7 @@ function SubmittedReview({
                           <th className="text-left px-3 py-2 font-medium">Produk</th>
                           <th className="text-right px-3 py-2 font-medium">Qty</th>
                           <th className="text-right px-3 py-2 font-medium">Satuan</th>
+                          <th className="text-right px-3 py-2 font-medium">Harga/Unit</th>
                           <th className="text-right px-3 py-2 font-medium">Subtotal</th>
                         </tr>
                       </thead>
@@ -325,6 +407,7 @@ function SubmittedReview({
                             <td className="px-3 py-2 text-slate-700">{it.serviceName || "—"}</td>
                             <td className="px-3 py-2 text-right text-slate-600">{it.quantity ?? "—"}</td>
                             <td className="px-3 py-2 text-right text-slate-500">{it.unit ?? "—"}</td>
+                            <td className="px-3 py-2 text-right text-slate-500">{it.unitPrice ? idr(it.unitPrice) : "—"}</td>
                             <td className="px-3 py-2 text-right font-medium text-slate-700">{idr(it.subtotal)}</td>
                           </tr>
                         ))}
@@ -355,9 +438,17 @@ function SubmittedReview({
                     </div>
                   </div>
                 )}
+                {val("deliveryMethod") && (
+                  <Row label="Metode Pengiriman" value={
+                    val("deliveryMethod") === "vendor_delivery" ? "🚛 Vendor Delivery" :
+                    val("deliveryMethod") === "customer_pickup" ? "🏭 Customer Pickup" :
+                    val("deliveryMethod") === "third_party" ? "📦 Third Party Carrier" :
+                    val("deliveryMethod")
+                  } />
+                )}
                 {val("stockPhotoUrl") && (
                   <div className="mt-3">
-                    <p className="text-xs text-slate-400 mb-1.5">Foto Stok</p>
+                    <p className="text-xs text-slate-400 mb-1.5">Foto Barang / Stok</p>
                     {val("stockPhotoUrl")!.match(/\.(jpg|jpeg|png|webp|heic|heif)$/i) ? (
                       <img src={val("stockPhotoUrl")!} alt="Foto stok" className="max-h-40 rounded-lg border border-slate-200" />
                     ) : (
@@ -365,10 +456,24 @@ function SubmittedReview({
                     )}
                   </div>
                 )}
+                {val("packingListUrl") && (
+                  <div className="mt-2">
+                    <a href={val("packingListUrl")!} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-xs text-blue-600 underline">
+                      📋 Lihat Packing List
+                    </a>
+                  </div>
+                )}
                 {val("invoiceUrl") && (
                   <div className="mt-2">
                     <a href={val("invoiceUrl")!} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-xs text-blue-600 underline">
                       📄 Lihat Invoice
+                    </a>
+                  </div>
+                )}
+                {val("podUrl") && (
+                  <div className="mt-2">
+                    <a href={val("podUrl")!} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-xs text-blue-600 underline">
+                      ✅ Lihat POD (Proof of Delivery)
                     </a>
                   </div>
                 )}
@@ -412,6 +517,16 @@ function SubmittedReview({
     </div>
   );
 }
+
+/* ─── Driver Types ────────────────────────────────────────────────────────── */
+
+type VendorDriver = {
+  id: number;
+  name: string;
+  phone: string | null;
+  vehiclePlate: string | null;
+  vehicleType: string | null;
+};
 
 /* ─── Field primitives ────────────────────────────────────────────────────── */
 
@@ -506,15 +621,238 @@ function UploadField({
   );
 }
 
+/* ─── DriverPicker ────────────────────────────────────────────────────────── */
+
+function DriverPicker({
+  token,
+  driverName,
+  driverPhone,
+  plateNumber,
+  vehicleType,
+  onSelect,
+}: {
+  token: string;
+  driverName: string;
+  driverPhone: string;
+  plateNumber: string;
+  vehicleType: string;
+  onSelect: (d: { name: string; phone: string; plate: string; vehicleType: string }) => void;
+}) {
+  const [drivers, setDrivers] = useState<VendorDriver[]>([]);
+  const [search, setSearch] = useState("");
+  const [open, setOpen] = useState(false);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newPhone, setNewPhone] = useState("");
+  const [newPlate, setNewPlate] = useState("");
+  const [newVehicleType, setNewVehicleType] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
+
+  // Fetch driver list
+  useEffect(() => {
+    fetch(`/api/vendor-fulfillment/${token}/drivers`)
+      .then((r) => r.json())
+      .then((d: { drivers?: VendorDriver[] }) => { if (d.drivers) setDrivers(d.drivers); })
+      .catch(() => {});
+  }, [token]);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (dropRef.current && !dropRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const filtered = drivers.filter((d) =>
+    d.name.toLowerCase().includes(search.toLowerCase()) ||
+    (d.vehiclePlate ?? "").toLowerCase().includes(search.toLowerCase()) ||
+    (d.phone ?? "").includes(search)
+  );
+
+  const handleSelect = useCallback((d: VendorDriver) => {
+    onSelect({ name: d.name, phone: d.phone ?? "", plate: d.vehiclePlate ?? "", vehicleType: d.vehicleType ?? "" });
+    setSearch("");
+    setOpen(false);
+  }, [onSelect]);
+
+  const handleSaveNew = async () => {
+    if (!newName.trim()) { setSaveError("Nama driver wajib diisi"); return; }
+    setSaving(true); setSaveError(null);
+    try {
+      const r = await fetch(`/api/vendor-fulfillment/${token}/drivers`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newName.trim(), phone: newPhone.trim(), vehiclePlate: newPlate.trim(), vehicleType: newVehicleType.trim() }),
+      });
+      const d = await r.json() as { driver?: VendorDriver; error?: string };
+      if (!r.ok) throw new Error(d.error ?? "Gagal menyimpan driver");
+      if (d.driver) {
+        setDrivers((prev) => [...prev, d.driver!]);
+        handleSelect(d.driver!);
+      }
+      setShowAddForm(false);
+      setNewName(""); setNewPhone(""); setNewPlate(""); setNewVehicleType("");
+    } catch (e) {
+      setSaveError((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const inputCls = "w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400";
+  const selectedLabel = driverName ? `${driverName}${plateNumber ? ` · ${plateNumber}` : ""}` : "";
+
+  return (
+    <div className="space-y-3">
+      {/* Driver Combobox */}
+      <div className="space-y-1.5" ref={dropRef}>
+        <label className="text-sm font-medium text-slate-700">
+          Pilih Driver<span className="text-red-500 ml-0.5">*</span>
+        </label>
+        {/* Selected preview */}
+        {selectedLabel && !open && (
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm">
+            <div>
+              <span className="font-medium text-emerald-800">{driverName}</span>
+              {driverPhone && <span className="text-slate-500 ml-2">· {driverPhone}</span>}
+              {plateNumber && <span className="text-slate-500 ml-2">· {plateNumber}</span>}
+            </div>
+            <button type="button" onClick={() => { setOpen(true); setSearch(""); }}
+              className="text-xs text-emerald-600 hover:text-emerald-800 underline shrink-0">Ganti</button>
+          </div>
+        )}
+        {/* Search + dropdown */}
+        {(!selectedLabel || open) && (
+          <div className="relative">
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setOpen(true); }}
+              onFocus={() => setOpen(true)}
+              placeholder={drivers.length > 0 ? "Cari nama driver atau plat..." : "Belum ada driver terdaftar"}
+              className={inputCls}
+              autoComplete="off"
+            />
+            {open && (
+              <div className="absolute z-20 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg max-h-52 overflow-y-auto">
+                {filtered.length > 0 ? (
+                  filtered.map((d) => (
+                    <button
+                      key={d.id}
+                      type="button"
+                      onClick={() => handleSelect(d)}
+                      className="w-full text-left px-3 py-2.5 hover:bg-emerald-50 border-b border-slate-50 last:border-0"
+                    >
+                      <div className="text-sm font-medium text-slate-800">{d.name}</div>
+                      <div className="text-xs text-slate-400 mt-0.5 flex gap-2">
+                        {d.phone && <span>📱 {d.phone}</span>}
+                        {d.vehiclePlate && <span>🚛 {d.vehiclePlate}</span>}
+                        {d.vehicleType && <span>{d.vehicleType}</span>}
+                      </div>
+                    </button>
+                  ))
+                ) : (
+                  <div className="px-3 py-3 text-sm text-slate-400 text-center">
+                    {search ? `"${search}" tidak ditemukan` : "Belum ada driver terdaftar"}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => { setOpen(false); setShowAddForm(true); setNewName(search); setSearch(""); }}
+                  className="w-full text-left px-3 py-2.5 text-sm text-emerald-700 font-medium bg-emerald-50 hover:bg-emerald-100 border-t border-emerald-100 flex items-center gap-2"
+                >
+                  <span className="text-base">＋</span> Tambah driver baru
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Add new driver mini form */}
+      {showAddForm && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-4 space-y-3">
+          <p className="text-sm font-semibold text-emerald-800">➕ Tambah Driver Baru</p>
+          {saveError && <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{saveError}</p>}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-600">Nama Driver <span className="text-red-500">*</span></label>
+            <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)}
+              placeholder="Nama lengkap driver" className={inputCls} />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-600">No. HP</label>
+            <input type="text" value={newPhone} onChange={(e) => setNewPhone(e.target.value)}
+              placeholder="08xxxxxxxxxx" className={inputCls} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-slate-600">Plat Nomor</label>
+              <input type="text" value={newPlate} onChange={(e) => setNewPlate(e.target.value)}
+                placeholder="B 1234 XYZ" className={inputCls} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-slate-600">Jenis Kendaraan</label>
+              <input type="text" value={newVehicleType} onChange={(e) => setNewVehicleType(e.target.value)}
+                placeholder="Engkel, CDD, dll" className={inputCls} />
+            </div>
+          </div>
+          <div className="flex gap-2 pt-1">
+            <button
+              type="button"
+              onClick={handleSaveNew}
+              disabled={saving}
+              className="flex-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white text-sm font-medium py-2 transition-colors flex items-center justify-center gap-2"
+            >
+              {saving && <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+              {saving ? "Menyimpan..." : "Simpan & Pilih"}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setShowAddForm(false); setSaveError(null); }}
+              className="px-4 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 py-2"
+            >
+              Batal
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Readonly detail fields after driver selected */}
+      {driverName && (
+        <div className="grid grid-cols-1 gap-3">
+          <Field label="No. HP Driver" name="driverPhone" value={driverPhone} onChange={(v) => onSelect({ name: driverName, phone: v, plate: plateNumber, vehicleType })} placeholder="08xxxxxxxxxx" />
+          <Field label="Nomor Plat Kendaraan" name="plateNumber" value={plateNumber} onChange={(v) => onSelect({ name: driverName, phone: driverPhone, plate: v, vehicleType })} placeholder="B 1234 XYZ" required />
+          <Field label="Tipe Kendaraan" name="vehicleType" value={vehicleType} onChange={(v) => onSelect({ name: driverName, phone: driverPhone, plate: plateNumber, vehicleType: v })} placeholder="Engkel, Tronton, CDD, dll" />
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ─── Trucking & Freight & Customs (unchanged) ────────────────────────────── */
 
-function TruckingFields({ fields, setField }: { fields: Record<string, string>; setField: (k: string, v: string) => void }) {
+function TruckingFields({ fields, setField, token }: { fields: Record<string, string>; setField: (k: string, v: string) => void; token: string }) {
+  const handleDriverSelect = useCallback((d: { name: string; phone: string; plate: string; vehicleType: string }) => {
+    setField("driverName", d.name);
+    setField("driverPhone", d.phone);
+    setField("plateNumber", d.plate);
+    setField("vehicleType", d.vehicleType);
+  }, [setField]);
+
   return (
     <>
-      <Field label="Nama Driver" name="driverName" value={fields.driverName ?? ""} onChange={(v) => setField("driverName", v)} placeholder="Contoh: Budi Santoso" required />
-      <Field label="No. HP Driver" name="driverPhone" value={fields.driverPhone ?? ""} onChange={(v) => setField("driverPhone", v)} placeholder="08xxxxxxxxxx" />
-      <Field label="Nomor Plat Kendaraan" name="plateNumber" value={fields.plateNumber ?? ""} onChange={(v) => setField("plateNumber", v)} placeholder="B 1234 XYZ" required />
-      <Field label="Tipe Kendaraan" name="vehicleType" value={fields.vehicleType ?? ""} onChange={(v) => setField("vehicleType", v)} placeholder="Engkel, Tronton, CDD, dll" />
+      <DriverPicker
+        token={token}
+        driverName={fields.driverName ?? ""}
+        driverPhone={fields.driverPhone ?? ""}
+        plateNumber={fields.plateNumber ?? ""}
+        vehicleType={fields.vehicleType ?? ""}
+        onSelect={handleDriverSelect}
+      />
       <Field label="Estimasi Waktu Pickup" name="pickupTime" value={fields.pickupTime ?? ""} onChange={(v) => setField("pickupTime", v)} placeholder="Contoh: 14 Jun 2026, 09:00 WIB" />
     </>
   );
@@ -558,6 +896,20 @@ function ProductFulfillmentForm({
 }) {
   const [uploading, setUploading] = useState<Record<string, boolean>>({});
 
+  useEffect(() => {
+    if (!fields.readyDate) return;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const ready = new Date(fields.readyDate + "T00:00:00");
+    const diffMs = ready.getTime() - today.getTime();
+    const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+    if (diffDays <= 0) {
+      setField("leadTime", "Hari ini");
+    } else {
+      setField("leadTime", `${diffDays} hari`);
+    }
+  }, [fields.readyDate]);
+
   const stockStatus = fields.stockConfirmed ?? "";
   const priceChoice = fields.priceConfirmed ?? "";
   const isPartial   = stockStatus === "partial";
@@ -565,9 +917,10 @@ function ProductFulfillmentForm({
   const showWarehouse = needsPickup(order.serviceType ?? "");
   const TAX_RATE = order.taxRate ?? 11;
 
-  const origGrand = Number(order.grandTotal ?? 0);
-  const origDpp   = Number(order.subtotalBeforeTax ?? Math.round(origGrand * 100 / (100 + TAX_RATE)));
-  const origPpn   = Number(order.taxAmount ?? origGrand - origDpp);
+  const _itemsSum = (order.items ?? []).reduce((s, i) => s + Number(i.subtotal ?? 0), 0);
+  const origDpp   = _itemsSum > 0 ? _itemsSum : Number(order.subtotalBeforeTax ?? Number(order.grandTotal ?? 0));
+  const origPpn   = Math.round(origDpp * TAX_RATE / 100);
+  const origGrand = origDpp + origPpn;
 
   let summaryDpp = origDpp, summaryPpn = origPpn, summaryTotal = origGrand;
   if (isRevised && fields.revisedPrice && Number(fields.revisedPrice) > 0) {
@@ -612,6 +965,7 @@ function ProductFulfillmentForm({
                   <th className="text-left px-4 py-2.5 font-medium">Nama Produk</th>
                   <th className="text-right px-4 py-2.5 font-medium">Qty Order</th>
                   <th className="text-right px-4 py-2.5 font-medium">Satuan</th>
+                  <th className="text-right px-4 py-2.5 font-medium">Harga/Unit</th>
                   <th className="text-right px-4 py-2.5 font-medium">Subtotal</th>
                 </tr>
               </thead>
@@ -621,6 +975,7 @@ function ProductFulfillmentForm({
                     <td className="px-4 py-3 text-slate-700 font-medium">{item.serviceName || "—"}</td>
                     <td className="px-4 py-3 text-right text-slate-600">{item.quantity ?? "—"}</td>
                     <td className="px-4 py-3 text-right text-slate-500">{item.unit ?? "—"}</td>
+                    <td className="px-4 py-3 text-right text-slate-500">{item.unitPrice ? idr(item.unitPrice) : "—"}</td>
                     <td className="px-4 py-3 text-right font-semibold text-slate-700">{idr(item.subtotal)}</td>
                   </tr>
                 ))}
@@ -650,7 +1005,79 @@ function ProductFulfillmentForm({
         </div>
       )}
 
-      {/* ── 2. Konfirmasi Stok ── */}
+      {/* ── 2. Metode Pengiriman ── */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 px-5 py-5 space-y-4">
+        <div>
+          <h2 className="text-sm font-bold text-slate-800">🚚 Metode Pengiriman</h2>
+          <p className="text-xs text-slate-400 mt-0.5">Bagaimana barang akan dikirim ke customer?</p>
+        </div>
+        <div className="flex flex-col gap-2">
+          {[
+            { val: "vendor_delivery", label: "🚛 Vendor Delivery", desc: "Vendor mengirim langsung ke lokasi customer" },
+            { val: "customer_pickup", label: "🏭 Customer Pickup", desc: "Customer mengambil sendiri dari gudang vendor" },
+            { val: "third_party",     label: "📦 Third Party Carrier", desc: "Dikirim via jasa pengiriman pihak ketiga" },
+          ].map((opt) => (
+            <button
+              key={opt.val}
+              type="button"
+              onClick={() => setField("deliveryMethod", opt.val)}
+              className={`w-full text-left px-4 py-3 rounded-xl border-2 transition-all flex items-center justify-between gap-2 ${
+                fields.deliveryMethod === opt.val
+                  ? "border-emerald-500 bg-emerald-50"
+                  : "border-slate-200 bg-white hover:border-slate-300"
+              }`}
+            >
+              <div>
+                <p className={`text-sm font-semibold ${fields.deliveryMethod === opt.val ? "text-emerald-800" : "text-slate-700"}`}>
+                  {opt.label}
+                </p>
+                <p className={`text-xs mt-0.5 ${fields.deliveryMethod === opt.val ? "text-slate-600" : "text-slate-400"}`}>
+                  {opt.desc}
+                </p>
+              </div>
+              {fields.deliveryMethod === opt.val && <span className="text-emerald-500 shrink-0">✓</span>}
+            </button>
+          ))}
+        </div>
+        {fields.deliveryMethod === "third_party" && (
+          <div className="space-y-3 pt-1">
+            <Field
+              label="Nama Carrier / Ekspedisi"
+              name="carrierName"
+              value={fields.carrierName ?? ""}
+              onChange={(v) => setField("carrierName", v)}
+              placeholder="JNE, J&T, Sicepat, dll"
+              required
+            />
+            <Field
+              label="Tipe Kendaraan / Layanan"
+              name="vehicleType"
+              value={fields.vehicleType ?? ""}
+              onChange={(v) => setField("vehicleType", v)}
+              placeholder="Reguler, Express, Cargo, dll"
+            />
+          </div>
+        )}
+        {fields.deliveryMethod === "vendor_delivery" && (
+          <div className="space-y-3 pt-1">
+            <DriverPicker
+              token={token}
+              driverName={fields.driverName ?? ""}
+              driverPhone={fields.driverPhone ?? ""}
+              plateNumber={fields.plateNumber ?? ""}
+              vehicleType={fields.vehicleType ?? ""}
+              onSelect={(d) => {
+                setField("driverName", d.name);
+                setField("driverPhone", d.phone);
+                setField("plateNumber", d.plate);
+                setField("vehicleType", d.vehicleType);
+              }}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* ── 3. Konfirmasi Stok ── */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 px-5 py-5 space-y-4">
         <div>
           <h2 className="text-sm font-bold text-slate-800">📦 Konfirmasi Stok</h2>
@@ -720,13 +1147,32 @@ function ProductFulfillmentForm({
               value={fields.readyDate ?? ""}
               onChange={(e) => setField("readyDate", e.target.value)}
               min={new Date().toISOString().slice(0, 10)}
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
+              className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 ${
+                getReadyDateWarning(fields.readyDate ?? "")?.level === "error"
+                  ? "border-red-400 bg-red-50"
+                  : getReadyDateWarning(fields.readyDate ?? "")?.level === "warn"
+                  ? "border-amber-400 bg-amber-50"
+                  : "border-slate-200"
+              }`}
             />
             {fields.readyDate && (
               <p className="text-xs text-emerald-600 font-medium">
                 📅 {fmtDateLocal(fields.readyDate)}
               </p>
             )}
+            {(() => {
+              const w = getReadyDateWarning(fields.readyDate ?? "");
+              if (!w) return null;
+              return (
+                <p className={`text-xs font-medium rounded-lg px-3 py-2 ${
+                  w.level === "error"
+                    ? "bg-red-50 text-red-700 border border-red-200"
+                    : "bg-amber-50 text-amber-700 border border-amber-200"
+                }`}>
+                  {w.msg}
+                </p>
+              );
+            })()}
           </div>
           <Field
             label="Lead Time"
@@ -735,6 +1181,17 @@ function ProductFulfillmentForm({
             onChange={(v) => setField("leadTime", v)}
             placeholder="Contoh: 3 hari kerja"
           />
+          {getLeadTimeWarning(fields.leadTime ?? "") && (
+            <p className="text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200 rounded-lg px-3 py-2">
+              {getLeadTimeWarning(fields.leadTime ?? "")}
+            </p>
+          )}
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-slate-700">Lead Time</label>
+            <div className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+              {fields.leadTime || <span className="text-slate-400 italic">Otomatis dihitung dari tanggal siap kirim</span>}
+            </div>
+          </div>
         </div>
       )}
 
@@ -838,10 +1295,17 @@ function ProductFulfillmentForm({
           <p className="text-xs text-slate-400 mt-0.5">JPG, PNG, WebP, HEIC, atau PDF — max 20 MB per file</p>
         </div>
         <UploadField
-          label="Foto Stok"
+          label="Foto Barang / Stok"
           fileType="stockPhoto"
           url={fields.stockPhotoUrl ?? ""}
           uploading={!!uploading["stockPhoto"]}
+          onUpload={handleUpload}
+        />
+        <UploadField
+          label="Packing List"
+          fileType="packingList"
+          url={fields.packingListUrl ?? ""}
+          uploading={!!uploading["packingList"]}
           onUpload={handleUpload}
         />
         <UploadField
@@ -849,6 +1313,13 @@ function ProductFulfillmentForm({
           fileType="invoice"
           url={fields.invoiceUrl ?? ""}
           uploading={!!uploading["invoice"]}
+          onUpload={handleUpload}
+        />
+        <UploadField
+          label="POD (Proof of Delivery)"
+          fileType="pod"
+          url={fields.podUrl ?? ""}
+          uploading={!!uploading["pod"]}
           onUpload={handleUpload}
         />
         <UploadField
@@ -1021,7 +1492,7 @@ export default function VendorFulfillmentPage() {
                 {icon} Data Fulfillment
               </h2>
             )}
-            {svc.includes("trucking") && <TruckingFields fields={fields} setField={setField} />}
+            {svc.includes("trucking") && <TruckingFields fields={fields} setField={setField} token={token!} />}
             {(svc.includes("freight_air") || svc.includes("freight_sea") || svc.includes("freight")) &&
               !svc.includes("trucking") && <FreightFields fields={fields} setField={setField} />}
             {isProduct && (

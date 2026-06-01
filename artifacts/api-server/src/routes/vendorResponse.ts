@@ -213,10 +213,9 @@ router.post("/:orderNumber/photo", upload.single("photo") as any, async (req: Re
 
   try {
     const objectId = randomUUID();
-    const storagePath = `public/vendor-photos/${objectId}`;
-    await objectStorage.uploadFile(req.file.buffer, storagePath, req.file.mimetype);
-    const photoUrl = await objectStorage.getPublicUrl(storagePath);
-    res.json({ url: photoUrl, objectPath: storagePath });
+    const subPath = `vendor-photos/${objectId}`;
+    const photoUrl = await objectStorage.uploadPublicRaw(subPath, req.file.buffer, req.file.mimetype);
+    res.json({ url: photoUrl, objectPath: subPath });
   } catch (err) {
     req.log?.error({ err }, "vendor-response photo upload error");
     res.status(500).json({ error: "Gagal upload foto" });

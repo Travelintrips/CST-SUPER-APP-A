@@ -98,13 +98,12 @@ export async function runEnterpriseMigration(): Promise<void> {
       CREATE INDEX IF NOT EXISTS activity_logs_rfq_idx ON activity_logs(rfq_id);
     `);
 
-    // 8. Add expired_at to rfq_vendor_links if not exists (idempotent)
+    // 8. Add missing columns to rfq_vendor_links (idempotent)
     await db.execute(sql`
-      DO $$ BEGIN
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='rfq_vendor_links' AND column_name='expired_at') THEN
-          ALTER TABLE rfq_vendor_links ADD COLUMN expired_at TIMESTAMPTZ;
-        END IF;
-      END $$;
+      ALTER TABLE rfq_vendor_links
+        ADD COLUMN IF NOT EXISTS expired_at TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS lead_time_days INTEGER,
+        ADD COLUMN IF NOT EXISTS stock_availability TEXT DEFAULT 'unknown';
     `);
 
     // 10. Optimistic locking: version column on logistic_orders

@@ -85,6 +85,7 @@ export const logisticOrdersTable = pgTable("logistic_orders", {
   cargoSpecialTags: text("cargo_special_tags").array(),
   requiredDocs: text("required_docs").array(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (t) => [
   index("logistic_orders_company_idx").on(t.companyId),
   index("logistic_orders_status_idx").on(t.status),

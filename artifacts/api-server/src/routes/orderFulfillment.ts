@@ -27,6 +27,7 @@ import { resolveServiceCategory } from "@workspace/logistics-constants";
 import { updateOrderProgress } from "../lib/orderProgress.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { compressImageBuffer } from "../lib/imageCompress.js";
+import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
 
 const objectStorageService = new ObjectStorageService();
 const podUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
@@ -180,13 +181,18 @@ fulfillmentAdminRouter.post("/orders/:orderId/send-fulfillment", async (req: Req
       orderId,
       actorType: "admin",
       actorName: "Admin",
-      status: "Processing",
+      status: "In Progress",
       notes: `Form fulfillment dikirim ke vendor${vendor ? ` (${vendor.name})` : ""}. Tipe: ${CATEGORY_LABELS[category] ?? category}.`,
       isPublic: false,
     });
 
-    // Update order status to Processing
-    await db.update(logisticOrdersTable).set({ status: "Processing" }).where(eq(logisticOrdersTable.id, orderId));
+    await transitionLogisticOrderStatus(orderId, "In Progress", {
+      actorType: "admin",
+      actorName: "Admin",
+      source: "orderFulfillment/send-fulfillment",
+      force: true,
+      skipAudit: false,
+    });
 
     const formUrl = `${getBaseUrl()}/fulfillment/${token}`;
 
@@ -220,13 +226,110 @@ fulfillmentAdminRouter.post("/orders/:orderId/send-fulfillment", async (req: Req
   }
 });
 
+// POST /api/logistic/orders/:orderId/resend-fulfillment-wa
+fulfillmentAdminRouter.post("/orders/:orderId/resend-fulfillment-wa", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const orderId = Number(req.params["orderId"]);
+  if (isNaN(orderId)) return res.status(400).json({ message: "orderId tidak valid" });
+
+  try {
+    const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
+    if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+    // Cari vendor fulfillment link terbaru (belum submitted) untuk order ini
+    const [vfLink] = await db.select().from(vendorFulfillmentLinksTable)
+      .where(eq(vendorFulfillmentLinksTable.orderId, orderId))
+      .orderBy(desc(vendorFulfillmentLinksTable.createdAt))
+      .limit(1);
+
+    if (!vfLink) return res.status(404).json({ message: "Tidak ada link fulfillment vendor untuk order ini" });
+
+    const domain = getPreferredDomain() || "cstlogistic.co.id";
+    const formUrl = `https://${domain}/vendor-fulfillment/${vfLink.token}`;
+
+    const vendor = vfLink.vendorId
+      ? (await db.select().from(suppliersTable).where(eq(suppliersTable.id, vfLink.vendorId)))[0] ?? null
+      : null;
+
+    const vendorPhone = vendor?.phone ?? null;
+    if (vendorPhone) {
+      const waMsg =
+        `📋 *[Kirim Ulang] Form Fulfillment Order — CST Logistics*\n\n` +
+        `Order: *${order.orderNumber}*\n` +
+        `Layanan: ${order.shipmentType ?? "—"}\n` +
+        ((order.origin && order.destination) ? `Rute: ${order.origin} → ${order.destination}\n` : "") +
+        `\nSilakan isi form fulfillment melalui link berikut:\n${formUrl}`;
+      sendWhatsApp(vendorPhone, waMsg).catch((e) =>
+        logger.warn({ e }, "resend-fulfillment-wa to vendor failed")
+      );
+    }
+
+    await db.insert(orderUpdatesTable).values({
+      orderId,
+      actorType: "admin",
+      actorName: "Admin",
+      status: order.status ?? "In Progress",
+      notes: `WA fulfillment dikirim ulang ke vendor${vendor ? ` (${vendor.name})` : ""}.`,
+      isPublic: false,
+    }).catch(() => {});
+
+    return res.json({ ok: true, formUrl, vendorPhone, vendorName: vendor?.name ?? null });
+  } catch (err) {
+    logger.error({ err }, "resend-fulfillment-wa error");
+    return res.status(500).json({ message: "Gagal kirim ulang WA fulfillment" });
+  }
+});
+
+// PATCH /api/logistic/orders/:orderId/extend-fulfillment
+fulfillmentAdminRouter.patch("/orders/:orderId/extend-fulfillment", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const orderId = Number(req.params["orderId"]);
+  if (isNaN(orderId)) return res.status(400).json({ message: "orderId tidak valid" });
+
+  const { extraHours = 72 } = req.body as { extraHours?: number };
+  const hours = Math.min(Math.max(Number(extraHours) || 72, 1), 720);
+
+  try {
+    const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
+    if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+    const [vfLink] = await db.select().from(vendorFulfillmentLinksTable)
+      .where(eq(vendorFulfillmentLinksTable.orderId, orderId))
+      .orderBy(desc(vendorFulfillmentLinksTable.createdAt))
+      .limit(1);
+
+    if (!vfLink) return res.status(404).json({ message: "Tidak ada link fulfillment untuk order ini" });
+    if (vfLink.status !== "pending") return res.status(400).json({ message: "Link fulfillment sudah disubmit, tidak bisa diperpanjang" });
+
+    const newExpiry = new Date(Date.now() + hours * 3600_000);
+    await db.update(vendorFulfillmentLinksTable)
+      .set({ expiresAt: newExpiry })
+      .where(eq(vendorFulfillmentLinksTable.id, vfLink.id));
+
+    await db.insert(orderUpdatesTable).values({
+      orderId,
+      actorType: "admin",
+      actorName: "Admin",
+      status: order.status ?? "Processing",
+      notes: `Expiry link fulfillment vendor diperpanjang +${hours} jam (sampai ${newExpiry.toLocaleString("id-ID")}).`,
+      isPublic: false,
+    }).catch(() => {});
+
+    return res.json({ ok: true, newExpiresAt: newExpiry.toISOString(), hours });
+  } catch (err) {
+    logger.error({ err }, "extend-fulfillment error");
+    return res.status(500).json({ message: "Gagal memperpanjang expiry link" });
+  }
+});
+
 // ─── Helper: extract display data from vendor_fulfillment_links row ───────────
 const VF_FIELD_KEYS = [
   "stockConfirmed", "qtyConfirmed", "readyDate", "leadTime", "warehouseLocation",
   "priceConfirmed", "revisedPrice", "driverName", "driverPhone", "plateNumber",
   "vehicleType", "pickupTime", "carrierName", "awbBlNumber", "flightVessel",
   "bookingNumber", "etd", "eta", "customsPicName", "customsDocuments",
-  "customsProcessEta", "stockPhotoUrl", "invoiceUrl", "supportingDocUrl", "notes",
+  "customsProcessEta", "deliveryMethod",
+  "stockPhotoUrl", "packingListUrl", "invoiceUrl", "podUrl", "supportingDocUrl", "notes",
 ] as const;
 
 function extractVfData(l: Record<string, unknown>): Record<string, string> {
@@ -303,11 +406,6 @@ fulfillmentAdminRouter.get("/orders/:orderId/fulfillment", async (req: Request, 
     ];
 
     return res.json({ links: mergedLinks, submissions: mergedSubs });
-    return res.json({
-      links: links.map(l => ({ ...l, formUrl: `${base}/fulfillment/${l.token}` })),
-      submissions,
-      pods: podRows.rows ?? [],
-    });
   } catch (err) {
     logger.error({ err }, "get-fulfillment error");
     return res.status(500).json({ message: "Gagal memuat data fulfillment" });
@@ -409,9 +507,13 @@ fulfillmentPublicRouter.post("/:token", async (req: Request, res: Response) => {
       .where(eq(orderFulfillmentLinksTable.token, token));
 
     // Update order status → Vendor Confirmed
-    await db.update(logisticOrdersTable)
-      .set({ status: "Vendor Confirmed" })
-      .where(eq(logisticOrdersTable.id, link.orderId));
+    await transitionLogisticOrderStatus(link.orderId, "Vendor Confirmed", {
+      actorType: "vendor",
+      actorName: "Vendor",
+      source: "orderFulfillment/vendor-submit",
+      force: true,
+      skipAudit: false,
+    });
 
     // Activity log
     const summaryLines = fields
@@ -430,7 +532,7 @@ fulfillmentPublicRouter.post("/:token", async (req: Request, res: Response) => {
     // Notify admin via WA
     const adminWa = await getAdminWa();
     if (adminWa) {
-      const adminLink = `${getBaseUrl()}/bizportal/logistics/orders/${link.orderId}`;
+      const adminLink = `${getBaseUrl()}/logistic-admin/orders/${link.orderId}`;
       const waMsg =
         `✅ *Vendor Mengisi Form Fulfillment*\n\n` +
         `Order: *${order.orderNumber}*\n` +
@@ -468,7 +570,7 @@ fulfillmentAdminRouter.post("/orders/:orderId/confirm-fulfillment", async (req: 
     const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
     if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
 
-    const allowedStatuses = ["Vendor Confirmed", "Processing", "Customer Approved"];
+    const allowedStatuses = ["Vendor Confirmed", "In Progress"];
     if (!allowedStatuses.includes(order.status)) {
       return res.status(400).json({ message: `Status saat ini "${order.status}" tidak bisa dikonfirmasi.` });
     }
@@ -490,9 +592,12 @@ fulfillmentAdminRouter.post("/orders/:orderId/confirm-fulfillment", async (req: 
       ? extractVfData(latestVfLink as unknown as Record<string, unknown>)
       : null;
 
-    await db.update(logisticOrdersTable)
-      .set({ status: "In Progress" })
-      .where(eq(logisticOrdersTable.id, orderId));
+    await transitionLogisticOrderStatus(orderId, "In Progress", {
+      actorType: "admin",
+      actorName: "Admin",
+      source: "orderFulfillment/confirm-fulfillment",
+      skipAudit: false,
+    });
 
     await db.insert(orderUpdatesTable).values({
       orderId,
@@ -573,14 +678,18 @@ fulfillmentAdminRouter.post("/orders/:orderId/complete-order", async (req: Reque
     const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
     if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
 
-    const allowedStatuses = ["In Progress", "Vendor Confirmed", "Processing"];
+    const allowedStatuses = ["In Progress", "Vendor Confirmed"];
     if (!allowedStatuses.includes(order.status)) {
       return res.status(400).json({ message: `Status saat ini "${order.status}" tidak bisa diselesaikan dari sini.` });
     }
 
-    await db.update(logisticOrdersTable)
-      .set({ status: "Completed" })
-      .where(eq(logisticOrdersTable.id, orderId));
+    await transitionLogisticOrderStatus(orderId, "Completed", {
+      actorType: "admin",
+      actorName: "Admin",
+      source: "orderFulfillment/complete-order",
+      force: true,
+      skipAudit: false,
+    });
 
     await db.insert(orderUpdatesTable).values({
       orderId,
@@ -662,9 +771,13 @@ fulfillmentAdminRouter.post(
       `);
 
       // Update status → Completed
-      await db.update(logisticOrdersTable)
-        .set({ status: "Completed" })
-        .where(eq(logisticOrdersTable.id, orderId));
+      await transitionLogisticOrderStatus(orderId, "Completed", {
+        actorType: "admin",
+        actorName: "Admin",
+        source: "orderFulfillment/pod-upload",
+        force: true,
+        skipAudit: false,
+      });
 
       // Activity log
       const logNote = [

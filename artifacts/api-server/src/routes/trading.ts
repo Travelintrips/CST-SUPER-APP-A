@@ -373,4 +373,94 @@ router.delete("/suppliers/catalog/:itemId", async (req, res) => {
   return res.json({ message: "Deleted", id: itemId });
 });
 
+// ─── Vendor Drivers ─────────────────────────────────────────────────────────
+
+// GET /api/trading/suppliers/:id/drivers
+router.get("/suppliers/:id/drivers", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const supplierId = Number(req.params.id);
+  if (Number.isNaN(supplierId)) return res.status(400).json({ message: "Invalid id" });
+  const rows = await db.execute(sql`
+    SELECT id, supplier_id AS "supplierId", name, phone,
+           vehicle_plate AS "vehiclePlate", vehicle_type AS "vehicleType",
+           is_active AS "isActive", created_at AS "createdAt"
+    FROM vendor_drivers
+    WHERE supplier_id = ${supplierId}
+    ORDER BY name ASC
+  `);
+  return res.json({ drivers: rows.rows });
+});
+
+// POST /api/trading/suppliers/:id/drivers
+router.post("/suppliers/:id/drivers", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const supplierId = Number(req.params.id);
+  if (Number.isNaN(supplierId)) return res.status(400).json({ message: "Invalid id" });
+  const { name, phone, vehiclePlate, vehicleType } = req.body as {
+    name?: string; phone?: string; vehiclePlate?: string; vehicleType?: string;
+  };
+  if (!name?.trim()) return res.status(400).json({ message: "Nama driver wajib diisi" });
+  const result = await db.execute(sql`
+    INSERT INTO vendor_drivers (supplier_id, name, phone, vehicle_plate, vehicle_type)
+    VALUES (${supplierId}, ${name.trim()}, ${phone?.trim() || null}, ${vehiclePlate?.trim() || null}, ${vehicleType?.trim() || null})
+    RETURNING id, supplier_id AS "supplierId", name, phone,
+              vehicle_plate AS "vehiclePlate", vehicle_type AS "vehicleType",
+              is_active AS "isActive", created_at AS "createdAt"
+  `);
+  return res.status(201).json({ driver: result.rows[0] });
+});
+
+// PUT /api/trading/suppliers/drivers/:driverId
+router.put("/suppliers/drivers/:driverId", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const driverId = Number(req.params.driverId);
+  if (Number.isNaN(driverId)) return res.status(400).json({ message: "Invalid id" });
+  const { name, phone, vehiclePlate, vehicleType, isActive } = req.body as {
+    name?: string; phone?: string; vehiclePlate?: string; vehicleType?: string; isActive?: boolean;
+  };
+  if (name !== undefined && !name.trim()) return res.status(400).json({ message: "Nama driver wajib diisi" });
+  const result = await db.execute(sql`
+    UPDATE vendor_drivers SET
+      name          = COALESCE(${name?.trim() ?? null}, name),
+      phone         = CASE WHEN ${phone !== undefined} THEN ${phone?.trim() || null} ELSE phone END,
+      vehicle_plate = CASE WHEN ${vehiclePlate !== undefined} THEN ${vehiclePlate?.trim() || null} ELSE vehicle_plate END,
+      vehicle_type  = CASE WHEN ${vehicleType !== undefined} THEN ${vehicleType?.trim() || null} ELSE vehicle_type END,
+      is_active     = CASE WHEN ${isActive !== undefined} THEN ${isActive ?? true} ELSE is_active END
+    WHERE id = ${driverId}
+    RETURNING id, supplier_id AS "supplierId", name, phone,
+              vehicle_plate AS "vehiclePlate", vehicle_type AS "vehicleType",
+              is_active AS "isActive", created_at AS "createdAt"
+  `);
+  if (!result.rows[0]) return res.status(404).json({ message: "Driver tidak ditemukan" });
+  return res.json({ driver: result.rows[0] });
+});
+
+// PATCH /api/trading/suppliers/drivers/:driverId/toggle
+router.patch("/suppliers/drivers/:driverId/toggle", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const driverId = Number(req.params.driverId);
+  if (Number.isNaN(driverId)) return res.status(400).json({ message: "Invalid id" });
+  const result = await db.execute(sql`
+    UPDATE vendor_drivers SET is_active = NOT is_active
+    WHERE id = ${driverId}
+    RETURNING id, supplier_id AS "supplierId", name, phone,
+              vehicle_plate AS "vehiclePlate", vehicle_type AS "vehicleType",
+              is_active AS "isActive", created_at AS "createdAt"
+  `);
+  if (!result.rows[0]) return res.status(404).json({ message: "Driver tidak ditemukan" });
+  return res.json({ driver: result.rows[0] });
+});
+
+// DELETE /api/trading/suppliers/drivers/:driverId
+router.delete("/suppliers/drivers/:driverId", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const driverId = Number(req.params.driverId);
+  if (Number.isNaN(driverId)) return res.status(400).json({ message: "Invalid id" });
+  const result = await db.execute(sql`
+    DELETE FROM vendor_drivers WHERE id = ${driverId} RETURNING id
+  `);
+  if (!result.rows[0]) return res.status(404).json({ message: "Driver tidak ditemukan" });
+  return res.json({ message: "Deleted", id: driverId });
+});
+
 export default router;

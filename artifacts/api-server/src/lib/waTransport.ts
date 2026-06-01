@@ -10,7 +10,7 @@
  *  - Single point untuk rate limiting, dead-letter queue, dll di masa depan
  */
 
-import { sendWhatsApp } from "./fonnte.js";
+import { sendWhatsApp, sendWhatsAppMedia } from "./fonnte.js";
 import { logger } from "./logger.js";
 
 export type WaSendOpts = {
@@ -36,4 +36,22 @@ export async function sendViaService(
   }
   logger.debug({ phone, context: opts?.context, refId: opts?.refId }, "[waTransport] sending WA");
   return sendWhatsApp(phone, message, opts);
+}
+
+/**
+ * Kirim pesan WA dengan gambar/media sebagai lampiran.
+ * Jika mediaUrl kosong, otomatis fallback ke pesan teks biasa.
+ */
+export async function sendMediaViaService(
+  phone: string,
+  message: string,
+  mediaUrl: string,
+  opts?: WaSendOpts,
+): Promise<void> {
+  if (!phone || !message?.trim()) {
+    logger.warn({ phone: phone || "(empty)", opts }, "[waTransport] skip media — phone atau message kosong");
+    return;
+  }
+  logger.debug({ phone, mediaUrl, context: opts?.context, refId: opts?.refId }, "[waTransport] sending WA with media");
+  return sendWhatsAppMedia(phone, message, mediaUrl, opts);
 }

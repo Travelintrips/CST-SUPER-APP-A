@@ -68,6 +68,12 @@ interface VendorRow {
   eta: string | null;
   notes: string | null;
   attachmentUrl: string | null;
+  leadTimeDays: number | null;
+  stockAvailability: string | null;
+  vendorRating: number | null;
+  recommendationScore: number | null;
+  ontimePercentage: number | null;
+  totalOrders: number | null;
   isNewUpdate: boolean;
   openedAt: string | null;
   submittedAt: string | null;
@@ -98,34 +104,76 @@ interface RankingBadge {
   color: string;
 }
 
-function getRankingBadges(vendor: VendorRow, allVendors: VendorRow[]): RankingBadge[] {
+function getRankingBadges(vendor: VendorRow, allVendors: VendorRow[], aiScores?: Map<number, VendorAiScore>, sellingPriceRef?: number | null): RankingBadge[] {
   const badges: RankingBadge[] = [];
   const answered = allVendors.filter(v => v.offeredPrice != null || v.basicPrice != null);
   if (answered.length < 2) return badges;
 
+  // 💰 Best Price
   const prices = answered.map(v => v.offeredPrice ?? v.basicPrice ?? Infinity);
   const minPrice = Math.min(...prices);
   const myPrice = vendor.offeredPrice ?? vendor.basicPrice;
-
   if (myPrice != null && myPrice === minPrice) {
     badges.push({ label: "💰 Best Price", color: "bg-green-100 text-green-700 border-green-200" });
   }
 
-  const answeredWithEta = answered.filter(v => v.eta);
-  if (answeredWithEta.length > 0 && vendor.eta) {
-    const sortedEtas = [...answeredWithEta].sort((a, b) => (a.eta ?? "").localeCompare(b.eta ?? ""));
-    if (sortedEtas[0]?.vendorId === vendor.vendorId) {
-      badges.push({ label: "⚡ Tercepat", color: "bg-blue-100 text-blue-700 border-blue-200" });
+  // 📈 Best Margin (highest margin vs selling price ref)
+  if (sellingPriceRef != null && sellingPriceRef > 0) {
+    const margins = answered
+      .map(v => ({ id: v.vendorId, m: sellingPriceRef - (v.offeredPrice ?? v.basicPrice ?? sellingPriceRef) }))
+      .filter(x => x.m > -Infinity);
+    if (margins.length >= 2) {
+      const maxMargin = Math.max(...margins.map(x => x.m));
+      const myMargin = sellingPriceRef - (myPrice ?? sellingPriceRef);
+      if (myPrice != null && myMargin === maxMargin) {
+        badges.push({ label: "📈 Best Margin", color: "bg-purple-100 text-purple-700 border-purple-200" });
+      }
     }
   }
 
-  if (vendor.submittedAt) {
-    const answeredWithTime = answered.filter(v => v.submittedAt);
-    const sortedByTime = [...answeredWithTime].sort((a, b) =>
-      new Date(a.submittedAt!).getTime() - new Date(b.submittedAt!).getTime()
-    );
-    if (sortedByTime[0]?.vendorId === vendor.vendorId) {
-      badges.push({ label: "🏃 Respon Tercepat", color: "bg-purple-100 text-purple-700 border-purple-200" });
+  // ⚡ Tercepat (Lead Time Days — smaller is better)
+  const withLeadTime = answered.filter(v => v.leadTimeDays != null);
+  if (withLeadTime.length > 0 && vendor.leadTimeDays != null) {
+    const minLt = Math.min(...withLeadTime.map(v => v.leadTimeDays!));
+    if (vendor.leadTimeDays === minLt) {
+      badges.push({ label: "⚡ Tercepat", color: "bg-blue-100 text-blue-700 border-blue-200" });
+    }
+  } else {
+    // Fallback: use eta string comparison
+    const answeredWithEta = answered.filter(v => v.eta);
+    if (answeredWithEta.length > 0 && vendor.eta) {
+      const sortedEtas = [...answeredWithEta].sort((a, b) => (a.eta ?? "").localeCompare(b.eta ?? ""));
+      if (sortedEtas[0]?.vendorId === vendor.vendorId) {
+        badges.push({ label: "⚡ Tercepat", color: "bg-blue-100 text-blue-700 border-blue-200" });
+      }
+    }
+  }
+
+  // 📦 Stok OK
+  if (vendor.stockAvailability === "available") {
+    const othersAvailable = answered.filter(v => v.vendorId !== vendor.vendorId && v.stockAvailability === "available");
+    if (othersAvailable.length === 0) {
+      badges.push({ label: "📦 Stok OK", color: "bg-orange-100 text-orange-700 border-orange-200" });
+    } else {
+      badges.push({ label: "📦 Stok OK", color: "bg-orange-100 text-orange-700 border-orange-200" });
+    }
+  }
+
+  // ⭐ Top Rated (highest vendorRating from vendor_performance; fallback to AI score)
+  const withRating = answered.filter(v => (v.vendorRating ?? 0) > 0);
+  if (withRating.length >= 2 && (vendor.vendorRating ?? 0) > 0) {
+    const maxRating = Math.max(...withRating.map(v => v.vendorRating!));
+    if (vendor.vendorRating === maxRating) {
+      badges.push({ label: "⭐ Top Rated", color: "bg-yellow-100 text-yellow-700 border-yellow-200" });
+    }
+  } else if (aiScores && aiScores.size >= 2) {
+    const myAi = aiScores.get(vendor.vendorId);
+    if (myAi) {
+      const allScores = [...aiScores.values()].map(s => s.aiScore);
+      const maxScore = Math.max(...allScores);
+      if (myAi.aiScore === maxScore && maxScore > 0) {
+        badges.push({ label: "⭐ Top Rated", color: "bg-yellow-100 text-yellow-700 border-yellow-200" });
+      }
     }
   }
 
@@ -179,6 +227,7 @@ export default function LogisticsRfqComparisonPage() {
   const [quoteSendWa, setQuoteSendWa] = useState(true);
 
   const [freightConfirmDialog, setFreightConfirmDialog] = useState(false);
+  const [sortBy, setSortBy] = useState<"price" | "leadtime" | "stock" | "score" | "margin">("price");
 
   const { data, isLoading, refetch } = useQuery<ComparisonData>({
     queryKey: ["rfq-comparison", rfqId],
@@ -618,7 +667,39 @@ export default function LogisticsRfqComparisonPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Vendor comparison table */}
           <div className="lg:col-span-2 space-y-3">
-            <h2 className="font-semibold text-gray-800">Perbandingan Vendor</h2>
+            {(data.finalSellingPrice ?? data.quotedPrice) != null && (
+              <div className="flex items-center gap-2 px-3 py-2 bg-purple-50 border border-purple-100 rounded-lg text-xs text-purple-800">
+                <span className="font-medium">📈 Referensi Margin:</span>
+                <span>Harga jual ke customer = <strong>{idr(data.finalSellingPrice ?? data.quotedPrice)}</strong></span>
+                <span className="text-purple-500">— margin tiap vendor dihitung terhadap nilai ini</span>
+              </div>
+            )}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="font-semibold text-gray-800">Perbandingan Vendor</h2>
+              {data.vendors.length > 1 && (
+                <div className="flex items-center gap-1.5 text-xs">
+                  <span className="text-gray-500">Urutkan:</span>
+                  {(["price", "margin", "leadtime", "stock", "score"] as const).map((key) => {
+                    const hasSellingRef = !!(data.finalSellingPrice ?? data.quotedPrice);
+                    if (key === "margin" && !hasSellingRef) return null;
+                    const labels: Record<string, string> = { price: "💰 Harga", leadtime: "⚡ Lead Time", stock: "📦 Stok", score: "⭐ Score", margin: "📈 Margin" };
+                    return (
+                      <button
+                        key={key}
+                        onClick={() => setSortBy(key)}
+                        className={`px-2 py-1 rounded border text-xs font-medium transition-colors ${
+                          sortBy === key
+                            ? "bg-blue-600 text-white border-blue-600"
+                            : "bg-white text-gray-600 border-gray-200 hover:border-blue-300"
+                        }`}
+                      >
+                        {labels[key]}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
             {data.vendors.length === 0 ? (
               <Card>
                 <CardContent className="p-8 text-center text-gray-500">
@@ -627,27 +708,62 @@ export default function LogisticsRfqComparisonPage() {
                 </CardContent>
               </Card>
             ) : (
-              data.vendors.map((v, idx) => (
-                <VendorCard
-                  key={v.linkId}
-                  vendor={v}
-                  rank={idx + 1}
-                  rankingBadges={getRankingBadges(v, data.vendors)}
-                  aiScore={scoreMap.get(v.vendorId)}
-                  hasSelected={hasSelected}
-                  onSelect={() => {
-                    setSelectDialog({ linkId: v.linkId, vendorName: v.vendorName, price: v.offeredPrice ?? v.basicPrice });
-                    const _vp = v.offeredPrice ?? v.basicPrice;
-                    setSellingPrice(_vp ? String(_vp) : "");
-                  }}
-                  onRevision={() => { setRevisionDialog({ linkId: v.linkId, vendorName: v.vendorName }); setRevisionMsg(""); }}
-                  onReject={() => actionMut.mutate({ linkId: v.linkId, action: "reject" })}
-                  onMarkRead={() => actionMut.mutate({ linkId: v.linkId, action: "mark_read" })}
-                  onCopyLink={() => copyLink(window.location.origin + v.formUrl.replace(/^https?:\/\/[^/]+/, ""))}
-                  onRefreshPrice={() => refreshPriceMut.mutate(v.linkId)}
-                  isRefreshingPrice={refreshPriceMut.isPending && refreshPriceMut.variables === v.linkId}
-                />
-              ))
+              (() => {
+                const STOCK_ORDER: Record<string, number> = { available: 0, limited: 1, unknown: 2, unavailable: 3 };
+                const sorted = [...data.vendors].sort((a, b) => {
+                  if (a.status === "rejected" && b.status !== "rejected") return 1;
+                  if (b.status === "rejected" && a.status !== "rejected") return -1;
+                  if (a.status === "expired" && b.status !== "expired") return 1;
+                  if (b.status === "expired" && a.status !== "expired") return -1;
+                  if (sortBy === "price") {
+                    return (a.offeredPrice ?? a.basicPrice ?? 9e9) - (b.offeredPrice ?? b.basicPrice ?? 9e9);
+                  }
+                  if (sortBy === "leadtime") {
+                    const la = a.leadTimeDays ?? 999;
+                    const lb = b.leadTimeDays ?? 999;
+                    return la - lb;
+                  }
+                  if (sortBy === "stock") {
+                    return (STOCK_ORDER[a.stockAvailability ?? "unknown"] ?? 2) - (STOCK_ORDER[b.stockAvailability ?? "unknown"] ?? 2);
+                  }
+                  if (sortBy === "score") {
+                    const sa = scoreMap.get(a.vendorId)?.aiScore ?? a.recommendationScore ?? a.vendorRating ?? 0;
+                    const sb = scoreMap.get(b.vendorId)?.aiScore ?? b.recommendationScore ?? b.vendorRating ?? 0;
+                    return sb - sa;
+                  }
+                  if (sortBy === "margin") {
+                    const ref = data.finalSellingPrice ?? data.quotedPrice ?? 0;
+                    const ma = ref - (a.offeredPrice ?? a.basicPrice ?? 0);
+                    const mb = ref - (b.offeredPrice ?? b.basicPrice ?? 0);
+                    return mb - ma;
+                  }
+                  return 0;
+                });
+                const sellingRef = data.finalSellingPrice ?? data.quotedPrice ?? null;
+                return sorted.map((v, idx) => (
+                  <VendorCard
+                    key={v.linkId}
+                    vendor={v}
+                    rank={idx + 1}
+                    rankingBadges={getRankingBadges(v, data.vendors, scoreMap, sellingRef)}
+                    aiScore={scoreMap.get(v.vendorId)}
+                    allVendors={data.vendors}
+                    hasSelected={hasSelected}
+                    sellingPriceRef={sellingRef}
+                    onSelect={() => {
+                      setSelectDialog({ linkId: v.linkId, vendorName: v.vendorName, price: v.offeredPrice ?? v.basicPrice });
+                      const _vp = v.offeredPrice ?? v.basicPrice;
+                      setSellingPrice(_vp ? String(_vp) : "");
+                    }}
+                    onRevision={() => { setRevisionDialog({ linkId: v.linkId, vendorName: v.vendorName }); setRevisionMsg(""); }}
+                    onReject={() => actionMut.mutate({ linkId: v.linkId, action: "reject" })}
+                    onMarkRead={() => actionMut.mutate({ linkId: v.linkId, action: "mark_read" })}
+                    onCopyLink={() => copyLink(window.location.origin + v.formUrl.replace(/^https?:\/\/[^/]+/, ""))}
+                    onRefreshPrice={() => refreshPriceMut.mutate(v.linkId)}
+                    isRefreshingPrice={refreshPriceMut.isPending && refreshPriceMut.variables === v.linkId}
+                  />
+                ));
+              })()
             )}
           </div>
 
@@ -970,10 +1086,23 @@ function StatCard({ label, value, icon, color }: {
   );
 }
 
+function DimBar({ label, pct, color }: { label: string; pct: number; color: string }) {
+  return (
+    <div className="flex items-center gap-1.5 text-xs">
+      <span className="w-16 text-gray-400 shrink-0 truncate">{label}</span>
+      <div className="flex-1 bg-gray-100 rounded-full h-1.5 overflow-hidden">
+        <div className={`h-1.5 rounded-full ${color}`} style={{ width: `${Math.max(4, Math.min(100, pct))}%` }} />
+      </div>
+      <span className="w-7 text-right text-gray-500 font-mono">{Math.round(pct)}</span>
+    </div>
+  );
+}
+
 function VendorCard({
-  vendor, rank, rankingBadges, aiScore, hasSelected, onSelect, onRevision, onReject, onMarkRead, onCopyLink, onRefreshPrice, isRefreshingPrice,
+  vendor, rank, rankingBadges, aiScore, allVendors, hasSelected, sellingPriceRef, onSelect, onRevision, onReject, onMarkRead, onCopyLink, onRefreshPrice, isRefreshingPrice,
 }: {
-  vendor: VendorRow; rank: number; rankingBadges?: RankingBadge[]; aiScore?: VendorAiScore; hasSelected: boolean;
+  vendor: VendorRow; rank: number; rankingBadges?: RankingBadge[]; aiScore?: VendorAiScore;
+  allVendors: VendorRow[]; hasSelected: boolean; sellingPriceRef: number | null;
   onSelect: () => void; onRevision: () => void;
   onReject: () => void; onMarkRead: () => void; onCopyLink: () => void;
   onRefreshPrice: () => void; isRefreshingPrice?: boolean;
@@ -982,6 +1111,47 @@ function VendorCard({
   const canAct = !hasSelected && !["rejected", "expired", "not_selected"].includes(vendor.status);
   const hasAnswer = !!vendor.submittedAt;
   const price = vendor.offeredPrice ?? vendor.basicPrice;
+
+  // Margin computation vs selling price reference
+  const marginRp = (sellingPriceRef != null && sellingPriceRef > 0 && price != null)
+    ? sellingPriceRef - price : null;
+  const marginPct = (marginRp != null && sellingPriceRef != null && sellingPriceRef > 0)
+    ? (marginRp / sellingPriceRef) * 100 : null;
+
+  // Compute per-dimension normalized scores (0–100) relative to all answered vendors
+  const answered = allVendors.filter(v => v.offeredPrice != null || v.basicPrice != null);
+  const dimScores = (() => {
+    if (answered.length < 2 || !hasAnswer) return null;
+    // Price: lower is better
+    const prices = answered.map(v => v.offeredPrice ?? v.basicPrice ?? Infinity).filter(p => p < Infinity);
+    const minP = Math.min(...prices); const maxP = Math.max(...prices); const rangeP = maxP - minP || 1;
+    const myPrice = price ?? Infinity;
+    const priceScore = myPrice < Infinity ? 100 - ((myPrice - minP) / rangeP) * 100 : 0;
+    // Lead Time: lower is better
+    const lts = answered.filter(v => v.leadTimeDays != null).map(v => v.leadTimeDays!);
+    const minLt = lts.length ? Math.min(...lts) : null; const maxLt = lts.length ? Math.max(...lts) : null;
+    const ltRange = (minLt != null && maxLt != null) ? (maxLt - minLt || 1) : 1;
+    const ltScore = (vendor.leadTimeDays != null && minLt != null)
+      ? 100 - ((vendor.leadTimeDays - minLt) / ltRange) * 100 : null;
+    // Stock: categorical
+    const STOCK_MAP: Record<string, number> = { available: 100, limited: 50, unknown: 30, unavailable: 0 };
+    const stockScore = STOCK_MAP[vendor.stockAvailability ?? "unknown"] ?? 30;
+    // Rating: higher is better (0–5 → 0–100)
+    const ratingScore = vendor.vendorRating != null ? (vendor.vendorRating / 5) * 100 : null;
+    // Margin: higher is better (normalized against all vendors' margins)
+    let marginScore: number | null = null;
+    if (sellingPriceRef != null && sellingPriceRef > 0) {
+      const vendorMargins = answered
+        .map(v => sellingPriceRef - (v.offeredPrice ?? v.basicPrice ?? sellingPriceRef))
+        .filter(m => isFinite(m));
+      if (vendorMargins.length >= 2 && price != null) {
+        const minM = Math.min(...vendorMargins); const maxM = Math.max(...vendorMargins); const rangeM = maxM - minM || 1;
+        const myM = sellingPriceRef - price;
+        marginScore = ((myM - minM) / rangeM) * 100;
+      }
+    }
+    return { priceScore, ltScore, stockScore, ratingScore, marginScore };
+  })();
   const [showScoreDetail, setShowScoreDetail] = useState(false);
 
   const tierCfg = aiScore ? AI_TIER[aiScore.tier] : null;
@@ -1060,12 +1230,73 @@ function VendorCard({
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-3 mb-3 text-sm">
-          <InfoItem label="Harga Penawaran" value={idr(price)} highlight={!!hasAnswer} />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3 text-sm">
+          <div>
+            <p className="text-xs text-gray-400">Harga Penawaran</p>
+            <p className={`font-semibold ${hasAnswer ? "text-gray-900" : "text-gray-400"}`}>{idr(price)}</p>
+            {marginRp != null && (
+              <p className={`text-xs font-medium mt-0.5 ${marginRp >= 0 ? "text-green-600" : "text-red-600"}`}>
+                Margin: {marginPct != null ? `${marginPct.toFixed(1)}%` : "—"} ({marginRp >= 0 ? "+" : ""}{idr(Math.round(marginRp))})
+              </p>
+            )}
+          </div>
+          <div>
+            <p className="text-xs text-gray-400">Lead Time</p>
+            <p className="font-medium text-gray-800">
+              {vendor.leadTimeDays != null ? `${vendor.leadTimeDays} hari` : "—"}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-400">Stok</p>
+            {vendor.stockAvailability && vendor.stockAvailability !== "unknown" ? (
+              <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full border ${
+                vendor.stockAvailability === "available" ? "bg-green-100 text-green-700 border-green-200" :
+                vendor.stockAvailability === "limited" ? "bg-yellow-100 text-yellow-700 border-yellow-200" :
+                vendor.stockAvailability === "unavailable" ? "bg-red-100 text-red-600 border-red-200" :
+                "bg-gray-100 text-gray-500 border-gray-200"
+              }`}>
+                {vendor.stockAvailability === "available" ? "✓ Tersedia" :
+                 vendor.stockAvailability === "limited" ? "⚠ Terbatas" :
+                 vendor.stockAvailability === "unavailable" ? "✕ Habis" : "? Tidak Diketahui"}
+              </span>
+            ) : (
+              <p className="font-medium text-gray-400">—</p>
+            )}
+          </div>
+          <div>
+            <p className="text-xs text-gray-400">Rating Vendor</p>
+            {vendor.vendorRating != null && vendor.vendorRating > 0 ? (
+              <div className="flex items-center gap-1">
+                <span className="text-yellow-400 text-sm leading-none">
+                  {"★".repeat(Math.round(vendor.vendorRating))}{"☆".repeat(5 - Math.round(vendor.vendorRating))}
+                </span>
+                <span className="text-xs text-gray-500 font-medium">{vendor.vendorRating.toFixed(1)}</span>
+              </div>
+            ) : vendor.totalOrders != null && vendor.totalOrders > 0 ? (
+              <p className="text-xs text-gray-500">{vendor.totalOrders} order</p>
+            ) : (
+              <p className="font-medium text-gray-400">Baru</p>
+            )}
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-3 mb-3 text-sm">
           <InfoItem label="ETA" value={vendor.eta ?? "—"} />
           <InfoItem label="Dibuka" value={vendor.openedAt ? timeSince(vendor.openedAt) : "Belum dibuka"} />
           <InfoItem label="Submit" value={vendor.submittedAt ? timeSince(vendor.submittedAt) : "Belum"} />
         </div>
+
+        {dimScores && (
+          <div className="mb-3 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2 space-y-1.5">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Skor Perbandingan</p>
+            <DimBar label="💰 Harga" pct={dimScores.priceScore} color="bg-green-500" />
+            <DimBar label="⚡ Lead Time" pct={dimScores.ltScore ?? 0} color={dimScores.ltScore != null ? "bg-blue-500" : "bg-gray-200"} />
+            <DimBar label="📦 Stok" pct={dimScores.stockScore} color="bg-orange-500" />
+            <DimBar label="⭐ Rating" pct={dimScores.ratingScore ?? 0} color={dimScores.ratingScore != null ? "bg-yellow-500" : "bg-gray-200"} />
+            {dimScores.marginScore != null && (
+              <DimBar label="📈 Margin" pct={dimScores.marginScore} color="bg-purple-500" />
+            )}
+          </div>
+        )}
 
         {vendor.notes && (
           <div className="text-xs bg-gray-50 border border-gray-100 rounded-lg p-2 mb-3 text-gray-600">

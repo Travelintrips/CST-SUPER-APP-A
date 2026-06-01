@@ -48,12 +48,13 @@ import GoodsReceiptEditorPage from "@/pages/purchase/gr-editor";
 import QcListPage from "@/pages/purchase/qc-list";
 import QcEditorPage from "@/pages/purchase/qc-editor";
 import { PurchaseReturnsListPage, PurchaseReturnEditorPage } from "@/pages/purchase/purchase-returns";
+import ProductTemplatesPage from "@/pages/product-templates/index";
+import ProductTemplateDetailPage from "@/pages/product-templates/detail";
 import { VendorInvoicesListPage, VendorInvoiceEditorPage } from "@/pages/purchase/vendor-invoices";
 import { PaymentRequestsListPage, PaymentRequestEditorPage } from "@/pages/purchase/payment-requests";
 import { LandedCostsListPage, LandedCostEditorPage } from "@/pages/purchase/landed-costs";
 import VendorComparisonPage from "@/pages/purchase/vendor-comparison";
 import PurchaseReceivePage from "@/pages/purchase/receive";
-import ThaiTeaPurchasePage from "@/pages/purchase/thai-tea";
 // Reports
 import ReportsSalesPage from "@/pages/reports/sales";
 import ReportsPurchasePage from "@/pages/reports/purchase";
@@ -103,7 +104,6 @@ import EnterpriseWaTemplatesPage from "@/pages/settings/enterprise-wa-templates"
 import LogisticsUnitsPage from "@/pages/settings/logistics-units";
 import SettingsRolesPage from "@/pages/settings-roles";
 import SettingsApprovalRulesPage from "@/pages/settings-approval-rules";
-import ProductTemplatesPage from "@/pages/product-templates";
 import UsersPage from "@/pages/users";
 import MediaManagerPage from "@/pages/media-manager";
 import OrgManagementPage from "@/pages/OrgManagementPage";
@@ -114,13 +114,6 @@ import AuditComparePage from "@/pages/audit/compare";
 // Products
 import ProductItemsPage from "@/pages/products/items";
 import ProductRecipesPage from "@/pages/products/recipes";
-// Thai Tea
-import ThaiTeaDashboardPage from "@/pages/thai-tea/dashboard";
-import ThaiTeaStockPage from "@/pages/thai-tea/stock";
-import ThaiTeaBranchesPage from "@/pages/thai-tea/branches";
-import ThaiTeaProductionPage from "@/pages/thai-tea/production";
-import ThaiTeaRecipesPage from "@/pages/thai-tea/recipes";
-import ThaiTeaReportsPage from "@/pages/thai-tea/reports";
 // Portal
 import PortalCustomersPage from "@/pages/portal-customers";
 import PortalOnboardingApprovalsPage from "@/pages/portal-onboarding-approvals";
@@ -129,8 +122,10 @@ import LogisticsRfqListPage from "@/pages/logistics-rfq-list";
 import LogisticsRfqDetailPage from "@/pages/logistics-rfq-detail";
 import LogisticsRfqComparisonPage from "@/pages/logistics-rfq-comparison";
 import LogisticOrderDetailPage from "@/pages/logistics/order-detail";
+import OrderAuditTrailPage from "@/pages/logistics/order-audit-trail";
 import VendorPerformancePage from "@/pages/logistics/vendor-performance";
 import InternalTasksPage from "@/pages/logistics/internal-tasks";
+import ExceptionsPage from "@/pages/exceptions/index";
 // Misc
 import NotificationsPage from "@/pages/notifications";
 import IntelligenceAlertsPage from "@/pages/intelligence-alerts";
@@ -140,6 +135,7 @@ import AiDecisionMemoryPage from "@/pages/ai-decision-memory";
 import WaNotificationHistoryPage from "@/pages/wa-notification-history";
 import VendorLeaderboardPage from "@/pages/vendor-leaderboard";
 import AnalyticsDashboardPage from "@/pages/analytics-dashboard";
+import EnterpriseDashboardPage from "@/pages/enterprise-dashboard";
 import POOrdersPage from "@/pages/purchase/po-orders";
 import VendorFormsPage from "@/pages/purchase/vendor-forms";
 import VmfAuditTrailPage from "@/pages/purchase/vmf-audit-trail";
@@ -179,11 +175,13 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/logistics/driver-performance" component={PR(LogisticsDriverPerformancePage)} />
       <Route path="/logistics/quote-requests" component={PR(LogisticsQuoteRequestsPage)} />
       <Route path="/logistics/vendor-quote/:token" component={LogisticsVendorQuotePage} />
+      <Route path="/logistics/quotation-reply" component={PR(LogisticsQuotationReplyPage)} />
       <Route path="/logistics/quotation-reply/:token" component={LogisticsQuotationReplyPage} />
       <Route path="/logistics/margin-rules" component={PR(LogisticsMarginRulesPage)} />
       <Route path="/logistics/rfq/:rfqId/comparison" component={PR(LogisticsRfqComparisonPage)} />
       <Route path="/logistics/rfq/:rfqId/detail" component={PR(LogisticsRfqDetailPage)} />
       <Route path="/logistics/rfq" component={PR(LogisticsRfqListPage)} />
+      <Route path="/logistics/orders/:orderId/audit-trail" component={PR(OrderAuditTrailPage)} />
       <Route path="/logistics/orders/:orderId" component={PR(LogisticOrderDetailPage)} />
       <Route path="/logistics/vendor-performance" component={PR(VendorPerformancePage)} />
       <Route path="/logistics/internal-tasks" component={PR(InternalTasksPage)} />
@@ -247,7 +245,6 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/purchase/landed-costs/:id" component={PR(LandedCostEditorPage)} />
       <Route path="/purchase/landed-costs" component={PR(LandedCostsListPage)} />
       <Route path="/purchase/receive" component={PR(PurchaseReceivePage)} />
-      <Route path="/purchase/thai-tea" component={PR(ThaiTeaPurchasePage)} />
       <Route path="/purchase" component={PR(PurchaseDashboardPage)} />
 
       {/* ── Reports ────────────────────────────────────────────────────── */}
@@ -318,14 +315,10 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/products/items" component={PR(ProductItemsPage)} />
       <Route path="/products/recipes" component={PR(ProductRecipesPage)} />
 
-      {/* ── Thai Tea ───────────────────────────────────────────────────── */}
-      <Route path="/thai-tea/dashboard" component={PR(ThaiTeaDashboardPage)} />
-      <Route path="/thai-tea/stock" component={PR(ThaiTeaStockPage)} />
-      <Route path="/thai-tea/branches" component={PR(ThaiTeaBranchesPage)} />
-      <Route path="/thai-tea/production" component={PR(ThaiTeaProductionPage)} />
-      <Route path="/thai-tea/recipes" component={PR(ThaiTeaRecipesPage)} />
-      <Route path="/thai-tea/reports" component={PR(ThaiTeaReportsPage)} />
-      <Route path="/thai-tea" component={PR(ThaiTeaDashboardPage)} />
+      {/* ── Product Template Engine ─────────────────────────────────────── */}
+      <Route path="/product-templates/:id" component={PR(ProductTemplateDetailPage)} />
+      <Route path="/product-templates" component={PR(ProductTemplatesPage)} />
+
 
 
       {/* ── Vendor Leaderboard ─────────────────────────────────────────── */}
@@ -333,10 +326,12 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
 
       {/* ── Notifications & Analytics ──────────────────────────────────── */}
       <Route path="/notifications" component={PR(NotificationsPage)} />
+      <Route path="/exceptions" component={PR(ExceptionsPage)} />
       <Route path="/intelligence-alerts" component={PR(IntelligenceAlertsPage)} />
       <Route path="/ai-approvals" component={PR(AiApprovalsPage)} />
       <Route path="/operational-context" component={PR(OperationalContextPage)} />
       <Route path="/analytics" component={PR(AnalyticsDashboardPage)} />
+      <Route path="/enterprise-dashboard" component={PR(EnterpriseDashboardPage)} />
 
       {/* ── Audit ERP ──────────────────────────────────────────────────── */}
       <Route path="/audit/compare" component={PR(AuditComparePage)} />

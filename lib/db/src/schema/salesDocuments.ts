@@ -29,6 +29,7 @@ export const salesPaymentStatusEnum = pgEnum("sales_payment_status", [
   "unpaid",
   "partial",
   "paid",
+  "overdue",
 ]);
 
 export const salesDocumentsTable = pgTable("sales_documents", {

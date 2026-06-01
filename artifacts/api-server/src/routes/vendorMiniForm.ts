@@ -23,6 +23,7 @@ import {
 } from "@workspace/db";
 import { getInCodeTemplate } from "@workspace/product-templates";
 import { requireClerkUser } from "../lib/requireAdmin";
+import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
 import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminGroupWa } from "../lib/adminWa.js";
@@ -30,6 +31,7 @@ import { createSalesOrderFromVmfApproval } from "../lib/vmfSoIntegration.js";
 import { updateOrderProgress } from "../lib/orderProgress.js";
 import {
   sendCustomerApprovedNotification,
+
   sendSoCreatedNotification,
   sendOpRequestNotification,
   sendVendorRequestNotification,
@@ -80,11 +82,18 @@ async function buildOrderDataFromRowWithItems(row: typeof logisticOrdersTable.$i
     const items = await db.select({
       name: logisticOrderItemsTable.serviceName,
       subtotal: logisticOrderItemsTable.subtotal,
+      inputData: logisticOrderItemsTable.inputData,
     }).from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, row.id));
-    base.orderItems = items.map(i => ({
-      name: i.name,
-      subtotal: i.subtotal ? parseFloat(i.subtotal) : null,
-    }));
+    base.orderItems = items.map(i => {
+      const inp = (i.inputData as Record<string, unknown> | null) ?? {};
+      const qtyRaw = inp.qty ?? inp.quantity ?? inp.jumlah;
+      return {
+        name: i.name,
+        qty: qtyRaw != null ? Number(qtyRaw) || null : null,
+        unit: inp.unit ? String(inp.unit) : null,
+        subtotal: i.subtotal ? parseFloat(i.subtotal) : null,
+      };
+    });
   } catch { /* non-critical, skip */ }
   return base;
 }
@@ -145,7 +154,7 @@ type CachedForm = {
   isActive: boolean; expiresAt: Date | null; mode: string;
   orderId: number | null; orderNumber: string | null; orderItemId: number | null;
   phase: string | null; maxSubmissions: number | null; resubmitAllowed: boolean | null;
-  formTarget: string;
+  formTarget: string; adminNotes: string | null; commodityTemplateId: number | null;
   expiresCache: number;
 };
 
@@ -224,6 +233,7 @@ export const SERVICE_SCHEMAS: Record<string, {
     type: "text" | "number" | "select" | "textarea" | "date";
     options?: string[]; required?: boolean; placeholder?: string;
     section?: "quotation" | "operational" | "both";
+    isUpload?: boolean;
   }[];
 }> = {
   product: {
@@ -541,6 +551,41 @@ export const SERVICE_SCHEMAS: Record<string, {
   },
 };
 
+// ── Universal operational fields (appended to all schemas for fulfillment form) ─
+const UNIVERSAL_OP_FIELDS: {
+  key: string; label: string;
+  type: "text" | "number" | "select" | "textarea" | "date";
+  options?: string[]; required?: boolean; placeholder?: string;
+  section?: "quotation" | "operational" | "both";
+  isUpload?: boolean;
+}[] = [
+  { key: "stock_status",       label: "Status Ketersediaan",     type: "select",   required: true,  options: ["Available", "Partial Available", "Not Available"],              section: "operational" },
+  { key: "ready_date",         label: "Tanggal Ready",           type: "date",                                                                                                 section: "operational" },
+  { key: "delivery_method",    label: "Metode Pengiriman",       type: "select",   required: true,  options: ["Vendor Delivery", "Customer Pickup", "Third Party Carrier"],    section: "operational" },
+  { key: "carrier_name",       label: "Carrier / Forwarder",     type: "text",                      placeholder: "Nama perusahaan pengiriman / carrier",                       section: "operational" },
+  { key: "foto_barang",        label: "Foto Barang",             type: "text",                      placeholder: "Upload foto barang / kargo",                                 section: "operational", isUpload: true },
+  { key: "packing_list_doc",   label: "Packing List",            type: "text",                      placeholder: "Upload packing list",                                        section: "operational", isUpload: true },
+  { key: "invoice_vendor_doc", label: "Invoice Vendor",          type: "text",                      placeholder: "Upload invoice vendor",                                      section: "operational", isUpload: true },
+  { key: "pod_doc",            label: "Proof of Delivery (POD)", type: "text",                      placeholder: "Upload bukti pengiriman / POD",                              section: "operational", isUpload: true },
+];
+
+// ── PUBLIC: GET /api/vendor-form/local-file/:filename ─────────────────────────
+vendorMiniFormRouter.get("/local-file/:filename", async (req: Request, res: Response) => {
+  const { filename } = req.params as { filename: string };
+  if (!/^[a-zA-Z0-9_\-]+\.[a-z0-9]+$/i.test(filename)) return res.status(400).send("Invalid");
+  try {
+    const { promises: fs } = await import("fs");
+    const path = await import("path");
+    const data = await fs.readFile(path.join("/tmp/vmf-uploads", filename));
+    const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+    const mimeMap: Record<string, string> = { pdf: "application/pdf", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp" };
+    res.setHeader("Content-Type", mimeMap[ext] ?? "application/octet-stream");
+    return res.send(data);
+  } catch {
+    return res.status(404).send("Not found");
+  }
+});
+
 // ── PUBLIC: GET /api/vendor-form/:token ───────────────────────────────────────
 
 vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
@@ -565,6 +610,8 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
           maxSubmissions: vendorMiniFormLinksTable.maxSubmissions,
           resubmitAllowed: vendorMiniFormLinksTable.resubmitAllowed,
           formTarget: vendorMiniFormLinksTable.formTarget,
+          adminNotes: vendorMiniFormLinksTable.adminNotes,
+          commodityTemplateId: vendorMiniFormLinksTable.commodityTemplateId,
           vendorName: suppliersTable.name,
           vendorPhone: suppliersTable.phone,
           vendorContactPerson: suppliersTable.contactPerson,
@@ -590,6 +637,8 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
         maxSubmissions: dbRow.maxSubmissions ?? null,
         resubmitAllowed: dbRow.resubmitAllowed ?? false,
         formTarget: dbRow.formTarget ?? "vendor",
+        adminNotes: dbRow.adminNotes ?? null,
+        commodityTemplateId: dbRow.commodityTemplateId ?? null,
         vendorName: dbRow.linkVendorName ?? dbRow.vendorName ?? null,
         vendorPhone: dbRow.vendorPhone ?? null,
         vendorContactPerson: dbRow.vendorContactPerson ?? null,
@@ -633,33 +682,154 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
     }
 
     const schema = SERVICE_SCHEMAS[row.serviceType] ?? null;
+    const _baseFields = schema ? schema.fields.filter(f => {
+      if (!f.section) return true;
+      if (row!.phase === "operational") return f.section === "operational" || f.section === "both";
+      return f.section === "quotation" || f.section === "both";
+    }) : [];
+    const _existingKeys = new Set(_baseFields.map(f => f.key));
+    const _universalFields = row!.phase === "operational"
+      ? UNIVERSAL_OP_FIELDS.filter(f => !_existingKeys.has(f.key))
+      : [];
     const filteredSchema = schema ? {
       ...schema,
-      fields: schema.fields.filter(f => {
-        if (!f.section) return true;
-        if (row!.phase === "operational") return f.section === "operational" || f.section === "both";
-        return f.section === "quotation" || f.section === "both";
-      }),
+      fields: [..._baseFields, ..._universalFields],
     } : null;
 
     let productTemplate = null;
+    let orderContext: {
+      customerName: string | null;
+      requiredDate: string | null;
+      adminNotes: string | null;
+      origin: string | null;
+      destination: string | null;
+      shipmentType: string | null;
+      items: Array<{
+        serviceName: string; sku: string | null;
+        qty: string | null; unit: string | null;
+        unitPrice: string | null; subtotal: string | null; category: string | null;
+      }>;
+    } | null = null;
+
+    // Priority 1: commodity template dari DB (Product Template Engine)
+    if (row.commodityTemplateId) {
+      try {
+        const tplRes = await db.execute(sql`SELECT * FROM commodity_templates WHERE id = ${row.commodityTemplateId}`);
+        if (tplRes.rows.length) {
+          const t = tplRes.rows[0] as Record<string, unknown>;
+          const [fieldsRes, docsRes, clRes] = await Promise.all([
+            db.execute(sql`SELECT * FROM commodity_template_fields WHERE template_id = ${row.commodityTemplateId} ORDER BY sort_order`),
+            db.execute(sql`SELECT * FROM commodity_required_docs   WHERE template_id = ${row.commodityTemplateId} ORDER BY sort_order`),
+            db.execute(sql`SELECT * FROM commodity_checklists      WHERE template_id = ${row.commodityTemplateId} ORDER BY sort_order`),
+          ]);
+          productTemplate = {
+            category: String(t["key"]),
+            label: String(t["name"]),
+            version: "1.0.0",
+            packagingInstructions: "",
+            conditionalRules: [],
+            validationRules: [],
+            customFields: (fieldsRes.rows as Record<string, unknown>[]).map(f => ({
+              key: String(f["field_key"]),
+              label: String(f["label"]),
+              type: (String(f["field_type"] ?? "text")) as "text" | "number" | "select" | "textarea" | "date",
+              required: Boolean(f["required"]),
+              unit: f["unit"] != null ? String(f["unit"]) : undefined,
+              options: Array.isArray(f["options"]) ? (f["options"] as string[]) : undefined,
+            })),
+            requiredDocuments: (docsRes.rows as Record<string, unknown>[]).map(d => ({
+              key: `doc_${d["id"]}`,
+              label: String(d["doc_name"]),
+              required: Boolean(d["required"]),
+            })),
+            checklist: (clRes.rows as Record<string, unknown>[]).map(c => ({
+              key: `chk_${c["id"]}`,
+              label: String(c["item"]),
+            })),
+          };
+        }
+      } catch { /* non-fatal */ }
+    }
+
     if (row.orderId) {
       try {
         const [order] = await db
-          .select({ commodity: logisticOrdersTable.commodity })
+          .select({
+            commodity: logisticOrdersTable.commodity,
+            customerName: logisticOrdersTable.customerName,
+            requiredDate: logisticOrdersTable.requiredDate,
+            notes: logisticOrdersTable.notes,
+            origin: logisticOrdersTable.origin,
+            destination: logisticOrdersTable.destination,
+            shipmentType: logisticOrdersTable.shipmentType,
+          })
           .from(logisticOrdersTable)
           .where(eq(logisticOrdersTable.id, row.orderId));
+
         if (order?.commodity) {
           const cat = order.commodity.trim().toLowerCase().replace(/[\s-]+/g, "_");
           productTemplate = getInCodeTemplate(cat);
         }
+
+        const orderItems = await db
+          .select({
+            serviceName: logisticOrderItemsTable.serviceName,
+            subtotal: logisticOrderItemsTable.subtotal,
+            inputData: logisticOrderItemsTable.inputData,
+            calculationResult: logisticOrderItemsTable.calculationResult,
+            category: logisticOrderItemsTable.category,
+          })
+          .from(logisticOrderItemsTable)
+          .where(eq(logisticOrderItemsTable.orderId, row.orderId));
+
+        orderContext = {
+          customerName: order?.customerName ?? null,
+          requiredDate: order?.requiredDate ?? null,
+          adminNotes: row.adminNotes ?? order?.notes ?? null,
+          origin: order?.origin ?? null,
+          destination: order?.destination ?? null,
+          shipmentType: order?.shipmentType ?? null,
+          items: orderItems.map((it) => {
+            const inp = (it.inputData ?? {}) as Record<string, unknown>;
+            const calc = ((it.calculationResult ?? {}) as Record<string, unknown>);
+            const qtyStr = inp["qty"] != null ? String(inp["qty"]) : inp["weight"] != null ? String(inp["weight"]) : null;
+            const qtyNum = parseFloat(qtyStr ?? "0") || 0;
+            const subtotalNum = it.subtotal ? parseFloat(it.subtotal) : 0;
+            const unitPriceCalc = (calc["unitPrice"] ?? calc["pricePerUnit"] ?? calc["rate"] ?? calc["baseRate"]) as string | number | undefined;
+            const unitPrice = unitPriceCalc
+              ? String(Math.round(Number(unitPriceCalc)))
+              : (qtyNum > 1 ? String(Math.round(subtotalNum / qtyNum)) : (subtotalNum > 0 ? String(subtotalNum) : null));
+            return {
+              serviceName: it.serviceName,
+              sku: (inp["sku"] as string | undefined) ?? (calc["sku"] as string | undefined) ?? null,
+              qty: qtyStr,
+              unit: inp["unit"] != null ? String(inp["unit"]) : inp["weightUnit"] != null ? String(inp["weightUnit"]) : null,
+              unitPrice,
+              subtotal: it.subtotal,
+              category: it.category,
+            };
+          }),
+        };
       } catch { /* non-fatal */ }
     }
+
     if (!productTemplate && row.adminNotes) {
       const catMatch = /productCategory:(\w+)/.exec(row.adminNotes);
       if (catMatch?.[1]) {
         productTemplate = getInCodeTemplate(catMatch[1]);
       }
+    }
+
+    if (!orderContext && row.adminNotes) {
+      orderContext = {
+        customerName: null,
+        requiredDate: null,
+        adminNotes: row.adminNotes,
+        origin: null,
+        destination: null,
+        shipmentType: null,
+        items: [],
+      };
     }
 
     res.setHeader("Cache-Control", PUBLIC_CACHE);
@@ -679,6 +849,7 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
       alreadySubmitted,
       schema: filteredSchema,
       productTemplate,
+      orderContext,
     });
   } catch (err) {
     req.log?.error({ err }, "vendor-mini-form GET error");
@@ -698,9 +869,17 @@ vendorMiniFormRouter.post("/upload/:token", _vmfUploadRateLimit, _vmfUpload.sing
     const [link] = await db.select({ id: vendorMiniFormLinksTable.id, isActive: vendorMiniFormLinksTable.isActive, expiresAt: vendorMiniFormLinksTable.expiresAt })
       .from(vendorMiniFormLinksTable)
       .where(eq(vendorMiniFormLinksTable.token, token));
-    if (!link) return res.status(404).json({ error: "Link tidak ditemukan" });
-    if (!link.isActive) return res.status(410).json({ error: "Link sudah dinonaktifkan" });
-    if (link.expiresAt && link.expiresAt < new Date()) return res.status(410).json({ error: "Link sudah kadaluarsa" });
+    if (!link) {
+      // Juga terima token dari vendorOperationalConfirmationsTable (op-confirm form)
+      const [opConf] = await db.select({ token: vendorOperationalConfirmationsTable.token, status: vendorOperationalConfirmationsTable.status })
+        .from(vendorOperationalConfirmationsTable)
+        .where(eq(vendorOperationalConfirmationsTable.token, token));
+      if (!opConf) return res.status(404).json({ error: "Link tidak ditemukan" });
+      if (opConf.status === "submitted") return res.status(410).json({ error: "Form sudah dikirim" });
+    } else {
+      if (!link.isActive) return res.status(410).json({ error: "Link sudah dinonaktifkan" });
+      if (link.expiresAt && link.expiresAt < new Date()) return res.status(410).json({ error: "Link sudah kadaluarsa" });
+    }
     if (!req.file) return res.status(400).json({ error: "File diperlukan" });
 
     const allowed = ["application/pdf", "image/jpeg", "image/png", "image/webp", "application/msword",
@@ -710,7 +889,28 @@ vendorMiniFormRouter.post("/upload/:token", _vmfUploadRateLimit, _vmfUpload.sing
       return res.status(400).json({ error: "Tipe file tidak didukung. Gunakan PDF, gambar, atau dokumen Office." });
     }
 
-    const objectPath = await _vmfStorage.uploadPrivateEntity(req.file.buffer, req.file.mimetype);
+    let objectPath: string;
+    try {
+      objectPath = await _vmfStorage.uploadPrivateEntity(req.file.buffer, req.file.mimetype);
+    } catch (storErr: unknown) {
+      req.log?.warn({ err: storErr }, "GCS upload gagal, fallback ke local storage");
+      try {
+        const { promises: fs } = await import("fs");
+        const path = await import("path");
+        const { randomUUID } = await import("crypto");
+        const LOCAL_VMF_DIR = "/tmp/vmf-uploads";
+        await fs.mkdir(LOCAL_VMF_DIR, { recursive: true });
+        const ext = req.file.mimetype === "application/pdf" ? "pdf"
+          : req.file.mimetype.startsWith("image/") ? req.file.mimetype.split("/")[1]
+          : "bin";
+        const fname = `${randomUUID()}.${ext}`;
+        await fs.writeFile(path.join(LOCAL_VMF_DIR, fname), req.file.buffer);
+        objectPath = `/api/vendor-form/local-file/${fname}`;
+      } catch (localErr: unknown) {
+        req.log?.error({ err: localErr }, "Local fallback upload juga gagal");
+        return res.status(500).json({ error: "Upload file gagal. Coba lagi atau hubungi admin." });
+      }
+    }
     return res.json({ objectPath });
   } catch (err) {
     req.log?.error({ err }, "vmf upload error");
@@ -758,9 +958,9 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
     if (!formData || typeof formData !== "object") return res.status(400).json({ error: "formData diperlukan" });
 
     // Validasi attachmentUrl: hanya boleh objectPath dari private storage (/objects/...)
-    // Tolak URL arbitrary (http://, https://, dll) untuk mencegah SSRF/XSS.
+    // atau local fallback (/api/vendor-form/local-file/). Tolak URL arbitrary untuk mencegah SSRF/XSS.
     if (attachmentUrl !== undefined && attachmentUrl !== null && attachmentUrl !== "") {
-      if (!attachmentUrl.startsWith("/objects/")) {
+      if (!attachmentUrl.startsWith("/objects/") && !attachmentUrl.startsWith("/api/vendor-form/local-file/")) {
         return res.status(400).json({ error: "attachmentUrl tidak valid. Gunakan endpoint upload terlebih dahulu." });
       }
     }
@@ -975,7 +1175,7 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
           const { getPreferredDomain } = await import("../lib/domain.js");
           const { generateShortLink } = await import("../lib/shortLink.js");
           const domain = getPreferredDomain() || "cstlogistic.co.id";
-          const longUrl = `https://${domain}/bizportal/logistics/orders/${orderId}`;
+          const longUrl = `https://${domain}/logistic-admin/orders/${orderId}`;
           const vendorComparisonLink = await generateShortLink(longUrl, {
             context: "vendor_comparison",
             refType: "order",
@@ -1051,6 +1251,31 @@ vendorMiniFormRouter.get("/customer-approval/:token", async (req: Request, res: 
     const sellingNum = approval.sellingPrice ? Number(approval.sellingPrice) : null;
     const ppnNominal = approval.ppnNominal ? Number(approval.ppnNominal) : (sellingNum ? Math.round(sellingNum * ppnPct / (100 + ppnPct)) : null);
     const subtotalBeforePpn = sellingNum && ppnNominal ? sellingNum - ppnNominal : sellingNum;
+
+    // Per-item breakdown for customer view (proportional dari selling price)
+    let priceItems: Array<{ description: string; qty: number; unit: string; unitPrice: number; subtotal: number }> | null = null;
+    if (approval.orderId && subtotalBeforePpn && subtotalBeforePpn > 0) {
+      try {
+        const orderItems = await db.select({
+          serviceName: logisticOrderItemsTable.serviceName,
+          subtotal: logisticOrderItemsTable.subtotal,
+          inputData: logisticOrderItemsTable.inputData,
+        }).from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, approval.orderId));
+        if (orderItems.length > 0) {
+          const totalEst = orderItems.reduce((s, i) => s + (i.subtotal ? parseFloat(i.subtotal) : 0), 0);
+          priceItems = orderItems.map(it => {
+            const inp = (it.inputData ?? {}) as Record<string, unknown>;
+            const qtyNum = inp["qty"] != null ? (parseFloat(String(inp["qty"])) || 1) : 1;
+            const unit = inp["unit"] != null ? String(inp["unit"]) : inp["weightUnit"] != null ? String(inp["weightUnit"]) : "Ls";
+            const estSubtotal = it.subtotal ? parseFloat(it.subtotal) : 0;
+            const ratio = totalEst > 0 ? estSubtotal / totalEst : 1 / orderItems.length;
+            const itemSelling = Math.round(subtotalBeforePpn! * ratio);
+            return { description: it.serviceName, qty: qtyNum, unit, unitPrice: Math.round(itemSelling / qtyNum), subtotal: itemSelling };
+          });
+        }
+      } catch { /* non-critical */ }
+    }
+
     return res.json({
       token: approval.token, orderNumber: approval.orderNumber,
       customerName: approval.customerName,
@@ -1061,6 +1286,7 @@ vendorMiniFormRouter.get("/customer-approval/:token", async (req: Request, res: 
       taxAmount: ppnNominal,
       subtotal: subtotalBeforePpn,
       grandTotal: sellingNum,
+      priceItems,
     });
   } catch (err) {
     req.log?.error({ err }, "customer-approval GET error");
@@ -1089,6 +1315,8 @@ vendorMiniFormRouter.post("/customer-approval/:token", vmfApprovalLimiter, async
     let orderId: number | null = null;
     let orderNumber: string | null = null;
     let customerName: string | null = null;
+    let vmfSellingPrice: string | null = null;
+    let vmfVendorCost: string | null = null;
 
     // Semua operasi dalam satu transaksi atomik
     await db.transaction(async (tx) => {
@@ -1108,6 +1336,8 @@ vendorMiniFormRouter.post("/customer-approval/:token", vmfApprovalLimiter, async
         orderId = locked.orderId;
         orderNumber = locked.orderNumber;
         customerName = locked.customerName;
+        vmfSellingPrice = locked.sellingPrice ?? null;
+        vmfVendorCost = locked.vendorCost ?? null;
 
         // Lock submissions
         if (locked.submissionId) {
@@ -1123,10 +1353,10 @@ vendorMiniFormRouter.post("/customer-approval/:token", vmfApprovalLimiter, async
             ));
         }
 
-        // Update logistic order status
+        // Update logistic order status — non-governance fields only inside tx
         if (locked.orderId) {
           await tx.update(logisticOrdersTable)
-            .set({ customerConfirmStatus: "confirmed", customerConfirmedAt: now, status: "Customer Approved" })
+            .set({ customerConfirmStatus: "confirmed", customerConfirmedAt: now })
             .where(eq(logisticOrdersTable.id, locked.orderId));
 
           // Update itemStatus di VMF links menjadi customer_approved
@@ -1152,11 +1382,20 @@ vendorMiniFormRouter.post("/customer-approval/:token", vmfApprovalLimiter, async
 
         if (locked.orderId) {
           await tx.update(logisticOrdersTable)
-            .set({ customerConfirmStatus: "rejected", status: "Customer Rejected" })
+            .set({ customerConfirmStatus: "rejected" })
             .where(eq(logisticOrdersTable.id, locked.orderId));
         }
       }
     });
+
+    // Transisi status via service (di luar transaction untuk menghindari nested tx)
+    if (orderId) {
+      if (action === "approve") {
+        await transitionLogisticOrderStatus(orderId, "Vendor Confirmed", { source: "vmf:customer_approve", actorType: "customer" }).catch(() => {});
+      } else {
+        await transitionLogisticOrderStatus(orderId, "Admin Review", { source: "vmf:customer_reject", actorType: "customer" }).catch(() => {});
+      }
+    }
 
     // Progress events — customer approval
     if (action === "approve" && orderId) {
@@ -1258,7 +1497,7 @@ vendorMiniFormRouter.post("/customer-approval/:token", vmfApprovalLimiter, async
       db.select().from(logisticOrdersTable)
         .where(eq(logisticOrdersTable.id, orderId))
         .limit(1)
-        .then(([orderRow]) => {
+        .then(async ([orderRow]) => {
           if (!orderRow) return;
           const orderData: LogisticOrderData = {
             id: orderRow.id,
@@ -1286,7 +1525,34 @@ vendorMiniFormRouter.post("/customer-approval/:token", vmfApprovalLimiter, async
             publicRfqToken: orderRow.publicRfqToken ?? null,
           };
           if (action === "approve") {
-            sendCustomerApprovedNotification(orderData).catch(() => {});
+            // Compute price breakdown for admin group WA
+            const fmtRpLocal = (n: number | null) =>
+              n != null ? `Rp ${Math.round(n).toLocaleString("id-ID")}` : "—";
+            const _selling = vmfSellingPrice ? Number(vmfSellingPrice) : null;
+            const _cost = vmfVendorCost ? Number(vmfVendorCost) : null;
+            const _margin = _selling != null && _cost != null ? _selling - _cost : null;
+            const marginStr = _margin != null
+              ? `${fmtRpLocal(_margin)}${_selling ? ` (${Math.round((_margin / _selling) * 100)}%)` : ""}`
+              : "—";
+
+            // Generate forward vendor link (no-login) for admin
+            let fwdUrlStr = "";
+            try {
+              const { createAdminActionLink, getAdminActionUrl } = await import("./adminAction.js");
+              const { generateShortLink } = await import("../lib/shortLink.js");
+              const fwdToken = await createAdminActionLink(orderRow.id, "forward_vendor", undefined, 72);
+              const fwdUrl = getAdminActionUrl(fwdToken);
+              const short = await generateShortLink(fwdUrl, { context: "admin_action", refType: "order", refId: String(orderRow.id) });
+              fwdUrlStr = `📦 *Forward ke vendor (tanpa login):*\n${short}`;
+            } catch { /* non-critical */ }
+
+            sendCustomerApprovedNotification(orderData, {
+              sellingPrice: fmtRpLocal(_selling),
+              vendorCost: fmtRpLocal(_cost),
+              margin: marginStr,
+              fwdUrl: fwdUrlStr,
+            }).catch(() => {});
+
             if (soNumber) {
               const sellingPriceStr = orderRow.finalSellingPrice
                 ? `Rp ${Number(orderRow.finalSellingPrice).toLocaleString("id-ID")}`
@@ -1327,9 +1593,11 @@ vendorMiniFormRouter.get("/op-confirm/:token", async (req: Request, res: Respons
     const [conf] = await db.select().from(vendorOperationalConfirmationsTable).where(eq(vendorOperationalConfirmationsTable.token, token));
     if (!conf) return res.status(404).json({ error: "Link tidak ditemukan" });
     const schema = SERVICE_SCHEMAS[conf.serviceType] ?? null;
+    const _opBaseFields = schema ? schema.fields.filter(f => f.section === "operational" || f.section === "both") : [];
+    const _existingOpKeys = new Set(_opBaseFields.map(f => f.key));
     const opFields = schema ? {
       ...schema,
-      fields: schema.fields.filter(f => f.section === "operational" || f.section === "both"),
+      fields: [..._opBaseFields, ...UNIVERSAL_OP_FIELDS.filter(f => !_existingOpKeys.has(f.key))],
     } : null;
     return res.json({
       token: conf.token, orderNumber: conf.orderNumber, vendorName: conf.vendorName,
@@ -1358,18 +1626,14 @@ vendorMiniFormRouter.post("/op-confirm/:token", async (req: Request, res: Respon
       .where(eq(vendorOperationalConfirmationsTable.token, token));
 
     // BF-2 FIX: Auto-advance order status to "In Progress" when vendor submits
-    // operational data. Only transitions from Customer Approved / Confirmed states
-    // to avoid overwriting terminal statuses (Completed, Cancelled).
+    // operational data. Only transitions from Vendor Confirmed / Customer Approval states.
     if (conf.orderId) {
-      await db.update(logisticOrdersTable)
-        .set({ status: "In Progress" })
-        .where(
-          and(
-            eq(logisticOrdersTable.id, conf.orderId),
-            inArray(logisticOrdersTable.status as any, ["Customer Approved", "Confirmed"]),
-          ),
-        )
-        .catch((e: unknown) => req.log?.error({ e }, "BF-2: auto-update order status to In Progress failed"));
+      transitionLogisticOrderStatus(conf.orderId, "In Progress", {
+        actorType: "vendor",
+        actorName: "Vendor",
+        source: "vendorMiniForm/BF-2-auto-advance",
+        skipAudit: false,
+      }).catch((e: unknown) => req.log?.error({ e }, "BF-2: auto-update order status to In Progress failed"));
     }
 
     await logActivity("op_confirm", conf.id, "op_submitted", "vendor",
@@ -1427,10 +1691,10 @@ vendorMiniFormRouter.get("/admin/links", async (req: Request, res: Response) => 
 vendorMiniFormRouter.post("/admin/links", async (req: Request, res: Response) => {
   if (!(await requireClerkUser(req, res))) return;
   try {
-    const { supplierId, serviceType, title, notes, expiresInDays, mode, orderId, orderNumber, orderItemId, vendorName, maxSubmissions, adminNotes } = req.body as {
+    const { supplierId, serviceType, title, notes, expiresInDays, mode, orderId, orderNumber, orderItemId, vendorName, maxSubmissions, adminNotes, commodityTemplateId } = req.body as {
       supplierId?: number; serviceType: string; title?: string; notes?: string; expiresInDays?: number;
       mode?: string; orderId?: number; orderNumber?: string; orderItemId?: number; vendorName?: string;
-      maxSubmissions?: number; adminNotes?: string;
+      maxSubmissions?: number; adminNotes?: string; commodityTemplateId?: number;
     };
 
     if (!serviceType || !SERVICE_SCHEMAS[serviceType]) return res.status(400).json({ error: "serviceType tidak valid" });
@@ -1472,6 +1736,7 @@ vendorMiniFormRouter.post("/admin/links", async (req: Request, res: Response) =>
       phase: "quotation",
       maxSubmissions: maxSubmissions ?? null,
       adminNotes: adminNotes ?? null,
+      commodityTemplateId: commodityTemplateId ?? null,
     }).returning();
 
     await logActivity("link", link.id, "created", userId,
@@ -1488,7 +1753,26 @@ vendorMiniFormRouter.post("/admin/links", async (req: Request, res: Response) =>
       );
     }
 
-    return res.status(201).json({ ...link, expiresAt: link.expiresAt?.toISOString() ?? null, createdAt: link.createdAt.toISOString(), deactivatedCount });
+    // Auto-generate short link saat link pertama kali dibuat
+    let shortUrl: string | null = null;
+    try {
+      const { generateShortLink } = await import("../lib/shortLink.js");
+      const { getPreferredDomain } = await import("../lib/domain.js");
+      const domain = getPreferredDomain();
+      const formPath = (link.formTarget ?? "vendor") === "customer" ? "customer-mini-form"
+        : (link.formTarget ?? "vendor") === "admin" ? "admin-mini-form"
+        : "vendor-mini-form";
+      const longUrl = domain ? `https://${domain}/${formPath}/${link.token}` : `/${formPath}/${link.token}`;
+      shortUrl = await generateShortLink(longUrl, { context: "vendor_mini_form", refType: "vendor_mini_form_link", refId: String(link.id) });
+      await db.update(vendorMiniFormLinksTable).set({ shortUrl }).where(eq(vendorMiniFormLinksTable.id, link.id));
+      await logActivity("link", link.id, "link_generated", userId,
+        `Short link di-generate otomatis untuk ${serviceType}${orderNumber ? ` (Order: ${orderNumber})` : ""}`,
+        { shortUrl });
+    } catch (shortErr) {
+      req.log?.warn({ err: shortErr }, "Auto short link generation failed (non-fatal)");
+    }
+
+    return res.status(201).json({ ...link, shortUrl, expiresAt: link.expiresAt?.toISOString() ?? null, createdAt: link.createdAt.toISOString(), deactivatedCount });
   } catch (err) {
     req.log?.error({ err }, "vendor-mini-form admin POST links error");
     return res.status(500).json({ error: "Gagal membuat link" });
@@ -1642,11 +1926,14 @@ vendorMiniFormRouter.post("/admin/submissions/:id/select", async (req: Request, 
           .where(eq(vendorMiniFormLinksTable.id, sub.linkId));
       }
 
-      // Update logistic_orders.status agar admin bisa filter "Vendor Selected"
+      // Update logistic_orders.status → "Vendor Confirmed" saat vendor dipilih
       if (sub.orderId) {
-        await tx.update(logisticOrdersTable)
-          .set({ status: "Vendor Selected" })
-          .where(eq(logisticOrdersTable.id, sub.orderId));
+        void transitionLogisticOrderStatus(sub.orderId, "Vendor Confirmed", {
+          actorType: "admin",
+          actorName: "Admin",
+          source: "vendorMiniForm/select-vendor",
+          skipAudit: false,
+        });
       }
     });
 
@@ -2424,7 +2711,20 @@ vendorMiniFormRouter.post("/admin/customer-approvals/:id/send-wa", async (req: R
       const [orderRow] = await db.select().from(logisticOrdersTable)
         .where(eq(logisticOrdersTable.id, approval.orderId)).limit(1);
       if (orderRow) {
-        await sendCustomerApprovalNotification(buildOrderDataFromRow(orderRow), priceStr, approvalUrl);
+        const orderData = await buildOrderDataFromRowWithItems(orderRow);
+        const ppnPct2 = approval.ppnPct ? Number(approval.ppnPct) : 11;
+        const sellingNum2 = approval.sellingPrice ? Number(approval.sellingPrice) : null;
+        const ppnNominalNum2 = approval.ppnNominal
+          ? Number(approval.ppnNominal)
+          : sellingNum2 != null
+            ? Math.round(sellingNum2 * ppnPct2 / (100 + ppnPct2))
+            : null;
+        await sendCustomerApprovalNotification(orderData, priceStr, approvalUrl, {
+          rfqNumber: approval.orderNumber ?? null,
+          sellingPriceNum: sellingNum2,
+          ppnNominalNum: ppnNominalNum2,
+          ppnPct: ppnPct2,
+        });
         const userId2b = (req.user as { id: string } | undefined)?.id ?? "admin";
         await logActivity("customer_approval", id, "sent_wa", userId2b,
           `WA penawaran dikirim ke customer ${approval.customerName ?? "-"}`, { phone: target });
@@ -2736,6 +3036,20 @@ vendorMiniFormRouter.post("/admin/customer-invoices", async (req: Request, res: 
         (notes ? `\n\n📝 Catatan: ${notes}` : "") +
         `\n\nTerima kasih atas kepercayaan Anda.`;
       await sendWhatsApp(customerPhone, waMsg, { context: "customer-invoice-send", refType: "customer_invoice", refId: String(link.id) });
+    }
+
+    // ── AUTO STATUS: Invoice Issued ──────────────────────────────────────────
+    // Jika ada orderId, transisi ke "Invoice Issued" secara otomatis.
+    // Hanya berlaku jika status order saat ini adalah "POD Uploaded" atau lebih awal
+    // dalam urutan invoice flow (state machine akan menolak jika tidak valid).
+    if (orderId) {
+      transitionLogisticOrderStatus(orderId, "Invoice Issued", {
+        source: "vendorMiniForm:create_customer_invoice",
+        actorType: "admin",
+        notes: `Invoice ${invoiceNumber ?? token} diterbitkan ke customer`,
+      }).catch((e: unknown) =>
+        req.log?.warn({ e, orderId }, "auto Invoice Issued transition failed — non-fatal"),
+      );
     }
 
     return res.json({ success: true, token, url: invoiceUrl, id: link.id });

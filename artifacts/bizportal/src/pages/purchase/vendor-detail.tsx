@@ -1,4 +1,4 @@
-import { useRef, useState, useMemo } from "react";
+import { useRef, useState, useMemo, useEffect, useCallback } from "react";
 import { useParams, Link } from "wouter";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -48,7 +48,7 @@ import {
 } from "@workspace/api-client-react";
 import type { Supplier, VendorCatalogItem } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Link2, Pencil, Plus, Search, Tag, Trash2, Upload, X } from "lucide-react";
+import { ArrowLeft, Car, Link2, Pencil, Plus, Power, PowerOff, Search, Tag, Trash2, Upload, X } from "lucide-react";
 import { useUpload } from "@workspace/object-storage-web";
 
 const SERVICE_TYPES = [
@@ -130,6 +130,20 @@ type VendorForm = {
   note: string;
   sortOrder: string;
 };
+
+type VendorDriver = {
+  id: number;
+  supplierId: number | null;
+  name: string;
+  phone: string | null;
+  vehiclePlate: string | null;
+  vehicleType: string | null;
+  isActive: boolean;
+  createdAt: string;
+};
+
+type DriverForm = { name: string; phone: string; vehiclePlate: string; vehicleType: string };
+const emptyDriverForm = (): DriverForm => ({ name: "", phone: "", vehiclePlate: "", vehicleType: "" });
 
 export default function VendorDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -226,6 +240,15 @@ export default function VendorDetailPage() {
   const [vendorForm, setVendorForm] = useState<VendorForm | null>(null);
   const [logoUploading, setLogoUploading] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
+
+  // ── Driver state ──
+  const [drivers, setDrivers] = useState<VendorDriver[]>([]);
+  const [driversLoading, setDriversLoading] = useState(false);
+  const [driverSearch, setDriverSearch] = useState("");
+  const [driverOpen, setDriverOpen] = useState(false);
+  const [editingDriver, setEditingDriver] = useState<VendorDriver | null>(null);
+  const [driverForm, setDriverForm] = useState<DriverForm>(emptyDriverForm());
+  const [driverSaving, setDriverSaving] = useState(false);
 
   const { uploadFile } = useUpload({
     onError: (err) => {
@@ -431,6 +454,101 @@ export default function VendorDetailPage() {
 
   const setV = (k: keyof VendorForm, v: VendorForm[keyof VendorForm]) =>
     setVendorForm((f) => (f ? { ...f, [k]: v } : f));
+
+  // ── Driver API functions ──
+  const loadDrivers = useCallback(async () => {
+    if (!vendorId) return;
+    setDriversLoading(true);
+    try {
+      const res = await fetch(`/api/trading/suppliers/${vendorId}/drivers`);
+      if (!res.ok) throw new Error("Gagal memuat driver");
+      const data = await res.json() as { drivers: VendorDriver[] };
+      setDrivers(data.drivers);
+    } catch {
+      toast({ title: "Gagal memuat daftar driver", variant: "destructive" });
+    } finally {
+      setDriversLoading(false);
+    }
+  }, [vendorId, toast]);
+
+  useEffect(() => { loadDrivers(); }, [loadDrivers]);
+
+  const openNewDriver = () => {
+    setEditingDriver(null);
+    setDriverForm(emptyDriverForm());
+    setDriverOpen(true);
+  };
+
+  const openEditDriver = (d: VendorDriver) => {
+    setEditingDriver(d);
+    setDriverForm({ name: d.name, phone: d.phone ?? "", vehiclePlate: d.vehiclePlate ?? "", vehicleType: d.vehicleType ?? "" });
+    setDriverOpen(true);
+  };
+
+  const submitDriver = async () => {
+    if (!driverForm.name.trim()) {
+      toast({ title: "Nama driver wajib diisi", variant: "destructive" });
+      return;
+    }
+    setDriverSaving(true);
+    try {
+      if (editingDriver) {
+        const res = await fetch(`/api/trading/suppliers/drivers/${editingDriver.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: driverForm.name.trim(), phone: driverForm.phone.trim() || null, vehiclePlate: driverForm.vehiclePlate.trim() || null, vehicleType: driverForm.vehicleType.trim() || null }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        const { driver } = await res.json() as { driver: VendorDriver };
+        setDrivers((prev) => prev.map((d) => d.id === driver.id ? driver : d));
+      } else {
+        const res = await fetch(`/api/trading/suppliers/${vendorId}/drivers`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: driverForm.name.trim(), phone: driverForm.phone.trim() || null, vehiclePlate: driverForm.vehiclePlate.trim() || null, vehicleType: driverForm.vehicleType.trim() || null }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        const { driver } = await res.json() as { driver: VendorDriver };
+        setDrivers((prev) => [...prev, driver]);
+      }
+      toast({ title: t.common.success });
+      setDriverOpen(false);
+    } catch (e) {
+      toast({ title: t.common.error, description: String(e), variant: "destructive" });
+    } finally {
+      setDriverSaving(false);
+    }
+  };
+
+  const toggleDriver = async (d: VendorDriver) => {
+    try {
+      const res = await fetch(`/api/trading/suppliers/drivers/${d.id}/toggle`, { method: "PATCH" });
+      if (!res.ok) throw new Error(await res.text());
+      const { driver } = await res.json() as { driver: VendorDriver };
+      setDrivers((prev) => prev.map((x) => x.id === driver.id ? driver : x));
+    } catch (e) {
+      toast({ title: t.common.error, description: String(e), variant: "destructive" });
+    }
+  };
+
+  const removeDriver = async (d: VendorDriver) => {
+    if (!confirm(`Hapus driver "${d.name}"?`)) return;
+    try {
+      const res = await fetch(`/api/trading/suppliers/drivers/${d.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(await res.text());
+      setDrivers((prev) => prev.filter((x) => x.id !== d.id));
+      toast({ title: t.common.success });
+    } catch (e) {
+      toast({ title: t.common.error, description: String(e), variant: "destructive" });
+    }
+  };
+
+  const filteredDrivers = driverSearch
+    ? drivers.filter((d) => {
+        const q = driverSearch.toLowerCase();
+        return d.name.toLowerCase().includes(q) || (d.vehiclePlate ?? "").toLowerCase().includes(q) || (d.phone ?? "").includes(q);
+      })
+    : drivers;
 
   if (!vendor) {
     return (
@@ -695,6 +813,95 @@ export default function VendorDetailPage() {
                         {(catalogSearch || filterKategoriCatalog !== "all" || filterSubcatCatalog !== "all")
                           ? "Tidak ada item yang cocok dengan filter."
                           : <>Belum ada item. Klik <strong>Tambah Item</strong> untuk mulai mengisi etalase.</>}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* ── Driver Card ── */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <Car className="h-5 w-5 text-muted-foreground" />
+                Driver Terdaftar
+                <span className="text-sm font-normal text-muted-foreground">({drivers.length} total)</span>
+              </CardTitle>
+              <Button size="sm" onClick={openNewDriver}>
+                <Plus className="h-4 w-4 mr-1" /> Tambah Driver
+              </Button>
+            </div>
+            {drivers.length > 0 && (
+              <div className="relative mt-2 max-w-xs">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                <input
+                  value={driverSearch}
+                  onChange={(e) => setDriverSearch(e.target.value)}
+                  placeholder="Cari nama, plat, atau HP..."
+                  className="w-full pl-8 pr-3 h-8 text-sm rounded-md border border-input bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+              </div>
+            )}
+          </CardHeader>
+          <CardContent>
+            {driversLoading ? (
+              <p className="text-center text-muted-foreground py-6 text-sm">Memuat...</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Nama Driver</TableHead>
+                    <TableHead>No. HP</TableHead>
+                    <TableHead>Nomor Plat</TableHead>
+                    <TableHead>Jenis Kendaraan</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="w-[100px] text-right">Aksi</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredDrivers.map((d) => (
+                    <TableRow key={d.id} className={!d.isActive ? "opacity-50" : undefined}>
+                      <TableCell className="font-medium">{d.name}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{d.phone ?? "—"}</TableCell>
+                      <TableCell>
+                        {d.vehiclePlate
+                          ? <Badge variant="outline" className="font-mono text-xs">{d.vehiclePlate}</Badge>
+                          : <span className="text-muted-foreground">—</span>}
+                      </TableCell>
+                      <TableCell className="text-sm">{d.vehicleType ?? "—"}</TableCell>
+                      <TableCell>
+                        {d.isActive
+                          ? <Badge className="bg-green-100 text-green-800 hover:bg-green-100 text-xs">Aktif</Badge>
+                          : <Badge variant="outline" className="text-xs text-muted-foreground">Nonaktif</Badge>}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          size="icon" variant="ghost" title={d.isActive ? "Nonaktifkan" : "Aktifkan"}
+                          onClick={() => toggleDriver(d)}
+                        >
+                          {d.isActive
+                            ? <PowerOff className="h-4 w-4 text-muted-foreground" />
+                            : <Power className="h-4 w-4 text-green-600" />}
+                        </Button>
+                        <Button size="icon" variant="ghost" onClick={() => openEditDriver(d)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button size="icon" variant="ghost" onClick={() => removeDriver(d)}>
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {filteredDrivers.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center text-muted-foreground py-10">
+                        {driverSearch
+                          ? "Tidak ada driver yang cocok dengan pencarian."
+                          : <>Belum ada driver terdaftar. Klik <strong>Tambah Driver</strong> untuk mulai.</>}
                       </TableCell>
                     </TableRow>
                   )}
@@ -1135,6 +1342,63 @@ export default function VendorDetailPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setVendorEditOpen(false)}>Batal</Button>
             <Button onClick={submitVendor} disabled={updateVendor.isPending}>Simpan</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialog: Add / Edit Driver ── */}
+      <Dialog open={driverOpen} onOpenChange={(v) => { setDriverOpen(v); if (!v) setEditingDriver(null); }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{editingDriver ? "Edit Driver" : "Tambah Driver Baru"}</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <div className="grid gap-1.5">
+              <Label>Nama Driver *</Label>
+              <input
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                value={driverForm.name}
+                onChange={(e) => setDriverForm((f) => ({ ...f, name: e.target.value }))}
+                placeholder="cth. Budi Santoso"
+                autoFocus
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>No. HP / WhatsApp</Label>
+              <input
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                value={driverForm.phone}
+                onChange={(e) => setDriverForm((f) => ({ ...f, phone: e.target.value }))}
+                placeholder="cth. 0812-3456-7890"
+                type="tel"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-1.5">
+                <Label>Nomor Plat</Label>
+                <input
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring font-mono uppercase"
+                  value={driverForm.vehiclePlate}
+                  onChange={(e) => setDriverForm((f) => ({ ...f, vehiclePlate: e.target.value.toUpperCase() }))}
+                  placeholder="cth. B 1234 XYZ"
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label>Jenis Kendaraan</Label>
+                <input
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                  value={driverForm.vehicleType}
+                  onChange={(e) => setDriverForm((f) => ({ ...f, vehicleType: e.target.value }))}
+                  placeholder="cth. Truk, Pick Up, Box"
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDriverOpen(false)}>Batal</Button>
+            <Button onClick={submitDriver} disabled={driverSaving}>
+              {editingDriver ? "Simpan" : "Tambah"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

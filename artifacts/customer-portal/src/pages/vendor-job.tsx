@@ -1,11 +1,114 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useParams } from "wouter";
 import { resolveServiceCategory } from "@workspace/logistics-constants";
+
+type LightboxItem = { url: string; title: string; subtitle?: string };
+
+const SWIPE_THRESHOLD = 50;
+
+function Lightbox({
+  items, index, onNavigate, onClose,
+}: {
+  items: LightboxItem[];
+  index: number;
+  onNavigate: (i: number) => void;
+  onClose: () => void;
+}) {
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const touchStartX = useRef<number | null>(null);
+  const touchStartY = useRef<number | null>(null);
+  const total = items.length;
+  const item = items[index];
+  const hasPrev = index > 0;
+  const hasNext = index < total - 1;
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { onClose(); return; }
+      if (e.key === "ArrowLeft"  && hasPrev) onNavigate(index - 1);
+      if (e.key === "ArrowRight" && hasNext) onNavigate(index + 1);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose, onNavigate, index, hasPrev, hasNext]);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX.current === null || touchStartY.current === null) return;
+    const dx = e.changedTouches[0].clientX - touchStartX.current;
+    const dy = e.changedTouches[0].clientY - touchStartY.current;
+    touchStartX.current = null;
+    touchStartY.current = null;
+    // Abaikan jika gerakan lebih dominan vertikal (scroll)
+    if (Math.abs(dy) > Math.abs(dx)) return;
+    if (dx < -SWIPE_THRESHOLD && hasNext) onNavigate(index + 1);
+    if (dx >  SWIPE_THRESHOLD && hasPrev) onNavigate(index - 1);
+  };
+
+  if (!item) return null;
+  return (
+    <div
+      ref={overlayRef}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4"
+      onClick={e => { if (e.target === overlayRef.current) onClose(); }}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+    >
+      {/* Prev */}
+      {hasPrev && (
+        <button
+          onClick={() => onNavigate(index - 1)}
+          className="absolute left-3 top-1/2 -translate-y-1/2 z-10 w-10 h-10 rounded-full bg-white/20 hover:bg-white/40 text-white text-xl flex items-center justify-center transition"
+          aria-label="Foto sebelumnya"
+        >‹</button>
+      )}
+      {/* Next */}
+      {hasNext && (
+        <button
+          onClick={() => onNavigate(index + 1)}
+          className="absolute right-3 top-1/2 -translate-y-1/2 z-10 w-10 h-10 rounded-full bg-white/20 hover:bg-white/40 text-white text-xl flex items-center justify-center transition"
+          aria-label="Foto berikutnya"
+        >›</button>
+      )}
+
+      <div className="relative flex flex-col items-center gap-3 max-w-full">
+        {/* Close */}
+        <button
+          onClick={onClose}
+          className="absolute -top-3 -right-3 z-10 w-8 h-8 rounded-full bg-white/90 text-slate-800 text-lg font-bold leading-none flex items-center justify-center shadow-lg hover:bg-white"
+          aria-label="Tutup"
+        >×</button>
+
+        <img
+          key={item.url}
+          src={item.url}
+          alt={item.title}
+          className="max-h-[78vh] max-w-[85vw] rounded-xl shadow-2xl object-contain"
+        />
+
+        <div className="text-center space-y-0.5">
+          {total > 1 && (
+            <p className="text-white/50 text-xs">{index + 1} / {total}</p>
+          )}
+          <p className="text-white text-sm font-semibold drop-shadow">{item.title}</p>
+          {item.subtitle && (
+            <p className="text-white/60 text-xs drop-shadow">{item.subtitle}</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 type ProgressEntry = {
   id: number;
   status: string;
   notes: string | null;
+  photo_url: string | null;
   updated_by: string;
   is_public: boolean;
   created_at: string;
@@ -46,7 +149,7 @@ type JobData = {
     status: string;
   };
   operationalDetails: OperationalDetails;
-  podFiles: { name: string; url: string; type: string }[];
+  podFiles: { name: string; url: string; type: string; publicUrl?: string }[];
   completionNotes?: string | null;
   acceptedAt?: string | null;
   rejectedAt?: string | null;
@@ -90,6 +193,30 @@ export default function VendorJobPage() {
   const [data, setData] = useState<JobData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
+
+  const lightboxItems = useMemo<LightboxItem[]>(() => {
+    if (!data) return [];
+    const podPhotos: LightboxItem[] = data.podFiles
+      .filter(f => f.publicUrl)
+      .map(f => ({ url: f.publicUrl!, title: f.name, subtitle: "Foto POD" }));
+    const progressPhotos: LightboxItem[] = [...data.progress]
+      .reverse()
+      .filter(p => p.photo_url)
+      .map(p => ({
+        url: p.photo_url!,
+        title: p.status,
+        subtitle:
+          new Date(p.created_at).toLocaleString("id-ID", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) +
+          (p.notes ? ` · ${p.notes}` : ""),
+      }));
+    return [...podPhotos, ...progressPhotos];
+  }, [data]);
+
+  const lightboxIdxByUrl = useMemo(
+    () => new Map(lightboxItems.map((item, i) => [item.url, i])),
+    [lightboxItems],
+  );
 
   // Accept form
   const [showAcceptForm, setShowAcceptForm] = useState(false);
@@ -106,6 +233,7 @@ export default function VendorJobPage() {
   const [showProgressForm, setShowProgressForm] = useState(false);
   const [progressStatus, setProgressStatus] = useState("");
   const [progressNotes, setProgressNotes] = useState("");
+  const [progressPhoto, setProgressPhoto] = useState<File | null>(null);
   const [updatingProgress, setUpdatingProgress] = useState(false);
 
   // POD upload
@@ -181,12 +309,13 @@ export default function VendorJobPage() {
     if (!progressStatus) return;
     setUpdatingProgress(true);
     try {
-      await fetch(`/api/vendor-job/${token}/progress`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: progressStatus, notes: progressNotes }),
-      });
+      const form = new FormData();
+      form.append("status", progressStatus);
+      if (progressNotes) form.append("notes", progressNotes);
+      if (progressPhoto) form.append("photo", progressPhoto);
+      await fetch(`/api/vendor-job/${token}/progress`, { method: "POST", body: form });
       setShowProgressForm(false);
-      setProgressNotes(""); setProgressStatus("");
+      setProgressNotes(""); setProgressStatus(""); setProgressPhoto(null);
       fetchData();
     } finally {
       setUpdatingProgress(false);
@@ -252,6 +381,15 @@ export default function VendorJobPage() {
   const statusInfo = STATUS_LABEL[data.status] ?? { text: data.status, color: "bg-slate-50 border-slate-200 text-slate-700" };
 
   return (
+    <>
+    {lightboxIdx !== null && (
+      <Lightbox
+        items={lightboxItems}
+        index={lightboxIdx}
+        onNavigate={setLightboxIdx}
+        onClose={() => setLightboxIdx(null)}
+      />
+    )}
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-slate-50 py-8 px-4">
       <div className="max-w-xl mx-auto space-y-4">
         {/* Header */}
@@ -441,6 +579,18 @@ export default function VendorJobPage() {
                 <FormField label="Keterangan">
                   <textarea rows={2} className={textareaCls} value={progressNotes} onChange={e => setProgressNotes(e.target.value)} placeholder="Informasi tambahan..." />
                 </FormField>
+                <FormField label="Foto (opsional)">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="w-full text-sm text-slate-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
+                    onChange={e => setProgressPhoto(e.target.files?.[0] ?? null)}
+                  />
+                  {progressPhoto && (
+                    <p className="text-xs text-slate-500 mt-1">📷 {progressPhoto.name}</p>
+                  )}
+                </FormField>
                 <div className="flex gap-3">
                   <button type="button" onClick={() => setShowProgressForm(false)} className="flex-1 rounded-xl border border-slate-200 text-slate-600 py-2.5 text-sm">Batal</button>
                   <button type="submit" disabled={updatingProgress} className="flex-1 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-semibold py-2.5 text-sm">
@@ -464,10 +614,26 @@ export default function VendorJobPage() {
               )}
             </div>
             {data.podFiles.length > 0 && (
-              <div className="space-y-1">
+              <div className="space-y-2">
+                {/* Thumbnail grid untuk file gambar */}
+                {data.podFiles.some(f => f.publicUrl) && (
+                  <div className="flex flex-wrap gap-2">
+                    {data.podFiles.filter(f => f.publicUrl).map((f, i) => (
+                      <button key={i} type="button" onClick={() => { const idx = lightboxIdxByUrl.get(f.publicUrl!); if (idx !== undefined) setLightboxIdx(idx); }} className="focus:outline-none">
+                        <img
+                          src={f.publicUrl}
+                          alt={f.name}
+                          className="w-20 h-20 object-cover rounded-lg border border-slate-200 shadow-sm hover:opacity-80 transition-opacity cursor-zoom-in"
+                        />
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {/* Daftar semua file */}
                 {data.podFiles.map((f, i) => (
                   <div key={i} className="flex items-center gap-2 text-xs text-slate-600">
-                    <span>📄</span><span>{f.name}</span>
+                    <span>{f.type?.startsWith("image/") ? "🖼" : "📄"}</span>
+                    <span>{f.name}</span>
                   </div>
                 ))}
               </div>
@@ -507,6 +673,15 @@ export default function VendorJobPage() {
                     <div className={`absolute -left-[15px] top-1 w-2.5 h-2.5 rounded-full border-2 border-white ${i === 0 ? "bg-blue-500" : "bg-slate-300"}`} />
                     <p className="font-semibold text-slate-800">{p.status}</p>
                     {p.notes && <p className="text-slate-600 text-xs mt-0.5">{p.notes}</p>}
+                    {p.photo_url && (
+                      <button type="button" onClick={() => { const idx = lightboxIdxByUrl.get(p.photo_url!); if (idx !== undefined) setLightboxIdx(idx); }} className="inline-block mt-1 focus:outline-none">
+                        <img
+                          src={p.photo_url}
+                          alt="Foto progress"
+                          className="w-28 h-28 object-cover rounded-lg border border-slate-200 shadow-sm hover:opacity-80 transition-opacity cursor-zoom-in"
+                        />
+                      </button>
+                    )}
                     <p className="text-xs text-slate-400 mt-0.5">
                       {new Date(p.created_at).toLocaleString("id-ID", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
                       {" · "}{p.updated_by === "admin" ? "Admin" : "Vendor"}
@@ -521,5 +696,6 @@ export default function VendorJobPage() {
         <p className="text-center text-xs text-slate-400 pb-4">Vendor Job Order</p>
       </div>
     </div>
+    </>
   );
 }

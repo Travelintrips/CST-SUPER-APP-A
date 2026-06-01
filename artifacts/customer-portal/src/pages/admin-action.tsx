@@ -497,9 +497,23 @@ function CompareVendorsView({ token, data }: { token: string; data: CompareData 
   const [selectedLinkId, setSelectedLinkId] = useState<number | null>(null);
   const [sellingPrice, setSellingPrice] = useState("");
   const [quoteNotes, setQuoteNotes] = useState("");
-  const [sendToCustomer, setSendToCustomer] = useState(false);
+  const [sendToCustomer, setSendToCustomer] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
+
+  // Auto-select vendor termurah saat mount
+  useEffect(() => {
+    const answered = data.vendors.filter((v) => v.offeredPrice !== null || v.status === "accepted_basic_price");
+    if (answered.length === 0) return;
+    const cheapest = answered.reduce((a, b) => {
+      const pa = a.offeredPrice ?? a.basicPrice ?? Infinity;
+      const pb = b.offeredPrice ?? b.basicPrice ?? Infinity;
+      return pa <= pb ? a : b;
+    });
+    setSelectedLinkId(cheapest.linkId);
+    const price = cheapest.offeredPrice ?? cheapest.basicPrice;
+    if (price != null) setSellingPrice(String(price));
+  }, [data.vendors]);
 
   const handleSelect = async () => {
     if (!selectedLinkId) { alert("Pilih vendor terlebih dahulu."); return; }
@@ -552,7 +566,12 @@ function CompareVendorsView({ token, data }: { token: string; data: CompareData 
             return (
               <button
                 key={v.linkId}
-                onClick={() => hasResponse && setSelectedLinkId(v.linkId)}
+                onClick={() => {
+                  if (!hasResponse) return;
+                  setSelectedLinkId(v.linkId);
+                  const p = v.offeredPrice ?? v.basicPrice;
+                  if (p != null) setSellingPrice(String(p));
+                }}
                 disabled={!hasResponse}
                 className={`w-full text-left p-4 rounded-2xl border transition-all ${
                   isSelected
@@ -583,46 +602,69 @@ function CompareVendorsView({ token, data }: { token: string; data: CompareData 
           })}
         </div>
 
-        {selectedLinkId && (
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 space-y-4">
-            <h2 className="font-semibold text-slate-800">Detail Penjualan</h2>
+        {selectedLinkId && (() => {
+          const sel = data.vendors.find((v) => v.linkId === selectedLinkId);
+          const vendorPrice = sel ? (sel.offeredPrice ?? sel.basicPrice) : null;
+          return (
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 space-y-4">
+              <h2 className="font-semibold text-slate-800">💰 Harga Jual ke Customer</h2>
 
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={sendToCustomer}
-                onChange={(e) => setSendToCustomer(e.target.checked)}
-                className="w-4 h-4 accent-indigo-600"
-              />
-              <span className="text-sm text-slate-700">Kirim penawaran langsung ke customer via WA</span>
-            </label>
+              {/* Harga vendor dipilih — seluruh baris bisa diklik */}
+              {vendorPrice != null && (
+                <button
+                  type="button"
+                  onClick={() => setSellingPrice(String(vendorPrice))}
+                  className="w-full flex items-center justify-between px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 hover:border-indigo-400 hover:bg-indigo-50 transition-colors cursor-pointer group"
+                >
+                  <div className="text-left">
+                    <p className="text-[11px] text-slate-400 mb-0.5">Harga vendor dipilih</p>
+                    <p className="text-sm font-semibold text-slate-800">{idr(vendorPrice)}</p>
+                  </div>
+                  <span className="text-xs text-indigo-600 font-medium group-hover:underline shrink-0">Pakai harga ini</span>
+                </button>
+              )}
 
-            {sendToCustomer && (
-              <>
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-slate-700">Harga Jual ke Customer (Rp)</label>
-                  <input
-                    type="number"
-                    value={sellingPrice}
-                    onChange={(e) => setSellingPrice(e.target.value)}
-                    placeholder="Contoh: 5500000"
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                  />
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-slate-700">Harga Jual (Rp)</label>
+                <input
+                  type="number"
+                  value={sellingPrice}
+                  onChange={(e) => setSellingPrice(e.target.value)}
+                  placeholder="Contoh: 5500000"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                />
+                {sellingPrice && (
+                  <p className="text-xs text-slate-400">{idr(Number(sellingPrice))}</p>
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-slate-700">Catatan (opsional)</label>
+                <textarea
+                  value={quoteNotes}
+                  onChange={(e) => setQuoteNotes(e.target.value)}
+                  rows={2}
+                  placeholder="Syarat & kondisi, catatan untuk customer..."
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
+                />
+              </div>
+
+              {/* Checkbox kirim WA — default checked, posisi bawah */}
+              <label className={`flex items-center gap-3 cursor-pointer px-4 py-3 rounded-xl border transition-colors ${sendToCustomer ? "border-emerald-300 bg-emerald-50" : "border-slate-200 bg-slate-50"}`}>
+                <input
+                  type="checkbox"
+                  checked={sendToCustomer}
+                  onChange={(e) => setSendToCustomer(e.target.checked)}
+                  className="w-4 h-4 accent-emerald-600 shrink-0"
+                />
+                <div>
+                  <p className="text-sm font-medium text-slate-700">📤 Kirim penawaran ke customer via WA</p>
+                  <p className="text-xs text-slate-500">Customer akan menerima link untuk menyetujui / menolak harga</p>
                 </div>
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-slate-700">Catatan Penawaran (opsional)</label>
-                  <textarea
-                    value={quoteNotes}
-                    onChange={(e) => setQuoteNotes(e.target.value)}
-                    rows={2}
-                    placeholder="Syarat, catatan tambahan..."
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
-                  />
-                </div>
-              </>
-            )}
-          </div>
-        )}
+              </label>
+            </div>
+          );
+        })()}
 
         {result && !result.ok && (
           <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">

@@ -41,18 +41,20 @@ const statusVariant = (s: string): "default" | "secondary" | "outline" | "destru
   }
 };
 
-type PaymentFilter = "all" | "unpaid" | "partial" | "paid";
+type PaymentFilter = "all" | "unpaid" | "partial" | "paid" | "overdue";
 
 const PAYMENT_LABELS: Record<PaymentFilter, string> = {
   all: "Semua",
   unpaid: "Belum Bayar",
   partial: "Sebagian",
   paid: "Lunas",
+  overdue: "Jatuh Tempo",
 };
 
 function PaymentBadge({ status }: { status: string }) {
   if (status === "paid") return <Badge className="bg-emerald-900/50 text-emerald-300 border-emerald-700">Lunas</Badge>;
   if (status === "partial") return <Badge className="bg-amber-900/50 text-amber-300 border-amber-700">Sebagian</Badge>;
+  if (status === "overdue") return <Badge className="bg-red-900/50 text-red-300 border-red-700">Jatuh Tempo</Badge>;
   return <Badge variant="outline" className="text-slate-400 border-slate-600">Belum Bayar</Badge>;
 }
 

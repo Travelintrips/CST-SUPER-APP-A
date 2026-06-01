@@ -24,6 +24,21 @@ type OperationalDetails = {
   awbBlNumber?: string | null;
 } | null;
 
+type OrderItem = {
+  name: string;
+  category?: string | null;
+  subtotal: number;
+  unitPrice?: number | null;
+  qty?: number | null;
+  unit?: string | null;
+};
+
+type PodFile = {
+  url: string;
+  type: string;
+  name: string;
+};
+
 type TrackData = {
   order: {
     orderNumber: string;
@@ -42,25 +57,54 @@ type TrackData = {
   vendor?: { name: string } | null;
   progress: ProgressEntry[];
   operational: OperationalDetails;
+  items?: OrderItem[];
+  pricing?: {
+    subtotal: number | null;
+    tax: number | null;
+    grandTotal: number | null;
+  } | null;
+  podFiles?: PodFile[];
 };
 
 const ALL_STEPS = [
-  { key: "order_received",    label: "Order Diterima",      icon: "📋", matchStatus: ["new order", "admin_review"] },
-  { key: "processing",        label: "Sedang Diproses",     icon: "🔍", matchStatus: ["rfq_sent", "quoted", "confirmed", "renegotiation"] },
-  { key: "vendor_assigned",   label: "Vendor Ditugaskan",   icon: "👤", matchStatus: ["vendor_assigned"] },
-  { key: "vendor_accepted",   label: "Vendor Menerima",     icon: "✅", matchStatus: ["vendor_accepted", "accepted"] },
-  { key: "pickup_scheduled",  label: "Pickup Dijadwalkan",  icon: "📅", matchStatus: ["pickup_scheduled"] },
-  { key: "in_progress",       label: "Dalam Perjalanan",    icon: "🚛", matchStatus: ["in_progress"] },
-  { key: "pod_uploaded",      label: "Dokumen Diunggah",    icon: "📎", matchStatus: ["pod_uploaded"] },
-  { key: "completed",         label: "Selesai",             icon: "🎉", matchStatus: ["completed", "done", "delivered"] },
+  { key: "Order Received",    label: "Order Diterima",          icon: "📋" },
+  { key: "Admin Review",      label: "Ditinjau Admin",          icon: "🔍" },
+  { key: "RFQ Sent",          label: "RFQ ke Vendor",           icon: "📤" },
+  { key: "Quote Received",    label: "Penawaran Masuk",         icon: "💬" },
+  { key: "Customer Approval", label: "Menunggu Persetujuan",    icon: "✋" },
+  { key: "Vendor Confirmed",  label: "Vendor Dikonfirmasi",     icon: "🤝" },
+  { key: "In Progress",       label: "Sedang Diproses",         icon: "🔄" },
+  { key: "Pickup",            label: "Penjemputan",             icon: "🚚" },
+  { key: "In Transit",        label: "Dalam Perjalanan",        icon: "🛣️" },
+  { key: "Arrived",           label: "Tiba di Tujuan",          icon: "📍" },
+  { key: "Delivered",         label: "Terkirim",                icon: "✅" },
+  { key: "POD Uploaded",      label: "Bukti Pengiriman",        icon: "📄" },
+  { key: "Invoice Issued",    label: "Invoice Diterbitkan",     icon: "🧾" },
+  { key: "Payment Received",  label: "Pembayaran Diterima",     icon: "💳" },
+  { key: "Completed",         label: "Selesai",                 icon: "🎉" },
 ];
 
-function mapStatusToStep(jobStatus: string | null | undefined, orderStatus: string): number {
-  const combined = (jobStatus || orderStatus || "").toLowerCase().replace(/\s+/g, "_");
-  for (let i = ALL_STEPS.length - 1; i >= 0; i--) {
-    if (ALL_STEPS[i].matchStatus.some(s => combined.includes(s.replace(/\s+/g, "_")))) return i;
-  }
-  return 0;
+const LEGACY_STATUS_MAP: Record<string, string> = {
+  "New Order": "Order Received", "Under Review": "Admin Review", "admin_review": "Admin Review",
+  "Pending Vendor": "RFQ Sent", "rfq_sent": "RFQ Sent", "vendor_blasted": "RFQ Sent",
+  "Quotation Sent": "Customer Approval", "customer_quoted": "Customer Approval",
+  "Customer Approved": "Vendor Confirmed", "order_confirmed": "Vendor Confirmed",
+  "assigned_to_vendor": "Vendor Confirmed", "Confirmed": "Vendor Confirmed",
+  "in_progress": "In Transit", "waiting_pickup": "Pickup", "picked_up": "Pickup",
+  "delivered": "Delivered", "pod_uploaded": "POD Uploaded",
+  "invoice_created": "Invoice Issued", "payment_pending": "Payment Received",
+  "paid": "Payment Received", "completed": "Completed",
+};
+
+function mapStatusToStep(_jobStatus: string | null | undefined, orderStatus: string): number {
+  const canonical = LEGACY_STATUS_MAP[orderStatus] ?? orderStatus;
+  const idx = ALL_STEPS.findIndex(s => s.key === canonical);
+  return idx >= 0 ? idx : 0;
+}
+
+function idr(n: number | null | undefined): string {
+  if (n == null) return "—";
+  return `Rp ${Math.round(n).toLocaleString("id-ID")}`;
 }
 
 function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
@@ -157,6 +201,9 @@ export default function OrderTrackPage() {
   const currentStep = mapStatusToStep(data.order.jobStatus, data.order.status);
   const etaDate = data.operational?.eta ?? data.order.eta;
   const etdDate = data.operational?.etd ?? data.order.etd;
+  const hasItems = data.items && data.items.length > 0;
+  const hasPricing = data.pricing && (data.pricing.subtotal != null || data.pricing.grandTotal != null);
+  const hasPod = data.podFiles && data.podFiles.length > 0;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-slate-50 py-8 px-4">
@@ -211,6 +258,55 @@ export default function OrderTrackPage() {
 
           <PushToggleSimple orderNumber={data.order.orderNumber} />
         </div>
+
+        {/* Order Items */}
+        {hasItems && (
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+            <h2 className="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-3">🛒 Rincian Pesanan</h2>
+            <div className="divide-y divide-slate-100">
+              {data.items!.map((item, i) => (
+                <div key={i} className="py-2.5 flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-slate-800 truncate">{item.name}</p>
+                    <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
+                      {item.qty != null && (
+                        <span className="text-xs text-slate-500">Qty: {item.qty}{item.unit ? ` ${item.unit}` : ""}</span>
+                      )}
+                      {item.unitPrice != null && (
+                        <span className="text-xs text-slate-500">Harga Jual: {idr(item.unitPrice)}</span>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-sm font-semibold text-slate-700 whitespace-nowrap">{idr(item.subtotal)}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Pricing summary */}
+            {hasPricing && (
+              <div className="mt-3 pt-3 border-t border-slate-100 space-y-1.5">
+                {data.pricing!.subtotal != null && (
+                  <div className="flex justify-between text-sm text-slate-600">
+                    <span>Subtotal</span>
+                    <span>{idr(data.pricing!.subtotal)}</span>
+                  </div>
+                )}
+                {data.pricing!.tax != null && (
+                  <div className="flex justify-between text-sm text-slate-600">
+                    <span>PPN 11%</span>
+                    <span>{idr(data.pricing!.tax)}</span>
+                  </div>
+                )}
+                {data.pricing!.grandTotal != null && (
+                  <div className="flex justify-between text-sm font-bold text-slate-800 pt-1 border-t border-slate-200">
+                    <span>Total</span>
+                    <span className="text-blue-700">{idr(data.pricing!.grandTotal)}</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Status stepper */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
@@ -267,6 +363,33 @@ export default function OrderTrackPage() {
               <InfoRow label="AWB / BL" value={data.operational.awbBlNumber
                 ? <span className="font-mono bg-slate-50 px-2 py-0.5 rounded text-slate-700">{data.operational.awbBlNumber}</span>
                 : null} />
+            </div>
+          </div>
+        )}
+
+        {/* POD / Documents */}
+        {hasPod && (
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+            <h2 className="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-3">📄 Bukti Pengiriman (POD)</h2>
+            <div className="space-y-2">
+              {data.podFiles!.map((f, i) => (
+                <a
+                  key={i}
+                  href={f.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 hover:bg-slate-50 transition-colors"
+                >
+                  <span className="text-xl">
+                    {f.type === "photo" ? "🖼️" : f.type === "invoice" ? "🧾" : f.type === "packing_list" ? "📋" : "📄"}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-slate-800 truncate">{f.name}</p>
+                    <p className="text-xs text-blue-600 mt-0.5">Klik untuk lihat</p>
+                  </div>
+                  <span className="text-slate-400 text-sm">↗</span>
+                </a>
+              ))}
             </div>
           </div>
         )}

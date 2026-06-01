@@ -5,6 +5,9 @@ type PriceItem = {
   name: string;
   category: string;
   subtotal: number;
+  unitPrice: number | null;
+  qty: number | null;
+  unit: string | null;
 };
 
 type QuoteData = {
@@ -199,16 +202,18 @@ export default function CustomerQuotePage() {
           </div>
         )}
 
-        {/* Detail */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-          <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-4">Detail Pengiriman</h2>
-          <div className="space-y-3">
-            <Row label="Layanan" value={data.serviceType} />
-            <Row label="Asal" value={data.origin} />
-            <Row label="Tujuan" value={data.destination} />
-            <Row label="Kargo" value={data.cargoDetail} />
+        {/* Detail — hanya tampil jika ada minimal satu field yang terisi */}
+        {(data.serviceType || data.origin || data.destination || data.cargoDetail) && (
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+            <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-4">Detail Pengiriman</h2>
+            <div className="space-y-3">
+              <Row label="Layanan" value={data.serviceType} />
+              <Row label="Asal" value={data.origin} />
+              <Row label="Tujuan" value={data.destination} />
+              <Row label="Kargo" value={data.cargoDetail} />
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Pricing */}
         <div className="bg-white rounded-2xl shadow-sm border border-blue-100 p-6">
@@ -221,6 +226,9 @@ export default function CustomerQuotePage() {
                   <thead>
                     <tr className="bg-slate-50 text-slate-500 text-xs">
                       <th className="text-left px-3 py-2 font-medium">Item / Layanan</th>
+                      <th className="text-right px-3 py-2 font-medium">Qty</th>
+                      <th className="text-right px-3 py-2 font-medium">Satuan</th>
+                      <th className="text-right px-3 py-2 font-medium">Harga Jual</th>
                       <th className="text-right px-3 py-2 font-medium">Subtotal</th>
                     </tr>
                   </thead>
@@ -228,6 +236,9 @@ export default function CustomerQuotePage() {
                     {data.priceItems.map((item, idx) => (
                       <tr key={idx}>
                         <td className="px-3 py-2 text-slate-700">{item.name}</td>
+                        <td className="px-3 py-2 text-right text-slate-500">{item.qty ?? "—"}</td>
+                        <td className="px-3 py-2 text-right text-slate-400 text-xs">{item.unit ?? "—"}</td>
+                        <td className="px-3 py-2 text-right text-slate-500">{item.unitPrice != null ? idr(item.unitPrice) : "—"}</td>
                         <td className="px-3 py-2 text-right text-slate-700 font-medium">{idr(item.subtotal)}</td>
                       </tr>
                     ))}
@@ -237,12 +248,14 @@ export default function CustomerQuotePage() {
             )}
 
             {/* Price breakdown */}
-            {data.displaySubtotal != null && data.displayTax != null ? (
+            {data.displayTax != null && data.displayTotal != null ? (
               <div className="space-y-2">
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-slate-500">DPP (Harga Dasar)</span>
-                  <span className="text-slate-700 font-medium">{idr(data.displaySubtotal)}</span>
-                </div>
+                {data.displaySubtotal != null && (
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-slate-500">Jumlah Pemesanan</span>
+                    <span className="text-slate-700 font-medium">{idr(data.displaySubtotal)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between items-center text-sm">
                   <span className="text-slate-500">PPN 11%</span>
                   <span className="text-slate-700 font-medium">{idr(data.displayTax)}</span>
@@ -356,7 +369,7 @@ export default function CustomerQuotePage() {
                 {(data.origin || data.destination) && (
                   <p className="text-green-700">{data.origin || "—"} → {data.destination || "—"}</p>
                 )}
-                <p className="text-lg font-bold text-green-700 mt-1">{idr(data.finalCustomerPrice)}</p>
+                <p className="text-lg font-bold text-green-700 mt-1">{idr(data.displayTotal ?? data.finalCustomerPrice)}</p>
               </div>
               <p className="text-xs text-slate-400 mb-4">Dengan menekan Setuju, Anda menyetujui penawaran dan syarat yang berlaku.</p>
               <div className="flex gap-2">

@@ -21,6 +21,7 @@ import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { eq, ilike, and, gte, lte, or, sql, desc, inArray, isNotNull } from "drizzle-orm";
 import { salesDocumentsTable } from "@workspace/db";
 import { requireClerkUser, requireRole } from "../lib/requireAdmin.js";
+import { calcTax, calcGrandTotal } from "../lib/taxHelper.js";
 import { resolveCompanyId } from "../lib/resolveCompany.js";
 import { requirePortalAdmin } from "../lib/supabaseAuth.js";
 import {
@@ -31,6 +32,7 @@ import {
 import { generateShortLink } from "../lib/shortLink.js";
 import { getPreferredDomain } from "../lib/domain.js";
 import { logActivity } from "../lib/activityLog.js";
+import { logOrderStatusChange, logOrderAudit } from "../lib/auditTrail.js";
 // [FLOW BARU] autoCreateRfqAndNotifyVendors dinonaktifkan — vendor tidak boleh dihubungi langsung saat order dibuat.
 // Admin harus review dulu via /bizportal/logistics/rfq sebelum blast ke vendor.
 // import { autoCreateRfqAndNotifyVendors } from "./logisticRfq";
@@ -47,6 +49,17 @@ import {
   UpdateLogisticOrderStatusParams,
   UpdateLogisticOrderStatusBody,
 } from "@workspace/api-zod";
+import {
+  STATUS_LABEL_ID,
+  CUSTOMER_WA_MESSAGES,
+  VENDOR_WA_NOTES,
+  VENDOR_NOTIFY_STATUS_SET,
+  STATUS_NORMALIZATION_SQL,
+} from "../lib/logisticStatusConstants.js";
+import {
+  transitionLogisticOrderStatus,
+  getAllowedTransitions,
+} from "../lib/services/logisticOrderStatusService.js";
 
 export const logisticOrdersRouter = Router();
 
@@ -166,6 +179,13 @@ async function getTruckingRates() {
   }
 }
 
+// ─── Boot migration: ensure updated_at column exists + normalize legacy statuses
+db.execute(sql.raw(`
+  ALTER TABLE logistic_orders ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+  UPDATE logistic_orders SET updated_at = created_at WHERE updated_at IS NULL;
+  ${STATUS_NORMALIZATION_SQL}
+`)).catch((e: unknown) => console.warn("[logistic_orders] boot migration warn:", e));
+
 // ─── PUBLIC ROUTES (no auth required) ────────────────────────────────────────
 
 // POST /api/logistic/orders — create order (public customer portal endpoint)
@@ -181,6 +201,17 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
     return res.status(400).json({ message: "Data tidak valid", errors: parsed.error.errors });
   }
   const body = parsed.data;
+
+  // Server-side subtotal validation: jumlahkan subtotal per item, jangan percaya nilai agregat dari client
+  const computedSubtotal = body.items.reduce((sum, item) => sum + Number(item.subtotal ?? 0), 0);
+  const clientSubtotal = Number(body.subtotal);
+  if (Math.abs(computedSubtotal - clientSubtotal) > 1) {
+    req.log.warn(
+      { clientSubtotal, computedSubtotal, diff: clientSubtotal - computedSubtotal, email: body.email },
+      "AUDIT: frontend subtotal mismatch — menggunakan nilai server-computed",
+    );
+  }
+  const verifiedSubtotal = computedSubtotal;
 
   // Anti-duplicate: tolak jika email yang sama sudah membuat order dalam 60 detik terakhir
   const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
@@ -239,9 +270,10 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
       etd: body.etd ? new Date(body.etd) : null,
       eta: body.eta ? new Date(body.eta) : null,
       source: "portal",
-      subtotal: String(body.subtotal),
-      tax: String(body.tax),
-      grandTotal: String(body.grandTotal),
+      // Exclusive PPN: subtotal = DPP (server-verified), tax = DPP × 11%, grandTotal = DPP + tax
+      subtotal: String(verifiedSubtotal),
+      tax: String(calcTax(verifiedSubtotal)),
+      grandTotal: String(calcGrandTotal(verifiedSubtotal)),
       status: "New Order",
       publicRfqToken: randomBytes(16).toString("hex"),
     })
@@ -316,9 +348,13 @@ sendLogisticOrderNotification({
     vehicleType,
     createdAt: order.createdAt,
     publicRfqToken: order.publicRfqToken ?? null,
+    trackingToken,
   }).catch((err: unknown) => {
     req.log.error({ err }, "sendLogisticOrderNotification failed");
   });
+
+  // Progress bar: ORDER_RECEIVED — set immediately when order is created
+  updateOrderProgress(order.id, "ORDER_RECEIVED", "system", body.customerName, "Order baru dibuat oleh customer").catch(() => {});
 
   // [FLOW BARU] Auto-blast ke vendor DINONAKTIFKAN.
   // Order masuk → status admin_review → Admin review → Admin blast ke vendor.
@@ -357,6 +393,29 @@ sendLogisticOrderNotification({
     action: "order_created",
     description: `Order ${orderNumber} dibuat oleh ${body.customerName} (${body.companyName ?? "-"}) — ${body.shipmentType} ${body.origin}→${body.destination}`,
     newValue: { orderNumber, grandTotal: body.grandTotal, shipmentType: body.shipmentType },
+    ipAddress: req.ip ?? null,
+  }).catch(() => {});
+
+  // Audit trail: order_status_history + order_audit_logs
+  logOrderStatusChange({
+    orderId: order.id,
+    orderNumber,
+    oldStatus: null,
+    newStatus: "New Order",
+    changedByType: "customer",
+    changedByName: body.customerName,
+    changedByIp: req.ip ?? null,
+    notes: "Order dibuat",
+    source: "POST /logistic/orders",
+  }).catch(() => {});
+  logOrderAudit({
+    orderId: order.id,
+    orderNumber,
+    actorType: "customer",
+    actorName: body.customerName,
+    action: "order_created",
+    description: `Order ${orderNumber} dibuat oleh ${body.customerName} (${body.companyName ?? "-"}) — ${body.shipmentType} ${body.origin ?? ""}→${body.destination ?? ""}`,
+    newValue: { status: "New Order", grandTotal: body.grandTotal, shipmentType: body.shipmentType },
     ipAddress: req.ip ?? null,
   }).catch(() => {});
 
@@ -449,7 +508,7 @@ logisticOrdersRouter.get(
     if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
 
     // Run all independent queries in parallel — eliminates N+1 sequential awaits
-    const [items, [driverJob], [latestRfq]] = await Promise.all([
+    const [items, [driverJob], [latestRfq], orderUpdates] = await Promise.all([
       db.select().from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, order.id)),
       db.select().from(driverJobsTable)
         .where(eq(driverJobsTable.logisticOrderId, order.id))
@@ -459,6 +518,10 @@ logisticOrdersRouter.get(
         .where(eq(logisticOrderRfqsTable.orderId, order.id))
         .orderBy(desc(logisticOrderRfqsTable.createdAt))
         .limit(1),
+      db.select().from(orderUpdatesTable)
+        .where(and(eq(orderUpdatesTable.orderId, order.id), eq(orderUpdatesTable.isPublic, true)))
+        .orderBy(desc(orderUpdatesTable.createdAt))
+        .limit(50),
     ]);
 
     let driverJobData = null;
@@ -493,22 +556,37 @@ logisticOrdersRouter.get(
       };
     }
 
-    // Security: quotedPrice is financial/margin data — never expose on public tracking endpoint.
-    // Only status and timing info is safe for unauthenticated callers.
+    // quotedPrice = customer-facing sell price (NOT vendor cost/margin) — safe to show order owner
     const rfqQuote = latestRfq ? {
       rfqId: latestRfq.id,
       rfqStatus: latestRfq.status,
+      quotedPrice: latestRfq.quotedPrice ? parseFloat(latestRfq.quotedPrice) : null,
       quotedAt: latestRfq.quotedAt?.toISOString() ?? null,
+      quoteNotes: (latestRfq as any).quoteNotes ?? null,
       customerResponseNotes: (latestRfq as any).customerResponseNotes ?? null,
       customerRespondedAt: (latestRfq as any).customerRespondedAt
         ? new Date((latestRfq as any).customerRespondedAt).toISOString() : null,
     } : null;
 
+    const updatesData = orderUpdates.map((u) => ({
+      id: u.id,
+      status: u.status ?? null,
+      notes: u.notes ?? null,
+      actorType: u.actorType,
+      actorName: u.actorName ?? null,
+      createdAt: u.createdAt.toISOString(),
+    }));
+
     return res.json({
       ...toPublicOrder(order),
+      customerName: order.customerName,
+      grandTotal: order.grandTotal ? parseFloat(order.grandTotal) : null,
+      subtotal: order.subtotal ? parseFloat(order.subtotal) : null,
+      tax: order.tax ? parseFloat(order.tax) : null,
       items: items.map(toPublicItem),
       driverJob: driverJobData,
       rfqQuote,
+      orderUpdates: updatesData,
     });
   }
 );
@@ -918,33 +996,25 @@ logisticOrdersRouter.post("/:id/resend-wa-group", async (req: Request, res: Resp
 });
 
 // ─── Vendor WA notification on status change ──────────────────────────────────
-const VENDOR_NOTIFY_STATUSES = new Set([
-  "Confirmed", "In Progress", "Completed", "Cancelled",
-]);
-
+// Use canonical status set from constants
 const VENDOR_STATUS_LABELS: Record<string, string> = {
-  "Confirmed":   "Dikonfirmasi ✅",
-  "In Progress": "Sedang Diproses 🔄",
-  "Completed":   "Selesai 🎉",
-  "Cancelled":   "Dibatalkan ❌",
-};
-
-const VENDOR_STATUS_NOTES: Record<string, string> = {
-  "Confirmed":
-    "Customer telah mengkonfirmasi order. Silakan lanjutkan proses pengiriman sesuai rencana.",
-  "In Progress":
-    "Order kini berstatus In Progress. Pastikan semua berjalan sesuai jadwal dan SOP.",
-  "Completed":
-    "Order telah diselesaikan oleh tim CST Logistics. Terima kasih atas kerja sama Anda.",
-  "Cancelled":
-    "⚠️ Order ini telah DIBATALKAN. Mohon hentikan semua proses terkait order ini segera.",
+  "Vendor Confirmed": "Vendor Dikonfirmasi ✅",
+  "In Progress":      "Sedang Diproses 🔄",
+  "Pickup":           "Proses Penjemputan 🚚",
+  "In Transit":       "Dalam Perjalanan 🛣️",
+  "Arrived":          "Tiba di Tujuan 📍",
+  "Delivered":        "Terkirim ✅",
+  "Completed":        "Selesai 🎉",
+  "Cancelled":        "Dibatalkan ❌",
+  // backward compat
+  "Confirmed":        "Dikonfirmasi ✅",
 };
 
 async function notifyVendorStatusChange(
   order: { orderNumber: string; customerName: string | null; origin: string | null; destination: string | null; approvedVendorId: number | null },
   status: string,
 ) {
-  if (!VENDOR_NOTIFY_STATUSES.has(status)) return;
+  if (!VENDOR_NOTIFY_STATUS_SET.has(status)) return;
   if (!order.approvedVendorId) return;
 
   try {
@@ -959,9 +1029,36 @@ async function notifyVendorStatusChange(
     const phone = normalizePhone(vendor.phone);
     if (!phone) return;
 
-    const label = VENDOR_STATUS_LABELS[status] ?? status;
-    const note  = VENDOR_STATUS_NOTES[status] ?? "";
+
+    const label = VENDOR_STATUS_LABELS[status] ?? STATUS_LABEL_ID[status] ?? status;
+    const note  = VENDOR_WA_NOTES[status] ?? "";
+    const route = order.origin && order.destination
+      ? `${order.origin} → ${order.destination}`
+      : "—";
+
+    const msg =
+      `🔔 *Update Status Order — CST Logistics*\n` +
+      `━━━━━━━━━━━━━━━━━━\n` +
+      `No. Order  : \`${order.orderNumber}\`\n` +
+      `Customer   : ${order.customerName ?? "—"}\n` +
+      `Rute       : ${route}\n` +
+      `Vendor     : *${vendor.name ?? "—"}*\n` +
+      `Status     : *${label}*\n` +
+      `━━━━━━━━━━━━━━━━━━\n` +
+      `${note}\n\n` +
+      `_CST Logistics — Notifikasi Otomatis_`;
+
+    sendWhatsApp(phone, msg, {
+      context: "vendor_status_change",
+      refType: "order",
+      refId: order.orderNumber,
+    }).catch(() => undefined);
+
     sendVendorOrderStatusChangeNotification(order, label, note, vendor.name ?? "—", phone);
+    const notifLabel = VENDOR_STATUS_LABELS[status] ?? status;
+    const notifNote  = VENDOR_STATUS_NOTES[status] ?? "";
+    sendVendorOrderStatusChangeNotification(order, notifLabel, notifNote, vendor.name ?? "—", phone);
+
   } catch {
     // fire-and-forget, never block the response
   }
@@ -996,10 +1093,6 @@ logisticOrdersRouter.put("/:id/status", async (req: Request, res: Response) => {
     });
   }
 
-  const whereClause =
-    clientVersion !== undefined
-      ? and(eq(logisticOrdersTable.id, id), eq(logisticOrdersTable.version, clientVersion))
-      : eq(logisticOrdersTable.id, id);
   if (clientUpdatedAt) {
     const [current] = await db
       .select({ updatedAt: logisticOrdersTable.updatedAt })
@@ -1017,26 +1110,74 @@ logisticOrdersRouter.put("/:id/status", async (req: Request, res: Response) => {
     }
   }
 
-  const [updated] = await db
-    .update(logisticOrdersTable)
-    .set({ status, updatedAt: new Date(), version: sql`${logisticOrdersTable.version} + 1` } as any)
-    .where(whereClause)
-    .returning();
-
-  if (!updated) {
-    const [exists] = await db.select({ id: logisticOrdersTable.id }).from(logisticOrdersTable).where(eq(logisticOrdersTable.id, id));
-    if (!exists) return res.status(404).json({ message: "Order tidak ditemukan" });
-    return res.status(409).json({ message: "Data sudah diubah oleh pengguna lain. Refresh halaman dan coba lagi." });
-  }
-
   const adminName = (req.user as { name?: string } | undefined)?.name ?? "Admin";
   const adminId   = (req.user as { id?: string } | undefined)?.id ?? null;
+
+  if (clientVersion !== undefined) {
+    const [currentRow] = await db
+      .select({ version: logisticOrdersTable.version })
+      .from(logisticOrdersTable)
+      .where(eq(logisticOrdersTable.id, id));
+    if (!currentRow) return res.status(404).json({ message: "Order tidak ditemukan" });
+    if (currentRow.version !== clientVersion) {
+      return res.status(409).json({ message: "Data sudah diubah oleh pengguna lain. Refresh halaman dan coba lagi." });
+    }
+  }
+
+  const svcResult = await transitionLogisticOrderStatus(id, status, {
+    actorType: "admin",
+    actorId: adminId,
+    actorName: adminName,
+    notes: (req.body as Record<string, unknown>).notes as string ?? undefined,
+    source: "PUT /logistic/orders/:id/status",
+    skipAudit: true,
+  });
+
+  if (!svcResult.ok) {
+    if (svcResult.allowedTransitions !== undefined) {
+      return res.status(422).json({
+        message: svcResult.error,
+        allowedTransitions: svcResult.allowedTransitions,
+        code: "INVALID_TRANSITION",
+      });
+    }
+    if (svcResult.error?.includes("tidak ditemukan")) return res.status(404).json({ message: svcResult.error });
+    return res.status(409).json({ message: svcResult.error ?? "Update status gagal" });
+  }
+
+  const [updated] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, id));
+  if (!updated) return res.status(404).json({ message: "Order tidak ditemukan" });
 
   logActivity({
     orderId: updated.id,
     actorType: "admin",
     actorName: adminName,
     actorId: adminId,
+    action: "status_changed",
+    description: `Status order ${updated.orderNumber} diubah menjadi "${status}"`,
+    newValue: { status },
+    ipAddress: req.ip ?? null,
+  }).catch(() => {});
+
+  // Audit trail: catat di order_status_history + order_audit_logs
+  logOrderStatusChange({
+    orderId: updated.id,
+    orderNumber: updated.orderNumber,
+    oldStatus: (req.body as Record<string, unknown>).oldStatus as string | null ?? null,
+    newStatus: status,
+    changedByType: "admin",
+    changedById: adminId,
+    changedByName: adminName,
+    changedByIp: req.ip ?? null,
+    notes: (req.body as Record<string, unknown>).notes as string | null ?? null,
+    source: "PUT /logistic/orders/:id/status",
+  }).catch(() => {});
+  logOrderAudit({
+    orderId: updated.id,
+    orderNumber: updated.orderNumber,
+    actorType: "admin",
+    actorId: adminId,
+    actorName: adminName,
     action: "status_changed",
     description: `Status order ${updated.orderNumber} diubah menjadi "${status}"`,
     newValue: { status },
@@ -1054,41 +1195,46 @@ logisticOrdersRouter.put("/:id/status", async (req: Request, res: Response) => {
     isPublic: true,
   }).catch(() => {});
 
-  // Progress bar event
-  if (status === "Confirmed") {
-    updateOrderProgress(updated.id, "ADMIN_CONFIRMED", "admin", adminName, `Status diubah ke Confirmed`).catch(() => {});
-  } else if (status === "Completed") {
-    updateOrderProgress(updated.id, "COMPLETED", "admin", adminName, `Order diselesaikan oleh admin`).catch(() => {});
+
+  // Notify customer via WhatsApp (fire-and-forget) — use canonical messages with tracking link
+  if (updated.phone) {
+    // Fetch tracking token untuk link direct tracking di WA
+    const trackingResult = await db.execute(sql`SELECT tracking_token FROM logistic_orders WHERE id = ${updated.id} LIMIT 1`).catch(() => null);
+    const trackingToken = (trackingResult?.rows?.[0] as any)?.tracking_token ?? null;
+    const domain = getPreferredDomain();
+    const trackUrl = (domain && trackingToken)
+      ? `https://${domain}/order-track/${trackingToken}`
+      : domain ? `https://${domain}/track/${updated.orderNumber}` : null;
+
+    const waBuilder = CUSTOMER_WA_MESSAGES[status];
+    const msg = waBuilder
+      ? waBuilder(updated.orderNumber, trackUrl ?? undefined)
+      : `📦 *Update Status Order Anda*\nNo Order: ${updated.orderNumber}\nStatus: *${STATUS_LABEL_ID[status] ?? status}*\n\nTerima kasih telah menggunakan layanan kami.` +
+        (trackUrl ? `\n\n🔗 Pantau status:\n${trackUrl}` : "");
+    sendWhatsApp(updated.phone, msg, {
+      context: "order_status_change",
+      refType: "order",
+      refId: updated.orderNumber,
+    }).catch(() => undefined);
   }
 
-  // Notify customer via WhatsApp (fire-and-forget)
-  if (updated.phone) {
-    const statusLabels: Record<string, string> = {
-      "New Order": "Order Baru",
-      "Under Review": "Sedang Ditinjau",
-      "Quotation Sent": "Penawaran Telah Dikirim",
-      "Confirmed": "Dikonfirmasi",
-      "In Progress": "Sedang Diproses",
-      "Completed": "Selesai",
-      "Cancelled": "Dibatalkan",
-    };
-    const label = statusLabels[status] ?? status;
-    sendLogisticOrderStatusCustomerNotification(updated.orderNumber, label, updated.phone);
-  }
+  // Progress bar event — record for all canonical statuses (generic, covers all status keys)
+  updateOrderProgress(
+    updated.id,
+    status.toUpperCase().replace(/ /g, "_"),
+    "admin",
+    adminName,
+    `Status diubah ke ${STATUS_LABEL_ID[status] ?? status}`,
+  ).catch(() => {});
 
   // Notify vendor via WhatsApp (fire-and-forget)
   notifyVendorStatusChange(updated, status).catch(() => undefined);
 
   // Web Push ke subscriber halaman tracking (fire-and-forget)
-  const statusLabelsForPush: Record<string, string> = {
-    "New Order": "Order Baru", "Under Review": "Sedang Ditinjau",
-    "Quotation Sent": "Penawaran Dikirim", "Confirmed": "Dikonfirmasi",
-    "In Progress": "Sedang Diproses", "Completed": "Selesai", "Cancelled": "Dibatalkan",
-  };
   sendPushToOrder(updated.orderNumber, {
     title: "Update Status Order",
-    body: `Order ${updated.orderNumber}: ${statusLabelsForPush[status] ?? status}`,
-    url: `/logistic-track?order=${encodeURIComponent(updated.orderNumber)}`,
+    body: `Order ${updated.orderNumber}: ${STATUS_LABEL_ID[status] ?? status}`,
+    url: `/track/${updated.orderNumber}`,
     tag: `order-${updated.orderNumber}`,
   } as { title: string; body: string; url?: string }).catch(() => undefined);
 
@@ -1111,6 +1257,19 @@ logisticOrdersRouter.put("/:id/status", async (req: Request, res: Response) => {
   });
 
   return res.json(toOrder(updated));
+});
+
+// GET /api/logistic/orders/:id/valid-transitions — daftar transisi status yang diizinkan
+logisticOrdersRouter.get("/:id/valid-transitions", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const id = parseInt(String(req.params["id"] ?? ""), 10);
+  if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+  const [order] = await db.select({ id: logisticOrdersTable.id, status: logisticOrdersTable.status })
+    .from(logisticOrdersTable)
+    .where(eq(logisticOrdersTable.id, id));
+  if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+  const allowedTransitions = getAllowedTransitions(order.status);
+  return res.json({ status: order.status, allowedTransitions });
 });
 
 // PATCH /api/logistic/orders/:id/details — update detail order (admin)
@@ -1226,23 +1385,40 @@ logisticOrdersRouter.patch("/:id/type", async (req: Request, res: Response) => {
 logisticOrdersRouter.put("/bulk-status", async (req: Request, res: Response) => {
   const parsed = z.object({
     ids: z.array(z.number().int().positive()).min(1),
-    status: z.enum(["New Order", "Confirmed", "In Progress", "Completed", "Cancelled"]),
+    status: z.enum([
+      "Order Received", "Admin Review", "RFQ Sent", "Quote Received",
+      "Customer Approval", "Vendor Confirmed", "In Progress", "Pickup",
+      "In Transit", "Arrived", "Delivered", "POD Uploaded",
+      "Invoice Issued", "Payment Received", "Completed", "Cancelled",
+      // backward compat
+      "New Order", "Confirmed",
+    ]),
   }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ message: "ids dan status harus valid" });
   const { ids, status } = parsed.data;
-  const updated = await db
-    .update(logisticOrdersTable)
-    .set({ status })
-    .where(inArray(logisticOrdersTable.id, ids))
-    .returning({ id: logisticOrdersTable.id, orderNumber: logisticOrdersTable.orderNumber });
-
   const adminName = (req.user as { name?: string } | undefined)?.name ?? "Admin";
   const adminId   = (req.user as { id?: string } | undefined)?.id ?? null;
 
-  // Log audit trail + timeline for each affected order (fire-and-forget)
-  for (const row of updated) {
+  const updatedIds: number[] = [];
+  const failedIds: number[] = [];
+
+  for (const oid of ids) {
+    const result = await transitionLogisticOrderStatus(oid, status, {
+      actorType: "admin",
+      actorId: adminId,
+      actorName: adminName,
+      source: "PUT /logistic/orders/bulk-status",
+      force: true,
+      skipAudit: false,
+    });
+    if (result.ok) updatedIds.push(oid);
+    else failedIds.push(oid);
+  }
+
+  // Log activity + timeline for each succeeded order (fire-and-forget)
+  for (const oid of updatedIds) {
     logActivity({
-      orderId: row.id,
+      orderId: oid,
       actorType: "admin",
       actorName: adminName,
       actorId: adminId,
@@ -1252,7 +1428,7 @@ logisticOrdersRouter.put("/bulk-status", async (req: Request, res: Response) => 
       ipAddress: req.ip ?? null,
     }).catch(() => {});
     db.insert(orderUpdatesTable).values({
-      orderId: row.id,
+      orderId: oid,
       actorType: "admin",
       actorId: adminId,
       actorName: adminName,
@@ -1262,7 +1438,7 @@ logisticOrdersRouter.put("/bulk-status", async (req: Request, res: Response) => 
     }).catch(() => {});
   }
 
-  return res.json({ message: "Updated", updatedIds: updated.map((r) => r.id), count: updated.length });
+  return res.json({ message: "Updated", updatedIds, failedIds, count: updatedIds.length });
 });
 
 // Helper: hapus file storage terkait logistic order (driver photos + vendor unit photos)

@@ -18,6 +18,7 @@ import { postSalesInvoice, postSalesCogs, postSalesCogsReturn, postSalesInvoiceR
 import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
 import { ensureAccountingSettings } from "../lib/accountingSeed.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
+import { markSalesReadyToInvoice } from "../lib/services/invoiceStatusService.js";
 import { getAdminWa } from "../lib/adminWa.js";
 import {
   sendSalesOrderCreatedNotification,
@@ -26,11 +27,13 @@ import {
   sendSalesOrderDeliveredNotification,
   sendInvoiceIssuedNotification,
 } from "../lib/orderNotification.js";
+import { notifyPaymentReminder } from "../lib/enterpriseWorkflowNotify.js";
 import { saveAndBroadcast } from "../lib/notificationStore.js";
 import { getVendorFilterMode } from "../lib/aiOrderIntake.js";
 import { StockShortageError, postStockOut, postStockIn } from "../lib/inventoryStock.js";
 import { resolveCompanyId } from "../lib/resolveCompany.js";
 import { convertQty } from "../lib/uomEngine.js";
+import { markSalesInvoiced } from "../lib/services/index.js";
 
 async function computeTax(subtotal: number, taxRateId: number | null | undefined): Promise<{ taxAmount: number; grandTotal: number }> {
   if (!taxRateId) return { taxAmount: 0, grandTotal: subtotal };
@@ -218,7 +221,7 @@ router.get("/documents", async (req, res) => {
     conds.push(eq(salesDocumentsTable.status, statusFilter as "draft" | "sent" | "confirmed" | "done" | "cancelled"));
   if (invoiceStatus === "none" || invoiceStatus === "to_invoice" || invoiceStatus === "invoiced")
     conds.push(eq(salesDocumentsTable.invoiceStatus, invoiceStatus));
-  if (paymentStatus === "unpaid" || paymentStatus === "partial" || paymentStatus === "paid")
+  if (paymentStatus === "unpaid" || paymentStatus === "partial" || paymentStatus === "paid" || paymentStatus === "overdue")
     conds.push(eq(salesDocumentsTable.paymentStatus, paymentStatus));
   if (search) {
     conds.push(or(
@@ -485,7 +488,6 @@ router.post("/documents/:id/action", async (req, res) => {
       patch["status"] = "confirmed" satisfies SalesDocStatus;
       patch["kind"] = "order";
       patch["confirmedAt"] = new Date();
-      patch["invoiceStatus"] = "to_invoice" satisfies SalesInvoiceStatus;
       patch["deliveryStatus"] = "to_deliver";
       break;
     case "cancel":
@@ -495,6 +497,14 @@ router.post("/documents/:id/action", async (req, res) => {
       patch["status"] = "draft" satisfies SalesDocStatus;
       break;
     case "mark_invoiced": {
+      // Idempotency guard via service
+      const invResult = await markSalesInvoiced(id, "manual");
+      if (!invResult.ok) {
+        return res.status(500).json({ message: invResult.error ?? "Gagal update invoice status" });
+      }
+      if (invResult.alreadySet) {
+        return res.status(409).json({ message: "Invoice sudah diterbitkan untuk dokumen ini" });
+      }
       // Auto-numbering: INV/YYYY/NNNN
       const invYear = new Date().getFullYear();
       const [{ invCount }] = await db
@@ -507,7 +517,7 @@ router.post("/documents/:id/action", async (req, res) => {
       // Auto due date: invoiceDate + paymentTermDays (default 30)
       const termDays = Number((doc as Record<string, unknown>)["paymentTermDays"] ?? 30);
       const dueDate = new Date(Date.now() + termDays * 24 * 60 * 60 * 1000).toISOString().split("T")[0]!;
-      patch["invoiceStatus"] = "invoiced" satisfies SalesInvoiceStatus;
+      // invoiceStatus already set by markSalesInvoiced() above
       patch["invoiceNumber"] = invoiceNumber;
       patch["invoiceDate"] = invoiceDate;
       patch["dueDate"] = dueDate;
@@ -521,6 +531,9 @@ router.post("/documents/:id/action", async (req, res) => {
       patch["cancelledAt"] = new Date();
       break;
     }
+    case "send_reminder":
+      // Fire-and-forget: no status changes, only notifications
+      break;
     case "mark_delivered":
       patch["deliveryStatus"] = "delivered";
       if (doc.invoiceStatus === "invoiced") patch["status"] = "done" satisfies SalesDocStatus;
@@ -569,6 +582,10 @@ router.post("/documents/:id/action", async (req, res) => {
   }
 
   await db.update(salesDocumentsTable).set(patch).where(eq(salesDocumentsTable.id, id));
+
+  if (action === "confirm") {
+    await markSalesReadyToInvoice(id, "system");
+  }
 
   // Auto-reverse journal entry when a confirmed/invoiced SO is cancelled
   if (action === "cancel" && (doc.status === "confirmed" || doc.invoiceStatus === "invoiced" || doc.invoiceStatus === "to_invoice")) {
@@ -734,6 +751,44 @@ router.post("/documents/:id/action", async (req, res) => {
           : "—";
         await sendInvoiceIssuedNotification(doc.docNumber, invNumber, doc.customerName, grandTotal, dueStr, customerPhone, adminWa);
       }
+
+      if (action === "send_reminder") {
+        const invoiceRef = doc.invoiceNumber ?? doc.docNumber;
+        const dueStr = doc.dueDate
+          ? new Date(doc.dueDate).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })
+          : "—";
+        const reminderTotal = Number(doc.grandTotal ?? doc.totalAmount ?? 0);
+        const today = new Date();
+        const dueDate = doc.dueDate ? new Date(doc.dueDate) : null;
+        const daysOverdue = dueDate ? Math.floor((today.getTime() - dueDate.getTime()) / 86_400_000) : 0;
+        const custEmail = (doc.customerId != null
+          ? (await db.select({ email: customersTable.email }).from(customersTable).where(eq(customersTable.id, doc.customerId)).limit(1))[0]?.email
+          : null) ?? null;
+
+        await notifyPaymentReminder({
+          invoiceNumber: invoiceRef,
+          customerName: doc.customerName,
+          customerPhone: customerPhone ?? undefined,
+          dueDate: dueStr,
+          totalAmount: reminderTotal,
+          daysUntilDue: -daysOverdue,
+        });
+
+        if (custEmail && isSmtpConfigured()) {
+          const amountStr = `Rp ${Math.round(reminderTotal).toLocaleString("id-ID")}`;
+          sendMail({
+            to: custEmail,
+            subject: daysOverdue > 0
+              ? `Pengingat Pembayaran — Invoice ${invoiceRef} (${daysOverdue} hari jatuh tempo)`
+              : `Pengingat Pembayaran — Invoice ${invoiceRef}`,
+            text: `Kepada Yth. ${doc.customerName},\n\nIni adalah pengingat untuk pembayaran Invoice ${invoiceRef}.\nJumlah: ${amountStr}\nJatuh Tempo: ${dueStr}\n\nMohon segera melakukan pembayaran. Hubungi kami jika ada pertanyaan.\n\nTerima kasih,\nTim Finance`,
+            html: `<p>Kepada Yth. <strong>${doc.customerName}</strong>,</p><p>Ini adalah pengingat untuk pembayaran Invoice <strong>${invoiceRef}</strong>.</p><ul><li>Jumlah: <strong>${amountStr}</strong></li><li>Jatuh Tempo: ${dueStr}</li></ul><p>Mohon segera melakukan pembayaran. Hubungi kami jika ada pertanyaan.</p><p>Terima kasih,<br>Tim Finance</p>`,
+            context: `reminder_manual_${invoiceRef}`,
+            refType: "invoice",
+            refId: invoiceRef,
+          }).catch(() => {});
+        }
+      }
     } catch (_e) {
       // fire-and-forget — jangan sampai gagal notif membatalkan response
     }
@@ -768,6 +823,7 @@ router.post("/documents/:id/action", async (req, res) => {
     mark_invoiced: "Invoice Dibuat",
     cancel_invoice: "Invoice Dibatalkan",
     mark_delivered: "Tandai Terkirim",
+    send_reminder: "Reminder Pembayaran Dikirim",
   };
   saveAndBroadcast("sales_order_update", {
     type: "sales_update",
@@ -980,6 +1036,11 @@ router.get("/documents/:id/pdf", async (req, res): Promise<void> => {
       subtotal: Number(l.subtotal),
     })),
     totalAmount: Number(detail.totalAmount),
+    taxAmount: detail.taxAmount > 0 ? detail.taxAmount : null,
+    grandTotal: detail.taxAmount > 0 ? detail.grandTotal : null,
+    taxRate: detail.taxAmount > 0 && detail.totalAmount > 0
+      ? Math.round(detail.taxAmount / detail.totalAmount * 100)
+      : null,
     invoiceStatus: detail.invoiceStatus,
     deliveryStatus: detail.deliveryStatus,
   });
@@ -1038,6 +1099,11 @@ router.post("/documents/:id/email", async (req, res): Promise<void> => {
       subtotal: Number(l.subtotal),
     })),
     totalAmount: Number(detail.totalAmount),
+    taxAmount: detail.taxAmount > 0 ? detail.taxAmount : null,
+    grandTotal: detail.taxAmount > 0 ? detail.grandTotal : null,
+    taxRate: detail.taxAmount > 0 && detail.totalAmount > 0
+      ? Math.round(detail.taxAmount / detail.totalAmount * 100)
+      : null,
     invoiceStatus: detail.invoiceStatus,
     deliveryStatus: detail.deliveryStatus,
   };

@@ -156,7 +156,8 @@ export default function VendorFormPage() {
     if (!mode || mode === "select" || mode === "done") return;
     if (isExpired) { setError("Batas waktu RFQ sudah berakhir."); return; }
     if (mode === "counter") {
-      if (!unitPrice || unitPriceNum <= 0) { setError("Harga satuan harus diisi"); return; }
+      if (!unitPrice) { setError("Harga penawaran harus diisi"); return; }
+      if (isNaN(unitPriceNum) || unitPriceNum <= 0) { setError("Harga penawaran harus lebih dari Rp 0"); return; }
       if (!eta) { setError("Estimasi waktu harus diisi"); return; }
     }
     setSubmitting(true);
@@ -307,11 +308,6 @@ export default function VendorFormPage() {
                 <div key={i} className="rounded-xl border border-gray-100 bg-gray-50 p-3 space-y-1.5">
                   <div className="flex justify-between items-start">
                     <span className="font-semibold text-gray-800 text-sm">{item.serviceName || item.category || "—"}</span>
-                    {item.sellingUnitPrice != null && (
-                      <span className="text-xs text-gray-400 ml-2 shrink-0">
-                        Ref jual: {idr(item.sellingUnitPrice)}/Unit
-                      </span>
-                    )}
                   </div>
                   <div className="flex justify-between text-xs text-gray-500">
                     <span>Qty</span>

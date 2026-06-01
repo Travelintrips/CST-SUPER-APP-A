@@ -7,6 +7,7 @@ import { seedDemoData, seedDemoDrivers } from "./lib/seedDemoData";
 import { startImapPoller } from "./lib/imapPoller";
 import { startOcrTempCleanup } from "./lib/ocrTempCleanup";
 import { startVmfGapNotifier, runVmfGapCheck } from "./lib/vmfGapNotifier";
+import { startFulfillmentExpiryNotifier } from "./lib/fulfillmentExpiryNotifier";
 import { runPhase1Migration } from "./lib/phase1Migration";
 import { startWorkflowWorker } from "./lib/workflowWorker";
 import { startWaRetryWorker } from "./lib/waRetryWorker";
@@ -46,6 +47,7 @@ import { runTrustedDevicesMigration } from "./lib/trustedDevicesMigration.js";
 import { runAuditReportsMigration } from "./lib/auditReportsMigration.js";
 import { runWaTemplateMigration } from "./lib/orderNotification.js";
 import { runRlsMigration } from "./lib/rlsMigration.js";
+import { runCommodityTemplateMigration } from "./lib/commodityTemplateMigration.js";
 import { migratePushSubscriptions } from "./lib/webPush.js";
 import { runPgTrgmMigration } from "./lib/pgTrgmMigration.js";
 import { runIntelligenceAlertSettingsMigration } from "./lib/intelligenceAlertSettingsMigration.js";
@@ -53,6 +55,7 @@ import { runAiGovernanceMigration } from "./lib/aiGovernanceMigration.js";
 import { runPurchaseTemplateMigration } from "./lib/purchaseTemplateMigration.js";
 import { runEnterpriseWorkflowMigration } from "./lib/enterpriseWorkflowTemplates.js";
 import { runOrderProgressMigration } from "./lib/orderProgress.js";
+import { runExceptionEnumMigration } from "./lib/services/exceptionService.js";
 import { expireStaleApprovals } from "./lib/aiGovernance.js";
 import { startDbBackupScheduler } from "./lib/dbBackup.js";
 import { initAlertsBroadcast } from "./lib/alertsBroadcast.js";
@@ -255,6 +258,7 @@ async function startServer() {
   startImapPoller(3 * 60 * 1000);
   startOcrTempCleanup();
   startVmfGapNotifier();
+  startFulfillmentExpiryNotifier();
   startWorkflowWorker();
   startDbBackupScheduler();
   startWaRetryWorker();
@@ -306,6 +310,7 @@ async function startServer() {
     .then(() => runWithRetry("ERP audit reports migration", runAuditReportsMigration))
     .then(() => runWithRetry("WA template migration", runWaTemplateMigration))
     .then(() => runWithRetry("RLS migration", runRlsMigration))
+    .then(() => runWithRetry("Commodity template migration", runCommodityTemplateMigration))
     .then(() => runWithRetry("Phase 1 migration", runPhase1Migration))
     .then(() => runWithRetry("Push subscriptions migration", migratePushSubscriptions))
     .then(() => runWithRetry("pg_trgm indexes migration", runPgTrgmMigration))
@@ -314,6 +319,7 @@ async function startServer() {
     .then(() => runWithRetry("Purchase template migration", runPurchaseTemplateMigration))
     .then(() => runWithRetry("Enterprise workflow template migration", runEnterpriseWorkflowMigration))
     .then(() => runWithRetry("Order progress migration", runOrderProgressMigration))
+    .then(() => runWithRetry("Exception enum migration", runExceptionEnumMigration))
     .then(() => enableRealtimeTables().catch((err) => {
       logger.warn({ err }, "Supabase Realtime table enable failed (non-fatal)");
     }))

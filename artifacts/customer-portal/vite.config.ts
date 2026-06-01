@@ -68,6 +68,7 @@ export default defineConfig({
     port,
     strictPort: true,
     host: "::",
+    host: "0.0.0.0",
     allowedHosts: true,
     watch: {
       ignored: [

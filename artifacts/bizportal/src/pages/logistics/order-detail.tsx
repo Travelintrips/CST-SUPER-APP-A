@@ -21,11 +21,12 @@ import {
   Package, Truck, User, ClipboardList, Clock, ShieldAlert, Ship,
   ClipboardCheck, CheckCircle2, XCircle, MapPin, MessageCircle,
   Link2, FileText, AlertTriangle, Eye, EyeOff, StickyNote, Globe,
-  RotateCcw, Bell, ChevronDown, ChevronUp, Download,
+  RotateCcw, Bell, ChevronDown, ChevronUp, Download, Shield, ZoomIn,
 } from "lucide-react";
 import { Link } from "wouter";
 import GpsTrackingPanel from "@/components/logistics/GpsTrackingPanel";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { OrderProgressBar } from "@/components/logistics/OrderProgressBar";
 
 const idr = (n: number | string | null | undefined) =>
   n == null ? "—" : `Rp ${Math.round(Number(n)).toLocaleString("id-ID")}`;
@@ -178,10 +179,10 @@ function WaNotificationLogPanel({ orderNumber }: { orderNumber: string }) {
 }
 
 const ORDER_STATUSES = [
-  "New Order", "Pending Vendor", "Vendor Confirmed", "Quotation Sent",
-  "order_confirmed", "assigned_to_vendor", "waiting_pickup", "picked_up",
-  "in_progress", "delivered", "pod_uploaded", "invoice_created",
-  "payment_pending", "paid", "completed", "cancelled",
+  "Order Received", "Admin Review", "RFQ Sent", "Quote Received",
+  "Customer Approval", "Vendor Confirmed", "In Progress", "Pickup",
+  "In Transit", "Arrived", "Delivered", "POD Uploaded",
+  "Invoice Issued", "Payment Received", "Completed", "Cancelled",
 ];
 
 // ── Status badge color map ──────────────────────────────────────────────────────
@@ -189,30 +190,41 @@ const ORDER_STATUSES = [
 // Unknown statuses fall back to "bg-slate-100 text-slate-700" (neutral grey).
 // Keep this in sync with the status enum in the backend schema.
 const STATUS_COLOR: Record<string, string> = {
-  // Order lifecycle statuses
-  "New Order":           "bg-yellow-100 text-yellow-800",
-  "Under Review":        "bg-blue-100 text-blue-700",
-  "Vendor Confirmed":    "bg-indigo-100 text-indigo-800",
-  "Vendor Rejected":     "bg-red-100 text-red-800",
-  "Quotation Sent":      "bg-purple-100 text-purple-800",
-  "Customer Approved":   "bg-emerald-100 text-emerald-800",
-  "In Progress":         "bg-indigo-100 text-indigo-800",
-  "Completed":           "bg-green-200 text-green-900",
-  "Cancelled":           "bg-red-100 text-red-800",
-  "Done":                "bg-green-200 text-green-900",
-  // Legacy / internal status keys
-  order_confirmed: "bg-green-100 text-green-800",
-  assigned_to_vendor: "bg-blue-100 text-blue-800",
-  waiting_pickup: "bg-yellow-100 text-yellow-800",
-  picked_up: "bg-blue-100 text-blue-800",
-  in_progress: "bg-indigo-100 text-indigo-800",
-  delivered: "bg-teal-100 text-teal-800",
-  completed: "bg-green-200 text-green-900",
-  cancelled: "bg-red-100 text-red-800",
-  customer_quoted: "bg-purple-100 text-purple-800",
-  customer_approved: "bg-emerald-100 text-emerald-800",
-  customer_rejected: "bg-red-100 text-red-800",
-  customer_revision_requested: "bg-amber-100 text-amber-800",
+  // Canonical 15 statuses
+  "Order Received":    "bg-slate-100 text-slate-700",
+  "Admin Review":      "bg-amber-100 text-amber-800",
+  "RFQ Sent":          "bg-blue-100 text-blue-700",
+  "Quote Received":    "bg-purple-100 text-purple-800",
+  "Customer Approval": "bg-violet-100 text-violet-800",
+  "Vendor Confirmed":  "bg-green-100 text-green-800",
+  "In Progress":       "bg-blue-100 text-blue-800",
+  "Pickup":            "bg-yellow-100 text-yellow-800",
+  "In Transit":        "bg-indigo-100 text-indigo-800",
+  "Arrived":           "bg-cyan-100 text-cyan-800",
+  "Delivered":         "bg-teal-100 text-teal-800",
+  "POD Uploaded":      "bg-emerald-100 text-emerald-800",
+  "Invoice Issued":    "bg-orange-100 text-orange-800",
+  "Payment Received":  "bg-lime-100 text-lime-800",
+  "Completed":         "bg-green-200 text-green-900",
+  "Cancelled":         "bg-red-100 text-red-800",
+  // Legacy / backward compat
+  "New Order":                   "bg-yellow-100 text-yellow-800",
+  "Under Review":                "bg-blue-100 text-blue-700",
+  "Quotation Sent":              "bg-purple-100 text-purple-800",
+  "Customer Approved":           "bg-emerald-100 text-emerald-800",
+  "Done":                        "bg-green-200 text-green-900",
+  order_confirmed:               "bg-green-100 text-green-800",
+  assigned_to_vendor:            "bg-blue-100 text-blue-800",
+  waiting_pickup:                "bg-yellow-100 text-yellow-800",
+  picked_up:                     "bg-blue-100 text-blue-800",
+  in_progress:                   "bg-indigo-100 text-indigo-800",
+  delivered:                     "bg-teal-100 text-teal-800",
+  completed:                     "bg-green-200 text-green-900",
+  cancelled:                     "bg-red-100 text-red-800",
+  customer_quoted:               "bg-purple-100 text-purple-800",
+  customer_approved:             "bg-emerald-100 text-emerald-800",
+  customer_rejected:             "bg-red-100 text-red-800",
+  customer_revision_requested:   "bg-amber-100 text-amber-800",
 };
 
 async function apiFetch<T>(url: string, opts?: RequestInit): Promise<T> {
@@ -1888,6 +1900,7 @@ export default function LogisticOrderDetailPage() {
   const orderId = Number(orderIdStr);
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const qc = useQueryClient();
 
   const { data, isLoading, refetch } = useQuery<DetailData>({
@@ -1952,6 +1965,52 @@ export default function LogisticOrderDetailPage() {
       void refetchFulfillment();
     },
     onError: (e: Error) => toast({ title: "Gagal konfirmasi", description: e.message, variant: "destructive" }),
+  });
+
+  const resendConfirmWaMut = useMutation({
+    mutationFn: () => apiFetch<{ ok: boolean; shortUrl: string; adminWaSent: boolean }>(
+      "/api/admin-action/resend-confirm-wa",
+      { method: "POST", body: JSON.stringify({ orderId: Number(orderId) }) }
+    ),
+    onSuccess: (data) => {
+      if (data.adminWaSent) {
+        toast({ title: "✅ WA konfirmasi terkirim ulang", description: `Link baru dikirim ke grup admin WA.` });
+      } else {
+        navigator.clipboard.writeText(data.shortUrl).catch(() => {});
+        toast({ title: "✅ Link konfirmasi dibuat", description: "Admin WA tidak terkonfigurasi — link disalin ke clipboard." });
+      }
+    },
+    onError: (e: Error) => toast({ title: "Gagal kirim ulang WA", description: e.message, variant: "destructive" }),
+  });
+
+  const resendFulfillWaMut = useMutation({
+    mutationFn: () => apiFetch<{ ok: boolean; formUrl: string; vendorPhone: string | null; vendorName: string | null }>(
+      `/api/logistic/orders/${orderId}/resend-fulfillment-wa`,
+      { method: "POST" }
+    ),
+    onSuccess: (data) => {
+      navigator.clipboard.writeText(data.formUrl).catch(() => {});
+      toast({
+        title: "✅ WA fulfillment dikirim ulang",
+        description: data.vendorPhone
+          ? `WA dikirim ke ${data.vendorName ?? "vendor"}. Link disalin ke clipboard.`
+          : "Vendor tidak punya nomor WA — link disalin ke clipboard.",
+      });
+    },
+    onError: (e: Error) => toast({ title: "Gagal kirim ulang WA", description: e.message, variant: "destructive" }),
+  });
+
+  const extendFulfillMut = useMutation({
+    mutationFn: () => apiFetch<{ ok: boolean; newExpiresAt: string; hours: number }>(
+      `/api/logistic/orders/${orderId}/extend-fulfillment`,
+      { method: "PATCH", body: JSON.stringify({ extraHours: 72 }) }
+    ),
+    onSuccess: (data) => {
+      const exp = new Date(data.newExpiresAt).toLocaleString("id-ID", { dateStyle: "short", timeStyle: "short" });
+      toast({ title: "✅ Expiry diperpanjang", description: `Link berlaku sampai ${exp}.` });
+      void refetchFulfillment();
+    },
+    onError: (e: Error) => toast({ title: "Gagal perpanjang expiry", description: e.message, variant: "destructive" }),
   });
 
   const [completeNote, setCompleteNote] = useState("");
@@ -2066,18 +2125,29 @@ export default function LogisticOrderDetailPage() {
             <Button variant="outline" size="sm" onClick={() => refetch()}>
               <RefreshCw className="w-4 h-4" />
             </Button>
+            <Link href={`/logistics/orders/${orderId}/audit-trail`}>
+              <Button variant="outline" size="sm" className="gap-1.5 text-violet-700 border-violet-200 hover:bg-violet-50">
+                <Shield className="w-4 h-4" /> Audit Trail
+              </Button>
+            </Link>
             <UpdateStatusDialog orderId={orderId} currentStatus={order.status} currentVersion={order.version} onUpdated={() => qc.invalidateQueries({ queryKey: ["order-detail", orderId] })} />
             <CreateTaskLinkDialog orderId={orderId} vendorId={order.approvedVendorId} onCreated={() => qc.invalidateQueries({ queryKey: ["order-detail", orderId] })} />
             {hasVendorSelected && (
               <SendQuoteDialog order={order} rfqId={activeRfqId} onSent={() => qc.invalidateQueries({ queryKey: ["order-detail", orderId] })} />
             )}
             <AssignVendorDialog orderId={orderId} onAssigned={() => qc.invalidateQueries({ queryKey: ["order-detail", orderId] })} />
-            <SendFulfillmentDialog
-              orderId={orderId}
-              vendor={vendor}
-              shipmentType={order.shipmentType}
-              onSent={() => { qc.invalidateQueries({ queryKey: ["order-detail", orderId] }); void refetchFulfillment(); }}
-            />
+            {order.status === "Quotation Sent" ? (
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 text-xs font-medium">
+                ⏳ Menunggu Persetujuan Customer — Forward ke vendor tersedia setelah customer menyetujui penawaran.
+              </div>
+            ) : (
+              <SendFulfillmentDialog
+                orderId={orderId}
+                vendor={vendor}
+                shipmentType={order.shipmentType}
+                onSent={() => { qc.invalidateQueries({ queryKey: ["order-detail", orderId] }); void refetchFulfillment(); }}
+              />
+            )}
             <Button variant="outline" size="sm" onClick={() => createCustomerLink.mutate()} disabled={createCustomerLink.isPending}>
               <Plus className="w-4 h-4 mr-1" /> Tracking Link
             </Button>
@@ -2094,6 +2164,14 @@ export default function LogisticOrderDetailPage() {
               Resend WA Grup
             </Button>
           </div>
+        </div>
+
+        {/* Order Progress Bar — 15 canonical steps */}
+        <div className="rounded-xl border border-border bg-card px-4 py-3">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-1.5">
+            <ClipboardList className="w-3.5 h-3.5" /> Progress Order
+          </p>
+          <OrderProgressBar status={order.status} />
         </div>
 
         {/* Quote status banner */}
@@ -2335,7 +2413,8 @@ export default function LogisticOrderDetailPage() {
                                 flightVessel: "Kapal / Flight", bookingNumber: "No. Booking",
                                 etd: "ETD", eta: "ETA", customsPicName: "Nama PIC",
                                 customsDocuments: "Dokumen", customsProcessEta: "ETA Proses",
-                                stockPhotoUrl: "Foto Stok", invoiceUrl: "Invoice",
+                                stockPhotoUrl: "Foto Stok", packingListUrl: "Packing List",
+                                invoiceUrl: "Invoice", podUrl: "POD",
                                 supportingDocUrl: "Dok. Pendukung", notes: "Catatan",
                                 driver_name: "Nama Driver", driver_phone: "HP Driver",
                                 vehicle_plate: "Plat Nomor", vehicle_type: "Jenis Kendaraan",
@@ -2352,14 +2431,26 @@ export default function LogisticOrderDetailPage() {
                               };
                               const label = LABELS[k] ?? k.replace(/([A-Z])/g, " $1").replace(/_/g, " ").trim();
                               const display = STOCK_MAP[v] ?? PRICE_MAP[v] ?? v;
-                              const isUrl = v.startsWith("http");
+                              const isUrl = v.startsWith("http") || v.startsWith("/api/") || v.startsWith("/");
+                              const isImage = isUrl && /\.(jpg|jpeg|png|webp|heic|heif)(\?.*)?$/i.test(v);
                               return (
                                 <div key={k} className="flex gap-2 text-xs">
                                   <span className="text-slate-400 min-w-[140px] flex-shrink-0 capitalize">{label}</span>
                                   <span className="text-slate-700 font-medium">
-                                    {isUrl
-                                      ? <a href={v} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">Lihat file ↗</a>
-                                      : display}
+                                    {isImage ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => setLightboxUrl(v)}
+                                        className="relative group block"
+                                      >
+                                        <img src={v} alt={label} className="max-h-28 max-w-[200px] rounded border border-slate-200 object-contain transition-opacity group-hover:opacity-75" />
+                                        <span className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                          <ZoomIn className="w-6 h-6 text-white drop-shadow-lg" />
+                                        </span>
+                                      </button>
+                                    ) : isUrl ? (
+                                      <a href={v} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">Lihat file ↗</a>
+                                    ) : display}
                                   </span>
                                 </div>
                               );
@@ -2367,6 +2458,42 @@ export default function LogisticOrderDetailPage() {
                             <p className="text-[10px] text-slate-400 pt-1">
                               Diterima: {new Date(sub.submittedAt).toLocaleString("id-ID")}
                             </p>
+                          </div>
+                        )}
+
+                        {/* ── Kirim ulang WA ke vendor jika belum submit ── */}
+                        {!isSubmitted && (
+                          <div className="pt-1 flex flex-wrap gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 h-8 text-xs"
+                              disabled={resendFulfillWaMut.isPending}
+                              onClick={() => {
+                                if (!confirm("Kirim ulang WA form fulfillment ke vendor?")) return;
+                                resendFulfillWaMut.mutate();
+                              }}
+                            >
+                              {resendFulfillWaMut.isPending
+                                ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                                : <MessageCircle className="w-3.5 h-3.5 mr-1" />}
+                              Kirim Ulang WA ke Vendor
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="border-amber-300 text-amber-700 hover:bg-amber-50 h-8 text-xs"
+                              disabled={extendFulfillMut.isPending}
+                              onClick={() => {
+                                if (!confirm("Perpanjang masa berlaku link fulfillment +72 jam?")) return;
+                                extendFulfillMut.mutate();
+                              }}
+                            >
+                              {extendFulfillMut.isPending
+                                ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                                : <Clock className="w-3.5 h-3.5 mr-1" />}
+                              Perpanjang (+72 jam)
+                            </Button>
                           </div>
                         )}
 
@@ -2397,6 +2524,23 @@ export default function LogisticOrderDetailPage() {
                               >
                                 <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
                                 Selesaikan Order
+                              </Button>
+                            )}
+                            {!["In Progress", "Completed", "Cancelled"].includes(order.status) && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="border-orange-300 text-orange-700 hover:bg-orange-50 h-8 text-xs"
+                                disabled={resendConfirmWaMut.isPending}
+                                onClick={() => {
+                                  if (!confirm("Buat ulang link konfirmasi fulfillment dan kirim WA ke admin group?")) return;
+                                  resendConfirmWaMut.mutate();
+                                }}
+                              >
+                                {resendConfirmWaMut.isPending
+                                  ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                                  : <Bell className="w-3.5 h-3.5 mr-1" />}
+                                Kirim Ulang WA Konfirmasi
                               </Button>
                             )}
                           </div>
@@ -2882,6 +3026,44 @@ export default function LogisticOrderDetailPage() {
       <ErrorBoundary label="GPS Tracking">
         <GpsTrackingPanel orderId={orderId} orderNumber={order.orderNumber} />
       </ErrorBoundary>
+
+      {/* Lightbox */}
+      {lightboxUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
+          onClick={() => setLightboxUrl(null)}
+        >
+          <div
+            className="relative max-w-[90vw] max-h-[90vh] flex flex-col items-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={lightboxUrl}
+              alt="Preview"
+              className="max-w-[90vw] max-h-[80vh] rounded-lg object-contain shadow-2xl"
+            />
+            <div className="flex gap-3 mt-4">
+              <a
+                href={lightboxUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-white text-slate-800 text-sm font-medium hover:bg-slate-100 transition-colors shadow"
+              >
+                <ExternalLink className="w-4 h-4" />
+                Buka di tab baru
+              </a>
+              <button
+                type="button"
+                onClick={() => setLightboxUrl(null)}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-slate-700 text-white text-sm font-medium hover:bg-slate-600 transition-colors shadow"
+              >
+                <XCircle className="w-4 h-4" />
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppShell>
   );
 }

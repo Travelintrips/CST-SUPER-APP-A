@@ -34,6 +34,8 @@ import {
 } from "../lib/accountingSeed.js";
 import { logger } from "../lib/logger.js";
 import { postEntry, type PostingLine } from "../lib/accounting.js";
+import { recalculatePaymentStatus } from "../lib/services/index.js";
+import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminWa } from "../lib/adminWa.js";
 
@@ -863,8 +865,15 @@ router.post("/payments", async (req, res) => {
         .reduce((s, r) => s + Number(r.amount), 0);
 
       if (validSourceType === "sales_order") {
+        await recalculatePaymentStatus(parsedSourceDocId, "sales_order");
+
+        // WA notification to admin — fire-and-forget
         const [doc] = await db
-          .select({ grandTotal: salesDocumentsTable.grandTotal, docNumber: salesDocumentsTable.docNumber })
+          .select({
+            grandTotal: salesDocumentsTable.grandTotal,
+            docNumber: salesDocumentsTable.docNumber,
+            logisticOrderId: salesDocumentsTable.logisticOrderId,
+          })
           .from(salesDocumentsTable)
           .where(eq(salesDocumentsTable.id, parsedSourceDocId));
         const grandTotal = Number(doc?.grandTotal ?? 0);
@@ -874,16 +883,20 @@ router.post("/payments", async (req, res) => {
             : totalPaid > 0
               ? "partial"
               : "unpaid";
-        await db
-          .update(salesDocumentsTable)
-          .set({
-            paymentStatus: newStatus,
-            amountPaid: String(round2(totalPaid)),
-            updatedAt: new Date(),
-          })
-          .where(eq(salesDocumentsTable.id, parsedSourceDocId));
 
-        // WA notification to admin — fire-and-forget
+        // ── AUTO STATUS: Payment Received ──────────────────────────────────
+        // Jika pembayaran lunas DAN ada logistic order terhubung,
+        // transisi ke "Payment Received" secara otomatis.
+        // Partial payment → tidak ubah status.
+        if (newStatus === "paid" && doc?.logisticOrderId) {
+          transitionLogisticOrderStatus(doc.logisticOrderId, "Payment Received", {
+            source: "accounting:payment_recorded",
+            actorType: "admin",
+            notes: `Pembayaran lunas via ${payment!.paymentNumber} (SO: ${doc.docNumber ?? parsedSourceDocId})`,
+          }).catch((e: unknown) =>
+            logger.warn({ e, logisticOrderId: doc.logisticOrderId }, "auto Payment Received transition failed — non-fatal"),
+          );
+        }
         const fmtIdr = (n: number) =>
           `Rp ${Math.round(n).toLocaleString("id-ID")}`;
         const statusLabel =
@@ -918,6 +931,8 @@ router.post("/payments", async (req, res) => {
             logger.error({ e }, "getAdminWa payment notif failed"),
           );
       } else if (validSourceType === "purchase_order") {
+        await recalculatePaymentStatus(parsedSourceDocId, "purchase_order");
+
         const [doc] = await db
           .select({ grandTotal: purchaseDocumentsTable.grandTotal, docNumber: purchaseDocumentsTable.docNumber })
           .from(purchaseDocumentsTable)
@@ -929,14 +944,6 @@ router.post("/payments", async (req, res) => {
             : totalPaid > 0
               ? "partial"
               : "unpaid";
-        await db
-          .update(purchaseDocumentsTable)
-          .set({
-            paymentStatus: newStatus,
-            amountPaid: String(round2(totalPaid)),
-            updatedAt: new Date(),
-          })
-          .where(eq(purchaseDocumentsTable.id, parsedSourceDocId));
 
         // WA notification to admin — fire-and-forget
         const fmtIdr = (n: number) =>
@@ -1172,47 +1179,10 @@ router.post("/payments/:id/void", async (req, res) => {
         .filter((r) => r.status !== "voided")
         .reduce((s, r) => s + Number(r.amount), 0);
 
-      if (validSourceType === "sales_order") {
-        const [doc] = await db
-          .select({ grandTotal: salesDocumentsTable.grandTotal })
-          .from(salesDocumentsTable)
-          .where(eq(salesDocumentsTable.id, payment.sourceDocId));
-        const grandTotal = Number(doc?.grandTotal ?? 0);
-        const newStatus =
-          totalPaid >= grandTotal && grandTotal > 0
-            ? "paid"
-            : totalPaid > 0
-              ? "partial"
-              : "unpaid";
-        await db
-          .update(salesDocumentsTable)
-          .set({
-            paymentStatus: newStatus,
-            amountPaid: String(round2(totalPaid)),
-            updatedAt: new Date(),
-          })
-          .where(eq(salesDocumentsTable.id, payment.sourceDocId));
-      } else if (validSourceType === "purchase_order") {
-        const [doc] = await db
-          .select({ grandTotal: purchaseDocumentsTable.grandTotal })
-          .from(purchaseDocumentsTable)
-          .where(eq(purchaseDocumentsTable.id, payment.sourceDocId));
-        const grandTotal = Number(doc?.grandTotal ?? 0);
-        const newStatus =
-          totalPaid >= grandTotal && grandTotal > 0
-            ? "paid"
-            : totalPaid > 0
-              ? "partial"
-              : "unpaid";
-        await db
-          .update(purchaseDocumentsTable)
-          .set({
-            paymentStatus: newStatus,
-            amountPaid: String(round2(totalPaid)),
-            updatedAt: new Date(),
-          })
-          .where(eq(purchaseDocumentsTable.id, payment.sourceDocId));
-      }
+      await recalculatePaymentStatus(
+        payment.sourceDocId,
+        validSourceType as "sales_order" | "purchase_order",
+      );
     }
 
     const [updated] = await db
