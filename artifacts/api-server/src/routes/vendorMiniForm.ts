@@ -53,7 +53,7 @@ import {
   type LogisticOrderData,
 } from "../lib/orderNotification.js";
 
-// Boot migration: add template columns to customer_approvals
+// Boot migration: add template columns to customer_approvals + vendor_mini_form_submissions
 db.execute(sql.raw(`
   ALTER TABLE customer_approvals ADD COLUMN IF NOT EXISTS category_key TEXT;
   ALTER TABLE customer_approvals ADD COLUMN IF NOT EXISTS template_id TEXT;
@@ -61,6 +61,8 @@ db.execute(sql.raw(`
   ALTER TABLE customer_approvals ADD COLUMN IF NOT EXISTS template_snapshot JSONB;
   ALTER TABLE customer_approvals ADD COLUMN IF NOT EXISTS required_documents_from_template JSONB;
   ALTER TABLE customer_approvals ADD COLUMN IF NOT EXISTS checklist_from_template JSONB;
+  ALTER TABLE vendor_mini_form_submissions ADD COLUMN IF NOT EXISTS template_id TEXT;
+  ALTER TABLE vendor_mini_form_submissions ADD COLUMN IF NOT EXISTS template_version TEXT;
 `)).catch((e: unknown) => console.warn("customer_approvals migration warn:", e));
 
 function buildOrderDataFromRow(row: typeof logisticOrdersTable.$inferSelect): LogisticOrderData {
@@ -1180,6 +1182,8 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
           orderId: link.orderId ?? null,
           orderItemId: link.orderItemId ?? null,
           submittedIp, submittedUa,
+          templateId: link.templateId ?? null,
+          templateVersion: link.templateVersion ?? null,
         }).returning();
         return row;
       });

@@ -135,6 +135,7 @@ function toOrder(row: typeof logisticOrdersTable.$inferSelect, approvedVendorNam
     categoryKey: (row as any).categoryKey ?? null,
     templateId: (row as any).templateId ?? null,
     templateVersion: (row as any).templateVersion ?? null,
+    templateSnapshot: (row as any).templateSnapshot ?? null,
     requiredDocs: (row as any).requiredDocs ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: ((row as any).updatedAt ?? row.createdAt).toISOString(),
@@ -196,11 +197,41 @@ db.execute(sql.raw(`
   ALTER TABLE logistic_orders ADD COLUMN IF NOT EXISTS category_key TEXT;
   ALTER TABLE logistic_orders ADD COLUMN IF NOT EXISTS template_id INTEGER;
   ALTER TABLE logistic_orders ADD COLUMN IF NOT EXISTS template_version TEXT;
+  ALTER TABLE logistic_orders ADD COLUMN IF NOT EXISTS template_snapshot JSONB;
   ALTER TABLE logistic_order_rfqs ADD COLUMN IF NOT EXISTS template_id INTEGER;
   ALTER TABLE logistic_order_rfqs ADD COLUMN IF NOT EXISTS template_version TEXT;
   ALTER TABLE logistic_order_rfqs ADD COLUMN IF NOT EXISTS template_snapshot JSONB;
   ${STATUS_NORMALIZATION_SQL}
-`)).catch((e: unknown) => console.warn("[logistic_orders] boot migration warn:", e));
+`))
+  .then(() => _backfillTemplateSnapshots())
+  .catch((e: unknown) => console.warn("[logistic_orders] boot migration warn:", e));
+
+// ─── Backfill: isi template_snapshot untuk semua order lama yang belum punya snapshot ──────────
+async function _backfillTemplateSnapshots(): Promise<void> {
+  try {
+    const rows = await db.execute<{ id: number; category_key: string }>(sql`
+      SELECT id, category_key
+      FROM logistic_orders
+      WHERE category_key IS NOT NULL
+        AND template_snapshot IS NULL
+    `);
+    if (rows.rows.length === 0) return;
+    console.log(`[backfill] templateSnapshot: backfilling ${rows.rows.length} order(s)...`);
+    for (const row of rows.rows) {
+      const info = await resolveTemplateForCategory(row.category_key);
+      if (!info.templateSnapshot) continue;
+      await db.execute(sql`
+        UPDATE logistic_orders
+        SET template_snapshot = ${JSON.stringify(info.templateSnapshot)}::jsonb
+        WHERE id = ${row.id}
+          AND template_snapshot IS NULL
+      `);
+    }
+    console.log(`[backfill] templateSnapshot: selesai.`);
+  } catch (e) {
+    console.warn("[backfill] templateSnapshot error:", e);
+  }
+}
 
 // ─── Step 2: Helper — resolve ProductTemplate for a given categoryKey ─────────
 async function resolveTemplateForCategory(categoryKey: string | null | undefined): Promise<{
@@ -340,6 +371,7 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
         categoryKey: templateInfo.resolvedCategoryKey,
         templateId: templateInfo.templateId,
         templateVersion: templateInfo.templateVersion,
+        templateSnapshot: templateInfo.templateSnapshot,
         requiredDocs: templateInfo.requiredDocs,
       } : {}),
     } as any)

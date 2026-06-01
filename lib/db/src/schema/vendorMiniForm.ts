@@ -71,6 +71,9 @@ export const vendorMiniFormSubmissionsTable = pgTable("vendor_mini_form_submissi
   // Lock after customer approve
   locked: boolean("locked").default(false),
   unlockReason: text("unlock_reason"),
+  // ── Template Engine: version snapshot of the form template used at submission time ─
+  templateId: text("template_id"),
+  templateVersion: text("template_version"),
 }, (t) => [
   // Mencegah vendor yang sama (supplier_id tidak null) submit 2x untuk link yang sama.
   // Vendor anonim (supplier_id IS NULL) dikecualikan karena diidentifikasi via token unik.

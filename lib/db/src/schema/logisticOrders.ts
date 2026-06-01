@@ -88,6 +88,7 @@ export const logisticOrdersTable = pgTable("logistic_orders", {
   categoryKey: text("category_key"),
   templateId: integer("template_id"),
   templateVersion: text("template_version"),
+  templateSnapshot: jsonb("template_snapshot"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (t) => [

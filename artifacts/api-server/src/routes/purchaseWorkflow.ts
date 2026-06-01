@@ -65,6 +65,14 @@ function resolveCompanyId(req: { query: Record<string, unknown>; body: Record<st
   return Number.isNaN(n) ? 1 : n;
 }
 
+// Boot migration: add template columns to purchase_requests
+db.execute(sql`
+  ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS category_key TEXT;
+  ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS template_id TEXT;
+  ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS template_version TEXT;
+  ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS template_snapshot JSONB;
+`).catch((e: unknown) => console.warn("[purchase_requests] boot migration warn:", e));
+
 // ─────────────────────────────────────────────────────────────────────────────
 // UOM
 // ─────────────────────────────────────────────────────────────────────────────
@@ -132,6 +140,10 @@ router.post("/pr", async (req, res) => {
     requiredDate: body.requiredDate ? new Date(String(body.requiredDate)) : undefined,
     notes: body.notes ? String(body.notes) : undefined,
     createdBy: body.createdBy ? String(body.createdBy) : undefined,
+    categoryKey: body.categoryKey ? String(body.categoryKey) : undefined,
+    templateId: body.templateId ? String(body.templateId) : undefined,
+    templateVersion: body.templateVersion ? String(body.templateVersion) : undefined,
+    templateSnapshot: (body.templateSnapshot as Record<string, unknown> | null | undefined) ?? undefined,
   }).returning();
   if (Array.isArray(body.lines) && body.lines.length > 0) {
     await db.insert(purchaseRequestLinesTable).values(
@@ -161,6 +173,10 @@ router.put("/pr/:id", async (req, res) => {
     department: body.department ? String(body.department) : undefined,
     requiredDate: body.requiredDate ? new Date(String(body.requiredDate)) : undefined,
     notes: body.notes ? String(body.notes) : undefined,
+    ...(body.categoryKey !== undefined ? { categoryKey: body.categoryKey ? String(body.categoryKey) : null } : {}),
+    ...(body.templateId !== undefined ? { templateId: body.templateId ? String(body.templateId) : null } : {}),
+    ...(body.templateVersion !== undefined ? { templateVersion: body.templateVersion ? String(body.templateVersion) : null } : {}),
+    ...(body.templateSnapshot !== undefined ? { templateSnapshot: (body.templateSnapshot as Record<string, unknown> | null) } : {}),
     updatedAt: new Date(),
   }).where(eq(purchaseRequestsTable.id, id)).returning();
   if (Array.isArray(body.lines)) {
@@ -260,6 +276,10 @@ router.post("/pr/:id/action", async (req, res) => {
       notes: `Converted from PR ${pr.prNumber}`,
       createdById: pr.createdBy ?? undefined,
       ...(categoryKey ? { categoryKey, templateId, templateVersion, templateSnapshot } : {}),
+      categoryKey: (pr as any).categoryKey ?? null,
+      templateId: (pr as any).templateId ?? null,
+      templateVersion: (pr as any).templateVersion ?? null,
+      templateSnapshot: (pr as any).templateSnapshot ?? null,
     }).returning();
     if (lines.length > 0) {
       await db.insert(purchaseDocumentLinesTable).values(
