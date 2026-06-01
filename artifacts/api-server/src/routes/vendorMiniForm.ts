@@ -20,8 +20,10 @@ import {
   salesDocumentsTable,
   salesDocumentLinesTable,
   orderUpdatesTable,
+  productTemplatesTable,
 } from "@workspace/db";
-import { getInCodeTemplate } from "@workspace/product-templates";
+import { getInCodeTemplate, resolveTemplate } from "@workspace/product-templates";
+import type { ProductTemplateOverride } from "@workspace/product-templates";
 import { requireClerkUser } from "../lib/requireAdmin";
 import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
 import { deleteFromSupabase } from "../lib/supabaseStorage.js";
@@ -100,6 +102,43 @@ async function buildOrderDataFromRowWithItems(row: typeof logisticOrdersTable.$i
 }
 
 const PUBLIC_CACHE = "public, max-age=300, stale-while-revalidate=600";
+
+// ── Feature flag: Product Template Engine ─────────────────────────────────────
+// Set USE_PRODUCT_TEMPLATE_ENGINE=true di environment untuk mengaktifkan resolver
+// berbasis product_templates + resolveTemplate(). Bila false, fallback ke
+// commodity_templates (tabel lama) tetap dipakai.
+const USE_PRODUCT_TEMPLATE_ENGINE = process.env.USE_PRODUCT_TEMPLATE_ENGINE === "true";
+
+/**
+ * Resolve ProductTemplate dari product_templates DB menggunakan resolveTemplate().
+ * Basis: in-code template (shapes & defaults), layer: DB override (customizations).
+ * Bila category_key tidak ditemukan di DB, resolveTemplate() tetap fallback ke in-code.
+ */
+async function resolveFromProductTemplates(categoryKey: string): Promise<ReturnType<typeof resolveTemplate>> {
+  try {
+    const [row] = await db
+      .select()
+      .from(productTemplatesTable)
+      .where(eq(productTemplatesTable.categoryKey, categoryKey));
+    const override: ProductTemplateOverride | null = row
+      ? {
+          categoryKey: row.categoryKey,
+          label: row.label ?? undefined,
+          version: row.version ?? undefined,
+          isActive: row.isActive ?? true,
+          requiredDocuments: (row.requiredDocuments as ProductTemplateOverride["requiredDocuments"]) ?? undefined,
+          checklist: (row.checklist as ProductTemplateOverride["checklist"]) ?? undefined,
+          customFields: (row.customFields as ProductTemplateOverride["customFields"]) ?? undefined,
+          packagingInstructions: row.packagingInstructions ?? undefined,
+          conditionalRules: (row.conditionalRules as ProductTemplateOverride["conditionalRules"]) ?? undefined,
+          validationRules: (row.validationRules as ProductTemplateOverride["validationRules"]) ?? undefined,
+        }
+      : null;
+    return resolveTemplate(categoryKey, override);
+  } catch {
+    return resolveTemplate(categoryKey, null);
+  }
+}
 
 // ── Activity log helper ────────────────────────────────────────────────────────
 
@@ -712,44 +751,56 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
       }>;
     } | null = null;
 
-    // Priority 1: commodity template dari DB (Product Template Engine)
+    // Priority 1: commodity template dari DB
+    // Bila USE_PRODUCT_TEMPLATE_ENGINE=true → baca product_templates via resolveTemplate()
+    // Bila false (default) → fallback ke commodity_templates (tabel lama)
     if (row.commodityTemplateId) {
-      try {
-        const tplRes = await db.execute(sql`SELECT * FROM commodity_templates WHERE id = ${row.commodityTemplateId}`);
-        if (tplRes.rows.length) {
-          const t = tplRes.rows[0] as Record<string, unknown>;
-          const [fieldsRes, docsRes, clRes] = await Promise.all([
-            db.execute(sql`SELECT * FROM commodity_template_fields WHERE template_id = ${row.commodityTemplateId} ORDER BY sort_order`),
-            db.execute(sql`SELECT * FROM commodity_required_docs   WHERE template_id = ${row.commodityTemplateId} ORDER BY sort_order`),
-            db.execute(sql`SELECT * FROM commodity_checklists      WHERE template_id = ${row.commodityTemplateId} ORDER BY sort_order`),
-          ]);
-          productTemplate = {
-            category: String(t["key"]),
-            label: String(t["name"]),
-            version: "1.0.0",
-            packagingInstructions: "",
-            conditionalRules: [],
-            validationRules: [],
-            customFields: (fieldsRes.rows as Record<string, unknown>[]).map(f => ({
-              key: String(f["field_key"]),
-              label: String(f["label"]),
-              type: (String(f["field_type"] ?? "text")) as "text" | "number" | "select" | "textarea" | "date",
-              required: Boolean(f["required"]),
-              unit: f["unit"] != null ? String(f["unit"]) : undefined,
-              options: Array.isArray(f["options"]) ? (f["options"] as string[]) : undefined,
-            })),
-            requiredDocuments: (docsRes.rows as Record<string, unknown>[]).map(d => ({
-              key: `doc_${d["id"]}`,
-              label: String(d["doc_name"]),
-              required: Boolean(d["required"]),
-            })),
-            checklist: (clRes.rows as Record<string, unknown>[]).map(c => ({
-              key: `chk_${c["id"]}`,
-              label: String(c["item"]),
-            })),
-          };
-        }
-      } catch { /* non-fatal */ }
+      if (USE_PRODUCT_TEMPLATE_ENGINE) {
+        try {
+          const ctRes = await db.execute(sql`SELECT key FROM commodity_templates WHERE id = ${row.commodityTemplateId}`);
+          if (ctRes.rows.length) {
+            const categoryKey = String((ctRes.rows[0] as Record<string, unknown>)["key"]);
+            productTemplate = await resolveFromProductTemplates(categoryKey);
+          }
+        } catch { /* non-fatal */ }
+      } else {
+        try {
+          const tplRes = await db.execute(sql`SELECT * FROM commodity_templates WHERE id = ${row.commodityTemplateId}`);
+          if (tplRes.rows.length) {
+            const t = tplRes.rows[0] as Record<string, unknown>;
+            const [fieldsRes, docsRes, clRes] = await Promise.all([
+              db.execute(sql`SELECT * FROM commodity_template_fields WHERE template_id = ${row.commodityTemplateId} ORDER BY sort_order`),
+              db.execute(sql`SELECT * FROM commodity_required_docs   WHERE template_id = ${row.commodityTemplateId} ORDER BY sort_order`),
+              db.execute(sql`SELECT * FROM commodity_checklists      WHERE template_id = ${row.commodityTemplateId} ORDER BY sort_order`),
+            ]);
+            productTemplate = {
+              category: String(t["key"]),
+              label: String(t["name"]),
+              version: "1.0.0",
+              packagingInstructions: "",
+              conditionalRules: [],
+              validationRules: [],
+              customFields: (fieldsRes.rows as Record<string, unknown>[]).map(f => ({
+                key: String(f["field_key"]),
+                label: String(f["label"]),
+                type: (String(f["field_type"] ?? "text")) as "text" | "number" | "select" | "textarea" | "date",
+                required: Boolean(f["required"]),
+                unit: f["unit"] != null ? String(f["unit"]) : undefined,
+                options: Array.isArray(f["options"]) ? (f["options"] as string[]) : undefined,
+              })),
+              requiredDocuments: (docsRes.rows as Record<string, unknown>[]).map(d => ({
+                key: `doc_${d["id"]}`,
+                label: String(d["doc_name"]),
+                required: Boolean(d["required"]),
+              })),
+              checklist: (clRes.rows as Record<string, unknown>[]).map(c => ({
+                key: `chk_${c["id"]}`,
+                label: String(c["item"]),
+              })),
+            };
+          }
+        } catch { /* non-fatal */ }
+      }
     }
 
     if (row.orderId) {
@@ -769,7 +820,11 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
 
         if (order?.commodity) {
           const cat = order.commodity.trim().toLowerCase().replace(/[\s-]+/g, "_");
-          productTemplate = getInCodeTemplate(cat);
+          if (USE_PRODUCT_TEMPLATE_ENGINE) {
+            productTemplate = await resolveFromProductTemplates(cat);
+          } else {
+            productTemplate = getInCodeTemplate(cat);
+          }
         }
 
         const orderItems = await db
@@ -817,7 +872,11 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
     if (!productTemplate && row.adminNotes) {
       const catMatch = /productCategory:(\w+)/.exec(row.adminNotes);
       if (catMatch?.[1]) {
-        productTemplate = getInCodeTemplate(catMatch[1]);
+        if (USE_PRODUCT_TEMPLATE_ENGINE) {
+          productTemplate = await resolveFromProductTemplates(catMatch[1]);
+        } else {
+          productTemplate = getInCodeTemplate(catMatch[1]);
+        }
       }
     }
 

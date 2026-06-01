@@ -99,6 +99,7 @@ VAPID_PUBLIC_KEY = "BEAKgZOdT9HxFJLxVNxgtY-Dh2XzGptrjQwQibP2obUjPlLkfk0WR1TyzqbJ
 VAPID_PRIVATE_KEY = "Cu-0cxYEgT24fD8lVirlkz0qpFHj_kJNcGIj347kIJ4"
 VAPID_EMAIL = "mailto:admin@cstlogistics.co.id"
 PORTAL_ADMIN_KEY = "admin123"
+USE_PRODUCT_TEMPLATE_ENGINE = "true"
 
 [userenv.development]
 ADMIN_EMAIL_DOMAINS = "example.com"
