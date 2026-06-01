@@ -11,14 +11,6 @@
  *   /sport-center/*    → Sport Center    :3002
  *   /customer-portal/* → redirect strip prefix
  *   /*                 → Customer Portal :5173
- *   /api/*              → API Server      :8080
- *   /pos-images/*       → API Server      :8080
- *   /q/*                → API Server      :8080
- *   /s/*                → API Server      :8080
- *   /bizportal/*        → BizPortal       :3000
- *   /sport-center/*     → Sport Center    :3002
- *   /customer-portal/*  → redirect strip  (removes prefix)
- *   /*                  → Customer Portal :5173
  *
  * Retry behaviour:
  *   When an upstream is not yet ready (ECONNREFUSED / ECONNRESET / ETIMEDOUT),
