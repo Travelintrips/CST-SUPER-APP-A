@@ -3,12 +3,14 @@
  * every request to the correct upstream based on the path prefix.
  *
  * Route table:
- *   /api/*          → API Server      :18444
- *   /pos-images/*   → API Server      :18444
- *   /q/*            → API Server      :18444  (short-link redirects)
- *   /bizportal/*    → BizPortal       :3000
- *   /sport-center/* → Sport Center    :3002
- *   /*              → Customer Portal :3001
+ *   /api/*              → API Server      :8080
+ *   /pos-images/*       → API Server      :8080
+ *   /q/*                → API Server      :8080
+ *   /s/*                → API Server      :8080
+ *   /bizportal/*        → BizPortal       :3000
+ *   /sport-center/*     → Sport Center    :3002
+ *   /customer-portal/*  → redirect strip  (removes prefix)
+ *   /*                  → Customer Portal :5173
  *
  * Retry behaviour:
  *   When an upstream is not yet ready (ECONNREFUSED / ECONNRESET / ETIMEDOUT),
@@ -30,21 +32,10 @@ const BASE_DELAY    = Number(process.env.GW_BASE_DELAY    ?? 200);
 
 const RETRYABLE_CODES = new Set(["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENOTFOUND"]);
 
-const API_PORT = Number(process.env.API_PORT ?? 8080);
-
-const BIZPORTAL_PORT = Number(process.env.BIZPORTAL_PORT ?? 3000);
-const CUSTOMER_PORT  = Number(process.env.CUSTOMER_PORT  ?? 5173);
+const API_PORT           = Number(process.env.API_PORT           ?? 8080);
+const BIZPORTAL_PORT     = Number(process.env.BIZPORTAL_PORT     ?? 3000);
+const CUSTOMER_PORT      = Number(process.env.CUSTOMER_PORT      ?? 5173);
 const LOGISTIC_ORDER_PORT = Number(process.env.LOGISTIC_ORDER_PORT ?? 19368);
-
-const ROUTES = [
-  { prefix: "/api",            upstream: { host: "localhost", port: API_PORT } },
-  { prefix: "/pos-images",     upstream: { host: "localhost", port: API_PORT } },
-  { prefix: "/q",              upstream: { host: "localhost", port: API_PORT } },
-  { prefix: "/bizportal",      upstream: { host: "localhost", port: BIZPORTAL_PORT } },
-  { prefix: "/logistic-order", upstream: { host: "localhost", port: LOGISTIC_ORDER_PORT } },
-  { prefix: "/sport-center",   upstream: { host: "localhost", port: 3002 } },
-const BIZPORTAL_PORT = Number(process.env.BIZPORTAL_PORT ?? 18442);
-const CUSTOMER_PORT  = Number(process.env.CUSTOMER_PORT  ?? 3001);
 
 const ROUTES = [
   { prefix: "/api",             upstream: { host: "localhost", port: API_PORT } },
@@ -52,6 +43,7 @@ const ROUTES = [
   { prefix: "/q",               upstream: { host: "localhost", port: API_PORT } },
   { prefix: "/s",               upstream: { host: "localhost", port: API_PORT } },
   { prefix: "/bizportal",       upstream: { host: "localhost", port: BIZPORTAL_PORT } },
+  { prefix: "/logistic-order",  upstream: { host: "localhost", port: LOGISTIC_ORDER_PORT } },
   { prefix: "/sport-center",    upstream: { host: "localhost", port: 3002 } },
   // Canvas artifact iframe hits /customer-portal/* — redirect to strip the prefix
   { prefix: "/customer-portal", upstream: null, redirectStrip: "/customer-portal" },
@@ -64,10 +56,6 @@ const SERVICE_NAMES = {
   [CUSTOMER_PORT]:        "Customer Portal",
   [LOGISTIC_ORDER_PORT]:  "Logistic Order",
   3002:                   "Sport Center",
-  18444:            "API Server",
-  [BIZPORTAL_PORT]: "BizPortal",
-  [CUSTOMER_PORT]:  "Customer Portal",
-  3002:             "Sport Center",
 };
 
 function resolve(url) {
@@ -266,14 +254,11 @@ async function startGateway() {
       });
       srv.listen(PORT, () => {
         console.log(`Gateway listening on port ${PORT}`);
-        console.log(`  /api/*            → :${API_PORT} (API Server)`);
-        console.log(`  /bizportal/*      → :${BIZPORTAL_PORT} (BizPortal)`);
-        console.log(`  /logistic-order/* → :${LOGISTIC_ORDER_PORT} (Logistic Order)`);
-        console.log(`  /sport-center/*   → :3002 (Sport Center)`);
-        console.log(`  /api/*          → :${API_PORT} (API Server)`);
-        console.log(`  /bizportal/*    → :${BIZPORTAL_PORT} (BizPortal)`);
-        console.log(`  /sport-center/* → :3002 (Sport Center)`);
-        console.log(`  /*              → :${CUSTOMER_PORT} (Customer Portal)`);
+        console.log(`  /api/*             → :${API_PORT} (API Server)`);
+        console.log(`  /bizportal/*       → :${BIZPORTAL_PORT} (BizPortal)`);
+        console.log(`  /logistic-order/*  → :${LOGISTIC_ORDER_PORT} (Logistic Order)`);
+        console.log(`  /sport-center/*    → :3002 (Sport Center)`);
+        console.log(`  /*                 → :${CUSTOMER_PORT} (Customer Portal)`);
         resolve(true);
       });
     });
