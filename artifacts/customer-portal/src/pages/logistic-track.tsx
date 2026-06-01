@@ -10,7 +10,7 @@ import {
   ArrowLeft, Search, Ship, Truck, CheckCircle2, Clock,
   MapPin, Package, RefreshCw, AlertCircle, FileText,
   Circle, ArrowRight, Loader2, ThumbsUp, ThumbsDown, RotateCcw, Tag,
-  Bell, BellOff, Navigation, ExternalLink, Image as ImageIcon,
+  Bell, BellOff, Navigation, ExternalLink, Image as ImageIcon, X,
 } from "lucide-react";
 import { usePushNotification } from "@/hooks/usePushNotification";
 import { formatDate } from "@/lib/utils";
@@ -950,6 +950,151 @@ function DriverGpsTimeline({ events }: { events: ProgressEvent[] }) {
   );
 }
 
+// ── Delivery Proof Gallery ────────────────────────────────────────────────────
+
+type PhotoGroup = { category: string; events: ProgressEvent[] };
+
+function getPhotoCategory(stepKey: string): string {
+  const k = stepKey.toUpperCase();
+  if (k.includes("PICKED_UP") || k.includes("ARRIVED_AT_PICKUP") || k.includes("ON_THE_WAY_TO_PICKUP")) return "Bukti Pickup";
+  if (k.includes("IN_TRANSIT") || k.includes("TRANSIT")) return "Bukti Perjalanan";
+  if (k.includes("ARRIVED_AT_DESTINATION") || (k.includes("ARRIVED") && !k.includes("PICKUP"))) return "Bukti Sampai Lokasi";
+  if (k.includes("DELIVERED")) return "Bukti Pengiriman";
+  if (k.includes("COMPLETED")) return "Bukti Selesai";
+  return "Bukti Perjalanan";
+}
+
+const PHOTO_CATEGORY_ORDER = ["Bukti Pickup", "Bukti Perjalanan", "Bukti Sampai Lokasi", "Bukti Pengiriman", "Bukti Selesai"];
+
+function DeliveryProofGallery({ events, orderStatusRank }: { events: ProgressEvent[]; orderStatusRank: number }) {
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [errorUrls, setErrorUrls] = useState<Set<string>>(new Set());
+
+  if (orderStatusRank < 7) return null;
+
+  const validPhotos = events.filter((e) => e.photoUrl && !errorUrls.has(e.photoUrl));
+
+  const groupMap = new Map<string, ProgressEvent[]>();
+  validPhotos.forEach((ev) => {
+    const cat = getPhotoCategory(ev.stepKey);
+    if (!groupMap.has(cat)) groupMap.set(cat, []);
+    groupMap.get(cat)!.push(ev);
+  });
+  const groups: PhotoGroup[] = PHOTO_CATEGORY_ORDER.filter((c) => groupMap.has(c)).map((c) => ({
+    category: c,
+    events: groupMap.get(c)!,
+  }));
+
+  return (
+    <div className="bg-card border border-violet-200 rounded-xl p-5">
+      <h3 className="font-semibold text-violet-800 text-sm mb-4 flex items-center gap-2">
+        <ImageIcon className="w-4 h-4" />
+        Galeri Bukti Pengiriman
+        {validPhotos.length > 0 && (
+          <span className="ml-auto text-xs font-normal text-violet-500 bg-violet-50 px-2 py-0.5 rounded-full">
+            {validPhotos.length} foto
+          </span>
+        )}
+      </h3>
+
+      {validPhotos.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-8 text-muted-foreground gap-3">
+          <ImageIcon className="w-10 h-10 opacity-20" />
+          <p className="text-sm text-center">Belum ada bukti foto dari driver.</p>
+        </div>
+      ) : (
+        <div className="space-y-5">
+          {groups.map((group) => (
+            <div key={group.category}>
+              <p className="text-xs font-semibold text-violet-600 uppercase tracking-wide mb-2.5">
+                {group.category}
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                {group.events.map((ev) => (
+                  <div
+                    key={ev.id}
+                    className="rounded-lg border border-violet-100 bg-violet-50/30 overflow-hidden cursor-pointer group"
+                    onClick={() => setPreviewUrl(ev.photoUrl ?? null)}
+                  >
+                    <div className="relative aspect-square bg-muted overflow-hidden">
+                      <img
+                        src={ev.photoUrl!}
+                        alt={ev.stepLabel}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                        onError={() =>
+                          setErrorUrls((prev) => new Set([...prev, ev.photoUrl!]))
+                        }
+                      />
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/15 transition-colors">
+                        <ExternalLink className="w-5 h-5 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-lg" />
+                      </div>
+                    </div>
+                    <div className="px-2 py-1.5 space-y-0.5">
+                      <p className="text-xs font-medium text-foreground truncate">{ev.stepLabel}</p>
+                      {ev.actorName && (
+                        <p className="text-xs text-muted-foreground truncate">👤 {ev.actorName}</p>
+                      )}
+                      <p className="text-xs text-muted-foreground">{formatDateTime(ev.createdAt)}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {previewUrl && (
+        <div
+          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
+          onClick={() => setPreviewUrl(null)}
+        >
+          <div
+            className="relative max-w-3xl w-full flex flex-col items-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              className="absolute -top-10 right-0 text-white/80 hover:text-white p-1.5 rounded-md hover:bg-white/10 transition-colors"
+              onClick={() => setPreviewUrl(null)}
+              aria-label="Tutup"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <img
+              src={previewUrl}
+              alt="Preview"
+              className="max-h-[78vh] w-full object-contain rounded-lg shadow-2xl"
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).src =
+                  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Crect width='200' height='200' fill='%23374151'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%239CA3AF' font-size='14'%3EGagal memuat gambar%3C/text%3E%3C/svg%3E";
+              }}
+            />
+            <div className="flex justify-center mt-4 gap-3">
+              <a
+                href={previewUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-sm text-white/80 hover:text-white bg-white/10 hover:bg-white/20 px-4 py-2 rounded-lg transition-colors"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <ExternalLink className="w-4 h-4" />
+                Buka Original
+              </a>
+              <button
+                className="inline-flex items-center gap-1.5 text-sm text-white/80 hover:text-white bg-white/10 hover:bg-white/20 px-4 py-2 rounded-lg transition-colors"
+                onClick={() => setPreviewUrl(null)}
+              >
+                <X className="w-4 h-4" />
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function TrackPage() {
   const [, setLocation] = useLocation();
   const { orderNumber: pathOrderNumber } = useParams<{ orderNumber?: string }>();
@@ -1246,6 +1391,12 @@ export default function TrackPage() {
 
             {/* GPS History Timeline */}
             <DriverGpsTimeline events={tracking.progressEvents ?? []} />
+
+            {/* ── Galeri Bukti Pengiriman ── */}
+            <DeliveryProofGallery
+              events={tracking.progressEvents ?? []}
+              orderStatusRank={ORDER_STATUS_RANK[tracking.status] ?? 0}
+            />
 
             {/* ── Bukti Pengiriman (POD) — tampil jika ada submission ── */}
             {(tracking.podSubmissions ?? []).length > 0 && (
