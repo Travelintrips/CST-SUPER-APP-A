@@ -925,7 +925,7 @@ vendorJobPublicRouter.post("/:token/pod", upload.array("files", 10), async (req:
     }
 
     // Upload files ke object storage
-    const uploadedUrls: { name: string; url: string; type: string }[] = [];
+    const uploadedUrls: { name: string; url: string; type: string; publicUrl?: string }[] = [];
     let firstPublicImageUrl = "";
     const domain = getPreferredDomain() || "cstlogistic.co.id";
 

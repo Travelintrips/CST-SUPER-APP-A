@@ -266,7 +266,7 @@ const vmfApprovalLimiter = rateLimit({
   keyGenerator: (req) => {
     const token = (req.params as { token?: string }).token;
     if (token) return `approval:${token}`;
-    return ipKeyGenerator(req);
+    return req.ip ?? req.socket?.remoteAddress ?? "unknown";
   },
   standardHeaders: true,
   legacyHeaders: false,
@@ -1258,8 +1258,8 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
           if (!orderRow) return;
 
           // Progress bar event
-          updateOrderProgress(link.orderId, "VENDOR_RESPONSE_RECEIVED", "vendor_wa",
-            (sub as any).vendorName ?? "Vendor").catch(() => {});
+          updateOrderProgress(link.orderId!, "VENDOR_RESPONSE_RECEIVED", "vendor_wa",
+            "Vendor").catch(() => {});
 
           // Hitung berapa vendor sudah submit vs berapa yang diundang
           const [submittedRow] = await db.select({ c: count() })

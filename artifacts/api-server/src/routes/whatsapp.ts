@@ -83,7 +83,7 @@ whatsappRouter.post("/send-quotation", async (req: Request, res: Response) => {
   if (!(await requireAdmin(req, res))) return;
   const {
     rfqId, orderId, customerName, customerPhone, vendorName, vendorPhone,
-    serviceType, route, vendorPrice, finalPrice,
+    serviceType, route, vendorPrice, finalPrice, markupType, markupValue,
     pickupDate, deliveryDate, notes, status, sendToAdminGroup, isDraft,
   } = req.body as Record<string, unknown>;
 
