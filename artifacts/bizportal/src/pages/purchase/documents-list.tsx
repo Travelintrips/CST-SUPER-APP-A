@@ -89,7 +89,7 @@ export default function PurchaseDocumentsListPage({ kind }: Props) {
 
   const { data: docs } = useListPurchaseDocuments({
     kind,
-    ...(!isRfq && paymentFilter !== "all" ? { paymentStatus: paymentFilter } : {}),
+    ...(!isRfq && paymentFilter !== "all" ? { paymentStatus: paymentFilter as "paid" | "unpaid" | "partial" | "overdue" } : {}),
   });
 
   const allDocs = docs ?? [];

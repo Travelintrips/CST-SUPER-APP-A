@@ -668,7 +668,7 @@ export default function SalesDocumentDetailPage() {
   const [pdfLoading, setPdfLoading] = useState(false);
 
   const { data: doc, isLoading, error } = useGetSalesDocument(docId, {
-    query: { enabled: !Number.isNaN(docId) },
+    query: { queryKey: getGetSalesDocumentQueryKey(docId), enabled: !Number.isNaN(docId) },
   });
 
   const actionMut = useSalesDocumentAction();
@@ -683,7 +683,7 @@ export default function SalesDocumentDetailPage() {
     if (!confirm(`${label}?`)) return;
     setActionLoading(action);
     try {
-      await actionMut.mutateAsync({ id: docId, data: { action } });
+      await actionMut.mutateAsync({ id: docId, data: { action: action as any } });
       invalidate();
       toast({ title: "Berhasil" });
     } catch {

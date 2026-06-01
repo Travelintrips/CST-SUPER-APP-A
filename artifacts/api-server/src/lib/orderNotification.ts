@@ -658,6 +658,11 @@ const DEFAULT_TPL = {
       "Total: *{{grandTotal}}* | Jatuh Tempo: {{dueStr}}",
       "_{{timestamp}}_",
     ].join("\n"),
+    delivery_completed: [
+      "🏁 *Pengiriman Selesai — {{orderNumber}}*",
+      "Customer: {{customerName}} | Rute: {{route}}",
+      "_{{timestamp}}_",
+    ].join("\n"),
   },
   customer: {
     order_new: ["✅ *PESANAN ANDA DITERIMA*","━━━━━━━━━━━━━━━━━━","Halo *{{customerName}}*,","","Terima kasih telah mempercayakan kepercayaan Anda kepada CST Logistics.","","No. Order       : *{{orderNumber}}*","Tanggal         : {{tanggal}}","Jam             : {{jam}}","Status          : Menunggu Konfirmasi","Rute            : {{route}}","Kategori Barang : {{commodity}}","Berat           : {{grossWeightDisplay}}","Volume          : {{volumeDisplay}}","{{#if product}}","🛍️ Produk       :","{{productList}}","{{/if}}","Layanan         : {{serviceList}}","Tgl Butuh       : {{requiredDate}}","━━━━━━━━━━━━━━━━━━","💵 Subtotal      : Rp {{subtotalEst}}","🧾 {{taxLabel}}  : Rp {{taxEst}}","💰 Total Est.    : Rp {{totalEst}}","━━━━━━━━━━━━━━━━━━","Tim kami sedang memproses permintaan Anda dan akan segera menghubungi Anda.","","📞 Jakarta: (021) 6241234 | Tangerang: (021) 5591234","","🔗 Pantau status order Anda:","{{trackUrl}}","","_Dikirim: {{timestamp}}_"].join("\n"),
