@@ -17,7 +17,8 @@ type WorkflowKey =
   | "customer_approval" | "customer_approved" | "so_created" | "op_request"
   | "driver_assigned" | "shipment_update" | "customs_update" | "delivery_completed"
   | "rfq_vendor_recap"
-  | "product_order_new" | "product_order_status_update";
+  | "product_order_new" | "product_order_status_update"
+  | "invoice_issued";
 type ServiceTypeSim = "trucking" | "freight_sea" | "freight_air" | "ppjk" | "product" | "handling" | "";
 
 const WORKFLOW_VALID_RECIPIENTS: Partial<Record<WorkflowKey, RecipientKey[]>> = {
@@ -30,6 +31,7 @@ const WORKFLOW_VALID_RECIPIENTS: Partial<Record<WorkflowKey, RecipientKey[]>> = 
   customer_rejection:        ["admin_personal"],
   op_confirm_submitted:      ["admin_personal"],
   customer_rfq_response:     ["admin_personal"],
+  invoice_issued:            ["admin_personal", "customer"],
 };
 
 const RECIPIENT_META: Record<RecipientKey, { label: string; icon: string }> = {
@@ -54,6 +56,7 @@ const WORKFLOW_META: Record<WorkflowKey, { label: string; icon: string; desc: st
   delivery_completed:        { label: "Pengiriman Selesai",     icon: "🏁", desc: "Notifikasi penyelesaian pengiriman" },
   product_order_new:         { label: "Pesanan Produk Baru",    icon: "🛒", desc: "Notifikasi saat order produk baru masuk dari customer portal" },
   product_order_status_update: { label: "Update Status Produk", icon: "📦", desc: "Notifikasi saat admin mengubah status order produk" },
+  invoice_issued:            { label: "Invoice Diterbitkan",    icon: "🧾", desc: "Notifikasi ke customer dan admin saat invoice diterbitkan dari modul Accounting" },
   vendor_submit_confirm:     { label: "Konfirmasi Vendor",      icon: "✉️", desc: "Notifikasi balik ke vendor setelah mereka submit form penawaran" },
   vendor_rfq_forward:        { label: "RFQ Forward ke Vendor",  icon: "📤", desc: "Notifikasi ke vendor saat admin forward RFQ beserta detail permintaan" },
   vendor_submission_summary: { label: "Ringkasan Penawaran",    icon: "📋", desc: "Ringkasan submission form vendor yang dikirim ke admin" },
@@ -77,6 +80,7 @@ const VAR_GROUPS: Array<{ label: string; color: string; vars: string[]; onlyWork
   { label: "✈️ Air",   color: "bg-sky-50 text-sky-700 border-sky-200",          vars: ["airline","awbNumber","flightNumber"] },
   { label: "🏛️ PPJ",  color: "bg-rose-50 text-rose-700 border-rose-200",       vars: ["ajuNumber","bcType","sppbNumber"] },
   { label: "🛒 Prd",  color: "bg-teal-50 text-teal-700 border-teal-200",       vars: ["itemList","grandTotal","shippingAddress","orderUrl","vendorFormUrl","statusLabel"] },
+  { label: "🧾 Invoice", color: "bg-violet-50 text-violet-700 border-violet-200", vars: ["invNumber","subtotalDisplay","taxAmountDisplay","taxRate","grandTotal","dueStr","invoiceUrl"], onlyWorkflows: ["invoice_issued"] },
 ];
 
 const COND_BLOCKS = [
@@ -114,6 +118,7 @@ const SAMPLE_DATA: Record<string, Record<string, string>> = {
   ppjk:        { serviceType: "PPJK",        shipmentType: "Import",   ajuNumber: "090100-2025-000123", bcType: "BC 2.0", sppbNumber: "SPPB-2025-000456" },
   product:     { serviceType: "Product", shipmentType: "Domestik", itemList: "- Baju Kaos (2 pcs) @ Rp 150.000\n- Celana Panjang (1 pcs) @ Rp 250.000", grandTotal: "550.000", shippingAddress: "Jl. Merdeka No. 10, Jakarta Pusat", orderUrl: "https://cst.app/bizportal/product-orders/123", vendorFormUrl: "https://cst.app/vendor-form/product/123", statusLabel: "Sedang Diproses" },
   product_order_new: { orderNumber: "PRD-260526-12345", customerName: "PT. Maju Sejahtera", email: "info@majusejahtera.com", phone: "6281234567890", shippingAddress: "Jl. Sudirman No. 45, Jakarta Pusat", itemList: "• Green Bean Arabica × 50 (kg) — Rp 5.000.000\n• Kopi Robusta × 30 (kg) — Rp 2.400.000", grandTotal: "7.400.000", notes: "Kirim sebelum jam 12", orderUrl: "https://cst.app/bizportal/logistics/portal-orders", vendorFormUrl: "https://cst.app/vendor-product-approval/PRD-260526-12345?t=xxxxx", timestamp: "26 Mei 2026, 09:00 WIB" },
+  invoice_issued: { orderNumber: "CST/2026/000123", invNumber: "INV/2026/000045", customerName: "PT. Maju Sejahtera", subtotalDisplay: "Rp 14.545.455", taxAmountDisplay: "Rp 1.454.545", taxRate: "11%", grandTotal: "Rp 16.000.000", dueStr: "30 Jun 2026", invoiceUrl: "https://cst.app/invoice/INV-2026-000045", timestamp: "1 Jun 2026, 10:00 WIB" },
 };
 
 function renderWaPreview(body: string, svcType: ServiceTypeSim, workflow?: WorkflowKey): string {
@@ -354,6 +359,11 @@ export default function WaTemplatesPage() {
                   {workflow === "product_order_new" && (
                     <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-800 rounded px-2 py-1 mt-2">
                       🛒 Workflow ini hanya berlaku untuk <strong>Admin Pribadi</strong>, <strong>Grup Admin</strong>, dan <strong>Customer</strong>.
+                    </p>
+                  )}
+                  {workflow === "invoice_issued" && (
+                    <p className="text-xs text-violet-700 bg-violet-50 border border-violet-200 dark:bg-violet-900/20 dark:text-violet-400 dark:border-violet-800 rounded px-2 py-1 mt-2">
+                      🧾 Dikirim saat admin menerbitkan invoice dari modul <strong>Accounting</strong>. Berlaku untuk <strong>Admin Pribadi</strong> (notif internal) dan <strong>Customer</strong> (pesan ke nomor WA customer). Variabel khusus tersedia di panel kanan.
                     </p>
                   )}
                 </CardHeader>
