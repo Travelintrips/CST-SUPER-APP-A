@@ -976,7 +976,6 @@ function CustomerInvoicePanel({
     invoiceNumber: "",
     notes: "",
     dueDate: defaultDue,
-    sendWa: true,
   });
   const [result, setResult] = useState<{ url: string; token: string } | null>(null);
 
@@ -988,7 +987,7 @@ function CustomerInvoicePanel({
   });
 
   const openDialog = () => {
-    setForm({ phone: order.phone ?? "", invoiceNumber: "", notes: "", dueDate: defaultDue, sendWa: true });
+    setForm({ phone: order.phone ?? "", invoiceNumber: "", notes: "", dueDate: defaultDue });
     setResult(null);
     setDialogOpen(true);
   };
@@ -1005,7 +1004,7 @@ function CustomerInvoicePanel({
         dueDate: form.dueDate || undefined,
         notes: form.notes || undefined,
         currency: "IDR",
-        sendWa: form.sendWa && !!form.phone,
+        sendWa: true,
       };
       if (salesDocId) body.salesDocId = salesDocId;
       const res = await fetch("/api/vendor-form/admin/customer-invoices", {
@@ -1017,7 +1016,7 @@ function CustomerInvoicePanel({
       const d = await res.json() as { success?: boolean; url?: string; token?: string; error?: string };
       if (!res.ok) throw new Error(d.error ?? "Gagal");
       setResult({ url: d.url ?? "", token: d.token ?? "" });
-      toast({ title: "✅ Link invoice dibuat", description: form.sendWa && form.phone ? "WA terkirim ke customer" : "Salin link di bawah" });
+      toast({ title: "✅ Link invoice dibuat", description: form.phone ? "WA otomatis dikirim ke customer" : "Salin link di bawah" });
       void refetch();
     } catch (e: unknown) {
       toast({ title: "Error", description: (e as Error).message, variant: "destructive" });
@@ -1190,8 +1189,8 @@ function CustomerInvoicePanel({
               <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
                 <p className="text-2xl mb-1">✅</p>
                 <p className="font-semibold text-green-700 text-sm">Link Invoice Berhasil Dibuat</p>
-                {form.sendWa && form.phone && (
-                  <p className="text-xs text-green-600 mt-1">WA terkirim ke customer</p>
+                {form.phone && (
+                  <p className="text-xs text-green-600 mt-1">WA otomatis dikirim ke customer</p>
                 )}
               </div>
               <div className="space-y-1">
@@ -1269,16 +1268,12 @@ function CustomerInvoicePanel({
                 />
               </div>
 
-              <div className="flex items-center gap-2">
-                <Switch
-                  id="sendWa"
-                  checked={form.sendWa}
-                  onCheckedChange={v => setForm(f => ({ ...f, sendWa: v }))}
-                />
-                <Label htmlFor="sendWa" className="text-sm cursor-pointer">
-                  Kirim link via WhatsApp ke customer
-                </Label>
-              </div>
+              {form.phone && (
+                <div className="flex items-center gap-2 py-1 px-2.5 rounded-lg bg-green-50 border border-green-200">
+                  <span className="text-sm">📲</span>
+                  <span className="text-xs text-green-700">WA otomatis dikirim ke nomor di atas</span>
+                </div>
+              )}
 
               <DialogFooter>
                 <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={sending}>Batal</Button>

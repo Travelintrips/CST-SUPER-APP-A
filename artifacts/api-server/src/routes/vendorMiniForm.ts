@@ -28,6 +28,7 @@ import { requireClerkUser } from "../lib/requireAdmin";
 import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
 import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
+import { getWaTemplateConfig, renderTemplate } from "../lib/orderNotification.js";
 import { getAdminGroupWa } from "../lib/adminWa.js";
 import { wasRecentlyNotified } from "../lib/notificationLog.js";
 import { createSalesOrderFromVmfApproval } from "../lib/vmfSoIntegration.js";
@@ -195,6 +196,9 @@ type CachedForm = {
   orderId: number | null; orderNumber: string | null; orderItemId: number | null;
   phase: string | null; maxSubmissions: number | null; resubmitAllowed: boolean | null;
   formTarget: string; adminNotes: string | null; commodityTemplateId: number | null;
+  // Product Template Engine (Step 1F)
+  categoryKey: string | null; templateId: string | null;
+  templateVersion: string | null; templateSnapshot: Record<string, unknown> | null;
   expiresCache: number;
 };
 
@@ -652,6 +656,10 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
           formTarget: vendorMiniFormLinksTable.formTarget,
           adminNotes: vendorMiniFormLinksTable.adminNotes,
           commodityTemplateId: vendorMiniFormLinksTable.commodityTemplateId,
+          categoryKey: vendorMiniFormLinksTable.categoryKey,
+          templateId: vendorMiniFormLinksTable.templateId,
+          templateVersion: vendorMiniFormLinksTable.templateVersion,
+          templateSnapshot: vendorMiniFormLinksTable.templateSnapshot,
           vendorName: suppliersTable.name,
           vendorPhone: suppliersTable.phone,
           vendorContactPerson: suppliersTable.contactPerson,
@@ -679,6 +687,10 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
         formTarget: dbRow.formTarget ?? "vendor",
         adminNotes: dbRow.adminNotes ?? null,
         commodityTemplateId: dbRow.commodityTemplateId ?? null,
+        categoryKey: dbRow.categoryKey ?? null,
+        templateId: dbRow.templateId ?? null,
+        templateVersion: dbRow.templateVersion ?? null,
+        templateSnapshot: (dbRow.templateSnapshot as Record<string, unknown> | null) ?? null,
         vendorName: dbRow.linkVendorName ?? dbRow.vendorName ?? null,
         vendorPhone: dbRow.vendorPhone ?? null,
         vendorContactPerson: dbRow.vendorContactPerson ?? null,
@@ -736,7 +748,8 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
       fields: [..._baseFields, ..._universalFields],
     } : null;
 
-    let productTemplate = null;
+    let productTemplate: import("@workspace/product-templates").ProductTemplate | null = null;
+    let templateMissing = false;
     let orderContext: {
       customerName: string | null;
       requiredDate: string | null;
@@ -751,10 +764,27 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
       }>;
     } | null = null;
 
+    // Priority 0 (Step 1F): Gunakan templateSnapshot tersimpan di link (paling reliable)
+    // Snapshot diambil saat link dibuat → vendor selalu lihat spec yg sama walau template diedit
+    if (row.templateSnapshot && USE_PRODUCT_TEMPLATE_ENGINE) {
+      try {
+        productTemplate = row.templateSnapshot as unknown as import("@workspace/product-templates").ProductTemplate;
+      } catch { /* fallthrough */ }
+    }
+
+    // Priority 0.5: categoryKey tersimpan di link → resolve fresh dari product_templates
+    if (!productTemplate && row.categoryKey && USE_PRODUCT_TEMPLATE_ENGINE) {
+      try {
+        productTemplate = await resolveFromProductTemplates(row.categoryKey);
+      } catch {
+        templateMissing = true;
+      }
+    }
+
     // Priority 1: commodity template dari DB
     // Bila USE_PRODUCT_TEMPLATE_ENGINE=true → baca product_templates via resolveTemplate()
     // Bila false (default) → fallback ke commodity_templates (tabel lama)
-    if (row.commodityTemplateId) {
+    if (!productTemplate && row.commodityTemplateId) {
       if (USE_PRODUCT_TEMPLATE_ENGINE) {
         try {
           const ctRes = await db.execute(sql`SELECT key FROM commodity_templates WHERE id = ${row.commodityTemplateId}`);
@@ -818,10 +848,10 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
           .from(logisticOrdersTable)
           .where(eq(logisticOrdersTable.id, row.orderId));
 
-        if (order?.commodity) {
+        if (!productTemplate && order?.commodity) {
           const cat = order.commodity.trim().toLowerCase().replace(/[\s-]+/g, "_");
           if (USE_PRODUCT_TEMPLATE_ENGINE) {
-            productTemplate = await resolveFromProductTemplates(cat);
+            try { productTemplate = await resolveFromProductTemplates(cat); } catch { /* non-fatal */ }
           } else {
             productTemplate = getInCodeTemplate(cat);
           }
@@ -910,6 +940,9 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
       schema: filteredSchema,
       productTemplate,
       orderContext,
+      templateMissing: USE_PRODUCT_TEMPLATE_ENGINE && (!!row.categoryKey || !!row.templateSnapshot) && !productTemplate ? templateMissing : false,
+      templateVersion: row.templateVersion ?? null,
+      templateCategory: row.categoryKey ?? null,
     });
   } catch (err) {
     req.log?.error({ err }, "vendor-mini-form GET error");
@@ -1751,10 +1784,10 @@ vendorMiniFormRouter.get("/admin/links", async (req: Request, res: Response) => 
 vendorMiniFormRouter.post("/admin/links", async (req: Request, res: Response) => {
   if (!(await requireClerkUser(req, res))) return;
   try {
-    const { supplierId, serviceType, title, notes, expiresInDays, mode, orderId, orderNumber, orderItemId, vendorName, maxSubmissions, adminNotes, commodityTemplateId } = req.body as {
+    const { supplierId, serviceType, title, notes, expiresInDays, mode, orderId, orderNumber, orderItemId, vendorName, maxSubmissions, adminNotes, commodityTemplateId, categoryKey: reqCategoryKey } = req.body as {
       supplierId?: number; serviceType: string; title?: string; notes?: string; expiresInDays?: number;
       mode?: string; orderId?: number; orderNumber?: string; orderItemId?: number; vendorName?: string;
-      maxSubmissions?: number; adminNotes?: string; commodityTemplateId?: number;
+      maxSubmissions?: number; adminNotes?: string; commodityTemplateId?: number; categoryKey?: string;
     };
 
     if (!serviceType || !SERVICE_SCHEMAS[serviceType]) return res.status(400).json({ error: "serviceType tidak valid" });
@@ -1762,6 +1795,24 @@ vendorMiniFormRouter.post("/admin/links", async (req: Request, res: Response) =>
     const token = randomBytes(24).toString("hex");
     const expiresAt = expiresInDays ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000) : null;
     const userId = (req.user as { id: string } | undefined)?.id ?? null;
+
+    // ── Step 1F: Resolve & snapshot template if categoryKey provided ──────────
+    let resolvedCategoryKey: string | null = reqCategoryKey ?? null;
+    let resolvedTemplateId: string | null = reqCategoryKey ?? null;
+    let resolvedTemplateVersion: string | null = null;
+    let resolvedTemplateSnapshot: Record<string, unknown> | null = null;
+    let templateWarning: string | null = null;
+
+    if (reqCategoryKey && USE_PRODUCT_TEMPLATE_ENGINE) {
+      try {
+        const tpl = await resolveFromProductTemplates(reqCategoryKey);
+        resolvedTemplateVersion = tpl.version ?? null;
+        resolvedTemplateSnapshot = tpl as unknown as Record<string, unknown>;
+      } catch {
+        templateWarning = `Template untuk kategori "${reqCategoryKey}" tidak ditemukan di product_templates`;
+        req.log?.warn({ categoryKey: reqCategoryKey }, templateWarning);
+      }
+    }
 
     // Auto-deactivate existing active links for the same order (order_based mode only)
     let deactivatedCount = 0;
@@ -1797,6 +1848,10 @@ vendorMiniFormRouter.post("/admin/links", async (req: Request, res: Response) =>
       maxSubmissions: maxSubmissions ?? null,
       adminNotes: adminNotes ?? null,
       commodityTemplateId: commodityTemplateId ?? null,
+      categoryKey: resolvedCategoryKey,
+      templateId: resolvedTemplateId,
+      templateVersion: resolvedTemplateVersion,
+      templateSnapshot: resolvedTemplateSnapshot,
     }).returning();
 
     await logActivity("link", link.id, "created", userId,
@@ -1832,7 +1887,7 @@ vendorMiniFormRouter.post("/admin/links", async (req: Request, res: Response) =>
       req.log?.warn({ err: shortErr }, "Auto short link generation failed (non-fatal)");
     }
 
-    return res.status(201).json({ ...link, shortUrl, expiresAt: link.expiresAt?.toISOString() ?? null, createdAt: link.createdAt.toISOString(), deactivatedCount });
+    return res.status(201).json({ ...link, shortUrl, expiresAt: link.expiresAt?.toISOString() ?? null, createdAt: link.createdAt.toISOString(), deactivatedCount, templateWarning: templateWarning ?? undefined });
   } catch (err) {
     req.log?.error({ err }, "vendor-mini-form admin POST links error");
     return res.status(500).json({ error: "Gagal membuat link" });
@@ -3010,8 +3065,71 @@ vendorMiniFormRouter.post("/customer-invoice/:token", async (req: Request, res: 
   }
 });
 
+// ── Helper: bangun pesan WA invoice dari template ─────────────────────────────
+const INVOICE_CUSTOMER_DEFAULT_TPL = [
+  "🧾 *Invoice Diterbitkan — {{invNumber}}*",
+  "━━━━━━━━━━━━━━━━━━",
+  "Halo {{customerName}},",
+  "",
+  "Invoice untuk order Anda telah diterbitkan.",
+  "",
+  "No. Order   : {{orderNumber}}",
+  "No. Invoice : *{{invNumber}}*",
+  "Jatuh Tempo : *{{dueStr}}*",
+  "━━━━━━━━━━━━━━━━━━",
+  "💰 Subtotal : {{subtotalDisplay}}",
+  "🧾 PPN      : {{taxAmountDisplay}}",
+  "💵 *Total   : {{grandTotal}}*",
+  "━━━━━━━━━━━━━━━━━━",
+  "🔗 Lihat & Bayar:",
+  "{{invoiceUrl}}",
+  "",
+  "📝 Catatan: {{notes}}",
+  "",
+  "Terima kasih atas kepercayaan Anda 🙏",
+  "_CST Logistics_",
+].join("\n");
+
+async function buildInvoiceWaMsg(
+  link: {
+    invoiceNumber: string | null;
+    orderNumber: string | null;
+    customerName: string | null;
+    subtotal: string | null;
+    taxRate: string | null;
+    taxAmount: string | null;
+    grandTotal: string | null;
+    dueDate: Date | null;
+    notes: string | null;
+  },
+  invoiceUrl: string,
+): Promise<string> {
+  const tpl = await getWaTemplateConfig("customer", "invoice_issued", INVOICE_CUSTOMER_DEFAULT_TPL);
+  const fmtRp = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
+  const grandTotalNum = link.grandTotal ? Number(link.grandTotal) : null;
+  const subtotalNum = link.subtotal ? Number(link.subtotal) : null;
+  const taxAmountNum = link.taxAmount ? Number(link.taxAmount) : null;
+  const taxRate = Number(link.taxRate ?? 11);
+  const dueStr = link.dueDate
+    ? new Date(link.dueDate).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })
+    : null;
+  const vars: Record<string, string | null | undefined> = {
+    invNumber: link.invoiceNumber ?? null,
+    orderNumber: link.orderNumber ?? null,
+    customerName: link.customerName ?? "Customer",
+    subtotalDisplay: subtotalNum ? fmtRp(subtotalNum) : null,
+    taxAmountDisplay: taxAmountNum ? `${fmtRp(taxAmountNum)} (PPN ${taxRate}%)` : null,
+    grandTotal: grandTotalNum ? fmtRp(grandTotalNum) : null,
+    dueStr,
+    invoiceUrl,
+    notes: link.notes ?? null,
+    timestamp: new Date().toLocaleString("id-ID"),
+  };
+  return renderTemplate(tpl, vars);
+}
+
 // ── ADMIN: POST /api/vendor-form/admin/customer-invoices ──────────────────────
-// Buat link invoice publik + kirim WA ke customer
+// Buat link invoice publik + kirim WA otomatis ke customer
 vendorMiniFormRouter.post("/admin/customer-invoices", async (req: Request, res: Response) => {
   if (!(await requireClerkUser(req, res))) return;
   const {
@@ -3083,37 +3201,25 @@ vendorMiniFormRouter.post("/admin/customer-invoices", async (req: Request, res: 
     const domain = getPreferredDomain();
     const invoiceUrl = domain ? `https://${domain}/customer-invoice/${token}` : `/customer-invoice/${token}`;
 
-    // Kirim WA ke customer jika diminta (dedup: skip jika sudah dikirim 30 menit terakhir dari jalur apapun)
-    if (sendWa && customerPhone) {
+    // Kirim WA ke customer otomatis jika nomor tersedia (dedup 30 menit per order)
+    if (customerPhone) {
       const WA_CTX = "customer-invoice-wa";
       const WA_REF = orderId ? `order:${orderId}` : `inv:${link.id}`;
       const alreadySent = orderId
         ? await wasRecentlyNotified(WA_CTX, WA_REF, 30 * 60 * 1000)
         : false;
       if (!alreadySent) {
-        const fmtRpLocal = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
-        const invoiceNumLabel = invoiceNumber ? `No. Invoice   : *${invoiceNumber}*\n` : "";
-        const orderNumLabel = orderNumber ? `No. Order     : *${orderNumber}*\n` : "";
-        const dueDateLabel = dueDate
-          ? `Jatuh Tempo   : *${new Date(dueDate).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}*\n`
-          : "";
-        const subtotalLabel = subtotal ? `💰 Subtotal   : ${fmtRpLocal(subtotal)}\n` : "";
-        const taxLabel = taxAmount ? `🧾 PPN (${taxRate}%): ${fmtRpLocal(taxAmount)}\n` : "";
-        const totalLabel = grandTotal
-          ? `💵 *Total     : ${fmtRpLocal(grandTotal)}*\n`
-          : "";
-        const waMsg =
-          `🧾 *Invoice Pembayaran*\n` +
-          `━━━━━━━━━━━━━━━━━━\n` +
-          `Kepada Yth. ${customerName ?? "Customer"},\n\n` +
-          `Invoice untuk order Anda telah diterbitkan.\n\n` +
-          invoiceNumLabel + orderNumLabel + dueDateLabel +
-          `━━━━━━━━━━━━━━━━━━\n` +
-          subtotalLabel + taxLabel + totalLabel +
-          `━━━━━━━━━━━━━━━━━━\n` +
-          `🔗 Lihat & Bayar Invoice:\n${invoiceUrl}` +
-          (notes ? `\n\n📝 Catatan: ${notes}` : "") +
-          `\n\nTerima kasih atas kepercayaan Anda 🙏\n_CST Logistics_`;
+        const waMsg = await buildInvoiceWaMsg({
+          invoiceNumber: invoiceNumber ?? null,
+          orderNumber: orderNumber ?? null,
+          customerName: customerName ?? null,
+          subtotal: subtotal ? String(subtotal) : null,
+          taxRate: String(taxRate),
+          taxAmount: taxAmount ? String(taxAmount) : null,
+          grandTotal: grandTotal ? String(grandTotal) : null,
+          dueDate: dueDate ? new Date(dueDate) : null,
+          notes: notes ?? null,
+        }, invoiceUrl);
         await sendWhatsApp(customerPhone, waMsg, {
           context: WA_CTX,
           refType: "customer_invoice",
@@ -3176,17 +3282,17 @@ vendorMiniFormRouter.post("/admin/customer-invoices/:id/send-wa", async (req: Re
     const domain = getPreferredDomain();
     const invoiceUrl = domain ? `https://${domain}/customer-invoice/${link.token}` : `/customer-invoice/${link.token}`;
 
-    const invoiceNumLabel = link.invoiceNumber ? `No. Invoice: *${link.invoiceNumber}*\n` : "";
-    const orderNumLabel = link.orderNumber ? `No. Order: *${link.orderNumber}*\n` : "";
-    const totalLabel = link.grandTotal ? `Total: *${link.currency ?? "IDR"} ${Math.round(Number(link.grandTotal)).toLocaleString("id-ID")}*\n` : "";
-    const dueDateLabel = link.dueDate ? `Jatuh Tempo: *${new Date(link.dueDate).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}*\n` : "";
-
-    const waMsg = `📄 *Invoice Pembayaran*\n\n` +
-      `Kepada Yth. ${link.customerName ?? "Customer"},\n\n` +
-      invoiceNumLabel + orderNumLabel + totalLabel + dueDateLabel +
-      `\nSilakan lihat detail invoice dan konfirmasi penerimaan melalui link berikut:\n${invoiceUrl}` +
-      (link.notes ? `\n\n📝 Catatan: ${link.notes}` : "") +
-      `\n\nTerima kasih atas kepercayaan Anda.`;
+    const waMsg = await buildInvoiceWaMsg({
+      invoiceNumber: link.invoiceNumber,
+      orderNumber: link.orderNumber,
+      customerName: link.customerName,
+      subtotal: link.subtotal,
+      taxRate: link.taxRate,
+      taxAmount: link.taxAmount,
+      grandTotal: link.grandTotal,
+      dueDate: link.dueDate ? new Date(link.dueDate) : null,
+      notes: link.notes,
+    }, invoiceUrl);
 
     await sendWhatsApp(phone, waMsg, { context: "customer-invoice-send", refType: "customer_invoice", refId: String(link.id) });
     return res.json({ success: true });

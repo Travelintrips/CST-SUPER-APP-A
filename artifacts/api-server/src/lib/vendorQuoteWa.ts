@@ -51,6 +51,39 @@ export interface VendorQuoteMessageInput {
   orderItems?: VendorQuoteOrderItem[] | null;
   isTrucking?: boolean;
   orderType?: string | null;
+  templateSnapshot?: Record<string, unknown> | null;
+}
+
+/**
+ * Extract key spec lines from a stored templateSnapshot for WA messages.
+ * Shows top required customFields + required documents.
+ */
+function buildTemplateSpecBlock(snapshot: Record<string, unknown> | null | undefined): string {
+  if (!snapshot) return "";
+  try {
+    const label = typeof snapshot["label"] === "string" ? snapshot["label"] : "";
+    const category = typeof snapshot["category"] === "string" ? snapshot["category"] : "";
+    const customFields = Array.isArray(snapshot["customFields"]) ? snapshot["customFields"] as Array<Record<string, unknown>> : [];
+    const requiredDocs = Array.isArray(snapshot["requiredDocuments"]) ? snapshot["requiredDocuments"] as Array<Record<string, unknown>> : [];
+
+    const requiredFields = customFields.filter(f => f["required"] === true);
+    const topFields = requiredFields.slice(0, 5);
+
+    if (!topFields.length && !requiredDocs.length) return "";
+
+    const header = `\n📋 *Spesifikasi ${label || category}:*\n`;
+    const fieldLines = topFields.map(f => {
+      const unit = f["unit"] ? ` (${f["unit"]})` : "";
+      return `   • ${f["label"]}${unit}: _[wajib diisi]_`;
+    }).join("\n");
+
+    const reqDocs = requiredDocs.filter(d => d["required"] === true);
+    const docLines = reqDocs.length
+      ? `\n📄 *Dokumen Wajib:*\n` + reqDocs.map(d => `   • ${d["label"]}`).join("\n")
+      : "";
+
+    return header + fieldLines + (fieldLines && docLines ? "\n" : "") + docLines + "\n";
+  } catch { return ""; }
 }
 
 /**
@@ -99,6 +132,8 @@ export function generateVendorQuoteMessage(input: VendorQuoteMessageInput): stri
     ? `\n💰 *Harga Vendor:*\n${fmtRp(input.vendorBasePrice)}\n`
     : "";
 
+  const templateSpecBlock = buildTemplateSpecBlock(input.templateSnapshot);
+
   return (
     `📦 *PERMINTAAN PENAWARAN VENDOR*\n` +
     `━━━━━━━━━━━━━━━━━━\n` +
@@ -112,6 +147,7 @@ export function generateVendorQuoteMessage(input: VendorQuoteMessageInput): stri
     vehicleLine +
     cargoLines +
     itemsBlock +
+    templateSpecBlock +
     priceBlock +
     `\n📝 Silakan isi harga & estimasi melalui tombol berikut.\n\n` +
     `🔗 *[ ISI PENAWARAN VENDOR ]*\n` +
@@ -144,6 +180,7 @@ export interface SendVendorWhatsAppInput {
   orderItems?: VendorQuoteOrderItem[] | null;
   isTrucking?: boolean;
   orderType?: string | null;
+  templateSnapshot?: Record<string, unknown> | null;
 }
 
 /**
@@ -163,7 +200,7 @@ export async function sendVendorWhatsApp(input: SendVendorWhatsAppInput): Promis
     refId: input.rfqNumber,
   });
 
-  const defaultTpl = generateVendorQuoteMessage({ ...input, shortLinkUrl });
+  const defaultTpl = generateVendorQuoteMessage({ ...input, shortLinkUrl, templateSnapshot: input.templateSnapshot });
 
   const tplBody = await getWaTemplateConfig("vendor", "vendor_request", defaultTpl);
 

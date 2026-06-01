@@ -793,6 +793,26 @@ productTemplatesRouter.get("/:key", async (req: Request, res: Response) => {
   }
 });
 
+// ADMIN — PATCH /api/product-templates/reorder  (batch update sortOrder)
+productTemplatesRouter.patch("/reorder", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { items } = req.body as { items: { id: number; sortOrder: number }[] };
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ message: "items harus berupa array tidak kosong" });
+    }
+    await db.transaction(async (tx: typeof db) => {
+      for (const { id, sortOrder } of items) {
+        await tx.update(productTemplatesTable)
+          .set({ sortOrder: Number(sortOrder) || 0 })
+          .where(eq(productTemplatesTable.id, id));
+      }
+    });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ message: String(err) });
+  }
+});
+
 // ADMIN — POST /api/product-templates  (create)
 productTemplatesRouter.post("/", requireAdmin, async (req: Request, res: Response) => {
   try {
