@@ -9,6 +9,7 @@ import {
   suppliersTable,
   emailCorrespondencesTable,
   waAiIntakeLogTable,
+  customerInvoiceLinksTable,
 } from "@workspace/db";
 import { eq, sql, desc, and, count, inArray, or, ilike, type SQL } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
@@ -750,14 +751,38 @@ router.post("/documents/:id/action", async (req, res) => {
         const dueStr = patch["dueDate"]
           ? new Date(patch["dueDate"] as string).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })
           : "—";
-        // Dedup: jika sudah ada WA invoice dari jalur customer-invoice link, skip customer WA
-        const skipCustWa = doc.logisticOrderId != null
-          ? await wasRecentlyNotified("customer-invoice-wa", `order:${doc.logisticOrderId}`, 30 * 60 * 1000)
+        const subtotal = Number(doc.totalAmount ?? 0);
+        const taxAmount = Number((doc as Record<string, unknown>).taxAmount ?? 0);
+        const orderId = doc.logisticOrderId ?? undefined;
+        let invoiceUrl: string | undefined;
+        if (id) {
+          try {
+            const { getPreferredDomain } = await import("../lib/domain.js");
+            const { gt } = await import("drizzle-orm");
+            const [invLink] = await db
+              .select({ token: customerInvoiceLinksTable.token })
+              .from(customerInvoiceLinksTable)
+              .where(
+                and(
+                  eq(customerInvoiceLinksTable.salesDocId, id),
+                  gt(customerInvoiceLinksTable.expiresAt, new Date()),
+                ),
+              )
+              .limit(1);
+            if (invLink?.token) {
+              const domain = getPreferredDomain();
+              if (domain) invoiceUrl = `https://${domain}/customer-invoice/${invLink.token}`;
+            }
+          } catch { /* non-fatal */ }
+        }
+        const skipCustWa = orderId != null
+          ? await wasRecentlyNotified("customer-invoice-wa", `order:${orderId}`, 30 * 60 * 1000)
           : false;
         await sendInvoiceIssuedNotification(
           doc.docNumber, invNumber, doc.customerName, grandTotal, dueStr,
           skipCustWa ? null : customerPhone,
           adminWa,
+          { subtotal, taxAmount, invoiceUrl, orderId },
         );
       }
 

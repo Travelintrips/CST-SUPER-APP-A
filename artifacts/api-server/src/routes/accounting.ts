@@ -936,8 +936,9 @@ router.post("/payments", async (req, res) => {
           );
 
         // ── WA ke Customer: Payment Received ──────────────────────────────────
-        // Kirim konfirmasi pembayaran ke customer jika sudah lunas dan ada phone
-        if (newStatus === "paid" && doc?.customerId) {
+        // Kirim konfirmasi pembayaran ke customer jika ada pembayaran (lunas maupun sebagian)
+        if ((newStatus === "paid" || newStatus === "partial") && doc?.customerId) {
+          const remainingAmt = Math.max(0, grandTotal - totalPaid);
           (async () => {
             try {
               const [cust] = await db
@@ -949,9 +950,11 @@ router.post("/payments", async (req, res) => {
               if (customerPhone) {
                 await notifyPaymentConfirmation({
                   invoiceNumber: doc.docNumber ?? String(parsedSourceDocId),
+                  orderNumber: doc.docNumber ?? undefined,
                   payeeName: doc.customerName ?? partner,
                   payeePhone: customerPhone,
                   paidAmount: amt,
+                  remainingBalance: remainingAmt > 0 ? remainingAmt : undefined,
                   paymentRef: ref ?? payment!.paymentNumber,
                   paymentMethod: (req.body as Record<string, unknown>).paymentMethod as string | undefined,
                   tanggal: String(dateStr),

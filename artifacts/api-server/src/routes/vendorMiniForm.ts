@@ -3032,21 +3032,29 @@ vendorMiniFormRouter.post("/admin/customer-invoices", async (req: Request, res: 
         ? await wasRecentlyNotified(WA_CTX, WA_REF, 30 * 60 * 1000)
         : false;
       if (!alreadySent) {
-        const invoiceNumLabel = invoiceNumber ? `No. Invoice: *${invoiceNumber}*\n` : "";
-        const orderNumLabel = orderNumber ? `No. Order: *${orderNumber}*\n` : "";
+        const fmtRpLocal = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
+        const invoiceNumLabel = invoiceNumber ? `No. Invoice   : *${invoiceNumber}*\n` : "";
+        const orderNumLabel = orderNumber ? `No. Order     : *${orderNumber}*\n` : "";
         const dueDateLabel = dueDate
-          ? `Jatuh Tempo: *${new Date(dueDate).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}*\n`
+          ? `Jatuh Tempo   : *${new Date(dueDate).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}*\n`
           : "";
+        const subtotalLabel = subtotal ? `💰 Subtotal   : ${fmtRpLocal(subtotal)}\n` : "";
+        const taxLabel = taxAmount ? `🧾 PPN (${taxRate}%): ${fmtRpLocal(taxAmount)}\n` : "";
         const totalLabel = grandTotal
-          ? `Total: *${currency ?? "IDR"} ${Math.round(grandTotal).toLocaleString("id-ID")}*\n`
+          ? `💵 *Total     : ${fmtRpLocal(grandTotal)}*\n`
           : "";
         const waMsg =
-          `📄 *Invoice Pembayaran*\n\n` +
+          `🧾 *Invoice Pembayaran*\n` +
+          `━━━━━━━━━━━━━━━━━━\n` +
           `Kepada Yth. ${customerName ?? "Customer"},\n\n` +
-          invoiceNumLabel + orderNumLabel + totalLabel + dueDateLabel +
-          `\nSilakan lihat detail invoice dan lakukan pembayaran melalui link berikut:\n${invoiceUrl}` +
+          `Invoice untuk order Anda telah diterbitkan.\n\n` +
+          invoiceNumLabel + orderNumLabel + dueDateLabel +
+          `━━━━━━━━━━━━━━━━━━\n` +
+          subtotalLabel + taxLabel + totalLabel +
+          `━━━━━━━━━━━━━━━━━━\n` +
+          `🔗 Lihat & Bayar Invoice:\n${invoiceUrl}` +
           (notes ? `\n\n📝 Catatan: ${notes}` : "") +
-          `\n\nTerima kasih atas kepercayaan Anda.`;
+          `\n\nTerima kasih atas kepercayaan Anda 🙏\n_CST Logistics_`;
         await sendWhatsApp(customerPhone, waMsg, {
           context: WA_CTX,
           refType: "customer_invoice",

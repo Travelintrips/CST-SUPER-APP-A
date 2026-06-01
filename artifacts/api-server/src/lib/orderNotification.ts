@@ -538,11 +538,10 @@ const DEFAULT_TPL = {
       "_{{timestamp}}_",
     ].join("\n"),
     invoice_issued: [
-      "🧾 *Invoice Dibuat*",
-      "No Invoice: {{invNumber}}",
-      "Customer: {{customerName}}",
-      "Total: {{grandTotal}}",
-      "Jatuh tempo: {{dueStr}}",
+      "🧾 *Invoice Diterbitkan — {{invNumber}}*",
+      "Order: {{orderNumber}} | Customer: *{{customerName}}*",
+      "Subtotal: {{subtotalDisplay}} | PPN: {{taxAmountDisplay}}",
+      "Total: *{{grandTotal}}* | Jatuh Tempo: {{dueStr}}",
       "_{{timestamp}}_",
     ].join("\n"),
     vendor_quote_received: [
@@ -764,15 +763,24 @@ const DEFAULT_TPL = {
     ].join("\n"),
     invoice_issued: [
       "🧾 *Invoice Diterbitkan — {{invNumber}}*",
-      "",
+      "━━━━━━━━━━━━━━━━━━",
       "Halo {{customerName}},",
       "",
-      "Invoice untuk order Anda telah diterbitkan:",
-      "Total: {{grandTotal}}",
-      "Jatuh tempo: {{dueStr}}",
+      "Invoice untuk order Anda telah diterbitkan.",
       "",
-      "Silakan hubungi kami untuk informasi pembayaran. Terima kasih!",
-      "_{{timestamp}}_",
+      "No. Order   : {{orderNumber}}",
+      "No. Invoice : *{{invNumber}}*",
+      "Jatuh Tempo : *{{dueStr}}*",
+      "━━━━━━━━━━━━━━━━━━",
+      "💰 Subtotal : {{subtotalDisplay}}",
+      "🧾 PPN      : {{taxAmountDisplay}}",
+      "💵 *Total   : {{grandTotal}}*",
+      "━━━━━━━━━━━━━━━━━━",
+      "🔗 Lihat & Bayar:",
+      "{{invoiceUrl}}",
+      "",
+      "Terima kasih atas kepercayaan Anda 🙏",
+      "_CST Logistics_",
     ].join("\n"),
     logistic_order_status: [
       "📦 *Update Status Order Anda*",
@@ -2942,25 +2950,43 @@ export async function sendInvoiceIssuedNotification(
   dueStr: string,
   customerPhone: string | null | undefined,
   adminWaPhone: string | null | undefined,
+  opts?: {
+    subtotal?: number;
+    taxAmount?: number;
+    taxRate?: number;
+    invoiceUrl?: string;
+    orderId?: number;
+  },
 ): Promise<void> {
   const fmtRp = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
+  const subtotalDisplay = opts?.subtotal != null ? fmtRp(opts.subtotal) : null;
+  const taxAmountDisplay = opts?.taxAmount != null ? fmtRp(opts.taxAmount) : null;
+  const taxRateStr = opts?.taxRate != null ? String(opts.taxRate) : null;
+  const dedupCtx = "customer-invoice-wa";
+  const dedupRef = opts?.orderId != null ? `order:${opts.orderId}` : `inv:${invNumber}`;
   const vars: Record<string, string | null | undefined> = {
     orderNumber,
     invNumber,
     customerName,
     grandTotal: fmtRp(grandTotal),
     dueStr,
+    subtotalDisplay,
+    taxAmountDisplay,
+    taxRate: taxRateStr,
+    invoiceUrl: opts?.invoiceUrl ?? null,
     timestamp: nowWIB(),
   };
   if (customerPhone) {
     const tpl = await getWaTemplateConfig("customer", "invoice_issued", DEFAULT_TPL.customer.invoice_issued);
     const msg = renderTemplate(tpl, vars);
-    sendWhatsApp(customerPhone, msg).catch((e: unknown) => logger.error({ e }, "WA invoice_issued customer failed"));
+    sendWhatsApp(customerPhone, msg, { context: dedupCtx, refType: "invoice", refId: dedupRef })
+      .catch((e: unknown) => logger.error({ e }, "WA invoice_issued customer failed"));
   }
   if (adminWaPhone) {
     const tpl = await getWaTemplateConfig("admin_personal", "invoice_issued", DEFAULT_TPL.admin_personal.invoice_issued);
     const msg = renderTemplate(tpl, vars);
-    sendWhatsApp(adminWaPhone, msg).catch((e: unknown) => logger.error({ e }, "WA invoice_issued admin failed"));
+    sendWhatsApp(adminWaPhone, msg, { context: `invoice_issued_admin`, refType: "invoice", refId: dedupRef })
+      .catch((e: unknown) => logger.error({ e }, "WA invoice_issued admin failed"));
   }
 }
 
