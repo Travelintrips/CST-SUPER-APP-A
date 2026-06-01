@@ -31,6 +31,8 @@ const STEP_ICON: Record<string, string> = {
 };
 
 const PHOTO_REQUIRED = new Set(["PICKUP", "ARRIVED", "DELIVERED", "COMPLETED"]);
+// GPS wajib untuk step tracking lapangan; COMPLETED tidak butuh GPS (hanya konfirmasi selesai)
+const GPS_REQUIRED = new Set(["PICKUP", "IN_TRANSIT", "ARRIVED", "DELIVERED"]);
 
 function formatDeviceTs(ts: string | null | undefined): string {
   if (!ts) return "";
@@ -44,19 +46,38 @@ function formatDeviceTs(ts: string | null | undefined): string {
   }
 }
 
-async function captureGps(): Promise<{ latitude: number; longitude: number; timestamp: string } | null> {
+type GpsResult =
+  | { ok: true; latitude: number; longitude: number; timestamp: string }
+  | { ok: false; reason: "unsupported" | "denied" | "timeout" | "unavailable" };
+
+async function captureGps(): Promise<GpsResult> {
   return new Promise((resolve) => {
-    if (!navigator.geolocation) { resolve(null); return; }
+    if (!navigator.geolocation) {
+      resolve({ ok: false, reason: "unsupported" });
+      return;
+    }
     navigator.geolocation.getCurrentPosition(
       (pos) => resolve({
+        ok: true,
         latitude: pos.coords.latitude,
         longitude: pos.coords.longitude,
         timestamp: new Date(pos.timestamp).toISOString(),
       }),
-      () => resolve(null),
+      (err) => {
+        if (err.code === 1) resolve({ ok: false, reason: "denied" });
+        else if (err.code === 3) resolve({ ok: false, reason: "timeout" });
+        else resolve({ ok: false, reason: "unavailable" });
+      },
       { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 },
     );
   });
+}
+
+function gpsErrorMessage(reason: "unsupported" | "denied" | "timeout" | "unavailable"): string {
+  if (reason === "denied") return "GPS belum aktif / izin lokasi belum diberikan. Aktifkan GPS di pengaturan browser, lalu coba lagi.";
+  if (reason === "timeout") return "GPS timeout — sinyal lemah. Pindah ke area terbuka lalu coba lagi.";
+  if (reason === "unsupported") return "Browser tidak mendukung GPS. Gunakan browser lain (Chrome/Firefox terbaru).";
+  return "GPS tidak tersedia. Pastikan lokasi diaktifkan lalu coba lagi.";
 }
 
 export default function DriverProgressPage() {
@@ -69,6 +90,8 @@ export default function DriverProgressPage() {
   const [pendingPhotos, setPendingPhotos] = useState<Record<string, string>>({});
   const [uploading, setUploading] = useState<string | null>(null);
   const [gpsWarning, setGpsWarning] = useState<string | null>(null);
+  // step yang sedang menunggu retry GPS (diblokir karena GPS gagal + GPS_REQUIRED)
+  const [gpsBlockedStep, setGpsBlockedStep] = useState<string | null>(null);
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   useEffect(() => {
@@ -110,19 +133,28 @@ export default function DriverProgressPage() {
       return;
     }
     setGpsWarning(null);
+    setGpsBlockedStep(null);
     setSubmitting(stepKey);
     try {
-      // Capture GPS — non-blocking; continue if denied
-      const gps = await captureGps();
-      if (!gps) {
-        setGpsWarning("GPS tidak tersedia atau ditolak. Update tetap dikirim tanpa koordinat lokasi.");
+      const gpsResult = await captureGps();
+
+      if (!gpsResult.ok) {
+        // GPS_REQUIRED steps: blokir submit, tampilkan pesan jelas + opsi retry
+        if (GPS_REQUIRED.has(stepKey)) {
+          setGpsWarning(gpsErrorMessage(gpsResult.reason));
+          setGpsBlockedStep(stepKey);
+          setSubmitting(null);
+          return;
+        }
+        // GPS_OPTIONAL steps (COMPLETED): lanjutkan tanpa GPS, tampilkan info
+        setGpsWarning("GPS tidak tersedia. Update dikirim tanpa koordinat lokasi.");
       }
 
       const payload: Record<string, unknown> = { stepKey, photoUrl: photoUrl ?? undefined };
-      if (gps) {
-        payload.gpsLatitude = gps.latitude;
-        payload.gpsLongitude = gps.longitude;
-        payload.deviceTimestamp = gps.timestamp;
+      if (gpsResult.ok) {
+        payload.gpsLatitude = gpsResult.latitude;
+        payload.gpsLongitude = gpsResult.longitude;
+        payload.deviceTimestamp = gpsResult.timestamp;
       }
 
       const r = await fetch(`/api/driver-progress/${token}`, {
@@ -135,12 +167,14 @@ export default function DriverProgressPage() {
         alert(d.error ?? "Gagal memperbarui status.");
       } else {
         setSuccess(`Status "${data.stepLabel[stepKey] ?? stepKey}" berhasil diperbarui.`);
+        setGpsWarning(null);
+        setGpsBlockedStep(null);
         const newMeta: StepMeta = {};
         if (photoUrl) newMeta.photoUrl = photoUrl;
-        if (gps) {
-          newMeta.gpsLatitude = gps.latitude;
-          newMeta.gpsLongitude = gps.longitude;
-          newMeta.deviceTimestamp = gps.timestamp;
+        if (gpsResult.ok) {
+          newMeta.gpsLatitude = gpsResult.latitude;
+          newMeta.gpsLongitude = gpsResult.longitude;
+          newMeta.deviceTimestamp = gpsResult.timestamp;
           newMeta.mapUrl = d.mapUrl ?? null;
           newMeta.streetViewUrl = d.streetViewUrl ?? null;
         }
@@ -216,8 +250,22 @@ export default function DriverProgressPage() {
 
         {/* GPS Warning */}
         {gpsWarning && (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 text-sm text-yellow-700">
-            📡 {gpsWarning}
+          <div className={`rounded-xl p-3 text-sm ${gpsBlockedStep ? "bg-red-50 border border-red-200 text-red-700" : "bg-yellow-50 border border-yellow-200 text-yellow-700"}`}>
+            <div className="flex items-start gap-2">
+              <span className="flex-shrink-0 mt-0.5">{gpsBlockedStep ? "🚫" : "📡"}</span>
+              <div className="flex-1">
+                <p className="font-medium">{gpsBlockedStep ? "GPS Diperlukan" : "Perhatian GPS"}</p>
+                <p className="mt-0.5">{gpsWarning}</p>
+                {gpsBlockedStep && (
+                  <button
+                    onClick={() => handleUpdate(gpsBlockedStep)}
+                    className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-semibold px-3 py-1.5 transition"
+                  >
+                    🔄 Coba Lagi Setelah Aktifkan GPS
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
@@ -298,23 +346,33 @@ export default function DriverProgressPage() {
             <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide mb-3">Pilih Status Sekarang</p>
             <div className="space-y-4">
               {data.allowedSteps.map((s) => {
-                const isRequired = PHOTO_REQUIRED.has(s);
+                const isPhotoRequired = PHOTO_REQUIRED.has(s);
+                const isGpsRequired = GPS_REQUIRED.has(s);
                 const photoUrl = pendingPhotos[s];
                 const isUploading = uploading === s;
-                const canSubmit = !isRequired || !!photoUrl;
+                const isBlocked = gpsBlockedStep === s;
+                const canSubmit = (!isPhotoRequired || !!photoUrl) && !isBlocked;
                 return (
                   <div key={s} className="space-y-2">
                     {/* Photo upload section */}
-                    <div className="rounded-lg border border-gray-200 p-3">
+                    <div className={`rounded-lg border p-3 ${isBlocked ? "border-red-200 bg-red-50" : "border-gray-200"}`}>
                       <div className="flex items-center gap-2 mb-2">
                         <span className="text-lg">{STEP_ICON[s] ?? "•"}</span>
                         <span className="text-sm font-medium text-gray-700">{data.stepLabel[s] ?? s}</span>
-                        {isRequired && (
-                          <span className="ml-auto text-xs text-red-500 font-medium">Foto wajib</span>
-                        )}
-                        {!isRequired && (
-                          <span className="ml-auto text-xs text-gray-400">Foto opsional</span>
-                        )}
+                        <div className="ml-auto flex flex-col items-end gap-0.5">
+                          {isPhotoRequired && (
+                            <span className="text-xs text-red-500 font-medium">Foto wajib</span>
+                          )}
+                          {!isPhotoRequired && (
+                            <span className="text-xs text-gray-400">Foto opsional</span>
+                          )}
+                          {isGpsRequired && (
+                            <span className="text-xs text-blue-600 font-medium">📍 GPS wajib</span>
+                          )}
+                          {!isGpsRequired && (
+                            <span className="text-xs text-gray-400">📍 GPS opsional</span>
+                          )}
+                        </div>
                       </div>
 
                       {/* Photo preview */}
@@ -338,7 +396,7 @@ export default function DriverProgressPage() {
                         ) : photoUrl ? (
                           <span>📷 Ganti Foto</span>
                         ) : (
-                          <span>📷 {isRequired ? "Ambil / Pilih Foto" : "Tambah Foto (opsional)"}</span>
+                          <span>📷 {isPhotoRequired ? "Ambil / Pilih Foto" : "Tambah Foto (opsional)"}</span>
                         )}
                         <input
                           type="file"
@@ -356,19 +414,35 @@ export default function DriverProgressPage() {
                     </div>
 
                     {/* GPS note */}
-                    <p className="text-xs text-gray-400 px-1">
-                      📡 Lokasi GPS akan direkam otomatis saat update dikirim.
-                    </p>
+                    {isGpsRequired ? (
+                      <p className="text-xs text-blue-600 px-1 font-medium">
+                        📍 GPS wajib diaktifkan untuk step ini. Lokasi akan direkam saat submit.
+                      </p>
+                    ) : (
+                      <p className="text-xs text-gray-400 px-1">
+                        📡 GPS opsional untuk step ini. Update tetap jalan meski GPS mati.
+                      </p>
+                    )}
 
                     {/* Submit button */}
                     <button
                       onClick={() => handleUpdate(s)}
                       disabled={submitting !== null || isUploading || !canSubmit}
-                      className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 transition"
+                      className={`w-full flex items-center justify-center gap-3 px-4 py-3 rounded-lg text-white text-sm font-medium transition ${
+                        isBlocked
+                          ? "bg-red-400 cursor-not-allowed"
+                          : "bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50"
+                      }`}
                     >
-                      <span>Update: {data.stepLabel[s] ?? s}</span>
-                      {submitting === s && (
-                        <span className="text-xs opacity-70">Menyimpan...</span>
+                      {submitting === s ? (
+                        <>
+                          <span className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          <span>Mengambil GPS & Menyimpan...</span>
+                        </>
+                      ) : isBlocked ? (
+                        <span>🚫 GPS Diperlukan — Aktifkan Lalu Coba Lagi</span>
+                      ) : (
+                        <span>Update: {data.stepLabel[s] ?? s}</span>
                       )}
                     </button>
                   </div>
