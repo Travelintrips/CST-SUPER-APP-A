@@ -8,6 +8,8 @@ import { updateOrderProgress } from "../lib/orderProgress.js";
 import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getPreferredDomain } from "../lib/domain.js";
+import { getAdminWa } from "../lib/adminWa.js";
+import { sendVendorPodUploadedNotification } from "../lib/orderNotification.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { logger } from "../lib/logger.js";
 
@@ -206,26 +208,52 @@ driverProgressPublicRouter.post("/:token", async (req: Request, res: Response) =
       }
     }
 
-    // WA ke customer
-    try {
-      const [order] = await db.select({
-        phone: logisticOrdersTable.phone,
-        orderNumber: logisticOrdersTable.orderNumber,
-        customerName: logisticOrdersTable.customerName,
-      }).from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
+    // WA ke customer (generic, untuk step non-COMPLETED)
+    // COMPLETED ditangani oleh logisticOrderStatusService via CUSTOMER_NOTIFY_STATUS_SET
+    if (String(stepKey) !== "COMPLETED") {
+      try {
+        const [order] = await db.select({
+          phone: logisticOrdersTable.phone,
+          orderNumber: logisticOrdersTable.orderNumber,
+          customerName: logisticOrdersTable.customerName,
+        }).from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
 
-      if (order?.phone) {
-        const domain = process.env.REPLIT_DEV_DOMAIN || getPreferredDomain() || "cstlogistic.co.id";
-        const waMsg =
-          `🚚 *Update Pengiriman — CST Logistics*\n\n` +
-          `Halo ${order.customerName},\n\n` +
-          `Order *${order.orderNumber}* telah diperbarui:\n` +
-          `📍 Status: *${STEP_LABEL[String(stepKey)] ?? stepKey}*\n\n` +
-          `Pantau pengiriman:\nhttps://${domain}/track`;
-        sendWhatsApp(order.phone, waMsg).catch(() => {});
+        if (order?.phone) {
+          const domain = process.env.REPLIT_DEV_DOMAIN || getPreferredDomain() || "cstlogistic.co.id";
+          const waMsg =
+            `🚚 *Update Pengiriman — CST Logistics*\n\n` +
+            `Halo ${order.customerName},\n\n` +
+            `Order *${order.orderNumber}* telah diperbarui:\n` +
+            `📍 Status: *${STEP_LABEL[String(stepKey)] ?? stepKey}*\n\n` +
+            `Pantau pengiriman:\nhttps://${domain}/track`;
+          sendWhatsApp(order.phone, waMsg).catch(() => {});
+        }
+      } catch {
+        // non-fatal
       }
-    } catch {
-      // non-fatal
+    }
+
+    // WA ke admin saat COMPLETED (Bukti Pengiriman)
+    if (String(stepKey) === "COMPLETED") {
+      try {
+        const [order] = await db.select({
+          orderNumber: logisticOrdersTable.orderNumber,
+        }).from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
+
+        const adminWa = await getAdminWa();
+        if (adminWa && order?.orderNumber) {
+          sendVendorPodUploadedNotification(
+            order.orderNumber,
+            driverName,
+            1,
+            adminWa,
+            note ? String(note) : undefined,
+            photoUrl ? String(photoUrl) : undefined,
+          ).catch(() => {});
+        }
+      } catch {
+        // non-fatal
+      }
     }
 
     return res.json({ ok: true, stepKey, label: STEP_LABEL[String(stepKey)] });
