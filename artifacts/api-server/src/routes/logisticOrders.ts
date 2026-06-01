@@ -28,6 +28,7 @@ import {
   sendLogisticOrderNotification,
   sendVendorOrderStatusChangeNotification,
   sendLogisticOrderStatusCustomerNotification,
+  sendLogisticOperationalStatusNotification,
 } from "../lib/orderNotification";
 import { generateShortLink } from "../lib/shortLink.js";
 import { getPreferredDomain } from "../lib/domain.js";
@@ -60,6 +61,8 @@ import {
   transitionLogisticOrderStatus,
   getAllowedTransitions,
 } from "../lib/services/logisticOrderStatusService.js";
+import { wasRecentlyNotified } from "../lib/notificationLog.js";
+import { getAdminWa } from "../lib/adminWa.js";
 
 export const logisticOrdersRouter = Router();
 
@@ -1587,4 +1590,84 @@ logisticOrdersRouter.get("/:id/locations", async (req: Request, res: Response) =
     })),
     total: rows.length,
   });
+});
+
+// ── Delivery Phase Transition Endpoints ──────────────────────────────────────
+// POST /api/logistic/orders/:id/delivery/:phase
+// Manual delivery phase transitions untuk admin/logistics.
+// Dedup: invoice-issued skip customer WA jika sudah dikirim via customer-invoice link.
+
+const DELIVERY_PHASE_CONFIG: Record<string, { status: string; emoji: string; label: string }> = {
+  "in-progress":      { status: "In Progress",     emoji: "🚀", label: "Dalam Proses" },
+  "pickup":           { status: "Pickup",           emoji: "🚚", label: "Barang Diambil" },
+  "in-transit":       { status: "In Transit",       emoji: "🛣️",  label: "Dalam Perjalanan" },
+  "arrived":          { status: "Arrived",          emoji: "📍", label: "Tiba di Tujuan" },
+  "delivered":        { status: "Delivered",        emoji: "✅", label: "Diserahkan ke Customer" },
+  "pod-uploaded":     { status: "POD Uploaded",     emoji: "📷", label: "POD Diunggah" },
+  "invoice-issued":   { status: "Invoice Issued",   emoji: "🧾", label: "Invoice Diterbitkan" },
+  "payment-received": { status: "Payment Received", emoji: "💰", label: "Pembayaran Diterima" },
+  "completed":        { status: "Completed",        emoji: "🎉", label: "Order Selesai" },
+};
+
+logisticOrdersRouter.post("/:id/delivery/:phase", async (req: Request, res: Response) => {
+  if (!(await requireRole(req, res, ["admin", "owner", "logistics"]))) return;
+  const id = parseInt(String(req.params["id"] ?? ""));
+  if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+  const phase = String(req.params["phase"] ?? "");
+  const cfg = DELIVERY_PHASE_CONFIG[phase];
+  if (!cfg) return res.status(400).json({ message: `Phase '${phase}' tidak dikenal. Gunakan: ${Object.keys(DELIVERY_PHASE_CONFIG).join(", ")}` });
+
+  const [order] = await db
+    .select({
+      id: logisticOrdersTable.id,
+      orderNumber: logisticOrdersTable.orderNumber,
+      status: logisticOrdersTable.status,
+      customerName: logisticOrdersTable.customerName,
+      phone: logisticOrdersTable.phone,
+      companyName: logisticOrdersTable.companyName,
+    })
+    .from(logisticOrdersTable)
+    .where(eq(logisticOrdersTable.id, id))
+    .limit(1);
+  if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+  const actorName = (req as any).user?.fullName ?? (req as any).user?.name ?? "Admin";
+
+  try {
+    await transitionLogisticOrderStatus(id, cfg.status as Parameters<typeof transitionLogisticOrderStatus>[1], {
+      source: `logisticOrders:delivery/${phase}`,
+      actorType: "admin",
+      actorName,
+      notes: `${cfg.emoji} ${cfg.label} — diubah manual oleh admin`,
+    });
+  } catch (e: unknown) {
+    const errMsg = e instanceof Error ? e.message : "Transisi status gagal";
+    return res.status(422).json({ message: errMsg });
+  }
+
+  // WA notifications — fire-and-forget
+  void (async () => {
+    try {
+      const adminWa = await getAdminWa();
+      // invoice-issued: skip customer WA jika sudah dikirim via customer-invoice link (dedup 30 menit)
+      const customerPhone = phase === "invoice-issued"
+        ? (await wasRecentlyNotified("customer-invoice-wa", `order:${id}`, 30 * 60 * 1000)
+            ? null
+            : order.phone)
+        : order.phone;
+      await sendLogisticOperationalStatusNotification(
+        {
+          order_number: order.orderNumber,
+          customer_name: order.customerName ?? "",
+          company_name: order.companyName ?? null,
+          phone: customerPhone ?? null,
+        },
+        cfg.label,
+        cfg.emoji,
+        adminWa,
+      );
+    } catch { /* non-fatal */ }
+  })();
+
+  return res.json({ ok: true, status: cfg.status, orderId: id, phase });
 });

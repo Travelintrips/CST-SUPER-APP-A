@@ -28,6 +28,7 @@ import {
   sendInvoiceIssuedNotification,
 } from "../lib/orderNotification.js";
 import { notifyPaymentReminder } from "../lib/enterpriseWorkflowNotify.js";
+import { wasRecentlyNotified } from "../lib/notificationLog.js";
 import { saveAndBroadcast } from "../lib/notificationStore.js";
 import { getVendorFilterMode } from "../lib/aiOrderIntake.js";
 import { StockShortageError, postStockOut, postStockIn } from "../lib/inventoryStock.js";
@@ -749,7 +750,15 @@ router.post("/documents/:id/action", async (req, res) => {
         const dueStr = patch["dueDate"]
           ? new Date(patch["dueDate"] as string).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })
           : "—";
-        await sendInvoiceIssuedNotification(doc.docNumber, invNumber, doc.customerName, grandTotal, dueStr, customerPhone, adminWa);
+        // Dedup: jika sudah ada WA invoice dari jalur customer-invoice link, skip customer WA
+        const skipCustWa = doc.logisticOrderId != null
+          ? await wasRecentlyNotified("customer-invoice-wa", `order:${doc.logisticOrderId}`, 30 * 60 * 1000)
+          : false;
+        await sendInvoiceIssuedNotification(
+          doc.docNumber, invNumber, doc.customerName, grandTotal, dueStr,
+          skipCustWa ? null : customerPhone,
+          adminWa,
+        );
       }
 
       if (action === "send_reminder") {

@@ -11,6 +11,7 @@ import {
   salesDocumentsTable,
   purchaseDocumentsTable,
   companiesTable,
+  customersTable,
 } from "@workspace/db";
 import {
   eq,
@@ -38,6 +39,7 @@ import { recalculatePaymentStatus } from "../lib/services/index.js";
 import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminWa } from "../lib/adminWa.js";
+import { notifyPaymentConfirmation } from "../lib/enterpriseWorkflowNotify.js";
 
 function serializeCompany(c: typeof companiesTable.$inferSelect) {
   return { ...c, createdAt: c.createdAt.toISOString() };
@@ -873,6 +875,8 @@ router.post("/payments", async (req, res) => {
             grandTotal: salesDocumentsTable.grandTotal,
             docNumber: salesDocumentsTable.docNumber,
             logisticOrderId: salesDocumentsTable.logisticOrderId,
+            customerId: salesDocumentsTable.customerId,
+            customerName: salesDocumentsTable.customerName,
           })
           .from(salesDocumentsTable)
           .where(eq(salesDocumentsTable.id, parsedSourceDocId));
@@ -930,6 +934,35 @@ router.post("/payments", async (req, res) => {
           .catch((e: unknown) =>
             logger.error({ e }, "getAdminWa payment notif failed"),
           );
+
+        // ── WA ke Customer: Payment Received ──────────────────────────────────
+        // Kirim konfirmasi pembayaran ke customer jika sudah lunas dan ada phone
+        if (newStatus === "paid" && doc?.customerId) {
+          (async () => {
+            try {
+              const [cust] = await db
+                .select({ phone: customersTable.phone })
+                .from(customersTable)
+                .where(eq(customersTable.id, doc.customerId!))
+                .limit(1);
+              const customerPhone = cust?.phone ?? null;
+              if (customerPhone) {
+                await notifyPaymentConfirmation({
+                  invoiceNumber: doc.docNumber ?? String(parsedSourceDocId),
+                  payeeName: doc.customerName ?? partner,
+                  payeePhone: customerPhone,
+                  paidAmount: amt,
+                  paymentRef: ref ?? payment!.paymentNumber,
+                  paymentMethod: (req.body as Record<string, unknown>).paymentMethod as string | undefined,
+                  tanggal: String(dateStr),
+                  isVendor: false,
+                });
+              }
+            } catch (e: unknown) {
+              logger.error({ e }, "WA customer payment_received failed — non-fatal");
+            }
+          })().catch(() => {});
+        }
       } else if (validSourceType === "purchase_order") {
         await recalculatePaymentStatus(parsedSourceDocId, "purchase_order");
 

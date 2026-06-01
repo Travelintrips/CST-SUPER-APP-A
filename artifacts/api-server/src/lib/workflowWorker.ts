@@ -420,6 +420,30 @@ async function checkInvoiceOverdue(settings: AlertSettings): Promise<void> {
 
     // WA reminder to customer + admin
     if (isWithinAlertWindow(settings)) {
+      // Cari payment link (customer invoice) jika ada
+      let paymentLink: string | undefined;
+      try {
+        const { getPreferredDomain } = await import("./domain.js");
+        const { customerInvoiceLinksTable } = await import("@workspace/db");
+        const { gt } = await import("drizzle-orm");
+        const [invLink] = await db
+          .select({ token: customerInvoiceLinksTable.token })
+          .from(customerInvoiceLinksTable)
+          .where(
+            and(
+              eq(customerInvoiceLinksTable.salesDocId, doc.id),
+              gt(customerInvoiceLinksTable.expiresAt, new Date()),
+            ),
+          )
+          .limit(1);
+        if (invLink?.token) {
+          const domain = getPreferredDomain();
+          paymentLink = domain
+            ? `https://${domain}/customer-invoice/${invLink.token}`
+            : undefined;
+        }
+      } catch { /* non-fatal */ }
+
       await notifyPaymentReminder({
         invoiceNumber: invoiceRef,
         customerName: doc.customerName,
@@ -427,6 +451,7 @@ async function checkInvoiceOverdue(settings: AlertSettings): Promise<void> {
         dueDate: dueDateStr,
         totalAmount,
         daysUntilDue: -daysOverdue,
+        paymentLink,
       });
     }
 

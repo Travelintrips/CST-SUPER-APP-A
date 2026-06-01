@@ -27,6 +27,7 @@ import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStat
 import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminGroupWa } from "../lib/adminWa.js";
+import { wasRecentlyNotified } from "../lib/notificationLog.js";
 import { createSalesOrderFromVmfApproval } from "../lib/vmfSoIntegration.js";
 import { updateOrderProgress } from "../lib/orderProgress.js";
 import {
@@ -3023,19 +3024,35 @@ vendorMiniFormRouter.post("/admin/customer-invoices", async (req: Request, res: 
     const domain = getPreferredDomain();
     const invoiceUrl = domain ? `https://${domain}/customer-invoice/${token}` : `/customer-invoice/${token}`;
 
-    // Kirim WA ke customer jika diminta
+    // Kirim WA ke customer jika diminta (dedup: skip jika sudah dikirim 30 menit terakhir dari jalur apapun)
     if (sendWa && customerPhone) {
-      const invoiceNumLabel = invoiceNumber ? `No. Invoice: *${invoiceNumber}*\n` : "";
-      const orderNumLabel = orderNumber ? `No. Order: *${orderNumber}*\n` : "";
-      const dueDateLabel = dueDate ? `Jatuh Tempo: *${new Date(dueDate).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}*\n` : "";
-      const totalLabel = grandTotal ? `Total: *${currency ?? "IDR"} ${Math.round(grandTotal).toLocaleString("id-ID")}*\n` : "";
-      const waMsg = `📄 *Invoice Pembayaran*\n\n` +
-        `Kepada Yth. ${customerName ?? "Customer"},\n\n` +
-        invoiceNumLabel + orderNumLabel + totalLabel + dueDateLabel +
-        `\nSilakan lihat detail invoice dan konfirmasi penerimaan melalui link berikut:\n${invoiceUrl}` +
-        (notes ? `\n\n📝 Catatan: ${notes}` : "") +
-        `\n\nTerima kasih atas kepercayaan Anda.`;
-      await sendWhatsApp(customerPhone, waMsg, { context: "customer-invoice-send", refType: "customer_invoice", refId: String(link.id) });
+      const WA_CTX = "customer-invoice-wa";
+      const WA_REF = orderId ? `order:${orderId}` : `inv:${link.id}`;
+      const alreadySent = orderId
+        ? await wasRecentlyNotified(WA_CTX, WA_REF, 30 * 60 * 1000)
+        : false;
+      if (!alreadySent) {
+        const invoiceNumLabel = invoiceNumber ? `No. Invoice: *${invoiceNumber}*\n` : "";
+        const orderNumLabel = orderNumber ? `No. Order: *${orderNumber}*\n` : "";
+        const dueDateLabel = dueDate
+          ? `Jatuh Tempo: *${new Date(dueDate).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}*\n`
+          : "";
+        const totalLabel = grandTotal
+          ? `Total: *${currency ?? "IDR"} ${Math.round(grandTotal).toLocaleString("id-ID")}*\n`
+          : "";
+        const waMsg =
+          `📄 *Invoice Pembayaran*\n\n` +
+          `Kepada Yth. ${customerName ?? "Customer"},\n\n` +
+          invoiceNumLabel + orderNumLabel + totalLabel + dueDateLabel +
+          `\nSilakan lihat detail invoice dan lakukan pembayaran melalui link berikut:\n${invoiceUrl}` +
+          (notes ? `\n\n📝 Catatan: ${notes}` : "") +
+          `\n\nTerima kasih atas kepercayaan Anda.`;
+        await sendWhatsApp(customerPhone, waMsg, {
+          context: WA_CTX,
+          refType: "customer_invoice",
+          refId: WA_REF,
+        });
+      }
     }
 
     // ── AUTO STATUS: Invoice Issued ──────────────────────────────────────────
