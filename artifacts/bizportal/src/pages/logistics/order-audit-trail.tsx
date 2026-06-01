@@ -135,12 +135,12 @@ function TimelineEntry({ entry, index }: { entry: AuditEntry; index: number }) {
           )}
 
           {/* Revision/rejection notes */}
-          {entry["revision_notes"] && (
+          {!!entry["revision_notes"] && (
             <p className="text-xs text-amber-700 bg-amber-50 rounded px-2 py-1 mt-1">
               Revisi: {entry["revision_notes"] as string}
             </p>
           )}
-          {entry["rejection_reason"] && (
+          {!!entry["rejection_reason"] && (
             <p className="text-xs text-red-700 bg-red-50 rounded px-2 py-1 mt-1">
               Alasan: {entry["rejection_reason"] as string}
             </p>
