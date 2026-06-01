@@ -2012,6 +2012,23 @@ vendorMiniFormRouter.post("/admin/links", async (req: Request, res: Response) =>
       `Link dibuat untuk ${serviceType} (mode: ${mode ?? "rate_collection"})`,
       { serviceType, orderId, orderNumber, mode });
 
+    // Back-fill order.templateSnapshot untuk service orders:
+    // order tidak punya templateSnapshot saat dibuat (service template baru di-resolve di sini).
+    // Simpan ke logistic_orders agar vendor_assignment WA mendapat serviceLabel yang benar.
+    if (orderId && resolvedTemplateSnapshot && (resolvedTemplateSnapshot as Record<string, unknown>)["templateKind"] === "service") {
+      try {
+        const [existingOrder] = await db.select({ templateSnapshot: logisticOrdersTable.templateSnapshot })
+          .from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
+        if (existingOrder && !existingOrder.templateSnapshot) {
+          await db.update(logisticOrdersTable)
+            .set({ templateSnapshot: resolvedTemplateSnapshot })
+            .where(eq(logisticOrdersTable.id, orderId));
+        }
+      } catch {
+        /* non-fatal — order masih bisa diproses tanpa snapshot */
+      }
+    }
+
     // G-1: tambahkan entry ke order_updates timeline
     if (orderId) {
       await logOrderUpdate(
