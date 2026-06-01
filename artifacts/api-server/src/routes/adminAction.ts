@@ -1244,6 +1244,7 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
 
       await transitionLogisticOrderStatus(order.id, "In Progress", { source: "adminAction:confirm_fulfillment", actorType: "admin", force: true });
       updateOrderProgress(order.id, "IN_PROGRESS", "admin", "Admin", "Admin mengkonfirmasi fulfillment vendor. Order sedang diproses.").catch(() => {});
+      await transitionLogisticOrderStatus(order.id, "In Progress", { source: "adminAction:confirm_fulfillment", actorType: "admin" });
 
       await db.insert(orderUpdatesTable).values({
         orderId: order.id,

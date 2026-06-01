@@ -38,22 +38,30 @@ const CUSTOMER_NOTIFY_STATUS_SET = new Set([
 //  - "Cancelled" selalu bisa dicapai dari status manapun kecuali terminal.
 //  - "Completed" dan "Cancelled" adalah terminal — tidak ada keluar.
 //
+// Edge tambahan (Phase 3K):
+//  - "Admin Review" → "Vendor Confirmed":
+//      Admin dapat langsung assign vendor tanpa melalui Customer Approval
+//      (khusus alur trucking dan VMF order-based di mana harga sudah fix).
+//  - "Vendor Confirmed" → "Admin Review":
+//      Vendor menolak job order — order dikembalikan ke admin untuk
+//      pilih vendor lain atau blast ulang. Tanpa edge ini order tersangkut.
+//  - "RFQ Sent" → "Customer Approval":
+//      Admin mendapat konfirmasi harga verbal dari vendor lalu langsung kirim
+//      opsi ke customer tanpa harus marking "Quote Received" di sistem lebih dulu.
+//
 export const LOGISTIC_ORDER_VALID_TRANSITIONS: Record<string, string[]> = {
   "Order Received":    ["Admin Review", "Cancelled"],
-  "Admin Review":      ["RFQ Sent", "Quote Received", "Customer Approval", "Cancelled"],
-  "RFQ Sent":          ["Quote Received", "Admin Review", "Cancelled"],
+  "Admin Review":      ["RFQ Sent", "Quote Received", "Customer Approval", "Vendor Confirmed", "Cancelled"],
+  "RFQ Sent":          ["Quote Received", "Admin Review", "Customer Approval", "Cancelled"],
   "Quote Received":    ["Customer Approval", "RFQ Sent", "Admin Review", "Cancelled"],
   "Customer Approval": ["Vendor Confirmed", "Admin Review", "Cancelled"],
-  // Vendor Confirmed → Completed: untuk complete-order shortcut (tanpa lewat semua tahap)
-  "Vendor Confirmed":  ["In Progress", "Customer Approval", "Cancelled", "Completed"],
-  // In Progress → Completed: untuk complete-order & POD upload shortcut
-  "In Progress":       ["Pickup", "Vendor Confirmed", "Cancelled", "Completed"],
+  "Vendor Confirmed":  ["In Progress", "Customer Approval", "Admin Review", "Cancelled"],
+  "In Progress":       ["Pickup", "Vendor Confirmed", "Cancelled"],
   "Pickup":            ["In Transit", "In Progress", "Cancelled"],
   "In Transit":        ["Arrived", "Pickup", "Cancelled"],
   "Arrived":           ["Delivered", "In Transit", "Cancelled"],
-  // Delivered → Completed: untuk POD upload shortcut (langsung selesai tanpa invoice)
-  "Delivered":         ["POD Uploaded", "Arrived", "Cancelled", "Completed"],
-  "POD Uploaded":      ["Invoice Issued", "Delivered", "Cancelled", "Completed"],
+  "Delivered":         ["POD Uploaded", "Arrived", "Cancelled"],
+  "POD Uploaded":      ["Invoice Issued", "Delivered", "Cancelled"],
   "Invoice Issued":    ["Payment Received", "POD Uploaded", "Cancelled"],
   "Payment Received":  ["Completed", "Invoice Issued", "Cancelled"],
   "Completed":         [],

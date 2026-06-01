@@ -35,6 +35,7 @@ import {
 import { logger } from "../lib/logger.js";
 import { postEntry, type PostingLine } from "../lib/accounting.js";
 import { recalculatePaymentStatus } from "../lib/services/index.js";
+import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminWa } from "../lib/adminWa.js";
 
@@ -868,7 +869,11 @@ router.post("/payments", async (req, res) => {
 
         // WA notification to admin — fire-and-forget
         const [doc] = await db
-          .select({ grandTotal: salesDocumentsTable.grandTotal, docNumber: salesDocumentsTable.docNumber })
+          .select({
+            grandTotal: salesDocumentsTable.grandTotal,
+            docNumber: salesDocumentsTable.docNumber,
+            logisticOrderId: salesDocumentsTable.logisticOrderId,
+          })
           .from(salesDocumentsTable)
           .where(eq(salesDocumentsTable.id, parsedSourceDocId));
         const grandTotal = Number(doc?.grandTotal ?? 0);
@@ -878,6 +883,20 @@ router.post("/payments", async (req, res) => {
             : totalPaid > 0
               ? "partial"
               : "unpaid";
+
+        // ── AUTO STATUS: Payment Received ──────────────────────────────────
+        // Jika pembayaran lunas DAN ada logistic order terhubung,
+        // transisi ke "Payment Received" secara otomatis.
+        // Partial payment → tidak ubah status.
+        if (newStatus === "paid" && doc?.logisticOrderId) {
+          transitionLogisticOrderStatus(doc.logisticOrderId, "Payment Received", {
+            source: "accounting:payment_recorded",
+            actorType: "admin",
+            notes: `Pembayaran lunas via ${payment!.paymentNumber} (SO: ${doc.docNumber ?? parsedSourceDocId})`,
+          }).catch((e: unknown) =>
+            logger.warn({ e, logisticOrderId: doc.logisticOrderId }, "auto Payment Received transition failed — non-fatal"),
+          );
+        }
         const fmtIdr = (n: number) =>
           `Rp ${Math.round(n).toLocaleString("id-ID")}`;
         const statusLabel =

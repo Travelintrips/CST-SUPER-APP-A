@@ -25,6 +25,11 @@ export const notificationLogsTable = pgTable("notification_logs", {
    */
   retryCount: integer("retry_count").notNull().default(0),
   nextRetryAt: timestamp("next_retry_at"),
+  /**
+   * URL media (gambar/dokumen) yang dikirim bersama pesan WA.
+   * Disimpan agar retry worker bisa mengirim ulang dengan media yang sama.
+   */
+  mediaUrl: text("media_url"),
 }, (t) => [
   index("notif_logs_channel_idx").on(t.channel),
   index("notif_logs_status_idx").on(t.status),

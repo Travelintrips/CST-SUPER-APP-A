@@ -1632,7 +1632,6 @@ vendorMiniFormRouter.post("/op-confirm/:token", async (req: Request, res: Respon
         actorType: "vendor",
         actorName: "Vendor",
         source: "vendorMiniForm/BF-2-auto-advance",
-        force: true,
         skipAudit: false,
       }).catch((e: unknown) => req.log?.error({ e }, "BF-2: auto-update order status to In Progress failed"));
     }
@@ -1933,7 +1932,6 @@ vendorMiniFormRouter.post("/admin/submissions/:id/select", async (req: Request, 
           actorType: "admin",
           actorName: "Admin",
           source: "vendorMiniForm/select-vendor",
-          force: true,
           skipAudit: false,
         });
       }
@@ -3038,6 +3036,20 @@ vendorMiniFormRouter.post("/admin/customer-invoices", async (req: Request, res: 
         (notes ? `\n\n📝 Catatan: ${notes}` : "") +
         `\n\nTerima kasih atas kepercayaan Anda.`;
       await sendWhatsApp(customerPhone, waMsg, { context: "customer-invoice-send", refType: "customer_invoice", refId: String(link.id) });
+    }
+
+    // ── AUTO STATUS: Invoice Issued ──────────────────────────────────────────
+    // Jika ada orderId, transisi ke "Invoice Issued" secara otomatis.
+    // Hanya berlaku jika status order saat ini adalah "POD Uploaded" atau lebih awal
+    // dalam urutan invoice flow (state machine akan menolak jika tidak valid).
+    if (orderId) {
+      transitionLogisticOrderStatus(orderId, "Invoice Issued", {
+        source: "vendorMiniForm:create_customer_invoice",
+        actorType: "admin",
+        notes: `Invoice ${invoiceNumber ?? token} diterbitkan ke customer`,
+      }).catch((e: unknown) =>
+        req.log?.warn({ e, orderId }, "auto Invoice Issued transition failed — non-fatal"),
+      );
     }
 
     return res.json({ success: true, token, url: invoiceUrl, id: link.id });
