@@ -10,7 +10,7 @@ import {
   ArrowLeft, Search, Ship, Truck, CheckCircle2, Clock,
   MapPin, Package, RefreshCw, AlertCircle, FileText,
   Circle, ArrowRight, Loader2, ThumbsUp, ThumbsDown, RotateCcw, Tag,
-  Bell, BellOff,
+  Bell, BellOff, Navigation, ExternalLink,
 } from "lucide-react";
 import { usePushNotification } from "@/hooks/usePushNotification";
 import { formatDate } from "@/lib/utils";
@@ -64,6 +64,22 @@ interface TrackingData {
   driverJob: DriverJob | null;
   rfqQuote: RfqQuote | null;
   orderUpdates: OrderUpdateItem[];
+  progressEvents?: ProgressEvent[];
+}
+
+interface ProgressEvent {
+  id: number;
+  stepKey: string;
+  stepLabel: string;
+  source: string;
+  actorName: string | null;
+  notes: string | null;
+  gpsLatitude: number | null;
+  gpsLongitude: number | null;
+  deviceTimestamp: string | null;
+  mapUrl: string | null;
+  streetViewUrl: string | null;
+  createdAt: string;
 }
 
 async function fetchTracking(orderNumber: string): Promise<TrackingData> {
@@ -74,6 +90,7 @@ async function fetchTracking(orderNumber: string): Promise<TrackingData> {
   }
   return res.json() as Promise<TrackingData>;
 }
+
 
 const ORDER_STEPS = [
   { key: "Order Received",    label: "Order Diterima",         icon: FileText },
@@ -707,6 +724,197 @@ function PushToggle({ orderNumber }: { orderNumber: string | null }) {
   );
 }
 
+function GpsMapEmbed({ events }: { events: ProgressEvent[] }) {
+  const pts = events.filter((e) => e.gpsLatitude != null && e.gpsLongitude != null);
+  if (pts.length === 0) return null;
+
+  const markers = pts.map((e, i) => ({
+    lat: e.gpsLatitude!,
+    lng: e.gpsLongitude!,
+    label: e.stepLabel,
+    num: i + 1,
+    ts: e.deviceTimestamp
+      ? new Date(e.deviceTimestamp).toLocaleString("id-ID", {
+          day: "numeric", month: "short", year: "numeric",
+          hour: "2-digit", minute: "2-digit",
+          timeZone: "Asia/Jakarta",
+        }) + " WIB"
+      : new Date(e.createdAt).toLocaleString("id-ID", {
+          day: "numeric", month: "short", year: "numeric",
+          hour: "2-digit", minute: "2-digit",
+          timeZone: "Asia/Jakarta",
+        }),
+    isLast: i === pts.length - 1,
+  }));
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\/script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body,#map { width:100%; height:100%; }
+  .pin-icon { background:#2563eb; color:#fff; border-radius:50% 50% 50% 0; transform:rotate(-45deg);
+    width:28px; height:28px; display:flex; align-items:center; justify-content:center;
+    font-size:11px; font-weight:700; border:2px solid #fff;
+    box-shadow:0 2px 6px rgba(0,0,0,0.35); }
+  .pin-icon.last { background:#16a34a; }
+  .pin-inner { transform:rotate(45deg); }
+  .leaflet-popup-content { font-size:12px; line-height:1.5; min-width:140px; }
+  .popup-title { font-weight:700; margin-bottom:2px; color:#1e293b; }
+  .popup-ts { color:#64748b; font-size:11px; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<script>
+  var pts = ${JSON.stringify(markers)};
+  var map = L.map('map', { zoomControl:true, attributionControl:false });
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:19 }).addTo(map);
+
+  var latlngs = pts.map(function(p){ return [p.lat, p.lng]; });
+
+  if (latlngs.length > 1) {
+    L.polyline(latlngs, { color:'#2563eb', weight:3, opacity:0.75, dashArray:'6,4' }).addTo(map);
+  }
+
+  pts.forEach(function(p) {
+    var div = document.createElement('div');
+    div.className = 'pin-icon' + (p.isLast ? ' last' : '');
+    var inner = document.createElement('div');
+    inner.className = 'pin-inner';
+    inner.textContent = p.num;
+    div.appendChild(inner);
+    var icon = L.divIcon({ html:div.outerHTML, className:'', iconSize:[28,28], iconAnchor:[14,28], popupAnchor:[0,-30] });
+    var popup = '<div class="popup-title">' + p.label + '</div><div class="popup-ts">' + p.ts + '</div>';
+    L.marker([p.lat, p.lng], { icon:icon }).addTo(map).bindPopup(popup);
+  });
+
+  if (latlngs.length === 1) {
+    map.setView(latlngs[0], 15);
+  } else {
+    map.fitBounds(latlngs, { padding:[24,24] });
+  }
+<\/script>
+</body>
+</html>`;
+
+  return (
+    <div className="rounded-lg overflow-hidden border border-border mb-4" style={{ height: "220px" }}>
+      <iframe
+        srcDoc={html}
+        title="Peta Rute Driver"
+        className="w-full h-full border-0"
+        sandbox="allow-scripts"
+      />
+    </div>
+  );
+}
+
+function DriverGpsTimeline({ events }: { events: ProgressEvent[] }) {
+  const gpsEvents = events.filter((e) => e.gpsLatitude != null && e.gpsLongitude != null);
+  if (gpsEvents.length === 0) return null;
+
+  return (
+    <div className="bg-card border border-border rounded-xl p-5">
+      <h3 className="font-semibold text-foreground text-sm mb-4 flex items-center gap-2">
+        <Navigation className="w-4 h-4 text-primary" />
+        Riwayat Lokasi Driver
+        <Badge variant="outline" className="text-xs ml-auto">{gpsEvents.length} titik</Badge>
+      </h3>
+      <GpsMapEmbed events={gpsEvents} />
+      <div className="space-y-0">
+        {[...gpsEvents].reverse().map((ev, i) => {
+          const isFirst = i === 0;
+          const isLast = i === gpsEvents.length - 1;
+          const ts = ev.deviceTimestamp
+            ? new Date(ev.deviceTimestamp).toLocaleString("id-ID", {
+                day: "numeric", month: "short", year: "numeric",
+                hour: "2-digit", minute: "2-digit",
+                timeZone: "Asia/Jakarta",
+              })
+            : new Date(ev.createdAt).toLocaleString("id-ID", {
+                day: "numeric", month: "short", year: "numeric",
+                hour: "2-digit", minute: "2-digit",
+                timeZone: "Asia/Jakarta",
+              });
+
+          return (
+            <div key={ev.id} className="flex gap-3">
+              <div className="flex flex-col items-center">
+                <div className={cn(
+                  "w-7 h-7 rounded-full flex items-center justify-center border-2 flex-shrink-0 mt-0.5",
+                  isFirst
+                    ? "bg-primary border-primary text-primary-foreground"
+                    : "bg-green-500 border-green-500 text-white"
+                )}>
+                  <MapPin className="w-3.5 h-3.5" />
+                </div>
+                {!isLast && (
+                  <div className="w-0.5 flex-1 my-1 bg-border" />
+                )}
+              </div>
+              <div className={cn("pb-4 flex-1 min-w-0", isLast && "pb-0")}>
+                <div className="flex items-start justify-between gap-2 flex-wrap">
+                  <div>
+                    <p className={cn(
+                      "text-sm font-semibold",
+                      isFirst ? "text-primary" : "text-foreground"
+                    )}>
+                      {ev.stepLabel}
+                    </p>
+                    {ev.actorName && (
+                      <p className="text-xs text-muted-foreground">
+                        👤 {ev.actorName}
+                      </p>
+                    )}
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      🕐 {ts}
+                      {ev.deviceTimestamp && " (waktu perangkat)"}
+                    </p>
+                    <p className="text-xs font-mono text-muted-foreground mt-0.5">
+                      📍 {ev.gpsLatitude!.toFixed(6)}, {ev.gpsLongitude!.toFixed(6)}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-2 mt-2 flex-wrap">
+                  {ev.mapUrl && (
+                    <a
+                      href={ev.mapUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline bg-primary/10 px-2 py-1 rounded-md"
+                    >
+                      <MapPin className="w-3 h-3" />
+                      Google Maps
+                      <ExternalLink className="w-2.5 h-2.5" />
+                    </a>
+                  )}
+                  {ev.streetViewUrl && (
+                    <a
+                      href={ev.streetViewUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs font-medium text-sky-600 hover:underline bg-sky-50 px-2 py-1 rounded-md"
+                    >
+                      <Navigation className="w-3 h-3" />
+                      Street View
+                      <ExternalLink className="w-2.5 h-2.5" />
+                    </a>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function TrackPage() {
   const [, setLocation] = useLocation();
   const { orderNumber: pathOrderNumber } = useParams<{ orderNumber?: string }>();
@@ -1000,6 +1208,9 @@ export default function TrackPage() {
                 </div>
               )
             )}
+
+            {/* GPS History Timeline */}
+            <DriverGpsTimeline events={tracking.progressEvents ?? []} />
 
             {/* Services */}
             {tracking.items.length > 0 && (

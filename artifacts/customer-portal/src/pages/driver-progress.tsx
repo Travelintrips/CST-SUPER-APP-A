@@ -1,6 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "wouter";
 
+type StepMeta = {
+  photoUrl?: string;
+  gpsLatitude?: number | null;
+  gpsLongitude?: number | null;
+  deviceTimestamp?: string | null;
+  mapUrl?: string | null;
+  streetViewUrl?: string | null;
+};
+
 type PageData = {
   orderNumber: string;
   customerName: string;
@@ -8,7 +17,7 @@ type PageData = {
   destination: string | null;
   driverName: string | null;
   completedSteps: string[];
-  completedStepsMeta: Record<string, { photoUrl?: string }>;
+  completedStepsMeta: Record<string, StepMeta>;
   allowedSteps: string[];
   stepLabel: Record<string, string>;
 };
@@ -23,6 +32,33 @@ const STEP_ICON: Record<string, string> = {
 
 const PHOTO_REQUIRED = new Set(["PICKUP", "ARRIVED", "DELIVERED", "COMPLETED"]);
 
+function formatDeviceTs(ts: string | null | undefined): string {
+  if (!ts) return "";
+  try {
+    return new Date(ts).toLocaleString("id-ID", {
+      day: "2-digit", month: "short", year: "numeric",
+      hour: "2-digit", minute: "2-digit", second: "2-digit",
+    });
+  } catch {
+    return ts;
+  }
+}
+
+async function captureGps(): Promise<{ latitude: number; longitude: number; timestamp: string } | null> {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) { resolve(null); return; }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({
+        latitude: pos.coords.latitude,
+        longitude: pos.coords.longitude,
+        timestamp: new Date(pos.timestamp).toISOString(),
+      }),
+      () => resolve(null),
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 },
+    );
+  });
+}
+
 export default function DriverProgressPage() {
   const { token } = useParams<{ token: string }>();
   const [data, setData] = useState<PageData | null>(null);
@@ -32,6 +68,7 @@ export default function DriverProgressPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [pendingPhotos, setPendingPhotos] = useState<Record<string, string>>({});
   const [uploading, setUploading] = useState<string | null>(null);
+  const [gpsWarning, setGpsWarning] = useState<string | null>(null);
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   useEffect(() => {
@@ -72,26 +109,50 @@ export default function DriverProgressPage() {
       alert(`Foto wajib diunggah untuk step ${data.stepLabel[stepKey] ?? stepKey}.`);
       return;
     }
+    setGpsWarning(null);
     setSubmitting(stepKey);
     try {
+      // Capture GPS — non-blocking; continue if denied
+      const gps = await captureGps();
+      if (!gps) {
+        setGpsWarning("GPS tidak tersedia atau ditolak. Update tetap dikirim tanpa koordinat lokasi.");
+      }
+
+      const payload: Record<string, unknown> = { stepKey, photoUrl: photoUrl ?? undefined };
+      if (gps) {
+        payload.gpsLatitude = gps.latitude;
+        payload.gpsLongitude = gps.longitude;
+        payload.deviceTimestamp = gps.timestamp;
+      }
+
       const r = await fetch(`/api/driver-progress/${token}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ stepKey, photoUrl: photoUrl ?? undefined }),
+        body: JSON.stringify(payload),
       });
       const d = await r.json();
       if (!r.ok || d.error) {
         alert(d.error ?? "Gagal memperbarui status.");
       } else {
         setSuccess(`Status "${data.stepLabel[stepKey] ?? stepKey}" berhasil diperbarui.`);
+        const newMeta: StepMeta = {};
+        if (photoUrl) newMeta.photoUrl = photoUrl;
+        if (gps) {
+          newMeta.gpsLatitude = gps.latitude;
+          newMeta.gpsLongitude = gps.longitude;
+          newMeta.deviceTimestamp = gps.timestamp;
+          newMeta.mapUrl = d.mapUrl ?? null;
+          newMeta.streetViewUrl = d.streetViewUrl ?? null;
+        }
         setData((prev) =>
           prev
             ? {
                 ...prev,
                 completedSteps: [...prev.completedSteps, stepKey],
-                completedStepsMeta: photoUrl
-                  ? { ...prev.completedStepsMeta, [stepKey]: { photoUrl } }
-                  : prev.completedStepsMeta,
+                completedStepsMeta: {
+                  ...prev.completedStepsMeta,
+                  [stepKey]: newMeta,
+                },
                 allowedSteps: prev.allowedSteps.filter((s) => s !== stepKey),
               }
             : prev
@@ -153,31 +214,77 @@ export default function DriverProgressPage() {
           </div>
         )}
 
+        {/* GPS Warning */}
+        {gpsWarning && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 text-sm text-yellow-700">
+            📡 {gpsWarning}
+          </div>
+        )}
+
         {/* Completed steps */}
         {data.completedSteps.length > 0 && (
           <div className="bg-white rounded-xl shadow p-4">
             <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide mb-3">Sudah Diupdate</p>
             <div className="space-y-3">
               {data.completedSteps.map((s) => {
-                const thumb = data.completedStepsMeta?.[s]?.photoUrl;
+                const meta = data.completedStepsMeta?.[s];
+                const thumb = meta?.photoUrl;
+                const hasGps = meta?.gpsLatitude != null && meta?.gpsLongitude != null;
                 return (
-                  <div key={s} className="flex items-start gap-2 text-sm text-gray-400">
-                    <span className="mt-0.5">{STEP_ICON[s] ?? "•"}</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="line-through">{data.stepLabel[s] ?? s}</span>
-                        <span className="ml-auto text-green-500 text-xs flex-shrink-0">✓</span>
-                      </div>
-                      {thumb && (
-                        <a href={thumb} target="_blank" rel="noopener noreferrer">
-                          <img
-                            src={thumb}
-                            alt={`Foto ${data.stepLabel[s] ?? s}`}
-                            className="mt-1 w-20 h-20 rounded-lg object-cover border border-gray-200"
-                          />
-                        </a>
-                      )}
+                  <div key={s} className="text-sm text-gray-600 border border-gray-100 rounded-lg p-2.5">
+                    <div className="flex items-center gap-2">
+                      <span>{STEP_ICON[s] ?? "•"}</span>
+                      <span className="line-through text-gray-400">{data.stepLabel[s] ?? s}</span>
+                      <span className="ml-auto text-green-500 text-xs flex-shrink-0">✓</span>
                     </div>
+
+                    {thumb && (
+                      <a href={thumb} target="_blank" rel="noopener noreferrer">
+                        <img
+                          src={thumb}
+                          alt={`Foto ${data.stepLabel[s] ?? s}`}
+                          className="mt-2 w-full rounded-lg object-cover border border-gray-200"
+                          style={{ maxHeight: 140 }}
+                        />
+                      </a>
+                    )}
+
+                    {/* GPS info */}
+                    {hasGps && (
+                      <div className="mt-2 rounded-md bg-blue-50 border border-blue-100 p-2 space-y-1 text-xs text-blue-700">
+                        <div className="flex items-center gap-1">
+                          <span>📍</span>
+                          <span className="font-mono">
+                            {meta!.gpsLatitude!.toFixed(6)}, {meta!.gpsLongitude!.toFixed(6)}
+                          </span>
+                        </div>
+                        {meta?.deviceTimestamp && (
+                          <div className="text-blue-500">🕐 {formatDeviceTs(meta.deviceTimestamp)}</div>
+                        )}
+                        <div className="flex gap-2 pt-0.5">
+                          {meta?.mapUrl && (
+                            <a
+                              href={meta.mapUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="underline font-medium text-blue-600"
+                            >
+                              🗺️ Lihat di Maps
+                            </a>
+                          )}
+                          {meta?.streetViewUrl && (
+                            <a
+                              href={meta.streetViewUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="underline font-medium text-blue-600"
+                            >
+                              🏙️ Street View
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -247,6 +354,11 @@ export default function DriverProgressPage() {
                         />
                       </label>
                     </div>
+
+                    {/* GPS note */}
+                    <p className="text-xs text-gray-400 px-1">
+                      📡 Lokasi GPS akan direkam otomatis saat update dikirim.
+                    </p>
 
                     {/* Submit button */}
                     <button

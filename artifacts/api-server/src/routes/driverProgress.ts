@@ -57,6 +57,14 @@ db.execute(sql`
   )
 `).catch(() => {});
 
+function buildMapUrl(lat: number, lng: number): string {
+  return `https://www.google.com/maps?q=${lat},${lng}`;
+}
+
+function buildStreetViewUrl(lat: number, lng: number): string {
+  return `https://www.google.com/maps?layer=c&cbll=${lat},${lng}`;
+}
+
 // GET /api/driver-progress/:token
 driverProgressPublicRouter.get("/:token", async (req: Request, res: Response) => {
   const { token } = req.params;
@@ -81,16 +89,29 @@ driverProgressPublicRouter.get("/:token", async (req: Request, res: Response) =>
     if (!order) return res.status(404).json({ error: "Order tidak ditemukan." });
 
     const evRows = await db.execute(sql`
-      SELECT step_key, metadata FROM order_progress_events
+      SELECT step_key, metadata, gps_latitude, gps_longitude, device_timestamp, map_url, street_view_url
+      FROM order_progress_events
       WHERE order_id = ${orderId} ORDER BY created_at ASC
     `);
     const evData = (evRows.rows ?? []) as any[];
     const completedSteps = evData.map((e) => e.step_key as string);
-    const completedStepsMeta: Record<string, { photoUrl?: string }> = {};
+    const completedStepsMeta: Record<string, {
+      photoUrl?: string;
+      gpsLatitude?: number | null;
+      gpsLongitude?: number | null;
+      deviceTimestamp?: string | null;
+      mapUrl?: string | null;
+      streetViewUrl?: string | null;
+    }> = {};
     evData.forEach((e) => {
-      if (e.metadata?.photoUrl) {
-        completedStepsMeta[e.step_key as string] = { photoUrl: e.metadata.photoUrl as string };
-      }
+      const meta: typeof completedStepsMeta[string] = {};
+      if (e.metadata?.photoUrl) meta.photoUrl = e.metadata.photoUrl as string;
+      if (e.gps_latitude != null) meta.gpsLatitude = parseFloat(String(e.gps_latitude));
+      if (e.gps_longitude != null) meta.gpsLongitude = parseFloat(String(e.gps_longitude));
+      if (e.device_timestamp) meta.deviceTimestamp = e.device_timestamp as string;
+      if (e.map_url) meta.mapUrl = e.map_url as string;
+      if (e.street_view_url) meta.streetViewUrl = e.street_view_url as string;
+      if (Object.keys(meta).length > 0) completedStepsMeta[e.step_key as string] = meta;
     });
 
     return res.json({
@@ -144,16 +165,38 @@ driverProgressPublicRouter.post("/:token/photo", upload.single("file"), async (r
   }
 });
 
-// POST /api/driver-progress/:token  { stepKey, note?, photoUrl? }
+// POST /api/driver-progress/:token  { stepKey, note?, photoUrl?, gpsLatitude?, gpsLongitude?, deviceTimestamp? }
 driverProgressPublicRouter.post("/:token", async (req: Request, res: Response) => {
   const { token } = req.params;
-  const { stepKey, note, photoUrl } = req.body ?? {};
+  const { stepKey, note, photoUrl, gpsLatitude, gpsLongitude, deviceTimestamp } = req.body ?? {};
   if (!stepKey || !(ALLOWED_STEPS as readonly string[]).includes(String(stepKey))) {
     return res.status(400).json({ error: "stepKey tidak valid." });
   }
   if (PHOTO_REQUIRED_STEPS.has(String(stepKey)) && !photoUrl) {
     return res.status(400).json({ error: `Foto wajib untuk step ${STEP_LABEL[String(stepKey)] ?? stepKey}.` });
   }
+
+  // Validate GPS fields
+  const lat = gpsLatitude != null ? parseFloat(String(gpsLatitude)) : null;
+  const lng = gpsLongitude != null ? parseFloat(String(gpsLongitude)) : null;
+  if (lat != null && (isNaN(lat) || lat < -90 || lat > 90)) {
+    return res.status(400).json({ error: "gpsLatitude tidak valid (harus -90..90)." });
+  }
+  if (lng != null && (isNaN(lng) || lng < -180 || lng > 180)) {
+    return res.status(400).json({ error: "gpsLongitude tidak valid (harus -180..180)." });
+  }
+  let parsedDeviceTs: string | null = null;
+  if (deviceTimestamp) {
+    const d = new Date(String(deviceTimestamp));
+    if (isNaN(d.getTime())) {
+      return res.status(400).json({ error: "deviceTimestamp tidak valid (harus ISO 8601)." });
+    }
+    parsedDeviceTs = d.toISOString();
+  }
+
+  const mapUrl = lat != null && lng != null ? buildMapUrl(lat, lng) : null;
+  const streetViewUrl = lat != null && lng != null ? buildStreetViewUrl(lat, lng) : null;
+
   try {
     const rows = await db.execute(sql`
       SELECT id, order_id, driver_name, driver_phone, expires_at
@@ -191,6 +234,7 @@ driverProgressPublicRouter.post("/:token", async (req: Request, res: Response) =
       driverName,
       note ? String(note) : `Driver update via WA link: ${stepKey}`,
       photoUrl ? { photoUrl: String(photoUrl) } : undefined,
+      { gpsLatitude: lat, gpsLongitude: lng, deviceTimestamp: parsedDeviceTs, mapUrl, streetViewUrl },
     );
 
     const logisticStatus = STEP_TO_LOGISTIC_STATUS[String(stepKey)];
@@ -253,10 +297,40 @@ driverProgressPublicRouter.post("/:token", async (req: Request, res: Response) =
         }
       } catch {
         // non-fatal
+      if (order?.phone) {
+        const domain = process.env.REPLIT_DEV_DOMAIN || getPreferredDomain() || "cstlogistic.co.id";
+
+        // Build GPS block
+        let gpsBlock = "";
+        if (lat != null && lng != null) {
+          const tsLine = parsedDeviceTs
+            ? `🕐 Waktu: ${new Date(parsedDeviceTs).toLocaleString("id-ID", {
+                day: "numeric", month: "short", year: "numeric",
+                hour: "2-digit", minute: "2-digit", second: "2-digit",
+                timeZone: "Asia/Jakarta",
+              })} WIB`
+            : "";
+          gpsBlock =
+            `\n\n📍 *Lokasi Driver*\n` +
+            `Koordinat: ${lat.toFixed(6)}, ${lng.toFixed(6)}\n` +
+            (tsLine ? `${tsLine}\n` : "") +
+            (mapUrl ? `🗺️ Google Maps: ${mapUrl}\n` : "") +
+            (streetViewUrl ? `🏙️ Street View: ${streetViewUrl}` : "");
+        }
+
+        const waMsg =
+          `🚚 *Update Pengiriman — CST Logistics*\n\n` +
+          `Halo ${order.customerName},\n\n` +
+          `Order *${order.orderNumber}* telah diperbarui:\n` +
+          `📦 Status: *${STEP_LABEL[String(stepKey)] ?? stepKey}*` +
+          (driverName !== "Driver" ? `\n👤 Driver: ${driverName}` : "") +
+          `${gpsBlock}\n\n` +
+          `Pantau pengiriman:\nhttps://${domain}/track`;
+        sendWhatsApp(order.phone, waMsg).catch(() => {});
       }
     }
 
-    return res.json({ ok: true, stepKey, label: STEP_LABEL[String(stepKey)] });
+    return res.json({ ok: true, stepKey, label: STEP_LABEL[String(stepKey)], mapUrl, streetViewUrl });
   } catch (err) {
     logger.error({ err }, "driver-progress POST error");
     return res.status(500).json({ error: "Gagal memperbarui status." });

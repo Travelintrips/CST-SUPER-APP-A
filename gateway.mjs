@@ -32,6 +32,17 @@ const RETRYABLE_CODES = new Set(["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENO
 
 const API_PORT = Number(process.env.API_PORT ?? 8080);
 
+const BIZPORTAL_PORT = Number(process.env.BIZPORTAL_PORT ?? 3000);
+const CUSTOMER_PORT  = Number(process.env.CUSTOMER_PORT  ?? 5173);
+const LOGISTIC_ORDER_PORT = Number(process.env.LOGISTIC_ORDER_PORT ?? 19368);
+
+const ROUTES = [
+  { prefix: "/api",            upstream: { host: "localhost", port: API_PORT } },
+  { prefix: "/pos-images",     upstream: { host: "localhost", port: API_PORT } },
+  { prefix: "/q",              upstream: { host: "localhost", port: API_PORT } },
+  { prefix: "/bizportal",      upstream: { host: "localhost", port: BIZPORTAL_PORT } },
+  { prefix: "/logistic-order", upstream: { host: "localhost", port: LOGISTIC_ORDER_PORT } },
+  { prefix: "/sport-center",   upstream: { host: "localhost", port: 3002 } },
 const BIZPORTAL_PORT = Number(process.env.BIZPORTAL_PORT ?? 18442);
 const CUSTOMER_PORT  = Number(process.env.CUSTOMER_PORT  ?? 3001);
 
@@ -48,6 +59,11 @@ const ROUTES = [
 const DEFAULT_UPSTREAM = { host: "localhost", port: CUSTOMER_PORT };
 
 const SERVICE_NAMES = {
+  [API_PORT]:             "API Server",
+  [BIZPORTAL_PORT]:       "BizPortal",
+  [CUSTOMER_PORT]:        "Customer Portal",
+  [LOGISTIC_ORDER_PORT]:  "Logistic Order",
+  3002:                   "Sport Center",
   18444:            "API Server",
   [BIZPORTAL_PORT]: "BizPortal",
   [CUSTOMER_PORT]:  "Customer Portal",
@@ -250,6 +266,10 @@ async function startGateway() {
       });
       srv.listen(PORT, () => {
         console.log(`Gateway listening on port ${PORT}`);
+        console.log(`  /api/*            → :${API_PORT} (API Server)`);
+        console.log(`  /bizportal/*      → :${BIZPORTAL_PORT} (BizPortal)`);
+        console.log(`  /logistic-order/* → :${LOGISTIC_ORDER_PORT} (Logistic Order)`);
+        console.log(`  /sport-center/*   → :3002 (Sport Center)`);
         console.log(`  /api/*          → :${API_PORT} (API Server)`);
         console.log(`  /bizportal/*    → :${BIZPORTAL_PORT} (BizPortal)`);
         console.log(`  /sport-center/* → :3002 (Sport Center)`);

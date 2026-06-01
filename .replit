@@ -24,13 +24,13 @@ args = "Gateway"
 name = "Gateway"
 author = "agent"
 
-[workflows.workflow.metadata]
-outputType = "webview"
-
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "node artifacts/api-server/kill-port.mjs 5000; sleep 0.3; PORT=5000 node gateway.mjs"
+args = "fuser -k 5000/tcp 2>/dev/null; sleep 0.3; PORT=5000 node gateway.mjs"
 waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
@@ -91,6 +91,10 @@ localPort = 3002
 externalPort = 3002
 
 [[ports]]
+localPort = 3003
+externalPort = 6800
+
+[[ports]]
 localPort = 5000
 externalPort = 80
 
@@ -111,10 +115,6 @@ localPort = 8082
 externalPort = 8000
 
 [[ports]]
-localPort = 8083
-externalPort = 6800
-
-[[ports]]
 localPort = 18442
 externalPort = 4200
 
@@ -127,20 +127,12 @@ localPort = 18444
 externalPort = 3000
 
 [[ports]]
-localPort = 18550
-externalPort = 8008
-
-[[ports]]
 localPort = 19368
 externalPort = 3001
 
 [[ports]]
 localPort = 21170
 externalPort = 6000
-
-[[ports]]
-localPort = 21171
-externalPort = 8099
 
 [[ports]]
 localPort = 23434

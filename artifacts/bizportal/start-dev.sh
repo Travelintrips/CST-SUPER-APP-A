@@ -1,5 +1,5 @@
 #!/bin/bash
-ARTIFACT_PORT=${PORT:-18442}
+ARTIFACT_PORT=${PORT:-3000}
 
 # Kill any existing process on target port and wait for it to die
 fuser -k "${ARTIFACT_PORT}/tcp" 2>/dev/null || true

@@ -5,7 +5,7 @@ import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 
 const rawPort = process.env.PORT;
-const port = rawPort ? Number(rawPort) : 18442;
+const port = rawPort ? Number(rawPort) : 3000;
 
 const basePath = process.env.BASE_PATH ?? "/bizportal/";
 
@@ -110,7 +110,7 @@ if (h.indexOf('access_token') !== -1 || h.indexOf('error=') !== -1 ||
     },
     proxy: {
       "/api": {
-        target: "http://localhost:18444",
+        target: "http://localhost:8080",
         changeOrigin: true,
         ws: true,
       },
