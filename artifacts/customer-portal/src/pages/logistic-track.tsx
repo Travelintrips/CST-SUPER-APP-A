@@ -10,7 +10,7 @@ import {
   ArrowLeft, Search, Ship, Truck, CheckCircle2, Clock,
   MapPin, Package, RefreshCw, AlertCircle, FileText,
   Circle, ArrowRight, Loader2, ThumbsUp, ThumbsDown, RotateCcw, Tag,
-  Bell, BellOff, Navigation, ExternalLink,
+  Bell, BellOff, Navigation, ExternalLink, Image as ImageIcon,
 } from "lucide-react";
 import { usePushNotification } from "@/hooks/usePushNotification";
 import { formatDate } from "@/lib/utils";
@@ -79,6 +79,7 @@ interface ProgressEvent {
   deviceTimestamp: string | null;
   mapUrl: string | null;
   streetViewUrl: string | null;
+  photoUrl?: string | null;
   createdAt: string;
 }
 
@@ -902,6 +903,18 @@ function DriverGpsTimeline({ events }: { events: ProgressEvent[] }) {
                     >
                       <Navigation className="w-3 h-3" />
                       Street View
+                      <ExternalLink className="w-2.5 h-2.5" />
+                    </a>
+                  )}
+                  {ev.photoUrl && (
+                    <a
+                      href={ev.photoUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 hover:underline bg-emerald-50 px-2 py-1 rounded-md"
+                    >
+                      <ImageIcon className="w-3 h-3" />
+                      Lihat Gambar
                       <ExternalLink className="w-2.5 h-2.5" />
                     </a>
                   )}

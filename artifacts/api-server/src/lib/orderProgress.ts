@@ -81,11 +81,13 @@ export async function getOrderProgressEvents(orderId: number): Promise<Array<{
   device_timestamp: string | null;
   map_url: string | null;
   street_view_url: string | null;
+  photo_url: string | null;
 }>> {
   try {
     const result = await db.execute(sql`
       SELECT id, step_key, status, source, actor_name, notes, created_at,
-             gps_latitude, gps_longitude, device_timestamp, map_url, street_view_url
+             gps_latitude, gps_longitude, device_timestamp, map_url, street_view_url,
+             photo_url
       FROM order_progress_events
       WHERE order_id = ${orderId}
       ORDER BY created_at ASC
@@ -134,7 +136,8 @@ export async function runOrderProgressMigration(): Promise<void> {
         ADD COLUMN IF NOT EXISTS gps_longitude   NUMERIC(10,7),
         ADD COLUMN IF NOT EXISTS device_timestamp TIMESTAMPTZ,
         ADD COLUMN IF NOT EXISTS map_url         TEXT,
-        ADD COLUMN IF NOT EXISTS street_view_url TEXT
+        ADD COLUMN IF NOT EXISTS street_view_url TEXT,
+        ADD COLUMN IF NOT EXISTS photo_url       TEXT
     `);
 
     logger.info("Order progress migration: ok");
