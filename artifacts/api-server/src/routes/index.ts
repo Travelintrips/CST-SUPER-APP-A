@@ -87,6 +87,7 @@ import { exceptionsRouter } from "./exceptions.js";
 import { systemRouter } from "./system.js";
 import { handleAlertSse } from "../lib/alertsBroadcast.js";
 import { requireAdmin } from "../lib/requireAdmin.js";
+import sportCenterRouter from "../modules/sport-center/routes.js";
 
 import type { Request, Response } from "express";
 
@@ -204,6 +205,7 @@ router.use("/logistic", orderAuditTrailRouter);
 
 router.use("/exceptions", exceptionsRouter);
 router.use("/system", systemRouter);
+router.use("/sport-center", sportCenterRouter);
 
 router.get("/alerts/stream", async (req: Request, res: Response) => {
   const ok = await requireAdmin(req, res);

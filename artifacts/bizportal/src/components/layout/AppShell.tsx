@@ -56,6 +56,7 @@ import {
   ShieldCheck,
   Shield,
   Calendar,
+  CalendarDays,
   ShieldAlert,
   Database,
   Search,
@@ -365,6 +366,26 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "Audit ERP", href: "/audit", icon: ClipboardCheck, roles: ["admin", "owner"] },
         { titleKey: "Audit Log Keamanan", href: "/reports/audit-log", icon: Shield, roles: ["admin", "owner"] },
         { titleKey: "Vendor Leaderboard", href: "/vendors", icon: Trophy, roles: ["manager", "admin", "owner"] },
+      ],
+    },
+
+    // ── SPORT CENTER ──────────────────────────────────────────────────
+    {
+      type: "group",
+      titleKey: "Sport Center",
+      basePath: "/sport-center",
+      icon: Trophy,
+      roles: ["admin", "owner", "manager"],
+      children: [
+        { titleKey: "Dashboard", href: "/sport-center/dashboard", icon: LayoutDashboard },
+        { titleKey: "Bookings", href: "/sport-center/bookings", icon: CalendarDays },
+        { titleKey: "Fasilitas", href: "/sport-center/facilities", icon: Building2 },
+        { titleKey: "Customers", href: "/sport-center/customers", icon: UserCircle },
+        { titleKey: "Members", href: "/sport-center/members", icon: Users },
+        { titleKey: "Pricing Rules", href: "/sport-center/pricing-rules", icon: Tags },
+        { titleKey: "Pembayaran", href: "/sport-center/payments", icon: DollarSign },
+        { titleKey: "Laporan Revenue", href: "/sport-center/reports", icon: BarChart2 },
+        { titleKey: "Pengaturan", href: "/sport-center/settings", icon: Settings },
       ],
     },
 

@@ -140,6 +140,16 @@ import POOrdersPage from "@/pages/purchase/po-orders";
 import VendorFormsPage from "@/pages/purchase/vendor-forms";
 import VmfAuditTrailPage from "@/pages/purchase/vmf-audit-trail";
 
+import SportCenterDashboard from "@/pages/sport-center/dashboard";
+import SportCenterBookings from "@/pages/sport-center/bookings";
+import SportCenterFacilities from "@/pages/sport-center/facilities";
+import SportCenterCustomers from "@/pages/sport-center/customers";
+import SportCenterMembers from "@/pages/sport-center/members";
+import SportCenterPricingRules from "@/pages/sport-center/pricing-rules";
+import SportCenterPayments from "@/pages/sport-center/payments";
+import SportCenterReports from "@/pages/sport-center/reports";
+import SportCenterSettings from "@/pages/sport-center/settings";
+
 const PR = (C: React.ComponentType) => () => <ProtectedRoute component={C} />;
 
 export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
@@ -337,6 +347,18 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/audit/compare" component={PR(AuditComparePage)} />
       <Route path="/audit/:id" component={PR(AuditReportFormPage)} />
       <Route path="/audit" component={PR(AuditReportListPage)} />
+
+      {/* ── Sport Center ───────────────────────────────────────────────── */}
+      <Route path="/sport-center/dashboard" component={PR(SportCenterDashboard)} />
+      <Route path="/sport-center/bookings" component={PR(SportCenterBookings)} />
+      <Route path="/sport-center/facilities" component={PR(SportCenterFacilities)} />
+      <Route path="/sport-center/customers" component={PR(SportCenterCustomers)} />
+      <Route path="/sport-center/members" component={PR(SportCenterMembers)} />
+      <Route path="/sport-center/pricing-rules" component={PR(SportCenterPricingRules)} />
+      <Route path="/sport-center/payments" component={PR(SportCenterPayments)} />
+      <Route path="/sport-center/reports" component={PR(SportCenterReports)} />
+      <Route path="/sport-center/settings" component={PR(SportCenterSettings)} />
+      <Route path="/sport-center" component={PR(SportCenterDashboard)} />
 
       {/* ── Legacy redirects ───────────────────────────────────────────── */}
       <Route path="/expenses/new" component={() => <Redirect to="/expense/new" />} />
