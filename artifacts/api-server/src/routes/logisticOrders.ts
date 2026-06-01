@@ -18,6 +18,7 @@ import {
   freightShipmentsTable,
 } from "@workspace/db";
 import { deleteFromSupabase } from "../lib/supabaseStorage.js";
+import { logger } from "../lib/logger.js";
 import { eq, ilike, and, gte, lte, or, sql, desc, inArray, isNotNull } from "drizzle-orm";
 import { salesDocumentsTable } from "@workspace/db";
 import { requireClerkUser, requireRole } from "../lib/requireAdmin.js";
