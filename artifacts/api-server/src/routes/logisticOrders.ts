@@ -581,6 +581,50 @@ logisticOrdersRouter.get(
       createdAt: u.createdAt.toISOString(),
     }));
 
+    const STEP_LABEL_MAP: Record<string, string> = {
+      ORDER_RECEIVED:    "Order Diterima",
+      ADMIN_REVIEW:      "Ditinjau Admin",
+      RFQ_SENT:          "RFQ ke Vendor",
+      QUOTE_RECEIVED:    "Penawaran Masuk",
+      CUSTOMER_APPROVAL: "Menunggu Persetujuan",
+      VENDOR_CONFIRMED:  "Vendor Dikonfirmasi",
+      IN_PROGRESS:       "Sedang Diproses",
+      PICKUP:            "Penjemputan",
+      IN_TRANSIT:        "Dalam Perjalanan",
+      ARRIVED:           "Tiba di Tujuan",
+      DELIVERED:         "Terkirim",
+      POD_UPLOADED:      "Bukti Pengiriman",
+      INVOICE_ISSUED:    "Invoice Diterbitkan",
+      PAYMENT_RECEIVED:  "Pembayaran Diterima",
+      COMPLETED:         "Selesai",
+    };
+
+    const progressEventsMapped = (progressEvents as any[]).map((ev) => {
+      const lat = ev.gps_latitude != null ? Number(ev.gps_latitude) : null;
+      const lng = ev.gps_longitude != null ? Number(ev.gps_longitude) : null;
+      const hasGps = lat != null && Number.isFinite(lat) && lng != null && Number.isFinite(lng);
+      return {
+        id:              ev.id,
+        stepKey:         ev.step_key,
+        stepLabel:       STEP_LABEL_MAP[String(ev.step_key)] ?? String(ev.step_key),
+        source:          ev.source,
+        actorName:       ev.actor_name ?? null,
+        notes:           ev.notes ?? null,
+        gpsLatitude:     hasGps ? lat : null,
+        gpsLongitude:    hasGps ? lng : null,
+        deviceTimestamp: ev.device_timestamp ? new Date(ev.device_timestamp).toISOString() : null,
+        mapUrl:          ev.map_url ?? (hasGps ? `https://www.google.com/maps?q=${lat},${lng}` : null),
+        streetViewUrl:   ev.street_view_url ?? null,
+        createdAt:       ev.created_at ? new Date(ev.created_at).toISOString() : new Date().toISOString(),
+      };
+    });
+
+    logger.info({
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      progressEventsCount: progressEventsMapped.length,
+    }, "tracking: progressEvents debug");
+
     return res.json({
       ...toPublicOrder(order),
       customerName: order.customerName,
@@ -591,7 +635,7 @@ logisticOrdersRouter.get(
       driverJob: driverJobData,
       rfqQuote,
       orderUpdates: updatesData,
-      progressEvents,
+      progressEvents: progressEventsMapped,
     });
   }
 );
