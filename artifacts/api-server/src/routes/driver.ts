@@ -20,6 +20,7 @@ import {
 import {
   registerDriverConnection, unregisterDriverConnection, pushToDriver,
   registerAdminConnection, unregisterAdminConnection, broadcastToAdmins,
+  broadcastToPortal,
 } from "../lib/sseManager";
 import { checkGeofence } from "../lib/geofence";
 import { upsertAlert, resolveAlert, getActiveAlerts, hasActiveAlert } from "../lib/geofenceAlertStore";
@@ -506,6 +507,15 @@ router.post("/jobs/:jobId/photos", requireDriverAuth, upload.single("photo"), as
     photoType,
   }).returning();
 
+  if (job.logisticOrderId) {
+    broadcastToPortal("driver_photo_uploaded", {
+      logisticOrderId: job.logisticOrderId,
+      photoType,
+      url,
+      takenAt: photo.takenAt.toISOString(),
+    });
+  }
+
   res.json({ ...photo, takenAt: photo.takenAt.toISOString() });
 });
 
@@ -588,6 +598,20 @@ router.post("/jobs/:jobId/pod", requireDriverAuth, async (req, res) => {
       note: `POD diterima oleh: ${receiverName}${receiverPosition ? ` (${receiverPosition})` : ""}`,
       timestamp: podSubmittedAt,
     });
+
+    // Simpan POD photos ke driver_photos agar muncul di tracking pelanggan
+    if (photoUrls.length > 0) {
+      await db.insert(driverPhotosTable).values(
+        photoUrls.map((url) => ({ driverJobId: jobId, url, photoType: "pod" }))
+      ).onConflictDoNothing().catch(() => {});
+      if (job.logisticOrderId) {
+        broadcastToPortal("driver_photo_uploaded", {
+          logisticOrderId: job.logisticOrderId,
+          photoType: "pod",
+          urls: photoUrls,
+        });
+      }
+    }
 
     // Non-fatal side effects — jangan blocking response
     syncParentFreightStatus(job.freightShipmentId, "DELIVERED").catch((e) =>
@@ -738,6 +762,15 @@ router.post("/location", requireDriverAuth, async (req, res) => {
     lng: Number(lng),
     updatedAt: new Date().toISOString(),
   });
+
+  if (activeJob2?.logisticOrderId) {
+    broadcastToPortal("driver_location_update", {
+      logisticOrderId: activeJob2.logisticOrderId,
+      lat: Number(lat),
+      lng: Number(lng),
+      updatedAt: new Date().toISOString(),
+    });
+  }
 
   // Geofence check — run async without blocking the response
   (async () => {
