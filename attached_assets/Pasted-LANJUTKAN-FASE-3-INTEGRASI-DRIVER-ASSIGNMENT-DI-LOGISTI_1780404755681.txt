@@ -1,0 +1,238 @@
+LANJUTKAN FASE 3 — INTEGRASI DRIVER ASSIGNMENT DI LOGISTIC ORDER DETAIL
+
+Tujuan:
+Tambahkan panel assignment driver yang sama ke halaman detail Logistic Order, agar admin dapat assign driver langsung dari detail order dengan dua mode yang sudah dibuat pada Fase 2:
+
+1. INTERNAL / Driver Internal
+
+   * Armada sendiri
+   * Progress menggunakan WA Mini Form
+   * Tidak memerlukan akun CST Driver App
+
+2. EXTERNAL / Driver Eksternal
+
+   * Vendor/mitra
+   * Progress menggunakan CST Driver App
+   * Wajib memiliki akun driver aktif
+
+PENTING:
+Jangan membuat flow, endpoint, token, atau tabel baru yang duplikat. Reuse seluruh backend, validation, komponen, dan logic dari Fase 2 sejauh memungkinkan.
+
+A. AUDIT SEBELUM PERUBAHAN
+
+Sebelum coding, audit dahulu:
+
+1. Temukan file halaman detail Logistic Order di frontend.
+2. Temukan bagaimana Logistic Order mengambil:
+
+   * order id
+   * order status
+   * fulfillment/vendor assignment
+   * shipment/freight assignment jika ada
+   * driver job yang sudah terkait dengan logisticOrderId
+3. Audit apakah DriverAssignmentPanel dari halaman Freight Shipment bisa dibuat reusable component.
+4. Audit apakah POST /api/drivers/jobs sudah menerima logisticOrderId tanpa harus memiliki freightShipmentId.
+5. Audit bagaimana WA Mini Form link dan wa_progress_token dikaitkan ke logistic order.
+6. Pastikan tidak ada assignment driver ganda akibat data dari Freight Shipment dan Logistic Order membaca record yang sama.
+
+Berikan ringkasan audit terlebih dahulu sebelum implementasi, lalu lanjutkan implementasi tanpa menunggu konfirmasi apabila struktur sudah jelas.
+
+B. FRONTEND — LOGISTIC ORDER DETAIL
+
+Tambahkan section baru pada halaman detail Logistic Order:
+
+Judul section:
+"Driver Assignment & Delivery Progress"
+
+Tampilkan section ini pada order yang membutuhkan proses pickup/delivery/transportasi.
+
+Isi section:
+
+1. Jika belum ada driver assignment:
+
+   * Tampilkan tombol "Assign Driver"
+   * Saat diklik, buka panel/dialog assignment driver
+
+2. Selector mode driver:
+
+   * Driver Internal — Armada Sendiri / WA Mini Form
+   * Driver Eksternal — Vendor/Mitra / CST Driver App
+
+3. Mode INTERNAL:
+
+   * Field Nama Driver
+   * Field Nomor WhatsApp
+   * Field Plat Kendaraan
+   * Badge:
+
+     * INTERNAL
+     * WA Mini Form
+   * Submit menggunakan existing POST /api/drivers/jobs dengan:
+
+     * logisticOrderId wajib terisi
+     * driver_type = INTERNAL
+     * execution_mode = WA_MINI_FORM
+     * driver_id nullable
+     * driver_name_override
+     * driver_phone_override
+     * vehicle_plate_override
+   * Setelah submit sukses:
+
+     * Generate/ambil link WA Mini Form dari wa_progress_token existing
+     * Tampilkan tombol "Buka Link Progress"
+     * Tampilkan tombol "Kirim Ulang Link WA" bila endpoint/function existing mendukung
+     * Pastikan link tersebut benar-benar terkait dengan logistic order yang sedang dibuka
+
+4. Mode EXTERNAL:
+
+   * Tampilkan daftar akun driver
+   * Tampilkan status akun:
+
+     * Aktif ✅
+     * Tidak Aktif ⚠️
+     * Belum Ada ❌
+   * Hanya akun aktif yang dapat dipilih untuk assign
+   * Jika belum ada akun, sediakan tombol "Buat Akun CST Driver App"
+   * Submit menggunakan existing POST /api/drivers/jobs dengan:
+
+     * logisticOrderId wajib terisi
+     * driver_type = EXTERNAL
+     * execution_mode = DRIVER_APP
+     * driver_id wajib terisi dan aktif
+   * Block submit jika akun driver belum aktif
+
+5. Jika sudah ada driver assignment:
+   Tampilkan active driver card dengan informasi:
+
+   * Nama driver
+   * Nomor WhatsApp
+   * Plat kendaraan
+   * Badge INTERNAL/EXTERNAL
+   * Badge WA Mini Form/Driver App
+   * Status job/progress saat ini
+   * Assigned date/time
+   * Source/legacy indicator bila record lama
+
+6. Jika assignment INTERNAL:
+
+   * Tampilkan link WA Mini Form progress
+   * Tampilkan button copy link
+   * Tampilkan button buka link
+   * Tampilkan status apakah link/token tersedia atau belum
+
+7. Jika assignment EXTERNAL:
+
+   * Tampilkan badge CST Driver App
+   * Tampilkan status akun aktif
+   * Jangan tampilkan link WA Mini Form apabila execution_mode = DRIVER_APP
+
+C. DATA LINKAGE WAJIB
+
+Pastikan flow berikut berjalan:
+
+Logistic Order Detail
+→ Admin assign Driver Internal
+→ POST /api/drivers/jobs menyimpan logisticOrderId
+→ wa_progress_token otomatis dibuat
+→ link WA Mini Form dikirim ke nomor driver
+→ Driver membuka link dan update progress
+→ progress tersimpan pada driver job yang terkait logisticOrderId
+→ halaman detail Logistic Order menampilkan progress terbaru
+
+Untuk Driver Eksternal:
+
+Logistic Order Detail
+→ Admin pilih akun driver aktif
+→ POST /api/drivers/jobs menyimpan logisticOrderId dan driver_id
+→ job muncul pada CST Driver App driver tersebut
+→ update progress dari Driver App
+→ halaman detail Logistic Order menampilkan progress terbaru
+
+D. HINDARI DUPLIKASI ASSIGNMENT
+
+Apabila Logistic Order sudah mempunyai assignment driver aktif yang sama dari Freight Shipment:
+
+1. Jangan otomatis membuat job baru.
+2. Halaman Logistic Order harus membaca dan menampilkan driver job existing berdasarkan logisticOrderId.
+3. Jika satu order hanya boleh memiliki satu active driver job, enforce validation di backend:
+
+   * Tolak assign baru jika masih ada active job yang belum selesai/cancelled.
+   * Berikan error message yang jelas:
+     "Order ini masih memiliki assignment driver aktif. Selesaikan atau batalkan assignment sebelumnya terlebih dahulu."
+4. Jika memang sistem mendukung multiple delivery leg, jangan implementasikan sekarang sebelum ada audit struktur multi-leg yang jelas.
+
+E. STATUS DAN TIMELINE
+
+Tambahkan progress/timeline sederhana pada Driver Assignment section dengan existing status driver job, minimal:
+
+* Assigned
+* Driver Confirmed / Link Opened apabila tersedia
+* Pickup Started
+* Picked Up
+* In Transit
+* Delivered / POD Submitted
+* Completed
+
+Gunakan status existing dari backend. Jangan membuat status baru sembarangan. Jika nama status berbeda, mapping label UI saja tanpa mengubah data utama.
+
+F. LEGACY RECORD HANDLING
+
+Untuk existing record dengan:
+legacy_source = 'LEGACY_DRIVER_JOB'
+
+Pastikan:
+
+* Tetap dapat ditampilkan di Logistic Order Detail jika memiliki relasi order yang valid
+* Tampilkan badge kecil "Legacy"
+* Jangan memaksa legacy record memiliki driver app account
+* Jangan error apabila driver_id null atau wa_progress_token null
+
+G. UX DAN VALIDASI
+
+Tambahkan loading state, empty state, dan error handling yang jelas:
+
+* Belum ada assignment:
+  "Belum ada driver yang ditugaskan untuk order ini."
+* Internal tanpa token/link:
+  "Link progress WA belum tersedia."
+* External akun tidak aktif:
+  "Driver belum memiliki akun CST Driver App aktif."
+* Gagal submit:
+  tampilkan pesan error backend yang sebenarnya, bukan generic error saja.
+
+Pastikan nomor WhatsApp dinormalisasi mengikuti helper existing, bukan membuat format baru.
+
+H. TESTING WAJIB
+
+Setelah implementasi, lakukan pengujian berikut dan laporkan hasilnya:
+
+1. Logistic Order tanpa assignment → tombol Assign Driver muncul.
+2. Assign INTERNAL dengan nama, WA, plat → sukses tanpa driver_id.
+3. INTERNAL menghasilkan wa_progress_token dan link mini form.
+4. INTERNAL mengirim WA link progress jika logisticOrderId tersedia.
+5. Driver update progress via WA Mini Form → tampil pada Logistic Order Detail.
+6. Assign EXTERNAL dengan akun aktif → sukses dan job terkait order.
+7. Assign EXTERNAL dengan akun tidak aktif → submit diblokir.
+8. Buat akun app baru dari dialog → driver tersedia dan dapat dipilih.
+9. Order yang sudah memiliki active driver job → tidak membuat assignment duplikat.
+10. Legacy driver job tetap tampil tanpa crash.
+11. Tidak ada regression pada halaman Freight Shipment yang sudah memiliki DriverAssignmentPanel.
+12. Jalankan typecheck/build/test yang tersedia dan laporkan hasilnya.
+
+I. OUTPUT AKHIR YANG HARUS DILAPORKAN
+
+Setelah selesai, berikan laporan:
+
+1. File frontend yang diubah.
+2. File backend yang diubah, bila ada.
+3. Endpoint existing yang direuse.
+4. Apakah dibuat reusable DriverAssignmentPanel.
+5. Cara driver job dikaitkan dengan logisticOrderId.
+6. Cara mencegah duplicate active assignment.
+7. Hasil testing INTERNAL.
+8. Hasil testing EXTERNAL.
+9. Hasil testing legacy record.
+10. Hasil typecheck/build.
+11. Screenshot atau deskripsi UI akhir pada Logistic Order Detail.
+
+Jangan mengubah flow Freight Shipment yang saat ini sudah bekerja kecuali diperlukan untuk menjadikan component reusable, dan jika diubah wajib pastikan tidak ada regression.

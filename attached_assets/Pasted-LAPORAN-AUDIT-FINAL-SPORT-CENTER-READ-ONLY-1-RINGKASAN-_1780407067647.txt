@@ -1,0 +1,184 @@
+LAPORAN AUDIT FINAL SPORT CENTER — READ-ONLY
+1. RINGKASAN STATUS AKTUAL
+Area	Status	Bukti File/Table/Route	Kesimpulan
+Sport Center API	✅ Ada & Terdaftar	artifacts/api-server/src/modules/sport-center/routes.ts, didaftarkan di routes/index.ts sebagai router.use("/sport-center", sportCenterRouter)	Route /api/sport-center/* aktif dan berfungsi
+Sport Center UI BizPortal	✅ Ada & Terdaftar	artifacts/bizportal/src/pages/sport-center/ (9 halaman), terdaftar di routes.tsx baris 362–371	Dapat diakses via /bizportal/sport-center/*
+Auth Sport Center	✅ Ada, menggunakan requireAdmin	Semua route memakai requireAdmin dari ../../lib/requireAdmin.js	Hanya admin BizPortal yang bisa akses. Tidak ada auth publik Sport Center
+Database Sport Center	✅ Ada, 10 tabel	Didefinisikan di migration.ts via runSportCenterMigration()	Tabel dibuat otomatis saat server boot
+Gateway /sport-center/*	⚠️ Salah Konfigurasi	gateway.mjs baris 47: { prefix: "/sport-center", upstream: { host: "localhost", port: 3002 } }	/sport-center/* diarahkan ke port 3002 yang TIDAK ADA service-nya — semua request akan 503
+Referensi port 3002	⚠️ Port tidak aktif	gateway.mjs baris 11, 47, 58, 260	Tidak ada workflow/service yang berjalan di port 3002
+Accounting multi-company	✅ Ada di schema	lib/db/src/schema/companies.ts — tabel companies, chart_of_accounts.company_id, accounting_entries.company_id	Struktur multi-company sudah ada di schema accounting
+Sport Center → Accounting	❌ Belum terhubung	postSportCenterBooking() ada di accounting.ts:892 tetapi tidak pernah dipanggil dari routes.ts	Payment hanya masuk ke sport_payments, jurnal tidak terbentuk
+Sport Center → Purchase	❌ Tidak ada	Tidak ditemukan referensi purchase di modul sport center	Tidak ada integrasi sama sekali
+Promo/diskon/pajak/refund	⚠️ Parsial	Tabel sport_promos ada, field promo_id/promo_code di bookings ada, tapi: tidak ada route CRUD promo, tidak ada route cancel/refund, tidak ada field pajak/PPN	Promo hanya disimpan di booking, tidak divalidasi. Tidak ada cancel/refund/pajak endpoint
+2. SPORT CENTER EXISTING
+File Schema/Table Sport Center
+File: artifacts/api-server/src/modules/sport-center/migration.ts
+
+Daftar tabel yang benar-benar ditemukan (10 tabel):
+
+Tabel	Fungsi
+sport_facilities	Fasilitas/lapangan (company_id, name, type, price_per_hour)
+sport_customers	Data pelanggan Sport Center
+sport_members	Keanggotaan (gym, dll.)
+sport_pricing_rules	Aturan harga per fasilitas/waktu
+sport_promos	Kode promo dan diskon
+sport_bookings	Booking fasilitas (company_id, promo_id, discount_amount, total_amount)
+sport_payments	Pembayaran booking
+sport_blocked_schedules	Jadwal diblokir/tidak tersedia
+sport_notifications	Notifikasi internal
+sport_audit_logs	Log audit aktivitas
+sport_settings	Pengaturan Sport Center per company
+File Route API Sport Center
+File: artifacts/api-server/src/modules/sport-center/routes.ts (579 baris)
+Didaftarkan: artifacts/api-server/src/routes/index.ts → router.use("/sport-center", sportCenterRouter)
+
+Endpoint Utama yang Ada
+Endpoint	Method	Auth	Keterangan
+/api/sport-center/dashboard	GET	requireAdmin	Statistik total booking, revenue, member
+/api/sport-center/facilities	GET/POST	requireAdmin	List & buat fasilitas
+/api/sport-center/facilities/:id	GET/PATCH/DELETE	requireAdmin	Detail & kelola fasilitas
+/api/sport-center/bookings	GET/POST	requireAdmin	List & buat booking
+/api/sport-center/bookings/:id	PATCH	requireAdmin	Update status/payment_status booking
+/api/sport-center/bookings/:id/checkin	POST	requireAdmin	Check-in booking
+/api/sport-center/customers	GET/POST	requireAdmin	List & buat customer
+/api/sport-center/customers/:id	PATCH/DELETE	requireAdmin	Kelola customer
+/api/sport-center/members	GET/POST	requireAdmin	List & buat member
+/api/sport-center/members/:id	PATCH/DELETE	requireAdmin	Kelola member
+/api/sport-center/pricing-rules	GET/POST	requireAdmin	List & buat pricing rule
+/api/sport-center/pricing-rules/:id	PATCH/DELETE	requireAdmin	Kelola pricing rule
+/api/sport-center/payments	GET/POST	requireAdmin	List & catat pembayaran
+/api/sport-center/reports	GET	requireAdmin	Laporan revenue per hari/fasilitas
+/api/sport-center/settings	GET/POST	requireAdmin	Pengaturan Sport Center
+/api/sport-center/events	GET	— (no auth)	SSE real-time broadcast
+Endpoint yang TIDAK ADA (missing):
+
+❌ CRUD promo (/promos)
+❌ Cancel booking dengan jurnal reversal
+❌ Refund
+❌ Membership payment
+❌ Pajak/PPN
+Middleware Auth yang Dipakai
+requireAdmin — dari artifacts/api-server/src/lib/requireAdmin.js, melindungi semua route kecuali /events (SSE).
+
+File Halaman UI BizPortal Sport Center
+File	Path Halaman
+artifacts/bizportal/src/pages/sport-center/dashboard.tsx	/sport-center/dashboard
+artifacts/bizportal/src/pages/sport-center/bookings.tsx	/sport-center/bookings
+artifacts/bizportal/src/pages/sport-center/facilities.tsx	/sport-center/facilities
+artifacts/bizportal/src/pages/sport-center/customers.tsx	/sport-center/customers
+artifacts/bizportal/src/pages/sport-center/members.tsx	/sport-center/members
+artifacts/bizportal/src/pages/sport-center/pricing-rules.tsx	/sport-center/pricing-rules
+artifacts/bizportal/src/pages/sport-center/payments.tsx	/sport-center/payments
+artifacts/bizportal/src/pages/sport-center/reports.tsx	/sport-center/reports
+artifacts/bizportal/src/pages/sport-center/settings.tsx	/sport-center/settings
+Path Frontend yang Terdaftar
+Router: artifacts/bizportal/src/routes.tsx baris 362–371 — 10 Route entries untuk /sport-center/*
+Path Sidebar yang Digunakan
+AppShell: artifacts/bizportal/src/components/layout/AppShell.tsx baris 380–391
+basePath: "/sport-center" dengan 9 menu item: Dashboard, Bookings, Fasilitas, Customers, Members, Pricing Rules, Pembayaran, Laporan Revenue, Pengaturan
+Akses yang benar saat ini: /bizportal/sport-center/dashboard dst. (via BizPortal di port 3000 → Gateway port 5000 → proxy ke port 3000)
+
+3. GATEWAY DAN PORT 3002
+File	Baris/Bagian	Route/Config	Mengarah ke Port 3002?	Dampak	Perlu Diperbaiki Fase 1?
+gateway.mjs	Baris 11 (komentar)	// /sport-center/* → Sport Center :3002	Ya (komentar)	Dokumentasi menyesatkan	Ya
+gateway.mjs	Baris 47 (ROUTES array)	{ prefix: "/sport-center", upstream: { host: "localhost", port: 3002 } }	Ya (aktif)	Semua request ke /sport-center/* → 503	Ya — CRITICAL
+gateway.mjs	Baris 58 (SERVICE_NAMES)	3002: "Sport Center"	Ya (label)	Error message menyebut "Sport Center" saat 503	Ya
+gateway.mjs	Baris 260 (log)	Console.log routing info	Ya (log)	Log menyesatkan	Ya
+.replit (workflow)	Tidak ada workflow port 3002	Tidak ada Sport Center workflow	Port 3002 tidak digunakan	Service tidak dijalankan	Ya
+Jawaban tegas:
+
+Apakah /sport-center/* diproxy ke port 3002? → YA, saat ini semua request ke https://<repl>.repl.co/sport-center/* akan di-forward ke localhost:3002 yang tidak ada service-nya → 503 Starting error.
+Apakah /api/sport-center/* aman dan tidak ikut ke port 3002? → AMAN. Route /api/* ditangani lebih dulu (baris 41 ROUTES) → diarahkan ke port 8080 (API Server). Routing sport center prefix: "/sport-center" hanya berlaku untuk path yang tidak diawali /api.
+Apakah masih ada frontend/workflow Sport Center standalone? → TIDAK ADA. Tidak ada artifacts/sport-center/, tidak ada workflow "Sport Center" di Replit. Port 3002 benar-benar kosong.
+Apakah akses yang benar saat ini melalui /bizportal/sport-center/...? → YA. Request ke /bizportal/* diarahkan ke port 3000 (BizPortal Vite), BizPortal menangani routing /sport-center/* via React Router (Wouter). Jalur ini berfungsi dan tidak melewati port 3002.
+4. MULTI-COMPANY ACCOUNTING
+Tabel Master Company
+File: lib/db/src/schema/companies.ts
+Tabel: companies
+
+Field	Tipe	Keterangan
+id	SERIAL PK	ID company
+company_name	TEXT NOT NULL	Nama perusahaan
+company_code	TEXT UNIQUE	Kode singkat
+logo_url	TEXT	Logo
+address	TEXT	Alamat
+phone	TEXT	Telepon
+email	TEXT	Email
+npwp	TEXT	NPWP
+is_active	BOOLEAN	Status aktif
+is_holding	BOOLEAN	Flag holding
+parent_company_id	INTEGER	Referensi ke parent (hierarki)
+created_at	TIMESTAMP	—
+Data Company di Database
+COMPANY ID BELUM BERHASIL DIVERIFIKASI
+
+Hambatan: Audit ini bersifat read-only dari kode — saya tidak mengeksekusi query langsung ke database agar tidak melanggar instruksi. Untuk memverifikasi ID PT Cahaya Sejati Teknologi, perlu SELECT id, company_name FROM companies WHERE company_name ILIKE '%Cahaya Sejati%' dijalankan secara terpisah.
+
+Tabel Accounting dengan Field Company
+Komponen Accounting	Table/File	Field Company	Field Source/Module	Field Cost Center/Dept	Catatan
+Journal Header	accounting_entries (accounting.ts:120)	company_id INTEGER	source (enum)	—	Tidak ada field cost center/department
+Journal Lines	accounting_entry_lines (accounting.ts:146)	— (via entry FK)	—	—	Tidak ada company_id langsung di lines
+Invoice	accounting_entries + accounting_entry_lines	company_id di header	source = 'purchase_bill' / 'sales_invoice'	—	Source enum mencakup sport_center_booking
+Payment	accounting_payments (accounting.ts:239)	company_id INTEGER	source_type TEXT, source_doc_id INTEGER	—	Tidak ada cost center
+Cash/Bank Account	accounting_settings (accounting.ts:162)	company_id	—	—	Setting per company
+Chart of Accounts	chart_of_accounts (accounting.ts:74)	company_id INTEGER	—	—	COA bisa per-company
+Tax	accounting_taxes (accounting.ts:107)	company_id INTEGER	kind: 'sale' / 'purchase'	—	Tax per company
+Catatan penting: Tidak ada field cost_center atau department di seluruh tabel accounting. Multi-company diimplementasikan via company_id saja, bukan cost center hierarchy.
+
+5. STATUS INTEGRASI SPORT CENTER KE ACCOUNTING
+Transaksi Sport Center	Route/Trigger	Table SC Berubah	Memanggil Accounting?	Journal Terbentuk?	Company Tersimpan?	Source SPORT_CENTER?	Kesimpulan
+Payment Booking	POST /payments	sport_payments INSERT + sport_bookings UPDATE payment_status='paid'	TIDAK	TIDAK	Tidak	Tidak	Payment hanya masuk sport_payments
+Payment Membership	— (tidak ada route)	—	TIDAK	TIDAK	Tidak	Tidak	Route membership payment belum ada
+Promo/Diskon	POST /bookings field discount_amount	sport_bookings discount_amount	TIDAK	TIDAK	Tidak	Tidak	Diskon tersimpan di booking, tidak dijurnal
+Pajak/PPN	— (tidak ada field)	—	TIDAK	TIDAK	Tidak	Tidak	Tidak ada field tax di sport_bookings/payments
+Cancel Booking	PATCH /bookings/:id status='cancelled'	sport_bookings.status	TIDAK	TIDAK	Tidak	Tidak	Hanya update status, tidak ada jurnal reversal
+Refund	— (tidak ada route)	—	TIDAK	TIDAK	Tidak	Tidak	Endpoint refund belum dibuat
+Jawaban tegas:
+
+Apakah ada fungsi postSportCenterBooking? → YA — terdapat di artifacts/api-server/src/lib/accounting.ts baris 892. Fungsi lengkap: debit Kas, credit Pendapatan Sport Center, dengan source: "sport_center_booking" dan dukungan companyId.
+Apakah fungsi tersebut benar-benar dipanggil dari route transaksi? → TIDAK. Pencarian grep -rn "postSportCenterBooking" di seluruh artifacts/api-server/src/ hanya menemukan satu hasil yaitu definisinya sendiri di accounting.ts:892. Tidak ada import, tidak ada pemanggilan di routes.ts atau file mana pun.
+Apakah payment saat ini hanya masuk ke sport_payments? → YA, hanya sport_payments. Tidak ada jurnal accounting terbentuk.
+6. STATUS INTEGRASI SPORT CENTER KE PURCHASE
+Kebutuhan	Modul/Route Purchase Existing	Sudah Dipanggil SC?	Memiliki Company?	Memiliki Source/Cost Center?	Kesimpulan
+Purchase Request Operasional	artifacts/api-server/src/routes/purchase.ts	TIDAK	Ya (di purchase)	Ya (di purchase)	Tidak ada koneksi sama sekali
+Maintenance Fasilitas	purchase.ts / trading.ts	TIDAK	Ya	Ya	Tidak ada referensi facility_id di purchase
+Purchase Order	purchase.ts	TIDAK	Ya	Ya	SC tidak membuat PO
+Vendor Bill / Expense	trading.ts	TIDAK	Ya	Ya	SC tidak membuat vendor bill
+Posting Biaya ke Accounting	artifacts/api-server/src/lib/accounting.ts	TIDAK	Ya	Ya	SC tidak memanggil fungsi posting biaya
+Jawaban tegas:
+
+Apakah sudah ada tombol/action dari Sport Center ke Purchase? → TIDAK. Zero referensi ke purchase route di seluruh modul sport center.
+Apakah sudah ada reference fasilitas/lapangan di purchase? → TIDAK. purchase.ts dan trading.ts tidak mengenal entitas facility_id atau sport_facilities.
+Apakah transaksi biaya SC sudah dapat ditandai sebagai milik PT Cahaya Sejati Teknologi? → TIDAK (integrasi purchase belum ada). Secara teknis jika dibuat, field company_id tersedia di purchase, tetapi saat ini tidak ada jalur dari Sport Center ke Purchase.
+7. BUG DAN GAP PRIORITAS
+Prioritas	Gap/Bug	Dampak Bisnis	File Terkait	Fase Perbaikan
+Critical	Gateway /sport-center/* → port 3002 yang tidak ada	Semua akses langsung ke /sport-center/* menghasilkan 503. BizPortal masih bisa akses via /bizportal/sport-center/*	gateway.mjs baris 47	Fase 1
+Critical	postSportCenterBooking() ada tapi tidak pernah dipanggil	Seluruh transaksi payment Sport Center tidak masuk ke jurnal accounting. Laporan keuangan tidak mencerminkan pendapatan SC	modules/sport-center/routes.ts (POST /payments), lib/accounting.ts:892	Fase 2
+High	Tidak ada endpoint cancel booking dengan jurnal reversal	Pembatalan booking tidak membalik jurnal yang terlanjur terbentuk (relevan setelah Fase 2). Saat ini cancel hanya update status	routes.ts	Fase 2
+High	Tidak ada endpoint CRUD promo	Tabel sport_promos ada, field promo_id ada di bookings, tapi tidak bisa dikelola via API	routes.ts	Fase 2
+High	Membership payment tidak ada	Tidak ada route untuk mencatat pembayaran keanggotaan. Payment hanya untuk booking	routes.ts	Fase 2
+High	SSE /events tidak dilindungi requireAdmin	Siapa pun bisa subscribe ke event stream real-time Sport Center tanpa autentikasi	routes.ts baris 30–32	Fase 1
+Medium	Tidak ada field pajak/PPN di sport_bookings dan sport_payments	Transaksi Sport Center tidak bisa mencerminkan PPN 11%	migration.ts, routes.ts	Fase 3
+Medium	Tidak ada integrasi Purchase untuk biaya operasional SC	Biaya maintenance, sewa, dll. tidak bisa dihubungkan ke fasilitas Sport Center	purchase.ts, routes.ts	Fase 3
+Medium	Tidak ada field cost_center/department di accounting	Tidak bisa memisahkan laporan P&L per unit bisnis (SC vs Logistics vs lainnya)	lib/db/src/schema/accounting.ts	Fase 3
+Medium	company_id di sport tables berupa nullable INTEGER tanpa FK	Tidak ada constraint referensial ke tabel companies. Risk data orphan	migration.ts	Fase 3
+8. REKOMENDASI URUTAN IMPLEMENTASI
+→ LANJUT KE FASE 1 — Perbaikan Gateway/Port 3002
+
+Alasan berdasarkan temuan kode aktual:
+
+Bug Gateway adalah satu-satunya masalah yang merusak akses publik — route /sport-center/* di Gateway mengarah ke port 3002 yang tidak ada service-nya. Meskipun BizPortal masih bisa akses via /bizportal/sport-center/*, konfigurasi Gateway ini salah dan berpotensi membingungkan serta menyebabkan 503 pada direct URL sharing.
+
+SSE /events tidak ada auth — ini perlu diperbaiki bersamaan di Fase 1 karena risikonya rendah untuk diperbaiki (satu baris kode) tapi dampak keamanannya nyata.
+
+Data accounting sudah cukup dipahami — companiesTable sudah ada dengan struktur yang jelas. postSportCenterBooking() sudah siap dipanggil. Tidak perlu audit lanjutan sebelum Fase 2 — perbaikannya adalah memanggil fungsi yang sudah ada.
+
+Fase 2 bisa dimulai segera setelah Fase 1 — integrasi accounting hanya membutuhkan: (a) verifikasi company ID via query, (b) memanggil postSportCenterBooking() dari POST /payments, (c) menambahkan cancel dengan reversal.
+
+9. KONFIRMASI READ-ONLY
+Jumlah file yang diubah: 0
+Migration yang dibuat: 0
+Data database yang diubah: 0
+Route yang diubah: 0
+Fitur yang diimplementasikan: 0

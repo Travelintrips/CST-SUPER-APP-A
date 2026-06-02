@@ -28,6 +28,7 @@ import { Link } from "wouter";
 import GpsTrackingPanel from "@/components/logistics/GpsTrackingPanel";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { OrderProgressBar } from "@/components/logistics/OrderProgressBar";
+import { OrderDriverAssignmentPanel } from "@/components/freight/OrderDriverAssignmentPanel";
 
 const idr = (n: number | string | null | undefined) =>
   n == null ? "—" : `Rp ${Math.round(Number(n)).toLocaleString("id-ID")}`;
@@ -3738,6 +3739,16 @@ export default function LogisticOrderDetailPage() {
                 </Card>
               );
             })()}
+
+            {/* Driver Assignment Panel */}
+            <OrderDriverAssignmentPanel
+              orderId={orderId}
+              orderNumber={order.orderNumber}
+              customerName={order.customerName}
+              origin={order.origin}
+              destination={order.destination}
+              commodity={order.commodity}
+            />
 
             {/* Job Order & Tracking Panel */}
             <JobOrderPanel orderId={orderId} />

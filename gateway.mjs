@@ -8,7 +8,9 @@
  *   /q/*               → API Server      :8080  (short-link redirects)
  *   /s/*               → API Server      :8080
  *   /bizportal/*       → BizPortal       :18442
+
  *   /sport-center/*    → 302 redirect to /bizportal/sport-center/* (served by BizPortal React Router)
+
  *   /customer-portal/* → redirect strip prefix
  *   /*                 → Customer Portal :5173
  *
@@ -46,6 +48,7 @@ const ROUTES = [
   { prefix: "/logistic-order",  upstream: { host: "localhost", port: LOGISTIC_ORDER_PORT } },
   // /sport-center/* → redirect to BizPortal React Router — no separate service on :3002
   { prefix: "/sport-center",    upstream: null, redirectMapTo: "/bizportal/sport-center", redirectDefaultSuffix: "/dashboard" },
+
   // Canvas artifact iframe hits /customer-portal/* — redirect to strip the prefix
   { prefix: "/customer-portal", upstream: null, redirectStrip: "/customer-portal" },
 ];
