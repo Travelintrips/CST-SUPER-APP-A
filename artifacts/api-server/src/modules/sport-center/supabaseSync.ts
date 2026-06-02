@@ -7,7 +7,7 @@ async function sleep(ms: number) {
   return new Promise(r => setTimeout(r, ms));
 }
 
-async function retry<T>(fn: () => Promise<T>, attempts = 3, delayMs = 1000): Promise<T> {
+async function retry<T>(fn: () => Promise<T>, attempts = 3, delayMs = 800): Promise<T> {
   let lastErr: unknown;
   for (let i = 0; i < attempts; i++) {
     try {
@@ -15,7 +15,7 @@ async function retry<T>(fn: () => Promise<T>, attempts = 3, delayMs = 1000): Pro
     } catch (err) {
       lastErr = err;
       if (i < attempts - 1) {
-        console.warn(`${PREFIX} attempt ${i + 1} gagal, retry dalam ${delayMs}ms...`, err);
+        console.warn(`${PREFIX} attempt ${i + 1} gagal, retry dalam ${delayMs * (i + 1)}ms...`, err);
         await sleep(delayMs * (i + 1));
       }
     }
@@ -36,142 +36,280 @@ export interface FacilityRow {
   company_id?: number | null;
 }
 
+export interface BookingRow {
+  id: number;
+  booking_number: string;
+  customer_name: string;
+  customer_phone?: string | null;
+  facility_id?: number | null;
+  facility_name: string;
+  booking_date: string;
+  start_time: string;
+  end_time: string;
+  duration_hours?: number;
+  base_amount?: number;
+  total_amount?: number;
+  status: string;
+  payment_status?: string;
+  notes?: string | null;
+  company_id?: number | null;
+  checked_in_at?: string | null;
+  cancelled_at?: string | null;
+  cancelled_reason?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
 function facilityCode(id: number) {
   return `facility_${id}`;
 }
 
-/**
- * Upsert ke sport_center_services (katalog layanan customer portal).
- * Gunakan `code = 'facility_<id>'` sebagai kunci idempoten.
- */
-async function syncToServices(row: FacilityRow) {
-  const code = facilityCode(row.id);
-  const category = row.type ?? "court";
-  const price = Math.round(Number(row.price_per_hour ?? 0));
-  const cap = Number(row.capacity ?? 1);
-
-  await retry(async () => {
+async function writeSyncLog(opts: {
+  entity: "facility" | "booking";
+  action: "upsert" | "delete" | "resync";
+  entityId: number | null;
+  status: "ok" | "error";
+  detail?: string;
+  companyId?: number | null;
+}) {
+  try {
     await db.execute(sql`
-      INSERT INTO sport_center_services (code, name, category, description, price_per_hour, capacity, is_active, sort_order, image_url, updated_at)
-      VALUES (
-        ${code},
-        ${row.name},
-        ${category},
-        ${row.description ?? null},
-        ${price},
-        ${cap},
-        ${row.is_active ?? true},
-        ${row.sort_order ?? 0},
-        ${row.image_url ?? null},
-        NOW()
-      )
-      ON CONFLICT (code) DO UPDATE SET
-        name          = EXCLUDED.name,
-        category      = EXCLUDED.category,
-        description   = EXCLUDED.description,
-        price_per_hour= EXCLUDED.price_per_hour,
-        capacity      = EXCLUDED.capacity,
-        is_active     = EXCLUDED.is_active,
-        sort_order    = EXCLUDED.sort_order,
-        image_url     = EXCLUDED.image_url,
-        updated_at    = NOW()
+      INSERT INTO sport_sync_logs (entity, action, entity_id, status, detail, company_id)
+      VALUES (${opts.entity}, ${opts.action}, ${opts.entityId ?? null}, ${opts.status}, ${opts.detail ?? null}, ${opts.companyId ?? null})
     `);
-  });
-
-  console.log(`${PREFIX} sport_center_services upsert OK → code=${code} name="${row.name}"`);
-}
-
-/**
- * Upsert ke sport_center_facilities (dashboard / top fasilitas).
- * Gunakan `name` sebagai kunci idempoten (unique constraint sudah ada).
- * usage_count & revenue_total TIDAK disentuh saat update — dikelola trigger booking.
- */
-async function syncToFacilities(row: FacilityRow) {
-  const category = row.type ?? "court";
-  const price = Math.round(Number(row.price_per_hour ?? 0));
-  const cap = Number(row.capacity ?? 1);
-
-  await retry(async () => {
-    await db.execute(sql`
-      INSERT INTO sport_center_facilities (name, category, description, price_per_hour, capacity, is_active, sort_order, updated_at)
-      VALUES (
-        ${row.name},
-        ${category},
-        ${row.description ?? null},
-        ${price},
-        ${cap},
-        ${row.is_active ?? true},
-        ${row.sort_order ?? 0},
-        NOW()
-      )
-      ON CONFLICT (name) DO UPDATE SET
-        category      = EXCLUDED.category,
-        description   = EXCLUDED.description,
-        price_per_hour= EXCLUDED.price_per_hour,
-        capacity      = EXCLUDED.capacity,
-        is_active     = EXCLUDED.is_active,
-        sort_order    = EXCLUDED.sort_order,
-        updated_at    = NOW()
-    `);
-  });
-
-  console.log(`${PREFIX} sport_center_facilities upsert OK → name="${row.name}"`);
-}
-
-/**
- * Sinkron INSERT/UPDATE facility ke kedua tabel Supabase.
- * Fire-and-forget safe: semua error dicatch dan dilog, tidak throw ke caller.
- */
-export async function syncFacilityUpsert(row: FacilityRow): Promise<void> {
-  const ops = [syncToServices(row), syncToFacilities(row)];
-  const results = await Promise.allSettled(ops);
-  for (const r of results) {
-    if (r.status === "rejected") {
-      console.error(`${PREFIX} sinkronisasi gagal setelah 3 retry:`, r.reason);
-    }
+  } catch {
   }
 }
 
-/**
- * Sinkron DELETE: set is_active=false di kedua tabel (soft delete).
- * Jika row belum ada, tidak error.
- */
-export async function syncFacilityDelete(id: number, name: string): Promise<void> {
+function getSupabaseClient() {
+  try {
+    const mod = require("../../lib/supabaseAdmin.js");
+    return mod.supabaseAdmin as import("@supabase/supabase-js").SupabaseClient | null;
+  } catch {
+    return null;
+  }
+}
+
+async function syncToServicesViaClient(row: FacilityRow): Promise<void> {
+  let client: import("@supabase/supabase-js").SupabaseClient | null = null;
+  try {
+    const { supabaseAdmin } = await import("../../lib/supabaseAdmin.js");
+    client = supabaseAdmin as unknown as import("@supabase/supabase-js").SupabaseClient;
+  } catch { }
+
+  const code = facilityCode(row.id);
+  const payload = {
+    code,
+    name: row.name,
+    category: row.type ?? "court",
+    description: row.description ?? null,
+    price_per_hour: Math.round(Number(row.price_per_hour ?? 0)),
+    capacity: Number(row.capacity ?? 1),
+    is_active: row.is_active ?? true,
+    sort_order: row.sort_order ?? 0,
+    image_url: row.image_url ?? null,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (client) {
+    await retry(async () => {
+      const { error } = await (client as any)
+        .from("sport_center_services")
+        .upsert(payload, { onConflict: "code" });
+      if (error) throw new Error(error.message);
+    });
+  } else {
+    await retry(async () => {
+      await db.execute(sql`
+        INSERT INTO sport_center_services (code, name, category, description, price_per_hour, capacity, is_active, sort_order, image_url, updated_at)
+        VALUES (${payload.code}, ${payload.name}, ${payload.category}, ${payload.description}, ${payload.price_per_hour}, ${payload.capacity}, ${payload.is_active}, ${payload.sort_order}, ${payload.image_url}, NOW())
+        ON CONFLICT (code) DO UPDATE SET
+          name           = EXCLUDED.name,
+          category       = EXCLUDED.category,
+          description    = EXCLUDED.description,
+          price_per_hour = EXCLUDED.price_per_hour,
+          capacity       = EXCLUDED.capacity,
+          is_active      = EXCLUDED.is_active,
+          sort_order     = EXCLUDED.sort_order,
+          image_url      = EXCLUDED.image_url,
+          updated_at     = NOW()
+      `);
+    });
+  }
+  console.log(`${PREFIX} sport_center_services upsert OK → code=${code} name="${row.name}"`);
+}
+
+async function syncToFacilitiesViaClient(row: FacilityRow): Promise<void> {
+  let client: import("@supabase/supabase-js").SupabaseClient | null = null;
+  try {
+    const { supabaseAdmin } = await import("../../lib/supabaseAdmin.js");
+    client = supabaseAdmin as unknown as import("@supabase/supabase-js").SupabaseClient;
+  } catch { }
+
+  const payload = {
+    name: row.name,
+    category: row.type ?? "court",
+    description: row.description ?? null,
+    price_per_hour: Math.round(Number(row.price_per_hour ?? 0)),
+    capacity: Number(row.capacity ?? 1),
+    is_active: row.is_active ?? true,
+    sort_order: row.sort_order ?? 0,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (client) {
+    await retry(async () => {
+      const { error } = await (client as any)
+        .from("sport_center_facilities")
+        .upsert(payload, { onConflict: "name" });
+      if (error) throw new Error(error.message);
+    });
+  } else {
+    await retry(async () => {
+      await db.execute(sql`
+        INSERT INTO sport_center_facilities (name, category, description, price_per_hour, capacity, is_active, sort_order, updated_at)
+        VALUES (${payload.name}, ${payload.category}, ${payload.description}, ${payload.price_per_hour}, ${payload.capacity}, ${payload.is_active}, ${payload.sort_order}, NOW())
+        ON CONFLICT (name) DO UPDATE SET
+          category       = EXCLUDED.category,
+          description    = EXCLUDED.description,
+          price_per_hour = EXCLUDED.price_per_hour,
+          capacity       = EXCLUDED.capacity,
+          is_active      = EXCLUDED.is_active,
+          sort_order     = EXCLUDED.sort_order,
+          updated_at     = NOW()
+      `);
+    });
+  }
+  console.log(`${PREFIX} sport_center_facilities upsert OK → name="${row.name}"`);
+}
+
+export async function syncFacilityUpsert(row: FacilityRow): Promise<void> {
+  const ops = [syncToServicesViaClient(row), syncToFacilitiesViaClient(row)];
+  const results = await Promise.allSettled(ops);
+  const hasError = results.some(r => r.status === "rejected");
+  for (const r of results) {
+    if (r.status === "rejected") {
+      console.error(`${PREFIX} facility upsert gagal setelah retry:`, r.reason);
+    }
+  }
+  void writeSyncLog({
+    entity: "facility",
+    action: "upsert",
+    entityId: row.id,
+    status: hasError ? "error" : "ok",
+    detail: hasError ? "partial failure" : undefined,
+    companyId: row.company_id,
+  });
+}
+
+export async function syncFacilityDelete(id: number, name: string, companyId?: number | null): Promise<void> {
   const code = facilityCode(id);
+  let client: import("@supabase/supabase-js").SupabaseClient | null = null;
+  try {
+    const { supabaseAdmin } = await import("../../lib/supabaseAdmin.js");
+    client = supabaseAdmin as unknown as import("@supabase/supabase-js").SupabaseClient;
+  } catch { }
 
   const ops = [
     retry(async () => {
-      await db.execute(sql`
-        UPDATE sport_center_services SET is_active = false, updated_at = NOW()
-        WHERE code = ${code}
-      `);
+      if (client) {
+        const { error } = await (client as any)
+          .from("sport_center_services")
+          .update({ is_active: false, updated_at: new Date().toISOString() })
+          .eq("code", code);
+        if (error) throw new Error(error.message);
+      } else {
+        await db.execute(sql`UPDATE sport_center_services SET is_active = false, updated_at = NOW() WHERE code = ${code}`);
+      }
       console.log(`${PREFIX} sport_center_services soft-delete OK → code=${code}`);
     }),
     retry(async () => {
-      await db.execute(sql`
-        UPDATE sport_center_facilities SET is_active = false, updated_at = NOW()
-        WHERE name = ${name}
-      `);
+      if (client) {
+        const { error } = await (client as any)
+          .from("sport_center_facilities")
+          .update({ is_active: false, updated_at: new Date().toISOString() })
+          .eq("name", name);
+        if (error) throw new Error(error.message);
+      } else {
+        await db.execute(sql`UPDATE sport_center_facilities SET is_active = false, updated_at = NOW() WHERE name = ${name}`);
+      }
       console.log(`${PREFIX} sport_center_facilities soft-delete OK → name="${name}"`);
     }),
   ];
 
   const results = await Promise.allSettled(ops);
+  const hasError = results.some(r => r.status === "rejected");
   for (const r of results) {
     if (r.status === "rejected") {
-      console.error(`${PREFIX} delete sync gagal setelah 3 retry:`, r.reason);
+      console.error(`${PREFIX} facility delete sync gagal:`, r.reason);
     }
+  }
+  void writeSyncLog({ entity: "facility", action: "delete", entityId: id, status: hasError ? "error" : "ok", companyId });
+}
+
+export async function syncBookingUpsert(row: BookingRow): Promise<void> {
+  let client: import("@supabase/supabase-js").SupabaseClient | null = null;
+  try {
+    const { supabaseAdmin } = await import("../../lib/supabaseAdmin.js");
+    client = supabaseAdmin as unknown as import("@supabase/supabase-js").SupabaseClient;
+  } catch { }
+
+  const payload = {
+    booking_code: row.booking_number,
+    customer_name: row.customer_name,
+    customer_phone: row.customer_phone ?? null,
+    facility_name: row.facility_name,
+    date: row.booking_date,
+    start_time: row.start_time,
+    end_time: row.end_time,
+    total_hours: Number(row.duration_hours ?? 1),
+    total_price: Number(row.total_amount ?? 0),
+    status: row.status,
+    payment_status: row.payment_status ?? "unpaid",
+    notes: row.notes ?? null,
+    updated_at: new Date().toISOString(),
+  };
+
+  try {
+    await retry(async () => {
+      if (client) {
+        const { error } = await (client as any)
+          .from("sport_center_bookings")
+          .upsert(payload, { onConflict: "booking_code" });
+        if (error) throw new Error(error.message);
+      } else {
+        await db.execute(sql`
+          INSERT INTO sport_center_bookings
+            (booking_code, customer_name, customer_phone, facility_name, date, start_time, end_time, total_hours, total_price, status, payment_status, notes, updated_at)
+          VALUES
+            (${payload.booking_code}, ${payload.customer_name}, ${payload.customer_phone}, ${payload.facility_name}, ${payload.date}::date, ${payload.start_time}::time, ${payload.end_time}::time, ${payload.total_hours}, ${payload.total_price}, ${payload.status}, ${payload.payment_status}, ${payload.notes}, NOW())
+          ON CONFLICT (booking_code) DO UPDATE SET
+            customer_name  = EXCLUDED.customer_name,
+            customer_phone = EXCLUDED.customer_phone,
+            facility_name  = EXCLUDED.facility_name,
+            date           = EXCLUDED.date,
+            start_time     = EXCLUDED.start_time,
+            end_time       = EXCLUDED.end_time,
+            total_hours    = EXCLUDED.total_hours,
+            total_price    = EXCLUDED.total_price,
+            status         = EXCLUDED.status,
+            payment_status = EXCLUDED.payment_status,
+            notes          = EXCLUDED.notes,
+            updated_at     = NOW()
+        `);
+      }
+      console.log(`${PREFIX} sport_center_bookings upsert OK → booking_code=${row.booking_number} status=${row.status}`);
+    });
+    void writeSyncLog({ entity: "booking", action: "upsert", entityId: row.id, status: "ok", companyId: row.company_id });
+  } catch (err) {
+    console.error(`${PREFIX} booking upsert gagal:`, err);
+    void writeSyncLog({ entity: "booking", action: "upsert", entityId: row.id, status: "error", detail: String(err), companyId: row.company_id });
   }
 }
 
-/**
- * Sinkron SEMUA baris dari sport_facilities ke kedua tabel Supabase.
- * Dipakai untuk initial sync / resync manual via endpoint admin.
- */
-export async function syncAllFacilities(): Promise<{ synced: number; errors: number }> {
+export async function syncAllFacilities(): Promise<{ synced: number; errors: number; total: number }> {
   const result = await db.execute(sql`SELECT * FROM sport_facilities ORDER BY id ASC`);
   const rows = result.rows as FacilityRow[];
-
   let synced = 0;
   let errors = 0;
 
@@ -184,6 +322,38 @@ export async function syncAllFacilities(): Promise<{ synced: number; errors: num
     }
   }
 
-  console.log(`${PREFIX} full sync selesai: ${synced} OK, ${errors} gagal dari ${rows.length} total`);
-  return { synced, errors };
+  console.log(`${PREFIX} full facility sync: ${synced} OK, ${errors} gagal dari ${rows.length} total`);
+  void writeSyncLog({ entity: "facility", action: "resync", entityId: null, status: errors === 0 ? "ok" : "error", detail: `${synced}/${rows.length} OK` });
+  return { synced, errors, total: rows.length };
+}
+
+export async function syncAllBookings(): Promise<{ synced: number; errors: number; total: number }> {
+  const result = await db.execute(sql`SELECT * FROM sport_bookings ORDER BY id ASC`);
+  const rows = result.rows as BookingRow[];
+  let synced = 0;
+  let errors = 0;
+
+  for (const row of rows) {
+    try {
+      await syncBookingUpsert(row);
+      synced++;
+    } catch {
+      errors++;
+    }
+  }
+
+  console.log(`${PREFIX} full booking sync: ${synced} OK, ${errors} gagal dari ${rows.length} total`);
+  void writeSyncLog({ entity: "booking", action: "resync", entityId: null, status: errors === 0 ? "ok" : "error", detail: `${synced}/${rows.length} OK` });
+  return { synced, errors, total: rows.length };
+}
+
+export async function getLastSyncLogs(limit = 20): Promise<unknown[]> {
+  try {
+    const result = await db.execute(sql`
+      SELECT * FROM sport_sync_logs ORDER BY created_at DESC LIMIT ${limit}
+    `);
+    return result.rows;
+  } catch {
+    return [];
+  }
 }
