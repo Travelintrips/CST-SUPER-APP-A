@@ -181,6 +181,7 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "approvals", href: "/approvals", icon: ClipboardCheck },
         { titleKey: "Analytics", href: "/analytics", icon: BarChart2, roles: ["admin", "owner"] },
         { titleKey: "CEO / Director", href: "/ceo-dashboard", icon: Trophy, roles: ["admin", "owner"] },
+        { titleKey: "Profitabilitas", href: "/analytics/profitability", icon: TrendingUp, roles: ["admin", "owner"] },
       ],
     },
 

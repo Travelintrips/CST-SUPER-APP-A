@@ -136,6 +136,7 @@ import AiDecisionMemoryPage from "@/pages/ai-decision-memory";
 import WaNotificationHistoryPage from "@/pages/wa-notification-history";
 import VendorLeaderboardPage from "@/pages/vendor-leaderboard";
 import AnalyticsDashboardPage from "@/pages/analytics-dashboard";
+import ProfitabilityAnalyticsPage from "@/pages/analytics/profitability";
 import CeoDashboardPage from "@/pages/ceo-dashboard";
 import EnterpriseDashboardPage from "@/pages/enterprise-dashboard";
 import OperationalDashboardPage from "@/pages/operational-dashboard";
@@ -346,6 +347,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/ai-approvals" component={PR(AiApprovalsPage)} />
       <Route path="/operational-context" component={PR(OperationalContextPage)} />
       <Route path="/analytics" component={PR(AnalyticsDashboardPage)} />
+      <Route path="/analytics/profitability" component={PR(ProfitabilityAnalyticsPage)} />
       <Route path="/enterprise-dashboard" component={PR(EnterpriseDashboardPage)} />
       <Route path="/operational-dashboard" component={PR(OperationalDashboardPage)} />
 

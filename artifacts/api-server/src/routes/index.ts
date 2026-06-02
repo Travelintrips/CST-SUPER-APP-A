@@ -86,6 +86,7 @@ import { serviceTemplatesRouter } from "./serviceTemplates.js";
 
 import { exceptionsRouter } from "./exceptions.js";
 import { orderExceptionsRouter } from "./orderExceptions.js";
+import analyticsProfitRouter from "./analyticsProfit.js";
 import { systemRouter } from "./system.js";
 import rbacRouter from "./rbac.js";
 import { handleAlertSse } from "../lib/alertsBroadcast.js";
@@ -210,6 +211,7 @@ router.use("/logistic", orderAuditTrailRouter);
 router.use("/logistic", orderExceptionsRouter);
 
 router.use("/exceptions", exceptionsRouter);
+router.use("/analytics/profitability", analyticsProfitRouter);
 router.use("/system", systemRouter);
 router.use("/rbac", rbacRouter);
 router.use("/sport-center", sportCenterRouter);
