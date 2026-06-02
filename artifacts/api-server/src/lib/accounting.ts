@@ -1361,3 +1361,102 @@ export async function postSportCenterRefund(args: {
     logger.error({ err, refundId: args.refundId }, "Auto-post sport center refund failed");
   }
 }
+
+/**
+ * Post jurnal pembayaran membership Sport Center.
+ * Debit  : Kas (defaultCashAccountId)
+ * Credit : Pendapatan Membership Sport Center (COA 4-1016)
+ * Source : sport_center_membership
+ */
+export async function postSportCenterMembershipPayment(args: {
+  paymentId: number;
+  paymentNumber: string;
+  memberNumber: string;
+  memberName: string;
+  amount: number;
+  companyId?: number | null;
+}): Promise<void> {
+  try {
+    const settings = await ensureAccountingSettings(args.companyId ?? 1);
+    const cashAccountId = settings.defaultCashAccountId;
+    const journalId = settings.cashJournalId;
+
+    if (!cashAccountId || !journalId) {
+      logger.warn({ paymentId: args.paymentId }, "Skipping membership payment post: kas atau jurnal belum dikonfigurasi");
+      return;
+    }
+
+    // Cari akun Pendapatan Membership Sport Center (4-1016)
+    const cFilter = args.companyId ?? 1;
+    let [membershipAcc] = await db
+      .select()
+      .from(chartOfAccountsTable)
+      .where(sql`${chartOfAccountsTable.code} = '4-1016' AND ${chartOfAccountsTable.companyId} = ${cFilter}`)
+      .limit(1);
+    if (!membershipAcc) {
+      [membershipAcc] = await db
+        .select()
+        .from(chartOfAccountsTable)
+        .where(sql`${chartOfAccountsTable.code} = '4-1016'`)
+        .limit(1);
+    }
+    // Fallback ke Pendapatan Usaha jika COA 4-1016 belum di-seed
+    if (!membershipAcc && settings.salesIncomeAccountId) {
+      [membershipAcc] = await db
+        .select()
+        .from(chartOfAccountsTable)
+        .where(eq(chartOfAccountsTable.id, settings.salesIncomeAccountId))
+        .limit(1);
+    }
+    if (!membershipAcc) {
+      logger.warn({ paymentId: args.paymentId }, "Skipping membership payment post: akun pendapatan membership tidak ditemukan di COA");
+      return;
+    }
+
+    // Idempoten: skip jika sudah pernah diposting
+    const [existing] = await db
+      .select()
+      .from(accountingEntriesTable)
+      .where(sql`${accountingEntriesTable.source} = 'sport_center_membership' AND ${accountingEntriesTable.sourceId} = ${args.paymentId}`)
+      .limit(1);
+    if (existing) {
+      logger.info({ paymentId: args.paymentId }, "Membership payment journal already posted — skipping");
+      return;
+    }
+
+    const amt = round2(args.amount);
+    await postEntry(
+      {
+        journalId,
+        date: new Date(),
+        ref: args.paymentNumber,
+        description: `Membership Payment ${args.memberNumber} — ${args.memberName}`,
+        source: "sport_center_membership",
+        sourceId: args.paymentId,
+        companyId: args.companyId ?? 1,
+        lines: [
+          {
+            accountId: cashAccountId,
+            debit: amt,
+            credit: 0,
+            description: `Penerimaan membership ${args.memberNumber}`,
+          },
+          {
+            accountId: membershipAcc.id,
+            debit: 0,
+            credit: amt,
+            description: `Pendapatan membership ${args.memberNumber}`,
+          },
+        ],
+      },
+      "CSH",
+    );
+
+    logger.info(
+      { paymentId: args.paymentId, paymentNumber: args.paymentNumber, memberNumber: args.memberNumber, amt },
+      "Sport Center membership payment journal posted",
+    );
+  } catch (err) {
+    logger.error({ err, paymentId: args.paymentId }, "Auto-post Sport Center membership payment failed");
+  }
+}

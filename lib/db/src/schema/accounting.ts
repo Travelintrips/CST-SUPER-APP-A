@@ -60,6 +60,7 @@ export const accountingEntrySourceEnum = pgEnum("accounting_entry_source", [
   "wh_transfer",
   "sport_center_booking",
   "sport_center_refund",
+  "sport_center_membership",
 ]);
 
 export const accountingPaymentTypeEnum = pgEnum("accounting_payment_type", [

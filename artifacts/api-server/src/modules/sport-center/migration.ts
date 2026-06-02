@@ -206,9 +206,20 @@ export async function runSportCenterMigration(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_sport_refunds_status ON sport_refunds(status);
     `);
 
+    // Tambahkan kolom baru ke sport_payments (idempoten)
+    await db.execute(sql`
+      ALTER TABLE sport_payments
+        ADD COLUMN IF NOT EXISTS payment_type TEXT NOT NULL DEFAULT 'booking',
+        ADD COLUMN IF NOT EXISTS member_id INTEGER,
+        ADD COLUMN IF NOT EXISTS customer_id INTEGER
+    `);
+
     // Tambahkan nilai enum baru (idempoten — IF NOT EXISTS, PostgreSQL 9.6+)
     await db.execute(sql`
       ALTER TYPE accounting_entry_source ADD VALUE IF NOT EXISTS 'sport_center_refund'
+    `);
+    await db.execute(sql`
+      ALTER TYPE accounting_entry_source ADD VALUE IF NOT EXISTS 'sport_center_membership'
     `);
 
     logger.info("Sport Center migration: selesai");

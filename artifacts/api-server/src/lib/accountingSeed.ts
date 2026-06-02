@@ -95,6 +95,8 @@ const COA_LEAF_TEMPLATES: SeedAccount[] = [
   { code: "4-1013", name: "Pendapatan Land Freight",          type: "revenue", parentCode: "4-1000" },
   { code: "4-1014", name: "Pendapatan Custom Clearance",      type: "revenue", parentCode: "4-1000" },
   { code: "4-1015", name: "Pendapatan Penjualan Barang",      type: "revenue", parentCode: "4-1000" },
+  { code: "4-1016", name: "Pendapatan Membership Sport Center", type: "revenue", parentCode: "4-1000" },
+  { code: "4-1017", name: "Pendapatan Booking Sport Center",    type: "revenue", parentCode: "4-1000" },
   // ── Pendapatan Lain-lain ──────────────────────────────────
   { code: "4-1020", name: "Pendapatan Lain-lain",             type: "revenue", parentCode: "4-2000" },
   { code: "4-2010", name: "Pendapatan Bunga",                 type: "revenue", parentCode: "4-2000" },

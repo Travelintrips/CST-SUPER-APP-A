@@ -981,6 +981,34 @@ router.post("/payments", async (req, res) => {
               ? "partial"
               : "unpaid";
 
+        // Auto-close PO: jika payment lunas + sudah diterima + sudah dibill → status done
+        if (newStatus === "paid") {
+          try {
+            const [poStatus] = await db
+              .select({
+                receiveStatus: purchaseDocumentsTable.receiveStatus,
+                billStatus: purchaseDocumentsTable.billStatus,
+                status: purchaseDocumentsTable.status,
+              })
+              .from(purchaseDocumentsTable)
+              .where(eq(purchaseDocumentsTable.id, parsedSourceDocId));
+            if (
+              poStatus?.receiveStatus === "received" &&
+              poStatus?.billStatus === "billed" &&
+              poStatus?.status !== "done" &&
+              poStatus?.status !== "cancelled"
+            ) {
+              await db
+                .update(purchaseDocumentsTable)
+                .set({ status: "done", updatedAt: new Date() })
+                .where(eq(purchaseDocumentsTable.id, parsedSourceDocId));
+              logger.info({ poId: parsedSourceDocId }, "[payment] PO auto-closed: received + billed + paid → done");
+            }
+          } catch (e: unknown) {
+            logger.error({ e }, "PO auto-close failed — non-fatal");
+          }
+        }
+
         // WA notification to admin — fire-and-forget
         const fmtIdr = (n: number) =>
           `Rp ${Math.round(n).toLocaleString("id-ID")}`;

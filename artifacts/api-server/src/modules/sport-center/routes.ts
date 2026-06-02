@@ -3,7 +3,7 @@ import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { requireAdmin } from "../../lib/requireAdmin.js";
 import { handleSportCenterSse, broadcastSportCenterEvent } from "./broadcast.js";
-import { postSportCenterBooking, postSportCenterBookingReversal, postSportCenterRefund } from "../../lib/accounting.js";
+import { postSportCenterBooking, postSportCenterBookingReversal, postSportCenterRefund, postSportCenterMembershipPayment } from "../../lib/accounting.js";
 
 const router = Router();
 
@@ -515,6 +515,85 @@ router.delete("/members/:id", requireAdmin, async (req, res) => {
     res.json({ success: true });
   } catch {
     res.status(500).json({ error: "Gagal" });
+  }
+});
+
+// ── MEMBERSHIP PAYMENT ────────────────────────────────────────────────────────
+
+router.post("/members/:id/payment", requireAdmin, async (req, res) => {
+  try {
+    const memberId = Number(req.params.id);
+    if (isNaN(memberId)) return res.status(400).json({ error: "ID member tidak valid" });
+
+    const { amount, payment_method = "cash", notes } = req.body as {
+      amount: unknown;
+      payment_method?: string;
+      notes?: string;
+    };
+
+    // Validasi amount
+    const amt = Number(amount);
+    if (!amount || isNaN(amt) || amt <= 0) {
+      return res.status(400).json({ error: "amount wajib diisi dan harus lebih dari 0" });
+    }
+
+    // Cek member
+    const memberRes = await db.execute(sql`
+      SELECT * FROM sport_members WHERE id = ${memberId} LIMIT 1
+    `);
+    if (!memberRes.rows.length) return res.status(404).json({ error: "Member tidak ditemukan" });
+    const member = memberRes.rows[0] as Record<string, unknown>;
+
+    if (member.status !== "active") {
+      return res.status(400).json({ error: `Member tidak aktif (status: ${member.status})` });
+    }
+    if (!member.company_id) {
+      return res.status(400).json({ error: "company_id member tidak tersedia" });
+    }
+
+    const companyId = Number(member.company_id);
+    const paymentNumber = await nextPaymentNumber(companyId);
+    const actorId = (req.user as { id: string } | undefined)?.id ?? null;
+
+    const payRes = await db.execute(sql`
+      INSERT INTO sport_payments
+        (company_id, payment_number, payment_type, member_id, customer_id, amount, method, status, paid_at, notes, created_by)
+      VALUES
+        (${companyId}, ${paymentNumber}, 'membership', ${memberId},
+         ${member.customer_id ?? null}, ${amt}, ${payment_method}, 'paid', NOW(),
+         ${notes ?? null}, ${actorId})
+      RETURNING *
+    `);
+    const payment = payRes.rows[0] as Record<string, unknown>;
+
+    // Post jurnal accounting — fire-and-forget
+    postSportCenterMembershipPayment({
+      paymentId: Number(payment.id),
+      paymentNumber,
+      memberNumber: String(member.member_number ?? `MBR-${memberId}`),
+      memberName: String(member.name ?? ""),
+      amount: amt,
+      companyId,
+    }).catch(() => {});
+
+    // Audit log
+    await db.execute(sql`
+      INSERT INTO sport_audit_logs (company_id, entity_type, entity_id, action, actor, new_data)
+      VALUES (
+        ${companyId}, 'member', ${memberId},
+        'MEMBERSHIP_PAYMENT_CREATED', ${actorId},
+        ${JSON.stringify({ member_id: memberId, amount: amt, payment_method, payment_number: paymentNumber })}::jsonb
+      )
+    `);
+
+    broadcastSportCenterEvent(
+      { module: "sport-center", entity: "payment", action: "created", data: payment, timestamp: new Date().toISOString() },
+      companyId,
+    );
+    res.status(201).json(payment);
+  } catch (err) {
+    console.error("[membership payment]", err);
+    res.status(500).json({ error: "Gagal memproses pembayaran membership" });
   }
 });
 
