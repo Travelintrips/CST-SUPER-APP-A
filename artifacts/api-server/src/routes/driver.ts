@@ -111,6 +111,19 @@ const DRIVER_STATUS_TO_PROGRESS_STEP: Partial<Record<string, string>> = {
   COMPLETED:              "COMPLETED",
 };
 
+const STATUS_LABEL_ID: Record<string, string> = {
+  ASSIGNED:               "Driver Ditugaskan",
+  ACCEPTED:               "Driver Menerima Job",
+  ON_THE_WAY_TO_PICKUP:   "Menuju Lokasi Pickup",
+  ARRIVED_AT_PICKUP:      "Tiba di Lokasi Pickup",
+  PICKED_UP:              "Barang Berhasil Diambil",
+  IN_TRANSIT:             "Dalam Perjalanan",
+  ARRIVED_AT_DESTINATION: "Tiba di Tujuan",
+  DELIVERED:              "Barang Terkirim",
+  COMPLETED:              "Pengiriman Selesai",
+  CANCELLED:              "Dibatalkan",
+};
+
 async function syncDriverToLogisticOrder(
   logisticOrderId: number | null,
   driverJobStatus: string,
@@ -430,6 +443,36 @@ router.put("/jobs/:jobId/status", requireDriverAuth, async (req, res) => {
       description: `Driver memperbarui status pengiriman: ${job.status} → ${status}${note ? ` — ${note}` : ""}`,
       newValue: { jobId, jobNumber: updated.jobNumber, status, previousStatus: job.status },
     }).catch(() => {});
+  }
+
+  // WA ke admin untuk milestone penting (PICKED_UP, DELIVERED)
+  if (["PICKED_UP", "DELIVERED"].includes(String(status)) && job.logisticOrderId) {
+    (async () => {
+      try {
+        const [orderData] = await db.select({
+          orderNumber: logisticOrdersTable.orderNumber,
+          customerName: logisticOrdersTable.customerName,
+        }).from(logisticOrdersTable).where(eq(logisticOrdersTable.id, job.logisticOrderId!));
+        const [driverRow] = await db.select({ name: driversTable.name })
+          .from(driversTable).where(eq(driversTable.id, driverId));
+        const adminGroupWa = await getAdminGroupWa();
+        if (adminGroupWa && orderData) {
+          const driverDisplay = driverRow?.name ?? "Driver";
+          const statusLabel = STATUS_LABEL_ID[String(status)] ?? String(status);
+          const msg = [
+            `🚚 *Update Driver — ${updated.jobNumber}*`,
+            ``,
+            `👤 Driver: ${driverDisplay}`,
+            `📦 Order: ${orderData.orderNumber ?? "-"} (${orderData.customerName ?? "-"})`,
+            `📍 Status: *${statusLabel}*`,
+            note ? `📝 Catatan: ${note}` : null,
+          ].filter(Boolean).join("\n");
+          sendWhatsApp(adminGroupWa, msg).catch(() => {});
+        }
+      } catch {
+        // non-fatal
+      }
+    })();
   }
 
   res.json({ ...serializeJob(updated), validNextStatuses: VALID_TRANSITIONS[String(status)] ?? [] });
@@ -953,6 +996,11 @@ adminRouter.get("/jobs/list", async (req, res) => {
         .from(driverPhotosTable)
         .where(eq(driverPhotosTable.driverJobId, job.id))
         .orderBy(driverPhotosTable.takenAt);
+      const logs = await db
+        .select()
+        .from(driverJobLogsTable)
+        .where(eq(driverJobLogsTable.driverJobId, job.id))
+        .orderBy(driverJobLogsTable.timestamp);
       return {
         ...serializeJob(job),
         driverName,
@@ -963,6 +1011,7 @@ adminRouter.get("/jobs/list", async (req, res) => {
         currentLat: currentLat ?? null,
         currentLng: currentLng ?? null,
         photos: photos.map((p) => ({ ...p, takenAt: p.takenAt.toISOString() })),
+        statusLogs: logs.map((l) => ({ ...l, timestamp: l.timestamp.toISOString() })),
         validNextStatuses: VALID_TRANSITIONS[job.status] ?? [],
       };
     })
