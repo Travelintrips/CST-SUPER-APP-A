@@ -113,6 +113,7 @@ import AuditReportListPage from "@/pages/audit/index";
 import AuditReportFormPage from "@/pages/audit/form";
 import AuditComparePage from "@/pages/audit/compare";
 import WaNotificationLogsPage from "@/pages/settings/wa-notification-logs";
+import DocumentTemplatesPage from "@/pages/settings/document-templates";
 
 // Products
 import ProductItemsPage from "@/pages/products/items";
@@ -347,6 +348,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
 
       {/* ── WA Monitoring ──────────────────────────────────────────────── */}
       <Route path="/settings/wa-notification-logs" component={PR(WaNotificationLogsPage)} />
+      <Route path="/settings/document-templates" component={PR(DocumentTemplatesPage)} />
 
       {/* ── Notifications & Analytics ──────────────────────────────────── */}
       <Route path="/notifications" component={PR(NotificationsPage)} />

@@ -1,0 +1,96 @@
+DESIGN TEMPLATE UNTUK SEMUA DOKUMEN BISNIS & LEGAL VIA SETTINGS
+
+Tujuan:
+Menyediakan satu panel Settings di BizPortal untuk desain dan konfigurasi semua dokumen, mencakup bisnis line dan dokumen legal seperti MOU, kontrak, NDA, SLA, dll.
+
+---
+
+A. BACKEND
+
+1. **Settings Table / Config**
+
+   * Tabel / config: `document_templates`
+   * Field:
+
+     * `document_type` → invoice / po / delivery_note / packing_list / quotation / MOU / kontrak / NDA / SLA / lainnya
+     * `business_line` → Export/Import, Logistic/Forwarder, PPJK, Trading, Sport Center, POS, Legal
+     * Logo / branding
+     * Header / footer text
+     * Table / content style: warna, font size, borders
+     * Field mapping default per dokumen
+     * Template format: PDF / HTML
+     * Default terms / notes / due date (jika relevan)
+
+2. **Endpoint**
+
+   * GET `/api/settings/documents/:document_type` → ambil template saat ini
+   * PATCH `/api/settings/documents/:document_type` → update template / styling
+   * Template reload otomatis saat generate dokumen (otomatis / manual)
+
+3. **Integration Auto-Generate**
+
+   * Driver upload POD → generate Invoice sesuai template terbaru
+   * Admin buat PO / kontrak / MOU → generate dokumen sesuai template terbaru
+   * Booking / fulfillment → generate Delivery Note / POD
+   * Pastikan WA / Email notifikasi mengacu pada template terbaru
+
+---
+
+B. FRONTEND / ADMIN PANEL
+
+1. **Settings Page**
+
+   * Section **Document Templates**
+   * Pilihan dokumen: Invoice / PO / Delivery Note / Packing List / Quotation / MOU / Kontrak / NDA / SLA
+   * Fields per dokumen:
+
+     * Upload logo / branding
+     * Header / footer text
+     * Font / color picker untuk tabel & badge
+     * Field mapping checkbox
+     * Preview panel (HTML / PDF)
+   * Tombol **Save** → PATCH ke backend
+   * Tombol **Preview PDF** → generate dokumen dummy tanpa simpan nyata
+
+2. **Integration**
+
+   * Generate dokumen otomatis menggunakan template terbaru
+   * Preview / edit sebelum generate PDF final
+   * Partial test → dummy data, tanpa mengirim live ke customer/admin
+
+---
+
+C. TESTING CHECKLIST
+
+| No | Test                                          | Expected Result                                                 |
+| -- | --------------------------------------------- | --------------------------------------------------------------- |
+| 1  | Ubah logo / warna / header/footer per dokumen | Preview tampil sesuai                                           |
+| 2  | Generate dokumen sample                       | PDF / HTML sesuai template                                      |
+| 3  | Driver upload POD → generate Invoice          | Invoice pakai template terbaru                                  |
+| 4  | Admin buat PO / MOU / Kontrak                 | Dokumen generate pakai template terbaru                         |
+| 5  | Generate Delivery Note / POD                  | Sesuai template                                                 |
+| 6  | Notifikasi WA / Email                         | Muncul sesuai dokumen & template (log debug untuk partial test) |
+| 7  | Partial test                                  | Tidak ganggu workflow utama                                     |
+| 8  | Build / typecheck                             | Clean, TS tidak error                                           |
+
+---
+
+D. OUTPUT AKHIR
+
+* Semua dokumen bisnis dan legal bisa diatur dari **Settings panel**
+* Preview dokumen real-time di admin
+* Generate otomatis menggunakan template terbaru
+* WA / Email notifikasi sesuai dokumen
+* Partial test bisa dijalankan tanpa mengganggu live workflow
+* Zero regression untuk sistem existing
+
+---
+
+Instruksi:
+
+* Tambahkan table / config `document_templates` dengan `document_type` termasuk dokumen legal
+* Tambahkan endpoint GET / PATCH template dokumen per type
+* Tambahkan Settings panel di admin BizPortal
+* Integrasikan template terbaru saat generate dokumen (Invoice, PO, Delivery Note, MOU, Kontrak, NDA, SLA)
+* Tambahkan preview PDF / HTML untuk admin
+* Test partial → generate dokumen dummy → notif log debug
