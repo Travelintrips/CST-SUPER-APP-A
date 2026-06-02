@@ -398,6 +398,17 @@ export default function CustomersPage() {
                       />
                     </TableCell>
                     <TableCell className="font-medium">{c.name}</TableCell>
+                    <TableCell>
+                      {(() => {
+                        const cid = (c as { companyId?: number | null }).companyId;
+                        const co = cid != null ? companies.find(x => x.id === cid) : null;
+                        return co ? (
+                          <Badge className="text-xs px-1.5 py-0 bg-indigo-100 text-indigo-800 hover:bg-indigo-100 border-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-300">
+                            {co.companyCode}
+                          </Badge>
+                        ) : <span className="text-muted-foreground text-xs">—</span>;
+                      })()}
+                    </TableCell>
                     <TableCell>{c.email ?? "-"}</TableCell>
                     <TableCell>{c.phone ?? "-"}</TableCell>
                     <TableCell>{c.taxId ?? "-"}</TableCell>
@@ -414,7 +425,7 @@ export default function CustomersPage() {
                 ))}
                 {allList.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                       Belum ada customer.
                     </TableCell>
                   </TableRow>
