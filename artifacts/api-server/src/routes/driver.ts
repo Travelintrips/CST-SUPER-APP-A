@@ -1439,9 +1439,18 @@ adminRouter.post("/jobs", async (req, res) => {
       `Klik link di atas untuk update status pengiriman (Pickup → Transit → Delivered).`,
     ].filter(Boolean).join("\n");
     const normalizedPhone = normalizePhone(effectivePhone);
-    sendWhatsApp(normalizedPhone, msg).catch((err: unknown) => {
-      req.log?.warn?.({ err, phone: normalizedPhone }, "sendWhatsApp WA Mini Form failed (non-fatal)");
-    });
+    req.log?.info({ driverPhoneNorm: normalizedPhone, jobNumber, jobId: job.id }, "[WA-driver] mengirim WA ke driver INTERNAL (WA_MINI_FORM)...");
+    sendWhatsApp(normalizedPhone, msg, {
+      context: "driver-job-assigned-internal",
+      refType:  "driver_job",
+      refId:    String(job.id),
+    })
+      .then(() => {
+        req.log?.info({ phone: normalizedPhone, jobNumber, jobId: job.id }, "[WA-driver] WA ke driver INTERNAL BERHASIL");
+      })
+      .catch((err: unknown) => {
+        req.log?.warn?.({ err, phone: normalizedPhone, jobId: job.id }, "[WA-driver] WA ke driver INTERNAL GAGAL — akan di-retry oleh waRetryWorker");
+      });
   } else if (resolvedDriverType === "EXTERNAL" && driver?.phone) {
     // EXTERNAL: kirim WA link buka CST Driver App
     const { normalizePhone } = await import("../lib/phoneUtils.js");
@@ -1462,12 +1471,16 @@ adminRouter.post("/jobs", async (req, res) => {
       `Buka aplikasi CST Driver:`,
       `https://${domain}/api/driver/open-app`,
     ].filter(Boolean).join("\n");
-    sendWhatsApp(normalizedDriverPhone, msg)
+    sendWhatsApp(normalizedDriverPhone, msg, {
+      context: "driver-job-assigned-external",
+      refType:  "driver_job",
+      refId:    String(job.id),
+    })
       .then(() => {
-        req.log?.info({ driverId: driver!.id, phone: normalizedDriverPhone, jobNumber }, "[WA-driver] WA ke driver EXTERNAL BERHASIL");
+        req.log?.info({ driverId: driver!.id, phone: normalizedDriverPhone, jobNumber, jobId: job.id }, "[WA-driver] WA ke driver EXTERNAL BERHASIL");
       })
       .catch((err: unknown) => {
-        req.log?.error?.({ err, driverId: driver!.id, phone: normalizedDriverPhone }, "[WA-driver] WA ke driver EXTERNAL GAGAL");
+        req.log?.error?.({ err, driverId: driver!.id, phone: normalizedDriverPhone, jobId: job.id }, "[WA-driver] WA ke driver EXTERNAL GAGAL — akan di-retry oleh waRetryWorker");
       });
   }
 
