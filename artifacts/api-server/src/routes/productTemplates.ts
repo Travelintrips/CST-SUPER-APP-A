@@ -1,8 +1,9 @@
 import { Router, Request, Response } from "express";
 import { db } from "@workspace/db";
 import { productTemplatesTable } from "@workspace/db";
-import { eq, asc, sql } from "drizzle-orm";
+import { eq, asc, sql, or, isNull, and } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
+import { resolveCompanyId } from "../lib/resolveCompany.js";
 import { logger } from "../lib/logger.js";
 import {
   resolveAllTemplates,
@@ -61,6 +62,22 @@ Promise.all([
   db.execute(sql`ALTER TABLE product_templates ADD COLUMN IF NOT EXISTS icon TEXT`),
   db.execute(sql`ALTER TABLE product_templates ADD COLUMN IF NOT EXISTS description TEXT`),
   db.execute(sql`ALTER TABLE product_templates ADD COLUMN IF NOT EXISTS sort_order INTEGER NOT NULL DEFAULT 0`),
+  db.execute(sql`ALTER TABLE product_templates ADD COLUMN IF NOT EXISTS company_id INTEGER REFERENCES companies(id)`),
+  db.execute(sql`
+    DO $$ BEGIN
+      IF EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'product_templates_category_key_key'
+          AND conrelid = 'product_templates'::regclass
+      ) THEN
+        ALTER TABLE product_templates DROP CONSTRAINT product_templates_category_key_key;
+      END IF;
+    END $$
+  `),
+  db.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_product_templates_company_key
+    ON product_templates (COALESCE(company_id, 0), category_key)
+  `),
 ]).catch((err) => {
   logger.warn({ err: String(err) }, "product_templates column migration failed (non-fatal)");
 });
@@ -733,9 +750,11 @@ function bumpPatch(version: string): string {
 // ─────────────────────────────────────────────
 productTemplatesRouter.get("/", async (req: Request, res: Response) => {
   try {
+    const companyId = resolveCompanyId(req);
     const rows = await db
       .select()
       .from(productTemplatesTable)
+      .where(or(eq(productTemplatesTable.companyId, companyId), isNull(productTemplatesTable.companyId)))
       .orderBy(asc(productTemplatesTable.sortOrder), asc(productTemplatesTable.label));
 
     if (req.query.raw === "1") {
@@ -774,11 +793,20 @@ productTemplatesRouter.get("/:key", async (req: Request, res: Response) => {
   try {
     const key = req.params.key as string;
     const byId = Number(key);
+    const companyId = resolveCompanyId(req);
+    const companyFilter = or(eq(productTemplatesTable.companyId, companyId), isNull(productTemplatesTable.companyId));
     let dbRows;
     if (!isNaN(byId)) {
-      dbRows = await db.select().from(productTemplatesTable).where(eq(productTemplatesTable.id, byId));
+      dbRows = await db.select().from(productTemplatesTable).where(
+        and(eq(productTemplatesTable.id, byId), companyFilter)
+      );
     } else {
-      dbRows = await db.select().from(productTemplatesTable).where(eq(productTemplatesTable.categoryKey, key));
+      // Fetch all matching rows, prefer company-specific over global
+      const allRows = await db.select().from(productTemplatesTable).where(
+        and(eq(productTemplatesTable.categoryKey, key), companyFilter)
+      );
+      const companyRow = allRows.find(r => r.companyId != null);
+      dbRows = companyRow ? [companyRow] : allRows.slice(0, 1);
     }
     if (req.query.raw === "1") {
       if (!dbRows.length) return res.status(404).json({ message: "Template tidak ditemukan" });
@@ -826,7 +854,9 @@ productTemplatesRouter.post("/", requireAdmin, async (req: Request, res: Respons
       return res.status(400).json({ message: "categoryKey dan label wajib diisi" });
     }
 
+    const companyId = resolveCompanyId(req);
     const [row] = await db.insert(productTemplatesTable).values({
+      companyId,
       categoryKey: String(categoryKey),
       label: String(label),
       version: String(version),
@@ -858,7 +888,10 @@ productTemplatesRouter.put("/:id", requireAdmin, async (req: Request, res: Respo
     const id = Number(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
 
-    const existing = await db.select().from(productTemplatesTable).where(eq(productTemplatesTable.id, id));
+    const companyId = resolveCompanyId(req);
+    const existing = await db.select().from(productTemplatesTable).where(
+      and(eq(productTemplatesTable.id, id), or(eq(productTemplatesTable.companyId, companyId), isNull(productTemplatesTable.companyId)))
+    );
     if (!existing.length) return res.status(404).json({ message: "Template tidak ditemukan" });
 
     const body = req.body as Record<string, unknown>;
@@ -897,13 +930,17 @@ productTemplatesRouter.post("/:id/duplicate", requireAdmin, async (req: Request,
     const id = Number(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
 
-    const existing = await db.select().from(productTemplatesTable).where(eq(productTemplatesTable.id, id));
+    const companyId = resolveCompanyId(req);
+    const existing = await db.select().from(productTemplatesTable).where(
+      and(eq(productTemplatesTable.id, id), or(eq(productTemplatesTable.companyId, companyId), isNull(productTemplatesTable.companyId)))
+    );
     if (!existing.length) return res.status(404).json({ message: "Template tidak ditemukan" });
 
     const src = existing[0]!;
     const newKey = `${src.categoryKey}_copy_${Date.now()}`;
 
     const [dup] = await db.insert(productTemplatesTable).values({
+      companyId,
       categoryKey: newKey,
       label: `${src.label} (Salinan)`,
       version: "1.0.0",
@@ -931,7 +968,10 @@ productTemplatesRouter.patch("/:id/toggle", requireAdmin, async (req: Request, r
     const id = Number(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
 
-    const existing = await db.select().from(productTemplatesTable).where(eq(productTemplatesTable.id, id));
+    const companyId = resolveCompanyId(req);
+    const existing = await db.select().from(productTemplatesTable).where(
+      and(eq(productTemplatesTable.id, id), or(eq(productTemplatesTable.companyId, companyId), isNull(productTemplatesTable.companyId)))
+    );
     if (!existing.length) return res.status(404).json({ message: "Template tidak ditemukan" });
 
     const [updated] = await db.update(productTemplatesTable)
@@ -1002,7 +1042,10 @@ productTemplatesRouter.delete("/:id", requireAdmin, async (req: Request, res: Re
     const id = Number(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
 
-    const existing = await db.select().from(productTemplatesTable).where(eq(productTemplatesTable.id, id));
+    const companyId = resolveCompanyId(req);
+    const existing = await db.select().from(productTemplatesTable).where(
+      and(eq(productTemplatesTable.id, id), or(eq(productTemplatesTable.companyId, companyId), isNull(productTemplatesTable.companyId)))
+    );
     if (!existing.length) return res.status(404).json({ message: "Template tidak ditemukan" });
     if (existing[0]!.isActive) return res.status(400).json({ message: "Nonaktifkan template terlebih dahulu sebelum menghapus" });
 

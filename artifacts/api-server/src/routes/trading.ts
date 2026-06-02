@@ -1,9 +1,10 @@
 import { Router } from "express";
 import { db, stocksTable, suppliersTable, vendorCatalogItemsTable, productsTable, productCategoryMapTable, productCategoriesTable } from "@workspace/db";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, or, isNull, sql } from "drizzle-orm";
 import { postStockReceived } from "../lib/accounting.js";
 import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { requireClerkUser, requireAdmin } from "../lib/requireAdmin.js";
+import { resolveCompanyId } from "../lib/resolveCompany.js";
 
 const router = Router();
 
@@ -92,7 +93,14 @@ router.delete("/stocks/:id", async (req, res) => {
 router.get("/suppliers", async (req, res) => {
   const limit = Math.min(Number(req.query["limit"] ?? 200), 1000);
   const offset = Math.max(Number(req.query["offset"] ?? 0), 0);
-  const suppliers = await db.select().from(suppliersTable).orderBy(suppliersTable.createdAt).limit(limit).offset(offset);
+  const companyId = resolveCompanyId(req);
+  const suppliers = await db
+    .select()
+    .from(suppliersTable)
+    .where(or(eq(suppliersTable.companyId, companyId), isNull(suppliersTable.companyId)))
+    .orderBy(suppliersTable.createdAt)
+    .limit(limit)
+    .offset(offset);
   return res.json(suppliers.map(s => ({ ...s, fee: Number(s.fee ?? 0), createdAt: s.createdAt.toISOString() })));
 });
 
@@ -101,7 +109,9 @@ router.post("/suppliers", async (req, res) => {
   if (!(await requireAdmin(req, res))) return;
   const { name, country, contactEmail, contactPerson, phone, address, taxId, defaultPurchaseTaxId,
     serviceType, isActive, logo, eta, fee, note, sortOrder } = req.body;
+  const companyId = resolveCompanyId(req);
   const [supplier] = await db.insert(suppliersTable).values({
+    companyId,
     name, country: country ?? null, contactEmail: contactEmail ?? null,
     contactPerson: contactPerson ?? null,
     phone: phone ?? null, address: address ?? null,
@@ -151,7 +161,10 @@ router.delete("/suppliers/:id", async (req, res) => {
   if (!(await requireAdmin(req, res))) return;
   const id = Number(req.params.id);
   if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
-  const [deleted] = await db.delete(suppliersTable).where(eq(suppliersTable.id, id)).returning();
+  const companyId = resolveCompanyId(req);
+  const [deleted] = await db.delete(suppliersTable)
+    .where(and(eq(suppliersTable.id, id), or(eq(suppliersTable.companyId, companyId), isNull(suppliersTable.companyId))))
+    .returning();
   if (!deleted) return res.status(404).json({ message: "Supplier not found" });
   // Cascade storage cleanup — logo (hanya jika berupa URL, bukan emoji)
   if (deleted.logo && (deleted.logo.startsWith("http") || deleted.logo.startsWith("/api/storage"))) {

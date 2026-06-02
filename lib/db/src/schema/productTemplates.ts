@@ -1,8 +1,10 @@
 import { pgTable, serial, text, boolean, jsonb, timestamp, integer } from "drizzle-orm/pg-core";
+import { companiesTable } from "./companies";
 
 export const productTemplatesTable = pgTable("product_templates", {
   id: serial("id").primaryKey(),
-  categoryKey: text("category_key").notNull().unique(),
+  companyId: integer("company_id").references(() => companiesTable.id),
+  categoryKey: text("category_key").notNull(),
   label: text("label").notNull(),
   version: text("version").notNull().default("1.0.0"),
   isActive: boolean("is_active").notNull().default(true),
