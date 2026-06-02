@@ -386,6 +386,7 @@ fulfillmentAdminRouter.get("/orders/:orderId/fulfillment", async (req: Request, 
         dj.pod_submitted_at,
         dj.pod_geo_lat,
         dj.pod_geo_lng,
+        dj.pod_signature_data_url,
         d.name  AS driver_name,
         d.phone AS driver_phone,
         d.vehicle_plate
