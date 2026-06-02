@@ -1,5 +1,6 @@
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
+import { notifySyncError } from "./sportSyncNotifier.js";
 
 const PREFIX = "[SportSync]";
 
@@ -187,9 +188,12 @@ export async function syncFacilityUpsert(row: FacilityRow): Promise<void> {
   const ops = [syncToServicesViaClient(row), syncToFacilitiesViaClient(row)];
   const results = await Promise.allSettled(ops);
   const hasError = results.some(r => r.status === "rejected");
+  const errorMessages: string[] = [];
   for (const r of results) {
     if (r.status === "rejected") {
+      const msg = r.reason instanceof Error ? r.reason.message : String(r.reason);
       console.error(`${PREFIX} facility upsert gagal setelah retry:`, r.reason);
+      errorMessages.push(msg);
     }
   }
   void writeSyncLog({
@@ -197,9 +201,17 @@ export async function syncFacilityUpsert(row: FacilityRow): Promise<void> {
     action: "upsert",
     entityId: row.id,
     status: hasError ? "error" : "ok",
-    detail: hasError ? "partial failure" : undefined,
+    detail: hasError ? errorMessages[0] ?? "partial failure" : undefined,
     companyId: row.company_id,
   });
+  if (hasError) {
+    void notifySyncError([{
+      facilityId: row.id,
+      facilityName: row.name,
+      action: "upsert",
+      error: errorMessages.join("; "),
+    }]);
+  }
 }
 
 export async function syncFacilityDelete(id: number, name: string, companyId?: number | null): Promise<void> {
@@ -239,12 +251,28 @@ export async function syncFacilityDelete(id: number, name: string, companyId?: n
 
   const results = await Promise.allSettled(ops);
   const hasError = results.some(r => r.status === "rejected");
+  const errorMessages: string[] = [];
   for (const r of results) {
     if (r.status === "rejected") {
+      const msg = r.reason instanceof Error ? r.reason.message : String(r.reason);
       console.error(`${PREFIX} facility delete sync gagal:`, r.reason);
+      errorMessages.push(msg);
     }
   }
-  void writeSyncLog({ entity: "facility", action: "delete", entityId: id, status: hasError ? "error" : "ok", companyId });
+  void writeSyncLog({
+    entity: "facility", action: "delete", entityId: id,
+    status: hasError ? "error" : "ok",
+    detail: hasError ? errorMessages[0] ?? "delete failure" : undefined,
+    companyId,
+  });
+  if (hasError) {
+    void notifySyncError([{
+      facilityId: id,
+      facilityName: name,
+      action: "delete",
+      error: errorMessages.join("; "),
+    }]);
+  }
 }
 
 export async function syncBookingUpsert(row: BookingRow): Promise<void> {
@@ -312,18 +340,45 @@ export async function syncAllFacilities(): Promise<{ synced: number; errors: num
   const rows = result.rows as FacilityRow[];
   let synced = 0;
   let errors = 0;
+  const failedEntries: import("./sportSyncNotifier.js").SyncErrorEntry[] = [];
 
   for (const row of rows) {
-    try {
-      await syncFacilityUpsert(row);
-      synced++;
-    } catch {
+    const ops = [syncToServicesViaClient(row), syncToFacilitiesViaClient(row)];
+    const results = await Promise.allSettled(ops);
+    const rowHasError = results.some(r => r.status === "rejected");
+    const rowErrors = results
+      .filter((r): r is PromiseRejectedResult => r.status === "rejected")
+      .map(r => r.reason instanceof Error ? r.reason.message : String(r.reason));
+
+    if (rowHasError) {
       errors++;
+      failedEntries.push({
+        facilityId: row.id,
+        facilityName: row.name,
+        action: "resync",
+        error: rowErrors.join("; "),
+      });
+      void writeSyncLog({
+        entity: "facility", action: "upsert", entityId: row.id,
+        status: "error", detail: rowErrors[0] ?? "sync failure", companyId: row.company_id,
+      });
+    } else {
+      synced++;
     }
   }
 
   console.log(`${PREFIX} full facility sync: ${synced} OK, ${errors} gagal dari ${rows.length} total`);
-  void writeSyncLog({ entity: "facility", action: "resync", entityId: null, status: errors === 0 ? "ok" : "error", detail: `${synced}/${rows.length} OK` });
+  void writeSyncLog({
+    entity: "facility", action: "resync", entityId: null,
+    status: errors === 0 ? "ok" : "error",
+    detail: `${synced}/${rows.length} OK${errors > 0 ? ` — ${errors} gagal` : ""}`,
+  });
+
+  // Kirim satu notifikasi WA untuk semua kegagalan (aggregate, dedup via Fonnte)
+  if (failedEntries.length > 0) {
+    void notifySyncError(failedEntries);
+  }
+
   return { synced, errors, total: rows.length };
 }
 
