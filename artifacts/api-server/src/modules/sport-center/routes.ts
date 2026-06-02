@@ -3,7 +3,7 @@ import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { requireAdmin } from "../../lib/requireAdmin.js";
 import { handleSportCenterSse, broadcastSportCenterEvent } from "./broadcast.js";
-import { postSportCenterBooking, postSportCenterBookingReversal, postSportCenterRefund, postSportCenterMembershipPayment } from "../../lib/accounting.js";
+import { postSportCenterBooking, postSportCenterBookingReversal, postSportCenterRefund, postSportCenterMembershipPayment, postSportCenterBookingWithTax, postSportCenterBookingRefundDirect } from "../../lib/accounting.js";
 
 const router = Router();
 
@@ -251,16 +251,25 @@ router.post("/bookings", requireAdmin, async (req, res) => {
     }
 
     const resolvedTotal = Math.max(0, Number(base_amount) - resolvedDiscount);
+
+    // PPN 11% jika apply_tax = true
+    const applyTax = Boolean(req.body.apply_tax ?? false);
+    const TAX_RATE = 11;
+    const taxRate   = applyTax ? TAX_RATE : 0;
+    const taxAmount = applyTax ? Math.round(resolvedTotal * TAX_RATE) / 100 : 0;
+
     const bookingNumber = await nextBookingNumber(company_id);
     const r = await db.execute(sql`
       INSERT INTO sport_bookings
         (company_id, booking_number, customer_id, customer_name, customer_phone, facility_id, facility_name,
          booking_date, start_time, end_time, duration_hours, base_amount, discount_amount, total_amount,
+         tax_rate, tax_amount,
          promo_id, promo_code, notes, status, payment_status)
       VALUES
         (${company_id ?? null}, ${bookingNumber}, ${customer_id ?? null}, ${customer_name}, ${customer_phone ?? null},
          ${facility_id ?? null}, ${facility_name}, ${booking_date}, ${start_time}, ${end_time},
          ${duration_hours}, ${base_amount}, ${resolvedDiscount}, ${resolvedTotal},
+         ${taxRate}, ${taxAmount},
          ${resolvedPromoId}, ${resolvedPromoCode}, ${notes ?? null}, 'pending', 'unpaid')
       RETURNING *
     `);
@@ -817,24 +826,41 @@ router.post("/payments", requireAdmin, async (req, res) => {
     await db.execute(sql`UPDATE sport_bookings SET payment_status = 'paid', updated_at = NOW() WHERE id = ${booking_id}`);
     const row = r.rows[0] as Record<string, unknown>;
 
-    // Post jurnal accounting — fire-and-forget, tidak blokir response
+    // Post jurnal accounting (dengan PPN jika ada) — fire-and-forget
     const bookingRes = await db.execute(sql`
-      SELECT booking_number, customer_name, facility_name, booking_date, total_amount, company_id
+      SELECT booking_number, customer_name, facility_name, booking_date, total_amount, tax_rate, tax_amount, company_id
       FROM sport_bookings WHERE id = ${booking_id} LIMIT 1
     `);
     if (bookingRes.rows.length) {
       const b = bookingRes.rows[0] as Record<string, unknown>;
       const createdById = (req.user as { id: string } | undefined)?.id ?? null;
-      postSportCenterBooking({
-        bookingId: booking_id,
-        bookingCode: String(b.booking_number ?? paymentNumber),
-        customerName: String(b.customer_name ?? ""),
-        facilityName: String(b.facility_name ?? ""),
-        date: String(b.booking_date ?? new Date().toISOString().slice(0, 10)),
-        totalPrice: Number(b.total_amount ?? amount),
-        createdById,
-        companyId: b.company_id != null ? Number(b.company_id) : (company_id ?? null),
-      }).catch(() => {});
+      const bTaxAmount = Number(b.tax_amount ?? 0);
+      const bTotalAmount = Number(b.total_amount ?? amount);
+      const bCompanyId = b.company_id != null ? Number(b.company_id) : (company_id ?? null);
+      if (bTaxAmount > 0) {
+        postSportCenterBookingWithTax({
+          bookingId: booking_id,
+          bookingCode: String(b.booking_number ?? paymentNumber),
+          customerName: String(b.customer_name ?? ""),
+          facilityName: String(b.facility_name ?? ""),
+          date: String(b.booking_date ?? new Date().toISOString().slice(0, 10)),
+          baseAmount: bTotalAmount,
+          taxAmount: bTaxAmount,
+          createdById,
+          companyId: bCompanyId,
+        }).catch(() => {});
+      } else {
+        postSportCenterBooking({
+          bookingId: booking_id,
+          bookingCode: String(b.booking_number ?? paymentNumber),
+          customerName: String(b.customer_name ?? ""),
+          facilityName: String(b.facility_name ?? ""),
+          date: String(b.booking_date ?? new Date().toISOString().slice(0, 10)),
+          totalPrice: bTotalAmount,
+          createdById,
+          companyId: bCompanyId,
+        }).catch(() => {});
+      }
     }
 
     broadcastSportCenterEvent({ module: "sport-center", entity: "payment", action: "created", data: row, timestamp: new Date().toISOString() }, company_id);
@@ -1103,6 +1129,149 @@ router.patch("/refunds/:id", requireAdmin, async (req, res) => {
     res.json(updated);
   } catch {
     res.status(500).json({ error: "Gagal mengubah status refund" });
+  }
+});
+
+// ── REFUND SHORTCUT (POST /bookings/:id/refund) ───────────────────────────────
+// Endpoint satu langkah: cancel booking (jika belum) → buat refund → posting jurnal
+
+router.post("/bookings/:id/refund", requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { refund_amount, refund_reason } = req.body;
+    const actorId = (req.user as { id: string } | undefined)?.id ?? null;
+
+    if (!refund_amount) return res.status(400).json({ error: "refund_amount wajib" });
+    const amt = Number(refund_amount);
+    if (isNaN(amt) || amt <= 0) return res.status(400).json({ error: "refund_amount harus angka positif" });
+
+    const bookingRes = await db.execute(sql`SELECT * FROM sport_bookings WHERE id = ${id} LIMIT 1`);
+    if (!bookingRes.rows.length) return res.status(404).json({ error: "Booking tidak ditemukan" });
+    const booking = bookingRes.rows[0] as Record<string, unknown>;
+    if (booking.status === "completed") return res.status(400).json({ error: "Booking selesai tidak dapat di-refund" });
+
+    // Cancel booking jika belum cancelled
+    if (booking.status !== "cancelled") {
+      await db.execute(sql`
+        UPDATE sport_bookings
+        SET status = 'cancelled', cancelled_at = NOW(), cancelled_reason = ${refund_reason ?? 'Refund'}, updated_at = NOW()
+        WHERE id = ${id}
+      `);
+    }
+
+    // Update payment_status → refunded
+    await db.execute(sql`
+      UPDATE sport_bookings SET payment_status = 'refunded', updated_at = NOW() WHERE id = ${id}
+    `);
+
+    // Buat record refund
+    const cmpId = booking.company_id ?? null;
+    const refundNumber = await nextRefundNumber(cmpId ? Number(cmpId) : undefined);
+    const paidRes = await db.execute(sql`
+      SELECT COALESCE(SUM(amount),0) AS total_paid FROM sport_payments
+      WHERE booking_id = ${id} AND status = 'paid'
+    `);
+    const totalPaid = Number((paidRes.rows[0] as any).total_paid);
+    const refundAmt = Math.min(amt, totalPaid > 0 ? totalPaid : amt);
+
+    const rr = await db.execute(sql`
+      INSERT INTO sport_refunds (company_id, booking_id, customer_id, refund_number, refund_amount, refund_reason, status, processed_by)
+      VALUES (${cmpId ?? null}, ${id}, ${booking.customer_id ?? null}, ${refundNumber}, ${refundAmt}, ${refund_reason ?? null}, 'paid', ${actorId})
+      RETURNING *
+    `);
+    const refund = rr.rows[0] as Record<string, unknown>;
+
+    // Post jurnal accounting — source: sport_center_booking_refund
+    postSportCenterBookingRefundDirect({
+      bookingId: id,
+      bookingCode: String(booking.booking_number ?? `BK-${id}`),
+      customerName: String(booking.customer_name ?? ""),
+      amount: refundAmt,
+      companyId: cmpId != null ? Number(cmpId) : null,
+    }).catch(() => {});
+
+    await db.execute(sql`
+      INSERT INTO sport_audit_logs (company_id, entity_type, entity_id, action, actor, new_data)
+      VALUES (${cmpId ?? null}, 'booking', ${id}, 'BOOKING_REFUNDED', ${actorId},
+        ${JSON.stringify({ refund_number: refundNumber, amount: refundAmt, reason: refund_reason ?? null })}::jsonb)
+    `);
+
+    broadcastSportCenterEvent({ module: "sport-center", entity: "booking", action: "refunded", data: { booking_id: id, refund }, timestamp: new Date().toISOString() }, cmpId as number | undefined);
+    res.status(201).json({ booking_id: id, refund_number: refundNumber, refund_amount: refundAmt, payment_status: "refunded", refund });
+  } catch (err: any) {
+    if (String(err?.message ?? "").includes("unique")) return res.status(409).json({ error: "Refund sudah ada untuk booking ini" });
+    res.status(500).json({ error: "Gagal memproses refund" });
+  }
+});
+
+// ── MAINTENANCE REQUEST PLACEHOLDER (Fase 3 — persiapan integrasi Purchase) ───
+
+router.post("/facilities/:id/request-maintenance", requireAdmin, async (req, res) => {
+  try {
+    const facilityId = Number(req.params.id);
+    if (isNaN(facilityId)) return res.status(400).json({ error: "ID fasilitas tidak valid" });
+
+    const { item, quantity = 1, vendor, notes, company_id } = req.body;
+    if (!item) return res.status(400).json({ error: "item wajib diisi" });
+
+    // Validasi company_id — harus PT Cahaya Sejati Teknologi (companyId dari fasilitas)
+    const facilityRes = await db.execute(sql`SELECT * FROM sport_facilities WHERE id = ${facilityId} LIMIT 1`);
+    if (!facilityRes.rows.length) return res.status(404).json({ error: "Fasilitas tidak ditemukan" });
+    const facility = facilityRes.rows[0] as Record<string, unknown>;
+
+    const cmpId = company_id ?? facility.company_id ?? null;
+    const actorId = (req.user as { id: string } | undefined)?.id ?? null;
+
+    const r = await db.execute(sql`
+      INSERT INTO sport_maintenance_requests
+        (company_id, facility_id, facility_name, item, quantity, vendor, notes, source, status, requested_by)
+      VALUES
+        (${cmpId ?? null}, ${facilityId}, ${facility.name ?? null},
+         ${item}, ${Number(quantity)}, ${vendor ?? null}, ${notes ?? null},
+         'SPORT_CENTER', 'pending', ${actorId})
+      RETURNING *
+    `);
+    const maint = r.rows[0] as Record<string, unknown>;
+
+    await db.execute(sql`
+      INSERT INTO sport_audit_logs (company_id, entity_type, entity_id, action, actor, new_data)
+      VALUES (${cmpId ?? null}, 'facility', ${facilityId}, 'MAINTENANCE_REQUESTED', ${actorId},
+        ${JSON.stringify({ item, quantity, vendor: vendor ?? null, notes: notes ?? null, source: 'SPORT_CENTER', maintenance_id: maint.id })}::jsonb)
+    `);
+
+    // Payload siap untuk diteruskan ke /purchase di Fase 4
+    const purchasePayload = {
+      source: "SPORT_CENTER",
+      facility_id: facilityId,
+      facility_name: facility.name,
+      company_id: cmpId,
+      item,
+      quantity: Number(quantity),
+      vendor: vendor ?? null,
+      notes: notes ?? null,
+      maintenance_request_id: maint.id,
+      status: "pending_purchase_integration",
+    };
+
+    res.status(201).json({
+      maintenance_request: maint,
+      purchase_payload: purchasePayload,
+      note: "Maintenance request tercatat. Integrasi ke modul Purchase akan diproses di Fase 4.",
+    });
+  } catch {
+    res.status(500).json({ error: "Gagal membuat maintenance request" });
+  }
+});
+
+router.get("/facilities/:id/maintenance-requests", requireAdmin, async (req, res) => {
+  try {
+    const facilityId = Number(req.params.id);
+    const r = await db.execute(sql`
+      SELECT * FROM sport_maintenance_requests WHERE facility_id = ${facilityId} ORDER BY created_at DESC
+    `);
+    res.json(r.rows);
+  } catch {
+    res.status(500).json({ error: "Gagal memuat maintenance requests" });
   }
 });
 

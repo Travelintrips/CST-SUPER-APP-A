@@ -1,0 +1,104 @@
+FASE 3 — PENGEMBANGAN FITUR SPORT CENTER & PERSIAPAN PURCHASE
+
+Tujuan:
+- Menambahkan endpoint & fungsi yang masih hilang untuk Sport Center.
+- Persiapkan integrasi biaya/operasional ke modul Purchase (tanpa mengubah workflow existing).
+- Tidak mengganggu database yang sudah ada, companyId, atau jurnal Accounting yang berjalan di Fase 2.
+
+A. CRUD Promo
+
+1. Buat route baru: `/api/sport-center/promos`
+   - GET: list promo
+   - POST: create promo
+   - PATCH /promos/:id: update promo
+   - DELETE /promos/:id: delete promo
+2. Hubungkan tabel `sport_promos` dengan `sport_bookings`:
+   - booking.promo_id dapat dipilih dari promo aktif
+   - booking.discount_amount otomatis dari promo value
+3. Middleware: requireAdmin
+
+B. Cancel Booking + Jurnal Reversal
+
+1. Tambahkan PATCH `/api/sport-center/bookings/:id/cancel`
+2. Logic:
+   - Update booking.status = "cancelled"
+   - Jika payment sudah ada → panggil fungsi reversal jurnal Accounting
+     - Debit Pendapatan Sport Center
+     - Credit Kas
+     - Source tetap `"sport_center_booking"`
+     - CompanyId dari booking
+3. Middleware: requireAdmin
+
+C. Refund Endpoint
+
+1. Tambahkan POST `/api/sport-center/bookings/:id/refund`
+2. Logic:
+   - Input: refund_amount
+   - Update booking.payment_status = "refunded"
+   - Posting jurnal Accounting sesuai Fase 2:
+     - Debit Pendapatan
+     - Credit Kas/Bank
+   - Source: `"sport_center_booking_refund"`
+   - CompanyId: dari booking
+3. Middleware: requireAdmin
+
+D. Membership Payment
+
+1. Tambahkan route POST `/api/sport-center/members/:id/payment`
+2. Logic:
+   - Input: payment_amount, method
+   - Insert ke table `sport_member_payments` (buat jika belum ada)
+   - Posting jurnal Accounting:
+     - Debit Kas
+     - Credit Pendapatan Membership
+     - Source: `"sport_center_membership"`
+     - CompanyId: dari member
+3. Middleware: requireAdmin
+
+E. Field Pajak/PPN
+
+1. Tambahkan column `tax_amount` dan `tax_rate` pada tabel:
+   - `sport_bookings` (default: 0)
+   - `sport_payments` (default: 0)
+2. Hitung PPN 11% pada payment atau booking jika applicable
+3. Posting jurnal Accounting juga harus memperhitungkan tax_amount:
+   - Debit Kas = total_amount + tax_amount
+   - Kredit Pendapatan = total_amount
+   - Kredit PPN Keluaran = tax_amount
+4. Middleware: requireAdmin
+
+F. Persiapan Integrasi Purchase (Biaya Operasional/Fasilitas)
+
+1. Tambahkan placeholder atau action server-side:
+   - Endpoint `/api/sport-center/facilities/:id/request-maintenance`
+   - Input: item, quantity, vendor (optional), notes
+   - Belum diteruskan ke modul Purchase — hanya persiapkan payload dan validasi companyId = PT Cahaya Sejati Teknologi
+2. Simpan reference facility_id dan source = `"SPORT_CENTER"`
+3. Middleware: requireAdmin
+4. Goal: Saat fase selanjutnya, payload ini bisa diposting langsung ke `/purchase` tanpa merubah modul Purchase existing
+
+G. Test Checklist Fase 3
+
+1. CRUD promo → pastikan bisa create, list, update, delete
+2. Cancel booking → booking status update + jurnal reversal terbuat
+3. Refund → payment status update + jurnal terbuat
+4. Membership payment → insert + jurnal terbuat
+5. Pajak/PPN → dihitung dan jurnal posting sesuai tarif
+6. Persiapan maintenance request → payload valid, reference facility & source tercatat
+7. Semua endpoint memakai requireAdmin
+8. Tidak ada perubahan database selain column tax_amount/tax_rate dan tabel member_payments jika diperlukan
+9. Tidak mengganggu Fase 1–2
+
+H. Laporan Fase 3
+
+Laporkan:
+1. File yang diubah
+2. Endpoint baru dan route yang dibuat
+3. Tabel baru/column baru
+4. Logika Accounting yang terhubung (cancel/refund/membership)
+5. Logika PPN
+6. Hasil test endpoint
+7. Placeholder integrasi Purchase
+8. Gap yang masih tersisa (misal: full Purchase integration belum ada)
+
+STOP setelah Fase 3 selesai. Jangan lanjut ke integrasi penuh Purchase sampai Fase 4.
