@@ -10,6 +10,7 @@ import { startVmfGapNotifier, runVmfGapCheck } from "./lib/vmfGapNotifier";
 import { startFulfillmentExpiryNotifier } from "./lib/fulfillmentExpiryNotifier";
 import { runPhase1Migration } from "./lib/phase1Migration";
 import { startWorkflowWorker } from "./lib/workflowWorker";
+import { startDriverJobWorker } from "./lib/driverJobWorker.js";
 import { startWaRetryWorker } from "./lib/waRetryWorker";
 import { remediateOrphanProducts } from "./lib/remediateOrphanProducts";
 import { seedProductTemplates } from "./routes/productTemplates.js";
@@ -264,6 +265,7 @@ async function startServer() {
   startVmfGapNotifier();
   startFulfillmentExpiryNotifier();
   startWorkflowWorker();
+  startDriverJobWorker();
   startDbBackupScheduler();
   startWaRetryWorker();
 

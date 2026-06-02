@@ -19,6 +19,7 @@ import LogisticsPortalOrdersPage from "@/pages/logistics-portal-orders";
 import LogisticsPortalOrderDetailPage from "@/pages/logistics-portal-order-detail";
 import LogisticsDriversPage from "@/pages/logistics-drivers";
 import LogisticsDriverPerformancePage from "@/pages/logistics-driver-performance";
+import DriverAnalyticsDashboardPage from "@/pages/logistics/drivers-analytics";
 import LogisticsQuoteRequestsPage from "@/pages/logistics-quote-requests";
 import LogisticsVendorsPage from "@/pages/logistics-vendors";
 import LogisticsQuotationReplyPage from "@/pages/logistics-quotation-reply";
@@ -186,6 +187,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/logistics/freight" component={PR(LogisticsFreightPage)} />
       <Route path="/logistics/portal-orders/:id" component={PR(LogisticsPortalOrderDetailPage)} />
       <Route path="/logistics/portal-orders" component={PR(LogisticsPortalOrdersPage)} />
+      <Route path="/logistics/drivers/analytics" component={PR(DriverAnalyticsDashboardPage)} />
       <Route path="/logistics/drivers/:id/performance" component={PR(LogisticsDriverPerformancePage)} />
       <Route path="/logistics/drivers" component={PR(LogisticsDriversPage)} />
       <Route path="/logistics/driver-performance" component={PR(LogisticsDriverPerformancePage)} />

@@ -844,6 +844,94 @@ adminRouter.post("/geofence-alerts/:id/resolve", (req, res) => {
   res.json({ ok: true, resolved });
 });
 
+// GET /api/drivers/analytics/summary?days=30&driverType=
+adminRouter.get("/analytics/summary", async (req, res) => {
+  const days = Math.min(Number(req.query.days ?? 30), 365);
+  const driverTypeFilter = req.query.driverType as string | undefined;
+  const fromDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+  const { sql: sqlFn, gte: gte2, lte: lte2 } = await import("drizzle-orm");
+
+  const allJobs = await db
+    .select({
+      id: driverJobsTable.id,
+      jobNumber: driverJobsTable.jobNumber,
+      status: driverJobsTable.status,
+      driverType: driverJobsTable.driverType,
+      executionMode: driverJobsTable.executionMode,
+      driverNameOverride: driverJobsTable.driverNameOverride,
+      driverId: driverJobsTable.driverId,
+      assignedAt: driverJobsTable.assignedAt,
+      completedAt: driverJobsTable.completedAt,
+      podReceiverName: driverJobsTable.podReceiverName,
+      logisticOrderId: driverJobsTable.logisticOrderId,
+      deliveryDateTime: driverJobsTable.deliveryDateTime,
+      driverName: driversTable.name,
+    })
+    .from(driverJobsTable)
+    .leftJoin(driversTable, eq(driverJobsTable.driverId, driversTable.id))
+    .where(
+      and(
+        gte2(driverJobsTable.assignedAt, fromDate),
+        ...(driverTypeFilter === "INTERNAL" ? [eq(driverJobsTable.driverType, "INTERNAL")] :
+            driverTypeFilter === "EXTERNAL" ? [eq(driverJobsTable.driverType, "EXTERNAL")] : []),
+      )
+    )
+    .orderBy(desc(driverJobsTable.assignedAt));
+
+  const total = allJobs.length;
+  const completed = allJobs.filter((j) => j.status === "COMPLETED").length;
+  const delivered = allJobs.filter((j) => j.status === "COMPLETED" || j.status === "DELIVERED").length;
+  const cancelled = allJobs.filter((j) => j.status === "CANCELLED").length;
+  const inProgress = allJobs.filter((j) => !["COMPLETED", "DELIVERED", "CANCELLED"].includes(j.status)).length;
+  const internalCount = allJobs.filter((j) => j.driverType === "INTERNAL").length;
+  const externalCount = allJobs.filter((j) => j.driverType !== "INTERNAL").length;
+  const podSubmitted = allJobs.filter((j) => j.podReceiverName).length;
+  const deliveredForPod = delivered;
+
+  const durationJobs = allJobs.filter((j) => j.completedAt && j.assignedAt && ["COMPLETED", "DELIVERED"].includes(j.status));
+  const avgDurationHours = durationJobs.length > 0
+    ? Math.round(durationJobs.reduce((acc, j) => acc + (j.completedAt!.getTime() - j.assignedAt.getTime()) / 3_600_000, 0) / durationJobs.length * 10) / 10
+    : null;
+
+  const onTimeJobs = allJobs.filter((j) => j.deliveryDateTime && ["COMPLETED", "DELIVERED"].includes(j.status));
+  const onTimeCount = onTimeJobs.filter((j) => j.completedAt && j.completedAt <= j.deliveryDateTime!).length;
+
+  // Status distribution for chart
+  const statusDist: Record<string, number> = {};
+  for (const j of allJobs) {
+    statusDist[j.status] = (statusDist[j.status] ?? 0) + 1;
+  }
+
+  // Recent 15 jobs
+  const recentJobs = allJobs.slice(0, 15).map((j) => ({
+    id: j.id,
+    jobNumber: j.jobNumber,
+    status: j.status,
+    driverType: j.driverType,
+    driverName: j.driverType === "INTERNAL" ? (j.driverNameOverride ?? "Driver Internal") : (j.driverName ?? "Driver"),
+    assignedAt: j.assignedAt.toISOString(),
+    completedAt: j.completedAt?.toISOString() ?? null,
+    logisticOrderId: j.logisticOrderId,
+  }));
+
+  res.json({
+    period: { days, from: fromDate.toISOString(), to: new Date().toISOString() },
+    summary: {
+      total, completed, delivered, cancelled, inProgress,
+      internalCount, externalCount,
+      podSubmitted, deliveredForPod,
+      podRate: deliveredForPod > 0 ? Math.round((podSubmitted / deliveredForPod) * 100) : null,
+      successRate: total > 0 ? Math.round((delivered / total) * 100) : null,
+      avgDurationHours,
+      onTimeCount, onTimeTotal: onTimeJobs.length,
+      onTimePct: onTimeJobs.length > 0 ? Math.round((onTimeCount / onTimeJobs.length) * 100) : null,
+    },
+    statusDistribution: statusDist,
+    recentJobs,
+  });
+});
+
 // GET /api/drivers/performance?from=&to=&driverId=
 adminRouter.get("/performance", async (req, res) => {
   const fromRaw = req.query.from as string | undefined;

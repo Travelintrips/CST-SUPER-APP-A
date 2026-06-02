@@ -24,3 +24,4 @@
 - [DO block parameterized query pitfall](do-block-sql-pitfall.md) — Drizzle sql`` template parameterizes all interpolations; DO $$ blocks reject parameters. Use sql.raw(`...${v}...`) for enum migrations inside PL/pgSQL DO blocks.
 - [FASE 6E Order Exceptions](fase6e-order-exceptions.md) — per-order exception tracking via refType='logistic_order'/refId=orderId; new router in orderExceptions.ts; ExceptionPanel in order-detail.tsx right column.
 - [Multi-Company Data Isolation](multi-company-isolation.md) — company_id added to product_templates & whatsapp_template_configs; unique indexes use COALESCE(company_id,0); suppliers/templates/WA-templates filtered by resolveCompanyId in routes.
+- [FASE 5 Driver Assignment Analytics](fase5-driver-analytics.md) — driverJobWorker (auto-cancel 24h, reminder 6h), analytics/summary endpoint, analytics dashboard page, force-update dialog + SSE toast in OrderDriverAssignmentPanel.
