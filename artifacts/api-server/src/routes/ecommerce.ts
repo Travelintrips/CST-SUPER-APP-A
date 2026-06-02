@@ -523,13 +523,8 @@ function serializeOrder(o: typeof ordersTable.$inferSelect) {
 router.get("/orders", async (req, res) => {
   if (!(await requireClerkUser(req, res))) return;
   const companyId = resolveCompanyId(req);
-  const user = req.user as { role?: string } | undefined;
-  const isAdmin = user?.role === "admin";
-  const whereClause = isAdmin
-    ? or(eq(ordersTable.companyId, companyId), isNull(ordersTable.companyId))
-    : eq(ordersTable.companyId, companyId);
   const orders = await db.select().from(ordersTable)
-    .where(whereClause)
+    .where(eq(ordersTable.companyId, companyId))
     .orderBy(ordersTable.createdAt);
   return res.json(orders.map(serializeOrder));
 });
@@ -551,7 +546,7 @@ router.post("/orders", async (req, res) => {
   const tax = Number(rawTax ?? 0);
   const grand = subtotal + tax;
   const legacyItems: string | null = items ?? null;
-  const orderCompanyId: number | null = null;
+  const orderCompanyId = resolveCompanyId(req);
   const [order] = await db.insert(ordersTable).values({
     companyId: orderCompanyId,
     customerName, customerEmail,
@@ -600,13 +595,8 @@ router.put("/orders/:id", async (req, res) => {
   if (!(await requireClerkUser(req, res))) return;
   const id = Number(req.params.id);
   const companyId = resolveCompanyId(req);
-  const user2 = req.user as { role?: string } | undefined;
-  const isAdmin2 = user2?.role === "admin";
-  const ownerClause = isAdmin2
-    ? or(eq(ordersTable.companyId, companyId), isNull(ordersTable.companyId))
-    : eq(ordersTable.companyId, companyId);
   const [existing] = await db.select().from(ordersTable)
-    .where(and(eq(ordersTable.id, id), ownerClause));
+    .where(and(eq(ordersTable.id, id), eq(ordersTable.companyId, companyId)));
   if (!existing) return res.status(404).json({ message: "Order not found" });
   const { customerName, customerEmail, customerPhone, items, lineItems, totalAmount, taxAmount: rawTax, status } = req.body;
   const parsedLineItems: Array<{ name: string; qty: number; unitPrice: number }> | null =
@@ -683,13 +673,8 @@ router.delete("/orders/:id", async (req, res) => {
   if (!(await requireClerkUser(req, res))) return;
   const id = Number(req.params.id);
   const companyId = resolveCompanyId(req);
-  const user3 = req.user as { role?: string } | undefined;
-  const isAdmin3 = user3?.role === "admin";
-  const delClause = isAdmin3
-    ? or(eq(ordersTable.companyId, companyId), isNull(ordersTable.companyId))
-    : eq(ordersTable.companyId, companyId);
   const [existing] = await db.select({ id: ordersTable.id }).from(ordersTable)
-    .where(and(eq(ordersTable.id, id), delClause));
+    .where(and(eq(ordersTable.id, id), eq(ordersTable.companyId, companyId)));
   if (!existing) return res.status(404).json({ message: "Order not found" });
   await db.delete(ordersTable).where(eq(ordersTable.id, id));
   return res.json({ message: "Order deleted" });

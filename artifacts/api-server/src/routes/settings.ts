@@ -135,10 +135,6 @@ router.get("/wa-template-configs", async (req: Request, res: Response) => {
   try {
     const companyId = resolveCompanyId(req);
     const { getWaDefaultTemplatesFlatMap } = await import("../lib/orderNotification.js");
-    const rows = await db.select().from(waTemplateConfigsTable).where(
-      or(eq(waTemplateConfigsTable.companyId, companyId), isNull(waTemplateConfigsTable.companyId))
-    );
-    // Fetch company-specific + global (NULL) templates
     const rows = await db.select().from(waTemplateConfigsTable)
       .where(or(
         eq(waTemplateConfigsTable.companyId, companyId),
@@ -146,20 +142,15 @@ router.get("/wa-template-configs", async (req: Request, res: Response) => {
       ));
     const savedKeys: string[] = [];
     const configs: Record<string, string> = { ...getWaDefaultTemplatesFlatMap() };
-    // Apply global first, then company-specific overrides
     const globalRows = rows.filter(r => r.companyId === null);
     const companyRows = rows.filter(r => r.companyId !== null);
     for (const row of [...globalRows, ...companyRows]) {
       const key = `${row.recipient}__${row.workflow}`;
-      // Company-specific rows override global rows for the same key
       if (row.body.trim()) {
         if (!savedKeys.includes(key) || row.companyId != null) {
           configs[key] = row.body;
           if (!savedKeys.includes(key)) savedKeys.push(key);
         }
-      if (row.body.trim()) {
-        configs[key] = row.body;
-        if (row.companyId !== null && !savedKeys.includes(key)) savedKeys.push(key);
       }
     }
     return res.json({ configs, savedKeys });
@@ -232,22 +223,6 @@ router.put("/wa-template-configs", async (req: Request, res: Response) => {
   if (!VALID_RECIPIENTS.includes(recipient)) return res.status(400).json({ message: "recipient tidak valid" });
   if (!VALID_WORKFLOWS.includes(workflow)) return res.status(400).json({ message: "workflow tidak valid" });
 
-  // Upsert: check existing by (company_id, recipient, workflow)
-  const [existingRow] = await db.select({ id: waTemplateConfigsTable.id })
-    .from(waTemplateConfigsTable)
-    .where(and(
-      companyId != null ? eq(waTemplateConfigsTable.companyId, companyId) : isNull(waTemplateConfigsTable.companyId),
-      eq(waTemplateConfigsTable.recipient, recipient),
-      eq(waTemplateConfigsTable.workflow, workflow),
-    ));
-  if (existingRow) {
-    await db.update(waTemplateConfigsTable)
-      .set({ body, updatedAt: new Date() })
-      .where(eq(waTemplateConfigsTable.id, existingRow.id));
-  } else {
-    await db.insert(waTemplateConfigsTable).values({ companyId, recipient, workflow, body, updatedAt: new Date() });
-  const companyId = resolveCompanyId(req);
-  // Company-scoped upsert: manual SELECT → UPDATE or INSERT
   const [existing] = await db.select({ id: waTemplateConfigsTable.id })
     .from(waTemplateConfigsTable)
     .where(and(

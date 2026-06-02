@@ -96,12 +96,6 @@ router.get("/suppliers", async (req, res) => {
   const limit = Math.min(Number(req.query["limit"] ?? 200), 1000);
   const offset = Math.max(Number(req.query["offset"] ?? 0), 0);
 
-  const companyId = resolveCompanyId(req);
-  const suppliers = await db
-    .select()
-    .from(suppliersTable)
-    .where(or(eq(suppliersTable.companyId, companyId), isNull(suppliersTable.companyId)))
-
   const scope = resolveCompanyScope(req);
   const whereClause = scope === "all"
     ? undefined
@@ -180,10 +174,6 @@ router.delete("/suppliers/:id", async (req, res) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
   const companyId = resolveCompanyId(req);
-
-  const [deleted] = await db.delete(suppliersTable)
-    .where(and(eq(suppliersTable.id, id), or(eq(suppliersTable.companyId, companyId), isNull(suppliersTable.companyId))))
-    .returning();
 
   const [target] = await db.select({ id: suppliersTable.id, companyId: suppliersTable.companyId })
     .from(suppliersTable).where(eq(suppliersTable.id, id));

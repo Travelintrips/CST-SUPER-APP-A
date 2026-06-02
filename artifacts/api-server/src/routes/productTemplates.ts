@@ -64,23 +64,6 @@ Promise.all([
   db.execute(sql`ALTER TABLE product_templates ADD COLUMN IF NOT EXISTS icon TEXT`),
   db.execute(sql`ALTER TABLE product_templates ADD COLUMN IF NOT EXISTS description TEXT`),
   db.execute(sql`ALTER TABLE product_templates ADD COLUMN IF NOT EXISTS sort_order INTEGER NOT NULL DEFAULT 0`),
-  db.execute(sql`ALTER TABLE product_templates ADD COLUMN IF NOT EXISTS company_id INTEGER REFERENCES companies(id)`),
-  db.execute(sql`
-    DO $$ BEGIN
-      IF EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE conname = 'product_templates_category_key_key'
-          AND conrelid = 'product_templates'::regclass
-      ) THEN
-        ALTER TABLE product_templates DROP CONSTRAINT product_templates_category_key_key;
-      END IF;
-    END $$
-  `),
-  db.execute(sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS uq_product_templates_company_key
-    ON product_templates (COALESCE(company_id, 0), category_key)
-  `),
-]).catch((err) => {
   db.execute(sql`ALTER TABLE product_templates ADD COLUMN IF NOT EXISTS company_id INTEGER REFERENCES companies(id) ON DELETE SET NULL`),
   db.execute(sql`ALTER TABLE service_templates ADD COLUMN IF NOT EXISTS company_id INTEGER REFERENCES companies(id) ON DELETE SET NULL`),
 ]).then(() => Promise.all([

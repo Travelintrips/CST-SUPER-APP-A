@@ -35,7 +35,7 @@ router.get("/org-breakdown", async (req, res) => {
   const dimension = (req.query["dimension"] as string) || "branch"; // branch | division | department
 
   const companyFilter = (!isConsolidated && companyId !== null)
-    ? sql` AND (o.company_id = ${companyId} OR o.company_id IS NULL)`
+    ? sql` AND o.company_id = ${companyId}`
     : sql``;
   const branchFilter = branchId ? sql` AND o.branch_id = ${branchId}` : sql``;
 
@@ -164,11 +164,11 @@ router.get("/summary", async (req, res) => {
   ] = await Promise.all([
     db.select({ count: sql<number>`count(*)` }).from(ordersTable)
       .where(!isConsolidated && companyId !== null
-        ? or(eq(ordersTable.companyId, companyId), isNull(ordersTable.companyId))
+        ? eq(ordersTable.companyId, companyId)
         : undefined),
     db.select({ total: sql<number>`coalesce(sum(total_amount), 0)` }).from(ordersTable)
       .where(!isConsolidated && companyId !== null
-        ? or(eq(ordersTable.companyId, companyId), isNull(ordersTable.companyId))
+        ? eq(ordersTable.companyId, companyId)
         : undefined),
     db.select({ count: sql<number>`count(*)` }).from(freightShipmentsTable)
       .where(freightCompanyFilter),
