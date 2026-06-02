@@ -336,3 +336,14 @@ async function startGateway() {
 }
 
 startGateway();
+
+// Also listen on EXTRA_PORT (default 23434) to resolve port-mapping conflicts
+// where both port 5000 and 23434 are mapped to external port 80 in .replit.
+const EXTRA_PORT = Number(process.env.EXTRA_PORT ?? 23434);
+if (EXTRA_PORT !== PORT) {
+  const extra = http.createServer(handleRequest);
+  extra.on("upgrade", handleUpgrade);
+  extra.listen(EXTRA_PORT, () => {
+    console.log(`Gateway also listening on port ${EXTRA_PORT} (mirror)`);
+  });
+}
