@@ -22,6 +22,7 @@ import { sendViaService as sendWhatsApp, sendMediaViaService } from "../lib/waTr
 import { getAdminWa } from "../lib/adminWa";
 import { getPreferredDomain } from "../lib/domain.js";
 import { resolveServiceCategory } from "@workspace/logistics-constants";
+import { normalizePhone } from "../lib/phoneUtils.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { createAdminActionLink, getAdminActionUrl } from "./adminAction.js";
 import { generateShortLink } from "../lib/shortLink.js";
@@ -767,19 +768,21 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
     }
 
     // ── WA ke driver ──────────────────────────────────────────────────────────
-    const _svcCat      = resolveServiceCategory(link.serviceType);
-    const _driverPhone = (body.driverPhone ?? "").trim();
-    const _driverName  = (body.driverName  ?? "").trim();
+    const _svcCat         = resolveServiceCategory(link.serviceType);
+    const _driverPhoneRaw = (body.driverPhone ?? "").trim();
+    const _driverPhone    = _driverPhoneRaw ? normalizePhone(_driverPhoneRaw) : "";
+    const _driverName     = (body.driverName  ?? "").trim();
     logger.info({
-      orderId:          link.orderId,
-      orderNumber:      order.orderNumber,
-      serviceType:      link.serviceType,
-      svcCategory:      _svcCat,
-      driverPhoneRaw:   _driverPhone  || "(kosong)",
-      driverNameRaw:    _driverName   || "(kosong)",
-      plateNumber:      (body.plateNumber ?? "") || "(kosong)",
-      vehicleType:      (body.vehicleType ?? "") || "(kosong)",
-      pickupTime:       (body.pickupTime  ?? "") || "(kosong)",
+      orderId:           link.orderId,
+      orderNumber:       order.orderNumber,
+      fulfillmentType:   link.serviceType,
+      svcCategory:       _svcCat,
+      driverPhoneRaw:    _driverPhoneRaw  || "(kosong)",
+      driverPhoneNorm:   _driverPhone     || "(kosong)",
+      driverNameRaw:     _driverName      || "(kosong)",
+      plateNumber:       (body.plateNumber ?? "") || "(kosong)",
+      vehicleType:       (body.vehicleType ?? "") || "(kosong)",
+      pickupTime:        (body.pickupTime  ?? "") || "(kosong)",
     }, "[WA-driver] cek kirim WA ke driver");
 
     if (_driverPhone) {
@@ -804,9 +807,10 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
       ].filter(Boolean).join("\n");
 
       logger.info({
-        orderId:    link.orderId,
-        driverPhone: _driverPhone,
-        driverName:  _driverName || "(kosong)",
+        orderId:         link.orderId,
+        driverPhoneRaw:  _driverPhoneRaw,
+        driverPhoneNorm: _driverPhone,
+        driverName:      _driverName || "(kosong)",
       }, "[WA-driver] mengirim WA ke driver...");
 
       sendWhatsApp(_driverPhone, driverMsg, {
@@ -814,15 +818,15 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
         refType:  "vendor_fulfillment_link",
         refId:    String(link.id),
       }).then(() => {
-        logger.info({ orderId: link.orderId, driverPhone: _driverPhone }, "[WA-driver] WA ke driver BERHASIL");
+        logger.info({ orderId: link.orderId, driverPhoneNorm: _driverPhone }, "[WA-driver] WA ke driver BERHASIL");
       }).catch((e: unknown) => {
-        logger.error({ e, orderId: link.orderId, driverPhone: _driverPhone }, "[WA-driver] WA ke driver GAGAL");
+        logger.error({ e, orderId: link.orderId, driverPhoneNorm: _driverPhone }, "[WA-driver] WA ke driver GAGAL");
       });
     } else {
       logger.info({
         skip_reason: "driverPhone kosong",
-        serviceType: link.serviceType,
-        svcCategory: _svcCat,
+        fulfillmentType: link.serviceType,
+        svcCategory:     _svcCat,
       }, "[WA-driver] skip — tidak kirim WA ke driver");
     }
 

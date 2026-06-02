@@ -1432,9 +1432,12 @@ adminRouter.post("/jobs", async (req, res) => {
     });
   } else if (resolvedDriverType === "EXTERNAL" && driver?.phone) {
     // EXTERNAL: kirim WA link buka CST Driver App
+    const { normalizePhone } = await import("../lib/phoneUtils.js");
+    const normalizedDriverPhone = normalizePhone(driver.phone);
     const pickup = job.pickupAddress ?? "-";
     const delivery = job.deliveryAddress ?? "-";
     const customer = job.customerName ?? "-";
+    req.log?.info({ driverId: driver.id, driverPhoneRaw: driver.phone, driverPhoneNorm: normalizedDriverPhone, jobNumber }, "[WA-driver] mengirim WA ke driver EXTERNAL...");
     const msg = [
       `🚚 *Job Baru: ${jobNumber}*`,
       ``,
@@ -1447,9 +1450,13 @@ adminRouter.post("/jobs", async (req, res) => {
       `Buka aplikasi CST Driver:`,
       `https://${domain}/api/driver/open-app`,
     ].filter(Boolean).join("\n");
-    sendWhatsApp(driver.phone, msg).catch((err: unknown) => {
-      req.log?.error?.({ err, driverId: driver!.id, phone: driver!.phone }, "sendWhatsApp failed for job assignment");
-    });
+    sendWhatsApp(normalizedDriverPhone, msg)
+      .then(() => {
+        req.log?.info({ driverId: driver!.id, phone: normalizedDriverPhone, jobNumber }, "[WA-driver] WA ke driver EXTERNAL BERHASIL");
+      })
+      .catch((err: unknown) => {
+        req.log?.error?.({ err, driverId: driver!.id, phone: normalizedDriverPhone }, "[WA-driver] WA ke driver EXTERNAL GAGAL");
+      });
   }
 
   // Notifikasi template ke customer jika job terhubung ke logistic order

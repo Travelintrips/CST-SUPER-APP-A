@@ -1935,7 +1935,20 @@ vendorMiniFormRouter.post("/op-confirm/:token", async (req: Request, res: Respon
     }).catch(() => {});
 
     // Kirim WA ke driver jika driver_phone ada di payload (trucking)
-    const driverPhone = String(payload["driver_phone"] ?? "").trim();
+    const driverPhoneRaw = String(payload["driver_phone"] ?? "").trim();
+    const { normalizePhone } = await import("../lib/phoneUtils.js");
+    const driverPhone = driverPhoneRaw ? normalizePhone(driverPhoneRaw) : "";
+    req.log?.info({
+      orderId:         conf.orderId,
+      orderNumber:     conf.orderNumber,
+      serviceType:     conf.serviceType,
+      driverPhoneRaw:  driverPhoneRaw  || "(kosong)",
+      driverPhoneNorm: driverPhone     || "(kosong)",
+      driverNameRaw:   String(payload["driver_name"] ?? "") || "(kosong)",
+      plateNumber:     String(payload["plate_number"] ?? "") || "(kosong)",
+      vehicleType:     String(payload["vehicle_type"] ?? "") || "(kosong)",
+      pickupTime:      String(payload["pickup_time"]  ?? "") || "(kosong)",
+    }, "[WA-driver] op-confirm cek kirim WA ke driver");
     if (driverPhone) {
       const driverName = String(payload["driver_name"] ?? "").trim() || "Driver";
       const plateNumber = String(payload["plate_number"] ?? "").trim();
@@ -1958,8 +1971,16 @@ vendorMiniFormRouter.post("/op-confirm/:token", async (req: Request, res: Respon
         `Mohon segera hubungi tim CST Logistics untuk koordinasi lebih lanjut.`,
         driverAppUrl ? `\nBuka aplikasi driver:\n${driverAppUrl}` : null,
       ].filter(Boolean).join("\n");
+      req.log?.info({ orderId: conf.orderId, driverPhoneRaw, driverPhoneNorm: driverPhone, driverName }, "[WA-driver] op-confirm mengirim WA ke driver...");
       sendWhatsApp(driverPhone, driverMsg, { context: "op-confirm-driver", refType: "vendor_op_confirm", refId: String(conf.id) })
-        .catch((e: unknown) => req.log?.error({ e }, "op-confirm: WA ke driver gagal"));
+        .then(() => {
+          req.log?.info({ orderId: conf.orderId, driverPhoneNorm: driverPhone }, "[WA-driver] op-confirm WA ke driver BERHASIL");
+        })
+        .catch((e: unknown) => {
+          req.log?.error({ e, orderId: conf.orderId, driverPhoneNorm: driverPhone }, "[WA-driver] op-confirm WA ke driver GAGAL");
+        });
+    } else {
+      req.log?.info({ orderId: conf.orderId, serviceType: conf.serviceType, skip_reason: "driverPhone kosong" }, "[WA-driver] op-confirm skip — tidak kirim WA ke driver");
     }
 
     return res.json({ success: true, message: "Data operasional berhasil dikirim, terima kasih!" });
