@@ -740,6 +740,15 @@ router.post("/location", requireDriverAuth, async (req, res) => {
     updatedAt: new Date().toISOString(),
   });
 
+  if (activeJob2?.logisticOrderId) {
+    broadcastToPortal("driver_location_update", {
+      logisticOrderId: activeJob2.logisticOrderId,
+      lat: Number(lat),
+      lng: Number(lng),
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
   // Geofence check — run async without blocking the response
   (async () => {
     try {

@@ -45,6 +45,12 @@ type DriverPhoto = {
   takenAt: string;
 };
 
+type GpsPoint = {
+  lat: number;
+  lng: number;
+  updatedAt: string;
+};
+
 type TrackData = {
   order: {
     orderNumber: string;
@@ -71,6 +77,8 @@ type TrackData = {
   } | null;
   podFiles?: PodFile[];
   driverPhotos?: DriverPhoto[];
+  liveLocation?: GpsPoint | null;
+  gpsTrail?: GpsPoint[];
 };
 
 const ALL_STEPS = [
@@ -190,6 +198,56 @@ function Lightbox({ url, onClose }: { url: string; onClose: () => void }) {
   );
 }
 
+function LiveMapSection({ location, trail }: { location: GpsPoint; trail: GpsPoint[] }) {
+  const delta = 0.025;
+  const w = location.lng - delta;
+  const s = location.lat - delta;
+  const e = location.lng + delta;
+  const n = location.lat + delta;
+  const osmEmbed = `https://www.openstreetmap.org/export/embed.html?bbox=${w},${s},${e},${n}&layer=mapnik&marker=${location.lat},${location.lng}`;
+  const gmapsUrl = `https://www.google.com/maps?q=${location.lat},${location.lng}`;
+  const minsAgo = Math.round((Date.now() - new Date(location.updatedAt).getTime()) / 60000);
+  const freshLabel = minsAgo < 1 ? "baru saja" : minsAgo < 60 ? `${minsAgo} mnt lalu` : `${Math.round(minsAgo / 60)} jam lalu`;
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+      <div className="px-5 pt-5 pb-3 flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-slate-600 uppercase tracking-wide">📍 Posisi Driver</h2>
+        <div className="flex items-center gap-2">
+          <span className="flex items-center gap-1 text-xs text-green-600 bg-green-50 border border-green-100 rounded-full px-2 py-0.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse inline-block" />
+            {freshLabel}
+          </span>
+          <a
+            href={gmapsUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-blue-600 font-medium hover:underline"
+          >
+            Buka Maps ↗
+          </a>
+        </div>
+      </div>
+
+      <div className="w-full h-52 border-t border-slate-100">
+        <iframe
+          title="Posisi Driver"
+          src={osmEmbed}
+          className="w-full h-full border-0"
+          loading="lazy"
+          sandbox="allow-scripts allow-same-origin"
+        />
+      </div>
+
+      {trail.length > 1 && (
+        <div className="px-5 py-3 border-t border-slate-100">
+          <p className="text-xs text-slate-500">{trail.length} titik GPS tercatat · koordinat: {location.lat.toFixed(5)}, {location.lng.toFixed(5)}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PushToggleSimple({ orderNumber }: { orderNumber: string | null }) {
   const { state, subscribe, unsubscribe } = usePushNotification(orderNumber);
   if (state === "unsupported" || !orderNumber) return null;
@@ -242,19 +300,15 @@ export default function OrderTrackPage() {
     return () => clearInterval(interval);
   }, [doFetch]);
 
-  // SSE — real-time foto driver
+  // SSE — real-time foto driver + posisi GPS
   useEffect(() => {
     if (!trackToken) return;
     const es = new EventSource("/api/sse");
     sseRef.current = es;
 
-    es.addEventListener("driver_photo_uploaded", () => {
-      doFetch();
-    });
-
-    es.addEventListener("order_status_updated", () => {
-      doFetch();
-    });
+    es.addEventListener("driver_photo_uploaded", () => { doFetch(); });
+    es.addEventListener("order_status_updated", () => { doFetch(); });
+    es.addEventListener("driver_location_update", () => { doFetch(); });
 
     return () => {
       es.close();
@@ -464,6 +518,11 @@ export default function OrderTrackPage() {
                 : null} />
             </div>
           </div>
+        )}
+
+        {/* Live GPS Map */}
+        {data.liveLocation && (
+          <LiveMapSection location={data.liveLocation} trail={data.gpsTrail ?? []} />
         )}
 
         {/* POD / Documents */}
