@@ -465,7 +465,7 @@ function WaTemplateDialog({
 
 type CommodityTemplateItem = { id: number; key: string; name: string; icon: string | null };
 
-function CreateLinkDialog({ suppliers, onCreated }: { suppliers: Supplier[]; onCreated: () => void }) {
+function CreateLinkDialog({ onCreated }: { onCreated: () => void }) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"rate_collection" | "order_based">("rate_collection");
   const [serviceType, setServiceType] = useState("");
@@ -480,6 +480,16 @@ function CreateLinkDialog({ suppliers, onCreated }: { suppliers: Supplier[]; onC
   const [commodityTemplateId, setCommodityTemplateId] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
+
+  const { data: allSuppliers = [] } = useQuery<Supplier[]>({
+    queryKey: ["suppliers-simple"],
+    queryFn: () => apiFetch<Supplier[]>("/api/trading/suppliers"),
+    enabled: open,
+  });
+
+  const suppliers = serviceType
+    ? allSuppliers.filter(s => !s.serviceType || s.serviceType === serviceType)
+    : allSuppliers;
 
   const { data: orders } = useQuery<Order[]>({
     queryKey: ["vmf-orders"],
@@ -599,7 +609,7 @@ function CreateLinkDialog({ suppliers, onCreated }: { suppliers: Supplier[]; onC
           {/* Service type */}
           <div className="space-y-1.5">
             <Label>Service Type <span className="text-red-500">*</span></Label>
-            <Select value={serviceType} onValueChange={setServiceType}>
+            <Select value={serviceType} onValueChange={v => { setServiceType(v); setSupplierId(""); }}>
               <SelectTrigger><SelectValue placeholder="Pilih tipe layanan" /></SelectTrigger>
               <SelectContent>
                 {SERVICE_TYPES.map(k => (
@@ -611,16 +621,26 @@ function CreateLinkDialog({ suppliers, onCreated }: { suppliers: Supplier[]; onC
 
           {/* Vendor */}
           <div className="space-y-1.5">
-            <Label>Vendor dari Daftar (opsional)</Label>
+            <div className="flex items-center justify-between">
+              <Label>Vendor dari Daftar (opsional)</Label>
+              {serviceType && suppliers.length > 0 && (
+                <span className="text-xs text-slate-400">{suppliers.length} vendor tersedia</span>
+              )}
+            </div>
             <Select value={supplierId || "__all__"} onValueChange={v => setSupplierId(v === "__all__" ? "" : v)}>
               <SelectTrigger><SelectValue placeholder="Tidak spesifik" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="__all__">— Tidak spesifik —</SelectItem>
                 {suppliers.map(s => (
-                  <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
+                  <SelectItem key={s.id} value={String(s.id)}>
+                    {s.name}{s.serviceType ? ` · ${SERVICE_META[s.serviceType]?.label ?? s.serviceType}` : ""}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            {serviceType && allSuppliers.length > 0 && suppliers.length === 0 && (
+              <p className="text-xs text-amber-600">Tidak ada vendor dengan service type ini. Pilih semua tipe atau tambah vendor baru di menu Purchase → Vendors.</p>
+            )}
           </div>
 
           {/* Commodity Template */}
@@ -2745,7 +2765,7 @@ export default function VendorFormsPage() {
                 </SelectContent>
               </Select>
               <div className="ml-auto">
-                <CreateLinkDialog suppliers={suppliers} onCreated={() => queryClient.invalidateQueries({ queryKey: ["vmf-links"] })} />
+                <CreateLinkDialog onCreated={() => queryClient.invalidateQueries({ queryKey: ["vmf-links"] })} />
               </div>
             </div>
 
