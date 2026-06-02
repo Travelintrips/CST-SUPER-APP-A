@@ -1,4 +1,4 @@
-modules = ["nodejs-20", "web", "bash", "python-3.11", "postgresql-16"]
+modules = ["nodejs-20", "web", "bash", "python-3.11"]
 
 [deployment]
 router = "application"
@@ -114,11 +114,11 @@ defaultBucketID = "replit-objstore-e357cc66-19c3-4d73-9ca9-3069d78355d1"
 
 [[ports]]
 localPort = 3001
-externalPort = 6800
+externalPort = 3002
 
 [[ports]]
 localPort = 5000
-externalPort = 5000
+externalPort = 80
 
 [[ports]]
 localPort = 5173
@@ -129,29 +129,5 @@ localPort = 8080
 externalPort = 8080
 
 [[ports]]
-localPort = 8081
-externalPort = 8081
-
-[[ports]]
-localPort = 8082
-externalPort = 3002
-
-[[ports]]
-localPort = 18442
-externalPort = 3003
-
-[[ports]]
 localPort = 18444
-externalPort = 3001
-
-[[ports]]
-localPort = 19368
-externalPort = 80
-
-[[ports]]
-localPort = 21170
 externalPort = 3000
-
-[[ports]]
-localPort = 23434
-externalPort = 4200
