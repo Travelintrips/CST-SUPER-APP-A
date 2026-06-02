@@ -1,0 +1,139 @@
+Sekarang jangan melakukan audit tambahan, jangan menjalankan migration, jangan memperbaiki file, jangan membuat route, dan jangan mengubah data.
+
+Tampilkan ulang hasil audit final secara lengkap tetapi ringkas dalam format berikut:
+
+1. RINGKASAN STATUS AKTUAL
+
+Buat tabel:
+
+| Area                      | Status | Bukti File/Table/Route | Kesimpulan |
+| ------------------------- | ------ | ---------------------- | ---------- |
+| Sport Center API          |        |                        |            |
+| Sport Center UI BizPortal |        |                        |            |
+| Auth Sport Center         |        |                        |            |
+| Database Sport Center     |        |                        |            |
+| Gateway /sport-center/* |        |                        |            |
+| Referensi port 3002       |        |                        |            |
+| Accounting multi-company  |        |                        |            |
+| Sport Center → Accounting |        |                        |            |
+| Sport Center → Purchase   |        |                        |            |
+| Promo/diskon/pajak/refund |        |                        |            |
+
+2. SPORT CENTER EXISTING
+
+Tampilkan:
+
+* File schema/table Sport Center.
+* Daftar tabel Sport Center yang benar-benar ditemukan.
+* File route API Sport Center.
+* Endpoint utama booking, payment, membership, promo, cancel, refund, reports.
+* Middleware auth yang dipakai.
+* File halaman UI BizPortal Sport Center.
+* Path frontend yang benar-benar terdaftar.
+* Path sidebar yang digunakan.
+
+3. GATEWAY DAN PORT 3002
+
+Tampilkan tabel:
+
+| File | Baris/Bagian | Route/Config | Mengarah ke Port 3002? | Dampak | Perlu Diperbaiki pada Fase 1? |
+| ---- | ------------ | ------------ | ---------------------- | ------ | ----------------------------- |
+
+Pastikan menjawab dengan jelas:
+
+* Apakah /sport-center/* benar masih diproxy ke port 3002?
+* Apakah /api/sport-center/* aman dan tidak ikut diarahkan ke port 3002?
+* Apakah masih ada frontend/workflow Sport Center standalone?
+* Apakah akses benar saat ini melalui /bizportal/sport-center/...?
+
+4. MULTI-COMPANY ACCOUNTING
+
+Tampilkan:
+
+* Nama tabel master company/legal entity yang ditemukan.
+* Field ID dan field nama perusahaan.
+* Daftar company yang berhasil ditemukan dari database atau seed/schema.
+* Apakah record PT Cahaya Sejati Teknologi berhasil ditemukan.
+* ID record PT Cahaya Sejati Teknologi, jika berhasil ditemukan.
+* Jika tidak berhasil mendapatkan ID dari database, tulis jelas: COMPANY ID BELUM BERHASIL DIVERIFIKASI dan jelaskan hambatannya.
+
+Tampilkan tabel:
+
+| Komponen Accounting | Table/File | Field Company | Field Source/Module | Field Cost Center/Department | Catatan |
+| ------------------- | ---------- | ------------- | ------------------- | ---------------------------- | ------- |
+| Journal Header      |            |               |                     |                              |         |
+| Journal Lines       |            |               |                     |                              |         |
+| Invoice             |            |               |                     |                              |         |
+| Payment             |            |               |                     |                              |         |
+| Cash/Bank Account   |            |               |                     |                              |         |
+| Chart of Accounts   |            |               |                     |                              |         |
+| Tax                 |            |               |                     |                              |         |
+
+5. STATUS INTEGRASI SPORT CENTER KE ACCOUNTING
+
+Tampilkan tabel berdasarkan kode aktual:
+
+| Transaksi Sport Center | Route/Trigger | Table Sport Center yang Berubah | Memanggil Accounting Service? | Journal Terbentuk? | Company Tersimpan? | Source SPORT_CENTER? | Kesimpulan |
+| ---------------------- | ------------- | ------------------------------- | ----------------------------- | ------------------ | ------------------ | -------------------- | ---------- |
+| Payment Booking        |               |                                 |                               |                    |                    |                      |            |
+| Payment Membership     |               |                                 |                               |                    |                    |                      |            |
+| Promo/Diskon           |               |                                 |                               |                    |                    |                      |            |
+| Pajak/PPN              |               |                                 |                               |                    |                    |                      |            |
+| Cancel Booking         |               |                                 |                               |                    |                    |                      |            |
+| Refund                 |               |                                 |                               |                    |                    |                      |            |
+
+Jawab tegas:
+
+* Apakah ada function seperti postSportCenterBooking atau service sejenis?
+* Apakah function tersebut benar-benar dipanggil dari route transaksi, atau hanya ada tetapi belum digunakan?
+* Apakah payment saat ini hanya masuk ke sport_payments, atau sudah masuk jurnal Accounting?
+
+6. STATUS INTEGRASI SPORT CENTER KE PURCHASE
+
+Tampilkan tabel:
+
+| Kebutuhan                    | Modul/Route Purchase Existing | Sudah Dipanggil Sport Center? | Memiliki Company? | Memiliki Source/Cost Center? | Kesimpulan |
+| ---------------------------- | ----------------------------- | ----------------------------- | ----------------- | ---------------------------- | ---------- |
+| Purchase Request Operasional |                               |                               |                   |                              |            |
+| Maintenance Fasilitas        |                               |                               |                   |                              |            |
+| Purchase Order               |                               |                               |                   |                              |            |
+| Vendor Bill / Expense        |                               |                               |                   |                              |            |
+| Posting Biaya ke Accounting  |                               |                               |                   |                              |            |
+
+Jawab tegas:
+
+* Apakah sudah ada tombol/action dari Sport Center ke Purchase?
+* Apakah sudah ada reference fasilitas/lapangan?
+* Apakah transaksi biaya Sport Center sudah dapat ditandai sebagai milik PT Cahaya Sejati Teknologi?
+
+7. BUG DAN GAP PRIORITAS
+
+Buat tabel:
+
+| Prioritas | Gap/Bug | Dampak Bisnis | File Terkait | Fase Perbaikan yang Disarankan |
+| --------- | ------- | ------------- | ------------ | ------------------------------ |
+| Critical  |         |               |              |                                |
+| High      |         |               |              |                                |
+| Medium    |         |               |              |                                |
+
+8. REKOMENDASI URUTAN IMPLEMENTASI
+
+Tentukan status berikut dengan memilih salah satu:
+
+* LANJUT KE FASE 1 — Perbaikan Gateway/Port 3002
+* LANJUT KE FASE 2 — Audit lanjutan company/accounting karena data belum cukup
+* PERLU PERBAIKI TEMUAN KRITIS TERLEBIH DAHULU
+
+Jelaskan alasannya berdasarkan temuan kode aktual.
+
+9. KONFIRMASI READ-ONLY
+
+Akhiri dengan pernyataan:
+
+* Jumlah file yang diubah: 0
+* Migration yang dibuat: 0
+* Data database yang diubah: 0
+* Route yang diubah: 0
+* Fitur yang diimplementasikan: 0
+
+STOP setelah memberikan laporan ini. Jangan melakukan perubahan apa pun.
