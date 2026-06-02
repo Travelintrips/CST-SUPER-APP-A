@@ -209,6 +209,18 @@ router.delete("/customers/:id", async (req, res) => {
   return res.json({ message: "Deleted", id });
 });
 
+// POST /api/sales/customers/bulk-assign-company — bulk update company_id on multiple customers
+router.post("/customers/bulk-assign-company", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const { customerIds, companyId } = req.body as { customerIds: unknown; companyId: unknown };
+  if (!Array.isArray(customerIds)) return res.status(400).json({ message: "customerIds must be an array" });
+  const ids = (customerIds as unknown[]).map(Number).filter(n => !Number.isNaN(n) && n > 0);
+  if (ids.length === 0) return res.status(400).json({ message: "No valid customerIds" });
+  const cid = companyId != null && companyId !== "" ? Number(companyId) : null;
+  await db.update(customersTable).set({ companyId: cid }).where(inArray(customersTable.id, ids));
+  return res.json({ updated: ids.length, companyId: cid });
+});
+
 // DOCUMENTS
 router.get("/documents/template-categories", async (req, res) => {
   const companyId = resolveCompanyId(req);

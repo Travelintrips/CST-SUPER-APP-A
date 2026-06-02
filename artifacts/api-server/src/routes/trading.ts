@@ -129,10 +129,9 @@ router.get("/suppliers", async (req, res) => {
 
   // Fetch all company assignments for the returned vendors
   const vendorIds = suppliers.map(s => s.id);
-  const assignments = await db.execute(sql`
-    SELECT vendor_id, company_id FROM vendor_company_assignments
-    WHERE vendor_id = ANY(${vendorIds})
-  `);
+  const assignments = await db.execute(
+    sql.raw(`SELECT vendor_id, company_id FROM vendor_company_assignments WHERE vendor_id = ANY(ARRAY[${vendorIds.join(",")}]::int[])`)
+  );
   const assignmentMap: Record<number, number[]> = {};
   for (const row of assignments.rows as { vendor_id: number; company_id: number }[]) {
     if (!assignmentMap[row.vendor_id]) assignmentMap[row.vendor_id] = [];
@@ -184,6 +183,18 @@ router.put("/suppliers/:id/companies", async (req, res) => {
   }
 
   return res.json({ vendorId: id, companyIds: ids });
+});
+
+// POST /api/trading/suppliers/bulk-assign-company — bulk update company_id on multiple vendors
+router.post("/suppliers/bulk-assign-company", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const { vendorIds, companyId } = req.body as { vendorIds: unknown; companyId: unknown };
+  if (!Array.isArray(vendorIds)) return res.status(400).json({ message: "vendorIds must be an array" });
+  const ids = (vendorIds as unknown[]).map(Number).filter(n => !Number.isNaN(n) && n > 0);
+  if (ids.length === 0) return res.status(400).json({ message: "No valid vendorIds provided" });
+  const cid = companyId != null && companyId !== "" ? Number(companyId) : null;
+  await db.execute(sql`UPDATE suppliers SET company_id = ${cid} WHERE id = ANY(${ids})`);
+  return res.json({ updated: ids.length, companyId: cid });
 });
 
 // POST /api/trading/suppliers

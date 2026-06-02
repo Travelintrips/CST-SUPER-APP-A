@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -40,8 +40,10 @@ import {
   type Customer,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Building2, Pencil, Plus, Trash2 } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
+
+type Company = { id: number; companyName: string; companyCode: string; isActive: boolean; isHolding: boolean };
 
 export default function CustomersPage() {
   const qc = useQueryClient();
@@ -59,6 +61,21 @@ export default function CustomersPage() {
   const [editing, setEditing] = useState<Customer | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
+
+  // Company filter & bulk assign
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [filterCompanyId, setFilterCompanyId] = useState<string>("all");
+  const [bulkAssignOpen, setBulkAssignOpen] = useState(false);
+  const [bulkAssignCompanyId, setBulkAssignCompanyId] = useState<string>("");
+  const [bulkAssigning, setBulkAssigning] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/companies")
+      .then((r) => r.json())
+      .then((data: Company[]) => setCompanies((data ?? []).filter((c) => !c.isHolding && c.isActive)))
+      .catch(() => {});
+  }, []);
+
   const [form, setForm] = useState({
     name: "",
     email: "",
@@ -135,7 +152,40 @@ export default function CustomersPage() {
     }
   };
 
-  const allList = customers ?? [];
+  const handleBulkAssignCompany = async () => {
+    if (selectedIds.size === 0 || !bulkAssignCompanyId) return;
+    setBulkAssigning(true);
+    try {
+      const res = await fetch("/api/sales/customers/bulk-assign-company", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customerIds: Array.from(selectedIds),
+          companyId: bulkAssignCompanyId === "__unassign__" ? null : Number(bulkAssignCompanyId),
+        }),
+      });
+      if (!res.ok) throw new Error("Gagal assign company");
+      const cName = bulkAssignCompanyId === "__unassign__"
+        ? "Global"
+        : companies.find((c) => String(c.id) === bulkAssignCompanyId)?.companyName ?? bulkAssignCompanyId;
+      toast({ title: `${selectedIds.size} customer di-assign ke ${cName}` });
+      setSelectedIds(new Set());
+      setBulkAssignOpen(false);
+      setBulkAssignCompanyId("");
+      qc.invalidateQueries({ queryKey: getListCustomersQueryKey() });
+    } catch (e) {
+      toast({ title: "Gagal", description: String(e), variant: "destructive" });
+    } finally {
+      setBulkAssigning(false);
+    }
+  };
+
+  const rawList = customers ?? [];
+  const allList = filterCompanyId === "all"
+    ? rawList
+    : filterCompanyId === "__unassigned__"
+      ? rawList.filter((c) => (c as { companyId?: number | null }).companyId == null)
+      : rawList.filter((c) => String((c as { companyId?: number | null }).companyId) === filterCompanyId);
   const allSelected = allList.length > 0 && allList.every((c) => selectedIds.has(c.id));
 
   const toggleSelect = (id: number) => {
@@ -259,8 +309,40 @@ export default function CustomersPage() {
 
         {/* Bulk action bar */}
         {selectedIds.size > 0 && (
-          <div className="flex items-center gap-3 px-4 py-2.5 bg-primary/10 border border-primary/20 rounded-lg">
+          <div className="flex items-center gap-3 px-4 py-2.5 bg-primary/10 border border-primary/20 rounded-lg flex-wrap">
             <span className="text-sm font-medium">{selectedIds.size} dipilih</span>
+            <Dialog open={bulkAssignOpen} onOpenChange={setBulkAssignOpen}>
+              <DialogTrigger asChild>
+                <Button size="sm" variant="outline" className="gap-1.5">
+                  <Building2 className="h-3.5 w-3.5" />
+                  Assign ke Company
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-sm">
+                <DialogHeader>
+                  <DialogTitle>Assign {selectedIds.size} Customer ke Company</DialogTitle>
+                </DialogHeader>
+                <div className="grid gap-3 py-2">
+                  <Select value={bulkAssignCompanyId} onValueChange={setBulkAssignCompanyId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Pilih company..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {companies.map((c) => (
+                        <SelectItem key={c.id} value={String(c.id)}>{c.companyName} ({c.companyCode})</SelectItem>
+                      ))}
+                      <SelectItem value="__unassign__">— Lepas (tidak di-assign) —</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => { setBulkAssignOpen(false); setBulkAssignCompanyId(""); }}>Batal</Button>
+                  <Button onClick={handleBulkAssignCompany} disabled={!bulkAssignCompanyId || bulkAssigning}>
+                    {bulkAssigning ? "Menyimpan..." : "Simpan"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
             <Button size="sm" variant="destructive" onClick={handleBulkDelete} disabled={bulkDeleting}>
               <Trash2 className="h-3.5 w-3.5 mr-1.5" />
               {bulkDeleting ? "Menghapus..." : "Hapus Terpilih"}
@@ -271,7 +353,21 @@ export default function CustomersPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Daftar Customer</CardTitle>
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <CardTitle>Daftar Customer</CardTitle>
+              <Select value={filterCompanyId} onValueChange={(v) => { setFilterCompanyId(v); setSelectedIds(new Set()); }}>
+                <SelectTrigger className="w-[200px] h-8 text-sm">
+                  <SelectValue placeholder="Filter company..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Semua Company</SelectItem>
+                  {companies.map((c) => (
+                    <SelectItem key={c.id} value={String(c.id)}>{c.companyName} ({c.companyCode})</SelectItem>
+                  ))}
+                  <SelectItem value="__unassigned__">— Belum di-assign —</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </CardHeader>
           <CardContent>
             <Table>
