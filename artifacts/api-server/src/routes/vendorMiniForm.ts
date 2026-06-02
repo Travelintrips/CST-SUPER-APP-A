@@ -357,7 +357,8 @@ const vmfApprovalLimiter = rateLimit({
   keyGenerator: (req) => {
     const token = (req.params as { token?: string }).token;
     if (token) return `approval:${token}`;
-    return req.ip ?? req.socket?.remoteAddress ?? "unknown";
+    const raw = req.ip ?? req.socket?.remoteAddress ?? "unknown";
+    return ipKeyGenerator(raw);
   },
   standardHeaders: true,
   legacyHeaders: false,

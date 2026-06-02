@@ -1,6 +1,6 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { LOGISTICS_SUBCATEGORIES as LOGISTICS_SUBCATEGORIES_FALLBACK } from "@workspace/logistics-constants";
-import { rateLimit } from "express-rate-limit";
+import { rateLimit, ipKeyGenerator } from "express-rate-limit";
 import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, portalContentTable, accountingSettingsTable, salesDocumentsTable, salesDocumentLinesTable, customersTable, logisticOrdersTable, suppliersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, quoteRequestsTable, userProfilesTable, identityDocumentsTable, ocrResultsTable, vendorProfilesTable, driverProfilesTable, employeeProfilesTable, onboardingApprovalsTable, waOtpCodesTable, trustedDevicesTable, vendorMiniFormLinksTable, vendorMiniFormSubmissionsTable } from "@workspace/db";
 import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { invalidateTokenCache, SERVICE_SCHEMAS } from "./vendorMiniForm";
@@ -2195,11 +2195,15 @@ const _ktpOcrRateLimit = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { ok: false, error: "Terlalu banyak permintaan OCR. Coba lagi dalam 1 jam." },
-  keyGenerator: (req) =>
-    (req as PortalAuthReq).portalCustomerId?.toString() ??
-    (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ??
-    req.socket.remoteAddress ??
-    "unknown",
+  keyGenerator: (req) => {
+    const customerId = (req as PortalAuthReq).portalCustomerId?.toString();
+    if (customerId) return customerId;
+    const raw =
+      (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ??
+      req.socket.remoteAddress ??
+      "unknown";
+    return ipKeyGenerator(raw);
+  },
 });
 
 // POST /api/portal/onboarding/ktp-ocr — upload KTP image → OCR
