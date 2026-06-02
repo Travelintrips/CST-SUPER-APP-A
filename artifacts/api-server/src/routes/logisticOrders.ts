@@ -666,6 +666,12 @@ logisticOrdersRouter.get(
           status: l.status,
           timestamp: l.timestamp.toISOString(),
         })),
+        photos: photos.map((p) => ({
+          id: p.id,
+          url: p.url,
+          photoType: p.photoType,
+          takenAt: p.takenAt.toISOString(),
+        })),
       };
     }
 

@@ -1176,6 +1176,7 @@ orderTrackingPublicRouter.get("/:trackToken", async (req: Request, res: Response
           source: "driver",
         });
       });
+    }
     // Driver photos + live location + GPS trail — all from driver_jobs linked to this order
     let driverPhotos: Array<{ url: string; photoType: string; takenAt: string }> = [];
     let liveLocation: { lat: number; lng: number; updatedAt: string } | null = null;
