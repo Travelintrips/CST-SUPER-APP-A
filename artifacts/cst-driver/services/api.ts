@@ -1,4 +1,4 @@
-import { Job, ShipmentStatus } from '@/types';
+import { Job, PODPayload, ShipmentStatus } from '@/types';
 
 export const API_BASE_URL = process.env.EXPO_PUBLIC_DOMAIN
   ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
@@ -62,14 +62,26 @@ export const api = {
     return res.json();
   },
 
-  async submitPOD(token: string, jobId: string, receiverName: string) {
+  async uploadPODPhoto(token: string, jobId: string, uri: string): Promise<{ fileUrl: string; filename: string }> {
+    const formData = new FormData();
+    formData.append('photo', { uri, type: 'image/jpeg', name: `pod_${Date.now()}.jpg` } as unknown as Blob);
+    const res = await fetch(`${BASE_URL}/driver/jobs/${jobId}/pod/upload`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    });
+    if (!res.ok) throw new Error('Gagal unggah foto POD');
+    return res.json();
+  },
+
+  async submitPOD(token: string, jobId: string, payload: PODPayload) {
     const res = await fetch(`${BASE_URL}/driver/jobs/${jobId}/pod`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ receiverName }),
+      body: JSON.stringify(payload),
     });
     if (!res.ok) throw new Error('Gagal submit POD');
     return res.json();

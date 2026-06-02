@@ -1,0 +1,124 @@
+FASE 2D — SERVICE TEMPLATES ADMIN CRUD API
+
+Tujuan:
+Service template bisa dikelola dari BizPortal tanpa deploy ulang, tetapi tetap aman dan tidak mengubah runtime Vendor Mini Form.
+
+Kondisi:
+- Fase 2A selesai: lib/service-templates tersedia.
+- Fase 2B selesai: service_templates DB tersedia.
+- Fase 2C selesai: GET API tersedia.
+- SERVICE_SCHEMAS masih runtime utama.
+
+Tugas:
+
+1. Update route:
+artifacts/api-server/src/routes/serviceTemplates.ts
+
+Tambahkan endpoint admin:
+
+- POST /api/service-templates
+- PUT /api/service-templates/:serviceType
+- POST /api/service-templates/:serviceType/duplicate
+- PATCH /api/service-templates/:serviceType/toggle-active
+
+2. Jangan buat DELETE dulu.
+Jika perlu hapus, gunakan isActive=false.
+
+3. Validasi payload:
+
+serviceType:
+- wajib
+- lowercase
+- hanya boleh a-z, 0-9, underscore
+- unique
+
+label:
+- wajib
+
+fields:
+- array
+- setiap field wajib punya:
+  - key
+  - label
+  - type
+  - section
+
+section hanya boleh:
+- quotation
+- operational
+- both
+
+isUpload optional boolean.
+
+4. PUT behavior:
+
+Update:
+- label
+- emoji
+- version
+- isActive
+- description
+- sortOrder
+- fields
+- requiredDocuments
+- checklist
+- conditionalRules
+- validationRules
+
+5. Versioning:
+
+Jika fields/docs/checklist berubah:
+- naikkan minor version otomatis jika version tidak dikirim.
+Contoh:
+1.0.0 → 1.1.0
+
+6. Duplicate behavior:
+
+POST /:serviceType/duplicate
+
+Body:
+- newServiceType
+- newLabel
+
+Copy semua isi template lama ke serviceType baru.
+
+7. Toggle active:
+
+PATCH /:serviceType/toggle-active
+
+Body:
+- isActive true/false
+
+8. Jangan ubah:
+- vendorMiniForm.ts
+- SERVICE_SCHEMAS
+- Customer Portal
+- BizPortal UI
+- WA
+
+9. Test:
+
+- create service template baru
+- update trucking label/description
+- duplicate trucking → trucking_special
+- toggle inactive trucking_special
+- GET list masih jalan
+- unknown fallback tetap jalan
+
+10. Output:
+
+SERVICE TEMPLATES ADMIN API REPORT
+
+Isi:
+- endpoint dibuat
+- validasi payload
+- versioning behavior
+- test result
+- rollback plan
+
+Acceptance Criteria:
+- Admin API bisa create/update service template.
+- Tidak ada DELETE hard.
+- Version naik saat struktur berubah.
+- Runtime lama tidak berubah.
+- Rollback aman.

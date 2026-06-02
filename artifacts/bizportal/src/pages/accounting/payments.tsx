@@ -199,8 +199,8 @@ export default function PaymentsPage() {
     company: (isConsolidated ? "all" : activeCompanyId) as unknown as number,
   }), [filter, activeCompanyId, isConsolidated]);
 
-  const { data: allPayments = [] as AccountingPayment[], isLoading } = useListAccountingPayments(params, {
-    query: { queryKey: getListAccountingPaymentsQueryKey(params) },
+  const { data: allPayments = [] as AccountingPayment[], isLoading } = useListAccountingPayments(params as any, {
+    query: { queryKey: getListAccountingPaymentsQueryKey(params as any) },
   });
 
   const payments = useMemo(() => {

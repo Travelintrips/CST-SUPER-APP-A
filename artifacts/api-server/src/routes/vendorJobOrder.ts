@@ -47,6 +47,7 @@ import {
   sendCustomerProgressUpdateNotification,
   sendCustomerPodUploadedNotification,
   sendOrderCompletedNotification,
+  resolveTemplateSnapshot,
   type VendorAssignmentItem,
 } from "../lib/orderNotification.js";
 import { logger } from "../lib/logger.js";
@@ -236,6 +237,9 @@ vendorJobAdminRouter.post("/orders/:orderId/assign-vendor", async (req: Request,
       }
     }
 
+    // Resolve templateSnapshot: A. order → B. RFQ → C. VMF → D. null (fallback ke shipmentType)
+    const resolvedSnapshot = await resolveTemplateSnapshot(orderId, order.templateSnapshot as Record<string, unknown> | null);
+
     // Cek apakah sudah ada job order untuk order ini
     const existing = await db.execute(
       sql`SELECT id, token FROM vendor_job_orders WHERE order_id = ${orderId} LIMIT 1`
@@ -243,7 +247,7 @@ vendorJobAdminRouter.post("/orders/:orderId/assign-vendor", async (req: Request,
     if ((existing.rows ?? []).length > 0) {
       const row = existing.rows[0] as { id: number; token: string };
       const jobUrl = `${baseUrl()}/vendor-job/${row.token}`;
-      const waMsg = await sendVendorAssignmentNotification(order.orderNumber, order.origin, order.destination, order.shipmentType, jobUrl, vendor.phone, adminNote, assignmentItems, quote.estimatedPickup, quote.estimatedDelivery, quote.estimatedDays);
+      const waMsg = await sendVendorAssignmentNotification(order.orderNumber, order.origin, order.destination, order.shipmentType, jobUrl, vendor.phone, adminNote, assignmentItems, quote.estimatedPickup, quote.estimatedDelivery, quote.estimatedDays, resolvedSnapshot);
       return res.json({ ok: true, jobToken: row.token, jobUrl, waMessage: waMsg, vendorPhone: vendor.phone, alreadyExists: true });
     }
 
@@ -302,7 +306,7 @@ vendorJobAdminRouter.post("/orders/:orderId/assign-vendor", async (req: Request,
     });
 
     const jobUrl = `${baseUrl()}/vendor-job/${jobToken}`;
-    const waMsg = await sendVendorAssignmentNotification(order.orderNumber, order.origin, order.destination, order.shipmentType, jobUrl, vendor.phone, adminNote, assignmentItems, quote.estimatedPickup, quote.estimatedDelivery, quote.estimatedDays);
+    const waMsg = await sendVendorAssignmentNotification(order.orderNumber, order.origin, order.destination, order.shipmentType, jobUrl, vendor.phone, adminNote, assignmentItems, quote.estimatedPickup, quote.estimatedDelivery, quote.estimatedDays, resolvedSnapshot);
 
     // Notify admin group
     const adminWa = await getAdminWa();
@@ -903,7 +907,7 @@ vendorJobPublicRouter.post("/:token/pod", upload.array("files", 10), async (req:
 
   try {
     const result = await db.execute(
-      sql`SELECT vjo.*, o.order_number, o.id as order_id_num, o.phone, o.tracking_token, o.status as order_status, s.name as vendor_name
+      sql`SELECT vjo.*, o.order_number, o.id as order_id_num, o.phone, o.tracking_token, o.status as order_status, o.commodity, s.name as vendor_name
           FROM vendor_job_orders vjo
           LEFT JOIN logistic_orders o ON o.id = vjo.order_id
           LEFT JOIN suppliers s ON s.id = vjo.vendor_id
@@ -925,7 +929,7 @@ vendorJobPublicRouter.post("/:token/pod", upload.array("files", 10), async (req:
     }
 
     // Upload files ke object storage
-    const uploadedUrls: { name: string; url: string; type: string }[] = [];
+    const uploadedUrls: { name: string; url: string; type: string; publicUrl?: string }[] = [];
     let firstPublicImageUrl = "";
     const domain = getPreferredDomain() || "cstlogistic.co.id";
 
@@ -998,7 +1002,7 @@ vendorJobPublicRouter.post("/:token/pod", upload.array("files", 10), async (req:
 
     const adminWa = await getAdminWa();
     if (adminWa) {
-      sendVendorPodUploadedNotification(job.order_number, job.vendor_name ?? "—", files.length, adminWa, completionNotes, firstPublicImageUrl || undefined).catch(() => {});
+      sendVendorPodUploadedNotification(job.order_number, job.vendor_name ?? "—", files.length, adminWa, completionNotes, firstPublicImageUrl || undefined, job.commodity ?? null).catch(() => {});
     }
 
     // Notify customer via WA

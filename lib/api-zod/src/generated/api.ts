@@ -4748,6 +4748,10 @@ export const CreateLogisticOrderBody = zod.object({
   subtotal: zod.number(),
   tax: zod.number(),
   grandTotal: zod.number(),
+  // Step 2: Product Template Engine integration
+  categoryKey: zod.string().nullish(),
+  templateId: zod.number().nullish(),
+  templateVersion: zod.string().nullish(),
   items: zod.array(
     zod.object({
       category: zod.string(),

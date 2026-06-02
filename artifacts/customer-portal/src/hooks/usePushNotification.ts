@@ -74,7 +74,7 @@ export function usePushNotification(orderNumber: string | null) {
 
       const sub = await registration.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(vapidKey),
+        applicationServerKey: urlBase64ToUint8Array(vapidKey) as BufferSource,
       });
 
       const r = await fetch(`${BASE}/api/push/subscribe`, {

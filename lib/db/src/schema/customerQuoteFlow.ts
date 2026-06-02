@@ -1,5 +1,5 @@
 import {
-  pgTable, serial, integer, text, numeric, timestamp, boolean,
+  pgTable, serial, integer, text, numeric, timestamp, boolean, jsonb,
 } from "drizzle-orm/pg-core";
 import { logisticOrdersTable, logisticOrderRfqsTable } from "./logisticOrders";
 import { suppliersTable } from "./suppliers";
@@ -23,6 +23,10 @@ export const customerQuoteLinksTable = pgTable("customer_quote_links", {
   sentAt: timestamp("sent_at").defaultNow(),
   quotationPdfUrl: text("quotation_pdf_url"),
   quotationNumber: text("quotation_number"),
+  categoryKey: text("category_key"),
+  templateId: text("template_id"),
+  templateVersion: text("template_version"),
+  templateSnapshot: jsonb("template_snapshot").$type<Record<string, unknown> | null>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

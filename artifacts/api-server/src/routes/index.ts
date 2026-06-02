@@ -82,11 +82,14 @@ import { customerFeedbackPublicRouter, customerFeedbackAdminRouter } from "./cus
 import { purchaseMiniPublicRouter, purchaseMiniAdminRouter } from "./purchaseMiniFormRoute.js";
 
 import { orderAuditTrailRouter } from "./orderAuditTrail.js";
+import { serviceTemplatesRouter } from "./serviceTemplates.js";
 
 import { exceptionsRouter } from "./exceptions.js";
+import { orderExceptionsRouter } from "./orderExceptions.js";
 import { systemRouter } from "./system.js";
 import { handleAlertSse } from "../lib/alertsBroadcast.js";
 import { requireAdmin } from "../lib/requireAdmin.js";
+import sportCenterRouter from "../modules/sport-center/routes.js";
 
 import type { Request, Response } from "express";
 
@@ -200,10 +203,14 @@ router.use("/customer-feedback", customerFeedbackPublicRouter);
 router.use("/purchase-mini", purchaseMiniAdminRouter);
 router.use("/purchase-mini", purchaseMiniPublicRouter);
 
+router.use("/service-templates", serviceTemplatesRouter);
+
 router.use("/logistic", orderAuditTrailRouter);
+router.use("/logistic", orderExceptionsRouter);
 
 router.use("/exceptions", exceptionsRouter);
 router.use("/system", systemRouter);
+router.use("/sport-center", sportCenterRouter);
 
 router.get("/alerts/stream", async (req: Request, res: Response) => {
   const ok = await requireAdmin(req, res);

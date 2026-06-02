@@ -1,7 +1,8 @@
 import { Router, Request, Response } from "express";
 import { randomUUID } from "crypto";
 import { rfqRateLimit } from "../middlewares/rfqRateLimit.js";
-import { db, suppliersTable, logisticOrdersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, logisticOrderItemsTable, vendorCatalogItemsTable, vendorOffersTable, vendorRatesTable, salesDocumentsTable, salesDocumentLinesTable, rfqVendorLinksTable } from "@workspace/db";
+import { db, suppliersTable, logisticOrdersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, logisticOrderItemsTable, vendorCatalogItemsTable, vendorOffersTable, vendorRatesTable, salesDocumentsTable, salesDocumentLinesTable, rfqVendorLinksTable, productTemplatesTable } from "@workspace/db";
+import { resolveTemplate } from "@workspace/product-templates";
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import {
@@ -117,6 +118,14 @@ export async function autoCreateRfqAndNotifyVendors(
     return;
   }
 
+  // Ambil template fields dari order untuk disimpan ke RFQ
+  const [orderTplInfo] = await db.select({
+    categoryKey: logisticOrdersTable.categoryKey,
+    templateId: logisticOrdersTable.templateId,
+    templateVersion: logisticOrdersTable.templateVersion,
+    templateSnapshot: logisticOrdersTable.templateSnapshot,
+  }).from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
+
   const rfqNumber = generateRfqNumber();
   const [rfq] = await db.insert(logisticOrderRfqsTable).values({  // [TRUCKING-FIX] capture rfq id
     orderId,
@@ -124,7 +133,13 @@ export async function autoCreateRfqAndNotifyVendors(
     vendorIds: eligible.map((v) => v.id),
     notes: null,
     status: "open",
-  }).returning();
+    ...(orderTplInfo?.templateSnapshot ? {
+      categoryKey: orderTplInfo.categoryKey ?? null,
+      templateId: orderTplInfo.templateId ? String(orderTplInfo.templateId) : null,
+      templateVersion: orderTplInfo.templateVersion ?? null,
+      templateSnapshot: orderTplInfo.templateSnapshot,
+    } : {}),
+  } as any).returning();
 
   const isTrucking = isTruckingOrder(order);                                                 // [TRUCKING-FIX]
 
@@ -789,6 +804,34 @@ logisticRfqRouter.post("/:id/rfq", async (req: Request, res: Response) => {
 
   const deadlineDate = responseDeadline ? new Date(responseDeadline) : null;
 
+  // Step 2: Resolve template snapshot dari order.categoryKey untuk disimpan di RFQ
+  const blastCategoryKey = (order as any).categoryKey as string | null | undefined;
+  let blastTemplateId: number | null = null;
+  let blastTemplateVersion: string | null = null;
+  let blastTemplateSnapshot: Record<string, unknown> | null = null;
+  if (blastCategoryKey) {
+    try {
+      const [tRow] = await db.select().from(productTemplatesTable)
+        .where(eq(productTemplatesTable.categoryKey, blastCategoryKey));
+      const override = tRow ? {
+        categoryKey: tRow.categoryKey, label: tRow.label, version: tRow.version,
+        isActive: tRow.isActive,
+        requiredDocuments: tRow.requiredDocuments as any,
+        checklist: tRow.checklist as any,
+        customFields: tRow.customFields as any,
+        packagingInstructions: tRow.packagingInstructions ?? undefined,
+        conditionalRules: tRow.conditionalRules as any,
+        validationRules: tRow.validationRules as any,
+      } : null;
+      const tpl = resolveTemplate(blastCategoryKey, override);
+      blastTemplateId = tRow?.id ?? null;
+      blastTemplateVersion = tpl.version;
+      blastTemplateSnapshot = tpl as unknown as Record<string, unknown>;
+    } catch (e) {
+      logger.warn({ e, blastCategoryKey }, "rfq-blast: template resolve warn");
+    }
+  }
+
   const rfqNumber = generateRfqNumber();
   const [rfq] = await db.insert(logisticOrderRfqsTable).values({
     orderId,
@@ -797,6 +840,11 @@ logisticRfqRouter.post("/:id/rfq", async (req: Request, res: Response) => {
     notes: notes ?? null,
     status: "open",
     ...(deadlineDate ? { responseDeadline: deadlineDate } : {}),
+    ...(blastTemplateId ? {
+      templateId: blastTemplateId,
+      templateVersion: blastTemplateVersion,
+      templateSnapshot: blastTemplateSnapshot,
+    } : {}),
   } as any).returning();
 
   await transitionLogisticOrderStatus(orderId, "Admin Review", { source: "logisticRfq:manual_blast", actorType: "system" });
@@ -866,6 +914,7 @@ logisticRfqRouter.post("/:id/rfq", async (req: Request, res: Response) => {
       sendVendorWhatsApp({
         vendorPhone: vendor.phone, vendorName: vendor.name, vendorId: vendor.id,
         rfqNumber, orderId, orderNumber: orderData.orderNumber, longUrl: formUrl,
+        templateSnapshot: blastTemplateSnapshot,
         origin: orderData.origin, destination: orderData.destination,
         vehicleType: vehicleType ?? null, commodity: orderData.commodity,
         grossWeight: orderData.grossWeight, volumeCbm: orderData.volumeCbm,
@@ -1346,7 +1395,13 @@ logisticRfqRouter.post("/:id/manual-rfq", async (req: Request, res: Response) =>
       vendorIds: eligible.map((v) => v.id),
       notes: null,
       status: "open",
-    });
+      ...((order as any).templateSnapshot ? {
+        categoryKey: (order as any).categoryKey ?? null,
+        templateId: (order as any).templateId ? String((order as any).templateId) : null,
+        templateVersion: (order as any).templateVersion ?? null,
+        templateSnapshot: (order as any).templateSnapshot,
+      } : {}),
+    } as any);
   } else {
     await db.update(logisticOrderRfqsTable)
       .set({ vendorIds: [...new Set([...(existingRfqs[0].vendorIds ?? []), ...eligible.map((v) => v.id)])] })

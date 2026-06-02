@@ -24,6 +24,7 @@
     "@workspace/db": "workspace:*",
     "@workspace/logistics-constants": "workspace:*",
     "@workspace/product-templates": "workspace:*",
+    "@workspace/service-templates": "workspace:*",
     "bcryptjs": "^3.0.3",
     "compression": "^1.8.1",
     "cookie-parser": "^1.4.7",
@@ -46,7 +47,8 @@
     "pino-http": "^10",
     "resend": "^6.12.3",
     "sharp": "^0.34.5",
-    "ws": "^8.20.1"
+    "ws": "^8.20.1",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@types/compression": "^1.8.1",

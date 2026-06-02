@@ -53,7 +53,7 @@ db.execute(sql`
     updated_at TIMESTAMP NOT NULL DEFAULT NOW()
   )
 `).catch((err) => {
-  logger.warn("product_templates table creation failed (non-fatal)", { err: String(err) });
+  logger.warn({ err: String(err) }, "product_templates table creation failed (non-fatal)");
 });
 
 // Idempotent column additions for existing deployments
@@ -62,7 +62,7 @@ Promise.all([
   db.execute(sql`ALTER TABLE product_templates ADD COLUMN IF NOT EXISTS description TEXT`),
   db.execute(sql`ALTER TABLE product_templates ADD COLUMN IF NOT EXISTS sort_order INTEGER NOT NULL DEFAULT 0`),
 ]).catch((err) => {
-  logger.warn("product_templates column migration failed (non-fatal)", { err: String(err) });
+  logger.warn({ err: String(err) }, "product_templates column migration failed (non-fatal)");
 });
 
 
@@ -709,9 +709,9 @@ export async function seedProductTemplates() {
         validationRules: tpl.validationRules as unknown as Record<string, unknown>[],
       }).onConflictDoNothing();
     }
-    logger.info("Product templates seeded", { count: SEED_TEMPLATES.length });
+    logger.info({ count: SEED_TEMPLATES.length }, "Product templates seeded");
   } catch (err) {
-    logger.warn("Product templates seed failed (non-fatal)", { err: String(err) });
+    logger.warn({ err: String(err) }, "Product templates seed failed (non-fatal)");
   }
 }
 
@@ -760,9 +760,9 @@ productTemplatesRouter.get("/", async (req: Request, res: Response) => {
       return (aEntry?.label ?? a.label).localeCompare(bEntry?.label ?? b.label);
     });
 
-    res.json(resolved);
+    res.json(resolved); return;
   } catch (err) {
-    res.status(500).json({ message: String(err) });
+    res.status(500).json({ message: String(err) }); return;
   }
 });
 
@@ -787,9 +787,9 @@ productTemplatesRouter.get("/:key", async (req: Request, res: Response) => {
     const override = dbRows[0] ? dbRowToOverride(dbRows[0]) : null;
     const categoryKey = override?.categoryKey ?? key;
     const resolved = resolveTemplate(categoryKey, override);
-    res.json(resolved);
+    res.json(resolved); return;
   } catch (err) {
-    res.status(500).json({ message: String(err) });
+    res.status(500).json({ message: String(err) }); return;
   }
 });
 
@@ -800,16 +800,16 @@ productTemplatesRouter.patch("/reorder", requireAdmin, async (req: Request, res:
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ message: "items harus berupa array tidak kosong" });
     }
-    await db.transaction(async (tx: typeof db) => {
+    await db.transaction(async (tx) => {
       for (const { id, sortOrder } of items) {
         await tx.update(productTemplatesTable)
           .set({ sortOrder: Number(sortOrder) || 0 })
           .where(eq(productTemplatesTable.id, id));
       }
     });
-    res.json({ success: true });
+    res.json({ success: true }); return;
   } catch (err) {
-    res.status(500).json({ message: String(err) });
+    res.status(500).json({ message: String(err) }); return;
   }
 });
 
@@ -842,13 +842,13 @@ productTemplatesRouter.post("/", requireAdmin, async (req: Request, res: Respons
       validationRules: validationRules as unknown as Record<string, unknown>[],
     }).returning();
 
-    res.status(201).json(row);
+    res.status(201).json(row); return;
   } catch (err: unknown) {
     const msg = String((err as { message?: string }).message ?? err);
     if (msg.includes("unique")) {
       return res.status(409).json({ message: `Category key "${req.body.categoryKey}" sudah ada` });
     }
-    res.status(500).json({ message: msg });
+    res.status(500).json({ message: msg }); return;
   }
 });
 
@@ -885,9 +885,9 @@ productTemplatesRouter.put("/:id", requireAdmin, async (req: Request, res: Respo
       .where(eq(productTemplatesTable.id, id))
       .returning();
 
-    res.json(updated);
+    res.json(updated); return;
   } catch (err) {
-    res.status(500).json({ message: String(err) });
+    res.status(500).json({ message: String(err) }); return;
   }
 });
 
@@ -919,9 +919,9 @@ productTemplatesRouter.post("/:id/duplicate", requireAdmin, async (req: Request,
       validationRules: src.validationRules as unknown as Record<string, unknown>[],
     }).returning();
 
-    res.status(201).json(dup);
+    res.status(201).json(dup); return;
   } catch (err) {
-    res.status(500).json({ message: String(err) });
+    res.status(500).json({ message: String(err) }); return;
   }
 });
 
@@ -939,9 +939,9 @@ productTemplatesRouter.patch("/:id/toggle", requireAdmin, async (req: Request, r
       .where(eq(productTemplatesTable.id, id))
       .returning();
 
-    res.json(updated);
+    res.json(updated); return;
   } catch (err) {
-    res.status(500).json({ message: String(err) });
+    res.status(500).json({ message: String(err) }); return;
   }
 });
 
@@ -989,10 +989,10 @@ productTemplatesRouter.post("/sync-defaults", requireAdmin, async (req: Request,
         results.push({ categoryKey: tpl.categoryKey, action: "updated" });
       }
     }
-    logger.info("sync-defaults: completed", { inserted: results.filter(r => r.action === "inserted").length, updated: results.filter(r => r.action === "updated").length });
-    res.json({ success: true, results });
+    logger.info({ inserted: results.filter(r => r.action === "inserted").length, updated: results.filter(r => r.action === "updated").length }, "sync-defaults: completed");
+    res.json({ success: true, results }); return;
   } catch (err) {
-    res.status(500).json({ message: String(err) });
+    res.status(500).json({ message: String(err) }); return;
   }
 });
 
@@ -1007,8 +1007,8 @@ productTemplatesRouter.delete("/:id", requireAdmin, async (req: Request, res: Re
     if (existing[0]!.isActive) return res.status(400).json({ message: "Nonaktifkan template terlebih dahulu sebelum menghapus" });
 
     await db.delete(productTemplatesTable).where(eq(productTemplatesTable.id, id));
-    res.json({ success: true });
+    res.json({ success: true }); return;
   } catch (err) {
-    res.status(500).json({ message: String(err) });
+    res.status(500).json({ message: String(err) }); return;
   }
 });

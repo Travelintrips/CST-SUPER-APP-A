@@ -11,7 +11,7 @@ import {
   waAiIntakeLogTable,
   customerInvoiceLinksTable,
 } from "@workspace/db";
-import { eq, sql, desc, and, count, inArray, or, ilike, type SQL } from "drizzle-orm";
+import { eq, sql, desc, and, count, inArray, or, ilike, isNotNull, asc, type SQL } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { auditFromReq } from "../lib/auditLog.js";
 import { streamInvoicePdf, buildInvoicePdfBuffer } from "../lib/pdfInvoice.js";
@@ -210,12 +210,29 @@ router.delete("/customers/:id", async (req, res) => {
 });
 
 // DOCUMENTS
+router.get("/documents/template-categories", async (req, res) => {
+  const companyId = resolveCompanyId(req);
+  const kind = req.query["kind"] as "quote" | "order" | undefined;
+  const conds: SQL[] = [
+    eq(salesDocumentsTable.companyId, companyId),
+    isNotNull(salesDocumentsTable.categoryKey),
+  ];
+  if (kind === "quote" || kind === "order") conds.push(eq(salesDocumentsTable.kind, kind));
+  const rows = await db
+    .selectDistinct({ categoryKey: salesDocumentsTable.categoryKey })
+    .from(salesDocumentsTable)
+    .where(and(...conds))
+    .orderBy(asc(salesDocumentsTable.categoryKey));
+  return res.json(rows.map((r) => r.categoryKey).filter(Boolean));
+});
+
 router.get("/documents", async (req, res) => {
   const companyId = resolveCompanyId(req);
   const kind = req.query["kind"] as SalesDocKind | undefined;
   const invoiceStatus = req.query["invoiceStatus"] as SalesInvoiceStatus | undefined;
   const paymentStatus = req.query["paymentStatus"] as "unpaid" | "partial" | "paid" | undefined;
   const statusFilter = req.query["status"] as string | undefined;
+  const categoryKey = typeof req.query["categoryKey"] === "string" ? req.query["categoryKey"].trim() : undefined;
   const search = typeof req.query["search"] === "string" ? req.query["search"].trim() : undefined;
   const conds: SQL[] = [eq(salesDocumentsTable.companyId, companyId)];
   if (kind === "quote" || kind === "order") conds.push(eq(salesDocumentsTable.kind, kind));
@@ -225,6 +242,7 @@ router.get("/documents", async (req, res) => {
     conds.push(eq(salesDocumentsTable.invoiceStatus, invoiceStatus));
   if (paymentStatus === "unpaid" || paymentStatus === "partial" || paymentStatus === "paid" || paymentStatus === "overdue")
     conds.push(eq(salesDocumentsTable.paymentStatus, paymentStatus));
+  if (categoryKey) conds.push(eq(salesDocumentsTable.categoryKey, categoryKey));
   if (search) {
     conds.push(or(
       ilike(salesDocumentsTable.docNumber, `%${search}%`),
@@ -283,7 +301,8 @@ router.get("/documents/:id", async (req, res) => {
 router.post("/documents", async (req, res) => {
   const companyId = resolveCompanyId(req);
   const { kind, customerId, customerName, validUntil, expectedDate, notes, lines, taxRateId,
-    origin, destination, transportMode, etd, eta, logisticOrderId } = req.body ?? {};
+    origin, destination, transportMode, etd, eta, logisticOrderId,
+    categoryKey, templateId, templateVersion, templateSnapshot } = req.body ?? {};
   if (typeof customerName !== "string" || !customerName.trim())
     return res.status(400).json({ message: "customerName required" });
   if (!Array.isArray(lines) || lines.length === 0)
@@ -342,6 +361,10 @@ router.post("/documents", async (req, res) => {
           etd: etd ?? null,
           eta: eta ?? null,
           logisticOrderId: (logisticOrderId != null && !Number.isNaN(Number(logisticOrderId))) ? Number(logisticOrderId) : null,
+          categoryKey: categoryKey ? String(categoryKey) : null,
+          templateId: templateId ? String(templateId) : null,
+          templateVersion: templateVersion ? String(templateVersion) : null,
+          templateSnapshot: templateSnapshot ?? null,
         })
         .returning();
       doc = inserted;
@@ -403,7 +426,8 @@ router.put("/documents/:id", async (req, res) => {
   if (!existing) return res.status(404).json({ message: "Document not found" });
 
   const { customerId, customerName, validUntil, expectedDate, notes, lines, kind, taxRateId,
-    origin, destination, transportMode, etd, eta } = req.body ?? {};
+    origin, destination, transportMode, etd, eta,
+    categoryKey: patchCategoryKey, templateId: patchTemplateId, templateVersion: patchTemplateVersion, templateSnapshot: patchTemplateSnapshot } = req.body ?? {};
   const patch: Record<string, unknown> = { updatedAt: new Date() };
   if (typeof customerName === "string") patch["customerName"] = customerName;
   if (customerId !== undefined) patch["customerId"] = customerId;
@@ -417,6 +441,10 @@ router.put("/documents/:id", async (req, res) => {
   if (transportMode !== undefined) patch["transportMode"] = transportMode || null;
   if (etd !== undefined) patch["etd"] = etd || null;
   if (eta !== undefined) patch["eta"] = eta || null;
+  if (patchCategoryKey !== undefined) patch["categoryKey"] = patchCategoryKey ? String(patchCategoryKey) : null;
+  if (patchTemplateId !== undefined) patch["templateId"] = patchTemplateId ? String(patchTemplateId) : null;
+  if (patchTemplateVersion !== undefined) patch["templateVersion"] = patchTemplateVersion ? String(patchTemplateVersion) : null;
+  if (patchTemplateSnapshot !== undefined) patch["templateSnapshot"] = patchTemplateSnapshot ?? null;
 
   if (Array.isArray(lines)) {
     const total = (lines as LineInput[]).reduce(

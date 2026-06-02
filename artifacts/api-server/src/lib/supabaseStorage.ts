@@ -44,8 +44,9 @@ export async function uploadToSupabase(
 export async function downloadFromSupabase(storagePath: string): Promise<Buffer> {
   const file = await objectStorage.searchPublicObject(storagePath);
   if (!file) throw new Error(`Object not found: ${storagePath}`);
-  const [contents] = await file.download();
-  return contents as Buffer;
+  const response = await objectStorage.downloadObject(file);
+  const arrayBuffer = await response.arrayBuffer();
+  return Buffer.from(arrayBuffer);
 }
 
 /**

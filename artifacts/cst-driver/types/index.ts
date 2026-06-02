@@ -74,8 +74,21 @@ export interface Job {
   statusLogs: StatusLog[];
   podSigned?: boolean;
   receiverName?: string;
+  receiverPosition?: string;
+  deliveryNotes?: string;
+  podPhotos?: string[];
   weight?: string;
   distance?: string;
+}
+
+export interface PODPayload {
+  receiverName: string;
+  receiverPosition?: string;
+  deliveryNotes?: string;
+  podPhotos?: string[];
+  signatureDataUrl?: string;
+  submittedAt?: string;
+  geoLocation?: { lat: number; lng: number };
 }
 
 export interface Driver {

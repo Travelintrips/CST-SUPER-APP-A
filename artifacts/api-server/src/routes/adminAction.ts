@@ -23,7 +23,7 @@ import { logger } from "../lib/logger.js";
 import { TAX_RATE_DECIMAL as PPN_RATE, TAX_RATE_DECIMAL } from "../lib/taxHelper.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminWa, getAdminGroupWa } from "../lib/adminWa.js";
-import { sendVendorRequestNotification, sendVendorSelectedAdminWa, sendVendorAwardedWa, sendVendorAssignmentNotification, type LogisticOrderData } from "../lib/orderNotification.js";
+import { sendVendorRequestNotification, sendVendorSelectedAdminWa, sendVendorAwardedWa, sendVendorAssignmentNotification, resolveTemplateSnapshot, type LogisticOrderData } from "../lib/orderNotification.js";
 import { generateShortLink } from "../lib/shortLink.js";
 import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
 import { transitionRfqStatus, transitionVendorLinkStatus } from "../lib/services/rfqStatusService.js";
@@ -580,10 +580,12 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
 
     // confirm_fulfillment: show vendor's submitted data for admin to confirm
     if (link && link.actionType === "confirm_fulfillment") {
-      const [vfLink] = await db.select().from(vendorFulfillmentLinksTable)
+      const [_vfLinkRow] = await db.select().from(vendorFulfillmentLinksTable)
         .where(eq(vendorFulfillmentLinksTable.orderId, order.id))
         .orderBy(desc(vendorFulfillmentLinksTable.createdAt))
         .limit(1);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const vfLink = _vfLinkRow as any;
 
       // Build item breakdown for product orders
       let orderItemsBreakdown: {
@@ -1207,6 +1209,7 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
         return [{ name: row.serviceName ?? "Produk", qty, unit, basicPrice: price, taxRate: TAX_RATE_DECIMAL }];
       });
 
+      const _resolvedSnapshot = await resolveTemplateSnapshot(order.id, order.templateSnapshot as Record<string, unknown> | null);
       if (vendor?.phone) {
         sendVendorAssignmentNotification(
           order.orderNumber,
@@ -1217,6 +1220,10 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
           vendor.phone,
           undefined,
           _fwdItems,
+          undefined,
+          undefined,
+          undefined,
+          _resolvedSnapshot,
         ).catch(() => {});
       }
 
@@ -1261,10 +1268,12 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
       }
 
       // Ambil data vendor fulfillment untuk dimasukkan ke WA admin
-      const [vfLink] = await db.select().from(vendorFulfillmentLinksTable)
+      const [_vfLinkRow2] = await db.select().from(vendorFulfillmentLinksTable)
         .where(eq(vendorFulfillmentLinksTable.orderId, order.id))
         .orderBy(desc(vendorFulfillmentLinksTable.createdAt))
         .limit(1);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const vfLink = _vfLinkRow2 as any;
 
       let vendorNameForMsg: string | null = null;
       if (vfLink?.vendorId) {

@@ -13,7 +13,9 @@ import {
   vendorCatalogItemsTable,
   freightShipmentsTable,
   vendorPerformanceTable,
+  productTemplatesTable,
 } from "@workspace/db";
+import { resolveTemplate } from "@workspace/product-templates";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { TAX_RATE_DECIMAL as PPN_RATE } from "../lib/taxHelper.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
@@ -502,13 +504,46 @@ logisticRfqV2Router.post("/rfq/create-from-order/:orderId", async (req: Request,
     ? new Date(Date.now() + responseDeadlineHours * 60 * 60 * 1000)
     : null;
 
+  // Step 2: Resolve template snapshot dari order.categoryKey untuk disimpan di RFQ
+  const orderCategoryKey = (order as any).categoryKey as string | null | undefined;
+  let rfqTemplateId: number | null = null;
+  let rfqTemplateVersion: string | null = null;
+  let rfqTemplateSnapshot: Record<string, unknown> | null = null;
+  if (orderCategoryKey) {
+    try {
+      const [tRow] = await db.select().from(productTemplatesTable)
+        .where(eq(productTemplatesTable.categoryKey, orderCategoryKey));
+      const override = tRow ? {
+        categoryKey: tRow.categoryKey, label: tRow.label, version: tRow.version,
+        isActive: tRow.isActive,
+        requiredDocuments: tRow.requiredDocuments as any,
+        checklist: tRow.checklist as any,
+        customFields: tRow.customFields as any,
+        packagingInstructions: tRow.packagingInstructions ?? undefined,
+        conditionalRules: tRow.conditionalRules as any,
+        validationRules: tRow.validationRules as any,
+      } : null;
+      const tpl = resolveTemplate(orderCategoryKey, override);
+      rfqTemplateId = tRow?.id ?? null;
+      rfqTemplateVersion = tpl.version;
+      rfqTemplateSnapshot = tpl as unknown as Record<string, unknown>;
+    } catch (e) {
+      console.warn("[create-from-order] template resolve warn:", e);
+    }
+  }
+
   const [rfq] = await db.insert(logisticOrderRfqsTable).values({
     orderId,
     rfqNumber,
     status: "admin_review",
     notes: notes ?? null,
     responseDeadline: responseDeadline ?? undefined,
-  }).returning();
+    ...(rfqTemplateId ? {
+      templateId: rfqTemplateId,
+      templateVersion: rfqTemplateVersion,
+      templateSnapshot: rfqTemplateSnapshot,
+    } : {}),
+  } as any).returning();
 
   const user = (req as any).user;
   await logActivity(rfq.id, "admin", user?.name ?? "Admin", "rfq_created",
@@ -700,6 +735,7 @@ logisticRfqV2Router.get("/vendor-form/:token", async (req: Request, res: Respons
     currentNotes: link.notes ?? null,
     currentLeadTimeDays: link.leadTimeDays ?? null,
     currentStockAvailability: link.stockAvailability ?? "unknown",
+    templateSnapshot: (rfqRaw.template_snapshot as Record<string, unknown> | null) ?? null,
     orderItems: orderItems.map((i) => {
       const itemName = (i.serviceName || i.category || "").trim();
       const catalogMatch = matchCatalogItem(itemName);

@@ -934,7 +934,7 @@ export default function VendorDetailPage() {
                           <p className="text-xs text-muted-foreground">
                             {sel?.itemType === "jasa" ? "Layanan" : "Produk"} · {sel?.unit ?? "-"}
                             {(sel?.categories as string[] | undefined)?.[0] && (
-                              <> · <Tag className="inline h-3 w-3" /> {(sel.categories as string[])[0]}</>
+                              <> · <Tag className="inline h-3 w-3" /> {(sel?.categories as string[] | undefined)?.[0]}</>
                             )}
                           </p>
                         </div>

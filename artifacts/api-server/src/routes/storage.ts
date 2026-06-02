@@ -138,7 +138,7 @@ const _uploadGuardInterval = setInterval(async () => {
     if (now < session.checkAfter) continue;
     pendingUploadGuards.delete(key);
     try {
-      const objectFile = await objectStorageService.getObjectEntityFile(session.objectPath);
+      const objectFile = await objectStorageService.getObjectEntityFile(session.objectPath) as any;
       const [metadata] = await objectFile.getMetadata();
       const sizeBytes = Number(metadata.size ?? 0);
       if (sizeBytes > PRESIGNED_MAX_BYTES) {

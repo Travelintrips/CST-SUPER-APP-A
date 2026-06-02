@@ -55,10 +55,14 @@ import { runAiGovernanceMigration } from "./lib/aiGovernanceMigration.js";
 import { runPurchaseTemplateMigration } from "./lib/purchaseTemplateMigration.js";
 import { runEnterpriseWorkflowMigration } from "./lib/enterpriseWorkflowTemplates.js";
 import { runOrderProgressMigration } from "./lib/orderProgress.js";
-import { runExceptionEnumMigration } from "./lib/services/exceptionService.js";
+import { runExceptionEnumMigration, runOrderExceptionsMigration } from "./lib/services/exceptionService.js";
+import { runStep4TemplateMigration } from "./lib/step4TemplateMigration.js";
+import { runServiceTemplateMigration } from "./lib/serviceTemplateMigration.js";
 import { expireStaleApprovals } from "./lib/aiGovernance.js";
 import { startDbBackupScheduler } from "./lib/dbBackup.js";
 import { initAlertsBroadcast } from "./lib/alertsBroadcast.js";
+import { runSportCenterMigration } from "./modules/sport-center/migration.js";
+import { runDriverPodMigration } from "./routes/driver.js";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 
@@ -320,6 +324,11 @@ async function startServer() {
     .then(() => runWithRetry("Enterprise workflow template migration", runEnterpriseWorkflowMigration))
     .then(() => runWithRetry("Order progress migration", runOrderProgressMigration))
     .then(() => runWithRetry("Exception enum migration", runExceptionEnumMigration))
+    .then(() => runWithRetry("Order exceptions migration", runOrderExceptionsMigration))
+    .then(() => runWithRetry("Step 4 template snapshot migration", runStep4TemplateMigration))
+    .then(() => runWithRetry("Service template migration", runServiceTemplateMigration))
+    .then(() => runWithRetry("Sport Center migration", runSportCenterMigration))
+    .then(() => runWithRetry("Driver POD migration", runDriverPodMigration))
     .then(() => enableRealtimeTables().catch((err) => {
       logger.warn({ err }, "Supabase Realtime table enable failed (non-fatal)");
     }))

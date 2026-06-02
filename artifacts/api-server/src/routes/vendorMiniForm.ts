@@ -17,13 +17,22 @@ import {
   suppliersTable,
   logisticOrdersTable,
   logisticOrderItemsTable,
+  logisticOrderRfqsTable,
   salesDocumentsTable,
   salesDocumentLinesTable,
   orderUpdatesTable,
   productTemplatesTable,
+  serviceTemplatesTable,
+  customerQuoteLinksTable,
 } from "@workspace/db";
 import { getInCodeTemplate, resolveTemplate } from "@workspace/product-templates";
 import type { ProductTemplateOverride } from "@workspace/product-templates";
+import {
+  resolveServiceTemplate,
+  getInCodeServiceTemplate,
+  hasInCodeServiceTemplate,
+} from "@workspace/service-templates";
+import type { ServiceTemplate, ServiceTemplateField, ServiceTemplateOverride as SvcTemplateOverride } from "@workspace/service-templates";
 import { requireClerkUser } from "../lib/requireAdmin";
 import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
 import { deleteFromSupabase } from "../lib/supabaseStorage.js";
@@ -51,6 +60,20 @@ import {
   sendOpConfirmSubmittedNotification,
   type LogisticOrderData,
 } from "../lib/orderNotification.js";
+
+// Boot migration: add template columns to customer_approvals + vendor_mini_form_submissions + confirmed_at to customer_invoice_links
+db.execute(sql.raw(`
+  ALTER TABLE customer_approvals ADD COLUMN IF NOT EXISTS category_key TEXT;
+  ALTER TABLE customer_approvals ADD COLUMN IF NOT EXISTS template_id TEXT;
+  ALTER TABLE customer_approvals ADD COLUMN IF NOT EXISTS template_version TEXT;
+  ALTER TABLE customer_approvals ADD COLUMN IF NOT EXISTS template_snapshot JSONB;
+  ALTER TABLE customer_approvals ADD COLUMN IF NOT EXISTS required_documents_from_template JSONB;
+  ALTER TABLE customer_approvals ADD COLUMN IF NOT EXISTS checklist_from_template JSONB;
+  ALTER TABLE vendor_mini_form_submissions ADD COLUMN IF NOT EXISTS template_id TEXT;
+  ALTER TABLE vendor_mini_form_submissions ADD COLUMN IF NOT EXISTS template_version TEXT;
+  ALTER TABLE vendor_mini_form_submissions ADD COLUMN IF NOT EXISTS template_snapshot JSONB;
+  ALTER TABLE customer_invoice_links ADD COLUMN IF NOT EXISTS confirmed_at TIMESTAMPTZ;
+`)).catch((e: unknown) => console.warn("boot migration warn:", e));
 
 function buildOrderDataFromRow(row: typeof logisticOrdersTable.$inferSelect): LogisticOrderData {
   return {
@@ -110,6 +133,12 @@ const PUBLIC_CACHE = "public, max-age=300, stale-while-revalidate=600";
 // commodity_templates (tabel lama) tetap dipakai.
 const USE_PRODUCT_TEMPLATE_ENGINE = process.env.USE_PRODUCT_TEMPLATE_ENGINE === "true";
 
+// ── Feature flag: Service Template Engine ─────────────────────────────────────
+// Set USE_SERVICE_TEMPLATE_ENGINE=true untuk mengaktifkan resolver berbasis
+// service_templates (DB + in-code). Bila false (default), SERVICE_SCHEMAS tetap
+// menjadi satu-satunya sumber. Flag OFF = zero behavior change.
+const USE_SERVICE_TEMPLATE_ENGINE = process.env.USE_SERVICE_TEMPLATE_ENGINE === "true";
+
 /**
  * Resolve ProductTemplate dari product_templates DB menggunakan resolveTemplate().
  * Basis: in-code template (shapes & defaults), layer: DB override (customizations).
@@ -139,6 +168,79 @@ async function resolveFromProductTemplates(categoryKey: string): Promise<ReturnT
   } catch {
     return resolveTemplate(categoryKey, null);
   }
+}
+
+// ── Service Template Engine: Resolver & normalized output ─────────────────────
+
+type ResolvedServiceTemplate = ServiceTemplate & { source: "db" | "in-code" | "fallback" };
+
+/**
+ * Resolve ServiceTemplate untuk VMF rendering.
+ * Priority (USE_SERVICE_TEMPLATE_ENGINE=true): DB → in-code → SERVICE_SCHEMAS fallback.
+ * Jika flag OFF atau error: SERVICE_SCHEMAS fallback (tidak pernah throw).
+ */
+async function resolveFromServiceTemplates(serviceType: string): Promise<ResolvedServiceTemplate> {
+  if (USE_SERVICE_TEMPLATE_ENGINE) {
+    try {
+      const [row] = await db
+        .select()
+        .from(serviceTemplatesTable)
+        .where(eq(serviceTemplatesTable.serviceType, serviceType));
+
+      if (row && row.isActive !== false) {
+        const override: SvcTemplateOverride = {
+          serviceType: row.serviceType,
+          label:             row.label             ?? undefined,
+          emoji:             row.emoji             ?? undefined,
+          version:           row.version           ?? undefined,
+          isActive:          row.isActive          ?? undefined,
+          fields:            (row.fields            as ServiceTemplateField[] | null) ?? undefined,
+          requiredDocuments: (row.requiredDocuments as ServiceTemplate["requiredDocuments"] | null) ?? undefined,
+          checklist:         (row.checklist         as ServiceTemplate["checklist"] | null) ?? undefined,
+          conditionalRules:  (row.conditionalRules  as ServiceTemplate["conditionalRules"] | null) ?? undefined,
+          validationRules:   (row.validationRules   as ServiceTemplate["validationRules"] | null) ?? undefined,
+        };
+        return { ...resolveServiceTemplate(serviceType, override), source: "db" };
+      }
+
+      if (hasInCodeServiceTemplate(serviceType)) {
+        return { ...getInCodeServiceTemplate(serviceType), source: "in-code" };
+      }
+    } catch { /* non-fatal — fall through to SERVICE_SCHEMAS */ }
+  }
+
+  // Fallback: SERVICE_SCHEMAS → shape-normalize ke ServiceTemplate
+  const s = SERVICE_SCHEMAS[serviceType];
+  if (s) {
+    return {
+      serviceType,
+      label:             s.label,
+      emoji:             s.emoji,
+      version:           "1.0.0",
+      isActive:          true,
+      fields:            s.fields as ServiceTemplateField[],
+      requiredDocuments: [],
+      checklist:         [],
+      conditionalRules:  [],
+      validationRules:   [],
+      source:            "fallback",
+    };
+  }
+
+  // Last resort — tidak pernah throw
+  return {
+    serviceType,
+    label:             serviceType,
+    emoji:             "📋",
+    version:           "1.0.0",
+    isActive:          true,
+    fields:            [],
+    requiredDocuments: [],
+    checklist:         [],
+    conditionalRules:  [],
+    validationRules:   [],
+    source:            "fallback",
+  };
 }
 
 // ── Activity log helper ────────────────────────────────────────────────────────
@@ -255,7 +357,7 @@ const vmfApprovalLimiter = rateLimit({
   keyGenerator: (req) => {
     const token = (req.params as { token?: string }).token;
     if (token) return `approval:${token}`;
-    return ipKeyGenerator(req);
+    return req.ip ?? req.socket?.remoteAddress ?? "unknown";
   },
   standardHeaders: true,
   legacyHeaders: false,
@@ -922,6 +1024,14 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
       };
     }
 
+    // ── Service Template Engine: resolve saat flag ON ────────────────────────
+    let resolvedServiceTemplate: ResolvedServiceTemplate | null = null;
+    if (USE_SERVICE_TEMPLATE_ENGINE) {
+      try {
+        resolvedServiceTemplate = await resolveFromServiceTemplates(row.serviceType);
+      } catch { /* non-fatal */ }
+    }
+
     res.setHeader("Cache-Control", PUBLIC_CACHE);
     return res.json({
       id: row.id,
@@ -943,6 +1053,8 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
       templateMissing: USE_PRODUCT_TEMPLATE_ENGINE && (!!row.categoryKey || !!row.templateSnapshot) && !productTemplate ? templateMissing : false,
       templateVersion: row.templateVersion ?? null,
       templateCategory: row.categoryKey ?? null,
+      // Service Template Engine — null jika flag OFF (zero behavior change)
+      serviceTemplate: resolvedServiceTemplate,
     });
   } catch (err) {
     req.log?.error({ err }, "vendor-mini-form GET error");
@@ -1121,6 +1233,8 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
           attachmentUrl: attachmentUrl ?? undefined,
           submittedIp, submittedUa,
           revisionCount: (prev?.revisionCount ?? 0) + 1,
+          // Refresh snapshot from link on resubmit (captures template updates)
+          templateSnapshot: (link.templateSnapshot as Record<string, unknown> | null) ?? undefined,
         })
         .where(eq(vendorMiniFormSubmissionsTable.id, existing.id))
         .returning();
@@ -1169,6 +1283,9 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
           orderId: link.orderId ?? null,
           orderItemId: link.orderItemId ?? null,
           submittedIp, submittedUa,
+          templateId: link.templateId ?? null,
+          templateVersion: link.templateVersion ?? null,
+          templateSnapshot: (link.templateSnapshot as Record<string, unknown> | null) ?? null,
         }).returning();
         return row;
       });
@@ -1227,6 +1344,7 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
               quoteDeadline: (fd["quote_deadline"] as string | undefined)?.trim() ?? null,
               notesToVendor: (fd["notes_to_vendor"] as string | undefined)?.trim() ?? null,
               vendorFormUrl,
+              templateSnapshot: link.templateSnapshot as Record<string, unknown> | null ?? null,
             },
             token,
           ).catch(() => {});
@@ -1247,8 +1365,8 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
           if (!orderRow) return;
 
           // Progress bar event
-          updateOrderProgress(link.orderId, "VENDOR_RESPONSE_RECEIVED", "vendor_wa",
-            (sub as any).vendorName ?? "Vendor").catch(() => {});
+          updateOrderProgress(link.orderId!, "VENDOR_RESPONSE_RECEIVED", "vendor_wa",
+            "Vendor").catch(() => {});
 
           // Hitung berapa vendor sudah submit vs berapa yang diundang
           const [submittedRow] = await db.select({ c: count() })
@@ -1369,6 +1487,26 @@ vendorMiniFormRouter.get("/customer-approval/:token", async (req: Request, res: 
       } catch { /* non-critical */ }
     }
 
+    const tSnap = (approval as any).templateSnapshot as Record<string, unknown> | null ?? null;
+    const requiredDocs: string[] | null = (approval as any).requiredDocumentsFromTemplate
+      ?? (tSnap?.requiredDocuments as string[] | undefined)
+      ?? null;
+    const checklist: string[] | null = (approval as any).checklistFromTemplate
+      ?? (tSnap?.checklist as string[] | undefined)
+      ?? null;
+
+    // Fetch vendor submission formData for spec value lookup (non-critical)
+    let vendorFormData: Record<string, unknown> | null = null;
+    if (approval.submissionId) {
+      try {
+        const [sub] = await db
+          .select({ formData: vendorMiniFormSubmissionsTable.formData })
+          .from(vendorMiniFormSubmissionsTable)
+          .where(eq(vendorMiniFormSubmissionsTable.id, approval.submissionId));
+        vendorFormData = (sub?.formData as Record<string, unknown>) ?? null;
+      } catch { /* non-critical — spec values just won't be shown */ }
+    }
+
     return res.json({
       token: approval.token, orderNumber: approval.orderNumber,
       customerName: approval.customerName,
@@ -1380,6 +1518,13 @@ vendorMiniFormRouter.get("/customer-approval/:token", async (req: Request, res: 
       subtotal: subtotalBeforePpn,
       grandTotal: sellingNum,
       priceItems,
+      categoryKey: (approval as any).categoryKey ?? null,
+      templateId: (approval as any).templateId ?? null,
+      templateVersion: (approval as any).templateVersion ?? null,
+      templateSnapshot: tSnap,
+      requiredDocuments: requiredDocs,
+      checklist,
+      vendorFormData,
     });
   } catch (err) {
     req.log?.error({ err }, "customer-approval GET error");
@@ -1741,6 +1886,34 @@ vendorMiniFormRouter.post("/op-confirm/:token", async (req: Request, res: Respon
       }, token).catch(() => {});
     }).catch(() => {});
 
+    // Kirim WA ke driver jika driver_phone ada di payload (trucking)
+    const driverPhone = String(payload["driver_phone"] ?? "").trim();
+    if (driverPhone) {
+      const driverName = String(payload["driver_name"] ?? "").trim() || "Driver";
+      const plateNumber = String(payload["plate_number"] ?? "").trim();
+      const vehicleType = String(payload["vehicle_type"] ?? "").trim();
+      const pickupTime = String(payload["pickup_time"] ?? "").trim();
+      const domain = (await import("../lib/domain.js").then(m => m.getPreferredDomain())) || "";
+      const driverAppUrl = domain ? `https://${domain}/api/driver/open-app` : "";
+      const driverMsg = [
+        `🚚 *Penugasan Order — ${conf.orderNumber ?? "—"}*`,
+        ``,
+        `Halo *${driverName}*,`,
+        `Anda ditugaskan untuk order berikut:`,
+        ``,
+        `📋 No. Order : \`${conf.orderNumber ?? "—"}\``,
+        `🏢 Vendor    : ${conf.vendorName ?? "—"}`,
+        plateNumber  ? `🔢 Plat      : ${plateNumber}` : null,
+        vehicleType  ? `🚛 Kendaraan : ${vehicleType}` : null,
+        pickupTime   ? `⏰ Est. Pickup: ${pickupTime}` : null,
+        ``,
+        `Mohon segera hubungi tim CST Logistics untuk koordinasi lebih lanjut.`,
+        driverAppUrl ? `\nBuka aplikasi driver:\n${driverAppUrl}` : null,
+      ].filter(Boolean).join("\n");
+      sendWhatsApp(driverPhone, driverMsg, { context: "op-confirm-driver", refType: "vendor_op_confirm", refId: String(conf.id) })
+        .catch((e: unknown) => req.log?.error({ e }, "op-confirm: WA ke driver gagal"));
+    }
+
     return res.json({ success: true, message: "Data operasional berhasil dikirim, terima kasih!" });
   } catch (err) {
     req.log?.error({ err }, "op-confirm POST error");
@@ -1753,6 +1926,106 @@ vendorMiniFormRouter.post("/op-confirm/:token", async (req: Request, res: Respon
 vendorMiniFormRouter.get("/admin/schemas", async (req: Request, res: Response) => {
   if (!(await requireClerkUser(req, res))) return;
   return res.json(SERVICE_SCHEMAS);
+});
+
+// ── ADMIN: GET /api/vendor-form/admin/orders/:orderId/snapshot ────────────────
+// Debug endpoint — lihat template snapshot aktif pada sebuah order.
+// Menggabungkan snapshot dari logistic_orders + semua VMF link aktif milik order.
+
+vendorMiniFormRouter.get("/admin/orders/:orderId/snapshot", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const orderId = Number(req.params["orderId"]);
+  if (isNaN(orderId)) return res.status(400).json({ error: "orderId tidak valid" });
+  try {
+    // 1. Ambil data order
+    const [order] = await db
+      .select({
+        id:              logisticOrdersTable.id,
+        orderNumber:     logisticOrdersTable.orderNumber,
+        shipmentType:    logisticOrdersTable.shipmentType,
+        categoryKey:     logisticOrdersTable.categoryKey,
+        templateId:      logisticOrdersTable.templateId,
+        templateVersion: logisticOrdersTable.templateVersion,
+        templateSnapshot: logisticOrdersTable.templateSnapshot,
+      })
+      .from(logisticOrdersTable)
+      .where(eq(logisticOrdersTable.id, orderId));
+    if (!order) return res.status(404).json({ error: "Order tidak ditemukan" });
+
+    // 2. Ambil semua VMF links (aktif + non-aktif) untuk order ini
+    const links = await db
+      .select({
+        id:              vendorMiniFormLinksTable.id,
+        token:           vendorMiniFormLinksTable.token,
+        serviceType:     vendorMiniFormLinksTable.serviceType,
+        isActive:        vendorMiniFormLinksTable.isActive,
+        categoryKey:     vendorMiniFormLinksTable.categoryKey,
+        templateId:      vendorMiniFormLinksTable.templateId,
+        templateVersion: vendorMiniFormLinksTable.templateVersion,
+        templateSnapshot: vendorMiniFormLinksTable.templateSnapshot,
+        createdAt:       vendorMiniFormLinksTable.createdAt,
+      })
+      .from(vendorMiniFormLinksTable)
+      .where(eq(vendorMiniFormLinksTable.orderId, orderId))
+      .orderBy(vendorMiniFormLinksTable.createdAt);
+
+    // 3. Tentukan sumber snapshot aktif
+    const orderHasSnapshot = !!order.templateSnapshot;
+    const activeLinks = links.filter(l => l.isActive);
+    const activeLinksWithSnapshot = activeLinks.filter(l => !!l.templateSnapshot);
+    const snapshotSource: "order" | "active_link" | "none" =
+      orderHasSnapshot ? "order"
+      : activeLinksWithSnapshot.length > 0 ? "active_link"
+      : "none";
+
+    // 4. Helper: ringkasan snapshot
+    function summarizeSnapshot(snap: Record<string, unknown> | null | undefined) {
+      if (!snap) return null;
+      return {
+        templateKind:    snap["templateKind"] ?? null,
+        label:           snap["label"] ?? snap["category"] ?? null,
+        version:         snap["version"] ?? null,
+        serviceType:     snap["serviceType"] ?? null,
+        fieldCount:      Array.isArray(snap["fields"]) ? (snap["fields"] as unknown[]).length
+                         : Array.isArray(snap["customFields"]) ? (snap["customFields"] as unknown[]).length
+                         : null,
+        checklistCount:  Array.isArray(snap["checklist"]) ? (snap["checklist"] as unknown[]).length : null,
+        requiredDocsCount: Array.isArray(snap["requiredDocuments"]) ? (snap["requiredDocuments"] as unknown[]).length : null,
+        source:          snap["source"] ?? null,
+      };
+    }
+
+    return res.json({
+      orderId:         order.id,
+      orderNumber:     order.orderNumber,
+      shipmentType:    order.shipmentType,
+      snapshotSource,
+      order: {
+        categoryKey:     order.categoryKey,
+        templateId:      order.templateId,
+        templateVersion: order.templateVersion,
+        hasSnapshot:     orderHasSnapshot,
+        snapshotSummary: summarizeSnapshot(order.templateSnapshot as Record<string, unknown> | null),
+        snapshotFull:    order.templateSnapshot ?? null,
+      },
+      links: links.map(l => ({
+        id:              l.id,
+        token:           l.token,
+        serviceType:     l.serviceType,
+        isActive:        l.isActive,
+        categoryKey:     l.categoryKey,
+        templateId:      l.templateId,
+        templateVersion: l.templateVersion,
+        hasSnapshot:     !!l.templateSnapshot,
+        snapshotSummary: summarizeSnapshot(l.templateSnapshot as Record<string, unknown> | null),
+        snapshotFull:    l.templateSnapshot ?? null,
+        createdAt:       l.createdAt,
+      })),
+    });
+  } catch (err) {
+    req.log?.error({ err }, "GET /admin/orders/:orderId/snapshot error");
+    return res.status(500).json({ error: "Gagal mengambil snapshot" });
+  }
 });
 
 // ── ADMIN: GET /api/vendor-form/admin/links ───────────────────────────────────
@@ -1814,6 +2087,30 @@ vendorMiniFormRouter.post("/admin/links", async (req: Request, res: Response) =>
       }
     }
 
+    // ── Service Template Engine: snapshot serviceType jika flag ON ────────────
+    // Gunakan kolom templateId/templateVersion/templateSnapshot yang sudah ada.
+    // templateId = serviceType, snapshot mencakup templateKind="service" untuk identifikasi.
+    if (USE_SERVICE_TEMPLATE_ENGINE && !resolvedTemplateSnapshot) {
+      try {
+        const stpl = await resolveFromServiceTemplates(serviceType);
+        resolvedTemplateId = serviceType;
+        resolvedTemplateVersion = stpl.version ?? null;
+        resolvedTemplateSnapshot = {
+          templateKind: "service",
+          serviceType: stpl.serviceType,
+          label: stpl.label,
+          emoji: stpl.emoji,
+          version: stpl.version,
+          fields: stpl.fields,
+          requiredDocuments: stpl.requiredDocuments,
+          checklist: stpl.checklist,
+          source: stpl.source,
+        };
+      } catch {
+        /* non-fatal — link tetap dibuat tanpa snapshot */
+      }
+    }
+
     // Auto-deactivate existing active links for the same order (order_based mode only)
     let deactivatedCount = 0;
     if ((mode ?? "rate_collection") === "order_based" && orderId) {
@@ -1857,6 +2154,23 @@ vendorMiniFormRouter.post("/admin/links", async (req: Request, res: Response) =>
     await logActivity("link", link.id, "created", userId,
       `Link dibuat untuk ${serviceType} (mode: ${mode ?? "rate_collection"})`,
       { serviceType, orderId, orderNumber, mode });
+
+    // Back-fill order.templateSnapshot untuk service orders:
+    // order tidak punya templateSnapshot saat dibuat (service template baru di-resolve di sini).
+    // Simpan ke logistic_orders agar vendor_assignment WA mendapat serviceLabel yang benar.
+    if (orderId && resolvedTemplateSnapshot && (resolvedTemplateSnapshot as Record<string, unknown>)["templateKind"] === "service") {
+      try {
+        const [existingOrder] = await db.select({ templateSnapshot: logisticOrdersTable.templateSnapshot })
+          .from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
+        if (existingOrder && !existingOrder.templateSnapshot) {
+          await db.update(logisticOrdersTable)
+            .set({ templateSnapshot: resolvedTemplateSnapshot })
+            .where(eq(logisticOrdersTable.id, orderId));
+        }
+      } catch {
+        /* non-fatal — order masih bisa diproses tanpa snapshot */
+      }
+    }
 
     // G-1: tambahkan entry ke order_updates timeline
     if (orderId) {
@@ -2394,11 +2708,15 @@ vendorMiniFormRouter.post("/admin/customer-approvals", async (req: Request, res:
       offerSummary, sellingPrice, currency, termsNotes, expiresInDays,
       submissionId, vendorCost, markupPct, markupNominal, ppnPct, ppnNominal,
       profitMarginPct, adminNotes,
+      categoryKey: reqCategoryKey, templateId: reqTemplateId,
+      templateVersion: reqTemplateVersion, templateSnapshot: reqTemplateSnapshot,
     } = req.body as {
       orderId?: number; orderNumber?: string; customerName?: string; customerPhone?: string; customerEmail?: string;
       offerSummary?: object; sellingPrice?: number; currency?: string; termsNotes?: string; expiresInDays?: number;
       submissionId?: number; vendorCost?: number; markupPct?: number; markupNominal?: number;
       ppnPct?: number; ppnNominal?: number; profitMarginPct?: number; adminNotes?: string;
+      categoryKey?: string; templateId?: string; templateVersion?: string;
+      templateSnapshot?: Record<string, unknown>;
     };
 
     // DA-1 FIX: Prevent duplicate pending approvals for the same order.
@@ -2422,6 +2740,56 @@ vendorMiniFormRouter.post("/admin/customer-approvals", async (req: Request, res:
     const effectiveExpiry = expiresInDays ?? 7;
     const expiresAt = new Date(Date.now() + effectiveExpiry * 24 * 60 * 60 * 1000);
 
+    // Resolve template info: from request body, or auto-lookup from order's latest RFQ
+    let resolvedCategoryKey = reqCategoryKey ?? null;
+    let resolvedTemplateId = reqTemplateId ?? null;
+    let resolvedTemplateVersion = reqTemplateVersion ?? null;
+    let resolvedTemplateSnapshot: Record<string, unknown> | null = reqTemplateSnapshot ?? null;
+    let resolvedRequiredDocs: string[] | null = null;
+    let resolvedChecklist: string[] | null = null;
+
+    if (!resolvedTemplateSnapshot && orderId) {
+      try {
+        const rfqRows = await db.execute(sql`
+          SELECT template_id, template_version, template_snapshot, category_key
+          FROM logistic_order_rfqs
+          WHERE order_id = ${orderId} AND template_snapshot IS NOT NULL
+          ORDER BY created_at DESC LIMIT 1
+        `);
+        const rfqRow = rfqRows.rows?.[0] as Record<string, unknown> | undefined;
+        if (rfqRow?.template_snapshot) {
+          resolvedTemplateSnapshot = rfqRow.template_snapshot as Record<string, unknown>;
+          resolvedTemplateId = resolvedTemplateId ?? (rfqRow.template_id ? String(rfqRow.template_id) : null);
+          resolvedTemplateVersion = resolvedTemplateVersion ?? (rfqRow.template_version as string | null) ?? null;
+        }
+        if (!resolvedCategoryKey && rfqRow?.category_key) {
+          resolvedCategoryKey = rfqRow.category_key as string;
+        }
+      } catch { /* non-critical */ }
+    }
+
+    // Also auto-lookup order's categoryKey if still missing
+    if (!resolvedCategoryKey && orderId) {
+      try {
+        const orderRows = await db.execute(sql`SELECT category_key FROM logistic_orders WHERE id = ${orderId} LIMIT 1`);
+        const oRow = orderRows.rows?.[0] as Record<string, unknown> | undefined;
+        if (oRow?.category_key) resolvedCategoryKey = oRow.category_key as string;
+      } catch { /* non-critical */ }
+    }
+
+    // If still no snapshot but we have categoryKey, resolve from template engine
+    if (!resolvedTemplateSnapshot && resolvedCategoryKey) {
+      try {
+        const tpl = await resolveTemplate(resolvedCategoryKey);
+        if (tpl) resolvedTemplateSnapshot = tpl as unknown as Record<string, unknown>;
+      } catch { /* non-critical */ }
+    }
+
+    if (resolvedTemplateSnapshot) {
+      resolvedRequiredDocs = (resolvedTemplateSnapshot.requiredDocuments as string[] | undefined) ?? null;
+      resolvedChecklist = (resolvedTemplateSnapshot.checklist as string[] | undefined) ?? null;
+    }
+
     const [approval] = await db.insert(customerApprovalsTable).values({
       token, orderId: orderId ?? null, orderNumber: orderNumber ?? null,
       customerName: customerName ?? null, customerPhone: customerPhone ?? null, customerEmail: customerEmail ?? null,
@@ -2437,7 +2805,13 @@ vendorMiniFormRouter.post("/admin/customer-approvals", async (req: Request, res:
       ppnNominal: ppnNominal ? String(ppnNominal) : null,
       profitMarginPct: profitMarginPct ? String(profitMarginPct) : null,
       adminNotes: adminNotes ?? null,
-    }).returning();
+      categoryKey: resolvedCategoryKey,
+      templateId: resolvedTemplateId,
+      templateVersion: resolvedTemplateVersion,
+      templateSnapshot: resolvedTemplateSnapshot ?? undefined,
+      requiredDocumentsFromTemplate: resolvedRequiredDocs ?? undefined,
+      checklistFromTemplate: resolvedChecklist ?? undefined,
+    } as any).returning();
 
     await logActivity("customer_approval", approval.id, "created", userId,
       `Link approval dibuat untuk ${customerName ?? "customer"}`,
@@ -2741,7 +3115,13 @@ vendorMiniFormRouter.post("/admin/links/:id/send-wa", async (req: Request, res: 
       const [orderRow] = await db.select().from(logisticOrdersTable)
         .where(eq(logisticOrdersTable.id, link.orderId)).limit(1);
       if (orderRow) {
-        await sendVendorRequestNotification(await buildOrderDataFromRowWithItems(orderRow), link.vendorName, phone.trim(), formUrl);
+        await sendVendorRequestNotification(
+          await buildOrderDataFromRowWithItems(orderRow),
+          link.vendorName,
+          phone.trim(),
+          formUrl,
+          link.templateSnapshot ?? null,
+        );
         await logActivity("link", id, "sent_wa", (req.user as { id: string } | undefined)?.id ?? "admin", `WA dikirim ke ${phone}`, { phone });
         return res.json({ success: true, message: "Pesan WA berhasil dikirim" });
       }
@@ -2834,11 +3214,13 @@ vendorMiniFormRouter.post("/admin/customer-approvals/:id/send-wa", async (req: R
           : sellingNum2 != null
             ? Math.round(sellingNum2 * ppnPct2 / (100 + ppnPct2))
             : null;
+        const approvalTSnap = (approval as any).templateSnapshot as Record<string, unknown> | null ?? null;
         await sendCustomerApprovalNotification(orderData, priceStr, approvalUrl, {
           rfqNumber: approval.orderNumber ?? null,
           sellingPriceNum: sellingNum2,
           ppnNominalNum: ppnNominalNum2,
           ppnPct: ppnPct2,
+          templateSnapshot: approvalTSnap,
         });
         const userId2b = (req.user as { id: string } | undefined)?.id ?? "admin";
         await logActivity("customer_approval", id, "sent_wa", userId2b,
@@ -2945,7 +3327,18 @@ vendorMiniFormRouter.post("/admin/op-confirms/:id/send-wa", async (req: Request,
           createdAt: orderRow.createdAt ?? null,
           publicRfqToken: orderRow.publicRfqToken ?? null,
         };
-        await sendOpRequestNotification(orderData, conf.vendorName ?? "Vendor", phone.trim(), confirmUrl);
+        // Derive service template snapshot from conf.serviceType for rich WA context
+        const svcSchema = (SERVICE_SCHEMAS as Record<string, unknown>)[conf.serviceType] as Record<string, unknown> | undefined;
+        const opTemplateSnap = svcSchema ? {
+          templateKind: "service" as const,
+          serviceType: conf.serviceType,
+          label: (svcSchema["label"] as string | undefined) ?? conf.serviceType,
+          version: (svcSchema["version"] as string | undefined) ?? "1.0",
+          fields: (svcSchema["fields"] as unknown[]) ?? [],
+          requiredDocuments: (svcSchema["requiredDocuments"] as unknown[]) ?? [],
+          checklist: (svcSchema["checklist"] as unknown[]) ?? [],
+        } : null;
+        await sendOpRequestNotification(orderData, conf.vendorName ?? "Vendor", phone.trim(), confirmUrl, opTemplateSnap);
       } else {
         // Order tidak ditemukan — fallback ke hardcoded
         const svcLabel = SERVICE_SCHEMAS[conf.serviceType]?.label ?? conf.serviceType;
@@ -3030,6 +3423,10 @@ vendorMiniFormRouter.get("/customer-invoice/:token", async (req: Request, res: R
       lineItems: link.lineItems ?? [],
       acknowledgedAt: link.acknowledgedAt,
       status: link.status,
+      categoryKey: (link as any).categoryKey ?? null,
+      templateId: (link as any).templateId ?? null,
+      templateVersion: (link as any).templateVersion ?? null,
+      templateSnapshot: (link as any).templateSnapshot ?? null,
     });
   } catch (err) {
     req.log?.error({ err }, "customer-invoice GET error");
@@ -3135,13 +3532,50 @@ vendorMiniFormRouter.post("/admin/customer-invoices", async (req: Request, res: 
   const {
     salesDocId, orderId, orderNumber, invoiceNumber, customerName, customerPhone,
     currency, dueDate, notes, sendWa,
+    manualGrandTotal, manualSubtotal, manualTaxRate, manualTaxAmount,
   } = req.body as {
     salesDocId?: number; orderId?: number; orderNumber?: string;
     invoiceNumber?: string; customerName?: string; customerPhone?: string;
     currency?: string; dueDate?: string; notes?: string; sendWa?: boolean;
+    manualGrandTotal?: number; manualSubtotal?: number;
+    manualTaxRate?: number; manualTaxAmount?: number;
   };
 
   try {
+    // ── Guard: duplicate invoice per orderId + nomor invoice unik ──────────
+    if (orderId) {
+      const [existing] = await db.select({
+        id: customerInvoiceLinksTable.id,
+        token: customerInvoiceLinksTable.token,
+        invoiceNumber: customerInvoiceLinksTable.invoiceNumber,
+        status: customerInvoiceLinksTable.status,
+      }).from(customerInvoiceLinksTable)
+        .where(and(
+          eq(customerInvoiceLinksTable.orderId, orderId),
+          ne(customerInvoiceLinksTable.status, "completed"),
+        ));
+      if (existing) {
+        return res.status(409).json({
+          error: "Invoice aktif untuk order ini sudah ada",
+          existingId: existing.id,
+          existingToken: existing.token,
+          existingInvoiceNumber: existing.invoiceNumber,
+          existingStatus: existing.status,
+        });
+      }
+    }
+    if (invoiceNumber) {
+      const [dupInv] = await db.select({ id: customerInvoiceLinksTable.id })
+        .from(customerInvoiceLinksTable)
+        .where(eq(customerInvoiceLinksTable.invoiceNumber, invoiceNumber));
+      if (dupInv) {
+        return res.status(409).json({
+          error: `Nomor invoice "${invoiceNumber}" sudah digunakan`,
+          existingId: dupInv.id,
+        });
+      }
+    }
+
     let subtotal: number | null = null;
     let taxRate = 11;
     let taxAmount: number | null = null;
@@ -3173,9 +3607,83 @@ vendorMiniFormRouter.post("/admin/customer-invoices", async (req: Request, res: 
       }
     }
 
+    // Manual amounts jika tidak ada salesDocId
+    if (!salesDocId && manualGrandTotal) {
+      grandTotal = manualGrandTotal;
+      if (manualSubtotal) subtotal = manualSubtotal;
+      if (manualTaxRate !== undefined) taxRate = manualTaxRate;
+      if (manualTaxAmount) taxAmount = manualTaxAmount;
+    }
+
     const token = randomBytes(24).toString("hex");
     const expiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 hari
     const createdBy = (req.user as { id?: string } | undefined)?.id ?? "admin";
+
+    // ── Resolve templateSnapshot: priority A→E ────────────────────────────────
+    let tplCategoryKey: string | null = null;
+    let tplTemplateId: string | null = null;
+    let tplTemplateVersion: string | null = null;
+    let tplSnapshot: Record<string, unknown> | null = null;
+
+    const setTpl = (snap: Record<string, unknown> | null | undefined, catKey?: string | null, tid?: string | null, tver?: string | null) => {
+      if (snap && !tplSnapshot) {
+        tplSnapshot = snap;
+        tplCategoryKey = catKey ?? null;
+        tplTemplateId = tid ?? null;
+        tplTemplateVersion = tver ?? null;
+      }
+    };
+
+    // A. sales_documents.templateSnapshot (already fetched above if salesDocId)
+    if (salesDocId) {
+      const [sdoc] = await db
+        .select({ templateSnapshot: salesDocumentsTable.templateSnapshot, categoryKey: salesDocumentsTable.categoryKey, templateId: salesDocumentsTable.templateId, templateVersion: salesDocumentsTable.templateVersion })
+        .from(salesDocumentsTable)
+        .where(eq(salesDocumentsTable.id, salesDocId));
+      if (sdoc) setTpl(sdoc.templateSnapshot, sdoc.categoryKey, sdoc.templateId, sdoc.templateVersion);
+    }
+
+    // B. customer_approvals.templateSnapshot (most recent approved for this order)
+    if (!tplSnapshot && orderId) {
+      const [appr] = await db
+        .select({ templateSnapshot: customerApprovalsTable.templateSnapshot, categoryKey: customerApprovalsTable.categoryKey, templateId: customerApprovalsTable.templateId, templateVersion: customerApprovalsTable.templateVersion })
+        .from(customerApprovalsTable)
+        .where(and(eq(customerApprovalsTable.orderId, orderId), eq(customerApprovalsTable.status, "approved")))
+        .orderBy(desc(customerApprovalsTable.createdAt))
+        .limit(1);
+      if (appr) setTpl(appr.templateSnapshot, appr.categoryKey, appr.templateId, appr.templateVersion);
+    }
+
+    // C. customer_quote_links.templateSnapshot (most recent approved for this order)
+    if (!tplSnapshot && orderId) {
+      const [qlink] = await db
+        .select({ templateSnapshot: customerQuoteLinksTable.templateSnapshot, categoryKey: customerQuoteLinksTable.categoryKey, templateId: customerQuoteLinksTable.templateId, templateVersion: customerQuoteLinksTable.templateVersion })
+        .from(customerQuoteLinksTable)
+        .where(and(eq(customerQuoteLinksTable.orderId, orderId), eq(customerQuoteLinksTable.status, "approved")))
+        .orderBy(desc(customerQuoteLinksTable.createdAt))
+        .limit(1);
+      if (qlink) setTpl(qlink.templateSnapshot, qlink.categoryKey, qlink.templateId, qlink.templateVersion);
+    }
+
+    // D. logistic_order_rfqs.templateSnapshot (most recent for this order)
+    if (!tplSnapshot && orderId) {
+      const [rfq] = await db
+        .select({ templateSnapshot: logisticOrderRfqsTable.templateSnapshot, templateId: logisticOrderRfqsTable.templateId, templateVersion: logisticOrderRfqsTable.templateVersion })
+        .from(logisticOrderRfqsTable)
+        .where(eq(logisticOrderRfqsTable.orderId, orderId))
+        .orderBy(desc(logisticOrderRfqsTable.createdAt))
+        .limit(1);
+      if (rfq) setTpl(rfq.templateSnapshot, null, rfq.templateId ? String(rfq.templateId) : null, rfq.templateVersion);
+    }
+
+    // E. logistic_orders.templateSnapshot
+    if (!tplSnapshot && orderId) {
+      const [ord] = await db
+        .select({ templateSnapshot: logisticOrdersTable.templateSnapshot, categoryKey: logisticOrdersTable.categoryKey, templateVersion: logisticOrdersTable.templateVersion })
+        .from(logisticOrdersTable)
+        .where(eq(logisticOrdersTable.id, orderId));
+      if (ord) setTpl(ord.templateSnapshot as Record<string, unknown> | null, ord.categoryKey, null, ord.templateVersion);
+    }
 
     const [link] = await db.insert(customerInvoiceLinksTable).values({
       token,
@@ -3195,6 +3703,10 @@ vendorMiniFormRouter.post("/admin/customer-invoices", async (req: Request, res: 
       dueDate: dueDate ? new Date(dueDate) : null,
       expiresAt: expiry,
       createdBy,
+      categoryKey: tplCategoryKey,
+      templateId: tplTemplateId,
+      templateVersion: tplTemplateVersion,
+      templateSnapshot: tplSnapshot,
     } as any).returning();
 
     const { getPreferredDomain } = await import("../lib/domain.js");
@@ -3294,10 +3806,187 @@ vendorMiniFormRouter.post("/admin/customer-invoices/:id/send-wa", async (req: Re
       notes: link.notes,
     }, invoiceUrl);
 
-    await sendWhatsApp(phone, waMsg, { context: "customer-invoice-send", refType: "customer_invoice", refId: String(link.id) });
+    const skipWa = await wasRecentlyNotified("customer-invoice-send-wa", `inv:${link.id}`, 5 * 60 * 1000);
+    if (skipWa) return res.json({ success: true, skipped: "recently sent" });
+    await sendWhatsApp(phone, waMsg, { context: "customer-invoice-send-wa", refType: "customer_invoice", refId: String(link.id) });
     return res.json({ success: true });
   } catch (err) {
     req.log?.error({ err }, "send-wa customer-invoice error");
     return res.status(500).json({ error: "Gagal mengirim WA" });
+  }
+});
+
+// ── ADMIN: GET /api/vendor-form/admin/customer-invoices/:id ──────────────────
+vendorMiniFormRouter.get("/admin/customer-invoices/:id", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const id = Number(req.params["id"]);
+  if (isNaN(id)) return res.status(400).json({ error: "ID tidak valid" });
+  try {
+    const [link] = await db.select().from(customerInvoiceLinksTable)
+      .where(eq(customerInvoiceLinksTable.id, id));
+    if (!link) return res.status(404).json({ error: "Invoice tidak ditemukan" });
+    return res.json({
+      ...link,
+      subtotal:   link.subtotal   ? Number(link.subtotal)   : null,
+      taxRate:    link.taxRate    ? Number(link.taxRate)    : 11,
+      taxAmount:  link.taxAmount  ? Number(link.taxAmount)  : null,
+      grandTotal: link.grandTotal ? Number(link.grandTotal) : null,
+      amountPaid: link.amountPaid ? Number(link.amountPaid) : 0,
+    });
+  } catch (err) {
+    req.log?.error({ err }, "get customer-invoice detail error");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── ADMIN: POST /api/vendor-form/admin/customer-invoices/:id/confirm-payment ──
+vendorMiniFormRouter.post("/admin/customer-invoices/:id/confirm-payment", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const id = Number(req.params["id"]);
+  if (isNaN(id)) return res.status(400).json({ error: "ID tidak valid" });
+  const { amountPaid, paymentMethod, notes } = req.body as {
+    amountPaid?: number; paymentMethod?: string; notes?: string;
+  };
+  try {
+    const [link] = await db.select().from(customerInvoiceLinksTable)
+      .where(eq(customerInvoiceLinksTable.id, id));
+    if (!link) return res.status(404).json({ error: "Invoice tidak ditemukan" });
+    if (link.paymentStatus === "paid") return res.status(409).json({ error: "Invoice sudah lunas" });
+
+    const grandTotal = link.grandTotal ? Number(link.grandTotal) : 0;
+    const paid = amountPaid ?? grandTotal;
+    const newPaymentStatus = paid >= grandTotal ? "paid" : "partial";
+    const fmtRp = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
+
+    await db.update(customerInvoiceLinksTable)
+      .set({
+        amountPaid: String(paid),
+        paymentMethod: paymentMethod ?? link.paymentMethod ?? null,
+        paymentStatus: newPaymentStatus,
+        status: newPaymentStatus === "paid" ? "paid" : link.status,
+        confirmedAt: new Date(),
+      } as any)
+      .where(eq(customerInvoiceLinksTable.id, id));
+
+    // Transisi order → Payment Received
+    if (link.orderId) {
+      transitionLogisticOrderStatus(link.orderId, "Payment Received", {
+        source: "vendorMiniForm:confirm_payment",
+        actorType: "admin",
+        notes: `Pembayaran dikonfirmasi${paymentMethod ? ` via ${paymentMethod}` : ""}${notes ? ` — ${notes}` : ""}`,
+      }).catch((e: unknown) =>
+        req.log?.warn({ e, orderId: link.orderId }, "Payment Received transition non-fatal"),
+      );
+    }
+
+    // WA ke customer (dedup 5 menit)
+    if (link.customerPhone) {
+      const skipCustWa = await wasRecentlyNotified("vmf-payment-confirmed", `inv:${link.id}`, 5 * 60 * 1000);
+      if (!skipCustWa) {
+        const msg = [
+          `✅ *Pembayaran Diterima*`,
+          `━━━━━━━━━━━━━━━━━━`,
+          `Halo ${link.customerName ?? "Customer"},`,
+          ``,
+          `Pembayaran Anda telah kami terima & dikonfirmasi.`,
+          ``,
+          `No. Order   : ${link.orderNumber ?? "—"}`,
+          `No. Invoice : ${link.invoiceNumber ?? "—"}`,
+          `Jumlah Bayar: *${fmtRp(paid)}*`,
+          `Metode      : ${paymentMethod ?? "—"}`,
+          `Status      : *Lunas ✅*`,
+          ``,
+          `Terima kasih atas pembayaran Anda 🙏`,
+          `_CST Logistics_`,
+        ].join("\n");
+        sendWhatsApp(link.customerPhone, msg, {
+          context: "vmf-payment-confirmed",
+          refType: "customer_invoice",
+          refId: String(link.id),
+        }).catch(() => {});
+      }
+    }
+
+    // WA ke admin group
+    const adminGroupWa = await getAdminGroupWa();
+    if (adminGroupWa) {
+      sendWhatsApp(adminGroupWa,
+        `💰 *Pembayaran Dikonfirmasi*\n\nOrder: ${link.orderNumber ?? "—"}\nInvoice: ${link.invoiceNumber ?? "—"}\nCustomer: ${link.customerName ?? "—"}\nJumlah: ${fmtRp(paid)}\nMetode: ${paymentMethod ?? "—"}`,
+        { context: "vmf-payment-admin", refType: "customer_invoice", refId: String(link.id) }
+      ).catch(() => {});
+    }
+
+    return res.json({ success: true, paymentStatus: newPaymentStatus });
+  } catch (err) {
+    req.log?.error({ err }, "confirm-payment error");
+    return res.status(500).json({ error: "Gagal konfirmasi pembayaran" });
+  }
+});
+
+// ── ADMIN: POST /api/vendor-form/admin/customer-invoices/:id/mark-completed ──
+vendorMiniFormRouter.post("/admin/customer-invoices/:id/mark-completed", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const id = Number(req.params["id"]);
+  if (isNaN(id)) return res.status(400).json({ error: "ID tidak valid" });
+  try {
+    const [link] = await db.select().from(customerInvoiceLinksTable)
+      .where(eq(customerInvoiceLinksTable.id, id));
+    if (!link) return res.status(404).json({ error: "Invoice tidak ditemukan" });
+    if (link.status === "completed") return res.json({ success: true, alreadyCompleted: true });
+
+    await db.update(customerInvoiceLinksTable)
+      .set({ status: "completed" } as any)
+      .where(eq(customerInvoiceLinksTable.id, id));
+
+    // Transisi order → Completed
+    if (link.orderId) {
+      transitionLogisticOrderStatus(link.orderId, "Completed", {
+        source: "vendorMiniForm:mark_completed",
+        actorType: "admin",
+        notes: `Order ditandai Selesai dari invoice ${link.invoiceNumber ?? link.token}`,
+      }).catch((e: unknown) =>
+        req.log?.warn({ e, orderId: link.orderId }, "Completed transition non-fatal"),
+      );
+    }
+
+    // WA ke customer (dedup 10 menit)
+    if (link.customerPhone) {
+      const skipCustWa = await wasRecentlyNotified("vmf-order-completed", `inv:${link.id}`, 10 * 60 * 1000);
+      if (!skipCustWa) {
+        const msg = [
+          `🎉 *Order Selesai!*`,
+          `━━━━━━━━━━━━━━━━━━`,
+          `Halo ${link.customerName ?? "Customer"},`,
+          ``,
+          `Order Anda telah selesai diproses.`,
+          ``,
+          `No. Order : ${link.orderNumber ?? "—"}`,
+          `Status    : *Selesai ✅*`,
+          ``,
+          `Terima kasih telah menggunakan layanan kami.`,
+          `Sampai jumpa kembali! 🙏`,
+          `_CST Logistics_`,
+        ].join("\n");
+        sendWhatsApp(link.customerPhone, msg, {
+          context: "vmf-order-completed",
+          refType: "customer_invoice",
+          refId: String(link.id),
+        }).catch(() => {});
+      }
+    }
+
+    // WA ke admin group
+    const adminGroupWa = await getAdminGroupWa();
+    if (adminGroupWa) {
+      sendWhatsApp(adminGroupWa,
+        `✅ *Order Selesai*\n\nOrder: ${link.orderNumber ?? "—"}\nInvoice: ${link.invoiceNumber ?? "—"}\nCustomer: ${link.customerName ?? "—"}\n\nOrder ditandai Selesai oleh admin.`,
+        { context: "vmf-order-completed-admin", refType: "customer_invoice", refId: String(link.id) }
+      ).catch(() => {});
+    }
+
+    return res.json({ success: true });
+  } catch (err) {
+    req.log?.error({ err }, "mark-completed error");
+    return res.status(500).json({ error: "Gagal tandai selesai" });
   }
 });

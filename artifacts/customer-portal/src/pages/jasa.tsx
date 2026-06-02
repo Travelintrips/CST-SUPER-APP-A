@@ -90,7 +90,7 @@ export default function Jasa() {
     const cats = s.categories ?? [];
     const matchCat =
       activeCategory === "__all__"
-        ? !cats.some((c) => GROUPED_CATEGORIES.includes(c))
+        ? !cats.some((c) => (GROUPED_CATEGORIES as unknown as string[]).includes(c))
         : cats.includes(activeCategory);
     return matchSearch && matchCat;
   });

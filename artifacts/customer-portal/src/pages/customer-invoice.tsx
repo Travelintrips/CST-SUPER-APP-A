@@ -9,6 +9,33 @@ type LineItem = {
   subtotal: number;
 };
 
+type TemplateField = {
+  key: string;
+  label: string;
+  type?: string;
+  unit?: string;
+  options?: string[];
+};
+
+type ServiceField = {
+  key?: string;
+  label: string;
+  type?: string;
+  unit?: string;
+  isInternal?: boolean;
+  isUpload?: boolean;
+};
+
+type TemplateSnapshot = {
+  name?: string;
+  categoryKey?: string;
+  templateKind?: string;
+  customFields?: TemplateField[];
+  fields?: ServiceField[];
+  quotationFields?: ServiceField[];
+  [key: string]: unknown;
+};
+
 type InvoiceData = {
   token: string;
   orderNumber: string | null;
@@ -27,7 +54,84 @@ type InvoiceData = {
   lineItems: LineItem[];
   acknowledgedAt: string | null;
   status: string;
+  categoryKey?: string | null;
+  templateId?: string | null;
+  templateVersion?: string | null;
+  templateSnapshot?: TemplateSnapshot | null;
 };
+
+const INTERNAL_KEYS = new Set([
+  "priceBase", "vendorCost", "margin", "basicPrice", "internalCost",
+  "markup", "profit", "sellingPrice", "vendorPrice", "costPrice",
+  "marginPct", "markupPct", "profitMarginPct", "hargaDasar", "hargaJual",
+]);
+
+function formatFieldValue(v: unknown, unit?: string): string | null {
+  if (v === null || v === undefined || v === "" || v === "-") return null;
+  if (Array.isArray(v)) {
+    const j = (v as unknown[]).filter(Boolean).map(String).join(", ");
+    return j || null;
+  }
+  if (typeof v === "boolean") return v ? "Ya" : "Tidak";
+  const s = String(v).trim();
+  if (!s || s === "-") return null;
+  if (s.startsWith("http") || s.startsWith("/upload") || s.startsWith("/replit") || s.startsWith("blob:")) return null;
+  return unit ? `${s} ${unit}` : s;
+}
+
+function SnapSummary({ snap }: { snap: TemplateSnapshot }) {
+  const isService = snap.templateKind === "service";
+  const productFields: TemplateField[] = (!isService && snap.customFields) ? snap.customFields : [];
+  const serviceFields: ServiceField[] = isService
+    ? [...(snap.quotationFields ?? snap.fields ?? [])].filter(f => !f.isInternal && !f.isUpload)
+    : [];
+
+  const productRows = productFields
+    .filter(f => !INTERNAL_KEYS.has(f.key))
+    .slice(0, 6);
+
+  const serviceRows = serviceFields
+    .filter(f => f.key && !INTERNAL_KEYS.has(f.key!))
+    .slice(0, 6);
+
+  if (!snap.name && productRows.length === 0 && serviceRows.length === 0) return null;
+
+  return (
+    <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-5">
+      <div className="flex items-center gap-2 mb-3">
+        <span className="text-lg">📦</span>
+        <div>
+          {snap.name && (
+            <p className="text-sm font-semibold text-indigo-800">{snap.name}</p>
+          )}
+          <p className="text-xs text-indigo-400 uppercase tracking-wide">
+            {isService ? "Layanan" : "Produk"}
+          </p>
+        </div>
+      </div>
+      {(productRows.length > 0 || serviceRows.length > 0) && (
+        <div className="space-y-1.5">
+          {productRows.map((f, i) => (
+            <div key={i} className="flex justify-between text-xs gap-3">
+              <span className="text-indigo-600 flex-shrink-0">
+                {f.label}{f.unit ? ` (${f.unit})` : ""}
+              </span>
+              <span className="text-indigo-400 italic text-right">—</span>
+            </div>
+          ))}
+          {serviceRows.map((f, i) => (
+            <div key={i} className="flex justify-between text-xs gap-3">
+              <span className="text-indigo-600 flex-shrink-0">
+                {f.label}{f.unit ? ` (${f.unit})` : ""}
+              </span>
+              <span className="text-indigo-400 italic text-right">—</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function Spinner() {
   return (
@@ -144,6 +248,7 @@ export default function CustomerInvoicePage() {
   const statusInfo = PAYMENT_STATUS[data.paymentStatus] ?? { text: data.paymentStatus, color: "bg-slate-50 border-slate-200 text-slate-700" };
   const remaining = (data.grandTotal ?? 0) - (data.amountPaid ?? 0);
   const isLate = data.dueDate && new Date(data.dueDate) < new Date() && data.paymentStatus !== "paid";
+  const tSnap = data.templateSnapshot ?? null;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 py-8 px-4">
@@ -181,6 +286,9 @@ export default function CustomerInvoicePage() {
             </span>
           )}
         </div>
+
+        {/* Ringkasan produk/layanan dari templateSnapshot (backward-compatible) */}
+        {tSnap && <SnapSummary snap={tSnap} />}
 
         {/* Rincian item */}
         {data.lineItems && data.lineItems.length > 0 && (

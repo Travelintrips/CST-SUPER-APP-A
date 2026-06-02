@@ -1,0 +1,75 @@
+SERVICE TEMPLATE DUAL RESOLVER REPORT
+File diubah:
+
+File	Perubahan
+artifacts/api-server/package.json	Tambah @workspace/service-templates: workspace:*
+artifacts/api-server/src/routes/vendorMiniForm.ts	Import, feature flag, helper, GET response, POST snapshot
+Feature flag:
+
+USE_SERVICE_TEMPLATE_ENGINE=false  (default — zero behavior change)
+USE_SERVICE_TEMPLATE_ENGINE=true   (aktifkan service template engine)
+
+Behavior flag OFF (default):
+
+resolveFromServiceTemplates() tidak dipanggil
+serviceTemplate: null di response GET /:token
+templateSnapshot tidak diisi dari service templates
+SERVICE_SCHEMAS tetap satu-satunya sumber — identik dengan sebelum FASE 3A
+Behavior flag ON:
+
+GET /:token (render VMF):
+
+{
+  "schema": { "...dari SERVICE_SCHEMAS..." },
+  "serviceTemplate": {
+    "serviceType": "trucking",
+    "label": "Trucking",
+    "emoji": "🚛",
+    "fields": [...phase-aware...],
+    "requiredDocuments": [...],
+    "checklist": [...],
+    "version": "1.0.3",
+    "source": "db"
+  }
+}
+
+POST /admin/links (create link):
+
+{
+  "templateId": "trucking",
+  "templateVersion": "1.0.3",
+  "templateSnapshot": {
+    "templateKind": "service",
+    "serviceType": "trucking",
+    "label": "Trucking",
+    "fields": [...],
+    "requiredDocuments": [...],
+    "checklist": [...],
+    "source": "db"
+  }
+}
+
+ServiceType tested:
+
+serviceType	Flag OFF	Flag ON
+trucking	SERVICE_SCHEMAS (17 fields)	DB (17 fields, source=db) ✅
+sea_freight	SERVICE_SCHEMAS (19 fields)	DB (19 fields, source=db) ✅
+unknown_type	null / fallback	last-resort (fields:[], tidak pernah throw) ✅
+Verified via live API:
+
+GET /api/service-templates/trucking → source: db, fields: 17 ✅
+GET /api/service-templates/sea_freight → source: db, fields: 19 ✅
+GET /api/service-templates → count: 17, all source: db ✅
+API Server build clean (esbuild, runtime sehat) ✅
+Tidak ada breaking error baru di typecheck ✅
+Fallback chain (flag ON):
+
+DB service_templates WHERE service_type = ? AND is_active = true
+In-code getInCodeServiceTemplate() (jika tidak ada di DB)
+SERVICE_SCHEMAS[serviceType] (shape-normalized)
+Last resort: { fields: [], version: "1.0.0" } — tidak pernah throw, tidak pernah blank form
+Issue ditemukan: Tidak ada.
+
+Rollback plan: Set env USE_SERVICE_TEMPLATE_ENGINE= (hapus / biarkan kosong/false) → behavior identik sebelum FASE 3A. SERVICE_SCHEMAS tidak disentuh, tidak ada migrasi DB yang diperlukan.
+
+Next, saya bisa menambahkan rendering di frontend VMF (Vendor Mini Form) untuk menampilkan requiredDocuments dan checklist dari service template ketika serviceTemplate tersedia di response. Mau dilanjutkan?

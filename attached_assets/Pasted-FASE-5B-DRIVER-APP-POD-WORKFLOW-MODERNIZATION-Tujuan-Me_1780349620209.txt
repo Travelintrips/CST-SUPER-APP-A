@@ -1,0 +1,183 @@
+FASE 5B — DRIVER APP + POD WORKFLOW MODERNIZATION
+
+Tujuan:
+Menyempurnakan Driver App agar POD workflow lebih lengkap, bisa upload foto, menampilkan detail pekerjaan, dan tetap aman untuk pricing/internal data.
+
+Kondisi saat ini:
+- Product Template Engine sudah production ready.
+- Service Template Engine sudah production ready.
+- Vendor Fulfillment sudah dynamic berdasarkan templateSnapshot.
+- Driver App POD masih sederhana: receiver name + signature, belum ada upload foto dan belum prefill data fulfillment.
+
+Tugas:
+
+1. Audit file:
+- artifacts/cst-driver/app/job/pod.tsx
+- driver job detail API
+- POD submit API
+- orderFulfillment.ts
+- podOcr.ts
+- vendorFulfillment.ts
+
+2. Tambahkan di Driver POD screen:
+
+A. Job Summary
+- Job Number
+- Customer Name
+- Delivery Address
+- Service Type
+- Product/Service Label
+
+B. Driver Info
+Prefill jika tersedia:
+- Driver Name
+- Driver Phone
+- Plate Number
+- Vehicle Type
+
+C. Delivery Info
+- Receiver Name
+- Receiver Position optional
+- Delivery Notes
+- Auto timestamp
+
+D. POD Proof
+- Upload foto POD
+- Kamera langsung jika supported
+- Multiple photos
+- Preview sebelum submit
+- Remove photo sebelum submit
+
+E. Signature
+- Pertahankan signature canvas existing
+- Jangan rusak flow lama
+
+3. Data source priority:
+
+Untuk Driver Info dan Service Context ambil dari:
+
+A. fulfillment submission latest
+B. vendor fulfillment data
+C. order.templateSnapshot
+D. RFQ / VMF snapshot fallback
+E. legacy job fields
+
+4. Template Context:
+
+Jika templateSnapshot.templateKind = "service":
+tampilkan:
+- service label
+- operational fields penting
+- checklist delivery jika ada
+
+Jika templateSnapshot.templateKind = "product":
+tampilkan:
+- product label
+- required documents
+- checklist
+
+Jika templateSnapshot null:
+pakai tampilan lama.
+
+5. POD Submit Payload:
+
+Update submitPOD agar mengirim:
+- receiverName
+- receiverPosition
+- deliveryNotes
+- signature
+- photoUrls / uploadedFiles
+- submittedAt
+- geoLocation jika tersedia
+- jobId
+- orderId
+
+6. Upload API:
+
+Jika sudah ada endpoint upload:
+gunakan endpoint existing.
+
+Jika belum ada:
+buat endpoint aman:
+
+POST /api/driver/jobs/:jobId/pod/upload
+
+Return:
+- fileUrl
+- objectPath
+- filename
+
+7. Backend Submit:
+
+Pastikan backend menerima:
+- receiverName
+- receiverPosition
+- deliveryNotes
+- signatureDataUrl
+- podPhotos
+- submittedAt
+- geoLocation
+
+8. WhatsApp Notification:
+
+Saat POD submitted dari Driver App, WA ke admin/customer harus menampilkan:
+- order number
+- driver name
+- plate number
+- receiver name
+- jumlah foto
+- delivery status
+- link file jika ada
+
+Jangan tampilkan:
+- vendorCost
+- margin
+- priceBase
+- internal notes
+
+9. Security:
+Driver App tidak boleh melihat:
+- harga jual customer
+- harga dasar vendor
+- margin
+- internal cost
+
+10. Backward Compatibility:
+- POD lama tetap bisa submit receiverName + signature saja.
+- Jika upload gagal, jangan hilangkan signature.
+- Jika templateSnapshot null, jangan blank page.
+
+11. Test:
+- Trucking job with templateSnapshot
+- Legacy trucking job without templateSnapshot
+- POD submit with signature only
+- POD submit with photo + signature
+- Multiple photo upload
+- Network/upload failure scenario
+- WA POD notification
+
+12. Output:
+
+DRIVER APP POD MODERNIZATION REPORT
+
+Isi:
+- file diubah
+- endpoint diubah/dibuat
+- UI berubah
+- submit payload
+- upload flow
+- WA notification update
+- security/leakage check
+- backward compatibility test
+- issue tersisa
+
+Acceptance Criteria:
+- Driver bisa upload foto POD.
+- Driver bisa preview dan hapus foto sebelum submit.
+- Driver melihat job/service context.
+- Driver info bisa prefill.
+- Signature flow lama tetap jalan.
+- Backend menerima POD lengkap.
+- WA POD notification lebih lengkap.
+- Tidak ada internal pricing bocor.
+- Legacy POD tetap jalan.

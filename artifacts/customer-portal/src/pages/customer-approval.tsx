@@ -12,6 +12,38 @@ type PriceItem = {
   subtotal: number;
 };
 
+type TemplateField = {
+  key: string;
+  label: string;
+  type: string;
+  required?: boolean;
+  options?: string[];
+  unit?: string;
+};
+
+type ServiceField = {
+  key?: string;
+  label: string;
+  type?: string;
+  required?: boolean;
+  unit?: string;
+  isUpload?: boolean;
+  isInternal?: boolean;
+};
+
+type TemplateSnapshot = {
+  name?: string;
+  categoryKey?: string;
+  templateKind?: string;
+  customFields?: TemplateField[];
+  fields?: ServiceField[];
+  quotationFields?: ServiceField[];
+  operationalFields?: ServiceField[];
+  requiredDocuments?: string[];
+  checklist?: string[];
+  [key: string]: unknown;
+};
+
 type ApprovalMeta = {
   token: string;
   orderNumber: string | null;
@@ -27,7 +59,84 @@ type ApprovalMeta = {
   taxRate?: number | null;
   taxAmount?: number | null;
   grandTotal?: number | null;
+  categoryKey?: string | null;
+  templateId?: string | null;
+  templateVersion?: string | null;
+  templateSnapshot?: TemplateSnapshot | null;
+  requiredDocuments?: string[] | null;
+  checklist?: string[] | null;
+  vendorFormData?: Record<string, unknown> | null;
 };
+
+const INTERNAL_FIELD_KEYS = new Set([
+  "priceBase", "vendorCost", "margin", "basicPrice", "internalCost",
+  "markup", "profit", "sellingPrice", "vendorPrice", "costPrice",
+  "marginPct", "markupPct", "profitMarginPct", "hargaDasar", "hargaJual",
+]);
+
+function formatSpecValue(v: unknown, unit?: string): string | null {
+  if (v === null || v === undefined || v === "" || v === "-" || v === "—") return null;
+  if (Array.isArray(v)) {
+    const joined = (v as unknown[]).filter(Boolean).map(String).join(", ");
+    return joined || null;
+  }
+  if (typeof v === "boolean") return v ? "Ya" : "Tidak";
+  const str = String(v).trim();
+  if (!str || str === "-" || str === "—") return null;
+  if (str.startsWith("http") || str.startsWith("/upload") || str.startsWith("/replit") || str.startsWith("blob:")) {
+    return "Dokumen terunggah ✓";
+  }
+  return unit ? `${str} ${unit}` : str;
+}
+
+function getSpecValue(
+  fieldKey: string,
+  unit: string | undefined,
+  offerSummary: Record<string, unknown> | null,
+  vendorFormData: Record<string, unknown> | null,
+): string | null {
+  if (INTERNAL_FIELD_KEYS.has(fieldKey)) return null;
+
+  // A. offerSummary.specifications[fieldKey]
+  const specs = offerSummary?.specifications;
+  if (specs && typeof specs === "object" && !Array.isArray(specs)) {
+    const v = (specs as Record<string, unknown>)[fieldKey];
+    const r = formatSpecValue(v, unit);
+    if (r) return r;
+  }
+
+  // B. offerSummary.productSpecifications[fieldKey]
+  const pspecs = offerSummary?.productSpecifications;
+  if (pspecs && typeof pspecs === "object" && !Array.isArray(pspecs)) {
+    const v = (pspecs as Record<string, unknown>)[fieldKey];
+    const r = formatSpecValue(v, unit);
+    if (r) return r;
+  }
+
+  // C. offerSummary[fieldKey] direct
+  if (offerSummary) {
+    const v = offerSummary[fieldKey];
+    const r = formatSpecValue(v, unit);
+    if (r) return r;
+  }
+
+  // D. vendorFormData.customFieldValues[fieldKey]
+  const cfv = vendorFormData?.customFieldValues;
+  if (cfv && typeof cfv === "object" && !Array.isArray(cfv)) {
+    const v = (cfv as Record<string, unknown>)[fieldKey];
+    const r = formatSpecValue(v, unit);
+    if (r) return r;
+  }
+
+  // E. vendorFormData[fieldKey] direct
+  if (vendorFormData) {
+    const v = vendorFormData[fieldKey];
+    const r = formatSpecValue(v, unit);
+    if (r) return r;
+  }
+
+  return null;
+}
 
 function Spinner() {
   return (
@@ -181,6 +290,39 @@ export default function CustomerApprovalPage() {
       ? Object.entries(meta.offerSummary).map(([k, v]) => ({ label: k, value: String(v) }))
       : [];
 
+  const tSnap = meta.templateSnapshot ?? null;
+  const requiredDocs = meta.requiredDocuments ?? tSnap?.requiredDocuments ?? [];
+  const checklist = meta.checklist ?? tSnap?.checklist ?? [];
+
+  // Resolve spec fields: product templates use customFields, service templates use fields/quotationFields
+  const isServiceTemplate = tSnap?.templateKind === "service";
+  const productSpecFields: TemplateField[] = (!isServiceTemplate && tSnap?.customFields) ? tSnap.customFields : [];
+  const serviceSpecFields: ServiceField[] = isServiceTemplate
+    ? [
+        ...(tSnap?.quotationFields ?? tSnap?.fields ?? []),
+      ].filter(f => !f.isInternal && !f.isUpload)
+    : [];
+
+  // Flat offerSummary for value lookup (never array at this point after sanitize)
+  const offerSummaryFlat = Array.isArray(meta.offerSummary)
+    ? null
+    : (meta.offerSummary as Record<string, unknown> | null);
+  const vendorFormData = meta.vendorFormData ?? null;
+
+  // Build rendered product spec rows (skip empty + internal)
+  const productSpecRows = productSpecFields
+    .filter(f => !INTERNAL_FIELD_KEYS.has(f.key))
+    .map(f => ({ field: f, value: getSpecValue(f.key, f.unit, offerSummaryFlat, vendorFormData) }))
+    .filter(r => r.value !== null);
+
+  // Build rendered service spec rows (skip empty + internal)
+  const serviceSpecRows = serviceSpecFields
+    .filter(f => f.key && !INTERNAL_FIELD_KEYS.has(f.key!))
+    .map(f => ({ field: f, value: getSpecValue(f.key!, f.unit, offerSummaryFlat, vendorFormData) }))
+    .filter(r => r.value !== null);
+
+  const hasSpecRows = productSpecRows.length > 0 || serviceSpecRows.length > 0;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 py-10 px-4">
       <div className="max-w-xl mx-auto space-y-4">
@@ -196,7 +338,75 @@ export default function CustomerApprovalPage() {
           {meta.customerName && (
             <p className="mt-2 text-sm text-slate-600">Untuk: <span className="font-medium">{meta.customerName}</span></p>
           )}
+          {tSnap?.name && (
+            <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-3 py-1">
+              <span className="text-xs font-medium text-indigo-700">📦 {tSnap.name}</span>
+              {meta.templateVersion && <span className="text-xs text-indigo-400">v{meta.templateVersion}</span>}
+            </div>
+          )}
         </div>
+
+        {/* Spesifikasi — product customFields */}
+        {hasSpecRows && (
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
+              {isServiceTemplate ? "Detail Layanan" : "Spesifikasi Produk"}
+            </p>
+            <div className="space-y-2">
+              {productSpecRows.map(({ field, value }, i) => (
+                <div key={i} className="flex justify-between text-sm border-b border-slate-50 py-1.5 gap-4">
+                  <span className="text-slate-500 flex-shrink-0">
+                    {field.label}
+                    {field.unit && <span className="text-slate-400 ml-1">({field.unit})</span>}
+                  </span>
+                  <span className="font-medium text-slate-700 text-right">{value}</span>
+                </div>
+              ))}
+              {serviceSpecRows.map(({ field, value }, i) => (
+                <div key={i} className="flex justify-between text-sm border-b border-slate-50 py-1.5 gap-4">
+                  <span className="text-slate-500 flex-shrink-0">
+                    {field.label}
+                    {field.unit && <span className="text-slate-400 ml-1">({field.unit})</span>}
+                  </span>
+                  <span className="font-medium text-slate-700 text-right">{value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Dokumen Wajib */}
+        {requiredDocs && requiredDocs.length > 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5">
+            <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-3">📋 Dokumen Wajib</p>
+            <ul className="space-y-1.5">
+              {requiredDocs.map((doc, i) => (
+                <li key={i} className="flex items-start gap-2 text-sm text-amber-900">
+                  <span className="mt-0.5 text-amber-500">•</span>
+                  <span>{doc}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-3 text-xs text-amber-600">
+              Harap siapkan dokumen di atas sebelum pengiriman dilaksanakan.
+            </p>
+          </div>
+        )}
+
+        {/* Checklist */}
+        {checklist && checklist.length > 0 && (
+          <div className="bg-blue-50 border border-blue-200 rounded-2xl p-5">
+            <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-3">✅ Checklist</p>
+            <ul className="space-y-1.5">
+              {checklist.map((item, i) => (
+                <li key={i} className="flex items-start gap-2 text-sm text-blue-900">
+                  <span className="mt-0.5 text-blue-400">☐</span>
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {/* Rincian harga jual + PPN */}
         {meta.priceItems && meta.priceItems.length > 0 ? (
@@ -258,10 +468,10 @@ export default function CustomerApprovalPage() {
           </div>
         )}
 
-        {/* Detail penawaran */}
+        {/* Detail penawaran (offerSummary key-value) */}
         {summary.length > 0 && (
           <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Detail Layanan</p>
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Ringkasan Layanan</p>
             <div className="space-y-2">
               {summary.map((item, i) => (
                 <div key={i} className="flex justify-between text-sm border-b border-slate-50 py-1.5">

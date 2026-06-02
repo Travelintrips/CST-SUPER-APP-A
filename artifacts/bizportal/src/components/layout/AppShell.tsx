@@ -56,6 +56,7 @@ import {
   ShieldCheck,
   Shield,
   Calendar,
+  CalendarDays,
   ShieldAlert,
   Database,
   Search,
@@ -274,6 +275,7 @@ export function AppShell({ children }: AppShellProps) {
       icon: Truck,
       roles: ["admin", "owner", "logistics"],
       children: [
+        { titleKey: "Operational Dashboard", href: "/operational-dashboard", icon: LayoutDashboard },
         { titleKey: "shipments", href: "/logistics", icon: Truck },
         { titleKey: "freightForwarding", href: "/logistics/freight", icon: Ship, companyCodes: ["CST"] },
         { titleKey: "RFQ Vendor", href: "/logistics/rfq", icon: Send, companyCodes: ["CST"] },
@@ -368,6 +370,26 @@ export function AppShell({ children }: AppShellProps) {
       ],
     },
 
+    // ── SPORT CENTER ──────────────────────────────────────────────────
+    {
+      type: "group",
+      titleKey: "Sport Center",
+      basePath: "/sport-center",
+      icon: Trophy,
+      roles: ["admin", "owner", "manager"],
+      children: [
+        { titleKey: "Dashboard", href: "/sport-center/dashboard", icon: LayoutDashboard },
+        { titleKey: "Bookings", href: "/sport-center/bookings", icon: CalendarDays },
+        { titleKey: "Fasilitas", href: "/sport-center/facilities", icon: Building2 },
+        { titleKey: "Customers", href: "/sport-center/customers", icon: UserCircle },
+        { titleKey: "Members", href: "/sport-center/members", icon: Users },
+        { titleKey: "Pricing Rules", href: "/sport-center/pricing-rules", icon: Tags },
+        { titleKey: "Pembayaran", href: "/sport-center/payments", icon: DollarSign },
+        { titleKey: "Laporan Revenue", href: "/sport-center/reports", icon: BarChart2 },
+        { titleKey: "Pengaturan", href: "/sport-center/settings", icon: Settings },
+      ],
+    },
+
     // ── 9.5. NOTIFICATIONS ────────────────────────────────────────────
     {
       type: "group",
@@ -402,6 +424,7 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "Short Links", href: "/settings/short-links", icon: Link2 },
         { titleKey: "Konfigurasi Menu", href: "/settings/nav-company-config", icon: LayoutGrid },
         { titleKey: "Product Templates", href: "/settings/product-templates", icon: Layers },
+        { titleKey: "Service Templates", href: "/settings/service-templates", icon: Layers },
       ],
     },
   ];

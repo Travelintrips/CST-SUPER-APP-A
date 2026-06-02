@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
+import { TemplateSnapshotCard } from "@/components/TemplateSnapshotCard";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -621,19 +622,19 @@ function ActivityLogTab({ docId }: { docId: number }) {
                       </p>
                     )}
                     {/* Extra detail from new_data */}
-                    {nd && entry.action === "create" && nd.docNumber && (
+                    {nd && entry.action === "create" && !!nd.docNumber && (
                       <p className="text-xs text-muted-foreground mt-1">
                         Nomor dokumen: <span className="font-mono font-medium">{String(nd.docNumber)}</span>
                       </p>
                     )}
-                    {nd && (entry.action === "confirm" || entry.action === "send" || entry.action === "cancel" || entry.action === "draft") && nd.fromStatus && nd.toStatus && (
+                    {nd && (entry.action === "confirm" || entry.action === "send" || entry.action === "cancel" || entry.action === "draft") && !!nd.fromStatus && !!nd.toStatus && (
                       <p className="text-xs text-muted-foreground mt-1">
                         Status: <span className="line-through opacity-60">{String(nd.fromStatus)}</span>
                         {" → "}
                         <span className="font-medium">{String(nd.toStatus)}</span>
                       </p>
                     )}
-                    {nd && entry.action === "mark_invoiced" && nd.invoiceNumber && (
+                    {nd && entry.action === "mark_invoiced" && !!nd.invoiceNumber && (
                       <p className="text-xs text-muted-foreground mt-1">
                         Invoice: <span className="font-mono font-medium">{String(nd.invoiceNumber)}</span>
                       </p>
@@ -668,7 +669,7 @@ export default function SalesDocumentDetailPage() {
   const [pdfLoading, setPdfLoading] = useState(false);
 
   const { data: doc, isLoading, error } = useGetSalesDocument(docId, {
-    query: { enabled: !Number.isNaN(docId) },
+    query: { queryKey: getGetSalesDocumentQueryKey(docId), enabled: !Number.isNaN(docId) },
   });
 
   const actionMut = useSalesDocumentAction();
@@ -683,7 +684,7 @@ export default function SalesDocumentDetailPage() {
     if (!confirm(`${label}?`)) return;
     setActionLoading(action);
     try {
-      await actionMut.mutateAsync({ id: docId, data: { action } });
+      await actionMut.mutateAsync({ id: docId, data: { action: action as any } });
       invalidate();
       toast({ title: "Berhasil" });
     } catch {
@@ -981,11 +982,11 @@ export default function SalesDocumentDetailPage() {
                       />
                     </>
                   )}
-                  {doc.invoiceNumber && (
-                    <InfoRow label="No. Invoice" value={doc.invoiceNumber} mono />
+                  {!!(doc as any).invoiceNumber && (
+                    <InfoRow label="No. Invoice" value={(doc as any).invoiceNumber} mono />
                   )}
-                  {doc.dueDate && (
-                    <InfoRow label="Jatuh tempo" value={dateStr(doc.dueDate)} />
+                  {!!(doc as any).dueDate && (
+                    <InfoRow label="Jatuh tempo" value={dateStr((doc as any).dueDate)} />
                   )}
                 </CardContent>
               </Card>
@@ -1020,7 +1021,7 @@ export default function SalesDocumentDetailPage() {
                 </Card>
               )}
 
-              {doc.logisticOrderId && (
+              {!!(doc as any).logisticOrderId && (
                 <Card className="border-indigo-200/60 bg-indigo-50/30">
                   <CardContent className="px-4 py-3 flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -1028,7 +1029,7 @@ export default function SalesDocumentDetailPage() {
                       <span className="text-sm text-indigo-700 font-medium">Terhubung ke Logistic Order</span>
                     </div>
                     <Button variant="outline" size="sm" asChild className="gap-1.5 text-indigo-600 border-indigo-200 hover:bg-indigo-100">
-                      <Link href={`/logistics/orders/${doc.logisticOrderId}`}>
+                      <Link href={`/logistics/orders/${(doc as any).logisticOrderId}`}>
                         Lihat <ExternalLink className="h-3 w-3" />
                       </Link>
                     </Button>
@@ -1036,6 +1037,10 @@ export default function SalesDocumentDetailPage() {
                 </Card>
               )}
             </div>
+
+            {(doc as any).templateSnapshot && (
+              <TemplateSnapshotCard templateSnapshot={(doc as any).templateSnapshot} />
+            )}
 
             {/* Line Items */}
             <Card>

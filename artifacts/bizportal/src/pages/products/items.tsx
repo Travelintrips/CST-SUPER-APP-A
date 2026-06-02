@@ -19,7 +19,7 @@ const NEW_CATEGORY_VALUE = "__new__";
 function CategorySelect({
   value, onChange,
 }: { value: string; onChange: (v: string) => void }) {
-  const [isNew, setIsNew] = useState(value !== "" && false);
+  const [isNew, setIsNew] = useState(false);
   const [newVal, setNewVal] = useState("");
 
   const { data: categories = [] } = useQuery<string[]>({

@@ -49,7 +49,7 @@ function useAuthFetch() {
         "Content-Type": "application/json",
         ...(opts?.headers as Record<string, string> ?? {}),
       };
-      if (session?.access_token) headers["Authorization"] = `Bearer ${session.access_token}`;
+      if ((session as any)?.access_token) headers["Authorization"] = `Bearer ${(session as any).access_token}`;
       return fetch(url, { ...opts, headers });
     },
     [session],

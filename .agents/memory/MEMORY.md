@@ -17,3 +17,9 @@
 - [Phase 5 Cleanup Decisions](phase5-cleanup.md) — shipments legacy table safe to drop (0 rows, dashboard.ts fixed to freightShipmentsTable); workflow_events safe to drop (0 rows, no callers); /inventory/warehouses deprecated (header added); logisticRfq.ts V1 KEEP (customer portal active); regression: scripts/regression-phase5.mjs (32/32)
 - [ws Package & Customer Portal Port](ws-port-config.md) — api-server needs ws in externals AND pnpm install; customer portal proxy runs on port 23434 (Replit auto-assigns PORT); Gateway needs CUSTOMER_PORT=23434
 - [Supabase Storage Migration](supabase-storage-migration.md) — GCS→Supabase; DEV key fallback; bucket names; upload path format `/objects/uploads/<uuid>.<ext>`
+- [Zod build alias](zod-build-alias.md) — zod not hoisted to workspace root by pnpm; must alias in build.mjs pointing to pnpm store directory.
+- [FASE 4A Service Context WA](fase4a-service-context-wa.md) — buildServiceContext() di orderNotification.ts; serviceChecklistSummary embed header; renderTemplate auto-skip null; op_request pakai SERVICE_SCHEMAS untuk derive snapshot.
+- [VMF Invoice Lifecycle](vmf-invoice-lifecycle.md) — 6 endpoints (create/list/detail/send-wa/confirm-payment/mark-completed); confirmedAt boot migration; invoiceLinks.status must be explicit in tracking SELECT.
+- [Driver App POD Modernization](driver-pod-modernization.md) — FASE 5B: 6 kolom baru di driver_jobs, upload endpoint, extended POD fields, foto, geo; WA grup via getAdminGroupWa; pod.tsx ScrollView + foto picker.
+- [DO block parameterized query pitfall](do-block-sql-pitfall.md) — Drizzle sql`` template parameterizes all interpolations; DO $$ blocks reject parameters. Use sql.raw(`...${v}...`) for enum migrations inside PL/pgSQL DO blocks.
+- [FASE 6E Order Exceptions](fase6e-order-exceptions.md) — per-order exception tracking via refType='logistic_order'/refId=orderId; new router in orderExceptions.ts; ExceptionPanel in order-detail.tsx right column.

@@ -66,14 +66,14 @@ function sourceBadgeColor(source: string): string {
 }
 
 function TimelineEntry({ entry, index }: { entry: AuditEntry; index: number }) {
-  const source = entry["_source"] as string;
-  const action = (entry["action"] ?? entry["event_type"] ?? entry["new_status"] ?? "") as string;
-  const description = (entry["description"] ?? entry["notes"] ?? "") as string;
-  const actorType = (entry["actor_type"] ?? entry["changed_by_type"] ?? entry["actor_type"] ?? "system") as string;
-  const actorName = (entry["actor_name"] ?? entry["changed_by_name"] ?? entry["customer_name"] ?? entry["vendor_name"] ?? "") as string;
-  const oldStatus = entry["old_status"] as string | null;
-  const newStatus = (entry["new_status"] ?? entry["new_status"]) as string | null;
-  const createdAt = entry["created_at"] as string;
+  const source: string = String(entry["_source"] ?? "");
+  const action: string = String(entry["action"] ?? entry["event_type"] ?? entry["new_status"] ?? "");
+  const description: string = String(entry["description"] ?? entry["notes"] ?? "");
+  const actorType: string = String(entry["actor_type"] ?? entry["changed_by_type"] ?? "system");
+  const actorName: string = String(entry["actor_name"] ?? entry["changed_by_name"] ?? entry["customer_name"] ?? entry["vendor_name"] ?? "");
+  const oldStatus: string | null = entry["old_status"] != null ? String(entry["old_status"]) : null;
+  const newStatus: string | null = entry["new_status"] != null ? String(entry["new_status"]) : null;
+  const createdAt: string = String(entry["created_at"] ?? "");
 
   return (
     <div className="relative flex gap-3 pb-4">
@@ -116,10 +116,7 @@ function TimelineEntry({ entry, index }: { entry: AuditEntry; index: number }) {
             </div>
           )}
 
-          {/* Description */}
-          {description && (
-            <p className="text-xs text-slate-600 leading-relaxed">{description}</p>
-          )}
+          {description ? <p className="text-xs text-slate-600 leading-relaxed">{description}</p> : null}
 
           {/* Vendor price info */}
           {(entry["old_price"] != null || entry["new_price"] != null) && (
@@ -138,12 +135,12 @@ function TimelineEntry({ entry, index }: { entry: AuditEntry; index: number }) {
           )}
 
           {/* Revision/rejection notes */}
-          {entry["revision_notes"] && (
+          {!!entry["revision_notes"] && (
             <p className="text-xs text-amber-700 bg-amber-50 rounded px-2 py-1 mt-1">
               Revisi: {entry["revision_notes"] as string}
             </p>
           )}
-          {entry["rejection_reason"] && (
+          {!!entry["rejection_reason"] && (
             <p className="text-xs text-red-700 bg-red-50 rounded px-2 py-1 mt-1">
               Alasan: {entry["rejection_reason"] as string}
             </p>
@@ -321,10 +318,10 @@ export default function OrderAuditTrailPage() {
                       <div className="w-1.5 h-1.5 rounded-full bg-violet-400 flex-shrink-0" />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1">
-                          {e["old_status"] && (
+                          {!!e["old_status"] && (
                             <span className="text-slate-400 truncate">{e["old_status"] as string}</span>
                           )}
-                          {e["old_status"] && <ChevronRight className="w-3 h-3 text-slate-300 flex-shrink-0" />}
+                          {!!e["old_status"] && <ChevronRight className="w-3 h-3 text-slate-300 flex-shrink-0" />}
                           <span className="font-medium text-slate-700 truncate">{e["new_status"] as string}</span>
                         </div>
                         <span className="text-slate-400 text-[10px]">
@@ -352,7 +349,7 @@ export default function OrderAuditTrailPage() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1 flex-wrap">
                           <span className="font-medium text-slate-700">{e["event_type"] as string}</span>
-                          {e["vendor_name"] && (
+                          {!!e["vendor_name"] && (
                             <span className="text-orange-600 text-[10px]">· {e["vendor_name"] as string}</span>
                           )}
                         </div>
@@ -388,7 +385,7 @@ export default function OrderAuditTrailPage() {
                       }`} />
                       <div className="flex-1 min-w-0">
                         <span className="font-medium text-slate-700">{e["event_type"] as string}</span>
-                        {e["customer_name"] && (
+                        {!!e["customer_name"] && (
                           <span className="block text-slate-500 text-[10px]">{e["customer_name"] as string}</span>
                         )}
                         <span className="block text-slate-400 text-[10px]">{dt(e["created_at"] as string)}</span>

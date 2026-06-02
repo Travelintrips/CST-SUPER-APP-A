@@ -1,0 +1,105 @@
+FASE 3E — FINAL SERVICE TEMPLATE CUTOVER AUDIT
+
+Tujuan:
+Pastikan Service Template Engine sudah benar-benar menggantikan SERVICE_SCHEMAS sebagai runtime utama VMF ketika USE_SERVICE_TEMPLATE_ENGINE=true.
+
+Cek:
+
+1. Environment
+Pastikan:
+USE_SERVICE_TEMPLATE_ENGINE=true
+
+2. Backend VMF
+Test serviceType:
+- trucking
+- sea_freight
+- air_freight
+- ppjk
+- handling
+- document
+- exim_service
+
+Pastikan response GET VMF berisi:
+- serviceTemplate
+- serviceType
+- version
+- source=db
+- fields
+- requiredDocuments
+- checklist
+- templateSnapshot.templateKind = "service"
+
+3. Frontend VMF
+Pastikan tampil:
+- badge Service Template Runtime Active
+- field dari serviceTemplate.fields
+- quotation section
+- operational section
+- upload field jika isUpload=true
+- required documents
+- checklist
+
+4. Submit Test
+Untuk minimal:
+- trucking
+- sea_freight
+- air_freight
+- ppjk
+
+Pastikan:
+- semua field vendor tersimpan
+- upload field tersimpan objectPath
+- required document values tersimpan
+- checklist values tersimpan
+- templateId tersimpan
+- templateVersion tersimpan
+- templateSnapshot tersimpan
+
+5. CMS Edit Test
+Edit satu field di Service Template CMS, contoh trucking:
+- tambah field test_internal_note
+- save
+- buka VMF baru
+- pastikan field baru muncul
+- hapus/nonaktifkan field test setelah test
+
+6. Rollback Test
+Set:
+USE_SERVICE_TEMPLATE_ENGINE=false
+
+Pastikan:
+- VMF kembali memakai SERVICE_SCHEMAS lama
+- tidak blank page
+- submit tetap berhasil
+
+7. Backward Compatibility
+Test link lama:
+- link sebelum service template engine
+- link tanpa serviceTemplate
+- unknown serviceType
+
+Pastikan:
+- tetap bisa dibuka
+- tidak error
+- tidak blank page
+
+8. Output:
+
+FINAL SERVICE TEMPLATE CUTOVER REPORT
+
+Isi:
+- serviceType tested
+- backend result
+- frontend result
+- submit result
+- CMS edit result
+- rollback result
+- backward compatibility result
+- issue tersisa
+- production readiness verdict
+
+Acceptance Criteria:
+- Service Template Engine siap production untuk VMF.
+- SERVICE_SCHEMAS hanya fallback.
+- Admin edit Service Template CMS langsung tercermin di VMF baru.
+- Rollback cukup dengan USE_SERVICE_TEMPLATE_ENGINE=false.

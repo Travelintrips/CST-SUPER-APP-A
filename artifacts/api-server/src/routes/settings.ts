@@ -39,7 +39,7 @@ router.put("/notifications", async (req: Request, res: Response) => {
   }
   const saves: Promise<void>[] = [setAdminWa(adminWa)];
   if (typeof adminGroupWa === "string") saves.push(setAdminGroupWa(adminGroupWa));
-  if (typeof adminPhones === "string") saves.push(setAdminPhones(adminPhones));
+  if (typeof adminPhones === "string") saves.push(setAdminPhones(adminPhones.split(",").map(s => s.trim()).filter(Boolean)));
   await Promise.all(saves);
   return res.json({
     ok: true,
