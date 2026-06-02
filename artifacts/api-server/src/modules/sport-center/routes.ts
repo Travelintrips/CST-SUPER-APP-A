@@ -4,7 +4,7 @@ import { sql } from "drizzle-orm";
 import { requireAdmin } from "../../lib/requireAdmin.js";
 import { handleSportCenterSse, broadcastSportCenterEvent } from "./broadcast.js";
 import { postSportCenterBooking, postSportCenterBookingReversal, postSportCenterRefund, postSportCenterMembershipPayment, postSportCenterBookingWithTax, postSportCenterBookingRefundDirect } from "../../lib/accounting.js";
-import { syncFacilityUpsert, syncFacilityDelete, syncAllFacilities } from "./supabaseSync.js";
+import { syncFacilityUpsert, syncFacilityDelete, syncAllFacilities, syncBookingUpsert, syncAllBookings, getLastSyncLogs } from "./supabaseSync.js";
 
 const router = Router();
 
@@ -315,6 +315,7 @@ router.post("/bookings", async (req, res) => {
 
     const row = r.rows[0] as Record<string, unknown>;
     broadcastSportCenterEvent({ module: "sport-center", entity: "booking", action: "created", data: row, timestamp: new Date().toISOString() }, company_id);
+    void syncBookingUpsert(row as any);
     res.status(201).json(row);
   } catch {
     res.status(500).json({ error: "Gagal membuat booking" });
@@ -337,6 +338,7 @@ router.patch("/bookings/:id", async (req, res) => {
     if (!r.rows.length) return res.status(404).json({ error: "Tidak ditemukan" });
     const row = r.rows[0] as Record<string, unknown>;
     broadcastSportCenterEvent({ module: "sport-center", entity: "booking", action: "updated", data: row, timestamp: new Date().toISOString() });
+    void syncBookingUpsert(row as any);
     res.json(row);
   } catch {
     res.status(500).json({ error: "Gagal memperbarui" });
@@ -354,6 +356,7 @@ router.post("/bookings/:id/checkin", async (req, res) => {
     if (!r.rows.length) return res.status(400).json({ error: "Booking tidak dapat di-check-in" });
     const row = r.rows[0] as Record<string, unknown>;
     broadcastSportCenterEvent({ module: "sport-center", entity: "booking", action: "checkin", data: row, timestamp: new Date().toISOString() });
+    void syncBookingUpsert(row as any);
     res.json(row);
   } catch {
     res.status(500).json({ error: "Gagal check-in" });
@@ -417,6 +420,7 @@ router.post("/bookings/:id/cancel", async (req, res) => {
     `);
 
     broadcastSportCenterEvent({ module: "sport-center", entity: "booking", action: "cancelled", data: row, timestamp: new Date().toISOString() }, booking.company_id as number | undefined);
+    void syncBookingUpsert(row as any);
     res.json({ ...row, amount_reversed: amountReversed });
   } catch {
     res.status(500).json({ error: "Gagal membatalkan booking" });
