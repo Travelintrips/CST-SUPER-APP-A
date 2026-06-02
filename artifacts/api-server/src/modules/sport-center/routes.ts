@@ -3,7 +3,7 @@ import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { requireAdmin } from "../../lib/requireAdmin.js";
 import { handleSportCenterSse, broadcastSportCenterEvent } from "./broadcast.js";
-import { postSportCenterBooking, reverseSportCenterBooking } from "../../lib/accounting.js";
+import { postSportCenterBooking, postSportCenterBookingReversal, postSportCenterRefund } from "../../lib/accounting.js";
 
 const router = Router();
 
@@ -28,6 +28,11 @@ async function nextPaymentNumber(companyId?: number): Promise<string> {
   return `PAY/${new Date().getFullYear()}/${pad(Number((res.rows[0] as any).cnt) + 1)}`;
 }
 
+async function nextRefundNumber(companyId?: number): Promise<string> {
+  const res = await db.execute(sql`SELECT COUNT(*) AS cnt FROM sport_refunds WHERE (${companyId ?? null}::int IS NULL OR company_id = ${companyId ?? null})`);
+  return `RF/${new Date().getFullYear()}/${pad(Number((res.rows[0] as any).cnt) + 1)}`;
+}
+
 router.get("/events", requireAdmin, (req, res) => {
   handleSportCenterSse(req, res);
 });
@@ -37,7 +42,7 @@ router.get("/dashboard", requireAdmin, async (req, res) => {
     const companyId = req.query.companyId ? Number(req.query.companyId) : undefined;
     const cId = companyId ?? null;
 
-    const [totals, todayRes, pendingPayRes, membersRes, byStatus, topFacilities, recentBookings, monthRev, totalRev, promoUsedRes, promoDiscountRes] = await Promise.all([
+    const [totals, todayRes, pendingPayRes, membersRes, byStatus, topFacilities, recentBookings, monthRev, totalRev, promoUsedRes, promoDiscountRes, cancelledRes, totalRefundsRes, totalRefundAmountRes] = await Promise.all([
       db.execute(sql`SELECT COUNT(*) AS cnt FROM sport_bookings WHERE (${cId}::int IS NULL OR company_id = ${cId})`),
       db.execute(sql`SELECT COUNT(*) AS cnt FROM sport_bookings WHERE (${cId}::int IS NULL OR company_id = ${cId}) AND booking_date = CURRENT_DATE`),
       db.execute(sql`SELECT COUNT(*) AS cnt FROM sport_bookings WHERE (${cId}::int IS NULL OR company_id = ${cId}) AND payment_status = 'unpaid' AND status NOT IN ('cancelled','completed')`),
@@ -50,6 +55,8 @@ router.get("/dashboard", requireAdmin, async (req, res) => {
       db.execute(sql`SELECT COUNT(*) AS cnt FROM sport_bookings WHERE (${cId}::int IS NULL OR company_id = ${cId}) AND promo_id IS NOT NULL AND status != 'cancelled'`),
       db.execute(sql`SELECT COALESCE(SUM(discount_amount),0) AS total FROM sport_bookings WHERE (${cId}::int IS NULL OR company_id = ${cId}) AND promo_id IS NOT NULL AND status != 'cancelled'`),
       db.execute(sql`SELECT COUNT(*) AS cnt FROM sport_bookings WHERE (${cId}::int IS NULL OR company_id = ${cId}) AND status = 'cancelled'`),
+      db.execute(sql`SELECT COUNT(*) AS cnt FROM sport_refunds WHERE (${cId}::int IS NULL OR company_id = ${cId})`),
+      db.execute(sql`SELECT COALESCE(SUM(refund_amount),0) AS total FROM sport_refunds WHERE (${cId}::int IS NULL OR company_id = ${cId}) AND status = 'paid'`),
     ]);
 
     res.json({
@@ -65,6 +72,8 @@ router.get("/dashboard", requireAdmin, async (req, res) => {
       totalPromoUsed: Number((promoUsedRes.rows[0] as any).cnt),
       totalPromoDiscount: Number((promoDiscountRes.rows[0] as any).total),
       cancelledBookings: Number((cancelledRes.rows[0] as any).cnt),
+      totalRefunds: Number((totalRefundsRes.rows[0] as any).cnt),
+      totalRefundAmount: Number((totalRefundAmountRes.rows[0] as any).total),
     });
   } catch {
     res.status(500).json({ error: "Gagal memuat dashboard" });
@@ -322,11 +331,11 @@ router.post("/bookings/:id/cancel", requireAdmin, async (req, res) => {
     let amountReversed = 0;
     if (amountPaid > 0) {
       amountReversed = amountPaid;
-      reverseSportCenterBooking({
+      postSportCenterBookingReversal({
         bookingId: id,
-        bookingNumber: String(booking.booking_number ?? id),
-        amountReversed,
-        createdById,
+        bookingCode: String(booking.booking_number ?? booking.booking_code ?? `BK-${id}`),
+        customerName: String(booking.customer_name ?? ""),
+        facilityName: String(booking.facility_name ?? ""),
         companyId: booking.company_id != null ? Number(booking.company_id) : null,
       }).catch(() => {});
     }
@@ -774,6 +783,205 @@ router.get("/reports", requireAdmin, async (req, res) => {
     res.json({ revenueByDay: revenueByDay.rows, revenueByFacility: revenueByFacility.rows, bookingsByStatus: bookingsByStatus.rows });
   } catch {
     res.status(500).json({ error: "Gagal" });
+  }
+});
+
+// ── REFUNDS ──────────────────────────────────────────────────────────────────
+
+router.get("/refunds", requireAdmin, async (req, res) => {
+  try {
+    const cId = req.query.companyId ? Number(req.query.companyId) : null;
+    const statusFilter = req.query.status ? String(req.query.status) : null;
+    const bookingId = req.query.bookingId ? Number(req.query.bookingId) : null;
+    const page = Math.max(1, Number(req.query.page ?? 1));
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit ?? 50)));
+    const offset = (page - 1) * limit;
+
+    const rows = await db.execute(sql`
+      SELECT r.*,
+             b.booking_number, b.facility_name, b.booking_date,
+             c.name AS customer_name_detail
+      FROM sport_refunds r
+      LEFT JOIN sport_bookings b ON b.id = r.booking_id
+      LEFT JOIN sport_customers c ON c.id = r.customer_id
+      WHERE (${cId}::int IS NULL OR r.company_id = ${cId})
+        AND (${statusFilter}::text IS NULL OR r.status = ${statusFilter})
+        AND (${bookingId}::int IS NULL OR r.booking_id = ${bookingId})
+      ORDER BY r.created_at DESC
+      LIMIT ${limit} OFFSET ${offset}
+    `);
+    const totalRes = await db.execute(sql`
+      SELECT COUNT(*) AS cnt FROM sport_refunds r
+      WHERE (${cId}::int IS NULL OR r.company_id = ${cId})
+        AND (${statusFilter}::text IS NULL OR r.status = ${statusFilter})
+        AND (${bookingId}::int IS NULL OR r.booking_id = ${bookingId})
+    `);
+    res.json({ data: rows.rows, total: Number((totalRes.rows[0] as any).cnt), page, limit });
+  } catch {
+    res.status(500).json({ error: "Gagal memuat refund" });
+  }
+});
+
+router.post("/refunds", requireAdmin, async (req, res) => {
+  try {
+    const { company_id, booking_id, payment_id, refund_amount, refund_reason } = req.body;
+    const actorId = (req.user as { id: string } | undefined)?.id ?? null;
+
+    if (!booking_id || !refund_amount) {
+      return res.status(400).json({ error: "booking_id dan refund_amount wajib" });
+    }
+    const amt = Number(refund_amount);
+    if (isNaN(amt) || amt <= 0) {
+      return res.status(400).json({ error: "refund_amount harus berupa angka positif" });
+    }
+
+    // Validasi: booking harus dalam status cancelled
+    const bookingRes = await db.execute(sql`SELECT * FROM sport_bookings WHERE id = ${Number(booking_id)} LIMIT 1`);
+    if (!bookingRes.rows.length) return res.status(404).json({ error: "Booking tidak ditemukan" });
+    const booking = bookingRes.rows[0] as Record<string, unknown>;
+    if (booking.status !== "cancelled") {
+      return res.status(400).json({ error: "Refund hanya dapat dibuat untuk booking yang sudah dibatalkan" });
+    }
+
+    // Validasi: total refund tidak boleh melebihi total pembayaran
+    const paidRes = await db.execute(sql`
+      SELECT COALESCE(SUM(amount),0) AS total_paid FROM sport_payments
+      WHERE booking_id = ${Number(booking_id)} AND status = 'paid'
+    `);
+    const totalPaid = Number((paidRes.rows[0] as any).total_paid);
+
+    const existingRefundRes = await db.execute(sql`
+      SELECT COALESCE(SUM(refund_amount),0) AS already_refunded FROM sport_refunds
+      WHERE booking_id = ${Number(booking_id)} AND status != 'rejected'
+    `);
+    const alreadyRefunded = Number((existingRefundRes.rows[0] as any).already_refunded);
+
+    if (alreadyRefunded + amt > totalPaid) {
+      return res.status(400).json({
+        error: `Total refund (${alreadyRefunded + amt}) melebihi total pembayaran (${totalPaid})`,
+      });
+    }
+
+    // Dapatkan customer_id dari booking jika tidak disediakan
+    const custId = req.body.customer_id ?? booking.customer_id ?? null;
+    const cmpId = company_id ?? booking.company_id ?? null;
+    const refundNumber = await nextRefundNumber(cmpId ? Number(cmpId) : undefined);
+
+    const r = await db.execute(sql`
+      INSERT INTO sport_refunds (company_id, booking_id, payment_id, customer_id, refund_number, refund_amount, refund_reason, status, processed_by)
+      VALUES (
+        ${cmpId ?? null},
+        ${Number(booking_id)},
+        ${payment_id ?? null},
+        ${custId ?? null},
+        ${refundNumber},
+        ${amt},
+        ${refund_reason ?? null},
+        'pending',
+        ${actorId}
+      )
+      RETURNING *
+    `);
+    const refund = r.rows[0] as Record<string, unknown>;
+
+    await db.execute(sql`
+      INSERT INTO sport_audit_logs (company_id, entity_type, entity_id, action, actor, new_data)
+      VALUES (
+        ${cmpId ?? null}, 'refund', ${refund.id},
+        'REFUND_CREATED', ${actorId},
+        ${JSON.stringify({ refund_number: refundNumber, booking_id, refund_amount: amt, reason: refund_reason ?? null })}::jsonb
+      )
+    `);
+
+    broadcastSportCenterEvent({ module: "sport-center", entity: "refund", action: "created", data: refund, timestamp: new Date().toISOString() }, cmpId ? Number(cmpId) : undefined);
+    res.status(201).json(refund);
+  } catch (err: any) {
+    if (String(err?.message ?? "").includes("unique")) return res.status(409).json({ error: "Refund sudah ada" });
+    res.status(500).json({ error: "Gagal membuat refund" });
+  }
+});
+
+router.get("/refunds/:id", requireAdmin, async (req, res) => {
+  try {
+    const r = await db.execute(sql`
+      SELECT r.*,
+             b.booking_number, b.facility_name, b.booking_date, b.customer_name,
+             c.name AS customer_name_detail
+      FROM sport_refunds r
+      LEFT JOIN sport_bookings b ON b.id = r.booking_id
+      LEFT JOIN sport_customers c ON c.id = r.customer_id
+      WHERE r.id = ${Number(req.params.id)}
+      LIMIT 1
+    `);
+    if (!r.rows.length) return res.status(404).json({ error: "Refund tidak ditemukan" });
+    res.json(r.rows[0]);
+  } catch {
+    res.status(500).json({ error: "Gagal" });
+  }
+});
+
+router.patch("/refunds/:id", requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { status } = req.body;
+    const actorId = (req.user as { id: string } | undefined)?.id ?? null;
+
+    const allowed = ["approved", "paid", "rejected"];
+    if (!status || !allowed.includes(status)) {
+      return res.status(400).json({ error: "status harus salah satu: approved, paid, rejected" });
+    }
+
+    const cur = await db.execute(sql`SELECT * FROM sport_refunds WHERE id = ${id} LIMIT 1`);
+    if (!cur.rows.length) return res.status(404).json({ error: "Refund tidak ditemukan" });
+    const refund = cur.rows[0] as Record<string, unknown>;
+
+    // Validasi transisi status
+    const transitions: Record<string, string[]> = {
+      pending: ["approved", "rejected"],
+      approved: ["paid", "rejected"],
+    };
+    const current = String(refund.status ?? "pending");
+    if (current === "paid" || current === "rejected") {
+      return res.status(400).json({ error: `Refund dengan status '${current}' tidak dapat diubah` });
+    }
+    if (!(transitions[current] ?? []).includes(status)) {
+      return res.status(400).json({ error: `Transisi status '${current}' → '${status}' tidak valid` });
+    }
+
+    const r = await db.execute(sql`
+      UPDATE sport_refunds SET status = ${status}, processed_by = ${actorId}, updated_at = NOW()
+      WHERE id = ${id} RETURNING *
+    `);
+    const updated = r.rows[0] as Record<string, unknown>;
+
+    const actionMap: Record<string, string> = { approved: "REFUND_APPROVED", paid: "REFUND_PAID", rejected: "REFUND_REJECTED" };
+    await db.execute(sql`
+      INSERT INTO sport_audit_logs (company_id, entity_type, entity_id, action, actor, new_data)
+      VALUES (
+        ${updated.company_id ?? null}, 'refund', ${id},
+        ${actionMap[status]}, ${actorId},
+        ${JSON.stringify({ old_status: current, new_status: status })}::jsonb
+      )
+    `);
+
+    // Post jurnal akuntansi saat status → paid
+    if (status === "paid") {
+      const bookingRes = await db.execute(sql`SELECT * FROM sport_bookings WHERE id = ${updated.booking_id} LIMIT 1`);
+      const booking = (bookingRes.rows[0] ?? {}) as Record<string, unknown>;
+      postSportCenterRefund({
+        refundId: id,
+        refundNumber: String(updated.refund_number ?? `RF-${id}`),
+        bookingCode: String(booking.booking_number ?? booking.booking_code ?? `BK-${updated.booking_id}`),
+        customerName: String(booking.customer_name ?? ""),
+        amount: Number(updated.refund_amount),
+        companyId: updated.company_id != null ? Number(updated.company_id) : null,
+      }).catch(() => {});
+    }
+
+    broadcastSportCenterEvent({ module: "sport-center", entity: "refund", action: "updated", data: updated, timestamp: new Date().toISOString() }, updated.company_id as number | undefined);
+    res.json(updated);
+  } catch {
+    res.status(500).json({ error: "Gagal mengubah status refund" });
   }
 });
 

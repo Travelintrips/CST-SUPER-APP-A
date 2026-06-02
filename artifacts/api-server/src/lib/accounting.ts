@@ -3,6 +3,7 @@ import {
   accountingEntriesTable,
   accountingEntryLinesTable,
   accountingTaxesTable,
+  chartOfAccountsTable,
 } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 type EntryLine = typeof accountingEntryLinesTable.$inferSelect;
@@ -1183,5 +1184,180 @@ export async function postSalesInvoiceReversal(args: {
     logger.info({ salesDocId: args.salesDocId }, "Sales invoice reversal posted");
   } catch (err) {
     logger.error({ err, salesDocId: args.salesDocId }, "Auto-post sales invoice reversal failed");
+  }
+}
+
+/**
+ * Reversal jurnal booking Sport Center saat booking dibatalkan.
+ * Membalik entri sport_center_booking: Debit Pendapatan / Credit Kas.
+ * Idempoten — hanya berjalan sekali per bookingId.
+ */
+export async function postSportCenterBookingReversal(args: {
+  bookingId: number;
+  bookingCode: string;
+  customerName: string;
+  facilityName: string;
+  companyId?: number | null;
+}): Promise<void> {
+  try {
+    const settings = await ensureAccountingSettings(args.companyId ?? 1);
+    const journalId = settings.cashJournalId ?? settings.bankJournalId;
+    const journalCode = settings.cashJournalId ? "CSH" : "BNK";
+
+    if (!journalId) {
+      logger.warn({ bookingId: args.bookingId }, "Skipping sport center booking reversal: journal not configured");
+      return;
+    }
+
+    const [entry] = await db
+      .select()
+      .from(accountingEntriesTable)
+      .where(sql`${accountingEntriesTable.source} = 'sport_center_booking' AND ${accountingEntriesTable.sourceId} = ${args.bookingId}`)
+      .limit(1);
+
+    if (!entry) {
+      logger.warn({ bookingId: args.bookingId }, "No sport_center_booking entry found to reverse — skipping");
+      return;
+    }
+
+    const [existingReversal] = await db
+      .select()
+      .from(accountingEntriesTable)
+      .where(sql`${accountingEntriesTable.source} = 'reversal' AND ${accountingEntriesTable.sourceId} = ${args.bookingId} AND ${accountingEntriesTable.journalId} = ${journalId}`)
+      .limit(1);
+    if (existingReversal) {
+      logger.info({ bookingId: args.bookingId }, "Sport center booking reversal already posted — skipping");
+      return;
+    }
+
+    const entryLines = await db
+      .select()
+      .from(accountingEntryLinesTable)
+      .where(eq(accountingEntryLinesTable.entryId, entry.id));
+
+    if (!entryLines.length) {
+      logger.warn({ bookingId: args.bookingId, entryId: entry.id }, "Original sport center entry has no lines — skipping reversal");
+      return;
+    }
+
+    const reversalLines: PostingLine[] = entryLines.map((l: EntryLine) => ({
+      accountId: l.accountId,
+      debit: round2(Number(l.credit)),
+      credit: round2(Number(l.debit)),
+      description: `[Batal] ${l.description ?? ""}`.trim(),
+    }));
+
+    await postEntry(
+      {
+        journalId,
+        date: new Date(),
+        ref: args.bookingCode,
+        description: `Pembatalan booking Sport Center: ${args.facilityName} — ${args.customerName}`,
+        source: "reversal",
+        sourceId: args.bookingId,
+        companyId: args.companyId ?? null,
+        lines: reversalLines,
+      },
+      journalCode,
+    );
+
+    logger.info({ bookingId: args.bookingId, bookingCode: args.bookingCode }, "Sport Center booking reversal posted");
+  } catch (err) {
+    logger.error({ err, bookingId: args.bookingId }, "Auto-post sport center booking reversal failed");
+  }
+}
+
+/**
+ * Post jurnal refund Sport Center saat refund berstatus 'paid'.
+ * Debit: Beban Operasional Lain (5-2040) / Credit: Kas.
+ * Idempoten — hanya berjalan sekali per refundId.
+ */
+export async function postSportCenterRefund(args: {
+  refundId: number;
+  refundNumber: string;
+  bookingCode: string;
+  customerName: string;
+  amount: number;
+  companyId?: number | null;
+}): Promise<void> {
+  try {
+    const settings = await ensureAccountingSettings(args.companyId ?? 1);
+    const cashAccountId = settings.defaultCashAccountId ?? settings.defaultBankAccountId;
+    const journalId = settings.cashJournalId ?? settings.bankJournalId;
+    const journalCode = settings.cashJournalId ? "CSH" : "BNK";
+
+    if (!cashAccountId || !journalId) {
+      logger.warn({ refundId: args.refundId }, "Skipping sport center refund post: kas/bank atau jurnal belum dikonfigurasi");
+      return;
+    }
+
+    // Cari akun Beban Operasional Lain (5-2040), fallback ke 5-3000/5-2000
+    const companyFilter = args.companyId ?? 1;
+    let [expenseAccount] = await db
+      .select()
+      .from(chartOfAccountsTable)
+      .where(sql`${chartOfAccountsTable.code} = '5-2040' AND ${chartOfAccountsTable.companyId} = ${companyFilter}`)
+      .limit(1);
+    if (!expenseAccount) {
+      [expenseAccount] = await db
+        .select()
+        .from(chartOfAccountsTable)
+        .where(sql`${chartOfAccountsTable.code} = '5-2040'`)
+        .limit(1);
+    }
+    if (!expenseAccount) {
+      [expenseAccount] = await db
+        .select()
+        .from(chartOfAccountsTable)
+        .where(sql`${chartOfAccountsTable.code} IN ('5-3000','5-2000') ORDER BY code`)
+        .limit(1);
+    }
+    if (!expenseAccount) {
+      logger.warn({ refundId: args.refundId }, "Skipping sport center refund post: akun beban tidak ditemukan di COA");
+      return;
+    }
+
+    // Idempoten
+    const [existing] = await db
+      .select()
+      .from(accountingEntriesTable)
+      .where(sql`${accountingEntriesTable.source} = 'sport_center_refund' AND ${accountingEntriesTable.sourceId} = ${args.refundId}`)
+      .limit(1);
+    if (existing) {
+      logger.info({ refundId: args.refundId }, "Sport center refund journal already posted — skipping");
+      return;
+    }
+
+    const amt = round2(args.amount);
+    await postEntry(
+      {
+        journalId,
+        date: new Date(),
+        ref: args.refundNumber,
+        description: `Refund booking Sport Center ${args.bookingCode} — ${args.customerName}`,
+        source: "sport_center_refund",
+        sourceId: args.refundId,
+        companyId: args.companyId ?? null,
+        lines: [
+          {
+            accountId: expenseAccount.id,
+            debit: amt,
+            credit: 0,
+            description: `Beban refund booking ${args.bookingCode}`,
+          },
+          {
+            accountId: cashAccountId,
+            debit: 0,
+            credit: amt,
+            description: `Pengembalian kas refund ${args.refundNumber}`,
+          },
+        ],
+      },
+      journalCode,
+    );
+
+    logger.info({ refundId: args.refundId, refundNumber: args.refundNumber, amt }, "Sport Center refund journal posted");
+  } catch (err) {
+    logger.error({ err, refundId: args.refundId }, "Auto-post sport center refund failed");
   }
 }

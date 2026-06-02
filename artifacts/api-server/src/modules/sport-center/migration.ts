@@ -179,12 +179,36 @@ export async function runSportCenterMigration(): Promise<void> {
     `);
 
     await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS sport_refunds (
+        id SERIAL PRIMARY KEY,
+        company_id INTEGER,
+        booking_id INTEGER NOT NULL REFERENCES sport_bookings(id) ON DELETE CASCADE,
+        payment_id INTEGER REFERENCES sport_payments(id) ON DELETE SET NULL,
+        customer_id INTEGER REFERENCES sport_customers(id) ON DELETE SET NULL,
+        refund_number TEXT NOT NULL UNIQUE,
+        refund_amount NUMERIC(14,2) NOT NULL,
+        refund_reason TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        processed_by TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    await db.execute(sql`
       CREATE INDEX IF NOT EXISTS idx_sport_bookings_date ON sport_bookings(booking_date);
       CREATE INDEX IF NOT EXISTS idx_sport_bookings_facility ON sport_bookings(facility_id);
       CREATE INDEX IF NOT EXISTS idx_sport_bookings_status ON sport_bookings(status);
       CREATE INDEX IF NOT EXISTS idx_sport_bookings_company ON sport_bookings(company_id);
       CREATE INDEX IF NOT EXISTS idx_sport_members_type ON sport_members(member_type);
       CREATE INDEX IF NOT EXISTS idx_sport_notifications_read ON sport_notifications(is_read);
+      CREATE INDEX IF NOT EXISTS idx_sport_refunds_booking ON sport_refunds(booking_id);
+      CREATE INDEX IF NOT EXISTS idx_sport_refunds_status ON sport_refunds(status);
+    `);
+
+    // Tambahkan nilai enum baru (idempoten — IF NOT EXISTS, PostgreSQL 9.6+)
+    await db.execute(sql`
+      ALTER TYPE accounting_entry_source ADD VALUE IF NOT EXISTS 'sport_center_refund'
     `);
 
     logger.info("Sport Center migration: selesai");
