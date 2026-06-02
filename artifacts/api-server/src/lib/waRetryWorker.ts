@@ -12,10 +12,7 @@
  *   retry 1 → 5 menit, retry 2 → 10 menit, retry 3 → 20 menit
  *
  * Setelah retry ke-3 gagal, retryCount = 3 sehingga tidak akan diquery lagi.
- * Pada retry sukses, status diupdate ke 'sent'.
- *
- * Jika row memiliki mediaUrl (pesan media/gambar), retry menggunakan endpoint
- * Fonnte dengan parameter `url` sehingga gambar ikut terkirim ulang.
+ * Pada retry sukses, status diupdate ke 'sent' dan waMessageId disimpan.
  */
 
 import { db } from "@workspace/db";
@@ -30,12 +27,18 @@ const MAX_RETRIES   = 3;
 const INTERVAL_MS   = 5 * 60 * 1000;
 const BACKOFF_BASE  = 5 * 60 * 1000;
 
-/** Kirim ke Fonnte langsung — teks saja atau teks + media. Worker mengelola log sendiri. */
+function extractMessageId(body: Record<string, unknown>): string | undefined {
+  const raw = body.id ?? body.message_id ?? body.messageId;
+  if (!raw) return undefined;
+  if (Array.isArray(raw)) return raw[0] ? String(raw[0]) : undefined;
+  return String(raw);
+}
+
 async function fonnteRawSend(
   target: string,
   message: string,
   mediaUrl?: string | null,
-): Promise<{ ok: boolean; errorMsg: string }> {
+): Promise<{ ok: boolean; errorMsg: string; waMessageId?: string }> {
   if (!FONNTE_TOKEN) {
     return { ok: false, errorMsg: "FONNTE_TOKEN not configured" };
   }
@@ -58,7 +61,7 @@ async function fonnteRawSend(
     if (body.status === false || body.status === "false") {
       return { ok: false, errorMsg: String(body.reason ?? body.message ?? "Fonnte status:false") };
     }
-    return { ok: true, errorMsg: "" };
+    return { ok: true, errorMsg: "", waMessageId: extractMessageId(body) };
   } catch (err) {
     return { ok: false, errorMsg: String(err) };
   }
@@ -97,17 +100,19 @@ async function runRetryTick(): Promise<void> {
     logger.info({ count: rows.length }, "[waRetryWorker] processing failed WA entries");
 
     for (const row of rows) {
-      const { ok, errorMsg } = await fonnteRawSend(row.recipient, row.message, row.mediaUrl);
+      const { ok, errorMsg, waMessageId } = await fonnteRawSend(row.recipient, row.message, row.mediaUrl);
       const newRetryCount = (row.retryCount ?? 0) + 1;
 
       if (ok) {
         await db
           .update(notificationLogsTable)
           .set({
-            status:     "sent",
-            retryCount: newRetryCount,
-            nextRetryAt: null,
-            errorMsg:   null,
+            status:           "sent",
+            retryCount:       newRetryCount,
+            nextRetryAt:      null,
+            errorMsg:         null,
+            waMessageId:      waMessageId ?? null,
+            waDeliveryStatus: waMessageId ? "sent" : null,
           })
           .where(eq(notificationLogsTable.id, row.id));
 
@@ -119,6 +124,7 @@ async function runRetryTick(): Promise<void> {
             context: row.context,
             refId: row.refId,
             hasMedia: !!row.mediaUrl,
+            waMessageId,
           },
           "[waRetryWorker] retry sukses",
         );
@@ -148,7 +154,6 @@ async function runRetryTick(): Promise<void> {
 
 export function startWaRetryWorker(): void {
   logger.info(`[waRetryWorker] started — interval ${INTERVAL_MS / 1000}s, max retries ${MAX_RETRIES}`);
-  // Delay awal 2 menit agar server sudah sepenuhnya siap sebelum retry pertama
   setTimeout(() => {
     void runRetryTick();
     setInterval(() => void runRetryTick(), INTERVAL_MS).unref();
