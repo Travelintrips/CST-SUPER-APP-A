@@ -88,10 +88,23 @@ Promise.all([
 ])).then(() => Promise.all([
   db.execute(sql`ALTER TABLE product_templates DROP CONSTRAINT IF EXISTS product_templates_category_key_key`),
   db.execute(sql`DROP INDEX IF EXISTS product_templates_category_key_key`),
-])).then(() =>
+])).then(() => Promise.all([
   db.execute(sql`
     CREATE UNIQUE INDEX IF NOT EXISTS uq_product_tpl_v2
     ON product_templates (COALESCE(company_id, 0), category_key)
+  `),
+])).then(() =>
+  db.execute(sql`ALTER TABLE service_templates DROP CONSTRAINT IF EXISTS service_templates_service_type_unique`).catch(() => {})
+).then(() =>
+  db.execute(sql`ALTER TABLE service_templates DROP CONSTRAINT IF EXISTS service_templates_service_type_key`).catch(() => {})
+).then(() =>
+  db.execute(sql`DROP INDEX IF EXISTS service_templates_service_type_unique`).catch(() => {})
+).then(() =>
+  db.execute(sql`DROP INDEX IF EXISTS service_templates_service_type_key`).catch(() => {})
+).then(() =>
+  db.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_service_tpl_company
+    ON service_templates (COALESCE(company_id, 0), service_type)
   `)
 ).catch((err) => {
   logger.warn({ err: String(err) }, "product_templates column migration failed (non-fatal)");

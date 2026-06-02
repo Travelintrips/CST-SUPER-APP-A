@@ -324,12 +324,13 @@ serviceTemplatesRouter.put("/:serviceType", async (req: Request, res: Response) 
     return res.status(404).json({ error: `serviceType '${serviceType}' tidak ditemukan` });
   }
 
-  const companyRow = existing.find((r) => r.companyId !== null);
+  const companyRow = existing.find((r) => r.companyId !== null && r.companyId === companyId);
   const globalRow  = existing.find((r) => r.companyId === null);
-  const current    = companyRow ?? globalRow!;
-  if (current.companyId !== null && current.companyId !== companyId) {
-    return res.status(403).json({ error: "Akses ditolak: template bukan milik perusahaan ini" });
+
+  if (!companyRow && !globalRow) {
+    return res.status(404).json({ error: `serviceType '${serviceType}' tidak ditemukan` });
   }
+
   const body    = req.body as Record<string, unknown>;
 
   const newFields  = body["fields"]            !== undefined ? (body["fields"] as ServiceTemplateField[])               : undefined;
@@ -343,47 +344,78 @@ serviceTemplatesRouter.put("/:serviceType", async (req: Request, res: Response) 
     if (!fieldCheck.ok) return res.status(400).json({ error: fieldCheck.error });
   }
 
-  let resolvedVersion = body["version"] != null ? String(body["version"]).trim() : undefined;
-  const didStructureChange = structureChanged(current, newFields, newDocs, newCl);
-  if (!resolvedVersion && didStructureChange) {
-    resolvedVersion = bumpMinor(current.version);
-  }
-
-  const updatePayload: Partial<typeof serviceTemplatesTable.$inferInsert> = {
-    updatedAt: new Date(),
-  };
-  if (body["label"]       != null) updatePayload.label       = String(body["label"]).trim();
-  if (body["emoji"]       != null) updatePayload.emoji       = String(body["emoji"]).trim();
-  if (body["isActive"]    != null) updatePayload.isActive    = Boolean(body["isActive"]);
-  if (body["description"] != null) updatePayload.description = String(body["description"]).trim();
-  if (body["sortOrder"]   != null) updatePayload.sortOrder   = Number(body["sortOrder"]);
-  if (resolvedVersion)             updatePayload.version     = resolvedVersion;
-  if (newFields  !== undefined)    updatePayload.fields            = newFields  as unknown as typeof updatePayload["fields"];
-  if (newDocs    !== undefined)    updatePayload.requiredDocuments = newDocs    as unknown as typeof updatePayload["requiredDocuments"];
-  if (newCl      !== undefined)    updatePayload.checklist         = newCl      as unknown as typeof updatePayload["checklist"];
-  if (newCRules  !== undefined)    updatePayload.conditionalRules  = newCRules  as unknown as typeof updatePayload["conditionalRules"];
-  if (newVRules  !== undefined)    updatePayload.validationRules   = newVRules  as unknown as typeof updatePayload["validationRules"];
-
   try {
-    await writeVersionSnapshot(current, {
-      changeNote: didStructureChange ? "Sebelum update struktur" : "Sebelum update metadata",
-    });
+    if (companyRow) {
+      let resolvedVersion = body["version"] != null ? String(body["version"]).trim() : undefined;
+      const didStructureChange = structureChanged(companyRow, newFields, newDocs, newCl);
+      if (!resolvedVersion && didStructureChange) resolvedVersion = bumpMinor(companyRow.version);
 
-    const updated = await db
-      .update(serviceTemplatesTable)
-      .set(updatePayload)
-      .where(eq(serviceTemplatesTable.id, current.id))
+      const updatePayload: Partial<typeof serviceTemplatesTable.$inferInsert> = { updatedAt: new Date() };
+      if (body["label"]       != null) updatePayload.label       = String(body["label"]).trim();
+      if (body["emoji"]       != null) updatePayload.emoji       = String(body["emoji"]).trim();
+      if (body["isActive"]    != null) updatePayload.isActive    = Boolean(body["isActive"]);
+      if (body["description"] != null) updatePayload.description = String(body["description"]).trim();
+      if (body["sortOrder"]   != null) updatePayload.sortOrder   = Number(body["sortOrder"]);
+      if (resolvedVersion)             updatePayload.version     = resolvedVersion;
+      if (newFields  !== undefined)    updatePayload.fields            = newFields  as unknown as typeof updatePayload["fields"];
+      if (newDocs    !== undefined)    updatePayload.requiredDocuments = newDocs    as unknown as typeof updatePayload["requiredDocuments"];
+      if (newCl      !== undefined)    updatePayload.checklist         = newCl      as unknown as typeof updatePayload["checklist"];
+      if (newCRules  !== undefined)    updatePayload.conditionalRules  = newCRules  as unknown as typeof updatePayload["conditionalRules"];
+      if (newVRules  !== undefined)    updatePayload.validationRules   = newVRules  as unknown as typeof updatePayload["validationRules"];
+
+      await writeVersionSnapshot(companyRow, {
+        changeNote: didStructureChange ? "Sebelum update struktur" : "Sebelum update metadata",
+      });
+
+      const updated = await db
+        .update(serviceTemplatesTable)
+        .set(updatePayload)
+        .where(eq(serviceTemplatesTable.id, companyRow.id))
+        .returning();
+
+      const versionBumped = resolvedVersion !== undefined && resolvedVersion !== companyRow.version;
+      return res.json({
+        ...rowToOverride(updated[0]!),
+        source: "db",
+        versionBumped,
+        previousVersion: versionBumped ? companyRow.version : undefined,
+      });
+    }
+
+    const src = globalRow!;
+    const overrideVersion = body["version"] != null ? String(body["version"]).trim() : src.version;
+    const inserted = await db
+      .insert(serviceTemplatesTable)
+      .values({
+        companyId,
+        serviceType,
+        label:             body["label"]       != null ? String(body["label"]).trim()       : src.label,
+        emoji:             body["emoji"]       != null ? String(body["emoji"]).trim()       : (src.emoji ?? "📋"),
+        version:           overrideVersion,
+        isActive:          body["isActive"]    != null ? Boolean(body["isActive"])          : src.isActive,
+        description:       body["description"] != null ? String(body["description"]).trim() : (src.description ?? null),
+        sortOrder:         body["sortOrder"]   != null ? Number(body["sortOrder"])          : (src.sortOrder ?? 0),
+        fields:            newFields  !== undefined ? (newFields  as unknown as typeof serviceTemplatesTable.$inferInsert["fields"])            : src.fields,
+        requiredDocuments: newDocs    !== undefined ? (newDocs    as unknown as typeof serviceTemplatesTable.$inferInsert["requiredDocuments"]) : src.requiredDocuments,
+        checklist:         newCl      !== undefined ? (newCl      as unknown as typeof serviceTemplatesTable.$inferInsert["checklist"])         : src.checklist,
+        conditionalRules:  newCRules  !== undefined ? (newCRules  as unknown as typeof serviceTemplatesTable.$inferInsert["conditionalRules"])  : src.conditionalRules,
+        validationRules:   newVRules  !== undefined ? (newVRules  as unknown as typeof serviceTemplatesTable.$inferInsert["validationRules"])   : src.validationRules,
+      })
       .returning();
 
-    const versionBumped = resolvedVersion !== undefined && resolvedVersion !== current.version;
-    return res.json({
-      ...rowToOverride(updated[0]!),
+    await writeVersionSnapshot(inserted[0]!, { changeNote: "Override perusahaan dibuat dari template global" });
+
+    return res.status(201).json({
+      ...rowToOverride(inserted[0]!),
       source: "db",
-      versionBumped,
-      previousVersion: versionBumped ? current.version : undefined,
+      createdOverride: true,
     });
   } catch (err) {
-    return res.status(500).json({ error: "Gagal update service template", detail: String(err) });
+    const msg = String(err);
+    if (msg.includes("unique") || msg.includes("duplicate")) {
+      return res.status(409).json({ error: `serviceType '${serviceType}' sudah ada untuk perusahaan ini` });
+    }
+    return res.status(500).json({ error: "Gagal update service template", detail: msg });
   }
 });
 
@@ -479,25 +511,45 @@ serviceTemplatesRouter.patch("/:serviceType/toggle-active", async (req: Request,
   const companyId = resolveCompanyId(req);
 
   try {
-    const [target] = await db.select({ id: serviceTemplatesTable.id, companyId: serviceTemplatesTable.companyId })
+    const rows = await db.select()
       .from(serviceTemplatesTable)
       .where(and(
         eq(serviceTemplatesTable.serviceType, serviceType),
         or(eq(serviceTemplatesTable.companyId, companyId), isNull(serviceTemplatesTable.companyId)),
-      ))
-      .limit(1);
-    if (!target) return res.status(404).json({ error: `serviceType '${serviceType}' tidak ditemukan` });
-    if (target.companyId !== null && target.companyId !== companyId) {
-      return res.status(403).json({ error: "Akses ditolak: template bukan milik perusahaan ini" });
-    }
+      ));
 
-    const updated = await db
-      .update(serviceTemplatesTable)
-      .set({ isActive, updatedAt: new Date() })
-      .where(eq(serviceTemplatesTable.id, target.id))
-      .returning();
+    if (rows.length === 0) return res.status(404).json({ error: `serviceType '${serviceType}' tidak ditemukan` });
 
-    if (updated.length === 0) {
+    const companyTarget = rows.find((r) => r.companyId !== null && r.companyId === companyId);
+    const globalTarget  = rows.find((r) => r.companyId === null);
+
+    if (companyTarget) {
+      const updated = await db
+        .update(serviceTemplatesTable)
+        .set({ isActive, updatedAt: new Date() })
+        .where(eq(serviceTemplatesTable.id, companyTarget.id))
+        .returning();
+
+      if (updated.length === 0) return res.status(404).json({ error: `serviceType '${serviceType}' tidak ditemukan` });
+    } else if (globalTarget) {
+      await db
+        .insert(serviceTemplatesTable)
+        .values({
+          companyId,
+          serviceType,
+          label:             globalTarget.label,
+          emoji:             globalTarget.emoji ?? "📋",
+          version:           globalTarget.version,
+          isActive,
+          description:       globalTarget.description ?? null,
+          sortOrder:         globalTarget.sortOrder ?? 0,
+          fields:            globalTarget.fields,
+          requiredDocuments: globalTarget.requiredDocuments,
+          checklist:         globalTarget.checklist,
+          conditionalRules:  globalTarget.conditionalRules,
+          validationRules:   globalTarget.validationRules,
+        });
+    } else {
       return res.status(404).json({ error: `serviceType '${serviceType}' tidak ditemukan` });
     }
 
