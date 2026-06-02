@@ -390,6 +390,38 @@ export async function runSportCenterMigration(): Promise<void> {
       UPDATE sport_settings      SET company_id = 1 WHERE company_id IS NULL;
     `);
 
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS sport_sync_logs (
+        id         SERIAL PRIMARY KEY,
+        entity     TEXT NOT NULL,
+        action     TEXT NOT NULL,
+        entity_id  INTEGER,
+        status     TEXT NOT NULL DEFAULT 'ok',
+        detail     TEXT,
+        company_id INTEGER,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_sport_sync_logs_entity ON sport_sync_logs(entity, action);
+      CREATE INDEX IF NOT EXISTS idx_sport_sync_logs_created ON sport_sync_logs(created_at DESC);
+    `);
+
+    await db.execute(sql`
+      ALTER TABLE sport_center_bookings ADD COLUMN IF NOT EXISTS payment_status TEXT NOT NULL DEFAULT 'unpaid';
+      ALTER TABLE sport_center_bookings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+      ALTER TABLE sport_center_bookings ADD COLUMN IF NOT EXISTS customer_phone TEXT;
+    `);
+
+    await db.execute(sql`
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conname = 'sport_center_bookings_booking_code_key'
+        ) THEN
+          ALTER TABLE sport_center_bookings ADD CONSTRAINT sport_center_bookings_booking_code_key UNIQUE (booking_code);
+        END IF;
+      END $$;
+    `);
+
     logger.info("Sport Center migration: selesai");
   } catch (err) {
     logger.error({ err }, "Sport Center migration: gagal");
