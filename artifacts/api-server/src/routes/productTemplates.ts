@@ -1,7 +1,8 @@
 import { Router, Request, Response } from "express";
 import { db } from "@workspace/db";
 import { productTemplatesTable } from "@workspace/db";
-import { eq, asc, sql } from "drizzle-orm";
+import { eq, asc, sql, or, isNull } from "drizzle-orm";
+import { resolveCompanyId } from "../lib/resolveCompany.js";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { logger } from "../lib/logger.js";
 import {
@@ -61,7 +62,16 @@ Promise.all([
   db.execute(sql`ALTER TABLE product_templates ADD COLUMN IF NOT EXISTS icon TEXT`),
   db.execute(sql`ALTER TABLE product_templates ADD COLUMN IF NOT EXISTS description TEXT`),
   db.execute(sql`ALTER TABLE product_templates ADD COLUMN IF NOT EXISTS sort_order INTEGER NOT NULL DEFAULT 0`),
-]).catch((err) => {
+  db.execute(sql`ALTER TABLE product_templates ADD COLUMN IF NOT EXISTS company_id INTEGER REFERENCES companies(id) ON DELETE SET NULL`),
+]).then(() => Promise.all([
+  db.execute(sql`ALTER TABLE product_templates DROP CONSTRAINT IF EXISTS product_templates_category_key_key`),
+  db.execute(sql`DROP INDEX IF EXISTS product_templates_category_key_key`),
+])).then(() =>
+  db.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_product_tpl_v2
+    ON product_templates (COALESCE(company_id, 0), category_key)
+  `)
+).catch((err) => {
   logger.warn({ err: String(err) }, "product_templates column migration failed (non-fatal)");
 });
 
@@ -733,16 +743,30 @@ function bumpPatch(version: string): string {
 // ─────────────────────────────────────────────
 productTemplatesRouter.get("/", async (req: Request, res: Response) => {
   try {
+    const companyId = resolveCompanyId(req);
     const rows = await db
       .select()
       .from(productTemplatesTable)
+      .where(or(
+        eq(productTemplatesTable.companyId, companyId),
+        isNull(productTemplatesTable.companyId),
+      ))
       .orderBy(asc(productTemplatesTable.sortOrder), asc(productTemplatesTable.label));
 
     if (req.query.raw === "1") {
       return res.json(rows);
     }
 
-    const overrides = rows.map(dbRowToOverride);
+    // Company-specific overrides global (NULL); global overrides in-code
+    const seen = new Map<string, typeof rows[0]>();
+    for (const row of rows) {
+      const existing = seen.get(row.categoryKey);
+      if (!existing || row.companyId !== null) seen.set(row.categoryKey, row);
+    }
+    const deduped = [...seen.values()].sort((a, b) =>
+      a.sortOrder - b.sortOrder || a.label.localeCompare(b.label)
+    );
+    const overrides = deduped.map(dbRowToOverride);
     const resolved = resolveAllTemplates(overrides);
 
     // Sort resolved templates by DB sortOrder (ASC), then label (ASC).
@@ -826,7 +850,9 @@ productTemplatesRouter.post("/", requireAdmin, async (req: Request, res: Respons
       return res.status(400).json({ message: "categoryKey dan label wajib diisi" });
     }
 
+    const companyId = resolveCompanyId(req);
     const [row] = await db.insert(productTemplatesTable).values({
+      companyId,
       categoryKey: String(categoryKey),
       label: String(label),
       version: String(version),

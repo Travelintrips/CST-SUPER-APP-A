@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { db, stocksTable, suppliersTable, vendorCatalogItemsTable, productsTable, productCategoryMapTable, productCategoriesTable } from "@workspace/db";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, or, isNull } from "drizzle-orm";
+import { resolveCompanyId, resolveCompanyScope } from "../lib/resolveCompany.js";
 import { postStockReceived } from "../lib/accounting.js";
 import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { requireClerkUser, requireAdmin } from "../lib/requireAdmin.js";
@@ -92,7 +93,15 @@ router.delete("/stocks/:id", async (req, res) => {
 router.get("/suppliers", async (req, res) => {
   const limit = Math.min(Number(req.query["limit"] ?? 200), 1000);
   const offset = Math.max(Number(req.query["offset"] ?? 0), 0);
-  const suppliers = await db.select().from(suppliersTable).orderBy(suppliersTable.createdAt).limit(limit).offset(offset);
+  const scope = resolveCompanyScope(req);
+  const whereClause = scope === "all"
+    ? undefined
+    : or(eq(suppliersTable.companyId, scope), isNull(suppliersTable.companyId));
+  const suppliers = await db.select().from(suppliersTable)
+    .where(whereClause)
+    .orderBy(suppliersTable.createdAt)
+    .limit(limit)
+    .offset(offset);
   return res.json(suppliers.map(s => ({ ...s, fee: Number(s.fee ?? 0), createdAt: s.createdAt.toISOString() })));
 });
 
@@ -101,7 +110,9 @@ router.post("/suppliers", async (req, res) => {
   if (!(await requireAdmin(req, res))) return;
   const { name, country, contactEmail, contactPerson, phone, address, taxId, defaultPurchaseTaxId,
     serviceType, isActive, logo, eta, fee, note, sortOrder } = req.body;
+  const companyId = resolveCompanyId(req);
   const [supplier] = await db.insert(suppliersTable).values({
+    companyId,
     name, country: country ?? null, contactEmail: contactEmail ?? null,
     contactPerson: contactPerson ?? null,
     phone: phone ?? null, address: address ?? null,
