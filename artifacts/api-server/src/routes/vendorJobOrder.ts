@@ -1246,7 +1246,7 @@ orderTrackingPublicRouter.get("/:trackToken", async (req: Request, res: Response
       // non-fatal
     }
 
-    // Include photos from order_progress_events (driver WA-link uploads)
+    // Include photos + GPS from order_progress_events (driver WA-link uploads)
     try {
       const STEP_TO_PHOTO_TYPE: Record<string, string> = {
         PICKUP: "pickup", ARRIVED_AT_PICKUP: "pickup", PICKED_UP: "pickup",
@@ -1254,18 +1254,33 @@ orderTrackingPublicRouter.get("/:trackToken", async (req: Request, res: Response
         ARRIVED: "arrival", ARRIVED_AT_DESTINATION: "arrival",
         DELIVERED: "pod", COMPLETED: "pod",
       };
-      const progressPhotoRows = await db.execute(
-        sql`SELECT step_key, photo_url, created_at FROM order_progress_events
-            WHERE order_id = ${order.id} AND photo_url IS NOT NULL
+      const progressRows = await db.execute(
+        sql`SELECT step_key, photo_url, gps_latitude, gps_longitude, created_at
+            FROM order_progress_events
+            WHERE order_id = ${order.id}
             ORDER BY created_at ASC`
       );
-      for (const row of progressPhotoRows.rows as Record<string, unknown>[]) {
-        if (!row.photo_url) continue;
-        const photoType = STEP_TO_PHOTO_TYPE[String(row.step_key ?? "")] ?? "general";
+      for (const row of progressRows.rows as Record<string, unknown>[]) {
         const takenAt = row.created_at instanceof Date
           ? row.created_at.toISOString()
           : String(row.created_at);
-        driverPhotos.push({ url: String(row.photo_url), photoType, takenAt });
+        // Photos
+        if (row.photo_url) {
+          const photoType = STEP_TO_PHOTO_TYPE[String(row.step_key ?? "")] ?? "general";
+          driverPhotos.push({ url: String(row.photo_url), photoType, takenAt });
+        }
+        // GPS trail
+        if (row.gps_latitude != null && row.gps_longitude != null) {
+          const lat = Number(row.gps_latitude);
+          const lng = Number(row.gps_longitude);
+          if (!isNaN(lat) && !isNaN(lng)) {
+            gpsTrail.push({ lat, lng, updatedAt: takenAt });
+          }
+        }
+      }
+      // Set liveLocation to most recent GPS point if not already set from driver app
+      if (!liveLocation && gpsTrail.length > 0) {
+        liveLocation = gpsTrail[gpsTrail.length - 1];
       }
     } catch { /* non-fatal */ }
 
