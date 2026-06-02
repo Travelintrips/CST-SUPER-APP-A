@@ -1886,6 +1886,34 @@ vendorMiniFormRouter.post("/op-confirm/:token", async (req: Request, res: Respon
       }, token).catch(() => {});
     }).catch(() => {});
 
+    // Kirim WA ke driver jika driver_phone ada di payload (trucking)
+    const driverPhone = String(payload["driver_phone"] ?? "").trim();
+    if (driverPhone) {
+      const driverName = String(payload["driver_name"] ?? "").trim() || "Driver";
+      const plateNumber = String(payload["plate_number"] ?? "").trim();
+      const vehicleType = String(payload["vehicle_type"] ?? "").trim();
+      const pickupTime = String(payload["pickup_time"] ?? "").trim();
+      const domain = (await import("../lib/domain.js").then(m => m.getPreferredDomain())) || "";
+      const driverAppUrl = domain ? `https://${domain}/api/driver/open-app` : "";
+      const driverMsg = [
+        `🚚 *Penugasan Order — ${conf.orderNumber ?? "—"}*`,
+        ``,
+        `Halo *${driverName}*,`,
+        `Anda ditugaskan untuk order berikut:`,
+        ``,
+        `📋 No. Order : \`${conf.orderNumber ?? "—"}\``,
+        `🏢 Vendor    : ${conf.vendorName ?? "—"}`,
+        plateNumber  ? `🔢 Plat      : ${plateNumber}` : null,
+        vehicleType  ? `🚛 Kendaraan : ${vehicleType}` : null,
+        pickupTime   ? `⏰ Est. Pickup: ${pickupTime}` : null,
+        ``,
+        `Mohon segera hubungi tim CST Logistics untuk koordinasi lebih lanjut.`,
+        driverAppUrl ? `\nBuka aplikasi driver:\n${driverAppUrl}` : null,
+      ].filter(Boolean).join("\n");
+      sendWhatsApp(driverPhone, driverMsg, { context: "op-confirm-driver", refType: "vendor_op_confirm", refId: String(conf.id) })
+        .catch((e: unknown) => req.log?.error({ e }, "op-confirm: WA ke driver gagal"));
+    }
+
     return res.json({ success: true, message: "Data operasional berhasil dikirim, terima kasih!" });
   } catch (err) {
     req.log?.error({ err }, "op-confirm POST error");

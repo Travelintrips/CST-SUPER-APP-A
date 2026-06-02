@@ -766,6 +766,34 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
       );
     }
 
+    // Kirim WA ke driver jika serviceType trucking dan driverPhone tersedia
+    if (resolveServiceCategory(link.serviceType) === "trucking" && body.driverPhone?.trim()) {
+      const driverPhone = body.driverPhone.trim();
+      const driverName = body.driverName?.trim() || "Driver";
+      const domain = getPreferredDomain() || "";
+      const driverAppUrl = domain ? `https://${domain}/api/driver/open-app` : "";
+      const driverMsg = [
+        `🚚 *Penugasan Order — ${order.orderNumber}*`,
+        ``,
+        `Halo *${driverName}*,`,
+        `Anda ditugaskan untuk order berikut:`,
+        ``,
+        `📋 No. Order : \`${order.orderNumber}\``,
+        `👤 Customer  : ${order.customerName ?? "—"}`,
+        `📍 Rute      : ${order.origin} → ${order.destination}`,
+        body.plateNumber?.trim() ? `🔢 Plat      : ${body.plateNumber.trim()}` : null,
+        body.vehicleType?.trim() ? `🚛 Kendaraan : ${body.vehicleType.trim()}` : null,
+        body.pickupTime?.trim()  ? `⏰ Est. Pickup: ${body.pickupTime.trim()}` : null,
+        body.notes?.trim()       ? `📝 Catatan   : ${body.notes.trim()}` : null,
+        ``,
+        `Mohon segera hubungi tim CST Logistics untuk koordinasi lebih lanjut.`,
+        driverAppUrl ? `\nBuka aplikasi driver:\n${driverAppUrl}` : null,
+      ].filter(Boolean).join("\n");
+      sendWhatsApp(driverPhone, driverMsg).catch((e) =>
+        logger.warn({ e }, "vendor-fulfillment WA ke driver gagal")
+      );
+    }
+
     return res.json({ ok: true, message: "Data fulfillment berhasil dikirim. Terima kasih!" });
   } catch (err) {
     logger.error({ err }, "vendor-fulfillment POST error");
