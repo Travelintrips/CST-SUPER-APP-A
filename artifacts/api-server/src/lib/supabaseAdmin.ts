@@ -16,7 +16,10 @@ const url = normalizeSupabaseUrl(
   process.env.SUPABASE_URL ??
   ""
 );
-const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+const key =
+  process.env.SUPABASE_SERVICE_ROLE_KEY ??
+  process.env.SUPABASE_SERVICE_ROLE_KEY_DEV ??
+  "";
 
 let _client: SupabaseClient | null = null;
 
