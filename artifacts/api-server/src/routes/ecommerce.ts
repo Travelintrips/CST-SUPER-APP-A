@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, productsTable, ordersTable, productCategoriesTable, productCategoryMapTable } from "@workspace/db";
-import { eq, ne, count, inArray, and, ilike, or, type SQL } from "drizzle-orm";
+import { eq, ne, count, inArray, and, ilike, or, sql, isNull, type SQL } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { postEcommerceOrder } from "../lib/accounting.js";
@@ -9,6 +9,14 @@ import { getAdminWa } from "../lib/adminWa.js";
 import { saveAndBroadcast } from "../lib/notificationStore.js";
 import { registerPortalConnection, unregisterPortalConnection, broadcastToPortal } from "../lib/sseManager.js";
 import { requireClerkUser } from "../lib/requireAdmin.js";
+import { resolveCompanyId } from "../lib/resolveCompany.js";
+
+// Inline migration: add company_id to orders table (idempotent)
+db.execute(sql`
+  ALTER TABLE orders ADD COLUMN IF NOT EXISTS company_id INTEGER REFERENCES companies(id) ON DELETE SET NULL
+`).then(() =>
+  db.execute(sql`CREATE INDEX IF NOT EXISTS orders_company_idx ON orders (company_id)`)
+).catch(() => { /* non-fatal */ });
 
 const router = Router();
 const objectStorageService = new ObjectStorageService();
@@ -514,7 +522,10 @@ function serializeOrder(o: typeof ordersTable.$inferSelect) {
 // GET /api/ecommerce/orders — [C2-FIX] requires internal staff session
 router.get("/orders", async (req, res) => {
   if (!(await requireClerkUser(req, res))) return;
-  const orders = await db.select().from(ordersTable).orderBy(ordersTable.createdAt);
+  const companyId = resolveCompanyId(req);
+  const orders = await db.select().from(ordersTable)
+    .where(or(eq(ordersTable.companyId, companyId), isNull(ordersTable.companyId)))
+    .orderBy(ordersTable.createdAt);
   return res.json(orders.map(serializeOrder));
 });
 
@@ -525,7 +536,7 @@ router.post("/orders", async (req, res) => {
   if (!_checkOrderCreateRate(clientIp)) {
     return res.status(429).json({ message: "Terlalu banyak permintaan. Coba lagi dalam 1 menit." });
   }
-  const { customerName, customerEmail, customerPhone, items, lineItems, totalAmount, taxAmount: rawTax } = req.body;
+  const { customerName, customerEmail, customerPhone, items, lineItems, totalAmount, taxAmount: rawTax, companyId: bodyCompanyId } = req.body;
   const parsedLineItems: Array<{ name: string; qty: number; unitPrice: number }> | null =
     Array.isArray(lineItems) && lineItems.length > 0 ? lineItems : null;
   const computedSubtotal = parsedLineItems
@@ -535,7 +546,9 @@ router.post("/orders", async (req, res) => {
   const tax = Number(rawTax ?? 0);
   const grand = subtotal + tax;
   const legacyItems: string | null = items ?? null;
+  const orderCompanyId = bodyCompanyId != null ? Number(bodyCompanyId) : null;
   const [order] = await db.insert(ordersTable).values({
+    companyId: orderCompanyId,
     customerName, customerEmail,
     customerPhone: customerPhone ?? null,
     items: legacyItems,
@@ -581,7 +594,9 @@ router.post("/orders", async (req, res) => {
 router.put("/orders/:id", async (req, res) => {
   if (!(await requireClerkUser(req, res))) return;
   const id = Number(req.params.id);
-  const [existing] = await db.select().from(ordersTable).where(eq(ordersTable.id, id));
+  const companyId = resolveCompanyId(req);
+  const [existing] = await db.select().from(ordersTable)
+    .where(and(eq(ordersTable.id, id), or(eq(ordersTable.companyId, companyId), isNull(ordersTable.companyId))));
   if (!existing) return res.status(404).json({ message: "Order not found" });
   const { customerName, customerEmail, customerPhone, items, lineItems, totalAmount, taxAmount: rawTax, status } = req.body;
   const parsedLineItems: Array<{ name: string; qty: number; unitPrice: number }> | null =
@@ -655,7 +670,12 @@ router.put("/orders/:id", async (req, res) => {
 
 // DELETE /api/ecommerce/orders/:id
 router.delete("/orders/:id", async (req, res) => {
+  if (!(await requireClerkUser(req, res))) return;
   const id = Number(req.params.id);
+  const companyId = resolveCompanyId(req);
+  const [existing] = await db.select({ id: ordersTable.id }).from(ordersTable)
+    .where(and(eq(ordersTable.id, id), or(eq(ordersTable.companyId, companyId), isNull(ordersTable.companyId))));
+  if (!existing) return res.status(404).json({ message: "Order not found" });
   await db.delete(ordersTable).where(eq(ordersTable.id, id));
   return res.json({ message: "Order deleted" });
 });

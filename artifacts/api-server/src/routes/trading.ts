@@ -143,6 +143,13 @@ router.put("/suppliers/:id", async (req, res) => {
   if (!(await requireAdmin(req, res))) return;
   const id = Number(req.params.id);
   if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+  const companyId = resolveCompanyId(req);
+  const [target] = await db.select({ id: suppliersTable.id, companyId: suppliersTable.companyId })
+    .from(suppliersTable).where(eq(suppliersTable.id, id));
+  if (!target) return res.status(404).json({ message: "Supplier not found" });
+  if (target.companyId !== null && target.companyId !== companyId) {
+    return res.status(403).json({ message: "Akses ditolak: supplier bukan milik perusahaan ini" });
+  }
   const { name, country, contactEmail, contactPerson, phone, address, taxId, defaultPurchaseTaxId,
     serviceType, isActive, logo, eta, fee, note, sortOrder } = req.body;
   const patch: Record<string, unknown> = {};
@@ -173,9 +180,19 @@ router.delete("/suppliers/:id", async (req, res) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
   const companyId = resolveCompanyId(req);
+
   const [deleted] = await db.delete(suppliersTable)
     .where(and(eq(suppliersTable.id, id), or(eq(suppliersTable.companyId, companyId), isNull(suppliersTable.companyId))))
     .returning();
+
+  const [target] = await db.select({ id: suppliersTable.id, companyId: suppliersTable.companyId })
+    .from(suppliersTable).where(eq(suppliersTable.id, id));
+  if (!target) return res.status(404).json({ message: "Supplier not found" });
+  if (target.companyId !== null && target.companyId !== companyId) {
+    return res.status(403).json({ message: "Akses ditolak: supplier bukan milik perusahaan ini" });
+  }
+  const [deleted] = await db.delete(suppliersTable).where(eq(suppliersTable.id, id)).returning();
+
   if (!deleted) return res.status(404).json({ message: "Supplier not found" });
   // Cascade storage cleanup — logo (hanya jika berupa URL, bukan emoji)
   if (deleted.logo && (deleted.logo.startsWith("http") || deleted.logo.startsWith("/api/storage"))) {

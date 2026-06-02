@@ -82,7 +82,10 @@ Promise.all([
   `),
 ]).catch((err) => {
   db.execute(sql`ALTER TABLE product_templates ADD COLUMN IF NOT EXISTS company_id INTEGER REFERENCES companies(id) ON DELETE SET NULL`),
+  db.execute(sql`ALTER TABLE service_templates ADD COLUMN IF NOT EXISTS company_id INTEGER REFERENCES companies(id) ON DELETE SET NULL`),
 ]).then(() => Promise.all([
+  db.execute(sql`CREATE INDEX IF NOT EXISTS service_templates_company_idx ON service_templates (company_id)`),
+])).then(() => Promise.all([
   db.execute(sql`ALTER TABLE product_templates DROP CONSTRAINT IF EXISTS product_templates_category_key_key`),
   db.execute(sql`DROP INDEX IF EXISTS product_templates_category_key_key`),
 ])).then(() =>
