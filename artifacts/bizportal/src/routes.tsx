@@ -137,6 +137,7 @@ import WaNotificationHistoryPage from "@/pages/wa-notification-history";
 import VendorLeaderboardPage from "@/pages/vendor-leaderboard";
 import AnalyticsDashboardPage from "@/pages/analytics-dashboard";
 import EnterpriseDashboardPage from "@/pages/enterprise-dashboard";
+import OperationalDashboardPage from "@/pages/operational-dashboard";
 import POOrdersPage from "@/pages/purchase/po-orders";
 import VendorFormsPage from "@/pages/purchase/vendor-forms";
 import VmfAuditTrailPage from "@/pages/purchase/vmf-audit-trail";
@@ -344,6 +345,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/operational-context" component={PR(OperationalContextPage)} />
       <Route path="/analytics" component={PR(AnalyticsDashboardPage)} />
       <Route path="/enterprise-dashboard" component={PR(EnterpriseDashboardPage)} />
+      <Route path="/operational-dashboard" component={PR(OperationalDashboardPage)} />
 
       {/* ── Audit ERP ──────────────────────────────────────────────────── */}
       <Route path="/audit/compare" component={PR(AuditComparePage)} />

@@ -662,4 +662,101 @@ router.get("/enterprise", async (req, res) => {
   }
 });
 
+// ── GET /api/dashboard/operational ──────────────────────────────────────────
+// Real-time operational snapshot untuk tim operasional.
+router.get("/operational", async (req, res) => {
+  const { isConsolidated, companyId } = parseCompanyParam(req.query.companyId);
+  const cf = (!isConsolidated && companyId !== null)
+    ? sql` AND company_id = ${companyId}`
+    : sql``;
+
+  try {
+    const [
+      todayRes,
+      pendingRfqRes,
+      waitingVendorRes,
+      waitingCustomerRes,
+      inFulfillmentRes,
+      podCompletedRes,
+      failedWaRes,
+      recentOrdersRes,
+    ] = await Promise.all([
+      // Today's orders
+      db.execute<{ cnt: string }>(sql`
+        SELECT count(*)::text AS cnt FROM logistic_orders
+        WHERE created_at >= date_trunc('day', NOW()) ${cf}
+      `),
+      // Pending RFQ — order masuk, belum ada tindakan RFQ
+      db.execute<{ cnt: string }>(sql`
+        SELECT count(*)::text AS cnt FROM logistic_orders
+        WHERE status IN ('Order Received','Admin Review')
+          AND status NOT IN ('Cancelled','cancelled') ${cf}
+      `),
+      // Waiting Vendor — sudah blast RFQ, vendor belum balas
+      db.execute<{ cnt: string }>(sql`
+        SELECT count(*)::text AS cnt FROM logistic_orders
+        WHERE status IN ('RFQ Sent','Quote Received') ${cf}
+      `),
+      // Waiting Customer — quote sudah dikirim ke customer, menunggu approval
+      db.execute<{ cnt: string }>(sql`
+        SELECT count(*)::text AS cnt FROM logistic_orders
+        WHERE status = 'Customer Approval' ${cf}
+      `),
+      // In Fulfillment — proses aktif (confirmed → delivered)
+      db.execute<{ cnt: string }>(sql`
+        SELECT count(*)::text AS cnt FROM logistic_orders
+        WHERE status IN ('Vendor Confirmed','In Progress','Pickup','In Transit','Arrived','Delivered') ${cf}
+      `),
+      // POD Completed — sudah ada bukti pengiriman
+      db.execute<{ cnt: string }>(sql`
+        SELECT count(*)::text AS cnt FROM logistic_orders
+        WHERE status IN ('POD Uploaded','Invoice Issued','Payment Received','Completed') ${cf}
+      `),
+      // Failed WA — notif WA gagal & sudah exhausted retries (retry_count >= 3)
+      db.execute<{ cnt: string }>(sql`
+        SELECT count(*)::text AS cnt FROM notification_logs
+        WHERE channel = 'wa' AND status = 'failed' AND retry_count >= 3
+          AND created_at >= NOW() - INTERVAL '7 days'
+      `),
+      // Recent 20 active orders (non-cancelled, non-completed)
+      db.execute<{
+        order_number: string; status: string; customer_name: string;
+        origin: string; destination: string; created_at: string;
+        transport_mode: string | null; approved_vendor_id: string | null;
+      }>(sql`
+        SELECT order_number, status, customer_name, origin, destination,
+               to_char(created_at, 'YYYY-MM-DD HH24:MI') AS created_at,
+               transport_mode, approved_vendor_id::text
+        FROM logistic_orders
+        WHERE status NOT IN ('Completed','Cancelled','cancelled') ${cf}
+        ORDER BY created_at DESC
+        LIMIT 20
+      `),
+    ]);
+
+    return res.json({
+      todayOrders: Number(todayRes.rows[0]?.cnt ?? 0),
+      pendingRfq: Number(pendingRfqRes.rows[0]?.cnt ?? 0),
+      waitingVendor: Number(waitingVendorRes.rows[0]?.cnt ?? 0),
+      waitingCustomer: Number(waitingCustomerRes.rows[0]?.cnt ?? 0),
+      inFulfillment: Number(inFulfillmentRes.rows[0]?.cnt ?? 0),
+      podCompleted: Number(podCompletedRes.rows[0]?.cnt ?? 0),
+      failedWa: Number(failedWaRes.rows[0]?.cnt ?? 0),
+      recentOrders: recentOrdersRes.rows.map((r) => ({
+        orderNumber: r.order_number,
+        status: r.status,
+        customerName: r.customer_name,
+        origin: r.origin,
+        destination: r.destination,
+        createdAt: r.created_at,
+        transportMode: r.transport_mode ?? null,
+        hasVendor: !!r.approved_vendor_id,
+      })),
+    });
+  } catch (e) {
+    console.error("operational dashboard error", e);
+    return res.status(500).json({ error: "Gagal memuat operational dashboard" });
+  }
+});
+
 export default router;

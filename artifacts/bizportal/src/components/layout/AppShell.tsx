@@ -275,6 +275,7 @@ export function AppShell({ children }: AppShellProps) {
       icon: Truck,
       roles: ["admin", "owner", "logistics"],
       children: [
+        { titleKey: "Operational Dashboard", href: "/operational-dashboard", icon: LayoutDashboard },
         { titleKey: "shipments", href: "/logistics", icon: Truck },
         { titleKey: "freightForwarding", href: "/logistics/freight", icon: Ship, companyCodes: ["CST"] },
         { titleKey: "RFQ Vendor", href: "/logistics/rfq", icon: Send, companyCodes: ["CST"] },
