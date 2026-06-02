@@ -23,6 +23,7 @@ import {
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminWa } from "../lib/adminWa.js";
+import { normalizePhone } from "../lib/phoneUtils.js";
 import { getPreferredDomain } from "../lib/domain.js";
 import { logger } from "../lib/logger.js";
 import { resolveServiceCategory } from "@workspace/logistics-constants";
@@ -591,28 +592,60 @@ fulfillmentPublicRouter.post("/:token", async (req: Request, res: Response) => {
       );
     }
 
-    // WA ke driver
-    const driverPhoneOF = String((body as any).driverPhone ?? "").trim();
-    const driverNameOF = String((body as any).driverName ?? "Driver").trim();
-    logger.info(
-      { driverPhone: driverPhoneOF, driverName: driverNameOF, orderNumber: order.orderNumber, serviceType: link.serviceType },
-      "[WA-driver] orderFulfillment submit: cek kirim WA ke driver"
-    );
-    if (driverPhoneOF) {
+    // ── WA ke driver (legacy path: order_fulfillment_links) ───────────────────
+    const _driverPhoneRawOF = String((body as any).driverPhone ?? "").trim();
+    const _driverPhoneOF    = _driverPhoneRawOF ? normalizePhone(_driverPhoneRawOF) : "";
+    const driverNameOF      = String((body as any).driverName ?? "Driver").trim();
+    logger.info({
+      orderId:          link.orderId,
+      orderNumber:      order.orderNumber,
+      fulfillmentType:  link.serviceType,
+      svcCategory:      resolveServiceCategory(link.serviceType),
+      driverPhoneRaw:   _driverPhoneRawOF  || "(kosong)",
+      driverPhoneNorm:  _driverPhoneOF     || "(kosong)",
+      driverName:       driverNameOF       || "(kosong)",
+      plateNumber:      String((body as any).plateNumber ?? "") || "(kosong)",
+      vehicleType:      String((body as any).vehicleType ?? "") || "(kosong)",
+      pickupTime:       String((body as any).pickupTime  ?? "") || "(kosong)",
+    }, "[WA-driver] orderFulfillment (legacy) cek kirim WA ke driver");
+
+    if (_driverPhoneOF) {
       const driverAppUrl = `${getBaseUrl()}/driver`;
-      const waDriver =
-        `🚛 *Konfirmasi Job Order*\n\n` +
-        `Halo ${driverNameOF},\n\n` +
-        `Anda telah dikonfirmasi untuk menjalankan pengiriman berikut:\n\n` +
-        `📦 *Order*    : ${order.orderNumber}\n` +
-        `📍 *Rute*     : ${order.origin} → ${order.destination}\n` +
-        (String((body as any).plateNumber ?? "").trim() ? `🚗 *Plat*      : ${String((body as any).plateNumber).trim()}\n` : "") +
-        (String((body as any).vehicleType ?? "").trim() ? `🚐 *Kendaraan* : ${String((body as any).vehicleType).trim()}\n` : "") +
-        (String((body as any).pickupTime ?? "").trim() ? `🕐 *Pickup*    : ${String((body as any).pickupTime).trim()}\n` : "") +
-        `\n📱 Driver App: ${driverAppUrl}`;
-      sendWhatsApp(driverPhoneOF, waDriver)
-        .then(() => logger.info({ driverPhone: driverPhoneOF, orderNumber: order.orderNumber }, "[WA-driver] WA ke driver BERHASIL (orderFulfillment)"))
-        .catch((e) => logger.warn({ e, driverPhone: driverPhoneOF, orderNumber: order.orderNumber }, "[WA-driver] WA ke driver GAGAL (orderFulfillment)"));
+      const waDriver = [
+        `🚛 *Konfirmasi Job Order*`,
+        ``,
+        `Halo *${driverNameOF}*,`,
+        `Anda telah dikonfirmasi untuk menjalankan pengiriman berikut:`,
+        ``,
+        `📦 *Order*    : ${order.orderNumber}`,
+        `📍 *Rute*     : ${order.origin} → ${order.destination}`,
+        String((body as any).plateNumber ?? "").trim() ? `🚗 *Plat*      : ${String((body as any).plateNumber).trim()}` : null,
+        String((body as any).vehicleType ?? "").trim() ? `🚐 *Kendaraan* : ${String((body as any).vehicleType).trim()}` : null,
+        String((body as any).pickupTime  ?? "").trim() ? `🕐 *Pickup*    : ${String((body as any).pickupTime).trim()}` : null,
+        ``,
+        `📱 Driver App: ${driverAppUrl}`,
+      ].filter(Boolean).join("\n");
+
+      logger.info({
+        orderId:         link.orderId,
+        driverPhoneRaw:  _driverPhoneRawOF,
+        driverPhoneNorm: _driverPhoneOF,
+        driverName:      driverNameOF || "(kosong)",
+      }, "[WA-driver] orderFulfillment (legacy) mengirim WA ke driver...");
+
+      sendWhatsApp(_driverPhoneOF, waDriver, {
+        context: "fulfillment-driver-assigned",
+        refType:  "order_fulfillment_link",
+        refId:    String(link.id),
+      })
+        .then(() => logger.info({ orderId: link.orderId, driverPhoneNorm: _driverPhoneOF, orderNumber: order.orderNumber }, "[WA-driver] orderFulfillment (legacy) WA ke driver BERHASIL"))
+        .catch((e) => logger.error({ e, orderId: link.orderId, driverPhoneNorm: _driverPhoneOF, orderNumber: order.orderNumber }, "[WA-driver] orderFulfillment (legacy) WA ke driver GAGAL"));
+    } else {
+      logger.info({
+        orderId:         link.orderId,
+        skip_reason:     "driverPhone kosong",
+        fulfillmentType: link.serviceType,
+      }, "[WA-driver] orderFulfillment (legacy) skip — tidak kirim WA ke driver");
     }
 
     updateOrderProgress(link.orderId, "VENDOR_FULFILLMENT_CONFIRMED", "vendor_wa", "Vendor",
