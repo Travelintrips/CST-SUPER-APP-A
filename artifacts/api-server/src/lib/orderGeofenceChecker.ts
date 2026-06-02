@@ -71,7 +71,7 @@ export async function checkOrderGeofence(
     if (!adminWa) return;
 
     const domain = getPreferredDomain() || "cstlogistic.co.id";
-    const bizportalUrl = `https://${domain}/logistic-admin/orders/${orderId}`;
+    const bizportalUrl = `https://${domain}/bizportal/logistics/orders/${orderId}`;
     const mapsUrl = `https://maps.google.com/?q=${lat},${lng}`;
 
     const msg =

@@ -579,7 +579,7 @@ fulfillmentPublicRouter.post("/:token", async (req: Request, res: Response) => {
     // Notify admin via WA
     const adminWa = await getAdminWa();
     if (adminWa) {
-      const adminLink = `${getBaseUrl()}/logistic-admin/orders/${link.orderId}`;
+      const adminLink = `${getBaseUrl()}/bizportal/logistics/orders/${link.orderId}`;
       const waMsg =
         `✅ *Vendor Mengisi Form Fulfillment*\n\n` +
         `Order: *${order.orderNumber}*\n` +
@@ -920,7 +920,7 @@ fulfillmentAdminRouter.post(
           const adminGroupWa = await getAdminGroupWa();
           if (!adminGroupWa) return;
           const domain = getPreferredDomain() || "cstlogistic.co.id";
-          const orderDetailUrl = `https://${domain}/logistic-admin/orders/${orderId}`;
+          const orderDetailUrl = `https://${domain}/bizportal/logistics/orders/${orderId}`;
           const ln = "\n";
           const sep = "━━━━━━━━━━━━━━━━━━";
           const adminMsg =

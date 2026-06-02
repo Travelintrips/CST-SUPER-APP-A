@@ -810,7 +810,7 @@ vendorJobPublicRouter.post("/:token/reject", async (req: Request, res: Response)
     const adminWa = await getAdminWa();
     if (adminWa) {
       const _domain = getPreferredDomain();
-      const _adminOrderUrl = _domain ? `https://${_domain}/logistic-admin/orders/${job.order_id}` : undefined;
+      const _adminOrderUrl = _domain ? `https://${_domain}/bizportal/logistics/orders/${job.order_id}` : undefined;
       const _route = [job.origin, job.destination].filter(Boolean).join(" → ") || undefined;
       sendVendorJobRejectedNotification(job.order_number, job.vendor_name ?? "—", adminWa, reason, _route, _adminOrderUrl).catch(() => {});
     }
