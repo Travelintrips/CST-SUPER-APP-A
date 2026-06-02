@@ -1,0 +1,53 @@
+FASE 1 — PERBAIKAN GATEWAY /SPORT-CENTER/* DAN SSE /EVENTS AUTH
+
+Tujuan:
+
+* Memastikan semua request /sport-center/* tidak diarahkan ke port 3002 yang tidak ada service-nya.
+* Memastikan SSE /events dilindungi requireAdmin.
+* Tidak mengubah database, Accounting, Purchase, atau logika booking/payment.
+* Semua perubahan bersifat frontend/backend routing dan middleware kecil.
+
+A. PERBAIKAN GATEWAY
+
+1. File: gateway.mjs
+2. Identifikasi dan ubah:
+
+   * Baris 47: { prefix: "/sport-center", upstream: { host: "localhost", port: 3002 } }
+     → Nonaktifkan atau hapus routing ini.
+   * Baris 11 (komentar) dan baris 58 (label SERVICE_NAMES) → perbarui agar tidak menyesatkan.
+3. Tambahkan redirect kompatibel:
+
+   * /sport-center → /bizportal/sport-center/dashboard
+   * /sport-center/* → /bizportal/sport-center/* (path setara React Router di BizPortal)
+4. Pastikan /api/sport-center/* tetap aman dan tidak terkena redirect.
+5. Hapus log misleading jika perlu (baris 260).
+
+B. PERBAIKAN SSE /events AUTH
+
+1. File: artifacts/api-server/src/modules/sport-center/routes.ts
+2. Endpoint /events saat ini tidak memakai auth.
+3. Tambahkan middleware requireAdmin ke route /events.
+4. Pastikan SSE tetap bekerja, hanya admin BizPortal yang dapat subscribe.
+
+C. TEST FASE 1
+
+1. Buka /sport-center → harus redirect ke /bizportal/sport-center/dashboard dan halaman terbuka.
+2. Buka semua /sport-center/* → redirect ke path BizPortal yang setara.
+3. /api/sport-center/* → tetap berfungsi normal, tetap menggunakan requireAdmin.
+4. SSE /events → hanya bisa diakses setelah login admin BizPortal.
+5. Pastikan tidak ada request yang diarahkan ke port 3002.
+6. Pastikan route lama port 3002 tidak menghasilkan 503 lagi untuk path /sport-center/* karena sekarang di-redirect.
+
+D. LAPORAN FASE 1
+
+Laporkan:
+
+1. File yang diubah.
+2. Baris/route gateway yang dihapus/dinonaktifkan.
+3. Redirect baru yang diterapkan.
+4. Endpoint SSE /events yang dilindungi auth.
+5. Hasil test URL /sport-center dan /sport-center/*.
+6. Konfirmasi /api/sport-center/* tetap berfungsi.
+7. Konfirmasi tidak ada perubahan database, Accounting, atau Purchase.
+
+STOP setelah Fase 1 selesai. Jangan memulai integrasi Accounting atau Purchase sebelum Fase 2.

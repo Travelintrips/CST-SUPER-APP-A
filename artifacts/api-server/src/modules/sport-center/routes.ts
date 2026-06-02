@@ -27,7 +27,7 @@ async function nextPaymentNumber(companyId?: number): Promise<string> {
   return `PAY/${new Date().getFullYear()}/${pad(Number((res.rows[0] as any).cnt) + 1)}`;
 }
 
-router.get("/events", (req, res) => {
+router.get("/events", requireAdmin, (req, res) => {
   handleSportCenterSse(req, res);
 });
 
