@@ -61,6 +61,7 @@ import {
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Plus, Send, Check, X, FileText, Truck, Trash2, FileEdit, Save, Printer, CreditCard, Wallet, ScanLine, Mail, MessageSquare, SquareArrowOutUpRight, Link2, CheckCircle2, Circle, ClipboardCopy } from "lucide-react";
 import { CorrespondenceTab } from "@/components/CorrespondenceTab";
+import { TemplateSnapshotCard } from "@/components/TemplateSnapshotCard";
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
@@ -984,6 +985,10 @@ export default function PurchaseDocumentEditorPage() {
             </div>
           </CardContent>
         </Card>
+
+        {!isEditable && (doc as any)?.templateSnapshot && (
+          <TemplateSnapshotCard templateSnapshot={(doc as any).templateSnapshot} />
+        )}
 
         {isOrderView && id && (
           <Card>

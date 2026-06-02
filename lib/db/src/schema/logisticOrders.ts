@@ -84,6 +84,11 @@ export const logisticOrdersTable = pgTable("logistic_orders", {
   // freight | trucking | customs | handling | storage
   cargoSpecialTags: text("cargo_special_tags").array(),
   requiredDocs: text("required_docs").array(),
+  // ── Step 2: Product Template Engine integration ─────────────────────────────
+  categoryKey: text("category_key"),
+  templateId: integer("template_id"),
+  templateVersion: text("template_version"),
+  templateSnapshot: jsonb("template_snapshot"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (t) => [
@@ -121,6 +126,10 @@ export const logisticOrderRfqsTable = pgTable("logistic_order_rfqs", {
   customerRespondedAt: timestamp("customer_responded_at", { withTimezone: true }),
   createdByUserId: text("created_by_user_id"),
   createdByUserName: text("created_by_user_name"),
+  // ── Step 2: Product Template Engine integration ─────────────────────────────
+  templateId: integer("template_id"),
+  templateVersion: text("template_version"),
+  templateSnapshot: jsonb("template_snapshot").$type<Record<string, unknown> | null>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

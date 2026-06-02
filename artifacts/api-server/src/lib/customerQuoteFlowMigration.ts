@@ -79,6 +79,12 @@ export async function runCustomerQuoteFlowMigration(): Promise<void> {
   `);
 
   // Add new columns to logistic_orders
+  // ── Product Template Engine columns for customer_quote_links (Step 3) ────────
+  await db.execute(sql`ALTER TABLE customer_quote_links ADD COLUMN IF NOT EXISTS category_key TEXT;`);
+  await db.execute(sql`ALTER TABLE customer_quote_links ADD COLUMN IF NOT EXISTS template_id TEXT;`);
+  await db.execute(sql`ALTER TABLE customer_quote_links ADD COLUMN IF NOT EXISTS template_version TEXT;`);
+  await db.execute(sql`ALTER TABLE customer_quote_links ADD COLUMN IF NOT EXISTS template_snapshot JSONB;`);
+
   await db.execute(sql`
     DO $$ BEGIN
       IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='logistic_orders' AND column_name='customer_quote_status') THEN

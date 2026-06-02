@@ -10,7 +10,7 @@ import {
   ArrowLeft, Search, Ship, Truck, CheckCircle2, Clock,
   MapPin, Package, RefreshCw, AlertCircle, FileText,
   Circle, ArrowRight, Loader2, ThumbsUp, ThumbsDown, RotateCcw, Tag,
-  Bell, BellOff,
+  Bell, BellOff, Navigation, ExternalLink, Image as ImageIcon, X,
 } from "lucide-react";
 import { usePushNotification } from "@/hooks/usePushNotification";
 import { formatDate } from "@/lib/utils";
@@ -52,6 +52,26 @@ interface OrderUpdateItem {
   createdAt: string;
 }
 
+interface PodSubmission {
+  id: number;
+  receiverName: string | null;
+  photoUrl: string | null;
+  note: string | null;
+  submittedBy: string | null;
+  createdAt: string;
+}
+
+interface InvoiceLink {
+  token: string;
+  invoiceNumber: string | null;
+  grandTotal: number | null;
+  dueDate: string | null;
+  paymentStatus: string;
+  status?: string | null;
+  confirmedAt?: string | null;
+  createdAt: string;
+}
+
 interface TrackingData {
   id: number; orderNumber: string;
   customerName: string;
@@ -64,6 +84,25 @@ interface TrackingData {
   driverJob: DriverJob | null;
   rfqQuote: RfqQuote | null;
   orderUpdates: OrderUpdateItem[];
+  progressEvents?: ProgressEvent[];
+  podSubmissions?: PodSubmission[];
+  invoiceLinks?: InvoiceLink[];
+}
+
+interface ProgressEvent {
+  id: number;
+  stepKey: string;
+  stepLabel: string;
+  source: string;
+  actorName: string | null;
+  notes: string | null;
+  gpsLatitude: number | null;
+  gpsLongitude: number | null;
+  deviceTimestamp: string | null;
+  mapUrl: string | null;
+  streetViewUrl: string | null;
+  photoUrl?: string | null;
+  createdAt: string;
 }
 
 async function fetchTracking(orderNumber: string): Promise<TrackingData> {
@@ -74,6 +113,7 @@ async function fetchTracking(orderNumber: string): Promise<TrackingData> {
   }
   return res.json() as Promise<TrackingData>;
 }
+
 
 const ORDER_STEPS = [
   { key: "Order Received",    label: "Order Diterima",         icon: FileText },
@@ -196,6 +236,7 @@ const CUSTOMER_VISIBLE_STEPS = [
   { key: "In Progress",       label: "Diproses" },
   { key: "In Transit",        label: "Dalam\nPerjalanan" },
   { key: "Delivered",         label: "Terkirim" },
+  { key: "POD Uploaded",      label: "Bukti\nPengiriman" },
   { key: "Invoice Issued",    label: "Invoice" },
   { key: "Completed",         label: "Selesai" },
 ];
@@ -213,9 +254,9 @@ const CUSTOMER_STEP_RANK: Record<string, number> = {
   "Arrived":           5,
   "Delivered":         5,
   "POD Uploaded":      6,
-  "Invoice Issued":    6,
-  "Payment Received":  7,
-  "Completed":         7,
+  "Invoice Issued":    7,
+  "Payment Received":  8,
+  "Completed":         8,
   "New Order":         0,
   "Processing":        1,
 };
@@ -706,6 +747,354 @@ function PushToggle({ orderNumber }: { orderNumber: string | null }) {
   );
 }
 
+function GpsMapEmbed({ events }: { events: ProgressEvent[] }) {
+  const pts = events.filter((e) => e.gpsLatitude != null && e.gpsLongitude != null);
+  if (pts.length === 0) return null;
+
+  const markers = pts.map((e, i) => ({
+    lat: e.gpsLatitude!,
+    lng: e.gpsLongitude!,
+    label: e.stepLabel,
+    num: i + 1,
+    ts: e.deviceTimestamp
+      ? new Date(e.deviceTimestamp).toLocaleString("id-ID", {
+          day: "numeric", month: "short", year: "numeric",
+          hour: "2-digit", minute: "2-digit",
+          timeZone: "Asia/Jakarta",
+        }) + " WIB"
+      : new Date(e.createdAt).toLocaleString("id-ID", {
+          day: "numeric", month: "short", year: "numeric",
+          hour: "2-digit", minute: "2-digit",
+          timeZone: "Asia/Jakarta",
+        }),
+    isLast: i === pts.length - 1,
+  }));
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\/script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body,#map { width:100%; height:100%; }
+  .pin-icon { background:#2563eb; color:#fff; border-radius:50% 50% 50% 0; transform:rotate(-45deg);
+    width:28px; height:28px; display:flex; align-items:center; justify-content:center;
+    font-size:11px; font-weight:700; border:2px solid #fff;
+    box-shadow:0 2px 6px rgba(0,0,0,0.35); }
+  .pin-icon.last { background:#16a34a; }
+  .pin-inner { transform:rotate(45deg); }
+  .leaflet-popup-content { font-size:12px; line-height:1.5; min-width:140px; }
+  .popup-title { font-weight:700; margin-bottom:2px; color:#1e293b; }
+  .popup-ts { color:#64748b; font-size:11px; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<script>
+  var pts = ${JSON.stringify(markers)};
+  var map = L.map('map', { zoomControl:true, attributionControl:false });
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:19 }).addTo(map);
+
+  var latlngs = pts.map(function(p){ return [p.lat, p.lng]; });
+
+  if (latlngs.length > 1) {
+    L.polyline(latlngs, { color:'#2563eb', weight:3, opacity:0.75, dashArray:'6,4' }).addTo(map);
+  }
+
+  pts.forEach(function(p) {
+    var div = document.createElement('div');
+    div.className = 'pin-icon' + (p.isLast ? ' last' : '');
+    var inner = document.createElement('div');
+    inner.className = 'pin-inner';
+    inner.textContent = p.num;
+    div.appendChild(inner);
+    var icon = L.divIcon({ html:div.outerHTML, className:'', iconSize:[28,28], iconAnchor:[14,28], popupAnchor:[0,-30] });
+    var popup = '<div class="popup-title">' + p.label + '</div><div class="popup-ts">' + p.ts + '</div>';
+    L.marker([p.lat, p.lng], { icon:icon }).addTo(map).bindPopup(popup);
+  });
+
+  if (latlngs.length === 1) {
+    map.setView(latlngs[0], 15);
+  } else {
+    map.fitBounds(latlngs, { padding:[24,24] });
+  }
+<\/script>
+</body>
+</html>`;
+
+  return (
+    <div className="rounded-lg overflow-hidden border border-border mb-4" style={{ height: "220px" }}>
+      <iframe
+        srcDoc={html}
+        title="Peta Rute Driver"
+        className="w-full h-full border-0"
+        sandbox="allow-scripts"
+      />
+    </div>
+  );
+}
+
+function DriverGpsTimeline({ events }: { events: ProgressEvent[] }) {
+  const gpsEvents = events.filter((e) => e.gpsLatitude != null && e.gpsLongitude != null);
+  if (gpsEvents.length === 0) return null;
+
+  return (
+    <div className="bg-card border border-border rounded-xl p-5">
+      <h3 className="font-semibold text-foreground text-sm mb-4 flex items-center gap-2">
+        <Navigation className="w-4 h-4 text-primary" />
+        Riwayat Lokasi Driver
+        <Badge variant="outline" className="text-xs ml-auto">{gpsEvents.length} titik</Badge>
+      </h3>
+      <GpsMapEmbed events={gpsEvents} />
+      <div className="space-y-0">
+        {[...gpsEvents].reverse().map((ev, i) => {
+          const isFirst = i === 0;
+          const isLast = i === gpsEvents.length - 1;
+          const ts = ev.deviceTimestamp
+            ? new Date(ev.deviceTimestamp).toLocaleString("id-ID", {
+                day: "numeric", month: "short", year: "numeric",
+                hour: "2-digit", minute: "2-digit",
+                timeZone: "Asia/Jakarta",
+              })
+            : new Date(ev.createdAt).toLocaleString("id-ID", {
+                day: "numeric", month: "short", year: "numeric",
+                hour: "2-digit", minute: "2-digit",
+                timeZone: "Asia/Jakarta",
+              });
+
+          return (
+            <div key={ev.id} className="flex gap-3">
+              <div className="flex flex-col items-center">
+                <div className={cn(
+                  "w-7 h-7 rounded-full flex items-center justify-center border-2 flex-shrink-0 mt-0.5",
+                  isFirst
+                    ? "bg-primary border-primary text-primary-foreground"
+                    : "bg-green-500 border-green-500 text-white"
+                )}>
+                  <MapPin className="w-3.5 h-3.5" />
+                </div>
+                {!isLast && (
+                  <div className="w-0.5 flex-1 my-1 bg-border" />
+                )}
+              </div>
+              <div className={cn("pb-4 flex-1 min-w-0", isLast && "pb-0")}>
+                <div className="flex items-start justify-between gap-2 flex-wrap">
+                  <div>
+                    <p className={cn(
+                      "text-sm font-semibold",
+                      isFirst ? "text-primary" : "text-foreground"
+                    )}>
+                      {ev.stepLabel}
+                    </p>
+                    {ev.actorName && (
+                      <p className="text-xs text-muted-foreground">
+                        👤 {ev.actorName}
+                      </p>
+                    )}
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      🕐 {ts}
+                      {ev.deviceTimestamp && " (waktu perangkat)"}
+                    </p>
+                    <p className="text-xs font-mono text-muted-foreground mt-0.5">
+                      📍 {ev.gpsLatitude!.toFixed(6)}, {ev.gpsLongitude!.toFixed(6)}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-2 mt-2 flex-wrap">
+                  {ev.mapUrl && (
+                    <a
+                      href={ev.mapUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline bg-primary/10 px-2 py-1 rounded-md"
+                    >
+                      <MapPin className="w-3 h-3" />
+                      Google Maps
+                      <ExternalLink className="w-2.5 h-2.5" />
+                    </a>
+                  )}
+                  {ev.streetViewUrl && (
+                    <a
+                      href={ev.streetViewUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs font-medium text-sky-600 hover:underline bg-sky-50 px-2 py-1 rounded-md"
+                    >
+                      <Navigation className="w-3 h-3" />
+                      Street View
+                      <ExternalLink className="w-2.5 h-2.5" />
+                    </a>
+                  )}
+                  {ev.photoUrl && (
+                    <a
+                      href={ev.photoUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 hover:underline bg-emerald-50 px-2 py-1 rounded-md"
+                    >
+                      <ImageIcon className="w-3 h-3" />
+                      Lihat Gambar
+                      <ExternalLink className="w-2.5 h-2.5" />
+                    </a>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Delivery Proof Gallery ────────────────────────────────────────────────────
+
+type PhotoGroup = { category: string; events: ProgressEvent[] };
+
+function getPhotoCategory(stepKey: string): string {
+  const k = stepKey.toUpperCase();
+  if (k.includes("PICKED_UP") || k.includes("ARRIVED_AT_PICKUP") || k.includes("ON_THE_WAY_TO_PICKUP")) return "Bukti Pickup";
+  if (k.includes("IN_TRANSIT") || k.includes("TRANSIT")) return "Bukti Perjalanan";
+  if (k.includes("ARRIVED_AT_DESTINATION") || (k.includes("ARRIVED") && !k.includes("PICKUP"))) return "Bukti Sampai Lokasi";
+  if (k.includes("DELIVERED")) return "Bukti Pengiriman";
+  if (k.includes("COMPLETED")) return "Bukti Selesai";
+  return "Bukti Perjalanan";
+}
+
+const PHOTO_CATEGORY_ORDER = ["Bukti Pickup", "Bukti Perjalanan", "Bukti Sampai Lokasi", "Bukti Pengiriman", "Bukti Selesai"];
+
+function DeliveryProofGallery({ events, orderStatusRank }: { events: ProgressEvent[]; orderStatusRank: number }) {
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [errorUrls, setErrorUrls] = useState<Set<string>>(new Set());
+
+  if (orderStatusRank < 7) return null;
+
+  const validPhotos = events.filter((e) => e.photoUrl && !errorUrls.has(e.photoUrl));
+
+  const groupMap = new Map<string, ProgressEvent[]>();
+  validPhotos.forEach((ev) => {
+    const cat = getPhotoCategory(ev.stepKey);
+    if (!groupMap.has(cat)) groupMap.set(cat, []);
+    groupMap.get(cat)!.push(ev);
+  });
+  const groups: PhotoGroup[] = PHOTO_CATEGORY_ORDER.filter((c) => groupMap.has(c)).map((c) => ({
+    category: c,
+    events: groupMap.get(c)!,
+  }));
+
+  return (
+    <div className="bg-card border border-violet-200 rounded-xl p-5">
+      <h3 className="font-semibold text-violet-800 text-sm mb-4 flex items-center gap-2">
+        <ImageIcon className="w-4 h-4" />
+        Galeri Bukti Pengiriman
+        {validPhotos.length > 0 && (
+          <span className="ml-auto text-xs font-normal text-violet-500 bg-violet-50 px-2 py-0.5 rounded-full">
+            {validPhotos.length} foto
+          </span>
+        )}
+      </h3>
+
+      {validPhotos.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-8 text-muted-foreground gap-3">
+          <ImageIcon className="w-10 h-10 opacity-20" />
+          <p className="text-sm text-center">Belum ada bukti foto dari driver.</p>
+        </div>
+      ) : (
+        <div className="space-y-5">
+          {groups.map((group) => (
+            <div key={group.category}>
+              <p className="text-xs font-semibold text-violet-600 uppercase tracking-wide mb-2.5">
+                {group.category}
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                {group.events.map((ev) => (
+                  <div
+                    key={ev.id}
+                    className="rounded-lg border border-violet-100 bg-violet-50/30 overflow-hidden cursor-pointer group"
+                    onClick={() => setPreviewUrl(ev.photoUrl ?? null)}
+                  >
+                    <div className="relative aspect-square bg-muted overflow-hidden">
+                      <img
+                        src={ev.photoUrl!}
+                        alt={ev.stepLabel}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                        onError={() =>
+                          setErrorUrls((prev) => new Set([...prev, ev.photoUrl!]))
+                        }
+                      />
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/15 transition-colors">
+                        <ExternalLink className="w-5 h-5 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-lg" />
+                      </div>
+                    </div>
+                    <div className="px-2 py-1.5 space-y-0.5">
+                      <p className="text-xs font-medium text-foreground truncate">{ev.stepLabel}</p>
+                      {ev.actorName && (
+                        <p className="text-xs text-muted-foreground truncate">👤 {ev.actorName}</p>
+                      )}
+                      <p className="text-xs text-muted-foreground">{formatDateTime(ev.createdAt)}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {previewUrl && (
+        <div
+          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
+          onClick={() => setPreviewUrl(null)}
+        >
+          <div
+            className="relative max-w-3xl w-full flex flex-col items-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              className="absolute -top-10 right-0 text-white/80 hover:text-white p-1.5 rounded-md hover:bg-white/10 transition-colors"
+              onClick={() => setPreviewUrl(null)}
+              aria-label="Tutup"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <img
+              src={previewUrl}
+              alt="Preview"
+              className="max-h-[78vh] w-full object-contain rounded-lg shadow-2xl"
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).src =
+                  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Crect width='200' height='200' fill='%23374151'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%239CA3AF' font-size='14'%3EGagal memuat gambar%3C/text%3E%3C/svg%3E";
+              }}
+            />
+            <div className="flex justify-center mt-4 gap-3">
+              <a
+                href={previewUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-sm text-white/80 hover:text-white bg-white/10 hover:bg-white/20 px-4 py-2 rounded-lg transition-colors"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <ExternalLink className="w-4 h-4" />
+                Buka Original
+              </a>
+              <button
+                className="inline-flex items-center gap-1.5 text-sm text-white/80 hover:text-white bg-white/10 hover:bg-white/20 px-4 py-2 rounded-lg transition-colors"
+                onClick={() => setPreviewUrl(null)}
+              >
+                <X className="w-4 h-4" />
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function TrackPage() {
   const [, setLocation] = useLocation();
   const { orderNumber: pathOrderNumber } = useParams<{ orderNumber?: string }>();
@@ -998,6 +1387,125 @@ export default function TrackPage() {
                   <p>Driver belum ditugaskan. Anda akan menerima notifikasi setelah order dikonfirmasi dan driver ditetapkan.</p>
                 </div>
               )
+            )}
+
+            {/* GPS History Timeline */}
+            <DriverGpsTimeline events={tracking.progressEvents ?? []} />
+
+            {/* ── Galeri Bukti Pengiriman ── */}
+            <DeliveryProofGallery
+              events={tracking.progressEvents ?? []}
+              orderStatusRank={ORDER_STATUS_RANK[tracking.status] ?? 0}
+            />
+
+            {/* ── Bukti Pengiriman (POD) — tampil jika ada submission ── */}
+            {(tracking.podSubmissions ?? []).length > 0 && (
+              <div className="bg-card border border-teal-200 rounded-xl p-5">
+                <h3 className="font-semibold text-teal-800 text-sm mb-4 flex items-center gap-2">
+                  <FileText className="w-4 h-4" />
+                  Bukti Pengiriman (POD)
+                </h3>
+                {(tracking.podSubmissions ?? []).map((pod) => (
+                  <div key={pod.id} className="space-y-3">
+                    <div className="grid grid-cols-2 gap-y-2 text-sm">
+                      {pod.receiverName && (
+                        <>
+                          <span className="text-muted-foreground">Diterima oleh</span>
+                          <span className="font-semibold text-foreground text-right">{pod.receiverName}</span>
+                        </>
+                      )}
+                      {pod.submittedBy && (
+                        <>
+                          <span className="text-muted-foreground">Diverifikasi</span>
+                          <span className="font-medium text-right">{pod.submittedBy}</span>
+                        </>
+                      )}
+                      <span className="text-muted-foreground">Tanggal</span>
+                      <span className="font-medium text-right">{formatDateTime(pod.createdAt)}</span>
+                    </div>
+                    {pod.note && (
+                      <p className="text-sm text-muted-foreground bg-muted/40 rounded-lg px-3 py-2">
+                        {pod.note}
+                      </p>
+                    )}
+                    {pod.photoUrl && (
+                      <a href={pod.photoUrl} target="_blank" rel="noopener noreferrer" className="block">
+                        <img
+                          src={pod.photoUrl}
+                          alt="Bukti pengiriman"
+                          className="w-full max-h-64 object-contain rounded-lg border border-teal-100 hover:opacity-90 transition-opacity cursor-zoom-in"
+                        />
+                        <p className="text-xs text-center text-muted-foreground mt-1">Klik untuk perbesar foto</p>
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* ── Invoice — tampil jika ada invoice link atau status sudah Invoice Issued+ ── */}
+            {(["Invoice Issued", "Payment Received", "Completed"].includes(tracking.status) || (tracking.invoiceLinks ?? []).length > 0) && (
+              <div className="bg-card border border-orange-200 rounded-xl p-5">
+                <h3 className="font-semibold text-orange-800 text-sm mb-3 flex items-center gap-2">
+                  <FileText className="w-4 h-4" />
+                  Invoice
+                </h3>
+                {(tracking.invoiceLinks ?? []).length > 0 ? (
+                  <div className="space-y-3">
+                    {(tracking.invoiceLinks ?? []).map((inv) => (
+                      <div key={inv.token} className="rounded-lg border border-orange-100 bg-orange-50/40 px-3 py-3 space-y-2">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          {inv.invoiceNumber && (
+                            <span className="text-xs font-mono font-semibold text-orange-800">{inv.invoiceNumber}</span>
+                          )}
+                          <span className={cn(
+                            "text-xs font-semibold px-2 py-0.5 rounded-full",
+                            inv.paymentStatus === "paid"
+                              ? "bg-green-100 text-green-700"
+                              : "bg-amber-100 text-amber-700"
+                          )}>
+                            {inv.paymentStatus === "paid" ? "✅ Lunas" : "⏳ Belum Bayar"}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-y-1 text-sm">
+                          {inv.grandTotal != null && (
+                            <>
+                              <span className="text-muted-foreground">Total</span>
+                              <span className="font-semibold text-right">{idr(inv.grandTotal)}</span>
+                            </>
+                          )}
+                          {inv.dueDate && (
+                            <>
+                              <span className="text-muted-foreground">Jatuh Tempo</span>
+                              <span className="font-medium text-right">{formatDateTime(inv.dueDate)}</span>
+                            </>
+                          )}
+                          {inv.confirmedAt && (
+                            <>
+                              <span className="text-muted-foreground">Tgl Bayar</span>
+                              <span className="font-medium text-right text-green-700">{formatDateTime(inv.confirmedAt)}</span>
+                            </>
+                          )}
+                        </div>
+                        <a
+                          href={`/customer-invoice/${inv.token}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 text-xs font-medium text-orange-700 bg-orange-100 hover:bg-orange-200 px-3 py-1.5 rounded-md transition-colors"
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                          Lihat Invoice
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-sm text-muted-foreground bg-orange-50/40 rounded-lg px-3 py-3">
+                    <p>Invoice untuk order ini telah diterbitkan. Silakan cek <strong>email</strong> atau hubungi tim CST Logistics untuk menerima invoice Anda.</p>
+                  </div>
+                )}
+              </div>
             )}
 
             {/* Services */}

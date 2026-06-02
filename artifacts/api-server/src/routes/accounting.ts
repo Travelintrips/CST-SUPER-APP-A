@@ -11,6 +11,7 @@ import {
   salesDocumentsTable,
   purchaseDocumentsTable,
   companiesTable,
+  customersTable,
 } from "@workspace/db";
 import {
   eq,
@@ -35,8 +36,10 @@ import {
 import { logger } from "../lib/logger.js";
 import { postEntry, type PostingLine } from "../lib/accounting.js";
 import { recalculatePaymentStatus } from "../lib/services/index.js";
+import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminWa } from "../lib/adminWa.js";
+import { notifyPaymentConfirmation } from "../lib/enterpriseWorkflowNotify.js";
 
 function serializeCompany(c: typeof companiesTable.$inferSelect) {
   return { ...c, createdAt: c.createdAt.toISOString() };
@@ -868,7 +871,13 @@ router.post("/payments", async (req, res) => {
 
         // WA notification to admin — fire-and-forget
         const [doc] = await db
-          .select({ grandTotal: salesDocumentsTable.grandTotal, docNumber: salesDocumentsTable.docNumber })
+          .select({
+            grandTotal: salesDocumentsTable.grandTotal,
+            docNumber: salesDocumentsTable.docNumber,
+            logisticOrderId: salesDocumentsTable.logisticOrderId,
+            customerId: salesDocumentsTable.customerId,
+            customerName: salesDocumentsTable.customerName,
+          })
           .from(salesDocumentsTable)
           .where(eq(salesDocumentsTable.id, parsedSourceDocId));
         const grandTotal = Number(doc?.grandTotal ?? 0);
@@ -878,6 +887,20 @@ router.post("/payments", async (req, res) => {
             : totalPaid > 0
               ? "partial"
               : "unpaid";
+
+        // ── AUTO STATUS: Payment Received ──────────────────────────────────
+        // Jika pembayaran lunas DAN ada logistic order terhubung,
+        // transisi ke "Payment Received" secara otomatis.
+        // Partial payment → tidak ubah status.
+        if (newStatus === "paid" && doc?.logisticOrderId) {
+          transitionLogisticOrderStatus(doc.logisticOrderId, "Payment Received", {
+            source: "accounting:payment_recorded",
+            actorType: "admin",
+            notes: `Pembayaran lunas via ${payment!.paymentNumber} (SO: ${doc.docNumber ?? parsedSourceDocId})`,
+          }).catch((e: unknown) =>
+            logger.warn({ e, logisticOrderId: doc.logisticOrderId }, "auto Payment Received transition failed — non-fatal"),
+          );
+        }
         const fmtIdr = (n: number) =>
           `Rp ${Math.round(n).toLocaleString("id-ID")}`;
         const statusLabel =
@@ -911,6 +934,38 @@ router.post("/payments", async (req, res) => {
           .catch((e: unknown) =>
             logger.error({ e }, "getAdminWa payment notif failed"),
           );
+
+        // ── WA ke Customer: Payment Received ──────────────────────────────────
+        // Kirim konfirmasi pembayaran ke customer jika ada pembayaran (lunas maupun sebagian)
+        if ((newStatus === "paid" || newStatus === "partial") && doc?.customerId) {
+          const remainingAmt = Math.max(0, grandTotal - totalPaid);
+          (async () => {
+            try {
+              const [cust] = await db
+                .select({ phone: customersTable.phone })
+                .from(customersTable)
+                .where(eq(customersTable.id, doc.customerId!))
+                .limit(1);
+              const customerPhone = cust?.phone ?? null;
+              if (customerPhone) {
+                await notifyPaymentConfirmation({
+                  invoiceNumber: doc.docNumber ?? String(parsedSourceDocId),
+                  orderNumber: doc.docNumber ?? undefined,
+                  payeeName: doc.customerName ?? partner,
+                  payeePhone: customerPhone,
+                  paidAmount: amt,
+                  remainingBalance: remainingAmt > 0 ? remainingAmt : undefined,
+                  paymentRef: ref ?? payment!.paymentNumber,
+                  paymentMethod: (req.body as Record<string, unknown>).paymentMethod as string | undefined,
+                  tanggal: String(dateStr),
+                  isVendor: false,
+                });
+              }
+            } catch (e: unknown) {
+              logger.error({ e }, "WA customer payment_received failed — non-fatal");
+            }
+          })().catch(() => {});
+        }
       } else if (validSourceType === "purchase_order") {
         await recalculatePaymentStatus(parsedSourceDocId, "purchase_order");
 

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -80,10 +81,10 @@ function PaymentBadge({ status }: { status: string }) {
 }
 
 function isOverdue(doc: SalesDocument): boolean {
-  if (!doc.dueDate) return false;
+  if (!(doc as any).dueDate) return false;
   if (doc.paymentStatus === "paid") return false;
   if (doc.invoiceStatus === "none") return false;
-  return new Date(doc.dueDate as string) < new Date(new Date().toDateString());
+  return new Date((doc as any).dueDate as string) < new Date(new Date().toDateString());
 }
 
 interface Props { kind?: "quote" | "order" }
@@ -100,11 +101,20 @@ export default function SalesDocumentsListPage({ kind = "quote" }: Props) {
 
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>("all");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [quickViewDoc, setQuickViewDoc] = useState<SalesDocument | null>(null);
+
+  const { data: templateCategories = [] } = useQuery<string[]>({
+    queryKey: ["/api/sales/documents/template-categories", kind],
+    queryFn: () =>
+      fetch(`/api/sales/documents/template-categories?kind=${kind}`, { credentials: "include" })
+        .then((r) => r.ok ? r.json() : []),
+    staleTime: 60_000,
+  });
 
   const deleteMut = useDeleteSalesDocument();
   const actionMut = useSalesDocumentAction();
@@ -113,12 +123,13 @@ export default function SalesDocumentsListPage({ kind = "quote" }: Props) {
     kind,
     ...(statusFilter !== "all" ? { status: statusFilter as SalesDocument["status"] } : {}),
     ...(paymentFilter !== "all" ? { paymentStatus: paymentFilter } : {}),
+    ...(categoryFilter !== "all" ? { categoryKey: categoryFilter } : {}),
     ...(search.trim() ? { search: search.trim() } : {}),
     page,
     limit: PAGE_SIZE,
   };
 
-  const { data: result, refetch } = useListSalesDocuments(apiParams);
+  const { data: result, refetch } = useListSalesDocuments(apiParams as any);
   const filtered = result?.data ?? [];
   const pagination = result?.pagination;
 
@@ -207,6 +218,7 @@ export default function SalesDocumentsListPage({ kind = "quote" }: Props) {
       params.set("limit", "5000");
       if (statusFilter !== "all") params.set("status", statusFilter);
       if (paymentFilter !== "all") params.set("paymentStatus", paymentFilter);
+      if (categoryFilter !== "all") params.set("categoryKey", categoryFilter);
       if (search.trim()) params.set("search", search.trim());
 
       const res = await fetch(`/api/sales/documents?${params.toString()}`);
@@ -352,6 +364,19 @@ export default function SalesDocumentsListPage({ kind = "quote" }: Props) {
               ))}
             </SelectContent>
           </Select>
+          {templateCategories.length > 0 && (
+            <Select value={categoryFilter} onValueChange={(v) => handleFilterChange(() => setCategoryFilter(v))}>
+              <SelectTrigger className="w-52" data-testid="category-filter">
+                <SelectValue placeholder="Semua Komoditi" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua Komoditi</SelectItem>
+                {templateCategories.map((c) => (
+                  <SelectItem key={c} value={c}>{c}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
 
         {/* Payment filter chips — orders only */}
@@ -397,6 +422,7 @@ export default function SalesDocumentsListPage({ kind = "quote" }: Props) {
               {pagination ? `${pagination.total} ` : ""}{isQuote ? "penawaran" : "order"}
               {statusFilter !== "all" ? ` · ${STATUS_LABELS[statusFilter] ?? statusFilter}` : ""}
               {!isQuote && paymentFilter !== "all" ? ` · ${PAYMENT_LABELS[paymentFilter]}` : ""}
+              {categoryFilter !== "all" ? ` · ${categoryFilter}` : ""}
               {search ? ` · "${search}"` : ""}
               {pagination && pagination.totalPages > 1 ? ` · hal. ${pagination.page}/${pagination.totalPages}` : ""}
             </CardTitle>

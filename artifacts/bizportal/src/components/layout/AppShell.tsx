@@ -56,6 +56,7 @@ import {
   ShieldCheck,
   Shield,
   Calendar,
+  CalendarDays,
   ShieldAlert,
   Database,
   Search,
@@ -179,6 +180,8 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
         { titleKey: "approvals", href: "/approvals", icon: ClipboardCheck },
         { titleKey: "Analytics", href: "/analytics", icon: BarChart2, roles: ["admin", "owner"] },
+        { titleKey: "CEO / Director", href: "/ceo-dashboard", icon: Trophy, roles: ["admin", "owner"] },
+        { titleKey: "Profitabilitas", href: "/analytics/profitability", icon: TrendingUp, roles: ["admin", "owner"] },
       ],
     },
 
@@ -274,16 +277,19 @@ export function AppShell({ children }: AppShellProps) {
       icon: Truck,
       roles: ["admin", "owner", "logistics"],
       children: [
+        { titleKey: "Operational Dashboard", href: "/operational-dashboard", icon: LayoutDashboard },
         { titleKey: "shipments", href: "/logistics", icon: Truck },
         { titleKey: "freightForwarding", href: "/logistics/freight", icon: Ship, companyCodes: ["CST"] },
         { titleKey: "RFQ Vendor", href: "/logistics/rfq", icon: Send, companyCodes: ["CST"] },
         { titleKey: "Request Quote", href: "/logistics/quote-requests", icon: FileText, companyCodes: ["CST"] },
         { titleKey: "portalOrders", href: "/logistics/portal-orders", icon: ClipboardList, companyCodes: ["CST"] },
         { titleKey: "Performa Driver", href: "/logistics/driver-performance", icon: BarChart2, companyCodes: ["CST"] },
+        { titleKey: "Analytics Driver", href: "/logistics/drivers/analytics", icon: BarChart2, companyCodes: ["CST"] },
         { titleKey: "Manajemen Driver", href: "/logistics/drivers", icon: Users, companyCodes: ["CST"] },
         { titleKey: "Balasan Quotation WA", href: "/logistics/quotation-reply", icon: MessageCircle, companyCodes: ["CST"] },
         { titleKey: "Margin Rules", href: "/logistics/margin-rules", icon: Calculator },
         { titleKey: "Internal Tasks", href: "/logistics/internal-tasks", icon: ClipboardCheck },
+        { titleKey: "AI Import Advisor", href: "/logistics/import-assistant", icon: Bot, companyCodes: ["CST"] },
         { titleKey: "Pelanggan Portal", href: "/portal/customers", icon: Users },
         { titleKey: "Persetujuan Onboarding", href: "/portal/onboarding-approvals", icon: Users },
       ],
@@ -368,6 +374,26 @@ export function AppShell({ children }: AppShellProps) {
       ],
     },
 
+    // ── SPORT CENTER ──────────────────────────────────────────────────
+    {
+      type: "group",
+      titleKey: "Sport Center",
+      basePath: "/sport-center",
+      icon: Trophy,
+      roles: ["admin", "owner", "manager"],
+      children: [
+        { titleKey: "Dashboard", href: "/sport-center/dashboard", icon: LayoutDashboard },
+        { titleKey: "Bookings", href: "/sport-center/bookings", icon: CalendarDays },
+        { titleKey: "Fasilitas", href: "/sport-center/facilities", icon: Building2 },
+        { titleKey: "Customers", href: "/sport-center/customers", icon: UserCircle },
+        { titleKey: "Members", href: "/sport-center/members", icon: Users },
+        { titleKey: "Pricing Rules", href: "/sport-center/pricing-rules", icon: Tags },
+        { titleKey: "Pembayaran", href: "/sport-center/payments", icon: DollarSign },
+        { titleKey: "Laporan Revenue", href: "/sport-center/reports", icon: BarChart2 },
+        { titleKey: "Pengaturan", href: "/sport-center/settings", icon: Settings },
+      ],
+    },
+
     // ── 9.5. NOTIFICATIONS ────────────────────────────────────────────
     {
       type: "group",
@@ -402,6 +428,7 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "Short Links", href: "/settings/short-links", icon: Link2 },
         { titleKey: "Konfigurasi Menu", href: "/settings/nav-company-config", icon: LayoutGrid },
         { titleKey: "Product Templates", href: "/settings/product-templates", icon: Layers },
+        { titleKey: "Service Templates", href: "/settings/service-templates", icon: Layers },
       ],
     },
   ];

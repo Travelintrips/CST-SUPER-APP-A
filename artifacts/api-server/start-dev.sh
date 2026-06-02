@@ -8,5 +8,5 @@ sleep 0.5
 # Build
 node build.mjs
 
-# Start API server directly on 18444
-PORT=18444 NODE_ENV=development node --enable-source-maps ./dist/index.mjs
+# exec replaces bash so Replit SIGTERM hits node directly → clean port release
+exec env PORT=8080 REPLIT_API_GATEWAY_PORT=18444 NODE_ENV=development node --enable-source-maps ./dist/index.mjs

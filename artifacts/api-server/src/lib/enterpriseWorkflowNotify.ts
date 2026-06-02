@@ -336,11 +336,13 @@ export async function notifyPaymentReminder(data: PaymentReminderVars): Promise<
 export interface PaymentConfirmationVars {
   invoiceNumber?: string;
   vendorInvoiceNumber?: string;
+  orderNumber?: string;
   payeeName: string;
   payeePhone?: string;
   customerName?: string;
   vendorName?: string;
   paidAmount: string | number;
+  remainingBalance?: string | number;
   paymentRef?: string;
   paymentMethod?: string;
   tanggal?: string;
@@ -348,10 +350,15 @@ export interface PaymentConfirmationVars {
 }
 
 export async function notifyPaymentConfirmation(data: PaymentConfirmationVars): Promise<void> {
+  const remaining = data.remainingBalance != null ? Number(data.remainingBalance) : null;
+  const isFullyPaid = remaining == null || remaining <= 0;
   const vars: Record<string, string | null | undefined> = {
-    ...data,
+    ...(data as unknown as Record<string, string | null | undefined>),
     invoiceNumber: data.invoiceNumber ?? data.vendorInvoiceNumber ?? null,
+    orderNumber: data.orderNumber ?? null,
     paidAmount: fmtRp(data.paidAmount),
+    remainingBalance: remaining != null && remaining > 0 ? `Rp ${Math.round(remaining).toLocaleString("id-ID")}` : null,
+    paymentStatus: isFullyPaid ? "✅ LUNAS" : `⏳ BAYAR SEBAGIAN`,
     tanggal: data.tanggal ?? nowWIB(),
     paymentMethod: data.paymentMethod ?? "Transfer Bank",
     timestamp: nowWIB(),
@@ -386,7 +393,7 @@ export interface OutstandingAlertVars {
 
 export async function notifyOutstandingAlert(data: OutstandingAlertVars): Promise<void> {
   const vars: Record<string, string | null | undefined> = {
-    ...data,
+    ...(data as unknown as Record<string, string | null | undefined>),
     totalOutstanding: fmtRp(data.totalOutstanding),
     invoiceCount: String(data.invoiceCount),
     overdueCount: String(data.overdueCount ?? 0),
@@ -605,7 +612,7 @@ export async function notifyApprovalWaiting(data: ApprovalVars): Promise<void> {
 
 export async function notifyApprovalApproved(data: ApprovalVars): Promise<void> {
   const vars: Record<string, string | null | undefined> = {
-    ...data,
+    ...(data as unknown as Record<string, string | null | undefined>),
     tanggal: data.tanggal ?? nowWIB(),
     amount: fmtRp(data.amount),
     timestamp: nowWIB(),
@@ -624,7 +631,7 @@ export async function notifyApprovalApproved(data: ApprovalVars): Promise<void> 
 
 export async function notifyApprovalRejected(data: ApprovalVars): Promise<void> {
   const vars: Record<string, string | null | undefined> = {
-    ...data,
+    ...(data as unknown as Record<string, string | null | undefined>),
     tanggal: data.tanggal ?? nowWIB(),
     timestamp: nowWIB(),
   };
@@ -642,7 +649,7 @@ export async function notifyApprovalRejected(data: ApprovalVars): Promise<void> 
 
 export async function notifyApprovalRevisionRequested(data: ApprovalVars): Promise<void> {
   const vars: Record<string, string | null | undefined> = {
-    ...data,
+    ...(data as unknown as Record<string, string | null | undefined>),
     tanggal: data.tanggal ?? nowWIB(),
     timestamp: nowWIB(),
   };

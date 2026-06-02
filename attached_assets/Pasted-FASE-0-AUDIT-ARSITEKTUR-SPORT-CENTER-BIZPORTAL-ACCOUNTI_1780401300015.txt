@@ -1,0 +1,187 @@
+FASE 0 — AUDIT ARSITEKTUR SPORT CENTER, BIZPORTAL, ACCOUNTING, DAN PURCHASE TANPA MENGUBAH KODE
+
+PENTING:
+Pada fase ini jangan mengubah file, jangan membuat migration, jangan membuat tabel, jangan menghapus route, jangan memperbaiki bug, dan jangan melakukan refactor. Tugas Anda hanya membaca implementasi existing dan memberikan laporan faktual.
+
+Konteks yang sudah diketahui:
+
+* Sport Center bukan aplikasi/perusahaan terpisah.
+* Sport Center adalah unit bisnis milik `PT Cahaya Sejati Teknologi`.
+* BizPortal memiliki modul Accounting untuk 4 perusahaan/legal entity.
+* Sport Center sudah menggunakan database PostgreSQL/Supabase yang sama dengan BizPortal melalui `@workspace/db` dan Drizzle ORM.
+* Tabel Sport Center yang diketahui:
+
+  * `sport_facilities`
+  * `sport_bookings`
+  * `sport_customers`
+  * `sport_members`
+  * `sport_payments`
+  * `sport_pricing_rules`
+  * `sport_settings`
+  * `sport_promos`
+  * `sport_audit_logs`
+* API Sport Center diketahui tersedia di `/api/sport-center/*`.
+* UI Sport Center diketahui berada di BizPortal pada `artifacts/bizportal/src/pages/sport-center/`.
+* Ada dugaan routing lama pada `gateway.mjs` yang mengarahkan `/sport-center/*` ke port `3002`, padahal frontend terpisah tersebut tidak running.
+* Akses UI yang diharapkan adalah `/bizportal/sport-center/...`.
+
+Tujuan audit:
+Memastikan kondisi aktual aplikasi sebelum perbaikan dilakukan, terutama terkait:
+
+1. Struktur route Sport Center.
+2. Routing gateway lama ke port 3002.
+3. Struktur multi-company Accounting.
+4. Keberadaan integrasi Sport Center ke Accounting.
+5. Keberadaan integrasi Sport Center ke Purchase.
+6. Pola existing yang wajib dipakai sebelum implementasi.
+
+A. AUDIT SPORT CENTER EXISTING
+
+Periksa dan laporkan:
+
+1. Lokasi schema/table Sport Center pada `@workspace/db`.
+2. Lokasi seluruh API route `/api/sport-center/*`.
+3. Middleware auth yang dipakai setiap route.
+4. Lokasi halaman UI Sport Center.
+5. Daftar path halaman Sport Center yang benar-benar terdaftar di router frontend.
+6. Daftar menu sidebar Sport Center dan path target-nya.
+7. Apakah ada tombol/link di UI yang masih menuju `/sport-center/*` dan bukan `/bizportal/sport-center/*`.
+8. Bagaimana alur create booking, create payment, membership, promo, cancel, refund, dan reporting saat ini.
+
+B. AUDIT GATEWAY DAN FRONTEND LEGACY
+
+Cari seluruh referensi berikut:
+
+* `3002`
+* `/sport-center`
+* `sport-center`
+* workflow/service/frontend terpisah untuk Sport Center
+* proxy/rewrite/redirect/healthcheck pada gateway
+
+Laporkan:
+
+1. File dan baris yang masih menggunakan port `3002`.
+2. Route apa yang diarahkan ke port `3002`.
+3. Apakah route `/api/sport-center/*` ikut terdampak atau tidak.
+4. Apakah masih ada workflow/start command/frontend lama yang memakai port 3002.
+5. Daftar file legacy yang ditemukan, tetapi jangan hapus apa pun.
+
+C. AUDIT MULTI-COMPANY ACCOUNTING
+
+Cari implementasi perusahaan/legal entity di Accounting:
+
+* `company`
+* `companies`
+* `legal_entities`
+* `organization`
+* `companyId`
+* `entityId`
+* `organizationId`
+* `tenantId`
+* field pembeda sejenis
+
+Laporkan:
+
+1. Nama tabel master perusahaan.
+2. Daftar 4 perusahaan/legal entity yang tersedia.
+3. Record yang mewakili `PT Cahaya Sejati Teknologi`.
+4. ID record resmi PT Cahaya Sejati Teknologi.
+5. Field pembeda company pada:
+
+   * journal
+   * journal entries
+   * invoice
+   * payment
+   * bank/cash account
+   * chart of accounts
+   * tax
+   * reports
+6. Apakah Accounting sudah mendukung:
+
+   * source/module
+   * business unit
+   * department
+   * cost center
+   * project
+7. Pola existing yang dipakai modul lain untuk membuat jurnal Accounting.
+
+D. AUDIT INTEGRASI SPORT CENTER KE ACCOUNTING
+
+Periksa apakah transaksi berikut sudah menghasilkan journal/accounting transaction:
+
+1. Payment booking lapangan.
+2. Payment membership.
+3. Promo/diskon.
+4. Pajak/PPN.
+5. Cancel booking.
+6. Refund.
+7. Deposit jika tersedia.
+
+Untuk setiap transaksi, laporkan dalam tabel:
+
+* Jenis transaksi
+* Route/API trigger
+* Tabel Sport Center yang berubah
+* Service Accounting yang dipanggil
+* Tabel Accounting yang berubah
+* Ada/tidak journal
+* Ada/tidak company reference
+* Ada/tidak source/cost center
+* Kesimpulan: sudah terintegrasi / sebagian / belum ada
+
+E. AUDIT INTEGRASI SPORT CENTER KE PURCHASE
+
+Cari apakah Sport Center sudah dapat membuat:
+
+* purchase request
+* maintenance request
+* purchase order
+* vendor bill
+* expense
+* inventory request
+* operational supply request
+
+Laporkan:
+
+1. Route/service Purchase existing.
+2. Struktur table Purchase dan field company/legal entity.
+3. Apakah ada field source/module/cost center/facility reference.
+4. Apakah sudah ada koneksi dari Sport Center ke Purchase.
+5. Apakah Purchase dapat menggunakan company `PT Cahaya Sejati Teknologi`.
+6. Pola existing modul lain untuk membuat Purchase Request atau Expense.
+
+F. BATASAN AUDIT
+
+* Jangan membuat tabel baru.
+* Jangan membuat migration.
+* Jangan mengubah UI.
+* Jangan memperbaiki gateway.
+* Jangan menambahkan jurnal.
+* Jangan menambahkan Purchase Request.
+* Jangan hardcode company ID.
+* Jangan mengasumsikan nama table/service sebelum membacanya dari source code.
+* Jika implementasi berbeda dari konteks di atas, laporkan fakta implementasi aktualnya.
+
+G. FORMAT LAPORAN YANG WAJIB DIBERIKAN
+
+Berikan hasil audit dalam format:
+
+1. Ringkasan status aktual.
+2. File Sport Center yang ditemukan.
+3. Route API Sport Center yang ditemukan.
+4. Page/sidebar path Sport Center yang ditemukan.
+5. Referensi gateway/port 3002 yang ditemukan.
+6. Daftar 4 perusahaan Accounting.
+7. ID dan field company PT Cahaya Sejati Teknologi.
+8. Struktur Accounting existing yang dapat dipakai Sport Center.
+9. Status integrasi payment Sport Center ke Accounting.
+10. Status integrasi membership ke Accounting.
+11. Status integrasi refund/cancel/promo/pajak ke Accounting.
+12. Struktur Purchase existing yang dapat dipakai Sport Center.
+13. Status integrasi Sport Center ke Purchase.
+14. Gap/bug yang ditemukan.
+15. Usulan file yang perlu diubah pada fase berikutnya.
+16. Risiko jika implementasi dilakukan tanpa perbaikan fondasi.
+17. Konfirmasi bahwa tidak ada file yang diubah pada fase audit ini.
+
+STOP setelah memberikan laporan. Jangan lanjut implementasi sebelum mendapat instruksi fase berikutnya.

@@ -1,7 +1,8 @@
 import { Router, Request, Response } from "express";
 import { db } from "@workspace/db";
 import { productTemplatesTable } from "@workspace/db";
-import { eq, asc, sql } from "drizzle-orm";
+import { eq, asc, sql, or, isNull, and } from "drizzle-orm";
+import { resolveCompanyId } from "../lib/resolveCompany.js";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { logger } from "../lib/logger.js";
 import {
@@ -40,6 +41,9 @@ db.execute(sql`
     label TEXT NOT NULL,
     version TEXT NOT NULL DEFAULT '1.0.0',
     is_active BOOLEAN NOT NULL DEFAULT true,
+    icon TEXT,
+    description TEXT,
+    sort_order INTEGER NOT NULL DEFAULT 0,
     required_documents JSONB NOT NULL DEFAULT '[]',
     checklist JSONB NOT NULL DEFAULT '[]',
     custom_fields JSONB NOT NULL DEFAULT '[]',
@@ -50,7 +54,41 @@ db.execute(sql`
     updated_at TIMESTAMP NOT NULL DEFAULT NOW()
   )
 `).catch((err) => {
-  logger.warn("product_templates table creation failed (non-fatal)", { err: String(err) });
+  logger.warn({ err: String(err) }, "product_templates table creation failed (non-fatal)");
+});
+
+// Idempotent column additions for existing deployments
+Promise.all([
+  db.execute(sql`ALTER TABLE product_templates ADD COLUMN IF NOT EXISTS icon TEXT`),
+  db.execute(sql`ALTER TABLE product_templates ADD COLUMN IF NOT EXISTS description TEXT`),
+  db.execute(sql`ALTER TABLE product_templates ADD COLUMN IF NOT EXISTS sort_order INTEGER NOT NULL DEFAULT 0`),
+  db.execute(sql`ALTER TABLE product_templates ADD COLUMN IF NOT EXISTS company_id INTEGER REFERENCES companies(id) ON DELETE SET NULL`),
+  db.execute(sql`ALTER TABLE service_templates ADD COLUMN IF NOT EXISTS company_id INTEGER REFERENCES companies(id) ON DELETE SET NULL`),
+]).then(() => Promise.all([
+  db.execute(sql`CREATE INDEX IF NOT EXISTS service_templates_company_idx ON service_templates (company_id)`),
+])).then(() => Promise.all([
+  db.execute(sql`ALTER TABLE product_templates DROP CONSTRAINT IF EXISTS product_templates_category_key_key`),
+  db.execute(sql`DROP INDEX IF EXISTS product_templates_category_key_key`),
+])).then(() => Promise.all([
+  db.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_product_tpl_v2
+    ON product_templates (COALESCE(company_id, 0), category_key)
+  `),
+])).then(() =>
+  db.execute(sql`ALTER TABLE service_templates DROP CONSTRAINT IF EXISTS service_templates_service_type_unique`).catch(() => {})
+).then(() =>
+  db.execute(sql`ALTER TABLE service_templates DROP CONSTRAINT IF EXISTS service_templates_service_type_key`).catch(() => {})
+).then(() =>
+  db.execute(sql`DROP INDEX IF EXISTS service_templates_service_type_unique`).catch(() => {})
+).then(() =>
+  db.execute(sql`DROP INDEX IF EXISTS service_templates_service_type_key`).catch(() => {})
+).then(() =>
+  db.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_service_tpl_company
+    ON service_templates (COALESCE(company_id, 0), service_type)
+  `)
+).catch((err) => {
+  logger.warn({ err: String(err) }, "product_templates column migration failed (non-fatal)");
 });
 
 
@@ -697,9 +735,9 @@ export async function seedProductTemplates() {
         validationRules: tpl.validationRules as unknown as Record<string, unknown>[],
       }).onConflictDoNothing();
     }
-    logger.info("Product templates seeded", { count: SEED_TEMPLATES.length });
+    logger.info({ count: SEED_TEMPLATES.length }, "Product templates seeded");
   } catch (err) {
-    logger.warn("Product templates seed failed (non-fatal)", { err: String(err) });
+    logger.warn({ err: String(err) }, "Product templates seed failed (non-fatal)");
   }
 }
 
@@ -721,22 +759,51 @@ function bumpPatch(version: string): string {
 // ─────────────────────────────────────────────
 productTemplatesRouter.get("/", async (req: Request, res: Response) => {
   try {
+    const companyId = resolveCompanyId(req);
     const rows = await db
       .select()
       .from(productTemplatesTable)
-      .orderBy(asc(productTemplatesTable.categoryKey));
+      .where(or(eq(productTemplatesTable.companyId, companyId), isNull(productTemplatesTable.companyId)))
+      .where(or(
+        eq(productTemplatesTable.companyId, companyId),
+        isNull(productTemplatesTable.companyId),
+      ))
+      .orderBy(asc(productTemplatesTable.sortOrder), asc(productTemplatesTable.label));
 
     if (req.query.raw === "1") {
       return res.json(rows);
     }
 
-    const overrides = rows.map(dbRowToOverride);
+    // Company-specific overrides global (NULL); global overrides in-code
+    const seen = new Map<string, typeof rows[0]>();
+    for (const row of rows) {
+      const existing = seen.get(row.categoryKey);
+      if (!existing || row.companyId !== null) seen.set(row.categoryKey, row);
+    }
+    const deduped = [...seen.values()].sort((a, b) =>
+      a.sortOrder - b.sortOrder || a.label.localeCompare(b.label)
+    );
+    const overrides = deduped.map(dbRowToOverride);
     const resolved = resolveAllTemplates(overrides);
-    // Frontend code expects camelCase ProductTemplate shape — resolveAllTemplates
-    // already returns that. Filter inactive DB-only categories already handled.
-    res.json(resolved);
+
+    // Sort resolved templates by DB sortOrder (ASC), then label (ASC).
+    // DB rows are keyed by categoryKey; in-code-only templates (no DB row) get sortOrder=Infinity.
+    const sortMap = new Map<string, { sortOrder: number; label: string }>();
+    for (const row of rows) {
+      sortMap.set(row.categoryKey, { sortOrder: row.sortOrder, label: row.label });
+    }
+    resolved.sort((a, b) => {
+      const aEntry = sortMap.get(a.category);
+      const bEntry = sortMap.get(b.category);
+      const aSO = aEntry?.sortOrder ?? Infinity;
+      const bSO = bEntry?.sortOrder ?? Infinity;
+      if (aSO !== bSO) return aSO - bSO;
+      return (aEntry?.label ?? a.label).localeCompare(bEntry?.label ?? b.label);
+    });
+
+    res.json(resolved); return;
   } catch (err) {
-    res.status(500).json({ message: String(err) });
+    res.status(500).json({ message: String(err) }); return;
   }
 });
 
@@ -748,11 +815,20 @@ productTemplatesRouter.get("/:key", async (req: Request, res: Response) => {
   try {
     const key = req.params.key as string;
     const byId = Number(key);
+    const companyId = resolveCompanyId(req);
+    const companyFilter = or(eq(productTemplatesTable.companyId, companyId), isNull(productTemplatesTable.companyId));
     let dbRows;
     if (!isNaN(byId)) {
-      dbRows = await db.select().from(productTemplatesTable).where(eq(productTemplatesTable.id, byId));
+      dbRows = await db.select().from(productTemplatesTable).where(
+        and(eq(productTemplatesTable.id, byId), companyFilter)
+      );
     } else {
-      dbRows = await db.select().from(productTemplatesTable).where(eq(productTemplatesTable.categoryKey, key));
+      // Fetch all matching rows, prefer company-specific over global
+      const allRows = await db.select().from(productTemplatesTable).where(
+        and(eq(productTemplatesTable.categoryKey, key), companyFilter)
+      );
+      const companyRow = allRows.find(r => r.companyId != null);
+      dbRows = companyRow ? [companyRow] : allRows.slice(0, 1);
     }
     if (req.query.raw === "1") {
       if (!dbRows.length) return res.status(404).json({ message: "Template tidak ditemukan" });
@@ -761,9 +837,29 @@ productTemplatesRouter.get("/:key", async (req: Request, res: Response) => {
     const override = dbRows[0] ? dbRowToOverride(dbRows[0]) : null;
     const categoryKey = override?.categoryKey ?? key;
     const resolved = resolveTemplate(categoryKey, override);
-    res.json(resolved);
+    res.json(resolved); return;
   } catch (err) {
-    res.status(500).json({ message: String(err) });
+    res.status(500).json({ message: String(err) }); return;
+  }
+});
+
+// ADMIN — PATCH /api/product-templates/reorder  (batch update sortOrder)
+productTemplatesRouter.patch("/reorder", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { items } = req.body as { items: { id: number; sortOrder: number }[] };
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ message: "items harus berupa array tidak kosong" });
+    }
+    await db.transaction(async (tx) => {
+      for (const { id, sortOrder } of items) {
+        await tx.update(productTemplatesTable)
+          .set({ sortOrder: Number(sortOrder) || 0 })
+          .where(eq(productTemplatesTable.id, id));
+      }
+    });
+    res.json({ success: true }); return;
+  } catch (err) {
+    res.status(500).json({ message: String(err) }); return;
   }
 });
 
@@ -772,6 +868,7 @@ productTemplatesRouter.post("/", requireAdmin, async (req: Request, res: Respons
   try {
     const body = req.body as Record<string, unknown>;
     const { categoryKey, label, version = "1.0.0", isActive = true,
+      icon, description, sortOrder = 0,
       requiredDocuments = [], checklist = [], customFields = [],
       packagingInstructions = "", conditionalRules = [], validationRules = [] } = body;
 
@@ -779,11 +876,16 @@ productTemplatesRouter.post("/", requireAdmin, async (req: Request, res: Respons
       return res.status(400).json({ message: "categoryKey dan label wajib diisi" });
     }
 
+    const companyId = resolveCompanyId(req);
     const [row] = await db.insert(productTemplatesTable).values({
+      companyId,
       categoryKey: String(categoryKey),
       label: String(label),
       version: String(version),
       isActive: Boolean(isActive),
+      icon: icon != null ? String(icon) : null,
+      description: description != null ? String(description) : null,
+      sortOrder: Number(sortOrder) || 0,
       requiredDocuments: requiredDocuments as unknown as Record<string, unknown>[],
       checklist: checklist as unknown as Record<string, unknown>[],
       customFields: customFields as unknown as Record<string, unknown>[],
@@ -792,13 +894,13 @@ productTemplatesRouter.post("/", requireAdmin, async (req: Request, res: Respons
       validationRules: validationRules as unknown as Record<string, unknown>[],
     }).returning();
 
-    res.status(201).json(row);
+    res.status(201).json(row); return;
   } catch (err: unknown) {
     const msg = String((err as { message?: string }).message ?? err);
     if (msg.includes("unique")) {
       return res.status(409).json({ message: `Category key "${req.body.categoryKey}" sudah ada` });
     }
-    res.status(500).json({ message: msg });
+    res.status(500).json({ message: msg }); return;
   }
 });
 
@@ -808,7 +910,10 @@ productTemplatesRouter.put("/:id", requireAdmin, async (req: Request, res: Respo
     const id = Number(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
 
-    const existing = await db.select().from(productTemplatesTable).where(eq(productTemplatesTable.id, id));
+    const companyId = resolveCompanyId(req);
+    const existing = await db.select().from(productTemplatesTable).where(
+      and(eq(productTemplatesTable.id, id), or(eq(productTemplatesTable.companyId, companyId), isNull(productTemplatesTable.companyId)))
+    );
     if (!existing.length) return res.status(404).json({ message: "Template tidak ditemukan" });
 
     const body = req.body as Record<string, unknown>;
@@ -821,6 +926,9 @@ productTemplatesRouter.put("/:id", requireAdmin, async (req: Request, res: Respo
         label: typeof body.label === "string" ? body.label : existing[0]!.label,
         version: newVersion,
         isActive: typeof body.isActive === "boolean" ? body.isActive : existing[0]!.isActive,
+        icon: "icon" in body ? (body.icon != null ? String(body.icon) : null) : existing[0]!.icon,
+        description: "description" in body ? (body.description != null ? String(body.description) : null) : existing[0]!.description,
+        sortOrder: typeof body.sortOrder === "number" ? body.sortOrder : existing[0]!.sortOrder,
         requiredDocuments: Array.isArray(body.requiredDocuments) ? body.requiredDocuments as unknown as Record<string, unknown>[] : existing[0]!.requiredDocuments as unknown as Record<string, unknown>[],
         checklist: Array.isArray(body.checklist) ? body.checklist as unknown as Record<string, unknown>[] : existing[0]!.checklist as unknown as Record<string, unknown>[],
         customFields: Array.isArray(body.customFields) ? body.customFields as unknown as Record<string, unknown>[] : existing[0]!.customFields as unknown as Record<string, unknown>[],
@@ -832,9 +940,9 @@ productTemplatesRouter.put("/:id", requireAdmin, async (req: Request, res: Respo
       .where(eq(productTemplatesTable.id, id))
       .returning();
 
-    res.json(updated);
+    res.json(updated); return;
   } catch (err) {
-    res.status(500).json({ message: String(err) });
+    res.status(500).json({ message: String(err) }); return;
   }
 });
 
@@ -844,17 +952,24 @@ productTemplatesRouter.post("/:id/duplicate", requireAdmin, async (req: Request,
     const id = Number(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
 
-    const existing = await db.select().from(productTemplatesTable).where(eq(productTemplatesTable.id, id));
+    const companyId = resolveCompanyId(req);
+    const existing = await db.select().from(productTemplatesTable).where(
+      and(eq(productTemplatesTable.id, id), or(eq(productTemplatesTable.companyId, companyId), isNull(productTemplatesTable.companyId)))
+    );
     if (!existing.length) return res.status(404).json({ message: "Template tidak ditemukan" });
 
     const src = existing[0]!;
     const newKey = `${src.categoryKey}_copy_${Date.now()}`;
 
     const [dup] = await db.insert(productTemplatesTable).values({
+      companyId,
       categoryKey: newKey,
       label: `${src.label} (Salinan)`,
       version: "1.0.0",
       isActive: false,
+      icon: src.icon,
+      description: src.description,
+      sortOrder: src.sortOrder,
       requiredDocuments: src.requiredDocuments as unknown as Record<string, unknown>[],
       checklist: src.checklist as unknown as Record<string, unknown>[],
       customFields: src.customFields as unknown as Record<string, unknown>[],
@@ -863,9 +978,9 @@ productTemplatesRouter.post("/:id/duplicate", requireAdmin, async (req: Request,
       validationRules: src.validationRules as unknown as Record<string, unknown>[],
     }).returning();
 
-    res.status(201).json(dup);
+    res.status(201).json(dup); return;
   } catch (err) {
-    res.status(500).json({ message: String(err) });
+    res.status(500).json({ message: String(err) }); return;
   }
 });
 
@@ -875,7 +990,10 @@ productTemplatesRouter.patch("/:id/toggle", requireAdmin, async (req: Request, r
     const id = Number(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
 
-    const existing = await db.select().from(productTemplatesTable).where(eq(productTemplatesTable.id, id));
+    const companyId = resolveCompanyId(req);
+    const existing = await db.select().from(productTemplatesTable).where(
+      and(eq(productTemplatesTable.id, id), or(eq(productTemplatesTable.companyId, companyId), isNull(productTemplatesTable.companyId)))
+    );
     if (!existing.length) return res.status(404).json({ message: "Template tidak ditemukan" });
 
     const [updated] = await db.update(productTemplatesTable)
@@ -883,9 +1001,9 @@ productTemplatesRouter.patch("/:id/toggle", requireAdmin, async (req: Request, r
       .where(eq(productTemplatesTable.id, id))
       .returning();
 
-    res.json(updated);
+    res.json(updated); return;
   } catch (err) {
-    res.status(500).json({ message: String(err) });
+    res.status(500).json({ message: String(err) }); return;
   }
 });
 
@@ -933,10 +1051,10 @@ productTemplatesRouter.post("/sync-defaults", requireAdmin, async (req: Request,
         results.push({ categoryKey: tpl.categoryKey, action: "updated" });
       }
     }
-    logger.info("sync-defaults: completed", { inserted: results.filter(r => r.action === "inserted").length, updated: results.filter(r => r.action === "updated").length });
-    res.json({ success: true, results });
+    logger.info({ inserted: results.filter(r => r.action === "inserted").length, updated: results.filter(r => r.action === "updated").length }, "sync-defaults: completed");
+    res.json({ success: true, results }); return;
   } catch (err) {
-    res.status(500).json({ message: String(err) });
+    res.status(500).json({ message: String(err) }); return;
   }
 });
 
@@ -946,13 +1064,16 @@ productTemplatesRouter.delete("/:id", requireAdmin, async (req: Request, res: Re
     const id = Number(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
 
-    const existing = await db.select().from(productTemplatesTable).where(eq(productTemplatesTable.id, id));
+    const companyId = resolveCompanyId(req);
+    const existing = await db.select().from(productTemplatesTable).where(
+      and(eq(productTemplatesTable.id, id), or(eq(productTemplatesTable.companyId, companyId), isNull(productTemplatesTable.companyId)))
+    );
     if (!existing.length) return res.status(404).json({ message: "Template tidak ditemukan" });
     if (existing[0]!.isActive) return res.status(400).json({ message: "Nonaktifkan template terlebih dahulu sebelum menghapus" });
 
     await db.delete(productTemplatesTable).where(eq(productTemplatesTable.id, id));
-    res.json({ success: true });
+    res.json({ success: true }); return;
   } catch (err) {
-    res.status(500).json({ message: String(err) });
+    res.status(500).json({ message: String(err) }); return;
   }
 });

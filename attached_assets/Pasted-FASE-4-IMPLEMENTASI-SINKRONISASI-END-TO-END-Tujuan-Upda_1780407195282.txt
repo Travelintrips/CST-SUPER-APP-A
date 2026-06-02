@@ -1,0 +1,103 @@
+FASE 4 — IMPLEMENTASI SINKRONISASI END-TO-END
+
+Tujuan:
+Update driver progress (INTERNAL WA Mini Form / EXTERNAL Driver App) otomatis tercatat di driver_jobs, POD/Delivery Status, Order Timeline, dan notifikasi Admin/Customer.
+
+---
+
+A. BACKEND — PATCH / GET & Driver Progress
+
+1. **PATCH /api/drivers/jobs/:jobId/status (Admin)**
+
+   * Mendukung cancel + force update
+   * Trigger WA ke Admin + Customer saat:
+
+     * PICKED_UP
+     * DELIVERED
+     * COMPLETED
+   * Return status log terbaru
+
+2. **GET /api/drivers/jobs/list**
+
+   * Sertakan `statusLogs` → untuk timeline di frontend
+   * Filterable berdasarkan `logisticOrderId` dan `shipmentId`
+   * Pastikan INTERNAL job (driverId null) termasuk
+
+3. **Driver App PATCH / PUT status**
+
+   * Trigger admin WA saat status PICKED_UP / DELIVERED
+   * Update timeline & order status via updateOrderProgress / transitionLogisticOrderStatus
+   * INTERNAL job juga harus update jika driverId null
+
+4. **driverProgress.ts**
+
+   * Tambahkan trigger admin WA untuk PICKUP / DELIVERED
+   * Pastikan legacy driver_jobs tetap tampil dan tidak crash
+   * Update orderProgress untuk INTERNAL job (driverId null)
+
+---
+
+B. FRONTEND — OrderDriverAssignmentPanel / Timeline
+
+1. Tambahkan **Timeline component**:
+
+   * Sequence: Assigned → Pickup Started → Picked Up → In Transit → Delivered → Completed
+   * Badge/status update realtime via polling API `/drivers/jobs?logisticOrderId=xxx` atau Realtime subscription
+
+2. Perbarui **cancel assignment button**:
+
+   * Panggil PATCH admin route baru
+   * Update status → timeline → trigger WA Admin
+
+3. ActiveJobCard / panel assignment:
+
+   * Tampilkan badge INTERNAL / EXTERNAL
+   * Tampilkan WA Mini Form link (INTERNAL)
+   * Tampilkan CST Driver App badge & akun status (EXTERNAL)
+   * Timeline menampilkan semua `statusLogs`
+
+---
+
+C. NOTIFIKASI
+
+1. Admin WA trigger:
+
+   * PICKED_UP / DELIVERED (INTERNAL + EXTERNAL)
+   * Cancel / Force update
+2. Customer WA trigger:
+
+   * PICKED_UP
+   * DELIVERED / POD submitted
+3. Pastikan legacy driver_jobs dapat mengirim notif jika status update
+
+---
+
+D. TESTING
+
+1. INTERNAL driver update via WA Mini Form → timeline + POD + Admin WA + Customer WA
+2. EXTERNAL driver update via Driver App → timeline + POD + Admin WA + Customer WA
+3. Cancel / Force update assignment → PATCH admin route, timeline update, WA Admin
+4. Legacy driver jobs → tampil, update status, timeline, notif jalan
+5. Zero regression Freight-detail panel
+6. Jalankan typecheck / build → TS clean
+
+---
+
+E. OUTPUT AKHIR
+
+1. Backend: PATCH admin route, GET list + statusLogs, driverProgress.ts update
+2. Frontend: Timeline component, cancel button fix, ActiveJobCard update
+3. Admin / Customer WA notif trigger berjalan
+4. Timeline realtime update, progress sinkron
+5. Build / typecheck bersih
+6. Screenshot OrderDriverAssignmentPanel dengan timeline aktif
+7. Verifikasi semua test case di checklist Fase 4
+
+---
+
+Instruksi:
+
+* Implementasikan semua file **paralel** sesuai modul masing-masing
+* Reuse existing helper, API, dan migration Fase 3
+* Jangan mengubah Freight-detail panel lama
+* Fokus pada timeline, notifikasi, dan sinkronisasi status end-to-end

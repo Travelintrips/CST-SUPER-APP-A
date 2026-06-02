@@ -1,7 +1,7 @@
 import { sendViaService as sendWhatsApp } from "./waTransport.js";
 import { generateShortLink } from "./shortLink.js";
 import { logger } from "./logger.js";
-import { getWaTemplateConfig, renderTemplate, deriveServiceType } from "./orderNotification.js";
+import { getWaTemplateConfig, renderTemplate, deriveServiceType, buildCommodityContext, buildServiceContext } from "./orderNotification.js";
 
 const TZ = "Asia/Jakarta";
 
@@ -51,6 +51,52 @@ export interface VendorQuoteMessageInput {
   orderItems?: VendorQuoteOrderItem[] | null;
   isTrucking?: boolean;
   orderType?: string | null;
+  templateSnapshot?: Record<string, unknown> | null;
+}
+
+/**
+ * Extract key spec lines from a stored templateSnapshot for WA messages.
+ * Handles both product templates (customFields) and service templates (fields/checklist).
+ */
+function buildTemplateSpecBlock(snapshot: Record<string, unknown> | null | undefined): string {
+  if (!snapshot) return "";
+  try {
+    const isService = snapshot["templateKind"] === "service";
+    const label = typeof snapshot["label"] === "string" ? snapshot["label"] : "";
+    const category = typeof snapshot["category"] === "string" ? snapshot["category"] : "";
+    const sourceFields = isService
+      ? (Array.isArray(snapshot["fields"]) ? snapshot["fields"] as Array<Record<string, unknown>> : [])
+      : (Array.isArray(snapshot["customFields"]) ? snapshot["customFields"] as Array<Record<string, unknown>> : []);
+    const requiredDocs = Array.isArray(snapshot["requiredDocuments"]) ? snapshot["requiredDocuments"] as Array<Record<string, unknown>> : [];
+    const checklist = isService
+      ? (Array.isArray(snapshot["checklist"]) ? snapshot["checklist"] as Array<Record<string, unknown>> : [])
+      : [];
+
+    const requiredFields = isService
+      ? sourceFields.filter(f => f["required"] === true && !f["isUpload"])
+      : sourceFields.filter(f => f["required"] === true);
+    const topFields = requiredFields.slice(0, 5);
+
+    if (!topFields.length && !requiredDocs.length && !checklist.length) return "";
+
+    const title = isService ? `Layanan: *${label}*` : (label || category);
+    const header = `\n📋 *Spesifikasi ${title}:*\n`;
+    const fieldLines = topFields.map(f => {
+      const unit = f["unit"] ? ` (${f["unit"]})` : "";
+      return `   • ${f["label"]}${unit}: _[wajib diisi]_`;
+    }).join("\n");
+
+    const reqDocs = requiredDocs.filter(d => d["required"] === true);
+    const docLines = reqDocs.length
+      ? `\n📄 *Dokumen Wajib:*\n` + reqDocs.map(d => `   • ${d["label"]}`).join("\n")
+      : "";
+
+    const checklistLines = checklist.length
+      ? `\n✅ *Checklist:*\n` + checklist.map(c => `   ☐ ${c["label"]}`).join("\n")
+      : "";
+
+    return header + fieldLines + (fieldLines && (docLines || checklistLines) ? "\n" : "") + docLines + checklistLines + "\n";
+  } catch { return ""; }
 }
 
 /**
@@ -99,6 +145,8 @@ export function generateVendorQuoteMessage(input: VendorQuoteMessageInput): stri
     ? `\n💰 *Harga Vendor:*\n${fmtRp(input.vendorBasePrice)}\n`
     : "";
 
+  const templateSpecBlock = buildTemplateSpecBlock(input.templateSnapshot);
+
   return (
     `📦 *PERMINTAAN PENAWARAN VENDOR*\n` +
     `━━━━━━━━━━━━━━━━━━\n` +
@@ -112,6 +160,7 @@ export function generateVendorQuoteMessage(input: VendorQuoteMessageInput): stri
     vehicleLine +
     cargoLines +
     itemsBlock +
+    templateSpecBlock +
     priceBlock +
     `\n📝 Silakan isi harga & estimasi melalui tombol berikut.\n\n` +
     `🔗 *[ ISI PENAWARAN VENDOR ]*\n` +
@@ -144,6 +193,7 @@ export interface SendVendorWhatsAppInput {
   orderItems?: VendorQuoteOrderItem[] | null;
   isTrucking?: boolean;
   orderType?: string | null;
+  templateSnapshot?: Record<string, unknown> | null;
 }
 
 /**
@@ -163,7 +213,7 @@ export async function sendVendorWhatsApp(input: SendVendorWhatsAppInput): Promis
     refId: input.rfqNumber,
   });
 
-  const defaultTpl = generateVendorQuoteMessage({ ...input, shortLinkUrl });
+  const defaultTpl = generateVendorQuoteMessage({ ...input, shortLinkUrl, templateSnapshot: input.templateSnapshot });
 
   const tplBody = await getWaTemplateConfig("vendor", "vendor_request", defaultTpl);
 
@@ -203,6 +253,14 @@ export async function sendVendorWhatsApp(input: SendVendorWhatsAppInput): Promis
   const conditions: string[] = svcType ? [svcType] : [];
   if (productList && !conditions.includes("product")) conditions.push("product");
 
+  // Build commodity + service context from templateSnapshot — never exposes base price/margin
+  const firstItem = input.orderItems?.[0];
+  const commodityCtx = buildCommodityContext(input.templateSnapshot ?? null, {
+    quantity: firstItem?.quantity ?? null,
+    unit: firstItem?.unit ?? null,
+  });
+  const serviceCtx = buildServiceContext(input.templateSnapshot ?? null);
+
   const vars: Record<string, string | null | undefined> = {
     rfqNumber: input.rfqNumber,
     orderNumber: input.orderNumber,
@@ -224,6 +282,8 @@ export async function sendVendorWhatsApp(input: SendVendorWhatsAppInput): Promis
     tanggal: tgl,
     jam,
     timestamp: new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" }),
+    ...commodityCtx,
+    ...serviceCtx,
   };
 
   const message = renderTemplate(tplBody, vars, conditions);

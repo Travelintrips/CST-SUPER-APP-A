@@ -29,8 +29,13 @@ export const vendorMiniFormLinksTable = pgTable("vendor_mini_form_links", {
   adminNotes: text("admin_notes"),
   // Target audience: vendor | customer | admin
   formTarget: text("form_target").notNull().default("vendor"),
-  // Commodity template integration
+  // Commodity template integration (legacy)
   commodityTemplateId: integer("commodity_template_id"),
+  // Product Template Engine columns (Step 1F cutover)
+  categoryKey: text("category_key"),
+  templateId: text("template_id"),
+  templateVersion: text("template_version"),
+  templateSnapshot: jsonb("template_snapshot").$type<Record<string, unknown> | null>(),
 });
 
 export const vendorMiniFormSubmissionsTable = pgTable("vendor_mini_form_submissions", {
@@ -66,6 +71,10 @@ export const vendorMiniFormSubmissionsTable = pgTable("vendor_mini_form_submissi
   // Lock after customer approve
   locked: boolean("locked").default(false),
   unlockReason: text("unlock_reason"),
+  // ── Template Engine: version snapshot of the form template used at submission time ─
+  templateId: text("template_id"),
+  templateVersion: text("template_version"),
+  templateSnapshot: jsonb("template_snapshot").$type<Record<string, unknown> | null>(),
 }, (t) => [
   // Mencegah vendor yang sama (supplier_id tidak null) submit 2x untuk link yang sama.
   // Vendor anonim (supplier_id IS NULL) dikecualikan karena diidentifikasi via token unik.
@@ -105,6 +114,12 @@ export const customerApprovalsTable = pgTable("customer_approvals", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   createdBy: text("created_by"),
   expiresAt: timestamp("expires_at"),
+  categoryKey: text("category_key"),
+  templateId: text("template_id"),
+  templateVersion: text("template_version"),
+  templateSnapshot: jsonb("template_snapshot").$type<Record<string, unknown> | null>(),
+  requiredDocumentsFromTemplate: jsonb("required_documents_from_template").$type<string[] | null>(),
+  checklistFromTemplate: jsonb("checklist_from_template").$type<string[] | null>(),
 });
 
 export const vendorOperationalConfirmationsTable = pgTable("vendor_operational_confirmations", {
@@ -168,10 +183,16 @@ export const customerInvoiceLinksTable = pgTable("customer_invoice_links", {
   lineItems: jsonb("line_items").default([]),
   viewedAt: timestamp("viewed_at"),
   acknowledgedAt: timestamp("acknowledged_at"),
+  confirmedAt: timestamp("confirmed_at"),
   status: text("status").notNull().default("sent"),
   createdBy: text("created_by"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   expiresAt: timestamp("expires_at"),
+  // Template context snapshot (immutable at creation time)
+  categoryKey: text("category_key"),
+  templateId: text("template_id"),
+  templateVersion: text("template_version"),
+  templateSnapshot: jsonb("template_snapshot").$type<Record<string, unknown> | null>(),
 });
 
 export type VendorMiniFormLink = typeof vendorMiniFormLinksTable.$inferSelect;

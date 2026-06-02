@@ -76,7 +76,9 @@ export * from "./intelligenceAlertSettings";
 export * from "./orderStageLogs";
 export * from "./aiGovernance";
 export * from "./productTemplates";
+export * from "./serviceTemplates";
 export * from "./purchaseMiniForm";
+export * from "./rbac";
 
 export * from "./orderStatusHistory";
 export * from "./orderAuditLogs";

@@ -89,6 +89,10 @@ export async function createSalesOrderFromVmfApproval(
             notes: noteLines.join("\n"),
             logisticOrderId: approval.orderId ?? null,
             confirmedAt: new Date(),
+            categoryKey: (approval as any).categoryKey ?? null,
+            templateId: (approval as any).templateId ?? null,
+            templateVersion: (approval as any).templateVersion ?? null,
+            templateSnapshot: approval.templateSnapshot ?? null,
           })
           .returning();
         break;

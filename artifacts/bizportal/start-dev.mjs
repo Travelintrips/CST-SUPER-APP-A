@@ -2,7 +2,7 @@ import http from "http";
 import net from "net";
 import { spawn } from "child_process";
 
-const PORT = Number(process.env.PORT || 18442);
+const PORT = Number(process.env.PORT || 3000);
 const VITE_PORT = PORT + 1;
 
 process.env.PORT = String(VITE_PORT);

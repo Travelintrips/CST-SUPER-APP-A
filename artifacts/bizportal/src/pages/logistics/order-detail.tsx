@@ -22,11 +22,13 @@ import {
   ClipboardCheck, CheckCircle2, XCircle, MapPin, MessageCircle,
   Link2, FileText, AlertTriangle, Eye, EyeOff, StickyNote, Globe,
   RotateCcw, Bell, ChevronDown, ChevronUp, Download, Shield, ZoomIn,
+  Camera, Navigation, Phone, CreditCard, PenLine,
 } from "lucide-react";
 import { Link } from "wouter";
 import GpsTrackingPanel from "@/components/logistics/GpsTrackingPanel";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { OrderProgressBar } from "@/components/logistics/OrderProgressBar";
+import { OrderDriverAssignmentPanel } from "@/components/freight/OrderDriverAssignmentPanel";
 
 const idr = (n: number | string | null | undefined) =>
   n == null ? "—" : `Rp ${Math.round(Number(n)).toLocaleString("id-ID")}`;
@@ -49,6 +51,11 @@ type Order = {
   vendorCost: string | null; orderMargin: string | null;
   version?: number;
   createdAt: string;
+  // Step 2: Product Template Engine
+  categoryKey?: string | null;
+  templateId?: number | null;
+  templateVersion?: string | null;
+  requiredDocs?: string[] | null;
 };
 
 type Vendor = { id: number; name: string; phone: string | null } | null;
@@ -65,6 +72,38 @@ type QuoteLink = { id: number; token: string; status: string; quoteUrl: string; 
 type FulfillmentLink = { id: number; token: string; serviceType: string; status: string; formUrl: string; sentAt: string | null; expiresAt: string | null; submittedAt: string | null; createdAt: string };
 type FulfillmentSubmission = { id: number; linkId: number; serviceType: string; fulfillmentData: Record<string, string>; submittedAt: string };
 type PodSubmission = { id: number; order_id: number; receiver_name: string | null; photo_url: string | null; note: string | null; submitted_by: string | null; created_at: string };
+
+type DriverPodData = {
+  id: number;
+  jobNumber: string;
+  status: string;
+  podReceiverName: string | null;
+  podReceiverPosition: string | null;
+  podNotes: string | null;
+  podPhotos: string[];
+  podSubmittedAt: string | null;
+  podGeoLat: string | null;
+  podGeoLng: string | null;
+  podSignatureDataUrl: string | null;
+  driverName: string | null;
+  driverPhone: string | null;
+  vehiclePlate: string | null;
+};
+
+type DriverProgressEvent = {
+  id: number;
+  step_key: string;
+  status: string;
+  source: string;
+  actor_name: string | null;
+  notes: string | null;
+  created_at: string;
+  gps_latitude: number | null;
+  gps_longitude: number | null;
+  device_timestamp: string | null;
+  map_url: string | null;
+  street_view_url: string | null;
+};
 
 type FreightShipmentLink = {
   id: number; shipmentNumber: string; status: string;
@@ -961,7 +1000,6 @@ function CustomerInvoicePanel({
     invoiceNumber: "",
     notes: "",
     dueDate: defaultDue,
-    sendWa: true,
   });
   const [result, setResult] = useState<{ url: string; token: string } | null>(null);
 
@@ -973,7 +1011,7 @@ function CustomerInvoicePanel({
   });
 
   const openDialog = () => {
-    setForm({ phone: order.phone ?? "", invoiceNumber: "", notes: "", dueDate: defaultDue, sendWa: true });
+    setForm({ phone: order.phone ?? "", invoiceNumber: "", notes: "", dueDate: defaultDue });
     setResult(null);
     setDialogOpen(true);
   };
@@ -990,7 +1028,7 @@ function CustomerInvoicePanel({
         dueDate: form.dueDate || undefined,
         notes: form.notes || undefined,
         currency: "IDR",
-        sendWa: form.sendWa && !!form.phone,
+        sendWa: true,
       };
       if (salesDocId) body.salesDocId = salesDocId;
       const res = await fetch("/api/vendor-form/admin/customer-invoices", {
@@ -1002,7 +1040,7 @@ function CustomerInvoicePanel({
       const d = await res.json() as { success?: boolean; url?: string; token?: string; error?: string };
       if (!res.ok) throw new Error(d.error ?? "Gagal");
       setResult({ url: d.url ?? "", token: d.token ?? "" });
-      toast({ title: "✅ Link invoice dibuat", description: form.sendWa && form.phone ? "WA terkirim ke customer" : "Salin link di bawah" });
+      toast({ title: "✅ Link invoice dibuat", description: form.phone ? "WA otomatis dikirim ke customer" : "Salin link di bawah" });
       void refetch();
     } catch (e: unknown) {
       toast({ title: "Error", description: (e as Error).message, variant: "destructive" });
@@ -1175,8 +1213,8 @@ function CustomerInvoicePanel({
               <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
                 <p className="text-2xl mb-1">✅</p>
                 <p className="font-semibold text-green-700 text-sm">Link Invoice Berhasil Dibuat</p>
-                {form.sendWa && form.phone && (
-                  <p className="text-xs text-green-600 mt-1">WA terkirim ke customer</p>
+                {form.phone && (
+                  <p className="text-xs text-green-600 mt-1">WA otomatis dikirim ke customer</p>
                 )}
               </div>
               <div className="space-y-1">
@@ -1254,16 +1292,12 @@ function CustomerInvoicePanel({
                 />
               </div>
 
-              <div className="flex items-center gap-2">
-                <Switch
-                  id="sendWa"
-                  checked={form.sendWa}
-                  onCheckedChange={v => setForm(f => ({ ...f, sendWa: v }))}
-                />
-                <Label htmlFor="sendWa" className="text-sm cursor-pointer">
-                  Kirim link via WhatsApp ke customer
-                </Label>
-              </div>
+              {form.phone && (
+                <div className="flex items-center gap-2 py-1 px-2.5 rounded-lg bg-green-50 border border-green-200">
+                  <span className="text-sm">📲</span>
+                  <span className="text-xs text-green-700">WA otomatis dikirim ke nomor di atas</span>
+                </div>
+              )}
 
               <DialogFooter>
                 <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={sending}>Batal</Button>
@@ -1825,6 +1859,169 @@ function timelineDotColor(u: OrderUpdate): string {
   return "bg-blue-400";
 }
 
+// ── Audit Trail Panel ──────────────────────────────────────────────────────────
+
+type AuditEvent = {
+  id: string;
+  ts: string;
+  category: "order" | "rfq" | "status" | "vendor" | "customer" | "wa" | "email" | "driver" | "pod" | "note" | "system";
+  label: string;
+  detail?: string | null;
+  actor?: string | null;
+};
+
+const CATEGORY_DOT: Record<string, string> = {
+  order:    "bg-blue-500",
+  rfq:      "bg-violet-500",
+  status:   "bg-slate-400",
+  vendor:   "bg-orange-400",
+  customer: "bg-purple-500",
+  wa:       "bg-green-500",
+  email:    "bg-sky-400",
+  driver:   "bg-amber-400",
+  pod:      "bg-emerald-500",
+  note:     "bg-teal-400",
+  system:   "bg-slate-300",
+};
+
+function auditCategoryIcon(cat: string): React.ReactNode {
+  if (cat === "order")    return <Package className="w-3 h-3 text-blue-500" />;
+  if (cat === "rfq")      return <ClipboardList className="w-3 h-3 text-violet-500" />;
+  if (cat === "status")   return <ClipboardCheck className="w-3 h-3 text-slate-400" />;
+  if (cat === "vendor")   return <Truck className="w-3 h-3 text-orange-400" />;
+  if (cat === "customer") return <User className="w-3 h-3 text-purple-500" />;
+  if (cat === "wa")       return <MessageCircle className="w-3 h-3 text-green-500" />;
+  if (cat === "email")    return <Send className="w-3 h-3 text-sky-400" />;
+  if (cat === "driver")   return <Navigation className="w-3 h-3 text-amber-400" />;
+  if (cat === "pod")      return <Camera className="w-3 h-3 text-emerald-500" />;
+  if (cat === "note")     return <StickyNote className="w-3 h-3 text-teal-400" />;
+  return <Bell className="w-3 h-3 text-slate-400" />;
+}
+
+function fmtTime(ts: string): string {
+  return new Date(ts).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+}
+
+function fmtDate(ts: string): string {
+  return new Date(ts).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
+}
+
+function AuditTrailPanel({ orderId }: { orderId: number }) {
+  const qc = useQueryClient();
+
+  const { data, isLoading, isFetching, refetch } = useQuery<{ orderNumber: string; timeline: AuditEvent[] }>({
+    queryKey: ["audit-trail", orderId],
+    queryFn: () => apiFetch(`/api/logistic/orders/${orderId}/audit-trail`),
+    enabled: !isNaN(orderId),
+    staleTime: 10000,
+  });
+
+  const timeline = data?.timeline ?? [];
+
+  const grouped: { date: string; events: AuditEvent[] }[] = [];
+  for (const ev of timeline) {
+    const d = fmtDate(ev.ts);
+    const last = grouped[grouped.length - 1];
+    if (last && last.date === d) {
+      last.events.push(ev);
+    } else {
+      grouped.push({ date: d, events: [ev] });
+    }
+  }
+
+  return (
+    <Card className="sticky top-6">
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-semibold text-slate-600 uppercase tracking-wide flex items-center gap-1.5">
+            <Clock className="w-4 h-4" /> Riwayat Order
+            {timeline.length > 0 && (
+              <span className="ml-1 text-xs font-normal normal-case text-slate-400">({timeline.length})</span>
+            )}
+          </CardTitle>
+          <div className="flex items-center gap-1">
+            <AddTimelineNoteDialog
+              orderId={orderId}
+              onAdded={() => {
+                qc.invalidateQueries({ queryKey: ["order-detail", orderId] });
+                refetch();
+              }}
+            />
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0 text-slate-400 hover:text-slate-700"
+              onClick={() => refetch()}
+              disabled={isFetching}
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? "animate-spin" : ""}`} />
+            </Button>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-400 mt-1">
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />Order</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-violet-500 inline-block" />RFQ</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-400 inline-block" />Vendor</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-purple-500 inline-block" />Customer</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" />WA</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />POD</span>
+        </div>
+      </CardHeader>
+      <CardContent className="max-h-[700px] overflow-y-auto pt-2 pb-3">
+        {isLoading ? (
+          <div className="flex justify-center py-8">
+            <Loader2 className="w-5 h-5 animate-spin text-blue-400" />
+          </div>
+        ) : timeline.length === 0 ? (
+          <p className="text-sm text-slate-400 text-center py-6">Belum ada aktivitas</p>
+        ) : (
+          <div className="space-y-4">
+            {grouped.map((group) => (
+              <div key={group.date}>
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="flex-1 h-px bg-slate-100" />
+                  <span className="text-xs text-slate-400 font-medium whitespace-nowrap">{group.date}</span>
+                  <div className="flex-1 h-px bg-slate-100" />
+                </div>
+                <div className="relative pl-5">
+                  <div className="absolute left-2 top-0 bottom-0 w-0.5 bg-slate-100" />
+                  <div className="space-y-2">
+                    {group.events.map((ev) => (
+                      <div key={ev.id} className="relative text-sm">
+                        <div className={`absolute -left-[17px] top-1.5 w-2.5 h-2.5 rounded-full ${CATEGORY_DOT[ev.category] ?? "bg-slate-300"}`} />
+                        <div className="flex items-start gap-1.5 min-h-[1.5rem]">
+                          <span className="text-xs text-slate-400 font-mono tabular-nums whitespace-nowrap pt-0.5 shrink-0">
+                            {fmtTime(ev.ts)}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1 flex-wrap">
+                              {auditCategoryIcon(ev.category)}
+                              <span className="text-xs font-medium text-slate-700 leading-snug">{ev.label}</span>
+                            </div>
+                            {ev.detail && (
+                              <p className="text-xs text-slate-500 leading-snug mt-0.5 break-words">{ev.detail}</p>
+                            )}
+                            {ev.actor && (
+                              <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-0.5">
+                                <User className="w-2.5 h-2.5" />
+                                {ev.actor}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ── Add Timeline Note Dialog ───────────────────────────────────────────────────
 
 function AddTimelineNoteDialog({ orderId, onAdded }: { orderId: number; onAdded: () => void }) {
@@ -1893,6 +2090,320 @@ function AddTimelineNoteDialog({ orderId, onAdded }: { orderId: number; onAdded:
   );
 }
 
+// ── Exception Panel ───────────────────────────────────────────────────────────
+
+const EXCEPTION_TYPE_LABEL: Record<string, string> = {
+  vendor_no_response:  "Vendor Tidak Respon",
+  customer_reject:     "Customer Menolak",
+  damaged_goods:       "Barang Rusak",
+  missing_goods:       "Barang Kurang",
+  document_missing:    "Dokumen Kurang",
+  delivery_failed:     "Gagal Antar",
+  failed_delivery:     "Gagal Antar",
+  payment_issue:       "Masalah Pembayaran",
+  payment_overdue:     "Pembayaran Terlambat",
+  pricing_dispute:     "Sengketa Harga",
+  order_rejected:      "Order Ditolak",
+  vendor_reject_rfq:   "Vendor Tolak RFQ",
+  vendor_out_of_stock: "Stok Habis",
+  price_changed:       "Harga Berubah",
+  delivery_delayed:    "Pengiriman Terlambat",
+  customer_complaint:  "Komplain Customer",
+  vendor_rejected:     "Vendor Ditolak",
+  pod_pending_review:  "POD Ditinjau",
+};
+
+const EXCEPTION_TYPES = [
+  "vendor_no_response", "customer_reject", "damaged_goods", "missing_goods",
+  "document_missing", "delivery_failed", "payment_issue", "pricing_dispute",
+  "order_rejected", "vendor_reject_rfq", "delivery_delayed", "customer_complaint",
+  "vendor_out_of_stock",
+] as const;
+
+const EXCEPTION_STATUS_LABEL: Record<string, string> = {
+  open:          "Terbuka",
+  investigating: "Investigasi",
+  in_progress:   "Diproses",
+  resolved:      "Selesai",
+  rejected:      "Ditolak",
+  closed:        "Ditutup",
+};
+
+const EXCEPTION_STATUS_COLOR: Record<string, string> = {
+  open:          "bg-red-100 text-red-700",
+  investigating: "bg-orange-100 text-orange-700",
+  in_progress:   "bg-yellow-100 text-yellow-700",
+  resolved:      "bg-green-100 text-green-700",
+  rejected:      "bg-gray-100 text-gray-600",
+  closed:        "bg-gray-100 text-gray-500",
+};
+
+const EXCEPTION_SEVERITY_COLOR: Record<string, string> = {
+  critical: "bg-red-600 text-white",
+  high:     "bg-orange-500 text-white",
+  medium:   "bg-yellow-500 text-white",
+  low:      "bg-green-500 text-white",
+};
+
+interface OrderException {
+  id: number;
+  exceptionType: string;
+  severity: string;
+  status: string;
+  title: string;
+  description: string | null;
+  resolutionNotes: string | null;
+  createdBy: string | null;
+  createdAt: string;
+  resolvedAt: string | null;
+  resolvedBy: string | null;
+}
+
+function ExceptionPanel({ orderId }: { orderId: number }) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const [createOpen, setCreateOpen] = useState(false);
+  const [resolveId, setResolveId] = useState<number | null>(null);
+  const [resolutionNotes, setResolutionNotes] = useState("");
+  const [collapsed, setCollapsed] = useState(false);
+
+  const [form, setForm] = useState({
+    exceptionType: "",
+    severity: "medium",
+    title: "",
+    description: "",
+  });
+
+  const { data, isLoading, refetch } = useQuery<{ data: OrderException[]; total: number }>({
+    queryKey: ["order-exceptions", orderId],
+    queryFn: () => apiFetch(`/api/logistic/orders/${orderId}/exceptions`),
+    enabled: !isNaN(orderId),
+    staleTime: 15000,
+  });
+
+  const exceptions = data?.data ?? [];
+  const openCount = exceptions.filter(e => e.status === "open" || e.status === "investigating").length;
+
+  const createMut = useMutation({
+    mutationFn: () => apiFetch(`/api/logistic/orders/${orderId}/exceptions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(form),
+    }),
+    onSuccess: () => {
+      toast({ title: "Exception dilaporkan", description: "Tim admin telah diberitahu via WA." });
+      setCreateOpen(false);
+      setForm({ exceptionType: "", severity: "medium", title: "", description: "" });
+      qc.invalidateQueries({ queryKey: ["order-exceptions", orderId] });
+      qc.invalidateQueries({ queryKey: ["audit-trail", orderId] });
+    },
+    onError: (e: Error) => toast({ title: "Gagal", description: e.message, variant: "destructive" }),
+  });
+
+  const statusMut = useMutation({
+    mutationFn: ({ id, status, notes }: { id: number; status: string; notes?: string }) =>
+      apiFetch(`/api/logistic/exceptions/${id}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status, resolutionNotes: notes }),
+      }),
+    onSuccess: () => {
+      toast({ title: "Status diperbarui" });
+      setResolveId(null);
+      setResolutionNotes("");
+      qc.invalidateQueries({ queryKey: ["order-exceptions", orderId] });
+    },
+    onError: (e: Error) => toast({ title: "Gagal", description: e.message, variant: "destructive" }),
+  });
+
+  return (
+    <Card>
+      <CardHeader className="pb-3 cursor-pointer" onClick={() => setCollapsed(c => !c)}>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-semibold text-slate-600 uppercase tracking-wide flex items-center gap-1.5">
+            <ShieldAlert className="w-4 h-4 text-red-500" />
+            Exception
+            {openCount > 0 && (
+              <span className="ml-1 inline-flex items-center justify-center w-5 h-5 rounded-full bg-red-500 text-white text-xs font-bold">
+                {openCount}
+              </span>
+            )}
+          </CardTitle>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs gap-1 text-red-600 border-red-200 hover:bg-red-50"
+              onClick={(e) => { e.stopPropagation(); setCreateOpen(true); }}
+            >
+              <Plus className="w-3 h-3" /> Laporkan
+            </Button>
+            {collapsed ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronUp className="w-4 h-4 text-slate-400" />}
+          </div>
+        </div>
+      </CardHeader>
+
+      {!collapsed && (
+        <CardContent className="pt-0 space-y-2">
+          {isLoading && <div className="h-8 animate-pulse bg-muted rounded" />}
+          {!isLoading && exceptions.length === 0 && (
+            <p className="text-xs text-muted-foreground text-center py-3">Tidak ada exception</p>
+          )}
+          {exceptions.map((exc) => (
+            <div key={exc.id} className="rounded-lg border p-3 space-y-1.5 text-sm">
+              <div className="flex items-start gap-1.5 flex-wrap">
+                <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold ${EXCEPTION_SEVERITY_COLOR[exc.severity] ?? "bg-gray-200 text-gray-700"}`}>
+                  {exc.severity.toUpperCase()}
+                </span>
+                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${EXCEPTION_STATUS_COLOR[exc.status] ?? "bg-gray-100 text-gray-600"}`}>
+                  {EXCEPTION_STATUS_LABEL[exc.status] ?? exc.status}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {EXCEPTION_TYPE_LABEL[exc.exceptionType] ?? exc.exceptionType}
+                </span>
+              </div>
+              <p className="font-medium text-slate-800 leading-snug">{exc.title}</p>
+              {exc.description && <p className="text-xs text-slate-500">{exc.description}</p>}
+              {exc.resolutionNotes && (
+                <p className="text-xs text-green-700 bg-green-50 rounded px-2 py-1">
+                  <span className="font-medium">Resolusi:</span> {exc.resolutionNotes}
+                </p>
+              )}
+              <div className="flex items-center justify-between pt-0.5">
+                <span className="text-xs text-muted-foreground">
+                  {dt(exc.createdAt)}{exc.createdBy ? ` · ${exc.createdBy}` : ""}
+                </span>
+                {exc.status !== "resolved" && exc.status !== "closed" && exc.status !== "rejected" && (
+                  <div className="flex gap-1">
+                    {exc.status === "open" && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 px-2 text-xs text-orange-600 hover:bg-orange-50"
+                        onClick={() => statusMut.mutate({ id: exc.id, status: "investigating" })}
+                        disabled={statusMut.isPending}
+                      >
+                        Investigasi
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 px-2 text-xs text-green-600 hover:bg-green-50"
+                      onClick={() => { setResolveId(exc.id); setResolutionNotes(""); }}
+                    >
+                      Selesaikan
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </CardContent>
+      )}
+
+      {/* Create Dialog */}
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-1.5">
+              <ShieldAlert className="w-4 h-4 text-red-500" /> Laporkan Exception
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1">
+              <Label>Tipe Exception *</Label>
+              <Select value={form.exceptionType} onValueChange={(v) => setForm(f => ({ ...f, exceptionType: v }))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Pilih tipe masalah..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {EXCEPTION_TYPES.map((t) => (
+                    <SelectItem key={t} value={t}>
+                      {EXCEPTION_TYPE_LABEL[t] ?? t}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label>Severity</Label>
+              <Select value={form.severity} onValueChange={(v) => setForm(f => ({ ...f, severity: v }))}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="low">🟢 Low</SelectItem>
+                  <SelectItem value="medium">🟡 Medium</SelectItem>
+                  <SelectItem value="high">🟠 High</SelectItem>
+                  <SelectItem value="critical">🔴 Critical</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label>Judul *</Label>
+              <Input
+                value={form.title}
+                onChange={(e) => setForm(f => ({ ...f, title: e.target.value }))}
+                placeholder="Ringkasan singkat masalah..."
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Deskripsi</Label>
+              <Textarea
+                value={form.description}
+                onChange={(e) => setForm(f => ({ ...f, description: e.target.value }))}
+                placeholder="Detail masalah, kronologi, tindakan yang sudah dilakukan..."
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>Batal</Button>
+            <Button
+              onClick={() => createMut.mutate()}
+              disabled={!form.exceptionType || !form.title.trim() || createMut.isPending}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {createMut.isPending && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}
+              Laporkan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Resolve Dialog */}
+      <Dialog open={resolveId !== null} onOpenChange={() => { setResolveId(null); setResolutionNotes(""); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Selesaikan Exception</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <Label>Catatan Resolusi</Label>
+            <Textarea
+              value={resolutionNotes}
+              onChange={(e) => setResolutionNotes(e.target.value)}
+              placeholder="Tindakan yang diambil, hasil akhir..."
+              rows={3}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setResolveId(null)}>Batal</Button>
+            <Button
+              onClick={() => resolveId && statusMut.mutate({ id: resolveId, status: "resolved", notes: resolutionNotes })}
+              disabled={statusMut.isPending}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              {statusMut.isPending && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}
+              Tandai Selesai
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </Card>
+  );
+}
+
 // ── Main Page ──────────────────────────────────────────────────────────────────
 
 export default function LogisticOrderDetailPage() {
@@ -1926,7 +2437,7 @@ export default function LogisticOrderDetailPage() {
     onError: (e: Error) => toast({ title: "Gagal kirim WA", description: e.message, variant: "destructive" }),
   });
 
-  const { data: fulfillmentData, refetch: refetchFulfillment } = useQuery<{ links: FulfillmentLink[]; submissions: FulfillmentSubmission[]; pods: PodSubmission[] }>({
+  const { data: fulfillmentData, refetch: refetchFulfillment } = useQuery<{ links: FulfillmentLink[]; submissions: FulfillmentSubmission[]; pods: PodSubmission[]; driverPods: DriverPodData[] }>({
     queryKey: ["order-fulfillment", orderId],
     queryFn: () => apiFetch(`/api/logistic/orders/${orderId}/fulfillment`),
     enabled: !isNaN(orderId),
@@ -1936,6 +2447,13 @@ export default function LogisticOrderDetailPage() {
   const { data: approvalData, refetch: refetchApprovals } = useQuery<CustomerApproval[]>({
     queryKey: ["order-approvals", orderId],
     queryFn: () => apiFetch(`/api/vendor-form/admin/customer-approvals?orderId=${orderId}`),
+    enabled: !isNaN(orderId),
+    refetchInterval: 30000,
+  });
+
+  const { data: driverProgressData } = useQuery<{ events: DriverProgressEvent[] }>({
+    queryKey: ["order-driver-progress", orderId],
+    queryFn: () => apiFetch(`/api/logistic/orders/${orderId}/progress`),
     enabled: !isNaN(orderId),
     refetchInterval: 30000,
   });
@@ -2033,7 +2551,7 @@ export default function LogisticOrderDetailPage() {
       return data;
     },
     onSuccess: () => {
-      toast({ title: "✅ Order selesai & POD tersimpan", description: "WA konfirmasi dikirim ke customer." });
+      toast({ title: "✅ Bukti pengiriman tersimpan", description: "Status → Bukti Pengiriman. WA dikirim ke customer." });
       setShowCompleteDialog(false);
       setCompleteNote("");
       setCompleteReceiver("");
@@ -2042,7 +2560,34 @@ export default function LogisticOrderDetailPage() {
       qc.invalidateQueries({ queryKey: ["order-detail", orderId] });
       void refetchFulfillment();
     },
-    onError: (e: Error) => toast({ title: "Gagal selesaikan order", description: e.message, variant: "destructive" }),
+    onError: (e: Error) => toast({ title: "Gagal upload bukti pengiriman", description: e.message, variant: "destructive" }),
+  });
+
+  const invoiceIssuedMut = useMutation({
+    mutationFn: () => apiFetch<{ ok: boolean }>(`/api/logistic/orders/${orderId}/delivery/invoice-issued`, { method: "POST" }),
+    onSuccess: () => {
+      toast({ title: "✅ Invoice Diterbitkan", description: "WA dikirim ke customer." });
+      qc.invalidateQueries({ queryKey: ["order-detail", orderId] });
+    },
+    onError: (e: Error) => toast({ title: "Gagal", description: e.message, variant: "destructive" }),
+  });
+
+  const paymentReceivedMut = useMutation({
+    mutationFn: () => apiFetch<{ ok: boolean }>(`/api/logistic/orders/${orderId}/delivery/payment-received`, { method: "POST" }),
+    onSuccess: () => {
+      toast({ title: "✅ Pembayaran Dikonfirmasi", description: "Status → Pembayaran Diterima. WA dikirim ke customer." });
+      qc.invalidateQueries({ queryKey: ["order-detail", orderId] });
+    },
+    onError: (e: Error) => toast({ title: "Gagal konfirmasi pembayaran", description: e.message, variant: "destructive" }),
+  });
+
+  const completedMut = useMutation({
+    mutationFn: () => apiFetch<{ ok: boolean }>(`/api/logistic/orders/${orderId}/delivery/completed`, { method: "POST" }),
+    onSuccess: () => {
+      toast({ title: "✅ Order Selesai!", description: "WA konfirmasi terkirim ke customer." });
+      qc.invalidateQueries({ queryKey: ["order-detail", orderId] });
+    },
+    onError: (e: Error) => toast({ title: "Gagal tandai selesai", description: e.message, variant: "destructive" }),
   });
 
   const handleDownloadPodPdf = async (pod: PodSubmission) => {
@@ -2097,7 +2642,7 @@ export default function LogisticOrderDetailPage() {
     );
   }
 
-  const { order, vendor, updates, taskLinks, customerLinks, quoteLinks, rfqs, freightShipments = [] } = data;
+  const { order, vendor, taskLinks, customerLinks, quoteLinks, rfqs, freightShipments = [] } = data;
   const activeRfqId = rfqs.find(r => r.status === "vendor_selected" || r.status === "open")?.id ?? rfqs[0]?.id ?? null;
   const hasVendorSelected = !!order.approvedVendorId;
   const quoteStatus = order.customerQuoteStatus;
@@ -2210,6 +2755,34 @@ export default function LogisticOrderDetailPage() {
                 <Field label="Order Dibuat" value={dt(order.createdAt)} />
               </CardContent>
             </Card>
+
+            {/* Step 2: Product Template Info */}
+            {order.categoryKey && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-semibold text-slate-600 uppercase tracking-wide flex items-center gap-1.5">
+                    <ClipboardList className="w-4 h-4" /> Template Produk
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3 text-sm">
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="Category Key" value={order.categoryKey} />
+                    {order.templateVersion && <Field label="Versi Template" value={order.templateVersion} />}
+                    {order.templateId && <Field label="Template ID" value={String(order.templateId)} />}
+                  </div>
+                  {order.requiredDocs && order.requiredDocs.length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1.5">Dokumen Wajib</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {order.requiredDocs.map((doc, i) => (
+                          <Badge key={i} variant="outline" className="text-xs text-blue-700 border-blue-200 bg-blue-50">{doc}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
 
             {/* Financial */}
             <Card>
@@ -2516,14 +3089,14 @@ export default function LogisticOrderDetailPage() {
                                 Konfirmasi &amp; Mulai Pengiriman
                               </Button>
                             )}
-                            {order.status === "In Progress" && (
+                            {["In Progress", "Pickup", "In Transit", "Arrived", "Delivered"].includes(order.status) && (
                               <Button
                                 size="sm"
-                                className="bg-emerald-600 hover:bg-emerald-700 text-white h-8 text-xs"
+                                className="bg-teal-600 hover:bg-teal-700 text-white h-8 text-xs"
                                 onClick={() => setShowCompleteDialog(true)}
                               >
-                                <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
-                                Selesaikan Order
+                                <ClipboardCheck className="w-3.5 h-3.5 mr-1" />
+                                Upload Bukti Pengiriman
                               </Button>
                             )}
                             {!["In Progress", "Completed", "Cancelled"].includes(order.status) && (
@@ -2560,13 +3133,13 @@ export default function LogisticOrderDetailPage() {
               <DialogContent className="max-w-md">
                 <DialogHeader>
                   <DialogTitle className="flex items-center gap-2">
-                    <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                    Selesaikan Order &amp; Upload POD
+                    <ClipboardCheck className="w-5 h-5 text-teal-600" />
+                    Upload Bukti Pengiriman (POD)
                   </DialogTitle>
                 </DialogHeader>
                 <div className="space-y-3 py-2">
                   <p className="text-sm text-slate-500">
-                    Status → <strong>Completed</strong>. WA konfirmasi otomatis dikirim ke customer.
+                    Status → <strong>Bukti Pengiriman (POD Uploaded)</strong>. Selanjutnya admin buat invoice lalu konfirmasi pembayaran sebelum order Selesai.
                   </p>
 
                   <div className="space-y-1.5">
@@ -2634,24 +3207,243 @@ export default function LogisticOrderDetailPage() {
                   >
                     {completeOrderMut.isPending
                       ? <Loader2 className="w-4 h-4 animate-spin mr-1" />
-                      : <CheckCircle2 className="w-4 h-4 mr-1" />}
-                    Selesaikan &amp; Simpan POD
+                      : <ClipboardCheck className="w-4 h-4 mr-1" />}
+                    Simpan Bukti Pengiriman
                   </Button>
                 </DialogFooter>
               </DialogContent>
             </Dialog>
 
             {/* ── Panel POD (Bukti Pengiriman) ── */}
-            {(fulfillmentData?.pods?.length ?? 0) > 0 && (
+            {((fulfillmentData?.driverPods?.length ?? 0) > 0 || (fulfillmentData?.pods?.length ?? 0) > 0) && (
               <Card className="border-teal-200">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm font-semibold text-teal-700 uppercase tracking-wide flex items-center gap-1.5">
                     <ClipboardCheck className="w-4 h-4" /> Bukti Pengiriman (POD)
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-3">
-                  {fulfillmentData!.pods.map(pod => (
-                    <div key={pod.id} className="rounded-lg border border-teal-100 bg-teal-50/30 px-3 py-3 space-y-2">
+                <CardContent className="space-y-4">
+
+                  {/* ── Driver POD Cards (dari Driver App) ── */}
+                  {(fulfillmentData?.driverPods ?? []).map(dpod => {
+                    const statusNorm = (dpod.status ?? "").toUpperCase();
+                    const isComplete = statusNorm === "COMPLETED";
+                    const isSubmitted = !isComplete && (!!dpod.podSubmittedAt || statusNorm === "DELIVERED");
+                    const isPending = !isComplete && !isSubmitted;
+                    const hasPhotos = dpod.podPhotos.length > 0;
+                    const hasGeo = !!(dpod.podGeoLat && dpod.podGeoLng);
+                    const mapsUrl = hasGeo
+                      ? `https://www.google.com/maps?q=${dpod.podGeoLat},${dpod.podGeoLng}`
+                      : null;
+                    const podSubmitted = isSubmitted || isComplete;
+
+                    return (
+                      <div key={`driver-${dpod.id}`} className="rounded-xl border border-teal-200 bg-gradient-to-br from-teal-50/60 to-white p-4 space-y-4">
+
+                        {/* Header Row */}
+                        <div className="flex items-start justify-between gap-2 flex-wrap">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {isPending ? (
+                              <Badge className="bg-amber-100 text-amber-800 border border-amber-200">⏳ POD Pending</Badge>
+                            ) : isComplete ? (
+                              <Badge className="bg-blue-100 text-blue-800 border border-blue-200">📋 POD Complete</Badge>
+                            ) : (
+                              <Badge className="bg-emerald-100 text-emerald-800 border border-emerald-200">✅ POD Submitted</Badge>
+                            )}
+                            <span className="text-[11px] font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
+                              {dpod.jobNumber}
+                            </span>
+                          </div>
+                          {dpod.podSubmittedAt && (
+                            <span className="text-[10px] text-slate-400">
+                              {new Date(dpod.podSubmittedAt).toLocaleString("id-ID", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Order & Job Info */}
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                          <div>
+                            <span className="text-slate-400 uppercase text-[10px] tracking-wide">No. Order</span>
+                            <p className="font-semibold text-slate-700 font-mono">{order.orderNumber}</p>
+                          </div>
+                          <div>
+                            <span className="text-slate-400 uppercase text-[10px] tracking-wide">No. Job Driver</span>
+                            <p className="font-semibold text-slate-700 font-mono">{dpod.jobNumber}</p>
+                          </div>
+                        </div>
+
+                        {/* Driver Info */}
+                        {(dpod.driverName || dpod.driverPhone || dpod.vehiclePlate) && (
+                          <div className="rounded-lg border border-slate-100 bg-white p-3 space-y-2">
+                            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Info Driver</p>
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                              {dpod.driverName && (
+                                <div className="flex items-start gap-1.5">
+                                  <User className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
+                                  <div>
+                                    <span className="text-slate-400 block text-[10px]">Nama Driver</span>
+                                    <p className="font-semibold text-slate-700">{dpod.driverName}</p>
+                                  </div>
+                                </div>
+                              )}
+                              {dpod.driverPhone && (
+                                <div className="flex items-start gap-1.5">
+                                  <Phone className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
+                                  <div>
+                                    <span className="text-slate-400 block text-[10px]">Telepon Driver</span>
+                                    <p className="font-semibold text-slate-700">{dpod.driverPhone}</p>
+                                  </div>
+                                </div>
+                              )}
+                              {dpod.vehiclePlate && (
+                                <div className="flex items-start gap-1.5 col-span-2">
+                                  <CreditCard className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
+                                  <div>
+                                    <span className="text-slate-400 block text-[10px]">Plat Nomor</span>
+                                    <p className="font-semibold text-slate-700 font-mono tracking-widest">{dpod.vehiclePlate}</p>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Receiver Info — tampil selalu saat POD submitted, backward compat: old POD hanya punya receiverName */}
+                        {podSubmitted && (
+                          <div className="rounded-lg border border-teal-100 bg-teal-50/40 p-3 space-y-2">
+                            <p className="text-[10px] font-semibold text-teal-600 uppercase tracking-wide">Detail Penerimaan</p>
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                              <div>
+                                <span className="text-slate-400 block text-[10px]">Nama Penerima</span>
+                                {dpod.podReceiverName
+                                  ? <p className="font-semibold text-slate-800">{dpod.podReceiverName}</p>
+                                  : <p className="text-slate-300 italic">—</p>
+                                }
+                              </div>
+                              <div>
+                                <span className="text-slate-400 block text-[10px]">Jabatan Penerima</span>
+                                {dpod.podReceiverPosition
+                                  ? <p className="font-medium text-slate-700">{dpod.podReceiverPosition}</p>
+                                  : <p className="text-slate-300 italic">—</p>
+                                }
+                              </div>
+                              {dpod.podNotes && (
+                                <div className="col-span-2">
+                                  <span className="text-slate-400 block text-[10px]">Catatan Pengiriman</span>
+                                  <p className="text-slate-600 whitespace-pre-wrap">{dpod.podNotes}</p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Geo Location */}
+                        {hasGeo && (
+                          <div className="flex items-center justify-between gap-3 rounded-lg border border-blue-100 bg-blue-50/40 px-3 py-2.5">
+                            <div className="flex items-center gap-2 text-xs min-w-0">
+                              <MapPin className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                              <div className="min-w-0">
+                                <span className="text-slate-400 block text-[10px]">Lokasi GPS saat submit POD</span>
+                                <p className="font-mono text-slate-600 text-[11px] truncate">
+                                  {dpod.podGeoLat}, {dpod.podGeoLng}
+                                </p>
+                              </div>
+                            </div>
+                            <a
+                              href={mapsUrl!}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="shrink-0"
+                            >
+                              <Button variant="outline" size="sm" className="h-7 px-2.5 text-[11px] gap-1 text-blue-700 border-blue-200 hover:bg-blue-50">
+                                <Navigation className="w-3 h-3" />
+                                Buka Maps
+                              </Button>
+                            </a>
+                          </div>
+                        )}
+
+                        {/* Signature — tampil saat submitted; badge "Tanpa tanda tangan" jika kosong */}
+                        {podSubmitted && (
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
+                              <PenLine className="w-3.5 h-3.5" />
+                              Tanda Tangan Penerima
+                            </div>
+                            {dpod.podSignatureDataUrl ? (
+                              <div className="rounded-lg border border-slate-200 bg-white p-2">
+                                <img
+                                  src={dpod.podSignatureDataUrl}
+                                  alt="Tanda tangan penerima"
+                                  className="max-h-28 max-w-full object-contain mx-auto"
+                                />
+                              </div>
+                            ) : (
+                              <Badge variant="outline" className="text-slate-400 border-slate-200 font-normal text-[10px]">
+                                Tanpa tanda tangan
+                              </Badge>
+                            )}
+                          </div>
+                        )}
+
+                        {/* POD Photos Grid */}
+                        {podSubmitted && (
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
+                                <Camera className="w-3.5 h-3.5" />
+                                Foto POD {hasPhotos && <span className="text-teal-600">({dpod.podPhotos.length})</span>}
+                              </div>
+                            </div>
+                            {hasPhotos ? (
+                              <>
+                                <div className="grid grid-cols-3 gap-2">
+                                  {dpod.podPhotos.map((url, idx) => (
+                                    <div
+                                      key={idx}
+                                      className="relative group aspect-square rounded-lg overflow-hidden border border-slate-200 cursor-zoom-in bg-slate-50"
+                                      onClick={() => setLightboxUrl(url)}
+                                    >
+                                      <img
+                                        src={url}
+                                        alt={`POD foto ${idx + 1}`}
+                                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                                      />
+                                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                                        <ZoomIn className="w-5 h-5 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-lg" />
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                                <div className="flex flex-wrap gap-1 pt-0.5">
+                                  {dpod.podPhotos.map((url, idx) => (
+                                    <a
+                                      key={idx}
+                                      href={url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-0.5 text-[10px] text-teal-600 hover:text-teal-800 underline underline-offset-2"
+                                    >
+                                      <ExternalLink className="w-2.5 h-2.5" /> Foto {idx + 1}
+                                    </a>
+                                  ))}
+                                </div>
+                              </>
+                            ) : (
+                              <div className="text-xs text-slate-400 italic flex items-center gap-1.5 py-1">
+                                <Camera className="w-3.5 h-3.5" /> Tidak ada foto pada POD ini
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {/* ── Legacy POD Cards (dari Admin Upload / order_pod_submissions) ── */}
+                  {(fulfillmentData?.pods ?? []).map(pod => (
+                    <div key={`legacy-${pod.id}`} className="rounded-lg border border-teal-100 bg-teal-50/30 px-3 py-3 space-y-2">
                       <div className="flex items-center justify-between gap-2 flex-wrap">
                         <Badge className="bg-emerald-100 text-emerald-800">✅ POD Tersimpan</Badge>
                         <div className="flex items-center gap-2">
@@ -2693,13 +3485,16 @@ export default function LogisticOrderDetailPage() {
                         )}
                       </div>
                       {pod.photo_url && (
-                        <a href={pod.photo_url} target="_blank" rel="noopener noreferrer" className="block">
+                        <div
+                          className="cursor-zoom-in"
+                          onClick={() => setLightboxUrl(pod.photo_url!)}
+                        >
                           <img
                             src={pod.photo_url}
                             alt="Bukti pengiriman"
-                            className="w-full max-h-56 object-contain rounded-lg border border-teal-100 hover:opacity-90 transition-opacity cursor-zoom-in"
+                            className="w-full max-h-56 object-contain rounded-lg border border-teal-100 hover:opacity-90 transition-opacity"
                           />
-                        </a>
+                        </div>
                       )}
 
                       {/* Hidden printable template untuk PDF */}
@@ -2796,6 +3591,164 @@ export default function LogisticOrderDetailPage() {
                 </CardContent>
               </Card>
             )}
+
+            {/* ── Panel Aksi Pengiriman Post-POD ── */}
+            {["POD Uploaded", "Invoice Issued", "Payment Received"].includes(order.status) && (
+              <Card className="border-orange-200">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-semibold text-orange-700 uppercase tracking-wide flex items-center gap-1.5">
+                    <FileText className="w-4 h-4" /> Aksi Pengiriman
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="text-xs text-slate-500 bg-orange-50 rounded-lg px-3 py-2">
+                    Status saat ini: <strong className="text-orange-700">{order.status}</strong>
+                    {order.status === "POD Uploaded" && " — Silakan buat & kirim invoice ke customer, lalu tandai Invoice Diterbitkan."}
+                    {order.status === "Invoice Issued" && " — Setelah pembayaran diterima, klik Konfirmasi Pembayaran."}
+                    {order.status === "Payment Received" && " — Semua proses selesai, klik Tandai Selesai untuk menutup order."}
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {order.status === "POD Uploaded" && (
+                      <Button
+                        size="sm"
+                        className="bg-orange-600 hover:bg-orange-700 text-white h-8 text-xs"
+                        disabled={invoiceIssuedMut.isPending}
+                        onClick={() => {
+                          if (!confirm("Tandai Invoice sudah diterbitkan ke customer? Pastikan sudah membuat & mengirim link invoice via panel Invoice & Pembayaran di bawah.")) return;
+                          invoiceIssuedMut.mutate();
+                        }}
+                      >
+                        {invoiceIssuedMut.isPending
+                          ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                          : <FileText className="w-3.5 h-3.5 mr-1" />}
+                        Tandai Invoice Diterbitkan
+                      </Button>
+                    )}
+
+                    {order.status === "Invoice Issued" && (
+                      <Button
+                        size="sm"
+                        className="bg-lime-600 hover:bg-lime-700 text-white h-8 text-xs"
+                        disabled={paymentReceivedMut.isPending}
+                        onClick={() => {
+                          if (!confirm("Konfirmasi pembayaran sudah diterima? Status akan berubah ke Pembayaran Diterima dan WA dikirim ke customer.")) return;
+                          paymentReceivedMut.mutate();
+                        }}
+                      >
+                        {paymentReceivedMut.isPending
+                          ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                          : <CheckCircle2 className="w-3.5 h-3.5 mr-1" />}
+                        Konfirmasi Pembayaran
+                      </Button>
+                    )}
+
+                    {order.status === "Payment Received" && (
+                      <Button
+                        size="sm"
+                        className="bg-green-600 hover:bg-green-700 text-white h-8 text-xs"
+                        disabled={completedMut.isPending}
+                        onClick={() => {
+                          if (!confirm("Tandai order sebagai Selesai? Ini tindakan final — WA notifikasi dikirim ke customer.")) return;
+                          completedMut.mutate();
+                        }}
+                      >
+                        {completedMut.isPending
+                          ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                          : <CheckCircle2 className="w-3.5 h-3.5 mr-1" />}
+                        Tandai Selesai
+                      </Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* ── Panel Driver Progress GPS ── */}
+            {(() => {
+              const gpsEvents = (driverProgressData?.events ?? []).filter(
+                (e) => e.gps_latitude != null && e.gps_longitude != null,
+              );
+              if (gpsEvents.length === 0) return null;
+              const STEP_LABEL: Record<string, string> = {
+                PICKUP: "Penjemputan", IN_TRANSIT: "Dalam Perjalanan",
+                ARRIVED: "Tiba di Tujuan", DELIVERED: "Terkirim", COMPLETED: "Selesai",
+              };
+              return (
+                <Card className="border-blue-200">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-semibold text-blue-700 uppercase tracking-wide flex items-center gap-1.5">
+                      <MapPin className="w-4 h-4" /> Lokasi GPS Driver
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {gpsEvents.map((ev) => (
+                      <div key={ev.id} className="rounded-lg border border-blue-100 bg-blue-50/30 px-3 py-3 space-y-2">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <Badge className="bg-blue-100 text-blue-800 font-mono text-xs">
+                            {STEP_LABEL[ev.step_key] ?? ev.step_key}
+                          </Badge>
+                          <span className="text-[10px] text-slate-400">
+                            {ev.device_timestamp
+                              ? new Date(ev.device_timestamp).toLocaleString("id-ID", {
+                                  day: "numeric", month: "short", year: "numeric",
+                                  hour: "2-digit", minute: "2-digit", second: "2-digit",
+                                })
+                              : new Date(ev.created_at).toLocaleString("id-ID", {
+                                  day: "numeric", month: "short", year: "numeric",
+                                  hour: "2-digit", minute: "2-digit",
+                                })}
+                          </span>
+                        </div>
+                        <div className="text-xs text-slate-600 space-y-1">
+                          <div className="flex items-center gap-1 font-mono">
+                            <MapPin className="w-3 h-3 text-blue-500 flex-shrink-0" />
+                            <span>
+                              {Number(ev.gps_latitude).toFixed(6)}, {Number(ev.gps_longitude).toFixed(6)}
+                            </span>
+                          </div>
+                          {ev.actor_name && (
+                            <div className="text-slate-400">Driver: {ev.actor_name}</div>
+                          )}
+                        </div>
+                        <div className="flex gap-2 pt-1">
+                          {ev.map_url && (
+                            <a
+                              href={ev.map_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-xs text-blue-600 underline underline-offset-2 hover:text-blue-800"
+                            >
+                              <ExternalLink className="w-3 h-3" /> Lihat di Maps
+                            </a>
+                          )}
+                          {ev.street_view_url && (
+                            <a
+                              href={ev.street_view_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-xs text-blue-600 underline underline-offset-2 hover:text-blue-800"
+                            >
+                              <Eye className="w-3 h-3" /> Street View
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              );
+            })()}
+
+            {/* Driver Assignment Panel */}
+            <OrderDriverAssignmentPanel
+              orderId={orderId}
+              orderNumber={order.orderNumber}
+              customerName={order.customerName}
+              origin={order.origin}
+              destination={order.destination}
+              commodity={order.commodity}
+            />
 
             {/* Job Order & Tracking Panel */}
             <JobOrderPanel orderId={orderId} />
@@ -2946,78 +3899,11 @@ export default function LogisticOrderDetailPage() {
             />
           </div>
 
-          {/* Right: Timeline + WA Log */}
+          {/* Right: Exception + Audit Trail + WA Log */}
           <div className="space-y-4">
+            <ExceptionPanel orderId={orderId} />
             <WaNotificationLogPanel orderNumber={order.orderNumber} />
-            <Card className="sticky top-6">
-              <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm font-semibold text-slate-600 uppercase tracking-wide flex items-center gap-1.5">
-                    <Clock className="w-4 h-4" /> Timeline Aktivitas
-                    <span className="ml-1 text-xs font-normal normal-case text-slate-400">({updates.length})</span>
-                  </CardTitle>
-                  <AddTimelineNoteDialog
-                    orderId={orderId}
-                    onAdded={() => qc.invalidateQueries({ queryKey: ["order-detail", orderId] })}
-                  />
-                </div>
-                <div className="flex gap-2 text-xs text-slate-400 mt-1">
-                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-teal-400 inline-block" />Publik</span>
-                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-400 inline-block" />Internal</span>
-                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400 inline-block" />Error</span>
-                </div>
-              </CardHeader>
-              <CardContent className="max-h-[600px] overflow-y-auto pt-2">
-                {updates.length === 0 ? (
-                  <p className="text-sm text-slate-400 text-center py-6">Belum ada aktivitas</p>
-                ) : (
-                  <div className="relative pl-5">
-                    <div className="absolute left-2 top-0 bottom-0 w-0.5 bg-slate-100" />
-                    <div className="space-y-4">
-                      {updates.map(u => (
-                        <div key={u.id} className="relative text-sm group">
-                          {/* Dot + icon */}
-                          <div className={`absolute -left-[17px] top-0.5 w-3.5 h-3.5 rounded-full border-2 border-white flex items-center justify-center ${timelineDotColor(u)}`} />
-                          <div className="absolute -left-[28px] top-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                            {timelineIcon(u.status)}
-                          </div>
-                          <div className="bg-white rounded-lg border border-slate-100 px-3 py-2 shadow-sm hover:border-slate-200 transition-colors">
-                            {/* Status badge */}
-                            {u.status && (
-                              <div className="flex items-center gap-1.5 mb-1">
-                                {timelineIcon(u.status)}
-                                <span className={`text-xs font-semibold rounded-full px-2 py-0.5 ${STATUS_COLOR[u.status] ?? "bg-slate-100 text-slate-700"}`}>
-                                  {u.status}
-                                </span>
-                                {u.isPublic && (
-                                  <span title="Tampil ke customer" className="ml-auto">
-                                    <Eye className="w-3 h-3 text-teal-500" />
-                                  </span>
-                                )}
-                              </div>
-                            )}
-                            {/* Notes */}
-                            {u.notes && (
-                              <p className="text-slate-700 text-xs leading-relaxed">{u.notes}</p>
-                            )}
-                            {/* Meta */}
-                            <p className="text-xs text-slate-400 mt-1 flex items-center gap-1">
-                              <User className="w-3 h-3" />
-                              {u.actorName ?? u.actorType}
-                              <span className="text-slate-300">·</span>
-                              {dt(u.createdAt)}
-                              {u.isPublic && !u.status && (
-                                <span className="ml-auto"><Eye className="w-3 h-3 text-teal-500" /></span>
-                              )}
-                            </p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+            <AuditTrailPanel orderId={orderId} />
           </div>
         </div>
       </div>

@@ -1,0 +1,129 @@
+FASE 2E — BIZPORTAL SERVICE TEMPLATES UI
+
+Tujuan:
+Admin bisa melihat, edit, duplicate, dan toggle active Service Templates dari BizPortal tanpa menyentuh API manual.
+
+Kondisi:
+- Fase 2A selesai: lib/service-templates tersedia.
+- Fase 2B selesai: service_templates DB tersedia.
+- Fase 2C selesai: GET API tersedia.
+- Fase 2D selesai: Admin CRUD API tersedia.
+- SERVICE_SCHEMAS masih runtime utama.
+
+Tugas:
+
+1. Buat halaman baru:
+
+artifacts/bizportal/src/pages/settings/service-templates.tsx
+
+atau lokasi yang konsisten dengan struktur Settings saat ini.
+
+2. Tambahkan menu/sidebar:
+
+Settings → Service Templates
+
+3. Halaman list menampilkan:
+
+- emoji
+- label
+- serviceType
+- version
+- status active/inactive
+- jumlah fields
+- jumlah required documents
+- jumlah checklist
+- source db/in-code/fallback jika tersedia
+- tombol Edit
+- tombol Duplicate
+- tombol Toggle Active
+
+4. Fitur Edit:
+
+Admin bisa edit:
+- label
+- emoji
+- description
+- sortOrder
+- version optional
+- fields
+- requiredDocuments
+- checklist
+- validationRules
+- conditionalRules
+
+5. Field editor minimal:
+
+Untuk fields:
+- key
+- label
+- type
+- required
+- section: quotation / operational / both
+- isUpload
+- placeholder
+- unit
+- options untuk select
+
+6. Required Documents editor:
+
+- key
+- label
+- required
+
+7. Checklist editor:
+
+- key
+- label
+
+8. Duplicate:
+
+Form:
+- newServiceType
+- newLabel
+
+Call:
+POST /api/service-templates/:serviceType/duplicate
+
+9. Toggle Active:
+
+Call:
+PATCH /api/service-templates/:serviceType/toggle-active
+
+10. UX safety:
+
+- Jangan ada tombol hard delete.
+- Tampilkan warning:
+"Service Templates belum menjadi runtime utama Vendor Mini Form. Saat ini masih tahap konfigurasi."
+
+11. Jangan ubah:
+- vendorMiniForm.ts
+- SERVICE_SCHEMAS
+- Customer Portal
+- WA
+
+12. Test:
+
+- buka list
+- edit trucking description
+- tambah satu field test lalu save
+- pastikan version auto bump jika version tidak diisi
+- duplicate trucking
+- toggle inactive duplicate
+- refresh halaman
+
+13. Output:
+
+SERVICE TEMPLATES UI REPORT
+
+Isi:
+- file dibuat
+- route/menu ditambahkan
+- fitur yang bekerja
+- test result
+- issue ditemukan
+
+Acceptance Criteria:
+- Admin bisa kelola service templates dari UI.
+- Tidak ada hard delete.
+- Vendor Mini Form behavior belum berubah.
+- SERVICE_SCHEMAS masih runtime utama.

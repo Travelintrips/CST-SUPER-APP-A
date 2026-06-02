@@ -9,6 +9,7 @@ import crypto from "node:crypto";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { postPaymentReceived, postSalesInvoice } from "../lib/accounting.js";
 import { markSalesInvoiced } from "../lib/services/index.js";
+import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
 
 const router = Router();
 
@@ -233,19 +234,27 @@ router.post("/paylabs/webhook", async (req, res) => {
 
   if (newStatus === "paid" && payment.status !== "paid") {
     if (payment.refKind === "sales") {
+      const [salesDoc] = await db.select().from(salesDocumentsTable).where(eq(salesDocumentsTable.id, payment.refId));
       const invoiceResult = await markSalesInvoiced(payment.refId, "paylabs");
-      if (invoiceResult.ok && !invoiceResult.alreadySet) {
-        const [doc] = await db.select().from(salesDocumentsTable).where(eq(salesDocumentsTable.id, payment.refId));
-        if (doc) {
-          void postSalesInvoice({
-            salesDocId: doc.id,
-            docNumber: doc.docNumber,
-            customerName: doc.customerName,
-            netAmount: Number(doc.totalAmount),
-            taxAmount: Number(doc.taxAmount ?? 0),
-            taxAccountId: null,
-          });
-        }
+      if (invoiceResult.ok && !invoiceResult.alreadySet && salesDoc) {
+        void postSalesInvoice({
+          salesDocId: salesDoc.id,
+          docNumber: salesDoc.docNumber,
+          customerName: salesDoc.customerName,
+          netAmount: Number(salesDoc.totalAmount),
+          taxAmount: Number(salesDoc.taxAmount ?? 0),
+          taxAccountId: null,
+        });
+      }
+      // ── AUTO STATUS: Payment Received ─────────────────────────────────────
+      // Jika Paylabs mengkonfirmasi pembayaran lunas dan ada logistic order
+      // terhubung, transisi status otomatis ke "Payment Received".
+      if (salesDoc?.logisticOrderId && Number(salesDoc.grandTotal) > 0 && Number(payment.amount) >= Number(salesDoc.grandTotal)) {
+        void transitionLogisticOrderStatus(salesDoc.logisticOrderId, "Payment Received", {
+          source: "paylabs:webhook",
+          actorType: "system",
+          notes: `Pembayaran lunas via Paylabs (merchantTradeNo: ${merchantTradeNo})`,
+        }).catch((e: unknown) => console.warn("auto Payment Received transition failed (Paylabs webhook)", e));
       }
     }
     void postPaymentReceived({
@@ -270,19 +279,25 @@ router.post("/:id/simulate-paid", async (req, res) => {
     .set({ status: "paid", paidAt: new Date(), updatedAt: new Date() })
     .where(eq(paymentsTable.id, id));
   if (payment.refKind === "sales" && payment.status !== "paid") {
+    const [salesDoc2] = await db.select().from(salesDocumentsTable).where(eq(salesDocumentsTable.id, payment.refId));
     const invoiceResult2 = await markSalesInvoiced(payment.refId, "paylabs");
-    if (invoiceResult2.ok && !invoiceResult2.alreadySet) {
-      const [doc] = await db.select().from(salesDocumentsTable).where(eq(salesDocumentsTable.id, payment.refId));
-      if (doc) {
-        void postSalesInvoice({
-          salesDocId: doc.id,
-          docNumber: doc.docNumber,
-          customerName: doc.customerName,
-          netAmount: Number(doc.totalAmount),
-          taxAmount: Number(doc.taxAmount ?? 0),
-          taxAccountId: null,
-        });
-      }
+    if (invoiceResult2.ok && !invoiceResult2.alreadySet && salesDoc2) {
+      void postSalesInvoice({
+        salesDocId: salesDoc2.id,
+        docNumber: salesDoc2.docNumber,
+        customerName: salesDoc2.customerName,
+        netAmount: Number(salesDoc2.totalAmount),
+        taxAmount: Number(salesDoc2.taxAmount ?? 0),
+        taxAccountId: null,
+      });
+    }
+    // ── AUTO STATUS: Payment Received ─────────────────────────────────────
+    if (salesDoc2?.logisticOrderId && Number(salesDoc2.grandTotal) > 0 && Number(payment.amount) >= Number(salesDoc2.grandTotal)) {
+      void transitionLogisticOrderStatus(salesDoc2.logisticOrderId, "Payment Received", {
+        source: "paylabs:simulate-paid",
+        actorType: "admin",
+        notes: `Simulasi pembayaran lunas via Paylabs (payment #${payment.id})`,
+      }).catch((e: unknown) => console.warn("auto Payment Received transition failed (simulate-paid)", e));
     }
   }
   if (payment.status !== "paid") {

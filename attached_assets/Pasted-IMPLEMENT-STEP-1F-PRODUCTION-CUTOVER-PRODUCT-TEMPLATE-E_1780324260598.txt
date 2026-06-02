@@ -1,0 +1,114 @@
+IMPLEMENT STEP 1F — PRODUCTION CUTOVER PRODUCT TEMPLATE ENGINE
+
+Tujuan:
+Aktifkan product_templates sebagai single source of truth untuk Vendor Mini Form, tetapi tetap siapkan rollback aman.
+
+Kondisi saat ini:
+- Cutover Readiness Report: READY
+- Template Cleanup Report: READY
+- 0 blocking issue
+- commodity_templates tetap tidak dihapus
+- product_templates sudah bersih dari duplikat field/dokumen
+
+Tugas:
+
+1. Aktifkan feature flag:
+USE_PRODUCT_TEMPLATE_ENGINE=true
+
+2. Vendor Mini Form harus membaca template dari:
+product_templates
+
+bukan:
+commodity_templates
+
+3. Resolver wajib menggunakan:
+resolveTemplate()
+
+4. Saat membuat vendor mini form link, simpan:
+- templateId
+- templateSnapshot
+- templateVersion
+- categoryKey
+
+5. Jika template tidak ditemukan:
+- jangan kirim form kosong
+- tampilkan warning ke admin
+- fallback hanya boleh ke legacy commodity_templates jika feature flag fallback aktif
+
+6. Render form menggunakan:
+- TemplateFieldRenderer
+- TemplateDocumentRenderer
+- TemplateChecklistRenderer
+
+7. Semua field spesifikasi produk di Vendor Mini Form harus read-only.
+
+8. Vendor hanya mengisi:
+- stock status
+- harga dasar
+- lead time
+- MOQ
+- validity
+- notes
+- upload dokumen pendukung
+
+9. WhatsApp RFQ Vendor harus menampilkan:
+- nama produk
+- categoryKey / komoditas
+- quantity
+- unit
+- spesifikasi utama dari templateSnapshot
+- dokumen wajib
+- checklist singkat
+- link mini form
+
+10. Jangan hapus:
+- commodity_templates
+- commodity_template_fields
+- commodity_required_docs
+- commodity_checklists
+
+11. Jadikan commodity_templates sebagai legacy read-only selama 30 hari.
+
+12. Tambahkan rollback switch:
+USE_PRODUCT_TEMPLATE_ENGINE=false
+
+Jika false:
+- Vendor Mini Form kembali memakai logic lama sementara.
+
+13. Jalankan test manual:
+- Batubara
+- Besi & Baja
+- Kopi
+- Minyak Sawit
+- Karet
+
+14. Test skenario:
+- create vendor mini form link
+- buka link vendor
+- submit vendor response
+- cek WA notification
+- cek data tersimpan
+
+15. Buat laporan akhir:
+
+CUTOVER RESULT REPORT
+
+Isi laporan:
+- file yang diubah
+- endpoint yang diubah
+- template yang berhasil
+- template yang gagal
+- warning
+- cara rollback
+- next step ke RFQ integration
+
+Acceptance Criteria:
+- Vendor Mini Form tidak lagi mengambil data utama dari commodity_templates.
+- Vendor Mini Form membaca product_templates.
+- Tidak ada form kosong.
+- Tidak ada field/dokumen duplikat.
+- Vendor melihat spesifikasi produk lengkap.
+- Vendor tidak bisa mengubah spesifikasi utama.
+- Vendor hanya input harga dasar/stok/lead time/MOQ.
+- WA RFQ Vendor menampilkan spesifikasi produk.
+- Rollback switch tersedia.

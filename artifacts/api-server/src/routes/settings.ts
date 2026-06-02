@@ -4,7 +4,8 @@ import { getAdminWa, setAdminWa, getAdminGroupWa, setAdminGroupWa, getAdminPhone
 import { db, portalContentTable } from "@workspace/db";
 import { broadcastToPortal } from "../lib/sseManager.js";
 import { shortLinksTable, waTemplateConfigsTable, notificationLogsTable } from "@workspace/db/schema";
-import { eq, desc, ilike, or, sql, and } from "drizzle-orm";
+import { eq, desc, ilike, or, sql, and, isNull } from "drizzle-orm";
+import { resolveCompanyId } from "../lib/resolveCompany.js";
 import { getAiIntakeSettings, saveAiIntakeSettings, type VendorFilterMode } from "../lib/aiOrderIntake.js";
 import { LOGISTICS_SUBCATEGORIES } from "@workspace/logistics-constants";
 
@@ -39,7 +40,7 @@ router.put("/notifications", async (req: Request, res: Response) => {
   }
   const saves: Promise<void>[] = [setAdminWa(adminWa)];
   if (typeof adminGroupWa === "string") saves.push(setAdminGroupWa(adminGroupWa));
-  if (typeof adminPhones === "string") saves.push(setAdminPhones(adminPhones));
+  if (typeof adminPhones === "string") saves.push(setAdminPhones(adminPhones.split(",").map(s => s.trim()).filter(Boolean)));
   await Promise.all(saves);
   return res.json({
     ok: true,
@@ -93,23 +94,63 @@ router.get("/cargo-types", async (req: Request, res: Response) => {
   }
 });
 
+// Idempotent migration: add company_id to whatsapp_template_configs
+db.execute(sql`ALTER TABLE whatsapp_template_configs ADD COLUMN IF NOT EXISTS company_id INTEGER REFERENCES companies(id)`).catch(() => {});
+db.execute(sql`
+  DO $$ BEGIN
+    IF EXISTS (
+      SELECT 1 FROM pg_constraint
+      WHERE conname = 'uq_wa_tpl_cfg'
+        AND conrelid = 'whatsapp_template_configs'::regclass
+    ) THEN
+      ALTER TABLE whatsapp_template_configs DROP CONSTRAINT uq_wa_tpl_cfg;
+    END IF;
+  END $$
+`).catch(() => {});
+db.execute(sql`
+  CREATE UNIQUE INDEX IF NOT EXISTS uq_wa_tpl_cfg_company
+  ON whatsapp_template_configs (COALESCE(company_id, 0), recipient, workflow)
+`).catch(() => {});
+
+// ── WA Template Configs — inline migration ────────────────────────────────────
+db.execute(sql`
+  ALTER TABLE whatsapp_template_configs
+    ADD COLUMN IF NOT EXISTS company_id INTEGER REFERENCES companies(id) ON DELETE SET NULL
+`).then(() =>
+  db.execute(sql`
+    DROP INDEX IF EXISTS uq_wa_tpl_cfg
+  `)
+).then(() =>
+  db.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_wa_tpl_cfg_v2
+    ON whatsapp_template_configs (COALESCE(company_id, 0), recipient, workflow)
+  `)
+).catch(() => { /* non-fatal */ });
+
 // ── WA Template Configs (workflow-based) ──────────────────────────────────────
 
 // GET /api/settings/wa-template-configs — fetch all saved workflow templates
 router.get("/wa-template-configs", async (req: Request, res: Response) => {
   if (!(await requireAdmin(req, res))) return;
   try {
+    const companyId = resolveCompanyId(req);
     const { getWaDefaultTemplatesFlatMap } = await import("../lib/orderNotification.js");
-    const rows = await db.select().from(waTemplateConfigsTable);
+    const rows = await db.select().from(waTemplateConfigsTable)
+      .where(or(
+        eq(waTemplateConfigsTable.companyId, companyId),
+        isNull(waTemplateConfigsTable.companyId)
+      ));
     const savedKeys: string[] = [];
-    // Start with all defaults so unsaved templates show their default content
     const configs: Record<string, string> = { ...getWaDefaultTemplatesFlatMap() };
-    for (const row of rows) {
+    const globalRows = rows.filter(r => r.companyId === null);
+    const companyRows = rows.filter(r => r.companyId !== null);
+    for (const row of [...globalRows, ...companyRows]) {
       const key = `${row.recipient}__${row.workflow}`;
-      // Only override default if body is non-empty (empty DB rows = treat as default)
       if (row.body.trim()) {
-        configs[key] = row.body;
-        savedKeys.push(key);
+        if (!savedKeys.includes(key) || row.companyId != null) {
+          configs[key] = row.body;
+          if (!savedKeys.includes(key)) savedKeys.push(key);
+        }
       }
     }
     return res.json({ configs, savedKeys });
@@ -128,6 +169,7 @@ router.put("/wa-template-configs", async (req: Request, res: Response) => {
   if (!body.trim()) {
     return res.status(400).json({ message: "Template tidak boleh kosong. Gunakan tombol 'Reset ke Default' untuk menghapus kustomisasi." });
   }
+  const companyId = resolveCompanyId(req);
   const VALID_RECIPIENTS = ["admin_personal", "admin_group", "customer", "vendor"];
   const VALID_WORKFLOWS = [
     // ── Existing logistics & product order workflows ──────────────────────
@@ -144,6 +186,7 @@ router.put("/wa-template-configs", async (req: Request, res: Response) => {
     "product_order_status_update",
     "product_vendor_response", "vendor_awarded", "vendor_selected_admin",
     "quotation_send",
+    "invoice_issued",
     // ── PROCUREMENT ───────────────────────────────────────────────────────
     "procurement_purchase_request",
     "procurement_vendor_comparison",
@@ -180,12 +223,21 @@ router.put("/wa-template-configs", async (req: Request, res: Response) => {
   if (!VALID_RECIPIENTS.includes(recipient)) return res.status(400).json({ message: "recipient tidak valid" });
   if (!VALID_WORKFLOWS.includes(workflow)) return res.status(400).json({ message: "workflow tidak valid" });
 
-  await db.insert(waTemplateConfigsTable)
-    .values({ recipient, workflow, body, updatedAt: new Date() })
-    .onConflictDoUpdate({
-      target: [waTemplateConfigsTable.recipient, waTemplateConfigsTable.workflow],
-      set: { body, updatedAt: new Date() },
-    });
+  const [existing] = await db.select({ id: waTemplateConfigsTable.id })
+    .from(waTemplateConfigsTable)
+    .where(and(
+      eq(waTemplateConfigsTable.companyId, companyId),
+      eq(waTemplateConfigsTable.recipient, recipient),
+      eq(waTemplateConfigsTable.workflow, workflow),
+    ));
+  if (existing) {
+    await db.update(waTemplateConfigsTable)
+      .set({ body, updatedAt: new Date() })
+      .where(eq(waTemplateConfigsTable.id, existing.id));
+  } else {
+    await db.insert(waTemplateConfigsTable)
+      .values({ companyId, recipient, workflow, body, updatedAt: new Date() });
+  }
 
   try {
     const { invalidateWaTemplateCache } = await import("../lib/orderNotification.js");
@@ -199,11 +251,14 @@ router.put("/wa-template-configs", async (req: Request, res: Response) => {
 router.delete("/wa-template-configs/:recipient/:workflow", async (req: Request, res: Response) => {
   if (!(await requireAdmin(req, res))) return;
   const { recipient, workflow } = req.params as { recipient: string; workflow: string };
+  const companyId = resolveCompanyId(req);
   try {
     await db.delete(waTemplateConfigsTable).where(
       and(
+        eq(waTemplateConfigsTable.companyId, companyId),
         eq(waTemplateConfigsTable.recipient, recipient),
         eq(waTemplateConfigsTable.workflow, workflow),
+        companyId != null ? eq(waTemplateConfigsTable.companyId, companyId) : isNull(waTemplateConfigsTable.companyId),
       )
     );
   } catch { /* ignore */ }

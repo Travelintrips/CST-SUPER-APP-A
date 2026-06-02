@@ -1,0 +1,71 @@
+LAPORAN AUDIT FINAL SPORT CENTER — READ-ONLY
+1. RINGKASAN STATUS AKTUAL
+Area	Status	Bukti File/Table/Route	Kesimpulan
+Sport Center API	✅ Ada & Terdaftar	artifacts/api-server/src/modules/sport-center/routes.ts, didaftarkan di routes/index.ts sebagai router.use("/sport-center", sportCenterRouter)	Route /api/sport-center/* aktif dan berfungsi
+Sport Center UI BizPortal	✅ Ada & Terdaftar	artifacts/bizportal/src/pages/sport-center/ (9 halaman), terdaftar di routes.tsx baris 362–371	Dapat diakses via /bizportal/sport-center/*
+Auth Sport Center	✅ Ada, menggunakan requireAdmin	Semua route memakai requireAdmin dari ../../lib/requireAdmin.js	Hanya admin BizPortal yang bisa akses. Tidak ada auth publik Sport Center
+Database Sport Center	✅ Ada, 10 tabel	Didefinisikan di migration.ts via runSportCenterMigration()	Tabel dibuat otomatis saat server boot
+Gateway /sport-center/*	⚠️ Salah Konfigurasi	gateway.mjs baris 47: { prefix: "/sport-center", upstream: { host: "localhost", port: 3002 } }	/sport-center/* diarahkan ke port 3002 yang TIDAK ADA service-nya — semua request akan 503
+Referensi port 3002	⚠️ Port tidak aktif	gateway.mjs baris 11, 47, 58, 260	Tidak ada workflow/service yang berjalan di port 3002
+Accounting multi-company	✅ Ada di schema	lib/db/src/schema/companies.ts — tabel companies, chart_of_accounts.company_id, accounting_entries.company_id	Struktur multi-company sudah ada di schema accounting
+Sport Center → Accounting	❌ Belum terhubung	postSportCenterBooking() ada di accounting.ts:892 tetapi tidak pernah dipanggil dari routes.ts	Payment hanya masuk ke sport_payments, jurnal tidak terbentuk
+Sport Center → Purchase	❌ Tidak ada	Tidak ditemukan referensi purchase di modul sport center	Tidak ada integrasi sama sekali
+Promo/diskon/pajak/refund	⚠️ Parsial	Tabel sport_promos ada, field promo_id/promo_code di bookings ada, tapi: tidak ada route CRUD promo, tidak ada route cancel/refund, tidak ada field pajak/PPN	Promo hanya disimpan di booking, tidak divalidasi. Tidak ada cancel/refund/pajak endpoint
+2. SPORT CENTER EXISTING
+File Schema/Table Sport Center
+File: artifacts/api-server/src/modules/sport-center/migration.ts
+
+Daftar tabel yang benar-benar ditemukan (10 tabel):
+
+Tabel	Fungsi
+sport_facilities	Fasilitas/lapangan (company_id, name, type, price_per_hour)
+sport_customers	Data pelanggan Sport Center
+sport_members	Keanggotaan (gym, dll.)
+sport_pricing_rules	Aturan harga per fasilitas/waktu
+sport_promos	Kode promo dan diskon
+sport_bookings	Booking fasilitas (company_id, promo_id, discount_amount, total_amount)
+sport_payments	Pembayaran booking
+sport_blocked_schedules	Jadwal diblokir/tidak tersedia
+sport_notifications	Notifikasi internal
+sport_audit_logs	Log audit aktivitas
+sport_settings	Pengaturan Sport Center per company
+File Route API Sport Center
+File: artifacts/api-server/src/modules/sport-center/routes.ts (579 baris)
+Didaftarkan: artifacts/api-server/src/routes/index.ts → router.use("/sport-center", sportCenterRouter)
+
+Endpoint Utama yang Ada
+Endpoint	Method	Auth	Keterangan
+/api/sport-center/dashboard	GET	requireAdmin	Statistik total booking, revenue, member
+/api/sport-center/facilities	GET/POST	requireAdmin	List & buat fasilitas
+/api/sport-center/facilities/:id	GET/PATCH/DELETE	requireAdmin	Detail & kelola fasilitas
+/api/sport-center/bookings	GET/POST	requireAdmin	List & buat booking
+/api/sport-center/bookings/:id	PATCH	requireAdmin	Update status/payment_status booking
+/api/sport-center/bookings/:id/checkin	POST	requireAdmin	Check-in booking
+/api/sport-center/customers	GET/POST	requireAdmin	List & buat customer
+/api/sport-center/customers/:id	PATCH/DELETE	requireAdmin	Kelola customer
+/api/sport-center/members	GET/POST	requireAdmin	List & buat member
+/api/sport-center/members/:id	PATCH/DELETE	requireAdmin	Kelola member
+/api/sport-center/pricing-rules	GET/POST	requireAdmin	List & buat pricing rule
+/api/sport-center/pricing-rules/:id	PATCH/DELETE	requireAdmin	Kelola pricing rule
+/api/sport-center/payments	GET/POST	requireAdmin	List & catat pembayaran
+/api/sport-center/reports	GET	requireAdmin	Laporan revenue per hari/fasilitas
+/api/sport-center/settings	GET/POST	requireAdmin	Pengaturan Sport Center
+/api/sport-center/events	GET	— (no auth)	SSE real-time broadcast
+Endpoint yang TIDAK ADA (missing):
+
+❌ CRUD promo (/promos)
+❌ Cancel booking dengan jurnal reversal
+❌ Refund
+❌ Membership payment
+❌ Pajak/PPN
+Middleware Auth yang Dipakai
+requireAdmin — dari artifacts/api-server/src/lib/requireAdmin.js, melindungi semua route kecuali /events (SSE).
+
+File Halaman UI BizPortal Sport Center
+File	Path Halaman
+artifacts/bizportal/src/pages/sport-center/dashboard.tsx	/sport-center/dashboard
+artifacts/bizportal/src/pages/sport-center/bookings.tsx	/sport-center/bookings
+artifacts/bizportal/src/pages/sport-center/facilities.tsx	/sport-center/facilities
+artifacts/bizportal/src/pages/sport-center/customers.tsx	/sport-center/customers
+artifacts/bizportal/src/pages/sport-center/members.tsx	/sport-center/members
+artifacts/bizportal/src...

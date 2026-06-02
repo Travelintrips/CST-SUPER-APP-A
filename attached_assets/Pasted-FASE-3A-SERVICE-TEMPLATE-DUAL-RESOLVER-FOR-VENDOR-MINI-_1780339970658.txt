@@ -1,0 +1,114 @@
+FASE 3A — SERVICE TEMPLATE DUAL RESOLVER FOR VENDOR MINI FORM
+
+Tujuan:
+Menghubungkan Service Templates ke Vendor Mini Form sebagai runtime alternatif, tetapi SERVICE_SCHEMAS tetap menjadi fallback utama jika feature flag dimatikan.
+
+Kondisi:
+- Fase 2A selesai: lib/service-templates tersedia.
+- Fase 2B selesai: service_templates DB tersedia.
+- Fase 2C selesai: API read tersedia.
+- Fase 2D selesai: Admin CRUD API tersedia.
+- Fase 2E selesai: BizPortal UI tersedia.
+- SERVICE_SCHEMAS masih runtime utama.
+
+Tugas:
+
+1. Tambahkan feature flag:
+
+USE_SERVICE_TEMPLATE_ENGINE=false default
+
+2. Di vendorMiniForm.ts, buat helper baru:
+
+resolveServiceTemplateForVMF(serviceType)
+
+Priority jika USE_SERVICE_TEMPLATE_ENGINE=true:
+- DB service_templates by serviceType
+- in-code service template
+- fallback SERVICE_SCHEMAS
+
+Jika USE_SERVICE_TEMPLATE_ENGINE=false:
+- SERVICE_SCHEMAS lama
+
+3. Jangan hapus SERVICE_SCHEMAS.
+
+4. Normalisasi output agar bentuknya tetap cocok dengan VMF:
+
+{
+  label,
+  emoji,
+  fields,
+  requiredDocuments,
+  checklist,
+  version,
+  source
+}
+
+5. Saat membuat VMF link untuk serviceType:
+jika service template engine aktif, simpan:
+
+- serviceTemplateId
+- serviceTemplateVersion
+- serviceTemplateSnapshot
+
+Jika kolom belum ada, gunakan kolom existing:
+- templateId
+- templateVersion
+- templateSnapshot
+
+dengan metadata snapshot:
+{
+  templateKind: "service",
+  serviceType,
+  label,
+  version,
+  fields,
+  requiredDocuments,
+  checklist,
+  source
+}
+
+6. Saat render VMF:
+- quotation section tampil dari fields section=quotation/both
+- operational section tampil dari fields section=operational/both
+- upload field hormati isUpload=true
+
+7. Jika service template tidak ditemukan:
+- fallback ke SERVICE_SCHEMAS
+- jangan blank page
+- jangan error
+
+8. Jangan ubah:
+- Product Templates
+- Customer Approval
+- Purchase/Sales
+- WA Notification
+
+9. Test dengan flag OFF:
+- trucking tetap pakai SERVICE_SCHEMAS
+- sea_freight tetap normal
+
+10. Test dengan flag ON:
+- trucking pakai service_templates
+- sea_freight pakai service_templates
+- unknown serviceType fallback aman
+
+11. Output:
+
+SERVICE TEMPLATE DUAL RESOLVER REPORT
+
+Isi:
+- file diubah
+- feature flag
+- behavior flag OFF
+- behavior flag ON
+- serviceType tested
+- fallback result
+- issue ditemukan
+- rollback plan
+
+Acceptance Criteria:
+- Dengan flag OFF, tidak ada perubahan behavior.
+- Dengan flag ON, VMF bisa membaca service_templates.
+- SERVICE_SCHEMAS tetap fallback.
+- Tidak ada form kosong.
+- Tidak ada breaking change.

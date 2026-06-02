@@ -1,0 +1,152 @@
+FASE 4A-HOTFIX — SERVICE CONTEXT COMPLETION
+
+Tujuan:
+Menutup seluruh gap Service Template WA Context sebelum production.
+
+Temuan Audit:
+
+ISSUE #1
+vendor_assignment tidak menerima templateSnapshot sehingga {{serviceLabel}} tidak pernah terisi.
+
+ISSUE #2
+vendor_rfq_forward tidak menerima templateSnapshot dan masih mengandalkan serviceNeeded manual.
+
+Tugas:
+
+1. FIX vendor_assignment
+
+Audit:
+
+sendVendorAssignmentNotification()
+
+Pastikan function menerima:
+
+* templateSnapshot optional
+
+Tambahkan:
+
+const serviceCtx =
+buildServiceContext(templateSnapshot);
+
+Spread:
+
+...commodityCtx,
+...serviceCtx
+
+ke renderTemplate().
+
+Pastikan:
+
+{{serviceLabel}}
+{{specSummary}}
+{{serviceChecklistSummary}}
+
+dapat dipakai.
+
+2. FIX vendor_rfq_forward
+
+Audit:
+
+sendVendorRfqForwardNotification()
+
+Tambahkan:
+
+* templateSnapshot optional
+
+Bangun:
+
+serviceCtx =
+buildServiceContext(templateSnapshot)
+
+Priority:
+
+serviceLabel dari snapshot
+→ fallback serviceNeeded lama
+
+Sehingga:
+
+{{serviceLabel}}
+
+tidak bergantung lagi pada string manual caller.
+
+3. Update semua caller
+
+Cari seluruh caller:
+
+* sendVendorAssignmentNotification
+* sendVendorRfqForwardNotification
+
+Pastikan meneruskan:
+
+templateSnapshot
+
+jika tersedia.
+
+4. Backward Compatibility
+
+Jika:
+
+templateSnapshot = null
+
+Maka:
+
+* behavior lama tetap jalan
+* serviceNeeded lama tetap dipakai
+* tidak ada breaking change
+
+5. Verify
+
+Test:
+
+A. vendor_assignment
+
+* trucking
+* sea_freight
+
+Pastikan WA berisi:
+
+Jenis Layanan:
+{serviceLabel}
+
+B. vendor_rfq_forward
+
+* trucking
+* air_freight
+
+Pastikan WA berisi:
+
+Jenis Layanan:
+{serviceLabel}
+
+tanpa perlu caller mengisi serviceNeeded manual.
+
+6. Leakage Check
+
+Pastikan tidak ada:
+
+* vendorCost
+* margin
+* priceBase
+
+masuk ke WA customer/vendor.
+
+7. Output:
+
+SERVICE CONTEXT HOTFIX REPORT
+
+Isi:
+
+* file berubah
+* caller berubah
+* test result
+* backward compatibility result
+* issue tersisa
+
+Acceptance Criteria:
+
+✔ vendor_assignment menampilkan serviceLabel.
+✔ vendor_rfq_forward menampilkan serviceLabel.
+✔ templateSnapshot menjadi source utama.
+✔ serviceNeeded lama tetap fallback.
+✔ tidak ada breaking change.
+✔ tidak ada informasi internal bocor.

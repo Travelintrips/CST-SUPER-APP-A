@@ -120,6 +120,14 @@ export async function runVendorMiniFormMigration(): Promise<void> {
     await db.execute(sql`ALTER TABLE customer_approvals ADD COLUMN IF NOT EXISTS admin_notes TEXT;`);
     await db.execute(sql`ALTER TABLE customer_approvals ADD COLUMN IF NOT EXISTS locked BOOLEAN DEFAULT FALSE;`);
 
+    // ── Product Template Engine columns for customer_approvals (Step 3) ────────
+    await db.execute(sql`ALTER TABLE customer_approvals ADD COLUMN IF NOT EXISTS category_key TEXT;`);
+    await db.execute(sql`ALTER TABLE customer_approvals ADD COLUMN IF NOT EXISTS template_id TEXT;`);
+    await db.execute(sql`ALTER TABLE customer_approvals ADD COLUMN IF NOT EXISTS template_version TEXT;`);
+    await db.execute(sql`ALTER TABLE customer_approvals ADD COLUMN IF NOT EXISTS template_snapshot JSONB;`);
+    await db.execute(sql`ALTER TABLE customer_approvals ADD COLUMN IF NOT EXISTS required_documents_from_template JSONB;`);
+    await db.execute(sql`ALTER TABLE customer_approvals ADD COLUMN IF NOT EXISTS checklist_from_template JSONB;`);
+
     // ── vendor_operational_confirmations ───────────────────────────────────────
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS vendor_operational_confirmations (
@@ -184,6 +192,12 @@ export async function runVendorMiniFormMigration(): Promise<void> {
       ON vendor_mini_form_submissions(token)
     `);
 
+    // ── Product Template Engine columns (Step 1F) ─────────────────────────────
+    await db.execute(sql`ALTER TABLE vendor_mini_form_links ADD COLUMN IF NOT EXISTS category_key TEXT;`);
+    await db.execute(sql`ALTER TABLE vendor_mini_form_links ADD COLUMN IF NOT EXISTS template_id TEXT;`);
+    await db.execute(sql`ALTER TABLE vendor_mini_form_links ADD COLUMN IF NOT EXISTS template_version TEXT;`);
+    await db.execute(sql`ALTER TABLE vendor_mini_form_links ADD COLUMN IF NOT EXISTS template_snapshot JSONB;`);
+
     // ── customer_invoice_links ─────────────────────────────────────────────────
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS customer_invoice_links (
@@ -217,6 +231,12 @@ export async function runVendorMiniFormMigration(): Promise<void> {
     await db.execute(sql`CREATE INDEX IF NOT EXISTS cil_token_idx ON customer_invoice_links(token);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS cil_order_id_idx ON customer_invoice_links(order_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS cil_sales_doc_id_idx ON customer_invoice_links(sales_doc_id);`);
+
+    // ── Template snapshot columns for customer_invoice_links (HOTFIX #3) ────────
+    await db.execute(sql`ALTER TABLE customer_invoice_links ADD COLUMN IF NOT EXISTS category_key TEXT;`);
+    await db.execute(sql`ALTER TABLE customer_invoice_links ADD COLUMN IF NOT EXISTS template_id TEXT;`);
+    await db.execute(sql`ALTER TABLE customer_invoice_links ADD COLUMN IF NOT EXISTS template_version TEXT;`);
+    await db.execute(sql`ALTER TABLE customer_invoice_links ADD COLUMN IF NOT EXISTS template_snapshot JSONB;`);
 
     logger.info("Vendor mini form migration: ok");
   } catch (err) {

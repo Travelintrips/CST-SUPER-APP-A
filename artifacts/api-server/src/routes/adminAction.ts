@@ -23,10 +23,11 @@ import { logger } from "../lib/logger.js";
 import { TAX_RATE_DECIMAL as PPN_RATE, TAX_RATE_DECIMAL } from "../lib/taxHelper.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminWa, getAdminGroupWa } from "../lib/adminWa.js";
-import { sendVendorRequestNotification, sendVendorSelectedAdminWa, sendVendorAwardedWa, sendVendorAssignmentNotification, type LogisticOrderData } from "../lib/orderNotification.js";
+import { sendVendorRequestNotification, sendVendorSelectedAdminWa, sendVendorAwardedWa, sendVendorAssignmentNotification, resolveTemplateSnapshot, type LogisticOrderData } from "../lib/orderNotification.js";
 import { generateShortLink } from "../lib/shortLink.js";
 import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
 import { transitionRfqStatus, transitionVendorLinkStatus } from "../lib/services/rfqStatusService.js";
+import { updateOrderProgress } from "../lib/orderProgress.js";
 
 export const adminActionRouter: Router = Router();
 export const adminActionPublicRouter = Router();
@@ -579,10 +580,12 @@ adminActionPublicRouter.get("/:token", async (req: Request, res: Response) => {
 
     // confirm_fulfillment: show vendor's submitted data for admin to confirm
     if (link && link.actionType === "confirm_fulfillment") {
-      const [vfLink] = await db.select().from(vendorFulfillmentLinksTable)
+      const [_vfLinkRow] = await db.select().from(vendorFulfillmentLinksTable)
         .where(eq(vendorFulfillmentLinksTable.orderId, order.id))
         .orderBy(desc(vendorFulfillmentLinksTable.createdAt))
         .limit(1);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const vfLink = _vfLinkRow as any;
 
       // Build item breakdown for product orders
       let orderItemsBreakdown: {
@@ -1206,6 +1209,7 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
         return [{ name: row.serviceName ?? "Produk", qty, unit, basicPrice: price, taxRate: TAX_RATE_DECIMAL }];
       });
 
+      const _resolvedSnapshot = await resolveTemplateSnapshot(order.id, order.templateSnapshot as Record<string, unknown> | null);
       if (vendor?.phone) {
         sendVendorAssignmentNotification(
           order.orderNumber,
@@ -1216,6 +1220,10 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
           vendor.phone,
           undefined,
           _fwdItems,
+          undefined,
+          undefined,
+          undefined,
+          _resolvedSnapshot,
         ).catch(() => {});
       }
 
@@ -1242,6 +1250,8 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
       }
 
       await transitionLogisticOrderStatus(order.id, "In Progress", { source: "adminAction:confirm_fulfillment", actorType: "admin", force: true });
+      updateOrderProgress(order.id, "IN_PROGRESS", "admin", "Admin", "Admin mengkonfirmasi fulfillment vendor. Order sedang diproses.").catch(() => {});
+      await transitionLogisticOrderStatus(order.id, "In Progress", { source: "adminAction:confirm_fulfillment", actorType: "admin" });
 
       await db.insert(orderUpdatesTable).values({
         orderId: order.id,
@@ -1258,10 +1268,12 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
       }
 
       // Ambil data vendor fulfillment untuk dimasukkan ke WA admin
-      const [vfLink] = await db.select().from(vendorFulfillmentLinksTable)
+      const [_vfLinkRow2] = await db.select().from(vendorFulfillmentLinksTable)
         .where(eq(vendorFulfillmentLinksTable.orderId, order.id))
         .orderBy(desc(vendorFulfillmentLinksTable.createdAt))
         .limit(1);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const vfLink = _vfLinkRow2 as any;
 
       let vendorNameForMsg: string | null = null;
       if (vfLink?.vendorId) {
@@ -1290,7 +1302,7 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
           .where(eq(shortLinksTable.targetUrl, vfLongUrl))
           .limit(1);
         detailOrderUrl = sl?.code
-          ? `https://${domain}/s/${sl.code}`
+          ? `https://${domain}/q/${sl.code}`
           : vfLongUrl;
       } else {
         detailOrderUrl = `https://${domain}/logistic-admin/orders/${order.id}`;
@@ -1389,6 +1401,38 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
           `\n\nPantau status order Anda:\n${trackingUrl}`;
         sendWhatsApp(customerPhone, waMsg).catch((e) =>
           logger.warn({ e }, "confirm_fulfillment WA to customer failed")
+        );
+      }
+
+      // WA ke driver (jika driverPhone tersedia di vendor fulfillment link)
+      if (vfLink?.driverPhone) {
+        const driverToken = randomBytes(18).toString("hex");
+        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+        await db.execute(sql`
+          CREATE TABLE IF NOT EXISTS driver_progress_tokens (
+            id           SERIAL PRIMARY KEY,
+            token        TEXT NOT NULL UNIQUE,
+            order_id     INTEGER NOT NULL,
+            driver_name  TEXT,
+            driver_phone TEXT,
+            created_at   TIMESTAMPTZ DEFAULT NOW(),
+            expires_at   TIMESTAMPTZ NOT NULL
+          )
+        `);
+        await db.execute(sql`
+          INSERT INTO driver_progress_tokens (token, order_id, driver_name, driver_phone, expires_at)
+          VALUES (${driverToken}, ${order.id}, ${vfLink.driverName ?? null}, ${vfLink.driverPhone}, ${expiresAt})
+          ON CONFLICT (token) DO NOTHING
+        `);
+        const driverLink = `https://${process.env.REPLIT_DEV_DOMAIN || domain}/driver-progress/${driverToken}`;
+        const driverWaMsg =
+          `🚚 *Tugas Pengiriman — CST Logistics*\n\n` +
+          `Halo${vfLink.driverName ? ` ${vfLink.driverName}` : ""},\n\n` +
+          `Order *${order.orderNumber}* siap untuk proses pengiriman.\n` +
+          ((order.origin && order.destination) ? `Rute: ${order.origin} → ${order.destination}\n` : "") +
+          `\nUpdate status pengiriman via link berikut:\n${driverLink}`;
+        sendWhatsApp(vfLink.driverPhone, driverWaMsg).catch((e) =>
+          logger.warn({ e }, "confirm_fulfillment WA to driver failed")
         );
       }
 

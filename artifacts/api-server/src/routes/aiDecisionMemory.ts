@@ -266,7 +266,7 @@ aiDecisionMemoryRouter.patch("/:id/outcome", async (req: Request, res: Response)
   if (!(await requireAdmin(req, res))) return;
   await ensureTable();
 
-  const id = parseInt(req.params["id"]);
+  const id = parseInt(String(req.params["id"]));
   const { outcome, onTimeDelivery, delayDays, actualVendorPrice, outcomeNotes } = req.body as {
     outcome: "success" | "failure" | "partial" | "cancelled";
     onTimeDelivery?: boolean;
@@ -306,7 +306,7 @@ aiDecisionMemoryRouter.get("/:id", async (req: Request, res: Response) => {
   if (!(await requireAdmin(req, res))) return;
   await ensureTable();
 
-  const id = parseInt(req.params["id"]);
+  const id = parseInt(String(req.params["id"]));
 
   try {
     const result = await db.execute(sql`

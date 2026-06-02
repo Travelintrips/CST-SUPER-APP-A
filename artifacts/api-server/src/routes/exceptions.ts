@@ -103,7 +103,7 @@ router.post("/", async (req, res) => {
     customerName: customerName ?? null,
     supplierName: supplierName ?? null,
     assignedTo: assignedTo ?? null,
-    createdBy: user?.name ?? user?.email ?? null,
+    createdBy: (user as any)?.name ?? user?.email ?? null,
   }).returning();
 
   auditFromReq(req, {
@@ -146,7 +146,7 @@ router.put("/:id", async (req, res) => {
 
   if (status === "resolved" || status === "closed") {
     patch["resolvedAt"] = new Date();
-    patch["resolvedBy"] = user?.name ?? user?.email ?? null;
+    patch["resolvedBy"] = (user as any)?.name ?? user?.email ?? null;
   }
 
   const [updated] = await db

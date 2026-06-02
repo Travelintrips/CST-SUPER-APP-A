@@ -542,7 +542,7 @@ function DetailDialog({ exc, onClose, onUpdated }: DetailDialogProps) {
 
 export default function ExceptionsPage() {
   const { toast } = useToast();
-  const { selectedCompanyId } = useCompany();
+  const { activeCompanyId: selectedCompanyId } = useCompany();
   const qc = useQueryClient();
 
   const [filterStatus, setFilterStatus] = useState<string>("all");

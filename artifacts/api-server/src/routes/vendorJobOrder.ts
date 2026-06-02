@@ -47,6 +47,7 @@ import {
   sendCustomerProgressUpdateNotification,
   sendCustomerPodUploadedNotification,
   sendOrderCompletedNotification,
+  resolveTemplateSnapshot,
   type VendorAssignmentItem,
 } from "../lib/orderNotification.js";
 import { logger } from "../lib/logger.js";
@@ -236,6 +237,9 @@ vendorJobAdminRouter.post("/orders/:orderId/assign-vendor", async (req: Request,
       }
     }
 
+    // Resolve templateSnapshot: A. order → B. RFQ → C. VMF → D. null (fallback ke shipmentType)
+    const resolvedSnapshot = await resolveTemplateSnapshot(orderId, order.templateSnapshot as Record<string, unknown> | null);
+
     // Cek apakah sudah ada job order untuk order ini
     const existing = await db.execute(
       sql`SELECT id, token FROM vendor_job_orders WHERE order_id = ${orderId} LIMIT 1`
@@ -243,7 +247,7 @@ vendorJobAdminRouter.post("/orders/:orderId/assign-vendor", async (req: Request,
     if ((existing.rows ?? []).length > 0) {
       const row = existing.rows[0] as { id: number; token: string };
       const jobUrl = `${baseUrl()}/vendor-job/${row.token}`;
-      const waMsg = await sendVendorAssignmentNotification(order.orderNumber, order.origin, order.destination, order.shipmentType, jobUrl, vendor.phone, adminNote, assignmentItems, quote.estimatedPickup, quote.estimatedDelivery, quote.estimatedDays);
+      const waMsg = await sendVendorAssignmentNotification(order.orderNumber, order.origin, order.destination, order.shipmentType, jobUrl, vendor.phone, adminNote, assignmentItems, quote.estimatedPickup, quote.estimatedDelivery, quote.estimatedDays, resolvedSnapshot);
       return res.json({ ok: true, jobToken: row.token, jobUrl, waMessage: waMsg, vendorPhone: vendor.phone, alreadyExists: true });
     }
 
@@ -262,7 +266,7 @@ vendorJobAdminRouter.post("/orders/:orderId/assign-vendor", async (req: Request,
       approvedVendorId: quote.vendorId,
       approvedQuoteId: quote.id,
     } as any).where(eq(logisticOrdersTable.id, orderId));
-    await transitionLogisticOrderStatus(orderId, "Vendor Confirmed", { source: "vendorJobOrder:assign_vendor", actorType: "admin", force: true });
+    await transitionLogisticOrderStatus(orderId, "Vendor Confirmed", { source: "vendorJobOrder:assign_vendor", actorType: "admin" });
 
     // Set tracking_token (raw SQL karena kolom baru)
     await db.execute(sql`
@@ -302,7 +306,7 @@ vendorJobAdminRouter.post("/orders/:orderId/assign-vendor", async (req: Request,
     });
 
     const jobUrl = `${baseUrl()}/vendor-job/${jobToken}`;
-    const waMsg = await sendVendorAssignmentNotification(order.orderNumber, order.origin, order.destination, order.shipmentType, jobUrl, vendor.phone, adminNote, assignmentItems, quote.estimatedPickup, quote.estimatedDelivery, quote.estimatedDays);
+    const waMsg = await sendVendorAssignmentNotification(order.orderNumber, order.origin, order.destination, order.shipmentType, jobUrl, vendor.phone, adminNote, assignmentItems, quote.estimatedPickup, quote.estimatedDelivery, quote.estimatedDays, resolvedSnapshot);
 
     // Notify admin group
     const adminWa = await getAdminWa();
@@ -481,8 +485,22 @@ vendorJobAdminRouter.post("/orders/:orderId/complete-review", async (req: Reques
       .where(eq(logisticOrdersTable.id, orderId));
     if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
 
+    // ── Guard: hanya boleh complete jika Payment Received ────────────────────
+    const currentStatus = (order.status ?? "").trim();
+    if (currentStatus !== "Payment Received") {
+      return res.status(400).json({
+        message: `Order tidak dapat diselesaikan dari status "${currentStatus}". ` +
+          `Order harus dalam status "Payment Received" terlebih dahulu (Invoice diterbitkan → Pembayaran diterima → Selesai).`,
+        currentStatus,
+        requiredStatus: "Payment Received",
+      });
+    }
+
     // Update status via service
-    await transitionLogisticOrderStatus(orderId, "Completed", { source: "vendorJobOrder:complete_review", actorType: "admin", force: true });
+    const transition = await transitionLogisticOrderStatus(orderId, "Completed", { source: "vendorJobOrder:complete_review", actorType: "admin" });
+    if (!transition.ok) {
+      return res.status(400).json({ message: transition.error ?? "Gagal mengubah status ke Completed" });
+    }
 
     await db.execute(sql`
       UPDATE logistic_orders SET job_status = 'completed' WHERE id = ${orderId}
@@ -660,7 +678,7 @@ vendorJobPublicRouter.post("/:token/accept", async (req: Request, res: Response)
     `);
 
     // Update order status via service
-    await transitionLogisticOrderStatus(job.order_id, "In Progress", { source: "vendorJobOrder:vendor_accept", actorType: "vendor", force: true });
+    await transitionLogisticOrderStatus(job.order_id, "In Progress", { source: "vendorJobOrder:vendor_accept", actorType: "vendor" });
 
     await db.execute(sql`
       UPDATE logistic_orders SET job_status = 'vendor_accepted' WHERE id = ${job.order_id}
@@ -703,6 +721,33 @@ vendorJobPublicRouter.post("/:token/accept", async (req: Request, res: Response)
       }).catch(() => {});
     }
 
+    // WA ke driver
+    const driverPhone = (body.driverPhone ?? "").toString().trim();
+    const driverName = (body.driverName ?? "Driver").toString().trim();
+    logger.info(
+      { driverPhone, driverName, orderNumber: job.order_number, serviceType: job.service_type, shipmentType: job.shipment_type },
+      "[WA-driver] vendor-job accept: cek kirim WA ke driver"
+    );
+    if (driverPhone) {
+      const driverAppUrl = `${getPreferredDomain()}/driver`;
+      const waMsg =
+        `🚛 *Konfirmasi Job Order*\n\n` +
+        `Halo ${driverName},\n\n` +
+        `Anda telah dikonfirmasi untuk menjalankan pengiriman berikut:\n\n` +
+        `📦 *Order*    : ${job.order_number}\n` +
+        `📍 *Rute*     : ${job.origin} → ${job.destination}\n` +
+        (body.vehiclePlate ? `🚗 *Plat*      : ${body.vehiclePlate}\n` : "") +
+        (body.vehicleType ? `🚐 *Kendaraan* : ${body.vehicleType}\n` : "") +
+        (body.pickupTime ? `🕐 *Pickup*    : ${body.pickupTime}\n` : "") +
+        (body.carrier ? `🏢 *Carrier*   : ${body.carrier}\n` : "") +
+        `\n📱 Driver App: ${driverAppUrl}`;
+      sendWhatsApp(driverPhone, waMsg)
+        .then(() => logger.info({ driverPhone, orderNumber: job.order_number }, "[WA-driver] WA ke driver BERHASIL (vendor-job)"))
+        .catch((e) => logger.warn({ e, driverPhone, orderNumber: job.order_number }, "[WA-driver] WA ke driver GAGAL (vendor-job)"));
+    } else {
+      logger.info({ orderNumber: job.order_number }, "[WA-driver] skip — driverPhone kosong (vendor-job)");
+    }
+
     return res.json({ ok: true, message: "Job berhasil diterima. Terima kasih!" });
   } catch (err) {
     logger.error({ err }, "accept-vendor-job error");
@@ -734,7 +779,7 @@ vendorJobPublicRouter.post("/:token/reject", async (req: Request, res: Response)
       WHERE token = ${token}
     `);
 
-    await transitionLogisticOrderStatus(job.order_id, "Admin Review", { source: "vendorJobOrder:vendor_reject", actorType: "vendor", force: true });
+    await transitionLogisticOrderStatus(job.order_id, "Admin Review", { source: "vendorJobOrder:vendor_reject", actorType: "vendor" });
 
     await db.execute(sql`
       INSERT INTO order_tracking_progress (order_id, status, notes, updated_by, is_public)
@@ -889,7 +934,7 @@ vendorJobPublicRouter.post("/:token/pod", upload.array("files", 10), async (req:
 
   try {
     const result = await db.execute(
-      sql`SELECT vjo.*, o.order_number, o.id as order_id_num, o.phone, o.tracking_token, s.name as vendor_name
+      sql`SELECT vjo.*, o.order_number, o.id as order_id_num, o.phone, o.tracking_token, o.status as order_status, o.commodity, s.name as vendor_name
           FROM vendor_job_orders vjo
           LEFT JOIN logistic_orders o ON o.id = vjo.order_id
           LEFT JOIN suppliers s ON s.id = vjo.vendor_id
@@ -899,8 +944,19 @@ vendorJobPublicRouter.post("/:token/pod", upload.array("files", 10), async (req:
 
     const job = result.rows[0] as any;
 
+    // Guard: POD tidak boleh diupload jika order sudah melewati tahap POD
+    // (Invoice Issued, Payment Received, Completed, Cancelled).
+    // Mencegah transisi mundur yang merusak audit trail keuangan.
+    const BLOCK_POD_FROM = ["Invoice Issued", "Payment Received", "Completed", "Cancelled"];
+    if (BLOCK_POD_FROM.includes(job.order_status ?? "")) {
+      return res.status(409).json({
+        error: `POD tidak dapat diunggah karena order sudah dalam status "${job.order_status}". Hubungi admin jika ada kekeliruan.`,
+        currentStatus: job.order_status,
+      });
+    }
+
     // Upload files ke object storage
-    const uploadedUrls: { name: string; url: string; type: string }[] = [];
+    const uploadedUrls: { name: string; url: string; type: string; publicUrl?: string }[] = [];
     let firstPublicImageUrl = "";
     const domain = getPreferredDomain() || "cstlogistic.co.id";
 
@@ -949,7 +1005,7 @@ vendorJobPublicRouter.post("/:token/pod", upload.array("files", 10), async (req:
       WHERE token = ${token}
     `);
 
-    await transitionLogisticOrderStatus(job.order_id, "POD Uploaded", { source: "vendorJobOrder:pod_upload", actorType: "vendor", force: true });
+    await transitionLogisticOrderStatus(job.order_id, "POD Uploaded", { source: "vendorJobOrder:pod_upload", actorType: "vendor" });
 
     await db.execute(sql`
       UPDATE logistic_orders SET job_status = 'pod_uploaded' WHERE id = ${job.order_id}
@@ -973,7 +1029,7 @@ vendorJobPublicRouter.post("/:token/pod", upload.array("files", 10), async (req:
 
     const adminWa = await getAdminWa();
     if (adminWa) {
-      sendVendorPodUploadedNotification(job.order_number, job.vendor_name ?? "—", files.length, adminWa, completionNotes, firstPublicImageUrl || undefined).catch(() => {});
+      sendVendorPodUploadedNotification(job.order_number, job.vendor_name ?? "—", files.length, adminWa, completionNotes, firstPublicImageUrl || undefined, job.commodity ?? null).catch(() => {});
     }
 
     // Notify customer via WA
@@ -1004,11 +1060,19 @@ orderTrackingPublicRouter.get("/:trackToken", async (req: Request, res: Response
   const { trackToken } = req.params as { trackToken: string };
 
   try {
+    // Lookup by logistic_orders.tracking_token ATAU customer_order_links.token
     const orderResult = await db.execute(
       sql`SELECT o.*, s.name as vendor_name
           FROM logistic_orders o
           LEFT JOIN suppliers s ON s.id = o.approved_vendor_id
-          WHERE o.tracking_token = ${trackToken}`
+          WHERE o.tracking_token = ${trackToken}
+          UNION
+          SELECT o.*, s.name as vendor_name
+          FROM logistic_orders o
+          LEFT JOIN suppliers s ON s.id = o.approved_vendor_id
+          INNER JOIN customer_order_links col ON col.order_id = o.id
+          WHERE col.token = ${trackToken}
+          LIMIT 1`
     );
     if (!orderResult.rows.length) {
       return res.status(404).json({ error: "Link tracking tidak ditemukan" });

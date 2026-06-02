@@ -1,0 +1,86 @@
+TAMBAHKAN GPS, DEVICE TIMESTAMP, DAN STREET VIEW UNTUK DRIVER POD.
+
+Scope:
+Driver Progress / POD Upload Trucking.
+
+File yang perlu diaudit:
+- artifacts/api-server/src/routes/driverProgress.ts
+- artifacts/customer-portal/src/pages/driver-update atau halaman driver progress terkait
+- table driver_progress_events atau table yang menyimpan progress driver
+- customer tracking POD detail page jika ada
+
+Tugas:
+
+1. Database
+Tambahkan field ke table driver progress event / POD event:
+- gpsLatitude decimal / numeric nullable
+- gpsLongitude decimal / numeric nullable
+- deviceTimestamp timestamptz nullable
+- mapUrl text nullable
+- streetViewUrl text nullable
+
+2. Frontend Driver
+Saat driver klik update status / upload POD:
+- ambil GPS dari browser navigator.geolocation
+- simpan latitude
+- simpan longitude
+- simpan timestamp device: new Date().toISOString()
+- jika user menolak GPS, tetap boleh submit tapi beri warning:
+  "GPS tidak aktif, lokasi tidak tersimpan."
+
+3. Generate Map Link
+Jika latitude dan longitude tersedia:
+mapUrl:
+https://www.google.com/maps?q={lat},{lng}
+
+streetViewUrl:
+https://www.google.com/maps/@?api=1&map_action=pano&viewpoint={lat},{lng}
+
+4. Backend
+Endpoint POST /api/driver-progress/:token wajib menerima:
+- gpsLatitude
+- gpsLongitude
+- deviceTimestamp
+- mapUrl
+- streetViewUrl
+
+Validasi:
+- latitude harus antara -90 sampai 90
+- longitude harus antara -180 sampai 180
+- deviceTimestamp harus valid ISO date
+- field nullable jika GPS tidak tersedia
+
+5. Customer Portal
+Pada detail Bukti Pengiriman tampilkan:
+- Latitude
+- Longitude
+- Waktu Device
+- Tombol "Lihat di Maps"
+- Tombol "Street View"
+
+6. Admin Portal
+Pada POD verification tampilkan juga data GPS:
+- koordinat
+- waktu device
+- link maps
+- link street view
+
+7. Jangan ubah workflow status.
+8. Jangan ubah service layer.
+9. Jangan ubah RFQ / payment / invoice.
+
+Test:
+- Driver allow GPS → data koordinat tersimpan
+- Driver deny GPS → submit tetap berhasil, GPS kosong
+- POD Uploaded tetap berjalan
+- Customer bisa klik Maps
+- Customer bisa klik Street View
+- Admin bisa lihat koordinat
+- Invalid latitude/longitude ditolak 400
+
+Output:
+A. File yang diubah
+B. Migration DB
+C. Field baru
+D. Test result
+E. Risiko tersisa

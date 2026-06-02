@@ -360,7 +360,7 @@ export default function VendorJobPage() {
 
   if (!data) return null;
 
-  const category = detectCategory(data.serviceType);
+  const category = resolveServiceCategory(data.serviceType);
   const isPending = data.status === "pending";
   const isAccepted = data.status === "accepted" || data.status === "in_progress" || data.status === "pickup_scheduled";
   const isCompleted = data.status === "completed";

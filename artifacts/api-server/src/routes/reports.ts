@@ -82,8 +82,10 @@ router.get("/sales", async (req, res) => {
   const { from, to, error } = parseDateRange(req);
   if (error) { res.status(400).json({ message: error }); return; }
   const groupBy = (req.query["groupBy"] as string) || "month";
+  const effectiveCompanyId = resolveEffectiveCompany(req);
 
   const conds: SQL[] = [eq(salesDocumentsTable.kind, "order")];
+  if (effectiveCompanyId !== null) conds.push(eq(salesDocumentsTable.companyId, effectiveCompanyId));
   if (from) conds.push(gte(salesDocumentsTable.createdAt, from));
   if (to) conds.push(lte(salesDocumentsTable.createdAt, to));
 
@@ -124,7 +126,9 @@ router.get("/purchase", async (req, res) => {
   if (!(await requireAdmin(req, res))) return;
   const { from, to, error } = parseDateRange(req);
   if (error) { res.status(400).json({ message: error }); return; }
+  const effectiveCompanyId = resolveEffectiveCompany(req);
   const conds: SQL[] = [eq(purchaseDocumentsTable.kind, "order")];
+  if (effectiveCompanyId !== null) conds.push(eq(purchaseDocumentsTable.companyId, effectiveCompanyId));
   if (from) conds.push(gte(purchaseDocumentsTable.createdAt, from));
   if (to) conds.push(lte(purchaseDocumentsTable.createdAt, to));
   const docs = await db.select().from(purchaseDocumentsTable).where(and(...conds));
@@ -163,7 +167,10 @@ function bucketDays(d: number): "0-30" | "31-60" | "61-90" | "90+" {
 
 router.get("/ar-aging", async (req, res) => {
   if (!(await requireAdmin(req, res))) return;
-  const docs = await db.select().from(salesDocumentsTable).where(and(eq(salesDocumentsTable.kind, "order"), eq(salesDocumentsTable.invoiceStatus, "to_invoice")));
+  const effectiveCompanyId = resolveEffectiveCompany(req);
+  const arConds: SQL[] = [eq(salesDocumentsTable.kind, "order"), eq(salesDocumentsTable.invoiceStatus, "to_invoice")];
+  if (effectiveCompanyId !== null) arConds.push(eq(salesDocumentsTable.companyId, effectiveCompanyId));
+  const docs = await db.select().from(salesDocumentsTable).where(and(...arConds));
   const now = Date.now();
   const buckets = { "0-30": 0, "31-60": 0, "61-90": 0, "90+": 0 } as Record<string, number>;
   const items = docs.map((d) => {
@@ -179,7 +186,10 @@ router.get("/ar-aging", async (req, res) => {
 
 router.get("/ap-aging", async (req, res) => {
   if (!(await requireAdmin(req, res))) return;
-  const docs = await db.select().from(purchaseDocumentsTable).where(and(eq(purchaseDocumentsTable.kind, "order"), eq(purchaseDocumentsTable.billStatus, "to_bill")));
+  const effectiveCompanyId = resolveEffectiveCompany(req);
+  const apConds: SQL[] = [eq(purchaseDocumentsTable.kind, "order"), eq(purchaseDocumentsTable.billStatus, "to_bill")];
+  if (effectiveCompanyId !== null) apConds.push(eq(purchaseDocumentsTable.companyId, effectiveCompanyId));
+  const docs = await db.select().from(purchaseDocumentsTable).where(and(...apConds));
   const now = Date.now();
   const buckets = { "0-30": 0, "31-60": 0, "61-90": 0, "90+": 0 } as Record<string, number>;
   const items = docs.map((d) => {

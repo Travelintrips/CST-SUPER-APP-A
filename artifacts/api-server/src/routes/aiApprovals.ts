@@ -83,8 +83,8 @@ aiApprovalsRouter.get("/", async (req: Request, res: Response) => {
     const countQuery = `SELECT COUNT(*)::int AS total FROM ai_approval_queue q ${where}`;
 
     const [dataResult, countResult] = await Promise.all([
-      db.execute(sql.raw(dataQuery, params)),
-      db.execute(sql.raw(countQuery, countParams)),
+      db.execute((sql as any).raw(dataQuery, params)),
+      db.execute((sql as any).raw(countQuery, countParams)),
     ]);
 
     res.json({
@@ -92,10 +92,10 @@ aiApprovalsRouter.get("/", async (req: Request, res: Response) => {
       total: (countResult.rows[0] as { total: number })?.total ?? 0,
       limit,
       offset,
-    });
+    }); return;
   } catch (err) {
     console.error("[aiApprovals] list error", err);
-    res.status(500).json({ error: "Gagal mengambil AI approval queue" });
+    res.status(500).json({ error: "Gagal mengambil AI approval queue" }); return;
   }
 });
 
@@ -121,10 +121,10 @@ aiApprovalsRouter.get("/stats", async (req: Request, res: Response) => {
       expired:         Number(row.expired ?? 0),
       pendingCritical: Number(row.pending_critical ?? 0),
       pendingHigh:     Number(row.pending_high ?? 0),
-    });
+    }); return;
   } catch (err) {
     console.error("[aiApprovals] stats error", err);
-    res.status(500).json({ error: "Gagal mengambil statistik" });
+    res.status(500).json({ error: "Gagal mengambil statistik" }); return;
   }
 });
 
@@ -134,7 +134,7 @@ aiApprovalsRouter.post("/:id/resolve", async (req: Request, res: Response) => {
   if (!(await requireAdmin(req, res))) return;
   try {
     const id = parseInt(String(req.params.id), 10);
-    if (!id || isNaN(id)) return res.status(400).json({ error: "ID tidak valid" });
+    if (!id || isNaN(id)) { res.status(400).json({ error: "ID tidak valid" }); return; }
 
     const { decision, reason } = req.body as { decision?: string; reason?: string };
     if (decision !== "approved" && decision !== "rejected") {
@@ -173,10 +173,10 @@ aiApprovalsRouter.post("/:id/resolve", async (req: Request, res: Response) => {
         AND execution_id IS NOT NULL
     `);
 
-    res.json({ success: true, decision, decidedBy: actor });
+    res.json({ success: true, decision, decidedBy: actor }); return;
   } catch (err) {
     console.error("[aiApprovals] resolve error", err);
-    res.status(500).json({ error: "Gagal memproses keputusan" });
+    res.status(500).json({ error: "Gagal memproses keputusan" }); return;
   }
 });
 
@@ -185,7 +185,7 @@ aiApprovalsRouter.post("/:id/undo", async (req: Request, res: Response) => {
   if (!(await requireAdmin(req, res))) return;
   try {
     const id = parseInt(String(req.params.id), 10);
-    if (!id || isNaN(id)) return res.status(400).json({ error: "ID tidak valid" });
+    if (!id || isNaN(id)) { res.status(400).json({ error: "ID tidak valid" }); return; }
 
     const actor = (req as any).user?.name ?? (req as any).user?.email ?? "admin";
 
@@ -223,9 +223,9 @@ aiApprovalsRouter.post("/:id/undo", async (req: Request, res: Response) => {
         AND execution_id IS NOT NULL
     `);
 
-    res.json({ success: true, undoneBy: actor });
+    res.json({ success: true, undoneBy: actor }); return;
   } catch (err) {
     console.error("[aiApprovals] undo error", err);
-    res.status(500).json({ error: "Gagal undo approval" });
+    res.status(500).json({ error: "Gagal undo approval" }); return;
   }
 });

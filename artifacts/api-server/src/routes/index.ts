@@ -65,6 +65,7 @@ import { podOcrRouter } from "./podOcr";
 import { marginRulesRouter } from "./marginRules";
 import { adminActionPublicRouter, adminActionAdminRouter } from "./adminAction";
 import { vendorFulfillmentPublicRouter } from "./vendorFulfillment";
+import { driverProgressPublicRouter } from "./driverProgress.js";
 import { fulfillmentAdminRouter, fulfillmentPublicRouter } from "./orderFulfillment.js";
 import { vendorJobAdminRouter, vendorJobPublicRouter, orderTrackingPublicRouter } from "./vendorJobOrder.js";
 import { resolveShortLink } from "../lib/shortLink.js";
@@ -81,11 +82,17 @@ import { customerFeedbackPublicRouter, customerFeedbackAdminRouter } from "./cus
 import { purchaseMiniPublicRouter, purchaseMiniAdminRouter } from "./purchaseMiniFormRoute.js";
 
 import { orderAuditTrailRouter } from "./orderAuditTrail.js";
+import { serviceTemplatesRouter } from "./serviceTemplates.js";
 
 import { exceptionsRouter } from "./exceptions.js";
+import { orderExceptionsRouter } from "./orderExceptions.js";
+import analyticsProfitRouter from "./analyticsProfit.js";
 import { systemRouter } from "./system.js";
+import rbacRouter from "./rbac.js";
+import importAdvisorRouter from "./importAdvisor.js";
 import { handleAlertSse } from "../lib/alertsBroadcast.js";
 import { requireAdmin } from "../lib/requireAdmin.js";
+import sportCenterRouter from "../modules/sport-center/routes.js";
 
 import type { Request, Response } from "express";
 
@@ -179,6 +186,7 @@ router.use("/margin-rules", marginRulesRouter);
 router.use("/admin-action", adminActionAdminRouter);
 router.use("/admin-action", adminActionPublicRouter);
 router.use("/vendor-fulfillment", vendorFulfillmentPublicRouter);
+router.use("/driver-progress", driverProgressPublicRouter);
 router.use("/commodity-templates", commodityTemplatesRouter);
 router.use("/logistic", fulfillmentAdminRouter);
 router.use("/fulfillment", fulfillmentPublicRouter);
@@ -198,10 +206,17 @@ router.use("/customer-feedback", customerFeedbackPublicRouter);
 router.use("/purchase-mini", purchaseMiniAdminRouter);
 router.use("/purchase-mini", purchaseMiniPublicRouter);
 
+router.use("/service-templates", serviceTemplatesRouter);
+
 router.use("/logistic", orderAuditTrailRouter);
+router.use("/logistic", orderExceptionsRouter);
 
 router.use("/exceptions", exceptionsRouter);
+router.use("/analytics/profitability", analyticsProfitRouter);
 router.use("/system", systemRouter);
+router.use("/rbac", rbacRouter);
+router.use("/import-advisor", importAdvisorRouter);
+router.use("/sport-center", sportCenterRouter);
 
 router.get("/alerts/stream", async (req: Request, res: Response) => {
   const ok = await requireAdmin(req, res);
@@ -209,7 +224,7 @@ router.get("/alerts/stream", async (req: Request, res: Response) => {
   handleAlertSse(req, res);
 });
 
-router.get("/q/:code", async (req: Request, res: Response) => {
+async function handleShortLink(req: Request, res: Response) {
   const code = String(req.params.code ?? "").trim();
   if (!code || !/^[A-Z0-9]{4,32}$/i.test(code)) {
     return res.status(400).json({ error: "Invalid short link" });
@@ -218,13 +233,15 @@ router.get("/q/:code", async (req: Request, res: Response) => {
   if (!target) {
     return res.status(404).json({ error: "Link tidak ditemukan atau sudah kedaluwarsa." });
   }
-  // Normalisasi: kembalikan path saja agar domain lama/salah di DB tidak jadi masalah
   let targetUrl = target;
   try {
     const parsed = new URL(target);
     targetUrl = parsed.pathname + parsed.search + parsed.hash;
   } catch { /* sudah relative */ }
   return res.json({ targetUrl });
-});
+}
+
+router.get("/q/:code", handleShortLink);
+router.get("/s/:code", handleShortLink);
 
 export default router;

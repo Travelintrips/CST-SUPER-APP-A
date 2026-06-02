@@ -10,6 +10,7 @@ import { startVmfGapNotifier, runVmfGapCheck } from "./lib/vmfGapNotifier";
 import { startFulfillmentExpiryNotifier } from "./lib/fulfillmentExpiryNotifier";
 import { runPhase1Migration } from "./lib/phase1Migration";
 import { startWorkflowWorker } from "./lib/workflowWorker";
+import { startDriverJobWorker } from "./lib/driverJobWorker.js";
 import { startWaRetryWorker } from "./lib/waRetryWorker";
 import { remediateOrphanProducts } from "./lib/remediateOrphanProducts";
 import { seedProductTemplates } from "./routes/productTemplates.js";
@@ -55,10 +56,14 @@ import { runAiGovernanceMigration } from "./lib/aiGovernanceMigration.js";
 import { runPurchaseTemplateMigration } from "./lib/purchaseTemplateMigration.js";
 import { runEnterpriseWorkflowMigration } from "./lib/enterpriseWorkflowTemplates.js";
 import { runOrderProgressMigration } from "./lib/orderProgress.js";
-import { runExceptionEnumMigration } from "./lib/services/exceptionService.js";
+import { runExceptionEnumMigration, runOrderExceptionsMigration } from "./lib/services/exceptionService.js";
+import { runStep4TemplateMigration } from "./lib/step4TemplateMigration.js";
+import { runServiceTemplateMigration } from "./lib/serviceTemplateMigration.js";
 import { expireStaleApprovals } from "./lib/aiGovernance.js";
 import { startDbBackupScheduler } from "./lib/dbBackup.js";
 import { initAlertsBroadcast } from "./lib/alertsBroadcast.js";
+import { runSportCenterMigration } from "./modules/sport-center/migration.js";
+import { runDriverPodMigration, runDriverAssignmentMigration } from "./routes/driver.js";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 
@@ -237,11 +242,10 @@ async function startServer() {
   // Attach WebSocket server for real-time Intelligence Alerts
   initAlertsBroadcast(server);
 
-  // Also bind on port 18444 (gateway routing port) if not already the main port
-  // Set SKIP_GATEWAY=1 to disable this secondary binding (e.g. when a dedicated
-  // artifact workflow already handles port 18444).
-  const GATEWAY_PORT = 18444;
-  if (port !== GATEWAY_PORT && !process.env.SKIP_GATEWAY) {
+  // Also bind on secondary gateway port if REPLIT_API_GATEWAY_PORT is set.
+  // Set SKIP_GATEWAY=1 to disable this secondary binding.
+  const GATEWAY_PORT = process.env.REPLIT_API_GATEWAY_PORT ? Number(process.env.REPLIT_API_GATEWAY_PORT) : null;
+  if (GATEWAY_PORT && port !== GATEWAY_PORT && !process.env.SKIP_GATEWAY) {
     app.listen(GATEWAY_PORT, (err?: Error) => {
       if (!err) logger.info({ port: GATEWAY_PORT }, "Also listening on gateway port");
     });
@@ -261,6 +265,7 @@ async function startServer() {
   startVmfGapNotifier();
   startFulfillmentExpiryNotifier();
   startWorkflowWorker();
+  startDriverJobWorker();
   startDbBackupScheduler();
   startWaRetryWorker();
 
@@ -321,6 +326,12 @@ async function startServer() {
     .then(() => runWithRetry("Enterprise workflow template migration", runEnterpriseWorkflowMigration))
     .then(() => runWithRetry("Order progress migration", runOrderProgressMigration))
     .then(() => runWithRetry("Exception enum migration", runExceptionEnumMigration))
+    .then(() => runWithRetry("Order exceptions migration", runOrderExceptionsMigration))
+    .then(() => runWithRetry("Step 4 template snapshot migration", runStep4TemplateMigration))
+    .then(() => runWithRetry("Service template migration", runServiceTemplateMigration))
+    .then(() => runWithRetry("Sport Center migration", runSportCenterMigration))
+    .then(() => runWithRetry("Driver POD migration", runDriverPodMigration))
+    .then(() => runWithRetry("Driver assignment migration", runDriverAssignmentMigration))
     .then(() => enableRealtimeTables().catch((err) => {
       logger.warn({ err }, "Supabase Realtime table enable failed (non-fatal)");
     }))

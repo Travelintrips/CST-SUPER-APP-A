@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { Router, Request, Response } from "express";
 import { randomBytes } from "crypto";
 import { db } from "@workspace/db";
@@ -16,10 +17,12 @@ import {
   podOcrResultsTable,
   rfqVendorLinksTable,
   freightShipmentsTable,
+  productTemplatesTable,
 } from "@workspace/db";
+import { resolveTemplate } from "@workspace/product-templates";
 import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { eq, ilike, and, gte, lte, or, sql, desc, inArray, isNotNull } from "drizzle-orm";
-import { salesDocumentsTable } from "@workspace/db";
+import { salesDocumentsTable, customerInvoiceLinksTable } from "@workspace/db";
 import { requireClerkUser, requireRole } from "../lib/requireAdmin.js";
 import { calcTax, calcGrandTotal } from "../lib/taxHelper.js";
 import { resolveCompanyId } from "../lib/resolveCompany.js";
@@ -28,6 +31,7 @@ import {
   sendLogisticOrderNotification,
   sendVendorOrderStatusChangeNotification,
   sendLogisticOrderStatusCustomerNotification,
+  sendLogisticOperationalStatusNotification,
 } from "../lib/orderNotification";
 import { generateShortLink } from "../lib/shortLink.js";
 import { getPreferredDomain } from "../lib/domain.js";
@@ -60,6 +64,8 @@ import {
   transitionLogisticOrderStatus,
   getAllowedTransitions,
 } from "../lib/services/logisticOrderStatusService.js";
+import { wasRecentlyNotified } from "../lib/notificationLog.js";
+import { getAdminWa } from "../lib/adminWa.js";
 
 export const logisticOrdersRouter = Router();
 
@@ -113,7 +119,6 @@ function toOrder(row: typeof logisticOrdersTable.$inferSelect, approvedVendorNam
     nomorPenerima: row.nomorPenerima ?? null,
     jamOrder: row.jamOrder ?? null,
     source: row.source ?? "manual",
-
     subtotal: parseFloat(row.subtotal),
     tax: parseFloat(row.tax),
     grandTotal: parseFloat(row.grandTotal),
@@ -126,6 +131,12 @@ function toOrder(row: typeof logisticOrdersTable.$inferSelect, approvedVendorNam
     finalSellingPrice: row.finalSellingPrice ? parseFloat(row.finalSellingPrice) : null,
     quotationSentAt: row.quotationSentAt?.toISOString() ?? null,
     version: (row as any).version ?? 1,
+    // Step 2: Product Template Engine fields
+    categoryKey: (row as any).categoryKey ?? null,
+    templateId: (row as any).templateId ?? null,
+    templateVersion: (row as any).templateVersion ?? null,
+    templateSnapshot: (row as any).templateSnapshot ?? null,
+    requiredDocs: (row as any).requiredDocs ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: ((row as any).updatedAt ?? row.createdAt).toISOString(),
   };
@@ -179,12 +190,88 @@ async function getTruckingRates() {
   }
 }
 
-// ─── Boot migration: ensure updated_at column exists + normalize legacy statuses
+// ─── Boot migration: ensure updated_at column exists + normalize legacy statuses + Step 2 template columns
 db.execute(sql.raw(`
   ALTER TABLE logistic_orders ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
   UPDATE logistic_orders SET updated_at = created_at WHERE updated_at IS NULL;
+  ALTER TABLE logistic_orders ADD COLUMN IF NOT EXISTS category_key TEXT;
+  ALTER TABLE logistic_orders ADD COLUMN IF NOT EXISTS template_id INTEGER;
+  ALTER TABLE logistic_orders ADD COLUMN IF NOT EXISTS template_version TEXT;
+  ALTER TABLE logistic_orders ADD COLUMN IF NOT EXISTS template_snapshot JSONB;
+  ALTER TABLE logistic_order_rfqs ADD COLUMN IF NOT EXISTS template_id INTEGER;
+  ALTER TABLE logistic_order_rfqs ADD COLUMN IF NOT EXISTS template_version TEXT;
+  ALTER TABLE logistic_order_rfqs ADD COLUMN IF NOT EXISTS template_snapshot JSONB;
   ${STATUS_NORMALIZATION_SQL}
-`)).catch((e: unknown) => console.warn("[logistic_orders] boot migration warn:", e));
+`))
+  .then(() => _backfillTemplateSnapshots())
+  .catch((e: unknown) => console.warn("[logistic_orders] boot migration warn:", e));
+
+// ─── Backfill: isi template_snapshot untuk semua order lama yang belum punya snapshot ──────────
+async function _backfillTemplateSnapshots(): Promise<void> {
+  try {
+    const rows = await db.execute<{ id: number; category_key: string }>(sql`
+      SELECT id, category_key
+      FROM logistic_orders
+      WHERE category_key IS NOT NULL
+        AND template_snapshot IS NULL
+    `);
+    if (rows.rows.length === 0) return;
+    console.log(`[backfill] templateSnapshot: backfilling ${rows.rows.length} order(s)...`);
+    for (const row of rows.rows) {
+      const info = await resolveTemplateForCategory(row.category_key);
+      if (!info.templateSnapshot) continue;
+      await db.execute(sql`
+        UPDATE logistic_orders
+        SET template_snapshot = ${JSON.stringify(info.templateSnapshot)}::jsonb
+        WHERE id = ${row.id}
+          AND template_snapshot IS NULL
+      `);
+    }
+    console.log(`[backfill] templateSnapshot: selesai.`);
+  } catch (e) {
+    console.warn("[backfill] templateSnapshot error:", e);
+  }
+}
+
+// ─── Step 2: Helper — resolve ProductTemplate for a given categoryKey ─────────
+async function resolveTemplateForCategory(categoryKey: string | null | undefined): Promise<{
+  resolvedCategoryKey: string | null;
+  templateId: number | null;
+  templateVersion: string | null;
+  templateSnapshot: Record<string, unknown> | null;
+  requiredDocs: string[] | null;
+}> {
+  const empty = { resolvedCategoryKey: null, templateId: null, templateVersion: null, templateSnapshot: null, requiredDocs: null };
+  if (!categoryKey?.trim()) return empty;
+  try {
+    const [row] = await db.select().from(productTemplatesTable)
+      .where(eq(productTemplatesTable.categoryKey, categoryKey));
+    const override = row ? {
+      categoryKey: row.categoryKey,
+      label: row.label,
+      version: row.version,
+      isActive: row.isActive,
+      requiredDocuments: row.requiredDocuments as import("@workspace/product-templates").RequiredDocument[],
+      checklist: row.checklist as import("@workspace/product-templates").ChecklistItem[],
+      customFields: row.customFields as import("@workspace/product-templates").CustomField[],
+      packagingInstructions: row.packagingInstructions ?? undefined,
+      conditionalRules: row.conditionalRules as import("@workspace/product-templates").ConditionalRule[],
+      validationRules: row.validationRules as import("@workspace/product-templates").ValidationRule[],
+    } : null;
+    const template = resolveTemplate(categoryKey, override);
+    const requiredDocs = template.requiredDocuments.filter(d => d.required).map(d => d.label);
+    return {
+      resolvedCategoryKey: categoryKey,
+      templateId: row?.id ?? null,
+      templateVersion: template.version,
+      templateSnapshot: template as unknown as Record<string, unknown>,
+      requiredDocs: requiredDocs.length > 0 ? requiredDocs : null,
+    };
+  } catch (e) {
+    console.warn("[resolveTemplateForCategory] error:", e);
+    return empty;
+  }
+}
 
 // ─── PUBLIC ROUTES (no auth required) ────────────────────────────────────────
 
@@ -201,6 +288,17 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
     return res.status(400).json({ message: "Data tidak valid", errors: parsed.error.errors });
   }
   const body = parsed.data;
+
+  // Server-side subtotal validation: jumlahkan subtotal per item, jangan percaya nilai agregat dari client
+  const computedSubtotal = body.items.reduce((sum, item) => sum + Number(item.subtotal ?? 0), 0);
+  const clientSubtotal = Number(body.subtotal);
+  if (Math.abs(computedSubtotal - clientSubtotal) > 1) {
+    req.log.warn(
+      { clientSubtotal, computedSubtotal, diff: clientSubtotal - computedSubtotal, email: body.email },
+      "AUDIT: frontend subtotal mismatch — menggunakan nilai server-computed",
+    );
+  }
+  const verifiedSubtotal = computedSubtotal;
 
   // Anti-duplicate: tolak jika email yang sama sudah membuat order dalam 60 detik terakhir
   const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
@@ -220,6 +318,9 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
   }
 
   const orderNumber = generateOrderNumber();
+
+  // Step 2: resolve Product Template jika categoryKey dikirim
+  const templateInfo = await resolveTemplateForCategory(body.categoryKey ?? null);
 
   const [order] = await db
     .insert(logisticOrdersTable)
@@ -259,13 +360,21 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
       etd: body.etd ? new Date(body.etd) : null,
       eta: body.eta ? new Date(body.eta) : null,
       source: "portal",
-      // Exclusive PPN: subtotal = DPP, tax = DPP × 11%, grandTotal = DPP + tax
-      subtotal: String(body.subtotal),
-      tax: String(calcTax(Number(body.subtotal))),
-      grandTotal: String(calcGrandTotal(Number(body.subtotal))),
+      // Exclusive PPN: subtotal = DPP (server-verified), tax = DPP × 11%, grandTotal = DPP + tax
+      subtotal: String(verifiedSubtotal),
+      tax: String(calcTax(verifiedSubtotal)),
+      grandTotal: String(calcGrandTotal(verifiedSubtotal)),
       status: "New Order",
       publicRfqToken: randomBytes(16).toString("hex"),
-    })
+      // Step 2: Product Template Engine
+      ...(templateInfo.resolvedCategoryKey ? {
+        categoryKey: templateInfo.resolvedCategoryKey,
+        templateId: templateInfo.templateId,
+        templateVersion: templateInfo.templateVersion,
+        templateSnapshot: templateInfo.templateSnapshot,
+        requiredDocs: templateInfo.requiredDocs,
+      } : {}),
+    } as any)
     .returning();
 
   // Auto-generate tracking token saat order dibuat agar customer langsung bisa akses tracking
@@ -497,7 +606,7 @@ logisticOrdersRouter.get(
     if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
 
     // Run all independent queries in parallel — eliminates N+1 sequential awaits
-    const [items, [driverJob], [latestRfq], orderUpdates] = await Promise.all([
+    const [items, [driverJob], [latestRfq], orderUpdates, progressEvents, podSubmissionsRaw, invoiceLinksRaw] = await Promise.all([
       db.select().from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, order.id)),
       db.select().from(driverJobsTable)
         .where(eq(driverJobsTable.logisticOrderId, order.id))
@@ -511,6 +620,21 @@ logisticOrdersRouter.get(
         .where(and(eq(orderUpdatesTable.orderId, order.id), eq(orderUpdatesTable.isPublic, true)))
         .orderBy(desc(orderUpdatesTable.createdAt))
         .limit(50),
+      getOrderProgressEvents(order.id),
+      db.execute(sql`SELECT id, receiver_name, photo_url, note, submitted_by, created_at FROM order_pod_submissions WHERE order_id = ${order.id} ORDER BY created_at DESC LIMIT 5`),
+      db.select({
+        token: customerInvoiceLinksTable.token,
+        invoiceNumber: customerInvoiceLinksTable.invoiceNumber,
+        grandTotal: customerInvoiceLinksTable.grandTotal,
+        dueDate: customerInvoiceLinksTable.dueDate,
+        paymentStatus: customerInvoiceLinksTable.paymentStatus,
+        status: customerInvoiceLinksTable.status,
+        confirmedAt: customerInvoiceLinksTable.confirmedAt,
+        createdAt: customerInvoiceLinksTable.createdAt,
+      }).from(customerInvoiceLinksTable)
+        .where(eq(customerInvoiceLinksTable.orderId, order.id))
+        .orderBy(desc(customerInvoiceLinksTable.createdAt))
+        .limit(3),
     ]);
 
     let driverJobData = null;
@@ -566,6 +690,71 @@ logisticOrdersRouter.get(
       createdAt: u.createdAt.toISOString(),
     }));
 
+    const STEP_LABEL_MAP: Record<string, string> = {
+      ORDER_RECEIVED:    "Order Diterima",
+      ADMIN_REVIEW:      "Ditinjau Admin",
+      RFQ_SENT:          "RFQ ke Vendor",
+      QUOTE_RECEIVED:    "Penawaran Masuk",
+      CUSTOMER_APPROVAL: "Menunggu Persetujuan",
+      VENDOR_CONFIRMED:  "Vendor Dikonfirmasi",
+      IN_PROGRESS:       "Sedang Diproses",
+      PICKUP:            "Penjemputan",
+      IN_TRANSIT:        "Dalam Perjalanan",
+      ARRIVED:           "Tiba di Tujuan",
+      DELIVERED:         "Terkirim",
+      POD_UPLOADED:      "Bukti Pengiriman",
+      INVOICE_ISSUED:    "Invoice Diterbitkan",
+      PAYMENT_RECEIVED:  "Pembayaran Diterima",
+      COMPLETED:         "Selesai",
+    };
+
+    const progressEventsMapped = (progressEvents as any[]).map((ev) => {
+      const lat = ev.gps_latitude != null ? Number(ev.gps_latitude) : null;
+      const lng = ev.gps_longitude != null ? Number(ev.gps_longitude) : null;
+      const hasGps = lat != null && Number.isFinite(lat) && lng != null && Number.isFinite(lng);
+      return {
+        id:              ev.id,
+        stepKey:         ev.step_key,
+        stepLabel:       STEP_LABEL_MAP[String(ev.step_key)] ?? String(ev.step_key),
+        source:          ev.source,
+        actorName:       ev.actor_name ?? null,
+        notes:           ev.notes ?? null,
+        gpsLatitude:     hasGps ? lat : null,
+        gpsLongitude:    hasGps ? lng : null,
+        deviceTimestamp: ev.device_timestamp ? new Date(ev.device_timestamp).toISOString() : null,
+        mapUrl:          ev.map_url ?? (hasGps ? `https://www.google.com/maps?q=${lat},${lng}` : null),
+        streetViewUrl:   ev.street_view_url ?? null,
+        photoUrl:        ev.photo_url ?? (ev.metadata as any)?.photoUrl ?? null,
+        createdAt:       ev.created_at ? new Date(ev.created_at).toISOString() : new Date().toISOString(),
+      };
+    });
+
+    req.log?.info({
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      progressEventsCount: progressEventsMapped.length,
+    }, "tracking: progressEvents debug");
+
+    const podSubmissions = (podSubmissionsRaw.rows as any[]).map((r) => ({
+      id: r.id as number,
+      receiverName: r.receiver_name as string | null,
+      photoUrl: r.photo_url as string | null,
+      note: r.note as string | null,
+      submittedBy: r.submitted_by as string | null,
+      createdAt: r.created_at ? new Date(r.created_at as string).toISOString() : new Date().toISOString(),
+    }));
+
+    const invoiceLinks = invoiceLinksRaw.map((r) => ({
+      token: r.token,
+      invoiceNumber: r.invoiceNumber,
+      grandTotal: r.grandTotal ? parseFloat(r.grandTotal) : null,
+      dueDate: r.dueDate ? r.dueDate.toISOString() : null,
+      paymentStatus: r.paymentStatus,
+      status: r.status,
+      confirmedAt: r.confirmedAt ? r.confirmedAt.toISOString() : null,
+      createdAt: r.createdAt.toISOString(),
+    }));
+
     return res.json({
       ...toPublicOrder(order),
       customerName: order.customerName,
@@ -576,6 +765,9 @@ logisticOrdersRouter.get(
       driverJob: driverJobData,
       rfqQuote,
       orderUpdates: updatesData,
+      progressEvents: progressEventsMapped,
+      podSubmissions,
+      invoiceLinks,
     });
   }
 );
@@ -859,12 +1051,40 @@ logisticOrdersRouter.post("/:id/progress/set", requireClerkUser, async (req: Req
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
   const { stepKey, notes } = req.body as { stepKey: string; notes?: string };
   const validKeys = PROGRESS_STEPS.map((s) => s.key);
-  if (!validKeys.includes(stepKey as StepKey))
+  if (!validKeys.includes(stepKey as any))
     return res.status(400).json({ message: "Step tidak valid" });
   const user = (req as any).user;
   const actor = user?.name || user?.email || "Admin";
-  await updateOrderProgress(id, stepKey as StepKey, "admin", actor, notes ?? `Manual set oleh ${actor}`);
+  await updateOrderProgress(id, stepKey as any, "admin", actor, notes ?? `Manual set oleh ${actor}`);
   return res.json({ ok: true });
+});
+
+// PUT /api/logistic/orders/:id/progress/:stepKey/photo — admin set/replace foto untuk step tertentu
+logisticOrdersRouter.put("/:id/progress/:stepKey/photo", requireClerkUser, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id), 10);
+  if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+  const { stepKey } = req.params;
+  const validKeys = PROGRESS_STEPS.map((s) => s.key);
+  if (!validKeys.includes(stepKey as any))
+    return res.status(400).json({ message: "Step tidak valid" });
+  const { photoUrl } = req.body as { photoUrl?: string };
+  if (!photoUrl || typeof photoUrl !== "string" || !photoUrl.startsWith("http"))
+    return res.status(400).json({ message: "photoUrl tidak valid (harus URL http/https)" });
+
+  try {
+    const result = await db.execute(sql`
+      UPDATE order_progress_events
+        SET photo_url = ${photoUrl}
+      WHERE order_id = ${id} AND step_key = ${stepKey}
+      RETURNING id, step_key, photo_url
+    `);
+    if ((result.rows ?? []).length === 0)
+      return res.status(404).json({ message: "Progress event tidak ditemukan untuk order + step ini" });
+    return res.json({ ok: true, updated: (result.rows as any[])[0] });
+  } catch (err) {
+    console.error("admin set progress photo failed", { err, id, stepKey });
+    return res.status(500).json({ message: "Gagal update foto" });
+  }
 });
 
 // DELETE /api/logistic/orders/:id/progress/:stepKey — admin undo step
@@ -873,9 +1093,9 @@ logisticOrdersRouter.delete("/:id/progress/:stepKey", requireClerkUser, async (r
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
   const { stepKey } = req.params;
   const validKeys = PROGRESS_STEPS.map((s) => s.key);
-  if (!validKeys.includes(stepKey as StepKey))
+  if (!validKeys.includes(stepKey as any))
     return res.status(400).json({ message: "Step tidak valid" });
-  await deleteOrderProgress(id, stepKey as StepKey);
+  await deleteOrderProgress(id, stepKey as any);
   return res.json({ ok: true });
 });
 
@@ -1045,7 +1265,7 @@ async function notifyVendorStatusChange(
 
     sendVendorOrderStatusChangeNotification(order, label, note, vendor.name ?? "—", phone);
     const notifLabel = VENDOR_STATUS_LABELS[status] ?? status;
-    const notifNote  = VENDOR_STATUS_NOTES[status] ?? "";
+    const notifNote  = VENDOR_WA_NOTES[status as keyof typeof VENDOR_WA_NOTES] ?? "";
     sendVendorOrderStatusChangeNotification(order, notifLabel, notifNote, vendor.name ?? "—", phone);
 
   } catch {
@@ -1574,4 +1794,84 @@ logisticOrdersRouter.get("/:id/locations", async (req: Request, res: Response) =
     })),
     total: rows.length,
   });
+});
+
+// ── Delivery Phase Transition Endpoints ──────────────────────────────────────
+// POST /api/logistic/orders/:id/delivery/:phase
+// Manual delivery phase transitions untuk admin/logistics.
+// Dedup: invoice-issued skip customer WA jika sudah dikirim via customer-invoice link.
+
+const DELIVERY_PHASE_CONFIG: Record<string, { status: string; emoji: string; label: string }> = {
+  "in-progress":      { status: "In Progress",     emoji: "🚀", label: "Dalam Proses" },
+  "pickup":           { status: "Pickup",           emoji: "🚚", label: "Barang Diambil" },
+  "in-transit":       { status: "In Transit",       emoji: "🛣️",  label: "Dalam Perjalanan" },
+  "arrived":          { status: "Arrived",          emoji: "📍", label: "Tiba di Tujuan" },
+  "delivered":        { status: "Delivered",        emoji: "✅", label: "Diserahkan ke Customer" },
+  "pod-uploaded":     { status: "POD Uploaded",     emoji: "📷", label: "POD Diunggah" },
+  "invoice-issued":   { status: "Invoice Issued",   emoji: "🧾", label: "Invoice Diterbitkan" },
+  "payment-received": { status: "Payment Received", emoji: "💰", label: "Pembayaran Diterima" },
+  "completed":        { status: "Completed",        emoji: "🎉", label: "Order Selesai" },
+};
+
+logisticOrdersRouter.post("/:id/delivery/:phase", async (req: Request, res: Response) => {
+  if (!(await requireRole(req, res, ["admin", "owner", "logistics"]))) return;
+  const id = parseInt(String(req.params["id"] ?? ""));
+  if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+  const phase = String(req.params["phase"] ?? "");
+  const cfg = DELIVERY_PHASE_CONFIG[phase];
+  if (!cfg) return res.status(400).json({ message: `Phase '${phase}' tidak dikenal. Gunakan: ${Object.keys(DELIVERY_PHASE_CONFIG).join(", ")}` });
+
+  const [order] = await db
+    .select({
+      id: logisticOrdersTable.id,
+      orderNumber: logisticOrdersTable.orderNumber,
+      status: logisticOrdersTable.status,
+      customerName: logisticOrdersTable.customerName,
+      phone: logisticOrdersTable.phone,
+      companyName: logisticOrdersTable.companyName,
+    })
+    .from(logisticOrdersTable)
+    .where(eq(logisticOrdersTable.id, id))
+    .limit(1);
+  if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+  const actorName = (req as any).user?.fullName ?? (req as any).user?.name ?? "Admin";
+
+  try {
+    await transitionLogisticOrderStatus(id, cfg.status as Parameters<typeof transitionLogisticOrderStatus>[1], {
+      source: `logisticOrders:delivery/${phase}`,
+      actorType: "admin",
+      actorName,
+      notes: `${cfg.emoji} ${cfg.label} — diubah manual oleh admin`,
+    });
+  } catch (e: unknown) {
+    const errMsg = e instanceof Error ? e.message : "Transisi status gagal";
+    return res.status(422).json({ message: errMsg });
+  }
+
+  // WA notifications — fire-and-forget
+  void (async () => {
+    try {
+      const adminWa = await getAdminWa();
+      // invoice-issued: skip customer WA jika sudah dikirim via customer-invoice link (dedup 30 menit)
+      const customerPhone = phase === "invoice-issued"
+        ? (await wasRecentlyNotified("customer-invoice-wa", `order:${id}`, 30 * 60 * 1000)
+            ? null
+            : order.phone)
+        : order.phone;
+      await sendLogisticOperationalStatusNotification(
+        {
+          order_number: order.orderNumber,
+          customer_name: order.customerName ?? "",
+          company_name: order.companyName ?? null,
+          phone: customerPhone ?? null,
+        },
+        cfg.label,
+        cfg.emoji,
+        adminWa,
+      );
+    } catch { /* non-fatal */ }
+  })();
+
+  return res.json({ ok: true, status: cfg.status, orderId: id, phase });
 });

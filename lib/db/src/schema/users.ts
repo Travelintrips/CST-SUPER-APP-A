@@ -24,6 +24,7 @@ export const usersTable = pgTable("users", {
   sectionId: integer("section_id").references(() => sectionsTable.id, { onDelete: "set null" }),
   customRoleId: integer("custom_role_id").references(() => customRolesTable.id, { onDelete: "set null" }),
   defaultBranchId: integer("default_branch_id").references(() => branchesTable.id, { onDelete: "set null" }),
+  systemRole: text("system_role"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

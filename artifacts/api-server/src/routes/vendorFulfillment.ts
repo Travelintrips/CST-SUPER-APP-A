@@ -14,6 +14,8 @@ import {
   suppliersTable,
   orderUpdatesTable,
   vendorCatalogItemsTable,
+  customerApprovalsTable,
+  logisticOrderRfqsTable,
 } from "@workspace/db";
 import { logger } from "../lib/logger";
 import { sendViaService as sendWhatsApp, sendMediaViaService } from "../lib/waTransport.js";
@@ -24,6 +26,7 @@ import { ObjectStorageService } from "../lib/objectStorage.js";
 import { createAdminActionLink, getAdminActionUrl } from "./adminAction.js";
 import { generateShortLink } from "../lib/shortLink.js";
 import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
+import { updateOrderProgress, getOrderProgressEvents } from "../lib/orderProgress.js";
 
 export const vendorFulfillmentPublicRouter = Router();
 
@@ -326,6 +329,30 @@ vendorFulfillmentPublicRouter.get("/:token", async (req: Request, res: Response)
       .where(eq(logisticOrdersTable.id, link.orderId));
     if (!order) return res.status(404).json({ error: "Order tidak ditemukan" });
 
+    // Fetch templateSnapshot: prioritize customer_approval, fallback to rfq
+    let templateSnapshot: Record<string, unknown> | null = null;
+    {
+      const [approvalRow] = await db
+        .select({ templateSnapshot: customerApprovalsTable.templateSnapshot })
+        .from(customerApprovalsTable)
+        .where(eq(customerApprovalsTable.orderId, order.id))
+        .orderBy(customerApprovalsTable.id)
+        .limit(1);
+      if (approvalRow?.templateSnapshot) {
+        templateSnapshot = approvalRow.templateSnapshot as Record<string, unknown>;
+      } else {
+        const [rfqRow] = await db
+          .select({ templateSnapshot: logisticOrderRfqsTable.templateSnapshot })
+          .from(logisticOrderRfqsTable)
+          .where(eq(logisticOrderRfqsTable.orderId, order.id))
+          .orderBy(logisticOrderRfqsTable.id)
+          .limit(1);
+        if (rfqRow?.templateSnapshot) {
+          templateSnapshot = rfqRow.templateSnapshot as Record<string, unknown>;
+        }
+      }
+    }
+
     let vendorName: string | null = null;
     if (link.vendorId) {
       const [v] = await db.select({ name: suppliersTable.name }).from(suppliersTable)
@@ -424,7 +451,10 @@ vendorFulfillmentPublicRouter.get("/:token", async (req: Request, res: Response)
       subtotalBeforeTax: subtotalBeforeTax != null ? String(subtotalBeforeTax) : null,
       taxAmount: taxAmount != null ? String(taxAmount) : null,
       taxRate: TAX_RATE,
+      templateSnapshot,
     };
+
+    const progressEvents = await getOrderProgressEvents(order.id);
 
     if (link.status === "submitted") {
       return res.json({
@@ -433,6 +463,7 @@ vendorFulfillmentPublicRouter.get("/:token", async (req: Request, res: Response)
         serviceType: link.serviceType,
         vendorName,
         order: orderInfo,
+        progressEvents: progressEvents.map((e) => ({ step_key: e.step_key, created_at: e.created_at })),
         submittedData: {
           driverName:        link.driverName ?? null,
           driverPhone:       link.driverPhone ?? null,
@@ -473,6 +504,7 @@ vendorFulfillmentPublicRouter.get("/:token", async (req: Request, res: Response)
       serviceType: link.serviceType,
       vendorName,
       order: orderInfo,
+      progressEvents: progressEvents.map((e) => ({ step_key: e.step_key, created_at: e.created_at })),
     });
   } catch (err) {
     logger.error({ err }, "vendor-fulfillment GET error");
@@ -565,6 +597,7 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
       force: true,
       skipAudit: false,
     });
+    updateOrderProgress(link.orderId, "VENDOR_CONFIRMED", "vendor_wa", vendorName ?? "Vendor", "Vendor mengkonfirmasi fulfillment order").catch(() => {});
 
     await db.insert(orderUpdatesTable).values({
       orderId: link.orderId,
@@ -720,6 +753,9 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
         `━━━━━━━━━━━━━━━━━━\n` +
         (detailLines.length > 0 ? detailLines.join("\n") + "\n" : "") +
         `━━━━━━━━━━━━━━━━━━\n` +
+        `📊 Status     : *Vendor Confirmed*\n` +
+        `⏭ Selanjutnya: Konfirmasi admin → Order In Progress\n` +
+        `━━━━━━━━━━━━━━━━━━\n` +
         `✅ *Konfirmasi & Mulai Pengiriman:*\n` +
         `Klik link berikut untuk konfirmasi langsung:\n${bizportalLink}`;
 
@@ -728,6 +764,66 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
       sendMediaViaService(adminWa, waMsg, publicPhotoUrl).catch((e) =>
         logger.warn({ e }, "vendor-fulfillment WA to admin failed")
       );
+    }
+
+    // ── WA ke driver ──────────────────────────────────────────────────────────
+    const _svcCat      = resolveServiceCategory(link.serviceType);
+    const _driverPhone = (body.driverPhone ?? "").trim();
+    const _driverName  = (body.driverName  ?? "").trim();
+    logger.info({
+      orderId:          link.orderId,
+      orderNumber:      order.orderNumber,
+      serviceType:      link.serviceType,
+      svcCategory:      _svcCat,
+      driverPhoneRaw:   _driverPhone  || "(kosong)",
+      driverNameRaw:    _driverName   || "(kosong)",
+      plateNumber:      (body.plateNumber ?? "") || "(kosong)",
+      vehicleType:      (body.vehicleType ?? "") || "(kosong)",
+      pickupTime:       (body.pickupTime  ?? "") || "(kosong)",
+    }, "[WA-driver] cek kirim WA ke driver");
+
+    if (_driverPhone) {
+      const domain       = getPreferredDomain() || "";
+      const driverAppUrl = domain ? `https://${domain}/api/driver/open-app` : "";
+      const driverMsg = [
+        `🚚 *Penugasan Order — ${order.orderNumber}*`,
+        ``,
+        `Halo *${_driverName || "Driver"}*,`,
+        `Anda ditugaskan untuk order berikut:`,
+        ``,
+        `📋 No. Order : \`${order.orderNumber}\``,
+        `👤 Customer  : ${order.customerName ?? "—"}`,
+        `📍 Rute      : ${order.origin} → ${order.destination}`,
+        body.plateNumber?.trim() ? `🔢 Plat      : ${body.plateNumber.trim()}` : null,
+        body.vehicleType?.trim() ? `🚛 Kendaraan : ${body.vehicleType.trim()}` : null,
+        body.pickupTime?.trim()  ? `⏰ Est. Pickup: ${body.pickupTime.trim()}` : null,
+        body.notes?.trim()       ? `📝 Catatan   : ${body.notes.trim()}` : null,
+        ``,
+        `Mohon segera hubungi tim CST Logistics untuk koordinasi lebih lanjut.`,
+        driverAppUrl ? `\nBuka aplikasi driver:\n${driverAppUrl}` : null,
+      ].filter(Boolean).join("\n");
+
+      logger.info({
+        orderId:    link.orderId,
+        driverPhone: _driverPhone,
+        driverName:  _driverName || "(kosong)",
+      }, "[WA-driver] mengirim WA ke driver...");
+
+      sendWhatsApp(_driverPhone, driverMsg, {
+        context: "fulfillment-driver-assigned",
+        refType:  "vendor_fulfillment_link",
+        refId:    String(link.id),
+      }).then(() => {
+        logger.info({ orderId: link.orderId, driverPhone: _driverPhone }, "[WA-driver] WA ke driver BERHASIL");
+      }).catch((e: unknown) => {
+        logger.error({ e, orderId: link.orderId, driverPhone: _driverPhone }, "[WA-driver] WA ke driver GAGAL");
+      });
+    } else {
+      logger.info({
+        skip_reason: "driverPhone kosong",
+        serviceType: link.serviceType,
+        svcCategory: _svcCat,
+      }, "[WA-driver] skip — tidak kirim WA ke driver");
     }
 
     return res.json({ ok: true, message: "Data fulfillment berhasil dikirim. Terima kasih!" });

@@ -4,18 +4,8 @@ import { logNotification, wasRecentlyNotified } from "./notificationLog.js";
 const FONNTE_TOKEN = process.env.FONNTE_TOKEN ?? "";
 const FONNTE_URL = "https://api.fonnte.com/send";
 
-/**
- * Deduplication window in milliseconds.
- * WA with same context+refId sent within this window will be skipped.
- * Override via WA_DEDUP_WINDOW_MS env var (e.g. "300000" for 5 min).
- */
 const DEDUP_WINDOW_MS = parseInt(process.env.WA_DEDUP_WINDOW_MS ?? "1800000", 10);
 
-/**
- * Normalizes an Indonesian phone number to the international format (628...).
- * Group IDs (containing @g.us) are returned unchanged.
- * Handles: 08..., +62..., 62..., +628..., spaces/dashes.
- */
 function normalizePhoneID(raw: string): string {
   if (raw.includes("@")) return raw.trim();
   let digits = raw.replace(/[^\d+]/g, "");
@@ -25,11 +15,15 @@ function normalizePhoneID(raw: string): string {
   return "62" + digits;
 }
 
-/**
- * Kirim pesan WhatsApp dengan lampiran gambar/media via Fonnte.
- * Gambar dikirim sebagai media, teks sebagai caption.
- * Jika mediaUrl kosong, fallback ke pesan teks biasa.
- */
+/** Ambil wa_message_id dari respons Fonnte jika ada */
+function extractMessageId(body: Record<string, unknown>): string | undefined {
+  // Fonnte bisa mengembalikan id sebagai string atau array
+  const raw = body.id ?? body.message_id ?? body.messageId;
+  if (!raw) return undefined;
+  if (Array.isArray(raw)) return raw[0] ? String(raw[0]) : undefined;
+  return String(raw);
+}
+
 export async function sendWhatsAppMedia(
   target: string,
   message: string,
@@ -111,12 +105,14 @@ export async function sendWhatsAppMedia(
           mediaUrl,
         });
       } else {
-        logger.info({ phone, mediaUrl }, "WhatsApp media sent via Fonnte");
+        const waMessageId = extractMessageId(b);
+        logger.info({ phone, mediaUrl, waMessageId }, "WhatsApp media sent via Fonnte");
         await logNotification({
           channel: "wa", recipient: phone, message,
           status: "sent",
           context: opts?.context, refType: opts?.refType, refId: opts?.refId,
           mediaUrl,
+          waMessageId,
         });
       }
     }
@@ -150,9 +146,6 @@ export async function sendWhatsApp(
     return;
   }
 
-  // ── Deduplication guard ──────────────────────────────────────────────────
-  // If context + refId are both set, check if the same notification was
-  // successfully sent within DEDUP_WINDOW_MS. Skip silently if so.
   if (opts?.context && opts?.refId) {
     const alreadySent = await wasRecentlyNotified(opts.context, opts.refId, DEDUP_WINDOW_MS);
     if (alreadySent) {
@@ -169,7 +162,6 @@ export async function sendWhatsApp(
       return;
     }
   }
-  // ────────────────────────────────────────────────────────────────────────
 
   const phone = normalizePhoneID(target);
   if (!phone.includes("@") && phone.length < 10) {
@@ -209,11 +201,13 @@ export async function sendWhatsApp(
           context: opts?.context, refType: opts?.refType, refId: opts?.refId,
         });
       } else {
-        logger.info({ phone }, "WhatsApp sent via Fonnte");
+        const waMessageId = extractMessageId(b);
+        logger.info({ phone, waMessageId }, "WhatsApp sent via Fonnte");
         await logNotification({
           channel: "wa", recipient: phone, message,
           status: "sent",
           context: opts?.context, refType: opts?.refType, refId: opts?.refId,
+          waMessageId,
         });
       }
     }

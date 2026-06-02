@@ -9,6 +9,7 @@ import { eq, and, desc, ne } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
+import { getAdminGroupWa } from "../lib/adminWa.js";
 import { logActivity } from "../lib/activityLog";
 import { getPreferredDomain } from "../lib/domain";
 import {
@@ -23,6 +24,7 @@ import {
 import { checkGeofence } from "../lib/geofence";
 import { upsertAlert, resolveAlert, getActiveAlerts, hasActiveAlert } from "../lib/geofenceAlertStore";
 import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
+import { updateOrderProgress } from "../lib/orderProgress.js";
 
 const router = Router();
 const adminRouter = Router();
@@ -99,6 +101,27 @@ const DRIVER_TO_LOGISTIC_STATUS: Partial<Record<string, string>> = {
   ARRIVED_AT_DESTINATION:   "Arrived",
   DELIVERED:                "Delivered",
   COMPLETED:                "Delivered",
+};
+
+const DRIVER_STATUS_TO_PROGRESS_STEP: Partial<Record<string, string>> = {
+  ON_THE_WAY_TO_PICKUP:   "PICKUP",
+  IN_TRANSIT:             "IN_TRANSIT",
+  ARRIVED_AT_DESTINATION: "ARRIVED",
+  DELIVERED:              "DELIVERED",
+  COMPLETED:              "COMPLETED",
+};
+
+const STATUS_LABEL_ID: Record<string, string> = {
+  ASSIGNED:               "Driver Ditugaskan",
+  ACCEPTED:               "Driver Menerima Job",
+  ON_THE_WAY_TO_PICKUP:   "Menuju Lokasi Pickup",
+  ARRIVED_AT_PICKUP:      "Tiba di Lokasi Pickup",
+  PICKED_UP:              "Barang Berhasil Diambil",
+  IN_TRANSIT:             "Dalam Perjalanan",
+  ARRIVED_AT_DESTINATION: "Tiba di Tujuan",
+  DELIVERED:              "Barang Terkirim",
+  COMPLETED:              "Pengiriman Selesai",
+  CANCELLED:              "Dibatalkan",
 };
 
 async function syncDriverToLogisticOrder(
@@ -213,6 +236,55 @@ function serializeJob(job: typeof driverJobsTable.$inferSelect) {
     pickupDateTime: job.pickupDateTime?.toISOString() ?? null,
     deliveryDateTime: job.deliveryDateTime?.toISOString() ?? null,
   };
+}
+
+// ─── Driver POD extended columns migration ───────────────────────────────────
+
+export async function runDriverPodMigration(): Promise<void> {
+  const { sql } = await import("drizzle-orm");
+  try {
+    await db.execute(sql`
+      ALTER TABLE driver_jobs ADD COLUMN IF NOT EXISTS pod_receiver_position TEXT;
+      ALTER TABLE driver_jobs ADD COLUMN IF NOT EXISTS pod_notes TEXT;
+      ALTER TABLE driver_jobs ADD COLUMN IF NOT EXISTS pod_photos TEXT;
+      ALTER TABLE driver_jobs ADD COLUMN IF NOT EXISTS pod_submitted_at TIMESTAMPTZ;
+      ALTER TABLE driver_jobs ADD COLUMN IF NOT EXISTS pod_geo_lat TEXT;
+      ALTER TABLE driver_jobs ADD COLUMN IF NOT EXISTS pod_geo_lng TEXT;
+      ALTER TABLE driver_jobs ADD COLUMN IF NOT EXISTS pod_signature_data_url TEXT;
+    `);
+    console.info("Driver POD migration: ok");
+  } catch (err) {
+    console.warn("Driver POD migration warn (non-fatal)", err);
+  }
+}
+
+// ─── Driver Assignment (INTERNAL/EXTERNAL mode) migration ────────────────────
+
+export async function runDriverAssignmentMigration(): Promise<void> {
+  const { sql } = await import("drizzle-orm");
+  try {
+    await db.execute(sql`
+      ALTER TABLE driver_jobs ALTER COLUMN driver_id DROP NOT NULL;
+      ALTER TABLE driver_jobs ADD COLUMN IF NOT EXISTS driver_type TEXT DEFAULT 'EXTERNAL';
+      ALTER TABLE driver_jobs ADD COLUMN IF NOT EXISTS execution_mode TEXT DEFAULT 'DRIVER_APP';
+      ALTER TABLE driver_jobs ADD COLUMN IF NOT EXISTS wa_progress_token TEXT;
+      ALTER TABLE driver_jobs ADD COLUMN IF NOT EXISTS driver_name_override TEXT;
+      ALTER TABLE driver_jobs ADD COLUMN IF NOT EXISTS driver_phone_override TEXT;
+      ALTER TABLE driver_jobs ADD COLUMN IF NOT EXISTS vehicle_plate_override TEXT;
+      ALTER TABLE driver_jobs ADD COLUMN IF NOT EXISTS legacy_source TEXT;
+    `);
+    console.info("Driver assignment migration: ok");
+  } catch (err) {
+    console.warn("Driver assignment migration warn (non-fatal)", err);
+  }
+}
+
+function nowWIB(): string {
+  return new Date().toLocaleString("id-ID", {
+    timeZone: "Asia/Jakarta",
+    day: "2-digit", month: "long", year: "numeric",
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  }) + " WIB";
 }
 
 // ─── MOBILE DRIVER ROUTES ────────────────────────────────────────────────────
@@ -340,6 +412,19 @@ router.put("/jobs/:jobId/status", requireDriverAuth, async (req, res) => {
   await syncParentFreightStatus(job.freightShipmentId, String(status));
   await syncDriverToLogisticOrder(job.logisticOrderId, String(status));
 
+  const progressStep = DRIVER_STATUS_TO_PROGRESS_STEP[String(status)];
+  if (progressStep && job.logisticOrderId) {
+    const [driverRow] = await db.select({ name: driversTable.name })
+      .from(driversTable).where(eq(driversTable.id, driverId));
+    updateOrderProgress(
+      job.logisticOrderId,
+      progressStep,
+      "driver",
+      driverRow?.name ?? "Driver",
+      note ? String(note) : `Driver update: ${status}`,
+    ).catch(() => {});
+  }
+
   // Push real-time event to all admin/dispatcher connections
   broadcastToAdmins("job_status_changed", {
     jobId,
@@ -358,6 +443,36 @@ router.put("/jobs/:jobId/status", requireDriverAuth, async (req, res) => {
       description: `Driver memperbarui status pengiriman: ${job.status} → ${status}${note ? ` — ${note}` : ""}`,
       newValue: { jobId, jobNumber: updated.jobNumber, status, previousStatus: job.status },
     }).catch(() => {});
+  }
+
+  // WA ke admin untuk milestone penting (PICKED_UP, DELIVERED)
+  if (["PICKED_UP", "DELIVERED"].includes(String(status)) && job.logisticOrderId) {
+    (async () => {
+      try {
+        const [orderData] = await db.select({
+          orderNumber: logisticOrdersTable.orderNumber,
+          customerName: logisticOrdersTable.customerName,
+        }).from(logisticOrdersTable).where(eq(logisticOrdersTable.id, job.logisticOrderId!));
+        const [driverRow] = await db.select({ name: driversTable.name })
+          .from(driversTable).where(eq(driversTable.id, driverId));
+        const adminGroupWa = await getAdminGroupWa();
+        if (adminGroupWa && orderData) {
+          const driverDisplay = driverRow?.name ?? "Driver";
+          const statusLabel = STATUS_LABEL_ID[String(status)] ?? String(status);
+          const msg = [
+            `🚚 *Update Driver — ${updated.jobNumber}*`,
+            ``,
+            `👤 Driver: ${driverDisplay}`,
+            `📦 Order: ${orderData.orderNumber ?? "-"} (${orderData.customerName ?? "-"})`,
+            `📍 Status: *${statusLabel}*`,
+            note ? `📝 Catatan: ${note}` : null,
+          ].filter(Boolean).join("\n");
+          sendWhatsApp(adminGroupWa, msg).catch(() => {});
+        }
+      } catch {
+        // non-fatal
+      }
+    })();
   }
 
   res.json({ ...serializeJob(updated), validNextStatuses: VALID_TRANSITIONS[String(status)] ?? [] });
@@ -393,11 +508,43 @@ router.post("/jobs/:jobId/photos", requireDriverAuth, upload.single("photo"), as
   res.json({ ...photo, takenAt: photo.takenAt.toISOString() });
 });
 
+// POST /api/driver/jobs/:jobId/pod/upload — upload single POD photo, return URL
+router.post("/jobs/:jobId/pod/upload", requireDriverAuth, upload.single("photo"), async (req, res) => {
+  const driverId = (req as DriverAuthReq).driverId;
+  const jobId = Number(req.params.jobId);
+
+  const [job] = await db
+    .select({ id: driverJobsTable.id })
+    .from(driverJobsTable)
+    .where(and(eq(driverJobsTable.id, jobId), eq(driverJobsTable.driverId, driverId)));
+  if (!job) { res.status(404).json({ message: "Job not found" }); return; }
+  if (!req.file) { res.status(400).json({ message: "Tidak ada foto yang diunggah" }); return; }
+
+  let fileUrl: string;
+  try {
+    fileUrl = await uploadPhotoToStorage(req.file.buffer, req.file.mimetype, jobId);
+  } catch {
+    res.status(500).json({ message: "Gagal mengunggah foto POD" });
+    return;
+  }
+
+  res.json({ fileUrl, filename: req.file.originalname ?? `pod_${Date.now()}.jpg` });
+});
+
 // POST /api/driver/jobs/:jobId/pod
 router.post("/jobs/:jobId/pod", requireDriverAuth, async (req, res) => {
   const driverId = (req as DriverAuthReq).driverId;
   const jobId = Number(req.params.jobId);
-  const { receiverName } = req.body ?? {};
+  const {
+    receiverName,
+    receiverPosition,
+    deliveryNotes,
+    podPhotos,
+    signatureDataUrl,
+    submittedAt,
+    geoLocation,
+  } = req.body ?? {};
+
   if (!receiverName) { res.status(400).json({ message: "Nama penerima wajib diisi" }); return; }
 
   const [job] = await db
@@ -412,35 +559,76 @@ router.post("/jobs/:jobId/pod", requireDriverAuth, async (req, res) => {
     return;
   }
 
+  const photoUrls: string[] = Array.isArray(podPhotos) ? podPhotos.filter((u: unknown) => typeof u === "string") : [];
+  const podSubmittedAt = submittedAt ? new Date(String(submittedAt)) : new Date();
+  const geoLat = geoLocation?.lat ? String(geoLocation.lat) : null;
+  const geoLng = geoLocation?.lng ? String(geoLocation.lng) : null;
+
   const [updated] = await db
     .update(driverJobsTable)
-    .set({ podReceiverName: String(receiverName), status: "DELIVERED" })
+    .set({
+      podReceiverName: String(receiverName),
+      podReceiverPosition: receiverPosition ? String(receiverPosition) : null,
+      podNotes: deliveryNotes ? String(deliveryNotes) : null,
+      podPhotos: photoUrls.length ? JSON.stringify(photoUrls) : null,
+      podSubmittedAt,
+      podGeoLat: geoLat,
+      podGeoLng: geoLng,
+      podSignatureDataUrl: signatureDataUrl ? String(signatureDataUrl) : null,
+      status: "DELIVERED",
+    })
     .where(eq(driverJobsTable.id, jobId))
     .returning();
 
   await db.insert(driverJobLogsTable).values({
     driverJobId: jobId,
     status: "DELIVERED",
-    note: `POD diterima oleh: ${receiverName}`,
-    timestamp: new Date(),
+    note: `POD diterima oleh: ${receiverName}${receiverPosition ? ` (${receiverPosition})` : ""}`,
+    timestamp: podSubmittedAt,
   });
 
   await syncParentFreightStatus(job.freightShipmentId, "DELIVERED");
   await syncDriverToLogisticOrder(job.logisticOrderId, "DELIVERED");
 
-  // Notifikasi delivery completed ke customer
+  // Lookup driver info for WA notification
+  const [driverInfo] = await db
+    .select({ name: driversTable.name, vehiclePlate: driversTable.vehiclePlate, phone: driversTable.phone })
+    .from(driversTable)
+    .where(eq(driversTable.id, driverId));
+
   if (job.logisticOrderId) {
-    fetchOrderData(job.logisticOrderId).then((orderData) => {
+    fetchOrderData(job.logisticOrderId).then(async (orderData) => {
       if (!orderData) return;
+      // Standard delivery completed notification to customer
       sendDeliveryCompletedNotification(orderData).catch(() => {});
+
+      // Enhanced POD WA notification to admin group — no pricing data
+      const adminGroupWa = await getAdminGroupWa().catch(() => null);
+      if (adminGroupWa) {
+        const photoCount = photoUrls.length;
+        const lines: string[] = [
+          `📦 *Proof of Delivery Diterima*`,
+          ``,
+          `No. Order: *${orderData.orderNumber}*`,
+          `Pelanggan: ${orderData.customerName}`,
+          `Driver: *${driverInfo?.name ?? job.cargoDescription ?? "-"}*${driverInfo?.vehiclePlate ? ` | ${driverInfo.vehiclePlate}` : ""}`,
+          ``,
+          `✅ Diterima oleh: *${receiverName}*`,
+        ];
+        if (receiverPosition) lines.push(`🏷️ Jabatan: ${receiverPosition}`);
+        if (deliveryNotes) lines.push(`📝 Catatan: ${deliveryNotes}`);
+        if (photoCount > 0) lines.push(`📸 Foto POD: ${photoCount} foto`);
+        lines.push(``, `🕐 ${nowWIB()}`);
+        sendWhatsApp(adminGroupWa, lines.join("\n")).catch(() => {});
+      }
     }).catch(() => {});
 
     logActivity({
       orderId: job.logisticOrderId,
       actorType: "driver",
       action: "pod_submitted",
-      description: `Proof of Delivery disubmit — diterima oleh: ${receiverName}`,
-      newValue: { jobId, jobNumber: updated.jobNumber, receiverName, status: "DELIVERED" },
+      description: `Proof of Delivery disubmit — diterima oleh: ${receiverName}${receiverPosition ? ` (${receiverPosition})` : ""}${photoUrls.length ? ` | ${photoUrls.length} foto` : ""}`,
+      newValue: { jobId, jobNumber: updated.jobNumber, receiverName, receiverPosition, photoCount: photoUrls.length, status: "DELIVERED" },
     }).catch(() => {});
   }
 
@@ -656,6 +844,94 @@ adminRouter.post("/geofence-alerts/:id/resolve", (req, res) => {
   res.json({ ok: true, resolved });
 });
 
+// GET /api/drivers/analytics/summary?days=30&driverType=
+adminRouter.get("/analytics/summary", async (req, res) => {
+  const days = Math.min(Number(req.query.days ?? 30), 365);
+  const driverTypeFilter = req.query.driverType as string | undefined;
+  const fromDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+  const { sql: sqlFn, gte: gte2, lte: lte2 } = await import("drizzle-orm");
+
+  const allJobs = await db
+    .select({
+      id: driverJobsTable.id,
+      jobNumber: driverJobsTable.jobNumber,
+      status: driverJobsTable.status,
+      driverType: driverJobsTable.driverType,
+      executionMode: driverJobsTable.executionMode,
+      driverNameOverride: driverJobsTable.driverNameOverride,
+      driverId: driverJobsTable.driverId,
+      assignedAt: driverJobsTable.assignedAt,
+      completedAt: driverJobsTable.completedAt,
+      podReceiverName: driverJobsTable.podReceiverName,
+      logisticOrderId: driverJobsTable.logisticOrderId,
+      deliveryDateTime: driverJobsTable.deliveryDateTime,
+      driverName: driversTable.name,
+    })
+    .from(driverJobsTable)
+    .leftJoin(driversTable, eq(driverJobsTable.driverId, driversTable.id))
+    .where(
+      and(
+        gte2(driverJobsTable.assignedAt, fromDate),
+        ...(driverTypeFilter === "INTERNAL" ? [eq(driverJobsTable.driverType, "INTERNAL")] :
+            driverTypeFilter === "EXTERNAL" ? [eq(driverJobsTable.driverType, "EXTERNAL")] : []),
+      )
+    )
+    .orderBy(desc(driverJobsTable.assignedAt));
+
+  const total = allJobs.length;
+  const completed = allJobs.filter((j) => j.status === "COMPLETED").length;
+  const delivered = allJobs.filter((j) => j.status === "COMPLETED" || j.status === "DELIVERED").length;
+  const cancelled = allJobs.filter((j) => j.status === "CANCELLED").length;
+  const inProgress = allJobs.filter((j) => !["COMPLETED", "DELIVERED", "CANCELLED"].includes(j.status)).length;
+  const internalCount = allJobs.filter((j) => j.driverType === "INTERNAL").length;
+  const externalCount = allJobs.filter((j) => j.driverType !== "INTERNAL").length;
+  const podSubmitted = allJobs.filter((j) => j.podReceiverName).length;
+  const deliveredForPod = delivered;
+
+  const durationJobs = allJobs.filter((j) => j.completedAt && j.assignedAt && ["COMPLETED", "DELIVERED"].includes(j.status));
+  const avgDurationHours = durationJobs.length > 0
+    ? Math.round(durationJobs.reduce((acc, j) => acc + (j.completedAt!.getTime() - j.assignedAt.getTime()) / 3_600_000, 0) / durationJobs.length * 10) / 10
+    : null;
+
+  const onTimeJobs = allJobs.filter((j) => j.deliveryDateTime && ["COMPLETED", "DELIVERED"].includes(j.status));
+  const onTimeCount = onTimeJobs.filter((j) => j.completedAt && j.completedAt <= j.deliveryDateTime!).length;
+
+  // Status distribution for chart
+  const statusDist: Record<string, number> = {};
+  for (const j of allJobs) {
+    statusDist[j.status] = (statusDist[j.status] ?? 0) + 1;
+  }
+
+  // Recent 15 jobs
+  const recentJobs = allJobs.slice(0, 15).map((j) => ({
+    id: j.id,
+    jobNumber: j.jobNumber,
+    status: j.status,
+    driverType: j.driverType,
+    driverName: j.driverType === "INTERNAL" ? (j.driverNameOverride ?? "Driver Internal") : (j.driverName ?? "Driver"),
+    assignedAt: j.assignedAt.toISOString(),
+    completedAt: j.completedAt?.toISOString() ?? null,
+    logisticOrderId: j.logisticOrderId,
+  }));
+
+  res.json({
+    period: { days, from: fromDate.toISOString(), to: new Date().toISOString() },
+    summary: {
+      total, completed, delivered, cancelled, inProgress,
+      internalCount, externalCount,
+      podSubmitted, deliveredForPod,
+      podRate: deliveredForPod > 0 ? Math.round((podSubmitted / deliveredForPod) * 100) : null,
+      successRate: total > 0 ? Math.round((delivered / total) * 100) : null,
+      avgDurationHours,
+      onTimeCount, onTimeTotal: onTimeJobs.length,
+      onTimePct: onTimeJobs.length > 0 ? Math.round((onTimeCount / onTimeJobs.length) * 100) : null,
+    },
+    statusDistribution: statusDist,
+    recentJobs,
+  });
+});
+
 // GET /api/drivers/performance?from=&to=&driverId=
 adminRouter.get("/performance", async (req, res) => {
   const fromRaw = req.query.from as string | undefined;
@@ -771,10 +1047,179 @@ adminRouter.get("/performance", async (req, res) => {
   res.json({ from: fromDate.toISOString(), to: toDate.toISOString(), drivers: result });
 });
 
+// PATCH /api/drivers/jobs/:jobId/status — admin force-update + cancel (INTERNAL & EXTERNAL)
+adminRouter.patch("/jobs/:jobId/status", async (req, res) => {
+  const jobId = Number(req.params.jobId);
+  if (isNaN(jobId)) { res.status(400).json({ message: "Invalid jobId" }); return; }
+  const { status, note, force } = req.body ?? {};
+  if (!status) { res.status(400).json({ message: "status wajib diisi" }); return; }
+
+  const [currentJob] = await db.select().from(driverJobsTable).where(eq(driverJobsTable.id, jobId));
+  if (!currentJob) { res.status(404).json({ message: "Job tidak ditemukan" }); return; }
+
+  const newStatus = String(status);
+
+  // Cannot update already-terminal unless force=true
+  if (!force && (currentJob.status === "COMPLETED" || currentJob.status === "CANCELLED")) {
+    res.status(400).json({ message: "Job sudah dalam status terminal (COMPLETED/CANCELLED). Gunakan force=true untuk override." });
+    return;
+  }
+
+  // Validate transition — CANCELLED selalu diizinkan dari status apapun; force bypass validasi
+  if (!force && newStatus !== "CANCELLED") {
+    const allowed = VALID_TRANSITIONS[currentJob.status] ?? [];
+    if (!allowed.includes(newStatus)) {
+      res.status(400).json({
+        message: `Transisi tidak valid: ${currentJob.status} → ${newStatus}`,
+        currentStatus: currentJob.status,
+        allowedTransitions: allowed,
+      });
+      return;
+    }
+  }
+
+  const completedAt = newStatus === "COMPLETED" ? new Date() : null;
+  const [updated] = await db
+    .update(driverJobsTable)
+    .set({ status: newStatus as typeof currentJob.status, ...(completedAt ? { completedAt } : {}) })
+    .where(eq(driverJobsTable.id, jobId))
+    .returning();
+
+  await db.insert(driverJobLogsTable).values({
+    driverJobId: jobId,
+    status: newStatus as typeof currentJob.status,
+    note: note ? String(note) : `Status diperbarui oleh admin${force ? " (force)" : ""}`,
+    timestamp: new Date(),
+  });
+
+  await syncParentFreightStatus(updated.freightShipmentId, newStatus);
+  await syncDriverToLogisticOrder(updated.logisticOrderId, newStatus);
+
+  // updateOrderProgress — berlaku untuk INTERNAL (driverId null) maupun EXTERNAL
+  const progressStep = DRIVER_STATUS_TO_PROGRESS_STEP[newStatus];
+  if (progressStep && updated.logisticOrderId) {
+    let driverDisplayName = updated.driverNameOverride ?? "Driver Internal";
+    if (updated.driverId) {
+      const [driverRow] = await db.select({ name: driversTable.name }).from(driversTable).where(eq(driversTable.id, updated.driverId));
+      driverDisplayName = driverRow?.name ?? "Driver";
+    }
+    updateOrderProgress(
+      updated.logisticOrderId,
+      progressStep,
+      "driver",
+      driverDisplayName,
+      note ? String(note) : `Admin update: ${newStatus}`,
+    ).catch(() => {});
+  }
+
+  if (updated.logisticOrderId) {
+    logActivity({
+      orderId: updated.logisticOrderId,
+      actorType: "admin",
+      action: "driver_status_updated",
+      description: `Admin update status driver job: ${currentJob.status} → ${newStatus}${force ? " (force)" : ""}${note ? ` — ${note}` : ""}`,
+      newValue: { jobId, jobNumber: updated.jobNumber, status: newStatus, previousStatus: currentJob.status },
+    }).catch(() => {});
+  }
+
+  // Broadcast SSE ke admin
+  broadcastToAdmins("job_status_changed", {
+    jobId,
+    jobNumber: updated.jobNumber,
+    status: newStatus,
+    updatedAt: new Date().toISOString(),
+    source: "admin",
+  });
+
+  // WA ke admin (group) untuk semua milestone penting + CANCELLED
+  if (["PICKED_UP", "DELIVERED", "COMPLETED", "CANCELLED"].includes(newStatus)) {
+    (async () => {
+      try {
+        const driverDisplay = updated.driverType === "INTERNAL"
+          ? (updated.driverNameOverride ?? "Driver Internal")
+          : (() => { return "Driver"; })();
+
+        let driverName = driverDisplay;
+        if (updated.driverId) {
+          const [driverRow] = await db.select({ name: driversTable.name }).from(driversTable).where(eq(driversTable.id, updated.driverId));
+          driverName = driverRow?.name ?? driverDisplay;
+        }
+
+        let orderNumber = "-";
+        let customerName = "-";
+        let customerPhone: string | null = null;
+        if (updated.logisticOrderId) {
+          const [orderRow] = await db.select({
+            orderNumber: logisticOrdersTable.orderNumber,
+            customerName: logisticOrdersTable.customerName,
+            phone: logisticOrdersTable.phone,
+          }).from(logisticOrdersTable).where(eq(logisticOrdersTable.id, updated.logisticOrderId));
+          if (orderRow) {
+            orderNumber = orderRow.orderNumber ?? "-";
+            customerName = orderRow.customerName ?? "-";
+            customerPhone = orderRow.phone ?? null;
+          }
+        }
+
+        const adminGroupWa = await getAdminGroupWa();
+        if (adminGroupWa) {
+          const emoji = newStatus === "CANCELLED" ? "❌" : newStatus === "COMPLETED" ? "✅" : "🚚";
+          const statusLabel = STATUS_LABEL_ID[newStatus] ?? newStatus;
+          const msg = [
+            `${emoji} *Update Driver — ${updated.jobNumber}*`,
+            ``,
+            `👤 Driver: ${driverName}`,
+            `📦 Order: ${orderNumber} (${customerName})`,
+            `📍 Status: *${statusLabel}*`,
+            force ? `⚡ Mode: Force Update` : null,
+            note ? `📝 Catatan: ${note}` : null,
+            `🕐 ${nowWIB()}`,
+          ].filter(Boolean).join("\n");
+          sendWhatsApp(adminGroupWa, msg).catch(() => {});
+        }
+
+        // WA ke customer untuk PICKED_UP dan DELIVERED
+        if (["PICKED_UP", "DELIVERED"].includes(newStatus) && customerPhone) {
+          const domain = getPreferredDomain() || "cstlogistic.co.id";
+          const stepLabel = newStatus === "PICKED_UP" ? "Barang Berhasil Diambil" : "Barang Telah Terkirim";
+          const customerMsg = [
+            `🚚 *Update Pengiriman — CST Logistics*`,
+            ``,
+            `Halo ${customerName},`,
+            ``,
+            `Order *${orderNumber}* telah diperbarui:`,
+            `📍 Status: *${stepLabel}*`,
+            driverName !== "Driver" && driverName !== "Driver Internal" ? `👤 Driver: ${driverName}` : null,
+            note ? `📝 Catatan: ${note}` : null,
+            ``,
+            `Pantau pengiriman:\nhttps://${domain}/track`,
+          ].filter(Boolean).join("\n");
+          sendWhatsApp(customerPhone, customerMsg).catch(() => {});
+        }
+      } catch {
+        // non-fatal
+      }
+    })();
+  }
+
+  const logs = await db
+    .select()
+    .from(driverJobLogsTable)
+    .where(eq(driverJobLogsTable.driverJobId, jobId))
+    .orderBy(driverJobLogsTable.timestamp);
+
+  res.json({
+    ...serializeJob(updated),
+    statusLogs: logs.map((l) => ({ ...l, timestamp: l.timestamp.toISOString() })),
+    validNextStatuses: VALID_TRANSITIONS[newStatus] ?? [],
+  });
+});
+
 // GET /api/drivers/jobs/list — list all driver jobs (admin)
 // IMPORTANT: must be registered BEFORE /:id to avoid Express swallowing it
 adminRouter.get("/jobs/list", async (req, res) => {
   const shipmentId = req.query.shipmentId ? Number(req.query.shipmentId) : undefined;
+  const logisticOrderId = req.query.logisticOrderId ? Number(req.query.logisticOrderId) : undefined;
   const driverId = req.query.driverId ? Number(req.query.driverId) : undefined;
   const jobs = await db
     .select({
@@ -792,9 +1237,11 @@ adminRouter.get("/jobs/list", async (req, res) => {
     .where(
       shipmentId
         ? eq(driverJobsTable.freightShipmentId, shipmentId)
-        : driverId
-          ? eq(driverJobsTable.driverId, driverId)
-          : undefined
+        : logisticOrderId
+          ? eq(driverJobsTable.logisticOrderId, logisticOrderId)
+          : driverId
+            ? eq(driverJobsTable.driverId, driverId)
+            : undefined
     )
     .orderBy(desc(driverJobsTable.createdAt));
 
@@ -805,6 +1252,11 @@ adminRouter.get("/jobs/list", async (req, res) => {
         .from(driverPhotosTable)
         .where(eq(driverPhotosTable.driverJobId, job.id))
         .orderBy(driverPhotosTable.takenAt);
+      const logs = await db
+        .select()
+        .from(driverJobLogsTable)
+        .where(eq(driverJobLogsTable.driverJobId, job.id))
+        .orderBy(driverJobLogsTable.timestamp);
       return {
         ...serializeJob(job),
         driverName,
@@ -815,6 +1267,7 @@ adminRouter.get("/jobs/list", async (req, res) => {
         currentLat: currentLat ?? null,
         currentLng: currentLng ?? null,
         photos: photos.map((p) => ({ ...p, takenAt: p.takenAt.toISOString() })),
+        statusLogs: logs.map((l) => ({ ...l, timestamp: l.timestamp.toISOString() })),
         validNextStatuses: VALID_TRANSITIONS[job.status] ?? [],
       };
     })
@@ -828,12 +1281,49 @@ adminRouter.post("/jobs", async (req, res) => {
     driverId, freightShipmentId, logisticOrderId, customerName, pickupAddress, deliveryAddress,
     cargoDescription, vehicleType, truckPlate, pickupDateTime, deliveryDateTime,
     specialInstruction, weight, distance, notes,
+    driverType, executionMode, driverNameOverride, driverPhoneOverride, vehiclePlateOverride,
   } = req.body ?? {};
 
-  if (!driverId) { res.status(400).json({ message: "driverId wajib diisi" }); return; }
+  const resolvedDriverType: string = driverType === "INTERNAL" ? "INTERNAL" : "EXTERNAL";
+  const resolvedExecutionMode: string = executionMode === "WA_MINI_FORM" ? "WA_MINI_FORM" : "DRIVER_APP";
 
-  const [driver] = await db.select().from(driversTable).where(eq(driversTable.id, Number(driverId)));
-  if (!driver) { res.status(404).json({ message: "Driver not found" }); return; }
+  // INTERNAL mode: driverId not required
+  if (resolvedDriverType === "EXTERNAL" && !driverId) {
+    res.status(400).json({ message: "driverId wajib diisi untuk mode Driver Eksternal" });
+    return;
+  }
+  if (resolvedDriverType === "INTERNAL" && !driverNameOverride) {
+    res.status(400).json({ message: "Nama driver wajib diisi untuk mode Driver Internal" });
+    return;
+  }
+
+  // Duplicate active job guard: 1 active job per logisticOrderId max
+  if (logisticOrderId) {
+    const { sql: sqlFn } = await import("drizzle-orm");
+    const activeRows = await db.execute(sqlFn`
+      SELECT id FROM driver_jobs
+      WHERE logistic_order_id = ${Number(logisticOrderId)}
+        AND status NOT IN ('COMPLETED', 'CANCELLED')
+      LIMIT 1
+    `);
+    if ((activeRows.rows?.length ?? 0) > 0) {
+      res.status(409).json({
+        message: "Order ini masih memiliki assignment driver aktif. Selesaikan atau batalkan assignment sebelumnya terlebih dahulu.",
+      });
+      return;
+    }
+  }
+
+  let driver: typeof driversTable.$inferSelect | null = null;
+  if (driverId) {
+    const [d] = await db.select().from(driversTable).where(eq(driversTable.id, Number(driverId)));
+    if (!d) { res.status(404).json({ message: "Driver not found" }); return; }
+    if (resolvedDriverType === "EXTERNAL" && !d.isActive) {
+      res.status(400).json({ message: "Driver belum memiliki akun CST Driver App aktif." });
+      return;
+    }
+    driver = d;
+  }
 
   let shipmentInfo: typeof freightShipmentsTable.$inferSelect | undefined;
   if (freightShipmentId) {
@@ -842,9 +1332,35 @@ adminRouter.post("/jobs", async (req, res) => {
     shipmentInfo = s;
   }
 
+  // For INTERNAL/WA_MINI_FORM: generate wa_progress_token and insert into driver_progress_tokens
+  let waProgressToken: string | null = null;
+  if (resolvedExecutionMode === "WA_MINI_FORM" && logisticOrderId) {
+    const { randomUUID: uuid } = await import("crypto");
+    const { sql: sqlFn } = await import("drizzle-orm");
+    waProgressToken = uuid();
+    const resolvedDriverName = driverNameOverride ? String(driverNameOverride) : (driver?.name ?? "Driver");
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 hari
+    await db.execute(sqlFn`
+      INSERT INTO driver_progress_tokens (token, order_id, driver_name, driver_phone, expires_at)
+      VALUES (${waProgressToken}, ${Number(logisticOrderId)}, ${resolvedDriverName}, ${driverPhoneOverride ?? null}, ${expiresAt.toISOString()})
+      ON CONFLICT (token) DO NOTHING
+    `).catch(() => {});
+  }
+
+  const effectiveDriverName = resolvedDriverType === "INTERNAL"
+    ? (driverNameOverride ? String(driverNameOverride) : null)
+    : (driver?.name ?? null);
+  const effectivePhone = resolvedDriverType === "INTERNAL"
+    ? (driverPhoneOverride ? String(driverPhoneOverride) : null)
+    : (driver?.phone ?? null);
+  const effectivePlate = resolvedDriverType === "INTERNAL"
+    ? (vehiclePlateOverride ? String(vehiclePlateOverride) : null)
+    : (driver?.vehiclePlate ?? null);
+  const effectiveVehicleType = resolvedDriverType === "INTERNAL" ? null : (driver?.vehicleType ?? null);
+
   const jobNumber = nextJobNumber();
   const [job] = await db.insert(driverJobsTable).values({
-    driverId: Number(driverId),
+    driverId: driverId ? Number(driverId) : null,
     freightShipmentId: freightShipmentId ? Number(freightShipmentId) : null,
     logisticOrderId: logisticOrderId ? Number(logisticOrderId) : null,
     jobNumber,
@@ -852,14 +1368,20 @@ adminRouter.post("/jobs", async (req, res) => {
     pickupAddress: pickupAddress ? String(pickupAddress) : null,
     deliveryAddress: deliveryAddress ? String(deliveryAddress) : null,
     cargoDescription: cargoDescription ? String(cargoDescription) : (shipmentInfo ? String(shipmentInfo.commodity ?? "") : null),
-    vehicleType: vehicleType ? String(vehicleType) : driver.vehicleType,
-    truckPlate: truckPlate ? String(truckPlate) : driver.vehiclePlate,
+    vehicleType: vehicleType ? String(vehicleType) : effectiveVehicleType,
+    truckPlate: truckPlate ? String(truckPlate) : effectivePlate,
     pickupDateTime: pickupDateTime ? new Date(pickupDateTime as string) : null,
     deliveryDateTime: deliveryDateTime ? new Date(deliveryDateTime as string) : null,
     specialInstruction: specialInstruction ? String(specialInstruction) : null,
     weight: weight ? String(weight) : null,
     distance: distance ? String(distance) : null,
     notes: notes ? String(notes) : null,
+    driverType: resolvedDriverType,
+    executionMode: resolvedExecutionMode,
+    waProgressToken,
+    driverNameOverride: driverNameOverride ? String(driverNameOverride) : null,
+    driverPhoneOverride: driverPhoneOverride ? String(driverPhoneOverride) : null,
+    vehiclePlateOverride: vehiclePlateOverride ? String(vehiclePlateOverride) : null,
   }).returning();
 
   await db.insert(driverJobLogsTable).values({
@@ -869,18 +1391,47 @@ adminRouter.post("/jobs", async (req, res) => {
     timestamp: new Date(),
   });
 
-  // Push real-time event ke driver yang sedang online
-  pushToDriver(Number(driverId), "new_job", {
-    jobId: job.id,
-    jobNumber: job.jobNumber,
-    customerName: job.customerName,
-    pickupAddress: job.pickupAddress,
-    deliveryAddress: job.deliveryAddress,
-    assignedAt: job.assignedAt.toISOString(),
-  });
+  // Push real-time event ke driver yang sedang online (EXTERNAL only)
+  if (driverId) {
+    pushToDriver(Number(driverId), "new_job", {
+      jobId: job.id,
+      jobNumber: job.jobNumber,
+      customerName: job.customerName,
+      pickupAddress: job.pickupAddress,
+      deliveryAddress: job.deliveryAddress,
+      assignedAt: job.assignedAt.toISOString(),
+    });
+  }
 
-  // Kirim notifikasi WhatsApp ke driver
-  if (driver.phone) {
+  const domain = getPreferredDomain();
+
+  if (resolvedExecutionMode === "WA_MINI_FORM" && waProgressToken && effectivePhone) {
+    // INTERNAL: kirim WA Mini Form link ke nomor driver
+    const { normalizePhone } = await import("../lib/phoneUtils.js");
+    const waLink = `https://${domain}/driver-progress/${waProgressToken}`;
+    const pickup = job.pickupAddress ?? "-";
+    const delivery = job.deliveryAddress ?? "-";
+    const msg = [
+      `🚚 *Penugasan Pengiriman Baru*`,
+      ``,
+      `Anda ditugaskan sebagai driver untuk order ini.`,
+      ``,
+      `Pickup: ${pickup}`,
+      `Tujuan: ${delivery}`,
+      job.cargoDescription ? `Muatan: ${job.cargoDescription}` : null,
+      job.specialInstruction ? `Catatan: ${job.specialInstruction}` : null,
+      ``,
+      `*Link Update Progress:*`,
+      waLink,
+      ``,
+      `Klik link di atas untuk update status pengiriman (Pickup → Transit → Delivered).`,
+    ].filter(Boolean).join("\n");
+    const normalizedPhone = normalizePhone(effectivePhone);
+    sendWhatsApp(normalizedPhone, msg).catch((err: unknown) => {
+      req.log?.warn?.({ err, phone: normalizedPhone }, "sendWhatsApp WA Mini Form failed (non-fatal)");
+    });
+  } else if (resolvedDriverType === "EXTERNAL" && driver?.phone) {
+    // EXTERNAL: kirim WA link buka CST Driver App
     const pickup = job.pickupAddress ?? "-";
     const delivery = job.deliveryAddress ?? "-";
     const customer = job.customerName ?? "-";
@@ -894,24 +1445,24 @@ adminRouter.post("/jobs", async (req, res) => {
       job.specialInstruction ? `Catatan: ${job.specialInstruction}` : null,
       ``,
       `Buka aplikasi CST Driver:`,
-      `https://${getPreferredDomain()}/api/driver/open-app`,
+      `https://${domain}/api/driver/open-app`,
     ].filter(Boolean).join("\n");
     sendWhatsApp(driver.phone, msg).catch((err: unknown) => {
-      req.log.error({ err, driverId: driver.id, phone: driver.phone }, "sendWhatsApp failed for job assignment");
+      req.log?.error?.({ err, driverId: driver!.id, phone: driver!.phone }, "sendWhatsApp failed for job assignment");
     });
   }
 
   // Notifikasi template ke customer jika job terhubung ke logistic order
-  if (job.logisticOrderId) {
+  if (job.logisticOrderId && driver) {
     fetchOrderData(job.logisticOrderId).then((orderData) => {
       if (!orderData) return;
       sendDriverAssignedNotification(
         orderData,
-        driver.name,
-        driver.phone ?? "",
-        job.truckPlate ?? "-",
-        job.vehicleType ?? "-",
-      ).catch((err: unknown) => req.log.error({ err }, "sendDriverAssignedNotification failed"));
+        effectiveDriverName ?? driver!.name,
+        effectivePhone ?? driver!.phone ?? "",
+        job.truckPlate ?? effectivePlate ?? "-",
+        job.vehicleType ?? effectiveVehicleType ?? "-",
+      ).catch((err: unknown) => req.log?.error?.({ err }, "sendDriverAssignedNotification failed"));
     }).catch(() => {});
   }
 

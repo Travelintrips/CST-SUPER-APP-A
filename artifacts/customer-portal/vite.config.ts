@@ -67,7 +67,6 @@ export default defineConfig({
   server: {
     port,
     strictPort: true,
-    host: "::",
     host: "0.0.0.0",
     allowedHosts: true,
     watch: {
@@ -83,21 +82,21 @@ export default defineConfig({
     hmr: process.env.REPLIT_DEV_DOMAIN ? false : true,
     proxy: {
       "/api": {
-        target: "http://localhost:18444",
+        target: "http://localhost:8080",
         changeOrigin: true,
       },
       "/q": {
-        target: "http://localhost:18444",
+        target: "http://localhost:8080",
         changeOrigin: true,
       },
       // BizPortal dev server — proxied so /bizportal/* works via main entry port
       "/bizportal": {
-        target: "http://localhost:18442",
+        target: "http://localhost:3000",
         changeOrigin: true,
         ws: true,
       },
       "/logistic-order": {
-        target: "http://localhost:19368",
+        target: "http://localhost:3001",
         changeOrigin: true,
         ws: true,
       },

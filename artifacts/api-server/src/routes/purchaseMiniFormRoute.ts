@@ -1,12 +1,20 @@
 import { Router, type Request, type Response } from "express";
 import { randomBytes } from "crypto";
 import { and, desc, eq, sql } from "drizzle-orm";
+
+import { eq, sql } from "drizzle-orm";
+
 import {
   db,
   purchaseMiniFormsTable,
   vendorInvoicesTable,
   goodsReceiptsTable,
   purchaseDocumentsTable,
+
+  vendorInvoiceLinesTable,
+  purchaseDocumentsTable,
+  goodsReceiptsTable,
+
 } from "@workspace/db";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { logger } from "../lib/logger.js";
@@ -15,6 +23,156 @@ import { postEntry } from "../lib/accounting.js";
 
 export const purchaseMiniPublicRouter = Router();
 export const purchaseMiniAdminRouter = Router();
+
+// ─── Helper: Post Vendor Invoice Accounting ───────────────────────────────────
+// Logic identik dengan POST /purchase-workflow/vendor-invoices/:id/post
+// Idempotent: tidak double-post jika VI sudah berstatus posted/paid.
+async function postVendorInvoiceAccounting(
+  vendorInvoiceId: number,
+  submissionData: Record<string, unknown>,
+): Promise<void> {
+  const [vi] = await db
+    .select()
+    .from(vendorInvoicesTable)
+    .where(eq(vendorInvoicesTable.id, vendorInvoiceId))
+    .limit(1);
+
+  if (!vi) {
+    logger.warn({ vendorInvoiceId }, "postVendorInvoiceAccounting: vendor invoice tidak ditemukan");
+    return;
+  }
+
+  // Idempotency guard: hanya post jika masih draft
+  if (vi.status !== "draft") {
+    logger.info({ vendorInvoiceId, status: vi.status }, "postVendorInvoiceAccounting: sudah diposting, skip");
+    return;
+  }
+
+  // Update nomor invoice vendor dari data submission jika ada
+  const vendorRef = submissionData.vendorInvoiceRef as string | undefined;
+  if (vendorRef && vendorRef.trim()) {
+    await db
+      .update(vendorInvoicesTable)
+      .set({ vendorInvoiceRef: vendorRef.trim(), updatedAt: new Date() })
+      .where(eq(vendorInvoicesTable.id, vendorInvoiceId));
+  }
+
+  // 3-way match check
+  let matchStatus = "unmatched";
+  let matchNotes = "";
+  if (vi.poId && vi.grId) {
+    const [po] = await db
+      .select()
+      .from(purchaseDocumentsTable)
+      .where(eq(purchaseDocumentsTable.id, vi.poId))
+      .limit(1);
+    const [gr] = await db
+      .select()
+      .from(goodsReceiptsTable)
+      .where(eq(goodsReceiptsTable.id, vi.grId))
+      .limit(1);
+    if (po && gr && gr.status === "confirmed") {
+      const poTotal = Number(po.grandTotal ?? 0);
+      const viTotal = Number(vi.grandTotal ?? 0);
+      const diff = Math.abs(poTotal - viTotal);
+      if (diff < 1) {
+        matchStatus = "matched";
+        matchNotes = "PO, GR, VI amounts match";
+      } else {
+        matchStatus = "partial";
+        matchNotes = `Variance: ${diff.toFixed(2)}`;
+      }
+    }
+  } else if (vi.poId) {
+    matchStatus = "partial";
+    matchNotes = "No GR linked";
+  }
+
+  // Post jurnal akuntansi: Dr GR/IR (clearing) → Cr AP
+  try {
+    const settings = await ensureAccountingSettings(vi.companyId ?? 1);
+    const grandTotal = Number(vi.grandTotal ?? 0);
+    const taxAmount = Number(vi.taxAmount ?? 0);
+    const netAmount = grandTotal - taxAmount;
+
+    const lines: { accountId: number; debit: number; credit: number; description: string }[] = [];
+
+    // Debit: GR/IR clearing (jika linked GR) atau purchase expense
+    const debitAccId = (vi.grId && settings.grirAccountId)
+      ? settings.grirAccountId
+      : settings.purchaseExpenseAccountId;
+    const debitDesc = (vi.grId && settings.grirAccountId)
+      ? `GR/IR clearing ${vi.invoiceNumber}`
+      : "Purchase expense";
+
+    if (debitAccId) lines.push({ accountId: debitAccId, debit: netAmount, credit: 0, description: debitDesc });
+    if (taxAmount > 0 && settings.ppnInputAccountId) {
+      lines.push({ accountId: settings.ppnInputAccountId, debit: taxAmount, credit: 0, description: "VAT in" });
+    }
+    if (settings.apAccountId) {
+      lines.push({ accountId: settings.apAccountId, debit: 0, credit: grandTotal, description: "AP vendor invoice" });
+    }
+
+    if (lines.length >= 2 && settings.purchaseJournalId) {
+      const entry = await postEntry(
+        {
+          journalId: settings.purchaseJournalId,
+          date: new Date(),
+          ref: vi.invoiceNumber,
+          description: `Vendor Invoice ${vi.invoiceNumber} (via Mini Form)`,
+          source: "purchase_bill",
+          sourceId: vendorInvoiceId,
+          companyId: vi.companyId ?? 1,
+          lines,
+        },
+        "PUR",
+      );
+      await db
+        .update(vendorInvoicesTable)
+        .set({
+          status: "posted",
+          threeWayMatchStatus: matchStatus,
+          matchNotes,
+          journalEntryId: entry.id,
+          updatedAt: new Date(),
+        })
+        .where(eq(vendorInvoicesTable.id, vendorInvoiceId));
+    } else {
+      await db
+        .update(vendorInvoicesTable)
+        .set({ status: "posted", threeWayMatchStatus: matchStatus, matchNotes, updatedAt: new Date() })
+        .where(eq(vendorInvoicesTable.id, vendorInvoiceId));
+    }
+
+    // Update billStatus PO jika linked dan belum billed
+    if (vi.poId) {
+      const [po] = await db
+        .select({ billStatus: purchaseDocumentsTable.billStatus })
+        .from(purchaseDocumentsTable)
+        .where(eq(purchaseDocumentsTable.id, vi.poId))
+        .limit(1);
+      if (po && po.billStatus !== "billed") {
+        await db
+          .update(purchaseDocumentsTable)
+          .set({ billStatus: "billed", updatedAt: new Date() })
+          .where(eq(purchaseDocumentsTable.id, vi.poId));
+      }
+    }
+
+    logger.info(
+      { vendorInvoiceId, matchStatus, grandTotal },
+      "postVendorInvoiceAccounting: berhasil diposting",
+    );
+  } catch (err) {
+    logger.error({ err, vendorInvoiceId }, "postVendorInvoiceAccounting: error saat posting jurnal");
+    // Tetap tandai sebagai posted meski jurnal gagal, agar tidak double-post
+    await db
+      .update(vendorInvoicesTable)
+      .set({ status: "posted", threeWayMatchStatus: matchStatus, matchNotes, updatedAt: new Date() })
+      .where(eq(vendorInvoicesTable.id, vendorInvoiceId));
+    throw err;
+  }
+}
 
 // ─── Boot migration ───────────────────────────────────────────────────────────
 let migrationDone = false;
@@ -402,12 +560,24 @@ purchaseMiniPublicRouter.post("/:token", async (req: Request, res: Response) => 
       })
       .where(eq(purchaseMiniFormsTable.token, token));
 
+
     // ── Vendor Invoice → Auto-Post ke Accounting ────────────────────────────
     // Fire-and-forget: tidak blokir response ke vendor meski posting gagal
     if (row.formType === "vendor_invoice") {
       autoPostVendorInvoice(row.refNumber, row.purchaseDocId, body).catch((e) =>
         logger.error({ e, token }, "purchaseMiniForm: VI auto-post error"),
       );
+
+    // ── Vendor Invoice Auto-Post ─────────────────────────────────────────────
+    // Saat vendor submit form vendor_invoice, langsung post jurnal akuntansi
+    // (Dr GR/IR → Cr AP) — idempotent: hanya jika VI masih berstatus draft.
+    if (row.formType === "vendor_invoice" && row.purchaseDocId) {
+      try {
+        await postVendorInvoiceAccounting(row.purchaseDocId, body);
+      } catch (err) {
+        logger.error({ err, purchaseDocId: row.purchaseDocId }, "purchaseMiniForm: vendor_invoice auto-post error");
+        // Jangan gagalkan response — form tetap dianggap berhasil submit
+      }
     }
 
     return res.json({ success: true, formType: row.formType, refNumber: row.refNumber });

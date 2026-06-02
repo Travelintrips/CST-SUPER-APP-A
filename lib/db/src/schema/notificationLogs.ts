@@ -30,6 +30,16 @@ export const notificationLogsTable = pgTable("notification_logs", {
    * Disimpan agar retry worker bisa mengirim ulang dengan media yang sama.
    */
   mediaUrl: text("media_url"),
+  /**
+   * WA Delivery Tracking — diisi dari Fonnte API response saat kirim.
+   * waMessageId: ID pesan dari Fonnte, dipakai untuk match delivery callback.
+   * waDeliveryStatus: status terakhir dari Fonnte callback ('sent'|'delivered'|'read').
+   * deliveredAt / readAt: timestamp dari delivery callback.
+   */
+  waMessageId: text("wa_message_id"),
+  waDeliveryStatus: text("wa_delivery_status"),
+  deliveredAt: timestamp("delivered_at"),
+  readAt: timestamp("read_at"),
 }, (t) => [
   index("notif_logs_channel_idx").on(t.channel),
   index("notif_logs_status_idx").on(t.status),

@@ -1843,7 +1843,7 @@ export default function AdminReviewPage() {
   if (!data) return null;
 
   if (data.actionType === "confirm_fulfillment") {
-    return <ConfirmFulfillmentView data={data as ConfirmFulfillmentData} token={token} />;
+    return <ConfirmFulfillmentView data={data as unknown as ConfirmFulfillmentData} token={token} />;
   }
 
   if (data.actionType === "compare_vendors") {

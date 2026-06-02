@@ -1,0 +1,107 @@
+FASE 2B — CREATE SERVICE_TEMPLATES DB TABLE
+
+Tujuan:
+Membuat tabel service_templates sebagai DB override untuk lib/service-templates, tanpa mengubah behavior aplikasi.
+
+Kondisi:
+- FASE 2A selesai.
+- lib/service-templates sudah ada.
+- 17 in-code service templates sudah tersedia.
+- SERVICE_SCHEMAS masih berjalan normal.
+
+Tugas:
+
+1. Buat Drizzle schema baru:
+
+lib/db/src/schema/serviceTemplates.ts
+
+Table:
+service_templates
+
+Columns:
+- id serial primary key
+- serviceType text unique not null
+- label text not null
+- emoji text default '📋'
+- version text default '1.0.0'
+- isActive boolean default true
+- description text nullable
+- sortOrder integer default 0
+- fields jsonb default []
+- requiredDocuments jsonb default []
+- checklist jsonb default []
+- conditionalRules jsonb default []
+- validationRules jsonb default []
+- createdAt timestamp default now
+- updatedAt timestamp default now
+
+2. Export schema dari:
+lib/db/src/schema/index.ts
+
+3. Buat boot migration idempotent:
+
+CREATE TABLE IF NOT EXISTS service_templates ...
+
+4. Buat seed script idempotent:
+
+scripts/seed-service-templates.mjs
+
+Seed dari:
+@workspace/service-templates
+
+Masukkan semua 17 template:
+- product
+- trucking
+- sea_freight
+- air_freight
+- ppjk
+- handling
+- document
+- exim_service
+- customer_shipment
+- customer_quote
+- customer_document
+- customer_complaint
+- customer_product
+- admin_checklist
+- admin_handover
+- admin_inspection
+- admin_rfq_forward
+
+5. Seed behavior:
+Jika service_type sudah ada:
+- jangan duplicate
+- update label, emoji, version, fields, requiredDocuments, checklist, conditionalRules, validationRules
+- pertahankan id
+
+6. Jangan ubah:
+- vendorMiniForm.ts
+- SERVICE_SCHEMAS
+- Customer Portal
+- BizPortal UI
+- WA Notification
+
+7. Jalankan:
+- pnpm typecheck / build sesuai repo
+- seed script
+- query count table
+
+8. Output:
+
+SERVICE TEMPLATES DB REPORT
+
+Isi:
+- file dibuat
+- migration result
+- seed result
+- jumlah rows
+- service types tersedia
+- test/build result
+- issue ditemukan
+
+Acceptance Criteria:
+- service_templates table tersedia
+- 17 service templates tersimpan di DB
+- tidak ada perubahan behavior aplikasi
+- SERVICE_SCHEMAS masih menjadi runtime utama
+- rollback aman karena tabel baru additive

@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
-import { calcTax, TAX_RATE_PCT } from "../lib/taxHelper";
+import { useState, useEffect, useCallback, useRef } from "react";
+
 import { useParams } from "wouter";
 import type { ProductTemplate, DynamicFormValues } from "@workspace/product-templates";
 import {
@@ -40,6 +40,17 @@ type OrderContext = {
   items: OrderContextItem[];
 };
 
+type ServiceTemplateInfo = {
+  serviceType: string;
+  label: string;
+  emoji: string;
+  fields: FieldDef[];
+  requiredDocuments: Array<{ key: string; label: string; required: boolean }>;
+  checklist: Array<{ key: string; label: string }>;
+  version: string;
+  source: string;
+};
+
 type FormMeta = {
   id: number; serviceType: string; title: string | null; notes: string | null;
   vendorName: string | null; vendorPhone: string | null; vendorContactPerson: string | null;
@@ -47,7 +58,11 @@ type FormMeta = {
   orderNumber: string | null; orderItemId: number | null; phase: string | null;
   alreadySubmitted?: boolean;
   productTemplate?: ProductTemplate | null;
+  serviceTemplate?: ServiceTemplateInfo | null;
   orderContext?: OrderContext | null;
+  templateMissing?: boolean;
+  templateVersion?: string | null;
+  templateCategory?: string | null;
 };
 
 // ── Skeleton ──────────────────────────────────────────────────────────────────
@@ -159,6 +174,217 @@ function FormField({ label, required, children }: { label: string; required?: bo
 
 const INPUT_CLS = "w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400";
 
+// ── Types ─────────────────────────────────────────────────────────────────────
+type VendorDriver = { id: number; name: string; phone: string | null; vehiclePlate: string | null; vehicleType: string | null };
+
+// ── DriverPicker ──────────────────────────────────────────────────────────────
+function DriverPicker({
+  token,
+  driverName,
+  driverPhone,
+  plateNumber,
+  vehicleType,
+  onSelect,
+}: {
+  token: string;
+  driverName: string;
+  driverPhone: string;
+  plateNumber: string;
+  vehicleType: string;
+  onSelect: (d: { name: string; phone: string; plate: string; vehicleType: string }) => void;
+}) {
+  const [drivers, setDrivers] = useState<VendorDriver[]>([]);
+  const [search, setSearch] = useState("");
+  const [open, setOpen] = useState(false);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newPhone, setNewPhone] = useState("");
+  const [newPlate, setNewPlate] = useState("");
+  const [newVehicleType, setNewVehicleType] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    fetch(`/api/vendor-form/${token}/drivers`)
+      .then((r) => r.json())
+      .then((d: { drivers?: VendorDriver[] }) => { if (d.drivers) setDrivers(d.drivers); })
+      .catch(() => {});
+  }, [token]);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (dropRef.current && !dropRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const filtered = drivers.filter((d) =>
+    d.name.toLowerCase().includes(search.toLowerCase()) ||
+    (d.vehiclePlate ?? "").toLowerCase().includes(search.toLowerCase()) ||
+    (d.phone ?? "").includes(search)
+  );
+
+  const handleSelect = useCallback((d: VendorDriver) => {
+    onSelect({ name: d.name, phone: d.phone ?? "", plate: d.vehiclePlate ?? "", vehicleType: d.vehicleType ?? "" });
+    setSearch("");
+    setOpen(false);
+  }, [onSelect]);
+
+  const handleSaveNew = async () => {
+    if (!newName.trim()) { setSaveError("Nama driver wajib diisi"); return; }
+    setSaving(true); setSaveError(null);
+    try {
+      const r = await fetch(`/api/vendor-form/${token}/drivers`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newName.trim(), phone: newPhone.trim(), vehiclePlate: newPlate.trim(), vehicleType: newVehicleType.trim() }),
+      });
+      const d = await r.json() as { driver?: VendorDriver; error?: string };
+      if (!r.ok) throw new Error(d.error ?? "Gagal menyimpan driver");
+      if (d.driver) {
+        setDrivers((prev) => [...prev, d.driver!]);
+        handleSelect(d.driver!);
+      }
+      setShowAddForm(false);
+      setNewName(""); setNewPhone(""); setNewPlate(""); setNewVehicleType("");
+    } catch (e) {
+      setSaveError((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const inputCls = "w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400";
+  const selectedLabel = driverName ? `${driverName}${plateNumber ? ` · ${plateNumber}` : ""}` : "";
+
+  return (
+    <div className="space-y-3">
+      <div className="space-y-1.5" ref={dropRef}>
+        <label className="text-sm font-medium text-slate-700">
+          Pilih Driver <span className="text-red-500">*</span>
+        </label>
+        {selectedLabel && !open && (
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm">
+            <div>
+              <span className="font-medium text-emerald-800">{driverName}</span>
+              {driverPhone && <span className="text-slate-500 ml-2">· {driverPhone}</span>}
+              {plateNumber && <span className="text-slate-500 ml-2">· {plateNumber}</span>}
+            </div>
+            <button type="button" onClick={() => { setOpen(true); setSearch(""); }}
+              className="text-xs text-emerald-600 hover:text-emerald-800 underline shrink-0">Ganti</button>
+          </div>
+        )}
+        {(!selectedLabel || open) && (
+          <div className="relative">
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setOpen(true); }}
+              onFocus={() => setOpen(true)}
+              placeholder={drivers.length > 0 ? "Cari nama driver atau plat..." : "Belum ada driver terdaftar"}
+              className={inputCls}
+              autoComplete="off"
+            />
+            {open && (
+              <div className="absolute z-20 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg max-h-52 overflow-y-auto">
+                {filtered.length > 0 ? (
+                  filtered.map((d) => (
+                    <button key={d.id} type="button" onClick={() => handleSelect(d)}
+                      className="w-full text-left px-3 py-2.5 hover:bg-emerald-50 border-b border-slate-50 last:border-0">
+                      <div className="text-sm font-medium text-slate-800">{d.name}</div>
+                      <div className="text-xs text-slate-400 mt-0.5 flex gap-2">
+                        {d.phone && <span>📱 {d.phone}</span>}
+                        {d.vehiclePlate && <span>🚛 {d.vehiclePlate}</span>}
+                        {d.vehicleType && <span>{d.vehicleType}</span>}
+                      </div>
+                    </button>
+                  ))
+                ) : (
+                  <div className="px-3 py-3 text-sm text-slate-400 text-center">
+                    {search ? `"${search}" tidak ditemukan` : "Belum ada driver terdaftar"}
+                  </div>
+                )}
+                <button type="button"
+                  onClick={() => { setOpen(false); setShowAddForm(true); setNewName(search); setSearch(""); }}
+                  className="w-full text-left px-3 py-2.5 text-sm text-emerald-700 font-medium bg-emerald-50 hover:bg-emerald-100 border-t border-emerald-100 flex items-center gap-2">
+                  <span className="text-base">＋</span> Tambah driver baru
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {showAddForm && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-4 space-y-3">
+          <p className="text-sm font-semibold text-emerald-800">➕ Tambah Driver Baru</p>
+          {saveError && <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{saveError}</p>}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-600">Nama Driver <span className="text-red-500">*</span></label>
+            <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)}
+              placeholder="Nama lengkap driver" className={inputCls} />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-600">No. HP</label>
+            <input type="text" value={newPhone} onChange={(e) => setNewPhone(e.target.value)}
+              placeholder="08xxxxxxxxxx" className={inputCls} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-slate-600">Plat Nomor</label>
+              <input type="text" value={newPlate} onChange={(e) => setNewPlate(e.target.value)}
+                placeholder="B 1234 XYZ" className={inputCls} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-slate-600">Jenis Kendaraan</label>
+              <input type="text" value={newVehicleType} onChange={(e) => setNewVehicleType(e.target.value)}
+                placeholder="Engkel, CDD, dll" className={inputCls} />
+            </div>
+          </div>
+          <div className="flex gap-2 pt-1">
+            <button type="button" onClick={handleSaveNew} disabled={saving}
+              className="flex-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white text-sm font-medium py-2 transition-colors flex items-center justify-center gap-2">
+              {saving && <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+              {saving ? "Menyimpan..." : "Simpan & Pilih"}
+            </button>
+            <button type="button" onClick={() => { setShowAddForm(false); setSaveError(null); }}
+              className="px-4 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 py-2">
+              Batal
+            </button>
+          </div>
+        </div>
+      )}
+
+      {driverName && (
+        <div className="grid grid-cols-1 gap-3 pt-1">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">No. HP Driver</label>
+            <input type="text" value={driverPhone}
+              onChange={(e) => onSelect({ name: driverName, phone: e.target.value, plate: plateNumber, vehicleType })}
+              placeholder="08xxxxxxxxxx" className={inputCls} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              Nomor Plat Kendaraan <span className="text-red-500">*</span>
+            </label>
+            <input type="text" value={plateNumber}
+              onChange={(e) => onSelect({ name: driverName, phone: driverPhone, plate: e.target.value, vehicleType })}
+              placeholder="B 1234 XYZ" className={inputCls} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Tipe Kendaraan</label>
+            <input type="text" value={vehicleType}
+              onChange={(e) => onSelect({ name: driverName, phone: driverPhone, plate: plateNumber, vehicleType: e.target.value })}
+              placeholder="Engkel, Tronton, CDD, dll" className={inputCls} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function VendorMiniFormPage() {
   const { token } = useParams<{ token: string }>();
@@ -186,6 +412,12 @@ export default function VendorMiniFormPage() {
     packagingNotes: "",
     conditionalFlags: {},
   });
+  // Vendor-only fields when productTemplate is active
+  const [tplStockStatus, setTplStockStatus] = useState("");
+  const [tplHarga, setTplHarga] = useState("");
+  const [tplLeadTime, setTplLeadTime] = useState("");
+  const [tplMoq, setTplMoq] = useState("");
+  const [tplNotes, setTplNotes] = useState("");
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -215,13 +447,26 @@ export default function VendorMiniFormPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!meta?.schema) return;
+    // Allow submission when serviceTemplate is available even without schema/productTemplate
+    if (!meta?.schema && !meta?.productTemplate && !meta?.serviceTemplate) return;
 
-    const missing = meta.schema.fields
-      .filter(f => f.required && !values[f.key]?.trim())
-      .map(f => f.label);
-    if (missing.length) { setSubmitError(`Field wajib belum diisi: ${missing.join(", ")}`); return; }
-    if (meta.mode === "order_based" && (!vendorUnitPrice || Number(vendorUnitPrice) <= 0)) {
+    // Validate required fields — prefer serviceTemplate fields, fallback to schema
+    if (meta?.serviceTemplate && !meta?.productTemplate) {
+      const missing = (meta.serviceTemplate.fields ?? [])
+        .filter(f => f.required && !f.isUpload && !values[f.key]?.trim())
+        .map(f => f.label);
+      if (missing.length) { setSubmitError(`Field wajib belum diisi: ${missing.join(", ")}`); return; }
+    } else if (meta?.schema) {
+      const missing = meta.schema.fields
+        .filter(f => f.required && !values[f.key]?.trim())
+        .map(f => f.label);
+      if (missing.length) { setSubmitError(`Field wajib belum diisi: ${missing.join(", ")}`); return; }
+    }
+
+    if (meta?.productTemplate && (!tplHarga || Number(tplHarga) <= 0)) {
+      setSubmitError("Harga dasar wajib diisi"); return;
+    }
+    if (meta?.mode === "order_based" && !meta?.productTemplate && (!vendorUnitPrice || Number(vendorUnitPrice) <= 0)) {
       setSubmitError("Harga satuan dasar wajib diisi"); return;
     }
 
@@ -241,7 +486,9 @@ export default function VendorMiniFormPage() {
       }
 
       const qty = Math.max(1, Number(vendorQty) || 1);
-      const unitPrice = Number(vendorUnitPrice) || 0;
+      const unitPrice = meta.productTemplate
+        ? (Number(tplHarga) || 0)
+        : (Number(vendorUnitPrice) || 0);
       const subtotal = qty * unitPrice;
       const body: Record<string, unknown> = {
         vendorName: vendorName.trim() || null,
@@ -253,7 +500,14 @@ export default function VendorMiniFormPage() {
           ...Object.fromEntries(templateValues.uploadedDocuments.map((d) => [`_doc_${d.key}`, d.reference])),
           ...Object.fromEntries(Object.entries(templateValues.checklistStatus).map(([k, v]) => [`_chk_${k}`, v])),
           ...(templateValues.packagingNotes ? { _packagingNotes: templateValues.packagingNotes } : {}),
-          ...(meta.mode === "order_based" ? {
+          ...(meta.productTemplate ? {
+            _stockStatus: tplStockStatus || undefined,
+            _hargaDasar: tplHarga || undefined,
+            _leadTime: tplLeadTime || undefined,
+            _moq: tplMoq || undefined,
+            _vendorNotes: tplNotes || undefined,
+          } : {}),
+          ...(meta.mode === "order_based" && !meta.productTemplate ? {
             _deskripsi: vendorDesc.trim() || undefined,
             _qty: vendorQty,
             _satuan: vendorUnit,
@@ -265,7 +519,12 @@ export default function VendorMiniFormPage() {
       if (meta.mode === "order_based") {
         body["vendorPrice"] = subtotal > 0 ? subtotal : undefined;
         body["currency"] = currency;
-        body["eta"] = eta.trim() || undefined;
+        body["eta"] = tplLeadTime.trim() || eta.trim() || undefined;
+        body["validUntil"] = validUntil || undefined;
+      } else if (meta.productTemplate) {
+        body["vendorPrice"] = unitPrice > 0 ? unitPrice : undefined;
+        body["currency"] = currency;
+        body["eta"] = tplLeadTime.trim() || undefined;
         body["validUntil"] = validUntil || undefined;
       }
       const res = await fetch(`/api/vendor-form/${token}`, {
@@ -289,23 +548,39 @@ export default function VendorMiniFormPage() {
   if (submitted) return <SuccessState orderNumber={meta?.orderNumber} />;
   if (meta?.alreadySubmitted) return <AlreadySubmittedState />;
 
-  if (!meta?.schema) {
+  // Allow rendering when any of schema, productTemplate, or serviceTemplate is available
+  if (!meta?.schema && !meta?.productTemplate && !meta?.serviceTemplate) {
     return <ErrorState message="Form tidak tersedia untuk link ini." />;
   }
 
-  const { schema } = meta;
+  const schema = meta.schema;
   const isOrderBased = meta.mode === "order_based";
+  const hasProductTemplate = !!meta.productTemplate;
+  const hasServiceTemplate = !hasProductTemplate && !!meta.serviceTemplate && (meta.serviceTemplate.fields?.length ?? 0) > 0;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-blue-50 py-10 px-4">
       <div className="max-w-xl mx-auto">
+        {/* Template Missing Warning */}
+        {meta.templateMissing && (
+          <div className="rounded-xl bg-amber-50 border border-amber-300 text-amber-800 text-sm px-4 py-3 mb-4 flex items-start gap-2">
+            <span className="mt-0.5">⚠️</span>
+            <div>
+              <p className="font-semibold">Template produk tidak ditemukan</p>
+              <p className="text-xs mt-0.5">Spesifikasi untuk kategori ini belum tersedia. Hubungi admin untuk memperbarui template.</p>
+            </div>
+          </div>
+        )}
+
         {/* Header */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 mb-4">
           <div className="flex items-center gap-3 mb-1">
-            <span className="text-3xl leading-none">{schema.emoji}</span>
+            <span className="text-3xl leading-none">
+              {schema?.emoji ?? meta.serviceTemplate?.emoji ?? "📦"}
+            </span>
             <div>
               <h1 className="text-xl font-bold text-slate-800">
-                {meta.title ?? `Form Penawaran ${schema.label}`}
+                {meta.title ?? `Form Penawaran ${schema?.label ?? meta.productTemplate?.label ?? meta.serviceTemplate?.label ?? ""}`}
               </h1>
               {meta.vendorName && <p className="text-sm text-slate-500">Untuk: {meta.vendorName}</p>}
               {meta.orderNumber && (
@@ -313,9 +588,33 @@ export default function VendorMiniFormPage() {
               )}
             </div>
           </div>
-          {isOrderBased && (
-            <div className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 px-3 py-1.5 rounded-lg">
-              <span>📋</span> Form ini terkait dengan order customer spesifik
+          {(isOrderBased || hasProductTemplate || !!meta.serviceTemplate) && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {isOrderBased && (
+                <span className="inline-flex items-center gap-1.5 text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 px-3 py-1.5 rounded-lg">
+                  <span>📋</span> Form ini terkait dengan order customer spesifik
+                </span>
+              )}
+              {hasProductTemplate && (
+                <span className="inline-flex items-center gap-1.5 text-xs font-medium bg-violet-50 text-violet-700 border border-violet-200 px-3 py-1.5 rounded-lg">
+                  <span>🧩</span> Spesifikasi: {meta.productTemplate!.label}
+                  {meta.templateVersion && <span className="opacity-60 ml-1">v{meta.templateVersion}</span>}
+                </span>
+              )}
+              {!hasProductTemplate && meta.serviceTemplate && (
+                <>
+                  <span className="inline-flex items-center gap-1.5 text-xs font-medium bg-teal-50 text-teal-700 border border-teal-200 px-3 py-1.5 rounded-lg">
+                    <span>{meta.serviceTemplate.emoji}</span> {meta.serviceTemplate.label}
+                    <span className="opacity-50 ml-1">v{meta.serviceTemplate.version}</span>
+                  </span>
+                  {hasServiceTemplate && (
+                    <span className="inline-flex items-center gap-1 text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1.5 rounded-lg">
+                      ⚙️ Service Template Runtime Active
+                      <span className="opacity-60 ml-0.5 font-normal capitalize">[{meta.serviceTemplate.source}]</span>
+                    </span>
+                  )}
+                </>
+              )}
             </div>
           )}
           {meta.notes && (
@@ -443,9 +742,6 @@ export default function VendorMiniFormPage() {
             const qty = Math.max(1, Number(vendorQty) || 1);
             const unitPrice = Number(vendorUnitPrice) || 0;
             const subtotal = qty * unitPrice;
-            const ppn = calcTax(subtotal);
-            const total = subtotal + ppn;
-            const fmtIDR = (n: number) => n.toLocaleString("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 });
             return (
               <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
                 <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">💰 Rincian Harga Dasar</h2>
@@ -506,41 +802,228 @@ export default function VendorMiniFormPage() {
             );
           })()}
 
-          {/* Dynamic service fields */}
-          {schema.fields.length > 0 && (
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-              <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-4">
-                {schema.emoji} Detail {schema.label}
-              </h2>
-              <div className="space-y-4">
-                {schema.fields.map(field => (
+          {/* ── Dynamic service fields ─────────────────────────────────────────
+              Priority: serviceTemplate.fields (when USE_SERVICE_TEMPLATE_ENGINE=true
+              and serviceTemplate is present in GET response).
+              Fallback: SERVICE_SCHEMAS fields (schema.fields) — unchanged behavior.
+          ─────────────────────────────────────────────────────────────────── */}
+          {!hasProductTemplate && (() => {
+            const stpl = meta.serviceTemplate;
+            const phase = meta.phase ?? "quotation";
+
+            // Detect if any field in the form is driver_name (enables DriverPicker)
+            const allFormFields = stpl?.fields ?? schema?.fields ?? [];
+            const hasDriverField = allFormFields.some(f => f.key === "driver_name");
+            const DRIVER_SUB_KEYS = ["driver_phone", "plate_number", "vehicle_type"];
+
+            // Shared field renderer — handles all types incl. upload
+            const renderField = (field: FieldDef) => {
+              // ── Driver fields: render DriverPicker for driver_name ──────────
+              if (field.key === "driver_name") {
+                return (
+                  <DriverPicker
+                    key="driver-picker"
+                    token={token!}
+                    driverName={values["driver_name"] ?? ""}
+                    driverPhone={values["driver_phone"] ?? ""}
+                    plateNumber={values["plate_number"] ?? ""}
+                    vehicleType={values["vehicle_type"] ?? ""}
+                    onSelect={(d) => {
+                      handleChange("driver_name", d.name);
+                      handleChange("driver_phone", d.phone);
+                      handleChange("plate_number", d.plate);
+                      handleChange("vehicle_type", d.vehicleType);
+                    }}
+                  />
+                );
+              }
+              // Skip sub-fields handled by DriverPicker
+              if (hasDriverField && DRIVER_SUB_KEYS.includes(field.key)) return null;
+
+              if (field.isUpload) {
+                return (
                   <FormField key={field.key} label={field.label} required={field.required}>
-                    {field.type === "select" ? (
-                      <select
-                        value={values[field.key] ?? ""} onChange={e => handleChange(field.key, e.target.value)}
-                        required={field.required}
-                        className={`${INPUT_CLS} bg-white`}
-                      >
-                        <option value="">— Pilih —</option>
-                        {field.options?.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                      </select>
-                    ) : field.type === "textarea" ? (
-                      <textarea
-                        value={values[field.key] ?? ""} onChange={e => handleChange(field.key, e.target.value)}
-                        required={field.required} placeholder={field.placeholder} rows={3}
-                        className={`${INPUT_CLS} resize-none`}
-                      />
-                    ) : (
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <span className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 transition-colors">
+                        <span>📎</span> Pilih File
+                      </span>
                       <input
-                        type={field.type === "number" ? "number" : field.type === "date" ? "date" : "text"}
-                        value={values[field.key] ?? ""} onChange={e => handleChange(field.key, e.target.value)}
-                        required={field.required} placeholder={field.placeholder ?? ""} className={INPUT_CLS}
+                        type="file"
+                        accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx"
+                        className="hidden"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          const fd = new FormData();
+                          fd.append("file", file);
+                          try {
+                            const res = await fetch(`/api/vendor-form/upload/${token}`, { method: "POST", body: fd });
+                            const data = await res.json() as { objectPath?: string };
+                            if (res.ok && data.objectPath) handleChange(field.key, data.objectPath);
+                          } catch { /* non-fatal upload error */ }
+                        }}
                       />
-                    )}
+                      {values[field.key]
+                        ? <span className="text-xs text-emerald-600 font-medium">✓ File terupload</span>
+                        : <span className="text-xs text-slate-400">Belum ada file dipilih</span>
+                      }
+                    </label>
                   </FormField>
-                ))}
+                );
+              }
+              if (field.type === "select") {
+                return (
+                  <FormField key={field.key} label={field.label} required={field.required}>
+                    <select
+                      value={values[field.key] ?? ""}
+                      onChange={e => handleChange(field.key, e.target.value)}
+                      required={field.required}
+                      className={`${INPUT_CLS} bg-white`}
+                    >
+                      <option value="">— Pilih —</option>
+                      {field.options?.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                    </select>
+                  </FormField>
+                );
+              }
+              if (field.type === "textarea") {
+                return (
+                  <FormField key={field.key} label={field.label} required={field.required}>
+                    <textarea
+                      value={values[field.key] ?? ""}
+                      onChange={e => handleChange(field.key, e.target.value)}
+                      required={field.required}
+                      placeholder={field.placeholder}
+                      rows={3}
+                      className={`${INPUT_CLS} resize-none`}
+                    />
+                  </FormField>
+                );
+              }
+              return (
+                <FormField key={field.key} label={field.label} required={field.required}>
+                  <input
+                    type={field.type === "number" ? "number" : field.type === "date" ? "date" : "text"}
+                    value={values[field.key] ?? ""}
+                    onChange={e => handleChange(field.key, e.target.value)}
+                    required={field.required}
+                    placeholder={field.placeholder ?? ""}
+                    className={INPUT_CLS}
+                  />
+                </FormField>
+              );
+            };
+
+            // ── PATH A: serviceTemplate.fields (USE_SERVICE_TEMPLATE_ENGINE=true) ──
+            if (stpl && (stpl.fields?.length ?? 0) > 0) {
+              // Filter by phase: quotation shows quotation+both, operational shows operational+both
+              const fieldsToShow = stpl.fields.filter(f =>
+                phase === "operational"
+                  ? (f.section === "operational" || f.section === "both")
+                  : (f.section === "quotation" || f.section === "both" || !f.section)
+              );
+
+              if (fieldsToShow.length === 0) return null;
+
+              return (
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                      {stpl.emoji} Detail {stpl.label}
+                    </h2>
+                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full uppercase tracking-wide">
+                      ⚙️ Template Active
+                      <span className="opacity-60 font-normal normal-case ml-0.5">[{stpl.source}]</span>
+                    </span>
+                  </div>
+                  <div className="space-y-4">
+                    {fieldsToShow.map(renderField)}
+                  </div>
+                </div>
+              );
+            }
+
+            // ── PATH B: SERVICE_SCHEMAS fallback (USE_SERVICE_TEMPLATE_ENGINE=false or null) ──
+            if (schema && schema.fields.length > 0) {
+              return (
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+                  <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-4">
+                    {schema.emoji} Detail {schema.label}
+                  </h2>
+                  <div className="space-y-4">
+                    {schema.fields.map(renderField)}
+                  </div>
+                </div>
+              );
+            }
+
+            return null;
+          })()}
+
+          {/* Vendor penawaran section — hanya tampil saat productTemplate aktif */}
+          {hasProductTemplate && (
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+              <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">💰 Penawaran Vendor</h2>
+              <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">
+                Isi <strong>Harga Dasar</strong> dan detail penawaran Anda. Harga jual ke customer ditentukan oleh admin.
+              </p>
+              <div className="space-y-4">
+                <FormField label="Harga Dasar (Rp, belum PPN)" required>
+                  <div className="flex gap-2">
+                    <select value={currency} onChange={e => setCurrency(e.target.value)}
+                      className="rounded-lg border border-slate-200 px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white w-24">
+                      {["IDR","USD","SGD","EUR"].map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                    <input type="number" min="0" step="any" value={tplHarga} onChange={e => setTplHarga(e.target.value)}
+                      required placeholder="Contoh: 5000000" className={`${INPUT_CLS} flex-1`} />
+                  </div>
+                </FormField>
+                <FormField label="Status Stok">
+                  <select value={tplStockStatus} onChange={e => setTplStockStatus(e.target.value)}
+                    className={`${INPUT_CLS} bg-white`}>
+                    <option value="">— Pilih —</option>
+                    {["Ready Stock","Indent","Pre-order"].map(o => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                </FormField>
+                <FormField label="Lead Time / Estimasi Pengiriman">
+                  <input type="text" value={tplLeadTime} onChange={e => setTplLeadTime(e.target.value)}
+                    placeholder="Contoh: 7 hari kerja, H+3" className={INPUT_CLS} />
+                </FormField>
+                <FormField label="Minimum Order (MOQ)">
+                  <input type="text" value={tplMoq} onChange={e => setTplMoq(e.target.value)}
+                    placeholder="Contoh: 100 MT, 1 truk" className={INPUT_CLS} />
+                </FormField>
+                <FormField label="Harga Berlaku Sampai">
+                  <input type="date" value={validUntil} onChange={e => setValidUntil(e.target.value)}
+                    className={INPUT_CLS} />
+                </FormField>
+                <FormField label="Catatan Tambahan">
+                  <textarea value={tplNotes} onChange={e => setTplNotes(e.target.value)}
+                    rows={3} placeholder="Catatan kondisi, syarat, atau info tambahan..."
+                    className={`${INPUT_CLS} resize-none`} />
+                </FormField>
               </div>
             </div>
+          )}
+
+          {/* Service Template: Required Documents */}
+          {!hasProductTemplate && meta.serviceTemplate && (meta.serviceTemplate.requiredDocuments?.length ?? 0) > 0 && (
+            <TemplateDocumentRenderer
+              documents={meta.serviceTemplate.requiredDocuments}
+              values={templateValues.uploadedDocuments}
+              onChange={(docs) => setTemplateValues((v) => ({ ...v, uploadedDocuments: docs }))}
+            />
+          )}
+
+          {/* Service Template: Checklist */}
+          {!hasProductTemplate && meta.serviceTemplate && (meta.serviceTemplate.checklist?.length ?? 0) > 0 && (
+            <TemplateChecklistRenderer
+              checklist={meta.serviceTemplate.checklist}
+              values={templateValues.checklistStatus}
+              onChange={(key, checked) =>
+                setTemplateValues((v) => ({ ...v, checklistStatus: { ...v.checklistStatus, [key]: checked } }))
+              }
+            />
           )}
 
           {/* Attachment upload (optional) */}
@@ -577,6 +1060,7 @@ export default function VendorMiniFormPage() {
                 template={meta.productTemplate}
                 values={templateValues}
                 onChange={setTemplateValues}
+                readOnly={true}
               />
               <TemplateDocumentRenderer
                 documents={meta.productTemplate.requiredDocuments}

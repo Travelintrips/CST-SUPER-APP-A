@@ -68,6 +68,11 @@ export const purchaseRequestsTable = pgTable("purchase_requests", {
   rfqId: integer("rfq_id"),
   cancelledAt: timestamp("cancelled_at"),
   createdBy: text("created_by"),
+  // ── Template Engine ──────────────────────────────────────────────────────────
+  categoryKey: text("category_key"),
+  templateId: text("template_id"),
+  templateVersion: text("template_version"),
+  templateSnapshot: jsonb("template_snapshot"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (t) => [
@@ -293,6 +298,10 @@ export const vendorInvoicesTable = pgTable("vendor_invoices", {
   matchNotes: text("match_notes"),
   journalEntryId: integer("journal_entry_id"),
   notes: text("notes"),
+  categoryKey: text("category_key"),
+  templateId: text("template_id"),
+  templateVersion: text("template_version"),
+  templateSnapshot: jsonb("template_snapshot").$type<Record<string, unknown> | null>(),
   cancelledAt: timestamp("cancelled_at"),
   createdBy: text("created_by"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

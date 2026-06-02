@@ -1,5 +1,5 @@
-import { db, suppliersTable, vendorCatalogItemsTable, waTemplateConfigsTable } from "@workspace/db";
-import { eq, and, ilike, sql } from "drizzle-orm";
+import { db, suppliersTable, vendorCatalogItemsTable, waTemplateConfigsTable, logisticOrderRfqsTable, vendorMiniFormLinksTable } from "@workspace/db";
+import { eq, and, ilike, sql, desc } from "drizzle-orm";
 import { sendViaService as sendWhatsApp, sendMediaViaService } from "./waTransport.js";
 import { getAdminGroupWa } from "./adminWa";
 import { getPreferredDomain } from "./domain";
@@ -300,8 +300,9 @@ export function invalidateWaTemplateCache() {
 export async function getWaTemplateConfig(
   recipient: string,
   workflow: string,
-  defaultBody: string,
+  defaultBody: string | string[],
 ): Promise<string> {
+  const _defaultBody = Array.isArray(defaultBody) ? defaultBody.join("\n") : defaultBody;
   if (!_wfTemplateCache || Date.now() - _wfTemplateCacheAt > WA_TEMPLATE_TTL) {
     _wfTemplateCache = new Map();
     _wfTemplateCacheAt = Date.now();
@@ -310,7 +311,7 @@ export async function getWaTemplateConfig(
       for (const row of rows) _wfTemplateCache.set(`${row.recipient}__${row.workflow}`, row.body);
     } catch { /* use hardcoded defaults if DB unavailable */ }
   }
-  return _wfTemplateCache.get(`${recipient}__${workflow}`) ?? defaultBody;
+  return _wfTemplateCache.get(`${recipient}__${workflow}`) ?? _defaultBody;
 }
 
 function getApproveFormUrl(orderNumber: string): string {
@@ -332,6 +333,137 @@ async function createAdminReviewLink(orderId: number): Promise<string> {
 
 function formatRupiah(amount: number): string {
   return amount.toLocaleString("id-ID");
+}
+
+/**
+ * Extract commodity context from a stored templateSnapshot for WA messages.
+ * Returns vars-map fields ready to merge into renderTemplate().
+ *
+ * Safe-by-design: NEVER exposes harga dasar vendor, margin internal.
+ * Backward-compatible: returns all-null when snapshot is null/undefined.
+ */
+export function buildCommodityContext(
+  snapshot: Record<string, unknown> | null | undefined,
+  opts?: { quantity?: number | null; unit?: string | null },
+): Record<string, string | null> {
+  const empty: Record<string, string | null> = {
+    templateLabel: null, templateVersion: null, categoryKey: null,
+    specSummary: null, requiredDocsSummary: null, quantityDisplay: null,
+  };
+  if (!snapshot) return empty;
+  try {
+    const label = typeof snapshot["label"] === "string" ? snapshot["label"] : null;
+    const category = typeof snapshot["category"] === "string" ? snapshot["category"] : null;
+    const version = typeof snapshot["version"] === "string" ? snapshot["version"] : null;
+    const customFields = Array.isArray(snapshot["customFields"])
+      ? (snapshot["customFields"] as Array<Record<string, unknown>>)
+      : [];
+    const requiredDocs = Array.isArray(snapshot["requiredDocuments"])
+      ? (snapshot["requiredDocuments"] as Array<Record<string, unknown>>)
+      : [];
+
+    const topFields = customFields.filter(f => f["required"] === true).slice(0, 5);
+    const specSummary = topFields.length > 0
+      ? topFields.map(f => {
+          const u = f["unit"] ? ` (${String(f["unit"])})` : "";
+          return `• ${String(f["label"] ?? "")}${u}`;
+        }).join("\n")
+      : null;
+
+    const reqDocs = requiredDocs.filter(d => d["required"] === true);
+    const requiredDocsSummary = reqDocs.length > 0
+      ? reqDocs.map(d => `• ${String(d["label"] ?? "")}`).join("\n")
+      : null;
+
+    const qty = opts?.quantity;
+    const unit = opts?.unit;
+    const quantityDisplay = (qty != null && qty > 0) ? `${qty} ${unit ?? "Unit"}` : null;
+
+    return {
+      templateLabel: label ?? category,
+      templateVersion: version,
+      categoryKey: category,
+      specSummary,
+      requiredDocsSummary,
+      quantityDisplay,
+    };
+  } catch { return empty; }
+}
+
+/**
+ * Extract service context from a SERVICE template snapshot (templateKind="service").
+ * Supplements buildCommodityContext(): fills specSummary from service `fields[]`,
+ * adds serviceLabel and serviceChecklistSummary.
+ * For non-service snapshots returns only the new-var nulls — safe to spread without
+ * overriding commodity-template's specSummary.
+ *
+ * Safe-by-design: NEVER exposes internal pricing or margin.
+ */
+export function buildServiceContext(
+  snapshot: Record<string, unknown> | null | undefined,
+): Record<string, string | null> {
+  // Non-service: return new-var nulls ONLY (no specSummary key) so commodity specSummary
+  // is preserved when spreading for product templates.
+  const empty: Record<string, string | null> = {
+    serviceLabel: null, serviceVersion: null, serviceChecklistSummary: null,
+  };
+  if (!snapshot || snapshot["templateKind"] !== "service") return empty;
+  try {
+    const label   = typeof snapshot["label"]   === "string" ? snapshot["label"]   : null;
+    const version = typeof snapshot["version"] === "string" ? snapshot["version"] : null;
+    const fields  = Array.isArray(snapshot["fields"])
+      ? (snapshot["fields"] as Array<Record<string, unknown>>) : [];
+    const checklist = Array.isArray(snapshot["checklist"])
+      ? (snapshot["checklist"] as Array<Record<string, unknown>>) : [];
+
+    const reqFields = fields.filter(f => f["required"] === true && !f["isUpload"]).slice(0, 5);
+    const specSummary = reqFields.length > 0
+      ? reqFields.map(f => {
+          const u = f["unit"] ? ` (${String(f["unit"])})` : "";
+          return `• ${String(f["label"] ?? "")}${u}`;
+        }).join("\n")
+      : null;
+
+    const serviceChecklistSummary = checklist.length > 0
+      ? `✅ *Checklist Layanan:*\n` + checklist.map(c => `☐ ${String(c["label"] ?? "")}`).join("\n")
+      : null;
+
+    return { serviceLabel: label, serviceVersion: version, specSummary, serviceChecklistSummary };
+  } catch { return empty; }
+}
+
+/**
+ * Resolve templateSnapshot untuk order dengan priority lookup:
+ * A. order.templateSnapshot (paling reliable, sudah di-denormalisasi)
+ * B. RFQ.templateSnapshot terbaru untuk orderId
+ * C. vendorMiniFormLink.templateSnapshot terbaru untuk orderId
+ * D. null → caller fallback ke shipmentType
+ */
+export async function resolveTemplateSnapshot(
+  orderId: number,
+  orderSnapshot: Record<string, unknown> | null | undefined,
+): Promise<Record<string, unknown> | null> {
+  if (orderSnapshot) return orderSnapshot;
+  try {
+    const [rfq] = await db
+      .select({ templateSnapshot: logisticOrderRfqsTable.templateSnapshot })
+      .from(logisticOrderRfqsTable)
+      .where(eq(logisticOrderRfqsTable.orderId, orderId))
+      .orderBy(desc(logisticOrderRfqsTable.id))
+      .limit(1);
+    if ((rfq as any)?.templateSnapshot) return (rfq as any).templateSnapshot as Record<string, unknown>;
+
+    const [vmf] = await db
+      .select({ templateSnapshot: vendorMiniFormLinksTable.templateSnapshot })
+      .from(vendorMiniFormLinksTable)
+      .where(eq(vendorMiniFormLinksTable.orderId, orderId))
+      .orderBy(desc(vendorMiniFormLinksTable.id))
+      .limit(1);
+    if (vmf?.templateSnapshot) return vmf.templateSnapshot as Record<string, unknown>;
+  } catch (e) {
+    logger.warn({ e, orderId }, "resolveTemplateSnapshot: DB lookup failed, falling back to null");
+  }
+  return null;
 }
 
 /** Returns true for air/sea freight types that need per-unit pricing hints */
@@ -502,8 +634,13 @@ const DEFAULT_TPL = {
       "",
       "Order         : {{orderNumber}}",
       "Vendor        : {{vendorName}}",
+      "Komoditi      : {{commodity}}",
+      "Produk        : {{templateLabel}}",
+      "Jenis Layanan : {{serviceLabel}}",
+      "Qty           : {{quantityDisplay}}",
       "File diunggah : {{fileCount}}",
       "Catatan       : {{completionNotes}}",
+      "{{serviceChecklistSummary}}",
       "",
       "_{{timestamp}}_",
     ].join("\n"),
@@ -538,11 +675,12 @@ const DEFAULT_TPL = {
       "_{{timestamp}}_",
     ].join("\n"),
     invoice_issued: [
-      "🧾 *Invoice Dibuat*",
-      "No Invoice: {{invNumber}}",
-      "Customer: {{customerName}}",
-      "Total: {{grandTotal}}",
-      "Jatuh tempo: {{dueStr}}",
+      "🧾 *Invoice Diterbitkan — {{invNumber}}*",
+      "Order: {{orderNumber}} | Customer: *{{customerName}}*",
+      "Produk: {{templateLabel}}",
+      "Qty: {{quantityDisplay}}",
+      "Subtotal: {{subtotalDisplay}} | PPN: {{taxAmountDisplay}}",
+      "Total: *{{grandTotal}}* | Jatuh Tempo: {{dueStr}}",
       "_{{timestamp}}_",
     ].join("\n"),
     vendor_quote_received: [
@@ -644,12 +782,28 @@ const DEFAULT_TPL = {
       "Layanan   : {{serviceType}}",
       "Rute      : {{route}}",
       "Komoditi  : {{commodity}}",
+      "Komoditas : {{templateLabel}}",
       "PIC       : {{picLabel}}",
+      "{{specSummary}}",
       "━━━━━━━━━━━━━━━━━━",
       "📊 {{submittedVendorCount}} / {{totalVendorInvited}} vendor sudah submit",
       "{{compareMessage}}",
       "🔗 Bandingkan penawaran:",
       "{{vendorComparisonLink}}",
+      "_{{timestamp}}_",
+    ].join("\n"),
+    invoice_issued: [
+      "🧾 *Invoice Diterbitkan — {{invNumber}}*",
+      "Order: {{orderNumber}} | Customer: *{{customerName}}*",
+      "Produk: {{templateLabel}}",
+      "Qty: {{quantityDisplay}}",
+      "Subtotal: {{subtotalDisplay}} | PPN: {{taxAmountDisplay}}",
+      "Total: *{{grandTotal}}* | Jatuh Tempo: {{dueStr}}",
+      "_{{timestamp}}_",
+    ].join("\n"),
+    delivery_completed: [
+      "🏁 *Pengiriman Selesai — {{orderNumber}}*",
+      "Customer: {{customerName}} | Rute: {{route}}",
       "_{{timestamp}}_",
     ].join("\n"),
   },
@@ -664,6 +818,11 @@ const DEFAULT_TPL = {
       "No. RFQ    : {{rfqNumber}}",
       "Layanan    : {{shipmentType}}",
       "Rute       : {{route}}",
+      "Produk     : {{templateLabel}}",
+      "Jenis      : {{serviceLabel}}",
+      "━━━━━━━━━━━━━━━━━━",
+      "📋 *Spesifikasi:*",
+      "{{specSummary}}",
       "━━━━━━━━━━━━━━━━━━",
       "{{itemsBlock}}",
       "━━━━━━━━━━━━━━━━━━",
@@ -703,6 +862,8 @@ const DEFAULT_TPL = {
       "✅ *Pengiriman Selesai!*",
       "",
       "Order: *{{orderNumber}}*",
+      "Produk: {{templateLabel}}",
+      "Jenis Layanan: {{serviceLabel}}",
       "Vendor *{{vendorName}}* telah mengunggah dokumen bukti pengiriman (POD).",
       "Catatan: {{completionNotes}}",
       "",
@@ -764,15 +925,26 @@ const DEFAULT_TPL = {
     ].join("\n"),
     invoice_issued: [
       "🧾 *Invoice Diterbitkan — {{invNumber}}*",
-      "",
+      "━━━━━━━━━━━━━━━━━━",
       "Halo {{customerName}},",
       "",
-      "Invoice untuk order Anda telah diterbitkan:",
-      "Total: {{grandTotal}}",
-      "Jatuh tempo: {{dueStr}}",
+      "Invoice untuk order Anda telah diterbitkan.",
       "",
-      "Silakan hubungi kami untuk informasi pembayaran. Terima kasih!",
-      "_{{timestamp}}_",
+      "No. Order   : {{orderNumber}}",
+      "No. Invoice : *{{invNumber}}*",
+      "Produk      : {{templateLabel}}",
+      "Qty         : {{quantityDisplay}}",
+      "Jatuh Tempo : *{{dueStr}}*",
+      "━━━━━━━━━━━━━━━━━━",
+      "💰 Subtotal : {{subtotalDisplay}}",
+      "🧾 PPN      : {{taxAmountDisplay}}",
+      "💵 *Total   : {{grandTotal}}*",
+      "━━━━━━━━━━━━━━━━━━",
+      "🔗 Lihat & Bayar:",
+      "{{invoiceUrl}}",
+      "",
+      "Terima kasih atas kepercayaan Anda 🙏",
+      "_CST Logistics_",
     ].join("\n"),
     logistic_order_status: [
       "📦 *Update Status Order Anda*",
@@ -895,10 +1067,10 @@ const DEFAULT_TPL = {
   },
   vendor: {
     order_new: ["📦 *PERMINTAAN ORDER BARU — CST LOGISTICS*","━━━━━━━━━━━━━━━━━━━━","Kepada Yth. *{{vendorName}}*,","","No. Order       : *{{orderNumber}}*","Tanggal         : {{tanggal}}","Jenis           : {{shipmentType}}","Rute            : {{route}}","Kategori Barang : {{commodity}}","Deskripsi       : {{cargoDescription}}","Berat           : {{grossWeightDisplay}}","Volume          : {{volumeDisplay}}","Jumlah Koli     : {{jumlahKoliDisplay}}","{{#if product}}","🛍️ Produk       :","{{productList}}","{{/if}}","Tgl Butuh       : {{requiredDate}}","{{#if trucking}}","🚛 Jenis Kendaraan: {{vehicleType}}","📅 Jadwal Pickup  : {{pickupSchedule}}","💰 Contract Rate  : {{contractRate}}","{{/if}}","Layanan         : {{serviceList}}","Catatan         : {{notes}}","━━━━━━━━━━━━━━━━━━━━","🔗 *Aksi Cepat (klik link):*","✅ Terima  → {{responseUrl}}?action=accept","❌ Tolak   → {{responseUrl}}?action=reject","💬 Form    → {{responseUrl}}","","✏️ *Atau balas WA dengan format:*","📌 Harga: `{{orderNumber}} [HARGA] [TGL_PICKUP]`","📌 Terima: `TERIMA {{orderNumber}}`","📌 Tolak:  `TOLAK {{orderNumber}}`","","Terima kasih 🙏","_Dikirim: {{timestamp}}_"].join("\n"),
-    vendor_request: ["📦 *PERMINTAAN PENAWARAN VENDOR*","━━━━━━━━━━━━━━━━━━","Kepada Yth. *{{vendorName}}*,","","No. RFQ       : *{{rfqNumber}}*","No. Order     : {{orderNumber}}","Customer      : {{customerDisplay}}","Tanggal       : {{tanggal}}","Jenis         : {{shipmentType}}","Rute          : {{route}}","Komoditi      : {{commodity}}","Deskripsi     : {{cargoDescription}}","Berat         : {{grossWeightDisplay}}","Volume        : {{volumeDisplay}}","━━━━━━━━━━━━━━━━━━","📋 Detail Item / Layanan:","{{productListDetail}}","","Tgl Butuh     : {{requiredDate}}","Catatan Admin : {{notes}}","","📝 Silakan isi penawaran melalui link berikut:","","🔗 *[ ISI PENAWARAN VENDOR ]*","👉 {{vendorMiniFormLink}}","","━━━━━━━━━━━━━━━━━━","Terima kasih atas kerja sama Anda 🙏","_CST Logistics_"].join("\n"),
+    vendor_request: ["📦 *PERMINTAAN PENAWARAN VENDOR*","━━━━━━━━━━━━━━━━━━","Kepada Yth. *{{vendorName}}*,","","No. RFQ       : *{{rfqNumber}}*","No. Order     : {{orderNumber}}","Customer      : {{customerDisplay}}","Tanggal       : {{tanggal}}","Jenis         : {{shipmentType}}","Jenis Layanan : {{serviceLabel}}","Rute          : {{route}}","Komoditi      : {{commodity}}","Komoditas     : {{templateLabel}}","Deskripsi     : {{cargoDescription}}","Berat         : {{grossWeightDisplay}}","Volume        : {{volumeDisplay}}","Qty           : {{quantityDisplay}}","━━━━━━━━━━━━━━━━━━","📋 Detail Item / Layanan:","{{productListDetail}}","","📋 *Spesifikasi:*","{{specSummary}}","","📄 *Dokumen Wajib:*","{{requiredDocsSummary}}","","{{serviceChecklistSummary}}","","Tgl Butuh     : {{requiredDate}}","Catatan Admin : {{notes}}","","📝 Silakan isi penawaran melalui link berikut:","","🔗 *[ ISI PENAWARAN VENDOR ]*","👉 {{vendorMiniFormLink}}","","━━━━━━━━━━━━━━━━━━","Terima kasih atas kerja sama Anda 🙏","_CST Logistics_"].join("\n"),
     task_link: ["🚚 *Tugas Order Baru — CST Logistics*","","Order: {{orderNumber}}","Rute: {{route}}","Keterangan: {{label}}","","Silakan buka link berikut untuk konfirmasi dan update status:","{{taskUrl}}","_{{timestamp}}_"].join("\n"),
-    vendor_revision: ["↩️ *REVISI PENAWARAN — {{orderNumber}}*","━━━━━━━━━━━━━━━━━━","Kepada Yth. *{{vendorName}}*,","","Kami memerlukan revisi harga untuk order *{{orderNumber}}*.","Harga saat ini: {{vendorPrice}}","","Mohon kirim penawaran terbaik Anda kembali:","🔗 {{vendorMiniFormLink}}","","Terima kasih 🙏"].join("\n"),
-    op_request: ["⚙️ *KONFIRMASI OPERASIONAL — CST LOGISTICS*","━━━━━━━━━━━━━━━━━━","Kepada Yth. *{{vendorName}}*,","","Customer telah menyetujui penawaran untuk order *{{orderNumber}}*.","Mohon lengkapi data operasional:","","🔗 {{operationalFormLink}}","","{{#if trucking}}","Data dibutuhkan: Driver, No. Plat, jadwal pickup.","{{/if}}","","{{#if freight_sea}}","Data dibutuhkan: Vessel, Voyage, ETA/ETD, BL.","{{/if}}","","{{#if freight_air}}","Data dibutuhkan: Airline, AWB, jadwal penerbangan.","{{/if}}","","{{#if ppjk}}","Data dibutuhkan: No. Aju, BC type, SPPB.","{{/if}}","","Terima kasih atas kerjasamanya 🙏"].join("\n"),
+    vendor_revision: ["↩️ *REVISI PENAWARAN — {{orderNumber}}*","━━━━━━━━━━━━━━━━━━","Kepada Yth. *{{vendorName}}*,","","Kami memerlukan revisi harga untuk order *{{orderNumber}}*.","Komoditas     : {{templateLabel}}","Harga saat ini: {{vendorPrice}}","","📋 *Spesifikasi:*","{{specSummary}}","","Mohon kirim penawaran terbaik Anda kembali:","🔗 {{vendorMiniFormLink}}","","Terima kasih 🙏"].join("\n"),
+    op_request: ["⚙️ *KONFIRMASI OPERASIONAL — CST LOGISTICS*","━━━━━━━━━━━━━━━━━━","Kepada Yth. *{{vendorName}}*,","","Customer telah menyetujui penawaran untuk order *{{orderNumber}}*.","Jenis Layanan : {{serviceLabel}}","","Mohon lengkapi data operasional:","","🔗 {{operationalFormLink}}","","{{#if trucking}}","Data dibutuhkan: Driver, No. Plat, jadwal pickup.","{{/if}}","","{{#if freight_sea}}","Data dibutuhkan: Vessel, Voyage, ETA/ETD, BL.","{{/if}}","","{{#if freight_air}}","Data dibutuhkan: Airline, AWB, jadwal penerbangan.","{{/if}}","","{{#if ppjk}}","Data dibutuhkan: No. Aju, BC type, SPPB.","{{/if}}","","{{serviceChecklistSummary}}","","Terima kasih atas kerjasamanya 🙏"].join("\n"),
     vendor_submit_confirm: [
       "Halo *{{picLabel}}* dari *{{vendorLabel}}*,",
       "",
@@ -944,6 +1116,8 @@ const DEFAULT_TPL = {
       "",
       "Order  : *{{orderNumber}}*",
       "Layanan: {{shipmentType}}",
+      "Jenis Layanan: {{serviceLabel}}",
+      "{{serviceVersionLine}}",
       "Rute   : {{origin}} → {{destination}}",
       "{{estimatedPickupLine}}",
       "{{estimatedDeliveryLine}}",
@@ -952,6 +1126,8 @@ const DEFAULT_TPL = {
       "",
       "✅ Anda telah dipilih sebagai vendor untuk order ini.",
       "",
+      "{{specSummaryBlock}}",
+      "{{serviceChecklistSummary}}",
       "{{itemsBlock}}",
       "Silakan buka link berikut untuk menerima atau menolak job, dan mengisi detail operasional:",
       "{{jobUrl}}",
@@ -1057,9 +1233,12 @@ const DEFAULT_TPL = {
       "📄 No. Order: {{orderNumber}}",
       "🚚 Jenis    : {{shipmentType}}",
       "📍 Rute     : {{route}}",
+      "📦 Komoditas: {{templateLabel}}",
       "💰 Harga    : {{vendorCost}}",
       "⏱ ETA      : {{eta}}",
       "📝 Catatan  : {{notes}}",
+      "📋 *Spesifikasi:*",
+      "{{specSummary}}",
       "━━━━━━━━━━━━━━━━━━",
       "{{#if fulfillUrl}}",
       "📱 Buka mini form Anda di sini:",
@@ -1076,6 +1255,7 @@ const DEFAULT_TPL = {
       "👤 Customer: {{customerName}}",
       "🚚 Jenis   : {{shipmentType}}",
       "📍 Rute    : {{route}}",
+      "📦 Komoditas: {{templateLabel}}",
       "━━━━━━━━━━━━━━━━━━",
       "🏢 Vendor  : *{{vendorName}}*",
       "💰 Harga Vendor: {{vendorCost}}",
@@ -1151,6 +1331,8 @@ export function getWaDefaultTemplatesFlatMap(): Record<string, string> {
   add("admin_group", "shipment_update", ag.shipment_update);
   add("admin_group", "customs_update", ag.customs_update);
   add("admin_group", "vendor_submission_summary", ag.vendor_submission_summary);
+  add("admin_group", "invoice_issued", ag.invoice_issued);
+  add("admin_group", "delivery_completed", ag.delivery_completed);
 
   // customer
   const cu = DEFAULT_TPL.customer;
@@ -1512,9 +1694,15 @@ export async function sendVendorRequestNotification(
   vendorName: string,
   vendorPhone: string,
   vendorMiniFormLink: string,
+  templateSnapshot?: Record<string, unknown> | null,
 ): Promise<void> {
   const tpl = await getWaTemplateConfig("vendor", "vendor_request", DEFAULT_TPL.vendor.vendor_request);
-  const msg = renderWf(tpl, order, { vendorName, vendorPhone, vendorMiniFormLink });
+  // Derive qty/unit from first order item for context
+  const firstItem = order.orderItems?.[0];
+  const quantityOpts = { quantity: firstItem?.qty ?? null, unit: firstItem?.unit ?? null };
+  const commodityCtx = buildCommodityContext(templateSnapshot ?? null, quantityOpts);
+  const serviceCtx   = buildServiceContext(templateSnapshot ?? null);
+  const msg = renderWf(tpl, order, { vendorName, vendorPhone, vendorMiniFormLink, ...commodityCtx, ...serviceCtx });
   sendWhatsApp(vendorPhone, msg).catch((e: unknown) => logger.error({ e, vendorName }, "WA vendor_request failed"));
 }
 
@@ -1523,12 +1711,15 @@ export async function sendVendorSubmissionNotification(
   order: LogisticOrderData,
   vendorName: string,
   vendorPrice: string,
+  templateSnapshot?: Record<string, unknown> | null,
 ): Promise<void> {
   const [tplG, group] = await Promise.all([
     getWaTemplateConfig("admin_group", "vendor_submission", DEFAULT_TPL.admin_group.vendor_submission),
     getAdminGroupWa(),
   ]);
-  const extras = { vendorName, vendorPrice };
+  const commodityCtx = buildCommodityContext(templateSnapshot ?? null);
+  const serviceCtx   = buildServiceContext(templateSnapshot ?? null);
+  const extras = { vendorName, vendorPrice, ...commodityCtx, ...serviceCtx };
   if (group) sendWhatsApp(group, renderWf(tplG, order, extras)).catch((e: unknown) => logger.error({ e }, "WA vendor_submission (group) failed"));
 }
 
@@ -1546,6 +1737,7 @@ export async function sendVendorSubmissionGroupNotification(
     submittedVendorCount: number;
     totalVendorInvited: number;
     vendorComparisonLink?: string | null;
+    templateSnapshot?: Record<string, unknown> | null;
   },
   refToken: string,
 ): Promise<void> {
@@ -1558,6 +1750,8 @@ export async function sendVendorSubmissionGroupNotification(
     vars.submittedVendorCount >= 2
       ? `✅ *${vars.submittedVendorCount} vendor* sudah submit — segera *bandingkan penawaran*!`
       : `📥 Penawaran pertama masuk. Menunggu vendor lain.`;
+  const commodityCtx = buildCommodityContext(vars.templateSnapshot ?? null);
+  const serviceCtx   = buildServiceContext(vars.templateSnapshot ?? null);
   const msg = renderTemplate(tpl, {
     orderNumber: vars.orderNumber,
     vendorName: vars.vendorName,
@@ -1571,6 +1765,8 @@ export async function sendVendorSubmissionGroupNotification(
     compareMessage,
     vendorComparisonLink: vars.vendorComparisonLink ?? null,
     timestamp: nowWIB(),
+    ...commodityCtx,
+    ...serviceCtx,
   });
   sendWhatsApp(adminGroupWa, msg, {
     context: "vendor-submission-group",
@@ -1586,9 +1782,12 @@ export async function sendVendorRevisionNotification(
   vendorPhone: string,
   vendorPrice: string,
   vendorMiniFormLink: string,
+  templateSnapshot?: Record<string, unknown> | null,
 ): Promise<void> {
   const tpl = await getWaTemplateConfig("vendor", "vendor_revision", DEFAULT_TPL.vendor.vendor_revision);
-  const msg = renderWf(tpl, order, { vendorName, vendorPhone, vendorPrice, vendorMiniFormLink });
+  const commodityCtx = buildCommodityContext(templateSnapshot ?? null);
+  const serviceCtx   = buildServiceContext(templateSnapshot ?? null);
+  const msg = renderWf(tpl, order, { vendorName, vendorPhone, vendorPrice, vendorMiniFormLink, ...commodityCtx, ...serviceCtx });
   sendWhatsApp(vendorPhone, msg).catch((e: unknown) => logger.error({ e, vendorName }, "WA vendor_revision failed"));
 }
 
@@ -1604,6 +1803,7 @@ export async function sendCustomerApprovalNotification(
     ppnPct?: number;
     etaFinal?: string | null;
     validUntil?: string | null;
+    templateSnapshot?: Record<string, unknown> | null;
   },
 ): Promise<void> {
   if (!order.phone) return;
@@ -1622,6 +1822,7 @@ export async function sendCustomerApprovalNotification(
     : null;
 
   // Build per-item block (each item: name + qty + subtotal)
+  const firstItem = order.orderItems?.[0];
   const itemsBlock: string | null = (() => {
     if (!order.orderItems?.length) return null;
     return order.orderItems.map(i => {
@@ -1634,6 +1835,12 @@ export async function sendCustomerApprovalNotification(
       return lines.join("\n");
     }).join("\n");
   })();
+
+  const commodityCtx = buildCommodityContext(opts?.templateSnapshot ?? null, {
+    quantity: firstItem?.qty ?? null,
+    unit: firstItem?.unit ?? null,
+  });
+  const serviceCtx = buildServiceContext(opts?.templateSnapshot ?? null);
 
   const extras: Record<string, string | null | undefined> = {
     sellingPrice,
@@ -1651,6 +1858,8 @@ export async function sendCustomerApprovalNotification(
       : sellingPrice,
     etaFinal: opts?.etaFinal ?? null,
     validUntil: opts?.validUntil != null ? formatISODate(opts.validUntil) : null,
+    ...commodityCtx,
+    ...serviceCtx,
   };
 
   const msg = renderWf(tpl, order, extras);
@@ -1699,13 +1908,15 @@ export async function sendOpRequestNotification(
   vendorName: string,
   vendorPhone: string,
   operationalFormLink: string,
+  templateSnapshot?: Record<string, unknown> | null,
 ): Promise<void> {
   const [vendorTpl, groupTpl, adminGroupWa] = await Promise.all([
     getWaTemplateConfig("vendor", "op_request", DEFAULT_TPL.vendor.op_request),
     getWaTemplateConfig("admin_group", "op_request", DEFAULT_TPL.admin_group.op_request),
     getAdminGroupWa(),
   ]);
-  const extras = { vendorName, vendorPhone, operationalFormLink };
+  const serviceCtx = buildServiceContext(templateSnapshot ?? null);
+  const extras = { vendorName, vendorPhone, operationalFormLink, ...serviceCtx };
   sendWhatsApp(vendorPhone, renderWf(vendorTpl, order, extras)).catch((e: unknown) =>
     logger.error({ e, vendorName }, "WA op_request (vendor) failed"),
   );
@@ -1961,16 +2172,23 @@ export async function sendVendorRfqForwardNotification(
     quoteDeadline?: string | null;
     notesToVendor?: string | null;
     vendorFormUrl: string;
+    templateSnapshot?: Record<string, unknown> | null;
   },
   refToken: string,
 ): Promise<void> {
+  const serviceCtx = buildServiceContext(vars.templateSnapshot ?? null);
+  // serviceLabel: snapshot takes priority, fallback to manual serviceNeeded
+  const serviceLabel = serviceCtx.serviceLabel ?? vars.serviceNeeded ?? null;
   const tpl = await getWaTemplateConfig("vendor", "vendor_rfq_forward", DEFAULT_TPL.vendor.vendor_rfq_forward);
   const route = (vars.origin && vars.destination) ? `${vars.origin} → ${vars.destination}` : null;
   const msg = renderTemplate(tpl, {
     vendorLabel,
     rfqRef: vars.rfqRef ?? null,
     customerName: vars.customerName ?? null,
-    serviceNeeded: vars.serviceNeeded ?? null,
+    // serviceNeeded populated from snapshot-first for backward-compat with existing templates
+    serviceNeeded: serviceLabel,
+    // serviceLabel also available for new/custom templates using {{serviceLabel}}
+    serviceLabel,
     route,
     weightVolume: vars.weightVolume ?? null,
     cargoDesc: vars.cargoDesc ?? null,
@@ -1979,6 +2197,7 @@ export async function sendVendorRfqForwardNotification(
     notesToVendor: vars.notesToVendor ?? null,
     vendorFormUrl: vars.vendorFormUrl,
     timestamp: nowWIB(),
+    ...serviceCtx,
   });
   sendWhatsApp(vendorPhone, msg, {
     context: "admin-rfq-forward-vendor-notif",
@@ -2293,6 +2512,7 @@ export async function sendVendorAssignmentNotification(
   estimatedPickup?: string | null,
   estimatedDelivery?: string | null,
   estimatedDays?: number | null,
+  templateSnapshot?: Record<string, unknown> | null,
 ): Promise<string> {
   const fmtRp = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
   let itemsBlock = "";
@@ -2305,6 +2525,9 @@ export async function sendVendorAssignmentNotification(
     });
     itemsBlock = `📋 *Detail Produk:*\n${lines.join("\n")}\n\n`;
   }
+  const serviceCtx = buildServiceContext(templateSnapshot ?? null);
+  const serviceVersionLine = serviceCtx.serviceVersion ? `Versi  : ${serviceCtx.serviceVersion}` : null;
+  const specSummaryBlock = serviceCtx.specSummary ? `📋 *Ringkasan:*\n${serviceCtx.specSummary}` : null;
   const tpl = await getWaTemplateConfig("vendor", "vendor_assignment", DEFAULT_TPL.vendor.vendor_assignment);
   const vars: Record<string, string | null | undefined> = {
     orderNumber, origin, destination, shipmentType, jobUrl,
@@ -2314,6 +2537,9 @@ export async function sendVendorAssignmentNotification(
     estimatedDeliveryLine: estimatedDelivery ? `🏁 Est. Delivery: ${estimatedDelivery}` : null,
     estimatedDaysLine: estimatedDays != null ? `⏱️ Transit      : ${estimatedDays} hari` : null,
     timestamp: nowWIB(),
+    ...serviceCtx,
+    serviceVersionLine,
+    specSummaryBlock,
   };
   const msg = renderTemplate(tpl, vars);
   if (vendorPhone) {
@@ -2400,13 +2626,21 @@ export async function sendVendorPodUploadedNotification(
   adminWaPhone: string,
   completionNotes?: string,
   photoUrl?: string,
+  commodity?: string | null,
+  templateSnapshot?: Record<string, unknown> | null,
+  quantityOpts?: { quantity?: number | null; unit?: string | null },
 ): Promise<void> {
   const tpl = await getWaTemplateConfig("admin_personal", "vendor_pod_uploaded", DEFAULT_TPL.admin_personal.vendor_pod_uploaded);
+  const commodityCtx = buildCommodityContext(templateSnapshot ?? null, quantityOpts);
+  const serviceCtx   = buildServiceContext(templateSnapshot ?? null);
   const msg = renderTemplate(tpl, {
     orderNumber, vendorName,
+    commodity: commodity || null,
     fileCount: String(fileCount),
     completionNotes: completionNotes || null,
     timestamp: nowWIB(),
+    ...commodityCtx,
+    ...serviceCtx,
   });
   if (photoUrl) {
     sendMediaViaService(adminWaPhone, msg, photoUrl).catch((e: unknown) => logger.error({ e }, "WA vendor_pod_uploaded (media) failed"));
@@ -2440,13 +2674,18 @@ export async function sendCustomerPodUploadedNotification(
   customerPhone: string,
   trackingUrl: string,
   completionNotes?: string,
+  templateSnapshot?: Record<string, unknown> | null,
 ): Promise<void> {
   const tpl = await getWaTemplateConfig("customer", "customer_pod_uploaded", DEFAULT_TPL.customer.customer_pod_uploaded);
+  const commodityCtx = buildCommodityContext(templateSnapshot ?? null);
+  const serviceCtx   = buildServiceContext(templateSnapshot ?? null);
   const msg = renderTemplate(tpl, {
     orderNumber, vendorName,
     completionNotes: completionNotes || null,
     trackingUrl: trackingUrl || null,
     timestamp: nowWIB(),
+    ...commodityCtx,
+    ...serviceCtx,
   });
   sendWhatsApp(customerPhone, msg).catch((e: unknown) => logger.error({ e }, "WA customer_pod_uploaded failed"));
 }
@@ -2942,25 +3181,58 @@ export async function sendInvoiceIssuedNotification(
   dueStr: string,
   customerPhone: string | null | undefined,
   adminWaPhone: string | null | undefined,
+  opts?: {
+    subtotal?: number;
+    taxAmount?: number;
+    taxRate?: number;
+    invoiceUrl?: string;
+    orderId?: number;
+    templateSnapshot?: Record<string, unknown> | null;
+    quantity?: number | null;
+    unit?: string | null;
+  },
 ): Promise<void> {
   const fmtRp = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
+  const subtotalDisplay = opts?.subtotal != null ? fmtRp(opts.subtotal) : null;
+  const taxAmountDisplay = opts?.taxAmount != null ? fmtRp(opts.taxAmount) : null;
+  const taxRateStr = opts?.taxRate != null ? String(opts.taxRate) : null;
+  const dedupCtx = "customer-invoice-wa";
+  const dedupRef = opts?.orderId != null ? `order:${opts.orderId}` : `inv:${invNumber}`;
+  const commodityCtx = buildCommodityContext(opts?.templateSnapshot ?? null, {
+    quantity: opts?.quantity ?? null,
+    unit: opts?.unit ?? null,
+  });
   const vars: Record<string, string | null | undefined> = {
     orderNumber,
     invNumber,
     customerName,
     grandTotal: fmtRp(grandTotal),
     dueStr,
+    subtotalDisplay,
+    taxAmountDisplay,
+    taxRate: taxRateStr,
+    invoiceUrl: opts?.invoiceUrl ?? null,
     timestamp: nowWIB(),
+    ...commodityCtx,
   };
   if (customerPhone) {
     const tpl = await getWaTemplateConfig("customer", "invoice_issued", DEFAULT_TPL.customer.invoice_issued);
     const msg = renderTemplate(tpl, vars);
-    sendWhatsApp(customerPhone, msg).catch((e: unknown) => logger.error({ e }, "WA invoice_issued customer failed"));
+    sendWhatsApp(customerPhone, msg, { context: dedupCtx, refType: "invoice", refId: dedupRef })
+      .catch((e: unknown) => logger.error({ e }, "WA invoice_issued customer failed"));
   }
   if (adminWaPhone) {
     const tpl = await getWaTemplateConfig("admin_personal", "invoice_issued", DEFAULT_TPL.admin_personal.invoice_issued);
     const msg = renderTemplate(tpl, vars);
-    sendWhatsApp(adminWaPhone, msg).catch((e: unknown) => logger.error({ e }, "WA invoice_issued admin failed"));
+    sendWhatsApp(adminWaPhone, msg, { context: `invoice_issued_admin`, refType: "invoice", refId: dedupRef })
+      .catch((e: unknown) => logger.error({ e }, "WA invoice_issued admin failed"));
+  }
+  const adminGroupWa = await getAdminGroupWa();
+  if (adminGroupWa) {
+    const tpl = await getWaTemplateConfig("admin_group", "invoice_issued", DEFAULT_TPL.admin_group.invoice_issued);
+    const msg = renderTemplate(tpl, vars);
+    sendWhatsApp(adminGroupWa, msg, { context: `invoice_issued_group`, refType: "invoice", refId: dedupRef })
+      .catch((e: unknown) => logger.error({ e }, "WA invoice_issued group failed"));
   }
 }
 

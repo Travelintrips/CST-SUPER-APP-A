@@ -17,6 +17,8 @@ import {
   orderFulfillmentSubmissionsTable,
   orderUpdatesTable,
   vendorFulfillmentLinksTable,
+  driverJobsTable,
+  driversTable,
 } from "@workspace/db";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
@@ -371,6 +373,29 @@ fulfillmentAdminRouter.get("/orders/:orderId/fulfillment", async (req: Request, 
       LIMIT 5
     `);
 
+    // Driver POD data — query driver_jobs joined with drivers (NO pricing fields)
+    const driverPodRows = await db.execute(sql`
+      SELECT
+        dj.id,
+        dj.job_number,
+        dj.status,
+        dj.pod_receiver_name,
+        dj.pod_receiver_position,
+        dj.pod_notes,
+        dj.pod_photos,
+        dj.pod_submitted_at,
+        dj.pod_geo_lat,
+        dj.pod_geo_lng,
+        dj.pod_signature_data_url,
+        d.name  AS driver_name,
+        d.phone AS driver_phone,
+        d.vehicle_plate
+      FROM driver_jobs dj
+      LEFT JOIN drivers d ON dj.driver_id = d.id
+      WHERE dj.logistic_order_id = ${orderId}
+      ORDER BY dj.created_at DESC
+    `);
+
     const base = getBaseUrl();
 
     const mergedLinks = [
@@ -405,7 +430,28 @@ fulfillmentAdminRouter.get("/orders/:orderId/fulfillment", async (req: Request, 
         })),
     ];
 
-    return res.json({ links: mergedLinks, submissions: mergedSubs });
+    // Parse pod_photos JSON strings and sanitize driver POD rows (no pricing fields)
+    const driverPods = (driverPodRows.rows as Record<string, unknown>[]).map(row => ({
+      id: row.id,
+      jobNumber: row.job_number,
+      status: row.status,
+      podReceiverName: row.pod_receiver_name,
+      podReceiverPosition: row.pod_receiver_position,
+      podNotes: row.pod_notes,
+      podPhotos: (() => {
+        try { return row.pod_photos ? JSON.parse(String(row.pod_photos)) as string[] : []; }
+        catch { return []; }
+      })(),
+      podSubmittedAt: row.pod_submitted_at ? new Date(String(row.pod_submitted_at)).toISOString() : null,
+      podGeoLat: row.pod_geo_lat,
+      podGeoLng: row.pod_geo_lng,
+      podSignatureDataUrl: row.pod_signature_data_url ? String(row.pod_signature_data_url) : null,
+      driverName: row.driver_name,
+      driverPhone: row.driver_phone,
+      vehiclePlate: row.vehicle_plate,
+    }));
+
+    return res.json({ links: mergedLinks, submissions: mergedSubs, pods: podRows.rows, driverPods });
   } catch (err) {
     logger.error({ err }, "get-fulfillment error");
     return res.status(500).json({ message: "Gagal memuat data fulfillment" });
@@ -543,6 +589,30 @@ fulfillmentPublicRouter.post("/:token", async (req: Request, res: Response) => {
       sendWhatsApp(adminWa, waMsg).catch((e) =>
         logger.warn({ e }, "fulfillment WA to admin failed")
       );
+    }
+
+    // WA ke driver
+    const driverPhoneOF = String((body as any).driverPhone ?? "").trim();
+    const driverNameOF = String((body as any).driverName ?? "Driver").trim();
+    logger.info(
+      { driverPhone: driverPhoneOF, driverName: driverNameOF, orderNumber: order.orderNumber, serviceType: link.serviceType },
+      "[WA-driver] orderFulfillment submit: cek kirim WA ke driver"
+    );
+    if (driverPhoneOF) {
+      const driverAppUrl = `${getBaseUrl()}/driver`;
+      const waDriver =
+        `🚛 *Konfirmasi Job Order*\n\n` +
+        `Halo ${driverNameOF},\n\n` +
+        `Anda telah dikonfirmasi untuk menjalankan pengiriman berikut:\n\n` +
+        `📦 *Order*    : ${order.orderNumber}\n` +
+        `📍 *Rute*     : ${order.origin} → ${order.destination}\n` +
+        (String((body as any).plateNumber ?? "").trim() ? `🚗 *Plat*      : ${String((body as any).plateNumber).trim()}\n` : "") +
+        (String((body as any).vehicleType ?? "").trim() ? `🚐 *Kendaraan* : ${String((body as any).vehicleType).trim()}\n` : "") +
+        (String((body as any).pickupTime ?? "").trim() ? `🕐 *Pickup*    : ${String((body as any).pickupTime).trim()}\n` : "") +
+        `\n📱 Driver App: ${driverAppUrl}`;
+      sendWhatsApp(driverPhoneOF, waDriver)
+        .then(() => logger.info({ driverPhone: driverPhoneOF, orderNumber: order.orderNumber }, "[WA-driver] WA ke driver BERHASIL (orderFulfillment)"))
+        .catch((e) => logger.warn({ e, driverPhone: driverPhoneOF, orderNumber: order.orderNumber }, "[WA-driver] WA ke driver GAGAL (orderFulfillment)"));
     }
 
     updateOrderProgress(link.orderId, "VENDOR_FULFILLMENT_CONFIRMED", "vendor_wa", "Vendor",
@@ -770,12 +840,12 @@ fulfillmentAdminRouter.post(
         VALUES (${orderId}, ${receiverName || null}, ${photoUrl}, ${note || null}, ${actor})
       `);
 
-      // Update status → Completed
-      await transitionLogisticOrderStatus(orderId, "Completed", {
+      // Update status → POD Uploaded (invoice + payment harus diproses sebelum Completed)
+      await transitionLogisticOrderStatus(orderId, "POD Uploaded", {
         actorType: "admin",
-        actorName: "Admin",
+        actorName: actor,
         source: "orderFulfillment/pod-upload",
-        force: true,
+        force: false,
         skipAudit: false,
       });
 
@@ -790,7 +860,7 @@ fulfillmentAdminRouter.post(
         orderId,
         actorType: "admin",
         actorName: actor,
-        status: "Completed",
+        status: "POD Uploaded",
         notes: logNote,
         isPublic: true,
       });
@@ -799,19 +869,19 @@ fulfillmentAdminRouter.post(
       const customerPhone = order.phone?.trim();
       if (customerPhone) {
         const waMsg =
-          `✅ *Order Selesai & Bukti Pengiriman Tersedia — CST Logistics*\n\n` +
+          `📄 *Bukti Pengiriman Diunggah — CST Logistics*\n\n` +
           `Halo ${order.customerName},\n\n` +
-          `Order *${order.orderNumber}* (${order.shipmentType}) telah *selesai* dan barang sudah diterima.\n` +
+          `Bukti pengiriman untuk order *${order.orderNumber}* telah diunggah oleh tim kami.\n` +
           `Rute: ${order.origin} → ${order.destination}\n` +
           (receiverName ? `Diterima oleh: *${receiverName}*\n` : "") +
           (note ? `Catatan: ${note}\n` : "") +
-          `\nTerima kasih telah mempercayakan pengiriman Anda kepada CST Logistics! 🙏`;
+          `\nAdmin kami sedang memproses invoice. Anda akan mendapat notifikasi saat invoice diterbitkan. 🙏`;
         sendWhatsApp(customerPhone, waMsg).catch((e) =>
           logger.warn({ e }, "POD WA to customer failed")
         );
       }
 
-      logger.info({ orderId, photoUrl }, "POD submitted, order completed");
+      logger.info({ orderId, photoUrl }, "POD submitted, status → POD Uploaded");
       return res.json({ ok: true, photoUrl });
     } catch (err) {
       logger.error({ err }, "pod-submit error");
