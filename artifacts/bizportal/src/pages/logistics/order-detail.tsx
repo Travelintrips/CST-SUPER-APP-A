@@ -22,7 +22,7 @@ import {
   ClipboardCheck, CheckCircle2, XCircle, MapPin, MessageCircle,
   Link2, FileText, AlertTriangle, Eye, EyeOff, StickyNote, Globe,
   RotateCcw, Bell, ChevronDown, ChevronUp, Download, Shield, ZoomIn,
-  Camera, Navigation, Phone, CreditCard,
+  Camera, Navigation, Phone, CreditCard, PenLine,
 } from "lucide-react";
 import { Link } from "wouter";
 import GpsTrackingPanel from "@/components/logistics/GpsTrackingPanel";
@@ -83,6 +83,7 @@ type DriverPodData = {
   podSubmittedAt: string | null;
   podGeoLat: string | null;
   podGeoLng: string | null;
+  podSignatureDataUrl: string | null;
   driverName: string | null;
   driverPhone: string | null;
   vehiclePlate: string | null;
@@ -2877,6 +2878,23 @@ export default function LogisticOrderDetailPage() {
                                 Maps
                               </Button>
                             </a>
+                          </div>
+                        )}
+
+                        {/* Signature */}
+                        {dpod.podSignatureDataUrl && (
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
+                              <PenLine className="w-3.5 h-3.5" />
+                              Tanda Tangan Penerima
+                            </div>
+                            <div className="rounded-lg border border-slate-200 bg-white p-2">
+                              <img
+                                src={dpod.podSignatureDataUrl}
+                                alt="Tanda tangan penerima"
+                                className="max-h-28 max-w-full object-contain mx-auto"
+                              />
+                            </div>
                           </div>
                         )}
 

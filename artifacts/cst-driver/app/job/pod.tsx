@@ -2,18 +2,57 @@ import React, { useState, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, TextInput,
   ActivityIndicator, Alert, Platform, PanResponder,
-  GestureResponderEvent, ScrollView, Image,
+  GestureResponderEvent, ScrollView, Image, LayoutChangeEvent,
 } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
+import * as Location from 'expo-location';
 import { useColors } from '@/hooks/useColors';
 import { useJobs } from '@/context/JobsContext';
 import { useAuth } from '@/context/AuthContext';
 import { Icon } from '@/components/Icon';
 import { api } from '@/services/api';
 import { PODPayload } from '@/types';
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Convert sigPoints to a single SVG 'd' attribute string */
+function buildSvgPath(points: Array<{ x: number; y: number; newLine: boolean }>): string {
+  let d = '';
+  for (const pt of points) {
+    if (pt.newLine) {
+      d += `M${pt.x.toFixed(1)} ${pt.y.toFixed(1)}`;
+    } else {
+      d += ` L${pt.x.toFixed(1)} ${pt.y.toFixed(1)}`;
+    }
+  }
+  return d;
+}
+
+/**
+ * Convert sigPoints to a base64 SVG data URL.
+ * Returns '' when there are no points.
+ */
+function captureSignatureDataUrl(
+  points: Array<{ x: number; y: number; newLine: boolean }>,
+  width: number,
+  height: number,
+): string {
+  if (points.length < 2) return '';
+  const d = buildSvgPath(points);
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">` +
+    `<rect width="${width}" height="${height}" fill="white"/>` +
+    `<path d="${d}" stroke="#0F3460" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>` +
+    `</svg>`;
+  // btoa is available in Hermes / React-Native runtime
+  return `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svg)))}`;
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export default function PODScreen() {
   const { jobId } = useLocalSearchParams<{ jobId: string }>();
@@ -29,9 +68,16 @@ export default function PODScreen() {
   const [isSigned, setIsSigned] = useState(false);
   const [loading, setLoading] = useState(false);
   const [sigPoints, setSigPoints] = useState<Array<{ x: number; y: number; newLine: boolean }>>([]);
+  // Track canvas dimensions for accurate SVG export
+  const [sigLayout, setSigLayout] = useState({ width: 340, height: 160 });
 
   const job = getJob(jobId);
   if (!job) return null;
+
+  function handleSigLayout(e: LayoutChangeEvent) {
+    const { width, height } = e.nativeEvent.layout;
+    if (width > 0 && height > 0) setSigLayout({ width, height });
+  }
 
   const panResponder = useRef(
     PanResponder.create({
@@ -99,15 +145,21 @@ export default function PODScreen() {
     setLocalPhotos((prev) => prev.filter((u) => u !== uri));
   }
 
-  async function handleConfirm() {
-    if (!receiverName.trim()) {
-      Alert.alert('Perhatian', 'Masukkan nama penerima');
-      return;
+  async function getGeoLocation(): Promise<{ lat: number; lng: number } | undefined> {
+    if (Platform.OS === 'web') return undefined;
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') return undefined;
+      const loc = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      return { lat: loc.coords.latitude, lng: loc.coords.longitude };
+    } catch {
+      return undefined;
     }
-    if (!isSigned) {
-      Alert.alert('Perhatian', 'Penerima harus menandatangani dokumen');
-      return;
-    }
+  }
+
+  async function doSubmit(signatureDataUrl?: string) {
     setLoading(true);
     try {
       // Upload POD photos first (fail gracefully per photo)
@@ -123,12 +175,17 @@ export default function PODScreen() {
         }
       }
 
+      // Capture geo location
+      const geoLocation = await getGeoLocation();
+
       const payload: PODPayload = {
         receiverName: receiverName.trim(),
         receiverPosition: receiverPosition.trim() || undefined,
         deliveryNotes: deliveryNotes.trim() || undefined,
         podPhotos: uploadedUrls.length > 0 ? uploadedUrls : undefined,
+        signatureDataUrl: signatureDataUrl || undefined,
         submittedAt: new Date().toISOString(),
+        geoLocation,
       };
 
       await submitPOD(jobId, payload);
@@ -145,46 +202,39 @@ export default function PODScreen() {
     }
   }
 
-  function renderSignaturePaths() {
-    if (sigPoints.length === 0) return null;
-    const pathGroups: Array<Array<{ x: number; y: number }>> = [];
-    let currentGroup: Array<{ x: number; y: number }> = [];
-    for (const pt of sigPoints) {
-      if (pt.newLine && currentGroup.length > 0) {
-        pathGroups.push(currentGroup);
-        currentGroup = [];
-      }
-      currentGroup.push({ x: pt.x, y: pt.y });
+  async function handleConfirm() {
+    if (!receiverName.trim()) {
+      Alert.alert('Perhatian', 'Masukkan nama penerima');
+      return;
     }
-    if (currentGroup.length > 0) pathGroups.push(currentGroup);
 
-    return pathGroups.map((group, gIdx) =>
-      group.map((pt, pIdx) => {
-        if (pIdx === 0) return null;
-        const prev = group[pIdx - 1];
-        const dx = pt.x - prev.x;
-        const dy = pt.y - prev.y;
-        const len = Math.sqrt(dx * dx + dy * dy);
-        const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
-        return (
-          <View
-            key={`${gIdx}-${pIdx}`}
-            style={{
-              position: 'absolute',
-              left: prev.x,
-              top: prev.y - 1.5,
-              width: len,
-              height: 3,
-              backgroundColor: '#0F3460',
-              borderRadius: 1.5,
-              transformOrigin: 'left center',
-              transform: [{ rotate: `${angle}deg` }],
-            }}
-          />
-        );
-      })
-    );
+    // Capture signature from points
+    const signatureDataUrl = isSigned
+      ? captureSignatureDataUrl(sigPoints, sigLayout.width, sigLayout.height)
+      : '';
+
+    // Validate: signature is required but allow override with confirmation
+    if (!isSigned || !signatureDataUrl) {
+      Alert.alert(
+        'Tanda Tangan Kosong',
+        'Penerima belum menandatangani dokumen. Lanjutkan tanpa tanda tangan?',
+        [
+          { text: 'Batal', style: 'cancel' },
+          {
+            text: 'Lanjutkan Tanpa TTD',
+            style: 'destructive',
+            onPress: () => doSubmit(undefined),
+          },
+        ]
+      );
+      return;
+    }
+
+    await doSubmit(signatureDataUrl);
   }
+
+  // Build single SVG path string for rendering
+  const svgPathD = buildSvgPath(sigPoints);
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -303,7 +353,7 @@ export default function PODScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Signature Pad */}
+        {/* Signature Pad — rendered with react-native-svg for accurate capture */}
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={styles.sigHeader}>
             <Text style={[styles.cardTitle, { color: colors.foreground }]}>Tanda Tangan Penerima *</Text>
@@ -314,20 +364,49 @@ export default function PODScreen() {
               </TouchableOpacity>
             )}
           </View>
+
+          {/* Canvas — touch handler wraps SVG layer */}
           <View
-            style={[styles.sigPad, { borderColor: isSigned ? '#0F3460' : colors.border, backgroundColor: colors.background }]}
+            style={[
+              styles.sigPad,
+              { borderColor: isSigned ? '#0F3460' : colors.border, backgroundColor: '#FFFFFF' },
+            ]}
+            onLayout={handleSigLayout}
             {...panResponder.panHandlers}
           >
+            {/* Placeholder shown before any stroke */}
             {!isSigned && (
-              <View style={styles.sigPlaceholder}>
+              <View style={styles.sigPlaceholder} pointerEvents="none">
                 <Icon name="edit-3" size={24} color={colors.mutedForeground} />
                 <Text style={[styles.sigPlaceholderText, { color: colors.mutedForeground }]}>
                   Tanda tangan di sini
                 </Text>
               </View>
             )}
-            {renderSignaturePaths()}
+
+            {/* SVG stroke rendering — accurate & capturable */}
+            {isSigned && svgPathD ? (
+              <Svg
+                width={sigLayout.width}
+                height={sigLayout.height}
+                style={StyleSheet.absoluteFillObject}
+                pointerEvents="none"
+              >
+                <Path
+                  d={svgPathD}
+                  stroke="#0F3460"
+                  strokeWidth={3}
+                  fill="none"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </Svg>
+            ) : null}
           </View>
+
+          <Text style={[styles.sigHint, { color: colors.mutedForeground }]}>
+            Tanda tangan akan disimpan bersama data POD
+          </Text>
         </View>
 
         <View style={{ height: 16 }} />
@@ -412,6 +491,7 @@ const styles = StyleSheet.create({
   },
   sigPlaceholder: { position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center', gap: 8 },
   sigPlaceholderText: { fontSize: 14, fontFamily: 'Inter_400Regular' },
+  sigHint: { fontSize: 11, fontFamily: 'Inter_400Regular', textAlign: 'center', marginTop: -4 },
   footer: {
     backgroundColor: 'transparent', borderTopWidth: 1, padding: 16, gap: 8,
   },
