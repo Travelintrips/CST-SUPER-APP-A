@@ -34,7 +34,14 @@ export type ExceptionType =
   | "document_missing"
   | "payment_overdue"
   | "vendor_rejected"
-  | "pod_pending_review";
+  | "pod_pending_review"
+  | "vendor_no_response"
+  | "customer_reject"
+  | "damaged_goods"
+  | "missing_goods"
+  | "pricing_dispute"
+  | "delivery_failed"
+  | "payment_issue";
 
 export type ExceptionSeverity = "low" | "medium" | "high" | "critical";
 
@@ -68,11 +75,6 @@ export interface CreateExceptionResult {
  */
 export async function runExceptionEnumMigration(): Promise<void> {
   try {
-    // PostgreSQL: ALTER TYPE ... ADD VALUE IF NOT EXISTS
-    // Tidak bisa dijalankan di dalam transaction di PG versi lama,
-    // tapi db.execute() berjalan di autocommit sehingga aman.
-    // Tambahkan enum values baru jika tipe exception_type ada di PostgreSQL.
-    // Jika tidak ada (tabel menggunakan TEXT biasa), langkah ini dilewati secara aman.
     await db.execute(sql`
       DO $$
       BEGIN
@@ -104,6 +106,74 @@ export async function runExceptionEnumMigration(): Promise<void> {
     logger.debug("exceptionService: enum migration complete");
   } catch (err) {
     logger.warn({ err }, "exceptionService: enum migration failed — non-fatal");
+  }
+}
+
+/**
+ * FASE 6E — Order Exception Management migration.
+ * Tambah kolom + enum values baru ke tabel exceptions.
+ * Idempotent (IF NOT EXISTS).
+ */
+export async function runOrderExceptionsMigration(): Promise<void> {
+  try {
+    // Kolom baru di exceptions
+    await db.execute(sql`
+      ALTER TABLE exceptions
+        ADD COLUMN IF NOT EXISTS reported_by_type TEXT,
+        ADD COLUMN IF NOT EXISTS reported_by_id   TEXT,
+        ADD COLUMN IF NOT EXISTS attachments       JSONB
+    `);
+
+    // Enum values baru: exception_type
+    // DO $$ block tidak mendukung parameterized query — gunakan sql.raw
+    const newExcTypes = [
+      "vendor_no_response",
+      "customer_reject",
+      "damaged_goods",
+      "missing_goods",
+      "pricing_dispute",
+      "delivery_failed",
+      "payment_issue",
+    ];
+    for (const v of newExcTypes) {
+      await db.execute(
+        sql.raw(`
+          DO $$
+          BEGIN
+            IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'exception_type')
+            AND NOT EXISTS (
+              SELECT 1 FROM pg_enum e JOIN pg_type t ON e.enumtypid = t.oid
+              WHERE t.typname = 'exception_type' AND e.enumlabel = '${v}'
+            ) THEN
+              ALTER TYPE exception_type ADD VALUE '${v}';
+            END IF;
+          END $$;
+        `)
+      );
+    }
+
+    // Enum values baru: exception_status
+    const newStatuses = ["investigating", "rejected"];
+    for (const v of newStatuses) {
+      await db.execute(
+        sql.raw(`
+          DO $$
+          BEGIN
+            IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'exception_status')
+            AND NOT EXISTS (
+              SELECT 1 FROM pg_enum e JOIN pg_type t ON e.enumtypid = t.oid
+              WHERE t.typname = 'exception_status' AND e.enumlabel = '${v}'
+            ) THEN
+              ALTER TYPE exception_status ADD VALUE '${v}';
+            END IF;
+          END $$;
+        `)
+      );
+    }
+
+    logger.info("Order exceptions migration: selesai");
+  } catch (err) {
+    logger.warn({ err }, "runOrderExceptionsMigration failed — non-fatal");
   }
 }
 

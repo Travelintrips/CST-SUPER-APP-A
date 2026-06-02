@@ -2089,6 +2089,320 @@ function AddTimelineNoteDialog({ orderId, onAdded }: { orderId: number; onAdded:
   );
 }
 
+// ── Exception Panel ───────────────────────────────────────────────────────────
+
+const EXCEPTION_TYPE_LABEL: Record<string, string> = {
+  vendor_no_response:  "Vendor Tidak Respon",
+  customer_reject:     "Customer Menolak",
+  damaged_goods:       "Barang Rusak",
+  missing_goods:       "Barang Kurang",
+  document_missing:    "Dokumen Kurang",
+  delivery_failed:     "Gagal Antar",
+  failed_delivery:     "Gagal Antar",
+  payment_issue:       "Masalah Pembayaran",
+  payment_overdue:     "Pembayaran Terlambat",
+  pricing_dispute:     "Sengketa Harga",
+  order_rejected:      "Order Ditolak",
+  vendor_reject_rfq:   "Vendor Tolak RFQ",
+  vendor_out_of_stock: "Stok Habis",
+  price_changed:       "Harga Berubah",
+  delivery_delayed:    "Pengiriman Terlambat",
+  customer_complaint:  "Komplain Customer",
+  vendor_rejected:     "Vendor Ditolak",
+  pod_pending_review:  "POD Ditinjau",
+};
+
+const EXCEPTION_TYPES = [
+  "vendor_no_response", "customer_reject", "damaged_goods", "missing_goods",
+  "document_missing", "delivery_failed", "payment_issue", "pricing_dispute",
+  "order_rejected", "vendor_reject_rfq", "delivery_delayed", "customer_complaint",
+  "vendor_out_of_stock",
+] as const;
+
+const EXCEPTION_STATUS_LABEL: Record<string, string> = {
+  open:          "Terbuka",
+  investigating: "Investigasi",
+  in_progress:   "Diproses",
+  resolved:      "Selesai",
+  rejected:      "Ditolak",
+  closed:        "Ditutup",
+};
+
+const EXCEPTION_STATUS_COLOR: Record<string, string> = {
+  open:          "bg-red-100 text-red-700",
+  investigating: "bg-orange-100 text-orange-700",
+  in_progress:   "bg-yellow-100 text-yellow-700",
+  resolved:      "bg-green-100 text-green-700",
+  rejected:      "bg-gray-100 text-gray-600",
+  closed:        "bg-gray-100 text-gray-500",
+};
+
+const EXCEPTION_SEVERITY_COLOR: Record<string, string> = {
+  critical: "bg-red-600 text-white",
+  high:     "bg-orange-500 text-white",
+  medium:   "bg-yellow-500 text-white",
+  low:      "bg-green-500 text-white",
+};
+
+interface OrderException {
+  id: number;
+  exceptionType: string;
+  severity: string;
+  status: string;
+  title: string;
+  description: string | null;
+  resolutionNotes: string | null;
+  createdBy: string | null;
+  createdAt: string;
+  resolvedAt: string | null;
+  resolvedBy: string | null;
+}
+
+function ExceptionPanel({ orderId }: { orderId: number }) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const [createOpen, setCreateOpen] = useState(false);
+  const [resolveId, setResolveId] = useState<number | null>(null);
+  const [resolutionNotes, setResolutionNotes] = useState("");
+  const [collapsed, setCollapsed] = useState(false);
+
+  const [form, setForm] = useState({
+    exceptionType: "",
+    severity: "medium",
+    title: "",
+    description: "",
+  });
+
+  const { data, isLoading, refetch } = useQuery<{ data: OrderException[]; total: number }>({
+    queryKey: ["order-exceptions", orderId],
+    queryFn: () => apiFetch(`/api/logistic/orders/${orderId}/exceptions`),
+    enabled: !isNaN(orderId),
+    staleTime: 15000,
+  });
+
+  const exceptions = data?.data ?? [];
+  const openCount = exceptions.filter(e => e.status === "open" || e.status === "investigating").length;
+
+  const createMut = useMutation({
+    mutationFn: () => apiFetch(`/api/logistic/orders/${orderId}/exceptions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(form),
+    }),
+    onSuccess: () => {
+      toast({ title: "Exception dilaporkan", description: "Tim admin telah diberitahu via WA." });
+      setCreateOpen(false);
+      setForm({ exceptionType: "", severity: "medium", title: "", description: "" });
+      qc.invalidateQueries({ queryKey: ["order-exceptions", orderId] });
+      qc.invalidateQueries({ queryKey: ["audit-trail", orderId] });
+    },
+    onError: (e: Error) => toast({ title: "Gagal", description: e.message, variant: "destructive" }),
+  });
+
+  const statusMut = useMutation({
+    mutationFn: ({ id, status, notes }: { id: number; status: string; notes?: string }) =>
+      apiFetch(`/api/logistic/exceptions/${id}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status, resolutionNotes: notes }),
+      }),
+    onSuccess: () => {
+      toast({ title: "Status diperbarui" });
+      setResolveId(null);
+      setResolutionNotes("");
+      qc.invalidateQueries({ queryKey: ["order-exceptions", orderId] });
+    },
+    onError: (e: Error) => toast({ title: "Gagal", description: e.message, variant: "destructive" }),
+  });
+
+  return (
+    <Card>
+      <CardHeader className="pb-3 cursor-pointer" onClick={() => setCollapsed(c => !c)}>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-semibold text-slate-600 uppercase tracking-wide flex items-center gap-1.5">
+            <ShieldAlert className="w-4 h-4 text-red-500" />
+            Exception
+            {openCount > 0 && (
+              <span className="ml-1 inline-flex items-center justify-center w-5 h-5 rounded-full bg-red-500 text-white text-xs font-bold">
+                {openCount}
+              </span>
+            )}
+          </CardTitle>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs gap-1 text-red-600 border-red-200 hover:bg-red-50"
+              onClick={(e) => { e.stopPropagation(); setCreateOpen(true); }}
+            >
+              <Plus className="w-3 h-3" /> Laporkan
+            </Button>
+            {collapsed ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronUp className="w-4 h-4 text-slate-400" />}
+          </div>
+        </div>
+      </CardHeader>
+
+      {!collapsed && (
+        <CardContent className="pt-0 space-y-2">
+          {isLoading && <div className="h-8 animate-pulse bg-muted rounded" />}
+          {!isLoading && exceptions.length === 0 && (
+            <p className="text-xs text-muted-foreground text-center py-3">Tidak ada exception</p>
+          )}
+          {exceptions.map((exc) => (
+            <div key={exc.id} className="rounded-lg border p-3 space-y-1.5 text-sm">
+              <div className="flex items-start gap-1.5 flex-wrap">
+                <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold ${EXCEPTION_SEVERITY_COLOR[exc.severity] ?? "bg-gray-200 text-gray-700"}`}>
+                  {exc.severity.toUpperCase()}
+                </span>
+                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${EXCEPTION_STATUS_COLOR[exc.status] ?? "bg-gray-100 text-gray-600"}`}>
+                  {EXCEPTION_STATUS_LABEL[exc.status] ?? exc.status}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {EXCEPTION_TYPE_LABEL[exc.exceptionType] ?? exc.exceptionType}
+                </span>
+              </div>
+              <p className="font-medium text-slate-800 leading-snug">{exc.title}</p>
+              {exc.description && <p className="text-xs text-slate-500">{exc.description}</p>}
+              {exc.resolutionNotes && (
+                <p className="text-xs text-green-700 bg-green-50 rounded px-2 py-1">
+                  <span className="font-medium">Resolusi:</span> {exc.resolutionNotes}
+                </p>
+              )}
+              <div className="flex items-center justify-between pt-0.5">
+                <span className="text-xs text-muted-foreground">
+                  {dt(exc.createdAt)}{exc.createdBy ? ` · ${exc.createdBy}` : ""}
+                </span>
+                {exc.status !== "resolved" && exc.status !== "closed" && exc.status !== "rejected" && (
+                  <div className="flex gap-1">
+                    {exc.status === "open" && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 px-2 text-xs text-orange-600 hover:bg-orange-50"
+                        onClick={() => statusMut.mutate({ id: exc.id, status: "investigating" })}
+                        disabled={statusMut.isPending}
+                      >
+                        Investigasi
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 px-2 text-xs text-green-600 hover:bg-green-50"
+                      onClick={() => { setResolveId(exc.id); setResolutionNotes(""); }}
+                    >
+                      Selesaikan
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </CardContent>
+      )}
+
+      {/* Create Dialog */}
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-1.5">
+              <ShieldAlert className="w-4 h-4 text-red-500" /> Laporkan Exception
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1">
+              <Label>Tipe Exception *</Label>
+              <Select value={form.exceptionType} onValueChange={(v) => setForm(f => ({ ...f, exceptionType: v }))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Pilih tipe masalah..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {EXCEPTION_TYPES.map((t) => (
+                    <SelectItem key={t} value={t}>
+                      {EXCEPTION_TYPE_LABEL[t] ?? t}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label>Severity</Label>
+              <Select value={form.severity} onValueChange={(v) => setForm(f => ({ ...f, severity: v }))}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="low">🟢 Low</SelectItem>
+                  <SelectItem value="medium">🟡 Medium</SelectItem>
+                  <SelectItem value="high">🟠 High</SelectItem>
+                  <SelectItem value="critical">🔴 Critical</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label>Judul *</Label>
+              <Input
+                value={form.title}
+                onChange={(e) => setForm(f => ({ ...f, title: e.target.value }))}
+                placeholder="Ringkasan singkat masalah..."
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Deskripsi</Label>
+              <Textarea
+                value={form.description}
+                onChange={(e) => setForm(f => ({ ...f, description: e.target.value }))}
+                placeholder="Detail masalah, kronologi, tindakan yang sudah dilakukan..."
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>Batal</Button>
+            <Button
+              onClick={() => createMut.mutate()}
+              disabled={!form.exceptionType || !form.title.trim() || createMut.isPending}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {createMut.isPending && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}
+              Laporkan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Resolve Dialog */}
+      <Dialog open={resolveId !== null} onOpenChange={() => { setResolveId(null); setResolutionNotes(""); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Selesaikan Exception</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <Label>Catatan Resolusi</Label>
+            <Textarea
+              value={resolutionNotes}
+              onChange={(e) => setResolutionNotes(e.target.value)}
+              placeholder="Tindakan yang diambil, hasil akhir..."
+              rows={3}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setResolveId(null)}>Batal</Button>
+            <Button
+              onClick={() => resolveId && statusMut.mutate({ id: resolveId, status: "resolved", notes: resolutionNotes })}
+              disabled={statusMut.isPending}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              {statusMut.isPending && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}
+              Tandai Selesai
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </Card>
+  );
+}
+
 // ── Main Page ──────────────────────────────────────────────────────────────────
 
 export default function LogisticOrderDetailPage() {
@@ -3574,8 +3888,9 @@ export default function LogisticOrderDetailPage() {
             />
           </div>
 
-          {/* Right: Audit Trail + WA Log */}
+          {/* Right: Exception + Audit Trail + WA Log */}
           <div className="space-y-4">
+            <ExceptionPanel orderId={orderId} />
             <WaNotificationLogPanel orderNumber={order.orderNumber} />
             <AuditTrailPanel orderId={orderId} />
           </div>

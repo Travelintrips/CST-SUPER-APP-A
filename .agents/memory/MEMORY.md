@@ -21,3 +21,5 @@
 - [FASE 4A Service Context WA](fase4a-service-context-wa.md) — buildServiceContext() di orderNotification.ts; serviceChecklistSummary embed header; renderTemplate auto-skip null; op_request pakai SERVICE_SCHEMAS untuk derive snapshot.
 - [VMF Invoice Lifecycle](vmf-invoice-lifecycle.md) — 6 endpoints (create/list/detail/send-wa/confirm-payment/mark-completed); confirmedAt boot migration; invoiceLinks.status must be explicit in tracking SELECT.
 - [Driver App POD Modernization](driver-pod-modernization.md) — FASE 5B: 6 kolom baru di driver_jobs, upload endpoint, extended POD fields, foto, geo; WA grup via getAdminGroupWa; pod.tsx ScrollView + foto picker.
+- [DO block parameterized query pitfall](do-block-sql-pitfall.md) — Drizzle sql`` template parameterizes all interpolations; DO $$ blocks reject parameters. Use sql.raw(`...${v}...`) for enum migrations inside PL/pgSQL DO blocks.
+- [FASE 6E Order Exceptions](fase6e-order-exceptions.md) — per-order exception tracking via refType='logistic_order'/refId=orderId; new router in orderExceptions.ts; ExceptionPanel in order-detail.tsx right column.

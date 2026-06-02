@@ -1,4 +1,4 @@
-import { pgEnum, pgTable, serial, integer, text, timestamp, index } from "drizzle-orm/pg-core";
+import { pgEnum, pgTable, serial, integer, text, timestamp, index, jsonb } from "drizzle-orm/pg-core";
 import { companiesTable } from "./companies";
 
 export const exceptionTypeEnum = pgEnum("exception_type", [
@@ -46,6 +46,9 @@ export const exceptionsTable = pgTable("exceptions", {
   resolvedBy: text("resolved_by"),
   resolvedAt: timestamp("resolved_at"),
   resolutionNotes: text("resolution_notes"),
+  reportedByType: text("reported_by_type"),
+  reportedById: text("reported_by_id"),
+  attachments: jsonb("attachments").$type<Array<{ url: string; name: string; type?: string }>>(),
   createdBy: text("created_by"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),

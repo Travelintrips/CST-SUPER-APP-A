@@ -85,6 +85,7 @@ import { orderAuditTrailRouter } from "./orderAuditTrail.js";
 import { serviceTemplatesRouter } from "./serviceTemplates.js";
 
 import { exceptionsRouter } from "./exceptions.js";
+import { orderExceptionsRouter } from "./orderExceptions.js";
 import { systemRouter } from "./system.js";
 import { handleAlertSse } from "../lib/alertsBroadcast.js";
 import { requireAdmin } from "../lib/requireAdmin.js";
@@ -205,6 +206,7 @@ router.use("/purchase-mini", purchaseMiniPublicRouter);
 router.use("/service-templates", serviceTemplatesRouter);
 
 router.use("/logistic", orderAuditTrailRouter);
+router.use("/logistic", orderExceptionsRouter);
 
 router.use("/exceptions", exceptionsRouter);
 router.use("/system", systemRouter);
