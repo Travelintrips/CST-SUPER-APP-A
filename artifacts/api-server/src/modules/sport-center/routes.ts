@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { requireAdmin } from "../../lib/requireAdmin.js";
 import { handleSportCenterSse, broadcastSportCenterEvent } from "./broadcast.js";
+import { postSportCenterBooking } from "../../lib/accounting.js";
 
 const router = Router();
 
@@ -494,6 +495,27 @@ router.post("/payments", requireAdmin, async (req, res) => {
     `);
     await db.execute(sql`UPDATE sport_bookings SET payment_status = 'paid', updated_at = NOW() WHERE id = ${booking_id}`);
     const row = r.rows[0] as Record<string, unknown>;
+
+    // Post jurnal accounting — fire-and-forget, tidak blokir response
+    const bookingRes = await db.execute(sql`
+      SELECT booking_number, customer_name, facility_name, booking_date, total_amount, company_id
+      FROM sport_bookings WHERE id = ${booking_id} LIMIT 1
+    `);
+    if (bookingRes.rows.length) {
+      const b = bookingRes.rows[0] as Record<string, unknown>;
+      const createdById = (req.user as { id: string } | undefined)?.id ?? null;
+      postSportCenterBooking({
+        bookingId: booking_id,
+        bookingCode: String(b.booking_number ?? paymentNumber),
+        customerName: String(b.customer_name ?? ""),
+        facilityName: String(b.facility_name ?? ""),
+        date: String(b.booking_date ?? new Date().toISOString().slice(0, 10)),
+        totalPrice: Number(b.total_amount ?? amount),
+        createdById,
+        companyId: b.company_id != null ? Number(b.company_id) : (company_id ?? null),
+      }).catch(() => {});
+    }
+
     broadcastSportCenterEvent({ module: "sport-center", entity: "payment", action: "created", data: row, timestamp: new Date().toISOString() }, company_id);
     res.status(201).json(row);
   } catch {
