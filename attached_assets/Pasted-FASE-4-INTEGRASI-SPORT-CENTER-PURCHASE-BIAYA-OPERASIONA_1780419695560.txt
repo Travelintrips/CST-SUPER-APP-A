@@ -1,0 +1,73 @@
+FASE 4 — INTEGRASI SPORT CENTER → PURCHASE (BIAYA OPERASIONAL/FASILITAS)
+
+Tujuan:
+- Menghubungkan permintaan maintenance/fasilitas dan pembelian operasional Sport Center ke modul Purchase existing.
+- Semua transaksi harus berada di bawah company = PT Cahaya Sejati Teknologi.
+- Source module: SPORT_CENTER
+- Cost center/facility reference dicatat untuk setiap request.
+- Jangan mengubah workflow Purchase existing atau database perusahaan lain.
+
+A. Endpoint Sport Center
+
+1. Tambahkan/ubah endpoint backend:
+   - POST /api/sport-center/facilities/:id/request-maintenance
+   - POST /api/sport-center/facilities/:id/purchase-request
+2. Input minimal:
+   - item (nama barang/jasa)
+   - quantity / service detail
+   - notes / remarks
+   - facility_id (dari path param)
+   - optional vendor_id
+3. Server-side:
+   - Validasi company_id = PT Cahaya Sejati Teknologi
+   - Tambahkan source = SPORT_CENTER
+   - Tambahkan cost_center = SPORT_CENTER (jika modul Purchase mendukung)
+4. Hanya admin BizPortal dapat akses (requireAdmin).
+
+B. Payload & Persiapan Posting ke Purchase
+
+1. Endpoint mengemas payload sesuai modul Purchase existing:
+   - purchase_request → PO → Vendor Bill / Expense
+2. Pastikan payload memuat:
+   - company_id
+   - source
+   - cost_center / facility_id
+   - item, quantity, vendor (optional)
+   - notes
+3. Belum diteruskan ke Purchase? Minimal simpan payload di table temporary atau log, siap untuk fase selanjutnya mem-post ke Purchase.
+
+C. Mapping Accounting (opsional di fase ini)
+
+1. Jika modul Purchase otomatis posting ke Accounting:
+   - Pastikan company_id = PT Cahaya Sejati Teknologi
+   - Source tetap SPORT_CENTER
+   - Cost center tetap SPORT_CENTER
+2. Jika belum, cukup catat reference agar mudah di-post nanti.
+
+D. Test Checklist Fase 4
+
+1. Buat Maintenance Request via endpoint Sport Center:
+   - Periksa payload valid, facility_id tercatat
+   - company_id = PT Cahaya Sejati Teknologi
+   - source = SPORT_CENTER
+   - cost_center/facility reference tercatat
+2. Buat Purchase Request operasional via endpoint Sport Center:
+   - Payload sesuai modul Purchase existing
+   - Validasi company, source, cost center
+3. Pastikan tidak ada transaksi yang salah company atau hilang reference
+4. Semua endpoint memakai requireAdmin
+5. Tidak mengganggu Fase 1–3 (gateway, SSE, pembayaran, jurnal, promo)
+
+E. Laporan Fase 4
+
+Laporkan:
+1. File yang diubah
+2. Endpoint yang dibuat atau diubah
+3. Payload yang dikirim ke modul Purchase
+4. Validasi company/source/cost center
+5. Hasil test Maintenance Request
+6. Hasil test Purchase Request
+7. Gap yang tersisa (misal: posting otomatis ke Accounting jika belum tersedia)
+8. Rekomendasi Fase 5 (jika perlu sinkronisasi otomatis PO → journal)
+
+STOP setelah Fase 4 selesai. Jangan lanjutkan ke dashboard profit/loss sebelum Fase 5.

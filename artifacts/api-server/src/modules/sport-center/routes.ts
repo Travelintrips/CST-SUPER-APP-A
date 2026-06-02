@@ -28,6 +28,14 @@ async function nextPaymentNumber(companyId?: number): Promise<string> {
   return `PAY/${new Date().getFullYear()}/${pad(Number((res.rows[0] as any).cnt) + 1)}`;
 }
 
+async function nextPrSeq(): Promise<string> {
+  const year = new Date().getFullYear();
+  const pattern = `PR/${year}/%`;
+  const res = await db.execute(sql`SELECT COALESCE(MAX(CAST(SPLIT_PART(pr_number, '/', 3) AS int)), 0) AS seq FROM purchase_requests WHERE pr_number LIKE ${pattern}`);
+  const seq = (Number((res.rows[0] as any).seq ?? 0) + 1).toString().padStart(5, "0");
+  return `PR/${year}/${seq}`;
+}
+
 async function nextRefundNumber(companyId?: number): Promise<string> {
   const res = await db.execute(sql`SELECT COUNT(*) AS cnt FROM sport_refunds WHERE (${companyId ?? null}::int IS NULL OR company_id = ${companyId ?? null})`);
   return `RF/${new Date().getFullYear()}/${pad(Number((res.rows[0] as any).cnt) + 1)}`;
@@ -1204,62 +1212,193 @@ router.post("/bookings/:id/refund", requireAdmin, async (req, res) => {
   }
 });
 
-// ── MAINTENANCE REQUEST PLACEHOLDER (Fase 3 — persiapan integrasi Purchase) ───
+// ── MAINTENANCE REQUEST — FASE 4: buat PR nyata di modul Purchase ─────────────
 
 router.post("/facilities/:id/request-maintenance", requireAdmin, async (req, res) => {
   try {
     const facilityId = Number(req.params.id);
     if (isNaN(facilityId)) return res.status(400).json({ error: "ID fasilitas tidak valid" });
 
-    const { item, quantity = 1, vendor, notes, company_id } = req.body;
+    const { item, quantity = 1, vendor, notes, company_id, estimated_cost = 0, unit = "pcs" } = req.body;
     if (!item) return res.status(400).json({ error: "item wajib diisi" });
 
-    // Validasi company_id — harus PT Cahaya Sejati Teknologi (companyId dari fasilitas)
     const facilityRes = await db.execute(sql`SELECT * FROM sport_facilities WHERE id = ${facilityId} LIMIT 1`);
     if (!facilityRes.rows.length) return res.status(404).json({ error: "Fasilitas tidak ditemukan" });
     const facility = facilityRes.rows[0] as Record<string, unknown>;
 
-    const cmpId = company_id ?? facility.company_id ?? null;
+    const cmpId = Number(company_id ?? facility.company_id ?? 1);
     const actorId = (req.user as { id: string } | undefined)?.id ?? null;
+    const actorName = (req.user as { name?: string; email?: string } | undefined)?.name
+      ?? (req.user as { name?: string; email?: string } | undefined)?.email
+      ?? "Sport Center Admin";
 
+    // Buat Purchase Request nyata di modul Purchase
+    const prNumber = await nextPrSeq();
+    const prNotes = `[SPORT_CENTER] Fasilitas: ${facility.name ?? facilityId} | ${notes ?? ""}`.trim();
+    const prRes = await db.execute(sql`
+      INSERT INTO purchase_requests
+        (pr_number, company_id, status, requested_by, department, notes, created_by, created_at, updated_at)
+      VALUES
+        (${prNumber}, ${cmpId}, 'draft', ${actorName}, 'SPORT_CENTER', ${prNotes}, ${actorId}, NOW(), NOW())
+      RETURNING *
+    `);
+    const pr = prRes.rows[0] as Record<string, unknown>;
+
+    // Insert line PR
+    await db.execute(sql`
+      INSERT INTO purchase_request_lines
+        (pr_id, name, description, quantity, unit, estimated_cost, notes, product_category)
+      VALUES
+        (${pr.id}, ${item}, ${`Maintenance fasilitas: ${facility.name ?? facilityId}`},
+         ${Number(quantity)}, ${unit}, ${Number(estimated_cost).toFixed(2)},
+         ${notes ?? null}, 'SPORT_CENTER_MAINTENANCE')
+    `);
+
+    // Simpan maintenance request dengan link ke PR
     const r = await db.execute(sql`
       INSERT INTO sport_maintenance_requests
-        (company_id, facility_id, facility_name, item, quantity, vendor, notes, source, status, requested_by)
+        (company_id, facility_id, facility_name, item, quantity, vendor, notes,
+         source, cost_center, request_type, status, requested_by,
+         purchase_request_id, purchase_request_number, estimated_cost, unit)
       VALUES
-        (${cmpId ?? null}, ${facilityId}, ${facility.name ?? null},
+        (${cmpId}, ${facilityId}, ${facility.name ?? null},
          ${item}, ${Number(quantity)}, ${vendor ?? null}, ${notes ?? null},
-         'SPORT_CENTER', 'pending', ${actorId})
+         'SPORT_CENTER', 'SPORT_CENTER', 'maintenance', 'submitted', ${actorId},
+         ${pr.id}, ${prNumber}, ${Number(estimated_cost).toFixed(2)}, ${unit})
       RETURNING *
     `);
     const maint = r.rows[0] as Record<string, unknown>;
 
     await db.execute(sql`
       INSERT INTO sport_audit_logs (company_id, entity_type, entity_id, action, actor, new_data)
-      VALUES (${cmpId ?? null}, 'facility', ${facilityId}, 'MAINTENANCE_REQUESTED', ${actorId},
-        ${JSON.stringify({ item, quantity, vendor: vendor ?? null, notes: notes ?? null, source: 'SPORT_CENTER', maintenance_id: maint.id })}::jsonb)
+      VALUES (${cmpId}, 'facility', ${facilityId}, 'MAINTENANCE_REQUESTED', ${actorId},
+        ${JSON.stringify({
+          item, quantity, vendor: vendor ?? null, notes: notes ?? null,
+          source: "SPORT_CENTER", cost_center: "SPORT_CENTER",
+          maintenance_id: maint.id, purchase_request_id: pr.id, purchase_request_number: prNumber,
+        })}::jsonb)
     `);
-
-    // Payload siap untuk diteruskan ke /purchase di Fase 4
-    const purchasePayload = {
-      source: "SPORT_CENTER",
-      facility_id: facilityId,
-      facility_name: facility.name,
-      company_id: cmpId,
-      item,
-      quantity: Number(quantity),
-      vendor: vendor ?? null,
-      notes: notes ?? null,
-      maintenance_request_id: maint.id,
-      status: "pending_purchase_integration",
-    };
 
     res.status(201).json({
       maintenance_request: maint,
-      purchase_payload: purchasePayload,
-      note: "Maintenance request tercatat. Integrasi ke modul Purchase akan diproses di Fase 4.",
+      purchase_request: {
+        id: pr.id,
+        pr_number: prNumber,
+        company_id: cmpId,
+        department: "SPORT_CENTER",
+        cost_center: "SPORT_CENTER",
+        source: "SPORT_CENTER",
+        status: "draft",
+        notes: prNotes,
+      },
     });
-  } catch {
+  } catch (err: any) {
+    console.error("[sport-center] request-maintenance error:", err);
     res.status(500).json({ error: "Gagal membuat maintenance request" });
+  }
+});
+
+// ── PURCHASE REQUEST OPERASIONAL — FASE 4 ─────────────────────────────────────
+
+router.post("/facilities/:id/purchase-request", requireAdmin, async (req, res) => {
+  try {
+    const facilityId = Number(req.params.id);
+    if (isNaN(facilityId)) return res.status(400).json({ error: "ID fasilitas tidak valid" });
+
+    const { items, notes, company_id, request_type = "operational" } = req.body;
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: "items wajib diisi (array)" });
+    }
+
+    const facilityRes = await db.execute(sql`SELECT * FROM sport_facilities WHERE id = ${facilityId} LIMIT 1`);
+    if (!facilityRes.rows.length) return res.status(404).json({ error: "Fasilitas tidak ditemukan" });
+    const facility = facilityRes.rows[0] as Record<string, unknown>;
+
+    const cmpId = Number(company_id ?? facility.company_id ?? 1);
+    const actorId = (req.user as { id: string } | undefined)?.id ?? null;
+    const actorName = (req.user as { name?: string; email?: string } | undefined)?.name
+      ?? (req.user as { name?: string; email?: string } | undefined)?.email
+      ?? "Sport Center Admin";
+
+    // Validasi setiap item
+    for (const it of items as Record<string, unknown>[]) {
+      if (!it.item && !it.name) return res.status(400).json({ error: "Setiap item wajib memiliki field 'item' atau 'name'" });
+    }
+
+    // Buat Purchase Request
+    const prNumber = await nextPrSeq();
+    const prNotes = `[SPORT_CENTER] Fasilitas: ${facility.name ?? facilityId} | Tipe: ${request_type} | ${notes ?? ""}`.trim();
+    const prRes = await db.execute(sql`
+      INSERT INTO purchase_requests
+        (pr_number, company_id, status, requested_by, department, notes, created_by, created_at, updated_at)
+      VALUES
+        (${prNumber}, ${cmpId}, 'draft', ${actorName}, 'SPORT_CENTER', ${prNotes}, ${actorId}, NOW(), NOW())
+      RETURNING *
+    `);
+    const pr = prRes.rows[0] as Record<string, unknown>;
+
+    // Insert lines PR
+    const maintIds: number[] = [];
+    for (const it of items as Record<string, unknown>[]) {
+      const itemName = String(it.item ?? it.name ?? "");
+      const qty = Number(it.quantity ?? 1);
+      const unit = String(it.unit ?? "pcs");
+      const estCost = Number(it.estimated_cost ?? 0);
+      const itemNotes = it.notes ? String(it.notes) : null;
+
+      await db.execute(sql`
+        INSERT INTO purchase_request_lines
+          (pr_id, name, description, quantity, unit, estimated_cost, notes, product_category)
+        VALUES
+          (${pr.id}, ${itemName}, ${`Operasional fasilitas: ${facility.name ?? facilityId}`},
+           ${qty}, ${unit}, ${estCost.toFixed(2)}, ${itemNotes}, 'SPORT_CENTER_OPERATIONAL')
+      `);
+
+      // Catat ke sport_maintenance_requests per item
+      const smr = await db.execute(sql`
+        INSERT INTO sport_maintenance_requests
+          (company_id, facility_id, facility_name, item, quantity, vendor, notes,
+           source, cost_center, request_type, status, requested_by,
+           purchase_request_id, purchase_request_number, estimated_cost, unit)
+        VALUES
+          (${cmpId}, ${facilityId}, ${facility.name ?? null},
+           ${itemName}, ${qty}, ${it.vendor ? String(it.vendor) : null}, ${itemNotes},
+           'SPORT_CENTER', 'SPORT_CENTER', ${request_type}, 'submitted', ${actorId},
+           ${pr.id}, ${prNumber}, ${estCost.toFixed(2)}, ${unit})
+        RETURNING id
+      `);
+      maintIds.push(Number((smr.rows[0] as any).id));
+    }
+
+    await db.execute(sql`
+      INSERT INTO sport_audit_logs (company_id, entity_type, entity_id, action, actor, new_data)
+      VALUES (${cmpId}, 'facility', ${facilityId}, 'PURCHASE_REQUEST_CREATED', ${actorId},
+        ${JSON.stringify({
+          purchase_request_id: pr.id, purchase_request_number: prNumber,
+          source: "SPORT_CENTER", cost_center: "SPORT_CENTER",
+          request_type, item_count: (items as unknown[]).length,
+          maintenance_ids: maintIds,
+        })}::jsonb)
+    `);
+
+    res.status(201).json({
+      purchase_request: {
+        id: pr.id,
+        pr_number: prNumber,
+        company_id: cmpId,
+        department: "SPORT_CENTER",
+        cost_center: "SPORT_CENTER",
+        source: "SPORT_CENTER",
+        request_type,
+        status: "draft",
+        notes: prNotes,
+        item_count: (items as unknown[]).length,
+      },
+      maintenance_request_ids: maintIds,
+    });
+  } catch (err: any) {
+    console.error("[sport-center] purchase-request error:", err);
+    res.status(500).json({ error: "Gagal membuat purchase request" });
   }
 });
 
@@ -1272,6 +1411,39 @@ router.get("/facilities/:id/maintenance-requests", requireAdmin, async (req, res
     res.json(r.rows);
   } catch {
     res.status(500).json({ error: "Gagal memuat maintenance requests" });
+  }
+});
+
+// ── LIST SEMUA PURCHASE REQUESTS SPORT CENTER ──────────────────────────────────
+
+router.get("/purchase-requests", requireAdmin, async (req, res) => {
+  try {
+    const cId = req.query.companyId ? Number(req.query.companyId) : null;
+    const facilityId = req.query.facilityId ? Number(req.query.facilityId) : null;
+    const requestType = req.query.request_type ? String(req.query.request_type) : null;
+    const status = req.query.status ? String(req.query.status) : null;
+
+    const r = await db.execute(sql`
+      SELECT
+        smr.*,
+        pr.status         AS pr_status,
+        pr.pr_number      AS pr_number_ref,
+        pr.department     AS pr_department,
+        pr.notes          AS pr_notes,
+        pr.created_at     AS pr_created_at
+      FROM sport_maintenance_requests smr
+      LEFT JOIN purchase_requests pr ON pr.id = smr.purchase_request_id
+      WHERE smr.source = 'SPORT_CENTER'
+        AND (${cId}::int IS NULL        OR smr.company_id = ${cId})
+        AND (${facilityId}::int IS NULL OR smr.facility_id = ${facilityId})
+        AND (${requestType} IS NULL     OR smr.request_type = ${requestType})
+        AND (${status} IS NULL          OR smr.status = ${status})
+      ORDER BY smr.created_at DESC
+    `);
+    res.json(r.rows);
+  } catch (err: any) {
+    console.error("[sport-center] GET /purchase-requests error:", err);
+    res.status(500).json({ error: "Gagal memuat purchase requests" });
   }
 });
 

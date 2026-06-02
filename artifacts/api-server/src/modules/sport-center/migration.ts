@@ -226,24 +226,37 @@ export async function runSportCenterMigration(): Promise<void> {
         ADD COLUMN IF NOT EXISTS tax_amount  NUMERIC(14,2) NOT NULL DEFAULT 0
     `);
 
-    // Fase 3: tabel maintenance request (placeholder integrasi Purchase)
+    // Fase 3: tabel maintenance request (integrasi Purchase — Fase 4 upgrade)
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS sport_maintenance_requests (
-        id            SERIAL PRIMARY KEY,
-        company_id    INTEGER,
-        facility_id   INTEGER REFERENCES sport_facilities(id) ON DELETE SET NULL,
-        facility_name TEXT,
-        item          TEXT NOT NULL,
-        quantity      INTEGER NOT NULL DEFAULT 1,
-        vendor        TEXT,
-        notes         TEXT,
-        source        TEXT NOT NULL DEFAULT 'SPORT_CENTER',
-        status        TEXT NOT NULL DEFAULT 'pending',
-        requested_by  TEXT,
-        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        id                      SERIAL PRIMARY KEY,
+        company_id              INTEGER,
+        facility_id             INTEGER REFERENCES sport_facilities(id) ON DELETE SET NULL,
+        facility_name           TEXT,
+        item                    TEXT NOT NULL,
+        quantity                INTEGER NOT NULL DEFAULT 1,
+        vendor                  TEXT,
+        notes                   TEXT,
+        source                  TEXT NOT NULL DEFAULT 'SPORT_CENTER',
+        cost_center             TEXT NOT NULL DEFAULT 'SPORT_CENTER',
+        request_type            TEXT NOT NULL DEFAULT 'maintenance',
+        status                  TEXT NOT NULL DEFAULT 'pending',
+        requested_by            TEXT,
+        purchase_request_id     INTEGER,
+        purchase_request_number TEXT,
+        estimated_cost          NUMERIC(14,2) NOT NULL DEFAULT 0,
+        unit                    TEXT NOT NULL DEFAULT 'pcs',
+        created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `);
+    // Fase 4: tambahkan kolom baru jika tabel sudah ada (idempoten)
+    await db.execute(sql`ALTER TABLE sport_maintenance_requests ADD COLUMN IF NOT EXISTS cost_center TEXT NOT NULL DEFAULT 'SPORT_CENTER'`);
+    await db.execute(sql`ALTER TABLE sport_maintenance_requests ADD COLUMN IF NOT EXISTS request_type TEXT NOT NULL DEFAULT 'maintenance'`);
+    await db.execute(sql`ALTER TABLE sport_maintenance_requests ADD COLUMN IF NOT EXISTS purchase_request_id INTEGER`);
+    await db.execute(sql`ALTER TABLE sport_maintenance_requests ADD COLUMN IF NOT EXISTS purchase_request_number TEXT`);
+    await db.execute(sql`ALTER TABLE sport_maintenance_requests ADD COLUMN IF NOT EXISTS estimated_cost NUMERIC(14,2) NOT NULL DEFAULT 0`);
+    await db.execute(sql`ALTER TABLE sport_maintenance_requests ADD COLUMN IF NOT EXISTS unit TEXT NOT NULL DEFAULT 'pcs'`);
     await db.execute(sql`
       CREATE INDEX IF NOT EXISTS idx_sport_maint_facility ON sport_maintenance_requests(facility_id);
       CREATE INDEX IF NOT EXISTS idx_sport_maint_status   ON sport_maintenance_requests(status);
