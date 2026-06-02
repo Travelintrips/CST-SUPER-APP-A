@@ -766,16 +766,29 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
       );
     }
 
-    // Kirim WA ke driver jika serviceType trucking dan driverPhone tersedia
-    if (resolveServiceCategory(link.serviceType) === "trucking" && body.driverPhone?.trim()) {
-      const driverPhone = body.driverPhone.trim();
-      const driverName = body.driverName?.trim() || "Driver";
-      const domain = getPreferredDomain() || "";
+    // ── WA ke driver ──────────────────────────────────────────────────────────
+    const _svcCat      = resolveServiceCategory(link.serviceType);
+    const _driverPhone = (body.driverPhone ?? "").trim();
+    const _driverName  = (body.driverName  ?? "").trim();
+    logger.info({
+      orderId:          link.orderId,
+      orderNumber:      order.orderNumber,
+      serviceType:      link.serviceType,
+      svcCategory:      _svcCat,
+      driverPhoneRaw:   _driverPhone  || "(kosong)",
+      driverNameRaw:    _driverName   || "(kosong)",
+      plateNumber:      (body.plateNumber ?? "") || "(kosong)",
+      vehicleType:      (body.vehicleType ?? "") || "(kosong)",
+      pickupTime:       (body.pickupTime  ?? "") || "(kosong)",
+    }, "[WA-driver] cek kirim WA ke driver");
+
+    if (_svcCat === "trucking" && _driverPhone) {
+      const domain       = getPreferredDomain() || "";
       const driverAppUrl = domain ? `https://${domain}/api/driver/open-app` : "";
       const driverMsg = [
         `🚚 *Penugasan Order — ${order.orderNumber}*`,
         ``,
-        `Halo *${driverName}*,`,
+        `Halo *${_driverName || "Driver"}*,`,
         `Anda ditugaskan untuk order berikut:`,
         ``,
         `📋 No. Order : \`${order.orderNumber}\``,
@@ -789,9 +802,28 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
         `Mohon segera hubungi tim CST Logistics untuk koordinasi lebih lanjut.`,
         driverAppUrl ? `\nBuka aplikasi driver:\n${driverAppUrl}` : null,
       ].filter(Boolean).join("\n");
-      sendWhatsApp(driverPhone, driverMsg).catch((e) =>
-        logger.warn({ e }, "vendor-fulfillment WA ke driver gagal")
-      );
+
+      logger.info({
+        orderId:    link.orderId,
+        driverPhone: _driverPhone,
+        driverName:  _driverName || "(kosong)",
+      }, "[WA-driver] mengirim WA ke driver...");
+
+      sendWhatsApp(_driverPhone, driverMsg, {
+        context: "fulfillment-driver-assigned",
+        refType:  "vendor_fulfillment_link",
+        refId:    String(link.id),
+      }).then(() => {
+        logger.info({ orderId: link.orderId, driverPhone: _driverPhone }, "[WA-driver] WA ke driver BERHASIL");
+      }).catch((e: unknown) => {
+        logger.error({ e, orderId: link.orderId, driverPhone: _driverPhone }, "[WA-driver] WA ke driver GAGAL");
+      });
+    } else {
+      logger.info({
+        skip_reason: _svcCat !== "trucking"
+          ? `bukan trucking (svcCategory="${_svcCat}", serviceType="${link.serviceType}")`
+          : "driverPhone kosong",
+      }, "[WA-driver] skip — tidak kirim WA ke driver");
     }
 
     return res.json({ ok: true, message: "Data fulfillment berhasil dikirim. Terima kasih!" });
