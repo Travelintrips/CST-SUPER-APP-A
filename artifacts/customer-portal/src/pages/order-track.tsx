@@ -6,6 +6,7 @@ type ProgressEntry = {
   id: number;
   status: string;
   notes: string | null;
+  photo_url?: string | null;
   updated_by: string;
   is_public: boolean;
   created_at: string;
@@ -371,8 +372,25 @@ export default function OrderTrackPage() {
         {hasPod && (
           <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
             <h2 className="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-3">📄 Bukti Pengiriman (POD)</h2>
+            {/* Photo grid */}
+            {data.podFiles!.some(f => f.type === "photo") && (
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                {data.podFiles!.filter(f => f.type === "photo").map((f, i) => (
+                  <a key={i} href={f.url} target="_blank" rel="noopener noreferrer" className="block rounded-xl overflow-hidden border border-slate-200 hover:opacity-90 transition-opacity">
+                    <img
+                      src={f.url}
+                      alt={f.name}
+                      className="w-full h-32 object-cover bg-slate-100"
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                    />
+                    <p className="text-xs text-slate-500 px-2 py-1 truncate">{f.name}</p>
+                  </a>
+                ))}
+              </div>
+            )}
+            {/* Non-photo docs */}
             <div className="space-y-2">
-              {data.podFiles!.map((f, i) => (
+              {data.podFiles!.filter(f => f.type !== "photo").map((f, i) => (
                 <a
                   key={i}
                   href={f.url}
@@ -381,7 +399,7 @@ export default function OrderTrackPage() {
                   className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 hover:bg-slate-50 transition-colors"
                 >
                   <span className="text-xl">
-                    {f.type === "photo" ? "🖼️" : f.type === "invoice" ? "🧾" : f.type === "packing_list" ? "📋" : "📄"}
+                    {f.type === "invoice" ? "🧾" : f.type === "packing_list" ? "📋" : "📄"}
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-slate-800 truncate">{f.name}</p>
@@ -407,6 +425,16 @@ export default function OrderTrackPage() {
                     <p className="font-semibold text-slate-800">{p.status}</p>
                     {p.notes && <p className="text-slate-600 text-xs mt-0.5">{p.notes}</p>}
                     <p className="text-xs text-slate-400 mt-0.5">{formatDate(p.created_at)}</p>
+                    {p.photo_url && (
+                      <a href={p.photo_url} target="_blank" rel="noopener noreferrer" className="mt-1.5 block">
+                        <img
+                          src={p.photo_url}
+                          alt="Foto"
+                          className="h-24 w-auto max-w-[180px] rounded-lg object-cover border border-slate-200 hover:opacity-90 transition-opacity"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                        />
+                      </a>
+                    )}
                   </div>
                 ))}
               </div>

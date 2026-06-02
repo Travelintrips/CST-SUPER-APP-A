@@ -1138,12 +1138,40 @@ orderTrackingPublicRouter.get("/:trackToken", async (req: Request, res: Response
     const orderTax = order.tax ? Number(order.tax) : null;
     const orderGrandTotal = order.grand_total ? Number(order.grand_total) : null;
 
-    // POD files (public-facing — only include if order is at POD stage or beyond)
-    const podFiles: Array<{ url: string; type: string; name: string }> = [];
+    // POD files (public-facing — vendor job order pod_files + driver app pod_photos)
+    const podFiles: Array<{ url: string; type: string; name: string; source?: string }> = [];
     if (jobOrder?.pod_files && Array.isArray(jobOrder.pod_files)) {
       for (const f of jobOrder.pod_files as any[]) {
-        podFiles.push({ url: f.url ?? f.publicUrl ?? "", type: f.type ?? "document", name: f.name ?? f.originalname ?? "Dokumen" });
+        podFiles.push({ url: f.url ?? f.publicUrl ?? "", type: f.type ?? "document", name: f.name ?? f.originalname ?? "Dokumen", source: "vendor" });
       }
+    }
+
+    // Driver app POD photos (driver_jobs.pod_photos is a JSON string array of URLs)
+    const driverPodResult = await db.execute(
+      sql`SELECT pod_photos, pod_receiver_name, pod_submitted_at, job_number
+          FROM driver_jobs
+          WHERE logistic_order_id = ${order.id}
+            AND pod_photos IS NOT NULL AND pod_photos != 'null'
+          ORDER BY pod_submitted_at DESC NULLS LAST
+          LIMIT 1`
+    );
+    const driverPodRow = driverPodResult.rows[0] as any ?? null;
+    if (driverPodRow?.pod_photos) {
+      let photos: string[] = [];
+      try {
+        const parsed = typeof driverPodRow.pod_photos === "string"
+          ? JSON.parse(driverPodRow.pod_photos)
+          : driverPodRow.pod_photos;
+        if (Array.isArray(parsed)) photos = parsed.filter((u: unknown) => typeof u === "string" && u);
+      } catch { /* ignore */ }
+      photos.forEach((url, idx) => {
+        podFiles.push({
+          url,
+          type: "photo",
+          name: `Foto POD Driver ${idx + 1}${driverPodRow.pod_receiver_name ? ` — ${driverPodRow.pod_receiver_name}` : ""}`,
+          source: "driver",
+        });
+      });
     }
 
     return res.json({
