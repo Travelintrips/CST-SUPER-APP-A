@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams } from "wouter";
 import { usePushNotification } from "@/hooks/usePushNotification";
 
@@ -39,6 +39,12 @@ type PodFile = {
   name: string;
 };
 
+type DriverPhoto = {
+  url: string;
+  photoType: string;
+  takenAt: string;
+};
+
 type TrackData = {
   order: {
     orderNumber: string;
@@ -64,6 +70,7 @@ type TrackData = {
     grandTotal: number | null;
   } | null;
   podFiles?: PodFile[];
+  driverPhotos?: DriverPhoto[];
 };
 
 const ALL_STEPS = [
@@ -96,6 +103,13 @@ const LEGACY_STATUS_MAP: Record<string, string> = {
   "paid": "Payment Received", "completed": "Completed",
 };
 
+const PHOTO_TYPE_TO_STEP: Record<string, string> = {
+  pickup: "Pickup",
+  cargo: "In Transit",
+  general: "In Transit",
+  pod: "POD Uploaded",
+};
+
 function mapStatusToStep(_jobStatus: string | null | undefined, orderStatus: string): number {
   const canonical = LEGACY_STATUS_MAP[orderStatus] ?? orderStatus;
   const idx = ALL_STEPS.findIndex(s => s.key === canonical);
@@ -123,6 +137,57 @@ function formatDate(s: string) {
 
 function formatDateShort(s: string) {
   return new Date(s).toLocaleString("id-ID", { day: "numeric", month: "short", year: "numeric" });
+}
+
+function PhotoGrid({ photos, onOpen }: { photos: DriverPhoto[]; onOpen: (url: string) => void }) {
+  if (!photos.length) return null;
+  return (
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      {photos.map((p, i) => (
+        <button
+          key={i}
+          onClick={() => onOpen(p.url)}
+          className="w-16 h-16 rounded-lg overflow-hidden border border-slate-200 hover:border-blue-400 hover:scale-105 transition-all focus:outline-none focus:ring-2 focus:ring-blue-400"
+          title={`Foto ${p.photoType} — ${new Date(p.takenAt).toLocaleString("id-ID")}`}
+        >
+          <img
+            src={p.url}
+            alt={`Foto ${p.photoType}`}
+            className="w-full h-full object-cover"
+            loading="lazy"
+          />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function Lightbox({ url, onClose }: { url: string; onClose: () => void }) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+      onClick={onClose}
+    >
+      <img
+        src={url}
+        alt="Foto driver"
+        className="max-w-full max-h-full rounded-xl shadow-2xl object-contain"
+        onClick={(e) => e.stopPropagation()}
+      />
+      <button
+        onClick={onClose}
+        className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/20 hover:bg-white/40 flex items-center justify-center text-white text-xl transition-colors"
+      >
+        ✕
+      </button>
+    </div>
+  );
 }
 
 function PushToggleSimple({ orderNumber }: { orderNumber: string | null }) {
@@ -155,8 +220,10 @@ export default function OrderTrackPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const sseRef = useRef<EventSource | null>(null);
 
-  const doFetch = () => {
+  const doFetch = useCallback(() => {
     if (!trackToken) return;
     fetch(`/api/order-track/${trackToken}`)
       .then(async r => {
@@ -167,14 +234,33 @@ export default function OrderTrackPage() {
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
-  };
+  }, [trackToken]);
 
   useEffect(() => {
     doFetch();
     const interval = setInterval(doFetch, 30_000);
     return () => clearInterval(interval);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trackToken]);
+  }, [doFetch]);
+
+  // SSE — real-time foto driver
+  useEffect(() => {
+    if (!trackToken) return;
+    const es = new EventSource("/api/sse");
+    sseRef.current = es;
+
+    es.addEventListener("driver_photo_uploaded", () => {
+      doFetch();
+    });
+
+    es.addEventListener("order_status_updated", () => {
+      doFetch();
+    });
+
+    return () => {
+      es.close();
+      sseRef.current = null;
+    };
+  }, [trackToken, doFetch]);
 
   if (loading) return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center">
@@ -205,8 +291,17 @@ export default function OrderTrackPage() {
   const hasPricing = data.pricing && (data.pricing.subtotal != null || data.pricing.grandTotal != null);
   const hasPod = data.podFiles && data.podFiles.length > 0;
 
+  const photosByStep: Record<string, DriverPhoto[]> = {};
+  for (const p of data.driverPhotos ?? []) {
+    const stepKey = PHOTO_TYPE_TO_STEP[p.photoType] ?? "In Transit";
+    if (!photosByStep[stepKey]) photosByStep[stepKey] = [];
+    photosByStep[stepKey].push(p);
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-slate-50 py-8 px-4">
+      {lightboxUrl && <Lightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />}
+
       <div className="max-w-xl mx-auto space-y-4">
 
         {/* Header */}
@@ -316,6 +411,7 @@ export default function OrderTrackPage() {
               const isDone = i < currentStep;
               const isCurrent = i === currentStep;
               const isPending = i > currentStep;
+              const stepPhotos = photosByStep[step.key] ?? [];
               return (
                 <div key={step.key} className="flex items-start gap-4">
                   <div className="flex flex-col items-center">
@@ -338,6 +434,9 @@ export default function OrderTrackPage() {
                       <span className="inline-block mt-1 text-xs bg-blue-50 text-blue-600 rounded-full px-2 py-0.5 font-medium">
                         Status saat ini
                       </span>
+                    )}
+                    {stepPhotos.length > 0 && (isDone || isCurrent) && (
+                      <PhotoGrid photos={stepPhotos} onOpen={setLightboxUrl} />
                     )}
                   </div>
                 </div>

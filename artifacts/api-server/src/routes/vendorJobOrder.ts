@@ -32,6 +32,8 @@ import {
   logisticOrderItemsTable,
   suppliersTable,
   orderUpdatesTable,
+  driverJobsTable,
+  driverPhotosTable,
 } from "@workspace/db";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { TAX_RATE_DECIMAL } from "../lib/taxHelper.js";
@@ -1146,6 +1148,31 @@ orderTrackingPublicRouter.get("/:trackToken", async (req: Request, res: Response
       }
     }
 
+    // Driver photos — from driver_jobs linked to this order
+    let driverPhotos: Array<{ url: string; photoType: string; takenAt: string }> = [];
+    try {
+      const [driverJob] = await db
+        .select({ id: driverJobsTable.id })
+        .from(driverJobsTable)
+        .where(eq(driverJobsTable.logisticOrderId, order.id))
+        .orderBy(desc(driverJobsTable.assignedAt))
+        .limit(1);
+      if (driverJob) {
+        const photos = await db
+          .select({ url: driverPhotosTable.url, photoType: driverPhotosTable.photoType, takenAt: driverPhotosTable.takenAt })
+          .from(driverPhotosTable)
+          .where(eq(driverPhotosTable.driverJobId, driverJob.id))
+          .orderBy(driverPhotosTable.takenAt);
+        driverPhotos = photos.map((p) => ({
+          url: p.url,
+          photoType: p.photoType,
+          takenAt: p.takenAt.toISOString(),
+        }));
+      }
+    } catch {
+      // non-fatal
+    }
+
     return res.json({
       order: {
         orderNumber: order.order_number,
@@ -1182,6 +1209,7 @@ orderTrackingPublicRouter.get("/:trackToken", async (req: Request, res: Response
         grandTotal: orderGrandTotal,
       },
       podFiles,
+      driverPhotos,
     });
   } catch (err) {
     logger.error({ err }, "order-tracking error");
