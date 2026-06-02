@@ -5,7 +5,7 @@ import { randomUUID } from "crypto";
 import { createHmac } from "crypto";
 import { compressImageBuffer } from "../lib/imageCompress";
 import { db, driversTable, driverJobsTable, driverJobLogsTable, driverPhotosTable, freightShipmentsTable, driverLocationsTable, logisticOrdersTable } from "@workspace/db";
-import { eq, and, desc, ne } from "drizzle-orm";
+import { eq, and, desc, ne, sql } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
@@ -20,6 +20,7 @@ import {
 import {
   registerDriverConnection, unregisterDriverConnection, pushToDriver,
   registerAdminConnection, unregisterAdminConnection, broadcastToAdmins,
+  broadcastToPortal,
 } from "../lib/sseManager";
 import { checkGeofence } from "../lib/geofence";
 import { upsertAlert, resolveAlert, getActiveAlerts, hasActiveAlert } from "../lib/geofenceAlertStore";
@@ -506,6 +507,15 @@ router.post("/jobs/:jobId/photos", requireDriverAuth, upload.single("photo"), as
     photoType,
   }).returning();
 
+  if (job.logisticOrderId) {
+    broadcastToPortal("driver_photo_uploaded", {
+      logisticOrderId: job.logisticOrderId,
+      photoType,
+      url,
+      takenAt: photo.takenAt.toISOString(),
+    });
+  }
+
   res.json({ ...photo, takenAt: photo.takenAt.toISOString() });
 });
 
@@ -589,6 +599,20 @@ router.post("/jobs/:jobId/pod", requireDriverAuth, async (req, res) => {
       timestamp: podSubmittedAt,
     });
 
+    // Simpan POD photos ke driver_photos agar muncul di tracking pelanggan
+    if (photoUrls.length > 0) {
+      await db.insert(driverPhotosTable).values(
+        photoUrls.map((url) => ({ driverJobId: jobId, url, photoType: "pod" }))
+      ).onConflictDoNothing().catch(() => {});
+      if (job.logisticOrderId) {
+        broadcastToPortal("driver_photo_uploaded", {
+          logisticOrderId: job.logisticOrderId,
+          photoType: "pod",
+          urls: photoUrls,
+        });
+      }
+    }
+
     // Non-fatal side effects — jangan blocking response
     syncParentFreightStatus(job.freightShipmentId, "DELIVERED").catch((e) =>
       logger.warn({ e, jobId }, "syncParentFreightStatus POD non-fatal")
@@ -606,6 +630,29 @@ router.post("/jobs/:jobId/pod", requireDriverAuth, async (req, res) => {
       .catch(() => null);
 
     if (job.logisticOrderId) {
+      const firstPhotoUrl = photoUrls[0] ?? null;
+      const podNotes = `POD diterima oleh: ${receiverName}${receiverPosition ? ` (${receiverPosition})` : ""}${photoUrls.length ? ` | ${photoUrls.length} foto` : ""}`;
+      const driverLabel = driverInfo?.name ?? job.cargoDescription ?? "Driver";
+
+      // Insert ke order_tracking_progress (dibaca customer tracking page)
+      db.execute(
+        sql`INSERT INTO order_tracking_progress (order_id, status, notes, photo_url, updated_by, is_public)
+            VALUES (${job.logisticOrderId}, 'Bukti Pengiriman Diterima', ${podNotes}, ${firstPhotoUrl}, ${driverLabel}, true)`
+      ).catch((e: unknown) => logger.warn({ e }, "order_tracking_progress POD insert non-fatal"));
+
+      // Call updateOrderProgress (BizPortal progress events)
+      updateOrderProgress(
+        job.logisticOrderId,
+        "POD_UPLOADED",
+        "driver",
+        driverLabel,
+        podNotes,
+        { jobId, jobNumber: updated.jobNumber, receiverName, receiverPosition, photoCount: photoUrls.length, photoUrls },
+        { photoUrl: firstPhotoUrl ?? undefined,
+          gpsLatitude: geoLat ? Number(geoLat) : null,
+          gpsLongitude: geoLng ? Number(geoLng) : null },
+      ).catch(() => {});
+
       fetchOrderData(job.logisticOrderId).then(async (orderData) => {
         if (!orderData) return;
         sendDeliveryCompletedNotification(orderData).catch(() => {});
@@ -715,6 +762,15 @@ router.post("/location", requireDriverAuth, async (req, res) => {
     lng: Number(lng),
     updatedAt: new Date().toISOString(),
   });
+
+  if (activeJob2?.logisticOrderId) {
+    broadcastToPortal("driver_location_update", {
+      logisticOrderId: activeJob2.logisticOrderId,
+      lat: Number(lat),
+      lng: Number(lng),
+      updatedAt: new Date().toISOString(),
+    });
+  }
 
   // Geofence check — run async without blocking the response
   (async () => {

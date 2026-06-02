@@ -518,7 +518,7 @@ function buildAdminGroupWaMessage(
   adminActionShortUrl?: string,
 ): string {
   const domain = getPreferredDomain() || "cstlogistic.co.id";
-  const fallbackUrl = `https://${domain}/logistic-admin/orders/${order.id}`;
+  const fallbackUrl = `https://${domain}/bizportal/logistics/orders/${order.id}`;
   const actionUrl = adminActionShortUrl || fallbackUrl;
   const svcType = deriveServiceType(order.shipmentType, order.orderType);
   return renderTemplate(tplBody, buildOrderVars(order, { adminActionUrl: actionUrl }), svcType);

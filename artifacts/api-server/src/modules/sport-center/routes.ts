@@ -41,11 +41,13 @@ async function nextRefundNumber(companyId?: number): Promise<string> {
   return `RF/${new Date().getFullYear()}/${pad(Number((res.rows[0] as any).cnt) + 1)}`;
 }
 
-router.get("/events", requireAdmin, (req, res) => {
+router.get("/events", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
   handleSportCenterSse(req, res);
 });
 
-router.get("/dashboard", requireAdmin, async (req, res) => {
+router.get("/dashboard", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
   try {
     const companyId = req.query.companyId ? Number(req.query.companyId) : undefined;
     const cId = companyId ?? null;
@@ -105,7 +107,8 @@ router.get("/dashboard", requireAdmin, async (req, res) => {
   }
 });
 
-router.get("/facilities", requireAdmin, async (req, res) => {
+router.get("/facilities", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
   try {
     const cId = req.query.companyId ? Number(req.query.companyId) : null;
     const result = await db.execute(sql`SELECT * FROM sport_facilities WHERE (${cId}::int IS NULL OR company_id = ${cId}) ORDER BY sort_order ASC, id ASC`);
@@ -115,7 +118,8 @@ router.get("/facilities", requireAdmin, async (req, res) => {
   }
 });
 
-router.get("/facilities/:id", requireAdmin, async (req, res) => {
+router.get("/facilities/:id", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
   try {
     const r = await db.execute(sql`SELECT * FROM sport_facilities WHERE id = ${Number(req.params.id)}`);
     if (!r.rows.length) return res.status(404).json({ error: "Tidak ditemukan" });
@@ -125,7 +129,8 @@ router.get("/facilities/:id", requireAdmin, async (req, res) => {
   }
 });
 
-router.post("/facilities", requireAdmin, async (req, res) => {
+router.post("/facilities", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
   try {
     const { name, type = "court", description, capacity = 1, price_per_hour = 0, is_active = true, sort_order = 0, image_url, company_id } = req.body;
     if (!name) return res.status(400).json({ error: "Nama wajib diisi" });
@@ -142,7 +147,8 @@ router.post("/facilities", requireAdmin, async (req, res) => {
   }
 });
 
-router.patch("/facilities/:id", requireAdmin, async (req, res) => {
+router.patch("/facilities/:id", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
   try {
     const id = Number(req.params.id);
     const { name, type, description, capacity, price_per_hour, is_active, sort_order, image_url } = req.body;
@@ -168,7 +174,8 @@ router.patch("/facilities/:id", requireAdmin, async (req, res) => {
   }
 });
 
-router.delete("/facilities/:id", requireAdmin, async (req, res) => {
+router.delete("/facilities/:id", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
   try {
     await db.execute(sql`DELETE FROM sport_facilities WHERE id = ${Number(req.params.id)}`);
     broadcastSportCenterEvent({ module: "sport-center", entity: "facility", action: "deleted", data: { id: req.params.id }, timestamp: new Date().toISOString() });
@@ -178,7 +185,8 @@ router.delete("/facilities/:id", requireAdmin, async (req, res) => {
   }
 });
 
-router.get("/bookings", requireAdmin, async (req, res) => {
+router.get("/bookings", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
   try {
     const cId = req.query.companyId ? Number(req.query.companyId) : null;
     const status = (req.query.status as string) ?? null;
@@ -210,7 +218,8 @@ router.get("/bookings", requireAdmin, async (req, res) => {
   }
 });
 
-router.post("/bookings", requireAdmin, async (req, res) => {
+router.post("/bookings", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
   try {
     const {
       company_id, customer_id, customer_name, customer_phone, facility_id, facility_name,
@@ -295,7 +304,8 @@ router.post("/bookings", requireAdmin, async (req, res) => {
   }
 });
 
-router.patch("/bookings/:id", requireAdmin, async (req, res) => {
+router.patch("/bookings/:id", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
   try {
     const id = Number(req.params.id);
     const { status, payment_status, notes } = req.body;
@@ -316,7 +326,8 @@ router.patch("/bookings/:id", requireAdmin, async (req, res) => {
   }
 });
 
-router.post("/bookings/:id/checkin", requireAdmin, async (req, res) => {
+router.post("/bookings/:id/checkin", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
   try {
     const id = Number(req.params.id);
     const r = await db.execute(sql`
@@ -332,7 +343,8 @@ router.post("/bookings/:id/checkin", requireAdmin, async (req, res) => {
   }
 });
 
-router.post("/bookings/:id/cancel", requireAdmin, async (req, res) => {
+router.post("/bookings/:id/cancel", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
   try {
     const id = Number(req.params.id);
     const { cancel_reason } = req.body;
@@ -394,7 +406,8 @@ router.post("/bookings/:id/cancel", requireAdmin, async (req, res) => {
   }
 });
 
-router.get("/customers", requireAdmin, async (req, res) => {
+router.get("/customers", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
   try {
     const cId = req.query.companyId ? Number(req.query.companyId) : null;
     const search = (req.query.search as string) ?? null;
@@ -423,7 +436,8 @@ router.get("/customers", requireAdmin, async (req, res) => {
   }
 });
 
-router.post("/customers", requireAdmin, async (req, res) => {
+router.post("/customers", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
   try {
     const { company_id, name, email, phone, address, notes } = req.body;
     if (!name) return res.status(400).json({ error: "Nama wajib" });
@@ -438,7 +452,8 @@ router.post("/customers", requireAdmin, async (req, res) => {
   }
 });
 
-router.patch("/customers/:id", requireAdmin, async (req, res) => {
+router.patch("/customers/:id", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
   try {
     const { name, email, phone, address, notes } = req.body;
     const r = await db.execute(sql`
@@ -458,7 +473,8 @@ router.patch("/customers/:id", requireAdmin, async (req, res) => {
   }
 });
 
-router.delete("/customers/:id", requireAdmin, async (req, res) => {
+router.delete("/customers/:id", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
   try {
     await db.execute(sql`DELETE FROM sport_customers WHERE id = ${Number(req.params.id)}`);
     res.json({ success: true });
@@ -467,7 +483,8 @@ router.delete("/customers/:id", requireAdmin, async (req, res) => {
   }
 });
 
-router.get("/members", requireAdmin, async (req, res) => {
+router.get("/members", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
   try {
     const cId = req.query.companyId ? Number(req.query.companyId) : null;
     const memberType = (req.query.memberType as string) ?? null;
@@ -498,7 +515,8 @@ router.get("/members", requireAdmin, async (req, res) => {
   }
 });
 
-router.post("/members", requireAdmin, async (req, res) => {
+router.post("/members", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
   try {
     const { company_id, customer_id, name, email, phone, member_type = "gym", start_date, end_date, notes } = req.body;
     if (!name || !start_date) return res.status(400).json({ error: "Nama dan tanggal mulai wajib" });
@@ -517,7 +535,8 @@ router.post("/members", requireAdmin, async (req, res) => {
   }
 });
 
-router.patch("/members/:id", requireAdmin, async (req, res) => {
+router.patch("/members/:id", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
   try {
     const { name, email, phone, member_type, start_date, end_date, status, notes } = req.body;
     const r = await db.execute(sql`
@@ -542,7 +561,8 @@ router.patch("/members/:id", requireAdmin, async (req, res) => {
   }
 });
 
-router.delete("/members/:id", requireAdmin, async (req, res) => {
+router.delete("/members/:id", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
   try {
     await db.execute(sql`DELETE FROM sport_members WHERE id = ${Number(req.params.id)}`);
     broadcastSportCenterEvent({ module: "sport-center", entity: "member", action: "deleted", data: { id: req.params.id }, timestamp: new Date().toISOString() });
@@ -554,7 +574,8 @@ router.delete("/members/:id", requireAdmin, async (req, res) => {
 
 // ── MEMBERSHIP PAYMENT ────────────────────────────────────────────────────────
 
-router.post("/members/:id/payment", requireAdmin, async (req, res) => {
+router.post("/members/:id/payment", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
   try {
     const memberId = Number(req.params.id);
     if (isNaN(memberId)) return res.status(400).json({ error: "ID member tidak valid" });
@@ -631,7 +652,8 @@ router.post("/members/:id/payment", requireAdmin, async (req, res) => {
   }
 });
 
-router.get("/pricing-rules", requireAdmin, async (req, res) => {
+router.get("/pricing-rules", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
   try {
     const cId = req.query.companyId ? Number(req.query.companyId) : null;
     const facilityId = req.query.facilityId ? Number(req.query.facilityId) : null;
@@ -648,7 +670,8 @@ router.get("/pricing-rules", requireAdmin, async (req, res) => {
   }
 });
 
-router.post("/pricing-rules", requireAdmin, async (req, res) => {
+router.post("/pricing-rules", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
   try {
     const { company_id, facility_id, name, day_type = "all", time_start, time_end, price_per_hour, is_active = true } = req.body;
     if (!facility_id || !name || price_per_hour === undefined) return res.status(400).json({ error: "Field wajib tidak lengkap" });
@@ -663,7 +686,8 @@ router.post("/pricing-rules", requireAdmin, async (req, res) => {
   }
 });
 
-router.patch("/pricing-rules/:id", requireAdmin, async (req, res) => {
+router.patch("/pricing-rules/:id", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
   try {
     const { name, day_type, time_start, time_end, price_per_hour, is_active } = req.body;
     const r = await db.execute(sql`
@@ -684,7 +708,8 @@ router.patch("/pricing-rules/:id", requireAdmin, async (req, res) => {
   }
 });
 
-router.delete("/pricing-rules/:id", requireAdmin, async (req, res) => {
+router.delete("/pricing-rules/:id", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
   try {
     await db.execute(sql`DELETE FROM sport_pricing_rules WHERE id = ${Number(req.params.id)}`);
     res.json({ success: true });
@@ -695,7 +720,8 @@ router.delete("/pricing-rules/:id", requireAdmin, async (req, res) => {
 
 // ── PROMO ────────────────────────────────────────────────────────────────────
 
-router.get("/promos", requireAdmin, async (req, res) => {
+router.get("/promos", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
   try {
     const cId = req.query.companyId ? Number(req.query.companyId) : null;
     const result = await db.execute(sql`
@@ -709,7 +735,8 @@ router.get("/promos", requireAdmin, async (req, res) => {
   }
 });
 
-router.post("/promos", requireAdmin, async (req, res) => {
+router.post("/promos", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
   try {
     const {
       company_id, code, name, description,
@@ -749,7 +776,8 @@ router.post("/promos", requireAdmin, async (req, res) => {
   }
 });
 
-router.patch("/promos/:id", requireAdmin, async (req, res) => {
+router.patch("/promos/:id", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
   try {
     const id = Number(req.params.id);
     const { code, name, description, discount_type, discount_value, min_amount, max_uses, valid_from, valid_until, is_active } = req.body;
@@ -779,7 +807,8 @@ router.patch("/promos/:id", requireAdmin, async (req, res) => {
   }
 });
 
-router.delete("/promos/:id", requireAdmin, async (req, res) => {
+router.delete("/promos/:id", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
   try {
     const id = Number(req.params.id);
     // Soft delete jika sudah dipakai di booking, hard delete jika belum
@@ -796,7 +825,8 @@ router.delete("/promos/:id", requireAdmin, async (req, res) => {
   }
 });
 
-router.get("/payments", requireAdmin, async (req, res) => {
+router.get("/payments", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
   try {
     const cId = req.query.companyId ? Number(req.query.companyId) : null;
     const page = Math.max(1, Number(req.query.page ?? 1));
@@ -821,7 +851,8 @@ router.get("/payments", requireAdmin, async (req, res) => {
   }
 });
 
-router.post("/payments", requireAdmin, async (req, res) => {
+router.post("/payments", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
   try {
     const { company_id, booking_id, amount, method = "cash", notes } = req.body;
     if (!booking_id || !amount) return res.status(400).json({ error: "booking_id dan amount wajib" });
@@ -878,7 +909,8 @@ router.post("/payments", requireAdmin, async (req, res) => {
   }
 });
 
-router.get("/reports", requireAdmin, async (req, res) => {
+router.get("/reports", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
   try {
     const cId = req.query.companyId ? Number(req.query.companyId) : null;
     const from = (req.query.from as string) ?? null;
@@ -943,7 +975,8 @@ router.get("/reports", requireAdmin, async (req, res) => {
 
 // ── REFUNDS ──────────────────────────────────────────────────────────────────
 
-router.get("/refunds", requireAdmin, async (req, res) => {
+router.get("/refunds", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
   try {
     const cId = req.query.companyId ? Number(req.query.companyId) : null;
     const statusFilter = req.query.status ? String(req.query.status) : null;
@@ -977,7 +1010,8 @@ router.get("/refunds", requireAdmin, async (req, res) => {
   }
 });
 
-router.post("/refunds", requireAdmin, async (req, res) => {
+router.post("/refunds", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
   try {
     const { company_id, booking_id, payment_id, refund_amount, refund_reason } = req.body;
     const actorId = (req.user as { id: string } | undefined)?.id ?? null;
@@ -1056,7 +1090,8 @@ router.post("/refunds", requireAdmin, async (req, res) => {
   }
 });
 
-router.get("/refunds/:id", requireAdmin, async (req, res) => {
+router.get("/refunds/:id", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
   try {
     const r = await db.execute(sql`
       SELECT r.*,
@@ -1075,7 +1110,8 @@ router.get("/refunds/:id", requireAdmin, async (req, res) => {
   }
 });
 
-router.patch("/refunds/:id", requireAdmin, async (req, res) => {
+router.patch("/refunds/:id", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
   try {
     const id = Number(req.params.id);
     const { status } = req.body;
@@ -1143,7 +1179,8 @@ router.patch("/refunds/:id", requireAdmin, async (req, res) => {
 // ── REFUND SHORTCUT (POST /bookings/:id/refund) ───────────────────────────────
 // Endpoint satu langkah: cancel booking (jika belum) → buat refund → posting jurnal
 
-router.post("/bookings/:id/refund", requireAdmin, async (req, res) => {
+router.post("/bookings/:id/refund", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
   try {
     const id = Number(req.params.id);
     const { refund_amount, refund_reason } = req.body;
@@ -1214,7 +1251,8 @@ router.post("/bookings/:id/refund", requireAdmin, async (req, res) => {
 
 // ── MAINTENANCE REQUEST — FASE 4: buat PR nyata di modul Purchase ─────────────
 
-router.post("/facilities/:id/request-maintenance", requireAdmin, async (req, res) => {
+router.post("/facilities/:id/request-maintenance", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
   try {
     const facilityId = Number(req.params.id);
     if (isNaN(facilityId)) return res.status(400).json({ error: "ID fasilitas tidak valid" });
@@ -1300,7 +1338,8 @@ router.post("/facilities/:id/request-maintenance", requireAdmin, async (req, res
 
 // ── PURCHASE REQUEST OPERASIONAL — FASE 4 ─────────────────────────────────────
 
-router.post("/facilities/:id/purchase-request", requireAdmin, async (req, res) => {
+router.post("/facilities/:id/purchase-request", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
   try {
     const facilityId = Number(req.params.id);
     if (isNaN(facilityId)) return res.status(400).json({ error: "ID fasilitas tidak valid" });
@@ -1402,7 +1441,8 @@ router.post("/facilities/:id/purchase-request", requireAdmin, async (req, res) =
   }
 });
 
-router.get("/facilities/:id/maintenance-requests", requireAdmin, async (req, res) => {
+router.get("/facilities/:id/maintenance-requests", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
   try {
     const facilityId = Number(req.params.id);
     const r = await db.execute(sql`
@@ -1416,7 +1456,8 @@ router.get("/facilities/:id/maintenance-requests", requireAdmin, async (req, res
 
 // ── LIST SEMUA PURCHASE REQUESTS SPORT CENTER ──────────────────────────────────
 
-router.get("/purchase-requests", requireAdmin, async (req, res) => {
+router.get("/purchase-requests", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
   try {
     const cId = req.query.companyId ? Number(req.query.companyId) : null;
     const facilityId = req.query.facilityId ? Number(req.query.facilityId) : null;
@@ -1447,7 +1488,8 @@ router.get("/purchase-requests", requireAdmin, async (req, res) => {
   }
 });
 
-router.get("/settings", requireAdmin, async (req, res) => {
+router.get("/settings", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
   try {
     const cId = req.query.companyId ? Number(req.query.companyId) : null;
     const r = await db.execute(sql`SELECT * FROM sport_settings WHERE (${cId}::int IS NULL OR company_id = ${cId}) LIMIT 1`);
@@ -1457,7 +1499,8 @@ router.get("/settings", requireAdmin, async (req, res) => {
   }
 });
 
-router.post("/settings", requireAdmin, async (req, res) => {
+router.post("/settings", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
   try {
     const { company_id, center_name, address, phone, open_time, close_time, booking_advance_days, min_booking_hours, cancellation_hours } = req.body;
     const r = await db.execute(sql`

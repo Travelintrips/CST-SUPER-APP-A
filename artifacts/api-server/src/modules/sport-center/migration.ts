@@ -276,6 +276,120 @@ export async function runSportCenterMigration(): Promise<void> {
       ALTER TYPE accounting_entry_source ADD VALUE IF NOT EXISTS 'sport_center_operational_expense'
     `);
 
+    // ── Auto-sync: sport_center_services → sport_facilities ──────────────────
+    // Setiap kali startup, data dari schema lama (sport_center_services) di-sync
+    // ke sport_facilities secara idempoten. Company_id default = 1
+    // (PT Cahaya Sejati Teknologi).
+    const SPORT_CENTER_COMPANY_ID = 1;
+
+    const legacyCheck = await db.execute(sql`
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'sport_center_services'
+      ) AS exists
+    `);
+    const hasLegacy = (legacyCheck.rows[0] as { exists: boolean }).exists;
+
+    if (hasLegacy) {
+      // Upsert fasilitas: skip jika nama sudah ada
+      await db.execute(sql`
+        INSERT INTO sport_facilities
+          (company_id, name, type, description, price_per_hour, capacity,
+           is_active, image_url, sort_order, created_at, updated_at)
+        SELECT
+          1,
+          s.name,
+          COALESCE(s.category, 'court'),
+          s.description,
+          s.price_per_hour::NUMERIC(14,2),
+          COALESCE(s.capacity, 1),
+          COALESCE(s.is_active, TRUE),
+          s.image_url,
+          COALESCE(s.sort_order, 0),
+          COALESCE(s.created_at, NOW()),
+          COALESCE(s.updated_at, NOW())
+        FROM sport_center_services s
+        WHERE NOT EXISTS (
+          SELECT 1 FROM sport_facilities f WHERE f.name = s.name
+        )
+        ON CONFLICT DO NOTHING
+      `);
+
+      // Upsert customers dari bookings lama
+      await db.execute(sql`
+        INSERT INTO sport_customers (company_id, name, email, phone, created_at, updated_at)
+        SELECT DISTINCT
+          1,
+          b.customer_name,
+          b.customer_email,
+          b.customer_phone,
+          NOW(), NOW()
+        FROM sport_center_bookings b
+        WHERE b.customer_phone IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM sport_customers c WHERE c.phone = b.customer_phone
+          )
+        ON CONFLICT DO NOTHING
+      `);
+
+      // Upsert bookings lama
+      await db.execute(sql`
+        INSERT INTO sport_bookings
+          (company_id, booking_number, customer_id, customer_name, customer_phone,
+           facility_id, facility_name, booking_date, start_time, end_time,
+           duration_hours, base_amount, total_amount, status, payment_status,
+           notes, created_at, updated_at)
+        SELECT
+          1,
+          b.booking_code,
+          c.id,
+          b.customer_name,
+          b.customer_phone,
+          f.id,
+          b.facility_name,
+          b.date::DATE,
+          b.start_time::TIME,
+          b.end_time::TIME,
+          COALESCE(b.total_hours, 1)::NUMERIC(5,2),
+          COALESCE(b.total_price, 0)::NUMERIC(14,2),
+          COALESCE(b.total_price, 0)::NUMERIC(14,2),
+          CASE b.status
+            WHEN 'confirmed' THEN 'confirmed'
+            WHEN 'cancelled' THEN 'cancelled'
+            ELSE 'pending'
+          END,
+          COALESCE(b.payment_status, 'unpaid'),
+          b.notes,
+          COALESCE(b.created_at, NOW()),
+          COALESCE(b.created_at, NOW())
+        FROM sport_center_bookings b
+        LEFT JOIN sport_customers c ON c.phone = b.customer_phone
+        LEFT JOIN sport_facilities f ON (
+          f.name = b.facility_name
+          OR f.name ILIKE '%' || SPLIT_PART(b.facility_id, '-', 1) || '%'
+        )
+        WHERE b.booking_code IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM sport_bookings nb WHERE nb.booking_number = b.booking_code
+          )
+        ON CONFLICT DO NOTHING
+      `);
+
+      logger.info("Sport Center migration: legacy sync selesai (sport_center_services → sport_facilities)");
+    }
+
+    // Pastikan semua data sport center milik PT Cahaya Sejati Teknologi (company_id = 1)
+    await db.execute(sql`
+      UPDATE sport_facilities    SET company_id = 1 WHERE company_id IS NULL;
+      UPDATE sport_bookings      SET company_id = 1 WHERE company_id IS NULL;
+      UPDATE sport_customers     SET company_id = 1 WHERE company_id IS NULL;
+      UPDATE sport_members       SET company_id = 1 WHERE company_id IS NULL;
+      UPDATE sport_pricing_rules SET company_id = 1 WHERE company_id IS NULL;
+      UPDATE sport_promos        SET company_id = 1 WHERE company_id IS NULL;
+      UPDATE sport_payments      SET company_id = 1 WHERE company_id IS NULL;
+      UPDATE sport_settings      SET company_id = 1 WHERE company_id IS NULL;
+    `);
+
     logger.info("Sport Center migration: selesai");
   } catch (err) {
     logger.error({ err }, "Sport Center migration: gagal");
