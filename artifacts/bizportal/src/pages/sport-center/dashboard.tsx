@@ -3,12 +3,14 @@ import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
 import { useCompany } from "@/contexts/CompanyContext";
 import {
   CalendarDays, Users, DollarSign, Clock, TrendingUp,
   Activity, AlertCircle, Building2, Wifi, WifiOff,
-  Dumbbell, ShoppingBag, RefreshCw,
+  Dumbbell, ShoppingBag, RefreshCw, CloudUpload, CheckCircle2,
+  XCircle, Database, BookOpen,
 } from "lucide-react";
 import { fetchSportCenterData, type SportCenterSupabaseData } from "@/lib/sportCenterSupabase";
 import { supabase } from "@/lib/supabaseClient";
@@ -143,6 +145,78 @@ export default function SportCenterDashboard() {
   const recentBookings = hasSupaBookings ? (supaData?.recentBookings ?? []) : (localData?.recentBookings ?? []);
 
   const isLoading = localLoading && supaLoading;
+
+  // ── Query 3: Sync status dari API ─────────────────────────────────────────
+  interface SyncLog {
+    id: number; entity: string; action: string; entity_id: number | null;
+    status: "ok" | "error"; detail: string | null; company_id: number | null;
+    created_at: string;
+  }
+  interface SyncStatus {
+    local: { facilities: number; bookings: number };
+    last_facility_sync: { created_at: string; status: string; detail: string | null } | null;
+    last_booking_sync:  { created_at: string; status: string; detail: string | null } | null;
+    recent_logs: SyncLog[];
+  }
+  const {
+    data: syncData,
+    isLoading: syncLoading,
+    refetch: refetchSync,
+  } = useQuery<SyncStatus>({
+    queryKey: ["sport-center-sync-status"],
+    queryFn: async () => {
+      const r = await fetch("/api/sport-center/sync/status?limit=30", { credentials: "include" });
+      if (!r.ok) throw new Error("Gagal memuat status sync");
+      return r.json() as Promise<SyncStatus>;
+    },
+    refetchInterval: 30_000,
+  });
+
+  // ── Mutations: trigger resync manual ─────────────────────────────────────
+  const resyncFacilities = useMutation({
+    mutationFn: async () => {
+      const r = await fetch("/api/sport-center/facilities/resync-all", {
+        method: "POST", credentials: "include",
+      });
+      if (!r.ok) throw new Error("Resync fasilitas gagal");
+      return r.json();
+    },
+    onSuccess: () => { void refetchSync(); },
+  });
+
+  const resyncAll = useMutation({
+    mutationFn: async () => {
+      const r = await fetch("/api/sport-center/facilities/resync-all?include=bookings", {
+        method: "POST", credentials: "include",
+      });
+      if (!r.ok) throw new Error("Resync semua gagal");
+      return r.json();
+    },
+    onSuccess: () => { void refetchSync(); void qc.invalidateQueries({ queryKey: ["sport-center-dashboard"] }); },
+  });
+
+  const resyncBookings = useMutation({
+    mutationFn: async () => {
+      const r = await fetch("/api/sport-center/sync/bookings", {
+        method: "POST", credentials: "include",
+      });
+      if (!r.ok) throw new Error("Resync booking gagal");
+      return r.json();
+    },
+    onSuccess: () => { void refetchSync(); },
+  });
+
+  const fmtTs = (ts: string | null | undefined) => {
+    if (!ts) return "-";
+    try {
+      return new Intl.DateTimeFormat("id-ID", {
+        day: "2-digit", month: "short", year: "numeric",
+        hour: "2-digit", minute: "2-digit", second: "2-digit",
+      }).format(new Date(ts));
+    } catch { return ts; }
+  };
+
+  const syncBusy = resyncFacilities.isPending || resyncAll.isPending || resyncBookings.isPending;
 
   const stats = [
     {
@@ -407,6 +481,203 @@ export default function SportCenterDashboard() {
             </div>
           </CardContent>
         </Card>
+        {/* ── Sync Status Panel ─────────────────────────────────────────────── */}
+        <Card className="border-border/60">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <CloudUpload className="h-4 w-4" /> Sinkronisasi ke Supabase
+                <span className="text-xs font-normal opacity-60">— auto-refresh tiap 30 detik</span>
+              </CardTitle>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Button
+                  size="sm" variant="outline"
+                  className="h-7 text-xs gap-1.5"
+                  disabled={syncBusy}
+                  onClick={() => void refetchSync()}
+                >
+                  <RefreshCw className={`h-3 w-3 ${syncLoading ? "animate-spin" : ""}`} />
+                  Refresh
+                </Button>
+                <Button
+                  size="sm" variant="outline"
+                  className="h-7 text-xs gap-1.5 border-blue-700 text-blue-300 hover:bg-blue-950/40"
+                  disabled={syncBusy}
+                  onClick={() => void resyncFacilities.mutateAsync()}
+                >
+                  {resyncFacilities.isPending
+                    ? <RefreshCw className="h-3 w-3 animate-spin" />
+                    : <Database className="h-3 w-3" />}
+                  Resync Fasilitas
+                </Button>
+                <Button
+                  size="sm" variant="outline"
+                  className="h-7 text-xs gap-1.5 border-purple-700 text-purple-300 hover:bg-purple-950/40"
+                  disabled={syncBusy}
+                  onClick={() => void resyncBookings.mutateAsync()}
+                >
+                  {resyncBookings.isPending
+                    ? <RefreshCw className="h-3 w-3 animate-spin" />
+                    : <BookOpen className="h-3 w-3" />}
+                  Resync Booking
+                </Button>
+                <Button
+                  size="sm"
+                  className="h-7 text-xs gap-1.5 bg-emerald-700 hover:bg-emerald-600 text-white"
+                  disabled={syncBusy}
+                  onClick={() => void resyncAll.mutateAsync()}
+                >
+                  {resyncAll.isPending
+                    ? <RefreshCw className="h-3 w-3 animate-spin" />
+                    : <CloudUpload className="h-3 w-3" />}
+                  Resync Semua
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+
+          <CardContent className="space-y-4">
+            {/* Hasil resync terakhir */}
+            {(resyncFacilities.isSuccess || resyncAll.isSuccess || resyncBookings.isSuccess) && (
+              <Alert className="border-emerald-700 bg-emerald-950/40 text-emerald-300 py-2">
+                <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                <AlertDescription className="text-xs">
+                  {resyncAll.isSuccess && resyncAll.data && (
+                    <span>
+                      Resync selesai —{" "}
+                      Fasilitas: <strong>{(resyncAll.data as any).facilities?.synced ?? 0}/{(resyncAll.data as any).facilities?.total ?? 0}</strong>,{" "}
+                      Booking: <strong>{(resyncAll.data as any).bookings?.synced ?? 0}/{(resyncAll.data as any).bookings?.total ?? 0}</strong>
+                    </span>
+                  )}
+                  {resyncFacilities.isSuccess && !resyncAll.isSuccess && resyncFacilities.data && (
+                    <span>
+                      Fasilitas berhasil disync —{" "}
+                      <strong>{(resyncFacilities.data as any).synced ?? 0}/{(resyncFacilities.data as any).total ?? 0}</strong> fasilitas
+                    </span>
+                  )}
+                  {resyncBookings.isSuccess && !resyncAll.isSuccess && resyncBookings.data && (
+                    <span>
+                      Booking berhasil disync —{" "}
+                      <strong>{(resyncBookings.data as any).synced ?? 0}/{(resyncBookings.data as any).total ?? 0}</strong> booking
+                    </span>
+                  )}
+                </AlertDescription>
+              </Alert>
+            )}
+            {(resyncFacilities.isError || resyncAll.isError || resyncBookings.isError) && (
+              <Alert className="border-red-700 bg-red-950/40 text-red-300 py-2">
+                <XCircle className="h-4 w-4 text-red-400" />
+                <AlertDescription className="text-xs">
+                  {String(
+                    (resyncAll.error ?? resyncFacilities.error ?? resyncBookings.error) instanceof Error
+                      ? (resyncAll.error ?? resyncFacilities.error ?? resyncBookings.error as Error)?.message
+                      : "Resync gagal"
+                  )}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {/* Ringkasan last sync */}
+            {!syncLoading && syncData && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                <div className="rounded-lg border border-border/40 bg-muted/20 p-3 space-y-1">
+                  <p className="text-muted-foreground">Fasilitas lokal</p>
+                  <p className="text-xl font-bold text-foreground">{syncData.local.facilities}</p>
+                </div>
+                <div className="rounded-lg border border-border/40 bg-muted/20 p-3 space-y-1">
+                  <p className="text-muted-foreground">Booking lokal</p>
+                  <p className="text-xl font-bold text-foreground">{syncData.local.bookings}</p>
+                </div>
+                <div className={`rounded-lg border p-3 space-y-1 ${syncData.last_facility_sync?.status === "ok" ? "border-emerald-700/50 bg-emerald-950/20" : syncData.last_facility_sync ? "border-red-700/50 bg-red-950/20" : "border-border/40 bg-muted/20"}`}>
+                  <p className="text-muted-foreground flex items-center gap-1">
+                    {syncData.last_facility_sync?.status === "ok"
+                      ? <CheckCircle2 className="h-3 w-3 text-emerald-400" />
+                      : syncData.last_facility_sync
+                        ? <XCircle className="h-3 w-3 text-red-400" />
+                        : <Database className="h-3 w-3 text-muted-foreground" />}
+                    Sync Fasilitas Terakhir
+                  </p>
+                  <p className="text-foreground font-medium text-xs">{fmtTs(syncData.last_facility_sync?.created_at)}</p>
+                  {syncData.last_facility_sync?.detail && (
+                    <p className="text-muted-foreground text-xs opacity-70">{syncData.last_facility_sync.detail}</p>
+                  )}
+                </div>
+                <div className={`rounded-lg border p-3 space-y-1 ${syncData.last_booking_sync?.status === "ok" ? "border-emerald-700/50 bg-emerald-950/20" : syncData.last_booking_sync ? "border-red-700/50 bg-red-950/20" : "border-border/40 bg-muted/20"}`}>
+                  <p className="text-muted-foreground flex items-center gap-1">
+                    {syncData.last_booking_sync?.status === "ok"
+                      ? <CheckCircle2 className="h-3 w-3 text-emerald-400" />
+                      : syncData.last_booking_sync
+                        ? <XCircle className="h-3 w-3 text-red-400" />
+                        : <BookOpen className="h-3 w-3 text-muted-foreground" />}
+                    Sync Booking Terakhir
+                  </p>
+                  <p className="text-foreground font-medium text-xs">{fmtTs(syncData.last_booking_sync?.created_at)}</p>
+                  {syncData.last_booking_sync?.detail && (
+                    <p className="text-muted-foreground text-xs opacity-70">{syncData.last_booking_sync.detail}</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Log table */}
+            {syncLoading && (
+              <div className="h-20 rounded-lg bg-muted/20 animate-pulse" />
+            )}
+            {!syncLoading && (
+              <div className="overflow-x-auto rounded-lg border border-border/40">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-border/40 bg-muted/30">
+                      {["Waktu", "Entity", "Aksi", "ID", "Status", "Detail"].map((h) => (
+                        <th key={h} className="text-left py-2 px-3 text-muted-foreground font-medium">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(syncData?.recent_logs ?? []).map((log) => (
+                      <tr key={log.id} className="border-b border-border/20 hover:bg-muted/20 transition-colors">
+                        <td className="py-2 px-3 font-mono text-muted-foreground whitespace-nowrap">
+                          {fmtTs(log.created_at)}
+                        </td>
+                        <td className="py-2 px-3">
+                          <Badge className={`text-xs border ${log.entity === "facility" ? "bg-blue-900/40 text-blue-300 border-blue-700" : "bg-purple-900/40 text-purple-300 border-purple-700"}`}>
+                            {log.entity === "facility" ? "Fasilitas" : "Booking"}
+                          </Badge>
+                        </td>
+                        <td className="py-2 px-3 text-muted-foreground capitalize">{log.action}</td>
+                        <td className="py-2 px-3 font-mono text-muted-foreground">
+                          {log.entity_id ?? <span className="opacity-40">—</span>}
+                        </td>
+                        <td className="py-2 px-3">
+                          {log.status === "ok" ? (
+                            <span className="inline-flex items-center gap-1 text-emerald-400">
+                              <CheckCircle2 className="h-3 w-3" /> OK
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-red-400">
+                              <XCircle className="h-3 w-3" /> Error
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2 px-3 text-muted-foreground max-w-[200px] truncate">
+                          {log.detail ?? <span className="opacity-30">—</span>}
+                        </td>
+                      </tr>
+                    ))}
+                    {(syncData?.recent_logs ?? []).length === 0 && !syncLoading && (
+                      <tr>
+                        <td colSpan={6} className="py-8 text-center text-muted-foreground">
+                          Belum ada riwayat sinkronisasi. Klik <strong>Resync Semua</strong> untuk memulai.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
       </div>
     </AppShell>
   );
