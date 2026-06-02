@@ -195,10 +195,61 @@ router.delete("/facilities/:id", async (req, res) => {
 router.post("/facilities/resync-all", async (req, res) => {
   if (!await requireAdmin(req, res)) return;
   try {
-    const result = await syncAllFacilities();
-    res.json({ success: true, ...result });
+    const includeBookings = req.query.include === "bookings" || req.body?.include === "bookings";
+    const startedAt = new Date().toISOString();
+
+    const facilityResult = await syncAllFacilities();
+    let bookingResult: { synced: number; errors: number; total: number } | null = null;
+
+    if (includeBookings) {
+      bookingResult = await syncAllBookings();
+    }
+
+    res.json({
+      success: true,
+      started_at: startedAt,
+      completed_at: new Date().toISOString(),
+      facilities: facilityResult,
+      ...(bookingResult ? { bookings: bookingResult } : {}),
+    });
   } catch (err: any) {
     res.status(500).json({ error: "Resync gagal", detail: err?.message });
+  }
+});
+
+router.post("/sync/bookings", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const result = await syncAllBookings();
+    res.json({ success: true, ...result, completed_at: new Date().toISOString() });
+  } catch (err: any) {
+    res.status(500).json({ error: "Booking resync gagal", detail: err?.message });
+  }
+});
+
+router.get("/sync/status", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit ?? 50)));
+    const [logs, facilityCount, bookingCount, lastFacilitySync, lastBookingSync] = await Promise.all([
+      getLastSyncLogs(limit),
+      db.execute(sql`SELECT COUNT(*) AS cnt FROM sport_facilities WHERE is_active = TRUE`),
+      db.execute(sql`SELECT COUNT(*) AS cnt FROM sport_bookings`),
+      db.execute(sql`SELECT created_at, status, detail FROM sport_sync_logs WHERE entity = 'facility' ORDER BY created_at DESC LIMIT 1`),
+      db.execute(sql`SELECT created_at, status, detail FROM sport_sync_logs WHERE entity = 'booking' ORDER BY created_at DESC LIMIT 1`),
+    ]);
+
+    res.json({
+      local: {
+        facilities: Number((facilityCount.rows[0] as any).cnt),
+        bookings: Number((bookingCount.rows[0] as any).cnt),
+      },
+      last_facility_sync: lastFacilitySync.rows[0] ?? null,
+      last_booking_sync: lastBookingSync.rows[0] ?? null,
+      recent_logs: logs,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: "Gagal memuat status sinkronisasi", detail: err?.message });
   }
 });
 
