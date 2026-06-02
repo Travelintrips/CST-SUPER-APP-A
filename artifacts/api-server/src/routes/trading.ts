@@ -95,16 +95,95 @@ router.get("/suppliers", async (req, res) => {
   const offset = Math.max(Number(req.query["offset"] ?? 0), 0);
 
   const scope = resolveCompanyScope(req);
-  const whereClause = scope === "all"
-    ? undefined
-    : or(eq(suppliersTable.companyId, scope), isNull(suppliersTable.companyId));
-  const suppliers = await db.select().from(suppliersTable)
-    .where(whereClause)
 
-    .orderBy(suppliersTable.createdAt)
-    .limit(limit)
-    .offset(offset);
-  return res.json(suppliers.map(s => ({ ...s, fee: Number(s.fee ?? 0), createdAt: s.createdAt.toISOString() })));
+  let suppliers: (typeof suppliersTable.$inferSelect)[];
+  if (scope === "all") {
+    suppliers = await db.select().from(suppliersTable)
+      .orderBy(suppliersTable.createdAt)
+      .limit(limit)
+      .offset(offset);
+  } else {
+    // Vendor visible jika:
+    // 1. Tidak ada assignment sama sekali (global vendor), ATAU
+    // 2. Ada assignment untuk company ini
+    suppliers = await db.select().from(suppliersTable)
+      .where(sql`(
+        NOT EXISTS (
+          SELECT 1 FROM vendor_company_assignments
+          WHERE vendor_id = ${suppliersTable.id}
+        )
+        OR EXISTS (
+          SELECT 1 FROM vendor_company_assignments
+          WHERE vendor_id = ${suppliersTable.id}
+            AND company_id = ${scope}
+        )
+      )`)
+      .orderBy(suppliersTable.createdAt)
+      .limit(limit)
+      .offset(offset);
+  }
+
+  if (suppliers.length === 0) {
+    return res.json([]);
+  }
+
+  // Fetch all company assignments for the returned vendors
+  const vendorIds = suppliers.map(s => s.id);
+  const assignments = await db.execute(sql`
+    SELECT vendor_id, company_id FROM vendor_company_assignments
+    WHERE vendor_id = ANY(${vendorIds})
+  `);
+  const assignmentMap: Record<number, number[]> = {};
+  for (const row of assignments.rows as { vendor_id: number; company_id: number }[]) {
+    if (!assignmentMap[row.vendor_id]) assignmentMap[row.vendor_id] = [];
+    assignmentMap[row.vendor_id].push(row.company_id);
+  }
+
+  return res.json(suppliers.map(s => ({
+    ...s,
+    fee: Number(s.fee ?? 0),
+    createdAt: s.createdAt.toISOString(),
+    assignedCompanyIds: assignmentMap[s.id] ?? [],
+  })));
+});
+
+// GET /api/trading/suppliers/:id/companies — list assigned company IDs
+router.get("/suppliers/:id/companies", async (req, res) => {
+  const id = Number(req.params.id);
+  if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+  const rows = await db.execute(sql`
+    SELECT company_id FROM vendor_company_assignments WHERE vendor_id = ${id}
+  `);
+  return res.json({ vendorId: id, companyIds: (rows.rows as { company_id: number }[]).map(r => r.company_id) });
+});
+
+// PUT /api/trading/suppliers/:id/companies — replace all company assignments (admin only)
+router.put("/suppliers/:id/companies", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const id = Number(req.params.id);
+  if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+
+  const [vendor] = await db.select({ id: suppliersTable.id }).from(suppliersTable).where(eq(suppliersTable.id, id));
+  if (!vendor) return res.status(404).json({ message: "Vendor not found" });
+
+  const { companyIds } = req.body as { companyIds: number[] };
+  if (!Array.isArray(companyIds)) return res.status(400).json({ message: "companyIds must be an array" });
+
+  const ids = companyIds.map(Number).filter(n => !Number.isNaN(n) && n > 0);
+
+  // Replace all assignments atomically
+  await db.execute(sql`DELETE FROM vendor_company_assignments WHERE vendor_id = ${id}`);
+  if (ids.length > 0) {
+    for (const cid of ids) {
+      await db.execute(sql`
+        INSERT INTO vendor_company_assignments (vendor_id, company_id)
+        VALUES (${id}, ${cid})
+        ON CONFLICT (vendor_id, company_id) DO NOTHING
+      `);
+    }
+  }
+
+  return res.json({ vendorId: id, companyIds: ids });
 });
 
 // POST /api/trading/suppliers
