@@ -2,10 +2,8 @@ import { Router, Request, Response } from "express";
 import { db } from "@workspace/db";
 import { productTemplatesTable } from "@workspace/db";
 import { eq, asc, sql, or, isNull, and } from "drizzle-orm";
-import { eq, asc, sql, or, isNull } from "drizzle-orm";
 import { resolveCompanyId } from "../lib/resolveCompany.js";
 import { requireAdmin } from "../lib/requireAdmin.js";
-import { resolveCompanyId } from "../lib/resolveCompany.js";
 import { logger } from "../lib/logger.js";
 import {
   resolveAllTemplates,

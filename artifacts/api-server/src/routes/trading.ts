@@ -1,12 +1,10 @@
 import { Router } from "express";
 import { db, stocksTable, suppliersTable, vendorCatalogItemsTable, productsTable, productCategoryMapTable, productCategoriesTable } from "@workspace/db";
 import { eq, and, or, isNull, sql } from "drizzle-orm";
-import { eq, and, sql, or, isNull } from "drizzle-orm";
 import { resolveCompanyId, resolveCompanyScope } from "../lib/resolveCompany.js";
 import { postStockReceived } from "../lib/accounting.js";
 import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { requireClerkUser, requireAdmin } from "../lib/requireAdmin.js";
-import { resolveCompanyId } from "../lib/resolveCompany.js";
 
 const router = Router();
 
