@@ -4,6 +4,7 @@ import { sql } from "drizzle-orm";
 import { requireAdmin } from "../../lib/requireAdmin.js";
 import { handleSportCenterSse, broadcastSportCenterEvent } from "./broadcast.js";
 import { postSportCenterBooking, postSportCenterBookingReversal, postSportCenterRefund, postSportCenterMembershipPayment, postSportCenterBookingWithTax, postSportCenterBookingRefundDirect } from "../../lib/accounting.js";
+import { syncFacilityUpsert, syncFacilityDelete, syncAllFacilities } from "./supabaseSync.js";
 
 const router = Router();
 
@@ -141,6 +142,7 @@ router.post("/facilities", async (req, res) => {
     `);
     const row = r.rows[0] as Record<string, unknown>;
     broadcastSportCenterEvent({ module: "sport-center", entity: "facility", action: "created", data: row, timestamp: new Date().toISOString() }, company_id);
+    void syncFacilityUpsert(row as any);
     res.status(201).json(row);
   } catch {
     res.status(500).json({ error: "Gagal membuat fasilitas" });
@@ -168,6 +170,7 @@ router.patch("/facilities/:id", async (req, res) => {
     if (!r.rows.length) return res.status(404).json({ error: "Tidak ditemukan" });
     const row = r.rows[0] as Record<string, unknown>;
     broadcastSportCenterEvent({ module: "sport-center", entity: "facility", action: "updated", data: row, timestamp: new Date().toISOString() });
+    void syncFacilityUpsert(row as any);
     res.json(row);
   } catch {
     res.status(500).json({ error: "Gagal memperbarui" });
@@ -177,11 +180,25 @@ router.patch("/facilities/:id", async (req, res) => {
 router.delete("/facilities/:id", async (req, res) => {
   if (!await requireAdmin(req, res)) return;
   try {
-    await db.execute(sql`DELETE FROM sport_facilities WHERE id = ${Number(req.params.id)}`);
+    const id = Number(req.params.id);
+    const lookup = await db.execute(sql`SELECT id, name FROM sport_facilities WHERE id = ${id}`);
+    const existing = lookup.rows[0] as { id: number; name: string } | undefined;
+    await db.execute(sql`DELETE FROM sport_facilities WHERE id = ${id}`);
     broadcastSportCenterEvent({ module: "sport-center", entity: "facility", action: "deleted", data: { id: req.params.id }, timestamp: new Date().toISOString() });
+    if (existing) void syncFacilityDelete(existing.id, existing.name);
     res.json({ success: true });
   } catch {
     res.status(500).json({ error: "Gagal menghapus" });
+  }
+});
+
+router.post("/facilities/resync-all", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const result = await syncAllFacilities();
+    res.json({ success: true, ...result });
+  } catch (err: any) {
+    res.status(500).json({ error: "Resync gagal", detail: err?.message });
   }
 });
 
