@@ -6,7 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabaseClient";
 import {
   CalendarDays, Users, DollarSign, Clock, TrendingUp,
-  Activity, AlertCircle, Building2,
+  Activity, AlertCircle, Building2, Layers,
 } from "lucide-react";
 
 const idr = (n: number) =>
@@ -47,6 +47,24 @@ interface Booking {
   created_at: string;
 }
 
+interface Service {
+  id: number;
+  name: string;
+  category: string;
+  price_per_hour: number;
+  is_active: boolean;
+}
+
+interface TopFacility {
+  facility_name: string;
+  bookings: string;
+  revenue: string;
+  usageCount: number;
+  revenueTotal: number;
+  category?: string;
+  pricePerHour?: number;
+}
+
 interface DashboardData {
   totalBookings: number;
   todayBookings: number;
@@ -54,25 +72,39 @@ interface DashboardData {
   totalRevenue: number;
   monthRevenue: number;
   totalCustomers: number;
+  totalActiveServices: number;
   byStatus: { status: string; count: string }[];
-  topFacilities: { facility_name: string; bookings: string; revenue: string }[];
+  topFacilities: TopFacility[];
   recentBookings: Booking[];
 }
 
 async function fetchSportCenterData(): Promise<DashboardData> {
   if (!supabase) throw new Error("Supabase belum dikonfigurasi");
 
-  const { data: bookings, error } = await supabase
-    .from("sport_center_bookings")
-    .select("id, booking_code, facility_name, customer_name, date, status, total_price, created_at")
-    .order("created_at", { ascending: false });
+  const [bookingsRes, servicesRes] = await Promise.all([
+    supabase
+      .from("sport_center_bookings")
+      .select("id, booking_code, facility_name, customer_name, date, status, total_price, created_at")
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("sport_center_services")
+      .select("id, name, category, price_per_hour, is_active")
+      .eq("is_active", true)
+      .order("sort_order", { ascending: true }),
+  ]);
 
-  if (error) {
-    console.error("[SportCenter] Gagal fetch bookings:", error.message);
-    throw error;
+  if (bookingsRes.error) {
+    console.error("[SportCenter] Gagal fetch bookings:", bookingsRes.error.message);
+    throw bookingsRes.error;
+  }
+  if (servicesRes.error) {
+    console.warn("[SportCenter] Gagal fetch services:", servicesRes.error.message);
   }
 
-  const rows: Booking[] = bookings ?? [];
+  const rows: Booking[] = bookingsRes.data ?? [];
+  const services: Service[] = servicesRes.data ?? [];
+  const serviceMap = new Map<string, Service>(services.map((s) => [s.name.trim().toLowerCase(), s]));
+
   const today = new Date().toISOString().slice(0, 10);
   const monthStart = new Date();
   monthStart.setDate(1);
@@ -87,7 +119,10 @@ async function fetchSportCenterData(): Promise<DashboardData> {
   const monthRevenue = rows
     .filter((b) => new Date(b.date) >= monthStart)
     .reduce((sum, b) => sum + (b.total_price ?? 0), 0);
-  const totalCustomers = new Set(rows.map((b) => b.customer_name?.trim().toLowerCase()).filter(Boolean)).size;
+  const totalCustomers = new Set(
+    rows.map((b) => b.customer_name?.trim().toLowerCase()).filter(Boolean),
+  ).size;
+  const totalActiveServices = services.length;
 
   const statusMap: Record<string, number> = {};
   for (const b of rows) {
@@ -104,21 +139,30 @@ async function fetchSportCenterData(): Promise<DashboardData> {
     facilityMap[b.facility_name].count += 1;
     facilityMap[b.facility_name].revenue += b.total_price ?? 0;
   }
-  const topFacilities = Object.entries(facilityMap)
+
+  const topFacilities: TopFacility[] = Object.entries(facilityMap)
     .sort((a, b) => b[1].revenue - a[1].revenue)
     .slice(0, 5)
-    .map(([facility_name, { count, revenue }]) => ({
-      facility_name,
-      bookings: String(count),
-      revenue: String(revenue),
-    }));
+    .map(([facility_name, { count, revenue }]) => {
+      const svc = serviceMap.get(facility_name.trim().toLowerCase());
+      return {
+        facility_name,
+        bookings: String(count),
+        revenue: String(revenue),
+        usageCount: count,
+        revenueTotal: revenue,
+        category: svc?.category,
+        pricePerHour: svc?.price_per_hour,
+      };
+    });
 
   const recentBookings = rows.slice(0, 5);
 
-  console.log("[SportCenter] fetchSportCenterData: success", {
+  console.log("[SportCenter] fetchSportCenterData success", {
     totalBookings,
+    totalActiveServices,
     totalRevenue,
-    byStatus,
+    byStatus: byStatus.length,
     topFacilities: topFacilities.length,
   });
 
@@ -129,6 +173,7 @@ async function fetchSportCenterData(): Promise<DashboardData> {
     totalRevenue,
     monthRevenue,
     totalCustomers,
+    totalActiveServices,
     byStatus,
     topFacilities,
     recentBookings,
@@ -150,16 +195,19 @@ export default function SportCenterDashboard() {
   useEffect(() => {
     if (!supabase) return;
 
+    const invalidate = (table: string, event: string) => {
+      console.log(`[SportCenter] Realtime ${table}:`, event);
+      qc.invalidateQueries({ queryKey: ["sport-center-dashboard-supabase"] });
+      setRealtimeCount((c) => c + 1);
+    };
+
     const ch = supabase
-      .channel("sport-center-bookings-realtime")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "sport_center_bookings" },
-        (payload) => {
-          console.log("[SportCenter] Realtime update:", payload.eventType);
-          qc.invalidateQueries({ queryKey: ["sport-center-dashboard-supabase"] });
-          setRealtimeCount((c) => c + 1);
-        },
+      .channel("sport-center-dashboard-rt")
+      .on("postgres_changes", { event: "*", schema: "public", table: "sport_center_bookings" }, (p) =>
+        invalidate("bookings", p.eventType),
+      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "sport_center_services" }, (p) =>
+        invalidate("services", p.eventType),
       )
       .subscribe((status) => {
         console.log("[SportCenter] Realtime channel:", status);
@@ -205,6 +253,14 @@ export default function SportCenterDashboard() {
       sub: "Dari data booking",
     },
     {
+      title: "Layanan Aktif",
+      value: data?.totalActiveServices ?? 0,
+      icon: Layers,
+      color: "text-indigo-400",
+      bg: "bg-indigo-900/20",
+      sub: "sport_center_services",
+    },
+    {
       title: "Revenue Bulan Ini",
       value: idr(data?.monthRevenue ?? 0),
       icon: TrendingUp,
@@ -241,8 +297,8 @@ export default function SportCenterDashboard() {
         </div>
 
         {isLoading ? (
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            {Array.from({ length: 6 }).map((_, i) => (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {Array.from({ length: 7 }).map((_, i) => (
               <Card key={i} className="animate-pulse">
                 <CardContent className="p-5 h-24" />
               </Card>
@@ -255,7 +311,7 @@ export default function SportCenterDashboard() {
             </CardContent>
           </Card>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {stats.map((s) => (
               <Card key={s.title} className="border-border/60">
                 <CardContent className="p-5">
@@ -286,7 +342,11 @@ export default function SportCenterDashboard() {
               <div className="space-y-2">
                 {(data?.byStatus ?? []).map((s) => (
                   <div key={s.status} className="flex items-center justify-between">
-                    <Badge className={`text-xs border ${STATUS_COLOR[s.status] ?? "bg-muted/30 text-muted-foreground border-muted"}`}>
+                    <Badge
+                      className={`text-xs border ${
+                        STATUS_COLOR[s.status] ?? "bg-muted/30 text-muted-foreground border-muted"
+                      }`}
+                    >
                       {STATUS_LABEL[s.status] ?? s.status}
                     </Badge>
                     <span className="text-sm font-medium text-foreground">{s.count}</span>
@@ -312,9 +372,21 @@ export default function SportCenterDashboard() {
                     <span className="text-xs text-muted-foreground w-4">{i + 1}.</span>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-foreground truncate">{f.facility_name}</p>
-                      <p className="text-xs text-muted-foreground">{f.bookings} booking</p>
+                      <p className="text-xs text-muted-foreground">
+                        {f.usageCount} booking
+                        {f.category && (
+                          <span className="ml-2 text-indigo-400">· {f.category}</span>
+                        )}
+                        {f.pricePerHour && (
+                          <span className="ml-1 text-muted-foreground">
+                            · {idr(f.pricePerHour)}/jam
+                          </span>
+                        )}
+                      </p>
                     </div>
-                    <span className="text-sm font-medium text-emerald-400">{idr(Number(f.revenue))}</span>
+                    <div className="text-right">
+                      <p className="text-sm font-medium text-emerald-400">{idr(f.revenueTotal)}</p>
+                    </div>
                   </div>
                 ))}
                 {(data?.topFacilities ?? []).length === 0 && !isLoading && (
@@ -337,7 +409,10 @@ export default function SportCenterDashboard() {
                 <thead>
                   <tr className="border-b border-border/40">
                     {["No. Booking", "Pelanggan", "Fasilitas", "Tanggal", "Status", "Total"].map((h) => (
-                      <th key={h} className="text-left py-2 px-3 text-xs text-muted-foreground font-medium">
+                      <th
+                        key={h}
+                        className="text-left py-2 px-3 text-xs text-muted-foreground font-medium"
+                      >
                         {h}
                       </th>
                     ))}
@@ -346,16 +421,24 @@ export default function SportCenterDashboard() {
                 <tbody>
                   {(data?.recentBookings ?? []).map((b) => (
                     <tr key={b.id} className="border-b border-border/20 hover:bg-muted/30">
-                      <td className="py-2 px-3 font-mono text-xs text-muted-foreground">{b.booking_code}</td>
+                      <td className="py-2 px-3 font-mono text-xs text-muted-foreground">
+                        {b.booking_code}
+                      </td>
                       <td className="py-2 px-3 text-foreground">{b.customer_name}</td>
                       <td className="py-2 px-3 text-muted-foreground">{b.facility_name}</td>
                       <td className="py-2 px-3 text-muted-foreground">{fmtDate(b.date)}</td>
                       <td className="py-2 px-3">
-                        <Badge className={`text-xs border ${STATUS_COLOR[b.status] ?? "bg-muted/30 text-muted-foreground border-muted"}`}>
+                        <Badge
+                          className={`text-xs border ${
+                            STATUS_COLOR[b.status] ?? "bg-muted/30 text-muted-foreground border-muted"
+                          }`}
+                        >
                           {STATUS_LABEL[b.status] ?? b.status}
                         </Badge>
                       </td>
-                      <td className="py-2 px-3 text-right font-medium text-foreground">{idr(b.total_price)}</td>
+                      <td className="py-2 px-3 text-right font-medium text-foreground">
+                        {idr(b.total_price)}
+                      </td>
                     </tr>
                   ))}
                   {(data?.recentBookings ?? []).length === 0 && !isLoading && (
