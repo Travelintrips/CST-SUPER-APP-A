@@ -1246,6 +1246,29 @@ orderTrackingPublicRouter.get("/:trackToken", async (req: Request, res: Response
       // non-fatal
     }
 
+    // Include photos from order_progress_events (driver WA-link uploads)
+    try {
+      const STEP_TO_PHOTO_TYPE: Record<string, string> = {
+        PICKUP: "pickup", ARRIVED_AT_PICKUP: "pickup", PICKED_UP: "pickup",
+        ON_THE_WAY_TO_PICKUP: "general", IN_TRANSIT: "general",
+        ARRIVED: "arrival", ARRIVED_AT_DESTINATION: "arrival",
+        DELIVERED: "pod", COMPLETED: "pod",
+      };
+      const progressPhotoRows = await db.execute(
+        sql`SELECT step_key, photo_url, created_at FROM order_progress_events
+            WHERE order_id = ${order.id} AND photo_url IS NOT NULL
+            ORDER BY created_at ASC`
+      );
+      for (const row of progressPhotoRows.rows as Record<string, unknown>[]) {
+        if (!row.photo_url) continue;
+        const photoType = STEP_TO_PHOTO_TYPE[String(row.step_key ?? "")] ?? "general";
+        const takenAt = row.created_at instanceof Date
+          ? row.created_at.toISOString()
+          : String(row.created_at);
+        driverPhotos.push({ url: String(row.photo_url), photoType, takenAt });
+      }
+    } catch { /* non-fatal */ }
+
     return res.json({
       order: {
         orderNumber: order.order_number,
