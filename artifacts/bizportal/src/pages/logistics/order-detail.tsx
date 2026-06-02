@@ -22,6 +22,7 @@ import {
   ClipboardCheck, CheckCircle2, XCircle, MapPin, MessageCircle,
   Link2, FileText, AlertTriangle, Eye, EyeOff, StickyNote, Globe,
   RotateCcw, Bell, ChevronDown, ChevronUp, Download, Shield, ZoomIn,
+  Camera, Navigation, Phone, CreditCard,
 } from "lucide-react";
 import { Link } from "wouter";
 import GpsTrackingPanel from "@/components/logistics/GpsTrackingPanel";
@@ -70,6 +71,22 @@ type QuoteLink = { id: number; token: string; status: string; quoteUrl: string; 
 type FulfillmentLink = { id: number; token: string; serviceType: string; status: string; formUrl: string; sentAt: string | null; expiresAt: string | null; submittedAt: string | null; createdAt: string };
 type FulfillmentSubmission = { id: number; linkId: number; serviceType: string; fulfillmentData: Record<string, string>; submittedAt: string };
 type PodSubmission = { id: number; order_id: number; receiver_name: string | null; photo_url: string | null; note: string | null; submitted_by: string | null; created_at: string };
+
+type DriverPodData = {
+  id: number;
+  jobNumber: string;
+  status: string;
+  podReceiverName: string | null;
+  podReceiverPosition: string | null;
+  podNotes: string | null;
+  podPhotos: string[];
+  podSubmittedAt: string | null;
+  podGeoLat: string | null;
+  podGeoLng: string | null;
+  driverName: string | null;
+  driverPhone: string | null;
+  vehiclePlate: string | null;
+};
 
 type DriverProgressEvent = {
   id: number;
@@ -1941,7 +1958,7 @@ export default function LogisticOrderDetailPage() {
     onError: (e: Error) => toast({ title: "Gagal kirim WA", description: e.message, variant: "destructive" }),
   });
 
-  const { data: fulfillmentData, refetch: refetchFulfillment } = useQuery<{ links: FulfillmentLink[]; submissions: FulfillmentSubmission[]; pods: PodSubmission[] }>({
+  const { data: fulfillmentData, refetch: refetchFulfillment } = useQuery<{ links: FulfillmentLink[]; submissions: FulfillmentSubmission[]; pods: PodSubmission[]; driverPods: DriverPodData[] }>({
     queryKey: ["order-fulfillment", orderId],
     queryFn: () => apiFetch(`/api/logistic/orders/${orderId}/fulfillment`),
     enabled: !isNaN(orderId),
@@ -2719,16 +2736,204 @@ export default function LogisticOrderDetailPage() {
             </Dialog>
 
             {/* ── Panel POD (Bukti Pengiriman) ── */}
-            {(fulfillmentData?.pods?.length ?? 0) > 0 && (
+            {((fulfillmentData?.driverPods?.length ?? 0) > 0 || (fulfillmentData?.pods?.length ?? 0) > 0) && (
               <Card className="border-teal-200">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm font-semibold text-teal-700 uppercase tracking-wide flex items-center gap-1.5">
                     <ClipboardCheck className="w-4 h-4" /> Bukti Pengiriman (POD)
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-3">
-                  {fulfillmentData!.pods.map(pod => (
-                    <div key={pod.id} className="rounded-lg border border-teal-100 bg-teal-50/30 px-3 py-3 space-y-2">
+                <CardContent className="space-y-4">
+
+                  {/* ── Driver POD Cards (dari Driver App) ── */}
+                  {(fulfillmentData?.driverPods ?? []).map(dpod => {
+                    const isSubmitted = !!dpod.podSubmittedAt || dpod.status === "DELIVERED";
+                    const isPending = !dpod.podSubmittedAt && dpod.status !== "DELIVERED";
+                    const hasPhotos = dpod.podPhotos.length > 0;
+                    const hasGeo = !!(dpod.podGeoLat && dpod.podGeoLng);
+                    const mapsUrl = hasGeo
+                      ? `https://www.google.com/maps?q=${dpod.podGeoLat},${dpod.podGeoLng}`
+                      : null;
+
+                    return (
+                      <div key={`driver-${dpod.id}`} className="rounded-xl border border-teal-200 bg-gradient-to-br from-teal-50/60 to-white p-4 space-y-4">
+
+                        {/* Header Row */}
+                        <div className="flex items-start justify-between gap-2 flex-wrap">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {isPending ? (
+                              <Badge className="bg-amber-100 text-amber-800 border border-amber-200">⏳ POD Pending</Badge>
+                            ) : isSubmitted ? (
+                              <Badge className="bg-emerald-100 text-emerald-800 border border-emerald-200">✅ POD Submitted</Badge>
+                            ) : (
+                              <Badge className="bg-blue-100 text-blue-800 border border-blue-200">📋 POD Complete</Badge>
+                            )}
+                            <span className="text-[11px] font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
+                              {dpod.jobNumber}
+                            </span>
+                          </div>
+                          {dpod.podSubmittedAt && (
+                            <span className="text-[10px] text-slate-400">
+                              {new Date(dpod.podSubmittedAt).toLocaleString("id-ID", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Order & Job Info */}
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                          <div>
+                            <span className="text-slate-400 uppercase text-[10px] tracking-wide">No. Order</span>
+                            <p className="font-semibold text-slate-700 font-mono">{order.orderNumber}</p>
+                          </div>
+                          <div>
+                            <span className="text-slate-400 uppercase text-[10px] tracking-wide">No. Job Driver</span>
+                            <p className="font-semibold text-slate-700 font-mono">{dpod.jobNumber}</p>
+                          </div>
+                        </div>
+
+                        {/* Driver Info */}
+                        {(dpod.driverName || dpod.driverPhone || dpod.vehiclePlate) && (
+                          <div className="rounded-lg border border-slate-100 bg-white p-3 space-y-2">
+                            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Info Driver</p>
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                              {dpod.driverName && (
+                                <div className="flex items-start gap-1.5">
+                                  <User className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
+                                  <div>
+                                    <span className="text-slate-400 block text-[10px]">Nama Driver</span>
+                                    <p className="font-semibold text-slate-700">{dpod.driverName}</p>
+                                  </div>
+                                </div>
+                              )}
+                              {dpod.driverPhone && (
+                                <div className="flex items-start gap-1.5">
+                                  <Phone className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
+                                  <div>
+                                    <span className="text-slate-400 block text-[10px]">Telepon Driver</span>
+                                    <p className="font-semibold text-slate-700">{dpod.driverPhone}</p>
+                                  </div>
+                                </div>
+                              )}
+                              {dpod.vehiclePlate && (
+                                <div className="flex items-start gap-1.5 col-span-2">
+                                  <CreditCard className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
+                                  <div>
+                                    <span className="text-slate-400 block text-[10px]">Plat Nomor</span>
+                                    <p className="font-semibold text-slate-700 font-mono tracking-widest">{dpod.vehiclePlate}</p>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Receiver Info */}
+                        {(dpod.podReceiverName || dpod.podReceiverPosition || dpod.podNotes) && (
+                          <div className="rounded-lg border border-teal-100 bg-teal-50/40 p-3 space-y-2">
+                            <p className="text-[10px] font-semibold text-teal-600 uppercase tracking-wide">Detail Penerimaan</p>
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                              {dpod.podReceiverName && (
+                                <div>
+                                  <span className="text-slate-400 block text-[10px]">Nama Penerima</span>
+                                  <p className="font-semibold text-slate-800">{dpod.podReceiverName}</p>
+                                </div>
+                              )}
+                              {dpod.podReceiverPosition && (
+                                <div>
+                                  <span className="text-slate-400 block text-[10px]">Jabatan Penerima</span>
+                                  <p className="font-medium text-slate-700">{dpod.podReceiverPosition}</p>
+                                </div>
+                              )}
+                              {dpod.podNotes && (
+                                <div className="col-span-2">
+                                  <span className="text-slate-400 block text-[10px]">Catatan Pengiriman</span>
+                                  <p className="text-slate-600 whitespace-pre-wrap">{dpod.podNotes}</p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Geo Location */}
+                        {hasGeo && (
+                          <div className="flex items-center justify-between gap-3 rounded-lg border border-blue-100 bg-blue-50/40 px-3 py-2.5">
+                            <div className="flex items-center gap-2 text-xs min-w-0">
+                              <MapPin className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                              <div className="min-w-0">
+                                <span className="text-slate-400 block text-[10px]">Lokasi GPS saat submit POD</span>
+                                <p className="font-mono text-slate-600 text-[11px] truncate">
+                                  {dpod.podGeoLat}, {dpod.podGeoLng}
+                                </p>
+                              </div>
+                            </div>
+                            <a
+                              href={mapsUrl!}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="shrink-0"
+                            >
+                              <Button variant="outline" size="sm" className="h-7 px-2.5 text-[11px] gap-1 text-blue-700 border-blue-200 hover:bg-blue-50">
+                                <Navigation className="w-3 h-3" />
+                                Maps
+                              </Button>
+                            </a>
+                          </div>
+                        )}
+
+                        {/* POD Photos Grid */}
+                        {hasPhotos && (
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
+                              <Camera className="w-3.5 h-3.5" />
+                              Foto POD ({dpod.podPhotos.length})
+                            </div>
+                            <div className="grid grid-cols-3 gap-2">
+                              {dpod.podPhotos.map((url, idx) => (
+                                <div
+                                  key={idx}
+                                  className="relative group aspect-square rounded-lg overflow-hidden border border-slate-200 cursor-zoom-in bg-slate-50"
+                                  onClick={() => setLightboxUrl(url)}
+                                >
+                                  <img
+                                    src={url}
+                                    alt={`POD foto ${idx + 1}`}
+                                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                                  />
+                                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                                    <ZoomIn className="w-5 h-5 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-lg" />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                            <div className="flex flex-wrap gap-1">
+                              {dpod.podPhotos.map((url, idx) => (
+                                <a
+                                  key={idx}
+                                  href={url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[10px] text-teal-600 hover:text-teal-800 underline underline-offset-2"
+                                >
+                                  Foto {idx + 1} ↗
+                                </a>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* No photos placeholder */}
+                        {!hasPhotos && isSubmitted && (
+                          <div className="text-xs text-slate-400 italic flex items-center gap-1.5 py-1">
+                            <Camera className="w-3.5 h-3.5" /> Tidak ada foto pada POD ini
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {/* ── Legacy POD Cards (dari Admin Upload / order_pod_submissions) ── */}
+                  {(fulfillmentData?.pods ?? []).map(pod => (
+                    <div key={`legacy-${pod.id}`} className="rounded-lg border border-teal-100 bg-teal-50/30 px-3 py-3 space-y-2">
                       <div className="flex items-center justify-between gap-2 flex-wrap">
                         <Badge className="bg-emerald-100 text-emerald-800">✅ POD Tersimpan</Badge>
                         <div className="flex items-center gap-2">
@@ -2770,13 +2975,16 @@ export default function LogisticOrderDetailPage() {
                         )}
                       </div>
                       {pod.photo_url && (
-                        <a href={pod.photo_url} target="_blank" rel="noopener noreferrer" className="block">
+                        <div
+                          className="cursor-zoom-in"
+                          onClick={() => setLightboxUrl(pod.photo_url!)}
+                        >
                           <img
                             src={pod.photo_url}
                             alt="Bukti pengiriman"
-                            className="w-full max-h-56 object-contain rounded-lg border border-teal-100 hover:opacity-90 transition-opacity cursor-zoom-in"
+                            className="w-full max-h-56 object-contain rounded-lg border border-teal-100 hover:opacity-90 transition-opacity"
                           />
-                        </a>
+                        </div>
                       )}
 
                       {/* Hidden printable template untuk PDF */}

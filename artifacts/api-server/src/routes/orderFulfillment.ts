@@ -17,6 +17,8 @@ import {
   orderFulfillmentSubmissionsTable,
   orderUpdatesTable,
   vendorFulfillmentLinksTable,
+  driverJobsTable,
+  driversTable,
 } from "@workspace/db";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
@@ -371,6 +373,28 @@ fulfillmentAdminRouter.get("/orders/:orderId/fulfillment", async (req: Request, 
       LIMIT 5
     `);
 
+    // Driver POD data — query driver_jobs joined with drivers (NO pricing fields)
+    const driverPodRows = await db.execute(sql`
+      SELECT
+        dj.id,
+        dj.job_number,
+        dj.status,
+        dj.pod_receiver_name,
+        dj.pod_receiver_position,
+        dj.pod_notes,
+        dj.pod_photos,
+        dj.pod_submitted_at,
+        dj.pod_geo_lat,
+        dj.pod_geo_lng,
+        d.name  AS driver_name,
+        d.phone AS driver_phone,
+        d.vehicle_plate
+      FROM driver_jobs dj
+      LEFT JOIN drivers d ON dj.driver_id = d.id
+      WHERE dj.logistic_order_id = ${orderId}
+      ORDER BY dj.created_at DESC
+    `);
+
     const base = getBaseUrl();
 
     const mergedLinks = [
@@ -405,7 +429,27 @@ fulfillmentAdminRouter.get("/orders/:orderId/fulfillment", async (req: Request, 
         })),
     ];
 
-    return res.json({ links: mergedLinks, submissions: mergedSubs });
+    // Parse pod_photos JSON strings and sanitize driver POD rows (no pricing fields)
+    const driverPods = (driverPodRows.rows as Record<string, unknown>[]).map(row => ({
+      id: row.id,
+      jobNumber: row.job_number,
+      status: row.status,
+      podReceiverName: row.pod_receiver_name,
+      podReceiverPosition: row.pod_receiver_position,
+      podNotes: row.pod_notes,
+      podPhotos: (() => {
+        try { return row.pod_photos ? JSON.parse(String(row.pod_photos)) as string[] : []; }
+        catch { return []; }
+      })(),
+      podSubmittedAt: row.pod_submitted_at ? new Date(String(row.pod_submitted_at)).toISOString() : null,
+      podGeoLat: row.pod_geo_lat,
+      podGeoLng: row.pod_geo_lng,
+      driverName: row.driver_name,
+      driverPhone: row.driver_phone,
+      vehiclePlate: row.vehicle_plate,
+    }));
+
+    return res.json({ links: mergedLinks, submissions: mergedSubs, pods: podRows.rows, driverPods });
   } catch (err) {
     logger.error({ err }, "get-fulfillment error");
     return res.status(500).json({ message: "Gagal memuat data fulfillment" });
