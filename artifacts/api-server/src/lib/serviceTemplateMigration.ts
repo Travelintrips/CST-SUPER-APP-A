@@ -30,6 +30,21 @@ export async function runServiceTemplateMigration(): Promise<void> {
     ON service_templates (service_type)
   `);
 
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS service_template_version_history (
+      id            SERIAL PRIMARY KEY,
+      service_type  TEXT NOT NULL,
+      version       TEXT NOT NULL,
+      label         TEXT,
+      fields        JSONB NOT NULL DEFAULT '[]',
+      required_docs JSONB NOT NULL DEFAULT '[]',
+      checklist     JSONB NOT NULL DEFAULT '[]',
+      change_note   TEXT,
+      changed_by    TEXT,
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
   // ── 2. Upsert all 17 in-code templates ───────────────────────────────────
   const templates = getAllInCodeServiceTemplates();
   let upserted = 0;

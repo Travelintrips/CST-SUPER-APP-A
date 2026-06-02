@@ -22,7 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import {
   Pencil, Copy, Power, Plus, Trash2, AlertTriangle, RefreshCw,
-  FileText, CheckSquare, BookOpen, List,
+  FileText, CheckSquare, BookOpen, List, History, ChevronDown, ChevronRight,
 } from "lucide-react";
 
 /* ─── Types ─────────────────────────────────────────────────────────────── */
@@ -35,7 +35,7 @@ interface STField {
   section: FieldSection; isUpload?: boolean; placeholder?: string;
   unit?: string; options?: string[];
 }
-interface STDocument { key: string; label: string; required: boolean; }
+interface STDocument  { key: string; label: string; required: boolean; }
 interface STChecklist { key: string; label: string; }
 interface STConditionalRule { fieldKey: string; condition: { value: string | number }; show: string[]; }
 interface STValidationRule  { fieldKey: string; message: string; }
@@ -48,6 +48,19 @@ interface ServiceTemplate {
   validationRules: STValidationRule[]; source?: "db" | "in-code" | "fallback";
 }
 
+interface VersionHistoryRow {
+  id: number;
+  service_type: string;
+  version: string;
+  label: string | null;
+  fields: STField[];
+  required_docs: STDocument[];
+  checklist: STChecklist[];
+  change_note: string | null;
+  changed_by: string | null;
+  created_at: string;
+}
+
 /* ─── API helper ─────────────────────────────────────────────────────────── */
 
 async function apiFetch(url: string, init?: RequestInit) {
@@ -58,6 +71,250 @@ async function apiFetch(url: string, init?: RequestInit) {
 }
 
 const BASE = "/api/service-templates";
+
+/* ─── Diff helpers ───────────────────────────────────────────────────────── */
+
+interface DiffEntry {
+  kind: "+" | "-";
+  section: "field" | "doc" | "checklist";
+  label: string;
+  key: string;
+}
+
+function diffVersions(prev: VersionHistoryRow, curr: VersionHistoryRow): DiffEntry[] {
+  const diffs: DiffEntry[] = [];
+
+  const prevFieldKeys = new Set((prev.fields ?? []).map(f => f.key));
+  const currFieldKeys = new Set((curr.fields ?? []).map(f => f.key));
+  const prevFieldMap  = new Map((prev.fields ?? []).map(f => [f.key, f]));
+  const currFieldMap  = new Map((curr.fields ?? []).map(f => [f.key, f]));
+
+  for (const [key, f] of currFieldMap) {
+    if (!prevFieldKeys.has(key)) diffs.push({ kind: "+", section: "field", label: f.label, key });
+  }
+  for (const [key, f] of prevFieldMap) {
+    if (!currFieldKeys.has(key)) diffs.push({ kind: "-", section: "field", label: f.label, key });
+  }
+
+  const prevDocKeys = new Set((prev.required_docs ?? []).map(d => d.key));
+  const currDocKeys = new Set((curr.required_docs ?? []).map(d => d.key));
+  const prevDocMap  = new Map((prev.required_docs ?? []).map(d => [d.key, d]));
+  const currDocMap  = new Map((curr.required_docs ?? []).map(d => [d.key, d]));
+
+  for (const [key, d] of currDocMap) {
+    if (!prevDocKeys.has(key)) diffs.push({ kind: "+", section: "doc", label: d.label, key });
+  }
+  for (const [key, d] of prevDocMap) {
+    if (!currDocKeys.has(key)) diffs.push({ kind: "-", section: "doc", label: d.label, key });
+  }
+
+  const prevClKeys = new Set((prev.checklist ?? []).map(c => c.key));
+  const currClKeys = new Set((curr.checklist ?? []).map(c => c.key));
+  const prevClMap  = new Map((prev.checklist ?? []).map(c => [c.key, c]));
+  const currClMap  = new Map((curr.checklist ?? []).map(c => [c.key, c]));
+
+  for (const [key, c] of currClMap) {
+    if (!prevClKeys.has(key)) diffs.push({ kind: "+", section: "checklist", label: c.label, key });
+  }
+  for (const [key, c] of prevClMap) {
+    if (!currClKeys.has(key)) diffs.push({ kind: "-", section: "checklist", label: c.label, key });
+  }
+
+  return diffs;
+}
+
+const SECTION_LABEL: Record<string, string> = {
+  field: "Field",
+  doc: "Dokumen",
+  checklist: "Checklist",
+};
+
+/* ─── Version History Dialog ─────────────────────────────────────────────── */
+
+function VersionHistoryDialog({
+  serviceType,
+  label,
+  open,
+  onClose,
+}: {
+  serviceType: string;
+  label: string;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
+
+  const { data, isLoading } = useQuery<{ serviceType: string; history: VersionHistoryRow[] }>({
+    queryKey: ["version-history", serviceType],
+    queryFn: () => apiFetch(`${BASE}/${serviceType}/version-history`),
+    enabled: open && !!serviceType,
+  });
+
+  const history = [...(data?.history ?? [])].reverse();
+
+  const toggleExpand = (id: number) => {
+    setExpandedIds(prev => {
+      const s = new Set(prev);
+      s.has(id) ? s.delete(id) : s.add(id);
+      return s;
+    });
+  };
+
+  const rawHistory = data?.history ?? [];
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <History className="h-4 w-4" />
+            Riwayat Versi — {label}
+            <code className="text-xs font-normal bg-muted px-1.5 py-0.5 rounded">{serviceType}</code>
+          </DialogTitle>
+        </DialogHeader>
+
+        {isLoading ? (
+          <div className="py-10 text-center text-sm text-muted-foreground">Memuat...</div>
+        ) : history.length === 0 ? (
+          <div className="py-10 text-center text-sm text-muted-foreground">
+            Belum ada riwayat versi. Riwayat akan terekam saat template diupdate.
+          </div>
+        ) : (
+          <div className="space-y-2 mt-2">
+            {history.map((row, idx) => {
+              const isExpanded = expandedIds.has(row.id);
+              const rawIdx = rawHistory.findIndex(r => r.id === row.id);
+              const prevInRaw = rawIdx > 0 ? rawHistory[rawIdx - 1]! : null;
+              const diffs = prevInRaw ? diffVersions(prevInRaw, row) : [];
+              const isLatest = idx === 0;
+
+              return (
+                <div
+                  key={row.id}
+                  className={`border rounded-lg overflow-hidden ${isLatest ? "border-blue-200 bg-blue-50/40 dark:border-blue-800 dark:bg-blue-950/20" : ""}`}
+                >
+                  <button
+                    type="button"
+                    className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted/40 transition-colors"
+                    onClick={() => toggleExpand(row.id)}
+                  >
+                    {isExpanded
+                      ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    }
+                    <span className="font-mono font-semibold text-sm text-blue-700 dark:text-blue-400 min-w-[72px]">
+                      v{row.version}
+                    </span>
+                    {isLatest && (
+                      <Badge className="text-xs h-5 px-1.5">terbaru</Badge>
+                    )}
+                    <span className="text-xs text-muted-foreground ml-auto">
+                      {new Date(row.created_at).toLocaleString("id-ID", {
+                        day: "numeric", month: "short", year: "numeric",
+                        hour: "2-digit", minute: "2-digit",
+                      })}
+                    </span>
+                    {row.change_note && (
+                      <span className="text-xs text-slate-500 italic ml-2 hidden sm:block max-w-[180px] truncate">
+                        {row.change_note}
+                      </span>
+                    )}
+                  </button>
+
+                  {isExpanded && (
+                    <div className="px-4 pb-4 border-t bg-background/60">
+                      <div className="mt-3 space-y-3">
+                        {/* Summary counts */}
+                        <div className="flex gap-4 text-xs text-muted-foreground">
+                          <span>{(row.fields ?? []).length} field</span>
+                          <span>{(row.required_docs ?? []).length} dokumen</span>
+                          <span>{(row.checklist ?? []).length} checklist</span>
+                          {row.change_note && (
+                            <span className="italic text-slate-500">· {row.change_note}</span>
+                          )}
+                        </div>
+
+                        {/* Diff vs previous version */}
+                        {prevInRaw && (
+                          <div>
+                            <p className="text-xs font-medium text-muted-foreground mb-1.5">
+                              Perubahan dari v{prevInRaw.version}:
+                            </p>
+                            {diffs.length === 0 ? (
+                              <p className="text-xs text-slate-400 italic">Tidak ada perubahan struktur</p>
+                            ) : (
+                              <div className="space-y-1">
+                                {diffs.map((d, i) => (
+                                  <div
+                                    key={i}
+                                    className={`flex items-center gap-2 text-xs rounded px-2 py-1 font-mono ${
+                                      d.kind === "+"
+                                        ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400"
+                                        : "bg-red-50 text-red-600 dark:bg-red-950/30 dark:text-red-400"
+                                    }`}
+                                  >
+                                    <span className="font-bold text-base leading-none">{d.kind}</span>
+                                    <span className="font-semibold">{d.key}</span>
+                                    <span className="text-slate-500 non-italic font-sans">({SECTION_LABEL[d.section]})</span>
+                                    <span className="text-slate-400 font-sans ml-auto">{d.label}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Fields list */}
+                        {(row.fields ?? []).length > 0 && (
+                          <details className="text-xs">
+                            <summary className="cursor-pointer text-muted-foreground font-medium hover:text-foreground">
+                              Fields ({row.fields.length})
+                            </summary>
+                            <div className="mt-1.5 space-y-0.5 pl-2">
+                              {row.fields.map(f => (
+                                <div key={f.key} className="flex gap-2 text-slate-600">
+                                  <code className="text-blue-600 min-w-[120px]">{f.key}</code>
+                                  <span>{f.label}</span>
+                                  <span className="text-slate-400">({f.type})</span>
+                                </div>
+                              ))}
+                            </div>
+                          </details>
+                        )}
+
+                        {/* Docs list */}
+                        {(row.required_docs ?? []).length > 0 && (
+                          <details className="text-xs">
+                            <summary className="cursor-pointer text-muted-foreground font-medium hover:text-foreground">
+                              Dokumen ({row.required_docs.length})
+                            </summary>
+                            <div className="mt-1.5 space-y-0.5 pl-2">
+                              {row.required_docs.map(d => (
+                                <div key={d.key} className="flex gap-2 text-slate-600">
+                                  <code className="text-violet-600 min-w-[120px]">{d.key}</code>
+                                  <span>{d.label}</span>
+                                  {d.required && <span className="text-red-400">*</span>}
+                                </div>
+                              ))}
+                            </div>
+                          </details>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <DialogFooter className="mt-4">
+          <Button variant="outline" onClick={onClose}>Tutup</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 /* ─── Small editors ─────────────────────────────────────────────────────── */
 
@@ -270,6 +527,7 @@ export default function ServiceTemplatesPage() {
       }),
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: [BASE] });
+      qc.invalidateQueries({ queryKey: ["version-history", editTarget?.serviceType] });
       setEditOpen(false);
       const bumped = data.versionBumped ? ` (versi → ${data.version})` : "";
       toast({ title: "Tersimpan", description: `Template diperbarui${bumped}.` });
@@ -337,12 +595,14 @@ export default function ServiceTemplatesPage() {
     onError: (err: Error) => toast({ title: "Gagal", description: err.message, variant: "destructive" }),
   });
 
+  /* ── Version history dialog ──────────────────────────────────────────── */
+  const [histTarget, setHistTarget] = useState<ServiceTemplate | null>(null);
+
   /* ── Render ──────────────────────────────────────────────────────────── */
   return (
     <AppShell>
       <div className="p-6 space-y-4 max-w-7xl mx-auto">
 
-        {/* Warning banner */}
         <div className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800 p-4 text-sm text-amber-800 dark:text-amber-300">
           <AlertTriangle className="h-5 w-5 mt-0.5 shrink-0" />
           <div>
@@ -388,7 +648,17 @@ export default function ServiceTemplatesPage() {
                         <TableCell className="text-lg">{tpl.emoji}</TableCell>
                         <TableCell className="font-medium">{tpl.label}</TableCell>
                         <TableCell className="font-mono text-xs text-muted-foreground">{tpl.serviceType}</TableCell>
-                        <TableCell className="text-xs">{tpl.version}</TableCell>
+                        <TableCell>
+                          <button
+                            type="button"
+                            onClick={() => setHistTarget(tpl)}
+                            className="text-xs font-mono text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
+                            title="Lihat riwayat versi"
+                          >
+                            {tpl.version}
+                            <History className="h-3 w-3" />
+                          </button>
+                        </TableCell>
                         <TableCell className="text-center text-sm">{tpl.fields?.length ?? 0}</TableCell>
                         <TableCell className="text-center text-sm">{tpl.requiredDocuments?.length ?? 0}</TableCell>
                         <TableCell className="text-center text-sm">{tpl.checklist?.length ?? 0}</TableCell>
@@ -404,6 +674,13 @@ export default function ServiceTemplatesPage() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1">
+                            <Button
+                              variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground"
+                              title="Riwayat Versi"
+                              onClick={() => setHistTarget(tpl)}
+                            >
+                              <History className="h-3.5 w-3.5" />
+                            </Button>
                             <Button variant="ghost" size="icon" className="h-7 w-7" title="Edit" onClick={() => openEdit(tpl)}>
                               <Pencil className="h-3.5 w-3.5" />
                             </Button>
@@ -431,6 +708,16 @@ export default function ServiceTemplatesPage() {
         </Card>
       </div>
 
+      {/* ── Version History Dialog ───────────────────────────────────────────── */}
+      {histTarget && (
+        <VersionHistoryDialog
+          serviceType={histTarget.serviceType}
+          label={histTarget.label}
+          open={!!histTarget}
+          onClose={() => setHistTarget(null)}
+        />
+      )}
+
       {/* ── Edit Dialog ─────────────────────────────────────────────────────── */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
@@ -451,7 +738,6 @@ export default function ServiceTemplatesPage() {
                 <TabsTrigger value="checklist" className="text-xs gap-1"><CheckSquare className="h-3 w-3" />Checklist ({editForm.checklist.length})</TabsTrigger>
               </TabsList>
 
-              {/* Basic info tab */}
               <TabsContent value="basic" className="space-y-3 pt-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -470,33 +756,34 @@ export default function ServiceTemplatesPage() {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <Label>Sort Order</Label>
-                    <Input type="number" value={editForm.sortOrder} onChange={e => setF({ sortOrder: e.target.value })} />
+                    <Input type="number" value={editForm.sortOrder} onChange={e => setF({ sortOrder: e.target.value })} className="w-24" />
                   </div>
                   <div>
-                    <Label>
-                      Versi manual
-                      <span className="ml-1 text-xs text-muted-foreground">(kosongkan = auto-bump jika struktur berubah)</span>
-                    </Label>
+                    <Label>Versi Manual (opsional)</Label>
                     <Input value={editForm.version} onChange={e => setF({ version: e.target.value })} placeholder="1.0.0" />
                   </div>
                 </div>
                 <div className="rounded border bg-muted/30 p-3 text-xs text-muted-foreground space-y-1">
                   <p><strong>Versi saat ini:</strong> {editTarget?.version}</p>
                   <p>Jika field, dokumen, atau checklist berubah dan versi tidak diisi, sistem akan otomatis menaikkan minor version.</p>
+                  <button
+                    type="button"
+                    className="text-blue-600 hover:underline flex items-center gap-1 mt-1"
+                    onClick={() => { setEditOpen(false); setHistTarget(editTarget); }}
+                  >
+                    <History className="h-3 w-3" /> Lihat riwayat versi
+                  </button>
                 </div>
               </TabsContent>
 
-              {/* Fields tab */}
               <TabsContent value="fields" className="pt-3">
                 <FieldsEditor value={editForm.fields} onChange={v => setF({ fields: v })} />
               </TabsContent>
 
-              {/* Required docs tab */}
               <TabsContent value="docs" className="pt-3">
                 <DocsEditor value={editForm.requiredDocuments} onChange={v => setF({ requiredDocuments: v })} />
               </TabsContent>
 
-              {/* Checklist tab */}
               <TabsContent value="checklist" className="pt-3">
                 <ChecklistEditor value={editForm.checklist} onChange={v => setF({ checklist: v })} />
               </TabsContent>

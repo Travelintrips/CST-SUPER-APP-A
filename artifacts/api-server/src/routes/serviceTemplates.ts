@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { serviceTemplatesTable } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import {
   resolveServiceTemplate,
   resolveAllServiceTemplates,
@@ -20,6 +20,23 @@ import { requireAdmin } from "../lib/requireAdmin.js";
 import type { Request, Response } from "express";
 
 export const serviceTemplatesRouter = Router();
+
+/* ─── Bootstrap: version history table ───────────────────────────────────── */
+
+db.execute(sql`
+  CREATE TABLE IF NOT EXISTS service_template_version_history (
+    id            SERIAL PRIMARY KEY,
+    service_type  TEXT NOT NULL,
+    version       TEXT NOT NULL,
+    label         TEXT,
+    fields        JSONB NOT NULL DEFAULT '[]',
+    required_docs JSONB NOT NULL DEFAULT '[]',
+    checklist     JSONB NOT NULL DEFAULT '[]',
+    change_note   TEXT,
+    changed_by    TEXT,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )
+`).catch(() => {});
 
 /* ─── Constants ─────────────────────────────────────────────────────────── */
 
@@ -46,7 +63,6 @@ function rowToOverride(row: DbRow): ServiceTemplateOverride {
   };
 }
 
-/** Bump minor version: "1.0.0" → "1.1.0", "2.3.7" → "2.4.0" */
 function bumpMinor(version: string): string {
   const parts = version.split(".");
   if (parts.length !== 3) return "1.1.0";
@@ -55,19 +71,40 @@ function bumpMinor(version: string): string {
   return `${major}.${minor}.0`;
 }
 
-/** Deep-equal check for structure fields to decide if version should bump. */
 function structureChanged(
   oldRow: DbRow,
   newFields: ServiceTemplateField[] | null | undefined,
   newDocs:   ServiceTemplateDocument[] | null | undefined,
   newCl:     ServiceTemplateChecklist[] | null | undefined,
 ): boolean {
-  const serialise = (v: unknown) => JSON.stringify(v ?? []);
+  const s = (v: unknown) => JSON.stringify(v ?? []);
   return (
-    serialise(oldRow.fields)            !== serialise(newFields) ||
-    serialise(oldRow.requiredDocuments) !== serialise(newDocs)   ||
-    serialise(oldRow.checklist)         !== serialise(newCl)
+    s(oldRow.fields)            !== s(newFields) ||
+    s(oldRow.requiredDocuments) !== s(newDocs)   ||
+    s(oldRow.checklist)         !== s(newCl)
   );
+}
+
+async function writeVersionSnapshot(
+  row: DbRow,
+  opts?: { changeNote?: string; changedBy?: string },
+): Promise<void> {
+  try {
+    await db.execute(sql`
+      INSERT INTO service_template_version_history
+        (service_type, version, label, fields, required_docs, checklist, change_note, changed_by)
+      VALUES (
+        ${row.serviceType},
+        ${row.version},
+        ${row.label},
+        ${JSON.stringify(row.fields ?? [])}::jsonb,
+        ${JSON.stringify(row.requiredDocuments ?? [])}::jsonb,
+        ${JSON.stringify(row.checklist ?? [])}::jsonb,
+        ${opts?.changeNote ?? null},
+        ${opts?.changedBy ?? null}
+      )
+    `);
+  } catch { }
 }
 
 /* ─── Field-level validation ─────────────────────────────────────────────── */
@@ -95,10 +132,9 @@ function validateFields(fields: unknown): VResult {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   PUBLIC READ ENDPOINTS (no auth required)
+   PUBLIC READ ENDPOINTS
 ═══════════════════════════════════════════════════════════════════════════ */
 
-/* ── GET /api/service-templates ── */
 serviceTemplatesRouter.get("/", async (_req: Request, res: Response) => {
   try {
     const dbRows = await db
@@ -110,7 +146,7 @@ serviceTemplatesRouter.get("/", async (_req: Request, res: Response) => {
     let source: "db" | "in-code";
 
     if (dbRows.length > 0) {
-      const overrides  = dbRows.map(rowToOverride);
+      const overrides   = dbRows.map(rowToOverride);
       const overrideMap = new Map(overrides.map((o) => [o.serviceType, o]));
       templates = resolveAllServiceTemplates(overrides).map((tpl) => ({
         ...tpl,
@@ -131,7 +167,28 @@ serviceTemplatesRouter.get("/", async (_req: Request, res: Response) => {
   }
 });
 
-/* ── GET /api/service-templates/:serviceType ── */
+/* GET /api/service-templates/:serviceType/version-history */
+serviceTemplatesRouter.get("/:serviceType/version-history", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+
+  const serviceType = String(req.params["serviceType"] ?? "").trim();
+  if (!serviceType) return res.status(400).json({ error: "serviceType wajib diisi" });
+
+  try {
+    const rows = await db.execute(sql`
+      SELECT id, service_type, version, label,
+             fields, required_docs, checklist,
+             change_note, changed_by, created_at
+      FROM service_template_version_history
+      WHERE service_type = ${serviceType}
+      ORDER BY created_at ASC
+    `);
+    return res.json({ serviceType, history: rows.rows });
+  } catch (err) {
+    return res.status(500).json({ error: "Gagal mengambil version history", detail: String(err) });
+  }
+});
+
 serviceTemplatesRouter.get("/:serviceType", async (req: Request, res: Response) => {
   const serviceType = String(req.params["serviceType"] ?? "").trim();
   if (!serviceType) return res.status(400).json({ error: "serviceType wajib diisi" });
@@ -143,7 +200,7 @@ serviceTemplatesRouter.get("/:serviceType", async (req: Request, res: Response) 
       .where(eq(serviceTemplatesTable.serviceType, serviceType))
       .limit(1);
 
-    const dbOverride = rows.length > 0 ? rowToOverride(rows[0]!) : null;
+    const dbOverride   = rows.length > 0 ? rowToOverride(rows[0]!) : null;
     const inCodeExists = hasInCodeServiceTemplate(serviceType);
     const source: "db" | "in-code" | "fallback" = dbOverride ? "db" : inCodeExists ? "in-code" : "fallback";
     const resolved = resolveServiceTemplate(serviceType, dbOverride);
@@ -155,14 +212,13 @@ serviceTemplatesRouter.get("/:serviceType", async (req: Request, res: Response) 
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   ADMIN WRITE ENDPOINTS — requireAdmin gate
+   ADMIN WRITE ENDPOINTS
 ═══════════════════════════════════════════════════════════════════════════ */
 
-/* ── POST /api/service-templates — create ── */
 serviceTemplatesRouter.post("/", async (req: Request, res: Response) => {
   if (!(await requireAdmin(req, res))) return;
 
-  const body = req.body as Record<string, unknown>;
+  const body        = req.body as Record<string, unknown>;
   const serviceType = String(body["serviceType"] ?? "").trim().toLowerCase();
   const label       = String(body["label"] ?? "").trim();
 
@@ -181,11 +237,11 @@ serviceTemplatesRouter.post("/", async (req: Request, res: Response) => {
   const fieldCheck = validateFields(fields);
   if (!fieldCheck.ok) return res.status(400).json({ error: fieldCheck.error });
 
-  const emoji     = String(body["emoji"]       ?? "📋").trim() || "📋";
-  const version   = String(body["version"]     ?? "1.0.0").trim() || "1.0.0";
-  const isActive  = body["isActive"] !== false;
+  const emoji       = String(body["emoji"]       ?? "📋").trim() || "📋";
+  const version     = String(body["version"]     ?? "1.0.0").trim() || "1.0.0";
+  const isActive    = body["isActive"] !== false;
   const description = body["description"] != null ? String(body["description"]).trim() : null;
-  const sortOrder   = body["sortOrder"] != null ? Number(body["sortOrder"]) : 0;
+  const sortOrder   = body["sortOrder"]  != null ? Number(body["sortOrder"]) : 0;
 
   try {
     const existing = await db
@@ -216,6 +272,8 @@ serviceTemplatesRouter.post("/", async (req: Request, res: Response) => {
       })
       .returning();
 
+    await writeVersionSnapshot(inserted[0]!, { changeNote: "Template dibuat" });
+
     return res.status(201).json({ ...rowToOverride(inserted[0]!), source: "db" });
   } catch (err) {
     const msg = String(err);
@@ -226,7 +284,6 @@ serviceTemplatesRouter.post("/", async (req: Request, res: Response) => {
   }
 });
 
-/* ── PUT /api/service-templates/:serviceType — update ── */
 serviceTemplatesRouter.put("/:serviceType", async (req: Request, res: Response) => {
   if (!(await requireAdmin(req, res))) return;
 
@@ -246,20 +303,20 @@ serviceTemplatesRouter.put("/:serviceType", async (req: Request, res: Response) 
   const current = existing[0]!;
   const body    = req.body as Record<string, unknown>;
 
-  const newFields  = body["fields"]            !== undefined ? (body["fields"] as ServiceTemplateField[])            : undefined;
-  const newDocs    = body["requiredDocuments"]  !== undefined ? (body["requiredDocuments"] as ServiceTemplateDocument[]) : undefined;
-  const newCl      = body["checklist"]          !== undefined ? (body["checklist"] as ServiceTemplateChecklist[])     : undefined;
-  const newCRules  = body["conditionalRules"]   !== undefined ? (body["conditionalRules"] as ServiceConditionalRule[])  : undefined;
-  const newVRules  = body["validationRules"]    !== undefined ? (body["validationRules"] as ServiceValidationRule[])    : undefined;
+  const newFields  = body["fields"]            !== undefined ? (body["fields"] as ServiceTemplateField[])               : undefined;
+  const newDocs    = body["requiredDocuments"]  !== undefined ? (body["requiredDocuments"] as ServiceTemplateDocument[])  : undefined;
+  const newCl      = body["checklist"]          !== undefined ? (body["checklist"] as ServiceTemplateChecklist[])         : undefined;
+  const newCRules  = body["conditionalRules"]   !== undefined ? (body["conditionalRules"] as ServiceConditionalRule[])    : undefined;
+  const newVRules  = body["validationRules"]    !== undefined ? (body["validationRules"] as ServiceValidationRule[])      : undefined;
 
   if (newFields !== undefined) {
     const fieldCheck = validateFields(newFields);
     if (!fieldCheck.ok) return res.status(400).json({ error: fieldCheck.error });
   }
 
-  /* Auto-bump minor version if structure changed and caller didn't specify version */
   let resolvedVersion = body["version"] != null ? String(body["version"]).trim() : undefined;
-  if (!resolvedVersion && structureChanged(current, newFields, newDocs, newCl)) {
+  const didStructureChange = structureChanged(current, newFields, newDocs, newCl);
+  if (!resolvedVersion && didStructureChange) {
     resolvedVersion = bumpMinor(current.version);
   }
 
@@ -279,6 +336,10 @@ serviceTemplatesRouter.put("/:serviceType", async (req: Request, res: Response) 
   if (newVRules  !== undefined)    updatePayload.validationRules   = newVRules  as unknown as typeof updatePayload["validationRules"];
 
   try {
+    await writeVersionSnapshot(current, {
+      changeNote: didStructureChange ? "Sebelum update struktur" : "Sebelum update metadata",
+    });
+
     const updated = await db
       .update(serviceTemplatesTable)
       .set(updatePayload)
@@ -297,12 +358,11 @@ serviceTemplatesRouter.put("/:serviceType", async (req: Request, res: Response) 
   }
 });
 
-/* ── POST /api/service-templates/:serviceType/duplicate ── */
 serviceTemplatesRouter.post("/:serviceType/duplicate", async (req: Request, res: Response) => {
   if (!(await requireAdmin(req, res))) return;
 
-  const sourceType = String(req.params["serviceType"] ?? "").trim();
-  const body = req.body as Record<string, unknown>;
+  const sourceType     = String(req.params["serviceType"] ?? "").trim();
+  const body           = req.body as Record<string, unknown>;
   const newServiceType = String(body["newServiceType"] ?? "").trim().toLowerCase();
   const newLabel       = String(body["newLabel"]       ?? "").trim();
 
@@ -313,7 +373,6 @@ serviceTemplatesRouter.post("/:serviceType/duplicate", async (req: Request, res:
   if (!newLabel) return res.status(400).json({ error: "newLabel wajib diisi" });
 
   try {
-    /* Find source */
     const sourceRows = await db
       .select()
       .from(serviceTemplatesTable)
@@ -325,7 +384,6 @@ serviceTemplatesRouter.post("/:serviceType/duplicate", async (req: Request, res:
     }
     const src = sourceRows[0]!;
 
-    /* Check target uniqueness */
     const targetExists = await db
       .select({ id: serviceTemplatesTable.id })
       .from(serviceTemplatesTable)
@@ -336,7 +394,6 @@ serviceTemplatesRouter.post("/:serviceType/duplicate", async (req: Request, res:
       return res.status(409).json({ error: `serviceType '${newServiceType}' sudah ada` });
     }
 
-    /* Insert duplicate */
     const inserted = await db
       .insert(serviceTemplatesTable)
       .values({
@@ -355,6 +412,8 @@ serviceTemplatesRouter.post("/:serviceType/duplicate", async (req: Request, res:
       })
       .returning();
 
+    await writeVersionSnapshot(inserted[0]!, { changeNote: `Duplikat dari ${sourceType}` });
+
     return res.status(201).json({
       ...rowToOverride(inserted[0]!),
       source: "db",
@@ -369,7 +428,6 @@ serviceTemplatesRouter.post("/:serviceType/duplicate", async (req: Request, res:
   }
 });
 
-/* ── PATCH /api/service-templates/:serviceType/toggle-active ── */
 serviceTemplatesRouter.patch("/:serviceType/toggle-active", async (req: Request, res: Response) => {
   if (!(await requireAdmin(req, res))) return;
 
