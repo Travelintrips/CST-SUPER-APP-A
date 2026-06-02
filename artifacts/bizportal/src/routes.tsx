@@ -126,6 +126,7 @@ import LogisticOrderDetailPage from "@/pages/logistics/order-detail";
 import OrderAuditTrailPage from "@/pages/logistics/order-audit-trail";
 import VendorPerformancePage from "@/pages/logistics/vendor-performance";
 import InternalTasksPage from "@/pages/logistics/internal-tasks";
+import LogisticsImportAssistantPage from "@/pages/logistics-import-assistant";
 import ExceptionsPage from "@/pages/exceptions/index";
 // Misc
 import NotificationsPage from "@/pages/notifications";
@@ -200,6 +201,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/logistics/orders/:orderId" component={PR(LogisticOrderDetailPage)} />
       <Route path="/logistics/vendor-performance" component={PR(VendorPerformancePage)} />
       <Route path="/logistics/internal-tasks" component={PR(InternalTasksPage)} />
+      <Route path="/logistics/import-assistant" component={PR(LogisticsImportAssistantPage)} />
       <Route path="/portal-product-orders" component={PR(PortalProductOrdersPage)} />
       <Route path="/portal/customers" component={PR(PortalCustomersPage)} />
       <Route path="/portal/onboarding-approvals" component={PR(PortalOnboardingApprovalsPage)} />
