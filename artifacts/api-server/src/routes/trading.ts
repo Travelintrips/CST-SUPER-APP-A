@@ -97,7 +97,7 @@ router.get("/suppliers", async (req, res) => {
   const scope = resolveCompanyScope(req);
   const whereClause = scope === "all"
     ? undefined
-    : or(eq(suppliersTable.companyId, scope), isNull(suppliersTable.companyId));
+    : eq(suppliersTable.companyId, scope);
   const suppliers = await db.select().from(suppliersTable)
     .where(whereClause)
 
