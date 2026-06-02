@@ -18,6 +18,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useCompany } from "@/contexts/CompanyContext";
 import {
   Copy, ExternalLink, Link2, Plus, Trash2, Eye, ToggleLeft, ToggleRight,
   Loader2, RotateCcw, CalendarDays, User, Phone, MessageCircle, XCircle,
@@ -485,10 +486,11 @@ function CreateLinkDialog({ onCreated }: { onCreated: () => void }) {
   const [vendorPickerOpen, setVendorPickerOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
+  const { companyQueryParam } = useCompany();
 
   const { data: allSuppliers = [] } = useQuery<Supplier[]>({
-    queryKey: ["suppliers-simple"],
-    queryFn: () => apiFetch<Supplier[]>("/api/trading/suppliers"),
+    queryKey: ["suppliers-simple", companyQueryParam],
+    queryFn: () => apiFetch<Supplier[]>(`/api/trading/suppliers?${companyQueryParam}`),
     enabled: open,
   });
 
@@ -2175,10 +2177,11 @@ function ProductTemplateEngine() {
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const [previewTemplate, setPreviewTemplate] = useState<ProductTemplate | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const { companyQueryParam } = useCompany();
 
   const { data: suppliers = [] } = useQuery<Supplier[]>({
-    queryKey: ["suppliers-simple"],
-    queryFn: () => apiFetch<Supplier[]>("/api/trading/suppliers"),
+    queryKey: ["suppliers-simple", companyQueryParam],
+    queryFn: () => apiFetch<Supplier[]>(`/api/trading/suppliers?${companyQueryParam}`),
   });
 
   const allTemplates = Object.values(inCodeTemplates);
@@ -2574,6 +2577,7 @@ function ConfirmPaymentDialog({ invoice, onConfirmed }: { invoice: CustomerInvoi
 export default function VendorFormsPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { companyQueryParam } = useCompany();
 
   const [tab, setTab] = useState("links");
   const [selectedLink, setSelectedLink] = useState<FormLink | null>(null);
@@ -2672,8 +2676,8 @@ export default function VendorFormsPage() {
     );
   }, [invoices, invoiceSearch]);
   const { data: suppliers = [] } = useQuery<Supplier[]>({
-    queryKey: ["suppliers-simple"],
-    queryFn: () => apiFetch<Supplier[]>("/api/trading/suppliers"),
+    queryKey: ["suppliers-simple", companyQueryParam],
+    queryFn: () => apiFetch<Supplier[]>(`/api/trading/suppliers?${companyQueryParam}`),
   });
 
   // ── Mutations ──

@@ -18,6 +18,7 @@ import {
 import { ArrowLeft, Save, Loader2, ScanLine, ChevronsUpDown, Check, Plus, Pencil, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useVendors } from "@/hooks/useVendors";
 import { FreightScanDialog, type FreightFormFields } from "@/components/freight/FreightScanDialog";
 import {
   Popover,
@@ -45,14 +46,12 @@ import {
   useUpdateFreightShipment,
   useListSalesDocuments,
   useListPurchaseDocuments,
-  useListSuppliers,
   useCreateSupplier,
   useUpdateSupplier,
   getListFreightShipmentsQueryKey,
   getGetFreightShipmentQueryKey,
   getListSalesDocumentsQueryKey,
   getListPurchaseDocumentsQueryKey,
-  getListSuppliersQueryKey,
   type Supplier,
 } from "@workspace/api-client-react";
 
@@ -164,7 +163,7 @@ export default function LogisticsFreightEditorPage() {
   const { data: _salesOrdersPaginated } = useListSalesDocuments({ kind: "order", limit: 500 }, { query: { queryKey: getListSalesDocumentsQueryKey({ kind: "order" }) } });
   const salesOrders = _salesOrdersPaginated?.data ?? [];
   const { data: purchaseOrders = [] } = useListPurchaseDocuments({ kind: "order" }, { query: { queryKey: getListPurchaseDocumentsQueryKey({ kind: "order" }) } });
-  const { data: suppliers = [], isFetched: suppliersFetched } = useListSuppliers({ query: { queryKey: getListSuppliersQueryKey() } });
+  const { data: suppliers = [], isFetched: suppliersFetched } = useVendors();
   const [soPickerOpen, setSoPickerOpen] = useState(false);
   const [poPickerOpen, setPoPickerOpen] = useState(false);
   const [vendorPickerOpen, setVendorPickerOpen] = useState(false);
@@ -542,10 +541,7 @@ export default function LogisticsFreightEditorPage() {
       { id: selectedVendorId, data: { name: editVendorForm.name, country: editVendorForm.country, contactEmail: "", address: editVendorForm.address || undefined } },
       {
         onSuccess: (updated) => {
-          queryClient.setQueryData<Supplier[]>(getListSuppliersQueryKey(), (old) =>
-            old ? old.map((s) => (s.id === updated.id ? updated : s)) : [updated]
-          );
-          queryClient.invalidateQueries({ queryKey: getListSuppliersQueryKey() });
+          queryClient.invalidateQueries({ queryKey: ["vendors-filtered"] });
           setEditVendorDialogOpen(false);
           setShipperVendorNameValue(updated.name);
           setShipperVendorAddressValue(updated.address ?? "");
@@ -570,10 +566,7 @@ export default function LogisticsFreightEditorPage() {
       { data: { name: newVendorForm.name, country: newVendorForm.country, contactEmail: "", address: newVendorForm.address || undefined } },
       {
         onSuccess: (newSupplier) => {
-          queryClient.setQueryData<Supplier[]>(getListSuppliersQueryKey(), (old) =>
-            old ? [...old, newSupplier] : [newSupplier]
-          );
-          queryClient.invalidateQueries({ queryKey: getListSuppliersQueryKey() });
+          queryClient.invalidateQueries({ queryKey: ["vendors-filtered"] });
           setAddVendorDialogOpen(false);
           setVendorSearchQuery("");
           handleSelectVendorByData(newSupplier);

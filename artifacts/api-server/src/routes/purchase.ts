@@ -3,6 +3,7 @@ import { randomBytes } from "crypto";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { resolveCompanyId } from "../lib/resolveCompany.js";
 import { streamInvoicePdf, buildInvoicePdfBuffer } from "../lib/pdfInvoice.js";
+import { loadDocTemplate } from "../lib/docTemplateLoader.js";
 import { postPurchaseBill, postPurchaseBillReversal } from "../lib/accounting.js";
 import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
@@ -756,7 +757,11 @@ router.get("/documents/:id/pdf", async (req, res): Promise<void> => {
     const rows = await db.select().from(suppliersTable).where(eq(suppliersTable.id, detail.supplierId)).limit(1);
     supplier = rows[0] ?? null;
   }
-  const acctSettings = await ensureAccountingSettings();
+  const tplType = detail.kind === "rfq" ? "quotation" : "po";
+  const [acctSettings, template] = await Promise.all([
+    ensureAccountingSettings(),
+    loadDocTemplate(tplType),
+  ]);
   const titleMap: Record<string, string> = {
     rfq: "REQUEST FOR QUOTATION",
     order: "PURCHASE ORDER",
@@ -789,6 +794,7 @@ router.get("/documents/:id/pdf", async (req, res): Promise<void> => {
     totalAmount: Number(detail.totalAmount),
     receiveStatus: detail.receiveStatus,
     billStatus: detail.billStatus,
+    template,
   });
 });
 
@@ -816,7 +822,11 @@ router.post("/documents/:id/email", async (req, res): Promise<void> => {
     supplier = rows[0] ?? null;
   }
 
-  const acctSettings = await ensureAccountingSettings();
+  const tplType2 = detail.kind === "rfq" ? "quotation" : "po";
+  const [acctSettings, template2] = await Promise.all([
+    ensureAccountingSettings(),
+    loadDocTemplate(tplType2),
+  ]);
   const titleMap: Record<string, string> = { rfq: "REQUEST FOR QUOTATION", order: "PURCHASE ORDER" };
   const pdfData = {
     title: titleMap[detail.kind] ?? "DOKUMEN PEMBELIAN",
@@ -846,6 +856,7 @@ router.post("/documents/:id/email", async (req, res): Promise<void> => {
     totalAmount: Number(detail.totalAmount),
     receiveStatus: detail.receiveStatus,
     billStatus: detail.billStatus,
+    template: template2,
   };
 
   const pdfBuffer = await buildInvoicePdfBuffer(pdfData);

@@ -19,7 +19,7 @@ import {
   useAddExpenseAttachment, useDeleteExpenseAttachment,
   useListExpenseCategories, useListAccounts, useListTaxes,
   useListSalesDocuments, useListFreightShipments,
-  useListSuppliers, useListCustomers,
+  useListCustomers,
   getListExpensesQueryKey, getGetExpenseQueryKey,
   type ExpenseAttachment,
 } from "@workspace/api-client-react";
@@ -27,6 +27,7 @@ import { useUpload } from "@workspace/object-storage-web";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useVendors } from "@/hooks/useVendors";
 import {
   ArrowLeft, Save, Send, CheckCircle, XCircle, FileText, Banknote,
   RotateCcw, Info, Paperclip, Upload, Trash2, Loader2, AlertTriangle, X,
@@ -381,7 +382,7 @@ export default function ExpenseEditorPage() {
   const { data: cats = [] } = useListExpenseCategories();
   const { data: accounts = [] } = useListAccounts();
   const { data: taxes = [] } = useListTaxes();
-  const { data: suppliers = [] } = useListSuppliers();
+  const { data: suppliers = [] } = useVendors();
   const { data: customers = [] } = useListCustomers();
 
   const createMut = useCreateExpense();
