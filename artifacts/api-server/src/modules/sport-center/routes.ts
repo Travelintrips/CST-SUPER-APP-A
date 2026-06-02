@@ -42,7 +42,11 @@ router.get("/dashboard", requireAdmin, async (req, res) => {
     const companyId = req.query.companyId ? Number(req.query.companyId) : undefined;
     const cId = companyId ?? null;
 
-    const [totals, todayRes, pendingPayRes, membersRes, byStatus, topFacilities, recentBookings, monthRev, totalRev, promoUsedRes, promoDiscountRes, cancelledRes, totalRefundsRes, totalRefundAmountRes] = await Promise.all([
+    const [
+      totals, todayRes, pendingPayRes, membersRes, byStatus, topFacilities, recentBookings,
+      monthRev, totalRev, promoUsedRes, promoDiscountRes, cancelledRes, totalRefundsRes,
+      totalRefundAmountRes, expiredMembersRes, membershipRevRes, membershipPayCountRes,
+    ] = await Promise.all([
       db.execute(sql`SELECT COUNT(*) AS cnt FROM sport_bookings WHERE (${cId}::int IS NULL OR company_id = ${cId})`),
       db.execute(sql`SELECT COUNT(*) AS cnt FROM sport_bookings WHERE (${cId}::int IS NULL OR company_id = ${cId}) AND booking_date = CURRENT_DATE`),
       db.execute(sql`SELECT COUNT(*) AS cnt FROM sport_bookings WHERE (${cId}::int IS NULL OR company_id = ${cId}) AND payment_status = 'unpaid' AND status NOT IN ('cancelled','completed')`),
@@ -57,18 +61,31 @@ router.get("/dashboard", requireAdmin, async (req, res) => {
       db.execute(sql`SELECT COUNT(*) AS cnt FROM sport_bookings WHERE (${cId}::int IS NULL OR company_id = ${cId}) AND status = 'cancelled'`),
       db.execute(sql`SELECT COUNT(*) AS cnt FROM sport_refunds WHERE (${cId}::int IS NULL OR company_id = ${cId})`),
       db.execute(sql`SELECT COALESCE(SUM(refund_amount),0) AS total FROM sport_refunds WHERE (${cId}::int IS NULL OR company_id = ${cId}) AND status = 'paid'`),
+      // Membership: expired members
+      db.execute(sql`SELECT COUNT(*) AS cnt FROM sport_members WHERE (${cId}::int IS NULL OR company_id = ${cId}) AND (status = 'expired' OR (end_date IS NOT NULL AND end_date < CURRENT_DATE AND status != 'active'))`),
+      // Membership: total revenue dari sport_payments
+      db.execute(sql`SELECT COALESCE(SUM(amount),0) AS revenue FROM sport_payments WHERE (${cId}::int IS NULL OR company_id = ${cId}) AND payment_type = 'membership' AND status = 'paid'`),
+      // Membership: jumlah transaksi
+      db.execute(sql`SELECT COUNT(*) AS cnt FROM sport_payments WHERE (${cId}::int IS NULL OR company_id = ${cId}) AND payment_type = 'membership' AND status = 'paid'`),
     ]);
 
+    const bookingRevenue = Number((totalRev.rows[0] as any).revenue);
+    const membershipRevenue = Number((membershipRevRes.rows[0] as any).revenue);
     res.json({
       totalBookings: Number((totals.rows[0] as any).cnt),
       todayBookings: Number((todayRes.rows[0] as any).cnt),
       pendingPayment: Number((pendingPayRes.rows[0] as any).cnt),
+      activeMembers: Number((membersRes.rows[0] as any).cnt),
       totalMembers: Number((membersRes.rows[0] as any).cnt),
+      expiredMembers: Number((expiredMembersRes.rows[0] as any).cnt),
       byStatus: byStatus.rows,
       topFacilities: topFacilities.rows,
       recentBookings: recentBookings.rows,
       monthRevenue: Number((monthRev.rows[0] as any).revenue),
-      totalRevenue: Number((totalRev.rows[0] as any).revenue),
+      bookingRevenue,
+      membershipRevenue,
+      membershipPayments: Number((membershipPayCountRes.rows[0] as any).cnt),
+      totalRevenue: bookingRevenue + membershipRevenue,
       totalPromoUsed: Number((promoUsedRes.rows[0] as any).cnt),
       totalPromoDiscount: Number((promoDiscountRes.rows[0] as any).total),
       cancelledBookings: Number((cancelledRes.rows[0] as any).cnt),
@@ -833,7 +850,7 @@ router.get("/reports", requireAdmin, async (req, res) => {
     const from = (req.query.from as string) ?? null;
     const to = (req.query.to as string) ?? null;
 
-    const [revenueByDay, revenueByFacility, bookingsByStatus] = await Promise.all([
+    const [revenueByDay, revenueByFacility, bookingsByStatus, bookingRevRes, membershipRevReportRes] = await Promise.all([
       db.execute(sql`
         SELECT booking_date, COUNT(*) AS bookings, COALESCE(SUM(total_amount),0) AS revenue
         FROM sport_bookings
@@ -857,9 +874,34 @@ router.get("/reports", requireAdmin, async (req, res) => {
         WHERE (${cId}::int IS NULL OR company_id = ${cId})
         GROUP BY status
       `),
+      // Booking revenue dalam range
+      db.execute(sql`
+        SELECT COALESCE(SUM(total_amount),0) AS revenue FROM sport_bookings
+        WHERE status != 'cancelled'
+          AND (${cId}::int IS NULL OR company_id = ${cId})
+          AND (${from}::date IS NULL OR booking_date >= ${from}::date)
+          AND (${to}::date IS NULL OR booking_date <= ${to}::date)
+      `),
+      // Membership revenue dalam range
+      db.execute(sql`
+        SELECT COALESCE(SUM(amount),0) AS revenue FROM sport_payments
+        WHERE payment_type = 'membership' AND status = 'paid'
+          AND (${cId}::int IS NULL OR company_id = ${cId})
+          AND (${from}::date IS NULL OR paid_at::date >= ${from}::date)
+          AND (${to}::date IS NULL OR paid_at::date <= ${to}::date)
+      `),
     ]);
 
-    res.json({ revenueByDay: revenueByDay.rows, revenueByFacility: revenueByFacility.rows, bookingsByStatus: bookingsByStatus.rows });
+    const bookingRevenue = Number((bookingRevRes.rows[0] as any).revenue);
+    const membershipRevenue = Number((membershipRevReportRes.rows[0] as any).revenue);
+    res.json({
+      revenueByDay: revenueByDay.rows,
+      revenueByFacility: revenueByFacility.rows,
+      bookingsByStatus: bookingsByStatus.rows,
+      bookingRevenue,
+      membershipRevenue,
+      grandTotalRevenue: bookingRevenue + membershipRevenue,
+    });
   } catch {
     res.status(500).json({ error: "Gagal" });
   }

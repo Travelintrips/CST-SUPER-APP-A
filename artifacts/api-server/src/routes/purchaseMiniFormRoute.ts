@@ -562,15 +562,7 @@ purchaseMiniPublicRouter.post("/:token", async (req: Request, res: Response) => 
 
 
     // ── Vendor Invoice → Auto-Post ke Accounting ────────────────────────────
-    // Fire-and-forget: tidak blokir response ke vendor meski posting gagal
-    if (row.formType === "vendor_invoice") {
-      autoPostVendorInvoice(row.refNumber, row.purchaseDocId, body).catch((e) =>
-        logger.error({ e, token }, "purchaseMiniForm: VI auto-post error"),
-      );
-
-    // ── Vendor Invoice Auto-Post ─────────────────────────────────────────────
-    // Saat vendor submit form vendor_invoice, langsung post jurnal akuntansi
-    // (Dr GR/IR → Cr AP) — idempotent: hanya jika VI masih berstatus draft.
+    // Dr GR/IR → Cr AP — idempotent: hanya jika VI masih berstatus draft.
     if (row.formType === "vendor_invoice" && row.purchaseDocId) {
       try {
         await postVendorInvoiceAccounting(row.purchaseDocId, body);
