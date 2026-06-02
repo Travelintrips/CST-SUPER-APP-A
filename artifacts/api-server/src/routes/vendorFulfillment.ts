@@ -782,7 +782,7 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
       pickupTime:       (body.pickupTime  ?? "") || "(kosong)",
     }, "[WA-driver] cek kirim WA ke driver");
 
-    if (_svcCat === "trucking" && _driverPhone) {
+    if (_driverPhone) {
       const domain       = getPreferredDomain() || "";
       const driverAppUrl = domain ? `https://${domain}/api/driver/open-app` : "";
       const driverMsg = [
@@ -820,9 +820,9 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
       });
     } else {
       logger.info({
-        skip_reason: _svcCat !== "trucking"
-          ? `bukan trucking (svcCategory="${_svcCat}", serviceType="${link.serviceType}")`
-          : "driverPhone kosong",
+        skip_reason: "driverPhone kosong",
+        serviceType: link.serviceType,
+        svcCategory: _svcCat,
       }, "[WA-driver] skip — tidak kirim WA ke driver");
     }
 

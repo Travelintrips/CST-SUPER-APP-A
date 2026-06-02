@@ -591,6 +591,30 @@ fulfillmentPublicRouter.post("/:token", async (req: Request, res: Response) => {
       );
     }
 
+    // WA ke driver
+    const driverPhoneOF = String((body as any).driverPhone ?? "").trim();
+    const driverNameOF = String((body as any).driverName ?? "Driver").trim();
+    logger.info(
+      { driverPhone: driverPhoneOF, driverName: driverNameOF, orderNumber: order.orderNumber, serviceType: link.serviceType },
+      "[WA-driver] orderFulfillment submit: cek kirim WA ke driver"
+    );
+    if (driverPhoneOF) {
+      const driverAppUrl = `${getBaseUrl()}/driver`;
+      const waDriver =
+        `🚛 *Konfirmasi Job Order*\n\n` +
+        `Halo ${driverNameOF},\n\n` +
+        `Anda telah dikonfirmasi untuk menjalankan pengiriman berikut:\n\n` +
+        `📦 *Order*    : ${order.orderNumber}\n` +
+        `📍 *Rute*     : ${order.origin} → ${order.destination}\n` +
+        (String((body as any).plateNumber ?? "").trim() ? `🚗 *Plat*      : ${String((body as any).plateNumber).trim()}\n` : "") +
+        (String((body as any).vehicleType ?? "").trim() ? `🚐 *Kendaraan* : ${String((body as any).vehicleType).trim()}\n` : "") +
+        (String((body as any).pickupTime ?? "").trim() ? `🕐 *Pickup*    : ${String((body as any).pickupTime).trim()}\n` : "") +
+        `\n📱 Driver App: ${driverAppUrl}`;
+      sendWhatsApp(driverPhoneOF, waDriver)
+        .then(() => logger.info({ driverPhone: driverPhoneOF, orderNumber: order.orderNumber }, "[WA-driver] WA ke driver BERHASIL (orderFulfillment)"))
+        .catch((e) => logger.warn({ e, driverPhone: driverPhoneOF, orderNumber: order.orderNumber }, "[WA-driver] WA ke driver GAGAL (orderFulfillment)"));
+    }
+
     updateOrderProgress(link.orderId, "VENDOR_FULFILLMENT_CONFIRMED", "vendor_wa", "Vendor",
       "Vendor mengisi form fulfillment").catch(() => {});
 

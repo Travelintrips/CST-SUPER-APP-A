@@ -721,6 +721,33 @@ vendorJobPublicRouter.post("/:token/accept", async (req: Request, res: Response)
       }).catch(() => {});
     }
 
+    // WA ke driver
+    const driverPhone = (body.driverPhone ?? "").toString().trim();
+    const driverName = (body.driverName ?? "Driver").toString().trim();
+    logger.info(
+      { driverPhone, driverName, orderNumber: job.order_number, serviceType: job.service_type, shipmentType: job.shipment_type },
+      "[WA-driver] vendor-job accept: cek kirim WA ke driver"
+    );
+    if (driverPhone) {
+      const driverAppUrl = `${getPreferredDomain()}/driver`;
+      const waMsg =
+        `🚛 *Konfirmasi Job Order*\n\n` +
+        `Halo ${driverName},\n\n` +
+        `Anda telah dikonfirmasi untuk menjalankan pengiriman berikut:\n\n` +
+        `📦 *Order*    : ${job.order_number}\n` +
+        `📍 *Rute*     : ${job.origin} → ${job.destination}\n` +
+        (body.vehiclePlate ? `🚗 *Plat*      : ${body.vehiclePlate}\n` : "") +
+        (body.vehicleType ? `🚐 *Kendaraan* : ${body.vehicleType}\n` : "") +
+        (body.pickupTime ? `🕐 *Pickup*    : ${body.pickupTime}\n` : "") +
+        (body.carrier ? `🏢 *Carrier*   : ${body.carrier}\n` : "") +
+        `\n📱 Driver App: ${driverAppUrl}`;
+      sendWhatsApp(driverPhone, waMsg)
+        .then(() => logger.info({ driverPhone, orderNumber: job.order_number }, "[WA-driver] WA ke driver BERHASIL (vendor-job)"))
+        .catch((e) => logger.warn({ e, driverPhone, orderNumber: job.order_number }, "[WA-driver] WA ke driver GAGAL (vendor-job)"));
+    } else {
+      logger.info({ orderNumber: job.order_number }, "[WA-driver] skip — driverPhone kosong (vendor-job)");
+    }
+
     return res.json({ ok: true, message: "Job berhasil diterima. Terima kasih!" });
   } catch (err) {
     logger.error({ err }, "accept-vendor-job error");
