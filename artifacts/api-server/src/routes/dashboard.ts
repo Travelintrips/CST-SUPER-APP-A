@@ -3,7 +3,7 @@ import {
   db, ordersTable, stocksTable, transactionsTable, productsTable,
   freightShipmentsTable, salesDocumentsTable,
 } from "@workspace/db";
-import { sql, and, ne, eq } from "drizzle-orm";
+import { sql, and, ne, eq, or, isNull } from "drizzle-orm";
 import { getRecentResponseTimesFromDb } from "../lib/responseTimeLog";
 import { requireAdmin } from "../lib/requireAdmin.js";
 
@@ -162,8 +162,14 @@ router.get("/summary", async (req, res) => {
     monthlyTrendRaw,
     perCompanyRaw,
   ] = await Promise.all([
-    db.select({ count: sql<number>`count(*)` }).from(ordersTable),
-    db.select({ total: sql<number>`coalesce(sum(total_amount), 0)` }).from(ordersTable),
+    db.select({ count: sql<number>`count(*)` }).from(ordersTable)
+      .where(!isConsolidated && companyId !== null
+        ? or(eq(ordersTable.companyId, companyId), isNull(ordersTable.companyId))
+        : undefined),
+    db.select({ total: sql<number>`coalesce(sum(total_amount), 0)` }).from(ordersTable)
+      .where(!isConsolidated && companyId !== null
+        ? or(eq(ordersTable.companyId, companyId), isNull(ordersTable.companyId))
+        : undefined),
     db.select({ count: sql<number>`count(*)` }).from(freightShipmentsTable)
       .where(freightCompanyFilter),
     db.select({ total: sql<number>`coalesce(sum(cost_price * quantity), 0)` }).from(stocksTable),

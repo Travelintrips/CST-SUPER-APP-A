@@ -82,8 +82,10 @@ router.get("/sales", async (req, res) => {
   const { from, to, error } = parseDateRange(req);
   if (error) { res.status(400).json({ message: error }); return; }
   const groupBy = (req.query["groupBy"] as string) || "month";
+  const effectiveCompanyId = resolveEffectiveCompany(req);
 
   const conds: SQL[] = [eq(salesDocumentsTable.kind, "order")];
+  if (effectiveCompanyId !== null) conds.push(eq(salesDocumentsTable.companyId, effectiveCompanyId));
   if (from) conds.push(gte(salesDocumentsTable.createdAt, from));
   if (to) conds.push(lte(salesDocumentsTable.createdAt, to));
 

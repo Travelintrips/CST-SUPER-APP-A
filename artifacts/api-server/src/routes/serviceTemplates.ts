@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { serviceTemplatesTable } from "@workspace/db/schema";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, or, isNull, and } from "drizzle-orm";
+import { resolveCompanyId } from "../lib/resolveCompany.js";
 import {
   resolveServiceTemplate,
   resolveAllServiceTemplates,
@@ -135,18 +136,26 @@ function validateFields(fields: unknown): VResult {
    PUBLIC READ ENDPOINTS
 ═══════════════════════════════════════════════════════════════════════════ */
 
-serviceTemplatesRouter.get("/", async (_req: Request, res: Response) => {
+serviceTemplatesRouter.get("/", async (req: Request, res: Response) => {
   try {
+    const companyId = resolveCompanyId(req);
     const dbRows = await db
       .select()
       .from(serviceTemplatesTable)
+      .where(or(eq(serviceTemplatesTable.companyId, companyId), isNull(serviceTemplatesTable.companyId)))
       .orderBy(serviceTemplatesTable.sortOrder);
+
+    const globalRows  = dbRows.filter((r) => r.companyId === null);
+    const companyRows = dbRows.filter((r) => r.companyId !== null);
+    const mergedMap   = new Map(globalRows.map((r) => [r.serviceType, r]));
+    for (const r of companyRows) mergedMap.set(r.serviceType, r);
+    const effectiveRows = [...mergedMap.values()];
 
     let templates: Array<ReturnType<typeof resolveServiceTemplate> & { source: "db" | "in-code" }>;
     let source: "db" | "in-code";
 
-    if (dbRows.length > 0) {
-      const overrides   = dbRows.map(rowToOverride);
+    if (effectiveRows.length > 0) {
+      const overrides   = effectiveRows.map(rowToOverride);
       const overrideMap = new Map(overrides.map((o) => [o.serviceType, o]));
       templates = resolveAllServiceTemplates(overrides).map((tpl) => ({
         ...tpl,
@@ -194,13 +203,20 @@ serviceTemplatesRouter.get("/:serviceType", async (req: Request, res: Response) 
   if (!serviceType) return res.status(400).json({ error: "serviceType wajib diisi" });
 
   try {
+    const companyId = resolveCompanyId(req);
     const rows = await db
       .select()
       .from(serviceTemplatesTable)
-      .where(eq(serviceTemplatesTable.serviceType, serviceType))
-      .limit(1);
+      .where(and(
+        eq(serviceTemplatesTable.serviceType, serviceType),
+        or(eq(serviceTemplatesTable.companyId, companyId), isNull(serviceTemplatesTable.companyId)),
+      ));
 
-    const dbOverride   = rows.length > 0 ? rowToOverride(rows[0]!) : null;
+    const companyRow = rows.find((r) => r.companyId !== null);
+    const globalRow  = rows.find((r) => r.companyId === null);
+    const bestRow    = companyRow ?? globalRow ?? null;
+
+    const dbOverride   = bestRow ? rowToOverride(bestRow) : null;
     const inCodeExists = hasInCodeServiceTemplate(serviceType);
     const source: "db" | "in-code" | "fallback" = dbOverride ? "db" : inCodeExists ? "in-code" : "fallback";
     const resolved = resolveServiceTemplate(serviceType, dbOverride);
@@ -243,20 +259,25 @@ serviceTemplatesRouter.post("/", async (req: Request, res: Response) => {
   const description = body["description"] != null ? String(body["description"]).trim() : null;
   const sortOrder   = body["sortOrder"]  != null ? Number(body["sortOrder"]) : 0;
 
+  const companyId = resolveCompanyId(req);
   try {
     const existing = await db
       .select({ id: serviceTemplatesTable.id })
       .from(serviceTemplatesTable)
-      .where(eq(serviceTemplatesTable.serviceType, serviceType))
+      .where(and(
+        eq(serviceTemplatesTable.serviceType, serviceType),
+        eq(serviceTemplatesTable.companyId, companyId),
+      ))
       .limit(1);
 
     if (existing.length > 0) {
-      return res.status(409).json({ error: `serviceType '${serviceType}' sudah ada` });
+      return res.status(409).json({ error: `serviceType '${serviceType}' sudah ada untuk perusahaan ini` });
     }
 
     const inserted = await db
       .insert(serviceTemplatesTable)
       .values({
+        companyId,
         serviceType,
         label,
         emoji,
@@ -290,17 +311,25 @@ serviceTemplatesRouter.put("/:serviceType", async (req: Request, res: Response) 
   const serviceType = String(req.params["serviceType"] ?? "").trim();
   if (!serviceType) return res.status(400).json({ error: "serviceType wajib diisi" });
 
+  const companyId = resolveCompanyId(req);
   const existing = await db
     .select()
     .from(serviceTemplatesTable)
-    .where(eq(serviceTemplatesTable.serviceType, serviceType))
-    .limit(1);
+    .where(and(
+      eq(serviceTemplatesTable.serviceType, serviceType),
+      or(eq(serviceTemplatesTable.companyId, companyId), isNull(serviceTemplatesTable.companyId)),
+    ));
 
   if (existing.length === 0) {
     return res.status(404).json({ error: `serviceType '${serviceType}' tidak ditemukan` });
   }
 
-  const current = existing[0]!;
+  const companyRow = existing.find((r) => r.companyId !== null);
+  const globalRow  = existing.find((r) => r.companyId === null);
+  const current    = companyRow ?? globalRow!;
+  if (current.companyId !== null && current.companyId !== companyId) {
+    return res.status(403).json({ error: "Akses ditolak: template bukan milik perusahaan ini" });
+  }
   const body    = req.body as Record<string, unknown>;
 
   const newFields  = body["fields"]            !== undefined ? (body["fields"] as ServiceTemplateField[])               : undefined;
@@ -343,7 +372,7 @@ serviceTemplatesRouter.put("/:serviceType", async (req: Request, res: Response) 
     const updated = await db
       .update(serviceTemplatesTable)
       .set(updatePayload)
-      .where(eq(serviceTemplatesTable.serviceType, serviceType))
+      .where(eq(serviceTemplatesTable.id, current.id))
       .returning();
 
     const versionBumped = resolvedVersion !== undefined && resolvedVersion !== current.version;
@@ -372,11 +401,15 @@ serviceTemplatesRouter.post("/:serviceType/duplicate", async (req: Request, res:
   }
   if (!newLabel) return res.status(400).json({ error: "newLabel wajib diisi" });
 
+  const companyId = resolveCompanyId(req);
   try {
     const sourceRows = await db
       .select()
       .from(serviceTemplatesTable)
-      .where(eq(serviceTemplatesTable.serviceType, sourceType))
+      .where(and(
+        eq(serviceTemplatesTable.serviceType, sourceType),
+        or(eq(serviceTemplatesTable.companyId, companyId), isNull(serviceTemplatesTable.companyId)),
+      ))
       .limit(1);
 
     if (sourceRows.length === 0) {
@@ -387,16 +420,20 @@ serviceTemplatesRouter.post("/:serviceType/duplicate", async (req: Request, res:
     const targetExists = await db
       .select({ id: serviceTemplatesTable.id })
       .from(serviceTemplatesTable)
-      .where(eq(serviceTemplatesTable.serviceType, newServiceType))
+      .where(and(
+        eq(serviceTemplatesTable.serviceType, newServiceType),
+        eq(serviceTemplatesTable.companyId, companyId),
+      ))
       .limit(1);
 
     if (targetExists.length > 0) {
-      return res.status(409).json({ error: `serviceType '${newServiceType}' sudah ada` });
+      return res.status(409).json({ error: `serviceType '${newServiceType}' sudah ada untuk perusahaan ini` });
     }
 
     const inserted = await db
       .insert(serviceTemplatesTable)
       .values({
+        companyId,
         serviceType:       newServiceType,
         label:             newLabel,
         emoji:             src.emoji,
@@ -439,12 +476,25 @@ serviceTemplatesRouter.patch("/:serviceType/toggle-active", async (req: Request,
     return res.status(400).json({ error: "isActive wajib dikirim (true atau false)" });
   }
   const isActive = Boolean(body["isActive"]);
+  const companyId = resolveCompanyId(req);
 
   try {
+    const [target] = await db.select({ id: serviceTemplatesTable.id, companyId: serviceTemplatesTable.companyId })
+      .from(serviceTemplatesTable)
+      .where(and(
+        eq(serviceTemplatesTable.serviceType, serviceType),
+        or(eq(serviceTemplatesTable.companyId, companyId), isNull(serviceTemplatesTable.companyId)),
+      ))
+      .limit(1);
+    if (!target) return res.status(404).json({ error: `serviceType '${serviceType}' tidak ditemukan` });
+    if (target.companyId !== null && target.companyId !== companyId) {
+      return res.status(403).json({ error: "Akses ditolak: template bukan milik perusahaan ini" });
+    }
+
     const updated = await db
       .update(serviceTemplatesTable)
       .set({ isActive, updatedAt: new Date() })
-      .where(eq(serviceTemplatesTable.serviceType, serviceType))
+      .where(eq(serviceTemplatesTable.id, target.id))
       .returning();
 
     if (updated.length === 0) {
