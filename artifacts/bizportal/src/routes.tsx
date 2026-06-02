@@ -136,6 +136,7 @@ import AiDecisionMemoryPage from "@/pages/ai-decision-memory";
 import WaNotificationHistoryPage from "@/pages/wa-notification-history";
 import VendorLeaderboardPage from "@/pages/vendor-leaderboard";
 import AnalyticsDashboardPage from "@/pages/analytics-dashboard";
+import CeoDashboardPage from "@/pages/ceo-dashboard";
 import EnterpriseDashboardPage from "@/pages/enterprise-dashboard";
 import OperationalDashboardPage from "@/pages/operational-dashboard";
 import POOrdersPage from "@/pages/purchase/po-orders";
@@ -165,6 +166,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       {/* ── Welcome / Dashboard ────────────────────────────────────────── */}
       <Route path="/welcome" component={WelcomePage} />
       <Route path="/dashboard" component={PR(DashboardPage)} />
+      <Route path="/ceo-dashboard" component={PR(CeoDashboardPage)} />
       <Route path="/ai/decision-memory" component={PR(AiDecisionMemoryPage)} />
       <Route path="/approvals" component={PR(ApprovalsPage)} />
       <Route path="/ecommerce" component={PR(EcommercePage)} />
