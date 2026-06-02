@@ -22,6 +22,7 @@ import { getPreferredDomain } from "../lib/domain.js";
 import { logger } from "../lib/logger.js";
 import { TAX_RATE_DECIMAL as PPN_RATE, TAX_RATE_DECIMAL } from "../lib/taxHelper.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
+import { normalizePhone } from "../lib/phoneUtils.js";
 import { getAdminWa, getAdminGroupWa } from "../lib/adminWa.js";
 import { sendVendorRequestNotification, sendVendorSelectedAdminWa, sendVendorAwardedWa, sendVendorAssignmentNotification, resolveTemplateSnapshot, type LogisticOrderData } from "../lib/orderNotification.js";
 import { generateShortLink } from "../lib/shortLink.js";
@@ -1406,6 +1407,7 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
 
       // WA ke driver (jika driverPhone tersedia di vendor fulfillment link)
       if (vfLink?.driverPhone) {
+        const driverPhoneNorm = normalizePhone(vfLink.driverPhone);
         const driverToken = randomBytes(18).toString("hex");
         const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
         await db.execute(sql`
@@ -1421,7 +1423,7 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
         `);
         await db.execute(sql`
           INSERT INTO driver_progress_tokens (token, order_id, driver_name, driver_phone, expires_at)
-          VALUES (${driverToken}, ${order.id}, ${vfLink.driverName ?? null}, ${vfLink.driverPhone}, ${expiresAt})
+          VALUES (${driverToken}, ${order.id}, ${vfLink.driverName ?? null}, ${driverPhoneNorm}, ${expiresAt})
           ON CONFLICT (token) DO NOTHING
         `);
         const driverLink = `https://${process.env.REPLIT_DEV_DOMAIN || domain}/driver-progress/${driverToken}`;
@@ -1431,8 +1433,8 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
           `Order *${order.orderNumber}* siap untuk proses pengiriman.\n` +
           ((order.origin && order.destination) ? `Rute: ${order.origin} → ${order.destination}\n` : "") +
           `\nUpdate status pengiriman via link berikut:\n${driverLink}`;
-        sendWhatsApp(vfLink.driverPhone, driverWaMsg).catch((e) =>
-          logger.warn({ e }, "confirm_fulfillment WA to driver failed")
+        sendWhatsApp(driverPhoneNorm, driverWaMsg).catch((e) =>
+          logger.warn({ e, driverPhoneNorm }, "confirm_fulfillment WA to driver failed")
         );
       }
 
