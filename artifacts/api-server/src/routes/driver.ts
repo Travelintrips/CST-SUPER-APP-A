@@ -239,9 +239,30 @@ export async function runDriverPodMigration(): Promise<void> {
       ALTER TABLE driver_jobs ADD COLUMN IF NOT EXISTS pod_geo_lng TEXT;
       ALTER TABLE driver_jobs ADD COLUMN IF NOT EXISTS pod_signature_data_url TEXT;
     `);
-    logger.info("Driver POD migration: ok");
+    console.info("Driver POD migration: ok");
   } catch (err) {
-    logger.warn({ err }, "Driver POD migration warn (non-fatal)");
+    console.warn("Driver POD migration warn (non-fatal)", err);
+  }
+}
+
+// ─── Driver Assignment (INTERNAL/EXTERNAL mode) migration ────────────────────
+
+export async function runDriverAssignmentMigration(): Promise<void> {
+  const { sql } = await import("drizzle-orm");
+  try {
+    await db.execute(sql`
+      ALTER TABLE driver_jobs ALTER COLUMN driver_id DROP NOT NULL;
+      ALTER TABLE driver_jobs ADD COLUMN IF NOT EXISTS driver_type TEXT DEFAULT 'EXTERNAL';
+      ALTER TABLE driver_jobs ADD COLUMN IF NOT EXISTS execution_mode TEXT DEFAULT 'DRIVER_APP';
+      ALTER TABLE driver_jobs ADD COLUMN IF NOT EXISTS wa_progress_token TEXT;
+      ALTER TABLE driver_jobs ADD COLUMN IF NOT EXISTS driver_name_override TEXT;
+      ALTER TABLE driver_jobs ADD COLUMN IF NOT EXISTS driver_phone_override TEXT;
+      ALTER TABLE driver_jobs ADD COLUMN IF NOT EXISTS vehicle_plate_override TEXT;
+      ALTER TABLE driver_jobs ADD COLUMN IF NOT EXISTS legacy_source TEXT;
+    `);
+    console.info("Driver assignment migration: ok");
+  } catch (err) {
+    console.warn("Driver assignment migration warn (non-fatal)", err);
   }
 }
 
@@ -899,6 +920,7 @@ adminRouter.get("/performance", async (req, res) => {
 // IMPORTANT: must be registered BEFORE /:id to avoid Express swallowing it
 adminRouter.get("/jobs/list", async (req, res) => {
   const shipmentId = req.query.shipmentId ? Number(req.query.shipmentId) : undefined;
+  const logisticOrderId = req.query.logisticOrderId ? Number(req.query.logisticOrderId) : undefined;
   const driverId = req.query.driverId ? Number(req.query.driverId) : undefined;
   const jobs = await db
     .select({
@@ -916,9 +938,11 @@ adminRouter.get("/jobs/list", async (req, res) => {
     .where(
       shipmentId
         ? eq(driverJobsTable.freightShipmentId, shipmentId)
-        : driverId
-          ? eq(driverJobsTable.driverId, driverId)
-          : undefined
+        : logisticOrderId
+          ? eq(driverJobsTable.logisticOrderId, logisticOrderId)
+          : driverId
+            ? eq(driverJobsTable.driverId, driverId)
+            : undefined
     )
     .orderBy(desc(driverJobsTable.createdAt));
 
@@ -952,12 +976,49 @@ adminRouter.post("/jobs", async (req, res) => {
     driverId, freightShipmentId, logisticOrderId, customerName, pickupAddress, deliveryAddress,
     cargoDescription, vehicleType, truckPlate, pickupDateTime, deliveryDateTime,
     specialInstruction, weight, distance, notes,
+    driverType, executionMode, driverNameOverride, driverPhoneOverride, vehiclePlateOverride,
   } = req.body ?? {};
 
-  if (!driverId) { res.status(400).json({ message: "driverId wajib diisi" }); return; }
+  const resolvedDriverType: string = driverType === "INTERNAL" ? "INTERNAL" : "EXTERNAL";
+  const resolvedExecutionMode: string = executionMode === "WA_MINI_FORM" ? "WA_MINI_FORM" : "DRIVER_APP";
 
-  const [driver] = await db.select().from(driversTable).where(eq(driversTable.id, Number(driverId)));
-  if (!driver) { res.status(404).json({ message: "Driver not found" }); return; }
+  // INTERNAL mode: driverId not required
+  if (resolvedDriverType === "EXTERNAL" && !driverId) {
+    res.status(400).json({ message: "driverId wajib diisi untuk mode Driver Eksternal" });
+    return;
+  }
+  if (resolvedDriverType === "INTERNAL" && !driverNameOverride) {
+    res.status(400).json({ message: "Nama driver wajib diisi untuk mode Driver Internal" });
+    return;
+  }
+
+  // Duplicate active job guard: 1 active job per logisticOrderId max
+  if (logisticOrderId) {
+    const { sql: sqlFn } = await import("drizzle-orm");
+    const activeRows = await db.execute(sqlFn`
+      SELECT id FROM driver_jobs
+      WHERE logistic_order_id = ${Number(logisticOrderId)}
+        AND status NOT IN ('COMPLETED', 'CANCELLED')
+      LIMIT 1
+    `);
+    if ((activeRows.rows?.length ?? 0) > 0) {
+      res.status(409).json({
+        message: "Order ini masih memiliki assignment driver aktif. Selesaikan atau batalkan assignment sebelumnya terlebih dahulu.",
+      });
+      return;
+    }
+  }
+
+  let driver: typeof driversTable.$inferSelect | null = null;
+  if (driverId) {
+    const [d] = await db.select().from(driversTable).where(eq(driversTable.id, Number(driverId)));
+    if (!d) { res.status(404).json({ message: "Driver not found" }); return; }
+    if (resolvedDriverType === "EXTERNAL" && !d.isActive) {
+      res.status(400).json({ message: "Driver belum memiliki akun CST Driver App aktif." });
+      return;
+    }
+    driver = d;
+  }
 
   let shipmentInfo: typeof freightShipmentsTable.$inferSelect | undefined;
   if (freightShipmentId) {
@@ -966,9 +1027,35 @@ adminRouter.post("/jobs", async (req, res) => {
     shipmentInfo = s;
   }
 
+  // For INTERNAL/WA_MINI_FORM: generate wa_progress_token and insert into driver_progress_tokens
+  let waProgressToken: string | null = null;
+  if (resolvedExecutionMode === "WA_MINI_FORM" && logisticOrderId) {
+    const { randomUUID: uuid } = await import("crypto");
+    const { sql: sqlFn } = await import("drizzle-orm");
+    waProgressToken = uuid();
+    const resolvedDriverName = driverNameOverride ? String(driverNameOverride) : (driver?.name ?? "Driver");
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 hari
+    await db.execute(sqlFn`
+      INSERT INTO driver_progress_tokens (token, order_id, driver_name, driver_phone, expires_at)
+      VALUES (${waProgressToken}, ${Number(logisticOrderId)}, ${resolvedDriverName}, ${driverPhoneOverride ?? null}, ${expiresAt.toISOString()})
+      ON CONFLICT (token) DO NOTHING
+    `).catch(() => {});
+  }
+
+  const effectiveDriverName = resolvedDriverType === "INTERNAL"
+    ? (driverNameOverride ? String(driverNameOverride) : null)
+    : (driver?.name ?? null);
+  const effectivePhone = resolvedDriverType === "INTERNAL"
+    ? (driverPhoneOverride ? String(driverPhoneOverride) : null)
+    : (driver?.phone ?? null);
+  const effectivePlate = resolvedDriverType === "INTERNAL"
+    ? (vehiclePlateOverride ? String(vehiclePlateOverride) : null)
+    : (driver?.vehiclePlate ?? null);
+  const effectiveVehicleType = resolvedDriverType === "INTERNAL" ? null : (driver?.vehicleType ?? null);
+
   const jobNumber = nextJobNumber();
   const [job] = await db.insert(driverJobsTable).values({
-    driverId: Number(driverId),
+    driverId: driverId ? Number(driverId) : null,
     freightShipmentId: freightShipmentId ? Number(freightShipmentId) : null,
     logisticOrderId: logisticOrderId ? Number(logisticOrderId) : null,
     jobNumber,
@@ -976,14 +1063,20 @@ adminRouter.post("/jobs", async (req, res) => {
     pickupAddress: pickupAddress ? String(pickupAddress) : null,
     deliveryAddress: deliveryAddress ? String(deliveryAddress) : null,
     cargoDescription: cargoDescription ? String(cargoDescription) : (shipmentInfo ? String(shipmentInfo.commodity ?? "") : null),
-    vehicleType: vehicleType ? String(vehicleType) : driver.vehicleType,
-    truckPlate: truckPlate ? String(truckPlate) : driver.vehiclePlate,
+    vehicleType: vehicleType ? String(vehicleType) : effectiveVehicleType,
+    truckPlate: truckPlate ? String(truckPlate) : effectivePlate,
     pickupDateTime: pickupDateTime ? new Date(pickupDateTime as string) : null,
     deliveryDateTime: deliveryDateTime ? new Date(deliveryDateTime as string) : null,
     specialInstruction: specialInstruction ? String(specialInstruction) : null,
     weight: weight ? String(weight) : null,
     distance: distance ? String(distance) : null,
     notes: notes ? String(notes) : null,
+    driverType: resolvedDriverType,
+    executionMode: resolvedExecutionMode,
+    waProgressToken,
+    driverNameOverride: driverNameOverride ? String(driverNameOverride) : null,
+    driverPhoneOverride: driverPhoneOverride ? String(driverPhoneOverride) : null,
+    vehiclePlateOverride: vehiclePlateOverride ? String(vehiclePlateOverride) : null,
   }).returning();
 
   await db.insert(driverJobLogsTable).values({
@@ -993,18 +1086,47 @@ adminRouter.post("/jobs", async (req, res) => {
     timestamp: new Date(),
   });
 
-  // Push real-time event ke driver yang sedang online
-  pushToDriver(Number(driverId), "new_job", {
-    jobId: job.id,
-    jobNumber: job.jobNumber,
-    customerName: job.customerName,
-    pickupAddress: job.pickupAddress,
-    deliveryAddress: job.deliveryAddress,
-    assignedAt: job.assignedAt.toISOString(),
-  });
+  // Push real-time event ke driver yang sedang online (EXTERNAL only)
+  if (driverId) {
+    pushToDriver(Number(driverId), "new_job", {
+      jobId: job.id,
+      jobNumber: job.jobNumber,
+      customerName: job.customerName,
+      pickupAddress: job.pickupAddress,
+      deliveryAddress: job.deliveryAddress,
+      assignedAt: job.assignedAt.toISOString(),
+    });
+  }
 
-  // Kirim notifikasi WhatsApp ke driver
-  if (driver.phone) {
+  const domain = getPreferredDomain();
+
+  if (resolvedExecutionMode === "WA_MINI_FORM" && waProgressToken && effectivePhone) {
+    // INTERNAL: kirim WA Mini Form link ke nomor driver
+    const { normalizePhone } = await import("../lib/phoneUtils.js");
+    const waLink = `https://${domain}/driver-progress/${waProgressToken}`;
+    const pickup = job.pickupAddress ?? "-";
+    const delivery = job.deliveryAddress ?? "-";
+    const msg = [
+      `🚚 *Penugasan Pengiriman Baru*`,
+      ``,
+      `Anda ditugaskan sebagai driver untuk order ini.`,
+      ``,
+      `Pickup: ${pickup}`,
+      `Tujuan: ${delivery}`,
+      job.cargoDescription ? `Muatan: ${job.cargoDescription}` : null,
+      job.specialInstruction ? `Catatan: ${job.specialInstruction}` : null,
+      ``,
+      `*Link Update Progress:*`,
+      waLink,
+      ``,
+      `Klik link di atas untuk update status pengiriman (Pickup → Transit → Delivered).`,
+    ].filter(Boolean).join("\n");
+    const normalizedPhone = normalizePhone(effectivePhone);
+    sendWhatsApp(normalizedPhone, msg).catch((err: unknown) => {
+      req.log?.warn?.({ err, phone: normalizedPhone }, "sendWhatsApp WA Mini Form failed (non-fatal)");
+    });
+  } else if (resolvedDriverType === "EXTERNAL" && driver?.phone) {
+    // EXTERNAL: kirim WA link buka CST Driver App
     const pickup = job.pickupAddress ?? "-";
     const delivery = job.deliveryAddress ?? "-";
     const customer = job.customerName ?? "-";
@@ -1018,24 +1140,24 @@ adminRouter.post("/jobs", async (req, res) => {
       job.specialInstruction ? `Catatan: ${job.specialInstruction}` : null,
       ``,
       `Buka aplikasi CST Driver:`,
-      `https://${getPreferredDomain()}/api/driver/open-app`,
+      `https://${domain}/api/driver/open-app`,
     ].filter(Boolean).join("\n");
     sendWhatsApp(driver.phone, msg).catch((err: unknown) => {
-      req.log.error({ err, driverId: driver.id, phone: driver.phone }, "sendWhatsApp failed for job assignment");
+      req.log?.error?.({ err, driverId: driver!.id, phone: driver!.phone }, "sendWhatsApp failed for job assignment");
     });
   }
 
   // Notifikasi template ke customer jika job terhubung ke logistic order
-  if (job.logisticOrderId) {
+  if (job.logisticOrderId && driver) {
     fetchOrderData(job.logisticOrderId).then((orderData) => {
       if (!orderData) return;
       sendDriverAssignedNotification(
         orderData,
-        driver.name,
-        driver.phone ?? "",
-        job.truckPlate ?? "-",
-        job.vehicleType ?? "-",
-      ).catch((err: unknown) => req.log.error({ err }, "sendDriverAssignedNotification failed"));
+        effectiveDriverName ?? driver!.name,
+        effectivePhone ?? driver!.phone ?? "",
+        job.truckPlate ?? effectivePlate ?? "-",
+        job.vehicleType ?? effectiveVehicleType ?? "-",
+      ).catch((err: unknown) => req.log?.error?.({ err }, "sendDriverAssignedNotification failed"));
     }).catch(() => {});
   }
 
