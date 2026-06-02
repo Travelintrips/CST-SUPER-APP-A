@@ -1858,6 +1858,169 @@ function timelineDotColor(u: OrderUpdate): string {
   return "bg-blue-400";
 }
 
+// ── Audit Trail Panel ──────────────────────────────────────────────────────────
+
+type AuditEvent = {
+  id: string;
+  ts: string;
+  category: "order" | "rfq" | "status" | "vendor" | "customer" | "wa" | "email" | "driver" | "pod" | "note" | "system";
+  label: string;
+  detail?: string | null;
+  actor?: string | null;
+};
+
+const CATEGORY_DOT: Record<string, string> = {
+  order:    "bg-blue-500",
+  rfq:      "bg-violet-500",
+  status:   "bg-slate-400",
+  vendor:   "bg-orange-400",
+  customer: "bg-purple-500",
+  wa:       "bg-green-500",
+  email:    "bg-sky-400",
+  driver:   "bg-amber-400",
+  pod:      "bg-emerald-500",
+  note:     "bg-teal-400",
+  system:   "bg-slate-300",
+};
+
+function auditCategoryIcon(cat: string): React.ReactNode {
+  if (cat === "order")    return <Package className="w-3 h-3 text-blue-500" />;
+  if (cat === "rfq")      return <ClipboardList className="w-3 h-3 text-violet-500" />;
+  if (cat === "status")   return <ClipboardCheck className="w-3 h-3 text-slate-400" />;
+  if (cat === "vendor")   return <Truck className="w-3 h-3 text-orange-400" />;
+  if (cat === "customer") return <User className="w-3 h-3 text-purple-500" />;
+  if (cat === "wa")       return <MessageCircle className="w-3 h-3 text-green-500" />;
+  if (cat === "email")    return <Send className="w-3 h-3 text-sky-400" />;
+  if (cat === "driver")   return <Navigation className="w-3 h-3 text-amber-400" />;
+  if (cat === "pod")      return <Camera className="w-3 h-3 text-emerald-500" />;
+  if (cat === "note")     return <StickyNote className="w-3 h-3 text-teal-400" />;
+  return <Bell className="w-3 h-3 text-slate-400" />;
+}
+
+function fmtTime(ts: string): string {
+  return new Date(ts).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+}
+
+function fmtDate(ts: string): string {
+  return new Date(ts).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
+}
+
+function AuditTrailPanel({ orderId }: { orderId: number }) {
+  const qc = useQueryClient();
+
+  const { data, isLoading, isFetching, refetch } = useQuery<{ orderNumber: string; timeline: AuditEvent[] }>({
+    queryKey: ["audit-trail", orderId],
+    queryFn: () => apiFetch(`/api/logistic/orders/${orderId}/audit-trail`),
+    enabled: !isNaN(orderId),
+    staleTime: 10000,
+  });
+
+  const timeline = data?.timeline ?? [];
+
+  const grouped: { date: string; events: AuditEvent[] }[] = [];
+  for (const ev of timeline) {
+    const d = fmtDate(ev.ts);
+    const last = grouped[grouped.length - 1];
+    if (last && last.date === d) {
+      last.events.push(ev);
+    } else {
+      grouped.push({ date: d, events: [ev] });
+    }
+  }
+
+  return (
+    <Card className="sticky top-6">
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-semibold text-slate-600 uppercase tracking-wide flex items-center gap-1.5">
+            <Clock className="w-4 h-4" /> Riwayat Order
+            {timeline.length > 0 && (
+              <span className="ml-1 text-xs font-normal normal-case text-slate-400">({timeline.length})</span>
+            )}
+          </CardTitle>
+          <div className="flex items-center gap-1">
+            <AddTimelineNoteDialog
+              orderId={orderId}
+              onAdded={() => {
+                qc.invalidateQueries({ queryKey: ["order-detail", orderId] });
+                refetch();
+              }}
+            />
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0 text-slate-400 hover:text-slate-700"
+              onClick={() => refetch()}
+              disabled={isFetching}
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? "animate-spin" : ""}`} />
+            </Button>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-400 mt-1">
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />Order</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-violet-500 inline-block" />RFQ</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-400 inline-block" />Vendor</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-purple-500 inline-block" />Customer</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" />WA</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />POD</span>
+        </div>
+      </CardHeader>
+      <CardContent className="max-h-[700px] overflow-y-auto pt-2 pb-3">
+        {isLoading ? (
+          <div className="flex justify-center py-8">
+            <Loader2 className="w-5 h-5 animate-spin text-blue-400" />
+          </div>
+        ) : timeline.length === 0 ? (
+          <p className="text-sm text-slate-400 text-center py-6">Belum ada aktivitas</p>
+        ) : (
+          <div className="space-y-4">
+            {grouped.map((group) => (
+              <div key={group.date}>
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="flex-1 h-px bg-slate-100" />
+                  <span className="text-xs text-slate-400 font-medium whitespace-nowrap">{group.date}</span>
+                  <div className="flex-1 h-px bg-slate-100" />
+                </div>
+                <div className="relative pl-5">
+                  <div className="absolute left-2 top-0 bottom-0 w-0.5 bg-slate-100" />
+                  <div className="space-y-2">
+                    {group.events.map((ev) => (
+                      <div key={ev.id} className="relative text-sm">
+                        <div className={`absolute -left-[17px] top-1.5 w-2.5 h-2.5 rounded-full ${CATEGORY_DOT[ev.category] ?? "bg-slate-300"}`} />
+                        <div className="flex items-start gap-1.5 min-h-[1.5rem]">
+                          <span className="text-xs text-slate-400 font-mono tabular-nums whitespace-nowrap pt-0.5 shrink-0">
+                            {fmtTime(ev.ts)}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1 flex-wrap">
+                              {auditCategoryIcon(ev.category)}
+                              <span className="text-xs font-medium text-slate-700 leading-snug">{ev.label}</span>
+                            </div>
+                            {ev.detail && (
+                              <p className="text-xs text-slate-500 leading-snug mt-0.5 break-words">{ev.detail}</p>
+                            )}
+                            {ev.actor && (
+                              <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-0.5">
+                                <User className="w-2.5 h-2.5" />
+                                {ev.actor}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ── Add Timeline Note Dialog ───────────────────────────────────────────────────
 
 function AddTimelineNoteDialog({ orderId, onAdded }: { orderId: number; onAdded: () => void }) {
@@ -2164,7 +2327,7 @@ export default function LogisticOrderDetailPage() {
     );
   }
 
-  const { order, vendor, updates, taskLinks, customerLinks, quoteLinks, rfqs, freightShipments = [] } = data;
+  const { order, vendor, taskLinks, customerLinks, quoteLinks, rfqs, freightShipments = [] } = data;
   const activeRfqId = rfqs.find(r => r.status === "vendor_selected" || r.status === "open")?.id ?? rfqs[0]?.id ?? null;
   const hasVendorSelected = !!order.approvedVendorId;
   const quoteStatus = order.customerQuoteStatus;
@@ -3411,78 +3574,10 @@ export default function LogisticOrderDetailPage() {
             />
           </div>
 
-          {/* Right: Timeline + WA Log */}
+          {/* Right: Audit Trail + WA Log */}
           <div className="space-y-4">
             <WaNotificationLogPanel orderNumber={order.orderNumber} />
-            <Card className="sticky top-6">
-              <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm font-semibold text-slate-600 uppercase tracking-wide flex items-center gap-1.5">
-                    <Clock className="w-4 h-4" /> Timeline Aktivitas
-                    <span className="ml-1 text-xs font-normal normal-case text-slate-400">({updates.length})</span>
-                  </CardTitle>
-                  <AddTimelineNoteDialog
-                    orderId={orderId}
-                    onAdded={() => qc.invalidateQueries({ queryKey: ["order-detail", orderId] })}
-                  />
-                </div>
-                <div className="flex gap-2 text-xs text-slate-400 mt-1">
-                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-teal-400 inline-block" />Publik</span>
-                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-400 inline-block" />Internal</span>
-                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400 inline-block" />Error</span>
-                </div>
-              </CardHeader>
-              <CardContent className="max-h-[600px] overflow-y-auto pt-2">
-                {updates.length === 0 ? (
-                  <p className="text-sm text-slate-400 text-center py-6">Belum ada aktivitas</p>
-                ) : (
-                  <div className="relative pl-5">
-                    <div className="absolute left-2 top-0 bottom-0 w-0.5 bg-slate-100" />
-                    <div className="space-y-4">
-                      {updates.map(u => (
-                        <div key={u.id} className="relative text-sm group">
-                          {/* Dot + icon */}
-                          <div className={`absolute -left-[17px] top-0.5 w-3.5 h-3.5 rounded-full border-2 border-white flex items-center justify-center ${timelineDotColor(u)}`} />
-                          <div className="absolute -left-[28px] top-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                            {timelineIcon(u.status)}
-                          </div>
-                          <div className="bg-white rounded-lg border border-slate-100 px-3 py-2 shadow-sm hover:border-slate-200 transition-colors">
-                            {/* Status badge */}
-                            {u.status && (
-                              <div className="flex items-center gap-1.5 mb-1">
-                                {timelineIcon(u.status)}
-                                <span className={`text-xs font-semibold rounded-full px-2 py-0.5 ${STATUS_COLOR[u.status] ?? "bg-slate-100 text-slate-700"}`}>
-                                  {u.status}
-                                </span>
-                                {u.isPublic && (
-                                  <span title="Tampil ke customer" className="ml-auto">
-                                    <Eye className="w-3 h-3 text-teal-500" />
-                                  </span>
-                                )}
-                              </div>
-                            )}
-                            {/* Notes */}
-                            {u.notes && (
-                              <p className="text-slate-700 text-xs leading-relaxed">{u.notes}</p>
-                            )}
-                            {/* Meta */}
-                            <p className="text-xs text-slate-400 mt-1 flex items-center gap-1">
-                              <User className="w-3 h-3" />
-                              {u.actorName ?? u.actorType}
-                              <span className="text-slate-300">·</span>
-                              {dt(u.createdAt)}
-                              {u.isPublic && !u.status && (
-                                <span className="ml-auto"><Eye className="w-3 h-3 text-teal-500" /></span>
-                              )}
-                            </p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+            <AuditTrailPanel orderId={orderId} />
           </div>
         </div>
       </div>
