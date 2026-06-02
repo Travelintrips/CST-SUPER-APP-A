@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Truck, User, Phone, Copy, ExternalLink, Plus, RefreshCw,
   CheckCircle2, XCircle, Clock, Smartphone, MessageCircle,
+  ChevronDown, ChevronUp, Circle, Navigation,
 } from "lucide-react";
 
 interface Driver {
@@ -23,6 +24,14 @@ interface Driver {
   vehiclePlate: string | null;
   vehicleType: string | null;
   isActive: boolean;
+}
+
+interface StatusLog {
+  id: number;
+  driverJobId: number;
+  status: string;
+  note: string | null;
+  timestamp: string;
 }
 
 interface DriverJob {
@@ -50,6 +59,7 @@ interface DriverJob {
   driverPhoneOverride: string | null;
   vehiclePlateOverride: string | null;
   legacySource: string | null;
+  statusLogs?: StatusLog[];
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -78,6 +88,19 @@ const STATUS_COLORS: Record<string, string> = {
   CANCELLED: "bg-red-50 text-red-700 border-red-200",
 };
 
+// Canonical sequence for timeline display
+const TIMELINE_SEQUENCE = [
+  "ASSIGNED",
+  "ACCEPTED",
+  "ON_THE_WAY_TO_PICKUP",
+  "ARRIVED_AT_PICKUP",
+  "PICKED_UP",
+  "IN_TRANSIT",
+  "ARRIVED_AT_DESTINATION",
+  "DELIVERED",
+  "COMPLETED",
+];
+
 async function apiFetch<T>(url: string, opts?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     credentials: "include",
@@ -93,6 +116,9 @@ async function apiFetch<T>(url: string, opts?: RequestInit): Promise<T> {
 
 const dt = (s: string | null | undefined) =>
   s ? new Date(s).toLocaleString("id-ID", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
+
+const dtShort = (s: string | null | undefined) =>
+  s ? new Date(s).toLocaleString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
 
 interface Props {
   orderId: number;
@@ -413,6 +439,128 @@ export function OrderDriverAssignmentPanel({ orderId, orderNumber, customerName,
   );
 }
 
+// ── Job Timeline ──────────────────────────────────────────────────────────────
+
+function JobTimeline({ job }: { job: DriverJob }) {
+  const [expanded, setExpanded] = useState(false);
+  const logs = job.statusLogs ?? [];
+  const isCancelled = job.status === "CANCELLED";
+
+  if (logs.length === 0) return null;
+
+  const loggedStatuses = new Set(logs.map((l) => l.status));
+  const maxReachedIdx = isCancelled
+    ? TIMELINE_SEQUENCE.indexOf(logs.filter((l) => l.status !== "CANCELLED").at(-1)?.status ?? "")
+    : TIMELINE_SEQUENCE.indexOf(job.status);
+
+  const latestLog = logs[logs.length - 1];
+
+  return (
+    <div className="mt-2 border-t border-slate-100 pt-2">
+      <button
+        type="button"
+        className="flex items-center justify-between w-full text-[10px] font-medium text-slate-500 hover:text-slate-700 transition-colors"
+        onClick={() => setExpanded((v) => !v)}
+      >
+        <span className="flex items-center gap-1">
+          <Navigation className="w-3 h-3" />
+          Timeline Pengiriman
+          {isCancelled && <span className="text-red-500 ml-1">(Dibatalkan)</span>}
+        </span>
+        {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+      </button>
+
+      {!expanded && latestLog && (
+        <p className="text-[10px] text-slate-400 mt-0.5 ml-4">
+          Terakhir: {STATUS_LABELS[latestLog.status] ?? latestLog.status} — {dtShort(latestLog.timestamp)}
+        </p>
+      )}
+
+      {expanded && (
+        <div className="mt-2 space-y-0">
+          {TIMELINE_SEQUENCE.map((stepStatus, idx) => {
+            const log = logs.find((l) => l.status === stepStatus);
+            const isReached = loggedStatuses.has(stepStatus);
+            const isCurrent = !isCancelled && job.status === stepStatus;
+            const isPast = isReached && idx <= maxReachedIdx;
+            const isSkipped = !isReached && maxReachedIdx >= 0 && idx < maxReachedIdx;
+
+            let dotColor = "text-slate-200";
+            let lineColor = "bg-slate-100";
+            let textColor = "text-slate-400";
+            if (isPast || isReached) {
+              dotColor = "text-green-500";
+              lineColor = "bg-green-300";
+              textColor = "text-slate-700";
+            }
+            if (isCurrent) {
+              dotColor = "text-indigo-500";
+            }
+            if (isSkipped) {
+              dotColor = "text-slate-300";
+              textColor = "text-slate-400";
+            }
+            if (isCancelled && isReached && stepStatus === "CANCELLED") {
+              dotColor = "text-red-400";
+              textColor = "text-red-500";
+            }
+
+            const isLast = idx === TIMELINE_SEQUENCE.length - 1;
+
+            return (
+              <div key={stepStatus} className="flex items-start gap-2">
+                <div className="flex flex-col items-center">
+                  <Circle
+                    className={`w-3 h-3 shrink-0 mt-0.5 ${dotColor}`}
+                    fill={isPast || isReached ? "currentColor" : "none"}
+                    strokeWidth={2}
+                  />
+                  {!isLast && (
+                    <div className={`w-px flex-1 min-h-[14px] ${lineColor}`} />
+                  )}
+                </div>
+                <div className="pb-1.5 min-w-0">
+                  <p className={`text-[10px] font-medium leading-tight ${textColor}`}>
+                    {STATUS_LABELS[stepStatus] ?? stepStatus}
+                    {isCurrent && <span className="ml-1 text-indigo-500">(Aktif)</span>}
+                  </p>
+                  {log && (
+                    <p className="text-[9px] text-slate-400 leading-tight">
+                      {dtShort(log.timestamp)}
+                      {log.note && log.note !== `Status diperbarui oleh admin` && ` — ${log.note}`}
+                    </p>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+
+          {isCancelled && (
+            <div className="flex items-start gap-2">
+              <div className="flex flex-col items-center">
+                <XCircle className="w-3 h-3 shrink-0 mt-0.5 text-red-400" />
+              </div>
+              <div className="pb-1.5">
+                <p className="text-[10px] font-medium text-red-500">Dibatalkan</p>
+                {logs.find((l) => l.status === "CANCELLED") && (
+                  <p className="text-[9px] text-slate-400">
+                    {dtShort(logs.find((l) => l.status === "CANCELLED")!.timestamp)}
+                    {logs.find((l) => l.status === "CANCELLED")!.note
+                      ? ` — ${logs.find((l) => l.status === "CANCELLED")!.note}`
+                      : ""}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Active Job Card ───────────────────────────────────────────────────────────
+
 function ActiveJobCard({
   job, onCancel, onCopyLink, onOpenLink, displayDriverName, displayPhone, displayPlate,
 }: {
@@ -432,7 +580,7 @@ function ActiveJobCard({
   return (
     <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
       <div className="flex items-center justify-between px-3 py-2 bg-slate-50 border-b border-slate-100">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="text-xs font-mono text-slate-500">{job.jobNumber}</span>
           <Badge variant="outline" className={`text-[10px] h-4 px-1.5 ${statusColor}`}>{statusLabel}</Badge>
           {isInternal ? (
@@ -449,7 +597,7 @@ function ActiveJobCard({
           <button
             type="button"
             onClick={() => onCancel(job.id)}
-            className="text-[10px] text-red-500 hover:text-red-700 flex items-center gap-0.5"
+            className="text-[10px] text-red-500 hover:text-red-700 flex items-center gap-0.5 shrink-0 ml-2"
           >
             <XCircle className="w-3 h-3" /> Batalkan
           </button>
@@ -496,25 +644,43 @@ function ActiveJobCard({
             </div>
           </div>
         )}
+
+        <JobTimeline job={job} />
       </div>
     </div>
   );
 }
 
+// ── Past Job Row ──────────────────────────────────────────────────────────────
+
 function PastJobRow({ job, displayDriverName }: { job: DriverJob; displayDriverName: (j: DriverJob) => string }) {
+  const [showTimeline, setShowTimeline] = useState(false);
   const statusLabel = STATUS_LABELS[job.status] ?? job.status;
   const isCompleted = job.status === "COMPLETED";
 
   return (
-    <div className="flex items-center gap-2 px-2.5 py-1.5 rounded border border-slate-100 bg-slate-50 text-xs">
-      {isCompleted ? (
-        <CheckCircle2 className="w-3.5 h-3.5 text-green-500 shrink-0" />
-      ) : (
-        <XCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />
+    <div className="rounded border border-slate-100 bg-slate-50 text-xs overflow-hidden">
+      <div
+        className="flex items-center gap-2 px-2.5 py-1.5 cursor-pointer hover:bg-slate-100 transition-colors"
+        onClick={() => job.statusLogs && job.statusLogs.length > 0 && setShowTimeline((v) => !v)}
+      >
+        {isCompleted ? (
+          <CheckCircle2 className="w-3.5 h-3.5 text-green-500 shrink-0" />
+        ) : (
+          <XCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />
+        )}
+        <span className="font-mono text-slate-400">{job.jobNumber}</span>
+        <span className="text-slate-600 flex-1 truncate">{displayDriverName(job)}</span>
+        <span className={`text-[10px] ${isCompleted ? "text-green-600" : "text-red-500"}`}>{statusLabel}</span>
+        {job.statusLogs && job.statusLogs.length > 0 && (
+          showTimeline ? <ChevronUp className="w-3 h-3 text-slate-400" /> : <ChevronDown className="w-3 h-3 text-slate-400" />
+        )}
+      </div>
+      {showTimeline && job.statusLogs && job.statusLogs.length > 0 && (
+        <div className="px-3 pb-2 border-t border-slate-100">
+          <JobTimeline job={{ ...job, statusLogs: job.statusLogs }} />
+        </div>
       )}
-      <span className="font-mono text-slate-400">{job.jobNumber}</span>
-      <span className="text-slate-600 flex-1 truncate">{displayDriverName(job)}</span>
-      <span className={`text-[10px] ${isCompleted ? "text-green-600" : "text-red-500"}`}>{statusLabel}</span>
     </div>
   );
 }

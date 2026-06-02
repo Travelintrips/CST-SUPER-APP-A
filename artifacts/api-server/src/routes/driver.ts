@@ -959,6 +959,174 @@ adminRouter.get("/performance", async (req, res) => {
   res.json({ from: fromDate.toISOString(), to: toDate.toISOString(), drivers: result });
 });
 
+// PATCH /api/drivers/jobs/:jobId/status — admin force-update + cancel (INTERNAL & EXTERNAL)
+adminRouter.patch("/jobs/:jobId/status", async (req, res) => {
+  const jobId = Number(req.params.jobId);
+  if (isNaN(jobId)) { res.status(400).json({ message: "Invalid jobId" }); return; }
+  const { status, note, force } = req.body ?? {};
+  if (!status) { res.status(400).json({ message: "status wajib diisi" }); return; }
+
+  const [currentJob] = await db.select().from(driverJobsTable).where(eq(driverJobsTable.id, jobId));
+  if (!currentJob) { res.status(404).json({ message: "Job tidak ditemukan" }); return; }
+
+  const newStatus = String(status);
+
+  // Cannot update already-terminal unless force=true
+  if (!force && (currentJob.status === "COMPLETED" || currentJob.status === "CANCELLED")) {
+    res.status(400).json({ message: "Job sudah dalam status terminal (COMPLETED/CANCELLED). Gunakan force=true untuk override." });
+    return;
+  }
+
+  // Validate transition — CANCELLED selalu diizinkan dari status apapun; force bypass validasi
+  if (!force && newStatus !== "CANCELLED") {
+    const allowed = VALID_TRANSITIONS[currentJob.status] ?? [];
+    if (!allowed.includes(newStatus)) {
+      res.status(400).json({
+        message: `Transisi tidak valid: ${currentJob.status} → ${newStatus}`,
+        currentStatus: currentJob.status,
+        allowedTransitions: allowed,
+      });
+      return;
+    }
+  }
+
+  const completedAt = newStatus === "COMPLETED" ? new Date() : null;
+  const [updated] = await db
+    .update(driverJobsTable)
+    .set({ status: newStatus as typeof currentJob.status, ...(completedAt ? { completedAt } : {}) })
+    .where(eq(driverJobsTable.id, jobId))
+    .returning();
+
+  await db.insert(driverJobLogsTable).values({
+    driverJobId: jobId,
+    status: newStatus as typeof currentJob.status,
+    note: note ? String(note) : `Status diperbarui oleh admin${force ? " (force)" : ""}`,
+    timestamp: new Date(),
+  });
+
+  await syncParentFreightStatus(updated.freightShipmentId, newStatus);
+  await syncDriverToLogisticOrder(updated.logisticOrderId, newStatus);
+
+  // updateOrderProgress — berlaku untuk INTERNAL (driverId null) maupun EXTERNAL
+  const progressStep = DRIVER_STATUS_TO_PROGRESS_STEP[newStatus];
+  if (progressStep && updated.logisticOrderId) {
+    let driverDisplayName = updated.driverNameOverride ?? "Driver Internal";
+    if (updated.driverId) {
+      const [driverRow] = await db.select({ name: driversTable.name }).from(driversTable).where(eq(driversTable.id, updated.driverId));
+      driverDisplayName = driverRow?.name ?? "Driver";
+    }
+    updateOrderProgress(
+      updated.logisticOrderId,
+      progressStep,
+      "driver",
+      driverDisplayName,
+      note ? String(note) : `Admin update: ${newStatus}`,
+    ).catch(() => {});
+  }
+
+  if (updated.logisticOrderId) {
+    logActivity({
+      orderId: updated.logisticOrderId,
+      actorType: "admin",
+      action: "driver_status_updated",
+      description: `Admin update status driver job: ${currentJob.status} → ${newStatus}${force ? " (force)" : ""}${note ? ` — ${note}` : ""}`,
+      newValue: { jobId, jobNumber: updated.jobNumber, status: newStatus, previousStatus: currentJob.status },
+    }).catch(() => {});
+  }
+
+  // Broadcast SSE ke admin
+  broadcastToAdmins("job_status_changed", {
+    jobId,
+    jobNumber: updated.jobNumber,
+    status: newStatus,
+    updatedAt: new Date().toISOString(),
+    source: "admin",
+  });
+
+  // WA ke admin (group) untuk semua milestone penting + CANCELLED
+  if (["PICKED_UP", "DELIVERED", "COMPLETED", "CANCELLED"].includes(newStatus)) {
+    (async () => {
+      try {
+        const driverDisplay = updated.driverType === "INTERNAL"
+          ? (updated.driverNameOverride ?? "Driver Internal")
+          : (() => { return "Driver"; })();
+
+        let driverName = driverDisplay;
+        if (updated.driverId) {
+          const [driverRow] = await db.select({ name: driversTable.name }).from(driversTable).where(eq(driversTable.id, updated.driverId));
+          driverName = driverRow?.name ?? driverDisplay;
+        }
+
+        let orderNumber = "-";
+        let customerName = "-";
+        let customerPhone: string | null = null;
+        if (updated.logisticOrderId) {
+          const [orderRow] = await db.select({
+            orderNumber: logisticOrdersTable.orderNumber,
+            customerName: logisticOrdersTable.customerName,
+            phone: logisticOrdersTable.phone,
+          }).from(logisticOrdersTable).where(eq(logisticOrdersTable.id, updated.logisticOrderId));
+          if (orderRow) {
+            orderNumber = orderRow.orderNumber ?? "-";
+            customerName = orderRow.customerName ?? "-";
+            customerPhone = orderRow.phone ?? null;
+          }
+        }
+
+        const adminGroupWa = await getAdminGroupWa();
+        if (adminGroupWa) {
+          const emoji = newStatus === "CANCELLED" ? "❌" : newStatus === "COMPLETED" ? "✅" : "🚚";
+          const statusLabel = STATUS_LABEL_ID[newStatus] ?? newStatus;
+          const msg = [
+            `${emoji} *Update Driver — ${updated.jobNumber}*`,
+            ``,
+            `👤 Driver: ${driverName}`,
+            `📦 Order: ${orderNumber} (${customerName})`,
+            `📍 Status: *${statusLabel}*`,
+            force ? `⚡ Mode: Force Update` : null,
+            note ? `📝 Catatan: ${note}` : null,
+            `🕐 ${nowWIB()}`,
+          ].filter(Boolean).join("\n");
+          sendWhatsApp(adminGroupWa, msg).catch(() => {});
+        }
+
+        // WA ke customer untuk PICKED_UP dan DELIVERED
+        if (["PICKED_UP", "DELIVERED"].includes(newStatus) && customerPhone) {
+          const domain = getPreferredDomain() || "cstlogistic.co.id";
+          const stepLabel = newStatus === "PICKED_UP" ? "Barang Berhasil Diambil" : "Barang Telah Terkirim";
+          const customerMsg = [
+            `🚚 *Update Pengiriman — CST Logistics*`,
+            ``,
+            `Halo ${customerName},`,
+            ``,
+            `Order *${orderNumber}* telah diperbarui:`,
+            `📍 Status: *${stepLabel}*`,
+            driverName !== "Driver" && driverName !== "Driver Internal" ? `👤 Driver: ${driverName}` : null,
+            note ? `📝 Catatan: ${note}` : null,
+            ``,
+            `Pantau pengiriman:\nhttps://${domain}/track`,
+          ].filter(Boolean).join("\n");
+          sendWhatsApp(customerPhone, customerMsg).catch(() => {});
+        }
+      } catch {
+        // non-fatal
+      }
+    })();
+  }
+
+  const logs = await db
+    .select()
+    .from(driverJobLogsTable)
+    .where(eq(driverJobLogsTable.driverJobId, jobId))
+    .orderBy(driverJobLogsTable.timestamp);
+
+  res.json({
+    ...serializeJob(updated),
+    statusLogs: logs.map((l) => ({ ...l, timestamp: l.timestamp.toISOString() })),
+    validNextStatuses: VALID_TRANSITIONS[newStatus] ?? [],
+  });
+});
+
 // GET /api/drivers/jobs/list — list all driver jobs (admin)
 // IMPORTANT: must be registered BEFORE /:id to avoid Express swallowing it
 adminRouter.get("/jobs/list", async (req, res) => {

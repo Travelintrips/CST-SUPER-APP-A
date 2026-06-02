@@ -8,7 +8,7 @@ import { updateOrderProgress } from "../lib/orderProgress.js";
 import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getPreferredDomain } from "../lib/domain.js";
-import { getAdminWa } from "../lib/adminWa.js";
+import { getAdminWa, getAdminGroupWa } from "../lib/adminWa.js";
 import { sendVendorPodUploadedNotification } from "../lib/orderNotification.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { logger } from "../lib/logger.js";
@@ -283,6 +283,32 @@ driverProgressPublicRouter.post("/:token", async (req: Request, res: Response) =
             `📍 Status: *${STEP_LABEL[String(stepKey)] ?? stepKey}*\n\n` +
             `Pantau pengiriman:\nhttps://${domain}/track`;
           sendWhatsApp(order.phone, waMsg).catch(() => {});
+        }
+      } catch {
+        // non-fatal
+      }
+    }
+
+    // WA ke admin group untuk PICKUP dan DELIVERED (via WA Mini Form / INTERNAL driver)
+    if (["PICKUP", "DELIVERED"].includes(String(stepKey))) {
+      try {
+        const [order] = await db.select({
+          orderNumber: logisticOrdersTable.orderNumber,
+          customerName: logisticOrdersTable.customerName,
+        }).from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
+        const adminGroupWa = await getAdminGroupWa();
+        if (adminGroupWa && order) {
+          const emoji = String(stepKey) === "DELIVERED" ? "📦" : "🚚";
+          const statusLabel = STEP_LABEL[String(stepKey)] ?? String(stepKey);
+          const msg = [
+            `${emoji} *Update Driver (WA Mini Form)*`,
+            ``,
+            `👤 Driver: ${driverName}`,
+            `📦 Order: ${order.orderNumber ?? "-"} (${order.customerName ?? "-"})`,
+            `📍 Status: *${statusLabel}*`,
+            note ? `📝 Catatan: ${note}` : null,
+          ].filter(Boolean).join("\n");
+          sendWhatsApp(adminGroupWa, msg).catch(() => {});
         }
       } catch {
         // non-fatal
