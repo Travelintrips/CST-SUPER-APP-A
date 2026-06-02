@@ -1,0 +1,75 @@
+Tujuan: Verifikasi semua metrics, Top Fasilitas, Booking Terbaru, dan Realtime di dashboard Sport Center BizPortal.
+
+1. **Metrics Validation**
+   - Ambil data langsung dari Supabase untuk:
+     - `sport_center_bookings`
+     - `sport_center_services`
+     - `sport_center_facilities`
+   - Hitung metrics:
+     - totalBookings
+     - bookingHariIni
+     - pendingPayment
+     - pelangganUnik
+     - layananAktif
+     - totalRevenue
+     - revenueBulanIni
+     - bookingPerStatus
+   - Cocokkan hasil frontend vs query Supabase. Laporkan mismatch.
+
+2. **Top Fasilitas**
+   - Ambil 5 fasilitas teratas berdasarkan revenue_total + enrichment booking aggregation
+   - Pastikan nama fasilitas, jumlah booking, category, price_per_hour muncul benar
+
+3. **Booking Terbaru**
+   - Ambil 5 booking terbaru (order by created_at DESC)
+   - Cocokkan No Booking, Pelanggan, Fasilitas, Tanggal, Status, Total
+
+4. **Realtime Testing**
+   - Tambah booking baru → cek metrics & Booking Terbaru auto-update
+   - Edit booking → metrics & Top Fasilitas auto-update
+   - Hapus booking → metrics & Top Fasilitas auto-update
+   - Tambah / edit service → Layanan Aktif & Top Fasilitas auto-update
+   - Pastikan badge "Realtime aktif (N)" muncul
+
+5. **Error Handling**
+   - Simulasikan fetch gagal → pastikan card merah muncul dengan tombol "Coba lagi"
+   - Kosongkan tabel → tampilkan empty state “Belum ada data” / “Belum ada booking”
+
+6. **Console Logging**
+   - Pastikan console menampilkan:
+     - Semua metrics saat fetch sukses
+     - Update realtime
+     - Error fetch (jika terjadi)
+
+7. **Fallback Data**
+   - Jika Supabase kosong → data fallback dari PostgreSQL lokal muncul
+   - Metrics tetap dihitung dari fallback
+
+8. **Icons & UI**
+   - Verifikasi icons Dumbbell, ShoppingBag, RefreshCw tampil benar
+   - Pastikan stat cards, badges, dan tabel Booking Terbaru sesuai desain
+
+9. **RLS & Policies**
+   - Pastikan RLS policies tetap aktif
+   - Anon SELECT berjalan, tidak ada error akses
+
+10. **Output QA**
+    - Generate laporan:
+      - Metrics: ✔ / ✖
+      - Top Fasilitas: ✔ / ✖
+      - Booking Terbaru: ✔ / ✖
+      - Realtime update: ✔ / ✖
+      - Error handling: ✔ / ✖
+      - Console logs: ✔ / ✖
+      - Icons/UI: ✔ / ✖
+      - Fallback data: ✔ / ✖
+    - Screenshot dashboard sebelum dan sesudah test
+    - Capture console log untuk semua step
+
+11. **Automasi**
+    - Jalankan script otomatis yang:
+      - Query Supabase
+      - Verifikasi metrics, Top Fasilitas, Booking Terbaru
+      - Simulasikan insert/update/delete
+      - Validasi update realtime
+      - Capture screenshot & console log
