@@ -1,13 +1,15 @@
 /**
  * sportSyncNotifier.ts
- * Kirim notifikasi WhatsApp ke admin group jika sinkronisasi fasilitas Sport Center gagal
+ * Kirim notifikasi WhatsApp ke admin group jika sinkronisasi Sport Center gagal
  * setelah semua retry habis.
  *
  * Dedup: Fonnte built-in DEDUP_WINDOW_MS (default 30 menit) via context + refId.
  * Aturan:
- *  - Error single fasilitas   → context="sport_sync_error" refId="facility_<id>"
- *  - Error bulk resync         → context="sport_sync_error" refId="bulk_resync"
- *  - Error delete fasilitas   → context="sport_sync_error" refId="delete_<id>"
+ *  - Error single fasilitas      → context="sport_sync_error" refId="facility_upsert_<id>"
+ *  - Error delete fasilitas      → context="sport_sync_error" refId="facility_delete_<id>"
+ *  - Error bulk resync fasilitas → context="sport_sync_error" refId="bulk_facility_resync"
+ *  - Error single booking        → context="sport_sync_error" refId="booking_upsert_<id>"
+ *  - Error bulk resync booking   → context="sport_sync_error" refId="bulk_booking_resync"
  */
 
 import { sendViaService } from "../../lib/waTransport.js";
@@ -16,9 +18,12 @@ import { logger } from "../../lib/logger.js";
 
 const PREFIX = "[SportSyncNotifier]";
 
+export type SyncEntity = "facility" | "booking";
+
 export interface SyncErrorEntry {
-  facilityId: number | null;
-  facilityName: string;
+  entity: SyncEntity;
+  entityId: number | null;
+  entityName: string;
   action: "upsert" | "delete" | "resync";
   error: string;
 }
@@ -31,19 +36,24 @@ function fmtNow(): string {
   }).format(new Date());
 }
 
+function entityLabel(entity: SyncEntity): string {
+  return entity === "facility" ? "fasilitas" : "booking";
+}
+
 function buildMessage(errors: SyncErrorEntry[]): string {
   const ts = fmtNow();
+  const entity = errors[0]?.entity ?? "facility";
   const isBulk = errors.length > 1 || errors.some(e => e.action === "resync");
 
   if (isBulk) {
     const lines = errors
-      .map(e => `❌ ${e.facilityName}${e.facilityId ? ` (ID: ${e.facilityId})` : ""}: ${e.error}`)
+      .map(e => `❌ ${e.entityName}${e.entityId ? ` (ID: ${e.entityId})` : ""}: ${e.error}`)
       .join("\n");
     return (
       `🚨 *Sport Center Sync Error*\n\n` +
       `Waktu: ${ts} WIB\n` +
-      `Aksi: resync semua fasilitas\n` +
-      `Total gagal: ${errors.length} fasilitas\n\n` +
+      `Aksi: resync semua ${entityLabel(entity)}\n` +
+      `Total gagal: ${errors.length} ${entityLabel(entity)}\n\n` +
       `${lines}\n\n` +
       `Cek riwayat di BizPortal → Sport Center → Dashboard.`
     );
@@ -54,11 +64,20 @@ function buildMessage(errors: SyncErrorEntry[]): string {
   return (
     `🚨 *Sport Center Sync Error*\n\n` +
     `Waktu: ${ts} WIB\n` +
-    `Aksi: ${aksiLabel} fasilitas\n` +
-    `Fasilitas: ${e.facilityName}${e.facilityId ? ` (ID: ${e.facilityId})` : ""}\n\n` +
+    `Aksi: ${aksiLabel} ${entityLabel(entity)}\n` +
+    `${entity === "facility" ? "Fasilitas" : "Booking"}: ${e.entityName}${e.entityId ? ` (ID: ${e.entityId})` : ""}\n\n` +
     `❌ Error: ${e.error}\n\n` +
     `Cek riwayat di BizPortal → Sport Center → Dashboard.`
   );
+}
+
+function buildRefId(errors: SyncErrorEntry[]): string {
+  const entity = errors[0]?.entity ?? "facility";
+  const isBulk = errors.length > 1 || errors[0]?.action === "resync";
+  if (isBulk) return `bulk_${entity}_resync`;
+  const firstId = errors[0]?.entityId;
+  const firstAction = errors[0]?.action ?? "upsert";
+  return `${entity}_${firstAction}_${firstId ?? "unknown"}`;
 }
 
 /**
@@ -81,14 +100,7 @@ export async function notifySyncError(errors: SyncErrorEntry[]): Promise<void> {
   }
 
   const message = buildMessage(errors);
-
-  // dedup key: bulk pakai "bulk_resync", single pakai action_facilityId
-  const isBulk = errors.length > 1 || errors[0]?.action === "resync";
-  const firstId = errors[0]?.facilityId;
-  const firstAction = errors[0]?.action ?? "upsert";
-  const refId = isBulk
-    ? "bulk_resync"
-    : `${firstAction}_${firstId ?? "unknown"}`;
+  const refId = buildRefId(errors);
 
   try {
     await sendViaService(adminGroup, message, {
@@ -96,7 +108,7 @@ export async function notifySyncError(errors: SyncErrorEntry[]): Promise<void> {
       refType: "sport_sync",
       refId,
     });
-    logger.info({ refId, facilityCount: errors.length }, `${PREFIX} notifikasi WA terkirim`);
+    logger.info({ refId, count: errors.length }, `${PREFIX} notifikasi WA terkirim`);
   } catch (err) {
     logger.error({ err, refId }, `${PREFIX} gagal mengirim notifikasi WA`);
   }

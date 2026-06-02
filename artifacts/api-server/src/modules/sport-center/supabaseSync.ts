@@ -206,8 +206,9 @@ export async function syncFacilityUpsert(row: FacilityRow): Promise<void> {
   });
   if (hasError) {
     void notifySyncError([{
-      facilityId: row.id,
-      facilityName: row.name,
+      entity: "facility",
+      entityId: row.id,
+      entityName: row.name,
       action: "upsert",
       error: errorMessages.join("; "),
     }]);
@@ -267,8 +268,9 @@ export async function syncFacilityDelete(id: number, name: string, companyId?: n
   });
   if (hasError) {
     void notifySyncError([{
-      facilityId: id,
-      facilityName: name,
+      entity: "facility",
+      entityId: id,
+      entityName: name,
       action: "delete",
       error: errorMessages.join("; "),
     }]);
@@ -330,8 +332,16 @@ export async function syncBookingUpsert(row: BookingRow): Promise<void> {
     });
     void writeSyncLog({ entity: "booking", action: "upsert", entityId: row.id, status: "ok", companyId: row.company_id });
   } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
     console.error(`${PREFIX} booking upsert gagal:`, err);
-    void writeSyncLog({ entity: "booking", action: "upsert", entityId: row.id, status: "error", detail: String(err), companyId: row.company_id });
+    void writeSyncLog({ entity: "booking", action: "upsert", entityId: row.id, status: "error", detail: errMsg, companyId: row.company_id });
+    void notifySyncError([{
+      entity: "booking",
+      entityId: row.id,
+      entityName: `${row.booking_number} — ${row.customer_name} (${row.facility_name})`,
+      action: "upsert",
+      error: errMsg,
+    }]);
   }
 }
 
@@ -353,8 +363,9 @@ export async function syncAllFacilities(): Promise<{ synced: number; errors: num
     if (rowHasError) {
       errors++;
       failedEntries.push({
-        facilityId: row.id,
-        facilityName: row.name,
+        entity: "facility",
+        entityId: row.id,
+        entityName: row.name,
         action: "resync",
         error: rowErrors.join("; "),
       });
@@ -387,18 +398,81 @@ export async function syncAllBookings(): Promise<{ synced: number; errors: numbe
   const rows = result.rows as BookingRow[];
   let synced = 0;
   let errors = 0;
+  const failedEntries: import("./sportSyncNotifier.js").SyncErrorEntry[] = [];
 
   for (const row of rows) {
+    let client: import("@supabase/supabase-js").SupabaseClient | null = null;
     try {
-      await syncBookingUpsert(row);
+      const { supabaseAdmin } = await import("../../lib/supabaseAdmin.js");
+      client = supabaseAdmin as unknown as import("@supabase/supabase-js").SupabaseClient;
+    } catch { }
+
+    const payload = {
+      booking_code: row.booking_number,
+      customer_name: row.customer_name,
+      customer_phone: row.customer_phone ?? null,
+      facility_name: row.facility_name,
+      date: row.booking_date,
+      start_time: row.start_time,
+      end_time: row.end_time,
+      total_hours: Number(row.duration_hours ?? 1),
+      total_price: Number(row.total_amount ?? 0),
+      status: row.status,
+      payment_status: row.payment_status ?? "unpaid",
+      notes: row.notes ?? null,
+      updated_at: new Date().toISOString(),
+    };
+
+    try {
+      await retry(async () => {
+        if (client) {
+          const { error } = await (client as any)
+            .from("sport_center_bookings")
+            .upsert(payload, { onConflict: "booking_code" });
+          if (error) throw new Error(error.message);
+        } else {
+          await db.execute(sql`
+            INSERT INTO sport_center_bookings
+              (booking_code, customer_name, customer_phone, facility_name, date, start_time, end_time, total_hours, total_price, status, payment_status, notes, updated_at)
+            VALUES
+              (${payload.booking_code}, ${payload.customer_name}, ${payload.customer_phone}, ${payload.facility_name}, ${payload.date}::date, ${payload.start_time}::time, ${payload.end_time}::time, ${payload.total_hours}, ${payload.total_price}, ${payload.status}, ${payload.payment_status}, ${payload.notes}, NOW())
+            ON CONFLICT (booking_code) DO UPDATE SET
+              customer_name  = EXCLUDED.customer_name,
+              facility_name  = EXCLUDED.facility_name,
+              status         = EXCLUDED.status,
+              payment_status = EXCLUDED.payment_status,
+              updated_at     = NOW()
+          `);
+        }
+      });
+      void writeSyncLog({ entity: "booking", action: "upsert", entityId: row.id, status: "ok", companyId: row.company_id });
       synced++;
-    } catch {
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      console.error(`${PREFIX} bulk booking upsert gagal id=${row.id}:`, err);
+      void writeSyncLog({ entity: "booking", action: "upsert", entityId: row.id, status: "error", detail: errMsg, companyId: row.company_id });
       errors++;
+      failedEntries.push({
+        entity: "booking",
+        entityId: row.id,
+        entityName: `${row.booking_number} — ${row.customer_name} (${row.facility_name})`,
+        action: "resync",
+        error: errMsg,
+      });
     }
   }
 
   console.log(`${PREFIX} full booking sync: ${synced} OK, ${errors} gagal dari ${rows.length} total`);
-  void writeSyncLog({ entity: "booking", action: "resync", entityId: null, status: errors === 0 ? "ok" : "error", detail: `${synced}/${rows.length} OK` });
+  void writeSyncLog({
+    entity: "booking", action: "resync", entityId: null,
+    status: errors === 0 ? "ok" : "error",
+    detail: `${synced}/${rows.length} OK${errors > 0 ? ` — ${errors} gagal` : ""}`,
+  });
+
+  if (failedEntries.length > 0) {
+    void notifySyncError(failedEntries);
+  }
+
   return { synced, errors, total: rows.length };
 }
 
