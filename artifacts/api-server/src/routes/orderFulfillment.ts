@@ -22,7 +22,8 @@ import {
 } from "@workspace/db";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
-import { getAdminWa } from "../lib/adminWa.js";
+import { getAdminWa, getAdminGroupWa } from "../lib/adminWa.js";
+import { normalizePhone } from "../lib/phoneUtils.js";
 import { getPreferredDomain } from "../lib/domain.js";
 import { logger } from "../lib/logger.js";
 import { resolveServiceCategory } from "@workspace/logistics-constants";
@@ -578,7 +579,7 @@ fulfillmentPublicRouter.post("/:token", async (req: Request, res: Response) => {
     // Notify admin via WA
     const adminWa = await getAdminWa();
     if (adminWa) {
-      const adminLink = `${getBaseUrl()}/logistic-admin/orders/${link.orderId}`;
+      const adminLink = `${getBaseUrl()}/bizportal/logistics/orders/${link.orderId}`;
       const waMsg =
         `✅ *Vendor Mengisi Form Fulfillment*\n\n` +
         `Order: *${order.orderNumber}*\n` +
@@ -589,6 +590,62 @@ fulfillmentPublicRouter.post("/:token", async (req: Request, res: Response) => {
       sendWhatsApp(adminWa, waMsg).catch((e) =>
         logger.warn({ e }, "fulfillment WA to admin failed")
       );
+    }
+
+    // ── WA ke driver (legacy path: order_fulfillment_links) ───────────────────
+    const _driverPhoneRawOF = String((body as any).driverPhone ?? "").trim();
+    const _driverPhoneOF    = _driverPhoneRawOF ? normalizePhone(_driverPhoneRawOF) : "";
+    const driverNameOF      = String((body as any).driverName ?? "Driver").trim();
+    logger.info({
+      orderId:          link.orderId,
+      orderNumber:      order.orderNumber,
+      fulfillmentType:  link.serviceType,
+      svcCategory:      resolveServiceCategory(link.serviceType),
+      driverPhoneRaw:   _driverPhoneRawOF  || "(kosong)",
+      driverPhoneNorm:  _driverPhoneOF     || "(kosong)",
+      driverName:       driverNameOF       || "(kosong)",
+      plateNumber:      String((body as any).plateNumber ?? "") || "(kosong)",
+      vehicleType:      String((body as any).vehicleType ?? "") || "(kosong)",
+      pickupTime:       String((body as any).pickupTime  ?? "") || "(kosong)",
+    }, "[WA-driver] orderFulfillment (legacy) cek kirim WA ke driver");
+
+    if (_driverPhoneOF) {
+      const driverAppUrl = `${getBaseUrl()}/driver`;
+      const waDriver = [
+        `🚛 *Konfirmasi Job Order*`,
+        ``,
+        `Halo *${driverNameOF}*,`,
+        `Anda telah dikonfirmasi untuk menjalankan pengiriman berikut:`,
+        ``,
+        `📦 *Order*    : ${order.orderNumber}`,
+        `📍 *Rute*     : ${order.origin} → ${order.destination}`,
+        String((body as any).plateNumber ?? "").trim() ? `🚗 *Plat*      : ${String((body as any).plateNumber).trim()}` : null,
+        String((body as any).vehicleType ?? "").trim() ? `🚐 *Kendaraan* : ${String((body as any).vehicleType).trim()}` : null,
+        String((body as any).pickupTime  ?? "").trim() ? `🕐 *Pickup*    : ${String((body as any).pickupTime).trim()}` : null,
+        ``,
+        `📱 Driver App: ${driverAppUrl}`,
+      ].filter(Boolean).join("\n");
+
+      logger.info({
+        orderId:         link.orderId,
+        driverPhoneRaw:  _driverPhoneRawOF,
+        driverPhoneNorm: _driverPhoneOF,
+        driverName:      driverNameOF || "(kosong)",
+      }, "[WA-driver] orderFulfillment (legacy) mengirim WA ke driver...");
+
+      sendWhatsApp(_driverPhoneOF, waDriver, {
+        context: "fulfillment-driver-assigned",
+        refType:  "order_fulfillment_link",
+        refId:    String(link.id),
+      })
+        .then(() => logger.info({ orderId: link.orderId, driverPhoneNorm: _driverPhoneOF, orderNumber: order.orderNumber }, "[WA-driver] orderFulfillment (legacy) WA ke driver BERHASIL"))
+        .catch((e) => logger.error({ e, orderId: link.orderId, driverPhoneNorm: _driverPhoneOF, orderNumber: order.orderNumber }, "[WA-driver] orderFulfillment (legacy) WA ke driver GAGAL"));
+    } else {
+      logger.info({
+        orderId:         link.orderId,
+        skip_reason:     "driverPhone kosong",
+        fulfillmentType: link.serviceType,
+      }, "[WA-driver] orderFulfillment (legacy) skip — tidak kirim WA ke driver");
     }
 
     updateOrderProgress(link.orderId, "VENDOR_FULFILLMENT_CONFIRMED", "vendor_wa", "Vendor",
@@ -856,6 +913,37 @@ fulfillmentAdminRouter.post(
           logger.warn({ e }, "POD WA to customer failed")
         );
       }
+
+      // WA ke admin group — prompt terbitkan invoice
+      void (async () => {
+        try {
+          const adminGroupWa = await getAdminGroupWa();
+          if (!adminGroupWa) return;
+          const domain = getPreferredDomain() || "cstlogistic.co.id";
+          const orderDetailUrl = `https://${domain}/bizportal/logistics/orders/${orderId}`;
+          const ln = "\n";
+          const sep = "━━━━━━━━━━━━━━━━━━";
+          const adminMsg =
+            `📷 *POD Diunggah — Tindakan Diperlukan*` + ln + sep + ln +
+            `No. Order   : \`${order.orderNumber}\`` + ln +
+            `Customer    : ${order.customerName}` + ln +
+            ((order.origin && order.destination) ? `Rute        : ${order.origin} → ${order.destination}` + ln : "") +
+            (receiverName ? `Penerima    : ${receiverName}` + ln : "") +
+            (note ? `Catatan     : ${note}` + ln : "") +
+            sep + ln +
+            `📋 *Langkah Selanjutnya:*` + ln +
+            `1️⃣  Terbitkan invoice ke customer (Invoice Diterbitkan)` + ln +
+            `2️⃣  Konfirmasi pembayaran diterima (Pembayaran Diterima)` + ln +
+            `3️⃣  Tandai order sebagai Selesai` + ln +
+            sep + ln +
+            `🔗 Detail order:` + ln + orderDetailUrl;
+          sendWhatsApp(adminGroupWa, adminMsg).catch((e) =>
+            logger.warn({ e }, "POD admin group WA failed — non-fatal")
+          );
+        } catch (e) {
+          logger.warn({ e }, "POD admin group WA setup failed — non-fatal");
+        }
+      })();
 
       logger.info({ orderId, photoUrl }, "POD submitted, status → POD Uploaded");
       return res.json({ ok: true, photoUrl });

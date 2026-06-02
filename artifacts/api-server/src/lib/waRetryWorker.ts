@@ -16,9 +16,11 @@
  */
 
 import { db } from "@workspace/db";
+import { sql } from "drizzle-orm";
 import { notificationLogsTable } from "@workspace/db/schema";
 import { and, eq, isNull, lte, lt, or } from "drizzle-orm";
 import { logger } from "./logger.js";
+import { getPreferredDomain } from "./domain.js";
 
 const FONNTE_TOKEN = process.env.FONNTE_TOKEN ?? "";
 const FONNTE_URL   = "https://api.fonnte.com/send";
@@ -67,6 +69,38 @@ async function fonnteRawSend(
   }
 }
 
+function toAbsoluteMediaUrl(mediaUrl: string | null | undefined): string | null | undefined {
+  if (!mediaUrl?.trim()) return mediaUrl;
+  if (mediaUrl.startsWith("http://") || mediaUrl.startsWith("https://")) return mediaUrl;
+  // Relative URL — convert to absolute
+  const domain = process.env.REPLIT_DEV_DOMAIN || getPreferredDomain() || "cstlogistic.co.id";
+  return `https://${domain}${mediaUrl.startsWith("/") ? "" : "/"}${mediaUrl}`;
+}
+
+async function fixRelativeMediaUrls(): Promise<void> {
+  try {
+    const domain = process.env.REPLIT_DEV_DOMAIN || getPreferredDomain() || "cstlogistic.co.id";
+    const prefix = `https://${domain}`;
+    const result = await db.execute(sql`
+      UPDATE notification_logs
+      SET media_url    = CONCAT(${prefix}::text, media_url),
+          retry_count  = GREATEST(retry_count - 1, 0),
+          next_retry_at = NULL,
+          error_msg    = 'reset: relative media_url fixed'
+      WHERE channel = 'wa'
+        AND status = 'failed'
+        AND media_url IS NOT NULL
+        AND media_url NOT LIKE 'http%'
+    `);
+    const count = (result as any).rowCount ?? 0;
+    if (count > 0) {
+      logger.info({ count }, "[waRetryWorker] fixed relative media_url entries (reset for retry)");
+    }
+  } catch (err) {
+    logger.warn({ err }, "[waRetryWorker] fixRelativeMediaUrls error (non-fatal)");
+  }
+}
+
 async function runRetryTick(): Promise<void> {
   try {
     const now = new Date();
@@ -100,7 +134,8 @@ async function runRetryTick(): Promise<void> {
     logger.info({ count: rows.length }, "[waRetryWorker] processing failed WA entries");
 
     for (const row of rows) {
-      const { ok, errorMsg, waMessageId } = await fonnteRawSend(row.recipient, row.message, row.mediaUrl);
+      const absoluteMediaUrl = toAbsoluteMediaUrl(row.mediaUrl);
+      const { ok, errorMsg, waMessageId } = await fonnteRawSend(row.recipient, row.message, absoluteMediaUrl);
       const newRetryCount = (row.retryCount ?? 0) + 1;
 
       if (ok) {
@@ -154,6 +189,8 @@ async function runRetryTick(): Promise<void> {
 
 export function startWaRetryWorker(): void {
   logger.info(`[waRetryWorker] started — interval ${INTERVAL_MS / 1000}s, max retries ${MAX_RETRIES}`);
+  // Fix existing records yang punya relative media_url sebelum retry pertama
+  void fixRelativeMediaUrls();
   setTimeout(() => {
     void runRetryTick();
     setInterval(() => void runRetryTick(), INTERVAL_MS).unref();

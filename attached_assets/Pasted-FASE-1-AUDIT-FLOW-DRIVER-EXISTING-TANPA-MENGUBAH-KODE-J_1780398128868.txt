@@ -1,0 +1,109 @@
+FASE 1 — AUDIT FLOW DRIVER EXISTING TANPA MENGUBAH KODE
+
+JANGAN melakukan perubahan kode, database, migration, refactor, atau penghapusan file pada fase ini. Hanya audit dan laporkan kondisi existing secara akurat.
+
+Tujuan:
+Saya ingin membuat hybrid driver flow:
+
+* Driver INTERNAL tetap menggunakan update pengiriman via WhatsApp mini form seperti flow lama yang sudah berjalan.
+* Driver EXTERNAL menggunakan CST Driver App.
+* Kedua flow harus meng-update Tracking Order customer dan BizPortal yang sama.
+
+Audit seluruh implementasi yang berkaitan dengan assignment driver, update status perjalanan, upload foto/POD, notifikasi WA, Tracking Order, dan CST Driver App.
+
+1. Audit flow driver via WhatsApp mini form yang lama
+   Cari seluruh file frontend/backend/API/service/database yang digunakan ketika:
+
+* Admin assign driver/vendor.
+* WhatsApp dikirim ke driver.
+* Driver membuka link update pengiriman.
+* Driver meng-update status:
+
+  * Penjemputan
+  * Dalam Perjalanan
+  * Tiba di Tujuan
+  * Terkirim
+  * Bukti Pengiriman
+* Driver upload foto atau POD.
+* Status/foto ditampilkan pada halaman Tracking Order customer seperti flow existing.
+
+Laporkan:
+
+* Nama file dan fungsi yang terlibat.
+* Route URL mini form driver.
+* Tabel database yang digunakan.
+* Field status, foto, POD, token link, dan assignment.
+* Apakah flow ini masih aktif dan berfungsi.
+
+2. Audit flow CST Driver App yang sudah dibuat
+   Cari seluruh file terkait:
+
+* Halaman/login CST Driver App.
+* Fetch job driver.
+* Accept/Reject job.
+* Update status perjalanan.
+* Upload foto/POD.
+* Realtime subscription atau polling.
+* Link `/api/driver/open-app` atau route sejenis.
+* Notifikasi WA untuk membuka app.
+
+Laporkan:
+
+* Nama file dan fungsi.
+* Route API dan route frontend.
+* Tabel yang digunakan.
+* Status yang didukung app.
+* Apakah update dari app sudah masuk ke Tracking Order customer/BizPortal atau masih berdiri sendiri.
+
+3. Audit tipe driver saat ini
+   Periksa apakah sistem sudah memiliki pembeda:
+
+* Internal driver
+* External/vendor driver
+* Own fleet/subcontractor/vendor driver
+* Driver yang punya akun app dan yang tidak
+
+Laporkan field existing yang bisa dipakai, misalnya:
+
+* driver_type
+* vendor_id
+* is_internal
+* source/type/category
+* user_id/app_account
+
+Jangan membuat field baru dahulu. Tentukan apakah field existing sudah cukup aman sebagai dasar routing flow.
+
+4. Audit satu sumber status/tracking
+   Cari sumber data yang membuat progress Tracking Order customer seperti tampilan sekarang.
+
+Laporkan:
+
+* Tabel/status apa yang dibaca halaman Tracking Order.
+* Status teknis apa yang dipetakan menjadi:
+
+  * Penjemputan
+  * Dalam Perjalanan
+  * Tiba di Tujuan
+  * Terkirim
+  * Bukti Pengiriman
+* Dari mana foto per tahapan diambil.
+* Apakah Driver App sudah menulis ke sumber data yang sama dengan mini form WA.
+
+5. Audit risiko sebelum implementasi hybrid
+   Identifikasi:
+
+* Apakah route/link WA lama sudah dinonaktifkan akibat perubahan Driver App.
+* Apakah notifikasi WA lama sudah berubah untuk seluruh driver tanpa membedakan internal/external.
+* Apakah Driver App menimpa status atau tabel flow internal.
+* Apakah ada kemungkinan status/foto menjadi duplikat.
+* Apakah ada route public yang tidak aman.
+* Apakah assignment lama akan terdampak jika flow diubah.
+
+OUTPUT WAJIB FASE 1:
+A. Diagram alur existing driver WA mini form.
+B. Diagram alur existing CST Driver App.
+C. Daftar file frontend/backend yang terkait beserta fungsi singkatnya.
+D. Daftar tabel/field/status yang dipakai.
+E. Temuan apakah flow WA lama masih aman dipertahankan untuk internal.
+F. Rekomendasi teknis paling aman untuk menambahkan flow hybrid tanpa merusak data existing.
+G. Jangan implementasi apa pun sebelum saya menyetujui hasil audit.

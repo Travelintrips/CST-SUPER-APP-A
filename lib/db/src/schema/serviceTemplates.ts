@@ -1,8 +1,10 @@
 import { pgTable, serial, text, boolean, jsonb, timestamp, integer } from "drizzle-orm/pg-core";
+import { companiesTable } from "./companies";
 
 export const serviceTemplatesTable = pgTable("service_templates", {
   id: serial("id").primaryKey(),
-  serviceType: text("service_type").notNull().unique(),
+  companyId: integer("company_id").references(() => companiesTable.id, { onDelete: "set null" }),
+  serviceType: text("service_type").notNull(),
   label: text("label").notNull(),
   emoji: text("emoji").notNull().default("📋"),
   version: text("version").notNull().default("1.0.0"),

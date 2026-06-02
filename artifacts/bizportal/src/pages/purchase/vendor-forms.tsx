@@ -18,14 +18,19 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useCompany } from "@/contexts/CompanyContext";
 import {
   Copy, ExternalLink, Link2, Plus, Trash2, Eye, ToggleLeft, ToggleRight,
   Loader2, RotateCcw, CalendarDays, User, Phone, MessageCircle, XCircle,
   Clock, SendHorizonal, Pencil, CheckCircle, Package, Star, Building2, FileText,
   BarChart2, TrendingDown, TrendingUp, Minus, Award,
   Layers, ChevronDown, ChevronRight, AlertCircle, ClipboardList, PackageCheck, Info,
-  Search, DollarSign, CreditCard, BadgeCheck,
+  Search, DollarSign, CreditCard, BadgeCheck, ChevronsUpDown, Check,
 } from "lucide-react";
+import {
+  Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
+} from "@/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { TemplateSnapshotCard } from "@/components/TemplateSnapshotCard";
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
@@ -465,7 +470,7 @@ function WaTemplateDialog({
 
 type CommodityTemplateItem = { id: number; key: string; name: string; icon: string | null };
 
-function CreateLinkDialog({ suppliers, onCreated }: { suppliers: Supplier[]; onCreated: () => void }) {
+function CreateLinkDialog({ onCreated }: { onCreated: () => void }) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"rate_collection" | "order_based">("rate_collection");
   const [serviceType, setServiceType] = useState("");
@@ -478,8 +483,20 @@ function CreateLinkDialog({ suppliers, onCreated }: { suppliers: Supplier[]; onC
   const [orderItemId, setOrderItemId] = useState<string>("");
   const [maxSubmissions, setMaxSubmissions] = useState("");
   const [commodityTemplateId, setCommodityTemplateId] = useState<string>("");
+  const [vendorPickerOpen, setVendorPickerOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
+  const { companyQueryParam } = useCompany();
+
+  const { data: allSuppliers = [] } = useQuery<Supplier[]>({
+    queryKey: ["suppliers-simple", companyQueryParam],
+    queryFn: () => apiFetch<Supplier[]>(`/api/trading/suppliers?${companyQueryParam}`),
+    enabled: open,
+  });
+
+  const suppliers = serviceType
+    ? allSuppliers.filter(s => !s.serviceType || s.serviceType === serviceType)
+    : allSuppliers;
 
   const { data: orders } = useQuery<Order[]>({
     queryKey: ["vmf-orders"],
@@ -504,7 +521,7 @@ function CreateLinkDialog({ suppliers, onCreated }: { suppliers: Supplier[]; onC
   const reset = () => {
     setMode("rate_collection"); setServiceType(""); setSupplierId(""); setVendorName("");
     setTitle(""); setNotes(""); setExpiresInDays(""); setOrderId(""); setOrderItemId("");
-    setMaxSubmissions(""); setCommodityTemplateId("");
+    setMaxSubmissions(""); setCommodityTemplateId(""); setVendorPickerOpen(false);
   };
 
   const handleCreate = async () => {
@@ -599,7 +616,7 @@ function CreateLinkDialog({ suppliers, onCreated }: { suppliers: Supplier[]; onC
           {/* Service type */}
           <div className="space-y-1.5">
             <Label>Service Type <span className="text-red-500">*</span></Label>
-            <Select value={serviceType} onValueChange={setServiceType}>
+            <Select value={serviceType} onValueChange={v => { setServiceType(v); setSupplierId(""); }}>
               <SelectTrigger><SelectValue placeholder="Pilih tipe layanan" /></SelectTrigger>
               <SelectContent>
                 {SERVICE_TYPES.map(k => (
@@ -611,16 +628,66 @@ function CreateLinkDialog({ suppliers, onCreated }: { suppliers: Supplier[]; onC
 
           {/* Vendor */}
           <div className="space-y-1.5">
-            <Label>Vendor dari Daftar (opsional)</Label>
-            <Select value={supplierId || "__all__"} onValueChange={v => setSupplierId(v === "__all__" ? "" : v)}>
-              <SelectTrigger><SelectValue placeholder="Tidak spesifik" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">— Tidak spesifik —</SelectItem>
-                {suppliers.map(s => (
-                  <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex items-center justify-between">
+              <Label>Vendor dari Daftar (opsional)</Label>
+              {serviceType && suppliers.length > 0 && (
+                <span className="text-xs text-slate-400">{suppliers.length} vendor tersedia</span>
+              )}
+            </div>
+            <Popover open={vendorPickerOpen} onOpenChange={setVendorPickerOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={vendorPickerOpen}
+                  className="w-full justify-between font-normal h-9 text-sm"
+                >
+                  {supplierId
+                    ? (() => {
+                        const s = allSuppliers.find(x => String(x.id) === supplierId);
+                        return s ? s.name : "— Tidak spesifik —";
+                      })()
+                    : "— Tidak spesifik —"}
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[420px] p-0" align="start">
+                <Command>
+                  <CommandInput placeholder="Cari nama vendor..." />
+                  <CommandList>
+                    <CommandEmpty>Tidak ada vendor yang cocok.</CommandEmpty>
+                    <CommandGroup>
+                      <CommandItem
+                        value="__tidak-spesifik__"
+                        onSelect={() => { setSupplierId(""); setVendorPickerOpen(false); }}
+                      >
+                        <Check className={`mr-2 h-4 w-4 ${!supplierId ? "opacity-100" : "opacity-0"}`} />
+                        <span className="text-slate-400">— Tidak spesifik —</span>
+                      </CommandItem>
+                      {suppliers.map(s => (
+                        <CommandItem
+                          key={s.id}
+                          value={`${s.name} ${s.serviceType ?? ""}`}
+                          onSelect={() => { setSupplierId(String(s.id)); setVendorPickerOpen(false); }}
+                        >
+                          <Check className={`mr-2 h-4 w-4 ${supplierId === String(s.id) ? "opacity-100" : "opacity-0"}`} />
+                          <span className="flex-1">{s.name}</span>
+                          {s.serviceType && (
+                            <span className="ml-2 text-xs text-slate-400 shrink-0">
+                              {SERVICE_META[s.serviceType]?.emoji} {SERVICE_META[s.serviceType]?.label ?? s.serviceType}
+                            </span>
+                          )}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+            {serviceType && allSuppliers.length > 0 && suppliers.length === 0 && (
+              <p className="text-xs text-amber-600">Tidak ada vendor dengan service type ini. Tambah vendor baru di Purchase → Vendors.</p>
+            )}
           </div>
 
           {/* Commodity Template */}
@@ -2110,10 +2177,11 @@ function ProductTemplateEngine() {
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const [previewTemplate, setPreviewTemplate] = useState<ProductTemplate | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const { companyQueryParam } = useCompany();
 
   const { data: suppliers = [] } = useQuery<Supplier[]>({
-    queryKey: ["suppliers-simple"],
-    queryFn: () => apiFetch<Supplier[]>("/api/trading/suppliers"),
+    queryKey: ["suppliers-simple", companyQueryParam],
+    queryFn: () => apiFetch<Supplier[]>(`/api/trading/suppliers?${companyQueryParam}`),
   });
 
   const allTemplates = Object.values(inCodeTemplates);
@@ -2509,6 +2577,7 @@ function ConfirmPaymentDialog({ invoice, onConfirmed }: { invoice: CustomerInvoi
 export default function VendorFormsPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { companyQueryParam } = useCompany();
 
   const [tab, setTab] = useState("links");
   const [selectedLink, setSelectedLink] = useState<FormLink | null>(null);
@@ -2607,8 +2676,8 @@ export default function VendorFormsPage() {
     );
   }, [invoices, invoiceSearch]);
   const { data: suppliers = [] } = useQuery<Supplier[]>({
-    queryKey: ["suppliers-simple"],
-    queryFn: () => apiFetch<Supplier[]>("/api/trading/suppliers"),
+    queryKey: ["suppliers-simple", companyQueryParam],
+    queryFn: () => apiFetch<Supplier[]>(`/api/trading/suppliers?${companyQueryParam}`),
   });
 
   // ── Mutations ──
@@ -2745,7 +2814,7 @@ export default function VendorFormsPage() {
                 </SelectContent>
               </Select>
               <div className="ml-auto">
-                <CreateLinkDialog suppliers={suppliers} onCreated={() => queryClient.invalidateQueries({ queryKey: ["vmf-links"] })} />
+                <CreateLinkDialog onCreated={() => queryClient.invalidateQueries({ queryKey: ["vmf-links"] })} />
               </div>
             </div>
 

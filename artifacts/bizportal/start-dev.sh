@@ -1,5 +1,5 @@
 #!/bin/bash
-ARTIFACT_PORT=${PORT:-18442}
+ARTIFACT_PORT=${PORT:-3000}
 
 node "$(dirname "$0")/../api-server/kill-port.mjs" "${ARTIFACT_PORT}" 2>/dev/null || true
 sleep 0.3

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { db, stocksTable, suppliersTable, vendorCatalogItemsTable, productsTable, productCategoryMapTable, productCategoriesTable } from "@workspace/db";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, or, isNull, sql } from "drizzle-orm";
+import { resolveCompanyId, resolveCompanyScope } from "../lib/resolveCompany.js";
 import { postStockReceived } from "../lib/accounting.js";
 import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { requireClerkUser, requireAdmin } from "../lib/requireAdmin.js";
@@ -92,8 +93,108 @@ router.delete("/stocks/:id", async (req, res) => {
 router.get("/suppliers", async (req, res) => {
   const limit = Math.min(Number(req.query["limit"] ?? 200), 1000);
   const offset = Math.max(Number(req.query["offset"] ?? 0), 0);
-  const suppliers = await db.select().from(suppliersTable).orderBy(suppliersTable.createdAt).limit(limit).offset(offset);
-  return res.json(suppliers.map(s => ({ ...s, fee: Number(s.fee ?? 0), createdAt: s.createdAt.toISOString() })));
+
+  const scope = resolveCompanyScope(req);
+
+  let suppliers: (typeof suppliersTable.$inferSelect)[];
+  if (scope === "all") {
+    suppliers = await db.select().from(suppliersTable)
+      .orderBy(suppliersTable.createdAt)
+      .limit(limit)
+      .offset(offset);
+  } else {
+    // Vendor visible jika:
+    // 1. Tidak ada assignment sama sekali (global vendor), ATAU
+    // 2. Ada assignment untuk company ini
+    suppliers = await db.select().from(suppliersTable)
+      .where(sql`(
+        NOT EXISTS (
+          SELECT 1 FROM vendor_company_assignments
+          WHERE vendor_id = ${suppliersTable.id}
+        )
+        OR EXISTS (
+          SELECT 1 FROM vendor_company_assignments
+          WHERE vendor_id = ${suppliersTable.id}
+            AND company_id = ${scope}
+        )
+      )`)
+      .orderBy(suppliersTable.createdAt)
+      .limit(limit)
+      .offset(offset);
+  }
+
+  if (suppliers.length === 0) {
+    return res.json([]);
+  }
+
+  // Fetch all company assignments for the returned vendors
+  const vendorIds = suppliers.map(s => s.id);
+  const assignments = await db.execute(
+    sql.raw(`SELECT vendor_id, company_id FROM vendor_company_assignments WHERE vendor_id = ANY(ARRAY[${vendorIds.join(",")}]::int[])`)
+  );
+  const assignmentMap: Record<number, number[]> = {};
+  for (const row of assignments.rows as { vendor_id: number; company_id: number }[]) {
+    if (!assignmentMap[row.vendor_id]) assignmentMap[row.vendor_id] = [];
+    assignmentMap[row.vendor_id].push(row.company_id);
+  }
+
+  return res.json(suppliers.map(s => ({
+    ...s,
+    fee: Number(s.fee ?? 0),
+    createdAt: s.createdAt.toISOString(),
+    assignedCompanyIds: assignmentMap[s.id] ?? [],
+  })));
+});
+
+// GET /api/trading/suppliers/:id/companies — list assigned company IDs
+router.get("/suppliers/:id/companies", async (req, res) => {
+  const id = Number(req.params.id);
+  if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+  const rows = await db.execute(sql`
+    SELECT company_id FROM vendor_company_assignments WHERE vendor_id = ${id}
+  `);
+  return res.json({ vendorId: id, companyIds: (rows.rows as { company_id: number }[]).map(r => r.company_id) });
+});
+
+// PUT /api/trading/suppliers/:id/companies — replace all company assignments (admin only)
+router.put("/suppliers/:id/companies", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const id = Number(req.params.id);
+  if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+
+  const [vendor] = await db.select({ id: suppliersTable.id }).from(suppliersTable).where(eq(suppliersTable.id, id));
+  if (!vendor) return res.status(404).json({ message: "Vendor not found" });
+
+  const { companyIds } = req.body as { companyIds: number[] };
+  if (!Array.isArray(companyIds)) return res.status(400).json({ message: "companyIds must be an array" });
+
+  const ids = companyIds.map(Number).filter(n => !Number.isNaN(n) && n > 0);
+
+  // Replace all assignments atomically
+  await db.execute(sql`DELETE FROM vendor_company_assignments WHERE vendor_id = ${id}`);
+  if (ids.length > 0) {
+    for (const cid of ids) {
+      await db.execute(sql`
+        INSERT INTO vendor_company_assignments (vendor_id, company_id)
+        VALUES (${id}, ${cid})
+        ON CONFLICT (vendor_id, company_id) DO NOTHING
+      `);
+    }
+  }
+
+  return res.json({ vendorId: id, companyIds: ids });
+});
+
+// POST /api/trading/suppliers/bulk-assign-company — bulk update company_id on multiple vendors
+router.post("/suppliers/bulk-assign-company", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const { vendorIds, companyId } = req.body as { vendorIds: unknown; companyId: unknown };
+  if (!Array.isArray(vendorIds)) return res.status(400).json({ message: "vendorIds must be an array" });
+  const ids = (vendorIds as unknown[]).map(Number).filter(n => !Number.isNaN(n) && n > 0);
+  if (ids.length === 0) return res.status(400).json({ message: "No valid vendorIds provided" });
+  const cid = companyId != null && companyId !== "" ? Number(companyId) : null;
+  await db.execute(sql`UPDATE suppliers SET company_id = ${cid} WHERE id = ANY(${ids})`);
+  return res.json({ updated: ids.length, companyId: cid });
 });
 
 // POST /api/trading/suppliers
@@ -101,7 +202,9 @@ router.post("/suppliers", async (req, res) => {
   if (!(await requireAdmin(req, res))) return;
   const { name, country, contactEmail, contactPerson, phone, address, taxId, defaultPurchaseTaxId,
     serviceType, isActive, logo, eta, fee, note, sortOrder } = req.body;
+  const companyId = resolveCompanyId(req);
   const [supplier] = await db.insert(suppliersTable).values({
+    companyId,
     name, country: country ?? null, contactEmail: contactEmail ?? null,
     contactPerson: contactPerson ?? null,
     phone: phone ?? null, address: address ?? null,
@@ -122,6 +225,13 @@ router.put("/suppliers/:id", async (req, res) => {
   if (!(await requireAdmin(req, res))) return;
   const id = Number(req.params.id);
   if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+  const companyId = resolveCompanyId(req);
+  const [target] = await db.select({ id: suppliersTable.id, companyId: suppliersTable.companyId })
+    .from(suppliersTable).where(eq(suppliersTable.id, id));
+  if (!target) return res.status(404).json({ message: "Supplier not found" });
+  if (target.companyId !== null && target.companyId !== companyId) {
+    return res.status(403).json({ message: "Akses ditolak: supplier bukan milik perusahaan ini" });
+  }
   const { name, country, contactEmail, contactPerson, phone, address, taxId, defaultPurchaseTaxId,
     serviceType, isActive, logo, eta, fee, note, sortOrder } = req.body;
   const patch: Record<string, unknown> = {};
@@ -151,7 +261,16 @@ router.delete("/suppliers/:id", async (req, res) => {
   if (!(await requireAdmin(req, res))) return;
   const id = Number(req.params.id);
   if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+  const companyId = resolveCompanyId(req);
+
+  const [target] = await db.select({ id: suppliersTable.id, companyId: suppliersTable.companyId })
+    .from(suppliersTable).where(eq(suppliersTable.id, id));
+  if (!target) return res.status(404).json({ message: "Supplier not found" });
+  if (target.companyId !== null && target.companyId !== companyId) {
+    return res.status(403).json({ message: "Akses ditolak: supplier bukan milik perusahaan ini" });
+  }
   const [deleted] = await db.delete(suppliersTable).where(eq(suppliersTable.id, id)).returning();
+
   if (!deleted) return res.status(404).json({ message: "Supplier not found" });
   // Cascade storage cleanup — logo (hanya jika berupa URL, bukan emoji)
   if (deleted.logo && (deleted.logo.startsWith("http") || deleted.logo.startsWith("/api/storage"))) {

@@ -1,0 +1,87 @@
+FIX WA DRIVER POST-FULFILLMENT TRUCKING
+
+Tujuan:
+Pastikan setelah vendor submit fulfillment trucking, driver menerima WA tanpa stuck, untuk semua tipe job (INTERNAL/EXTERNAL/legacy).
+
+---
+
+A. BACKEND
+
+1. **Cek Payload**
+
+   * Pastikan `driver_phone` / `driverPhone` dikirim dari frontend/vendor.
+   * Tambahkan log debug:
+
+     ```
+     console.log("Fulfillment type:", fulfillment.type);
+     console.log("Driver phone received:", driverPhone);
+     ```
+
+2. **Database**
+
+   * Pastikan `driver_phone` tersimpan di `driver_jobs` / assignment table.
+   * Normalisasi nomor:
+
+     ```
+     const normalizedPhone = normalizePhone(driverPhone); 
+     console.log("Normalized driver phone:", normalizedPhone);
+     ```
+
+3. **Trigger WA Driver**
+
+   * Jalankan `sendDriverPodNotification(normalizedPhone, jobId, orderId)` setelah vendor submit fulfillment.
+   * Gunakan fire-and-forget `.catch()` agar request backend tidak tertahan:
+
+     ```
+     sendDriverPodNotification(normalizedPhone, jobId, orderId)
+       .then(res => console.log("WA send result:", res))
+       .catch(err => console.warn("WA send failed:", err));
+     ```
+
+4. **Admin / Customer Notifikasi**
+
+   * Admin WA → PICKED_UP, DELIVERED, COMPLETED
+   * Customer WA → PICKED_UP, DELIVERED (sertakan link tracking)
+   * Pastikan INTERNAL job (driverId null) dan legacy job ikut trigger.
+
+5. **Server Build / Restart**
+
+   * Pastikan TypeScript terbaru di-load
+   * Jalankan `start-dev.sh` atau beri warning server restart setelah edit.
+
+---
+
+B. FRONTEND
+
+1. Pastikan vendor submit fulfillment trucking → panggil route backend yang benar.
+2. Payload driver_phone terisi dan dikirim.
+3. Jangan ubah flow lain.
+
+---
+
+C. TESTING
+
+1. Vendor submit fulfillment → cek DB driver_jobs, driver_phone tersimpan dan ter-normalisasi.
+2. Driver menerima WA → nomor driver pakai format 62xxxx.
+3. Log debug muncul: fulfillment type, driver phone, normalized phone, WA send result.
+4. Backend response tetap cepat, WA tidak blocking.
+5. Internal / External / Legacy job → WA harus terkirim.
+
+---
+
+D. OUTPUT AKHIR
+
+* Driver menerima WA post-fulfillment trucking.
+* Log debug lengkap.
+* Response backend tetap cepat (non-blocking).
+* Zero regression flow lain.
+
+---
+
+Instruksi:
+
+* Implementasikan backend trigger WA driver post-fulfillment trucking.
+* Normalisasi nomor driver.
+* Tambahkan log debug untuk tracking payload + hasil WA.
+* Test untuk INTERNAL, EXTERNAL, legacy job.
+* Fokus hanya fix WA driver, jangan ubah flow lain.

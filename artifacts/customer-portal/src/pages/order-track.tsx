@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams } from "wouter";
 import { usePushNotification } from "@/hooks/usePushNotification";
 
@@ -6,6 +6,7 @@ type ProgressEntry = {
   id: number;
   status: string;
   notes: string | null;
+  photo_url?: string | null;
   updated_by: string;
   is_public: boolean;
   created_at: string;
@@ -39,6 +40,18 @@ type PodFile = {
   name: string;
 };
 
+type DriverPhoto = {
+  url: string;
+  photoType: string;
+  takenAt: string;
+};
+
+type GpsPoint = {
+  lat: number;
+  lng: number;
+  updatedAt: string;
+};
+
 type TrackData = {
   order: {
     orderNumber: string;
@@ -64,6 +77,9 @@ type TrackData = {
     grandTotal: number | null;
   } | null;
   podFiles?: PodFile[];
+  driverPhotos?: DriverPhoto[];
+  liveLocation?: GpsPoint | null;
+  gpsTrail?: GpsPoint[];
 };
 
 const ALL_STEPS = [
@@ -96,6 +112,14 @@ const LEGACY_STATUS_MAP: Record<string, string> = {
   "paid": "Payment Received", "completed": "Completed",
 };
 
+const PHOTO_TYPE_TO_STEP: Record<string, string> = {
+  pickup: "Pickup",
+  cargo: "In Transit",
+  general: "In Transit",
+  arrival: "Arrived",
+  pod: "POD Uploaded",
+};
+
 function mapStatusToStep(_jobStatus: string | null | undefined, orderStatus: string): number {
   const canonical = LEGACY_STATUS_MAP[orderStatus] ?? orderStatus;
   const idx = ALL_STEPS.findIndex(s => s.key === canonical);
@@ -123,6 +147,107 @@ function formatDate(s: string) {
 
 function formatDateShort(s: string) {
   return new Date(s).toLocaleString("id-ID", { day: "numeric", month: "short", year: "numeric" });
+}
+
+function PhotoGrid({ photos, onOpen }: { photos: DriverPhoto[]; onOpen: (url: string) => void }) {
+  if (!photos.length) return null;
+  return (
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      {photos.map((p, i) => (
+        <button
+          key={i}
+          onClick={() => onOpen(p.url)}
+          className="w-16 h-16 rounded-lg overflow-hidden border border-slate-200 hover:border-blue-400 hover:scale-105 transition-all focus:outline-none focus:ring-2 focus:ring-blue-400"
+          title={`Foto ${p.photoType} — ${new Date(p.takenAt).toLocaleString("id-ID")}`}
+        >
+          <img
+            src={p.url}
+            alt={`Foto ${p.photoType}`}
+            className="w-full h-full object-cover"
+            loading="lazy"
+          />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function Lightbox({ url, onClose }: { url: string; onClose: () => void }) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+      onClick={onClose}
+    >
+      <img
+        src={url}
+        alt="Foto driver"
+        className="max-w-full max-h-full rounded-xl shadow-2xl object-contain"
+        onClick={(e) => e.stopPropagation()}
+      />
+      <button
+        onClick={onClose}
+        className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/20 hover:bg-white/40 flex items-center justify-center text-white text-xl transition-colors"
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
+
+function LiveMapSection({ location, trail }: { location: GpsPoint; trail: GpsPoint[] }) {
+  const delta = 0.025;
+  const w = location.lng - delta;
+  const s = location.lat - delta;
+  const e = location.lng + delta;
+  const n = location.lat + delta;
+  const osmEmbed = `https://www.openstreetmap.org/export/embed.html?bbox=${w},${s},${e},${n}&layer=mapnik&marker=${location.lat},${location.lng}`;
+  const gmapsUrl = `https://www.google.com/maps?q=${location.lat},${location.lng}`;
+  const minsAgo = Math.round((Date.now() - new Date(location.updatedAt).getTime()) / 60000);
+  const freshLabel = minsAgo < 1 ? "baru saja" : minsAgo < 60 ? `${minsAgo} mnt lalu` : `${Math.round(minsAgo / 60)} jam lalu`;
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+      <div className="px-5 pt-5 pb-3 flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-slate-600 uppercase tracking-wide">📍 Posisi Driver</h2>
+        <div className="flex items-center gap-2">
+          <span className="flex items-center gap-1 text-xs text-green-600 bg-green-50 border border-green-100 rounded-full px-2 py-0.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse inline-block" />
+            {freshLabel}
+          </span>
+          <a
+            href={gmapsUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-blue-600 font-medium hover:underline"
+          >
+            Buka Maps ↗
+          </a>
+        </div>
+      </div>
+
+      <div className="w-full h-52 border-t border-slate-100">
+        <iframe
+          title="Posisi Driver"
+          src={osmEmbed}
+          className="w-full h-full border-0"
+          loading="lazy"
+          sandbox="allow-scripts allow-same-origin"
+        />
+      </div>
+
+      {trail.length > 1 && (
+        <div className="px-5 py-3 border-t border-slate-100">
+          <p className="text-xs text-slate-500">{trail.length} titik GPS tercatat · koordinat: {location.lat.toFixed(5)}, {location.lng.toFixed(5)}</p>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function PushToggleSimple({ orderNumber }: { orderNumber: string | null }) {
@@ -155,8 +280,10 @@ export default function OrderTrackPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const sseRef = useRef<EventSource | null>(null);
 
-  const doFetch = () => {
+  const doFetch = useCallback(() => {
     if (!trackToken) return;
     fetch(`/api/order-track/${trackToken}`)
       .then(async r => {
@@ -167,14 +294,29 @@ export default function OrderTrackPage() {
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
-  };
+  }, [trackToken]);
 
   useEffect(() => {
     doFetch();
     const interval = setInterval(doFetch, 30_000);
     return () => clearInterval(interval);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trackToken]);
+  }, [doFetch]);
+
+  // SSE — real-time foto driver + posisi GPS
+  useEffect(() => {
+    if (!trackToken) return;
+    const es = new EventSource("/api/sse");
+    sseRef.current = es;
+
+    es.addEventListener("driver_photo_uploaded", () => { doFetch(); });
+    es.addEventListener("order_status_updated", () => { doFetch(); });
+    es.addEventListener("driver_location_update", () => { doFetch(); });
+
+    return () => {
+      es.close();
+      sseRef.current = null;
+    };
+  }, [trackToken, doFetch]);
 
   if (loading) return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center">
@@ -205,8 +347,17 @@ export default function OrderTrackPage() {
   const hasPricing = data.pricing && (data.pricing.subtotal != null || data.pricing.grandTotal != null);
   const hasPod = data.podFiles && data.podFiles.length > 0;
 
+  const photosByStep: Record<string, DriverPhoto[]> = {};
+  for (const p of data.driverPhotos ?? []) {
+    const stepKey = PHOTO_TYPE_TO_STEP[p.photoType] ?? "In Transit";
+    if (!photosByStep[stepKey]) photosByStep[stepKey] = [];
+    photosByStep[stepKey].push(p);
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-slate-50 py-8 px-4">
+      {lightboxUrl && <Lightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />}
+
       <div className="max-w-xl mx-auto space-y-4">
 
         {/* Header */}
@@ -316,6 +467,7 @@ export default function OrderTrackPage() {
               const isDone = i < currentStep;
               const isCurrent = i === currentStep;
               const isPending = i > currentStep;
+              const stepPhotos = photosByStep[step.key] ?? [];
               return (
                 <div key={step.key} className="flex items-start gap-4">
                   <div className="flex flex-col items-center">
@@ -338,6 +490,9 @@ export default function OrderTrackPage() {
                       <span className="inline-block mt-1 text-xs bg-blue-50 text-blue-600 rounded-full px-2 py-0.5 font-medium">
                         Status saat ini
                       </span>
+                    )}
+                    {stepPhotos.length > 0 && (isDone || isCurrent) && (
+                      <PhotoGrid photos={stepPhotos} onOpen={setLightboxUrl} />
                     )}
                   </div>
                 </div>
@@ -367,12 +522,34 @@ export default function OrderTrackPage() {
           </div>
         )}
 
+        {/* Live GPS Map */}
+        {data.liveLocation && (
+          <LiveMapSection location={data.liveLocation} trail={data.gpsTrail ?? []} />
+        )}
+
         {/* POD / Documents */}
         {hasPod && (
           <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
             <h2 className="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-3">📄 Bukti Pengiriman (POD)</h2>
+            {/* Photo grid */}
+            {data.podFiles!.some(f => f.type === "photo") && (
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                {data.podFiles!.filter(f => f.type === "photo").map((f, i) => (
+                  <a key={i} href={f.url} target="_blank" rel="noopener noreferrer" className="block rounded-xl overflow-hidden border border-slate-200 hover:opacity-90 transition-opacity">
+                    <img
+                      src={f.url}
+                      alt={f.name}
+                      className="w-full h-32 object-cover bg-slate-100"
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                    />
+                    <p className="text-xs text-slate-500 px-2 py-1 truncate">{f.name}</p>
+                  </a>
+                ))}
+              </div>
+            )}
+            {/* Non-photo docs */}
             <div className="space-y-2">
-              {data.podFiles!.map((f, i) => (
+              {data.podFiles!.filter(f => f.type !== "photo").map((f, i) => (
                 <a
                   key={i}
                   href={f.url}
@@ -381,7 +558,7 @@ export default function OrderTrackPage() {
                   className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 hover:bg-slate-50 transition-colors"
                 >
                   <span className="text-xl">
-                    {f.type === "photo" ? "🖼️" : f.type === "invoice" ? "🧾" : f.type === "packing_list" ? "📋" : "📄"}
+                    {f.type === "invoice" ? "🧾" : f.type === "packing_list" ? "📋" : "📄"}
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-slate-800 truncate">{f.name}</p>
@@ -407,6 +584,16 @@ export default function OrderTrackPage() {
                     <p className="font-semibold text-slate-800">{p.status}</p>
                     {p.notes && <p className="text-slate-600 text-xs mt-0.5">{p.notes}</p>}
                     <p className="text-xs text-slate-400 mt-0.5">{formatDate(p.created_at)}</p>
+                    {p.photo_url && (
+                      <a href={p.photo_url} target="_blank" rel="noopener noreferrer" className="mt-1.5 block">
+                        <img
+                          src={p.photo_url}
+                          alt="Foto"
+                          className="h-24 w-auto max-w-[180px] rounded-lg object-cover border border-slate-200 hover:opacity-90 transition-opacity"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                        />
+                      </a>
+                    )}
                   </div>
                 ))}
               </div>

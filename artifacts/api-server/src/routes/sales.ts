@@ -15,6 +15,7 @@ import { eq, sql, desc, and, count, inArray, or, ilike, isNotNull, asc, type SQL
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { auditFromReq } from "../lib/auditLog.js";
 import { streamInvoicePdf, buildInvoicePdfBuffer } from "../lib/pdfInvoice.js";
+import { loadDocTemplate } from "../lib/docTemplateLoader.js";
 import { postSalesInvoice, postSalesCogs, postSalesCogsReturn, postSalesInvoiceReversal } from "../lib/accounting.js";
 import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
 import { ensureAccountingSettings } from "../lib/accountingSeed.js";
@@ -207,6 +208,18 @@ router.delete("/customers/:id", async (req, res) => {
     .returning();
   if (!deleted) return res.status(404).json({ message: "Customer not found" });
   return res.json({ message: "Deleted", id });
+});
+
+// POST /api/sales/customers/bulk-assign-company — bulk update company_id on multiple customers
+router.post("/customers/bulk-assign-company", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const { customerIds, companyId } = req.body as { customerIds: unknown; companyId: unknown };
+  if (!Array.isArray(customerIds)) return res.status(400).json({ message: "customerIds must be an array" });
+  const ids = (customerIds as unknown[]).map(Number).filter(n => !Number.isNaN(n) && n > 0);
+  if (ids.length === 0) return res.status(400).json({ message: "No valid customerIds" });
+  const cid = companyId != null && companyId !== "" ? Number(companyId) : null;
+  await db.update(customersTable).set({ companyId: cid }).where(inArray(customersTable.id, ids));
+  return res.json({ updated: ids.length, companyId: cid });
 });
 
 // DOCUMENTS
@@ -1066,11 +1079,15 @@ router.get("/documents/:id/pdf", async (req, res): Promise<void> => {
     const rows = await db.select().from(customersTable).where(eq(customersTable.id, detail.customerId)).limit(1);
     customer = rows[0] ?? null;
   }
-  const acctSettings = await ensureAccountingSettings();
   const titleMap: Record<string, string> = {
     quote: "QUOTATION",
     order: "SALES ORDER",
   };
+  const tplType = detail.kind === "quote" ? "quotation" : "invoice";
+  const [acctSettings, template] = await Promise.all([
+    ensureAccountingSettings(),
+    loadDocTemplate(tplType),
+  ]);
   streamInvoicePdf(res, {
     title: titleMap[detail.kind] ?? "DOKUMEN PENJUALAN",
     docNumber: detail.docNumber,
@@ -1105,6 +1122,7 @@ router.get("/documents/:id/pdf", async (req, res): Promise<void> => {
       : null,
     invoiceStatus: detail.invoiceStatus,
     deliveryStatus: detail.deliveryStatus,
+    template,
   });
 });
 
@@ -1132,7 +1150,11 @@ router.post("/documents/:id/email", async (req, res): Promise<void> => {
     customer = rows[0] ?? null;
   }
 
-  const acctSettings = await ensureAccountingSettings();
+  const tplType2 = detail.kind === "quote" ? "quotation" : "invoice";
+  const [acctSettings, template2] = await Promise.all([
+    ensureAccountingSettings(),
+    loadDocTemplate(tplType2),
+  ]);
   const titleMap: Record<string, string> = { quote: "QUOTATION", order: "SALES ORDER" };
   const pdfData = {
     title: titleMap[detail.kind] ?? "DOKUMEN PENJUALAN",
@@ -1168,6 +1190,7 @@ router.post("/documents/:id/email", async (req, res): Promise<void> => {
       : null,
     invoiceStatus: detail.invoiceStatus,
     deliveryStatus: detail.deliveryStatus,
+    template: template2,
   };
 
   const pdfBuffer = await buildInvoicePdfBuffer(pdfData);

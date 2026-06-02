@@ -8,7 +8,7 @@ import { updateOrderProgress } from "../lib/orderProgress.js";
 import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getPreferredDomain } from "../lib/domain.js";
-import { getAdminWa } from "../lib/adminWa.js";
+import { getAdminWa, getAdminGroupWa } from "../lib/adminWa.js";
 import { sendVendorPodUploadedNotification } from "../lib/orderNotification.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { logger } from "../lib/logger.js";
@@ -289,6 +289,32 @@ driverProgressPublicRouter.post("/:token", async (req: Request, res: Response) =
       }
     }
 
+    // WA ke admin group untuk PICKUP dan DELIVERED (via WA Mini Form / INTERNAL driver)
+    if (["PICKUP", "DELIVERED"].includes(String(stepKey))) {
+      try {
+        const [order] = await db.select({
+          orderNumber: logisticOrdersTable.orderNumber,
+          customerName: logisticOrdersTable.customerName,
+        }).from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
+        const adminGroupWa = await getAdminGroupWa();
+        if (adminGroupWa && order) {
+          const emoji = String(stepKey) === "DELIVERED" ? "📦" : "🚚";
+          const statusLabel = STEP_LABEL[String(stepKey)] ?? String(stepKey);
+          const msg = [
+            `${emoji} *Update Driver (WA Mini Form)*`,
+            ``,
+            `👤 Driver: ${driverName}`,
+            `📦 Order: ${order.orderNumber ?? "-"} (${order.customerName ?? "-"})`,
+            `📍 Status: *${statusLabel}*`,
+            note ? `📝 Catatan: ${note}` : null,
+          ].filter(Boolean).join("\n");
+          sendWhatsApp(adminGroupWa, msg).catch(() => {});
+        }
+      } catch {
+        // non-fatal
+      }
+    }
+
     // WA ke admin saat COMPLETED (Bukti Pengiriman)
     if (String(stepKey) === "COMPLETED") {
       try {
@@ -298,6 +324,12 @@ driverProgressPublicRouter.post("/:token", async (req: Request, res: Response) =
           customerName: logisticOrdersTable.customerName,
         }).from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
 
+        // Konversi relative URL ke absolute agar Fonnte bisa fetch media
+        const domain = process.env.REPLIT_DEV_DOMAIN || getPreferredDomain() || "cstlogistic.co.id";
+        const absolutePhotoUrl = resolvedPhotoUrl
+          ? (resolvedPhotoUrl.startsWith("http") ? resolvedPhotoUrl : `https://${domain}${resolvedPhotoUrl}`)
+          : undefined;
+
         const adminWa = await getAdminWa();
         if (adminWa && order?.orderNumber) {
           sendVendorPodUploadedNotification(
@@ -306,12 +338,25 @@ driverProgressPublicRouter.post("/:token", async (req: Request, res: Response) =
             1,
             adminWa,
             note ? String(note) : undefined,
-            resolvedPhotoUrl ?? undefined,
+            absolutePhotoUrl,
           ).catch(() => {});
         }
 
+        const adminGroupWa = await getAdminGroupWa();
+        if (adminGroupWa && order?.orderNumber) {
+          const msg = [
+            `📦 *Bukti Pengiriman Diterima*`,
+            ``,
+            `👤 Driver: ${driverName}`,
+            `📦 Order: ${order.orderNumber} (${order.customerName ?? "-"})`,
+            `📍 Status: *Bukti Pengiriman*`,
+            note ? `📝 Catatan: ${note}` : null,
+            absolutePhotoUrl ? `🖼️ Foto: ${absolutePhotoUrl}` : null,
+          ].filter(Boolean).join("\n");
+          sendWhatsApp(adminGroupWa, msg).catch(() => {});
+        }
+
         if (order?.phone) {
-          const domain = process.env.REPLIT_DEV_DOMAIN || getPreferredDomain() || "cstlogistic.co.id";
           let gpsBlock = "";
           if (lat != null && lng != null) {
             const tsLine = parsedDeviceTs

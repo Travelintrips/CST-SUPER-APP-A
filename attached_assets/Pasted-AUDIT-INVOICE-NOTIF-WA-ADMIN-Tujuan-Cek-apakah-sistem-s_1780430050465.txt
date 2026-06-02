@@ -1,0 +1,90 @@
+AUDIT INVOICE & NOTIF WA ADMIN
+
+Tujuan:
+Cek apakah sistem sudah memiliki setting invoice otomatis dan notifikasi WA admin yang siap trigger saat driver upload Bukti Pengiriman (POD).
+
+---
+
+A. BACKEND AUDIT
+
+1. **Invoice Schema / Table**
+
+   * Cek `invoices` table:
+
+     * Field: `invoice_number`, `logisticOrderId`, `customerId`, `amount_total`, `due_date`, `status` (READY / ISSUED / PAID)
+   * Cek apakah ada relasi ke `driver_jobs` / `logisticOrderId`
+   * Cek template default / format PDF / HTML untuk invoice
+
+2. **Invoice Generation Trigger**
+
+   * Endpoint / function yang membuat invoice otomatis post-POD
+   * Pastikan logika sudah men-generate invoice record
+   * Catat field yang di-set: nomor invoice, amount_total, due_date, status
+
+3. **WA Admin Notification**
+
+   * Cek helper / service function yang dipanggil post-POD
+   * Pastikan sudah include:
+
+     * invoiceNumber
+     * logisticOrderId
+     * amount_total
+     * link invoice
+   * Pastikan fire-and-forget async, tidak block upload driver
+   * Partial test → log debug WA, tanpa kirim live
+
+4. **WA Customer Notification**
+
+   * Cek apakah trigger notif ke customer saat invoice dibuat
+   * Partial test → bisa hanya log debug
+
+5. **Audit Logging**
+
+   * Pastikan semua event tercatat di log: invoice generate, WA send result, driver/job info
+
+---
+
+B. FRONTEND AUDIT
+
+1. **Customer Portal**
+
+   * Cek section “Invoice” di order detail page
+   * Field ditampilkan:
+
+     * Nomor invoice
+     * Tanggal / due date
+     * Total harga / PPN
+     * Status: READY / ISSUED
+   * Tombol preview / download PDF
+
+2. **Admin Panel**
+
+   * Cek badge / notification muncul saat invoice otomatis dibuat
+   * Link invoice ready → bisa dikirim ke customer
+   * Timeline / OrderDriverAssignmentPanel menampilkan invoice linked ke job
+
+---
+
+C. CHECKLIST AUDIT
+
+| Item                              | Cek                                 | Status |
+| --------------------------------- | ----------------------------------- | ------ |
+| Table / field invoice             | Apakah ada `invoices` table & field | ❑      |
+| Template PDF / HTML               | Format default invoice tersedia     | ❑      |
+| Trigger invoice post-POD          | Invoice otomatis dibuat saat POD    | ❑      |
+| Trigger WA Admin                  | WA notif termasuk invoice info      | ❑      |
+| Trigger WA Customer               | Customer notif muncul / log debug   | ❑      |
+| Logging event                     | Semua action tercatat di log        | ❑      |
+| Frontend customer invoice section | Section / placeholder tampil        | ❑      |
+| Admin panel invoice badge / link  | Tampil saat invoice dibuat          | ❑      |
+
+---
+
+D. INSTRUKSI UNTUK REPLIT AI
+
+* Jalankan scan / audit otomatis backend schema, endpoints, triggers
+* Periksa helper / service WA Admin & Customer
+* Cek logging dan template invoice
+* Periksa frontend customer portal & admin panel section
+* Berikan laporan status checklist di atas
+* Jangan ubah data, hanya audit & verifikasi readiness

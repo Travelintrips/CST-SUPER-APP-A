@@ -10,6 +10,7 @@ import { startVmfGapNotifier, runVmfGapCheck } from "./lib/vmfGapNotifier";
 import { startFulfillmentExpiryNotifier } from "./lib/fulfillmentExpiryNotifier";
 import { runPhase1Migration } from "./lib/phase1Migration";
 import { startWorkflowWorker } from "./lib/workflowWorker";
+import { startDriverJobWorker } from "./lib/driverJobWorker.js";
 import { startWaRetryWorker } from "./lib/waRetryWorker";
 import { remediateOrphanProducts } from "./lib/remediateOrphanProducts";
 import { seedProductTemplates } from "./routes/productTemplates.js";
@@ -56,13 +57,14 @@ import { runPurchaseTemplateMigration } from "./lib/purchaseTemplateMigration.js
 import { runEnterpriseWorkflowMigration } from "./lib/enterpriseWorkflowTemplates.js";
 import { runOrderProgressMigration } from "./lib/orderProgress.js";
 import { runExceptionEnumMigration, runOrderExceptionsMigration } from "./lib/services/exceptionService.js";
+import { runVendorCompanyAssignmentsMigration } from "./lib/vendorCompanyAssignmentsMigration.js";
 import { runStep4TemplateMigration } from "./lib/step4TemplateMigration.js";
 import { runServiceTemplateMigration } from "./lib/serviceTemplateMigration.js";
 import { expireStaleApprovals } from "./lib/aiGovernance.js";
 import { startDbBackupScheduler } from "./lib/dbBackup.js";
 import { initAlertsBroadcast } from "./lib/alertsBroadcast.js";
 import { runSportCenterMigration } from "./modules/sport-center/migration.js";
-import { runDriverPodMigration } from "./routes/driver.js";
+import { runDriverPodMigration, runDriverAssignmentMigration } from "./routes/driver.js";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 
@@ -264,6 +266,7 @@ async function startServer() {
   startVmfGapNotifier();
   startFulfillmentExpiryNotifier();
   startWorkflowWorker();
+  startDriverJobWorker();
   startDbBackupScheduler();
   startWaRetryWorker();
 
@@ -329,6 +332,8 @@ async function startServer() {
     .then(() => runWithRetry("Service template migration", runServiceTemplateMigration))
     .then(() => runWithRetry("Sport Center migration", runSportCenterMigration))
     .then(() => runWithRetry("Driver POD migration", runDriverPodMigration))
+    .then(() => runWithRetry("Driver assignment migration", runDriverAssignmentMigration))
+    .then(() => runWithRetry("Vendor company assignments migration", runVendorCompanyAssignmentsMigration))
     .then(() => enableRealtimeTables().catch((err) => {
       logger.warn({ err }, "Supabase Realtime table enable failed (non-fatal)");
     }))

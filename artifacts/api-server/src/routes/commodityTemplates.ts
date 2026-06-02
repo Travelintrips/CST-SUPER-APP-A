@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
-import { requireClerkUser } from "../lib/requireAdmin.js";
+import { requireClerkUser, requireAdmin } from "../lib/requireAdmin.js";
 import type { Request, Response } from "express";
 
 export const commodityTemplatesRouter = Router();
@@ -138,6 +138,7 @@ commodityTemplatesRouter.get("/:id", async (req: Request, res: Response) => {
 /* ─────────────── CREATE TEMPLATE ─────────────── */
 
 commodityTemplatesRouter.post("/", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
   const { key, name, icon, description, sortOrder } = req.body as Record<string, unknown>;
   if (!str(key) || !str(name)) return res.status(400).json({ message: "key dan name wajib diisi" });
   if (!/^[a-z0-9_]+$/.test(String(key))) return res.status(400).json({ message: "key hanya boleh huruf kecil, angka, underscore" });
@@ -158,6 +159,7 @@ commodityTemplatesRouter.post("/", async (req: Request, res: Response) => {
 /* ─────────────── UPDATE TEMPLATE ─────────────── */
 
 commodityTemplatesRouter.put("/:id", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
   const id = numId(req.params["id"] as string);
   if (!id) return res.status(400).json({ message: "ID tidak valid" });
 
@@ -182,6 +184,7 @@ commodityTemplatesRouter.put("/:id", async (req: Request, res: Response) => {
 /* ─────────────── DELETE TEMPLATE ─────────────── */
 
 commodityTemplatesRouter.delete("/:id", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
   const id = numId(req.params["id"] as string);
   if (!id) return res.status(400).json({ message: "ID tidak valid" });
 

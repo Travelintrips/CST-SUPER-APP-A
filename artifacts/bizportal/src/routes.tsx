@@ -19,6 +19,7 @@ import LogisticsPortalOrdersPage from "@/pages/logistics-portal-orders";
 import LogisticsPortalOrderDetailPage from "@/pages/logistics-portal-order-detail";
 import LogisticsDriversPage from "@/pages/logistics-drivers";
 import LogisticsDriverPerformancePage from "@/pages/logistics-driver-performance";
+import DriverAnalyticsDashboardPage from "@/pages/logistics/drivers-analytics";
 import LogisticsQuoteRequestsPage from "@/pages/logistics-quote-requests";
 import LogisticsVendorsPage from "@/pages/logistics-vendors";
 import LogisticsQuotationReplyPage from "@/pages/logistics-quotation-reply";
@@ -111,6 +112,8 @@ import OrgManagementPage from "@/pages/OrgManagementPage";
 import AuditReportListPage from "@/pages/audit/index";
 import AuditReportFormPage from "@/pages/audit/form";
 import AuditComparePage from "@/pages/audit/compare";
+import WaNotificationLogsPage from "@/pages/settings/wa-notification-logs";
+import DocumentTemplatesPage from "@/pages/settings/document-templates";
 
 // Products
 import ProductItemsPage from "@/pages/products/items";
@@ -126,6 +129,7 @@ import LogisticOrderDetailPage from "@/pages/logistics/order-detail";
 import OrderAuditTrailPage from "@/pages/logistics/order-audit-trail";
 import VendorPerformancePage from "@/pages/logistics/vendor-performance";
 import InternalTasksPage from "@/pages/logistics/internal-tasks";
+import LogisticsImportAssistantPage from "@/pages/logistics-import-assistant";
 import ExceptionsPage from "@/pages/exceptions/index";
 // Misc
 import NotificationsPage from "@/pages/notifications";
@@ -185,6 +189,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/logistics/freight" component={PR(LogisticsFreightPage)} />
       <Route path="/logistics/portal-orders/:id" component={PR(LogisticsPortalOrderDetailPage)} />
       <Route path="/logistics/portal-orders" component={PR(LogisticsPortalOrdersPage)} />
+      <Route path="/logistics/drivers/analytics" component={PR(DriverAnalyticsDashboardPage)} />
       <Route path="/logistics/drivers/:id/performance" component={PR(LogisticsDriverPerformancePage)} />
       <Route path="/logistics/drivers" component={PR(LogisticsDriversPage)} />
       <Route path="/logistics/driver-performance" component={PR(LogisticsDriverPerformancePage)} />
@@ -200,6 +205,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/logistics/orders/:orderId" component={PR(LogisticOrderDetailPage)} />
       <Route path="/logistics/vendor-performance" component={PR(VendorPerformancePage)} />
       <Route path="/logistics/internal-tasks" component={PR(InternalTasksPage)} />
+      <Route path="/logistics/import-assistant" component={PR(LogisticsImportAssistantPage)} />
       <Route path="/portal-product-orders" component={PR(PortalProductOrdersPage)} />
       <Route path="/portal/customers" component={PR(PortalCustomersPage)} />
       <Route path="/portal/onboarding-approvals" component={PR(PortalOnboardingApprovalsPage)} />
@@ -339,6 +345,10 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
 
       {/* ── Vendor Leaderboard ─────────────────────────────────────────── */}
       <Route path="/vendors" component={PR(VendorLeaderboardPage)} />
+
+      {/* ── WA Monitoring ──────────────────────────────────────────────── */}
+      <Route path="/settings/wa-notification-logs" component={PR(WaNotificationLogsPage)} />
+      <Route path="/settings/document-templates" component={PR(DocumentTemplatesPage)} />
 
       {/* ── Notifications & Analytics ──────────────────────────────────── */}
       <Route path="/notifications" component={PR(NotificationsPage)} />

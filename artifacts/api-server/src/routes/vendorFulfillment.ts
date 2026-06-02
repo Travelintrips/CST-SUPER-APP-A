@@ -16,12 +16,15 @@ import {
   vendorCatalogItemsTable,
   customerApprovalsTable,
   logisticOrderRfqsTable,
+  driverJobsTable,
+  driversTable,
 } from "@workspace/db";
 import { logger } from "../lib/logger";
 import { sendViaService as sendWhatsApp, sendMediaViaService } from "../lib/waTransport.js";
 import { getAdminWa } from "../lib/adminWa";
 import { getPreferredDomain } from "../lib/domain.js";
 import { resolveServiceCategory } from "@workspace/logistics-constants";
+import { normalizePhone } from "../lib/phoneUtils.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { createAdminActionLink, getAdminActionUrl } from "./adminAction.js";
 import { generateShortLink } from "../lib/shortLink.js";
@@ -552,6 +555,10 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
     for (const f of FIELDS) {
       if (body[f] !== undefined) updateData[f] = body[f] || null;
     }
+    // Normalize driver phone sebelum disimpan ke DB agar konsisten
+    if (typeof updateData.driverPhone === "string" && updateData.driverPhone) {
+      updateData.driverPhone = normalizePhone(updateData.driverPhone);
+    }
 
     await db.update(vendorFulfillmentLinksTable)
       .set(updateData as any)
@@ -635,7 +642,7 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
         });
       } catch (e) {
         logger.warn({ e }, "vendor-fulfillment: gagal buat confirm_fulfillment link, fallback ke BizPortal URL");
-        bizportalLink = `https://${domain}/logistic-admin/orders/${order.id}`;
+        bizportalLink = `https://${domain}/bizportal/logistics/orders/${order.id}`;
       }
       const detailLines: string[] = [];
       const cat = resolveServiceCategory(link.serviceType);
@@ -767,22 +774,29 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
     }
 
     // ── WA ke driver ──────────────────────────────────────────────────────────
-    const _svcCat      = resolveServiceCategory(link.serviceType);
-    const _driverPhone = (body.driverPhone ?? "").trim();
-    const _driverName  = (body.driverName  ?? "").trim();
+    const _svcCat         = resolveServiceCategory(link.serviceType);
+    const _driverPhoneRaw = (body.driverPhone ?? "").trim();
+    const _driverPhone    = _driverPhoneRaw ? normalizePhone(_driverPhoneRaw) : "";
+    const _driverName     = (body.driverName  ?? "").trim();
+
+    console.log("Fulfillment type:", link.serviceType, "| svcCategory:", _svcCat);
+    console.log("Driver phone received:", _driverPhoneRaw || "(kosong)");
+    console.log("Normalized driver phone:", _driverPhone || "(kosong)");
+
     logger.info({
-      orderId:          link.orderId,
-      orderNumber:      order.orderNumber,
-      serviceType:      link.serviceType,
-      svcCategory:      _svcCat,
-      driverPhoneRaw:   _driverPhone  || "(kosong)",
-      driverNameRaw:    _driverName   || "(kosong)",
-      plateNumber:      (body.plateNumber ?? "") || "(kosong)",
-      vehicleType:      (body.vehicleType ?? "") || "(kosong)",
-      pickupTime:       (body.pickupTime  ?? "") || "(kosong)",
+      orderId:           link.orderId,
+      orderNumber:       order.orderNumber,
+      fulfillmentType:   link.serviceType,
+      svcCategory:       _svcCat,
+      driverPhoneRaw:    _driverPhoneRaw  || "(kosong)",
+      driverPhoneNorm:   _driverPhone     || "(kosong)",
+      driverNameRaw:     _driverName      || "(kosong)",
+      plateNumber:       (body.plateNumber ?? "") || "(kosong)",
+      vehicleType:       (body.vehicleType ?? "") || "(kosong)",
+      pickupTime:        (body.pickupTime  ?? "") || "(kosong)",
     }, "[WA-driver] cek kirim WA ke driver");
 
-    if (_svcCat === "trucking" && _driverPhone) {
+    if (_driverPhone) {
       const domain       = getPreferredDomain() || "";
       const driverAppUrl = domain ? `https://${domain}/api/driver/open-app` : "";
       const driverMsg = [
@@ -804,26 +818,132 @@ vendorFulfillmentPublicRouter.post("/:token", async (req: Request, res: Response
       ].filter(Boolean).join("\n");
 
       logger.info({
-        orderId:    link.orderId,
-        driverPhone: _driverPhone,
-        driverName:  _driverName || "(kosong)",
+        orderId:         link.orderId,
+        driverPhoneRaw:  _driverPhoneRaw,
+        driverPhoneNorm: _driverPhone,
+        driverName:      _driverName || "(kosong)",
       }, "[WA-driver] mengirim WA ke driver...");
 
       sendWhatsApp(_driverPhone, driverMsg, {
         context: "fulfillment-driver-assigned",
         refType:  "vendor_fulfillment_link",
         refId:    String(link.id),
-      }).then(() => {
-        logger.info({ orderId: link.orderId, driverPhone: _driverPhone }, "[WA-driver] WA ke driver BERHASIL");
+      }).then((r) => {
+        console.log("WA send result:", r);
+        logger.info({ orderId: link.orderId, driverPhoneNorm: _driverPhone }, "[WA-driver] WA ke driver BERHASIL");
       }).catch((e: unknown) => {
-        logger.error({ e, orderId: link.orderId, driverPhone: _driverPhone }, "[WA-driver] WA ke driver GAGAL");
+        console.warn("WA send failed:", e);
+        logger.error({ e, orderId: link.orderId, driverPhoneNorm: _driverPhone }, "[WA-driver] WA ke driver GAGAL");
       });
     } else {
       logger.info({
-        skip_reason: _svcCat !== "trucking"
-          ? `bukan trucking (svcCategory="${_svcCat}", serviceType="${link.serviceType}")`
-          : "driverPhone kosong",
-      }, "[WA-driver] skip — tidak kirim WA ke driver");
+        skip_reason:     "driverPhone kosong dari form — cek driver_jobs",
+        fulfillmentType: link.serviceType,
+        svcCategory:     _svcCat,
+      }, "[WA-driver] skip dari body");
+    }
+
+    // ── Fallback: WA ke driver dari driver_jobs (INTERNAL / EXTERNAL tanpa phone di form) ──
+    // Fire-and-forget — tidak blocking response
+    if (_svcCat === "trucking") {
+      const _bodyPhone = _driverPhone;
+      const _bodyName  = _driverName;
+      const _bodyOrder = { orderNumber: order.orderNumber, customerName: order.customerName, origin: order.origin, destination: order.destination };
+      const _bodyExtra = { plateNumber: body.plateNumber?.trim() || null, vehicleType: body.vehicleType?.trim() || null, pickupTime: body.pickupTime?.trim() || null, notes: body.notes?.trim() || null };
+      ;(async () => {
+        try {
+          const jobs = await db.select({
+            id:                  driverJobsTable.id,
+            driverType:          driverJobsTable.driverType,
+            executionMode:       driverJobsTable.executionMode,
+            driverId:            driverJobsTable.driverId,
+            driverPhoneOverride: driverJobsTable.driverPhoneOverride,
+            driverNameOverride:  driverJobsTable.driverNameOverride,
+            waProgressToken:     driverJobsTable.waProgressToken,
+          }).from(driverJobsTable)
+            .where(eq(driverJobsTable.logisticOrderId, link.orderId));
+
+          if (jobs.length === 0) {
+            logger.info({ orderId: link.orderId }, "[WA-driver] tidak ada driver_jobs untuk order ini (legacy)");
+            return;
+          }
+
+          for (const job of jobs) {
+            console.log("Fulfillment type:", link.serviceType, "| driverType:", job.driverType, "| executionMode:", job.executionMode);
+
+            // Resolve phone: body → job.driverPhoneOverride → drivers.phone (INTERNAL)
+            let resolvedPhone = _bodyPhone;
+            let resolvedName  = _bodyName || job.driverNameOverride || "";
+
+            if (!resolvedPhone && job.driverPhoneOverride) {
+              resolvedPhone = normalizePhone(job.driverPhoneOverride);
+            }
+            if (!resolvedPhone && job.driverId) {
+              const [drv] = await db.select({ phone: driversTable.phone, name: driversTable.name })
+                .from(driversTable).where(eq(driversTable.id, job.driverId));
+              if (drv?.phone) resolvedPhone = normalizePhone(drv.phone);
+              if (!resolvedName && drv?.name) resolvedName = drv.name;
+            }
+
+            console.log("Driver phone received:", _bodyPhone || "(kosong)");
+            console.log("Normalized driver phone:", resolvedPhone || "(kosong)");
+            logger.info({
+              jobId:        job.id,
+              driverType:   job.driverType,
+              resolvedPhone: resolvedPhone || "(kosong)",
+              fromBody:     !!_bodyPhone,
+            }, "[WA-driver] driver_jobs resolved");
+
+            // Simpan ke driver_phone_override jika belum diisi
+            if (resolvedPhone && !job.driverPhoneOverride) {
+              await db.update(driverJobsTable)
+                .set({ driverPhoneOverride: resolvedPhone })
+                .where(eq(driverJobsTable.id, job.id));
+              logger.info({ jobId: job.id, resolvedPhone }, "[WA-driver] driver_phone_override diperbarui");
+            }
+
+            // Kirim WA hanya jika body tidak memiliki phone (hindari double-send)
+            if (resolvedPhone && !_bodyPhone) {
+              const domain = getPreferredDomain() || "";
+              const progressLink = job.waProgressToken
+                ? `https://${domain}/driver-progress/${job.waProgressToken}`
+                : domain ? `https://${domain}/api/driver/open-app` : null;
+
+              const driverMsg = [
+                `🚚 *Penugasan Order — ${_bodyOrder.orderNumber}*`,
+                ``,
+                `Halo *${resolvedName || "Driver"}*,`,
+                `Anda ditugaskan untuk order berikut:`,
+                ``,
+                `📋 No. Order : \`${_bodyOrder.orderNumber}\``,
+                `👤 Customer  : ${_bodyOrder.customerName ?? "—"}`,
+                `📍 Rute      : ${_bodyOrder.origin} → ${_bodyOrder.destination}`,
+                _bodyExtra.plateNumber  ? `🔢 Plat      : ${_bodyExtra.plateNumber}` : null,
+                _bodyExtra.vehicleType  ? `🚛 Kendaraan : ${_bodyExtra.vehicleType}` : null,
+                _bodyExtra.pickupTime   ? `⏰ Est. Pickup: ${_bodyExtra.pickupTime}` : null,
+                _bodyExtra.notes        ? `📝 Catatan   : ${_bodyExtra.notes}` : null,
+                ``,
+                `Mohon segera hubungi tim CST Logistics untuk koordinasi lebih lanjut.`,
+                progressLink ? `\nBuka aplikasi driver:\n${progressLink}` : null,
+              ].filter(Boolean).join("\n");
+
+              sendWhatsApp(resolvedPhone, driverMsg, {
+                context: "fulfillment-driver-assigned-job",
+                refType:  "driver_jobs",
+                refId:    String(job.id),
+              }).then((r) => {
+                console.log("WA send result:", r);
+                logger.info({ jobId: job.id, resolvedPhone, driverType: job.driverType }, "[WA-driver] WA dari driver_jobs BERHASIL");
+              }).catch((err: unknown) => {
+                console.warn("WA send failed:", err);
+                logger.error({ err, jobId: job.id, resolvedPhone }, "[WA-driver] WA dari driver_jobs GAGAL");
+              });
+            }
+          }
+        } catch (e) {
+          logger.warn({ e, orderId: link.orderId }, "[WA-driver] lookup driver_jobs gagal — non-fatal");
+        }
+      })();
     }
 
     return res.json({ ok: true, message: "Data fulfillment berhasil dikirim. Terima kasih!" });

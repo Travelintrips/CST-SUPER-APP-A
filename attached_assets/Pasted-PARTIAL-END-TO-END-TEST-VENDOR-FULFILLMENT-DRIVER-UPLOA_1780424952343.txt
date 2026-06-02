@@ -1,0 +1,129 @@
+PARTIAL END-TO-END TEST — VENDOR FULFILLMENT → DRIVER UPLOAD → CUSTOMER TIMELINE
+
+Tujuan:
+Test seluruh alur dari tahap vendor submit fulfillment atau customer approve sampai driver upload gambar dan tampil di customer tracking page, secara partial dan terkontrol.
+
+---
+
+A. BACKEND SETUP
+
+1. **Siapkan dummy data**
+
+   * orderId, jobId, logisticOrderId valid di staging DB
+   * driverId / driver_phone (dummy) jika ingin test driver upload
+
+2. **Vendor Fulfillment Submit**
+
+   * Endpoint: `POST /api/logistic/orders/:orderId/fulfillment`
+   * Payload:
+
+     ```
+     {
+       driverId: "DUMMY_DRIVER_ID",
+       jobId: "DUMMY_JOB_ID",
+       logisticOrderId: "DUMMY_ORDER_ID",
+       fulfillmentType: "Trucking"
+     }
+     ```
+   * Simpan ke DB (`driver_jobs` / `fulfillment_jobs`)
+   * Trigger timeline update:
+
+     * `updateOrderProgress(logisticOrderId)`
+     * SSE / WebSocket broadcast (opsional)
+   * Trigger WA / push notif:
+
+     * Admin → fulfillment submitted
+     * Customer → dummy log, WA tidak dikirim live
+
+3. **Customer Approve Order (opsional)**
+
+   * Endpoint: `POST /api/orders/:orderId/approve`
+   * Update order status → timeline update
+   * Trigger SSE / WebSocket → timeline refresh
+   * Trigger WA / push → log debug saja
+
+4. **Driver Upload POD / Image**
+
+   * Endpoint: `POST /api/driver/jobs/:jobId/pod`
+   * Payload:
+
+     ```
+     {
+       driverId: "DUMMY_DRIVER_ID",
+       jobId: "DUMMY_JOB_ID",
+       logisticOrderId: "DUMMY_ORDER_ID",
+       file: [upload file path]
+     }
+     ```
+   * Simpan file → storage → simpan URL / path di DB
+   * Relasi ke jobId & logisticOrderId
+   * Trigger timeline update (`updateOrderProgress`) & SSE / WebSocket
+   * Trigger WA / push → log debug (opsional)
+
+5. **Logging**
+
+   * Fulfillment type
+   * Driver phone / driverId
+   * File URL
+   * Timeline update status
+   * WA send result (log, jangan kirim live)
+
+---
+
+B. FRONTEND SETUP
+
+1. **Customer Tracking Page**
+
+   * GET `/api/order/:logisticOrderId/progress`
+   * Render timeline:
+
+     * Step fulfillment submitted
+     * Step approved
+     * Step POD uploaded / Bukti Pengiriman
+   * Render attachment thumbnail / preview
+   * Expandable timeline → klik untuk detail
+
+2. **Timeline / Status Card**
+
+   * Badge / dot color coding:
+
+     * Grey = belum
+     * Green = selesai
+     * Indigo = aktif
+     * Red = cancelled
+   * Realtime update via SSE / polling
+
+---
+
+C. TESTING CHECKLIST PARTIAL
+
+| No | Step                             | Expected Result                              |
+| -- | -------------------------------- | -------------------------------------------- |
+| 1  | Vendor submit fulfillment        | Timeline update, log DB tersimpan            |
+| 2  | Customer approve order           | Timeline update muncul, status order berubah |
+| 3  | Driver upload POD / image        | File tersimpan, URL di DB, timeline update   |
+| 4  | Timeline badge / dot             | Status step muncul sesuai event              |
+| 5  | Thumbnail render                 | Gambar muncul di customer page               |
+| 6  | SSE / WebSocket                  | Timeline refresh otomatis                    |
+| 7  | WA / push notif                  | Hanya log debug muncul, tidak kirim live     |
+| 8  | Internal / External / Legacy job | Semua tipe job muncul di timeline            |
+
+---
+
+D. OUTPUT AKHIR
+
+* Partial end-to-end flow dari fulfillment / approval → driver upload → timeline customer berhasil
+* Attachment / POD image tampil di timeline
+* Backend DB mapping, log debug, SSE / WebSocket berfungsi
+* Tidak mengganggu live WA atau workflow lain
+
+---
+
+Instruksi:
+
+* Gunakan staging DB / dummy driver / order
+* Upload file lokal atau dummy image
+* Backend → simpan file, update timeline, broadcast SSE
+* Frontend → render timeline, thumbnail
+* Test semua tipe job (Internal / External / Legacy)
+* Fokus partial test, tidak perlu jalankan seluruh workflow live

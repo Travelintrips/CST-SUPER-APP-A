@@ -1,0 +1,93 @@
+FASE 4 — SINKRONISASI DRIVER PROGRESS → POD → ORDER TIMELINE → NOTIFIKASI
+
+Tujuan:
+Pastikan update progress driver (INTERNAL WA Mini Form / EXTERNAL Driver App) otomatis tercatat di driver_jobs, POD/Delivery Status, Order Timeline, dan notifikasi ke Admin/Customer.
+
+---
+
+A. AUDIT & PREPARASI
+
+1. Cek backend:
+
+   * driver_jobs.status
+   * driver_jobs.logisticOrderId / freightShipmentId
+   * driver_jobs.wa_progress_token (INTERNAL)
+   * POST /api/driver-progress/:token
+   * POST /api/drivers/jobs/:id/progress (EXTERNAL)
+2. Pastikan mapping status driver_jobs → order_status:
+
+   * Assigned → Pickup Started → Picked Up → In Transit → Delivered → Completed
+3. Pastikan POD/Delivery Status update otomatis saat driver job Completed
+4. Audit notifikasi:
+
+   * Admin: assigned, pickup started, picked up, delivered
+   * Customer: picked up, delivered, POD submitted
+5. Legacy driver_jobs tetap tampil, tidak error, progress diperbarui jika ada
+
+---
+
+B. BACKEND IMPLEMENTASI
+
+1. Tambahkan event listener / trigger ketika driver_jobs.status berubah:
+
+   * Update logistic_orders.status / freight_shipments.status sesuai mapping
+   * Update POD status saat Completed
+   * Kirim notifikasi Admin / Customer sesuai status
+2. Tambahkan duplicate active job guard (1 active job per order)
+3. Pastikan legacy driver job tetap tampil tanpa crash
+
+---
+
+C. FRONTEND IMPLEMENTASI
+
+1. Order Detail Page:
+
+   * Tambahkan **Timeline** komponen di bawah / di atas OrderDriverAssignmentPanel
+   * Visual sederhana: Assigned → Pickup Started → Picked Up → In Transit → Delivered → Completed
+2. Subscribe perubahan status driver job:
+
+   * Polling API `/drivers/jobs?logisticOrderId=xxx` atau
+   * Realtime subscription (Supabase / WebSocket)
+3. Update badge/status realtime di OrderDriverAssignmentPanel
+4. Tampilkan link WA Mini Form untuk INTERNAL driver
+5. Tampilkan badge CST Driver App dan status akun untuk EXTERNAL driver
+
+---
+
+D. NOTIFIKASI
+
+1. Internal driver WA Mini Form → token/link dikirim otomatis saat job dibuat
+2. External driver App → push / WA notifikasi saat job assigned / progress update
+3. Admin → notifikasi WA / Push saat:
+
+   * Driver assigned
+   * Pickup Started / Picked Up / Delivered
+4. Customer → notifikasi WA / email saat:
+
+   * Barang picked up
+   * Barang delivered
+   * POD submitted
+
+---
+
+E. TESTING
+
+1. Assign INTERNAL driver → update via WA Mini Form → cek timeline, POD, notifikasi
+2. Assign EXTERNAL driver → update via Driver App → cek timeline, POD, notifikasi
+3. Cancel assignment → rollback status → timeline update
+4. Legacy driver jobs → tampil, progress update, tidak crash
+5. Pastikan zero regression pada Freight-detail panel
+6. Jalankan typecheck/build/test → pastikan TS clean
+
+---
+
+F. OUTPUT YANG HARUS DILAPORKAN
+
+1. File backend yang diubah / ditambahkan trigger
+2. File frontend yang diubah (Order Detail + Timeline)
+3. Mapping status driver → order → POD → notifikasi
+4. Skema event trigger untuk sinkronisasi
+5. Screenshot UI Timeline di Order Detail
+6. Hasil testing INTERNAL, EXTERNAL, cancel, legacy job
+7. Log notifikasi Admin/Customer
+8. Status build & typecheck clean

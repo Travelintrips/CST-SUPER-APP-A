@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -44,7 +44,7 @@ import {
 import type { Supplier } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { Pencil, Plus, Store, Trash2, Upload, X } from "lucide-react";
+import { Building2, Globe, Pencil, Plus, Store, Trash2, Upload, X } from "lucide-react";
 import { useUpload } from "@workspace/object-storage-web";
 import { useLanguage } from "@/contexts/LanguageContext";
 
@@ -58,6 +58,14 @@ const ETA_OPTIONS = [
   "1-2 hari", "2-3 hari", "3-5 hari", "5-7 hari",
   "1-2 minggu", "2-4 minggu", "1 bulan+",
 ];
+
+type Company = {
+  id: number;
+  companyName: string;
+  companyCode: string;
+  isActive: boolean;
+  isHolding: boolean;
+};
 
 function getLogoServeUrl(path: string) {
   if (path.startsWith("/objects/")) return `/api/storage${path}`;
@@ -74,6 +82,39 @@ function LogoDisplay({ logo }: { logo: string | null | undefined }) {
     return <img src={getLogoServeUrl(logo)} alt="logo" className="h-6 w-6 object-contain rounded" />;
   }
   return <span className="text-base">{logo}</span>;
+}
+
+function CompanyAssignmentBadges({
+  assignedIds,
+  companies,
+}: {
+  assignedIds: number[];
+  companies: Company[];
+}) {
+  if (!assignedIds || assignedIds.length === 0) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+        <Globe className="h-3 w-3" /> Global
+      </span>
+    );
+  }
+  const names = assignedIds
+    .map((id) => companies.find((c) => c.id === id)?.companyCode ?? `#${id}`)
+    .slice(0, 3);
+  return (
+    <div className="flex flex-wrap gap-1">
+      {names.map((n) => (
+        <Badge key={n} variant="outline" className="text-xs px-1.5 py-0">
+          {n}
+        </Badge>
+      ))}
+      {assignedIds.length > 3 && (
+        <Badge variant="outline" className="text-xs px-1.5 py-0 text-muted-foreground">
+          +{assignedIds.length - 3}
+        </Badge>
+      )}
+    </div>
+  );
 }
 
 type FormState = {
@@ -133,6 +174,62 @@ export default function VendorsPage() {
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
 
+  // Company assignment state
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [assignedCompanyIds, setAssignedCompanyIds] = useState<number[]>([]);
+  const [savingAssignments, setSavingAssignments] = useState(false);
+
+  // Filter & bulk assign state
+  const [filterCompanyId, setFilterCompanyId] = useState<string>("all");
+  const [bulkAssignOpen, setBulkAssignOpen] = useState(false);
+  const [bulkAssignCompanyId, setBulkAssignCompanyId] = useState<string>("");
+  const [bulkAssigning, setBulkAssigning] = useState(false);
+
+  // Fetch companies list
+  useEffect(() => {
+    fetch("/api/companies")
+      .then((r) => r.json())
+      .then((data: Company[]) => {
+        setCompanies((data ?? []).filter((c) => !c.isHolding && c.isActive));
+      })
+      .catch(() => {});
+  }, []);
+
+  // Fetch existing assignments when editing a vendor
+  useEffect(() => {
+    if (!editing) {
+      setAssignedCompanyIds([]);
+      return;
+    }
+    fetch(`/api/trading/suppliers/${editing.id}/companies`)
+      .then((r) => r.json())
+      .then((data: { companyIds: number[] }) => {
+        setAssignedCompanyIds(data.companyIds ?? []);
+      })
+      .catch(() => {
+        setAssignedCompanyIds([]);
+      });
+  }, [editing]);
+
+  const toggleAssignedCompany = (companyId: number) => {
+    setAssignedCompanyIds((prev) =>
+      prev.includes(companyId) ? prev.filter((id) => id !== companyId) : [...prev, companyId]
+    );
+  };
+
+  const saveAssignments = async (vendorId: number) => {
+    setSavingAssignments(true);
+    try {
+      await fetch(`/api/trading/suppliers/${vendorId}/companies`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ companyIds: assignedCompanyIds }),
+      });
+    } finally {
+      setSavingAssignments(false);
+    }
+  };
+
   const { uploadFile } = useUpload({
     onError: () => {
       toast({ title: t.common.error, variant: "destructive" });
@@ -173,6 +270,7 @@ export default function VendorsPage() {
   const reset = () => {
     setEditing(null);
     setForm(emptyForm());
+    setAssignedCompanyIds([]);
   };
 
   const startEdit = (v: Supplier) => {
@@ -222,6 +320,7 @@ export default function VendorsPage() {
     try {
       if (editing) {
         const updated = await updateMut.mutateAsync({ id: editing.id, data: body });
+        await saveAssignments(editing.id);
         qc.setQueryData<Supplier[]>(getListSuppliersQueryKey(), (old) =>
           old ? old.map((s) => (s.id === updated.id ? updated : s)) : [updated]
         );
@@ -229,6 +328,7 @@ export default function VendorsPage() {
         toast({ title: t.common.success });
       } else {
         const created = await createMut.mutateAsync({ data: body });
+        await saveAssignments(created.id);
         qc.setQueryData<Supplier[]>(getListSuppliersQueryKey(), (old) =>
           old ? [...old, created] : [created]
         );
@@ -253,7 +353,12 @@ export default function VendorsPage() {
     }
   };
 
-  const allList = vendors ?? [];
+  const rawList = vendors ?? [];
+  const allList = filterCompanyId === "all"
+    ? rawList
+    : filterCompanyId === "__unassigned__"
+      ? rawList.filter((v) => (v as { companyId?: number | null }).companyId == null)
+      : rawList.filter((v) => String((v as { companyId?: number | null }).companyId) === filterCompanyId);
   const allSelected = allList.length > 0 && allList.every((v) => selectedIds.has(v.id));
 
   const toggleSelect = (id: number) => {
@@ -296,6 +401,34 @@ export default function VendorsPage() {
     }
   };
 
+  const handleBulkAssignCompany = async () => {
+    if (selectedIds.size === 0 || !bulkAssignCompanyId) return;
+    setBulkAssigning(true);
+    try {
+      const res = await fetch("/api/trading/suppliers/bulk-assign-company", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vendorIds: Array.from(selectedIds),
+          companyId: bulkAssignCompanyId === "__unassign__" ? null : Number(bulkAssignCompanyId),
+        }),
+      });
+      if (!res.ok) throw new Error("Gagal assign company");
+      const cName = bulkAssignCompanyId === "__unassign__"
+        ? "Global (tidak di-assign)"
+        : companies.find(c => String(c.id) === bulkAssignCompanyId)?.companyName ?? bulkAssignCompanyId;
+      toast({ title: `${selectedIds.size} vendor di-assign ke ${cName}` });
+      setSelectedIds(new Set());
+      setBulkAssignOpen(false);
+      setBulkAssignCompanyId("");
+      qc.invalidateQueries({ queryKey: getListSuppliersQueryKey() });
+    } catch (e) {
+      toast({ title: "Gagal", description: String(e), variant: "destructive" });
+    } finally {
+      setBulkAssigning(false);
+    }
+  };
+
   const taxLabel = (id: number | null | undefined) => {
     if (!id) return "-";
     const t = (taxes ?? []).find((x) => x.id === id);
@@ -316,14 +449,23 @@ export default function VendorsPage() {
                 <Plus className="mr-2 h-4 w-4" /> New Vendor
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-lg">
+            <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>{editing ? "Edit Vendor" : "Vendor Baru"}</DialogTitle>
               </DialogHeader>
               <Tabs defaultValue="bisnis">
                 <TabsList className="w-full">
                   <TabsTrigger value="bisnis" className="flex-1">Informasi Bisnis</TabsTrigger>
-                  <TabsTrigger value="layanan" className="flex-1">Layanan Pengiriman</TabsTrigger>
+                  <TabsTrigger value="layanan" className="flex-1">Layanan</TabsTrigger>
+                  <TabsTrigger value="akses" className="flex-1">
+                    <Building2 className="h-3.5 w-3.5 mr-1" />
+                    Akses Company
+                    {assignedCompanyIds.length > 0 && (
+                      <Badge className="ml-1.5 h-4 w-4 p-0 flex items-center justify-center text-[10px]">
+                        {assignedCompanyIds.length}
+                      </Badge>
+                    )}
+                  </TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="bisnis" className="mt-3 grid gap-3">
@@ -484,11 +626,88 @@ export default function VendorsPage() {
                     <Label htmlFor="isActive">Aktif (tampil di portal & notifikasi)</Label>
                   </div>
                 </TabsContent>
+
+                {/* ── Tab Akses Company ──────────────────────────────────── */}
+                <TabsContent value="akses" className="mt-3">
+                  <div className="rounded-lg border p-3 mb-3 bg-muted/40">
+                    <div className="flex items-start gap-2">
+                      <Globe className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                      <div>
+                        <p className="text-sm font-medium">Visibilitas Vendor</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Jika tidak ada company yang dipilih, vendor ini akan terlihat oleh <strong>semua divisi/company</strong> (global).
+                          Pilih company tertentu untuk membatasi visibilitas hanya ke divisi tersebut.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {companies.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-6">Memuat daftar company…</p>
+                  ) : (
+                    <div className="grid gap-2">
+                      {/* Select all / Clear */}
+                      <div className="flex items-center justify-between pb-1 border-b">
+                        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                          {assignedCompanyIds.length === 0
+                            ? "Semua company (global)"
+                            : `${assignedCompanyIds.length} company dipilih`}
+                        </span>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setAssignedCompanyIds(companies.map((c) => c.id))}
+                            className="text-xs text-primary hover:underline"
+                          >
+                            Pilih Semua
+                          </button>
+                          <span className="text-muted-foreground text-xs">·</span>
+                          <button
+                            type="button"
+                            onClick={() => setAssignedCompanyIds([])}
+                            className="text-xs text-muted-foreground hover:text-foreground hover:underline"
+                          >
+                            Reset (Global)
+                          </button>
+                        </div>
+                      </div>
+                      {companies.map((company) => {
+                        const checked = assignedCompanyIds.includes(company.id);
+                        return (
+                          <label
+                            key={company.id}
+                            className={`flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer transition-colors ${
+                              checked
+                                ? "border-primary/50 bg-primary/5"
+                                : "border-border hover:border-primary/30 hover:bg-muted/50"
+                            }`}
+                          >
+                            <Checkbox
+                              checked={checked}
+                              onCheckedChange={() => toggleAssignedCompany(company.id)}
+                            />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium leading-tight">{company.companyName}</p>
+                              <p className="text-xs text-muted-foreground">{company.companyCode}</p>
+                            </div>
+                            {checked && (
+                              <Badge className="bg-primary/10 text-primary border-0 text-xs shrink-0">Aktif</Badge>
+                            )}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </TabsContent>
               </Tabs>
               <DialogFooter>
                 <Button variant="outline" onClick={() => { setOpen(false); reset(); }}>Batal</Button>
-                <Button onClick={submit} disabled={createMut.isPending || updateMut.isPending} data-testid="button-save-vendor">
-                  {editing ? "Simpan" : "Buat"}
+                <Button
+                  onClick={submit}
+                  disabled={createMut.isPending || updateMut.isPending || savingAssignments}
+                  data-testid="button-save-vendor"
+                >
+                  {(createMut.isPending || updateMut.isPending || savingAssignments) ? "Menyimpan..." : (editing ? "Simpan" : "Buat")}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -497,8 +716,40 @@ export default function VendorsPage() {
 
         {/* Bulk action bar */}
         {selectedIds.size > 0 && (
-          <div className="flex items-center gap-3 px-4 py-2.5 bg-primary/10 border border-primary/20 rounded-lg">
+          <div className="flex items-center gap-3 px-4 py-2.5 bg-primary/10 border border-primary/20 rounded-lg flex-wrap">
             <span className="text-sm font-medium">{selectedIds.size} dipilih</span>
+            <Dialog open={bulkAssignOpen} onOpenChange={setBulkAssignOpen}>
+              <DialogTrigger asChild>
+                <Button size="sm" variant="outline" className="gap-1.5">
+                  <Building2 className="h-3.5 w-3.5" />
+                  Assign ke Company
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-sm">
+                <DialogHeader>
+                  <DialogTitle>Assign {selectedIds.size} Vendor ke Company</DialogTitle>
+                </DialogHeader>
+                <div className="grid gap-3 py-2">
+                  <Select value={bulkAssignCompanyId} onValueChange={setBulkAssignCompanyId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Pilih company..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {companies.map((c) => (
+                        <SelectItem key={c.id} value={String(c.id)}>{c.companyName} ({c.companyCode})</SelectItem>
+                      ))}
+                      <SelectItem value="__unassign__">— Lepas (Global / tidak di-assign) —</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => { setBulkAssignOpen(false); setBulkAssignCompanyId(""); }}>Batal</Button>
+                  <Button onClick={handleBulkAssignCompany} disabled={!bulkAssignCompanyId || bulkAssigning}>
+                    {bulkAssigning ? "Menyimpan..." : "Simpan"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
             <Button size="sm" variant="destructive" onClick={handleBulkDelete} disabled={bulkDeleting}>
               <Trash2 className="h-3.5 w-3.5 mr-1.5" />
               {bulkDeleting ? "Menghapus..." : "Hapus Terpilih"}
@@ -509,7 +760,23 @@ export default function VendorsPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Daftar Vendor</CardTitle>
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <CardTitle>Daftar Vendor</CardTitle>
+              <div className="flex items-center gap-2">
+                <Select value={filterCompanyId} onValueChange={(v) => { setFilterCompanyId(v); setSelectedIds(new Set()); }}>
+                  <SelectTrigger className="w-[200px] h-8 text-sm">
+                    <SelectValue placeholder="Filter company..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Semua Company</SelectItem>
+                    {companies.map((c) => (
+                      <SelectItem key={c.id} value={String(c.id)}>{c.companyName} ({c.companyCode})</SelectItem>
+                    ))}
+                    <SelectItem value="__unassigned__">— Belum di-assign —</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
           </CardHeader>
           <CardContent className="p-0">
             <div className="overflow-x-auto">
@@ -528,6 +795,7 @@ export default function VendorsPage() {
                   <TableHead>PIC</TableHead>
                   <TableHead>ETA</TableHead>
                   <TableHead className="text-right">Tarif Dasar</TableHead>
+                  <TableHead>Akses Company</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="w-[100px] text-right sticky right-0 bg-card z-10">Aksi</TableHead>
                 </TableRow>
@@ -535,6 +803,7 @@ export default function VendorsPage() {
               <TableBody>
                 {allList.map((v) => {
                   const baseFee = Number(v.fee ?? 0);
+                  const assignedIds = (v as { assignedCompanyIds?: number[] }).assignedCompanyIds ?? [];
                   return (
                     <TableRow key={v.id} data-testid={`row-vendor-${v.id}`}>
                       <TableCell>
@@ -545,8 +814,20 @@ export default function VendorsPage() {
                         />
                       </TableCell>
                       <TableCell>
-                        <span className="mr-1.5 inline-flex items-center"><LogoDisplay logo={v.logo} /></span>
-                        <span className="font-medium">{v.name}</span>
+                        <div className="flex flex-col gap-0.5">
+                          <div className="flex items-center gap-1.5">
+                            <span className="inline-flex items-center"><LogoDisplay logo={v.logo} /></span>
+                            <span className="font-medium">{v.name}</span>
+                          </div>
+                          {(v as { companyId?: number | null }).companyId != null && (() => {
+                            const co = companies.find(c => c.id === (v as { companyId?: number | null }).companyId);
+                            return co ? (
+                              <Badge className="text-[10px] px-1.5 py-0 w-fit bg-indigo-100 text-indigo-800 hover:bg-indigo-100 border-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-300">
+                                {co.companyCode}
+                              </Badge>
+                            ) : null;
+                          })()}
+                        </div>
                       </TableCell>
                       <TableCell>
                         {v.serviceType
@@ -561,27 +842,50 @@ export default function VendorsPage() {
                         {baseFee > 0 ? `Rp ${baseFee.toLocaleString("id-ID")}` : "-"}
                       </TableCell>
                       <TableCell>
+                        <CompanyAssignmentBadges assignedIds={assignedIds} companies={companies} />
+                      </TableCell>
+                      <TableCell>
                         {v.isActive
                           ? <Badge className="bg-green-100 text-green-800 hover:bg-green-100 text-xs">Aktif</Badge>
-                          : <Badge variant="outline" className="text-xs text-muted-foreground">Nonaktif</Badge>}
+                          : <Badge variant="secondary" className="text-xs">Nonaktif</Badge>}
                       </TableCell>
                       <TableCell className="text-right sticky right-0 bg-card z-10">
-                        <Button size="icon" variant="ghost" title="Etalase" onClick={() => navigate(`/purchase/vendors/${v.id}`)}>
-                          <Store className="h-4 w-4 text-primary" />
-                        </Button>
-                        <Button size="icon" variant="ghost" title="Edit" onClick={() => startEdit(v)} data-testid={`button-edit-vendor-${v.id}`}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button size="icon" variant="ghost" title="Hapus" onClick={() => remove(v.id)} data-testid={`button-delete-vendor-${v.id}`}>
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
+                        <div className="flex justify-end gap-1">
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8"
+                            onClick={() => navigate(`/purchase/vendors/${v.id}`)}
+                            title="Lihat Etalase"
+                          >
+                            <Store className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8"
+                            onClick={() => startEdit(v)}
+                            data-testid={`button-edit-vendor-${v.id}`}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8 text-destructive hover:text-destructive"
+                            onClick={() => remove(v.id)}
+                            data-testid={`button-delete-vendor-${v.id}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   );
                 })}
                 {allList.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
                       Belum ada vendor.
                     </TableCell>
                   </TableRow>

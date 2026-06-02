@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { rateLimit } from "express-rate-limit";
+import { rateLimit, ipKeyGenerator } from "express-rate-limit";
 
 const router = Router();
 
@@ -14,10 +14,13 @@ const geocodeRateLimit = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Terlalu banyak permintaan geocode, coba lagi nanti." },
-  keyGenerator: (req) =>
-    (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ??
-    req.socket.remoteAddress ??
-    "unknown",
+  keyGenerator: (req) => {
+    const raw =
+      (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ??
+      req.socket.remoteAddress ??
+      "unknown";
+    return ipKeyGenerator(raw);
+  },
 });
 
 router.get("/geocode", geocodeRateLimit, async (req, res) => {

@@ -86,9 +86,11 @@ import { serviceTemplatesRouter } from "./serviceTemplates.js";
 
 import { exceptionsRouter } from "./exceptions.js";
 import { orderExceptionsRouter } from "./orderExceptions.js";
+import { waNotificationLogsRouter } from "./waNotificationLogs.js";
 import analyticsProfitRouter from "./analyticsProfit.js";
 import { systemRouter } from "./system.js";
 import rbacRouter from "./rbac.js";
+import importAdvisorRouter from "./importAdvisor.js";
 import { handleAlertSse } from "../lib/alertsBroadcast.js";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import sportCenterRouter from "../modules/sport-center/routes.js";
@@ -211,9 +213,11 @@ router.use("/logistic", orderAuditTrailRouter);
 router.use("/logistic", orderExceptionsRouter);
 
 router.use("/exceptions", exceptionsRouter);
+router.use("/wa-notification-logs", waNotificationLogsRouter);
 router.use("/analytics/profitability", analyticsProfitRouter);
 router.use("/system", systemRouter);
 router.use("/rbac", rbacRouter);
+router.use("/import-advisor", importAdvisorRouter);
 router.use("/sport-center", sportCenterRouter);
 
 router.get("/alerts/stream", async (req: Request, res: Response) => {

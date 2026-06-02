@@ -8,7 +8,9 @@
  *   /q/*               → API Server      :8080  (short-link redirects)
  *   /s/*               → API Server      :8080
  *   /bizportal/*       → BizPortal       :18442
- *   /sport-center/*    → Sport Center    :3002
+
+ *   /sport-center/*    → 302 redirect to /bizportal/sport-center/* (served by BizPortal React Router)
+
  *   /customer-portal/* → redirect strip prefix
  *   /*                 → Customer Portal :5173
  *
@@ -44,7 +46,9 @@ const ROUTES = [
   { prefix: "/s",               upstream: { host: "localhost", port: API_PORT } },
   { prefix: "/bizportal",       upstream: { host: "localhost", port: BIZPORTAL_PORT } },
   { prefix: "/logistic-order",  upstream: { host: "localhost", port: LOGISTIC_ORDER_PORT } },
-  { prefix: "/sport-center",    upstream: { host: "localhost", port: 3002 } },
+  // /sport-center/* → redirect to BizPortal React Router — no separate service on :3002
+  { prefix: "/sport-center",    upstream: null, redirectMapTo: "/bizportal/sport-center", redirectDefaultSuffix: "/dashboard" },
+
   // Canvas artifact iframe hits /customer-portal/* — redirect to strip the prefix
   { prefix: "/customer-portal", upstream: null, redirectStrip: "/customer-portal" },
 ];
@@ -55,16 +59,22 @@ const SERVICE_NAMES = {
   [BIZPORTAL_PORT]:      "BizPortal",
   [CUSTOMER_PORT]:       "Customer Portal",
   [LOGISTIC_ORDER_PORT]: "Logistic Order",
-  3002:                  "Sport Center",
 };
 
 function resolve(url) {
   for (const route of ROUTES) {
     if (url === route.prefix || url.startsWith(route.prefix + "/") || url.startsWith(route.prefix + "?")) {
-      return { upstream: route.upstream, stripPrefix: route.stripPrefix ?? null, redirectStrip: route.redirectStrip ?? null };
+      return {
+        upstream:              route.upstream ?? null,
+        stripPrefix:           route.stripPrefix          ?? null,
+        redirectStrip:         route.redirectStrip        ?? null,
+        redirectMapTo:         route.redirectMapTo        ?? null,
+        redirectDefaultSuffix: route.redirectDefaultSuffix ?? "/",
+        matchedPrefix:         route.prefix,
+      };
     }
   }
-  return { upstream: DEFAULT_UPSTREAM, stripPrefix: null, redirectStrip: null };
+  return { upstream: DEFAULT_UPSTREAM, stripPrefix: null, redirectStrip: null, redirectMapTo: null, redirectDefaultSuffix: "/", matchedPrefix: null };
 }
 
 function rewritePath(url, stripPrefix) {
@@ -144,11 +154,21 @@ function proxyAttempt(req, upstream, body, rewrittenPath) {
 // ── Request handler ───────────────────────────────────────────────────────────
 
 function handleRequest(req, res) {
-  const { upstream, stripPrefix, redirectStrip } = resolve(req.url ?? "/");
+  const { upstream, stripPrefix, redirectStrip, redirectMapTo, redirectDefaultSuffix, matchedPrefix } = resolve(req.url ?? "/");
 
   // Redirect-strip: browser URL must change so client-side router sees correct path
   if (redirectStrip) {
     const target = rewritePath(req.url ?? "/", redirectStrip);
+    res.writeHead(302, { location: target });
+    res.end();
+    return;
+  }
+
+  // Redirect-map: rewrite prefix to a different base path (e.g. /sport-center/* → /bizportal/sport-center/*)
+  if (redirectMapTo) {
+    const url = req.url ?? "/";
+    const suffix = matchedPrefix ? url.slice(matchedPrefix.length) : "";
+    const target = (!suffix || suffix === "/") ? (redirectMapTo + redirectDefaultSuffix) : (redirectMapTo + suffix);
     res.writeHead(302, { location: target });
     res.end();
     return;
@@ -207,6 +227,7 @@ function wsConnect(upstream) {
 
 async function handleUpgrade(req, socket, head) {
   const { upstream } = resolve(req.url ?? "/");
+  if (!upstream) { socket.destroy(); return; }
   let tunnel, lastErr;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     try {
@@ -257,7 +278,7 @@ async function startGateway() {
         console.log(`  /api/*             → :${API_PORT} (API Server)`);
         console.log(`  /bizportal/*       → :${BIZPORTAL_PORT} (BizPortal)`);
         console.log(`  /logistic-order/*  → :${LOGISTIC_ORDER_PORT} (Logistic Order)`);
-        console.log(`  /sport-center/*    → :3002 (Sport Center)`);
+        console.log(`  /sport-center/*    → 302 /bizportal/sport-center/* (BizPortal React Router)`);
         console.log(`  /*                 → :${CUSTOMER_PORT} (Customer Portal)`);
         resolve(true);
       });

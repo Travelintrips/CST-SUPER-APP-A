@@ -733,8 +733,8 @@ customerQuotePublicRouter.post("/:token/respond", async (req: Request, res: Resp
     });
 
     const rfqNum = order.orderNumber;
-    const adminLink = `${getBaseUrl()}/logistic-admin/orders/${order.id}`;
-    const rfqLink = `${getBaseUrl()}/logistic-admin/orders/${order.id}`;
+    const adminLink = `${getBaseUrl()}/bizportal/logistics/orders/${order.id}`;
+    const rfqLink = `${getBaseUrl()}/bizportal/logistics/orders/${order.id}`;
     const adminGroupWa = await getAdminGroupWa();
 
     if (response === "approve") {

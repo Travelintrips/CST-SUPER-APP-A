@@ -1,0 +1,108 @@
+FASE 5 — ENHANCEMENT & ANALYTICS DRIVER ASSIGNMENT SYSTEM
+
+Tujuan:
+Penyempurnaan workflow driver assignment, realtime timeline, dashboard analytics, notifikasi WA/push, workflow automation, audit logs, dan UI/UX Timeline interaktif.
+
+---
+
+A. BACKEND — Enhancement & Automation
+
+1. **Multi-leg / Multi-shipment support**
+
+   * Timeline per shipment
+   * Merge timeline di Order Detail jika satu order memiliki beberapa shipment
+
+2. **Realtime push / subscription**
+
+   * Gunakan Supabase Realtime / WebSocket untuk update timeline tanpa polling
+   * Pastikan semua event driver_jobs.status berubah → timeline, SSE broadcast admin
+
+3. **Auto-cancel job**
+
+   * Job tidak update progress dalam X jam → otomatis cancel
+   * Trigger WA notif admin
+
+4. **Reminder WA otomatis**
+
+   * Kirim reminder ke driver jika progress pending > X jam
+
+5. **Audit / Compliance log**
+
+   * Simpan semua event status change, cancel / force update, notifikasi WA/push
+   * Endpoint review audit logs untuk admin internal
+
+6. **Analytics API**
+
+   * Endpoint: driver performance, completion rate, average delivery time, POD submission rate, Internal vs External
+   * Response JSON siap untuk dashboard frontend
+
+---
+
+B. FRONTEND — Timeline & Dashboard
+
+1. **Timeline component**
+
+   * Interaktif: tooltip / hover detail
+   * Expand/collapse per event
+   * Color coding: grey = belum, green = selesai, indigo = aktif, red = cancelled
+   * Filterable: Internal vs External, Completed vs Cancelled
+
+2. **Notification UI**
+
+   * Toast / snackbar saat status update realtime
+   * Highlight status PICKED_UP / DELIVERED / COMPLETED / CANCELLED
+
+3. **Dashboard Analytics**
+
+   * Chart / table untuk driver performance, delivery SLA, completion rate
+   * Filterable by driver type, date range, shipment type
+   * Update realtime sesuai backend analytics endpoint
+
+4. **ActiveJobCard / PastJobRow**
+
+   * Timeline embed
+   * Realtime status update + tooltip detail
+   * Cancel / Force update button memanggil PATCH admin route baru
+
+---
+
+C. WORKFLOW / AUTOMATION
+
+1. SLA monitoring → alert jika job belum update sesuai ETA
+2. Bulk assignment / re-assignment support di admin panel
+3. Auto-reminder WA ke driver pending > X jam
+4. Duplicate job alert → jika multiple active job untuk satu order
+
+---
+
+D. TESTING / QA
+
+1. Multi-leg / shipment timeline update → statusLogs muncul lengkap
+2. Realtime timeline update → admin & customer otomatis update tanpa refresh
+3. Auto-cancel job → timeline update + WA notif admin
+4. Reminder WA → driver belum update → WA terkirim
+5. Analytics dashboard → data valid dan chart/table update sesuai backend
+6. Timeline filter / UI → filter Internal/External, Completed/Cancelled, toast/snackbar muncul
+7. Audit logs → semua event tercatat
+
+---
+
+E. OUTPUT AKHIR
+
+1. Dashboard analytics driver jobs & delivery KPI
+2. Timeline interaktif & filterable di OrderDriverAssignmentPanel
+3. Realtime push & WA notifications untuk admin/customer
+4. Workflow automation: auto-cancel, reminder, SLA alert
+5. Audit / compliance logs lengkap
+6. Zero regression untuk Fase 1–4 (backend + frontend)
+7. Build / typecheck clean, TS tanpa error
+
+---
+
+Instruksi:
+
+* Implementasikan semua file **paralel sesuai modul**
+* Reuse helper, API, migration, dan komponen dari Fase 1–4
+* Fokus pada backend + frontend + notifikasi + analytics dashboard + workflow automation
+* Jangan ubah Freight-detail panel lama
+* Testing semua use case sebelum merge

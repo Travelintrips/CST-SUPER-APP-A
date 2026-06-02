@@ -36,13 +36,13 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useVendors } from "@/hooks/useVendors";
 import {
   useGetPurchaseDocument,
   useCreatePurchaseDocument,
   useUpdatePurchaseDocument,
   usePurchaseDocumentAction,
   useDeletePurchaseDocument,
-  useListSuppliers,
   useCreateSupplier,
   useUpdateSupplier,
   useListProducts,
@@ -117,7 +117,7 @@ export default function PurchaseDocumentEditorPage() {
       queryKey: getGetPurchaseDocumentQueryKey(id ?? 0),
     },
   });
-  const { data: vendors } = useListSuppliers();
+  const { data: vendors } = useVendors();
   const { data: _productsPaginated } = useListProducts({ limit: 500 });
   const products = _productsPaginated?.data;
   const { data: taxes } = useListTaxes();

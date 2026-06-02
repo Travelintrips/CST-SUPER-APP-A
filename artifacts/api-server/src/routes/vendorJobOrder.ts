@@ -32,6 +32,10 @@ import {
   logisticOrderItemsTable,
   suppliersTable,
   orderUpdatesTable,
+  driverJobsTable,
+  driverPhotosTable,
+  driversTable,
+  driverLocationsTable,
 } from "@workspace/db";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { TAX_RATE_DECIMAL } from "../lib/taxHelper.js";
@@ -721,6 +725,33 @@ vendorJobPublicRouter.post("/:token/accept", async (req: Request, res: Response)
       }).catch(() => {});
     }
 
+    // WA ke driver
+    const driverPhone = (body.driverPhone ?? "").toString().trim();
+    const driverName = (body.driverName ?? "Driver").toString().trim();
+    logger.info(
+      { driverPhone, driverName, orderNumber: job.order_number, serviceType: job.service_type, shipmentType: job.shipment_type },
+      "[WA-driver] vendor-job accept: cek kirim WA ke driver"
+    );
+    if (driverPhone) {
+      const driverAppUrl = `${getPreferredDomain()}/driver`;
+      const waMsg =
+        `🚛 *Konfirmasi Job Order*\n\n` +
+        `Halo ${driverName},\n\n` +
+        `Anda telah dikonfirmasi untuk menjalankan pengiriman berikut:\n\n` +
+        `📦 *Order*    : ${job.order_number}\n` +
+        `📍 *Rute*     : ${job.origin} → ${job.destination}\n` +
+        (body.vehiclePlate ? `🚗 *Plat*      : ${body.vehiclePlate}\n` : "") +
+        (body.vehicleType ? `🚐 *Kendaraan* : ${body.vehicleType}\n` : "") +
+        (body.pickupTime ? `🕐 *Pickup*    : ${body.pickupTime}\n` : "") +
+        (body.carrier ? `🏢 *Carrier*   : ${body.carrier}\n` : "") +
+        `\n📱 Driver App: ${driverAppUrl}`;
+      sendWhatsApp(driverPhone, waMsg)
+        .then(() => logger.info({ driverPhone, orderNumber: job.order_number }, "[WA-driver] WA ke driver BERHASIL (vendor-job)"))
+        .catch((e) => logger.warn({ e, driverPhone, orderNumber: job.order_number }, "[WA-driver] WA ke driver GAGAL (vendor-job)"));
+    } else {
+      logger.info({ orderNumber: job.order_number }, "[WA-driver] skip — driverPhone kosong (vendor-job)");
+    }
+
     return res.json({ ok: true, message: "Job berhasil diterima. Terima kasih!" });
   } catch (err) {
     logger.error({ err }, "accept-vendor-job error");
@@ -783,7 +814,7 @@ vendorJobPublicRouter.post("/:token/reject", async (req: Request, res: Response)
     const adminWa = await getAdminWa();
     if (adminWa) {
       const _domain = getPreferredDomain();
-      const _adminOrderUrl = _domain ? `https://${_domain}/logistic-admin/orders/${job.order_id}` : undefined;
+      const _adminOrderUrl = _domain ? `https://${_domain}/bizportal/logistics/orders/${job.order_id}` : undefined;
       const _route = [job.origin, job.destination].filter(Boolean).join(" → ") || undefined;
       sendVendorJobRejectedNotification(job.order_number, job.vendor_name ?? "—", adminWa, reason, _route, _adminOrderUrl).catch(() => {});
     }
@@ -1111,13 +1142,147 @@ orderTrackingPublicRouter.get("/:trackToken", async (req: Request, res: Response
     const orderTax = order.tax ? Number(order.tax) : null;
     const orderGrandTotal = order.grand_total ? Number(order.grand_total) : null;
 
-    // POD files (public-facing — only include if order is at POD stage or beyond)
-    const podFiles: Array<{ url: string; type: string; name: string }> = [];
+    // POD files (public-facing — vendor job order pod_files + driver app pod_photos)
+    const podFiles: Array<{ url: string; type: string; name: string; source?: string }> = [];
     if (jobOrder?.pod_files && Array.isArray(jobOrder.pod_files)) {
       for (const f of jobOrder.pod_files as any[]) {
-        podFiles.push({ url: f.url ?? f.publicUrl ?? "", type: f.type ?? "document", name: f.name ?? f.originalname ?? "Dokumen" });
+        podFiles.push({ url: f.url ?? f.publicUrl ?? "", type: f.type ?? "document", name: f.name ?? f.originalname ?? "Dokumen", source: "vendor" });
       }
     }
+
+    // Driver app POD photos (driver_jobs.pod_photos is a JSON string array of URLs)
+    const driverPodResult = await db.execute(
+      sql`SELECT pod_photos, pod_receiver_name, pod_submitted_at, job_number
+          FROM driver_jobs
+          WHERE logistic_order_id = ${order.id}
+            AND pod_photos IS NOT NULL AND pod_photos != 'null'
+          ORDER BY pod_submitted_at DESC NULLS LAST
+          LIMIT 1`
+    );
+    const driverPodRow = driverPodResult.rows[0] as any ?? null;
+    if (driverPodRow?.pod_photos) {
+      let photos: string[] = [];
+      try {
+        const parsed = typeof driverPodRow.pod_photos === "string"
+          ? JSON.parse(driverPodRow.pod_photos)
+          : driverPodRow.pod_photos;
+        if (Array.isArray(parsed)) photos = parsed.filter((u: unknown) => typeof u === "string" && u);
+      } catch { /* ignore */ }
+      photos.forEach((url, idx) => {
+        podFiles.push({
+          url,
+          type: "photo",
+          name: `Foto POD Driver ${idx + 1}${driverPodRow.pod_receiver_name ? ` — ${driverPodRow.pod_receiver_name}` : ""}`,
+          source: "driver",
+        });
+      });
+    }
+    // Driver photos + live location + GPS trail — all from driver_jobs linked to this order
+    let driverPhotos: Array<{ url: string; photoType: string; takenAt: string }> = [];
+    let liveLocation: { lat: number; lng: number; updatedAt: string } | null = null;
+    let gpsTrail: Array<{ lat: number; lng: number; updatedAt: string }> = [];
+    try {
+      const [driverJobRow] = await db
+        .select({
+          id: driverJobsTable.id,
+          driverId: driverJobsTable.driverId,
+          status: driverJobsTable.status,
+        })
+        .from(driverJobsTable)
+        .where(eq(driverJobsTable.logisticOrderId, order.id))
+        .orderBy(desc(driverJobsTable.assignedAt))
+        .limit(1);
+
+      if (driverJobRow) {
+        const [photos, gpsRows] = await Promise.all([
+          db.select({ url: driverPhotosTable.url, photoType: driverPhotosTable.photoType, takenAt: driverPhotosTable.takenAt })
+            .from(driverPhotosTable)
+            .where(eq(driverPhotosTable.driverJobId, driverJobRow.id))
+            .orderBy(driverPhotosTable.takenAt),
+          db.select({
+            latitude: driverLocationsTable.latitude,
+            longitude: driverLocationsTable.longitude,
+            updatedAt: driverLocationsTable.updatedAt,
+          })
+            .from(driverLocationsTable)
+            .where(eq(driverLocationsTable.orderId, order.id))
+            .orderBy(driverLocationsTable.updatedAt)
+            .limit(100),
+        ]);
+
+        driverPhotos = photos.map((p) => ({
+          url: p.url,
+          photoType: p.photoType,
+          takenAt: p.takenAt.toISOString(),
+        }));
+
+        gpsTrail = gpsRows.map((r) => ({
+          lat: Number(r.latitude),
+          lng: Number(r.longitude),
+          updatedAt: r.updatedAt.toISOString(),
+        }));
+
+        if (gpsTrail.length > 0) {
+          const last = gpsTrail[gpsTrail.length - 1];
+          liveLocation = last;
+        }
+
+        // Also check drivers.currentLat/currentLng for most-recent position
+        if (driverJobRow.driverId && ["IN_TRANSIT", "PICKED_UP", "ON_THE_WAY_TO_PICKUP", "ARRIVED_AT_PICKUP", "ARRIVED_AT_DESTINATION"].includes(driverJobRow.status ?? "")) {
+          const [driverRow] = await db
+            .select({ currentLat: driversTable.currentLat, currentLng: driversTable.currentLng, lastLocationAt: driversTable.lastLocationAt })
+            .from(driversTable)
+            .where(eq(driversTable.id, driverJobRow.driverId));
+          if (driverRow?.currentLat && driverRow?.currentLng) {
+            liveLocation = {
+              lat: Number(driverRow.currentLat),
+              lng: Number(driverRow.currentLng),
+              updatedAt: driverRow.lastLocationAt?.toISOString() ?? new Date().toISOString(),
+            };
+          }
+        }
+      }
+    } catch {
+      // non-fatal
+    }
+
+    // Include photos + GPS from order_progress_events (driver WA-link uploads)
+    try {
+      const STEP_TO_PHOTO_TYPE: Record<string, string> = {
+        PICKUP: "pickup", ARRIVED_AT_PICKUP: "pickup", PICKED_UP: "pickup",
+        ON_THE_WAY_TO_PICKUP: "general", IN_TRANSIT: "general",
+        ARRIVED: "arrival", ARRIVED_AT_DESTINATION: "arrival",
+        DELIVERED: "pod", COMPLETED: "pod",
+      };
+      const progressRows = await db.execute(
+        sql`SELECT step_key, photo_url, gps_latitude, gps_longitude, created_at
+            FROM order_progress_events
+            WHERE order_id = ${order.id}
+            ORDER BY created_at ASC`
+      );
+      for (const row of progressRows.rows as Record<string, unknown>[]) {
+        const takenAt = row.created_at instanceof Date
+          ? row.created_at.toISOString()
+          : String(row.created_at);
+        // Photos
+        if (row.photo_url) {
+          const photoType = STEP_TO_PHOTO_TYPE[String(row.step_key ?? "")] ?? "general";
+          driverPhotos.push({ url: String(row.photo_url), photoType, takenAt });
+        }
+        // GPS trail
+        if (row.gps_latitude != null && row.gps_longitude != null) {
+          const lat = Number(row.gps_latitude);
+          const lng = Number(row.gps_longitude);
+          if (!isNaN(lat) && !isNaN(lng)) {
+            gpsTrail.push({ lat, lng, updatedAt: takenAt });
+          }
+        }
+      }
+      // Set liveLocation to most recent GPS point if not already set from driver app
+      if (!liveLocation && gpsTrail.length > 0) {
+        liveLocation = gpsTrail[gpsTrail.length - 1];
+      }
+    } catch { /* non-fatal */ }
 
     return res.json({
       order: {
@@ -1155,6 +1320,9 @@ orderTrackingPublicRouter.get("/:trackToken", async (req: Request, res: Response
         grandTotal: orderGrandTotal,
       },
       podFiles,
+      driverPhotos,
+      liveLocation,
+      gpsTrail,
     });
   } catch (err) {
     logger.error({ err }, "order-tracking error");

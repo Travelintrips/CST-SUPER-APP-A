@@ -24,6 +24,13 @@ type DriverJobStatus =
   | "COMPLETED" | "CANCELLED";
 
 interface DriverLog { id: number; status: DriverJobStatus; timestamp: string; }
+interface DriverPhoto {
+  id: number;
+  url: string;
+  photoType: string;
+  takenAt: string;
+}
+
 interface DriverJob {
   id: number; jobNumber: string; status: DriverJobStatus;
   vehicleType: string | null;
@@ -31,6 +38,7 @@ interface DriverJob {
   cargoDescription: string | null; weight: string | null;
   distance: string | null; assignedAt: string; completedAt: string | null;
   logs: DriverLog[];
+  photos?: DriverPhoto[];
 }
 
 interface RfqQuote {
@@ -966,13 +974,53 @@ function getPhotoCategory(stepKey: string): string {
 
 const PHOTO_CATEGORY_ORDER = ["Bukti Pickup", "Bukti Perjalanan", "Bukti Sampai Lokasi", "Bukti Pengiriman", "Bukti Selesai"];
 
-function DeliveryProofGallery({ events, orderStatusRank }: { events: ProgressEvent[]; orderStatusRank: number }) {
+function driverPhotoToEvent(p: DriverPhoto, jobNumber: string): ProgressEvent {
+  const typeLabel: Record<string, string> = {
+    general: "Foto Perjalanan",
+    pickup: "Bukti Pickup",
+    pod: "Bukti Pengiriman",
+    cargo: "Foto Muatan",
+    arrival: "Bukti Sampai",
+  };
+  const typeKey: Record<string, string> = {
+    general: "IN_TRANSIT",
+    pickup: "PICKED_UP",
+    pod: "DELIVERED",
+    cargo: "IN_TRANSIT",
+    arrival: "ARRIVED_AT_DESTINATION",
+  };
+  return {
+    id: -p.id,
+    stepKey: typeKey[p.photoType] ?? "IN_TRANSIT",
+    stepLabel: typeLabel[p.photoType] ?? "Foto Driver",
+    source: "driver-app",
+    actorName: `Driver (${jobNumber})`,
+    notes: null,
+    gpsLatitude: null,
+    gpsLongitude: null,
+    deviceTimestamp: null,
+    mapUrl: null,
+    streetViewUrl: null,
+    photoUrl: p.url,
+    createdAt: p.takenAt,
+  };
+}
+
+function DeliveryProofGallery({ events, driverPhotos, jobNumber, orderStatusRank }: {
+  events: ProgressEvent[];
+  driverPhotos?: DriverPhoto[];
+  jobNumber?: string;
+  orderStatusRank: number;
+}) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [errorUrls, setErrorUrls] = useState<Set<string>>(new Set());
 
   if (orderStatusRank < 7) return null;
 
-  const validPhotos = events.filter((e) => e.photoUrl && !errorUrls.has(e.photoUrl));
+  const driverPhotoEvents = (driverPhotos ?? []).map((p) => driverPhotoToEvent(p, jobNumber ?? ""));
+  const allEvents = [...events, ...driverPhotoEvents];
+
+  const validPhotos = allEvents.filter((e) => e.photoUrl && !errorUrls.has(e.photoUrl));
 
   const groupMap = new Map<string, ProgressEvent[]>();
   validPhotos.forEach((ev) => {
@@ -1395,6 +1443,8 @@ export default function TrackPage() {
             {/* ── Galeri Bukti Pengiriman ── */}
             <DeliveryProofGallery
               events={tracking.progressEvents ?? []}
+              driverPhotos={tracking.driverJob?.photos}
+              jobNumber={tracking.driverJob?.jobNumber}
               orderStatusRank={ORDER_STATUS_RANK[tracking.status] ?? 0}
             />
 
