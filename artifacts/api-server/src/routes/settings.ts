@@ -112,6 +112,21 @@ db.execute(sql`
   ON whatsapp_template_configs (COALESCE(company_id, 0), recipient, workflow)
 `).catch(() => {});
 
+// ── WA Template Configs — inline migration ────────────────────────────────────
+db.execute(sql`
+  ALTER TABLE whatsapp_template_configs
+    ADD COLUMN IF NOT EXISTS company_id INTEGER REFERENCES companies(id) ON DELETE SET NULL
+`).then(() =>
+  db.execute(sql`
+    DROP INDEX IF EXISTS uq_wa_tpl_cfg
+  `)
+).then(() =>
+  db.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_wa_tpl_cfg_v2
+    ON whatsapp_template_configs (COALESCE(company_id, 0), recipient, workflow)
+  `)
+).catch(() => { /* non-fatal */ });
+
 // ── WA Template Configs (workflow-based) ──────────────────────────────────────
 
 // GET /api/settings/wa-template-configs — fetch all saved workflow templates
@@ -123,10 +138,18 @@ router.get("/wa-template-configs", async (req: Request, res: Response) => {
     const rows = await db.select().from(waTemplateConfigsTable).where(
       or(eq(waTemplateConfigsTable.companyId, companyId), isNull(waTemplateConfigsTable.companyId))
     );
+    // Fetch company-specific + global (NULL) templates
+    const rows = await db.select().from(waTemplateConfigsTable)
+      .where(or(
+        eq(waTemplateConfigsTable.companyId, companyId),
+        isNull(waTemplateConfigsTable.companyId)
+      ));
     const savedKeys: string[] = [];
-    // Start with all defaults so unsaved templates show their default content
     const configs: Record<string, string> = { ...getWaDefaultTemplatesFlatMap() };
-    for (const row of rows) {
+    // Apply global first, then company-specific overrides
+    const globalRows = rows.filter(r => r.companyId === null);
+    const companyRows = rows.filter(r => r.companyId !== null);
+    for (const row of [...globalRows, ...companyRows]) {
       const key = `${row.recipient}__${row.workflow}`;
       // Company-specific rows override global rows for the same key
       if (row.body.trim()) {
@@ -134,6 +157,9 @@ router.get("/wa-template-configs", async (req: Request, res: Response) => {
           configs[key] = row.body;
           if (!savedKeys.includes(key)) savedKeys.push(key);
         }
+      if (row.body.trim()) {
+        configs[key] = row.body;
+        if (row.companyId !== null && !savedKeys.includes(key)) savedKeys.push(key);
       }
     }
     return res.json({ configs, savedKeys });
@@ -220,6 +246,22 @@ router.put("/wa-template-configs", async (req: Request, res: Response) => {
       .where(eq(waTemplateConfigsTable.id, existingRow.id));
   } else {
     await db.insert(waTemplateConfigsTable).values({ companyId, recipient, workflow, body, updatedAt: new Date() });
+  const companyId = resolveCompanyId(req);
+  // Company-scoped upsert: manual SELECT → UPDATE or INSERT
+  const [existing] = await db.select({ id: waTemplateConfigsTable.id })
+    .from(waTemplateConfigsTable)
+    .where(and(
+      eq(waTemplateConfigsTable.companyId, companyId),
+      eq(waTemplateConfigsTable.recipient, recipient),
+      eq(waTemplateConfigsTable.workflow, workflow),
+    ));
+  if (existing) {
+    await db.update(waTemplateConfigsTable)
+      .set({ body, updatedAt: new Date() })
+      .where(eq(waTemplateConfigsTable.id, existing.id));
+  } else {
+    await db.insert(waTemplateConfigsTable)
+      .values({ companyId, recipient, workflow, body, updatedAt: new Date() });
   }
 
   try {
@@ -238,6 +280,7 @@ router.delete("/wa-template-configs/:recipient/:workflow", async (req: Request, 
   try {
     await db.delete(waTemplateConfigsTable).where(
       and(
+        eq(waTemplateConfigsTable.companyId, companyId),
         eq(waTemplateConfigsTable.recipient, recipient),
         eq(waTemplateConfigsTable.workflow, workflow),
         companyId != null ? eq(waTemplateConfigsTable.companyId, companyId) : isNull(waTemplateConfigsTable.companyId),

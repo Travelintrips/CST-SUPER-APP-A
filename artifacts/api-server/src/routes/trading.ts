@@ -1,6 +1,8 @@
 import { Router } from "express";
 import { db, stocksTable, suppliersTable, vendorCatalogItemsTable, productsTable, productCategoryMapTable, productCategoriesTable } from "@workspace/db";
 import { eq, and, or, isNull, sql } from "drizzle-orm";
+import { eq, and, sql, or, isNull } from "drizzle-orm";
+import { resolveCompanyId, resolveCompanyScope } from "../lib/resolveCompany.js";
 import { postStockReceived } from "../lib/accounting.js";
 import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { requireClerkUser, requireAdmin } from "../lib/requireAdmin.js";
@@ -93,11 +95,20 @@ router.delete("/stocks/:id", async (req, res) => {
 router.get("/suppliers", async (req, res) => {
   const limit = Math.min(Number(req.query["limit"] ?? 200), 1000);
   const offset = Math.max(Number(req.query["offset"] ?? 0), 0);
+
   const companyId = resolveCompanyId(req);
   const suppliers = await db
     .select()
     .from(suppliersTable)
     .where(or(eq(suppliersTable.companyId, companyId), isNull(suppliersTable.companyId)))
+
+  const scope = resolveCompanyScope(req);
+  const whereClause = scope === "all"
+    ? undefined
+    : or(eq(suppliersTable.companyId, scope), isNull(suppliersTable.companyId));
+  const suppliers = await db.select().from(suppliersTable)
+    .where(whereClause)
+
     .orderBy(suppliersTable.createdAt)
     .limit(limit)
     .offset(offset);

@@ -126,6 +126,7 @@ import LogisticOrderDetailPage from "@/pages/logistics/order-detail";
 import OrderAuditTrailPage from "@/pages/logistics/order-audit-trail";
 import VendorPerformancePage from "@/pages/logistics/vendor-performance";
 import InternalTasksPage from "@/pages/logistics/internal-tasks";
+import LogisticsImportAssistantPage from "@/pages/logistics-import-assistant";
 import ExceptionsPage from "@/pages/exceptions/index";
 // Misc
 import NotificationsPage from "@/pages/notifications";
@@ -136,6 +137,8 @@ import AiDecisionMemoryPage from "@/pages/ai-decision-memory";
 import WaNotificationHistoryPage from "@/pages/wa-notification-history";
 import VendorLeaderboardPage from "@/pages/vendor-leaderboard";
 import AnalyticsDashboardPage from "@/pages/analytics-dashboard";
+import ProfitabilityAnalyticsPage from "@/pages/analytics/profitability";
+import CeoDashboardPage from "@/pages/ceo-dashboard";
 import EnterpriseDashboardPage from "@/pages/enterprise-dashboard";
 import OperationalDashboardPage from "@/pages/operational-dashboard";
 import POOrdersPage from "@/pages/purchase/po-orders";
@@ -165,6 +168,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       {/* ── Welcome / Dashboard ────────────────────────────────────────── */}
       <Route path="/welcome" component={WelcomePage} />
       <Route path="/dashboard" component={PR(DashboardPage)} />
+      <Route path="/ceo-dashboard" component={PR(CeoDashboardPage)} />
       <Route path="/ai/decision-memory" component={PR(AiDecisionMemoryPage)} />
       <Route path="/approvals" component={PR(ApprovalsPage)} />
       <Route path="/ecommerce" component={PR(EcommercePage)} />
@@ -197,6 +201,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/logistics/orders/:orderId" component={PR(LogisticOrderDetailPage)} />
       <Route path="/logistics/vendor-performance" component={PR(VendorPerformancePage)} />
       <Route path="/logistics/internal-tasks" component={PR(InternalTasksPage)} />
+      <Route path="/logistics/import-assistant" component={PR(LogisticsImportAssistantPage)} />
       <Route path="/portal-product-orders" component={PR(PortalProductOrdersPage)} />
       <Route path="/portal/customers" component={PR(PortalCustomersPage)} />
       <Route path="/portal/onboarding-approvals" component={PR(PortalOnboardingApprovalsPage)} />
@@ -344,6 +349,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/ai-approvals" component={PR(AiApprovalsPage)} />
       <Route path="/operational-context" component={PR(OperationalContextPage)} />
       <Route path="/analytics" component={PR(AnalyticsDashboardPage)} />
+      <Route path="/analytics/profitability" component={PR(ProfitabilityAnalyticsPage)} />
       <Route path="/enterprise-dashboard" component={PR(EnterpriseDashboardPage)} />
       <Route path="/operational-dashboard" component={PR(OperationalDashboardPage)} />
 

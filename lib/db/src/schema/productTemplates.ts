@@ -3,7 +3,11 @@ import { companiesTable } from "./companies";
 
 export const productTemplatesTable = pgTable("product_templates", {
   id: serial("id").primaryKey(),
+
   companyId: integer("company_id").references(() => companiesTable.id),
+
+  companyId: integer("company_id").references(() => companiesTable.id, { onDelete: "set null" }),
+
   categoryKey: text("category_key").notNull(),
   label: text("label").notNull(),
   version: text("version").notNull().default("1.0.0"),

@@ -180,6 +180,8 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
         { titleKey: "approvals", href: "/approvals", icon: ClipboardCheck },
         { titleKey: "Analytics", href: "/analytics", icon: BarChart2, roles: ["admin", "owner"] },
+        { titleKey: "CEO / Director", href: "/ceo-dashboard", icon: Trophy, roles: ["admin", "owner"] },
+        { titleKey: "Profitabilitas", href: "/analytics/profitability", icon: TrendingUp, roles: ["admin", "owner"] },
       ],
     },
 
@@ -286,6 +288,7 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "Balasan Quotation WA", href: "/logistics/quotation-reply", icon: MessageCircle, companyCodes: ["CST"] },
         { titleKey: "Margin Rules", href: "/logistics/margin-rules", icon: Calculator },
         { titleKey: "Internal Tasks", href: "/logistics/internal-tasks", icon: ClipboardCheck },
+        { titleKey: "AI Import Advisor", href: "/logistics/import-assistant", icon: Bot, companyCodes: ["CST"] },
         { titleKey: "Pelanggan Portal", href: "/portal/customers", icon: Users },
         { titleKey: "Persetujuan Onboarding", href: "/portal/onboarding-approvals", icon: Users },
       ],
