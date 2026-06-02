@@ -1,0 +1,200 @@
+FASE 3D — MEMBERSHIP PAYMENT + ACCOUNTING
+
+Jangan ubah promo.
+Jangan ubah refund.
+Jangan ubah purchase.
+
+Fokus hanya membership payment.
+
+TUJUAN
+
+Membership Sport Center harus:
+
+1. Bisa dibayar
+2. Tercatat di sport_payments
+3. Membentuk jurnal accounting
+4. Muncul di dashboard revenue
+
+A. AUDIT EXISTING
+
+Periksa terlebih dahulu:
+
+* struktur tabel sport_members
+* field status membership
+* field start_date
+* field end_date
+* field company_id
+
+Laporkan jika ada field yang perlu ditambahkan.
+
+B. PAYMENT ENDPOINT
+
+Tambahkan endpoint:
+
+POST /api/sport-center/members/:id/payment
+
+requireAdmin
+
+Body:
+
+{
+amount,
+payment_method,
+notes
+}
+
+C. VALIDASI
+
+Pastikan:
+
+* member ada
+* member aktif
+* amount > 0
+* company_id tersedia
+
+Return 400 jika gagal.
+
+D. PAYMENT RECORD
+
+Simpan ke sport_payments:
+
+payment_type = membership
+
+company_id
+
+member_id
+
+customer_id
+
+amount
+
+payment_method
+
+notes
+
+created_at
+
+Jika field belum ada, buat migration yang diperlukan.
+
+E. ACCOUNTING
+
+Tambahkan function baru:
+
+postSportCenterMembershipPayment()
+
+Lokasi:
+
+lib/accounting.ts
+
+Source:
+
+sport_center_membership
+
+Jurnal:
+
+Debit:
+Kas
+
+Credit:
+Pendapatan Membership Sport Center
+
+company_id:
+ambil dari member
+
+memo:
+
+Membership Payment <member_number>
+
+F. CHART OF ACCOUNT
+
+Periksa apakah akun berikut sudah ada:
+
+Pendapatan Membership Sport Center
+
+Jika belum:
+
+buat account otomatis mengikuti pola account revenue lain yang sudah ada.
+
+Jangan mengubah akun existing.
+
+G. DASHBOARD
+
+Tambahkan:
+
+membershipRevenue
+
+membershipPayments
+
+activeMembers
+
+expiredMembers
+
+H. REPORTS
+
+Tambahkan ke laporan revenue:
+
+booking revenue
+
+membership revenue
+
+grand total revenue
+
+I. AUDIT LOG
+
+action:
+
+MEMBERSHIP_PAYMENT_CREATED
+
+metadata:
+
+member_id
+amount
+payment_method
+
+J. TEST
+
+Skenario:
+
+1.
+
+buat member
+
+2.
+
+bayar membership
+
+3.
+
+cek sport_payments
+
+4.
+
+cek accounting_entries
+
+5.
+
+cek accounting_entry_lines
+
+6.
+
+cek dashboard
+
+Pastikan:
+
+* payment tersimpan
+* journal terbentuk
+* company_id ikut terbawa
+* source=sport_center_membership
+
+OUTPUT
+
+Laporkan:
+
+* migration yang dibuat
+* endpoint baru
+* function accounting baru
+* account revenue yang dipakai
+* hasil test jurnal
+* dashboard metrics baru
+
+STOP setelah Fase 3D selesai.
