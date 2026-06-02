@@ -87,6 +87,7 @@ import { serviceTemplatesRouter } from "./serviceTemplates.js";
 import { exceptionsRouter } from "./exceptions.js";
 import { orderExceptionsRouter } from "./orderExceptions.js";
 import { systemRouter } from "./system.js";
+import rbacRouter from "./rbac.js";
 import { handleAlertSse } from "../lib/alertsBroadcast.js";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import sportCenterRouter from "../modules/sport-center/routes.js";
@@ -210,6 +211,7 @@ router.use("/logistic", orderExceptionsRouter);
 
 router.use("/exceptions", exceptionsRouter);
 router.use("/system", systemRouter);
+router.use("/rbac", rbacRouter);
 router.use("/sport-center", sportCenterRouter);
 
 router.get("/alerts/stream", async (req: Request, res: Response) => {
