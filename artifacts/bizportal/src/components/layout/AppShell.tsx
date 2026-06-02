@@ -424,6 +424,7 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "emailInbox", href: "/email-inbox", icon: MessageCircle },
         { titleKey: "WA Templates Logistik", href: "/settings/wa-templates", icon: MessageCircle },
         { titleKey: "Enterprise WA Templates", href: "/settings/enterprise-wa-templates", icon: MessageSquare },
+        { titleKey: "Monitor WA Driver", href: "/settings/wa-notification-logs", icon: Activity },
         { titleKey: "Image Manager", href: "/media", icon: ImageIcon },
         { titleKey: "Short Links", href: "/settings/short-links", icon: Link2 },
         { titleKey: "Konfigurasi Menu", href: "/settings/nav-company-config", icon: LayoutGrid },

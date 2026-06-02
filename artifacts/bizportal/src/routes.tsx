@@ -112,6 +112,7 @@ import OrgManagementPage from "@/pages/OrgManagementPage";
 import AuditReportListPage from "@/pages/audit/index";
 import AuditReportFormPage from "@/pages/audit/form";
 import AuditComparePage from "@/pages/audit/compare";
+import WaNotificationLogsPage from "@/pages/settings/wa-notification-logs";
 
 // Products
 import ProductItemsPage from "@/pages/products/items";
@@ -343,6 +344,9 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
 
       {/* ── Vendor Leaderboard ─────────────────────────────────────────── */}
       <Route path="/vendors" component={PR(VendorLeaderboardPage)} />
+
+      {/* ── WA Monitoring ──────────────────────────────────────────────── */}
+      <Route path="/settings/wa-notification-logs" component={PR(WaNotificationLogsPage)} />
 
       {/* ── Notifications & Analytics ──────────────────────────────────── */}
       <Route path="/notifications" component={PR(NotificationsPage)} />
