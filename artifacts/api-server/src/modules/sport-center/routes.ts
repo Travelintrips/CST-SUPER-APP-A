@@ -37,7 +37,7 @@ router.get("/dashboard", requireAdmin, async (req, res) => {
     const companyId = req.query.companyId ? Number(req.query.companyId) : undefined;
     const cId = companyId ?? null;
 
-    const [totals, todayRes, pendingPayRes, membersRes, byStatus, topFacilities, recentBookings, monthRev, totalRev] = await Promise.all([
+    const [totals, todayRes, pendingPayRes, membersRes, byStatus, topFacilities, recentBookings, monthRev, totalRev, promoUsedRes, promoDiscountRes] = await Promise.all([
       db.execute(sql`SELECT COUNT(*) AS cnt FROM sport_bookings WHERE (${cId}::int IS NULL OR company_id = ${cId})`),
       db.execute(sql`SELECT COUNT(*) AS cnt FROM sport_bookings WHERE (${cId}::int IS NULL OR company_id = ${cId}) AND booking_date = CURRENT_DATE`),
       db.execute(sql`SELECT COUNT(*) AS cnt FROM sport_bookings WHERE (${cId}::int IS NULL OR company_id = ${cId}) AND payment_status = 'unpaid' AND status NOT IN ('cancelled','completed')`),
@@ -47,6 +47,8 @@ router.get("/dashboard", requireAdmin, async (req, res) => {
       db.execute(sql`SELECT * FROM sport_bookings WHERE (${cId}::int IS NULL OR company_id = ${cId}) ORDER BY created_at DESC LIMIT 10`),
       db.execute(sql`SELECT COALESCE(SUM(total_amount),0) AS revenue FROM sport_bookings WHERE (${cId}::int IS NULL OR company_id = ${cId}) AND status != 'cancelled' AND booking_date >= date_trunc('month', CURRENT_DATE)`),
       db.execute(sql`SELECT COALESCE(SUM(total_amount),0) AS revenue FROM sport_bookings WHERE (${cId}::int IS NULL OR company_id = ${cId}) AND status != 'cancelled'`),
+      db.execute(sql`SELECT COUNT(*) AS cnt FROM sport_bookings WHERE (${cId}::int IS NULL OR company_id = ${cId}) AND promo_id IS NOT NULL AND status != 'cancelled'`),
+      db.execute(sql`SELECT COALESCE(SUM(discount_amount),0) AS total FROM sport_bookings WHERE (${cId}::int IS NULL OR company_id = ${cId}) AND promo_id IS NOT NULL AND status != 'cancelled'`),
     ]);
 
     res.json({
@@ -59,6 +61,8 @@ router.get("/dashboard", requireAdmin, async (req, res) => {
       recentBookings: recentBookings.rows,
       monthRevenue: Number((monthRev.rows[0] as any).revenue),
       totalRevenue: Number((totalRev.rows[0] as any).revenue),
+      totalPromoUsed: Number((promoUsedRes.rows[0] as any).cnt),
+      totalPromoDiscount: Number((promoDiscountRes.rows[0] as any).total),
     });
   } catch {
     res.status(500).json({ error: "Gagal memuat dashboard" });
@@ -174,12 +178,51 @@ router.post("/bookings", requireAdmin, async (req, res) => {
   try {
     const {
       company_id, customer_id, customer_name, customer_phone, facility_id, facility_name,
-      booking_date, start_time, end_time, duration_hours = 1, base_amount = 0, discount_amount = 0,
-      total_amount = 0, promo_id, promo_code, notes,
+      booking_date, start_time, end_time, duration_hours = 1, base_amount = 0,
+      notes,
     } = req.body;
     if (!customer_name || !facility_name || !booking_date || !start_time || !end_time) {
       return res.status(400).json({ error: "Field wajib tidak lengkap" });
     }
+
+    // Validasi dan hitung promo
+    let resolvedPromoId: number | null = null;
+    let resolvedPromoCode: string | null = req.body.promo_code ?? null;
+    let resolvedDiscount = Number(req.body.discount_amount ?? 0);
+    const inputPromoCode: string | null = req.body.promo_code ?? null;
+
+    if (inputPromoCode) {
+      const cId = company_id ?? null;
+      const promoRes = await db.execute(sql`
+        SELECT * FROM sport_promos
+        WHERE code = ${inputPromoCode}
+          AND is_active = TRUE
+          AND (${cId}::int IS NULL OR company_id = ${cId})
+          AND (valid_from IS NULL OR valid_from <= NOW())
+          AND (valid_until IS NULL OR valid_until >= NOW())
+        LIMIT 1
+      `);
+      if (!promoRes.rows.length) {
+        return res.status(400).json({ error: "Kode promo tidak valid atau sudah kadaluarsa" });
+      }
+      const promo = promoRes.rows[0] as Record<string, unknown>;
+      if (promo.max_uses != null && Number(promo.used_count) >= Number(promo.max_uses)) {
+        return res.status(400).json({ error: "Kuota promo sudah habis" });
+      }
+      if (promo.min_amount != null && Number(base_amount) < Number(promo.min_amount)) {
+        return res.status(400).json({ error: `Minimum transaksi untuk promo ini adalah ${promo.min_amount}` });
+      }
+      const dtype = String(promo.discount_type);
+      const dval = Number(promo.discount_value);
+      resolvedDiscount = dtype === "fixed"
+        ? Math.min(dval, Number(base_amount))
+        : Math.min(Number(base_amount) * dval / 100, Number(base_amount));
+      resolvedDiscount = Math.round(resolvedDiscount * 100) / 100;
+      resolvedPromoId = Number(promo.id);
+      resolvedPromoCode = String(promo.code);
+    }
+
+    const resolvedTotal = Math.max(0, Number(base_amount) - resolvedDiscount);
     const bookingNumber = await nextBookingNumber(company_id);
     const r = await db.execute(sql`
       INSERT INTO sport_bookings
@@ -189,10 +232,16 @@ router.post("/bookings", requireAdmin, async (req, res) => {
       VALUES
         (${company_id ?? null}, ${bookingNumber}, ${customer_id ?? null}, ${customer_name}, ${customer_phone ?? null},
          ${facility_id ?? null}, ${facility_name}, ${booking_date}, ${start_time}, ${end_time},
-         ${duration_hours}, ${base_amount}, ${discount_amount}, ${total_amount},
-         ${promo_id ?? null}, ${promo_code ?? null}, ${notes ?? null}, 'pending', 'unpaid')
+         ${duration_hours}, ${base_amount}, ${resolvedDiscount}, ${resolvedTotal},
+         ${resolvedPromoId}, ${resolvedPromoCode}, ${notes ?? null}, 'pending', 'unpaid')
       RETURNING *
     `);
+
+    // Increment used_count jika promo dipakai
+    if (resolvedPromoId) {
+      await db.execute(sql`UPDATE sport_promos SET used_count = used_count + 1, updated_at = NOW() WHERE id = ${resolvedPromoId}`);
+    }
+
     const row = r.rows[0] as Record<string, unknown>;
     broadcastSportCenterEvent({ module: "sport-center", entity: "booking", action: "created", data: row, timestamp: new Date().toISOString() }, company_id);
     res.status(201).json(row);
@@ -455,6 +504,109 @@ router.delete("/pricing-rules/:id", requireAdmin, async (req, res) => {
     res.json({ success: true });
   } catch {
     res.status(500).json({ error: "Gagal" });
+  }
+});
+
+// ── PROMO ────────────────────────────────────────────────────────────────────
+
+router.get("/promos", requireAdmin, async (req, res) => {
+  try {
+    const cId = req.query.companyId ? Number(req.query.companyId) : null;
+    const result = await db.execute(sql`
+      SELECT * FROM sport_promos
+      WHERE (${cId}::int IS NULL OR company_id = ${cId})
+      ORDER BY created_at DESC
+    `);
+    res.json(result.rows);
+  } catch {
+    res.status(500).json({ error: "Gagal" });
+  }
+});
+
+router.post("/promos", requireAdmin, async (req, res) => {
+  try {
+    const {
+      company_id, code, name, description,
+      discount_type = "percentage", discount_value,
+      min_amount = 0, max_uses, valid_from, valid_until, is_active = true,
+    } = req.body;
+    if (!code || !name || discount_value == null) {
+      return res.status(400).json({ error: "code, name, dan discount_value wajib" });
+    }
+    if (!["percentage", "percent", "fixed"].includes(discount_type)) {
+      return res.status(400).json({ error: "discount_type harus 'percentage' atau 'fixed'" });
+    }
+    if (Number(discount_value) < 0) {
+      return res.status(400).json({ error: "discount_value tidak boleh negatif" });
+    }
+    if (discount_type !== "fixed" && Number(discount_value) > 100) {
+      return res.status(400).json({ error: "discount_value persentase tidak boleh melebihi 100" });
+    }
+    // Normalisasi: simpan sebagai 'percent' agar konsisten dengan schema default
+    const dtype = discount_type === "fixed" ? "fixed" : "percent";
+    // Cek keunikan code per company
+    const cId = company_id ?? null;
+    const dupCheck = await db.execute(sql`
+      SELECT id FROM sport_promos WHERE code = ${code} AND (${cId}::int IS NULL OR company_id = ${cId}) LIMIT 1
+    `);
+    if (dupCheck.rows.length) {
+      return res.status(409).json({ error: "Kode promo sudah digunakan" });
+    }
+    const r = await db.execute(sql`
+      INSERT INTO sport_promos (company_id, code, name, description, discount_type, discount_value, min_amount, max_uses, valid_from, valid_until, is_active)
+      VALUES (${cId}, ${code}, ${name}, ${description ?? null}, ${dtype}, ${Number(discount_value)}, ${Number(min_amount)}, ${max_uses ?? null}, ${valid_from ?? null}, ${valid_until ?? null}, ${is_active})
+      RETURNING *
+    `);
+    res.status(201).json(r.rows[0]);
+  } catch {
+    res.status(500).json({ error: "Gagal membuat promo" });
+  }
+});
+
+router.patch("/promos/:id", requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { code, name, description, discount_type, discount_value, min_amount, max_uses, valid_from, valid_until, is_active } = req.body;
+    if (discount_type != null && !["percentage", "percent", "fixed"].includes(discount_type)) {
+      return res.status(400).json({ error: "discount_type harus 'percentage' atau 'fixed'" });
+    }
+    const dtype = discount_type === "fixed" ? "fixed" : discount_type != null ? "percent" : null;
+    const r = await db.execute(sql`
+      UPDATE sport_promos SET
+        code         = COALESCE(${code ?? null}, code),
+        name         = COALESCE(${name ?? null}, name),
+        description  = COALESCE(${description ?? null}, description),
+        discount_type  = COALESCE(${dtype}, discount_type),
+        discount_value = COALESCE(${discount_value ?? null}::numeric, discount_value),
+        min_amount   = COALESCE(${min_amount ?? null}::numeric, min_amount),
+        max_uses     = COALESCE(${max_uses ?? null}::int, max_uses),
+        valid_from   = COALESCE(${valid_from ?? null}::timestamptz, valid_from),
+        valid_until  = COALESCE(${valid_until ?? null}::timestamptz, valid_until),
+        is_active    = COALESCE(${is_active ?? null}::boolean, is_active),
+        updated_at   = NOW()
+      WHERE id = ${id} RETURNING *
+    `);
+    if (!r.rows.length) return res.status(404).json({ error: "Tidak ditemukan" });
+    res.json(r.rows[0]);
+  } catch {
+    res.status(500).json({ error: "Gagal memperbarui promo" });
+  }
+});
+
+router.delete("/promos/:id", requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    // Soft delete jika sudah dipakai di booking, hard delete jika belum
+    const usedRes = await db.execute(sql`SELECT id FROM sport_bookings WHERE promo_id = ${id} LIMIT 1`);
+    if (usedRes.rows.length) {
+      await db.execute(sql`UPDATE sport_promos SET is_active = FALSE, updated_at = NOW() WHERE id = ${id}`);
+      res.json({ success: true, note: "Promo dinonaktifkan karena sudah dipakai di booking" });
+    } else {
+      await db.execute(sql`DELETE FROM sport_promos WHERE id = ${id}`);
+      res.json({ success: true });
+    }
+  } catch {
+    res.status(500).json({ error: "Gagal menghapus promo" });
   }
 });
 
