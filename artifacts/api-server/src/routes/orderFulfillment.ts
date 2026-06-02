@@ -22,7 +22,7 @@ import {
 } from "@workspace/db";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
-import { getAdminWa } from "../lib/adminWa.js";
+import { getAdminWa, getAdminGroupWa } from "../lib/adminWa.js";
 import { normalizePhone } from "../lib/phoneUtils.js";
 import { getPreferredDomain } from "../lib/domain.js";
 import { logger } from "../lib/logger.js";
@@ -913,6 +913,37 @@ fulfillmentAdminRouter.post(
           logger.warn({ e }, "POD WA to customer failed")
         );
       }
+
+      // WA ke admin group — prompt terbitkan invoice
+      void (async () => {
+        try {
+          const adminGroupWa = await getAdminGroupWa();
+          if (!adminGroupWa) return;
+          const domain = getPreferredDomain() || "cstlogistic.co.id";
+          const orderDetailUrl = `https://${domain}/logistic-admin/orders/${orderId}`;
+          const ln = "\n";
+          const sep = "━━━━━━━━━━━━━━━━━━";
+          const adminMsg =
+            `📷 *POD Diunggah — Tindakan Diperlukan*` + ln + sep + ln +
+            `No. Order   : \`${order.orderNumber}\`` + ln +
+            `Customer    : ${order.customerName}` + ln +
+            ((order.origin && order.destination) ? `Rute        : ${order.origin} → ${order.destination}` + ln : "") +
+            (receiverName ? `Penerima    : ${receiverName}` + ln : "") +
+            (note ? `Catatan     : ${note}` + ln : "") +
+            sep + ln +
+            `📋 *Langkah Selanjutnya:*` + ln +
+            `1️⃣  Terbitkan invoice ke customer (Invoice Diterbitkan)` + ln +
+            `2️⃣  Konfirmasi pembayaran diterima (Pembayaran Diterima)` + ln +
+            `3️⃣  Tandai order sebagai Selesai` + ln +
+            sep + ln +
+            `🔗 Detail order:` + ln + orderDetailUrl;
+          sendWhatsApp(adminGroupWa, adminMsg).catch((e) =>
+            logger.warn({ e }, "POD admin group WA failed — non-fatal")
+          );
+        } catch (e) {
+          logger.warn({ e }, "POD admin group WA setup failed — non-fatal");
+        }
+      })();
 
       logger.info({ orderId, photoUrl }, "POD submitted, status → POD Uploaded");
       return res.json({ ok: true, photoUrl });
