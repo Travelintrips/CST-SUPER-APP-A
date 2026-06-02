@@ -18,9 +18,9 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useVendors } from "@/hooks/useVendors";
 import {
   useListStocks,
-  useListSuppliers,
   useCreateStockItem,
   useUpdateStockItem,
   useDeleteStockItem,
@@ -28,7 +28,6 @@ import {
   useUpdateSupplier,
   useDeleteSupplier,
   getListStocksQueryKey,
-  getListSuppliersQueryKey,
   type StockItem,
   type Supplier,
 } from "@workspace/api-client-react";
@@ -39,7 +38,7 @@ export default function TradingPage() {
   const { toast } = useToast();
 
   const { data: stocks, isLoading: isLoadingStocks } = useListStocks();
-  const { data: suppliers, isLoading: isLoadingSuppliers } = useListSuppliers({ query: { queryKey: getListSuppliersQueryKey() } });
+  const { data: suppliers, isLoading: isLoadingSuppliers } = useVendors();
 
   const createStock = useCreateStockItem();
   const updateStock = useUpdateStockItem();
@@ -58,7 +57,7 @@ export default function TradingPage() {
   const formatIDR = (value: number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(value);
 
   const refetchStocks = () => queryClient.invalidateQueries({ queryKey: getListStocksQueryKey() });
-  const refetchSuppliers = () => queryClient.invalidateQueries({ queryKey: getListSuppliersQueryKey() });
+  const refetchSuppliers = () => queryClient.invalidateQueries({ queryKey: ["vendors-filtered"] });
 
   const handleCreateStock = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();

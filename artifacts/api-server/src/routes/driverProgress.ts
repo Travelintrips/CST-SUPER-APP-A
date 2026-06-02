@@ -324,6 +324,12 @@ driverProgressPublicRouter.post("/:token", async (req: Request, res: Response) =
           customerName: logisticOrdersTable.customerName,
         }).from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
 
+        // Konversi relative URL ke absolute agar Fonnte bisa fetch media
+        const domain = process.env.REPLIT_DEV_DOMAIN || getPreferredDomain() || "cstlogistic.co.id";
+        const absolutePhotoUrl = resolvedPhotoUrl
+          ? (resolvedPhotoUrl.startsWith("http") ? resolvedPhotoUrl : `https://${domain}${resolvedPhotoUrl}`)
+          : undefined;
+
         const adminWa = await getAdminWa();
         if (adminWa && order?.orderNumber) {
           sendVendorPodUploadedNotification(
@@ -332,12 +338,25 @@ driverProgressPublicRouter.post("/:token", async (req: Request, res: Response) =
             1,
             adminWa,
             note ? String(note) : undefined,
-            resolvedPhotoUrl ?? undefined,
+            absolutePhotoUrl,
           ).catch(() => {});
         }
 
+        const adminGroupWa = await getAdminGroupWa();
+        if (adminGroupWa && order?.orderNumber) {
+          const msg = [
+            `📦 *Bukti Pengiriman Diterima*`,
+            ``,
+            `👤 Driver: ${driverName}`,
+            `📦 Order: ${order.orderNumber} (${order.customerName ?? "-"})`,
+            `📍 Status: *Bukti Pengiriman*`,
+            note ? `📝 Catatan: ${note}` : null,
+            absolutePhotoUrl ? `🖼️ Foto: ${absolutePhotoUrl}` : null,
+          ].filter(Boolean).join("\n");
+          sendWhatsApp(adminGroupWa, msg).catch(() => {});
+        }
+
         if (order?.phone) {
-          const domain = process.env.REPLIT_DEV_DOMAIN || getPreferredDomain() || "cstlogistic.co.id";
           let gpsBlock = "";
           if (lat != null && lng != null) {
             const tsLine = parsedDeviceTs

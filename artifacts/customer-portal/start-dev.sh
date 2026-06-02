@@ -1,9 +1,9 @@
 #!/bin/bash
-ARTIFACT_PORT=${PORT:-3001}
-INTERNAL_PORT=${INTERNAL_PORT:-5173}
+ARTIFACT_PORT=${PORT:-5173}
+INTERNAL_PORT=${INTERNAL_PORT:-5174}
 
 node "$(dirname "$0")/../api-server/kill-port.mjs" "$INTERNAL_PORT" "$ARTIFACT_PORT" 2>/dev/null || true
-sleep 0.2
+sleep 0.3
 
 if [ "$ARTIFACT_PORT" != "$INTERNAL_PORT" ]; then
   node -e "

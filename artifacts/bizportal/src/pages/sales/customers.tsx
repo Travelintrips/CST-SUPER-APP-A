@@ -379,6 +379,7 @@ export default function CustomersPage() {
                     )}
                   </TableHead>
                   <TableHead>Nama</TableHead>
+                  <TableHead>Company</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Telepon</TableHead>
                   <TableHead>NPWP</TableHead>

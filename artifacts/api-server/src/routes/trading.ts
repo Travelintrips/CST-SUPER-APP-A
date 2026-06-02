@@ -132,6 +132,12 @@ router.get("/suppliers", async (req, res) => {
   const assignments = await db.execute(
     sql.raw(`SELECT vendor_id, company_id FROM vendor_company_assignments WHERE vendor_id = ANY(ARRAY[${vendorIds.join(",")}]::int[])`)
   );
+  // Pass as PostgreSQL array literal: '{1,2,3}'::int[]
+  const vendorIdArrayLiteral = `{${vendorIds.join(",")}}`;
+  const assignments = await db.execute(sql`
+    SELECT vendor_id, company_id FROM vendor_company_assignments
+    WHERE vendor_id = ANY(${vendorIdArrayLiteral}::int[])
+  `);
   const assignmentMap: Record<number, number[]> = {};
   for (const row of assignments.rows as { vendor_id: number; company_id: number }[]) {
     if (!assignmentMap[row.vendor_id]) assignmentMap[row.vendor_id] = [];

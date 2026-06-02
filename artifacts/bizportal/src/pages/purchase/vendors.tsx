@@ -814,8 +814,20 @@ export default function VendorsPage() {
                         />
                       </TableCell>
                       <TableCell>
-                        <span className="mr-1.5 inline-flex items-center"><LogoDisplay logo={v.logo} /></span>
-                        <span className="font-medium">{v.name}</span>
+                        <div className="flex flex-col gap-0.5">
+                          <div className="flex items-center gap-1.5">
+                            <span className="inline-flex items-center"><LogoDisplay logo={v.logo} /></span>
+                            <span className="font-medium">{v.name}</span>
+                          </div>
+                          {(v as { companyId?: number | null }).companyId != null && (() => {
+                            const co = companies.find(c => c.id === (v as { companyId?: number | null }).companyId);
+                            return co ? (
+                              <Badge className="text-[10px] px-1.5 py-0 w-fit bg-indigo-100 text-indigo-800 hover:bg-indigo-100 border-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-300">
+                                {co.companyCode}
+                              </Badge>
+                            ) : null;
+                          })()}
+                        </div>
                       </TableCell>
                       <TableCell>
                         {v.serviceType

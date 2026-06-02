@@ -15,6 +15,7 @@ import { eq, sql, desc, and, count, inArray, or, ilike, isNotNull, asc, type SQL
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { auditFromReq } from "../lib/auditLog.js";
 import { streamInvoicePdf, buildInvoicePdfBuffer } from "../lib/pdfInvoice.js";
+import { loadDocTemplate } from "../lib/docTemplateLoader.js";
 import { postSalesInvoice, postSalesCogs, postSalesCogsReturn, postSalesInvoiceReversal } from "../lib/accounting.js";
 import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
 import { ensureAccountingSettings } from "../lib/accountingSeed.js";
@@ -1078,11 +1079,15 @@ router.get("/documents/:id/pdf", async (req, res): Promise<void> => {
     const rows = await db.select().from(customersTable).where(eq(customersTable.id, detail.customerId)).limit(1);
     customer = rows[0] ?? null;
   }
-  const acctSettings = await ensureAccountingSettings();
   const titleMap: Record<string, string> = {
     quote: "QUOTATION",
     order: "SALES ORDER",
   };
+  const tplType = detail.kind === "quote" ? "quotation" : "invoice";
+  const [acctSettings, template] = await Promise.all([
+    ensureAccountingSettings(),
+    loadDocTemplate(tplType),
+  ]);
   streamInvoicePdf(res, {
     title: titleMap[detail.kind] ?? "DOKUMEN PENJUALAN",
     docNumber: detail.docNumber,
@@ -1117,6 +1122,7 @@ router.get("/documents/:id/pdf", async (req, res): Promise<void> => {
       : null,
     invoiceStatus: detail.invoiceStatus,
     deliveryStatus: detail.deliveryStatus,
+    template,
   });
 });
 
@@ -1144,7 +1150,11 @@ router.post("/documents/:id/email", async (req, res): Promise<void> => {
     customer = rows[0] ?? null;
   }
 
-  const acctSettings = await ensureAccountingSettings();
+  const tplType2 = detail.kind === "quote" ? "quotation" : "invoice";
+  const [acctSettings, template2] = await Promise.all([
+    ensureAccountingSettings(),
+    loadDocTemplate(tplType2),
+  ]);
   const titleMap: Record<string, string> = { quote: "QUOTATION", order: "SALES ORDER" };
   const pdfData = {
     title: titleMap[detail.kind] ?? "DOKUMEN PENJUALAN",
@@ -1180,6 +1190,7 @@ router.post("/documents/:id/email", async (req, res): Promise<void> => {
       : null,
     invoiceStatus: detail.invoiceStatus,
     deliveryStatus: detail.deliveryStatus,
+    template: template2,
   };
 
   const pdfBuffer = await buildInvoicePdfBuffer(pdfData);

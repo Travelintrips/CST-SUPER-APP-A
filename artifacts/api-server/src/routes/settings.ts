@@ -681,4 +681,298 @@ router.put("/freight-stage-labels", async (req: Request, res: Response) => {
   return res.json({ ok: true, labels: { ...DEFAULT_FREIGHT_STAGE_LABELS, ...filtered } });
 });
 
+// ── Document Templates ────────────────────────────────────────────────────────
+
+const DOC_TEMPLATE_KEY = (type: string) => `doc_template:${type}`;
+
+export const DOCUMENT_TYPES = [
+  "invoice", "quotation", "po", "delivery_note", "packing_list",
+  "mou", "kontrak", "nda", "sla",
+] as const;
+export type DocumentType = (typeof DOCUMENT_TYPES)[number];
+
+export const DOCUMENT_TYPE_LABELS: Record<string, string> = {
+  invoice:       "Invoice",
+  quotation:     "Penawaran / Quotation",
+  po:            "Purchase Order (PO)",
+  delivery_note: "Surat Jalan (Delivery Note)",
+  packing_list:  "Packing List",
+  mou:           "MOU",
+  kontrak:       "Kontrak",
+  nda:           "NDA",
+  sla:           "SLA",
+};
+
+export const DOCUMENT_BUSINESS_LINES = [
+  "Logistic/Forwarder", "Export/Import", "PPJK", "Trading",
+  "Sport Center", "POS", "Legal",
+];
+
+export interface DocumentTemplateConfig {
+  documentType: string;
+  businessLine: string;
+  logoUrl: string;
+  companyName: string;
+  companyAddress: string;
+  companyPhone: string;
+  companyEmail: string;
+  headerText: string;
+  footerText: string;
+  primaryColor: string;
+  accentColor: string;
+  fontSize: number;
+  defaultTerms: string;
+  defaultNotes: string;
+  dueDays: number;
+  showTax: boolean;
+  showSignature: boolean;
+  showStamp: boolean;
+  templateFormat: "pdf" | "html";
+  updatedAt: string;
+}
+
+const DEFAULT_DOC_TEMPLATE = (type: string): DocumentTemplateConfig => ({
+  documentType: type,
+  businessLine: "Logistic/Forwarder",
+  logoUrl: "",
+  companyName: "PT CST Logistik Indonesia",
+  companyAddress: "Jl. Logistik No. 1, Jakarta",
+  companyPhone: "+62 21 1234 5678",
+  companyEmail: "info@cstlogistik.com",
+  headerText: "",
+  footerText: "Terima kasih atas kepercayaan Anda.",
+  primaryColor: "#1e40af",
+  accentColor: "#3b82f6",
+  fontSize: 11,
+  defaultTerms: type === "invoice"
+    ? "Pembayaran dalam 14 hari kerja sejak tanggal invoice."
+    : type === "quotation"
+    ? "Penawaran berlaku 7 hari sejak tanggal dokumen."
+    : "",
+  defaultNotes: "",
+  dueDays: type === "invoice" ? 14 : 7,
+  showTax: true,
+  showSignature: true,
+  showStamp: false,
+  templateFormat: "pdf",
+  updatedAt: new Date().toISOString(),
+});
+
+// GET /api/settings/documents — list all document templates
+router.get("/documents", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  try {
+    const keys = DOCUMENT_TYPES.map((t) => DOC_TEMPLATE_KEY(t));
+    const rows = await db
+      .select()
+      .from(portalContentTable)
+      .where(
+        sql`key = ANY(${keys})`
+      );
+    const stored = new Map(rows.map((r) => [r.key, JSON.parse(r.value)]));
+    const templates = DOCUMENT_TYPES.map((t) => ({
+      ...DEFAULT_DOC_TEMPLATE(t),
+      ...(stored.get(DOC_TEMPLATE_KEY(t)) ?? {}),
+      documentType: t,
+    }));
+    return res.json(templates);
+  } catch (err) {
+    return res.status(500).json({ error: "Gagal memuat template" });
+  }
+});
+
+// GET /api/settings/documents/:documentType — get one template
+router.get("/documents/:documentType", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const { documentType } = req.params;
+  if (!DOCUMENT_TYPES.includes(documentType as DocumentType)) {
+    return res.status(400).json({ error: "document_type tidak valid" });
+  }
+  try {
+    const [row] = await db
+      .select()
+      .from(portalContentTable)
+      .where(eq(portalContentTable.key, DOC_TEMPLATE_KEY(documentType)));
+    const stored = row ? JSON.parse(row.value) : {};
+    return res.json({ ...DEFAULT_DOC_TEMPLATE(documentType), ...stored, documentType });
+  } catch {
+    return res.json(DEFAULT_DOC_TEMPLATE(documentType));
+  }
+});
+
+// PATCH /api/settings/documents/:documentType — update template
+router.patch("/documents/:documentType", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const { documentType } = req.params;
+  if (!DOCUMENT_TYPES.includes(documentType as DocumentType)) {
+    return res.status(400).json({ error: "document_type tidak valid" });
+  }
+  const allowed: (keyof DocumentTemplateConfig)[] = [
+    "businessLine", "logoUrl", "companyName", "companyAddress",
+    "companyPhone", "companyEmail", "headerText", "footerText",
+    "primaryColor", "accentColor", "fontSize", "defaultTerms",
+    "defaultNotes", "dueDays", "showTax", "showSignature", "showStamp",
+    "templateFormat",
+  ];
+  const payload: Partial<DocumentTemplateConfig> = {};
+  for (const k of allowed) {
+    if (k in req.body) (payload as any)[k] = req.body[k];
+  }
+  try {
+    const [existing] = await db
+      .select()
+      .from(portalContentTable)
+      .where(eq(portalContentTable.key, DOC_TEMPLATE_KEY(documentType)));
+    const prev = existing ? JSON.parse(existing.value) : DEFAULT_DOC_TEMPLATE(documentType);
+    const merged = { ...prev, ...payload, documentType, updatedAt: new Date().toISOString() };
+    await db
+      .insert(portalContentTable)
+      .values({ key: DOC_TEMPLATE_KEY(documentType), value: JSON.stringify(merged), updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: portalContentTable.key,
+        set: { value: JSON.stringify(merged), updatedAt: new Date() },
+      });
+    return res.json({ ok: true, template: merged });
+  } catch (err) {
+    return res.status(500).json({ error: "Gagal menyimpan template" });
+  }
+});
+
+// POST /api/settings/documents/:documentType/preview — generate HTML preview (dummy data)
+router.post("/documents/:documentType/preview", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const { documentType } = req.params;
+  if (!DOCUMENT_TYPES.includes(documentType as DocumentType)) {
+    return res.status(400).json({ error: "document_type tidak valid" });
+  }
+  const tpl: DocumentTemplateConfig = {
+    ...DEFAULT_DOC_TEMPLATE(documentType),
+    ...(req.body ?? {}),
+    documentType,
+  };
+
+  const docLabel = DOCUMENT_TYPE_LABELS[documentType] ?? documentType.toUpperCase();
+  const dummyRows = [
+    { name: "Jasa Pengiriman Internasional", qty: 1, unit: "Shipment", unitPrice: 15000000, subtotal: 15000000 },
+    { name: "Biaya Handling & Custom Clearance", qty: 2, unit: "Pax", unitPrice: 2500000, subtotal: 5000000 },
+    { name: "Asuransi Kargo", qty: 1, unit: "Paket", unitPrice: 750000, subtotal: 750000 },
+  ];
+  const subtotal = dummyRows.reduce((s, r) => s + r.subtotal, 0);
+  const tax = tpl.showTax ? Math.round(subtotal * 0.11) : 0;
+  const grandTotal = subtotal + tax;
+  const fmt = (n: number) => "Rp " + n.toLocaleString("id-ID");
+  const today = new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
+  const dueDate = new Date(Date.now() + tpl.dueDays * 86400000).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
+
+  const tableRows = dummyRows.map(r => `
+    <tr>
+      <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;">${r.name}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;text-align:center;">${r.qty} ${r.unit}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;text-align:right;">${fmt(r.unitPrice)}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;text-align:right;">${fmt(r.subtotal)}</td>
+    </tr>`).join("");
+
+  const html = `<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Preview ${docLabel}</title>
+<style>
+  body{font-family:Arial,sans-serif;font-size:${tpl.fontSize}pt;color:#1f2937;margin:0;padding:24px;background:#f3f4f6;}
+  .doc{background:#fff;max-width:820px;margin:0 auto;padding:40px 48px;box-shadow:0 1px 8px rgba(0,0,0,.1);}
+  .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid ${tpl.primaryColor};padding-bottom:20px;margin-bottom:24px;}
+  .logo{max-height:64px;max-width:160px;}
+  .doc-title{text-align:right;}
+  .doc-title h1{margin:0;font-size:22pt;color:${tpl.primaryColor};letter-spacing:.5px;}
+  .doc-title .num{color:${tpl.accentColor};font-size:12pt;font-weight:600;margin-top:4px;}
+  .meta{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:24px;}
+  .meta-box h3{margin:0 0 6px;font-size:9pt;text-transform:uppercase;letter-spacing:.5px;color:${tpl.accentColor};}
+  .meta-box p{margin:2px 0;font-size:${tpl.fontSize}pt;}
+  table{width:100%;border-collapse:collapse;margin-bottom:20px;}
+  thead tr{background:${tpl.primaryColor};color:#fff;}
+  thead th{padding:10px;text-align:left;font-size:10pt;}
+  thead th:last-child,thead th:nth-child(3){text-align:right;}
+  thead th:nth-child(2){text-align:center;}
+  .totals{text-align:right;margin-bottom:24px;}
+  .totals table{width:auto;margin-left:auto;}
+  .totals td{padding:4px 12px;font-size:${tpl.fontSize}pt;}
+  .totals .grand{font-weight:700;font-size:13pt;color:${tpl.primaryColor};border-top:2px solid ${tpl.primaryColor};}
+  .terms{background:#f9fafb;border-left:4px solid ${tpl.accentColor};padding:12px 16px;border-radius:4px;margin-bottom:20px;font-size:10pt;color:#4b5563;}
+  .footer{text-align:center;color:#9ca3af;font-size:9pt;border-top:1px solid #e5e7eb;padding-top:12px;margin-top:24px;}
+  .sig{display:flex;gap:48px;margin:24px 0;}
+  .sig-box{text-align:center;flex:1;}
+  .sig-box .line{border-bottom:1px solid #374151;margin-bottom:4px;height:48px;}
+  .sig-box p{font-size:9pt;color:#6b7280;margin:0;}
+  .badge{display:inline-block;background:${tpl.accentColor};color:#fff;padding:2px 10px;border-radius:12px;font-size:9pt;margin-top:4px;}
+  .header-text{font-size:10pt;color:#6b7280;margin-bottom:8px;}
+</style>
+</head>
+<body>
+<div class="doc">
+  <div class="header">
+    <div>
+      ${tpl.logoUrl ? `<img src="${tpl.logoUrl}" class="logo" alt="Logo"/>` : `<div style="font-size:18pt;font-weight:700;color:${tpl.primaryColor};">${tpl.companyName}</div>`}
+      <p style="margin:6px 0 0;color:#6b7280;font-size:10pt;">${tpl.companyAddress}</p>
+      <p style="margin:2px 0;color:#6b7280;font-size:10pt;">${tpl.companyPhone} · ${tpl.companyEmail}</p>
+    </div>
+    <div class="doc-title">
+      <h1>${docLabel}</h1>
+      <div class="num">No: ${documentType.toUpperCase()}/2026/000123</div>
+      <div style="font-size:10pt;color:#6b7280;margin-top:4px;">Tanggal: ${today}</div>
+      ${documentType === "invoice" || documentType === "quotation" ? `<div style="font-size:10pt;color:#6b7280;">Jatuh Tempo: ${dueDate}</div>` : ""}
+      <div><span class="badge">PREVIEW</span></div>
+    </div>
+  </div>
+  ${tpl.headerText ? `<div class="header-text">${tpl.headerText}</div>` : ""}
+  <div class="meta">
+    <div class="meta-box">
+      <h3>Dari</h3>
+      <p><strong>${tpl.companyName}</strong></p>
+      <p>${tpl.companyAddress}</p>
+      <p>${tpl.companyPhone}</p>
+    </div>
+    <div class="meta-box">
+      <h3>Kepada</h3>
+      <p><strong>PT Contoh Customer Indonesia</strong></p>
+      <p>Jl. Pelanggan No. 42, Surabaya</p>
+      <p>+62 31 9876 5432</p>
+    </div>
+  </div>
+  ${["mou","kontrak","nda","sla"].includes(documentType) ? `
+  <div style="background:#f0f4ff;border-radius:8px;padding:20px 24px;margin-bottom:20px;font-size:${tpl.fontSize}pt;line-height:1.7;color:#374151;">
+    <p><strong>PASAL 1 — RUANG LINGKUP</strong></p>
+    <p>Para Pihak sepakat untuk mengikatkan diri dalam perjanjian ini berdasarkan ketentuan dan syarat-syarat yang tercantum di bawah ini. (Konten contoh — akan diganti dengan isi dokumen nyata)</p>
+    <p><strong>PASAL 2 — KEWAJIBAN PARA PIHAK</strong></p>
+    <p>Masing-masing pihak berkewajiban untuk melaksanakan ketentuan yang telah disepakati dalam dokumen ini dengan itikad baik.</p>
+  </div>` : `
+  <table>
+    <thead><tr>
+      <th>Deskripsi</th><th style="text-align:center;">Qty / Satuan</th>
+      <th style="text-align:right;">Harga Satuan</th><th style="text-align:right;">Subtotal</th>
+    </tr></thead>
+    <tbody>${tableRows}</tbody>
+  </table>
+  <div class="totals">
+    <table>
+      <tr><td>Subtotal</td><td style="text-align:right;">${fmt(subtotal)}</td></tr>
+      ${tpl.showTax ? `<tr><td>PPN 11%</td><td style="text-align:right;">${fmt(tax)}</td></tr>` : ""}
+      <tr class="grand"><td>TOTAL</td><td style="text-align:right;">${fmt(grandTotal)}</td></tr>
+    </table>
+  </div>`}
+  ${tpl.defaultTerms ? `<div class="terms"><strong>Syarat & Ketentuan:</strong><br/>${tpl.defaultTerms}</div>` : ""}
+  ${tpl.defaultNotes ? `<div style="margin-bottom:16px;font-size:10pt;color:#4b5563;"><strong>Catatan:</strong> ${tpl.defaultNotes}</div>` : ""}
+  ${tpl.showSignature ? `
+  <div class="sig">
+    <div class="sig-box"><div class="line"></div><p>Dibuat oleh</p><p><strong>${tpl.companyName}</strong></p></div>
+    <div class="sig-box"><div class="line"></div><p>Disetujui oleh</p><p><strong>PT Contoh Customer Indonesia</strong></p></div>
+  </div>` : ""}
+  <div class="footer">${tpl.footerText}</div>
+</div>
+</body></html>`;
+
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  return res.send(html);
+});
+
 export default router;

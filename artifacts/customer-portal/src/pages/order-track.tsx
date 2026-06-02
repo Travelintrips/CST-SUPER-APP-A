@@ -116,6 +116,7 @@ const PHOTO_TYPE_TO_STEP: Record<string, string> = {
   pickup: "Pickup",
   cargo: "In Transit",
   general: "In Transit",
+  arrival: "Arrived",
   pod: "POD Uploaded",
 };
 
