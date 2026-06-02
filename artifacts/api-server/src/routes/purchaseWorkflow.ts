@@ -73,6 +73,11 @@ db.execute(sql`
   ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS template_snapshot JSONB;
 `).catch((e: unknown) => console.warn("[purchase_requests] boot migration warn:", e));
 
+// Boot migration: source_pr_id — propagate PR origin to purchase_documents for Sport Center accounting
+db.execute(sql`
+  ALTER TABLE purchase_documents ADD COLUMN IF NOT EXISTS source_pr_id INTEGER;
+`).catch((e: unknown) => console.warn("[purchase_documents] source_pr_id boot migration warn:", e));
+
 // ─────────────────────────────────────────────────────────────────────────────
 // UOM
 // ─────────────────────────────────────────────────────────────────────────────
@@ -281,6 +286,8 @@ router.post("/pr/:id/action", async (req, res) => {
       templateVersion: (pr as any).templateVersion ?? null,
       templateSnapshot: (pr as any).templateSnapshot ?? null,
     }).returning();
+    // Propagate source_pr_id untuk traceability (Sport Center dan modul lain)
+    await db.execute(sql`UPDATE purchase_documents SET source_pr_id = ${id} WHERE id = ${rfq!.id}`);
     if (lines.length > 0) {
       await db.insert(purchaseDocumentLinesTable).values(
         lines.map((l) => ({
@@ -428,6 +435,10 @@ router.post("/vq/:id/select", async (req, res) => {
   const countRow = ((poResult as any).rows?.[0] ?? (Array.isArray(poResult) ? poResult[0] : { seq: 0 })) as { seq: number };
   const seq = (Number(countRow.seq) + 1).toString().padStart(5, "0");
   const poNumber = `PO/${year}/${seq}`;
+  // Ambil source_pr_id dari RFQ agar bisa dipropagasi ke PO
+  const rfqSourcePrRow = await db.execute(sql`SELECT source_pr_id FROM purchase_documents WHERE id = ${vq.rfqId} LIMIT 1`);
+  const rfqSourcePrId = (rfqSourcePrRow.rows[0] as any)?.source_pr_id ?? null;
+
   const [po] = await db.insert(purchaseDocumentsTable).values({
     docNumber: poNumber,
     kind: "order",
@@ -451,6 +462,10 @@ router.post("/vq/:id/select", async (req, res) => {
     templateVersion: (rfq as any)?.templateVersion ?? null,
     templateSnapshot: (rfq as any)?.templateSnapshot ?? null,
   }).returning();
+  // Propagate source_pr_id dari RFQ ke PO
+  if (rfqSourcePrId) {
+    await db.execute(sql`UPDATE purchase_documents SET source_pr_id = ${rfqSourcePrId} WHERE id = ${po!.id}`);
+  }
   if (vqLines.length > 0) {
     await db.insert(purchaseDocumentLinesTable).values(
       vqLines.map((l) => ({
@@ -1023,6 +1038,25 @@ router.post("/vendor-invoices/:id/post", async (req, res) => {
     matchStatus = "partial"; matchNotes = "No GR linked";
   }
 
+  // Deteksi Sport Center: cek apakah VI berasal dari PR dengan department = SPORT_CENTER
+  let isSportCenter = false;
+  let sportCenterFacility: string | null = null;
+  if (vi.poId) {
+    const scCheck = await db.execute(sql`
+      SELECT pr.department, pr.notes AS pr_notes
+      FROM purchase_documents po
+      JOIN purchase_requests pr ON pr.id = po.source_pr_id
+      WHERE po.id = ${vi.poId} AND pr.department = 'SPORT_CENTER'
+      LIMIT 1
+    `);
+    if (scCheck.rows.length > 0) {
+      isSportCenter = true;
+      const prNotes = String((scCheck.rows[0] as any).pr_notes ?? "");
+      const facilityMatch = prNotes.match(/Fasilitas:\s*([^|]+)/);
+      sportCenterFacility = facilityMatch ? facilityMatch[1].trim() : null;
+    }
+  }
+
   // Post journal
   try {
     const settings = await ensureAccountingSettings(vi.companyId ?? 1);
@@ -1030,17 +1064,42 @@ router.post("/vendor-invoices/:id/post", async (req, res) => {
     const taxAmount = num(vi.taxAmount);
     const netAmount = grandTotal - taxAmount;
     const lines = [];
-    // Step 3 Fix A: jika VI linked ke GR, debit GR/IR (clearing 3-way match). Jika tidak, debit akun beban pembelian.
-    const debitAccId = (vi.grId && settings.grirAccountId) ? settings.grirAccountId : settings.purchaseExpenseAccountId;
-    const debitDesc = (vi.grId && settings.grirAccountId) ? `GR/IR clearing ${vi.invoiceNumber}` : "Purchase expense";
-    if (debitAccId) lines.push({ accountId: debitAccId, debit: netAmount, credit: 0, description: debitDesc });
-    if (taxAmount > 0 && settings.ppnInputAccountId) lines.push({ accountId: settings.ppnInputAccountId!, debit: taxAmount, credit: 0, description: "VAT in" });
-    if (settings.apAccountId) lines.push({ accountId: settings.apAccountId!, debit: 0, credit: grandTotal, description: "AP vendor invoice" });
-    if (lines.length >= 2) {
-      const entry = await postEntry({ journalId: settings.purchaseJournalId!, date: new Date(), ref: vi.invoiceNumber, description: `Vendor Invoice ${vi.invoiceNumber}`, source: "purchase_bill", sourceId: id, companyId: vi.companyId ?? 1, lines }, "PUR");
-      await db.update(vendorInvoicesTable).set({ status: "posted", threeWayMatchStatus: matchStatus, matchNotes, journalEntryId: entry.id, updatedAt: new Date() }).where(eq(vendorInvoicesTable.id, id));
+
+    if (isSportCenter) {
+      // Sport Center: Debit Biaya Operasional (purchaseExpenseAccountId), Credit Hutang Vendor (AP)
+      const expAcct = settings.purchaseExpenseAccountId;
+      const facilityDesc = sportCenterFacility ? ` — ${sportCenterFacility}` : "";
+      if (expAcct) lines.push({ accountId: expAcct, debit: netAmount, credit: 0, description: `Biaya Operasional Sport Center${facilityDesc}: ${vi.invoiceNumber}` });
+      if (taxAmount > 0 && settings.ppnInputAccountId) lines.push({ accountId: settings.ppnInputAccountId!, debit: taxAmount, credit: 0, description: "PPN Masukan" });
+      if (settings.apAccountId) lines.push({ accountId: settings.apAccountId!, debit: 0, credit: grandTotal, description: `Hutang Vendor Sport Center: ${vi.supplierName}` });
+      if (lines.length >= 2) {
+        const entry = await postEntry({
+          journalId: settings.purchaseJournalId!,
+          date: new Date(),
+          ref: vi.invoiceNumber,
+          description: `[SPORT_CENTER] Vendor Invoice ${vi.invoiceNumber} — ${vi.supplierName}`,
+          source: "sport_center_operational_expense",
+          sourceId: id,
+          companyId: vi.companyId ?? 1,
+          lines,
+        }, "PUR");
+        await db.update(vendorInvoicesTable).set({ status: "posted", threeWayMatchStatus: matchStatus, matchNotes, journalEntryId: entry.id, updatedAt: new Date() }).where(eq(vendorInvoicesTable.id, id));
+      } else {
+        await db.update(vendorInvoicesTable).set({ status: "posted", threeWayMatchStatus: matchStatus, matchNotes, updatedAt: new Date() }).where(eq(vendorInvoicesTable.id, id));
+      }
     } else {
-      await db.update(vendorInvoicesTable).set({ status: "posted", threeWayMatchStatus: matchStatus, matchNotes, updatedAt: new Date() }).where(eq(vendorInvoicesTable.id, id));
+      // Standard purchase bill posting
+      const debitAccId = (vi.grId && settings.grirAccountId) ? settings.grirAccountId : settings.purchaseExpenseAccountId;
+      const debitDesc = (vi.grId && settings.grirAccountId) ? `GR/IR clearing ${vi.invoiceNumber}` : "Purchase expense";
+      if (debitAccId) lines.push({ accountId: debitAccId, debit: netAmount, credit: 0, description: debitDesc });
+      if (taxAmount > 0 && settings.ppnInputAccountId) lines.push({ accountId: settings.ppnInputAccountId!, debit: taxAmount, credit: 0, description: "VAT in" });
+      if (settings.apAccountId) lines.push({ accountId: settings.apAccountId!, debit: 0, credit: grandTotal, description: "AP vendor invoice" });
+      if (lines.length >= 2) {
+        const entry = await postEntry({ journalId: settings.purchaseJournalId!, date: new Date(), ref: vi.invoiceNumber, description: `Vendor Invoice ${vi.invoiceNumber}`, source: "purchase_bill", sourceId: id, companyId: vi.companyId ?? 1, lines }, "PUR");
+        await db.update(vendorInvoicesTable).set({ status: "posted", threeWayMatchStatus: matchStatus, matchNotes, journalEntryId: entry.id, updatedAt: new Date() }).where(eq(vendorInvoicesTable.id, id));
+      } else {
+        await db.update(vendorInvoicesTable).set({ status: "posted", threeWayMatchStatus: matchStatus, matchNotes, updatedAt: new Date() }).where(eq(vendorInvoicesTable.id, id));
+      }
     }
   } catch (e) { console.error("[VI post]", e); await db.update(vendorInvoicesTable).set({ status: "posted", updatedAt: new Date() }).where(eq(vendorInvoicesTable.id, id)); }
 

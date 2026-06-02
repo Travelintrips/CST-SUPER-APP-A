@@ -32,6 +32,10 @@ import {
   logisticOrderItemsTable,
   suppliersTable,
   orderUpdatesTable,
+  driverJobsTable,
+  driverPhotosTable,
+  driversTable,
+  driverLocationsTable,
 } from "@workspace/db";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { TAX_RATE_DECIMAL } from "../lib/taxHelper.js";
@@ -1146,6 +1150,75 @@ orderTrackingPublicRouter.get("/:trackToken", async (req: Request, res: Response
       }
     }
 
+    // Driver photos + live location + GPS trail — all from driver_jobs linked to this order
+    let driverPhotos: Array<{ url: string; photoType: string; takenAt: string }> = [];
+    let liveLocation: { lat: number; lng: number; updatedAt: string } | null = null;
+    let gpsTrail: Array<{ lat: number; lng: number; updatedAt: string }> = [];
+    try {
+      const [driverJobRow] = await db
+        .select({
+          id: driverJobsTable.id,
+          driverId: driverJobsTable.driverId,
+          status: driverJobsTable.status,
+        })
+        .from(driverJobsTable)
+        .where(eq(driverJobsTable.logisticOrderId, order.id))
+        .orderBy(desc(driverJobsTable.assignedAt))
+        .limit(1);
+
+      if (driverJobRow) {
+        const [photos, gpsRows] = await Promise.all([
+          db.select({ url: driverPhotosTable.url, photoType: driverPhotosTable.photoType, takenAt: driverPhotosTable.takenAt })
+            .from(driverPhotosTable)
+            .where(eq(driverPhotosTable.driverJobId, driverJobRow.id))
+            .orderBy(driverPhotosTable.takenAt),
+          db.select({
+            latitude: driverLocationsTable.latitude,
+            longitude: driverLocationsTable.longitude,
+            updatedAt: driverLocationsTable.updatedAt,
+          })
+            .from(driverLocationsTable)
+            .where(eq(driverLocationsTable.orderId, order.id))
+            .orderBy(driverLocationsTable.updatedAt)
+            .limit(100),
+        ]);
+
+        driverPhotos = photos.map((p) => ({
+          url: p.url,
+          photoType: p.photoType,
+          takenAt: p.takenAt.toISOString(),
+        }));
+
+        gpsTrail = gpsRows.map((r) => ({
+          lat: Number(r.latitude),
+          lng: Number(r.longitude),
+          updatedAt: r.updatedAt.toISOString(),
+        }));
+
+        if (gpsTrail.length > 0) {
+          const last = gpsTrail[gpsTrail.length - 1];
+          liveLocation = last;
+        }
+
+        // Also check drivers.currentLat/currentLng for most-recent position
+        if (driverJobRow.driverId && ["IN_TRANSIT", "PICKED_UP", "ON_THE_WAY_TO_PICKUP", "ARRIVED_AT_PICKUP", "ARRIVED_AT_DESTINATION"].includes(driverJobRow.status ?? "")) {
+          const [driverRow] = await db
+            .select({ currentLat: driversTable.currentLat, currentLng: driversTable.currentLng, lastLocationAt: driversTable.lastLocationAt })
+            .from(driversTable)
+            .where(eq(driversTable.id, driverJobRow.driverId));
+          if (driverRow?.currentLat && driverRow?.currentLng) {
+            liveLocation = {
+              lat: Number(driverRow.currentLat),
+              lng: Number(driverRow.currentLng),
+              updatedAt: driverRow.lastLocationAt?.toISOString() ?? new Date().toISOString(),
+            };
+          }
+        }
+      }
+    } catch {
+      // non-fatal
+    }
+
     return res.json({
       order: {
         orderNumber: order.order_number,
@@ -1182,6 +1255,9 @@ orderTrackingPublicRouter.get("/:trackToken", async (req: Request, res: Response
         grandTotal: orderGrandTotal,
       },
       podFiles,
+      driverPhotos,
+      liveLocation,
+      gpsTrail,
     });
   } catch (err) {
     logger.error({ err }, "order-tracking error");

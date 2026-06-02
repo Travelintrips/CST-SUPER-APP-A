@@ -1460,3 +1460,165 @@ export async function postSportCenterMembershipPayment(args: {
     logger.error({ err, paymentId: args.paymentId }, "Auto-post Sport Center membership payment failed");
   }
 }
+
+/**
+ * Post jurnal pembayaran booking Sport Center dengan PPN (3-arah).
+ * Debit  : Kas                  = base_amount + tax_amount
+ * Credit : Pendapatan           = base_amount
+ * Credit : PPN Keluaran (2-2010)= tax_amount   (hanya jika tax_amount > 0)
+ * Source : sport_center_booking
+ * Idempoten — skip jika sourceId sudah diposting.
+ */
+export async function postSportCenterBookingWithTax(args: {
+  bookingId: number;
+  bookingCode: string;
+  customerName: string;
+  facilityName: string;
+  date: string;
+  baseAmount: number;
+  taxAmount: number;
+  createdById?: string | null;
+  companyId?: number | null;
+}): Promise<void> {
+  try {
+    const settings = await ensureAccountingSettings(args.companyId ?? 1);
+    const cashAccountId = settings.defaultCashAccountId ?? settings.defaultBankAccountId;
+    const incomeAccountId = settings.salesIncomeAccountId;
+    const journalId = settings.cashJournalId ?? settings.bankJournalId;
+    const journalCode = settings.cashJournalId ? "CSH" : "BNK";
+
+    if (!cashAccountId || !incomeAccountId || !journalId) {
+      logger.warn({ bookingId: args.bookingId }, "Skipping Sport Center booking (with tax): akun atau jurnal belum dikonfigurasi");
+      return;
+    }
+
+    // Idempoten
+    const [existing] = await db
+      .select()
+      .from(accountingEntriesTable)
+      .where(sql`${accountingEntriesTable.source} = 'sport_center_booking' AND ${accountingEntriesTable.sourceId} = ${args.bookingId}`)
+      .limit(1);
+    if (existing) {
+      logger.info({ bookingId: args.bookingId }, "Sport center booking (tax) journal already posted — skipping");
+      return;
+    }
+
+    const base = round2(args.baseAmount);
+    const tax  = round2(args.taxAmount);
+    const total = round2(base + tax);
+
+    const lines: PostingLine[] = [
+      {
+        accountId: cashAccountId,
+        debit: total,
+        credit: 0,
+        description: `Penerimaan booking ${args.bookingCode}`,
+      },
+      {
+        accountId: incomeAccountId,
+        debit: 0,
+        credit: base,
+        description: `Pendapatan Sport Center: ${args.facilityName}`,
+      },
+    ];
+
+    // Tambah baris PPN Keluaran jika ada pajak
+    if (tax > 0 && settings.ppnOutputAccountId) {
+      lines.push({
+        accountId: settings.ppnOutputAccountId,
+        debit: 0,
+        credit: tax,
+        description: `PPN Keluaran booking ${args.bookingCode}`,
+      });
+    }
+
+    await postEntry(
+      {
+        journalId,
+        date: new Date(args.date),
+        ref: args.bookingCode,
+        description: `Booking Sport Center: ${args.facilityName} — ${args.customerName} (${args.date})`,
+        source: "sport_center_booking",
+        sourceId: args.bookingId,
+        createdById: args.createdById ?? null,
+        companyId: args.companyId ?? 1,
+        lines,
+      },
+      journalCode,
+    );
+
+    logger.info({ bookingId: args.bookingId, base, tax, total }, "Sport Center booking (with tax) journal posted");
+  } catch (err) {
+    logger.error({ err, bookingId: args.bookingId }, "Auto-post Sport Center booking (with tax) failed");
+  }
+}
+
+/**
+ * Post jurnal refund langsung booking Sport Center (source: sport_center_booking_refund).
+ * Debit  : Pendapatan Sport Center
+ * Credit : Kas
+ * Idempoten per bookingId.
+ */
+export async function postSportCenterBookingRefundDirect(args: {
+  bookingId: number;
+  bookingCode: string;
+  customerName: string;
+  amount: number;
+  companyId?: number | null;
+}): Promise<void> {
+  try {
+    const settings = await ensureAccountingSettings(args.companyId ?? 1);
+    const cashAccountId = settings.defaultCashAccountId ?? settings.defaultBankAccountId;
+    const incomeAccountId = settings.salesIncomeAccountId;
+    const journalId = settings.cashJournalId ?? settings.bankJournalId;
+    const journalCode = settings.cashJournalId ? "CSH" : "BNK";
+
+    if (!cashAccountId || !incomeAccountId || !journalId) {
+      logger.warn({ bookingId: args.bookingId }, "Skipping sport center booking refund direct: akun atau jurnal belum dikonfigurasi");
+      return;
+    }
+
+    // Idempoten — satu refund langsung per booking
+    const [existing] = await db
+      .select()
+      .from(accountingEntriesTable)
+      .where(sql`${accountingEntriesTable.source} = 'sport_center_booking_refund' AND ${accountingEntriesTable.sourceId} = ${args.bookingId}`)
+      .limit(1);
+    if (existing) {
+      logger.info({ bookingId: args.bookingId }, "Sport center booking refund direct already posted — skipping");
+      return;
+    }
+
+    const amt = round2(args.amount);
+    await postEntry(
+      {
+        journalId,
+        date: new Date(),
+        ref: args.bookingCode,
+        description: `Refund booking Sport Center ${args.bookingCode} — ${args.customerName}`,
+        source: "sport_center_booking_refund",
+        sourceId: args.bookingId,
+        companyId: args.companyId ?? null,
+        lines: [
+          {
+            accountId: incomeAccountId,
+            debit: amt,
+            credit: 0,
+            description: `Debit pendapatan refund ${args.bookingCode}`,
+          },
+          {
+            accountId: cashAccountId,
+            debit: 0,
+            credit: amt,
+            description: `Pengembalian kas refund ${args.bookingCode}`,
+          },
+        ],
+      },
+      journalCode,
+    );
+
+    logger.info({ bookingId: args.bookingId, amt }, "Sport Center booking refund direct journal posted");
+  } catch (err) {
+    logger.error({ err, bookingId: args.bookingId }, "Auto-post sport center booking refund direct failed");
+  }
+}

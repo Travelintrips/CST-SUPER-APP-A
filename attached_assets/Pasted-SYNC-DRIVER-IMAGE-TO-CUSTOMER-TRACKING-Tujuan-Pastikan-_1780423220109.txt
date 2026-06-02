@@ -1,0 +1,81 @@
+SYNC DRIVER IMAGE TO CUSTOMER TRACKING
+
+Tujuan:
+Pastikan setiap gambar yang diupload driver (via WA Mini Form atau Driver App) tampil otomatis di halaman tracking customer pada status yang sesuai.
+
+---
+
+A. BACKEND
+
+1. **Endpoint Upload Driver Image**
+
+   * Endpoint menerima file upload (image/jpeg, image/png)
+   * Simpan di storage (S3, Supabase, atau lokal)
+   * Simpan URL / path di database (`driver_jobs.pod_image_url` atau tabel `driver_progress_attachments`)
+   * Simpan relasi:
+
+     * `jobId` → driver job
+     * `logisticOrderId` → order customer
+     * `attachment_type` → Penjemputan / Tiba di Tujuan / Bukti Pengiriman
+
+2. **Trigger Update**
+
+   * Setelah upload selesai:
+
+     * Panggil `updateOrderProgress(logisticOrderId)` → timeline refresh
+     * `broadcastToAdmins("job_status_changed", {jobId, logisticOrderId})` → SSE/WebSocket update
+   * Pastikan backend response tidak block driver upload
+
+3. **Payload Normalisasi**
+
+   * Pastikan nomor driver, jobId, logisticOrderId dikirim agar backend bisa mapping ke order
+
+---
+
+B. FRONTEND
+
+1. **Customer Tracking Page**
+
+   * GET `/api/order/:logisticOrderId/progress` → ambil `driver_jobs` + `attachments`
+   * Filter attachment by type → tampilkan di status step yang sesuai:
+
+     * Penjemputan → gambar pickup
+     * Tiba di Tujuan → gambar arrival
+     * Bukti Pengiriman → gambar POD
+2. **Timeline / Status Card**
+
+   * Jika attachment ada → render image thumbnail
+   * Klik → zoom / download
+3. **Realtime Update**
+
+   * SSE / WebSocket / polling → timeline refresh otomatis
+   * Gambar baru muncul tanpa reload page
+
+---
+
+C. TESTING
+
+1. Driver upload gambar → cek URL tersimpan di DB
+2. Customer refresh / realtime → gambar muncul di timeline
+3. Pastikan semua attachment mapping ke jobId + logisticOrderId
+4. Internal / External / Legacy job → gambar muncul di halaman customer
+5. No regression untuk timeline / status badge lain
+
+---
+
+D. OUTPUT AKHIR
+
+* Gambar driver (gb1) tampil otomatis di customer tracking (gb2)
+* Timeline dan status update realtime
+* Backend storage & DB mapping benar
+* Internal / External / Legacy job support
+* Zero regression frontend
+
+---
+
+Instruksi:
+
+* Implementasikan backend upload + storage + mapping URL → job/order
+* Update timeline + SSE/WebSocket broadcast
+* Frontend customer tracking ambil URL → render di step yang sesuai
+* Test untuk semua tipe job
