@@ -272,6 +272,9 @@ export async function runSportCenterMigration(): Promise<void> {
     await db.execute(sql`
       ALTER TYPE accounting_entry_source ADD VALUE IF NOT EXISTS 'sport_center_booking_refund'
     `);
+    await db.execute(sql`
+      ALTER TYPE accounting_entry_source ADD VALUE IF NOT EXISTS 'sport_center_operational_expense'
+    `);
 
     logger.info("Sport Center migration: selesai");
   } catch (err) {
