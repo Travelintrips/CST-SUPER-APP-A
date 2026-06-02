@@ -732,6 +732,54 @@ vendorMiniFormRouter.get("/local-file/:filename", async (req: Request, res: Resp
   }
 });
 
+// ── PUBLIC: GET /api/vendor-form/:token/drivers ───────────────────────────────
+vendorMiniFormRouter.get("/:token/drivers", async (req: Request, res: Response) => {
+  const { token } = req.params as { token: string };
+  try {
+    const [link] = await db
+      .select({ supplierId: vendorMiniFormLinksTable.supplierId })
+      .from(vendorMiniFormLinksTable)
+      .where(eq(vendorMiniFormLinksTable.token, token));
+    if (!link) return res.status(404).json({ error: "Link tidak ditemukan" });
+    if (!link.supplierId) return res.json({ drivers: [] });
+    const rows = await db.execute(sql`
+      SELECT id, name, phone, vehicle_plate AS "vehiclePlate", vehicle_type AS "vehicleType"
+      FROM vendor_drivers
+      WHERE supplier_id = ${link.supplierId} AND is_active = TRUE
+      ORDER BY name
+    `);
+    return res.json({ drivers: rows.rows });
+  } catch (err) {
+    logger.error({ err }, "vendor-form GET drivers error");
+    return res.status(500).json({ error: "Gagal memuat data driver" });
+  }
+});
+
+// ── PUBLIC: POST /api/vendor-form/:token/drivers ──────────────────────────────
+vendorMiniFormRouter.post("/:token/drivers", async (req: Request, res: Response) => {
+  const { token } = req.params as { token: string };
+  const { name, phone, vehiclePlate, vehicleType } = req.body as {
+    name?: string; phone?: string; vehiclePlate?: string; vehicleType?: string;
+  };
+  try {
+    const [link] = await db
+      .select({ supplierId: vendorMiniFormLinksTable.supplierId })
+      .from(vendorMiniFormLinksTable)
+      .where(eq(vendorMiniFormLinksTable.token, token));
+    if (!link) return res.status(404).json({ error: "Link tidak ditemukan" });
+    if (!name?.trim()) return res.status(400).json({ error: "Nama driver wajib diisi" });
+    const result = await db.execute(sql`
+      INSERT INTO vendor_drivers (supplier_id, name, phone, vehicle_plate, vehicle_type)
+      VALUES (${link.supplierId ?? null}, ${name.trim()}, ${phone?.trim() || null}, ${vehiclePlate?.trim() || null}, ${vehicleType?.trim() || null})
+      RETURNING id, name, phone, vehicle_plate AS "vehiclePlate", vehicle_type AS "vehicleType"
+    `);
+    return res.status(201).json({ driver: result.rows[0] });
+  } catch (err) {
+    logger.error({ err }, "vendor-form POST driver error");
+    return res.status(500).json({ error: "Gagal menyimpan driver" });
+  }
+});
+
 // ── PUBLIC: GET /api/vendor-form/:token ───────────────────────────────────────
 
 vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {

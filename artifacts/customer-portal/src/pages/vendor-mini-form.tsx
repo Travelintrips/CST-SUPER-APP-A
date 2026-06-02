@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 import { useParams } from "wouter";
 import type { ProductTemplate, DynamicFormValues } from "@workspace/product-templates";
@@ -173,6 +173,217 @@ function FormField({ label, required, children }: { label: string; required?: bo
 }
 
 const INPUT_CLS = "w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400";
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+type VendorDriver = { id: number; name: string; phone: string | null; vehiclePlate: string | null; vehicleType: string | null };
+
+// ── DriverPicker ──────────────────────────────────────────────────────────────
+function DriverPicker({
+  token,
+  driverName,
+  driverPhone,
+  plateNumber,
+  vehicleType,
+  onSelect,
+}: {
+  token: string;
+  driverName: string;
+  driverPhone: string;
+  plateNumber: string;
+  vehicleType: string;
+  onSelect: (d: { name: string; phone: string; plate: string; vehicleType: string }) => void;
+}) {
+  const [drivers, setDrivers] = useState<VendorDriver[]>([]);
+  const [search, setSearch] = useState("");
+  const [open, setOpen] = useState(false);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newPhone, setNewPhone] = useState("");
+  const [newPlate, setNewPlate] = useState("");
+  const [newVehicleType, setNewVehicleType] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    fetch(`/api/vendor-form/${token}/drivers`)
+      .then((r) => r.json())
+      .then((d: { drivers?: VendorDriver[] }) => { if (d.drivers) setDrivers(d.drivers); })
+      .catch(() => {});
+  }, [token]);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (dropRef.current && !dropRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const filtered = drivers.filter((d) =>
+    d.name.toLowerCase().includes(search.toLowerCase()) ||
+    (d.vehiclePlate ?? "").toLowerCase().includes(search.toLowerCase()) ||
+    (d.phone ?? "").includes(search)
+  );
+
+  const handleSelect = useCallback((d: VendorDriver) => {
+    onSelect({ name: d.name, phone: d.phone ?? "", plate: d.vehiclePlate ?? "", vehicleType: d.vehicleType ?? "" });
+    setSearch("");
+    setOpen(false);
+  }, [onSelect]);
+
+  const handleSaveNew = async () => {
+    if (!newName.trim()) { setSaveError("Nama driver wajib diisi"); return; }
+    setSaving(true); setSaveError(null);
+    try {
+      const r = await fetch(`/api/vendor-form/${token}/drivers`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newName.trim(), phone: newPhone.trim(), vehiclePlate: newPlate.trim(), vehicleType: newVehicleType.trim() }),
+      });
+      const d = await r.json() as { driver?: VendorDriver; error?: string };
+      if (!r.ok) throw new Error(d.error ?? "Gagal menyimpan driver");
+      if (d.driver) {
+        setDrivers((prev) => [...prev, d.driver!]);
+        handleSelect(d.driver!);
+      }
+      setShowAddForm(false);
+      setNewName(""); setNewPhone(""); setNewPlate(""); setNewVehicleType("");
+    } catch (e) {
+      setSaveError((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const inputCls = "w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400";
+  const selectedLabel = driverName ? `${driverName}${plateNumber ? ` · ${plateNumber}` : ""}` : "";
+
+  return (
+    <div className="space-y-3">
+      <div className="space-y-1.5" ref={dropRef}>
+        <label className="text-sm font-medium text-slate-700">
+          Pilih Driver <span className="text-red-500">*</span>
+        </label>
+        {selectedLabel && !open && (
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm">
+            <div>
+              <span className="font-medium text-emerald-800">{driverName}</span>
+              {driverPhone && <span className="text-slate-500 ml-2">· {driverPhone}</span>}
+              {plateNumber && <span className="text-slate-500 ml-2">· {plateNumber}</span>}
+            </div>
+            <button type="button" onClick={() => { setOpen(true); setSearch(""); }}
+              className="text-xs text-emerald-600 hover:text-emerald-800 underline shrink-0">Ganti</button>
+          </div>
+        )}
+        {(!selectedLabel || open) && (
+          <div className="relative">
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setOpen(true); }}
+              onFocus={() => setOpen(true)}
+              placeholder={drivers.length > 0 ? "Cari nama driver atau plat..." : "Belum ada driver terdaftar"}
+              className={inputCls}
+              autoComplete="off"
+            />
+            {open && (
+              <div className="absolute z-20 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg max-h-52 overflow-y-auto">
+                {filtered.length > 0 ? (
+                  filtered.map((d) => (
+                    <button key={d.id} type="button" onClick={() => handleSelect(d)}
+                      className="w-full text-left px-3 py-2.5 hover:bg-emerald-50 border-b border-slate-50 last:border-0">
+                      <div className="text-sm font-medium text-slate-800">{d.name}</div>
+                      <div className="text-xs text-slate-400 mt-0.5 flex gap-2">
+                        {d.phone && <span>📱 {d.phone}</span>}
+                        {d.vehiclePlate && <span>🚛 {d.vehiclePlate}</span>}
+                        {d.vehicleType && <span>{d.vehicleType}</span>}
+                      </div>
+                    </button>
+                  ))
+                ) : (
+                  <div className="px-3 py-3 text-sm text-slate-400 text-center">
+                    {search ? `"${search}" tidak ditemukan` : "Belum ada driver terdaftar"}
+                  </div>
+                )}
+                <button type="button"
+                  onClick={() => { setOpen(false); setShowAddForm(true); setNewName(search); setSearch(""); }}
+                  className="w-full text-left px-3 py-2.5 text-sm text-emerald-700 font-medium bg-emerald-50 hover:bg-emerald-100 border-t border-emerald-100 flex items-center gap-2">
+                  <span className="text-base">＋</span> Tambah driver baru
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {showAddForm && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-4 space-y-3">
+          <p className="text-sm font-semibold text-emerald-800">➕ Tambah Driver Baru</p>
+          {saveError && <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{saveError}</p>}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-600">Nama Driver <span className="text-red-500">*</span></label>
+            <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)}
+              placeholder="Nama lengkap driver" className={inputCls} />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-600">No. HP</label>
+            <input type="text" value={newPhone} onChange={(e) => setNewPhone(e.target.value)}
+              placeholder="08xxxxxxxxxx" className={inputCls} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-slate-600">Plat Nomor</label>
+              <input type="text" value={newPlate} onChange={(e) => setNewPlate(e.target.value)}
+                placeholder="B 1234 XYZ" className={inputCls} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-slate-600">Jenis Kendaraan</label>
+              <input type="text" value={newVehicleType} onChange={(e) => setNewVehicleType(e.target.value)}
+                placeholder="Engkel, CDD, dll" className={inputCls} />
+            </div>
+          </div>
+          <div className="flex gap-2 pt-1">
+            <button type="button" onClick={handleSaveNew} disabled={saving}
+              className="flex-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white text-sm font-medium py-2 transition-colors flex items-center justify-center gap-2">
+              {saving && <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+              {saving ? "Menyimpan..." : "Simpan & Pilih"}
+            </button>
+            <button type="button" onClick={() => { setShowAddForm(false); setSaveError(null); }}
+              className="px-4 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 py-2">
+              Batal
+            </button>
+          </div>
+        </div>
+      )}
+
+      {driverName && (
+        <div className="grid grid-cols-1 gap-3 pt-1">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">No. HP Driver</label>
+            <input type="text" value={driverPhone}
+              onChange={(e) => onSelect({ name: driverName, phone: e.target.value, plate: plateNumber, vehicleType })}
+              placeholder="08xxxxxxxxxx" className={inputCls} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              Nomor Plat Kendaraan <span className="text-red-500">*</span>
+            </label>
+            <input type="text" value={plateNumber}
+              onChange={(e) => onSelect({ name: driverName, phone: driverPhone, plate: e.target.value, vehicleType })}
+              placeholder="B 1234 XYZ" className={inputCls} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Tipe Kendaraan</label>
+            <input type="text" value={vehicleType}
+              onChange={(e) => onSelect({ name: driverName, phone: driverPhone, plate: plateNumber, vehicleType: e.target.value })}
+              placeholder="Engkel, Tronton, CDD, dll" className={inputCls} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function VendorMiniFormPage() {
@@ -600,8 +811,35 @@ export default function VendorMiniFormPage() {
             const stpl = meta.serviceTemplate;
             const phase = meta.phase ?? "quotation";
 
+            // Detect if any field in the form is driver_name (enables DriverPicker)
+            const allFormFields = stpl?.fields ?? schema?.fields ?? [];
+            const hasDriverField = allFormFields.some(f => f.key === "driver_name");
+            const DRIVER_SUB_KEYS = ["driver_phone", "plate_number", "vehicle_type"];
+
             // Shared field renderer — handles all types incl. upload
             const renderField = (field: FieldDef) => {
+              // ── Driver fields: render DriverPicker for driver_name ──────────
+              if (field.key === "driver_name") {
+                return (
+                  <DriverPicker
+                    key="driver-picker"
+                    token={token!}
+                    driverName={values["driver_name"] ?? ""}
+                    driverPhone={values["driver_phone"] ?? ""}
+                    plateNumber={values["plate_number"] ?? ""}
+                    vehicleType={values["vehicle_type"] ?? ""}
+                    onSelect={(d) => {
+                      handleChange("driver_name", d.name);
+                      handleChange("driver_phone", d.phone);
+                      handleChange("plate_number", d.plate);
+                      handleChange("vehicle_type", d.vehicleType);
+                    }}
+                  />
+                );
+              }
+              // Skip sub-fields handled by DriverPicker
+              if (hasDriverField && DRIVER_SUB_KEYS.includes(field.key)) return null;
+
               if (field.isUpload) {
                 return (
                   <FormField key={field.key} label={field.label} required={field.required}>
