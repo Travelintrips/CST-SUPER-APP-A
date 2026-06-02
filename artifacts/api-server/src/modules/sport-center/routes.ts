@@ -3,7 +3,7 @@ import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { requireAdmin } from "../../lib/requireAdmin.js";
 import { handleSportCenterSse, broadcastSportCenterEvent } from "./broadcast.js";
-import { postSportCenterBooking } from "../../lib/accounting.js";
+import { postSportCenterBooking, reverseSportCenterBooking } from "../../lib/accounting.js";
 
 const router = Router();
 
@@ -49,6 +49,7 @@ router.get("/dashboard", requireAdmin, async (req, res) => {
       db.execute(sql`SELECT COALESCE(SUM(total_amount),0) AS revenue FROM sport_bookings WHERE (${cId}::int IS NULL OR company_id = ${cId}) AND status != 'cancelled'`),
       db.execute(sql`SELECT COUNT(*) AS cnt FROM sport_bookings WHERE (${cId}::int IS NULL OR company_id = ${cId}) AND promo_id IS NOT NULL AND status != 'cancelled'`),
       db.execute(sql`SELECT COALESCE(SUM(discount_amount),0) AS total FROM sport_bookings WHERE (${cId}::int IS NULL OR company_id = ${cId}) AND promo_id IS NOT NULL AND status != 'cancelled'`),
+      db.execute(sql`SELECT COUNT(*) AS cnt FROM sport_bookings WHERE (${cId}::int IS NULL OR company_id = ${cId}) AND status = 'cancelled'`),
     ]);
 
     res.json({
@@ -63,6 +64,7 @@ router.get("/dashboard", requireAdmin, async (req, res) => {
       totalRevenue: Number((totalRev.rows[0] as any).revenue),
       totalPromoUsed: Number((promoUsedRes.rows[0] as any).cnt),
       totalPromoDiscount: Number((promoDiscountRes.rows[0] as any).total),
+      cancelledBookings: Number((cancelledRes.rows[0] as any).cnt),
     });
   } catch {
     res.status(500).json({ error: "Gagal memuat dashboard" });
@@ -284,6 +286,68 @@ router.post("/bookings/:id/checkin", requireAdmin, async (req, res) => {
     res.json(row);
   } catch {
     res.status(500).json({ error: "Gagal check-in" });
+  }
+});
+
+router.post("/bookings/:id/cancel", requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { cancel_reason } = req.body;
+    const createdById = (req.user as { id: string } | undefined)?.id ?? null;
+
+    // Fetch booking
+    const bookingRes = await db.execute(sql`SELECT * FROM sport_bookings WHERE id = ${id} LIMIT 1`);
+    if (!bookingRes.rows.length) return res.status(404).json({ error: "Booking tidak ditemukan" });
+    const booking = bookingRes.rows[0] as Record<string, unknown>;
+
+    if (booking.status === "cancelled") return res.status(400).json({ error: "Booking sudah dibatalkan" });
+    if (booking.status === "completed") return res.status(400).json({ error: "Booking yang sudah selesai tidak dapat dibatalkan" });
+
+    // Update status booking
+    const updated = await db.execute(sql`
+      UPDATE sport_bookings
+      SET status = 'cancelled', cancelled_at = NOW(), cancelled_reason = ${cancel_reason ?? null}, updated_at = NOW()
+      WHERE id = ${id} RETURNING *
+    `);
+    const row = updated.rows[0] as Record<string, unknown>;
+
+    // Cari total pembayaran yang sudah diposting ke jurnal
+    const paidRes = await db.execute(sql`
+      SELECT COALESCE(SUM(amount), 0) AS total FROM sport_payments
+      WHERE booking_id = ${id} AND status = 'paid'
+    `);
+    const amountPaid = Number((paidRes.rows[0] as any).total);
+
+    // Reversal jurnal jika ada pembayaran yang sudah terposting
+    let amountReversed = 0;
+    if (amountPaid > 0) {
+      amountReversed = amountPaid;
+      reverseSportCenterBooking({
+        bookingId: id,
+        bookingNumber: String(booking.booking_number ?? id),
+        amountReversed,
+        createdById,
+        companyId: booking.company_id != null ? Number(booking.company_id) : null,
+      }).catch(() => {});
+    }
+
+    // Audit log
+    await db.execute(sql`
+      INSERT INTO sport_audit_logs (company_id, entity_type, entity_id, action, actor, new_data)
+      VALUES (
+        ${booking.company_id ?? null},
+        'booking',
+        ${id},
+        'BOOKING_CANCELLED',
+        ${createdById},
+        ${JSON.stringify({ reason: cancel_reason ?? null, amount_reversed: amountReversed })}::jsonb
+      )
+    `);
+
+    broadcastSportCenterEvent({ module: "sport-center", entity: "booking", action: "cancelled", data: row, timestamp: new Date().toISOString() }, booking.company_id as number | undefined);
+    res.json({ ...row, amount_reversed: amountReversed });
+  } catch {
+    res.status(500).json({ error: "Gagal membatalkan booking" });
   }
 });
 

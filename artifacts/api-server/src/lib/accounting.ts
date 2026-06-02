@@ -954,6 +954,72 @@ export async function postSportCenterBooking(args: {
 }
 
 /**
+ * Post jurnal reversal saat booking Sport Center dibatalkan setelah pembayaran.
+ * Membalik: Debit Pendapatan Sport Center, Credit Kas.
+ */
+export async function reverseSportCenterBooking(args: {
+  bookingId: number;
+  bookingNumber: string;
+  amountReversed: number;
+  createdById?: string | null;
+  companyId?: number | null;
+}): Promise<void> {
+  try {
+    if (args.amountReversed <= 0) return;
+
+    const settings = await ensureAccountingSettings(args.companyId ?? 1);
+    const debitAccountId = settings.salesIncomeAccountId;       // Pendapatan (di-debit untuk reversal)
+    const creditAccountId = settings.defaultCashAccountId ?? settings.defaultBankAccountId; // Kas (di-kredit untuk reversal)
+    const journalId = settings.cashJournalId ?? settings.bankJournalId;
+    const journalCode = settings.cashJournalId ? "CSH" : "BNK";
+
+    if (!debitAccountId || !creditAccountId || !journalId) {
+      logger.warn(
+        { bookingId: args.bookingId },
+        "Skipping Sport Center reversal: akun atau jurnal belum dikonfigurasi",
+      );
+      return;
+    }
+
+    const amt = round2(args.amountReversed);
+    await postEntry(
+      {
+        journalId,
+        date: new Date(),
+        ref: args.bookingNumber,
+        description: `Cancellation of booking ${args.bookingNumber}`,
+        source: "sport_center_booking_reversal",
+        sourceId: args.bookingId,
+        createdById: args.createdById ?? null,
+        companyId: args.companyId ?? 1,
+        lines: [
+          {
+            accountId: debitAccountId,
+            debit: amt,
+            credit: 0,
+            description: `Reversal pendapatan booking ${args.bookingNumber}`,
+          },
+          {
+            accountId: creditAccountId,
+            debit: 0,
+            credit: amt,
+            description: `Reversal kas booking ${args.bookingNumber}`,
+          },
+        ],
+      },
+      journalCode,
+    );
+
+    logger.info(
+      { bookingId: args.bookingId, bookingNumber: args.bookingNumber, amt },
+      "Sport Center booking reversal journal entry posted",
+    );
+  } catch (err) {
+    logger.error({ err, bookingId: args.bookingId }, "Auto-post Sport Center reversal failed");
+  }
+}
+
+/**
  * Post jurnal reversal saat bill pembelian dibatalkan.
  * Membalik semua baris debit/kredit dari jurnal purchase_bill asli.
  */
