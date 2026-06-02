@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import {
   db, ordersTable, stocksTable, transactionsTable, productsTable,
   freightShipmentsTable, salesDocumentsTable,
@@ -16,9 +16,16 @@ router.use(async (req, res, next) => {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-// ?companyId=N  → single company mode
-// ?companyId=all or omitted → consolidated mode
-function parseCompanyParam(raw: unknown): { isConsolidated: boolean; companyId: number | null } {
+// ?companyId=N  → single company mode (holding only)
+// ?companyId=all or omitted → consolidated mode (holding only)
+// non-holding user → always locked to user.companyId
+function parseCompanyParam(req: Request): { isConsolidated: boolean; companyId: number | null } {
+  const user = req.user as { companyId?: number | null; role?: string | null } | undefined;
+  const isHolding = !user?.companyId || user.role === "owner";
+  if (!isHolding && user?.companyId) {
+    return { isConsolidated: false, companyId: user.companyId };
+  }
+  const raw = req.query.companyId;
   if (raw === "all" || raw === undefined || raw === "") {
     return { isConsolidated: true, companyId: null };
   }
@@ -30,7 +37,7 @@ function parseCompanyParam(raw: unknown): { isConsolidated: boolean; companyId: 
 // GET /api/dashboard/org-breakdown?companyId=<id>|all&branchId=N&divisionId=N&departmentId=N
 // Returns breakdown metrics per branch, division, or department
 router.get("/org-breakdown", async (req, res) => {
-  const { isConsolidated, companyId } = parseCompanyParam(req.query.companyId);
+  const { isConsolidated, companyId } = parseCompanyParam(req);
   const branchId = typeof req.query["branchId"] === "string" ? Number(req.query["branchId"]) : null;
   const dimension = (req.query["dimension"] as string) || "branch"; // branch | division | department
 
