@@ -51,8 +51,10 @@ import {
   sendCustomerProgressUpdateNotification,
   sendCustomerPodUploadedNotification,
   sendOrderCompletedNotification,
+  sendPodInvoiceToAdminGroup,
   resolveTemplateSnapshot,
   type VendorAssignmentItem,
+  type LogisticOrderData,
 } from "../lib/orderNotification.js";
 import { logger } from "../lib/logger.js";
 import { recordDecision, updateDecisionOutcome } from "../lib/decisionMemory.js";
@@ -938,7 +940,11 @@ vendorJobPublicRouter.post("/:token/pod", upload.array("files", 10), async (req:
 
   try {
     const result = await db.execute(
-      sql`SELECT vjo.*, o.order_number, o.id as order_id_num, o.phone, o.tracking_token, o.status as order_status, o.commodity, s.name as vendor_name
+      sql`SELECT vjo.*, o.order_number, o.id as order_id_num, o.phone, o.tracking_token,
+               o.status as order_status, o.commodity, o.cargo_description,
+               o.customer_name, o.shipment_type, o.origin, o.destination,
+               o.grand_total, o.tax, o.notes as order_notes,
+               s.name as vendor_name
           FROM vendor_job_orders vjo
           LEFT JOIN logistic_orders o ON o.id = vjo.order_id
           LEFT JOIN suppliers s ON s.id = vjo.vendor_id
@@ -1035,6 +1041,26 @@ vendorJobPublicRouter.post("/:token/pod", upload.array("files", 10), async (req:
     if (adminWa) {
       sendVendorPodUploadedNotification(job.order_number, job.vendor_name ?? "—", files.length, adminWa, completionNotes, firstPublicImageUrl || undefined, job.commodity ?? null).catch(() => {});
     }
+
+    // Invoice notification ke admin group (non-blocking)
+    const orderForInvoice: LogisticOrderData = {
+      id: job.order_id as number,
+      orderNumber: job.order_number as string,
+      customerName: (job.customer_name ?? "") as string,
+      companyName: "",
+      email: "",
+      phone: (job.phone ?? "") as string,
+      shipmentType: (job.shipment_type ?? "") as string,
+      origin: (job.origin ?? "") as string,
+      destination: (job.destination ?? "") as string,
+      commodity: job.commodity as string | null ?? null,
+      cargoDescription: job.cargo_description as string | null ?? null,
+      grossWeight: job.gross_weight ? Number(job.gross_weight) : null,
+      grandTotal: job.grand_total ? Number(job.grand_total) : 0,
+      tax: job.tax ? Number(job.tax) : 0,
+      notes: job.order_notes as string | null ?? null,
+    };
+    sendPodInvoiceToAdminGroup(orderForInvoice).catch(() => {});
 
     // Notify customer via WA
     const customerPhonePod = job.phone as string | null;

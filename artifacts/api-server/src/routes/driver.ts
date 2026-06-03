@@ -15,6 +15,7 @@ import { getPreferredDomain } from "../lib/domain";
 import {
   sendDriverAssignedNotification,
   sendDeliveryCompletedNotification,
+  sendPodInvoiceToAdminGroup,
   type LogisticOrderData,
 } from "../lib/orderNotification";
 import {
@@ -207,6 +208,8 @@ async function fetchOrderData(logisticOrderId: number | null | undefined): Promi
     volumeCbm: row.volumeCbm ? Number(row.volumeCbm) : null,
     jumlahKoli: row.jumlahKoli ?? null,
     grandTotal: row.grandTotal ? Number(row.grandTotal) : 0,
+    tax: row.tax ? Number(row.tax) : 0,
+    subtotal: row.grandTotal && row.tax ? Number(row.grandTotal) - Number(row.tax) : null,
     serviceList: row.shipmentType,
     requiredDate: row.requiredDate ?? null,
     notes: row.notes ?? null,
@@ -656,6 +659,7 @@ router.post("/jobs/:jobId/pod", requireDriverAuth, async (req, res) => {
       fetchOrderData(job.logisticOrderId).then(async (orderData) => {
         if (!orderData) return;
         sendDeliveryCompletedNotification(orderData).catch(() => {});
+        sendPodInvoiceToAdminGroup(orderData).catch(() => {});
 
         const adminGroupWa = await getAdminGroupWa().catch(() => null);
         if (adminGroupWa) {
