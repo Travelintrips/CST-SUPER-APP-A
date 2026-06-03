@@ -7,10 +7,6 @@ import { sendMail, isSmtpConfigured } from "./mailer";
 import { logger } from "./logger";
 import { generateShortLink } from "./shortLink";
 import { TAX_RATE_DECIMAL as PPN_RATE, TAX_RATE_PCT } from "./taxHelper.js";
-import { ObjectStorageService } from "./objectStorage.js";
-import { buildInvoicePdfBuffer } from "./pdfInvoice.js";
-import { ensureAccountingSettings } from "./accountingSeed.js";
-import { loadDocTemplate } from "./docTemplateLoader.js";
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? "admcst001@gmail.com";
 
@@ -3320,98 +3316,3 @@ export async function runWaTemplateMigration(): Promise<void> {
   }
 }
 
-const _pubObjStore = new ObjectStorageService();
-
-function idrFmt(n: number): string {
-  return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
-}
-
-export async function sendPodInvoiceToAdminGroup(order: LogisticOrderData): Promise<void> {
-  try {
-    const adminWa = await getAdminGroupWa();
-    if (!adminWa) return;
-
-    const [acctSettings, template] = await Promise.all([
-      ensureAccountingSettings(),
-      loadDocTemplate("invoice"),
-    ]);
-
-    const grandTotal = order.grandTotal ?? 0;
-    const taxAmount = order.tax ?? 0;
-    const subtotal = grandTotal - taxAmount;
-
-    const pdfBuffer = await buildInvoicePdfBuffer({
-      title: "INVOICE FREIGHT",
-      docNumber: order.orderNumber,
-      status: "Menunggu Penerbitan Invoice",
-      kind: "order",
-      companyName: acctSettings.companyName,
-      companyAddress: acctSettings.companyAddress,
-      companyNpwp: acctSettings.companyNpwp,
-      partyLabel: "Pelanggan",
-      partyName: order.customerName,
-      partyPhone: order.phone,
-      partyEmail: order.email,
-      createdAt: new Date().toISOString(),
-      notes: order.notes ?? null,
-      lines: [
-        {
-          name: `Jasa Pengiriman ${order.shipmentType ?? ""}`.trim(),
-          description: [
-            `${order.origin} → ${order.destination}`,
-            order.commodity ? `Komoditas: ${order.commodity}` : null,
-            order.cargoDescription ? order.cargoDescription : null,
-          ].filter(Boolean).join(" | "),
-          quantity: 1,
-          unitPrice: subtotal > 0 ? subtotal : grandTotal,
-          subtotal: subtotal > 0 ? subtotal : grandTotal,
-        },
-      ],
-      totalAmount: subtotal > 0 ? subtotal : grandTotal,
-      taxAmount: taxAmount > 0 ? taxAmount : null,
-      grandTotal: taxAmount > 0 ? grandTotal : null,
-      taxRate: taxAmount > 0 && subtotal > 0 ? Math.round((taxAmount / subtotal) * 100) : null,
-      template,
-    });
-
-    const subPath = `invoices/pod/${order.id}/${Date.now()}_${order.orderNumber.replace(/[\\/]/g, "-")}.pdf`;
-    let pdfPublicUrl = "";
-    try {
-      await _pubObjStore.uploadPublicRaw(subPath, pdfBuffer, "application/pdf");
-      pdfPublicUrl = _pubObjStore.toSupabasePublicUrl(subPath);
-    } catch (e) {
-      logger.warn({ e, subPath }, "sendPodInvoiceToAdminGroup: PDF upload ke public storage gagal");
-    }
-
-    const bizPortalUrl = `https://${process.env.REPLIT_DEV_DOMAIN ?? "localhost:5000"}/logistics/orders/${order.id}`;
-    const lines = [
-      `🧾 *Invoice Siap Diterbitkan*`,
-      ``,
-      `No. Order : *${order.orderNumber}*`,
-      `Pelanggan : ${order.customerName}`,
-      `Rute      : ${order.origin} → ${order.destination}`,
-      grandTotal > 0 ? `Total     : *${idrFmt(grandTotal)}*` : null,
-      ``,
-      `✅ POD telah diterima. Silakan review & terbitkan invoice.`,
-      `📋 BizPortal: ${bizPortalUrl}`,
-      ``,
-      `🕐 ${nowWIB()}`,
-    ].filter((l) => l !== null).join("\n");
-
-    if (pdfPublicUrl) {
-      sendMediaViaService(adminWa, lines, pdfPublicUrl, {
-        context: "pod_invoice_notif",
-        refType: "logistic_order",
-        refId: String(order.id),
-      }).catch((e) => logger.warn({ e }, "sendPodInvoiceToAdminGroup: WA media gagal"));
-    } else {
-      sendWhatsApp(adminWa, lines, {
-        context: "pod_invoice_notif",
-        refType: "logistic_order",
-        refId: String(order.id),
-      }).catch((e) => logger.warn({ e }, "sendPodInvoiceToAdminGroup: WA teks gagal"));
-    }
-  } catch (err) {
-    logger.warn({ err, orderId: order.id }, "sendPodInvoiceToAdminGroup: non-fatal error");
-  }
-}

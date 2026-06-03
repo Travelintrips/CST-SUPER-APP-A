@@ -51,11 +51,10 @@ import {
   sendCustomerProgressUpdateNotification,
   sendCustomerPodUploadedNotification,
   sendOrderCompletedNotification,
-  sendPodInvoiceToAdminGroup,
   resolveTemplateSnapshot,
   type VendorAssignmentItem,
-  type LogisticOrderData,
 } from "../lib/orderNotification.js";
+import { autoCreateLogisticInvoice, type LogisticOrderData } from "../lib/podInvoiceAutoCreate.js";
 import { logger } from "../lib/logger.js";
 import { recordDecision, updateDecisionOutcome } from "../lib/decisionMemory.js";
 import multer from "multer";
@@ -1060,7 +1059,7 @@ vendorJobPublicRouter.post("/:token/pod", upload.array("files", 10), async (req:
       tax: job.tax ? Number(job.tax) : 0,
       notes: job.order_notes as string | null ?? null,
     };
-    sendPodInvoiceToAdminGroup(orderForInvoice).catch(() => {});
+    autoCreateLogisticInvoice(orderForInvoice).catch(() => {});
 
     // Notify customer via WA
     const customerPhonePod = job.phone as string | null;

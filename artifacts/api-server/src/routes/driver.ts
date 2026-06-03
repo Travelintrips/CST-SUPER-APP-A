@@ -15,9 +15,9 @@ import { getPreferredDomain } from "../lib/domain";
 import {
   sendDriverAssignedNotification,
   sendDeliveryCompletedNotification,
-  sendPodInvoiceToAdminGroup,
   type LogisticOrderData,
 } from "../lib/orderNotification";
+import { autoCreateLogisticInvoice } from "../lib/podInvoiceAutoCreate.js";
 import {
   registerDriverConnection, unregisterDriverConnection, pushToDriver,
   registerAdminConnection, unregisterAdminConnection, broadcastToAdmins,
@@ -659,7 +659,7 @@ router.post("/jobs/:jobId/pod", requireDriverAuth, async (req, res) => {
       fetchOrderData(job.logisticOrderId).then(async (orderData) => {
         if (!orderData) return;
         sendDeliveryCompletedNotification(orderData).catch(() => {});
-        sendPodInvoiceToAdminGroup(orderData).catch(() => {});
+        autoCreateLogisticInvoice(orderData).catch(() => {});
 
         const adminGroupWa = await getAdminGroupWa().catch(() => null);
         if (adminGroupWa) {
