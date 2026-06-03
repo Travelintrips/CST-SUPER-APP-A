@@ -2729,7 +2729,14 @@ router.post("/gsheet/setup", async (req, res) => {
   const companyId = resolveCompanyId(req);
   const { spreadsheetId: existingId } = req.body as { spreadsheetId?: string };
 
-  let spreadsheetId = existingId?.trim() || null;
+  // Ekstrak ID dari URL jika user paste URL lengkap Google Sheets
+  // mis. https://docs.google.com/spreadsheets/d/SPREADSHEET_ID/edit → SPREADSHEET_ID
+  const rawInput = existingId?.trim() || null;
+  let spreadsheetId: string | null = null;
+  if (rawInput) {
+    const m = rawInput.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+    spreadsheetId = m ? m[1] : rawInput;
+  }
   let spreadsheetUrl: string | null = null;
 
   if (!spreadsheetId) {

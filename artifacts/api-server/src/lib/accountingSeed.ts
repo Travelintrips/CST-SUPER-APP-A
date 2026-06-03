@@ -153,6 +153,14 @@ async function applyRuntimeMigrations(): Promise<void> {
   for (const q of [...companyColMigrations, ...accountingColMigrations]) {
     try { await db.execute(sql.raw(q)); } catch { /* column/index already exists or duplicate */ }
   }
+  // Bersihkan gsheet_spreadsheet_id yang tersimpan sebagai URL penuh → extract ID saja
+  try {
+    await db.execute(sql.raw(`
+      UPDATE accounting_settings
+      SET gsheet_spreadsheet_id = (regexp_match(gsheet_spreadsheet_id, '/spreadsheets/d/([a-zA-Z0-9_-]+)'))[1]
+      WHERE gsheet_spreadsheet_id LIKE '%/spreadsheets/d/%'
+    `));
+  } catch { /* ignore */ }
   // Add new enum values to accounting_entry_source (safe: ignored if already exists)
   try { await db.execute(sql.raw(`ALTER TYPE accounting_entry_source ADD VALUE IF NOT EXISTS 'cogs_delivery'`)); } catch { /* already exists */ }
   // Deduplicate chart_of_accounts keeping lowest id per (company_id, code) before creating unique index
