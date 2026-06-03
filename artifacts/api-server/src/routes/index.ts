@@ -96,6 +96,7 @@ import importAdvisorRouter from "./importAdvisor.js";
 import { handleAlertSse } from "../lib/alertsBroadcast.js";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import sportCenterRouter from "../modules/sport-center/routes.js";
+import executiveRouter from "./executive.js";
 
 import type { Request, Response } from "express";
 
@@ -225,6 +226,7 @@ router.use("/system", systemRouter);
 router.use("/rbac", rbacRouter);
 router.use("/import-advisor", importAdvisorRouter);
 router.use("/sport-center", sportCenterRouter);
+router.use("/executive", executiveRouter);
 
 router.get("/alerts/stream", async (req: Request, res: Response) => {
   const ok = await requireAdmin(req, res);
