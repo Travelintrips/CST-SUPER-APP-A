@@ -1082,6 +1082,13 @@ customerOrderPublicRouter.get("/:token", async (req: Request, res: Response) => 
       .where(and(eq(orderUpdatesTable.orderId, link.orderId), eq(orderUpdatesTable.isPublic, true)))
       .orderBy(desc(orderUpdatesTable.createdAt));
 
+    const productPrice = (order as any).productPrice ? Number((order as any).productPrice) : null;
+    const truckPrice = (order as any).truckPrice ? Number((order as any).truckPrice) : null;
+    const truckSource: string | null = (order as any).truckSource ?? null;
+    const totalPrice = (productPrice != null && truckPrice != null)
+      ? productPrice + truckPrice
+      : productPrice ?? truckPrice ?? null;
+
     return res.json({
       orderNumber: order.orderNumber,
       serviceType: order.shipmentType,
@@ -1090,6 +1097,10 @@ customerOrderPublicRouter.get("/:token", async (req: Request, res: Response) => 
       status: order.status,
       etaFinal: (order as any).etaFinal ?? null,
       createdAt: order.createdAt,
+      productPrice,
+      truckPrice,
+      truckSource,
+      totalPrice,
       timeline: updates.map(u => ({
         id: u.id,
         status: u.status,

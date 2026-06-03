@@ -1641,6 +1641,7 @@ logisticRfqV2Router.get("/rfq/:rfqId/comparison", async (req: Request, res: Resp
       createdAt: a.createdAt.toISOString(),
     })),
     // Truck assignment data
+    productApproved: selectedLink != null,
     truckVendorId: orderTruckVendorId,
     truckVendorName,
     truckPrice: orderTruckPrice,

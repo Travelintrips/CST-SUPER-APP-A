@@ -212,6 +212,7 @@ interface ComparisonData {
   finalSellingPrice: number | null;
   freightShipmentId: number | null;
   // Truck assignment
+  productApproved: boolean;
   truckVendorId: number | null;
   truckVendorName: string | null;
   truckPrice: number | null;
@@ -724,31 +725,45 @@ export default function LogisticsRfqComparisonPage() {
           </div>
         )}
 
-        {/* ── Truck Assignment Section (muncul setelah vendor produk dipilih) ── */}
-        {hasSelected && (
+        {/* ── Truck Assignment Section ── */}
+        {data.stats.total > 0 && (
           <div className="border border-orange-200 rounded-xl overflow-hidden">
             {/* Header */}
             <button
               className="w-full flex items-center justify-between p-3 bg-orange-50 hover:bg-orange-100 transition-colors"
-              onClick={() => setTruckPanelOpen(p => !p)}
+              onClick={() => data.productApproved && setTruckPanelOpen(p => !p)}
             >
               <div className="flex items-center gap-2">
                 <Truck className="w-4 h-4 text-orange-600" />
                 <span className="font-semibold text-sm text-orange-900">Assign Vendor Truk</span>
-                {data.truckVendorName ? (
-                  <span className="ml-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                    ✓ {data.truckVendorName}
-                    <span className="text-green-600 font-normal">· {data.truckSource === "internal" ? "Internal" : "Eksternal"}</span>
-                  </span>
+                {data.productApproved ? (
+                  data.truckVendorName ? (
+                    <span className="ml-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                      ✓ {data.truckVendorName}
+                      <span className="text-green-600 font-normal">· {data.truckSource === "internal" ? "Internal" : "Eksternal"}</span>
+                    </span>
+                  ) : (
+                    <span className="ml-1 px-2 py-0.5 rounded-full text-xs bg-orange-100 text-orange-700">Belum diassign</span>
+                  )
                 ) : (
-                  <span className="ml-1 px-2 py-0.5 rounded-full text-xs bg-orange-100 text-orange-700">Belum diassign</span>
+                  <span className="ml-1 px-2 py-0.5 rounded-full text-xs bg-slate-100 text-slate-500">Menunggu vendor produk disetujui</span>
                 )}
               </div>
-              <ChevronDown className={`w-4 h-4 text-orange-500 transition-transform ${truckPanelOpen ? "rotate-180" : ""}`} />
+              {data.productApproved && (
+                <ChevronDown className={`w-4 h-4 text-orange-500 transition-transform ${truckPanelOpen ? "rotate-180" : ""}`} />
+              )}
             </button>
 
-            {/* Current total summary */}
-            {(data.productPrice != null || data.truckPrice != null) && (
+            {/* Not approved yet → info message */}
+            {!data.productApproved && (
+              <div className="px-4 py-3 border-t border-orange-100 bg-amber-50 text-sm text-amber-700 flex items-center gap-2">
+                <span>⏳</span>
+                <span>Panel truk akan muncul setelah vendor produk disetujui.</span>
+              </div>
+            )}
+
+            {/* Current total summary (only when approved) */}
+            {data.productApproved && (data.productPrice != null || data.truckPrice != null) && (
               <div className="px-4 py-2 bg-orange-50/50 border-t border-orange-100 flex flex-wrap gap-4 text-xs">
                 <span>
                   <span className="text-muted-foreground">Harga Produk:</span>{" "}
@@ -767,8 +782,8 @@ export default function LogisticsRfqComparisonPage() {
               </div>
             )}
 
-            {/* Form panel */}
-            {truckPanelOpen && (
+            {/* Form panel (only when approved) */}
+            {data.productApproved && truckPanelOpen && (
               <div className="p-4 border-t border-orange-200 space-y-4 bg-white">
                 {/* Source selector */}
                 <div className="flex gap-2">

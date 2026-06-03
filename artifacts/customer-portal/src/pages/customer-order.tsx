@@ -17,6 +17,10 @@ type OrderData = {
   status: string;
   etaFinal: string | null;
   createdAt: string;
+  productPrice: number | null;
+  truckPrice: number | null;
+  truckSource: string | null;
+  totalPrice: number | null;
   timeline: TimelineItem[];
 };
 
@@ -107,6 +111,50 @@ export default function CustomerOrderPage() {
 
         {/* Visual progress */}
         <ProgressBar status={data.status} />
+
+        {/* Price summary card */}
+        {(data.productPrice != null || data.truckPrice != null || data.totalPrice != null) && (
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+            <h2 className="font-semibold text-slate-800 mb-3">💰 Ringkasan Harga</h2>
+            <div className="space-y-2 text-sm">
+              {data.productPrice != null && (
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Produk / Jasa</span>
+                  <span className="font-medium text-slate-800">
+                    {data.productPrice.toLocaleString("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 })}
+                  </span>
+                </div>
+              )}
+              {data.truckPrice != null && (
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 flex items-center gap-1.5">
+                    Truk
+                    {data.truckSource && (
+                      <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
+                        data.truckSource === "internal"
+                          ? "bg-orange-100 text-orange-700"
+                          : "bg-blue-100 text-blue-700"
+                      }`}>
+                        {data.truckSource === "internal" ? "Internal" : "Eksternal"}
+                      </span>
+                    )}
+                  </span>
+                  <span className="font-medium text-slate-800">
+                    {data.truckPrice.toLocaleString("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 })}
+                  </span>
+                </div>
+              )}
+              {data.totalPrice != null && (
+                <div className="flex justify-between pt-2 border-t border-slate-100">
+                  <span className="font-semibold text-slate-700">Total</span>
+                  <span className="font-bold text-teal-700 text-base">
+                    {data.totalPrice.toLocaleString("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 })}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Timeline */}
         {data.timeline.length > 0 ? (
