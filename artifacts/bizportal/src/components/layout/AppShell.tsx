@@ -323,6 +323,7 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "journalEntry", href: "/accounting/entries", icon: FileText },
         { titleKey: "payments", href: "/accounting/payments", icon: Wallet },
         { titleKey: "taxes", href: "/accounting/taxes", icon: Receipt },
+        { titleKey: "Cost Center", href: "/accounting/cost-centers", icon: Layers },
         { titleKey: "trialBalance", href: "/accounting/reports/trial-balance", icon: FileSpreadsheet },
         { titleKey: "generalLedger", href: "/accounting/reports/general-ledger", icon: BookOpen },
         { titleKey: "profitLoss", href: "/accounting/reports/profit-loss", icon: TrendingUp },

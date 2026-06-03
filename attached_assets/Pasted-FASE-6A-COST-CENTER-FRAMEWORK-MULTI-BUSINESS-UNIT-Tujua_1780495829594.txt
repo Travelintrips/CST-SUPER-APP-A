@@ -1,0 +1,195 @@
+FASE 6A — COST CENTER FRAMEWORK (MULTI BUSINESS UNIT)
+
+Tujuan:
+
+* Menambahkan Cost Center di atas struktur Accounting yang sudah ada.
+* Memungkinkan laporan laba/rugi per unit bisnis dalam satu perusahaan.
+* Menyiapkan fondasi untuk Sport Center, Logistics, Trading, Software.
+
+A. AUDIT TERLEBIH DAHULU
+
+Jangan langsung coding.
+
+Baca dan laporkan:
+
+1. Schema accounting_entries
+2. Schema chart_of_accounts
+3. Schema companies
+4. Semua laporan P&L yang sudah ada
+5. Semua query yang membaca accounting_entries
+6. Semua posting function:
+
+   * postSalesInvoice()
+   * postPurchaseBill()
+   * postSportCenterBooking()
+   * postSportCenterMembershipPayment()
+   * postSportCenterRefund()
+   * postManualPayment()
+
+Tujuan:
+Menentukan titik terbaik untuk menambahkan cost_center tanpa merusak data lama.
+
+B. MASTER COST CENTER
+
+Buat tabel baru:
+
+cost_centers
+
+Field:
+
+id
+company_id
+code
+name
+description
+is_active
+created_at
+updated_at
+
+Tambahkan seed:
+
+SPORT_CENTER
+LOGISTICS
+TRADING
+SOFTWARE
+GENERAL
+
+GENERAL menjadi default fallback.
+
+C. ACCOUNTING
+
+Tambahkan:
+
+accounting_entries.cost_center_id
+
+nullable dulu untuk backward compatibility.
+
+Tambahkan relation:
+
+accounting_entries
+→ cost_centers
+
+D. POSTING ENGINE
+
+Perluas PostingInput:
+
+companyId
+costCenterId
+
+Jika kosong:
+
+gunakan GENERAL.
+
+Tambahkan support di:
+
+postSalesInvoice()
+postPurchaseBill()
+postManualPayment()
+postSportCenterBooking()
+postSportCenterMembershipPayment()
+postSportCenterRefund()
+
+E. SPORT CENTER
+
+Semua jurnal Sport Center otomatis:
+
+cost_center = SPORT_CENTER
+
+untuk:
+
+sport_center_booking
+sport_center_membership
+sport_center_refund
+sport_center_booking_refund
+sport_center_booking_reversal
+sport_center_operational_expense
+
+F. REPORTING
+
+Tambahkan filter Cost Center:
+
+Journal Entry
+General Ledger
+Trial Balance
+Profit & Loss
+
+Filter:
+
+Semua
+SPORT_CENTER
+LOGISTICS
+TRADING
+SOFTWARE
+GENERAL
+
+G. PROFIT & LOSS
+
+Tambahkan mode:
+
+1. Per Company
+2. Per Cost Center
+
+Contoh:
+
+PT Cahaya Sejati Teknologi
+
+SPORT_CENTER
+Revenue
+Expense
+Net Profit
+
+LOGISTICS
+Revenue
+Expense
+Net Profit
+
+TRADING
+Revenue
+Expense
+Net Profit
+
+H. DATA MIGRATION
+
+Jangan mengubah jurnal lama.
+
+Untuk data lama:
+
+cost_center_id = NULL
+
+Saat ditampilkan:
+
+NULL dianggap GENERAL.
+
+I. TESTING
+
+1. Buat booking Sport Center
+
+2. Bayar booking
+
+3. Pastikan jurnal memiliki:
+   cost_center = SPORT_CENTER
+
+4. Buat transaksi Sales
+
+5. Pastikan cost_center = GENERAL
+
+6. Filter Journal Entry:
+   SPORT_CENTER
+
+harus hanya menampilkan jurnal Sport Center.
+
+7. P&L SPORT_CENTER harus sesuai dengan Profitability Dashboard.
+
+J. LAPORAN
+
+Laporkan:
+
+1. File yang diubah
+2. Migration yang dibuat
+3. Query yang berubah
+4. Cost Center yang dibuat
+5. Hasil testing
+6. Risiko backward compatibility
+7. Rekomendasi Fase 6B
+   (Purchase Automation)
+   STOP setelah Fase 6A selesai.

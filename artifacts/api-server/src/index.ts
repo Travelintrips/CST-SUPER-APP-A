@@ -64,6 +64,7 @@ import { expireStaleApprovals } from "./lib/aiGovernance.js";
 import { startDbBackupScheduler } from "./lib/dbBackup.js";
 import { initAlertsBroadcast } from "./lib/alertsBroadcast.js";
 import { runSportCenterMigration } from "./modules/sport-center/migration.js";
+import { runCostCenterMigration } from "./lib/costCenterMigration.js";
 import { runDriverPodMigration, runDriverAssignmentMigration } from "./routes/driver.js";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
@@ -330,6 +331,7 @@ async function startServer() {
     .then(() => runWithRetry("Order exceptions migration", runOrderExceptionsMigration))
     .then(() => runWithRetry("Step 4 template snapshot migration", runStep4TemplateMigration))
     .then(() => runWithRetry("Service template migration", runServiceTemplateMigration))
+    .then(() => runWithRetry("Cost Center migration", runCostCenterMigration))
     .then(() => runWithRetry("Sport Center migration", runSportCenterMigration))
     .then(() => runWithRetry("Driver POD migration", runDriverPodMigration))
     .then(() => runWithRetry("Driver assignment migration", runDriverAssignmentMigration))

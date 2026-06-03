@@ -4,6 +4,7 @@ import {
   accountingEntryLinesTable,
   accountingTaxesTable,
   chartOfAccountsTable,
+  costCentersTable,
 } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 type EntryLine = typeof accountingEntryLinesTable.$inferSelect;
@@ -43,7 +44,34 @@ export interface PostingInput {
   sourceId?: number | null;
   createdById?: string | null;
   companyId?: number | null;
+  costCenterId?: number | null;
   lines: PostingLine[];
+}
+
+/** Resolve cost center ID by code. Returns null if not found (backward-compat). */
+export async function resolveCostCenterId(
+  code: string,
+  companyId?: number | null,
+): Promise<number | null> {
+  try {
+    let [row] = companyId
+      ? await db
+          .select({ id: costCentersTable.id })
+          .from(costCentersTable)
+          .where(sql`${costCentersTable.code} = ${code} AND ${costCentersTable.companyId} = ${companyId}`)
+          .limit(1)
+      : [];
+    if (!row) {
+      [row] = await db
+        .select({ id: costCentersTable.id })
+        .from(costCentersTable)
+        .where(sql`${costCentersTable.code} = ${code} AND ${costCentersTable.companyId} IS NULL`)
+        .limit(1);
+    }
+    return row?.id ?? null;
+  } catch {
+    return null;
+  }
 }
 
 function round2(n: number): number {
@@ -112,6 +140,7 @@ export async function postEntry(
       totalCredit: String(totalCredit),
       createdById: input.createdById ?? null,
       companyId: input.companyId ?? 1,
+      costCenterId: input.costCenterId ?? null,
     })
     .onConflictDoNothing()
     .returning();
@@ -916,6 +945,7 @@ export async function postSportCenterBooking(args: {
       return;
     }
 
+    const costCenterId = await resolveCostCenterId("SPORT_CENTER", args.companyId);
     const amt = round2(args.totalPrice);
     await postEntry(
       {
@@ -927,6 +957,7 @@ export async function postSportCenterBooking(args: {
         sourceId: args.bookingId,
         createdById: args.createdById ?? null,
         companyId: args.companyId ?? 1,
+        costCenterId,
         lines: [
           {
             accountId: debitAccountId,
@@ -982,6 +1013,7 @@ export async function reverseSportCenterBooking(args: {
       return;
     }
 
+    const costCenterId = await resolveCostCenterId("SPORT_CENTER", args.companyId);
     const amt = round2(args.amountReversed);
     await postEntry(
       {
@@ -993,6 +1025,7 @@ export async function reverseSportCenterBooking(args: {
         sourceId: args.bookingId,
         createdById: args.createdById ?? null,
         companyId: args.companyId ?? 1,
+        costCenterId,
         lines: [
           {
             accountId: debitAccountId,
@@ -1328,6 +1361,7 @@ export async function postSportCenterRefund(args: {
       return;
     }
 
+    const costCenterId = await resolveCostCenterId("SPORT_CENTER", args.companyId);
     const amt = round2(args.amount);
     await postEntry(
       {
@@ -1338,6 +1372,7 @@ export async function postSportCenterRefund(args: {
         source: "sport_center_refund",
         sourceId: args.refundId,
         companyId: args.companyId ?? null,
+        costCenterId,
         lines: [
           {
             accountId: expenseAccount.id,
@@ -1424,6 +1459,7 @@ export async function postSportCenterMembershipPayment(args: {
       return;
     }
 
+    const costCenterId = await resolveCostCenterId("SPORT_CENTER", args.companyId);
     const amt = round2(args.amount);
     await postEntry(
       {
@@ -1434,6 +1470,7 @@ export async function postSportCenterMembershipPayment(args: {
         source: "sport_center_membership",
         sourceId: args.paymentId,
         companyId: args.companyId ?? 1,
+        costCenterId,
         lines: [
           {
             accountId: cashAccountId,
@@ -1532,6 +1569,7 @@ export async function postSportCenterBookingWithTax(args: {
       });
     }
 
+    const costCenterId = await resolveCostCenterId("SPORT_CENTER", args.companyId);
     await postEntry(
       {
         journalId,
@@ -1542,6 +1580,7 @@ export async function postSportCenterBookingWithTax(args: {
         sourceId: args.bookingId,
         createdById: args.createdById ?? null,
         companyId: args.companyId ?? 1,
+        costCenterId,
         lines,
       },
       journalCode,
@@ -1589,6 +1628,7 @@ export async function postSportCenterBookingRefundDirect(args: {
       return;
     }
 
+    const costCenterId = await resolveCostCenterId("SPORT_CENTER", args.companyId);
     const amt = round2(args.amount);
     await postEntry(
       {
@@ -1599,6 +1639,7 @@ export async function postSportCenterBookingRefundDirect(args: {
         source: "sport_center_booking_refund",
         sourceId: args.bookingId,
         companyId: args.companyId ?? null,
+        costCenterId,
         lines: [
           {
             accountId: incomeAccountId,
