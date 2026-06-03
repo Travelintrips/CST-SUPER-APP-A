@@ -425,7 +425,17 @@ function ProductModal({ product, onClose }: { product: Product; onClose: () => v
                 onClick={() => setQty((q) => Math.max(1, q - 1))}
                 className="w-8 h-8 rounded-lg border border-border flex items-center justify-center hover:bg-gray-100 transition-colors font-bold"
               >−</button>
-              <span className="w-10 text-center font-semibold">{qty}</span>
+              <input
+                type="number"
+                min={1}
+                value={qty}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value, 10);
+                  if (!isNaN(v) && v >= 1) setQty(v);
+                  else if (e.target.value === "") setQty(1);
+                }}
+                className="w-14 h-8 text-center font-semibold border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              />
               <span className="text-xs text-muted-foreground">{selectedUnit}</span>
               <button
                 onClick={() => setQty((q) => q + 1)}
