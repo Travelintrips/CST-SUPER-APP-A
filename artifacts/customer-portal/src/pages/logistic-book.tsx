@@ -909,87 +909,304 @@ export default function BookPage() {
     }
 
     // Step 1: Category & Item selection
-    if (step === 1) return (
-      <div className="space-y-4">
-        {!selectedItem ? (
-          <>
-            <div>
-              <h2 className="text-xl font-bold text-foreground mb-1">
-                {!selectedCategory ? "Pilih Kategori Layanan" : selectedCategory}
-              </h2>
-              <p className="text-sm text-muted-foreground">
-                {!selectedCategory
-                  ? "Klik kategori untuk lihat layanan tersedia"
-                  : "Pilih item layanan untuk kalkulasi estimasi biaya"}
-              </p>
-            </div>
-
-            {!selectedCategory ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {CATEGORIES.map((cat) => {
-                  const Icon = ICON_MAP[cat.icon] || Package;
-                  const count = itemsByCategory(cat.name).length;
-                  return (
-                    <button
-                      key={cat.name}
-                      onClick={() => handleCategorySelect(cat.name)}
-                      className="text-left p-4 rounded-xl border border-border bg-card hover:border-primary/50 hover:shadow-md transition-all"
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                          <Icon className="w-4 h-4 text-primary" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-2">
-                            <p className="font-semibold text-foreground text-sm">{cat.name}</p>
-                            <Badge variant="secondary" className="text-xs">{count} items</Badge>
-                          </div>
-                          <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{cat.description}</p>
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
+    if (step === 1) {
+      // ── Quick Trucking Form ───────────────────────────────────────────────
+      if (quickTrucking !== null) return (
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <button onClick={() => { setQuickTrucking(null); setQuickTruckData({}); setQuickTruckEstimate(null); }}
+              className="text-muted-foreground hover:text-foreground">
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+            <div className="flex items-center gap-2">
+              <Truck className="w-5 h-5 text-orange-500" />
+              <div>
+                <h2 className="text-xl font-bold text-foreground">Layanan Trucking</h2>
+                <p className="text-sm text-muted-foreground">Isi detail atau hitung estimasi biaya</p>
               </div>
-            ) : (
-              <>
-                <button
-                  onClick={() => setSelectedCategory(null)}
-                  className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-2"
-                >
-                  <ChevronLeft className="w-4 h-4" /> Semua Kategori
-                </button>
-                <div className="space-y-2">
-                  {itemsByCategory(selectedCategory).map((item) => (
-                    <button
-                      key={item.id}
-                      onClick={() => handleItemSelect(item)}
-                      className="w-full text-left p-4 rounded-lg border border-border bg-card hover:border-primary/50 hover:shadow-sm transition-all flex items-center justify-between gap-3"
-                    >
-                      <div>
-                        <p className="font-semibold text-foreground text-sm">{item.name}</p>
-                        <p className="text-xs text-muted-foreground">{item.description}</p>
-                      </div>
-                      <Calculator className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                    </button>
-                  ))}
+            </div>
+          </div>
+
+          {/* Mode Tabs */}
+          <div className="flex gap-2 p-1 bg-muted rounded-lg">
+            {(["detail", "calculator"] as const).map(mode => (
+              <button key={mode} onClick={() => setQuickTrucking(mode)}
+                className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors flex items-center justify-center gap-1.5 ${quickTrucking === mode ? "bg-background shadow text-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+                {mode === "detail"
+                  ? <><MapPin className="w-4 h-4" /> Form Pickup &amp; Delivery</>
+                  : <><Calculator className="w-4 h-4" /> Kalkulator Estimasi</>}
+              </button>
+            ))}
+          </div>
+
+          {/* ── Detail Form ── */}
+          {quickTrucking === "detail" && (
+            <div className="bg-muted/30 rounded-xl border border-border p-5 space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-xs flex items-center gap-1"><Calendar className="w-3 h-3" /> Tanggal Pickup</Label>
+                  <Input type="date" value={quickTruckData.pickupDate||""} onChange={e => setQuickTruckData(p => ({ ...p, pickupDate: e.target.value }))} />
                 </div>
-              </>
-            )}
-          </>
-        ) : (
-          <CalculatorForm
-            item={selectedItem}
-            onAdd={(data) => { handleAddToCart(data); setStep(2); }}
-            onBack={() => setSelectedItem(null)}
-            transportMode={customerForm.transportMode}
-            truckType={customerForm.truckType}
-            origin={customerForm.origin}
-            destination={customerForm.destination}
-          />
-        )}
-      </div>
-    );
+                <div>
+                  <Label className="text-xs flex items-center gap-1"><Clock className="w-3 h-3" /> Jam Pickup</Label>
+                  <Input type="time" value={quickTruckData.pickupTime||""} onChange={e => setQuickTruckData(p => ({ ...p, pickupTime: e.target.value }))} />
+                </div>
+                <div className="sm:col-span-2">
+                  <Label className="text-xs">Alamat Pickup <span className="text-destructive">*</span></Label>
+                  <Textarea rows={2} placeholder="Jl. ..., Kota, Provinsi" value={quickTruckData.pickupAddress||""} onChange={e => setQuickTruckData(p => ({ ...p, pickupAddress: e.target.value }))} />
+                </div>
+                <div className="sm:col-span-2">
+                  <Label className="text-xs">Alamat Pengiriman <span className="text-destructive">*</span></Label>
+                  <Textarea rows={2} placeholder="Jl. ..., Kota, Provinsi" value={quickTruckData.deliveryAddress||""} onChange={e => setQuickTruckData(p => ({ ...p, deliveryAddress: e.target.value }))} />
+                </div>
+                <div>
+                  <Label className="text-xs">Nama Kontak</Label>
+                  <Input placeholder="Nama PIC" value={quickTruckData.contactName||""} onChange={e => setQuickTruckData(p => ({ ...p, contactName: e.target.value }))} />
+                </div>
+                <div>
+                  <Label className="text-xs">No. Telepon</Label>
+                  <Input type="tel" placeholder="08xxxxxxxxxx" value={quickTruckData.contactPhone||""} onChange={e => setQuickTruckData(p => ({ ...p, contactPhone: e.target.value }))} />
+                </div>
+              </div>
+              <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-xs text-orange-700">
+                💡 Estimasi biaya akan dikonfirmasi oleh tim setelah pesanan masuk.
+              </div>
+              <Separator />
+              <Button className="w-full bg-orange-600 hover:bg-orange-700"
+                disabled={!quickTruckData.pickupAddress?.trim() || !quickTruckData.deliveryAddress?.trim()}
+                onClick={() => {
+                  addItem({ category: "Trucking", serviceName: "Trucking — Pickup & Delivery",
+                    calculatorType: "trucking",
+                    inputData: { pickupCity: quickTruckData.pickupAddress, destCity: quickTruckData.deliveryAddress,
+                      vehicleType: "CDD", pickupDate: quickTruckData.pickupDate, pickupTime: quickTruckData.pickupTime,
+                      receiver_name: quickTruckData.contactName, receiver_phone: quickTruckData.contactPhone },
+                    calculationResult: {}, subtotal: 0 });
+                  toast({ title: "Trucking ditambahkan ke pesanan" });
+                  setQuickTrucking(null); setQuickTruckData({}); setQuickTruckEstimate(null);
+                  setStep(2);
+                }}>
+                <Plus className="w-4 h-4 mr-2" /> Tambahkan ke Pesanan
+              </Button>
+            </div>
+          )}
+
+          {/* ── Kalkulator Mode ── */}
+          {quickTrucking === "calculator" && (
+            <div className="bg-muted/30 rounded-xl border border-border p-5 space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-xs flex items-center gap-1"><MapPin className="w-3 h-3" /> Kota Asal <span className="text-destructive">*</span></Label>
+                  <Input placeholder="Jakarta" value={quickTruckData.pickupCity||""} onChange={e => setQuickTruckData(p => ({ ...p, pickupCity: e.target.value }))} />
+                </div>
+                <div>
+                  <Label className="text-xs flex items-center gap-1"><MapPin className="w-3 h-3" /> Kota Tujuan <span className="text-destructive">*</span></Label>
+                  <Input placeholder="Surabaya" value={quickTruckData.destCity||""} onChange={e => setQuickTruckData(p => ({ ...p, destCity: e.target.value }))} />
+                </div>
+                <div>
+                  <Label className="text-xs">Berat (kg) <span className="text-destructive">*</span></Label>
+                  <Input type="number" min={0} placeholder="100" value={quickTruckData.weight||""} onChange={e => setQuickTruckData(p => ({ ...p, weight: e.target.value }))} />
+                </div>
+                <div>
+                  <Label className="text-xs">Jenis Barang</Label>
+                  <Select value={quickTruckData.goodsType||undefined} onValueChange={v => setQuickTruckData(p => ({ ...p, goodsType: v }))}>
+                    <SelectTrigger><SelectValue placeholder="Pilih jenis" /></SelectTrigger>
+                    <SelectContent>{GOODS_TYPES_BOOK.map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div className="sm:col-span-2">
+                  <Label className="text-xs block mb-1.5">Dimensi (cm) — P × L × T</Label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <Input type="number" min={0} placeholder="Panjang" value={quickTruckData.length||""} onChange={e => setQuickTruckData(p => ({ ...p, length: e.target.value }))} />
+                    <Input type="number" min={0} placeholder="Lebar"   value={quickTruckData.width||""}  onChange={e => setQuickTruckData(p => ({ ...p, width:  e.target.value }))} />
+                    <Input type="number" min={0} placeholder="Tinggi"  value={quickTruckData.height||""} onChange={e => setQuickTruckData(p => ({ ...p, height: e.target.value }))} />
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-xs">Incoterms</Label>
+                  <Select value={quickTruckData.incoterms||"FOB"} onValueChange={v => setQuickTruckData(p => ({ ...p, incoterms: v }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>{INCOTERMS_BOOK.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs">Jenis Kendaraan</Label>
+                  <Select value={quickTruckData.vehicleType||undefined} onValueChange={v => setQuickTruckData(p => ({ ...p, vehicleType: v }))}>
+                    <SelectTrigger><SelectValue placeholder="Pilih kendaraan" /></SelectTrigger>
+                    <SelectContent>{["CDE","CDD","Fuso","Wingbox","Trailer"].map(v => <SelectItem key={v} value={v}>{v}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <Button variant="outline" className="w-full border-orange-400 text-orange-600 hover:bg-orange-50"
+                disabled={!quickTruckData.pickupCity || !quickTruckData.destCity || !quickTruckData.weight || quickEstimating}
+                onClick={() => {
+                  setQuickEstimating(true);
+                  const params = new URLSearchParams({ transport_mode: "TRUCKING" });
+                  if (quickTruckData.vehicleType) params.set("truck_type", quickTruckData.vehicleType);
+                  if (quickTruckData.pickupCity)  params.set("origin", quickTruckData.pickupCity);
+                  if (quickTruckData.destCity)    params.set("dest", quickTruckData.destCity);
+                  fetch(`/api/logistic/orders/estimate-price?${params}`)
+                    .then(r => r.ok ? r.json() : Promise.reject())
+                    .then((d: { estimated_price: number | null }) => {
+                      if (d.estimated_price && d.estimated_price > 0) {
+                        setQuickTruckEstimate(d.estimated_price);
+                      } else {
+                        const w = parseFloat(quickTruckData.weight)||0;
+                        const l = parseFloat(quickTruckData.length)||0;
+                        const wi = parseFloat(quickTruckData.width)||0;
+                        const h = parseFloat(quickTruckData.height)||0;
+                        const volW = (l && wi && h) ? (l*wi*h)/4000 : 0;
+                        setQuickTruckEstimate(Math.max(150_000, Math.round(Math.max(w, volW)*2_500)));
+                      }
+                    })
+                    .catch(() => {
+                      const w = parseFloat(quickTruckData.weight)||0;
+                      setQuickTruckEstimate(Math.max(150_000, Math.round(w*2_500)));
+                    })
+                    .finally(() => setQuickEstimating(false));
+                }}>
+                {quickEstimating
+                  ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Menghitung...</>
+                  : <><Calculator className="w-4 h-4 mr-2" /> Hitung Estimasi</>}
+              </Button>
+
+              {quickTruckEstimate !== null && (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 space-y-1">
+                  <p className="text-xs text-emerald-600 font-medium">Estimasi Biaya Trucking</p>
+                  <p className="text-2xl font-bold text-emerald-700">{formatCurrency(quickTruckEstimate)}</p>
+                  <p className="text-xs text-emerald-500">{quickTruckData.pickupCity} → {quickTruckData.destCity} · {quickTruckData.weight} kg</p>
+                  <p className="text-[10px] text-muted-foreground">*Estimasi indikatif. Biaya final dikonfirmasi tim logistik.</p>
+                </div>
+              )}
+
+              <Separator />
+              <Button className="w-full bg-orange-600 hover:bg-orange-700"
+                disabled={!quickTruckData.pickupCity || !quickTruckData.destCity || !quickTruckData.weight}
+                onClick={() => {
+                  addItem({ category: "Trucking", serviceName: "Trucking — Kargo",
+                    calculatorType: "trucking",
+                    inputData: { ...quickTruckData },
+                    calculationResult: quickTruckEstimate ? { estimated_price: quickTruckEstimate } : {},
+                    subtotal: 0 });
+                  toast({ title: "Trucking ditambahkan ke pesanan" });
+                  setQuickTrucking(null); setQuickTruckData({}); setQuickTruckEstimate(null);
+                  setStep(2);
+                }}>
+                {quickTruckEstimate ? "Tambahkan ke Pesanan" : "Tambahkan (Harga Menyusul)"}
+                <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+            </div>
+          )}
+        </div>
+      );
+
+      // ── Normal Category / Item flow ───────────────────────────────────────
+      return (
+        <div className="space-y-4">
+          {!selectedItem ? (
+            <>
+              <div>
+                <h2 className="text-xl font-bold text-foreground mb-1">
+                  {!selectedCategory ? "Pilih Layanan" : selectedCategory}
+                </h2>
+                <p className="text-sm text-muted-foreground">
+                  {!selectedCategory ? "Pilih layanan logistik untuk Anda" : "Pilih item layanan untuk kalkulasi estimasi biaya"}
+                </p>
+              </div>
+
+              {!selectedCategory ? (
+                <>
+                  {/* ── Quick Service Cards ── */}
+                  <div className="grid grid-cols-2 gap-3">
+                    {QUICK_SERVICES.map(svc => (
+                      <button key={svc.id}
+                        onClick={() => {
+                          if (svc.isTrucking) {
+                            setQuickTrucking("detail");
+                            setQuickTruckData({});
+                            setQuickTruckEstimate(null);
+                          } else {
+                            setSelectedCategory(svc.category);
+                          }
+                        }}
+                        className={`border-2 rounded-xl p-4 text-left transition-all hover:shadow-md ${svc.color}`}>
+                        <div className="flex items-start gap-2">
+                          <div className="mt-0.5 shrink-0">{svc.icon}</div>
+                          <div>
+                            <p className="font-semibold text-sm leading-tight">{svc.name}</p>
+                            <p className="text-xs opacity-70 mt-0.5 leading-snug">{svc.description}</p>
+                            {svc.isTrucking && (
+                              <span className="inline-block mt-1.5 text-[10px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-full font-medium">
+                                Kalkulator tersedia
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+
+                  <Separator />
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Semua Kategori</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {CATEGORIES.map((cat) => {
+                      const Icon = ICON_MAP[cat.icon] || Package;
+                      const count = itemsByCategory(cat.name).length;
+                      return (
+                        <button key={cat.name} onClick={() => handleCategorySelect(cat.name)}
+                          className="text-left p-4 rounded-xl border border-border bg-card hover:border-primary/50 hover:shadow-md transition-all">
+                          <div className="flex items-start gap-3">
+                            <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                              <Icon className="w-4 h-4 text-primary" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="font-semibold text-foreground text-sm">{cat.name}</p>
+                                <Badge variant="secondary" className="text-xs">{count} items</Badge>
+                              </div>
+                              <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{cat.description}</p>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <button onClick={() => setSelectedCategory(null)}
+                    className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-2">
+                    <ChevronLeft className="w-4 h-4" /> Semua Layanan
+                  </button>
+                  <div className="space-y-2">
+                    {itemsByCategory(selectedCategory).map((item) => (
+                      <button key={item.id} onClick={() => handleItemSelect(item)}
+                        className="w-full text-left p-4 rounded-lg border border-border bg-card hover:border-primary/50 hover:shadow-sm transition-all flex items-center justify-between gap-3">
+                        <div>
+                          <p className="font-semibold text-foreground text-sm">{item.name}</p>
+                          <p className="text-xs text-muted-foreground">{item.description}</p>
+                        </div>
+                        <Calculator className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </>
+          ) : (
+            <CalculatorForm
+              item={selectedItem}
+              onAdd={(data) => { handleAddToCart(data); setStep(2); }}
+              onBack={() => setSelectedItem(null)}
+              transportMode={customerForm.transportMode}
+              truckType={customerForm.truckType}
+              origin={customerForm.origin}
+              destination={customerForm.destination}
+            />
+          )}
+        </div>
+      );
+    }
 
     // Step 2: Cart
     if (step === 2) return (
