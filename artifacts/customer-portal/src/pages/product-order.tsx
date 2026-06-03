@@ -6,11 +6,14 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/lib/utils";
 import {
   Package, Search, Plus, Minus, Trash2, ShoppingCart,
   User, CheckCircle2, ChevronLeft, ChevronRight, Loader2, Tag,
+  Truck, Ship, Plane, Warehouse, Zap, FileCheck,
+  MapPin, Calendar, Clock, Weight, Ruler, Calculator, ArrowRight,
 } from "lucide-react";
 import { DynamicProductForm } from "@/components/DynamicProductForm";
 import type { ProductTemplate, DynamicFormValues } from "@workspace/product-templates";
@@ -20,24 +23,74 @@ import {
   validateTemplatePayload,
 } from "@workspace/product-templates";
 
+// ── Types ────────────────────────────────────────────────────────────────────
+
 interface PortalProduct {
-  id: number;
-  name: string;
-  sku: string;
-  price: number;
-  unit: string | null;
-  description: string | null;
-  imageUrl: string | null;
-  subcategory: string | null;
-  stock: number;
+  id: number; name: string; sku: string; price: number;
+  unit: string | null; description: string | null;
+  imageUrl: string | null; subcategory: string | null; stock: number;
 }
 
-interface CartItem {
-  product: PortalProduct;
-  qty: number;
+interface CartItem { product: PortalProduct; qty: number; }
+
+interface ServiceItem {
+  id: string; name: string; icon: React.ReactNode;
+  description: string; color: string; isTrucking?: boolean;
 }
+
+interface TruckingForm {
+  mode: "detail" | "calculator";
+  // detail mode
+  pickupDate: string; pickupTime: string;
+  pickupAddress: string; deliveryAddress: string;
+  contactName: string; contactPhone: string;
+  // calculator mode
+  origin: string; destination: string;
+  weight: string; length: string; width: string; height: string;
+  goodsType: string; incoterms: string;
+}
+
+interface SelectedService {
+  serviceId: string;
+  serviceName: string;
+  estimatedCost: number | null; // null = "Harga menyusul"
+  detail?: TruckingForm;
+  summaryLine?: string;
+}
+
+type Step = "products" | "service-catalog" | "trucking" | "checkout" | "success";
+
+// ── Constants ─────────────────────────────────────────────────────────────────
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+const PPN_RATE = 0.11;
+
+const SERVICES: ServiceItem[] = [
+  { id: "trucking",        name: "Trucking",            icon: <Truck  className="w-6 h-6" />, description: "Pengiriman darat, kota ke kota",           color: "bg-orange-50 border-orange-200 text-orange-600",  isTrucking: true },
+  { id: "sea_freight",     name: "Kargo Laut",          icon: <Ship   className="w-6 h-6" />, description: "FCL / LCL, impor & ekspor",               color: "bg-blue-50 border-blue-200 text-blue-600" },
+  { id: "air_freight",     name: "Kargo Udara",         icon: <Plane  className="w-6 h-6" />, description: "Pengiriman cepat via udara",               color: "bg-sky-50 border-sky-200 text-sky-600" },
+  { id: "warehouse",       name: "Pergudangan",         icon: <Warehouse className="w-6 h-6" />, description: "Penyimpanan & manajemen stok",          color: "bg-emerald-50 border-emerald-200 text-emerald-600" },
+  { id: "express",         name: "Kargo Ekspres",       icon: <Zap    className="w-6 h-6" />, description: "Pengiriman prioritas, same-day / next-day", color: "bg-purple-50 border-purple-200 text-purple-600" },
+  { id: "custom_clearance",name: "Custom Clearance",    icon: <FileCheck className="w-6 h-6" />, description: "Pengurusan bea cukai & dokumen",        color: "bg-slate-50 border-slate-200 text-slate-600" },
+];
+
+const INCOTERMS = ["EXW", "FCA", "FOB", "CIF", "DAP", "DDP", "CPT", "CIP"];
+const GOODS_TYPES = ["General Cargo", "Kopi / Hasil Bumi", "Elektronik", "Perishable", "Kimia / B3", "Furniture", "Mesin & Spare-part", "Lainnya"];
+
+const EMPTY_TRUCKING: TruckingForm = {
+  mode: "detail",
+  pickupDate: "", pickupTime: "", pickupAddress: "", deliveryAddress: "",
+  contactName: "", contactPhone: "",
+  origin: "", destination: "", weight: "", length: "", width: "", height: "",
+  goodsType: "", incoterms: "FOB",
+};
+
+const EMPTY_FORM: DynamicFormValues = {
+  customFieldValues: {}, uploadedDocuments: [], checklistStatus: {},
+  packagingNotes: "", conditionalFlags: {},
+};
+
+// ── API helpers ───────────────────────────────────────────────────────────────
 
 async function fetchProducts(search?: string): Promise<PortalProduct[]> {
   const params = new URLSearchParams();
@@ -49,8 +102,7 @@ async function fetchProducts(search?: string): Promise<PortalProduct[]> {
 
 async function submitOrder(body: unknown): Promise<{ orderNumber: string }> {
   const res = await fetch(`${BASE}/api/portal-product/orders`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+    method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
@@ -60,34 +112,41 @@ async function submitOrder(body: unknown): Promise<{ orderNumber: string }> {
   return res.json();
 }
 
-const EMPTY_FORM: DynamicFormValues = {
-  customFieldValues: {},
-  uploadedDocuments: [],
-  checklistStatus: {},
-  packagingNotes: "",
-  conditionalFlags: {},
-};
+// ── Simple trucking cost estimator (offline) ──────────────────────────────────
+
+function estimateTruckingCost(form: TruckingForm): number | null {
+  if (form.mode === "calculator") {
+    const w = parseFloat(form.weight);
+    const l = parseFloat(form.length);
+    const wi = parseFloat(form.width);
+    const h = parseFloat(form.height);
+    if (!w || (!form.origin && !form.destination)) return null;
+    // volumetric weight (per 4000 cm³/kg)
+    const volW = (l && wi && h) ? (l * wi * h) / 4000 : 0;
+    const chargeableW = Math.max(w, volW);
+    // base rate: Rp 2500/kg, min Rp 150.000
+    return Math.max(150_000, Math.round(chargeableW * 2_500));
+  }
+  // detail mode: can't calculate without more info
+  return null;
+}
+
+// ── Main Component ─────────────────────────────────────────────────────────────
 
 export default function ProductOrderPage() {
-  const [step, setStep] = useState<0 | 1 | 2>(0);
+  const [step, setStep] = useState<Step>("products");
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
-  // ── Templates from DB ──
   const [allTemplates, setAllTemplates] = useState<ProductTemplate[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(true);
-
-  // Step 0: product browsing
   const [products, setProducts] = useState<PortalProduct[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [search, setSearch] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
 
-  // Step 1: commodity category + dynamic form
   const [productCategory, setProductCategory] = useState("general");
   const [dynamicValues, setDynamicValues] = useState<DynamicFormValues>(EMPTY_FORM);
-
-  // Step 1 continued: customer info
   const [customerName, setCustomerName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -96,16 +155,17 @@ export default function ProductOrderPage() {
   const [submitting, setSubmitting] = useState(false);
   const [orderNumber, setOrderNumber] = useState("");
 
-  // ── Fetch templates from DB on mount ──
+  // Service state
+  const [selectedService, setSelectedService] = useState<SelectedService | null>(null);
+  const [truckingForm, setTruckingForm] = useState<TruckingForm>(EMPTY_TRUCKING);
+  const [estimating, setEstimating] = useState(false);
+  const [truckingEstimate, setTruckingEstimate] = useState<number | null>(null);
+
   useEffect(() => {
     fetch(`${BASE}/api/portal-product/templates`)
-      .then((r) => r.ok ? r.json() : Promise.reject())
-      .then((templates: ProductTemplate[]) => {
-        setAllTemplates(templates.length > 0 ? templates : getAllLocalTemplates());
-      })
-      .catch(() => {
-        setAllTemplates(getAllLocalTemplates());
-      })
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then((t: ProductTemplate[]) => setAllTemplates(t.length > 0 ? t : getAllLocalTemplates()))
+      .catch(() => setAllTemplates(getAllLocalTemplates()))
       .finally(() => setTemplatesLoading(false));
   }, []);
 
@@ -117,80 +177,92 @@ export default function ProductOrderPage() {
       .finally(() => setLoadingProducts(false));
   }, [search]);
 
-  // Reset dynamic form when category changes
-  useEffect(() => {
-    setDynamicValues(EMPTY_FORM);
-  }, [productCategory]);
+  useEffect(() => { setDynamicValues(EMPTY_FORM); }, [productCategory]);
 
-  const cartTotal = cart.reduce((s, i) => s + i.product.price * i.qty, 0);
-  const cartCount = cart.reduce((s, i) => s + i.qty, 0);
+  const cartSubtotal = cart.reduce((s, i) => s + i.product.price * i.qty, 0);
+  const cartCount    = cart.reduce((s, i) => s + i.qty, 0);
+  const serviceAmt   = selectedService?.estimatedCost ?? 0;
+  const subtotal     = cartSubtotal + serviceAmt;
+  const ppn          = Math.round(subtotal * PPN_RATE);
+  const grandTotal   = subtotal + ppn;
 
-  // Template lookup: DB first, fallback to hardcoded
   const template: ProductTemplate =
-    allTemplates.find((t) => t.category === productCategory) ??
-    getLocalTemplate(productCategory);
+    allTemplates.find(t => t.category === productCategory) ?? getLocalTemplate(productCategory);
 
   function addToCart(product: PortalProduct) {
-    setCart((prev) => {
-      const existing = prev.find((i) => i.product.id === product.id);
-      if (existing) return prev.map((i) => i.product.id === product.id ? { ...i, qty: i.qty + 1 } : i);
+    setCart(prev => {
+      const ex = prev.find(i => i.product.id === product.id);
+      if (ex) return prev.map(i => i.product.id === product.id ? { ...i, qty: i.qty + 1 } : i);
       return [...prev, { product, qty: 1 }];
     });
   }
 
   function changeQty(productId: number, delta: number) {
-    setCart((prev) =>
-      prev
-        .map((i) => i.product.id === productId ? { ...i, qty: i.qty + delta } : i)
-        .filter((i) => i.qty > 0)
-    );
+    setCart(prev => prev.map(i => i.product.id === productId ? { ...i, qty: i.qty + delta } : i).filter(i => i.qty > 0));
   }
 
   function removeFromCart(productId: number) {
-    setCart((prev) => prev.filter((i) => i.product.id !== productId));
+    setCart(prev => prev.filter(i => i.product.id !== productId));
+  }
+
+  function handleSelectService(svc: ServiceItem) {
+    if (svc.isTrucking) {
+      setTruckingForm(EMPTY_TRUCKING);
+      setTruckingEstimate(null);
+      setStep("trucking");
+    } else {
+      setSelectedService({ serviceId: svc.id, serviceName: svc.name, estimatedCost: null, summaryLine: "Harga menyusul — tim akan konfirmasi" });
+      setStep("checkout");
+    }
+  }
+
+  function handleEstimateTrucking() {
+    setEstimating(true);
+    setTimeout(() => {
+      const est = estimateTruckingCost(truckingForm);
+      setTruckingEstimate(est);
+      setEstimating(false);
+    }, 600);
+  }
+
+  function handleConfirmTrucking() {
+    const cost = truckingEstimate;
+    const summary = truckingForm.mode === "calculator"
+      ? `${truckingForm.origin || "Asal"} → ${truckingForm.destination || "Tujuan"}, ${truckingForm.weight} kg`
+      : `${truckingForm.pickupAddress || "Pickup"} → ${truckingForm.deliveryAddress || "Delivery"}, ${truckingForm.pickupDate}`;
+    setSelectedService({ serviceId: "trucking", serviceName: "Trucking", estimatedCost: cost, summaryLine: summary, detail: truckingForm });
+    setStep("checkout");
   }
 
   async function handleSubmit() {
     if (!customerName.trim() || !email.trim() || !phone.trim() || !address.trim()) {
-      toast({ title: "Isi semua kolom data pemesan", variant: "destructive" });
-      return;
+      toast({ title: "Isi semua kolom data pemesan", variant: "destructive" }); return;
     }
-
     const formErrors = validateTemplatePayload(template, dynamicValues);
-    if (formErrors.length > 0) {
-      toast({ title: formErrors[0], variant: "destructive" });
-      return;
-    }
+    if (formErrors.length > 0) { toast({ title: formErrors[0], variant: "destructive" }); return; }
 
     setSubmitting(true);
     try {
-      const items = cart.map((i) => ({
-        productId: i.product.id,
-        productName: i.product.name,
-        productSku: i.product.sku,
-        unit: i.product.unit ?? "pcs",
-        unitPrice: i.product.price,
-        qty: i.qty,
+      const items = cart.map(i => ({
+        productId: i.product.id, productName: i.product.name, productSku: i.product.sku,
+        unit: i.product.unit ?? "pcs", unitPrice: i.product.price, qty: i.qty,
         subtotal: i.product.price * i.qty,
       }));
       const result = await submitOrder({
-        customerName: customerName.trim(),
-        email: email.trim(),
-        phone: phone.trim(),
-        shippingAddress: address.trim(),
-        notes: notes.trim() || undefined,
-        items,
-        productCategory,
-        templateId: template.category,
-        templateVersion: template.version,
-        customFieldValues: dynamicValues.customFieldValues,
-        uploadedDocuments: dynamicValues.uploadedDocuments,
-        checklistStatus: dynamicValues.checklistStatus,
-        packagingNotes: dynamicValues.packagingNotes || undefined,
+        customerName: customerName.trim(), email: email.trim(), phone: phone.trim(),
+        shippingAddress: address.trim(), notes: notes.trim() || undefined,
+        items, productCategory, templateId: template.category, templateVersion: template.version,
+        customFieldValues: dynamicValues.customFieldValues, uploadedDocuments: dynamicValues.uploadedDocuments,
+        checklistStatus: dynamicValues.checklistStatus, packagingNotes: dynamicValues.packagingNotes || undefined,
         conditionalFlags: dynamicValues.conditionalFlags,
+        selectedService: selectedService ? {
+          serviceId: selectedService.serviceId, serviceName: selectedService.serviceName,
+          estimatedCost: selectedService.estimatedCost, summaryLine: selectedService.summaryLine,
+        } : undefined,
+        subtotal, ppn, grandTotal,
       });
       setOrderNumber(result.orderNumber);
-      setStep(2);
+      setStep("success");
     } catch (err) {
       toast({ title: (err as Error).message, variant: "destructive" });
     } finally {
@@ -198,8 +270,9 @@ export default function ProductOrderPage() {
     }
   }
 
-  // ── Step 0 — Pilih Produk ──
-  if (step === 0) {
+  // ── Step: Pilih Produk ────────────────────────────────────────────────────
+
+  if (step === "products") {
     return (
       <div className="min-h-screen bg-background">
         <div className="bg-primary text-primary-foreground py-10 px-4 text-center">
@@ -211,18 +284,11 @@ export default function ProductOrderPage() {
         <div className="max-w-4xl mx-auto px-4 py-8">
           <div className="relative mb-6">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              placeholder="Cari produk..."
-              className="pl-9"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+            <Input placeholder="Cari produk..." className="pl-9" value={search} onChange={e => setSearch(e.target.value)} />
           </div>
 
           {loadingProducts ? (
-            <div className="flex justify-center py-16">
-              <Loader2 className="w-8 h-8 animate-spin text-primary" />
-            </div>
+            <div className="flex justify-center py-16"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>
           ) : products.length === 0 ? (
             <div className="text-center py-16 text-muted-foreground">
               <Package className="w-12 h-12 mx-auto mb-3 opacity-40" />
@@ -230,44 +296,31 @@ export default function ProductOrderPage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-              {products.map((product) => {
-                const cartItem = cart.find((i) => i.product.id === product.id);
+              {products.map(product => {
+                const cartItem = cart.find(i => i.product.id === product.id);
                 return (
                   <div key={product.id} className="border rounded-xl bg-card overflow-hidden hover:shadow-md transition-shadow">
-                    {product.imageUrl ? (
-                      <img src={product.imageUrl} alt={product.name} className="w-full h-40 object-cover" />
-                    ) : (
-                      <div className="w-full h-40 bg-muted flex items-center justify-center">
-                        <Package className="w-12 h-12 text-muted-foreground/40" />
-                      </div>
-                    )}
+                    {product.imageUrl
+                      ? <img src={product.imageUrl} alt={product.name} className="w-full h-40 object-cover" />
+                      : <div className="w-full h-40 bg-muted flex items-center justify-center"><Package className="w-12 h-12 text-muted-foreground/40" /></div>
+                    }
                     <div className="p-4">
                       <div className="flex items-start justify-between gap-2 mb-1">
                         <h3 className="font-semibold text-sm leading-tight">{product.name}</h3>
-                        {product.subcategory && (
-                          <Badge variant="secondary" className="text-[10px] shrink-0">{product.subcategory}</Badge>
-                        )}
+                        {product.subcategory && <Badge variant="secondary" className="text-[10px] shrink-0">{product.subcategory}</Badge>}
                       </div>
                       <p className="text-xs text-muted-foreground mb-1">{product.sku}</p>
-                      {product.description && (
-                        <p className="text-xs text-muted-foreground mb-2 line-clamp-2">{product.description}</p>
-                      )}
+                      {product.description && <p className="text-xs text-muted-foreground mb-2 line-clamp-2">{product.description}</p>}
                       <p className="text-primary font-bold mb-3">
                         {formatCurrency(product.price)}
                         {product.unit && <span className="text-xs font-normal text-muted-foreground"> / {product.unit}</span>}
                       </p>
                       {cartItem ? (
                         <div className="flex items-center gap-2">
-                          <Button size="sm" variant="outline" className="h-8 w-8 p-0" onClick={() => changeQty(product.id, -1)}>
-                            <Minus className="w-3 h-3" />
-                          </Button>
+                          <Button size="sm" variant="outline" className="h-8 w-8 p-0" onClick={() => changeQty(product.id, -1)}><Minus className="w-3 h-3" /></Button>
                           <span className="flex-1 text-center font-semibold">{cartItem.qty}</span>
-                          <Button size="sm" variant="outline" className="h-8 w-8 p-0" onClick={() => changeQty(product.id, 1)}>
-                            <Plus className="w-3 h-3" />
-                          </Button>
-                          <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-destructive" onClick={() => removeFromCart(product.id)}>
-                            <Trash2 className="w-3 h-3" />
-                          </Button>
+                          <Button size="sm" variant="outline" className="h-8 w-8 p-0" onClick={() => changeQty(product.id, 1)}><Plus className="w-3 h-3" /></Button>
+                          <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-destructive" onClick={() => removeFromCart(product.id)}><Trash2 className="w-3 h-3" /></Button>
                         </div>
                       ) : (
                         <Button size="sm" className="w-full" onClick={() => addToCart(product)}>
@@ -283,17 +336,27 @@ export default function ProductOrderPage() {
 
           {cart.length > 0 && (
             <div className="sticky bottom-4 z-10">
-              <div className="bg-primary text-primary-foreground rounded-xl shadow-lg px-5 py-4 flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium flex items-center gap-2">
-                    <ShoppingCart className="w-4 h-4" />
-                    {cartCount} item dipilih
-                  </p>
-                  <p className="text-lg font-bold">{formatCurrency(cartTotal)}</p>
+              <div className="bg-card border shadow-xl rounded-xl px-5 py-4 space-y-3">
+                {/* Mini summary */}
+                <div className="flex items-center justify-between text-sm text-muted-foreground">
+                  <span className="flex items-center gap-2"><ShoppingCart className="w-4 h-4" /> {cartCount} item</span>
+                  <span className="font-bold text-foreground text-base">{formatCurrency(cartSubtotal)}</span>
                 </div>
-                <Button variant="secondary" onClick={() => setStep(1)} className="gap-2">
-                  Lanjut <ChevronRight className="w-4 h-4" />
-                </Button>
+                {selectedService && (
+                  <div className="flex items-center justify-between text-xs text-muted-foreground border-t pt-2">
+                    <span>+ {selectedService.serviceName}</span>
+                    <span>{selectedService.estimatedCost ? formatCurrency(selectedService.estimatedCost) : "Harga menyusul"}</span>
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <Button variant="outline" className="flex-1 gap-1.5" onClick={() => setStep("service-catalog")}>
+                    <Truck className="w-4 h-4" />
+                    {selectedService ? "Ganti Layanan" : "Pilih Layanan"}
+                  </Button>
+                  <Button className="flex-1 gap-1.5" onClick={() => setStep("checkout")}>
+                    Lanjut ke Checkout <ChevronRight className="w-4 h-4" />
+                  </Button>
+                </div>
               </div>
             </div>
           )}
@@ -302,13 +365,216 @@ export default function ProductOrderPage() {
     );
   }
 
-  // ── Step 1 — Informasi Produk + Data Pemesan ──
-  if (step === 1) {
+  // ── Step: Katalog Layanan ─────────────────────────────────────────────────
+
+  if (step === "service-catalog") {
     return (
       <div className="min-h-screen bg-background">
         <div className="bg-primary text-primary-foreground py-8 px-4">
           <div className="max-w-2xl mx-auto flex items-center gap-3">
-            <Button variant="ghost" size="sm" className="text-primary-foreground/80 hover:text-primary-foreground" onClick={() => setStep(0)}>
+            <Button variant="ghost" size="sm" className="text-primary-foreground/80 hover:text-primary-foreground" onClick={() => setStep("products")}>
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+            <div>
+              <h1 className="text-xl font-bold">Pilih Layanan Pengiriman</h1>
+              <p className="text-primary-foreground/70 text-sm">Tambahkan layanan logistik ke pesanan Anda</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="max-w-2xl mx-auto px-4 py-8 space-y-4">
+          {/* Skip option */}
+          <button
+            onClick={() => { setSelectedService(null); setStep("checkout"); }}
+            className="w-full border-2 border-dashed border-border rounded-xl p-4 text-sm text-muted-foreground hover:border-primary/40 hover:text-foreground transition-colors text-center"
+          >
+            Lanjut tanpa layanan pengiriman
+          </button>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {SERVICES.map(svc => (
+              <button
+                key={svc.id}
+                onClick={() => handleSelectService(svc)}
+                className={`border-2 rounded-xl p-5 text-left hover:shadow-md transition-all ${svc.color} ${selectedService?.serviceId === svc.id ? "ring-2 ring-primary" : ""}`}
+              >
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5">{svc.icon}</div>
+                  <div>
+                    <p className="font-semibold text-sm">{svc.name}</p>
+                    <p className="text-xs opacity-70 mt-0.5">{svc.description}</p>
+                    {svc.isTrucking && (
+                      <span className="inline-block mt-2 text-[10px] bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-medium">
+                        Tersedia kalkulator biaya
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Step: Trucking Detail / Kalkulator ────────────────────────────────────
+
+  if (step === "trucking") {
+    const svc = SERVICES.find(s => s.id === "trucking")!;
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="bg-orange-600 text-white py-8 px-4">
+          <div className="max-w-2xl mx-auto flex items-center gap-3">
+            <Button variant="ghost" size="sm" className="text-white/80 hover:text-white" onClick={() => setStep("service-catalog")}>
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+            <div className="flex items-center gap-2">
+              <Truck className="w-5 h-5" />
+              <div>
+                <h1 className="text-xl font-bold">Layanan Trucking</h1>
+                <p className="text-white/70 text-sm">Isi detail atau hitung estimasi biaya</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
+          {/* Mode Tabs */}
+          <div className="flex gap-2 p-1 bg-muted rounded-lg">
+            {(["detail", "calculator"] as const).map(mode => (
+              <button
+                key={mode}
+                onClick={() => setTruckingForm(f => ({ ...f, mode }))}
+                className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors flex items-center justify-center gap-1.5 ${truckingForm.mode === mode ? "bg-background shadow text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                {mode === "detail" ? <><MapPin className="w-4 h-4" /> Form Pickup & Delivery</> : <><Calculator className="w-4 h-4" /> Kalkulator Estimasi</>}
+              </button>
+            ))}
+          </div>
+
+          {/* Detail Form */}
+          {truckingForm.mode === "detail" && (
+            <div className="border rounded-xl p-5 bg-card space-y-4">
+              <h2 className="font-semibold text-sm flex items-center gap-2"><MapPin className="w-4 h-4 text-orange-500" /> Detail Pickup & Delivery</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label className="text-xs flex items-center gap-1"><Calendar className="w-3 h-3" /> Tanggal Pickup</Label>
+                  <Input type="date" value={truckingForm.pickupDate} onChange={e => setTruckingForm(f => ({ ...f, pickupDate: e.target.value }))} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs flex items-center gap-1"><Clock className="w-3 h-3" /> Jam Pickup</Label>
+                  <Input type="time" value={truckingForm.pickupTime} onChange={e => setTruckingForm(f => ({ ...f, pickupTime: e.target.value }))} />
+                </div>
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label className="text-xs">Alamat Pickup <span className="text-destructive">*</span></Label>
+                  <Textarea rows={2} placeholder="Jl. ..., Kota, Provinsi" value={truckingForm.pickupAddress} onChange={e => setTruckingForm(f => ({ ...f, pickupAddress: e.target.value }))} />
+                </div>
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label className="text-xs">Alamat Pengiriman <span className="text-destructive">*</span></Label>
+                  <Textarea rows={2} placeholder="Jl. ..., Kota, Provinsi" value={truckingForm.deliveryAddress} onChange={e => setTruckingForm(f => ({ ...f, deliveryAddress: e.target.value }))} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Nama Kontak</Label>
+                  <Input placeholder="Nama PIC" value={truckingForm.contactName} onChange={e => setTruckingForm(f => ({ ...f, contactName: e.target.value }))} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">No. Telepon Kontak</Label>
+                  <Input type="tel" placeholder="08xxxxxxxxxx" value={truckingForm.contactPhone} onChange={e => setTruckingForm(f => ({ ...f, contactPhone: e.target.value }))} />
+                </div>
+              </div>
+              <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-xs text-orange-700">
+                💡 Estimasi biaya akan dikonfirmasi oleh tim setelah pesanan masuk.
+              </div>
+              <Button className="w-full bg-orange-600 hover:bg-orange-700" onClick={handleConfirmTrucking}
+                disabled={!truckingForm.pickupAddress.trim() || !truckingForm.deliveryAddress.trim()}>
+                Tambahkan ke Pesanan <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+            </div>
+          )}
+
+          {/* Calculator Mode */}
+          {truckingForm.mode === "calculator" && (
+            <div className="border rounded-xl p-5 bg-card space-y-4">
+              <h2 className="font-semibold text-sm flex items-center gap-2"><Calculator className="w-4 h-4 text-orange-500" /> Kalkulator Estimasi Biaya</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label className="text-xs flex items-center gap-1"><MapPin className="w-3 h-3" /> Kota Asal <span className="text-destructive">*</span></Label>
+                  <Input placeholder="Jakarta" value={truckingForm.origin} onChange={e => setTruckingForm(f => ({ ...f, origin: e.target.value }))} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs flex items-center gap-1"><MapPin className="w-3 h-3" /> Kota Tujuan <span className="text-destructive">*</span></Label>
+                  <Input placeholder="Surabaya" value={truckingForm.destination} onChange={e => setTruckingForm(f => ({ ...f, destination: e.target.value }))} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs flex items-center gap-1"><Weight className="w-3 h-3" /> Berat (kg) <span className="text-destructive">*</span></Label>
+                  <Input type="number" min={0} placeholder="100" value={truckingForm.weight} onChange={e => setTruckingForm(f => ({ ...f, weight: e.target.value }))} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Jenis Barang</Label>
+                  <Select value={truckingForm.goodsType} onValueChange={v => setTruckingForm(f => ({ ...f, goodsType: v }))}>
+                    <SelectTrigger><SelectValue placeholder="Pilih jenis" /></SelectTrigger>
+                    <SelectContent>{GOODS_TYPES.map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div className="sm:col-span-2">
+                  <Label className="text-xs flex items-center gap-1 mb-1.5"><Ruler className="w-3 h-3" /> Dimensi (cm) — P × L × T</Label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(["length", "width", "height"] as const).map((key, i) => (
+                      <Input key={key} type="number" min={0} placeholder={["Panjang", "Lebar", "Tinggi"][i]}
+                        value={truckingForm[key]} onChange={e => setTruckingForm(f => ({ ...f, [key]: e.target.value }))} />
+                    ))}
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Incoterms</Label>
+                  <Select value={truckingForm.incoterms} onValueChange={v => setTruckingForm(f => ({ ...f, incoterms: v }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>{INCOTERMS.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <Button variant="outline" className="w-full border-orange-400 text-orange-600 hover:bg-orange-50"
+                disabled={!truckingForm.origin || !truckingForm.destination || !truckingForm.weight || estimating}
+                onClick={handleEstimateTrucking}>
+                {estimating ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Menghitung...</> : <><Calculator className="w-4 h-4 mr-2" /> Hitung Estimasi</>}
+              </Button>
+
+              {truckingEstimate !== null && (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 space-y-1">
+                  <p className="text-xs text-emerald-600 font-medium">Estimasi Biaya Trucking</p>
+                  <p className="text-2xl font-bold text-emerald-700">{formatCurrency(truckingEstimate)}</p>
+                  <p className="text-xs text-emerald-500">
+                    {truckingForm.origin} → {truckingForm.destination} · {truckingForm.weight} kg
+                    {truckingForm.length && truckingForm.width && truckingForm.height
+                      ? ` · ${truckingForm.length}×${truckingForm.width}×${truckingForm.height} cm` : ""}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground mt-1">*Estimasi indikatif. Biaya final dikonfirmasi tim logistik.</p>
+                </div>
+              )}
+
+              <Button className="w-full bg-orange-600 hover:bg-orange-700"
+                disabled={!truckingForm.origin || !truckingForm.destination || !truckingForm.weight}
+                onClick={handleConfirmTrucking}>
+                {truckingEstimate ? "Tambahkan ke Pesanan" : "Tambahkan (Harga Menyusul)"}
+                <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Step: Checkout ────────────────────────────────────────────────────────
+
+  if (step === "checkout") {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="bg-primary text-primary-foreground py-8 px-4">
+          <div className="max-w-2xl mx-auto flex items-center gap-3">
+            <Button variant="ghost" size="sm" className="text-primary-foreground/80 hover:text-primary-foreground" onClick={() => setStep("products")}>
               <ChevronLeft className="w-4 h-4" />
             </Button>
             <div>
@@ -321,103 +587,139 @@ export default function ProductOrderPage() {
         <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
 
           {/* Order Summary */}
-          <div className="border rounded-xl p-5 bg-card">
-            <h2 className="font-semibold mb-4 flex items-center gap-2 text-sm">
+          <div className="border rounded-xl p-5 bg-card space-y-3">
+            <h2 className="font-semibold flex items-center gap-2 text-sm">
               <ShoppingCart className="w-4 h-4" /> Ringkasan Pesanan
             </h2>
-            <div className="space-y-3">
-              {cart.map((item) => (
+
+            {/* Products */}
+            <div className="space-y-2">
+              {cart.map(item => (
                 <div key={item.product.id} className="flex justify-between text-sm">
                   <div>
                     <p className="font-medium">{item.product.name}</p>
-                    <p className="text-muted-foreground">{formatCurrency(item.product.price)} × {item.qty} {item.product.unit ?? "pcs"}</p>
+                    <p className="text-muted-foreground text-xs">{formatCurrency(item.product.price)} × {item.qty} {item.product.unit ?? "pcs"}</p>
                   </div>
                   <p className="font-semibold">{formatCurrency(item.product.price * item.qty)}</p>
                 </div>
               ))}
             </div>
-            <Separator className="my-3" />
-            <div className="flex justify-between font-bold text-sm">
-              <span>Total</span>
-              <span className="text-primary">{formatCurrency(cartTotal)}</span>
+
+            {/* Selected Service */}
+            {selectedService ? (
+              <>
+                <Separator />
+                <div className="flex items-start justify-between text-sm">
+                  <div className="flex items-start gap-2">
+                    <Truck className="w-4 h-4 mt-0.5 text-orange-500 shrink-0" />
+                    <div>
+                      <p className="font-medium">{selectedService.serviceName}</p>
+                      {selectedService.summaryLine && <p className="text-xs text-muted-foreground">{selectedService.summaryLine}</p>}
+                    </div>
+                  </div>
+                  <p className="font-semibold shrink-0 ml-2">
+                    {selectedService.estimatedCost ? formatCurrency(selectedService.estimatedCost) : <span className="text-muted-foreground text-xs">Harga menyusul</span>}
+                  </p>
+                </div>
+                <Button variant="ghost" size="sm" className="text-xs text-muted-foreground -mt-1 h-7 px-2" onClick={() => setStep("service-catalog")}>
+                  Ganti layanan
+                </Button>
+              </>
+            ) : (
+              <>
+                <Separator />
+                <Button variant="outline" size="sm" className="w-full gap-2 text-sm border-dashed" onClick={() => setStep("service-catalog")}>
+                  <Truck className="w-4 h-4" /> + Tambah Layanan Pengiriman
+                </Button>
+              </>
+            )}
+
+            {/* Totals */}
+            <Separator />
+            <div className="space-y-1.5 text-sm">
+              <div className="flex justify-between text-muted-foreground">
+                <span>Subtotal produk</span>
+                <span>{formatCurrency(cartSubtotal)}</span>
+              </div>
+              {serviceAmt > 0 && (
+                <div className="flex justify-between text-muted-foreground">
+                  <span>Layanan pengiriman</span>
+                  <span>{formatCurrency(serviceAmt)}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-muted-foreground">
+                <span>PPN 11%</span>
+                <span>{formatCurrency(ppn)}</span>
+              </div>
+              <Separator />
+              <div className="flex justify-between font-bold text-base">
+                <span>Total Estimasi</span>
+                <span className="text-primary">{formatCurrency(grandTotal)}</span>
+              </div>
             </div>
           </div>
 
           {/* Category Selector */}
           <div className="border rounded-xl p-5 bg-card space-y-3">
-            <h2 className="font-semibold flex items-center gap-2 text-sm">
-              <Tag className="w-4 h-4" /> Kategori Komoditas
-            </h2>
-            <p className="text-xs text-muted-foreground">
-              Pilih kategori produk untuk menampilkan field dan dokumen yang relevan.
-            </p>
+            <h2 className="font-semibold flex items-center gap-2 text-sm"><Tag className="w-4 h-4" /> Kategori Komoditas</h2>
+            <p className="text-xs text-muted-foreground">Pilih kategori untuk menampilkan field dokumen yang relevan.</p>
             {templatesLoading ? (
               <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
                 <Loader2 className="w-3 h-3 animate-spin" /> Memuat kategori...
               </div>
             ) : (
               <Select value={productCategory} onValueChange={setProductCategory}>
-                <SelectTrigger className="h-10">
-                  <SelectValue />
-                </SelectTrigger>
+                <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {allTemplates.map((t) => (
-                    <SelectItem key={t.category} value={t.category}>
-                      {t.label}
-                    </SelectItem>
-                  ))}
+                  {allTemplates.map(t => <SelectItem key={t.category} value={t.category}>{t.label}</SelectItem>)}
                 </SelectContent>
               </Select>
             )}
           </div>
 
-          {/* Dynamic Product Form */}
           {!templatesLoading && (
-            <DynamicProductForm
-              template={template}
-              values={dynamicValues}
-              onChange={setDynamicValues}
-            />
+            <DynamicProductForm template={template} values={dynamicValues} onChange={setDynamicValues} />
           )}
 
           {/* Customer Data */}
           <div className="border rounded-xl p-5 bg-card space-y-4">
-            <h2 className="font-semibold flex items-center gap-2 text-sm">
-              <User className="w-4 h-4" /> Data Pemesan
-            </h2>
+            <h2 className="font-semibold flex items-center gap-2 text-sm"><User className="w-4 h-4" /> Data Pemesan</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label className="text-xs">Nama Lengkap <span className="text-destructive">*</span></Label>
-                <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Nama lengkap" />
+                <Input value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="Nama lengkap" />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">No. WhatsApp <span className="text-destructive">*</span></Label>
-                <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="08xxxxxxxxxx" type="tel" />
+                <Input value={phone} onChange={e => setPhone(e.target.value)} placeholder="08xxxxxxxxxx" type="tel" />
               </div>
               <div className="space-y-1.5 sm:col-span-2">
                 <Label className="text-xs">Email <span className="text-destructive">*</span></Label>
-                <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email@example.com" type="email" />
+                <Input value={email} onChange={e => setEmail(e.target.value)} placeholder="email@example.com" type="email" />
               </div>
               <div className="space-y-1.5 sm:col-span-2">
                 <Label className="text-xs">Alamat Pengiriman <span className="text-destructive">*</span></Label>
-                <Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Jl. ..., Kota, Provinsi" />
+                <Input value={address} onChange={e => setAddress(e.target.value)} placeholder="Jl. ..., Kota, Provinsi" />
               </div>
               <div className="space-y-1.5 sm:col-span-2">
                 <Label className="text-xs">Catatan Tambahan (opsional)</Label>
-                <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Catatan tambahan untuk pesanan..." />
+                <Input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Catatan tambahan..." />
               </div>
             </div>
           </div>
 
-          <Button className="w-full h-12 text-base" onClick={handleSubmit} disabled={submitting || templatesLoading}>
-            {submitting ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Mengirim...</> : "Kirim Pesanan"}
+          <Button className="w-full h-12 text-base gap-2" onClick={handleSubmit} disabled={submitting || templatesLoading}>
+            {submitting
+              ? <><Loader2 className="w-4 h-4 animate-spin" /> Mengirim...</>
+              : <><CheckCircle2 className="w-4 h-4" /> Lanjutkan ke Checkout</>}
           </Button>
         </div>
       </div>
     );
   }
 
-  // ── Step 2 — Sukses ──
+  // ── Step: Sukses ──────────────────────────────────────────────────────────
+
   return (
     <div className="min-h-screen bg-background flex items-center justify-center px-4">
       <div className="max-w-md w-full text-center space-y-6">
@@ -425,29 +727,25 @@ export default function ProductOrderPage() {
           <CheckCircle2 className="w-16 h-16 text-green-500 mx-auto mb-4" />
           <h1 className="text-2xl font-bold text-green-800 mb-2">Pesanan Berhasil!</h1>
           <p className="text-green-700 text-sm mb-4">
-            No. Pesanan Anda: <strong className="font-mono">{orderNumber}</strong>
+            No. Pesanan: <strong className="font-mono">{orderNumber}</strong>
           </p>
+          {selectedService && (
+            <p className="text-green-600 text-xs mb-2">
+              Layanan: <strong>{selectedService.serviceName}</strong>
+              {selectedService.estimatedCost ? ` · ${formatCurrency(selectedService.estimatedCost)}` : " · Harga menyusul"}
+            </p>
+          )}
           <p className="text-green-600 text-sm">
-            Tim kami akan segera menghubungi Anda via WhatsApp atau email untuk konfirmasi dan informasi pembayaran.
+            Tim kami akan menghubungi Anda via WhatsApp atau email untuk konfirmasi dan pembayaran.
           </p>
         </div>
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
-          <Button variant="outline" onClick={() => setLocation("/products")}>
-            Lihat Produk Lain
-          </Button>
+          <Button variant="outline" onClick={() => setLocation("/products")}>Lihat Produk Lain</Button>
           <Button onClick={() => {
-            setCart([]);
-            setStep(0);
-            setCustomerName("");
-            setEmail("");
-            setPhone("");
-            setAddress("");
-            setNotes("");
-            setProductCategory("general");
-            setDynamicValues(EMPTY_FORM);
-          }}>
-            Pesan Lagi
-          </Button>
+            setCart([]); setStep("products"); setCustomerName(""); setEmail(""); setPhone("");
+            setAddress(""); setNotes(""); setProductCategory("general"); setDynamicValues(EMPTY_FORM);
+            setSelectedService(null); setTruckingForm(EMPTY_TRUCKING); setTruckingEstimate(null);
+          }}>Pesan Lagi</Button>
         </div>
       </div>
     </div>
