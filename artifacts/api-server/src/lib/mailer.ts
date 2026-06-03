@@ -1,5 +1,6 @@
 import { Resend } from "resend";
 import { logNotification } from "./notificationLog.js";
+import { getSmtpPass, getSmtpFrom } from "./appSecrets.js";
 
 export interface SendMailOptions {
   to: string;
@@ -16,19 +17,34 @@ export interface SendMailOptions {
   }>;
 }
 
-function getResend(): { client: Resend; from: string } {
-  const apiKey = process.env.SMTP_PASS?.trim();
-  const from = (process.env.SMTP_FROM ?? "noreply@cstlogistic.co.id").trim();
+let _hasSmtpKey: boolean = !!(process.env.SMTP_PASS?.trim());
+
+export function isSmtpConfigured(): boolean {
+  return _hasSmtpKey;
+}
+
+export async function warmupMailer(): Promise<void> {
+  try {
+    const apiKey = await getSmtpPass();
+    _hasSmtpKey = !!apiKey;
+  } catch { }
+}
+
+async function getResend(): Promise<{ client: Resend; from: string }> {
+  const apiKey = await getSmtpPass();
+  const from = await getSmtpFrom();
+
+  _hasSmtpKey = !!apiKey;
 
   if (!apiKey) {
-    throw new Error("Resend API key missing. Set SMTP_PASS environment variable.");
+    throw new Error("Resend API key missing. Set SMTP_PASS di env atau Settings → Secrets.");
   }
 
   return { client: new Resend(apiKey), from };
 }
 
 export async function sendMail(opts: SendMailOptions): Promise<void> {
-  const { client, from } = getResend();
+  const { client, from } = await getResend();
 
   const attachments = opts.attachments?.map((a) => ({
     filename: a.filename,
@@ -69,8 +85,4 @@ export async function sendMail(opts: SendMailOptions): Promise<void> {
     refType: opts.refType,
     refId: opts.refId,
   });
-}
-
-export function isSmtpConfigured(): boolean {
-  return !!(process.env.SMTP_PASS?.trim());
 }
