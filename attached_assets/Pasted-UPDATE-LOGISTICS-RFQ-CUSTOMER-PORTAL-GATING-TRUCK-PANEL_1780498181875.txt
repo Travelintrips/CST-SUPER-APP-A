@@ -1,0 +1,88 @@
+UPDATE LOGISTICS RFQ & CUSTOMER PORTAL — GATING TRUCK PANEL + CUSTOMER TOTAL
+
+Tujuan:
+
+1. Truck panel di Review Order hanya muncul setelah vendor produk disetujui (`productApproved = true`)
+2. Customer Portal menampilkan total order (harga produk + truk) + label Internal / Eksternal
+
+---
+
+A. BACKEND
+
+1. **Expose productApproved**
+
+   * Endpoint GET `/review-order` / `/logistic-order/:id`
+   * Sertakan field `productApproved: boolean` per RFQ
+
+2. **Customer Portal Data**
+
+   * Endpoint GET `/customer-order/:orderId/progress` / `/invoice-summary`
+   * Sertakan:
+
+     * `productPrice`
+     * `truckPrice`
+     * `truckSource` → Internal / External
+     * `totalPrice = productPrice + truckPrice`
+
+3. **Validation**
+
+   * Truck panel hanya muncul jika backend menandai `productApproved = true`
+   * Jika `productApproved = false` → frontend menampilkan pesan “Panel truk akan muncul setelah produk disetujui”
+
+---
+
+B. FRONTEND — Logistics RFQ Comparison Panel
+
+1. **Truck Panel Gating**
+
+   * Wrap panel dengan condition:
+
+     ```ts
+     {productApproved && <TruckAssignmentPanel />}
+     {!productApproved && <p>Panel truk akan muncul setelah produk disetujui</p>}
+     ```
+2. **Live Update**
+
+   * Setelah productApproved diubah → panel truck muncul otomatis tanpa reload
+
+---
+
+C. FRONTEND — Customer Portal
+
+1. **Total Order + Label**
+
+   * Ambil data dari backend: `productPrice + truckPrice` → total
+   * Ambil `truckSource` → tampilkan badge Internal / External
+2. **UI**
+
+   * Timeline atau Invoice Card:
+
+     ```
+     Produk: Rp XXX
+     Truk: Rp XXX [Internal / External]
+     Total: Rp XXX
+     ```
+   * Update realtime jika admin assign truk atau internal/external berubah
+
+---
+
+D. TESTING / QA
+
+| No | Step                                | Expected Result                                                 |
+| -- | ----------------------------------- | --------------------------------------------------------------- |
+| 1  | Truck panel sebelum productApproved | Tidak muncul, pesan info tampil                                 |
+| 2  | ProductApproved = true              | Truck panel muncul dengan harga internal / eksternal            |
+| 3  | Assign internal truck               | Harga internal muncul, total update live                        |
+| 4  | Assign external truck               | Dropdown harga dasar eksternal muncul, total update live        |
+| 5  | Customer portal                     | Total order + label Internal / External tampil sesuai backend   |
+| 6  | Partial test                        | Workflow berjalan, no regression untuk RFQ / Review Order panel |
+
+---
+
+Instruksi:
+
+* Update backend endpoint review-order → sertakan `productApproved`
+* Update Customer Portal endpoint → include `productPrice`, `truckPrice`, `truckSource`, `totalPrice`
+* Frontend RFQ Comparison panel → gating truck panel pakai `productApproved`
+* Frontend Customer Portal → tampil total order + label Internal / External
+* Test partial dari assign vendor produk → panel truck muncul → total update live → customer view sync

@@ -986,6 +986,21 @@ const DEFAULT_TPL = {
       "CST Logistics — Terima kasih telah menggunakan layanan kami.",
       "_{{timestamp}}_",
     ].join("\n"),
+    truck_assigned: [
+      "🚚 *INFO PENGIRIMAN — {{orderNumber}}*",
+      "━━━━━━━━━━━━━━━━━━",
+      "Halo *{{customerName}}*,",
+      "",
+      "Vendor pengiriman untuk order Anda telah dikonfirmasi:",
+      "",
+      "🚛 Truk   : *{{truckVendorName}}* ({{truckSourceLabel}})",
+      "💰 Harga Produk : {{productPrice}}",
+      "🚚 Harga Truk   : {{truckPrice}}",
+      "💵 *Total        : {{totalPrice}}*",
+      "",
+      "Terima kasih telah mempercayakan pengiriman Anda kepada kami.",
+      "_{{timestamp}}_",
+    ].join("\n"),
   },
   product_order_status: {
     admin_personal: [
@@ -1359,6 +1374,7 @@ export function getWaDefaultTemplatesFlatMap(): Record<string, string> {
   add("customer", "logistic_order_status", cu.logistic_order_status);
   add("customer", "quotation_sent_customer", cu.quotation_sent_customer);
   add("customer", "logistic_operational_status", cu.logistic_operational_status);
+  add("customer", "truck_assigned", cu.truck_assigned);
 
   // vendor
   const v = DEFAULT_TPL.vendor;
@@ -1954,6 +1970,32 @@ export async function sendDriverAssignedNotification(
       logger.error({ e }, "WA driver_assigned (group) failed"),
     );
   }
+}
+
+// ── Truck Assigned (info vendor truk ke customer) ─────────────────────────────
+export async function sendTruckAssignedCustomerWa(
+  order: LogisticOrderData,
+  extras: {
+    truckVendorName: string;
+    truckSource: "internal" | "external";
+    truckPrice: number | null;
+    productPrice: number | null;
+    totalPrice: number | null;
+  },
+): Promise<void> {
+  const tpl = await getWaTemplateConfig("customer", "truck_assigned", DEFAULT_TPL.customer.truck_assigned);
+  if (!order.phone) return;
+  const fmt = (n: number | null) => n != null ? `Rp ${Math.round(n).toLocaleString("id-ID")}` : "—";
+  const vars = {
+    truckVendorName: extras.truckVendorName,
+    truckSourceLabel: extras.truckSource === "internal" ? "Internal" : "Eksternal",
+    truckPrice: fmt(extras.truckPrice),
+    productPrice: fmt(extras.productPrice),
+    totalPrice: fmt(extras.totalPrice),
+  };
+  sendWhatsApp(order.phone, renderWf(tpl, order, vars)).catch((e: unknown) =>
+    logger.error({ e }, "WA truck_assigned (customer) failed"),
+  );
 }
 
 // ── Shipment Update (update status pengiriman ke customer + admin) ────────────
