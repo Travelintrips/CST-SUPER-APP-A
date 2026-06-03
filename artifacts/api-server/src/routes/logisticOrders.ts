@@ -1079,6 +1079,19 @@ logisticOrdersRouter.post("/:id/progress/set", requireClerkUser, async (req: Req
   const user = (req as any).user;
   const actor = user?.name || user?.email || "Admin";
   await updateOrderProgress(id, stepKey as any, "admin", actor, notes ?? `Manual set oleh ${actor}`);
+  // Broadcast ke portal — non-blocking lookup orderNumber
+  db.select({ orderNumber: logisticOrdersTable.orderNumber })
+    .from(logisticOrdersTable).where(eq(logisticOrdersTable.id, id))
+    .then(([row]) => {
+      if (row?.orderNumber) {
+        broadcastToPortal("progress_event_added", {
+          orderNumber: row.orderNumber,
+          orderId: id,
+          stepKey,
+          updatedAt: new Date().toISOString(),
+        });
+      }
+    }).catch(() => {});
   return res.json({ ok: true });
 });
 
