@@ -3836,10 +3836,43 @@ vendorMiniFormRouter.get("/admin/customer-invoices", async (req: Request, res: R
   if (!(await requireClerkUser(req, res))) return;
   const orderIdFilter = req.query["orderId"] ? Number(req.query["orderId"]) : null;
   try {
-    const query = db.select().from(customerInvoiceLinksTable).orderBy(desc(customerInvoiceLinksTable.createdAt));
+    const baseQuery = db
+      .select({
+        id: customerInvoiceLinksTable.id,
+        token: customerInvoiceLinksTable.token,
+        salesDocId: customerInvoiceLinksTable.salesDocId,
+        orderId: customerInvoiceLinksTable.orderId,
+        orderNumber: customerInvoiceLinksTable.orderNumber,
+        invoiceNumber: customerInvoiceLinksTable.invoiceNumber,
+        customerName: customerInvoiceLinksTable.customerName,
+        customerPhone: customerInvoiceLinksTable.customerPhone,
+        currency: customerInvoiceLinksTable.currency,
+        subtotal: customerInvoiceLinksTable.subtotal,
+        taxRate: customerInvoiceLinksTable.taxRate,
+        taxAmount: customerInvoiceLinksTable.taxAmount,
+        grandTotal: customerInvoiceLinksTable.grandTotal,
+        amountPaid: customerInvoiceLinksTable.amountPaid,
+        paymentStatus: customerInvoiceLinksTable.paymentStatus,
+        paymentMethod: customerInvoiceLinksTable.paymentMethod,
+        dueDate: customerInvoiceLinksTable.dueDate,
+        notes: customerInvoiceLinksTable.notes,
+        viewedAt: customerInvoiceLinksTable.viewedAt,
+        acknowledgedAt: customerInvoiceLinksTable.acknowledgedAt,
+        status: customerInvoiceLinksTable.status,
+        createdAt: customerInvoiceLinksTable.createdAt,
+        expiresAt: customerInvoiceLinksTable.expiresAt,
+        proofUrl: salesDocumentsTable.proofUrl,
+        proofUploadedAt: salesDocumentsTable.proofUploadedAt,
+        proofRemarks: salesDocumentsTable.proofRemarks,
+      })
+      .from(customerInvoiceLinksTable)
+      .leftJoin(salesDocumentsTable, eq(customerInvoiceLinksTable.salesDocId, salesDocumentsTable.id))
+      .orderBy(desc(customerInvoiceLinksTable.createdAt));
+
     const rows = orderIdFilter
-      ? await query.where(eq(customerInvoiceLinksTable.orderId, orderIdFilter))
-      : await query.limit(100);
+      ? await baseQuery.where(eq(customerInvoiceLinksTable.orderId, orderIdFilter))
+      : await baseQuery.limit(100);
+
     return res.json(rows);
   } catch (err) {
     req.log?.error({ err }, "get customer-invoices error");

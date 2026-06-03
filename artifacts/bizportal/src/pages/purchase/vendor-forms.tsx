@@ -35,6 +35,7 @@ import { TemplateSnapshotCard } from "@/components/TemplateSnapshotCard";
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
 } from "@/components/ui/sheet";
+import { PaymentProofPreview } from "@/components/PaymentProofPreview";
 import { inCodeTemplates } from "@workspace/product-templates";
 import type { ProductTemplate, DynamicFormValues } from "@workspace/product-templates";
 import {
@@ -117,6 +118,7 @@ type CustomerInvoice = {
   dueDate: string | null; notes: string | null;
   viewedAt: string | null; acknowledgedAt: string | null;
   status: string; createdAt: string; expiresAt: string | null;
+  proofUrl: string | null; proofUploadedAt: string | null; proofRemarks: string | null;
 };
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -3472,6 +3474,12 @@ export default function VendorFormsPage() {
                                 <span className={`inline-flex text-xs px-2 py-0.5 rounded-full border font-semibold w-fit ${payInfo.cls}`}>
                                   {payInfo.label}
                                 </span>
+                                <PaymentProofPreview
+                                  proofUrl={inv.proofUrl}
+                                  proofUploadedAt={inv.proofUploadedAt}
+                                  proofRemarks={inv.proofRemarks}
+                                  compact
+                                />
                                 {isOverdue && (
                                   <span className="text-xs text-red-500 font-medium flex items-center gap-1">
                                     <AlertCircle className="h-3 w-3" />Jatuh tempo

@@ -1,15 +1,17 @@
 import { Router, type Request, type Response } from "express";
 import multer from "multer";
+import { randomBytes } from "crypto";
 import { eq, sql } from "drizzle-orm";
 import { db, salesDocumentsTable } from "@workspace/db";
 import { uploadToSupabase } from "../lib/supabaseStorage.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
-import { getAdminGroupWa } from "../lib/adminWa.js";
+import { getAdminGroupWa, getAdminWa } from "../lib/adminWa.js";
 import { writeAuditLog } from "../lib/auditLog.js";
 import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
 import { generateOrGetProofToken } from "../lib/paymentProofService.js";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { logger } from "../lib/logger.js";
+import { ObjectStorageService } from "../lib/objectStorage.js";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
@@ -390,14 +392,6 @@ paymentProofAdminRouter.post("/:id/resend-proof-wa", async (req: Request, res: R
     res.status(500).json({ message: err?.message ?? "Gagal mengirim WA" });
   }
 });
-import { randomBytes } from "crypto";
-import { db } from "@workspace/db";
-import { sql } from "drizzle-orm";
-import { logger } from "../lib/logger.js";
-import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
-import { getAdminWa } from "../lib/adminWa.js";
-import { ObjectStorageService } from "../lib/objectStorage.js";
-
 const router = Router();
 
 // ─── Boot migration ───────────────────────────────────────────────────────────
@@ -418,11 +412,6 @@ async function ensureColumns() {
   }
 }
 ensureColumns().catch(() => {});
-
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 },
-});
 
 const ALLOWED_MIME = new Set([
   "image/jpeg",

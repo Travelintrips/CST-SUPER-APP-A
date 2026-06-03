@@ -27,6 +27,7 @@ import {
 import { Link } from "wouter";
 import GpsTrackingPanel from "@/components/logistics/GpsTrackingPanel";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { PaymentProofPreview } from "@/components/PaymentProofPreview";
 import { OrderProgressBar } from "@/components/logistics/OrderProgressBar";
 import { OrderDriverAssignmentPanel } from "@/components/freight/OrderDriverAssignmentPanel";
 
@@ -977,6 +978,7 @@ type InvoiceLink = {
   currency: string | null; dueDate: string | null;
   paymentStatus: string | null; acknowledgedAt: string | null;
   viewedAt: string | null; status: string; createdAt: string;
+  proofUrl: string | null; proofUploadedAt: string | null; proofRemarks: string | null;
 };
 
 function CustomerInvoicePanel({
@@ -1181,6 +1183,12 @@ function CustomerInvoicePanel({
                         Dibuat: {new Date(lnk.createdAt).toLocaleString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
                       </span>
                     </div>
+                    <PaymentProofPreview
+                      proofUrl={lnk.proofUrl}
+                      proofUploadedAt={lnk.proofUploadedAt}
+                      proofRemarks={lnk.proofRemarks}
+                      compact
+                    />
                   </div>
                 ))}
               </div>
