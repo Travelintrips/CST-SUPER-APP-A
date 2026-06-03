@@ -12,6 +12,7 @@ import { generateOrGetProofToken } from "../lib/paymentProofService.js";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { logger } from "../lib/logger.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
+import { createAlertAndBroadcast } from "../lib/alertHelpers.js";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
@@ -273,6 +274,18 @@ paymentProofPublicRouter.post(
         notes: `Bukti pembayaran diunggah oleh customer (invoice: ${invoiceLabel})`,
       }).catch((e: unknown) => logger.warn({ e }, "[paymentProof] status transition warn"));
     }
+
+    void createAlertAndBroadcast({
+      companyId: doc.companyId ?? null,
+      alertType: "payment_proof_uploaded",
+      entityType: "sales_document",
+      entityId: doc.id,
+      entityRef: invoiceLabel,
+      severity: "info",
+      title: "Bukti Pembayaran Diterima",
+      message: `${doc.customerName} mengunggah bukti pembayaran untuk invoice ${invoiceLabel}`,
+      contextJson: { proofUrl: publicUrl, remarks: remarks || null },
+    });
 
     writeAuditLog({
       companyId: doc.companyId ?? null,
