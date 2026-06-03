@@ -47,7 +47,14 @@ const ROUTES = [
   { prefix: "/bizportal",       upstream: { host: "localhost", port: BIZPORTAL_PORT } },
   { prefix: "/logistic-order",  upstream: { host: "localhost", port: LOGISTIC_ORDER_PORT } },
   // /sport-center/* → redirect to BizPortal React Router — no separate service on :3002
-  { prefix: "/sport-center",    upstream: null, redirectMapTo: "/bizportal/sport-center", redirectDefaultSuffix: "/dashboard" },
+  { prefix: "/sport-center",    upstream: null, redirectMapTo: "/bizportal/sport-center",   redirectDefaultSuffix: "/dashboard" },
+
+  // BizPortal sub-paths accessed without /bizportal/ prefix → redirect
+  { prefix: "/sales",           upstream: null, redirectMapTo: "/bizportal/sales",           redirectDefaultSuffix: "/documents" },
+  { prefix: "/purchase",        upstream: null, redirectMapTo: "/bizportal/purchase",         redirectDefaultSuffix: "/documents" },
+  { prefix: "/logistics",       upstream: null, redirectMapTo: "/bizportal/logistics",        redirectDefaultSuffix: "/" },
+  { prefix: "/accounting",      upstream: null, redirectMapTo: "/bizportal/accounting",       redirectDefaultSuffix: "/journals" },
+  { prefix: "/settings",        upstream: null, redirectMapTo: "/bizportal/settings",         redirectDefaultSuffix: "/" },
 
   // Canvas artifact iframe hits /customer-portal/* — redirect to strip the prefix
   { prefix: "/customer-portal", upstream: null, redirectStrip: "/customer-portal" },

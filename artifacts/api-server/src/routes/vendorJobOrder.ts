@@ -1192,14 +1192,11 @@ orderTrackingPublicRouter.get("/:trackToken", async (req: Request, res: Response
           ? JSON.parse(driverPodRow.pod_photos)
           : driverPodRow.pod_photos;
         if (Array.isArray(parsed)) photos = parsed.filter((u: unknown) => typeof u === "string" && u);
-      } catch { /* ignore */ }
+      } catch (_parseErr) { /* ignore */ }
       photos.forEach((url, idx) => {
-        podFiles.push({
-          url,
-          type: "photo",
-          name: `Foto POD Driver ${idx + 1}${driverPodRow.pod_receiver_name ? ` — ${driverPodRow.pod_receiver_name}` : ""}`,
-          source: "driver",
-        });
+        const baseName = "Foto POD Driver " + (idx + 1);
+        const photoName = driverPodRow.pod_receiver_name ? baseName + " \u2014 " + driverPodRow.pod_receiver_name : baseName;
+        podFiles.push({ url, type: "photo", name: photoName, source: "driver" });
       });
     }
     // Driver photos + live location + GPS trail — all from driver_jobs linked to this order
