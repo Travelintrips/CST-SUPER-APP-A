@@ -1942,6 +1942,25 @@ logisticRfqV2Router.post("/rfq/:rfqId/select-vendor", async (req: Request, res: 
   await logActivity(rfqId, "admin", "Admin", "admin_select_vendor",
     `Admin memilih vendor: ${vendorName} — ${fmtRp(link.offeredPrice ?? link.basicPrice)}`);
 
+  // Kirim WA "Penawaran Anda Dipilih" ke vendor
+  if (vendor?.phone) {
+    const domain = getPreferredDomain() || "cstlogistic.co.id";
+    const vendorFormUrl = `https://${domain}/vendor-form/${link.token}`;
+    sendVendorAwardedWa({
+      vendorName,
+      vendorPhone: vendor.phone,
+      rfqNumber: rfqRow?.rfqNumber ?? `RFQ#${rfqId}`,
+      orderNumber: orderRow?.orderNumber ?? "",
+      shipmentType: orderRow?.shipmentType ?? "—",
+      origin: orderRow?.origin ?? "—",
+      destination: orderRow?.destination ?? "—",
+      vendorCost: link.offeredPrice ?? link.basicPrice,
+      eta: link.eta ?? null,
+      notes: link.notes ?? null,
+      fulfillUrl: vendorFormUrl,
+    }).catch(() => {});
+  }
+
   return res.json({ ok: true, selectedVendorName: vendorName });
 });
 
