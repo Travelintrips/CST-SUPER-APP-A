@@ -273,18 +273,27 @@ function LoadingScreen() {
       <div className="flex flex-col items-center gap-3">
         <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
         <p className="text-slate-500 text-sm">Memuat data…</p>
+        <p className="text-slate-400 text-xs">Harap tunggu sebentar…</p>
       </div>
     </div>
   );
 }
 
-function ErrorScreen({ message }: { message: string }) {
+function ErrorScreen({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
       <div className="bg-white rounded-2xl shadow-md p-8 max-w-sm w-full text-center space-y-3">
         <div className="text-5xl">⚠️</div>
         <h2 className="text-lg font-semibold text-slate-800">Link Tidak Valid</h2>
         <p className="text-slate-500 text-sm">{message}</p>
+        {onRetry && (
+          <button
+            onClick={onRetry}
+            className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"
+          >
+            Coba Lagi
+          </button>
+        )}
       </div>
     </div>
   );
@@ -1822,10 +1831,15 @@ export default function AdminReviewPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<ReviewData | CompareData | ForwardVendorData | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
     if (!token) return;
-    fetch(`/api/admin-action/${token}`)
+    setLoading(true);
+    setError(null);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15_000);
+    fetch(`/api/admin-action/${token}`, { signal: controller.signal })
       .then(async (r) => {
         if (!r.ok) {
           const body = await r.json().catch(() => ({}));
@@ -1834,12 +1848,19 @@ export default function AdminReviewPage() {
         return r.json();
       })
       .then(setData)
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, [token]);
+      .catch((e: Error) => {
+        if (e.name === "AbortError") {
+          setError("Koneksi timeout. Server lambat merespons, silakan coba lagi.");
+        } else {
+          setError(e.message);
+        }
+      })
+      .finally(() => { clearTimeout(timeout); setLoading(false); });
+    return () => { clearTimeout(timeout); controller.abort(); };
+  }, [token, retryCount]);
 
   if (loading) return <LoadingScreen />;
-  if (error) return <ErrorScreen message={error} />;
+  if (error) return <ErrorScreen message={error} onRetry={() => setRetryCount(c => c + 1)} />;
   if (!data) return null;
 
   if (data.actionType === "confirm_fulfillment") {
