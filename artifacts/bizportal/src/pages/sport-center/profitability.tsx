@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect, useRef } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -148,6 +148,8 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 export default function SportCenterProfitability() {
   const { activeCompanyId } = useCompany();
+  const qc = useQueryClient();
+  const esRef = useRef<EventSource | null>(null);
   const today = new Date().toISOString().split("T")[0];
   const firstOfYear = `${new Date().getFullYear()}-01-01`;
 
@@ -155,6 +157,23 @@ export default function SportCenterProfitability() {
   const [to, setTo] = useState(today);
   const [queryFrom, setQueryFrom] = useState(firstOfYear);
   const [queryTo, setQueryTo] = useState(today);
+
+  // ── FASE 6D-E: SSE live update ────────────────────────────────────────────
+  useEffect(() => {
+    const qs = activeCompanyId ? `?companyId=${activeCompanyId}` : "";
+    const es = new EventSource(`/api/sport-center/events${qs}`);
+    esRef.current = es;
+    es.onmessage = (e) => {
+      try {
+        const ev = JSON.parse(e.data as string) as { type?: string; entity?: string };
+        if (ev.type === "connected") return;
+        if (["booking", "payment", "refund"].includes(ev.entity ?? "")) {
+          void qc.invalidateQueries({ queryKey: ["sc-profitability-6c"] });
+        }
+      } catch { /* ignore */ }
+    };
+    return () => { es.close(); esRef.current = null; };
+  }, [activeCompanyId, qc]);
 
   const { data, isLoading, refetch } = useQuery<ProfitData>({
     queryKey: ["sc-profitability-6c", activeCompanyId, queryFrom, queryTo],

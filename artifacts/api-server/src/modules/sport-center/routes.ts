@@ -108,6 +108,204 @@ router.get("/dashboard", async (req, res) => {
   }
 });
 
+// ── FASE 6D-B: KPI LIVE ───────────────────────────────────────────────────────
+router.get("/kpi-live", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const cId = req.query.companyId ? Number(req.query.companyId) : null;
+    const costCenterId = req.query.costCenterId ? Number(req.query.costCenterId) : null;
+
+    const [
+      revenueTodayRes,
+      bookingsTodayRes,
+      activeBookingsNowRes,
+      checkinsTodayRes,
+      membersActiveRes,
+      refundsTodayRes,
+      occupancyTodayRes,
+      facilityCountRes,
+      netProfitTodayRes,
+    ] = await Promise.all([
+      // Revenue hari ini dari accounting_entries (booking + membership)
+      db.execute(sql`
+        SELECT COALESCE(SUM(total_debit), 0) AS amount
+        FROM accounting_entries
+        WHERE source IN ('sport_center_booking','sport_center_membership')
+          AND status = 'posted'
+          AND date = CURRENT_DATE
+          AND (${cId}::int IS NULL OR company_id = ${cId})
+          AND (${costCenterId}::int IS NULL OR cost_center_id = ${costCenterId})
+      `),
+      // Booking hari ini (bukan cancelled)
+      db.execute(sql`
+        SELECT COUNT(*) AS cnt
+        FROM sport_bookings
+        WHERE booking_date = CURRENT_DATE
+          AND status != 'cancelled'
+          AND (${cId}::int IS NULL OR company_id = ${cId})
+      `),
+      // Booking aktif sekarang (confirmed atau checked_in, hari ini)
+      db.execute(sql`
+        SELECT COUNT(*) AS cnt
+        FROM sport_bookings
+        WHERE booking_date = CURRENT_DATE
+          AND status IN ('confirmed','checked_in')
+          AND (${cId}::int IS NULL OR company_id = ${cId})
+      `),
+      // Check-in hari ini
+      db.execute(sql`
+        SELECT COUNT(*) AS cnt
+        FROM sport_bookings
+        WHERE DATE(checked_in_at) = CURRENT_DATE
+          AND status = 'checked_in'
+          AND (${cId}::int IS NULL OR company_id = ${cId})
+      `),
+      // Member aktif
+      db.execute(sql`
+        SELECT COUNT(*) AS cnt
+        FROM sport_members
+        WHERE status = 'active'
+          AND (${cId}::int IS NULL OR company_id = ${cId})
+      `),
+      // Refund hari ini (amount)
+      db.execute(sql`
+        SELECT COALESCE(SUM(refund_amount), 0) AS amount
+        FROM sport_refunds
+        WHERE DATE(created_at) = CURRENT_DATE
+          AND status IN ('pending','paid')
+          AND (${cId}::int IS NULL OR company_id = ${cId})
+      `),
+      // Occupancy hari ini: total jam terpakai dari booking aktual
+      db.execute(sql`
+        SELECT COALESCE(SUM(duration_hours), 0) AS occupied_hours
+        FROM sport_bookings
+        WHERE booking_date = CURRENT_DATE
+          AND status NOT IN ('cancelled')
+          AND (${cId}::int IS NULL OR company_id = ${cId})
+      `),
+      // Jumlah fasilitas aktif (untuk hitung available_hours)
+      db.execute(sql`
+        SELECT COUNT(*) AS cnt
+        FROM sport_facilities
+        WHERE is_active = TRUE
+          AND (${cId}::int IS NULL OR company_id = ${cId})
+      `),
+      // Net profit hari ini: revenue - refund (dari accounting)
+      db.execute(sql`
+        SELECT
+          COALESCE(SUM(CASE WHEN source IN ('sport_center_booking','sport_center_membership') THEN total_debit ELSE 0 END), 0)
+          - COALESCE(SUM(CASE WHEN source IN ('sport_center_refund','sport_center_booking_refund','sport_center_booking_reversal') THEN total_debit ELSE 0 END), 0) AS net
+        FROM accounting_entries
+        WHERE date = CURRENT_DATE
+          AND status = 'posted'
+          AND source IN ('sport_center_booking','sport_center_membership','sport_center_refund','sport_center_booking_refund','sport_center_booking_reversal')
+          AND (${cId}::int IS NULL OR company_id = ${cId})
+          AND (${costCenterId}::int IS NULL OR cost_center_id = ${costCenterId})
+      `),
+    ]);
+
+    const revenueToday = Number((revenueTodayRes.rows[0] as any).amount ?? 0);
+    const refundsToday = Number((refundsTodayRes.rows[0] as any).amount ?? 0);
+    const occupiedHoursToday = Number((occupancyTodayRes.rows[0] as any).occupied_hours ?? 0);
+    const facilityCount = Number((facilityCountRes.rows[0] as any).cnt ?? 1);
+    // available_hours = jumlah fasilitas × 14 jam operasional/hari
+    const availableHoursToday = Math.max(facilityCount * 14, 1);
+    const occupancyToday = Math.min(100, Math.round((occupiedHoursToday / availableHoursToday) * 100));
+
+    res.json({
+      revenue_today: revenueToday,
+      bookings_today: Number((bookingsTodayRes.rows[0] as any).cnt ?? 0),
+      active_bookings_now: Number((activeBookingsNowRes.rows[0] as any).cnt ?? 0),
+      occupancy_today: occupancyToday,
+      occupied_hours_today: occupiedHoursToday,
+      available_hours_today: availableHoursToday,
+      checkins_today: Number((checkinsTodayRes.rows[0] as any).cnt ?? 0),
+      members_active: Number((membersActiveRes.rows[0] as any).cnt ?? 0),
+      refunds_today: refundsToday,
+      net_profit_today: Number((netProfitTodayRes.rows[0] as any).net ?? 0),
+    });
+  } catch (err) {
+    console.error("[sport-center] GET /kpi-live error:", err);
+    res.status(500).json({ error: "Gagal memuat KPI live" });
+  }
+});
+
+// ── FASE 6D-C: REAL OCCUPANCY PER FACILITY ───────────────────────────────────
+router.get("/occupancy", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const cId = req.query.companyId ? Number(req.query.companyId) : null;
+    const dateParam = req.query.date ? String(req.query.date) : null;
+
+    const rows = await db.execute(sql`
+      SELECT
+        b.facility_id,
+        b.facility_name,
+        COALESCE(SUM(b.duration_hours), 0)                                     AS occupied_hours,
+        COALESCE(MAX(f.capacity), 1) * 14                                      AS available_hours,
+        LEAST(100, ROUND(
+          COALESCE(SUM(b.duration_hours), 0)::numeric /
+          GREATEST(COALESCE(MAX(f.capacity), 1) * 14, 1) * 100
+        ))                                                                      AS occupancy_percent
+      FROM sport_bookings b
+      LEFT JOIN sport_facilities f ON f.id = b.facility_id
+      WHERE b.status NOT IN ('cancelled')
+        AND b.booking_date = COALESCE(${dateParam}::date, CURRENT_DATE)
+        AND (${cId}::int IS NULL OR b.company_id = ${cId})
+      GROUP BY b.facility_id, b.facility_name
+      ORDER BY occupancy_percent DESC
+    `);
+
+    res.json(rows.rows);
+  } catch (err) {
+    console.error("[sport-center] GET /occupancy error:", err);
+    res.status(500).json({ error: "Gagal memuat occupancy" });
+  }
+});
+
+// ── FASE 6D-F: HEATMAP JAM RAMAI ─────────────────────────────────────────────
+router.get("/heatmap", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const cId = req.query.companyId ? Number(req.query.companyId) : null;
+    const from = req.query.from ? String(req.query.from) : null;
+    const to = req.query.to ? String(req.query.to) : null;
+    const facilityId = req.query.facilityId ? Number(req.query.facilityId) : null;
+
+    // Hitung booking count per jam mulai (dari start_time)
+    const rows = await db.execute(sql`
+      SELECT
+        LPAD(EXTRACT(HOUR FROM start_time::time)::int::text, 2, '0') || ':00' AS hour,
+        COUNT(*) AS booking_count
+      FROM sport_bookings
+      WHERE status NOT IN ('cancelled')
+        AND start_time IS NOT NULL
+        AND (${cId}::int IS NULL OR company_id = ${cId})
+        AND (${from}::date IS NULL OR booking_date >= ${from}::date)
+        AND (${to}::date IS NULL OR booking_date <= ${to}::date)
+        AND (${facilityId}::int IS NULL OR facility_id = ${facilityId})
+      GROUP BY EXTRACT(HOUR FROM start_time::time)
+      ORDER BY EXTRACT(HOUR FROM start_time::time)
+    `);
+
+    // Isi jam kosong agar output lengkap 06:00–22:00
+    const hourMap = new Map<string, number>();
+    for (const r of rows.rows as any[]) {
+      hourMap.set(String(r.hour), Number(r.booking_count));
+    }
+    const heatmap = [];
+    for (let h = 6; h <= 22; h++) {
+      const label = `${String(h).padStart(2, "0")}:00`;
+      heatmap.push({ hour: label, booking_count: hourMap.get(label) ?? 0 });
+    }
+
+    res.json(heatmap);
+  } catch (err) {
+    console.error("[sport-center] GET /heatmap error:", err);
+    res.status(500).json({ error: "Gagal memuat heatmap" });
+  }
+});
+
 router.get("/facilities", async (req, res) => {
   if (!await requireAdmin(req, res)) return;
   try {
@@ -1686,6 +1884,7 @@ router.get("/profitability", async (req, res) => {
       facilityBookingRes,
       facilityExpenseRes,
       expenseByCategoryRes,
+      facilityOccupancyRes,
     ] = await Promise.all([
       // Revenue Booking dari accounting_entries
       db.execute(sql`
@@ -1815,6 +2014,21 @@ router.get("/profitability", async (req, res) => {
         GROUP BY COALESCE(expense_category, 'other')
         ORDER BY amount DESC
       `),
+      // FASE 6D-C: Occupied hours per facility (jam aktual dari booking)
+      db.execute(sql`
+        SELECT
+          b.facility_id,
+          COALESCE(SUM(b.duration_hours), 0)  AS occupied_hours,
+          COALESCE(MAX(f.capacity), 1)         AS capacity
+        FROM sport_bookings b
+        LEFT JOIN sport_facilities f ON f.id = b.facility_id
+        WHERE b.status NOT IN ('cancelled')
+          AND (${cId}::int IS NULL OR b.company_id = ${cId})
+          AND (${from}::date IS NULL OR b.booking_date >= ${from}::date)
+          AND (${to}::date IS NULL OR b.booking_date <= ${to}::date)
+          AND (${facilityId}::int IS NULL OR b.facility_id = ${facilityId})
+        GROUP BY b.facility_id
+      `),
     ]);
 
     const revenueBooking = Number((revenueBookingRes.rows[0] as any)?.amount ?? 0);
@@ -1841,14 +2055,39 @@ router.get("/profitability", async (req, res) => {
       if (r.facility_id != null) expenseByFacility.set(Number(r.facility_id), Number(r.expense ?? 0));
     }
 
+    // FASE 6D-C: Real occupancy per facility (jam aktual)
+    interface OccupancyRow { facility_id: number | null; occupied_hours: number; capacity: number }
+    const occupancyByFacility = new Map<number, OccupancyRow>();
+    for (const r of facilityOccupancyRes.rows as any[]) {
+      if (r.facility_id != null) {
+        occupancyByFacility.set(Number(r.facility_id), {
+          facility_id: Number(r.facility_id),
+          occupied_hours: Number(r.occupied_hours ?? 0),
+          capacity: Number(r.capacity ?? 1),
+        });
+      }
+    }
+    // Hitung jumlah hari dalam periode untuk available_hours
+    const periodDays = (from && to)
+      ? Math.max(1, Math.round((new Date(to).getTime() - new Date(from).getTime()) / 86_400_000) + 1)
+      : 30;
+
     const facilityProfitability = (facilityBookingRes.rows as any[]).map(r => {
       const fid = r.facility_id != null ? Number(r.facility_id) : null;
       const rev = Number(r.revenue ?? 0);
       const ref = Number(r.refund ?? 0);
       const exp = fid != null ? (expenseByFacility.get(fid) ?? 0) : 0;
       const cnt = Number(r.bookings_count ?? 0);
-      const cap = Number(r.capacity ?? 1);
       const profit = rev - ref - exp;
+
+      // FASE 6D-C: Occupancy berbasis jam aktual
+      const occ = fid != null ? occupancyByFacility.get(fid) : undefined;
+      const occupiedHours = occ?.occupied_hours ?? 0;
+      const cap = occ?.capacity ?? Number(r.capacity ?? 1);
+      // available_hours = kapasitas fasilitas × 14 jam/hari × jumlah hari periode
+      const availableHours = Math.max(cap * 14 * periodDays, 1);
+      const occupancyPct = Math.min(100, Math.round((occupiedHours / availableHours) * 100));
+
       return {
         facility_id: fid,
         facility_name: r.facility_name,
@@ -1858,7 +2097,9 @@ router.get("/profitability", async (req, res) => {
         expense: exp,
         net_revenue: rev - ref,
         net_profit: profit,
-        occupancy_pct: cap > 0 ? Math.min(100, Math.round((cnt / (cap * 30)) * 100)) : 0,
+        occupied_hours: occupiedHours,
+        available_hours: availableHours,
+        occupancy_pct: occupancyPct,
       };
     }).sort((a, b) => b.net_profit - a.net_profit);
 
