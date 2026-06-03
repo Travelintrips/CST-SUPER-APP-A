@@ -419,11 +419,6 @@ async function ensureColumns() {
 }
 ensureColumns().catch(() => {});
 
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 },
-});
-
 const ALLOWED_MIME = new Set([
   "image/jpeg",
   "image/jpg",

@@ -388,6 +388,61 @@ router.patch("/bookings/:id", async (req, res) => {
     `);
     if (!r.rows.length) return res.status(404).json({ error: "Tidak ditemukan" });
     const row = r.rows[0] as Record<string, unknown>;
+
+    // Safety net: jika payment_status di-set ke 'paid' lewat PATCH (bukan POST /payments),
+    // pastikan sport_payment record dan jurnal akuntansi tetap dibuat
+    if (payment_status === 'paid') {
+      const existingPayment = await db.execute(sql`
+        SELECT id FROM sport_payments WHERE booking_id = ${id} LIMIT 1
+      `);
+      if (!existingPayment.rows.length) {
+        const createdById = (req.user as { id: string } | undefined)?.id ?? null;
+        const paymentNumber = await nextPaymentNumber(Number(row.company_id ?? null));
+        const payR = await db.execute(sql`
+          INSERT INTO sport_payments (company_id, booking_id, payment_number, amount, method, status, paid_at, notes)
+          VALUES (${row.company_id ?? null}, ${id}, ${paymentNumber}, ${row.total_amount}, 'cash', 'paid', NOW(), 'Auto-created via PATCH')
+          RETURNING *
+        `);
+        const bTaxAmount = Number(row.tax_amount ?? 0);
+        const bTotalAmount = Number(row.total_amount ?? 0);
+        const bCompanyId = row.company_id != null ? Number(row.company_id) : null;
+        if (bTaxAmount > 0) {
+          postSportCenterBookingWithTax({
+            bookingId: id,
+            bookingCode: String(row.booking_number ?? paymentNumber),
+            customerName: String(row.customer_name ?? ""),
+            facilityName: String(row.facility_name ?? ""),
+            date: String(row.booking_date ?? new Date().toISOString().slice(0, 10)),
+            baseAmount: bTotalAmount,
+            taxAmount: bTaxAmount,
+            createdById,
+            companyId: bCompanyId,
+          }).catch((err: unknown) => console.error('[sport-center] postSportCenterBookingWithTax (PATCH safety net) failed:', err));
+        } else {
+          postSportCenterBooking({
+            bookingId: id,
+            bookingCode: String(row.booking_number ?? paymentNumber),
+            customerName: String(row.customer_name ?? ""),
+            facilityName: String(row.facility_name ?? ""),
+            date: String(row.booking_date ?? new Date().toISOString().slice(0, 10)),
+            totalPrice: bTotalAmount,
+            createdById,
+            companyId: bCompanyId,
+          }).catch((err: unknown) => console.error('[sport-center] postSportCenterBooking (PATCH safety net) failed:', err));
+        }
+        // Audit log untuk auto-payment
+        await db.execute(sql`
+          INSERT INTO sport_audit_logs (company_id, entity_type, entity_id, action, actor, new_data)
+          VALUES (
+            ${bCompanyId}, 'payment', ${(payR.rows[0] as Record<string, unknown>)?.id ?? null},
+            'PAYMENT_AUTO_CREATED_VIA_PATCH', ${createdById},
+            ${JSON.stringify(payR.rows[0])}::jsonb
+          )
+        `);
+        broadcastSportCenterEvent({ module: "sport-center", entity: "payment", action: "created", data: payR.rows[0] as Record<string, unknown>, timestamp: new Date().toISOString() }, bCompanyId as number | undefined);
+      }
+    }
+
     broadcastSportCenterEvent({ module: "sport-center", entity: "booking", action: "updated", data: row, timestamp: new Date().toISOString() });
     void syncBookingUpsert(row as any);
     res.json(row);
@@ -959,7 +1014,7 @@ router.post("/payments", async (req, res) => {
           taxAmount: bTaxAmount,
           createdById,
           companyId: bCompanyId,
-        }).catch(() => {});
+        }).catch((err: unknown) => console.error('[sport-center] postSportCenterBookingWithTax failed:', err));
       } else {
         postSportCenterBooking({
           bookingId: booking_id,
@@ -970,9 +1025,20 @@ router.post("/payments", async (req, res) => {
           totalPrice: bTotalAmount,
           createdById,
           companyId: bCompanyId,
-        }).catch(() => {});
+        }).catch((err: unknown) => console.error('[sport-center] postSportCenterBooking failed:', err));
       }
     }
+
+    // Audit log pembayaran
+    const createdByIdForLog = (req.user as { id: string } | undefined)?.id ?? null;
+    await db.execute(sql`
+      INSERT INTO sport_audit_logs (company_id, entity_type, entity_id, action, actor, new_data)
+      VALUES (
+        ${company_id ?? null}, 'payment', ${row.id ?? null},
+        'PAYMENT_CREATED', ${createdByIdForLog},
+        ${JSON.stringify({ booking_id, amount, method, payment_number: paymentNumber })}::jsonb
+      )
+    `).catch((err: unknown) => console.error('[sport-center] audit log failed:', err));
 
     broadcastSportCenterEvent({ module: "sport-center", entity: "payment", action: "created", data: row, timestamp: new Date().toISOString() }, company_id);
     res.status(201).json(row);
