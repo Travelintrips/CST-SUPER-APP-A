@@ -1,8 +1,11 @@
 import { logger } from "./logger.js";
 import { logNotification, wasRecentlyNotified } from "./notificationLog.js";
+import { getAppConfig } from "./appConfig.js";
 
-const FONNTE_TOKEN = process.env.FONNTE_TOKEN ?? "";
 const FONNTE_URL = "https://api.fonnte.com/send";
+
+// Pre-warm cache so fonnte token is ready from first call
+getAppConfig("FONNTE_TOKEN").catch(() => {});
 
 const DEDUP_WINDOW_MS = parseInt(process.env.WA_DEDUP_WINDOW_MS ?? "1800000", 10);
 
@@ -33,6 +36,7 @@ export async function sendWhatsAppMedia(
   if (!mediaUrl?.trim()) {
     return sendWhatsApp(target, message, opts);
   }
+  const FONNTE_TOKEN = await getAppConfig("FONNTE_TOKEN");
   if (!FONNTE_TOKEN) {
     logger.warn("FONNTE_TOKEN not set — skipping WhatsApp media notification");
     await logNotification({
@@ -132,6 +136,7 @@ export async function sendWhatsApp(
   message: string,
   opts?: { context?: string; refType?: string; refId?: string },
 ): Promise<void> {
+  const FONNTE_TOKEN = await getAppConfig("FONNTE_TOKEN");
   if (!FONNTE_TOKEN) {
     logger.warn("FONNTE_TOKEN not set — skipping WhatsApp notification");
     await logNotification({

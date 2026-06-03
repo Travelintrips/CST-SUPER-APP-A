@@ -22,7 +22,7 @@ import { and, eq, isNull, lte, lt, or } from "drizzle-orm";
 import { logger } from "./logger.js";
 import { getPreferredDomain } from "./domain.js";
 
-const FONNTE_TOKEN = process.env.FONNTE_TOKEN ?? "";
+import { getAppConfig } from "./appConfig.js";
 const FONNTE_URL   = "https://api.fonnte.com/send";
 
 const MAX_RETRIES   = 3;
@@ -41,6 +41,7 @@ async function fonnteRawSend(
   message: string,
   mediaUrl?: string | null,
 ): Promise<{ ok: boolean; errorMsg: string; waMessageId?: string }> {
+  const FONNTE_TOKEN = await getAppConfig("FONNTE_TOKEN");
   if (!FONNTE_TOKEN) {
     return { ok: false, errorMsg: "FONNTE_TOKEN not configured" };
   }

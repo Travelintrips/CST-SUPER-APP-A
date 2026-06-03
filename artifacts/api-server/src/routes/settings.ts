@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { requireAdmin } from "../lib/requireAdmin.js";
+import { invalidateAppConfig } from "../lib/appConfig.js";
 import { getAdminWa, setAdminWa, getAdminGroupWa, setAdminGroupWa, getAdminPhones, setAdminPhones } from "../lib/adminWa.js";
 import { db, portalContentTable } from "@workspace/db";
 import { broadcastToPortal } from "../lib/sseManager.js";
@@ -1021,6 +1022,7 @@ router.put("/app-config/:key", async (req: Request, res: Response) => {
     UPDATE app_config SET value=${value}, description=${description ?? ""}, is_secret=${!!is_secret}, updated_at=NOW()
     WHERE key=${key}
   `);
+  invalidateAppConfig(key);
   return res.json({ ok: true });
 });
 
@@ -1028,6 +1030,7 @@ router.put("/app-config/:key", async (req: Request, res: Response) => {
 router.delete("/app-config/:key", async (req: Request, res: Response) => {
   if (!(await requireAdmin(req, res))) return;
   await db.execute(sql`DELETE FROM app_config WHERE key=${req.params.key}`);
+  invalidateAppConfig(req.params.key);
   return res.json({ ok: true });
 });
 

@@ -8,6 +8,7 @@ import { eq, inArray, and, sql, desc, gte, lte, ilike, or } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminWa } from "../lib/adminWa.js";
+import { getAppConfig } from "../lib/appConfig.js";
 import { getWaTemplateConfig, renderTemplate } from "../lib/orderNotification.js";
 import { sendMail, isSmtpConfigured } from "../lib/mailer";
 import { requirePortalAuth, requirePortalAdmin, type PortalAuthReq } from "../lib/supabaseAuth";
@@ -1052,7 +1053,6 @@ router.get("/content", async (_req, res) => {
 });
 
 // ── PORTAL ADMIN ENDPOINTS ─────────────────────────────────────────────────
-const PORTAL_ADMIN_KEY = process.env.PORTAL_ADMIN_KEY ?? "";
 const MIN_ADMIN_KEY_LEN = 16;
 
 // Rate limiter: max 5 claim attempts per IP per hour
@@ -1080,6 +1080,7 @@ router.post("/admin/claim", requirePortalAuth, async (req, res) => {
     return res.status(429).json({ message: "Terlalu banyak percobaan. Coba lagi dalam 1 jam." });
   }
 
+  const PORTAL_ADMIN_KEY = await getAppConfig("PORTAL_ADMIN_KEY");
   if (!PORTAL_ADMIN_KEY || PORTAL_ADMIN_KEY.length < MIN_ADMIN_KEY_LEN) {
     return res.status(503).json({ message: "Admin claim belum dikonfigurasi dengan benar." });
   }
@@ -1889,7 +1890,7 @@ router.put("/admin/freight-rates", requirePortalAdmin, async (req, res) => {
 // POST /api/portal/admin/fix-jasa-names — one-time: strip 'Jasa ' prefix from product names
 router.post("/admin/fix-jasa-names", async (req, res) => {
   const key = req.headers["x-admin-key"];
-  const adminKey = process.env.PORTAL_ADMIN_KEY ?? "";
+  const adminKey = await getAppConfig("PORTAL_ADMIN_KEY");
   if (!adminKey || key !== adminKey) { res.status(401).json({ message: "Unauthorized" }); return; }
   const rows = await db
     .select({ id: productsTable.id, name: productsTable.name })

@@ -1,5 +1,10 @@
 import { Resend } from "resend";
 import { logNotification } from "./notificationLog.js";
+import { getAppConfig, getCachedOrEnvConfig } from "./appConfig.js";
+
+// Pre-warm cache so sync isSmtpConfigured() check is accurate immediately
+getAppConfig("SMTP_PASS").catch(() => {});
+getAppConfig("SMTP_FROM").catch(() => {});
 
 export interface SendMailOptions {
   to: string;
@@ -16,19 +21,19 @@ export interface SendMailOptions {
   }>;
 }
 
-function getResend(): { client: Resend; from: string } {
-  const apiKey = process.env.SMTP_PASS?.trim();
-  const from = (process.env.SMTP_FROM ?? "noreply@cstlogistic.co.id").trim();
+async function getResend(): Promise<{ client: Resend; from: string }> {
+  const apiKey = await getAppConfig("SMTP_PASS");
+  const from = (await getAppConfig("SMTP_FROM", "noreply@cstlogistic.co.id")).trim();
 
   if (!apiKey) {
-    throw new Error("Resend API key missing. Set SMTP_PASS environment variable.");
+    throw new Error("Resend API key missing. Set SMTP_PASS environment variable or add SMTP_PASS to App Config (DB).");
   }
 
   return { client: new Resend(apiKey), from };
 }
 
 export async function sendMail(opts: SendMailOptions): Promise<void> {
-  const { client, from } = getResend();
+  const { client, from } = await getResend();
 
   const attachments = opts.attachments?.map((a) => ({
     filename: a.filename,
@@ -72,5 +77,5 @@ export async function sendMail(opts: SendMailOptions): Promise<void> {
 }
 
 export function isSmtpConfigured(): boolean {
-  return !!(process.env.SMTP_PASS?.trim());
+  return !!getCachedOrEnvConfig("SMTP_PASS");
 }
