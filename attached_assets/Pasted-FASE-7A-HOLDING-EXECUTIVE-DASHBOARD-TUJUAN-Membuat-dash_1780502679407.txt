@@ -1,0 +1,142 @@
+FASE 7A — HOLDING EXECUTIVE DASHBOARD
+
+TUJUAN:
+Membuat dashboard eksekutif lintas perusahaan dan lintas cost center.
+
+JANGAN mengubah modul Sport Center.
+
+=====================================================
+A. AUDIT
+=====================================================
+
+Laporkan:
+
+1. tabel companies
+2. seluruh company aktif
+3. cost_centers aktif
+4. laporan profit-loss existing
+5. laporan balance-sheet existing
+6. laporan cashflow existing
+
+=====================================================
+B. EXECUTIVE API
+=====================================================
+
+Buat endpoint:
+
+GET /api/executive/summary
+
+Response:
+
+{
+  companies: [],
+  revenue_total,
+  expense_total,
+  profit_total,
+  cash_position,
+  top_company,
+  top_cost_center
+}
+
+=====================================================
+C. COMPANY PERFORMANCE
+=====================================================
+
+Group by:
+
+company_id
+
+Output:
+
+Revenue
+Expense
+Profit
+Profit Margin
+
+=====================================================
+D. COST CENTER PERFORMANCE
+=====================================================
+
+Group by:
+
+cost_center_id
+
+Output:
+
+Revenue
+Expense
+Profit
+
+SPORT_CENTER
+LOGISTICS
+TRADING
+SOFTWARE
+GENERAL
+
+=====================================================
+E. TOP RANKING
+=====================================================
+
+Top 5 Company
+
+Top 5 Cost Center
+
+Bottom 5 Cost Center
+
+=====================================================
+F. CASH POSITION
+=====================================================
+
+Hitung:
+
+Kas + Bank
+
+per company
+
+dan consolidated
+
+=====================================================
+G. EXECUTIVE DASHBOARD UI
+=====================================================
+
+Menu baru:
+
+Executive Dashboard
+
+KPI:
+
+Revenue
+Expense
+Profit
+Cash
+
+Chart:
+
+Revenue per Company
+Profit per Cost Center
+Cash Position
+
+=====================================================
+H. VALIDASI
+=====================================================
+
+Pastikan:
+
+Jumlah Profit seluruh company
+=
+jumlah profit consolidated
+
+=====================================================
+I. OUTPUT REPORT
+=====================================================
+
+Laporkan:
+
+1. file yang diubah
+2. endpoint baru
+3. query agregasi
+4. KPI
+5. chart
+6. hasil testing
+
+STOP setelah FASE 7A selesai.
