@@ -5,19 +5,23 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { useCompany } from "@/contexts/CompanyContext";
 import {
   CalendarDays, Users, DollarSign, Clock, TrendingUp,
   Activity, AlertCircle, Building2, Wifi, WifiOff,
   Dumbbell, ShoppingBag, RefreshCw, CloudUpload, CheckCircle2,
   XCircle, Database, BookOpen, Flame, CheckCheck, BarChart2,
-  ArrowDownRight, Zap,
+  ArrowDownRight, Zap, Filter,
 } from "lucide-react";
 import { fetchSportCenterData, type SportCenterSupabaseData } from "@/lib/sportCenterSupabase";
 import { supabase } from "@/lib/supabaseClient";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
+import { useSportCostCenter } from "@/hooks/useSportCostCenter";
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
@@ -77,13 +81,16 @@ export default function SportCenterDashboard() {
   const esRef = useRef<EventSource | null>(null);
   const [realtimeCount, setRealtimeCount] = useState(0);
   const [supabaseConnected, setSupabaseConnected] = useState(false);
+  const { costCenters, selectedId: costCenterId, setSelectedId: setCostCenterId, selectedLabel: costCenterLabel } = useSportCostCenter();
 
   // ── Query 0: KPI Live realtime ────────────────────────────────────────────
   const { data: kpiLive, isLoading: kpiLoading } = useQuery<KpiLiveData>({
-    queryKey: ["sport-center-kpi-live", activeCompanyId],
+    queryKey: ["sport-center-kpi-live", activeCompanyId, costCenterId],
     queryFn: async () => {
-      const qs = activeCompanyId ? `?companyId=${activeCompanyId}` : "";
-      const r = await fetch(`/api/sport-center/kpi-live${qs}`, { credentials: "include" });
+      const qs = new URLSearchParams();
+      if (activeCompanyId) qs.set("companyId", String(activeCompanyId));
+      if (costCenterId) qs.set("costCenterId", String(costCenterId));
+      const r = await fetch(`/api/sport-center/kpi-live?${qs}`, { credentials: "include" });
       if (!r.ok) throw new Error("Gagal memuat KPI live");
       return r.json() as Promise<KpiLiveData>;
     },
@@ -92,10 +99,12 @@ export default function SportCenterDashboard() {
 
   // ── Query Heatmap: Jam Ramai ──────────────────────────────────────────────
   const { data: heatmapData } = useQuery<HeatmapRow[]>({
-    queryKey: ["sport-center-heatmap", activeCompanyId],
+    queryKey: ["sport-center-heatmap", activeCompanyId, costCenterId],
     queryFn: async () => {
-      const qs = activeCompanyId ? `?companyId=${activeCompanyId}` : "";
-      const r = await fetch(`/api/sport-center/heatmap${qs}`, { credentials: "include" });
+      const qs = new URLSearchParams();
+      if (activeCompanyId) qs.set("companyId", String(activeCompanyId));
+      if (costCenterId) qs.set("costCenterId", String(costCenterId));
+      const r = await fetch(`/api/sport-center/heatmap?${qs}`, { credentials: "include" });
       if (!r.ok) throw new Error("Gagal memuat heatmap");
       return r.json() as Promise<HeatmapRow[]>;
     },
@@ -343,6 +352,26 @@ export default function SportCenterDashboard() {
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
+            {/* Cost Center Filter */}
+            <div className="flex items-center gap-1.5">
+              <Filter className="h-3.5 w-3.5 text-gray-400" />
+              <Select
+                value={costCenterId != null ? String(costCenterId) : "__all__"}
+                onValueChange={v => setCostCenterId(v === "__all__" ? null : Number(v))}
+              >
+                <SelectTrigger className="h-7 w-44 bg-gray-800 border-gray-700 text-gray-200 text-xs">
+                  <SelectValue placeholder="Semua Cost Center" />
+                </SelectTrigger>
+                <SelectContent className="bg-gray-800 border-gray-700">
+                  <SelectItem value="__all__" className="text-xs text-gray-200">Semua Cost Center</SelectItem>
+                  {costCenters.map(cc => (
+                    <SelectItem key={cc.id} value={String(cc.id)} className="text-xs text-gray-200">
+                      {cc.code} — {cc.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             {supabaseConnected ? (
               <Badge className="bg-emerald-900/40 text-emerald-300 border-emerald-600 text-xs gap-1">
                 <Wifi className="h-3 w-3" /> Realtime aktif
@@ -355,6 +384,11 @@ export default function SportCenterDashboard() {
             {realtimeCount > 0 && (
               <Badge className="bg-blue-900/40 text-blue-300 border-blue-600 text-xs gap-1">
                 <Activity className="h-3 w-3" /> {realtimeCount} update
+              </Badge>
+            )}
+            {costCenterId != null && (
+              <Badge className="bg-indigo-900/40 text-indigo-300 border-indigo-700 text-xs gap-1">
+                <Filter className="h-3 w-3" /> {costCenterLabel}
               </Badge>
             )}
           </div>

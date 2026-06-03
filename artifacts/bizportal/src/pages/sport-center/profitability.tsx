@@ -8,18 +8,22 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { useCompany } from "@/contexts/CompanyContext";
 import {
   TrendingUp, TrendingDown, DollarSign, Users, CalendarDays,
   RefreshCw, BarChart2, ArrowUpRight, ArrowDownRight, Activity,
-  Trophy, Target, Percent, Zap,
+  Trophy, Target, Percent, Zap, Filter,
 } from "lucide-react";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell,
 } from "recharts";
+import { useSportCostCenter } from "@/hooks/useSportCostCenter";
 
 // ─── Formatters ──────────────────────────────────────────────────────────────
 
@@ -158,6 +162,8 @@ export default function SportCenterProfitability() {
   const [queryFrom, setQueryFrom] = useState(firstOfYear);
   const [queryTo, setQueryTo] = useState(today);
 
+  const { costCenters, selectedId: costCenterId, setSelectedId: setCostCenterId, selectedLabel: costCenterLabel } = useSportCostCenter();
+
   // ── FASE 6D-E: SSE live update ────────────────────────────────────────────
   useEffect(() => {
     const qs = activeCompanyId ? `?companyId=${activeCompanyId}` : "";
@@ -176,10 +182,11 @@ export default function SportCenterProfitability() {
   }, [activeCompanyId, qc]);
 
   const { data, isLoading, refetch } = useQuery<ProfitData>({
-    queryKey: ["sc-profitability-6c", activeCompanyId, queryFrom, queryTo],
+    queryKey: ["sc-profitability-6c", activeCompanyId, queryFrom, queryTo, costCenterId],
     queryFn: async () => {
       const qs = new URLSearchParams({ from: queryFrom, to: queryTo });
       if (activeCompanyId) qs.set("company_id", String(activeCompanyId));
+      if (costCenterId != null) qs.set("cost_center_id", String(costCenterId));
       const r = await fetch(`/api/sport-center/profitability?${qs}`, { credentials: "include" });
       if (!r.ok) throw new Error("Gagal memuat profitabilitas");
       return r.json();
@@ -235,9 +242,35 @@ export default function SportCenterProfitability() {
                 <Input type="date" value={to} onChange={e => setTo(e.target.value)}
                   className="bg-gray-800 border-gray-700 text-white h-8 w-36" />
               </div>
+              <div className="space-y-1">
+                <Label className="text-gray-400 text-xs flex items-center gap-1">
+                  <Filter className="h-3 w-3" /> Cost Center
+                </Label>
+                <Select
+                  value={costCenterId != null ? String(costCenterId) : "__all__"}
+                  onValueChange={v => setCostCenterId(v === "__all__" ? null : Number(v))}
+                >
+                  <SelectTrigger className="h-8 w-52 bg-gray-800 border-gray-700 text-gray-200 text-xs">
+                    <SelectValue placeholder="Semua Cost Center" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-gray-800 border-gray-700">
+                    <SelectItem value="__all__" className="text-xs text-gray-200">Semua Cost Center</SelectItem>
+                    {costCenters.map(cc => (
+                      <SelectItem key={cc.id} value={String(cc.id)} className="text-xs text-gray-200">
+                        {cc.code} — {cc.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <Button size="sm" onClick={handleApply} className="bg-emerald-700 hover:bg-emerald-600 text-white">
                 Terapkan
               </Button>
+              {costCenterId != null && (
+                <Badge className="bg-indigo-900/40 text-indigo-300 border-indigo-700 text-xs gap-1 self-end mb-0.5">
+                  <Filter className="h-3 w-3" /> {costCenterLabel}
+                </Badge>
+              )}
             </div>
           </CardContent>
         </Card>
