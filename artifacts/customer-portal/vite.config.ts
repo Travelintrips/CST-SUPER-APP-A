@@ -80,7 +80,7 @@ export default defineConfig({
       ],
     },
     hmr: process.env.REPLIT_DEV_DOMAIN
-      ? { clientPort: Number(process.env.PORT ?? port), host: process.env.REPLIT_DEV_DOMAIN }
+      ? { clientPort: 443, host: process.env.REPLIT_DEV_DOMAIN, protocol: "wss" }
       : true,
     proxy: {
       "/api": {
