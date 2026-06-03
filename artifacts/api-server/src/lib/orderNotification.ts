@@ -799,6 +799,9 @@ const DEFAULT_TPL = {
       "Qty: {{quantityDisplay}}",
       "Subtotal: {{subtotalDisplay}} | PPN: {{taxAmountDisplay}}",
       "Total: *{{grandTotal}}* | Jatuh Tempo: {{dueStr}}",
+      "{{#if invoiceUrl}}",
+      "🔗 Link Invoice: {{invoiceUrl}}",
+      "{{/if}}",
       "_{{timestamp}}_",
     ].join("\n"),
     delivery_completed: [

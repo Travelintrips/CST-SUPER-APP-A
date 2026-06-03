@@ -32,6 +32,7 @@ import {
   sendVendorOrderStatusChangeNotification,
   sendLogisticOrderStatusCustomerNotification,
   sendLogisticOperationalStatusNotification,
+  sendInvoiceIssuedNotification,
 } from "../lib/orderNotification";
 import { generateShortLink } from "../lib/shortLink.js";
 import { getPreferredDomain } from "../lib/domain.js";
@@ -1876,6 +1877,49 @@ logisticOrdersRouter.post("/:id/delivery/:phase", async (req: Request, res: Resp
         cfg.emoji,
         adminWa,
       );
+
+      if (phase === "invoice-issued") {
+        const [salesDoc] = await db
+          .select({
+            docNumber: salesDocumentsTable.docNumber,
+            invoiceNumber: salesDocumentsTable.invoiceNumber,
+            customerName: salesDocumentsTable.customerName,
+            grandTotal: salesDocumentsTable.grandTotal,
+            totalAmount: salesDocumentsTable.totalAmount,
+            dueDate: salesDocumentsTable.dueDate,
+          })
+          .from(salesDocumentsTable)
+          .where(eq(salesDocumentsTable.logisticOrderId, id))
+          .limit(1);
+
+        if (salesDoc) {
+          let invoiceUrl: string | undefined;
+          const domain = getPreferredDomain();
+          const [invLink] = await db
+            .select({ token: customerInvoiceLinksTable.token })
+            .from(customerInvoiceLinksTable)
+            .where(eq(customerInvoiceLinksTable.orderId, id))
+            .limit(1);
+          if (invLink?.token && domain) {
+            invoiceUrl = `https://${domain}/customer-invoice/${invLink.token}`;
+          }
+          const invNumber = salesDoc.invoiceNumber ?? salesDoc.docNumber;
+          const grandTotal = Number(salesDoc.grandTotal ?? salesDoc.totalAmount ?? 0);
+          const dueStr = salesDoc.dueDate
+            ? new Date(salesDoc.dueDate).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })
+            : "—";
+          await sendInvoiceIssuedNotification(
+            order.orderNumber,
+            invNumber,
+            salesDoc.customerName,
+            grandTotal,
+            dueStr,
+            customerPhone ?? null,
+            adminWa ?? null,
+            { invoiceUrl, orderId: id },
+          );
+        }
+      }
     } catch { /* non-fatal */ }
   })();
 
