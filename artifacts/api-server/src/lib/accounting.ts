@@ -40,7 +40,12 @@ export interface PostingInput {
     | "grn_receipt"
     | "reversal"
     | "wh_transfer"
-    | "sport_center_booking";
+    | "sport_center_booking"
+    | "sport_center_booking_reversal"
+    | "sport_center_booking_refund"
+    | "sport_center_refund"
+    | "sport_center_membership"
+    | "sport_center_operational_expense";
   sourceId?: number | null;
   createdById?: string | null;
   companyId?: number | null;
@@ -277,6 +282,12 @@ export async function postPurchaseBill(args: {
   taxAccountId: number | null;
   createdById?: string | null;
   companyId?: number | null;
+  /** Sport Center: cost center ID resolved from SPORT_CENTER code */
+  costCenterId?: number | null;
+  /** Sport Center: links entry ke fasilitas spesifik */
+  facilityId?: number | null;
+  /** Sport Center: expense category dari classifyExpense() */
+  expenseCategory?: string | null;
 }): Promise<void> {
   try {
     const settings = await ensureAccountingSettings(args.companyId ?? undefined);
@@ -383,6 +394,10 @@ export async function postPurchaseBill(args: {
         source: "purchase_bill",
         sourceId: args.purchaseDocId,
         createdById: args.createdById ?? null,
+        companyId: args.companyId ?? null,
+        costCenterId: args.costCenterId ?? null,
+        facilityId: args.facilityId ?? null,
+        expenseCategory: args.expenseCategory ?? null,
         lines,
       },
       "PUR",
