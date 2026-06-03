@@ -3,8 +3,6 @@
 
 import { ReplitConnectors } from "@replit/connectors-sdk";
 
-const SHEETS_BASE = "https://sheets.googleapis.com";
-
 function getConnectors() {
   return new ReplitConnectors();
 }
@@ -25,6 +23,12 @@ async function proxyRequest(
     throw new Error(`Google Sheets API error ${res.status}: ${text}`);
   }
   return res.json();
+}
+
+// Encode range: nama sheet dengan spasi harus pakai 'quotes'!A:Z
+// mis. "Chart of Accounts" → %27Chart%20of%20Accounts%27!A:Z
+function rangeParam(sheetName: string, cols = "A:Z"): string {
+  return encodeURIComponent(`'${sheetName}'!${cols}`);
 }
 
 export async function createSpreadsheet(title: string): Promise<{ spreadsheetId: string; spreadsheetUrl: string }> {
@@ -54,10 +58,22 @@ export async function getSpreadsheetMeta(spreadsheetId: string): Promise<{ title
   };
 }
 
-// Google Sheets API membutuhkan nama sheet dengan spasi dibungkus single quotes
-// mis. 'Chart of Accounts' → %27Chart%20of%20Accounts%27
-function sheetRange(sheetName: string): string {
-  return encodeURIComponent(`'${sheetName}'`);
+// Pastikan semua tab yang dibutuhkan ada di spreadsheet (buat jika belum ada)
+export async function ensureSheets(spreadsheetId: string, sheetNames: string[]): Promise<void> {
+  const meta = await getSpreadsheetMeta(spreadsheetId);
+  const existing = new Set(meta.sheets);
+  const toAdd = sheetNames.filter((n) => !existing.has(n));
+  if (toAdd.length === 0) return;
+  await proxyRequest(`/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
+    method: "POST",
+    body: {
+      requests: toAdd.map((title, i) => ({
+        addSheet: {
+          properties: { title, index: sheetNames.indexOf(title) + i },
+        },
+      })),
+    },
+  });
 }
 
 export async function clearAndWriteSheet(
@@ -65,19 +81,16 @@ export async function clearAndWriteSheet(
   sheetName: string,
   rows: unknown[][],
 ): Promise<void> {
-  // Clear first
-  await proxyRequest(`/v4/spreadsheets/${spreadsheetId}/values/${sheetRange(sheetName)}:clear`, {
-    method: "POST",
-    body: {},
-  });
-  if (rows.length === 0) return;
-  // Write
+  // Clear dulu — gunakan format 'Sheet Name'!A:Z
   await proxyRequest(
-    `/v4/spreadsheets/${spreadsheetId}/values/${sheetRange(sheetName)}?valueInputOption=USER_ENTERED`,
-    {
-      method: "PUT",
-      body: { values: rows },
-    },
+    `/v4/spreadsheets/${spreadsheetId}/values/${rangeParam(sheetName)}:clear`,
+    { method: "POST", body: {} },
+  );
+  if (rows.length === 0) return;
+  // Tulis data
+  await proxyRequest(
+    `/v4/spreadsheets/${spreadsheetId}/values/${rangeParam(sheetName)}?valueInputOption=USER_ENTERED`,
+    { method: "PUT", body: { values: rows } },
   );
 }
 
@@ -86,7 +99,7 @@ export async function readSheet(
   sheetName: string,
 ): Promise<string[][]> {
   const data = await proxyRequest(
-    `/v4/spreadsheets/${spreadsheetId}/values/${sheetRange(sheetName)}`,
+    `/v4/spreadsheets/${spreadsheetId}/values/${rangeParam(sheetName)}`,
   ) as { values?: string[][] };
   return data.values ?? [];
 }

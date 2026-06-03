@@ -4,6 +4,7 @@ import {
   createSpreadsheet,
   clearAndWriteSheet,
   readSheet,
+  ensureSheets,
 } from "../lib/googleSheets.js";
 import {
   db,
@@ -2775,6 +2776,10 @@ router.post("/gsheet/push", async (req, res) => {
 
   const spreadsheetId = settings?.gsheetSpreadsheetId;
   if (!spreadsheetId) return res.status(400).json({ message: "Spreadsheet belum dikonfigurasi. Jalankan setup terlebih dahulu." });
+
+  // Pastikan semua tab yang dibutuhkan ada (buat jika belum ada)
+  const REQUIRED_SHEETS = ["Chart of Accounts", "Journal Entries", "Entry Lines", "Trial Balance"];
+  await ensureSheets(spreadsheetId, REQUIRED_SHEETS);
 
   const scope = companyId ? eq(chartOfAccountsTable.companyId, companyId) : isNull(chartOfAccountsTable.companyId);
 
