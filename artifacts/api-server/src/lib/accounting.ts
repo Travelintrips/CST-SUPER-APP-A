@@ -45,6 +45,10 @@ export interface PostingInput {
   createdById?: string | null;
   companyId?: number | null;
   costCenterId?: number | null;
+  /** Sport Center: links entry ke fasilitas spesifik */
+  facilityId?: number | null;
+  /** Kategori expense hasil classifyExpense() */
+  expenseCategory?: string | null;
   lines: PostingLine[];
 }
 
@@ -141,6 +145,8 @@ export async function postEntry(
       createdById: input.createdById ?? null,
       companyId: input.companyId ?? 1,
       costCenterId: input.costCenterId ?? null,
+      facilityId: input.facilityId ?? null,
+      expenseCategory: input.expenseCategory ?? null,
     })
     .onConflictDoNothing()
     .returning();

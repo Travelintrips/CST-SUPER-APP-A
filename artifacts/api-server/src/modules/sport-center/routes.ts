@@ -1835,4 +1835,138 @@ router.get("/profitability", async (req, res) => {
   }
 });
 
+// ── FASE 6C: EXPENSE GROUPING ────────────────────────────────────────────────
+
+router.get("/expense-grouping", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const cId = req.query.companyId ? Number(req.query.companyId) : null;
+    const from = req.query.from ? String(req.query.from) : null;
+    const to = req.query.to ? String(req.query.to) : null;
+    const facilityId = req.query.facilityId ? Number(req.query.facilityId) : null;
+    const category = req.query.category ? String(req.query.category) : null;
+
+    const rows = await db.execute(sql`
+      SELECT
+        ae.facility_id,
+        sf.name                          AS facility_name,
+        ae.expense_category              AS category,
+        TO_CHAR(ae.date, 'YYYY-MM')      AS month,
+        COALESCE(SUM(ae.total_debit), 0) AS total_amount,
+        COUNT(*)                         AS entry_count
+      FROM accounting_entries ae
+      LEFT JOIN sport_facilities sf ON sf.id = ae.facility_id
+      WHERE ae.source = 'sport_center_operational_expense'
+        AND ae.status = 'posted'
+        AND (${cId}::int IS NULL        OR ae.company_id    = ${cId})
+        AND (${from}::date IS NULL       OR ae.date         >= ${from}::date)
+        AND (${to}::date IS NULL         OR ae.date         <= ${to}::date)
+        AND (${facilityId}::int IS NULL  OR ae.facility_id  = ${facilityId})
+        AND (${category}::text IS NULL   OR ae.expense_category = ${category})
+      GROUP BY ae.facility_id, sf.name, ae.expense_category, TO_CHAR(ae.date, 'YYYY-MM')
+      ORDER BY month ASC, total_amount DESC
+    `);
+
+    res.json(rows.rows);
+  } catch (err) {
+    console.error("[sport-center] GET /expense-grouping error:", err);
+    res.status(500).json({ error: "Gagal memuat expense grouping" });
+  }
+});
+
+// ── FASE 6C: RECURRING EXPENSES CRUD ─────────────────────────────────────────
+
+router.get("/recurring-expenses", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const cId = req.query.companyId ? Number(req.query.companyId) : null;
+    const facilityId = req.query.facilityId ? Number(req.query.facilityId) : null;
+    const rows = await db.execute(sql`
+      SELECT re.*, sf.name AS facility_name
+      FROM recurring_expenses re
+      LEFT JOIN sport_facilities sf ON sf.id = re.facility_id
+      WHERE (${cId}::int IS NULL       OR re.company_id  = ${cId})
+        AND (${facilityId}::int IS NULL OR re.facility_id = ${facilityId})
+      ORDER BY re.is_active DESC, re.next_run ASC NULLS LAST, re.name ASC
+    `);
+    res.json(rows.rows);
+  } catch (err) {
+    console.error("[sport-center] GET /recurring-expenses error:", err);
+    res.status(500).json({ error: "Gagal memuat recurring expenses" });
+  }
+});
+
+router.post("/recurring-expenses", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const {
+      company_id, facility_id, name, description, amount,
+      frequency = "monthly", next_run, is_active = true, category,
+    } = req.body as Record<string, unknown>;
+
+    if (!name) return res.status(400).json({ error: "name wajib diisi" });
+    if (amount === undefined || amount === null) return res.status(400).json({ error: "amount wajib diisi" });
+
+    // Validasi: Sport Center expense wajib punya facility_id
+    if (!facility_id) {
+      return res.status(400).json({ error: "facility_id wajib diisi untuk recurring expense Sport Center" });
+    }
+
+    const r = await db.execute(sql`
+      INSERT INTO recurring_expenses
+        (company_id, facility_id, name, description, amount, frequency, next_run, is_active, category)
+      VALUES
+        (${company_id ?? 1}, ${facility_id}, ${name}, ${description ?? null},
+         ${String(amount)}, ${frequency}, ${next_run ?? null}, ${is_active}, ${category ?? null})
+      RETURNING *
+    `);
+    res.status(201).json(r.rows[0]);
+  } catch (err) {
+    console.error("[sport-center] POST /recurring-expenses error:", err);
+    res.status(500).json({ error: "Gagal membuat recurring expense" });
+  }
+});
+
+router.put("/recurring-expenses/:id", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const id = Number(req.params.id);
+    const {
+      name, description, amount, frequency, next_run, is_active, facility_id, category,
+    } = req.body as Record<string, unknown>;
+
+    const r = await db.execute(sql`
+      UPDATE recurring_expenses SET
+        name        = COALESCE(${name ?? null}, name),
+        description = COALESCE(${description ?? null}, description),
+        amount      = COALESCE(${amount !== undefined ? String(amount) : null}, amount::text)::numeric,
+        frequency   = COALESCE(${frequency ?? null}, frequency),
+        next_run    = COALESCE(${next_run ?? null}, next_run),
+        is_active   = COALESCE(${is_active ?? null}, is_active),
+        facility_id = COALESCE(${facility_id ?? null}, facility_id),
+        category    = COALESCE(${category ?? null}, category),
+        updated_at  = NOW()
+      WHERE id = ${id}
+      RETURNING *
+    `);
+    if (!r.rows.length) return res.status(404).json({ error: "Not found" });
+    res.json(r.rows[0]);
+  } catch (err) {
+    console.error("[sport-center] PUT /recurring-expenses/:id error:", err);
+    res.status(500).json({ error: "Gagal update recurring expense" });
+  }
+});
+
+router.delete("/recurring-expenses/:id", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const id = Number(req.params.id);
+    await db.execute(sql`DELETE FROM recurring_expenses WHERE id = ${id}`);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[sport-center] DELETE /recurring-expenses/:id error:", err);
+    res.status(500).json({ error: "Gagal hapus recurring expense" });
+  }
+});
+
 export default router;
