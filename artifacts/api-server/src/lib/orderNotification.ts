@@ -809,6 +809,18 @@ const DEFAULT_TPL = {
       "Customer: {{customerName}} | Rute: {{route}}",
       "_{{timestamp}}_",
     ].join("\n"),
+    truck_assigned: [
+      "🚚 *[TRUK DI-ASSIGN] {{orderNumber}}*",
+      "━━━━━━━━━━━━━━━━━━",
+      "Customer  : *{{customerName}}*",
+      "Rute      : {{route}}",
+      "━━━━━━━━━━━━━━━━━━",
+      "🚛 Vendor Truk : *{{truckVendorName}}* ({{truckSourceLabel}})",
+      "💰 Harga Produk: {{productPrice}}",
+      "🚚 Harga Truk  : {{truckPrice}}",
+      "💵 *Total       : {{totalPrice}}*",
+      "_{{timestamp}}_",
+    ].join("\n"),
   },
   customer: {
     order_new: ["✅ *PESANAN ANDA DITERIMA*","━━━━━━━━━━━━━━━━━━","Halo *{{customerName}}*,","","Terima kasih telah mempercayakan kepercayaan Anda kepada CST Logistics.","","No. Order       : *{{orderNumber}}*","Tanggal         : {{tanggal}}","Jam             : {{jam}}","Status          : Menunggu Konfirmasi","Rute            : {{route}}","Kategori Barang : {{commodity}}","Berat           : {{grossWeightDisplay}}","Volume          : {{volumeDisplay}}","{{#if product}}","🛍️ Produk       :","{{productList}}","{{/if}}","Layanan         : {{serviceList}}","Tgl Butuh       : {{requiredDate}}","━━━━━━━━━━━━━━━━━━","💵 Subtotal      : Rp {{subtotalEst}}","🧾 {{taxLabel}}  : Rp {{taxEst}}","💰 Total Est.    : Rp {{totalEst}}","━━━━━━━━━━━━━━━━━━","Tim kami sedang memproses permintaan Anda dan akan segera menghubungi Anda.","","📞 Jakarta: (021) 6241234 | Tangerang: (021) 5591234","","🔗 Pantau status order Anda:","{{trackUrl}}","","_Dikirim: {{timestamp}}_"].join("\n"),
@@ -1351,6 +1363,7 @@ export function getWaDefaultTemplatesFlatMap(): Record<string, string> {
   add("admin_group", "vendor_submission_summary", ag.vendor_submission_summary);
   add("admin_group", "invoice_issued", ag.invoice_issued);
   add("admin_group", "delivery_completed", ag.delivery_completed);
+  add("admin_group", "truck_assigned", ag.truck_assigned);
 
   // customer
   const cu = DEFAULT_TPL.customer;
@@ -1972,7 +1985,7 @@ export async function sendDriverAssignedNotification(
   }
 }
 
-// ── Truck Assigned (info vendor truk ke customer) ─────────────────────────────
+// ── Truck Assigned (info vendor truk ke customer + admin group) ───────────────
 export async function sendTruckAssignedCustomerWa(
   order: LogisticOrderData,
   extras: {
@@ -1983,8 +1996,6 @@ export async function sendTruckAssignedCustomerWa(
     totalPrice: number | null;
   },
 ): Promise<void> {
-  const tpl = await getWaTemplateConfig("customer", "truck_assigned", DEFAULT_TPL.customer.truck_assigned);
-  if (!order.phone) return;
   const fmt = (n: number | null) => n != null ? `Rp ${Math.round(n).toLocaleString("id-ID")}` : "—";
   const vars = {
     truckVendorName: extras.truckVendorName,
@@ -1993,9 +2004,23 @@ export async function sendTruckAssignedCustomerWa(
     productPrice: fmt(extras.productPrice),
     totalPrice: fmt(extras.totalPrice),
   };
-  sendWhatsApp(order.phone, renderWf(tpl, order, vars)).catch((e: unknown) =>
-    logger.error({ e }, "WA truck_assigned (customer) failed"),
-  );
+
+  const [custTpl, groupTpl, adminGroupWa] = await Promise.all([
+    getWaTemplateConfig("customer", "truck_assigned", DEFAULT_TPL.customer.truck_assigned),
+    getWaTemplateConfig("admin_group", "truck_assigned", DEFAULT_TPL.admin_group.truck_assigned),
+    getAdminGroupWa(),
+  ]);
+
+  if (order.phone) {
+    sendWhatsApp(order.phone, renderWf(custTpl, order, vars)).catch((e: unknown) =>
+      logger.error({ e }, "WA truck_assigned (customer) failed"),
+    );
+  }
+  if (adminGroupWa) {
+    sendWhatsApp(adminGroupWa, renderWf(groupTpl, order, vars)).catch((e: unknown) =>
+      logger.error({ e }, "WA truck_assigned (admin_group) failed"),
+    );
+  }
 }
 
 // ── Shipment Update (update status pengiriman ke customer + admin) ────────────
