@@ -148,6 +148,7 @@ async function applyRuntimeMigrations(): Promise<void> {
     `ALTER TABLE accounting_taxes ADD COLUMN IF NOT EXISTS company_id INTEGER`,
     `ALTER TABLE accounting_settings ADD COLUMN IF NOT EXISTS company_id INTEGER`,
     `ALTER TABLE accounting_settings ADD COLUMN IF NOT EXISTS grir_account_id INTEGER REFERENCES chart_of_accounts(id) ON DELETE SET NULL`,
+    `ALTER TABLE accounting_settings ADD COLUMN IF NOT EXISTS gsheet_spreadsheet_id TEXT`,
   ];
   for (const q of [...companyColMigrations, ...accountingColMigrations]) {
     try { await db.execute(sql.raw(q)); } catch { /* column/index already exists or duplicate */ }
