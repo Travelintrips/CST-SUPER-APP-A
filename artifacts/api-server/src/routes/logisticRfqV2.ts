@@ -33,6 +33,7 @@ import {
   renderTemplate,
   sendVendorSelectedAdminWa,
   sendVendorAwardedWa,
+  sendTruckAssignedCustomerWa,
   type LogisticOrderData,
 } from "../lib/orderNotification.js";
 
@@ -1744,6 +1745,20 @@ logisticRfqV2Router.post("/rfq/:rfqId/assign-truck", async (req: Request, res: R
     const tv = tvResult.rows[0];
     if (tv) truckVendorName = (tv as any).name ?? null;
   }
+
+  // Kirim WA ke customer
+  if (order.phone) {
+    sendTruckAssignedCustomerWa(buildOrderData(order), {
+      truckVendorName: truckVendorName ?? (source === "internal" ? "Vendor Internal" : "Vendor Eksternal"),
+      truckSource: source,
+      truckPrice: resolvedTruckPrice,
+      productPrice,
+      totalPrice,
+    }).catch((e: unknown) => logger.error({ e }, "sendTruckAssignedCustomerWa failed"));
+  }
+
+  await logActivity(rfqId, "admin", "Admin", "truck_assigned",
+    `Vendor truk (${source}) di-assign: ${truckVendorName ?? "—"} | Truk: ${fmtRp(resolvedTruckPrice)} | Total: ${fmtRp(totalPrice)}`);
 
   return res.json({
     ok: true,
