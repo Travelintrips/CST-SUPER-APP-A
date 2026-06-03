@@ -1670,6 +1670,7 @@ router.get("/profitability", async (req, res) => {
   if (!await requireAdmin(req, res)) return;
   try {
     const cId = req.query.company_id ? Number(req.query.company_id) : (req.query.companyId ? Number(req.query.companyId) : null);
+    const costCenterId = req.query.cost_center_id ? Number(req.query.cost_center_id) : null;
     const from = (req.query.from as string) ?? null;
     const to = (req.query.to as string) ?? null;
     const facilityId = req.query.facility_id ? Number(req.query.facility_id) : null;
@@ -1681,8 +1682,10 @@ router.get("/profitability", async (req, res) => {
       opExpenseRes,
       bookingsCountRes,
       activeMembersRes,
-      topFacilitiesRes,
       revenueByMonthRes,
+      facilityBookingRes,
+      facilityExpenseRes,
+      expenseByCategoryRes,
     ] = await Promise.all([
       // Revenue Booking dari accounting_entries
       db.execute(sql`
@@ -1691,6 +1694,7 @@ router.get("/profitability", async (req, res) => {
         WHERE source = 'sport_center_booking'
           AND status = 'posted'
           AND (${cId}::int IS NULL OR company_id = ${cId})
+          AND (${costCenterId}::int IS NULL OR cost_center_id = ${costCenterId})
           AND (${from}::date IS NULL OR date >= ${from}::date)
           AND (${to}::date IS NULL OR date <= ${to}::date)
       `),
@@ -1701,6 +1705,7 @@ router.get("/profitability", async (req, res) => {
         WHERE source = 'sport_center_membership'
           AND status = 'posted'
           AND (${cId}::int IS NULL OR company_id = ${cId})
+          AND (${costCenterId}::int IS NULL OR cost_center_id = ${costCenterId})
           AND (${from}::date IS NULL OR date >= ${from}::date)
           AND (${to}::date IS NULL OR date <= ${to}::date)
       `),
@@ -1711,6 +1716,7 @@ router.get("/profitability", async (req, res) => {
         WHERE source IN ('sport_center_refund', 'sport_center_booking_refund', 'sport_center_booking_reversal')
           AND status = 'posted'
           AND (${cId}::int IS NULL OR company_id = ${cId})
+          AND (${costCenterId}::int IS NULL OR cost_center_id = ${costCenterId})
           AND (${from}::date IS NULL OR date >= ${from}::date)
           AND (${to}::date IS NULL OR date <= ${to}::date)
       `),
@@ -1721,6 +1727,7 @@ router.get("/profitability", async (req, res) => {
         WHERE source = 'sport_center_operational_expense'
           AND status = 'posted'
           AND (${cId}::int IS NULL OR company_id = ${cId})
+          AND (${costCenterId}::int IS NULL OR cost_center_id = ${costCenterId})
           AND (${from}::date IS NULL OR date >= ${from}::date)
           AND (${to}::date IS NULL OR date <= ${to}::date)
       `),
@@ -1740,31 +1747,7 @@ router.get("/profitability", async (req, res) => {
         WHERE status = 'active'
           AND (${cId}::int IS NULL OR company_id = ${cId})
       `),
-      // Top facilities — gabung booking revenue dari accounting + booking count
-      db.execute(sql`
-        SELECT
-          b.facility_name,
-          b.facility_id,
-          COUNT(b.id) AS total_bookings,
-          COALESCE(SUM(CASE WHEN ae.source = 'sport_center_booking' AND ae.status = 'posted' THEN ae.total_debit ELSE 0 END), 0) AS revenue,
-          COALESCE(SUM(CASE WHEN ae.source IN ('sport_center_refund','sport_center_booking_refund','sport_center_booking_reversal') AND ae.status = 'posted' THEN ae.total_debit ELSE 0 END), 0) AS refund,
-          COALESCE(MAX(f.capacity), 1) AS capacity
-        FROM sport_bookings b
-        LEFT JOIN accounting_entries ae
-          ON ae.source_id = b.id
-          AND ae.source IN ('sport_center_booking','sport_center_refund','sport_center_booking_refund','sport_center_booking_reversal')
-          AND ae.status = 'posted'
-        LEFT JOIN sport_facilities f ON f.id = b.facility_id
-        WHERE b.status NOT IN ('cancelled')
-          AND (${cId}::int IS NULL OR b.company_id = ${cId})
-          AND (${from}::date IS NULL OR b.booking_date >= ${from}::date)
-          AND (${to}::date IS NULL OR b.booking_date <= ${to}::date)
-          AND (${facilityId}::int IS NULL OR b.facility_id = ${facilityId})
-        GROUP BY b.facility_name, b.facility_id
-        ORDER BY revenue DESC
-        LIMIT 10
-      `),
-      // Revenue per bulan (booking + membership) dari accounting_entries
+      // Revenue per bulan (booking + membership + expense) dari accounting_entries
       db.execute(sql`
         SELECT
           TO_CHAR(date, 'YYYY-MM') AS month,
@@ -1776,10 +1759,61 @@ router.get("/profitability", async (req, res) => {
         WHERE source IN ('sport_center_booking','sport_center_membership','sport_center_operational_expense','sport_center_refund','sport_center_booking_refund','sport_center_booking_reversal')
           AND status = 'posted'
           AND (${cId}::int IS NULL OR company_id = ${cId})
+          AND (${costCenterId}::int IS NULL OR cost_center_id = ${costCenterId})
           AND (${from}::date IS NULL OR date >= ${from}::date)
           AND (${to}::date IS NULL OR date <= ${to}::date)
         GROUP BY TO_CHAR(date, 'YYYY-MM')
         ORDER BY month ASC
+      `),
+      // Facility booking revenue + refund (dari booking join accounting)
+      db.execute(sql`
+        SELECT
+          b.facility_id,
+          b.facility_name,
+          COUNT(DISTINCT b.id) AS bookings_count,
+          COALESCE(MAX(f.capacity), 1) AS capacity,
+          COALESCE(SUM(CASE WHEN ae.source = 'sport_center_booking' AND ae.status = 'posted' THEN ae.total_debit ELSE 0 END), 0) AS revenue,
+          COALESCE(SUM(CASE WHEN ae.source IN ('sport_center_refund','sport_center_booking_refund','sport_center_booking_reversal') AND ae.status = 'posted' THEN ae.total_debit ELSE 0 END), 0) AS refund
+        FROM sport_bookings b
+        LEFT JOIN accounting_entries ae ON ae.source_id = b.id
+          AND ae.source IN ('sport_center_booking','sport_center_refund','sport_center_booking_refund','sport_center_booking_reversal')
+        LEFT JOIN sport_facilities f ON f.id = b.facility_id
+        WHERE b.status NOT IN ('cancelled')
+          AND (${cId}::int IS NULL OR b.company_id = ${cId})
+          AND (${from}::date IS NULL OR b.booking_date >= ${from}::date)
+          AND (${to}::date IS NULL OR b.booking_date <= ${to}::date)
+          AND (${facilityId}::int IS NULL OR b.facility_id = ${facilityId})
+        GROUP BY b.facility_id, b.facility_name
+      `),
+      // Expense per facility dari accounting_entries.facility_id
+      db.execute(sql`
+        SELECT
+          ae.facility_id,
+          COALESCE(SUM(ae.total_debit), 0) AS expense
+        FROM accounting_entries ae
+        WHERE ae.source = 'sport_center_operational_expense'
+          AND ae.status = 'posted'
+          AND (${cId}::int IS NULL OR ae.company_id = ${cId})
+          AND (${costCenterId}::int IS NULL OR ae.cost_center_id = ${costCenterId})
+          AND (${from}::date IS NULL OR ae.date >= ${from}::date)
+          AND (${to}::date IS NULL OR ae.date <= ${to}::date)
+          AND ae.facility_id IS NOT NULL
+        GROUP BY ae.facility_id
+      `),
+      // Expense per category (Expense Category Breakdown)
+      db.execute(sql`
+        SELECT
+          COALESCE(expense_category, 'other') AS category,
+          COALESCE(SUM(total_debit), 0) AS amount
+        FROM accounting_entries
+        WHERE source = 'sport_center_operational_expense'
+          AND status = 'posted'
+          AND (${cId}::int IS NULL OR company_id = ${cId})
+          AND (${costCenterId}::int IS NULL OR cost_center_id = ${costCenterId})
+          AND (${from}::date IS NULL OR date >= ${from}::date)
+          AND (${to}::date IS NULL OR date <= ${to}::date)
+        GROUP BY COALESCE(expense_category, 'other')
+        ORDER BY amount DESC
       `),
     ]);
 
@@ -1788,24 +1822,48 @@ router.get("/profitability", async (req, res) => {
     const refundAmount = Number((refundRes.rows[0] as any)?.amount ?? 0);
     const operationalExpense = Number((opExpenseRes.rows[0] as any)?.amount ?? 0);
     const totalRevenue = revenueBooking + revenueMembership;
-    const grossProfit = totalRevenue - refundAmount;
-    const netProfit = grossProfit - operationalExpense;
+    const netRevenue = totalRevenue - refundAmount;
+    const netProfit = netRevenue - operationalExpense;
+    const profitMarginPct = totalRevenue > 0 ? Math.round((netProfit / totalRevenue) * 10000) / 100 : 0;
 
-    const topFacilities = (topFacilitiesRes.rows as any[]).map(r => {
+    const bookingsCount = Number((bookingsCountRes.rows[0] as any)?.cnt ?? 0);
+
+    // Break-even analysis
+    const monthSet = new Set((revenueByMonthRes.rows as any[]).map(r => r.month));
+    const monthCount = Math.max(monthSet.size, 1);
+    const monthlyExpense = operationalExpense / monthCount;
+    const avgBookingValue = bookingsCount > 0 ? revenueBooking / bookingsCount : 0;
+    const breakEvenBookings = avgBookingValue > 0 ? Math.ceil(monthlyExpense / avgBookingValue) : null;
+
+    // Merge facility revenue + expense
+    const expenseByFacility = new Map<number, number>();
+    for (const r of facilityExpenseRes.rows as any[]) {
+      if (r.facility_id != null) expenseByFacility.set(Number(r.facility_id), Number(r.expense ?? 0));
+    }
+
+    const facilityProfitability = (facilityBookingRes.rows as any[]).map(r => {
+      const fid = r.facility_id != null ? Number(r.facility_id) : null;
       const rev = Number(r.revenue ?? 0);
       const ref = Number(r.refund ?? 0);
-      const cnt = Number(r.total_bookings ?? 0);
+      const exp = fid != null ? (expenseByFacility.get(fid) ?? 0) : 0;
+      const cnt = Number(r.bookings_count ?? 0);
       const cap = Number(r.capacity ?? 1);
+      const profit = rev - ref - exp;
       return {
+        facility_id: fid,
         facility_name: r.facility_name,
-        facility_id: r.facility_id,
-        total_bookings: cnt,
+        bookings_count: cnt,
         revenue: rev,
         refund: ref,
+        expense: exp,
         net_revenue: rev - ref,
+        net_profit: profit,
         occupancy_pct: cap > 0 ? Math.min(100, Math.round((cnt / (cap * 30)) * 100)) : 0,
       };
-    });
+    }).sort((a, b) => b.net_profit - a.net_profit);
+
+    const top5Facilities = facilityProfitability.slice(0, 5);
+    const bottom5Facilities = [...facilityProfitability].sort((a, b) => a.net_profit - b.net_profit).slice(0, 5);
 
     const revenueByMonth = (revenueByMonthRes.rows as any[]).map(r => ({
       month: r.month,
@@ -1817,17 +1875,38 @@ router.get("/profitability", async (req, res) => {
       net_profit: Number(r.booking_revenue ?? 0) + Number(r.membership_revenue ?? 0) - Number(r.refund ?? 0) - Number(r.expense ?? 0),
     }));
 
+    const expenseByCategory = (expenseByCategoryRes.rows as any[]).map(r => ({
+      category: String(r.category ?? "other"),
+      amount: Number(r.amount ?? 0),
+    }));
+
     res.json({
+      // KPI
       revenue_booking: revenueBooking,
       revenue_membership: revenueMembership,
+      total_revenue: totalRevenue,
       refund_amount: refundAmount,
+      net_revenue: netRevenue,
       operational_expense: operationalExpense,
-      gross_profit: grossProfit,
+      gross_profit: netRevenue,           // alias: gross = revenue - refund
       net_profit: netProfit,
-      bookings_count: Number((bookingsCountRes.rows[0] as any)?.cnt ?? 0),
+      profit_margin_pct: profitMarginPct,
+      bookings_count: bookingsCount,
       active_members: Number((activeMembersRes.rows[0] as any)?.cnt ?? 0),
-      top_facilities: topFacilities,
+      // Break-even
+      break_even: {
+        monthly_expense: Math.round(monthlyExpense),
+        avg_booking_value: Math.round(avgBookingValue),
+        break_even_bookings: breakEvenBookings,
+      },
+      // Facility
+      top_facilities: top5Facilities,
+      bottom_facilities: bottom5Facilities,
+      facility_profitability: facilityProfitability,
+      // Time series
       revenue_by_month: revenueByMonth,
+      // Category breakdown
+      expense_by_category: expenseByCategory,
     });
   } catch (err) {
     console.error("[sport-center] GET /profitability error:", err);
