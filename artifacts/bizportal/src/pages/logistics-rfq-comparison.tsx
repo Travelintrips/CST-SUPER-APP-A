@@ -18,8 +18,11 @@ import {
   ArrowLeft, RefreshCw, Star, CheckCircle, XCircle, MessageCircle,
   Clock, Users, TrendingDown, ExternalLink, Copy, AlertCircle, Loader2,
   Send, Phone, DollarSign, Eye, ThumbsUp, ThumbsDown, RotateCcw, Lock,
-  Package, ExternalLink as LinkIcon, Brain, DatabaseZap,
+  Package, ExternalLink as LinkIcon, Brain, DatabaseZap, Truck, ChevronDown,
 } from "lucide-react";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 
 const idr = (n: number | null | undefined) =>
   n == null ? "—" : new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
@@ -180,6 +183,14 @@ function getRankingBadges(vendor: VendorRow, allVendors: VendorRow[], aiScores?:
   return badges;
 }
 
+interface TruckVendor {
+  id: number;
+  name: string;
+  phone: string | null;
+  hasInternalTruck: boolean;
+  internalTruckPrice: number | null;
+}
+
 interface ComparisonData {
   rfqId: number;
   rfqNumber: string;
@@ -200,6 +211,15 @@ interface ComparisonData {
   quoteNotes: string | null;
   finalSellingPrice: number | null;
   freightShipmentId: number | null;
+  // Truck assignment
+  truckVendorId: number | null;
+  truckVendorName: string | null;
+  truckPrice: number | null;
+  truckSource: string | null;
+  productPrice: number | null;
+  totalPrice: number | null;
+  selectedVendorTruckInfo: { hasInternalTruck: boolean; internalTruckPrice: number | null } | null;
+  truckVendors: TruckVendor[];
   stats: {
     total: number; answered: number; pending: number;
     rejected: number; counterOffer: number; expired: number; selected: number;
@@ -228,6 +248,12 @@ export default function LogisticsRfqComparisonPage() {
 
   const [freightConfirmDialog, setFreightConfirmDialog] = useState(false);
   const [sortBy, setSortBy] = useState<"price" | "leadtime" | "stock" | "score" | "margin">("price");
+
+  // Truck assignment state
+  const [truckPanelOpen, setTruckPanelOpen] = useState(false);
+  const [truckSourceSel, setTruckSourceSel] = useState<"internal" | "external">("internal");
+  const [truckVendorSel, setTruckVendorSel] = useState<string>("");
+  const [truckPriceInput, setTruckPriceInput] = useState<string>("");
 
   const { data, isLoading, refetch } = useQuery<ComparisonData>({
     queryKey: ["rfq-comparison", rfqId],
@@ -367,6 +393,40 @@ export default function LogisticsRfqComparisonPage() {
     },
     onError: (e) => toast({ title: "Gagal", description: (e as Error).message, variant: "destructive" }),
   });
+
+  const assignTruckMut = useMutation({
+    mutationFn: async (payload: { source: "internal" | "external"; vendorId?: number; truckPrice?: number }) => {
+      const res = await fetch(`/api/logistic/rfq/${rfqId}/assign-truck`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.message ?? "Gagal assign truck");
+      return d as { truckVendorName: string; truckPrice: number; totalPrice: number; truckSource: string };
+    },
+    onSuccess: (d) => {
+      toast({
+        title: "Vendor Truk Ditetapkan",
+        description: `${d.truckVendorName} — ${idr(d.truckPrice)} · Total: ${idr(d.totalPrice)}`,
+      });
+      setTruckPanelOpen(false);
+      qc.invalidateQueries({ queryKey: ["rfq-comparison", rfqId] });
+    },
+    onError: (e: Error) => toast({ title: "Gagal", description: e.message, variant: "destructive" }),
+  });
+
+  const handleAssignTruck = () => {
+    if (truckSourceSel === "internal") {
+      assignTruckMut.mutate({ source: "internal" });
+    } else {
+      const vid = Number(truckVendorSel);
+      const tp = Number(truckPriceInput);
+      if (!vid) { toast({ title: "Pilih vendor truk terlebih dahulu", variant: "destructive" }); return; }
+      if (!tp || tp <= 0) { toast({ title: "Masukkan harga truk yang valid", variant: "destructive" }); return; }
+      assignTruckMut.mutate({ source: "external", vendorId: vid, truckPrice: tp });
+    }
+  };
 
   const copyLink = useCallback((url: string) => {
     navigator.clipboard.writeText(url).then(() => toast({ title: "Link disalin" }));
@@ -661,6 +721,171 @@ export default function LogisticsRfqComparisonPage() {
             >
               <Send className="w-3.5 h-3.5 mr-1.5" /> Kirim Penawaran ke Customer
             </Button>
+          </div>
+        )}
+
+        {/* ── Truck Assignment Section (muncul setelah vendor produk dipilih) ── */}
+        {hasSelected && (
+          <div className="border border-orange-200 rounded-xl overflow-hidden">
+            {/* Header */}
+            <button
+              className="w-full flex items-center justify-between p-3 bg-orange-50 hover:bg-orange-100 transition-colors"
+              onClick={() => setTruckPanelOpen(p => !p)}
+            >
+              <div className="flex items-center gap-2">
+                <Truck className="w-4 h-4 text-orange-600" />
+                <span className="font-semibold text-sm text-orange-900">Assign Vendor Truk</span>
+                {data.truckVendorName ? (
+                  <span className="ml-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                    ✓ {data.truckVendorName}
+                    <span className="text-green-600 font-normal">· {data.truckSource === "internal" ? "Internal" : "Eksternal"}</span>
+                  </span>
+                ) : (
+                  <span className="ml-1 px-2 py-0.5 rounded-full text-xs bg-orange-100 text-orange-700">Belum diassign</span>
+                )}
+              </div>
+              <ChevronDown className={`w-4 h-4 text-orange-500 transition-transform ${truckPanelOpen ? "rotate-180" : ""}`} />
+            </button>
+
+            {/* Current total summary */}
+            {(data.productPrice != null || data.truckPrice != null) && (
+              <div className="px-4 py-2 bg-orange-50/50 border-t border-orange-100 flex flex-wrap gap-4 text-xs">
+                <span>
+                  <span className="text-muted-foreground">Harga Produk:</span>{" "}
+                  <strong>{data.productPrice != null ? idr(data.productPrice) : "—"}</strong>
+                </span>
+                <span>+</span>
+                <span>
+                  <span className="text-muted-foreground">Harga Truk:</span>{" "}
+                  <strong>{data.truckPrice != null ? idr(data.truckPrice) : "—"}</strong>
+                </span>
+                <span>=</span>
+                <span>
+                  <span className="text-muted-foreground">Total:</span>{" "}
+                  <strong className="text-orange-800">{data.totalPrice != null ? idr(data.totalPrice) : "—"}</strong>
+                </span>
+              </div>
+            )}
+
+            {/* Form panel */}
+            {truckPanelOpen && (
+              <div className="p-4 border-t border-orange-200 space-y-4 bg-white">
+                {/* Source selector */}
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setTruckSourceSel("internal")}
+                    className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium border transition-colors ${
+                      truckSourceSel === "internal"
+                        ? "bg-orange-600 text-white border-orange-600"
+                        : "bg-white text-gray-700 border-gray-200 hover:border-orange-300"
+                    }`}
+                  >
+                    🚛 Truk Internal
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTruckSourceSel("external")}
+                    className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium border transition-colors ${
+                      truckSourceSel === "external"
+                        ? "bg-blue-600 text-white border-blue-600"
+                        : "bg-white text-gray-700 border-gray-200 hover:border-blue-300"
+                    }`}
+                  >
+                    🏢 Truk Eksternal
+                  </button>
+                </div>
+
+                {truckSourceSel === "internal" ? (
+                  <div className="space-y-3">
+                    {data.selectedVendorTruckInfo?.hasInternalTruck ? (
+                      <div className="flex items-center justify-between p-3 rounded-lg bg-orange-50 border border-orange-200">
+                        <div>
+                          <p className="text-sm font-medium text-orange-900">Truk internal vendor produk tersedia</p>
+                          <p className="text-xs text-orange-600 mt-0.5">
+                            Harga: <strong>{idr(data.selectedVendorTruckInfo.internalTruckPrice)}</strong>
+                          </p>
+                        </div>
+                        <span className="text-lg">🚛</span>
+                      </div>
+                    ) : (
+                      <div className="p-3 rounded-lg bg-yellow-50 border border-yellow-200 text-sm text-yellow-800">
+                        ⚠️ Vendor produk yang dipilih tidak memiliki truk internal. Gunakan opsi Truk Eksternal.
+                      </div>
+                    )}
+                    {/* Live total preview */}
+                    {data.selectedVendorTruckInfo?.hasInternalTruck && (() => {
+                      const prodP = data.productPrice ?? (data.vendors.find(v => v.status === "selected")?.offeredPrice ?? data.vendors.find(v => v.status === "selected")?.basicPrice ?? 0);
+                      const truckP = data.selectedVendorTruckInfo.internalTruckPrice ?? 0;
+                      return (
+                        <div className="text-xs text-muted-foreground flex gap-3 flex-wrap px-1">
+                          <span>Produk: <strong>{idr(prodP)}</strong></span>
+                          <span>+ Truk: <strong>{idr(truckP)}</strong></span>
+                          <span>= Total: <strong className="text-orange-700">{idr(Number(prodP) + truckP)}</strong></span>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="grid gap-1.5">
+                      <label className="text-sm font-medium">Vendor Truk Eksternal</label>
+                      <Select value={truckVendorSel} onValueChange={setTruckVendorSel}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Pilih vendor truk..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {data.truckVendors.length === 0 ? (
+                            <SelectItem value="__none__" disabled>Tidak ada vendor truk aktif</SelectItem>
+                          ) : data.truckVendors.map(tv => (
+                            <SelectItem key={tv.id} value={String(tv.id)}>
+                              {tv.name}
+                              {tv.hasInternalTruck && tv.internalTruckPrice != null && (
+                                <span className="ml-2 text-xs text-muted-foreground">
+                                  (int. {idr(tv.internalTruckPrice)})
+                                </span>
+                              )}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="grid gap-1.5">
+                      <label className="text-sm font-medium">Harga Truk (Rp)</label>
+                      <Input
+                        type="number"
+                        min="0"
+                        placeholder="0"
+                        value={truckPriceInput}
+                        onChange={e => setTruckPriceInput(e.target.value)}
+                      />
+                    </div>
+                    {/* Live total preview */}
+                    {truckPriceInput && Number(truckPriceInput) > 0 && (() => {
+                      const prodP = data.productPrice ?? (data.vendors.find(v => v.status === "selected")?.offeredPrice ?? data.vendors.find(v => v.status === "selected")?.basicPrice ?? 0);
+                      const truckP = Number(truckPriceInput);
+                      return (
+                        <div className="text-xs text-muted-foreground flex gap-3 flex-wrap px-1">
+                          <span>Produk: <strong>{idr(prodP)}</strong></span>
+                          <span>+ Truk: <strong>{idr(truckP)}</strong></span>
+                          <span>= Total: <strong className="text-blue-700">{idr(Number(prodP) + truckP)}</strong></span>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+
+                <Button
+                  onClick={handleAssignTruck}
+                  disabled={assignTruckMut.isPending || (truckSourceSel === "internal" && !data.selectedVendorTruckInfo?.hasInternalTruck)}
+                  className="w-full"
+                  size="sm"
+                >
+                  {assignTruckMut.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Truck className="w-4 h-4 mr-2" />}
+                  {data.truckVendorName ? "Ubah Vendor Truk" : "Tetapkan Vendor Truk"}
+                </Button>
+              </div>
+            )}
           </div>
         )}
 

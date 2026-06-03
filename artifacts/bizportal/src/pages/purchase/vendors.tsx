@@ -133,6 +133,8 @@ type FormState = {
   fee: string;
   note: string;
   sortOrder: string;
+  hasInternalTruck: boolean;
+  internalTruckPrice: string;
 };
 
 const emptyForm = (): FormState => ({
@@ -151,6 +153,8 @@ const emptyForm = (): FormState => ({
   fee: "0",
   note: "",
   sortOrder: "0",
+  hasInternalTruck: false,
+  internalTruckPrice: "",
 });
 
 export default function VendorsPage() {
@@ -276,6 +280,8 @@ export default function VendorsPage() {
   const startEdit = (v: Supplier) => {
     setEditing(v);
     setForm({
+      hasInternalTruck: (v as any).hasInternalTruck ?? false,
+      internalTruckPrice: (v as any).internalTruckPrice != null ? String((v as any).internalTruckPrice) : "",
       name: v.name,
       country: v.country ?? "",
       contactEmail: v.contactEmail ?? "",
@@ -316,6 +322,10 @@ export default function VendorsPage() {
       fee: parseFloat(form.fee) || 0,
       note: form.note || null,
       sortOrder: parseInt(form.sortOrder) || 0,
+      hasInternalTruck: form.hasInternalTruck,
+      internalTruckPrice: form.hasInternalTruck && form.internalTruckPrice
+        ? parseFloat(form.internalTruckPrice) || null
+        : null,
     };
     try {
       if (editing) {
@@ -624,6 +634,30 @@ export default function VendorsPage() {
                   <div className="flex items-center gap-3 pt-1">
                     <Switch id="isActive" checked={form.isActive} onCheckedChange={(v) => set("isActive", v)} />
                     <Label htmlFor="isActive">Aktif (tampil di portal & notifikasi)</Label>
+                  </div>
+                  <div className="border-t pt-3 mt-1 space-y-3">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Truk</p>
+                    <div className="flex items-center gap-3">
+                      <Switch
+                        id="hasInternalTruck"
+                        checked={form.hasInternalTruck}
+                        onCheckedChange={(v) => set("hasInternalTruck", v)}
+                      />
+                      <Label htmlFor="hasInternalTruck">Punya Truk Internal</Label>
+                    </div>
+                    {form.hasInternalTruck && (
+                      <div className="grid gap-1.5">
+                        <Label htmlFor="internalTruckPrice">Harga Truk Internal (Rp)</Label>
+                        <Input
+                          id="internalTruckPrice"
+                          type="number"
+                          min="0"
+                          value={form.internalTruckPrice}
+                          onChange={(e) => set("internalTruckPrice", e.target.value)}
+                          placeholder="0"
+                        />
+                      </div>
+                    )}
                   </div>
                 </TabsContent>
 

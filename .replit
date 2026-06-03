@@ -30,6 +30,7 @@ outputType = "webview"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "fuser -k 5000/tcp 2>/dev/null; sleep 0.3; (cd artifacts/api-server && node kill-port.mjs 18444 8080 2>/dev/null; sleep 0.3; node build.mjs && PORT=8080 NODE_ENV=development node --enable-source-maps ./dist/index.mjs &); API_PORT=8080 CUSTOMER_PORT=5173 BIZPORTAL_PORT=4200 LOGISTIC_ORDER_PORT=3001 PORT=5000 node gateway.mjs"
+args = "fuser -k 5000/tcp 2>/dev/null; sleep 0.3; API_PORT=8080 CUSTOMER_PORT=23434 BIZPORTAL_PORT=18442 LOGISTIC_ORDER_PORT=6000 PORT=5000 node gateway.mjs"
 waitForPort = 5000
 
 [agent]
@@ -115,3 +116,13 @@ externalPort = 4200
 [[ports]]
 localPort = 23434
 externalPort = 3000
+localPort = 18442
+externalPort = 3001
+
+[[ports]]
+localPort = 18444
+externalPort = 3000
+
+[[ports]]
+localPort = 23434
+externalPort = 3002

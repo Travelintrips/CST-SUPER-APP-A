@@ -105,6 +105,8 @@ export async function runPhase1Migration(): Promise<void> {
   const supplierColumns: Array<[string, string]> = [
     ["eta_days_min", "INTEGER"],
     ["eta_days_max", "INTEGER"],
+    ["has_internal_truck", "BOOLEAN NOT NULL DEFAULT FALSE"],
+    ["internal_truck_price", "NUMERIC(14,2)"],
   ];
 
   for (const [col, colDef] of supplierColumns) {
@@ -122,6 +124,28 @@ export async function runPhase1Migration(): Promise<void> {
 
   // ── Add expires_at alias index (valid_until already exists) ───────────────
   // customer_quote_links already has valid_until — no new column needed.
+
+  // ── New columns on logistic_orders (truck assignment) ─────────────────────
+
+  const loTruckColumns: Array<[string, string]> = [
+    ["truck_vendor_id", "INTEGER REFERENCES suppliers(id) ON DELETE SET NULL"],
+    ["truck_price",     "NUMERIC(14,2)"],
+    ["truck_source",    "TEXT"],
+    ["product_price",   "NUMERIC(14,2)"],
+  ];
+
+  for (const [col, colDef] of loTruckColumns) {
+    await db.execute(sql.raw(`
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='logistic_orders' AND column_name='${col}'
+        ) THEN
+          ALTER TABLE logistic_orders ADD COLUMN ${col} ${colDef};
+        END IF;
+      END $$;
+    `));
+  }
 
   logger.info("Phase 1 migration: ok (workflow_events, intelligence_alerts, order_stage_logs, new columns)");
 }

@@ -1,0 +1,156 @@
+FASE 5 — SPORT CENTER PROFITABILITY DASHBOARD
+
+Tujuan:
+
+* Menampilkan laba/rugi Sport Center berbasis data Accounting yang sudah terposting.
+* Mendukung multi-company (khusus PT Cahaya Sejati Teknologi).
+* Menampilkan profit per fasilitas, per periode, dan per jenis pendapatan.
+
+A. BACKEND API
+
+Buat endpoint baru:
+
+GET /api/sport-center/profitability
+
+Parameter:
+
+* company_id
+* from
+* to
+* facility_id (optional)
+
+Response:
+
+{
+revenue_booking: number,
+revenue_membership: number,
+refund_amount: number,
+operational_expense: number,
+gross_profit: number,
+net_profit: number,
+bookings_count: number,
+active_members: number,
+top_facilities: []
+}
+
+B. SUMBER DATA
+
+Revenue Booking:
+
+source = 'sport_center_booking'
+
+Revenue Membership:
+
+source = 'sport_center_membership'
+
+Refund:
+
+source IN (
+'sport_center_refund',
+'sport_center_booking_refund',
+'sport_center_booking_reversal'
+)
+
+Operational Expense:
+
+source = 'sport_center_operational_expense'
+
+Semua query wajib filter:
+
+company_id
+
+C. KPI DASHBOARD
+
+Tambahkan card:
+
+1. Pendapatan Booking
+2. Pendapatan Membership
+3. Refund
+4. Biaya Operasional
+5. Laba Kotor
+6. Laba Bersih
+7. Booking Aktif
+8. Member Aktif
+
+D. PROFIT PER FASILITAS
+
+Tambahkan tabel:
+
+Fasilitas
+Total Booking
+Revenue
+Refund
+Net Revenue
+Occupancy
+
+Contoh:
+
+Lapangan Futsal A
+Lapangan Badminton 1
+Lapangan Badminton 2
+Gym
+
+E. GRAFIK
+
+Revenue per Bulan
+
+Revenue vs Expense
+
+Top Facility
+
+Membership Growth
+
+F. FILTER
+
+Company
+Periode
+Facility
+
+G. ACCOUNTING INTEGRATION
+
+Pastikan data berasal dari:
+
+accounting_entries
+
+Bukan dari:
+
+sport_bookings
+
+Tujuan:
+Laporan keuangan harus identik dengan jurnal accounting.
+
+H. UI
+
+Menu baru:
+
+Sport Center
+└─ Profitability
+
+atau
+
+Finance
+└─ Sport Center Profitability
+
+I. TESTING
+
+Verifikasi:
+
+1. Booking dibayar → revenue bertambah
+2. Membership dibayar → revenue membership bertambah
+3. Refund → revenue berkurang
+4. Expense → biaya bertambah
+5. Laba bersih terhitung benar
+6. Filter company bekerja
+7. Filter facility bekerja
+
+J. LAPORAN
+
+Laporkan:
+
+1. File yang diubah
+2. Endpoint yang dibuat
+3. Query accounting yang digunakan
+4. KPI yang tersedia
+5. Grafik yang tersedia
+6. Hasil test
+7. Gap tersisa menuju Cost Center penuh

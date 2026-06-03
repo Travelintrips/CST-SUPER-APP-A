@@ -201,7 +201,7 @@ router.post("/suppliers/bulk-assign-company", async (req, res) => {
 router.post("/suppliers", async (req, res) => {
   if (!(await requireAdmin(req, res))) return;
   const { name, country, contactEmail, contactPerson, phone, address, taxId, defaultPurchaseTaxId,
-    serviceType, isActive, logo, eta, fee, note, sortOrder } = req.body;
+    serviceType, isActive, logo, eta, fee, note, sortOrder, hasInternalTruck, internalTruckPrice } = req.body;
   const companyId = resolveCompanyId(req);
   const [supplier] = await db.insert(suppliersTable).values({
     companyId,
@@ -216,7 +216,9 @@ router.post("/suppliers", async (req, res) => {
     fee: fee !== undefined ? String(parseFloat(String(fee)) || 0) : "0",
     note: note ?? null,
     sortOrder: sortOrder !== undefined ? Number(sortOrder) : 0,
-  }).returning();
+    hasInternalTruck: hasInternalTruck ? Boolean(hasInternalTruck) : false,
+    internalTruckPrice: internalTruckPrice != null ? String(parseFloat(String(internalTruckPrice)) || 0) : null,
+  } as any).returning();
   return res.status(201).json({ ...supplier, fee: Number(supplier.fee ?? 0), createdAt: supplier.createdAt.toISOString() });
 });
 
@@ -233,7 +235,7 @@ router.put("/suppliers/:id", async (req, res) => {
     return res.status(403).json({ message: "Akses ditolak: supplier bukan milik perusahaan ini" });
   }
   const { name, country, contactEmail, contactPerson, phone, address, taxId, defaultPurchaseTaxId,
-    serviceType, isActive, logo, eta, fee, note, sortOrder } = req.body;
+    serviceType, isActive, logo, eta, fee, note, sortOrder, hasInternalTruck, internalTruckPrice } = req.body;
   const patch: Record<string, unknown> = {};
   if (typeof name === "string") patch["name"] = name;
   if (country !== undefined) patch["country"] = country || null;
@@ -250,6 +252,8 @@ router.put("/suppliers/:id", async (req, res) => {
   if (fee !== undefined) patch["fee"] = String(parseFloat(String(fee)) || 0);
   if (note !== undefined) patch["note"] = note || null;
   if (sortOrder !== undefined) patch["sortOrder"] = Number(sortOrder);
+  if (hasInternalTruck !== undefined) patch["hasInternalTruck"] = Boolean(hasInternalTruck);
+  if (internalTruckPrice !== undefined) patch["internalTruckPrice"] = internalTruckPrice != null && internalTruckPrice !== "" ? String(parseFloat(String(internalTruckPrice)) || 0) : null;
 
   const [updated] = await db.update(suppliersTable).set(patch).where(eq(suppliersTable.id, id)).returning();
   if (!updated) return res.status(404).json({ message: "Supplier not found" });

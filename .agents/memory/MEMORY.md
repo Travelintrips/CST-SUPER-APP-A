@@ -25,3 +25,4 @@
 - [FASE 6E Order Exceptions](fase6e-order-exceptions.md) — per-order exception tracking via refType='logistic_order'/refId=orderId; new router in orderExceptions.ts; ExceptionPanel in order-detail.tsx right column.
 - [Multi-Company Data Isolation](multi-company-isolation.md) — company_id added to product_templates & whatsapp_template_configs; unique indexes use COALESCE(company_id,0); suppliers/templates/WA-templates filtered by resolveCompanyId in routes.
 - [FASE 5 Driver Assignment Analytics](fase5-driver-analytics.md) — driverJobWorker (auto-cancel 24h, reminder 6h), analytics/summary endpoint, analytics dashboard page, force-update dialog + SSE toast in OrderDriverAssignmentPanel.
+- [FASE 6A Cost Center Framework](fase6a-cost-center.md) — cost_centers table + costCenterId on accounting_entries; resolveCostCenterId helper; all report endpoints support ?cost_center_id= filter; CRUD API + BizPortal master page.

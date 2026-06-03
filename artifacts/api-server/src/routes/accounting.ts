@@ -13,6 +13,7 @@ import {
   purchaseDocumentsTable,
   companiesTable,
   customersTable,
+  costCentersTable,
 } from "@workspace/db";
 import {
   eq,
@@ -423,6 +424,65 @@ router.patch("/taxes/:id", async (req, res) => {
   return res.json(serializeTax(updated));
 });
 
+// ============ Cost Centers ============
+router.get("/cost-centers", async (req, res) => {
+  const companyId = resolveCompanyScope(req);
+  const conds: SQL<unknown>[] = [];
+  if (companyId !== "all") {
+    conds.push(
+      sql`(${costCentersTable.companyId} = ${companyId} OR ${costCentersTable.companyId} IS NULL)`,
+    );
+  }
+  const rows = await db
+    .select()
+    .from(costCentersTable)
+    .where(conds.length ? and(...conds) : undefined)
+    .orderBy(costCentersTable.code);
+  return res.json(rows);
+});
+
+router.post("/cost-centers", async (req, res) => {
+  const { code, name, description, isActive } = req.body ?? {};
+  if (!code || !name) return res.status(400).json({ message: "code dan name wajib diisi" });
+  const companyId = resolveCompanyId(req);
+  const [row] = await db
+    .insert(costCentersTable)
+    .values({
+      companyId,
+      code: String(code).toUpperCase().trim(),
+      name: String(name).trim(),
+      description: description ? String(description) : null,
+      isActive: isActive !== false,
+    })
+    .returning();
+  return res.status(201).json(row);
+});
+
+router.put("/cost-centers/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+  const { name, description, isActive } = req.body ?? {};
+  const [updated] = await db
+    .update(costCentersTable)
+    .set({
+      ...(name !== undefined ? { name: String(name).trim() } : {}),
+      ...(description !== undefined ? { description: String(description) } : {}),
+      ...(isActive !== undefined ? { isActive: Boolean(isActive) } : {}),
+      updatedAt: new Date(),
+    })
+    .where(eq(costCentersTable.id, id))
+    .returning();
+  if (!updated) return res.status(404).json({ message: "Not found" });
+  return res.json(updated);
+});
+
+router.delete("/cost-centers/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+  await db.delete(costCentersTable).where(eq(costCentersTable.id, id));
+  return res.json({ ok: true });
+});
+
 // ============ Journal Entries ============
 router.get("/entries", async (req, res) => {
   const scope = resolveCompanyScope(req);
@@ -445,6 +505,9 @@ router.get("/entries", async (req, res) => {
     : null;
   if (journalId && !Number.isNaN(journalId))
     conds.push(eq(accountingEntriesTable.journalId, journalId));
+  const ccId = req.query["cost_center_id"] ? Number(req.query["cost_center_id"]) : null;
+  if (ccId && !Number.isNaN(ccId))
+    conds.push(eq(accountingEntriesTable.costCenterId, ccId));
   const rows = await db
     .select()
     .from(accountingEntriesTable)
@@ -1495,6 +1558,7 @@ async function buildLedgerWindow(
   from: Date | null,
   to: Date | null,
   companyScope: number | "all" = 1,
+  costCenterId?: number | null,
 ) {
   const conds: SQL<unknown>[] = [
     eq(accountingEntriesTable.status, "posted"),
@@ -1510,6 +1574,9 @@ async function buildLedgerWindow(
     conds.push(
       lte(accountingEntriesTable.date, to.toISOString().split("T")[0]!),
     );
+  if (costCenterId != null) {
+    conds.push(eq(accountingEntriesTable.costCenterId, costCenterId));
+  }
   const entries = await db
     .select()
     .from(accountingEntriesTable)
@@ -1528,11 +1595,12 @@ router.get("/reports/trial-balance", async (req, res) => {
   const scope = resolveCompanyScope(req);
   const range = parseDateRange(req);
   if (range.error) return res.status(400).json({ message: range.error });
+  const ccId = req.query["cost_center_id"] ? Number(req.query["cost_center_id"]) : null;
   const accounts = await db
     .select()
     .from(chartOfAccountsTable)
     .orderBy(chartOfAccountsTable.code);
-  const { lines } = await buildLedgerWindow(range.from, range.to, scope);
+  const { lines } = await buildLedgerWindow(range.from, range.to, scope, ccId);
   const totals = new Map<number, { debit: number; credit: number }>();
   for (const l of lines) {
     const cur = totals.get(l.accountId) ?? { debit: 0, credit: 0 };
@@ -1572,6 +1640,7 @@ router.get("/reports/general-ledger", async (req, res) => {
   const accountId = req.query["accountId"]
     ? Number(req.query["accountId"])
     : null;
+  const ccId = req.query["cost_center_id"] ? Number(req.query["cost_center_id"]) : null;
   const accounts = await db
     .select()
     .from(chartOfAccountsTable)
@@ -1580,6 +1649,7 @@ router.get("/reports/general-ledger", async (req, res) => {
     range.from,
     range.to,
     scope,
+    ccId,
   );
   const entryById = new Map(entries.map((e) => [e.id, e]));
   const filtered = accountId
@@ -1661,11 +1731,12 @@ router.get("/reports/profit-loss", async (req, res) => {
   const scope = resolveCompanyScope(req);
   const range = parseDateRange(req);
   if (range.error) return res.status(400).json({ message: range.error });
+  const ccId = req.query["cost_center_id"] ? Number(req.query["cost_center_id"]) : null;
   const accounts = await db
     .select()
     .from(chartOfAccountsTable)
     .orderBy(chartOfAccountsTable.code);
-  const { lines } = await buildLedgerWindow(range.from, range.to, scope);
+  const { lines } = await buildLedgerWindow(range.from, range.to, scope, ccId);
   const totals = new Map<number, number>();
   for (const l of lines) {
     const cur = totals.get(l.accountId) ?? 0;
@@ -1712,11 +1783,12 @@ router.get("/reports/balance-sheet", async (req, res) => {
   const range = parseDateRange(req);
   if (range.error) return res.status(400).json({ message: range.error });
   const asOf = range.to;
+  const ccId = req.query["cost_center_id"] ? Number(req.query["cost_center_id"]) : null;
   const accounts = await db
     .select()
     .from(chartOfAccountsTable)
     .orderBy(chartOfAccountsTable.code);
-  const { lines } = await buildLedgerWindow(null, asOf, scope);
+  const { lines } = await buildLedgerWindow(null, asOf, scope, ccId);
   const totals = new Map<number, number>();
   for (const l of lines) {
     const acc = accounts.find((a) => a.id === l.accountId);

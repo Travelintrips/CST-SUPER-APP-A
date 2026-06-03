@@ -388,6 +388,61 @@ router.patch("/bookings/:id", async (req, res) => {
     `);
     if (!r.rows.length) return res.status(404).json({ error: "Tidak ditemukan" });
     const row = r.rows[0] as Record<string, unknown>;
+
+    // Safety net: jika payment_status di-set ke 'paid' lewat PATCH (bukan POST /payments),
+    // pastikan sport_payment record dan jurnal akuntansi tetap dibuat
+    if (payment_status === 'paid') {
+      const existingPayment = await db.execute(sql`
+        SELECT id FROM sport_payments WHERE booking_id = ${id} LIMIT 1
+      `);
+      if (!existingPayment.rows.length) {
+        const createdById = (req.user as { id: string } | undefined)?.id ?? null;
+        const paymentNumber = await nextPaymentNumber(Number(row.company_id ?? null));
+        const payR = await db.execute(sql`
+          INSERT INTO sport_payments (company_id, booking_id, payment_number, amount, method, status, paid_at, notes)
+          VALUES (${row.company_id ?? null}, ${id}, ${paymentNumber}, ${row.total_amount}, 'cash', 'paid', NOW(), 'Auto-created via PATCH')
+          RETURNING *
+        `);
+        const bTaxAmount = Number(row.tax_amount ?? 0);
+        const bTotalAmount = Number(row.total_amount ?? 0);
+        const bCompanyId = row.company_id != null ? Number(row.company_id) : null;
+        if (bTaxAmount > 0) {
+          postSportCenterBookingWithTax({
+            bookingId: id,
+            bookingCode: String(row.booking_number ?? paymentNumber),
+            customerName: String(row.customer_name ?? ""),
+            facilityName: String(row.facility_name ?? ""),
+            date: String(row.booking_date ?? new Date().toISOString().slice(0, 10)),
+            baseAmount: bTotalAmount,
+            taxAmount: bTaxAmount,
+            createdById,
+            companyId: bCompanyId,
+          }).catch((err: unknown) => console.error('[sport-center] postSportCenterBookingWithTax (PATCH safety net) failed:', err));
+        } else {
+          postSportCenterBooking({
+            bookingId: id,
+            bookingCode: String(row.booking_number ?? paymentNumber),
+            customerName: String(row.customer_name ?? ""),
+            facilityName: String(row.facility_name ?? ""),
+            date: String(row.booking_date ?? new Date().toISOString().slice(0, 10)),
+            totalPrice: bTotalAmount,
+            createdById,
+            companyId: bCompanyId,
+          }).catch((err: unknown) => console.error('[sport-center] postSportCenterBooking (PATCH safety net) failed:', err));
+        }
+        // Audit log untuk auto-payment
+        await db.execute(sql`
+          INSERT INTO sport_audit_logs (company_id, entity_type, entity_id, action, actor, new_data)
+          VALUES (
+            ${bCompanyId}, 'payment', ${(payR.rows[0] as Record<string, unknown>)?.id ?? null},
+            'PAYMENT_AUTO_CREATED_VIA_PATCH', ${createdById},
+            ${JSON.stringify(payR.rows[0])}::jsonb
+          )
+        `);
+        broadcastSportCenterEvent({ module: "sport-center", entity: "payment", action: "created", data: payR.rows[0] as Record<string, unknown>, timestamp: new Date().toISOString() }, bCompanyId as number | undefined);
+      }
+    }
+
     broadcastSportCenterEvent({ module: "sport-center", entity: "booking", action: "updated", data: row, timestamp: new Date().toISOString() });
     void syncBookingUpsert(row as any);
     res.json(row);
@@ -959,7 +1014,7 @@ router.post("/payments", async (req, res) => {
           taxAmount: bTaxAmount,
           createdById,
           companyId: bCompanyId,
-        }).catch(() => {});
+        }).catch((err: unknown) => console.error('[sport-center] postSportCenterBookingWithTax failed:', err));
       } else {
         postSportCenterBooking({
           bookingId: booking_id,
@@ -970,9 +1025,20 @@ router.post("/payments", async (req, res) => {
           totalPrice: bTotalAmount,
           createdById,
           companyId: bCompanyId,
-        }).catch(() => {});
+        }).catch((err: unknown) => console.error('[sport-center] postSportCenterBooking failed:', err));
       }
     }
+
+    // Audit log pembayaran
+    const createdByIdForLog = (req.user as { id: string } | undefined)?.id ?? null;
+    await db.execute(sql`
+      INSERT INTO sport_audit_logs (company_id, entity_type, entity_id, action, actor, new_data)
+      VALUES (
+        ${company_id ?? null}, 'payment', ${row.id ?? null},
+        'PAYMENT_CREATED', ${createdByIdForLog},
+        ${JSON.stringify({ booking_id, amount, method, payment_number: paymentNumber })}::jsonb
+      )
+    `).catch((err: unknown) => console.error('[sport-center] audit log failed:', err));
 
     broadcastSportCenterEvent({ module: "sport-center", entity: "payment", action: "created", data: row, timestamp: new Date().toISOString() }, company_id);
     res.status(201).json(row);
@@ -1595,6 +1661,177 @@ router.post("/settings", async (req, res) => {
     res.json(r.rows[0]);
   } catch {
     res.status(500).json({ error: "Gagal menyimpan settings" });
+  }
+});
+
+// ── PROFITABILITY DASHBOARD ────────────────────────────────────────────────
+
+router.get("/profitability", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const cId = req.query.company_id ? Number(req.query.company_id) : (req.query.companyId ? Number(req.query.companyId) : null);
+    const from = (req.query.from as string) ?? null;
+    const to = (req.query.to as string) ?? null;
+    const facilityId = req.query.facility_id ? Number(req.query.facility_id) : null;
+
+    const [
+      revenueBookingRes,
+      revenueMembershipRes,
+      refundRes,
+      opExpenseRes,
+      bookingsCountRes,
+      activeMembersRes,
+      topFacilitiesRes,
+      revenueByMonthRes,
+    ] = await Promise.all([
+      // Revenue Booking dari accounting_entries
+      db.execute(sql`
+        SELECT COALESCE(SUM(total_debit), 0) AS amount
+        FROM accounting_entries
+        WHERE source = 'sport_center_booking'
+          AND status = 'posted'
+          AND (${cId}::int IS NULL OR company_id = ${cId})
+          AND (${from}::date IS NULL OR date >= ${from}::date)
+          AND (${to}::date IS NULL OR date <= ${to}::date)
+      `),
+      // Revenue Membership dari accounting_entries
+      db.execute(sql`
+        SELECT COALESCE(SUM(total_debit), 0) AS amount
+        FROM accounting_entries
+        WHERE source = 'sport_center_membership'
+          AND status = 'posted'
+          AND (${cId}::int IS NULL OR company_id = ${cId})
+          AND (${from}::date IS NULL OR date >= ${from}::date)
+          AND (${to}::date IS NULL OR date <= ${to}::date)
+      `),
+      // Refund dari accounting_entries
+      db.execute(sql`
+        SELECT COALESCE(SUM(total_debit), 0) AS amount
+        FROM accounting_entries
+        WHERE source IN ('sport_center_refund', 'sport_center_booking_refund', 'sport_center_booking_reversal')
+          AND status = 'posted'
+          AND (${cId}::int IS NULL OR company_id = ${cId})
+          AND (${from}::date IS NULL OR date >= ${from}::date)
+          AND (${to}::date IS NULL OR date <= ${to}::date)
+      `),
+      // Operational Expense
+      db.execute(sql`
+        SELECT COALESCE(SUM(total_debit), 0) AS amount
+        FROM accounting_entries
+        WHERE source = 'sport_center_operational_expense'
+          AND status = 'posted'
+          AND (${cId}::int IS NULL OR company_id = ${cId})
+          AND (${from}::date IS NULL OR date >= ${from}::date)
+          AND (${to}::date IS NULL OR date <= ${to}::date)
+      `),
+      // Bookings count (active/completed)
+      db.execute(sql`
+        SELECT COUNT(*) AS cnt
+        FROM sport_bookings
+        WHERE status NOT IN ('cancelled')
+          AND (${cId}::int IS NULL OR company_id = ${cId})
+          AND (${from}::date IS NULL OR booking_date >= ${from}::date)
+          AND (${to}::date IS NULL OR booking_date <= ${to}::date)
+      `),
+      // Active members
+      db.execute(sql`
+        SELECT COUNT(*) AS cnt
+        FROM sport_members
+        WHERE status = 'active'
+          AND (${cId}::int IS NULL OR company_id = ${cId})
+      `),
+      // Top facilities — gabung booking revenue dari accounting + booking count
+      db.execute(sql`
+        SELECT
+          b.facility_name,
+          b.facility_id,
+          COUNT(b.id) AS total_bookings,
+          COALESCE(SUM(CASE WHEN ae.source = 'sport_center_booking' AND ae.status = 'posted' THEN ae.total_debit ELSE 0 END), 0) AS revenue,
+          COALESCE(SUM(CASE WHEN ae.source IN ('sport_center_refund','sport_center_booking_refund','sport_center_booking_reversal') AND ae.status = 'posted' THEN ae.total_debit ELSE 0 END), 0) AS refund,
+          COALESCE(MAX(f.capacity), 1) AS capacity
+        FROM sport_bookings b
+        LEFT JOIN accounting_entries ae
+          ON ae.source_id = b.id
+          AND ae.source IN ('sport_center_booking','sport_center_refund','sport_center_booking_refund','sport_center_booking_reversal')
+          AND ae.status = 'posted'
+        LEFT JOIN sport_facilities f ON f.id = b.facility_id
+        WHERE b.status NOT IN ('cancelled')
+          AND (${cId}::int IS NULL OR b.company_id = ${cId})
+          AND (${from}::date IS NULL OR b.booking_date >= ${from}::date)
+          AND (${to}::date IS NULL OR b.booking_date <= ${to}::date)
+          AND (${facilityId}::int IS NULL OR b.facility_id = ${facilityId})
+        GROUP BY b.facility_name, b.facility_id
+        ORDER BY revenue DESC
+        LIMIT 10
+      `),
+      // Revenue per bulan (booking + membership) dari accounting_entries
+      db.execute(sql`
+        SELECT
+          TO_CHAR(date, 'YYYY-MM') AS month,
+          COALESCE(SUM(CASE WHEN source = 'sport_center_booking' THEN total_debit ELSE 0 END), 0) AS booking_revenue,
+          COALESCE(SUM(CASE WHEN source = 'sport_center_membership' THEN total_debit ELSE 0 END), 0) AS membership_revenue,
+          COALESCE(SUM(CASE WHEN source = 'sport_center_operational_expense' THEN total_debit ELSE 0 END), 0) AS expense,
+          COALESCE(SUM(CASE WHEN source IN ('sport_center_refund','sport_center_booking_refund','sport_center_booking_reversal') THEN total_debit ELSE 0 END), 0) AS refund
+        FROM accounting_entries
+        WHERE source IN ('sport_center_booking','sport_center_membership','sport_center_operational_expense','sport_center_refund','sport_center_booking_refund','sport_center_booking_reversal')
+          AND status = 'posted'
+          AND (${cId}::int IS NULL OR company_id = ${cId})
+          AND (${from}::date IS NULL OR date >= ${from}::date)
+          AND (${to}::date IS NULL OR date <= ${to}::date)
+        GROUP BY TO_CHAR(date, 'YYYY-MM')
+        ORDER BY month ASC
+      `),
+    ]);
+
+    const revenueBooking = Number((revenueBookingRes.rows[0] as any)?.amount ?? 0);
+    const revenueMembership = Number((revenueMembershipRes.rows[0] as any)?.amount ?? 0);
+    const refundAmount = Number((refundRes.rows[0] as any)?.amount ?? 0);
+    const operationalExpense = Number((opExpenseRes.rows[0] as any)?.amount ?? 0);
+    const totalRevenue = revenueBooking + revenueMembership;
+    const grossProfit = totalRevenue - refundAmount;
+    const netProfit = grossProfit - operationalExpense;
+
+    const topFacilities = (topFacilitiesRes.rows as any[]).map(r => {
+      const rev = Number(r.revenue ?? 0);
+      const ref = Number(r.refund ?? 0);
+      const cnt = Number(r.total_bookings ?? 0);
+      const cap = Number(r.capacity ?? 1);
+      return {
+        facility_name: r.facility_name,
+        facility_id: r.facility_id,
+        total_bookings: cnt,
+        revenue: rev,
+        refund: ref,
+        net_revenue: rev - ref,
+        occupancy_pct: cap > 0 ? Math.min(100, Math.round((cnt / (cap * 30)) * 100)) : 0,
+      };
+    });
+
+    const revenueByMonth = (revenueByMonthRes.rows as any[]).map(r => ({
+      month: r.month,
+      booking_revenue: Number(r.booking_revenue ?? 0),
+      membership_revenue: Number(r.membership_revenue ?? 0),
+      total_revenue: Number(r.booking_revenue ?? 0) + Number(r.membership_revenue ?? 0),
+      expense: Number(r.expense ?? 0),
+      refund: Number(r.refund ?? 0),
+      net_profit: Number(r.booking_revenue ?? 0) + Number(r.membership_revenue ?? 0) - Number(r.refund ?? 0) - Number(r.expense ?? 0),
+    }));
+
+    res.json({
+      revenue_booking: revenueBooking,
+      revenue_membership: revenueMembership,
+      refund_amount: refundAmount,
+      operational_expense: operationalExpense,
+      gross_profit: grossProfit,
+      net_profit: netProfit,
+      bookings_count: Number((bookingsCountRes.rows[0] as any)?.cnt ?? 0),
+      active_members: Number((activeMembersRes.rows[0] as any)?.cnt ?? 0),
+      top_facilities: topFacilities,
+      revenue_by_month: revenueByMonth,
+    });
+  } catch (err) {
+    console.error("[sport-center] GET /profitability error:", err);
+    res.status(500).json({ error: "Gagal memuat data profitabilitas" });
   }
 });
 
