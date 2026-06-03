@@ -50,11 +50,47 @@ const ROUTES = [
   { prefix: "/sport-center",    upstream: null, redirectMapTo: "/bizportal/sport-center",   redirectDefaultSuffix: "/dashboard" },
 
   // BizPortal sub-paths accessed without /bizportal/ prefix → redirect
-  { prefix: "/sales",           upstream: null, redirectMapTo: "/bizportal/sales",           redirectDefaultSuffix: "/documents" },
-  { prefix: "/purchase",        upstream: null, redirectMapTo: "/bizportal/purchase",         redirectDefaultSuffix: "/documents" },
-  { prefix: "/logistics",       upstream: null, redirectMapTo: "/bizportal/logistics",        redirectDefaultSuffix: "/" },
-  { prefix: "/accounting",      upstream: null, redirectMapTo: "/bizportal/accounting",       redirectDefaultSuffix: "/journals" },
-  { prefix: "/settings",        upstream: null, redirectMapTo: "/bizportal/settings",         redirectDefaultSuffix: "/" },
+  // Core modules
+  { prefix: "/sales",               upstream: null, redirectMapTo: "/bizportal/sales",               redirectDefaultSuffix: "/documents" },
+  { prefix: "/purchase",            upstream: null, redirectMapTo: "/bizportal/purchase",             redirectDefaultSuffix: "/documents" },
+  { prefix: "/logistics",           upstream: null, redirectMapTo: "/bizportal/logistics",            redirectDefaultSuffix: "/" },
+  { prefix: "/accounting",          upstream: null, redirectMapTo: "/bizportal/accounting",           redirectDefaultSuffix: "/journals" },
+  { prefix: "/settings",            upstream: null, redirectMapTo: "/bizportal/settings",             redirectDefaultSuffix: "/" },
+  // Reports & analytics
+  { prefix: "/reports",             upstream: null, redirectMapTo: "/bizportal/reports",              redirectDefaultSuffix: "/operasional" },
+  { prefix: "/analytics",           upstream: null, redirectMapTo: "/bizportal/analytics",            redirectDefaultSuffix: "/" },
+  { prefix: "/holding",             upstream: null, redirectMapTo: "/bizportal/holding",              redirectDefaultSuffix: "/" },
+  // Expenses
+  { prefix: "/expense",             upstream: null, redirectMapTo: "/bizportal/expense",              redirectDefaultSuffix: "/" },
+  { prefix: "/expenses",            upstream: null, redirectMapTo: "/bizportal/expense",              redirectDefaultSuffix: "/" },
+  // Dashboard & general
+  { prefix: "/dashboard",           upstream: null, redirectMapTo: "/bizportal/dashboard",            redirectDefaultSuffix: "/" },
+  { prefix: "/ceo-dashboard",       upstream: null, redirectMapTo: "/bizportal/ceo-dashboard",        redirectDefaultSuffix: "/" },
+  { prefix: "/enterprise-dashboard",upstream: null, redirectMapTo: "/bizportal/enterprise-dashboard", redirectDefaultSuffix: "/" },
+  { prefix: "/operational-dashboard",upstream: null,redirectMapTo: "/bizportal/operational-dashboard",redirectDefaultSuffix: "/" },
+  { prefix: "/approvals",           upstream: null, redirectMapTo: "/bizportal/approvals",            redirectDefaultSuffix: "/" },
+  { prefix: "/notifications",       upstream: null, redirectMapTo: "/bizportal/notifications",        redirectDefaultSuffix: "/" },
+  { prefix: "/exceptions",          upstream: null, redirectMapTo: "/bizportal/exceptions",           redirectDefaultSuffix: "/" },
+  // Correspondence & communication
+  { prefix: "/correspondences",     upstream: null, redirectMapTo: "/bizportal/correspondences",      redirectDefaultSuffix: "/" },
+  { prefix: "/email-inbox",         upstream: null, redirectMapTo: "/bizportal/email-inbox",          redirectDefaultSuffix: "/" },
+  { prefix: "/notification-history",upstream: null, redirectMapTo: "/bizportal/notification-history", redirectDefaultSuffix: "/" },
+  // Users, org & media
+  { prefix: "/users",               upstream: null, redirectMapTo: "/bizportal/users",                redirectDefaultSuffix: "/" },
+  { prefix: "/org",                 upstream: null, redirectMapTo: "/bizportal/org",                  redirectDefaultSuffix: "/" },
+  { prefix: "/media",               upstream: null, redirectMapTo: "/bizportal/media",                redirectDefaultSuffix: "/" },
+  // Products & catalog
+  { prefix: "/products",            upstream: null, redirectMapTo: "/bizportal/products",             redirectDefaultSuffix: "/items" },
+  { prefix: "/product-templates",   upstream: null, redirectMapTo: "/bizportal/product-templates",    redirectDefaultSuffix: "/" },
+  { prefix: "/katalog-terpadu",     upstream: null, redirectMapTo: "/bizportal/katalog-terpadu",      redirectDefaultSuffix: "/" },
+  { prefix: "/vendors",             upstream: null, redirectMapTo: "/bizportal/vendors",              redirectDefaultSuffix: "/" },
+  // Commerce & trading
+  { prefix: "/ecommerce",           upstream: null, redirectMapTo: "/bizportal/ecommerce",            redirectDefaultSuffix: "/" },
+  { prefix: "/trading",             upstream: null, redirectMapTo: "/bizportal/trading",              redirectDefaultSuffix: "/" },
+  // Audit & AI
+  { prefix: "/audit",               upstream: null, redirectMapTo: "/bizportal/audit",                redirectDefaultSuffix: "/" },
+  { prefix: "/intelligence-alerts", upstream: null, redirectMapTo: "/bizportal/intelligence-alerts",  redirectDefaultSuffix: "/" },
+  { prefix: "/ai-approvals",        upstream: null, redirectMapTo: "/bizportal/ai-approvals",         redirectDefaultSuffix: "/" },
 
   // Canvas artifact iframe hits /customer-portal/* — redirect to strip the prefix
   { prefix: "/customer-portal", upstream: null, redirectStrip: "/customer-portal" },
