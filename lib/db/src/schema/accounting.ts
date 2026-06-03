@@ -241,6 +241,7 @@ export const accountingSettingsTable = pgTable("accounting_settings", {
     () => chartOfAccountsTable.id,
     { onDelete: "set null" },
   ),
+  gsheetSpreadsheetId: text("gsheet_spreadsheet_id"),
   cogsAccountId: integer("cogs_account_id").references(
     () => chartOfAccountsTable.id,
     { onDelete: "set null" },

@@ -65,6 +65,7 @@ import AccountingEntryDetailPage from "@/pages/accounting/entry-detail";
 import AccountingJournalItemsPage from "@/pages/accounting/journal-items";
 import AccountingPaymentsPage from "@/pages/accounting/payments";
 import AccountingSettingsPage from "@/pages/accounting/settings";
+import AccountingGSheetPage from "@/pages/accounting/gsheet";
 import AccountingTrialBalancePage from "@/pages/accounting/reports/trial-balance";
 import AccountingGeneralLedgerPage from "@/pages/accounting/reports/general-ledger";
 import AccountingProfitLossPage from "@/pages/accounting/reports/profit-loss";

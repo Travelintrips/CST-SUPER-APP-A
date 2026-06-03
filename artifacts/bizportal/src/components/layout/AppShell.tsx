@@ -331,6 +331,7 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "Profitabilitas Freight", href: "/accounting/reports/freight-profitability", icon: Ship },
         { titleKey: "reconciliation", href: "/accounting/reconciliation", icon: GitMerge, devOnly: true },
         { titleKey: "accountingSettings", href: "/accounting/settings", icon: Settings, devOnly: true },
+        { titleKey: "Google Sheets Sync", href: "/accounting/gsheet", icon: FileSpreadsheet },
         { titleKey: "Overview Perusahaan", href: "/holding", icon: Building2, devOnly: true },
         { titleKey: "Dashboard Holding", href: "/holding/dashboard", icon: BarChart2, devOnly: true },
         { titleKey: "Laporan L/R Holding", href: "/holding/pl-report", icon: TrendingUp, devOnly: true },

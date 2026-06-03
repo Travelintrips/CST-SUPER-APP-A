@@ -1,6 +1,11 @@
 import { Router, type Request } from "express";
 import { randomBytes } from "crypto";
 import {
+  createSpreadsheet,
+  clearAndWriteSheet,
+  readSheet,
+} from "../lib/googleSheets.js";
+import {
   db,
   chartOfAccountsTable,
   accountingJournalsTable,
@@ -2703,6 +2708,256 @@ router.get("/holding/groups/:id/cashflow", async (req, res) => {
     perCompany: perCompanyData,
     consolidated,
   });
+});
+
+
+// ─── GOOGLE SHEETS SYNC ───────────────────────────────────────────────────────
+
+// GET /accounting/gsheet/config — ambil spreadsheetId yang tersimpan (dari env atau DB settings)
+router.get("/gsheet/config", async (req, res) => {
+  const companyId = resolveCompanyId(req);
+  const [settings] = await db
+    .select({ gsheetSpreadsheetId: accountingSettingsTable.gsheetSpreadsheetId })
+    .from(accountingSettingsTable)
+    .where(companyId ? eq(accountingSettingsTable.companyId, companyId) : isNull(accountingSettingsTable.companyId));
+
+  return res.json({ spreadsheetId: settings?.gsheetSpreadsheetId ?? null });
+});
+
+// POST /accounting/gsheet/setup — buat spreadsheet baru atau simpan ID yang sudah ada
+router.post("/gsheet/setup", async (req, res) => {
+  const companyId = resolveCompanyId(req);
+  const { spreadsheetId: existingId } = req.body as { spreadsheetId?: string };
+
+  let spreadsheetId = existingId?.trim() || null;
+  let spreadsheetUrl: string | null = null;
+
+  if (!spreadsheetId) {
+    const [company] = await db.select({ name: companiesTable.name }).from(companiesTable)
+      .where(companyId ? eq(companiesTable.id, companyId) : sql`1=1`).limit(1);
+    const title = `BizPortal Akuntansi${company?.name ? ` — ${company.name}` : ""} (${new Date().getFullYear()})`;
+    const created = await createSpreadsheet(title);
+    spreadsheetId = created.spreadsheetId;
+    spreadsheetUrl = created.spreadsheetUrl;
+  }
+
+  // Simpan ke accounting_settings
+  const [existing] = await db.select({ id: accountingSettingsTable.id })
+    .from(accountingSettingsTable)
+    .where(companyId ? eq(accountingSettingsTable.companyId, companyId) : isNull(accountingSettingsTable.companyId));
+
+  if (existing) {
+    await db.update(accountingSettingsTable)
+      .set({ gsheetSpreadsheetId: spreadsheetId } as Partial<typeof accountingSettingsTable.$inferInsert>)
+      .where(eq(accountingSettingsTable.id, existing.id));
+  } else {
+    await db.insert(accountingSettingsTable)
+      .values({ companyId: companyId ?? null, gsheetSpreadsheetId: spreadsheetId } as typeof accountingSettingsTable.$inferInsert);
+  }
+
+  return res.json({ ok: true, spreadsheetId, spreadsheetUrl });
+});
+
+// POST /accounting/gsheet/push — kirim data DB → Google Sheets
+router.post("/gsheet/push", async (req, res) => {
+  const companyId = resolveCompanyId(req);
+
+  const [settings] = await db.select({ gsheetSpreadsheetId: accountingSettingsTable.gsheetSpreadsheetId })
+    .from(accountingSettingsTable)
+    .where(companyId ? eq(accountingSettingsTable.companyId, companyId) : isNull(accountingSettingsTable.companyId));
+
+  const spreadsheetId = settings?.gsheetSpreadsheetId;
+  if (!spreadsheetId) return res.status(400).json({ message: "Spreadsheet belum dikonfigurasi. Jalankan setup terlebih dahulu." });
+
+  const scope = companyId ? eq(chartOfAccountsTable.companyId, companyId) : isNull(chartOfAccountsTable.companyId);
+
+  // 1) Chart of Accounts
+  const accounts = await db.select().from(chartOfAccountsTable)
+    .where(scope).orderBy(chartOfAccountsTable.code);
+
+  const coaRows: unknown[][] = [
+    ["ID", "Kode", "Nama Akun", "Tipe", "Parent ID", "Aktif"],
+    ...accounts.map((a) => [a.id, a.code, a.name, a.type, a.parentId ?? "", a.isActive ? "Ya" : "Tidak"]),
+  ];
+  await clearAndWriteSheet(spreadsheetId, "Chart of Accounts", coaRows);
+
+  // 2) Journal Entries
+  const entriesScope = companyId ? eq(accountingEntriesTable.companyId, companyId) : isNull(accountingEntriesTable.companyId);
+  const entries = await db.select().from(accountingEntriesTable)
+    .where(entriesScope).orderBy(desc(accountingEntriesTable.date)).limit(2000);
+
+  const entryRows: unknown[][] = [
+    ["ID", "Nomor", "Tanggal", "Jurnal ID", "Referensi", "Keterangan", "Status", "Sumber", "Total Debit", "Total Kredit"],
+    ...entries.map((e) => [
+      e.id, e.entryNumber,
+      e.date instanceof Date ? e.date.toISOString().slice(0, 10) : String(e.date),
+      e.journalId, e.ref ?? "", e.description ?? "", e.status, e.source ?? "",
+      e.totalDebit ?? 0, e.totalCredit ?? 0,
+    ]),
+  ];
+  await clearAndWriteSheet(spreadsheetId, "Journal Entries", entryRows);
+
+  // 3) Entry Lines
+  const entryIds = entries.map((e) => e.id);
+  let lineRows: unknown[][] = [["Entry ID", "Nomor Entry", "Akun ID", "Kode Akun", "Nama Akun", "Keterangan", "Debit", "Kredit"]];
+  if (entryIds.length > 0) {
+    const lines = await db.select({
+      entryId: accountingEntryLinesTable.entryId,
+      entryNumber: accountingEntriesTable.entryNumber,
+      accountId: accountingEntryLinesTable.accountId,
+      accountCode: chartOfAccountsTable.code,
+      accountName: chartOfAccountsTable.name,
+      description: accountingEntryLinesTable.description,
+      debit: accountingEntryLinesTable.debit,
+      credit: accountingEntryLinesTable.credit,
+    })
+      .from(accountingEntryLinesTable)
+      .leftJoin(accountingEntriesTable, eq(accountingEntryLinesTable.entryId, accountingEntriesTable.id))
+      .leftJoin(chartOfAccountsTable, eq(accountingEntryLinesTable.accountId, chartOfAccountsTable.id))
+      .where(inArray(accountingEntryLinesTable.entryId, entryIds))
+      .orderBy(accountingEntryLinesTable.entryId);
+    lineRows = [
+      lineRows[0],
+      ...lines.map((l) => [l.entryId, l.entryNumber, l.accountId, l.accountCode ?? "", l.accountName ?? "", l.description ?? "", l.debit ?? 0, l.credit ?? 0]),
+    ];
+  }
+  await clearAndWriteSheet(spreadsheetId, "Entry Lines", lineRows);
+
+  // 4) Trial Balance (summary per account)
+  const tbScope = companyId ? eq(accountingEntryLinesTable.companyId, companyId) : sql`1=1`;
+  const tbData = await db.execute(sql`
+    SELECT coa.code, coa.name, coa.type,
+      COALESCE(SUM(ael.debit), 0) as total_debit,
+      COALESCE(SUM(ael.credit), 0) as total_credit,
+      COALESCE(SUM(ael.debit), 0) - COALESCE(SUM(ael.credit), 0) as balance
+    FROM chart_of_accounts coa
+    LEFT JOIN accounting_entry_lines ael ON ael.account_id = coa.id
+    LEFT JOIN accounting_entries ae ON ae.id = ael.entry_id AND ae.status = 'posted'
+    WHERE coa.company_id ${companyId ? sql`= ${companyId}` : sql`IS NULL`}
+    GROUP BY coa.code, coa.name, coa.type
+    ORDER BY coa.code
+  `);
+
+  const tbRows: unknown[][] = [
+    ["Kode", "Nama Akun", "Tipe", "Total Debit", "Total Kredit", "Saldo"],
+    ...(tbData.rows as Array<{ code: string; name: string; type: string; total_debit: string; total_credit: string; balance: string }>)
+      .map((r) => [r.code, r.name, r.type, Number(r.total_debit), Number(r.total_credit), Number(r.balance)]),
+  ];
+  await clearAndWriteSheet(spreadsheetId, "Trial Balance", tbRows);
+
+  logger.info({ spreadsheetId, companyId }, "GSheet push completed");
+  return res.json({
+    ok: true,
+    spreadsheetId,
+    spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${spreadsheetId}`,
+    pushed: { accounts: accounts.length, entries: entries.length, lines: lineRows.length - 1 },
+  });
+});
+
+// POST /accounting/gsheet/pull — baca dari Google Sheets → update DB
+// Tab yang bisa diedit: "Chart of Accounts" (tambah akun baru) dan "Journal Entries" (tambah entri manual baru)
+router.post("/gsheet/pull", async (req, res) => {
+  const companyId = resolveCompanyId(req);
+
+  const [settings] = await db.select({ gsheetSpreadsheetId: accountingSettingsTable.gsheetSpreadsheetId })
+    .from(accountingSettingsTable)
+    .where(companyId ? eq(accountingSettingsTable.companyId, companyId) : isNull(accountingSettingsTable.companyId));
+
+  const spreadsheetId = settings?.gsheetSpreadsheetId;
+  if (!spreadsheetId) return res.status(400).json({ message: "Spreadsheet belum dikonfigurasi." });
+
+  const results = { coaAdded: 0, coaUpdated: 0, entriesAdded: 0, errors: [] as string[] };
+
+  // ── Pull Chart of Accounts ──
+  try {
+    const coaSheetData = await readSheet(spreadsheetId, "Chart of Accounts");
+    if (coaSheetData.length > 1) {
+      // header row: ID | Kode | Nama | Tipe | Parent ID | Aktif
+      for (const row of coaSheetData.slice(1)) {
+        const [idStr, code, name, type, parentIdStr, aktifStr] = row;
+        if (!code || !name || !type) continue;
+
+        const validTypes = ["asset", "liability", "equity", "revenue", "expense"];
+        if (!validTypes.includes(type)) { results.errors.push(`Tipe akun tidak valid: ${type} (${code})`); continue; }
+
+        const id = idStr ? parseInt(idStr, 10) : NaN;
+        const parentId = parentIdStr ? parseInt(parentIdStr, 10) : null;
+        const isActive = aktifStr?.toLowerCase() !== "tidak";
+
+        if (!isNaN(id) && id > 0) {
+          // Update akun yang sudah ada
+          await db.update(chartOfAccountsTable)
+            .set({ code, name, type: type as "asset" | "liability" | "equity" | "revenue" | "expense", parentId: isNaN(parentId ?? NaN) ? null : parentId, isActive })
+            .where(eq(chartOfAccountsTable.id, id));
+          results.coaUpdated++;
+        } else {
+          // Buat akun baru
+          const existing = await db.select({ id: chartOfAccountsTable.id }).from(chartOfAccountsTable)
+            .where(and(eq(chartOfAccountsTable.code, code), companyId ? eq(chartOfAccountsTable.companyId, companyId) : isNull(chartOfAccountsTable.companyId)))
+            .limit(1);
+          if (existing.length === 0) {
+            await db.insert(chartOfAccountsTable).values({
+              code, name,
+              type: type as "asset" | "liability" | "equity" | "revenue" | "expense",
+              parentId: isNaN(parentId ?? NaN) ? null : parentId,
+              isActive,
+              companyId: companyId ?? null,
+            });
+            results.coaAdded++;
+          }
+        }
+      }
+    }
+  } catch (e) {
+    results.errors.push(`Error saat membaca Chart of Accounts: ${(e as Error).message}`);
+  }
+
+  // ── Pull Journal Entries (hanya baris baru — tanpa ID) ──
+  try {
+    const entrySheetData = await readSheet(spreadsheetId, "Journal Entries");
+    if (entrySheetData.length > 1) {
+      // header: ID | Nomor | Tanggal | Jurnal ID | Referensi | Keterangan | Status | Sumber | ...
+      const journals = await db.select({ id: accountingJournalsTable.id }).from(accountingJournalsTable)
+        .where(companyId ? eq(accountingJournalsTable.companyId, companyId) : isNull(accountingJournalsTable.companyId));
+      const journalIds = new Set(journals.map((j) => j.id));
+
+      for (const row of entrySheetData.slice(1)) {
+        const [idStr, , dateStr, journalIdStr, ref, description] = row;
+        if (idStr && idStr.trim() !== "") continue; // skip existing entries
+        if (!dateStr || !journalIdStr) continue;
+
+        const journalId = parseInt(journalIdStr, 10);
+        if (!journalIds.has(journalId)) { results.errors.push(`Jurnal ID tidak ditemukan: ${journalIdStr}`); continue; }
+
+        const date = new Date(dateStr);
+        if (isNaN(date.getTime())) { results.errors.push(`Tanggal tidak valid: ${dateStr}`); continue; }
+
+        // Buat entry draft — lines harus diisi manual di BizPortal
+        const yr = date.getFullYear();
+        const seq = String(Math.floor(Math.random() * 99999 + 1)).padStart(5, "0");
+        const entryNumber = `JE/${yr}/${seq}`;
+
+        await db.insert(accountingEntriesTable).values({
+          entryNumber,
+          journalId,
+          date,
+          ref: ref ?? null,
+          description: description ?? null,
+          status: "draft",
+          source: "gsheet_import",
+          totalDebit: "0",
+          totalCredit: "0",
+          companyId: companyId ?? null,
+        });
+        results.entriesAdded++;
+      }
+    }
+  } catch (e) {
+    results.errors.push(`Error saat membaca Journal Entries: ${(e as Error).message}`);
+  }
+
+  logger.info({ spreadsheetId, companyId, results }, "GSheet pull completed");
+  return res.json({ ok: true, spreadsheetId, ...results });
 });
 
 export default router;
