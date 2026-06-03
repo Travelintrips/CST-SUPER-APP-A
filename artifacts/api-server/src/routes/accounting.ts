@@ -2778,7 +2778,7 @@ router.post("/gsheet/push", async (req, res) => {
   if (!spreadsheetId) return res.status(400).json({ message: "Spreadsheet belum dikonfigurasi. Jalankan setup terlebih dahulu." });
 
   // Pastikan semua tab yang dibutuhkan ada (buat jika belum ada)
-  const REQUIRED_SHEETS = ["Chart of Accounts", "Journal Entries", "Entry Lines", "Trial Balance"];
+  const REQUIRED_SHEETS = ["CoA", "Jurnal", "Lines", "TrialBalance"];
   await ensureSheets(spreadsheetId, REQUIRED_SHEETS);
 
   const scope = companyId ? eq(chartOfAccountsTable.companyId, companyId) : isNull(chartOfAccountsTable.companyId);
@@ -2791,7 +2791,7 @@ router.post("/gsheet/push", async (req, res) => {
     ["ID", "Kode", "Nama Akun", "Tipe", "Parent ID", "Aktif"],
     ...accounts.map((a) => [a.id, a.code, a.name, a.type, a.parentId ?? "", a.isActive ? "Ya" : "Tidak"]),
   ];
-  await clearAndWriteSheet(spreadsheetId, "Chart of Accounts", coaRows);
+  await clearAndWriteSheet(spreadsheetId, "CoA", coaRows);
 
   // 2) Journal Entries
   const entriesScope = companyId ? eq(accountingEntriesTable.companyId, companyId) : isNull(accountingEntriesTable.companyId);
@@ -2807,7 +2807,7 @@ router.post("/gsheet/push", async (req, res) => {
       e.totalDebit ?? 0, e.totalCredit ?? 0,
     ]),
   ];
-  await clearAndWriteSheet(spreadsheetId, "Journal Entries", entryRows);
+  await clearAndWriteSheet(spreadsheetId, "Jurnal", entryRows);
 
   // 3) Entry Lines
   const entryIds = entries.map((e) => e.id);
@@ -2833,7 +2833,7 @@ router.post("/gsheet/push", async (req, res) => {
       ...lines.map((l) => [l.entryId, l.entryNumber, l.accountId, l.accountCode ?? "", l.accountName ?? "", l.description ?? "", l.debit ?? 0, l.credit ?? 0]),
     ];
   }
-  await clearAndWriteSheet(spreadsheetId, "Entry Lines", lineRows);
+  await clearAndWriteSheet(spreadsheetId, "Lines", lineRows);
 
   // 4) Trial Balance (summary per account)
   const tbScope = companyId ? eq(accountingEntryLinesTable.companyId, companyId) : sql`1=1`;
@@ -2855,7 +2855,7 @@ router.post("/gsheet/push", async (req, res) => {
     ...(tbData.rows as Array<{ code: string; name: string; type: string; total_debit: string; total_credit: string; balance: string }>)
       .map((r) => [r.code, r.name, r.type, Number(r.total_debit), Number(r.total_credit), Number(r.balance)]),
   ];
-  await clearAndWriteSheet(spreadsheetId, "Trial Balance", tbRows);
+  await clearAndWriteSheet(spreadsheetId, "TrialBalance", tbRows);
 
   logger.info({ spreadsheetId, companyId }, "GSheet push completed");
   return res.json({
@@ -2882,7 +2882,7 @@ router.post("/gsheet/pull", async (req, res) => {
 
   // ── Pull Chart of Accounts ──
   try {
-    const coaSheetData = await readSheet(spreadsheetId, "Chart of Accounts");
+    const coaSheetData = await readSheet(spreadsheetId, "CoA");
     if (coaSheetData.length > 1) {
       // header row: ID | Kode | Nama | Tipe | Parent ID | Aktif
       for (const row of coaSheetData.slice(1)) {
@@ -2926,7 +2926,7 @@ router.post("/gsheet/pull", async (req, res) => {
 
   // ── Pull Journal Entries (hanya baris baru — tanpa ID) ──
   try {
-    const entrySheetData = await readSheet(spreadsheetId, "Journal Entries");
+    const entrySheetData = await readSheet(spreadsheetId, "Jurnal");
     if (entrySheetData.length > 1) {
       // header: ID | Nomor | Tanggal | Jurnal ID | Referensi | Keterangan | Status | Sumber | ...
       const journals = await db.select({ id: accountingJournalsTable.id }).from(accountingJournalsTable)

@@ -25,10 +25,9 @@ async function proxyRequest(
   return res.json();
 }
 
-// Encode range: nama sheet dengan spasi harus pakai 'quotes'!A:Z
-// mis. "Chart of Accounts" → %27Chart%20of%20Accounts%27!A:Z
+// Encode range sebagai path segment — nama sheet tanpa spasi aman langsung di-encode
 function rangeParam(sheetName: string, cols = "A:Z"): string {
-  return encodeURIComponent(`'${sheetName}'!${cols}`);
+  return `${encodeURIComponent(sheetName)}!${cols}`;
 }
 
 export async function createSpreadsheet(title: string): Promise<{ spreadsheetId: string; spreadsheetUrl: string }> {
@@ -37,10 +36,10 @@ export async function createSpreadsheet(title: string): Promise<{ spreadsheetId:
     body: {
       properties: { title },
       sheets: [
-        { properties: { title: "Chart of Accounts", index: 0 } },
-        { properties: { title: "Journal Entries", index: 1 } },
-        { properties: { title: "Entry Lines", index: 2 } },
-        { properties: { title: "Trial Balance", index: 3 } },
+        { properties: { title: "CoA", index: 0 } },
+        { properties: { title: "Jurnal", index: 1 } },
+        { properties: { title: "Lines", index: 2 } },
+        { properties: { title: "TrialBalance", index: 3 } },
       ],
     },
   }) as { spreadsheetId: string; spreadsheetUrl: string };
@@ -59,21 +58,17 @@ export async function getSpreadsheetMeta(spreadsheetId: string): Promise<{ title
 }
 
 // Pastikan semua tab yang dibutuhkan ada di spreadsheet (buat jika belum ada)
+// Kirim satu batchUpdate per sheet agar tidak ada konflik index
 export async function ensureSheets(spreadsheetId: string, sheetNames: string[]): Promise<void> {
   const meta = await getSpreadsheetMeta(spreadsheetId);
   const existing = new Set(meta.sheets);
   const toAdd = sheetNames.filter((n) => !existing.has(n));
-  if (toAdd.length === 0) return;
-  await proxyRequest(`/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
-    method: "POST",
-    body: {
-      requests: toAdd.map((title, i) => ({
-        addSheet: {
-          properties: { title, index: sheetNames.indexOf(title) + i },
-        },
-      })),
-    },
-  });
+  for (const title of toAdd) {
+    await proxyRequest(`/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
+      method: "POST",
+      body: { requests: [{ addSheet: { properties: { title } } }] },
+    });
+  }
 }
 
 export async function clearAndWriteSheet(

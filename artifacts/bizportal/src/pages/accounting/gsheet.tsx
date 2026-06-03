@@ -218,8 +218,8 @@ export default function AccountingGSheetPage() {
               <Info className="w-4 h-4" /> Cara Kerja Sinkronisasi Dua Arah
             </div>
             <ul className="text-xs text-slate-600 space-y-1.5 pl-4">
-              <li>📤 <strong>Push:</strong> Data dari database ditulis ke 4 tab: <em>Chart of Accounts</em>, <em>Journal Entries</em>, <em>Entry Lines</em>, <em>Trial Balance</em></li>
-              <li>✏️ <strong>Edit di Sheets:</strong> Ubah akun yang ada (kolom Kode, Nama, Tipe) atau tambah baris baru tanpa mengisi kolom ID. Untuk entri jurnal baru, tambah baris tanpa ID dengan Tanggal dan Jurnal ID.</li>
+              <li>📤 <strong>Push:</strong> Data dari database ditulis ke 4 tab: <em>CoA</em>, <em>Jurnal</em>, <em>Lines</em>, <em>TrialBalance</em></li>
+              <li>✏️ <strong>Edit di Sheets:</strong> Ubah akun yang ada di tab <em>CoA</em> (kolom Kode, Nama, Tipe) atau tambah baris baru tanpa mengisi kolom ID. Untuk entri jurnal baru, tambah baris di tab <em>Jurnal</em> tanpa ID dengan Tanggal dan Jurnal ID.</li>
               <li>📥 <strong>Pull:</strong> BizPortal membaca Sheets. Baris dengan ID yang cocok akan diperbarui. Baris tanpa ID dianggap data baru.</li>
               <li>⚠️ <strong>Catatan:</strong> Entri jurnal baru dari Sheets dibuat sebagai <Badge variant="outline" className="text-xs py-0">draft</Badge> — perlu ditambah lines di halaman Jurnal sebelum diposting.</li>
               <li>🔒 <strong>Keamanan:</strong> Trial Balance di Sheets bersifat read-only (pull tidak membaca tab ini).</li>
