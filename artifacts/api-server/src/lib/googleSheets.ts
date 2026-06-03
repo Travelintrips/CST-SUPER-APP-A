@@ -54,20 +54,26 @@ export async function getSpreadsheetMeta(spreadsheetId: string): Promise<{ title
   };
 }
 
+// Google Sheets API membutuhkan nama sheet dengan spasi dibungkus single quotes
+// mis. 'Chart of Accounts' → %27Chart%20of%20Accounts%27
+function sheetRange(sheetName: string): string {
+  return encodeURIComponent(`'${sheetName}'`);
+}
+
 export async function clearAndWriteSheet(
   spreadsheetId: string,
   sheetName: string,
   rows: unknown[][],
 ): Promise<void> {
   // Clear first
-  await proxyRequest(`/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(sheetName)}:clear`, {
+  await proxyRequest(`/v4/spreadsheets/${spreadsheetId}/values/${sheetRange(sheetName)}:clear`, {
     method: "POST",
     body: {},
   });
   if (rows.length === 0) return;
   // Write
   await proxyRequest(
-    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(sheetName)}?valueInputOption=USER_ENTERED`,
+    `/v4/spreadsheets/${spreadsheetId}/values/${sheetRange(sheetName)}?valueInputOption=USER_ENTERED`,
     {
       method: "PUT",
       body: { values: rows },
@@ -80,7 +86,7 @@ export async function readSheet(
   sheetName: string,
 ): Promise<string[][]> {
   const data = await proxyRequest(
-    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(sheetName)}`,
+    `/v4/spreadsheets/${spreadsheetId}/values/${sheetRange(sheetName)}`,
   ) as { values?: string[][] };
   return data.values ?? [];
 }
