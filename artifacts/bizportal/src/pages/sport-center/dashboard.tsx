@@ -5,15 +5,23 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { useCompany } from "@/contexts/CompanyContext";
 import {
   CalendarDays, Users, DollarSign, Clock, TrendingUp,
   Activity, AlertCircle, Building2, Wifi, WifiOff,
   Dumbbell, ShoppingBag, RefreshCw, CloudUpload, CheckCircle2,
-  XCircle, Database, BookOpen,
+  XCircle, Database, BookOpen, Flame, CheckCheck, BarChart2,
+  ArrowDownRight, Zap, Filter,
 } from "lucide-react";
 import { fetchSportCenterData, type SportCenterSupabaseData } from "@/lib/sportCenterSupabase";
 import { supabase } from "@/lib/supabaseClient";
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
+} from "recharts";
+import { useSportCostCenter } from "@/hooks/useSportCostCenter";
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
@@ -52,12 +60,56 @@ interface LocalDashboardData {
   recentBookings: Record<string, unknown>[];
 }
 
+interface KpiLiveData {
+  revenue_today: number;
+  bookings_today: number;
+  active_bookings_now: number;
+  occupancy_today: number;
+  occupied_hours_today: number;
+  available_hours_today: number;
+  checkins_today: number;
+  members_active: number;
+  refunds_today: number;
+  net_profit_today: number;
+}
+
+interface HeatmapRow { hour: string; booking_count: number; }
+
 export default function SportCenterDashboard() {
   const qc = useQueryClient();
   const { activeCompanyId } = useCompany();
   const esRef = useRef<EventSource | null>(null);
   const [realtimeCount, setRealtimeCount] = useState(0);
   const [supabaseConnected, setSupabaseConnected] = useState(false);
+  const { costCenters, selectedId: costCenterId, setSelectedId: setCostCenterId, selectedLabel: costCenterLabel } = useSportCostCenter();
+
+  // ── Query 0: KPI Live realtime ────────────────────────────────────────────
+  const { data: kpiLive, isLoading: kpiLoading } = useQuery<KpiLiveData>({
+    queryKey: ["sport-center-kpi-live", activeCompanyId, costCenterId],
+    queryFn: async () => {
+      const qs = new URLSearchParams();
+      if (activeCompanyId) qs.set("companyId", String(activeCompanyId));
+      if (costCenterId) qs.set("costCenterId", String(costCenterId));
+      const r = await fetch(`/api/sport-center/kpi-live?${qs}`, { credentials: "include" });
+      if (!r.ok) throw new Error("Gagal memuat KPI live");
+      return r.json() as Promise<KpiLiveData>;
+    },
+    refetchInterval: 30_000,
+  });
+
+  // ── Query Heatmap: Jam Ramai ──────────────────────────────────────────────
+  const { data: heatmapData } = useQuery<HeatmapRow[]>({
+    queryKey: ["sport-center-heatmap", activeCompanyId, costCenterId],
+    queryFn: async () => {
+      const qs = new URLSearchParams();
+      if (activeCompanyId) qs.set("companyId", String(activeCompanyId));
+      if (costCenterId) qs.set("costCenterId", String(costCenterId));
+      const r = await fetch(`/api/sport-center/heatmap?${qs}`, { credentials: "include" });
+      if (!r.ok) throw new Error("Gagal memuat heatmap");
+      return r.json() as Promise<HeatmapRow[]>;
+    },
+    refetchInterval: 120_000,
+  });
 
   // ── Query 1: PostgreSQL lokal via API server ───────────────────────────────
   const { data: localData, isLoading: localLoading } = useQuery<LocalDashboardData>({
@@ -94,9 +146,11 @@ export default function SportCenterDashboard() {
       try {
         const ev = JSON.parse(e.data as string) as { type?: string; entity?: string };
         if (ev.type === "connected") return;
-        if (["booking", "payment", "dashboard"].includes(ev.entity ?? "")) {
+        if (["booking", "payment", "refund", "dashboard"].includes(ev.entity ?? "")) {
           qc.invalidateQueries({ queryKey: ["sport-center-dashboard"] });
           qc.invalidateQueries({ queryKey: ["sport-center-supabase"] });
+          qc.invalidateQueries({ queryKey: ["sport-center-kpi-live"] });
+          qc.invalidateQueries({ queryKey: ["sport-center-heatmap"] });
           setRealtimeCount((c) => c + 1);
         }
       } catch { /* ignore */ }
@@ -298,6 +352,26 @@ export default function SportCenterDashboard() {
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
+            {/* Cost Center Filter */}
+            <div className="flex items-center gap-1.5">
+              <Filter className="h-3.5 w-3.5 text-gray-400" />
+              <Select
+                value={costCenterId != null ? String(costCenterId) : "__all__"}
+                onValueChange={v => setCostCenterId(v === "__all__" ? null : Number(v))}
+              >
+                <SelectTrigger className="h-7 w-44 bg-gray-800 border-gray-700 text-gray-200 text-xs">
+                  <SelectValue placeholder="Semua Cost Center" />
+                </SelectTrigger>
+                <SelectContent className="bg-gray-800 border-gray-700">
+                  <SelectItem value="__all__" className="text-xs text-gray-200">Semua Cost Center</SelectItem>
+                  {costCenters.map(cc => (
+                    <SelectItem key={cc.id} value={String(cc.id)} className="text-xs text-gray-200">
+                      {cc.code} — {cc.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             {supabaseConnected ? (
               <Badge className="bg-emerald-900/40 text-emerald-300 border-emerald-600 text-xs gap-1">
                 <Wifi className="h-3 w-3" /> Realtime aktif
@@ -311,6 +385,96 @@ export default function SportCenterDashboard() {
               <Badge className="bg-blue-900/40 text-blue-300 border-blue-600 text-xs gap-1">
                 <Activity className="h-3 w-3" /> {realtimeCount} update
               </Badge>
+            )}
+            {costCenterId != null && (
+              <Badge className="bg-indigo-900/40 text-indigo-300 border-indigo-700 text-xs gap-1">
+                <Filter className="h-3 w-3" /> {costCenterLabel}
+              </Badge>
+            )}
+          </div>
+        </div>
+
+        {/* ── FASE 6D-G: KPI Hari Ini (Live) ──────────────────────────────── */}
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <Zap className="h-4 w-4 text-yellow-400" />
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">KPI Hari Ini — Live</h2>
+            {realtimeCount > 0 && (
+              <Badge className="bg-yellow-900/40 text-yellow-300 border-yellow-600 text-xs">
+                {realtimeCount} update realtime
+              </Badge>
+            )}
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+            {kpiLoading ? (
+              Array.from({ length: 6 }).map((_, i) => (
+                <Card key={i} className="animate-pulse"><CardContent className="p-4 h-20" /></Card>
+              ))
+            ) : (
+              <>
+                <Card className="border-border/60 bg-blue-950/20">
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-2 mb-1">
+                      <DollarSign className="h-3.5 w-3.5 text-blue-400 shrink-0" />
+                      <p className="text-xs text-muted-foreground truncate">Revenue Hari Ini</p>
+                    </div>
+                    <p className="text-lg font-bold text-blue-300">{idr(kpiLive?.revenue_today ?? 0)}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">dari accounting</p>
+                  </CardContent>
+                </Card>
+                <Card className="border-border/60 bg-purple-950/20">
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-2 mb-1">
+                      <CalendarDays className="h-3.5 w-3.5 text-purple-400 shrink-0" />
+                      <p className="text-xs text-muted-foreground truncate">Booking Hari Ini</p>
+                    </div>
+                    <p className="text-lg font-bold text-purple-300">{kpiLive?.bookings_today ?? 0}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{kpiLive?.active_bookings_now ?? 0} aktif sekarang</p>
+                  </CardContent>
+                </Card>
+                <Card className="border-border/60 bg-emerald-950/20">
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-2 mb-1">
+                      <CheckCheck className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                      <p className="text-xs text-muted-foreground truncate">Check-In Hari Ini</p>
+                    </div>
+                    <p className="text-lg font-bold text-emerald-300">{kpiLive?.checkins_today ?? 0}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">sudah check-in</p>
+                  </CardContent>
+                </Card>
+                <Card className="border-border/60 bg-orange-950/20">
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Flame className="h-3.5 w-3.5 text-orange-400 shrink-0" />
+                      <p className="text-xs text-muted-foreground truncate">Occupancy Hari Ini</p>
+                    </div>
+                    <p className="text-lg font-bold text-orange-300">{kpiLive?.occupancy_today ?? 0}%</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{kpiLive?.occupied_hours_today ?? 0}h / {kpiLive?.available_hours_today ?? 0}h</p>
+                  </CardContent>
+                </Card>
+                <Card className={`border-border/60 ${(kpiLive?.net_profit_today ?? 0) >= 0 ? "bg-teal-950/20" : "bg-red-950/20"}`}>
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-2 mb-1">
+                      <TrendingUp className={`h-3.5 w-3.5 shrink-0 ${(kpiLive?.net_profit_today ?? 0) >= 0 ? "text-teal-400" : "text-red-400"}`} />
+                      <p className="text-xs text-muted-foreground truncate">Profit Hari Ini</p>
+                    </div>
+                    <p className={`text-lg font-bold ${(kpiLive?.net_profit_today ?? 0) >= 0 ? "text-teal-300" : "text-red-300"}`}>
+                      {idr(kpiLive?.net_profit_today ?? 0)}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">net (revenue − refund)</p>
+                  </CardContent>
+                </Card>
+                <Card className="border-border/60 bg-red-950/20">
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-2 mb-1">
+                      <ArrowDownRight className="h-3.5 w-3.5 text-red-400 shrink-0" />
+                      <p className="text-xs text-muted-foreground truncate">Refund Hari Ini</p>
+                    </div>
+                    <p className="text-lg font-bold text-red-300">{idr(kpiLive?.refunds_today ?? 0)}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">dikembalikan</p>
+                  </CardContent>
+                </Card>
+              </>
             )}
           </div>
         </div>
@@ -481,6 +645,45 @@ export default function SportCenterDashboard() {
             </div>
           </CardContent>
         </Card>
+        {/* ── FASE 6D-F: Heatmap Jam Ramai ────────────────────────────────── */}
+        {(heatmapData?.length ?? 0) > 0 && (
+          <Card className="border-border/60">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <BarChart2 className="h-4 w-4 text-yellow-400" /> Heatmap Jam Ramai
+                <span className="text-xs font-normal opacity-60">— historis booking per jam</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={160}>
+                <BarChart data={heatmapData ?? []} margin={{ left: 0, right: 0, top: 4, bottom: 0 }}>
+                  <XAxis dataKey="hour" stroke="#6b7280" tick={{ fontSize: 10 }} />
+                  <YAxis stroke="#6b7280" tick={{ fontSize: 10 }} width={28} allowDecimals={false} />
+                  <Tooltip
+                    formatter={(v: number) => [`${v} booking`, "Jumlah"]}
+                    contentStyle={{ backgroundColor: "#1f2937", border: "1px solid #374151", borderRadius: 8 }}
+                    labelStyle={{ color: "#e5e7eb", fontSize: 12 }}
+                  />
+                  <Bar dataKey="booking_count" name="Booking" radius={[3, 3, 0, 0]}>
+                    {(heatmapData ?? []).map((entry, i) => {
+                      const max = Math.max(...(heatmapData ?? []).map(r => r.booking_count), 1);
+                      const intensity = entry.booking_count / max;
+                      const color = intensity > 0.7 ? "#ef4444" : intensity > 0.4 ? "#f59e0b" : intensity > 0.1 ? "#3b82f6" : "#374151";
+                      return <Cell key={i} fill={color} />;
+                    })}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+              <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
+                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-red-500 inline-block" /> Sangat ramai</span>
+                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-amber-500 inline-block" /> Ramai</span>
+                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-blue-500 inline-block" /> Normal</span>
+                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-gray-700 inline-block" /> Sepi</span>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* ── Sync Status Panel ─────────────────────────────────────────────── */}
         <Card className="border-border/60">
           <CardHeader className="pb-3">

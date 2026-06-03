@@ -1081,12 +1081,19 @@ router.post("/vendor-invoices/:id/post", async (req, res) => {
       // FASE 6C: resolve SPORT_CENTER cost center ID
       const scCostCenterId = await resolveCostCenterId("SPORT_CENTER", vi.companyId ?? 1);
 
-      // FASE 6C: validasi — warning jika cost_center atau facility_id tidak ditemukan
+      // FASE 6B: validasi wajib — reject jika cost_center tidak ditemukan
       if (!scCostCenterId) {
-        console.warn(`[VI post] SPORT_CENTER cost center tidak ditemukan untuk companyId=${vi.companyId ?? 1}. Pastikan cost center 'SPORT_CENTER' sudah dibuat.`);
+        res.status(422).json({
+          error: "Sport Center expense tidak dapat di-post: cost center 'SPORT_CENTER' tidak ditemukan. Pastikan cost center sudah dibuat di master data.",
+        });
+        return;
       }
-      if (!scFacilityId) {
-        console.warn(`[VI post] facility_id tidak ditemukan untuk VI ${vi.invoiceNumber}. Cek apakah PR dibuat via route request-maintenance/purchase-request.`);
+      // FASE 6B: reject jika maintenance expense tanpa facility_id
+      if (expenseCategory === "maintenance" && !scFacilityId) {
+        res.status(422).json({
+          error: `Sport Center expense kategori 'maintenance' wajib memiliki facility_id. Cek apakah purchase request dibuat via route request-maintenance dengan facility yang valid.`,
+        });
+        return;
       }
 
       const expAcct = settings.purchaseExpenseAccountId;
@@ -1107,7 +1114,7 @@ router.post("/vendor-invoices/:id/post", async (req, res) => {
           facilityId: scFacilityId,
           expenseCategory,
           lines,
-        } as any, "PUR");
+        }, "PUR");
         await db.update(vendorInvoicesTable).set({ status: "posted", threeWayMatchStatus: matchStatus, matchNotes, journalEntryId: entry.id, updatedAt: new Date() }).where(eq(vendorInvoicesTable.id, id));
       } else {
         await db.update(vendorInvoicesTable).set({ status: "posted", threeWayMatchStatus: matchStatus, matchNotes, updatedAt: new Date() }).where(eq(vendorInvoicesTable.id, id));

@@ -1,0 +1,201 @@
+FASE 6C — SPORT CENTER PROFIT ENGINE
+
+TUJUAN:
+Mengubah Profitability Dashboard dari hanya Revenue menjadi:
+
+Revenue
+- Refund
+- Expense
+= Net Profit
+
+per:
+- Company
+- Cost Center
+- Facility
+
+=====================================================
+A. AUDIT TERLEBIH DAHULU
+=====================================================
+
+JANGAN coding dulu.
+
+Laporkan:
+
+1. endpoint:
+   GET /api/sport-center/profitability
+
+2. query profitability yang dipakai saat ini
+
+3. apakah expense dari accounting_entries
+   source='sport_center_operational_expense'
+   sudah ikut dihitung
+
+4. apakah facility_id sudah tersedia pada:
+   - booking
+   - payment
+   - expense
+   - accounting entry
+
+5. apakah occupancy masih estimasi atau real
+
+=====================================================
+B. PROFIT ENGINE
+=====================================================
+
+Update profitability query:
+
+Net Revenue =
+Revenue Booking
++ Revenue Membership
+- Refund
+
+Net Profit =
+Net Revenue
+- Operational Expense
+
+Semua wajib filter:
+
+- company_id
+- cost_center_id
+- date range
+
+=====================================================
+C. FACILITY PROFITABILITY
+=====================================================
+
+Tambahkan aggregation:
+
+per facility:
+
+- bookings_count
+- revenue
+- refund
+- expense
+- net_profit
+
+Output:
+
+facility_id
+facility_name
+revenue
+expense
+profit
+
+=====================================================
+D. TOP & WORST FACILITY
+=====================================================
+
+Tambahkan ranking:
+
+Top 5 Facility by Profit
+
+Bottom 5 Facility by Profit
+
+Berdasarkan:
+
+net_profit
+
+=====================================================
+E. BREAK-EVEN ANALYSIS
+=====================================================
+
+Tambahkan metric:
+
+monthly_expense
+
+break_even_bookings
+
+Formula:
+
+monthly_expense
+/
+average_booking_value
+
+Output:
+
+Berapa booking minimum agar impas.
+
+=====================================================
+F. PROFITABILITY DASHBOARD
+=====================================================
+
+Tambahkan KPI:
+
+1. Revenue
+2. Refund
+3. Expense
+4. Gross Revenue
+5. Net Profit
+6. Profit Margin %
+
+Formula:
+
+(net_profit / revenue) * 100
+
+=====================================================
+G. CHART BARU
+=====================================================
+
+1. Revenue vs Expense vs Profit
+
+2. Facility Profit Ranking
+
+3. Expense Category Breakdown
+
+Maintenance
+Utility
+Service
+Consumable
+
+=====================================================
+H. VALIDASI
+=====================================================
+
+Pastikan:
+
+Profitability Dashboard
+=
+Accounting P&L SPORT_CENTER
+
+Angka harus cocok.
+
+Tidak boleh ambil revenue dari sport_bookings.
+
+Gunakan accounting_entries sebagai source of truth.
+
+=====================================================
+I. TESTING
+=====================================================
+
+Test:
+
+Revenue Booking = 1.000.000
+
+Refund = 100.000
+
+Expense = 300.000
+
+Expected:
+
+Net Revenue = 900.000
+
+Net Profit = 600.000
+
+Profit Margin = 60%
+
+=====================================================
+J. OUTPUT REPORT
+=====================================================
+
+Laporkan:
+
+1. File yang diubah
+2. Query profitability baru
+3. Formula profit yang digunakan
+4. KPI yang ditambahkan
+5. Chart yang ditambahkan
+6. Hasil testing
+7. Gap tersisa menuju Real-Time KPI
+
+STOP setelah FASE 6C selesai.
+JANGAN lanjut ke dashboard live atau forecasting.

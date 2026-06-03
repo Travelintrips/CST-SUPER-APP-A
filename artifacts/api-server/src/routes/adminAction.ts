@@ -24,7 +24,7 @@ import { TAX_RATE_DECIMAL as PPN_RATE, TAX_RATE_DECIMAL } from "../lib/taxHelper
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { normalizePhone } from "../lib/phoneUtils.js";
 import { getAdminWa, getAdminGroupWa } from "../lib/adminWa.js";
-import { sendVendorRequestNotification, sendVendorSelectedAdminWa, sendVendorAwardedWa, sendVendorAssignmentNotification, resolveTemplateSnapshot, type LogisticOrderData } from "../lib/orderNotification.js";
+import { sendVendorRequestNotification, sendVendorSelectedAdminWa, sendVendorAwardedWa, sendVendorAssignmentNotification, resolveTemplateSnapshot, sendCustomerApprovalNotification, type LogisticOrderData } from "../lib/orderNotification.js";
 import { generateShortLink } from "../lib/shortLink.js";
 import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
 import { transitionRfqStatus, transitionVendorLinkStatus } from "../lib/services/rfqStatusService.js";
@@ -1053,6 +1053,7 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
       // Optionally send quote to customer
       let quoteToken: string | null = null;
       let quoteShortUrl: string | null = null;
+      let waSent = false;
       if (sendQuoteToCustomer && sellingPrice) {
         const finalPrice = sellingPrice;
         const yr = new Date().getFullYear();
@@ -1082,28 +1083,28 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
         const quoteUrl = `https://${domain}/customer-quote/${quoteToken}`;
         quoteShortUrl = await generateShortLink(quoteUrl, { context: "customer_quote", refType: "rfq", refId: String(rfq.id) });
 
-        if (order.phone) {
-          const _origin = order.origin || null;
-          const _destination = order.destination || null;
-          const _routeParts: string[] = [];
-          if (order.shipmentType) _routeParts.push(order.shipmentType);
-          if (_origin || _destination) _routeParts.push(`${_origin ?? "—"} → ${_destination ?? "—"}`);
-          const _routeLine = _routeParts.length ? `📦 ${_routeParts.join(" — ")}\n` : "";
-          const _grandTotal = order.grandTotal ? parseFloat(String(order.grandTotal)) : finalPrice * 1.11;
-          const _displaySubtotal = order.subtotal ? parseFloat(String(order.subtotal)) : Math.round(_grandTotal / 1.11);
-          const _displayTax = order.tax ? parseFloat(String(order.tax)) : _grandTotal - _displaySubtotal;
-          sendWhatsApp(order.phone,
-            `✅ *Penawaran Harga Siap — CST Logistics*\n\n` +
-            `Halo *${order.customerName}*,\n\n` +
-            `Penawaran harga untuk order Anda telah siap:\n\n` +
-            _routeLine +
-            `💰 Jumlah Pemesanan: ${fmtRp(_displaySubtotal)}\n` +
-            `🧾 PPN 11%: ${fmtRp(_displayTax)}\n` +
-            `💳 Total: *${fmtRp(_grandTotal)}*\n` +
-            (vendorLink.eta ? `⏱ ETA: ${vendorLink.eta}\n` : "") +
-            `\nSilakan review dan konfirmasi:\n${quoteShortUrl}`
-          ).catch(() => {});
-        }
+        const _ppnNominal = Math.round(finalPrice * PPN_RATE / (1 + PPN_RATE));
+        const _orderData: LogisticOrderData = {
+          id: order.id,
+          orderNumber: order.orderNumber,
+          customerName: order.customerName ?? "",
+          companyName: order.companyName ?? "",
+          email: order.email ?? "",
+          phone: order.phone ?? "",
+          orderType: order.orderType ?? undefined,
+          shipmentType: order.shipmentType ?? "",
+          origin: order.origin ?? "",
+          destination: order.destination ?? "",
+          commodity: order.commodity ?? null,
+          grandTotal: finalPrice,
+          serviceList: "",
+        };
+        await sendCustomerApprovalNotification(
+          _orderData,
+          fmtRp(finalPrice),
+          quoteShortUrl!,
+          { sellingPriceNum: finalPrice, ppnNominalNum: _ppnNominal, ppnPct: 11 },
+        ).then(() => { waSent = true; }).catch(() => {});
       }
 
       // Activity log
@@ -1155,6 +1156,7 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
         quoteToken,
         quoteUrl: quoteShortUrl,
         forwardVendorUrl: fwdShort,
+        waSent,
       });
     }
 

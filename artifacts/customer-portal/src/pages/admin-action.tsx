@@ -530,9 +530,9 @@ function CompareVendorsView({ token, data }: { token: string; data: CompareData 
           sendQuoteToCustomer: sendToCustomer,
         }),
       });
-      const d = await res.json() as { ok?: boolean; error?: string; vendorName?: string; quoteUrl?: string };
+      const d = await res.json() as { ok?: boolean; error?: string; vendorName?: string; quoteUrl?: string; waSent?: boolean };
       if (!res.ok) throw new Error(d.error ?? "Gagal");
-      const msg = `Vendor ${d.vendorName ?? ""} dipilih.${d.quoteUrl ? ` Penawaran terkirim ke customer.` : ""}`;
+      const msg = `Vendor ${d.vendorName ?? ""} dipilih.${d.waSent ? ` WA penawaran terkirim ke customer.` : d.quoteUrl ? ` Penawaran disiapkan (nomor HP customer tidak ada — WA tidak terkirim).` : ""}`;
       setResult({ ok: true, message: msg });
     } catch (e: unknown) {
       setResult({ ok: false, message: (e as Error).message });

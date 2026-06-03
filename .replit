@@ -22,10 +22,13 @@ args = "Gateway"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
+<<<<<<< HEAD
 args = "API Server"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
+=======
+>>>>>>> 0f7adbce39ea30c7b0eac8c0e100a633ad03761e
 args = "Customer Portal"
 
 [[workflows.workflow]]
@@ -41,6 +44,7 @@ args = "fuser -k 5000/tcp 2>/dev/null; sleep 0.3; API_PORT=8080 CUSTOMER_PORT=51
 waitForPort = 5000
 
 [[workflows.workflow]]
+<<<<<<< HEAD
 name = "API Server"
 author = "agent"
 
@@ -53,6 +57,8 @@ waitForPort = 8080
 outputType = "console"
 
 [[workflows.workflow]]
+=======
+>>>>>>> 0f7adbce39ea30c7b0eac8c0e100a633ad03761e
 name = "Customer Portal"
 author = "agent"
 
@@ -67,7 +73,7 @@ outputType = "console"
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
 expertMode = true
-integrations = ["google-drive:1.0.0", "javascript_openai_ai_integrations:2.0.0"]
+integrations = ["google-drive:1.0.0", "javascript_openai_ai_integrations:2.0.0", "google-sheet:1.0.0"]
 
 [postMerge]
 path = "scripts/post-merge.sh"
@@ -114,6 +120,13 @@ defaultBucketID = "replit-objstore-e357cc66-19c3-4d73-9ca9-3069d78355d1"
 
 [[ports]]
 localPort = 3001
+<<<<<<< HEAD
+=======
+externalPort = 3001
+
+[[ports]]
+localPort = 3002
+>>>>>>> 0f7adbce39ea30c7b0eac8c0e100a633ad03761e
 externalPort = 3002
 
 [[ports]]
@@ -142,6 +155,7 @@ externalPort = 3000
 
 [[ports]]
 localPort = 19368
+<<<<<<< HEAD
 externalPort = 4200
 
 [[ports]]
@@ -151,3 +165,14 @@ externalPort = 5000
 [[ports]]
 localPort = 23434
 externalPort = 3001
+=======
+externalPort = 3001
+
+[[ports]]
+localPort = 21170
+externalPort = 6000
+
+[[ports]]
+localPort = 23434
+externalPort = 80
+>>>>>>> 0f7adbce39ea30c7b0eac8c0e100a633ad03761e

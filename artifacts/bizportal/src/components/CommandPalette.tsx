@@ -74,6 +74,7 @@ const COMMANDS: CommandEntry[] = [
   { title: "Profitabilitas Freight", href: "/accounting/reports/freight-profitability", icon: Ship, group: "Accounting" },
   { title: "Rekonsiliasi", href: "/accounting/reconciliation", icon: GitMerge, group: "Accounting" },
   { title: "Accounting Settings", href: "/accounting/settings", icon: Settings, group: "Accounting" },
+  { title: "Google Sheets Sync", href: "/accounting/gsheet", icon: FileSpreadsheet, group: "Accounting" },
 
   { title: "Logistic Shipments", href: "/logistics", icon: Truck, group: "Logistics" },
   { title: "Freight Forwarding", href: "/logistics/freight", icon: Ship, group: "Logistics" },

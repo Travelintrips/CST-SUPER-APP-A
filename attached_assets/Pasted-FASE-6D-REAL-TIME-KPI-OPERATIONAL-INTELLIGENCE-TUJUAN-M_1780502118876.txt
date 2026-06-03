@@ -1,0 +1,202 @@
+FASE 6D — REAL-TIME KPI & OPERATIONAL INTELLIGENCE
+
+TUJUAN:
+Mengubah Sport Center dari laporan periodik menjadi dashboard operasional real-time.
+
+JANGAN ubah Accounting, Cost Center, atau Profit Engine yang sudah stabil.
+
+=====================================================
+A. AUDIT TERLEBIH DAHULU
+=====================================================
+
+Laporkan:
+
+1. endpoint SSE yang ada:
+   /api/sport-center/events
+
+2. event apa saja yang saat ini dibroadcast
+
+3. apakah booking create/update sudah emit event
+
+4. apakah payment create sudah emit event
+
+5. apakah dashboard sekarang polling atau manual refresh
+
+6. apakah occupancy memakai data real atau estimasi
+
+JANGAN coding dulu.
+
+=====================================================
+B. REAL-TIME KPI API
+=====================================================
+
+Buat endpoint:
+
+GET /api/sport-center/kpi-live
+
+Response:
+
+{
+  revenue_today,
+  bookings_today,
+  active_bookings_now,
+  occupancy_today,
+  checkins_today,
+  members_active,
+  refunds_today,
+  net_profit_today
+}
+
+Semua filter:
+
+- company_id
+- cost_center_id
+
+=====================================================
+C. REAL OCCUPANCY ENGINE
+=====================================================
+
+Ganti occupancy estimasi.
+
+Hitung dari booking aktual:
+
+occupied_hours
+/
+available_hours
+
+Per facility:
+
+facility_id
+facility_name
+occupancy_percent
+
+Gunakan:
+
+booking_date
+start_time
+end_time
+
+Jangan gunakan formula lama:
+
+booking_count / capacity
+
+=====================================================
+D. LIVE EVENT BROADCAST
+=====================================================
+
+Emit event saat:
+
+1. booking dibuat
+2. booking dibatalkan
+3. booking checkin
+4. payment berhasil
+5. refund dibuat
+
+Format:
+
+{
+  type,
+  timestamp,
+  company_id,
+  payload
+}
+
+=====================================================
+E. DASHBOARD LIVE UPDATE
+=====================================================
+
+Profitability Dashboard
+Sport Center Dashboard
+
+subscribe ke:
+
+/api/sport-center/events
+
+Update otomatis tanpa refresh.
+
+=====================================================
+F. HEATMAP JAM RAMAI
+=====================================================
+
+Tambahkan endpoint:
+
+GET /api/sport-center/heatmap
+
+Output:
+
+hour
+booking_count
+
+Contoh:
+
+06:00 = 2
+07:00 = 5
+08:00 = 7
+...
+
+Gunakan data booking historis.
+
+=====================================================
+G. TOP KPI CARD
+=====================================================
+
+Tambahkan card:
+
+1. Revenue Hari Ini
+2. Booking Hari Ini
+3. Check-In Hari Ini
+4. Occupancy Hari Ini
+5. Profit Hari Ini
+6. Refund Hari Ini
+
+=====================================================
+H. VALIDASI
+=====================================================
+
+Pastikan:
+
+1. KPI realtime cocok dengan data booking aktual
+2. Payment realtime cocok dengan accounting_entries
+3. Occupancy memakai slot nyata
+4. Tidak ada polling berlebihan
+
+=====================================================
+I. TESTING
+=====================================================
+
+1. Buat booking baru
+
+Expected:
+dashboard update otomatis
+
+2. Catat payment
+
+Expected:
+revenue_today bertambah
+
+3. Check-in booking
+
+Expected:
+checkins_today bertambah
+
+4. Cancel booking
+
+Expected:
+occupancy turun
+
+=====================================================
+J. OUTPUT REPORT
+=====================================================
+
+Laporkan:
+
+1. file yang diubah
+2. endpoint baru
+3. event yang dibroadcast
+4. formula occupancy baru
+5. KPI realtime yang tersedia
+6. hasil testing
+7. gap menuju FASE 7
+
+STOP setelah FASE 6D selesai.
+JANGAN membuat forecasting AI atau predictive analytics.
