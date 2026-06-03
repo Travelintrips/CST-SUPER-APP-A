@@ -63,6 +63,7 @@ import { runServiceTemplateMigration } from "./lib/serviceTemplateMigration.js";
 import { expireStaleApprovals } from "./lib/aiGovernance.js";
 import { startDbBackupScheduler } from "./lib/dbBackup.js";
 import { initAlertsBroadcast } from "./lib/alertsBroadcast.js";
+import { warmupMailer } from "./lib/mailer.js";
 import { runSportCenterMigration } from "./modules/sport-center/migration.js";
 import { startRecurringExpenseWorker } from "./modules/sport-center/recurringExpenseWorker.js";
 import { runCostCenterMigration } from "./lib/costCenterMigration.js";
@@ -244,6 +245,7 @@ async function startServer() {
 
   // Attach WebSocket server for real-time Intelligence Alerts
   initAlertsBroadcast(server);
+  warmupMailer().catch(() => {});
 
   // Also bind on secondary gateway port if REPLIT_API_GATEWAY_PORT is set.
   // Set SKIP_GATEWAY=1 to disable this secondary binding.

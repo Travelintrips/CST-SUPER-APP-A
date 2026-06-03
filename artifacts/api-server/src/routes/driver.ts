@@ -440,6 +440,25 @@ router.put("/jobs/:jobId/status", requireDriverAuth, async (req, res) => {
     updatedAt: new Date().toISOString(),
   });
 
+  // Broadcast ke customer portal (tracking page) — non-blocking, lookup orderNumber
+  if (job.logisticOrderId) {
+    const orderId = job.logisticOrderId;
+    db.select({ orderNumber: logisticOrdersTable.orderNumber })
+      .from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId))
+      .then(([row]) => {
+        if (row?.orderNumber) {
+          broadcastToPortal("driver_job_status_changed", {
+            orderNumber: row.orderNumber,
+            orderId,
+            jobId,
+            jobNumber: updated.jobNumber,
+            status,
+            updatedAt: new Date().toISOString(),
+          });
+        }
+      }).catch(() => {});
+  }
+
   if (job.logisticOrderId) {
     logActivity({
       orderId: job.logisticOrderId,
@@ -1202,6 +1221,25 @@ adminRouter.patch("/jobs/:jobId/status", async (req, res) => {
     updatedAt: new Date().toISOString(),
     source: "admin",
   });
+
+  // Broadcast ke portal untuk semua status changes (non-blocking)
+  if (updated.logisticOrderId) {
+    const orderId = updated.logisticOrderId;
+    db.select({ orderNumber: logisticOrdersTable.orderNumber })
+      .from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId))
+      .then(([row]) => {
+        if (row?.orderNumber) {
+          broadcastToPortal("driver_job_status_changed", {
+            orderNumber: row.orderNumber,
+            orderId,
+            jobId,
+            jobNumber: updated.jobNumber,
+            status: newStatus,
+            updatedAt: new Date().toISOString(),
+          });
+        }
+      }).catch(() => {});
+  }
 
   // WA ke admin (group) untuk semua milestone penting + CANCELLED
   if (["PICKED_UP", "DELIVERED", "COMPLETED", "CANCELLED"].includes(newStatus)) {
