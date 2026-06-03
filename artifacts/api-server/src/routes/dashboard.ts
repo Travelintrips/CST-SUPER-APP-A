@@ -128,7 +128,7 @@ router.get("/org-breakdown", async (req, res) => {
 
 // GET /api/dashboard/summary?companyId=<id>|all
 router.get("/summary", async (req, res) => {
-  const { isConsolidated, companyId } = parseCompanyParam(req.query.companyId);
+  const { isConsolidated, companyId } = parseCompanyParam(req);
 
   const now = new Date();
   const today = new Date(now); today.setHours(0, 0, 0, 0);
