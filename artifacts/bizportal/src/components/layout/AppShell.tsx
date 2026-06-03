@@ -390,6 +390,7 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "Pricing Rules", href: "/sport-center/pricing-rules", icon: Tags },
         { titleKey: "Pembayaran", href: "/sport-center/payments", icon: DollarSign },
         { titleKey: "Laporan Revenue", href: "/sport-center/reports", icon: BarChart2 },
+        { titleKey: "Profitabilitas", href: "/sport-center/profitability", icon: TrendingUp },
         { titleKey: "Pengaturan", href: "/sport-center/settings", icon: Settings },
       ],
     },
