@@ -83,6 +83,7 @@ import { purchaseMiniPublicRouter, purchaseMiniAdminRouter } from "./purchaseMin
 
 import { orderAuditTrailRouter } from "./orderAuditTrail.js";
 import { serviceTemplatesRouter } from "./serviceTemplates.js";
+import { paymentProofRouter } from "./paymentProof.js";
 
 import { exceptionsRouter } from "./exceptions.js";
 import { orderExceptionsRouter } from "./orderExceptions.js";
@@ -208,6 +209,7 @@ router.use("/purchase-mini", purchaseMiniAdminRouter);
 router.use("/purchase-mini", purchaseMiniPublicRouter);
 
 router.use("/service-templates", serviceTemplatesRouter);
+router.use("/payment-proof", paymentProofRouter);
 
 router.use("/logistic", orderAuditTrailRouter);
 router.use("/logistic", orderExceptionsRouter);
