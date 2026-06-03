@@ -247,16 +247,18 @@ async function startServer() {
   // Also bind on secondary gateway port if REPLIT_API_GATEWAY_PORT is set.
   // Set SKIP_GATEWAY=1 to disable this secondary binding.
   const GATEWAY_PORT = process.env.REPLIT_API_GATEWAY_PORT ? Number(process.env.REPLIT_API_GATEWAY_PORT) : null;
+  let gatewayServer: ReturnType<typeof app.listen> | null = null;
   if (GATEWAY_PORT && port !== GATEWAY_PORT && !process.env.SKIP_GATEWAY) {
-    app.listen(GATEWAY_PORT, (err?: Error) => {
-      if (!err) logger.info({ port: GATEWAY_PORT }, "Also listening on gateway port");
+    gatewayServer = app.listen(GATEWAY_PORT, () => {
+      logger.info({ port: GATEWAY_PORT }, "Also listening on gateway port");
     });
   }
 
-  // Graceful shutdown on SIGTERM / SIGINT
+  // Graceful shutdown on SIGTERM / SIGINT — close BOTH servers so ports release immediately
   const shutdown = () => {
+    gatewayServer?.close();
     server.close(() => process.exit(0));
-    setTimeout(() => process.exit(0), 5_000).unref();
+    setTimeout(() => process.exit(0), 3_000).unref();
   };
   process.once("SIGTERM", shutdown);
   process.once("SIGINT", shutdown);

@@ -1568,6 +1568,47 @@ logisticRfqV2Router.get("/rfq/:rfqId/comparison", async (req: Request, res: Resp
     selected: links.filter((l) => l.status === "selected").length,
   };
 
+  // ── Truck assignment data ──────────────────────────────────────────────────
+  // Fetch available trucking vendors (for external truck option)
+  const truckVendors = await db.execute(sql`
+    SELECT id, name, phone, has_internal_truck, internal_truck_price
+    FROM suppliers
+    WHERE is_active = true
+      AND (service_type ILIKE '%trucking%' OR service_type ILIKE '%truck%')
+    ORDER BY sort_order ASC, name ASC
+    LIMIT 100
+  `);
+
+  // Fetch selected product vendor details (for internal truck check)
+  const selectedLink = links.find(l => l.status === "selected");
+  let selectedVendorTruckInfo: { hasInternalTruck: boolean; internalTruckPrice: number | null } | null = null;
+  if (selectedLink) {
+    const svResult = await db.execute(sql`
+      SELECT has_internal_truck, internal_truck_price FROM suppliers WHERE id = ${selectedLink.vendorId}
+    `);
+    const sv = svResult.rows[0];
+    if (sv) {
+      const svRow = sv as any;
+      selectedVendorTruckInfo = {
+        hasInternalTruck: Boolean(svRow.has_internal_truck),
+        internalTruckPrice: svRow.internal_truck_price ? Number(svRow.internal_truck_price) : null,
+      };
+    }
+  }
+
+  // Fetch truck vendor name if assigned
+  let truckVendorName: string | null = null;
+  const orderTruckVendorId: number | null = (order as any)?.truckVendorId ?? null;
+  if (orderTruckVendorId) {
+    const tvResult = await db.execute(sql`SELECT name FROM suppliers WHERE id = ${orderTruckVendorId}`);
+    const tv = tvResult.rows[0];
+    if (tv) truckVendorName = (tv as any).name ?? null;
+  }
+
+  const orderProductPrice: number | null = (order as any)?.productPrice ? Number((order as any).productPrice) : null;
+  const orderTruckPrice: number | null = (order as any)?.truckPrice ? Number((order as any).truckPrice) : null;
+  const orderTruckSource: string | null = (order as any)?.truckSource ?? null;
+
   return res.json({
     rfqId,
     rfqNumber: rfq.rfqNumber,
@@ -1599,6 +1640,119 @@ logisticRfqV2Router.get("/rfq/:rfqId/comparison", async (req: Request, res: Resp
       description: a.description,
       createdAt: a.createdAt.toISOString(),
     })),
+    // Truck assignment data
+    truckVendorId: orderTruckVendorId,
+    truckVendorName,
+    truckPrice: orderTruckPrice,
+    truckSource: orderTruckSource,
+    productPrice: orderProductPrice,
+    totalPrice: (orderProductPrice != null && orderTruckPrice != null)
+      ? orderProductPrice + orderTruckPrice
+      : orderProductPrice ?? orderTruckPrice ?? null,
+    selectedVendorTruckInfo,
+    truckVendors: (truckVendors.rows as any[]).map(r => ({
+      id: Number(r.id),
+      name: r.name,
+      phone: r.phone ?? null,
+      hasInternalTruck: Boolean(r.has_internal_truck),
+      internalTruckPrice: r.internal_truck_price ? Number(r.internal_truck_price) : null,
+    })),
+  });
+});
+
+// ─── ADMIN: POST /rfq/:rfqId/assign-truck ────────────────────────────────────
+logisticRfqV2Router.post("/rfq/:rfqId/assign-truck", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const rfqId = parseInt(req.params.rfqId as string, 10);
+  if (isNaN(rfqId)) return res.status(400).json({ message: "rfqId tidak valid" });
+
+  const { source, vendorId, truckPrice: bodyTruckPrice } = req.body as {
+    source: "internal" | "external";
+    vendorId?: number;
+    truckPrice?: number;
+  };
+
+  if (!["internal", "external"].includes(source)) {
+    return res.status(400).json({ message: "source harus 'internal' atau 'external'" });
+  }
+
+  // Load RFQ
+  const [rfq] = await db.select({ id: logisticOrderRfqsTable.id, orderId: logisticOrderRfqsTable.orderId })
+    .from(logisticOrderRfqsTable).where(eq(logisticOrderRfqsTable.id, rfqId));
+  if (!rfq) return res.status(404).json({ message: "RFQ tidak ditemukan" });
+
+  // Load order
+  const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, rfq.orderId));
+  if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+  // Get selected product vendor link
+  const [selectedLink] = await db.select().from(rfqVendorLinksTable)
+    .where(and(eq(rfqVendorLinksTable.rfqId, rfqId), eq(rfqVendorLinksTable.status, "selected")))
+    .limit(1);
+  if (!selectedLink) {
+    return res.status(400).json({ message: "Vendor produk belum dipilih. Pilih vendor produk terlebih dahulu." });
+  }
+
+  let resolvedTruckVendorId: number | null = null;
+  let resolvedTruckPrice: number | null = null;
+
+  if (source === "internal") {
+    // Use internal truck price from the selected product vendor
+    const svResult = await db.execute(sql`
+      SELECT has_internal_truck, internal_truck_price FROM suppliers WHERE id = ${selectedLink.vendorId}
+    `);
+    const sv = svResult.rows[0] as any | undefined;
+    if (!sv || !sv.has_internal_truck) {
+      return res.status(400).json({ message: "Vendor produk tidak memiliki truk internal." });
+    }
+    resolvedTruckVendorId = selectedLink.vendorId;
+    resolvedTruckPrice = sv.internal_truck_price ? Number(sv.internal_truck_price) : 0;
+  } else {
+    // External: use provided vendorId and truckPrice
+    if (!vendorId) return res.status(400).json({ message: "vendorId diperlukan untuk truk eksternal." });
+    if (bodyTruckPrice == null || isNaN(Number(bodyTruckPrice))) {
+      return res.status(400).json({ message: "truckPrice diperlukan untuk truk eksternal." });
+    }
+    resolvedTruckVendorId = Number(vendorId);
+    resolvedTruckPrice = Number(bodyTruckPrice);
+  }
+
+  // Determine product price from selected vendor
+  const productPrice = (order as any).productPrice
+    ? Number((order as any).productPrice)
+    : (selectedLink.offeredPrice ? Number(selectedLink.offeredPrice) : (selectedLink.basicPrice ? Number(selectedLink.basicPrice) : null));
+
+  const totalPrice = (productPrice ?? 0) + (resolvedTruckPrice ?? 0);
+
+  // Update order
+  await db.execute(sql`
+    UPDATE logistic_orders SET
+      truck_vendor_id = ${resolvedTruckVendorId},
+      truck_price = ${String(resolvedTruckPrice)},
+      truck_source = ${source},
+      product_price = ${productPrice != null ? String(productPrice) : null},
+      final_selling_price = ${String(totalPrice)},
+      updated_at = NOW()
+    WHERE id = ${order.id}
+  `);
+
+  // Get truck vendor name
+  let truckVendorName: string | null = null;
+  if (resolvedTruckVendorId) {
+    const tvResult = await db.execute(sql`SELECT name FROM suppliers WHERE id = ${resolvedTruckVendorId}`);
+    const tv = tvResult.rows[0];
+    if (tv) truckVendorName = (tv as any).name ?? null;
+  }
+
+  return res.json({
+    ok: true,
+    orderId: order.id,
+    truckVendorId: resolvedTruckVendorId,
+    truckVendorName,
+    truckPrice: resolvedTruckPrice,
+    truckSource: source,
+    productPrice,
+    totalPrice,
   });
 });
 
