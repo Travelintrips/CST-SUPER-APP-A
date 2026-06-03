@@ -79,7 +79,9 @@ export default defineConfig({
         path.resolve(import.meta.dirname, "../mockup-sandbox/**"),
       ],
     },
-    hmr: process.env.REPLIT_DEV_DOMAIN ? false : true,
+    hmr: process.env.REPLIT_DEV_DOMAIN
+      ? { clientPort: Number(process.env.PORT ?? port), host: process.env.REPLIT_DEV_DOMAIN }
+      : true,
     proxy: {
       "/api": {
         target: "http://localhost:8080",
