@@ -2778,7 +2778,7 @@ router.post("/gsheet/push", async (req, res) => {
   if (!spreadsheetId) return res.status(400).json({ message: "Spreadsheet belum dikonfigurasi. Jalankan setup terlebih dahulu." });
 
   // Pastikan semua tab yang dibutuhkan ada (buat jika belum ada)
-  const REQUIRED_SHEETS = ["CoA", "Jurnal", "Lines", "TrialBalance"];
+  const REQUIRED_SHEETS = ["CoA", "Jurnal", "Lines", "TrialBalance", "GL"];
   await ensureSheets(spreadsheetId, REQUIRED_SHEETS);
 
   const scope = companyId ? eq(chartOfAccountsTable.companyId, companyId) : isNull(chartOfAccountsTable.companyId);
@@ -2857,12 +2857,53 @@ router.post("/gsheet/push", async (req, res) => {
   ];
   await clearAndWriteSheet(spreadsheetId, "TrialBalance", tbRows);
 
+  // 5) General Ledger — semua baris per akun, urut kode akun → tanggal, dengan saldo berjalan
+  const glData = await db.execute(sql`
+    SELECT
+      coa.code AS account_code,
+      coa.name AS account_name,
+      coa.type AS account_type,
+      ae.date,
+      ae.entry_number,
+      ae.ref,
+      ae.description AS entry_desc,
+      ael.description AS line_desc,
+      COALESCE(ael.debit, 0) AS debit,
+      COALESCE(ael.credit, 0) AS credit
+    FROM accounting_entry_lines ael
+    JOIN accounting_entries ae ON ae.id = ael.entry_id
+    JOIN chart_of_accounts coa ON coa.id = ael.account_id
+    WHERE ae.status = 'posted'
+      AND coa.company_id ${companyId ? sql`= ${companyId}` : sql`IS NULL`}
+    ORDER BY coa.code, ae.date, ae.entry_number, ael.id
+  `);
+
+  type GLRow = { account_code: string; account_name: string; account_type: string; date: Date | string; entry_number: string; ref: string | null; entry_desc: string | null; line_desc: string | null; debit: string; credit: string };
+
+  const glRaw = glData.rows as GLRow[];
+  const glRows: unknown[][] = [["Kode Akun", "Nama Akun", "Tipe", "Tanggal", "No. Entry", "Ref", "Keterangan Entri", "Keterangan Baris", "Debit", "Kredit", "Saldo Berjalan"]];
+
+  let runningBalance = 0;
+  let lastAccountCode = "";
+  for (const r of glRaw) {
+    if (r.account_code !== lastAccountCode) {
+      runningBalance = 0;
+      lastAccountCode = r.account_code;
+    }
+    const debit = Number(r.debit);
+    const credit = Number(r.credit);
+    runningBalance += debit - credit;
+    const dateStr = r.date instanceof Date ? r.date.toISOString().slice(0, 10) : String(r.date).slice(0, 10);
+    glRows.push([r.account_code, r.account_name, r.account_type, dateStr, r.entry_number, r.ref ?? "", r.entry_desc ?? "", r.line_desc ?? "", debit, credit, runningBalance]);
+  }
+  await clearAndWriteSheet(spreadsheetId, "GL", glRows);
+
   logger.info({ spreadsheetId, companyId }, "GSheet push completed");
   return res.json({
     ok: true,
     spreadsheetId,
     spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${spreadsheetId}`,
-    pushed: { accounts: accounts.length, entries: entries.length, lines: lineRows.length - 1 },
+    pushed: { accounts: accounts.length, entries: entries.length, lines: lineRows.length - 1, glLines: glRows.length - 1 },
   });
 });
 
