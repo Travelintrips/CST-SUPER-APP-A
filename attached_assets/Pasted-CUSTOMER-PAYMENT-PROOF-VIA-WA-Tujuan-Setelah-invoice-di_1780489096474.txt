@@ -1,0 +1,91 @@
+CUSTOMER PAYMENT PROOF VIA WA
+
+Tujuan:
+Setelah invoice di-mark `paid`, customer bisa langsung upload bukti pembayaran melalui WA link / mini form, backend menyimpan file, timeline update, dan admin menerima notifikasi.
+
+---
+
+A. BACKEND IMPLEMENTASI
+
+1. **Trigger WA ke Customer**
+
+   * Setelah invoice status → `paid`
+   * WA pesan:
+
+     ```
+     "Terima kasih telah melakukan pembayaran. Silakan unggah bukti pembayaran Anda melalui link berikut:"
+     [link mini form / upload endpoint]
+     ```
+   * Token / invoiceId unik disertakan untuk mapping
+
+2. **Endpoint Upload Proof**
+
+   * POST `/api/customer-invoice/:invoiceId/upload-proof`
+   * Payload:
+
+     ```
+     {
+       file: [PDF/JPG/PNG],
+       remarks: "Opsional"
+     }
+     ```
+   * Simpan file ke storage (public URL)
+   * Update invoice record → `proof_url`
+   * Update `invoice_status` / timeline → Payment Received
+   * Fire-and-forget → WA notif admin
+
+3. **Audit Logging**
+
+   * Event: `payment_proof_uploaded`
+   * Timestamp, invoiceId, customerId
+   * Update timeline / driver job jika relevan
+
+---
+
+B. FRONTEND / CUSTOMER MINI FORM
+
+1. Form fields:
+
+   * Upload file (PDF / JPG / PNG)
+   * Optional notes
+2. Submit → panggil backend upload endpoint
+3. Setelah submit:
+
+   * WA reply ke customer: “Bukti pembayaran berhasil diterima, terima kasih.”
+   * Timeline di customer portal & admin dashboard update realtime
+
+---
+
+C. ADMIN / DASHBOARD
+
+1. WA notif admin:
+
+   * Customer upload bukti bayar
+   * Include invoiceNumber, SO number, total
+   * Link ke file / download proof
+2. Timeline / OrderDriverAssignmentPanel update:
+
+   * Payment Received → Completed
+   * Audit log tercatat
+
+---
+
+D. TESTING / QA
+
+1. Customer klik WA link → upload file → backend simpan → timeline update
+2. Admin menerima notif WA → bisa klik link download
+3. Partial test: dummy invoice / customer → cek proof upload
+4. Internal / External / Legacy invoice support
+5. Build / typecheck clean, TS error = 0
+
+---
+
+Instruksi:
+
+* Tambahkan backend endpoint `/upload-proof` untuk invoice
+* Kirim WA ke customer dengan link mini form post-payment
+* Backend simpan file, update invoice record + timeline
+* Fire-and-forget WA admin notif proof uploaded
+* Update timeline Payment Received → Completed
+* Tambahkan audit log
+* Partial test bisa dilakukan tanpa mengganggu live WA / workflow lainnya
