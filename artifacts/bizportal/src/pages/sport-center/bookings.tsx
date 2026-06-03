@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCompany } from "@/contexts/CompanyContext";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Search, QrCode, CheckCircle2, XCircle, RefreshCw, Activity } from "lucide-react";
+import { Plus, Search, QrCode, CheckCircle2, XCircle, RefreshCw, Activity, DollarSign } from "lucide-react";
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
@@ -47,6 +47,8 @@ export default function SportCenterBookings() {
   const [page, setPage] = useState(1);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [realtimeCount, setRealtimeCount] = useState(0);
+  const [payBooking, setPayBooking] = useState<Booking | null>(null);
+  const [payForm, setPayForm] = useState({ method: "cash", notes: "" });
 
   const [form, setForm] = useState({
     customer_name: "", customer_phone: "", facility_id: "",
@@ -109,6 +111,26 @@ export default function SportCenterBookings() {
       setShowCreateDialog(false);
       setForm({ customer_name: "", customer_phone: "", facility_id: "", booking_date: "", start_time: "", end_time: "", duration_hours: "1", base_amount: "0", total_amount: "0", notes: "" });
       qc.invalidateQueries({ queryKey: ["sport-center-bookings"] });
+    },
+    onError: (e: Error) => toast({ title: e.message, variant: "destructive" }),
+  });
+
+  const payMutation = useMutation({
+    mutationFn: async (body: Record<string, unknown>) => {
+      const r = await fetch("/api/sport-center/payments", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) throw new Error((await r.json()).error ?? "Gagal");
+      return r.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Pembayaran berhasil dicatat" });
+      setPayBooking(null);
+      setPayForm({ method: "cash", notes: "" });
+      qc.invalidateQueries({ queryKey: ["sport-center-bookings"] });
+      qc.invalidateQueries({ queryKey: ["sport-center-payments"] });
     },
     onError: (e: Error) => toast({ title: e.message, variant: "destructive" }),
   });
@@ -234,6 +256,12 @@ export default function SportCenterBookings() {
                       <td className="py-2.5 px-3 font-medium text-foreground">{idr(Number(b.total_amount))}</td>
                       <td className="py-2.5 px-3">
                         <div className="flex items-center gap-1">
+                          {b.payment_status !== "paid" && !["cancelled"].includes(b.status as string) && (
+                            <Button size="sm" variant="outline" className="text-xs h-7 px-2 gap-1 text-emerald-400 border-emerald-700 hover:bg-emerald-900/30"
+                              onClick={() => { setPayBooking(b); setPayForm({ method: "cash", notes: "" }); }}>
+                              <DollarSign className="h-3 w-3" /> Bayar
+                            </Button>
+                          )}
                           {b.status === "confirmed" && (
                             <Button size="sm" variant="outline" className="text-xs h-7 px-2 gap-1"
                               onClick={() => checkinMutation.mutate(b.id as number)}>
@@ -271,6 +299,72 @@ export default function SportCenterBookings() {
             </div>
           </div>
         )}
+
+        {/* Payment Dialog */}
+        <Dialog open={!!payBooking} onOpenChange={(o) => { if (!o) { setPayBooking(null); setPayForm({ method: "cash", notes: "" }); } }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader><DialogTitle>Catat Pembayaran Booking</DialogTitle></DialogHeader>
+            {payBooking && (
+              <div className="grid gap-3 py-2">
+                <div className="rounded-lg bg-muted/30 p-3 text-sm space-y-1">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">No. Booking</span>
+                    <span className="font-mono font-medium">{payBooking.booking_number as string}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Pelanggan</span>
+                    <span>{payBooking.customer_name as string}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Fasilitas</span>
+                    <span>{payBooking.facility_name as string}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Tanggal</span>
+                    <span>{payBooking.booking_date as string}</span>
+                  </div>
+                  <div className="flex justify-between font-semibold border-t border-border/40 pt-1 mt-1">
+                    <span>Total Tagihan</span>
+                    <span className="text-emerald-400">{idr(Number(payBooking.total_amount))}</span>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Metode Pembayaran</Label>
+                  <Select value={payForm.method} onValueChange={(v) => setPayForm((p) => ({ ...p, method: v }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cash">Tunai</SelectItem>
+                      <SelectItem value="transfer">Transfer Bank</SelectItem>
+                      <SelectItem value="qris">QRIS</SelectItem>
+                      <SelectItem value="card">Kartu</SelectItem>
+                      <SelectItem value="other">Lainnya</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Catatan</Label>
+                  <Input value={payForm.notes} onChange={(e) => setPayForm((p) => ({ ...p, notes: e.target.value }))} placeholder="Opsional" />
+                </div>
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setPayBooking(null); setPayForm({ method: "cash", notes: "" }); }}>Batal</Button>
+              <Button
+                disabled={payMutation.isPending}
+                className="bg-emerald-700 hover:bg-emerald-600"
+                onClick={() => payBooking && payMutation.mutate({
+                  company_id: payBooking.company_id ?? activeCompanyId,
+                  booking_id: payBooking.id,
+                  amount: payBooking.total_amount,
+                  method: payForm.method,
+                  notes: payForm.notes,
+                })}
+              >
+                {payMutation.isPending ? <RefreshCw className="h-4 w-4 animate-spin" /> : "Konfirmasi Pembayaran"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
           <DialogContent className="max-w-lg">

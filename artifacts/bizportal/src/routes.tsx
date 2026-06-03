@@ -73,6 +73,7 @@ import AccountingEntryDetailPage from "@/pages/accounting/entry-detail";
 import AccountingJournalItemsPage from "@/pages/accounting/journal-items";
 import AccountingPaymentsPage from "@/pages/accounting/payments";
 import AccountingSettingsPage from "@/pages/accounting/settings";
+import CostCentersPage from "@/pages/accounting/cost-centers";
 import AccountingTrialBalancePage from "@/pages/accounting/reports/trial-balance";
 import AccountingGeneralLedgerPage from "@/pages/accounting/reports/general-ledger";
 import AccountingProfitLossPage from "@/pages/accounting/reports/profit-loss";
@@ -157,6 +158,7 @@ import SportCenterPricingRules from "@/pages/sport-center/pricing-rules";
 import SportCenterPayments from "@/pages/sport-center/payments";
 import SportCenterReports from "@/pages/sport-center/reports";
 import SportCenterSettings from "@/pages/sport-center/settings";
+import SportCenterProfitability from "@/pages/sport-center/profitability";
 
 const PR = (C: React.ComponentType) => () => <ProtectedRoute component={C} />;
 
@@ -286,6 +288,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/accounting/journal-items" component={PR(AccountingJournalItemsPage)} />
       <Route path="/accounting/payments" component={PR(AccountingPaymentsPage)} />
       <Route path="/accounting/settings" component={PR(AccountingSettingsPage)} />
+      <Route path="/accounting/cost-centers" component={PR(CostCentersPage)} />
       <Route path="/accounting/reconciliation" component={PR(AccountingReconciliationPage)} />
       <Route path="/accounting/reports/trial-balance" component={PR(AccountingTrialBalancePage)} />
       <Route path="/accounting/reports/general-ledger" component={PR(AccountingGeneralLedgerPage)} />
@@ -375,6 +378,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/sport-center/pricing-rules" component={PR(SportCenterPricingRules)} />
       <Route path="/sport-center/payments" component={PR(SportCenterPayments)} />
       <Route path="/sport-center/reports" component={PR(SportCenterReports)} />
+      <Route path="/sport-center/profitability" component={PR(SportCenterProfitability)} />
       <Route path="/sport-center/settings" component={PR(SportCenterSettings)} />
       <Route path="/sport-center" component={PR(SportCenterDashboard)} />
 

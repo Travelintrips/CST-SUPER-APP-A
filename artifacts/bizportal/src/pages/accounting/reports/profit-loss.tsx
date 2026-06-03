@@ -5,23 +5,51 @@ import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useGetProfitLoss, getGetProfitLossQueryKey } from "@workspace/api-client-react";
+import { useQuery } from "@tanstack/react-query";
 import { useCompany } from "@/contexts/CompanyContext";
 import { TrendingUp, Printer, Download } from "lucide-react";
 import { exportXlsx, printWindow } from "@/lib/export";
 
 const idr = (n: number) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n);
 
+interface CostCenter {
+  id: number;
+  code: string;
+  name: string;
+  isActive: boolean;
+}
+
 export default function ProfitLossPage() {
   const { activeCompanyId, isConsolidated } = useCompany();
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const [costCenterId, setCostCenterId] = useState<string>("all");
+
+  const { data: costCenters } = useQuery<CostCenter[]>({
+    queryKey: ["accounting-cost-centers", activeCompanyId],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (!isConsolidated && activeCompanyId) params.set("company", String(activeCompanyId));
+      const res = await fetch(`/api/accounting/cost-centers?${params}`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
   const params = useMemo(() => ({
     ...(from ? { from: new Date(from).toISOString() } : {}),
     ...(to ? { to: new Date(to + "T23:59:59").toISOString() } : {}),
     company: (isConsolidated ? "all" : activeCompanyId) as unknown as number,
-  }), [from, to, activeCompanyId, isConsolidated]);
+    ...(costCenterId !== "all" ? { cost_center_id: Number(costCenterId) as unknown as number } : {}),
+  }), [from, to, activeCompanyId, isConsolidated, costCenterId]);
+
   const { data, isLoading } = useGetProfitLoss(params, { query: { queryKey: getGetProfitLossQueryKey(params) } });
+
+  const selectedCCName = costCenterId === "all"
+    ? "Semua Cost Center"
+    : costCenters?.find((c) => String(c.id) === costCenterId)?.name ?? costCenterId;
 
   function buildExportRows() {
     if (!data) return [];
@@ -48,7 +76,10 @@ export default function ProfitLossPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold flex items-center gap-2"><TrendingUp className="h-6 w-6" />Laporan Laba Rugi</h1>
-            <p className="text-sm text-muted-foreground">Pendapatan dikurangi beban dalam periode terpilih</p>
+            <p className="text-sm text-muted-foreground">
+              Pendapatan dikurangi beban dalam periode terpilih
+              {costCenterId !== "all" && <span className="ml-2 font-medium text-primary">· {selectedCCName}</span>}
+            </p>
           </div>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={() => printWindow("Laporan Laba Rugi", headers, buildExportRows(), [2])} disabled={!hasData}>
@@ -60,9 +91,25 @@ export default function ProfitLossPage() {
           </div>
         </div>
 
-        <Card><CardContent className="p-4 flex gap-4">
-          <div className="flex-1"><Label>Dari</Label><DatePicker value={from} onChange={setFrom} data-testid="input-from" /></div>
-          <div className="flex-1"><Label>Sampai</Label><DatePicker value={to} onChange={setTo} data-testid="input-to" /></div>
+        <Card><CardContent className="p-4 flex flex-wrap gap-4">
+          <div className="flex-1 min-w-[140px]"><Label>Dari</Label><DatePicker value={from} onChange={setFrom} data-testid="input-from" /></div>
+          <div className="flex-1 min-w-[140px]"><Label>Sampai</Label><DatePicker value={to} onChange={setTo} data-testid="input-to" /></div>
+          <div className="flex-1 min-w-[180px]">
+            <Label>Cost Center</Label>
+            <Select value={costCenterId} onValueChange={setCostCenterId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Semua Cost Center" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua Cost Center</SelectItem>
+                {(costCenters ?? []).filter((c) => c.isActive).map((c) => (
+                  <SelectItem key={c.id} value={String(c.id)}>
+                    {c.code} — {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </CardContent></Card>
 
         {isLoading ? <Card><CardContent className="p-4">Memuat...</CardContent></Card> : !data ? null : (
@@ -73,7 +120,7 @@ export default function ProfitLossPage() {
                 <Table>
                   <TableBody>
                     {data.revenues.length === 0 ? (
-                      <TableRow><TableCell className="text-muted-foreground text-center">Tidak ada</TableCell></TableRow>
+                      <TableRow><TableCell className="text-muted-foreground text-center" colSpan={3}>Tidak ada</TableCell></TableRow>
                     ) : data.revenues.map((r) => (
                       <TableRow key={r.accountId}>
                         <TableCell className="font-mono text-xs">{r.code}</TableCell>
@@ -96,7 +143,7 @@ export default function ProfitLossPage() {
                 <Table>
                   <TableBody>
                     {data.expenses.length === 0 ? (
-                      <TableRow><TableCell className="text-muted-foreground text-center">Tidak ada</TableCell></TableRow>
+                      <TableRow><TableCell className="text-muted-foreground text-center" colSpan={3}>Tidak ada</TableCell></TableRow>
                     ) : data.expenses.map((r) => (
                       <TableRow key={r.accountId}>
                         <TableCell className="font-mono text-xs">{r.code}</TableCell>

@@ -64,6 +64,8 @@ import { expireStaleApprovals } from "./lib/aiGovernance.js";
 import { startDbBackupScheduler } from "./lib/dbBackup.js";
 import { initAlertsBroadcast } from "./lib/alertsBroadcast.js";
 import { runSportCenterMigration } from "./modules/sport-center/migration.js";
+import { startRecurringExpenseWorker } from "./modules/sport-center/recurringExpenseWorker.js";
+import { runCostCenterMigration } from "./lib/costCenterMigration.js";
 import { runDriverPodMigration, runDriverAssignmentMigration } from "./routes/driver.js";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
@@ -246,16 +248,18 @@ async function startServer() {
   // Also bind on secondary gateway port if REPLIT_API_GATEWAY_PORT is set.
   // Set SKIP_GATEWAY=1 to disable this secondary binding.
   const GATEWAY_PORT = process.env.REPLIT_API_GATEWAY_PORT ? Number(process.env.REPLIT_API_GATEWAY_PORT) : null;
+  let gatewayServer: ReturnType<typeof app.listen> | null = null;
   if (GATEWAY_PORT && port !== GATEWAY_PORT && !process.env.SKIP_GATEWAY) {
-    app.listen(GATEWAY_PORT, (err?: Error) => {
-      if (!err) logger.info({ port: GATEWAY_PORT }, "Also listening on gateway port");
+    gatewayServer = app.listen(GATEWAY_PORT, () => {
+      logger.info({ port: GATEWAY_PORT }, "Also listening on gateway port");
     });
   }
 
-  // Graceful shutdown on SIGTERM / SIGINT
+  // Graceful shutdown on SIGTERM / SIGINT — close BOTH servers so ports release immediately
   const shutdown = () => {
+    gatewayServer?.close();
     server.close(() => process.exit(0));
-    setTimeout(() => process.exit(0), 5_000).unref();
+    setTimeout(() => process.exit(0), 3_000).unref();
   };
   process.once("SIGTERM", shutdown);
   process.once("SIGINT", shutdown);
@@ -267,6 +271,7 @@ async function startServer() {
   startFulfillmentExpiryNotifier();
   startWorkflowWorker();
   startDriverJobWorker();
+  startRecurringExpenseWorker();
   startDbBackupScheduler();
   startWaRetryWorker();
 
@@ -330,6 +335,7 @@ async function startServer() {
     .then(() => runWithRetry("Order exceptions migration", runOrderExceptionsMigration))
     .then(() => runWithRetry("Step 4 template snapshot migration", runStep4TemplateMigration))
     .then(() => runWithRetry("Service template migration", runServiceTemplateMigration))
+    .then(() => runWithRetry("Cost Center migration", runCostCenterMigration))
     .then(() => runWithRetry("Sport Center migration", runSportCenterMigration))
     .then(() => runWithRetry("Driver POD migration", runDriverPodMigration))
     .then(() => runWithRetry("Driver assignment migration", runDriverAssignmentMigration))

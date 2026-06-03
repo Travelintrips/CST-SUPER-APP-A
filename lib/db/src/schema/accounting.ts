@@ -121,6 +121,19 @@ export const accountingTaxesTable = pgTable("accounting_taxes", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const costCentersTable = pgTable("cost_centers", {
+  id: serial("id").primaryKey(),
+  companyId: integer("company_id"),
+  code: text("code").notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => ({
+  companyCodeUniq: uniqueIndex("cost_centers_company_code_uniq").on(t.companyId, t.code),
+}));
+
 export const accountingEntriesTable = pgTable("accounting_entries", {
   id: serial("id").primaryKey(),
   companyId: integer("company_id"),
@@ -138,6 +151,9 @@ export const accountingEntriesTable = pgTable("accounting_entries", {
   totalCredit: numeric("total_credit", { precision: 14, scale: 2 }).notNull().default("0"),
   createdById: text("created_by_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  costCenterId: integer("cost_center_id").references(() => costCentersTable.id, { onDelete: "set null" }),
+  facilityId: integer("facility_id"),
+  expenseCategory: text("expense_category"),
 }, (t) => ({
   uniqAutoSource: uniqueIndex("accounting_entries_source_uniq")
     .on(t.source, t.sourceId)
@@ -307,6 +323,8 @@ export type AccountingEntry = typeof accountingEntriesTable.$inferSelect;
 export type AccountingEntryLine = typeof accountingEntryLinesTable.$inferSelect;
 export type AccountingSettings = typeof accountingSettingsTable.$inferSelect;
 export type AccountingPayment = typeof accountingPaymentsTable.$inferSelect;
+export type CostCenter = typeof costCentersTable.$inferSelect;
+export type InsertCostCenter = typeof costCentersTable.$inferInsert;
 export type InsertCompany = z.infer<typeof insertCompanySchema>;
 export type InsertAccount = z.infer<typeof insertAccountSchema>;
 export type InsertJournal = z.infer<typeof insertJournalSchema>;

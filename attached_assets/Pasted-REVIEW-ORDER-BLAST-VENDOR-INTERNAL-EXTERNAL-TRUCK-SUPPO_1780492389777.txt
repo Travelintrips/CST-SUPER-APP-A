@@ -1,0 +1,112 @@
+REVIEW ORDER & BLAST VENDOR — INTERNAL/EXTERNAL TRUCK SUPPORT
+
+Tujuan:
+Memperbarui alur Review Order & Blast Vendor supaya:
+
+* Harga produk ditampilkan dulu sesuai vendor
+* Setelah produk disetujui, admin bisa assign vendor truk
+* Vendor dengan truk internal → harga internal otomatis muncul
+* Vendor eksternal → harga dasar truk muncul setelah admin assign
+* Total order customer dihitung = harga produk + harga truk
+
+---
+
+A. BACKEND
+
+1. **Vendor Schema Update**
+
+   * Tambahkan field:
+
+     * `has_internal_truck: boolean`
+     * `internal_truck_price: number`
+   * Untuk vendor tanpa truk internal → fallback ke vendor eksternal
+
+2. **RFQ Produk**
+
+   * Endpoint review order → return:
+
+     * Vendor list
+     * Product price per vendor
+     * Internal truck option + price jika ada
+
+3. **Assign Vendor Truk**
+
+   * Setelah vendor produk setuju (`productApproved = true`)
+   * Admin pilih vendor truk:
+
+     * Jika internal → ambil `internal_truck_price` otomatis
+     * Jika eksternal → kirim RFQ ke vendor truk, ambil harga dasar
+   * Update order total: `price_product + price_truck`
+   * Update timeline / status order
+
+4. **Idempotensi & Validation**
+
+   * Pastikan:
+
+     * Vendor internal truk hanya muncul jika vendor punya internal_truck
+     * Vendor eksternal truk muncul setelah produk disetujui
+     * Total order selalu update jika pilihan internal/external berubah
+
+---
+
+B. FRONTEND
+
+1. **Review Order Panel**
+
+   * Vendor Produk:
+
+     * Tampilkan harga produk per vendor
+     * Checkbox / radio untuk approve
+   * Vendor Truk:
+
+     * Muncul setelah produk disetujui
+     * Pilihan internal / eksternal ditampilkan
+     * Harga truk update otomatis sesuai pilihan
+   * Total order update live: harga produk + harga truk
+   * Badge / label internal vs eksternal truk
+
+2. **Timeline / Order Tracking**
+
+   * Status order menunjukkan:
+
+     * Product approved
+     * Truck assigned (internal / eksternal)
+     * Total order updated
+
+3. **Customer Portal**
+
+   * Harga total = harga produk + truk
+   * Status pengiriman tetap sinkron dengan timeline
+
+---
+
+C. TESTING / QA
+
+| No | Step                  | Expected Result                                              |
+| -- | --------------------- | ------------------------------------------------------------ |
+| 1  | Pilih vendor produk   | Harga produk tampil                                          |
+| 2  | Vendor internal truk  | Harga internal muncul otomatis                               |
+| 3  | Vendor eksternal truk | Harga dasar truk muncul setelah assign admin                 |
+| 4  | Total order           | Update = harga produk + harga truk internal / eksternal      |
+| 5  | Timeline / status     | Update live internal/external truk                           |
+| 6  | Customer view         | Total order + label internal/external muncul                 |
+| 7  | Partial test          | Workflow RFQ produk + truk berjalan, total harga update live |
+
+---
+
+D. OUTPUT AKHIR
+
+* Vendor produk & truk terpisah
+* Harga truk internal / eksternal muncul sesuai pilihan
+* Total order live update di admin panel dan customer portal
+* Timeline order sinkron
+* Zero regression untuk workflow existing
+
+---
+
+Instruksi:
+
+* Update backend schema + RFQ endpoint untuk support internal/external truk
+* Update frontend Review Order panel → live total update & internal/external badge
+* Pastikan admin bisa assign truk hanya setelah produk disetujui
+* Test partial dari pilih vendor produk → assign truk → update total

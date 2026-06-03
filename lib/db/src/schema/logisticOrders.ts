@@ -89,6 +89,12 @@ export const logisticOrdersTable = pgTable("logistic_orders", {
   templateId: integer("template_id"),
   templateVersion: text("template_version"),
   templateSnapshot: jsonb("template_snapshot"),
+  // ── Truck assignment fields ────────────────────────────────────────────────
+  truckVendorId: integer("truck_vendor_id").references(() => suppliersTable.id, { onDelete: "set null" }),
+  truckPrice: numeric("truck_price", { precision: 14, scale: 2 }),
+  truckSource: text("truck_source"),
+  // "internal" | "external" | null
+  productPrice: numeric("product_price", { precision: 14, scale: 2 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (t) => [

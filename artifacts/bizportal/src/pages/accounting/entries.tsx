@@ -42,6 +42,21 @@ const SOURCE_LABELS: Record<string, string> = {
   purchase_payment: "Bayar Keluar",
   manual_payment: "Bayar Manual",
   reversal: "Pembalik",
+  pos_sale: "POS Penjualan",
+  ecommerce_order: "E-Commerce",
+  stock_received: "Terima Stok",
+  cogs_delivery: "HPP Pengiriman",
+  purchase_return: "Retur Beli",
+  sales_return: "Retur Jual",
+  opname_adjust: "Opname",
+  damage_adjust: "Penyesuaian Kerusakan",
+  grn_receipt: "Penerimaan GRN",
+  sport_center_booking: "Booking Sport Center",
+  sport_center_membership: "Membership Sport Center",
+  sport_center_refund: "Refund Sport Center",
+  sport_center_booking_refund: "Refund Booking Sport Center",
+  sport_center_booking_reversal: "Pembalik Booking Sport Center",
+  sport_center_operational_expense: "Biaya Operasional Sport Center",
 };
 
 type LineForm = { accountId: number; debit: number; credit: number; description: string };
@@ -167,7 +182,7 @@ export default function EntriesPage() {
   const { toast } = useToast();
   const { t } = useLanguage();
   const { activeCompanyId, isConsolidated } = useCompany();
-  const [filter, setFilter] = useState<{ journalId?: number; from?: string; to?: string }>({});
+  const [filter, setFilter] = useState<{ journalId?: number; from?: string; to?: string; source?: string; search?: string }>({});
   const params = useMemo(() => ({
     ...(filter.journalId ? { journalId: filter.journalId } : {}),
     ...(filter.from ? { from: new Date(filter.from).toISOString() } : {}),
@@ -230,7 +245,19 @@ export default function EntriesPage() {
 
   const journalLabel = (id: number) => journals?.find((j) => j.id === id)?.code ?? `#${id}`;
 
-  const rows = entries ?? [];
+  const allRows = entries ?? [];
+  const rows = useMemo(() => {
+    let r = allRows;
+    if (filter.source) r = r.filter((e) => e.source === filter.source);
+    if (filter.search) {
+      const q = filter.search.toLowerCase();
+      r = r.filter((e) =>
+        (e.ref ?? "").toLowerCase().includes(q) ||
+        (e.description ?? "").toLowerCase().includes(q),
+      );
+    }
+    return r;
+  }, [allRows, filter.source, filter.search]);
   const headers = ["Nomor", "Tanggal", "Jurnal", "Sumber", "Status", "Ref", "Deskripsi", "Debit", "Kredit"];
   const xlsxRows = () => rows.map((e) => [
     e.entryNumber,
@@ -318,17 +345,48 @@ export default function EntriesPage() {
         </div>
 
         <Card><CardContent className="p-4">
-          <div className="grid grid-cols-3 gap-3 mb-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3">
             <div>
               <Label>Jurnal</Label>
               <Select value={filter.journalId ? String(filter.journalId) : "all"} onValueChange={(v) => setFilter({ ...filter, journalId: v === "all" ? undefined : parseInt(v) })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Semua</SelectItem>
+                  <SelectItem value="all">Semua Jurnal</SelectItem>
                   {(journals ?? []).map((j) => (<SelectItem key={j.id} value={String(j.id)}>{j.code} - {j.name}</SelectItem>))}
                 </SelectContent>
               </Select>
             </div>
+            <div>
+              <Label>Modul Sumber</Label>
+              <Select value={filter.source ?? "all"} onValueChange={(v) => setFilter({ ...filter, source: v === "all" ? undefined : v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Semua Sumber</SelectItem>
+                  <SelectItem value="manual">Manual</SelectItem>
+                  <SelectItem value="sales_invoice">Faktur Jual</SelectItem>
+                  <SelectItem value="purchase_bill">Tagihan Beli</SelectItem>
+                  <SelectItem value="sales_payment">Bayar Masuk</SelectItem>
+                  <SelectItem value="purchase_payment">Bayar Keluar</SelectItem>
+                  <SelectItem value="manual_payment">Bayar Manual</SelectItem>
+                  <SelectItem value="pos_sale">POS Penjualan</SelectItem>
+                  <SelectItem value="reversal">Pembalik</SelectItem>
+                  <SelectItem value="sport_center_booking">Booking Sport Center</SelectItem>
+                  <SelectItem value="sport_center_membership">Membership Sport Center</SelectItem>
+                  <SelectItem value="sport_center_refund">Refund Sport Center</SelectItem>
+                  <SelectItem value="sport_center_booking_reversal">Pembalik Booking Sport</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Cari (Ref / Deskripsi)</Label>
+              <Input
+                placeholder="Nama pelanggan, fasilitas, no. referensi…"
+                value={filter.search ?? ""}
+                onChange={(e) => setFilter({ ...filter, search: e.target.value || undefined })}
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3 mb-4">
             <div><Label>Dari</Label><DatePicker value={filter.from ?? ""} onChange={(v) => setFilter({ ...filter, from: v || undefined })} /></div>
             <div><Label>Sampai</Label><DatePicker value={filter.to ?? ""} onChange={(v) => setFilter({ ...filter, to: v || undefined })} /></div>
           </div>

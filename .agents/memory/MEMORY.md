@@ -9,7 +9,7 @@
 - [Unclosed stub function cascades](unclosed-stub-function.md) — a stub function without its closing `}` makes every top-level declaration after it appear inside its body; "Unexpected export" far from the real bug line is the symptom.
 - [WA Template Migration](wa-template-migration.md) — pattern & progress migrating hardcoded WA flows to Settings → Template WA via `whatsappTemplateService`
 - [NixOS Port Killing](nixos-port-killing.md) — `fuser`/`ss`/`lsof` tidak tersedia di NixOS/Replit; gunakan `kill-port.mjs` via `/proc/net/tcp`
-- [API Server Port Config](api-server-port.md) — API server port 8080 (waitForPort=8080); fix restart: gunakan `exec env PORT=... node ...` di start-dev.sh agar SIGTERM hit node langsung
+- [API Server Port Config](api-server-port.md) — artifact waitForPort=18444 (tidak bisa diubah); restart_workflow selalu timeout; solusi: tambahkan API server startup di Gateway workflow command
 - [VMF Product Template Engine](vmf-product-template-engine.md) — templateSnapshot/templateVersion/categoryKey disimpan saat link dibuat; GET response include templateMissing; vendor form: readOnly TemplateFieldRenderer + "Penawaran" section saat hasProductTemplate
 - [Logistic Order 15-Step Workflow](logistic-order-statuses.md) — canonical 15 statuses in logisticStatusConstants.ts; OrderProgressBar, order-track.tsx, and BizPortal Status tab all now aligned
 - [Audit Trail System](audit-trail-system.md) — 4 new tables, helper lib, API routes, BizPortal page, hooks in logisticOrders/logisticRfq/customerQuoteFlow; routes.tsx is the real router (not App.tsx)
@@ -25,3 +25,4 @@
 - [FASE 6E Order Exceptions](fase6e-order-exceptions.md) — per-order exception tracking via refType='logistic_order'/refId=orderId; new router in orderExceptions.ts; ExceptionPanel in order-detail.tsx right column.
 - [Multi-Company Data Isolation](multi-company-isolation.md) — company_id added to product_templates & whatsapp_template_configs; unique indexes use COALESCE(company_id,0); suppliers/templates/WA-templates filtered by resolveCompanyId in routes.
 - [FASE 5 Driver Assignment Analytics](fase5-driver-analytics.md) — driverJobWorker (auto-cancel 24h, reminder 6h), analytics/summary endpoint, analytics dashboard page, force-update dialog + SSE toast in OrderDriverAssignmentPanel.
+- [FASE 6A Cost Center Framework](fase6a-cost-center.md) — cost_centers table + costCenterId on accounting_entries; resolveCostCenterId helper; all report endpoints support ?cost_center_id= filter; CRUD API + BizPortal master page.

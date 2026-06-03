@@ -1,0 +1,136 @@
+FASE 6C — EXPENSE POSTING ENGINE ENHANCEMENT
+
+Tujuan:
+- Mengaktifkan expense operasional Sport Center agar masuk ke Accounting secara benar
+- Menghubungkan Vendor Bill → Accounting → Cost Center → Facility
+- Menambahkan grouping expense dan kategori biaya
+- Tidak mengubah struktur booking atau revenue
+
+=====================================================
+A. AUDIT TERLEBIH DAHULU (JANGAN CODING DULU)
+=====================================================
+
+Cek dan laporkan:
+
+1. alur Vendor Bill → accounting_entries
+2. fungsi postPurchaseBill()
+3. penggunaan source = "sport_center_operational_expense"
+4. apakah facility_id sudah dipakai di purchase module
+5. apakah cost_center_id sudah dipakai di accounting_entries
+6. apakah ada double posting dari purchase ke accounting
+7. apakah semua expense sudah masuk P&L
+
+=====================================================
+B. EXPENSE CLASSIFICATION ENGINE
+=====================================================
+
+Buat file baru:
+
+expense_classifier.ts
+
+Mapping kategori:
+
+- lampu → maintenance
+- rumput → maintenance
+- shuttlecock → consumable
+- bola → consumable
+- cleaning → service
+- listrik → utility
+- air → utility
+- internet → utility
+
+Fungsi:
+classifyExpense(item_name) → category
+
+=====================================================
+C. VENDOR BILL → ACCOUNTING ENHANCEMENT
+=====================================================
+
+Update postPurchaseBill() atau equivalent:
+
+Jika source = "sport_center_operational_expense":
+
+- set cost_center = "SPORT_CENTER"
+- set facility_id dari payload
+- set category dari expense_classifier
+- pastikan tidak double posting
+
+Journal mapping:
+
+DEBIT  Expense Account
+CREDIT Cash / Accounts Payable
+
+=====================================================
+D. EXPENSE GROUPING LOGIC
+=====================================================
+
+Tambahkan query grouping:
+
+group by:
+- facility_id
+- cost_center
+- category
+- month
+
+Output dipakai untuk Profitability Dashboard
+
+=====================================================
+E. RECURRING EXPENSE SUPPORT (MINIMAL)
+=====================================================
+
+Buat table (jika belum ada):
+
+recurring_expenses
+
+Fields:
+- id
+- company_id
+- facility_id
+- name
+- amount
+- frequency (monthly/weekly)
+- next_run
+- is_active
+
+Scheduler:
+auto generate vendor bill draft
+
+=====================================================
+F. VALIDASI RULES (WAJIB)
+=====================================================
+
+1. Tidak boleh ada expense tanpa cost_center
+2. Sport Center expense wajib punya facility_id
+3. Tidak boleh ada double posting ke accounting
+4. Semua expense harus masuk accounting_entries
+
+=====================================================
+G. TESTING WAJIB
+=====================================================
+
+1. Buat maintenance request
+2. Approve purchase order
+3. Create vendor bill
+
+Pastikan:
+
+- accounting_entries terbentuk
+- cost_center = SPORT_CENTER
+- facility_id ada
+- category terisi
+- tidak ada duplicate entry
+
+=====================================================
+H. OUTPUT YANG HARUS DILAPORKAN
+=====================================================
+
+1. File yang diubah
+2. Logic baru di expense posting
+3. Mapping kategori expense
+4. Query grouping yang dibuat
+5. Hasil test vendor bill → accounting
+6. Risiko double posting (jika ada)
+7. Status integrasi dengan Profitability Dashboard
+
+STOP setelah FASE 6C selesai.
+JANGAN lanjut ke KPI atau dashboard baru.

@@ -67,6 +67,8 @@ export * from "./adminActionLinks";
 export * from "./vendorFulfillmentLinks";
 export * from "./orderFulfillment";
 export * from "./trustedDevices";
+export { costCentersTable } from "./accounting";
+export type { CostCenter, InsertCostCenter } from "./accounting";
 export * from "./auditReports";
 export * from "./waTemplateConfigs";
 export * from "./storageAuditLog";

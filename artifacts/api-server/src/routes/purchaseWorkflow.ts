@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { ensureAccountingSettings } from "../lib/accountingSeed.js";
-import { postEntry, postPurchaseReturn } from "../lib/accounting.js";
+import { postEntry, postPurchaseReturn, resolveCostCenterId } from "../lib/accounting.js";
+import { classifyExpense } from "../lib/expense_classifier.js";
 import {
   db,
   purchaseRequestsTable,
@@ -1041,11 +1042,13 @@ router.post("/vendor-invoices/:id/post", async (req, res) => {
   // Deteksi Sport Center: cek apakah VI berasal dari PR dengan department = SPORT_CENTER
   let isSportCenter = false;
   let sportCenterFacility: string | null = null;
+  let scFacilityId: number | null = null;
   if (vi.poId) {
     const scCheck = await db.execute(sql`
-      SELECT pr.department, pr.notes AS pr_notes
+      SELECT pr.department, pr.notes AS pr_notes, smr.facility_id AS sc_facility_id
       FROM purchase_documents po
       JOIN purchase_requests pr ON pr.id = po.source_pr_id
+      LEFT JOIN sport_maintenance_requests smr ON smr.purchase_request_id = pr.id
       WHERE po.id = ${vi.poId} AND pr.department = 'SPORT_CENTER'
       LIMIT 1
     `);
@@ -1054,6 +1057,8 @@ router.post("/vendor-invoices/:id/post", async (req, res) => {
       const prNotes = String((scCheck.rows[0] as any).pr_notes ?? "");
       const facilityMatch = prNotes.match(/Fasilitas:\s*([^|]+)/);
       sportCenterFacility = facilityMatch ? facilityMatch[1].trim() : null;
+      const rawFacilityId = (scCheck.rows[0] as any).sc_facility_id;
+      scFacilityId = rawFacilityId ? Number(rawFacilityId) : null;
     }
   }
 
@@ -1067,6 +1072,23 @@ router.post("/vendor-invoices/:id/post", async (req, res) => {
 
     if (isSportCenter) {
       // Sport Center: Debit Biaya Operasional (purchaseExpenseAccountId), Credit Hutang Vendor (AP)
+
+      // FASE 6C: ambil lines VI untuk klasifikasi expense
+      const viLinesForClass = await db.select().from(vendorInvoiceLinesTable).where(eq(vendorInvoiceLinesTable.invoiceId, id));
+      const firstItemName = viLinesForClass[0]?.name ?? sportCenterFacility ?? "";
+      const expenseCategory = classifyExpense(firstItemName);
+
+      // FASE 6C: resolve SPORT_CENTER cost center ID
+      const scCostCenterId = await resolveCostCenterId("SPORT_CENTER", vi.companyId ?? 1);
+
+      // FASE 6C: validasi — warning jika cost_center atau facility_id tidak ditemukan
+      if (!scCostCenterId) {
+        console.warn(`[VI post] SPORT_CENTER cost center tidak ditemukan untuk companyId=${vi.companyId ?? 1}. Pastikan cost center 'SPORT_CENTER' sudah dibuat.`);
+      }
+      if (!scFacilityId) {
+        console.warn(`[VI post] facility_id tidak ditemukan untuk VI ${vi.invoiceNumber}. Cek apakah PR dibuat via route request-maintenance/purchase-request.`);
+      }
+
       const expAcct = settings.purchaseExpenseAccountId;
       const facilityDesc = sportCenterFacility ? ` — ${sportCenterFacility}` : "";
       if (expAcct) lines.push({ accountId: expAcct, debit: netAmount, credit: 0, description: `Biaya Operasional Sport Center${facilityDesc}: ${vi.invoiceNumber}` });
@@ -1081,8 +1103,11 @@ router.post("/vendor-invoices/:id/post", async (req, res) => {
           source: "sport_center_operational_expense",
           sourceId: id,
           companyId: vi.companyId ?? 1,
+          costCenterId: scCostCenterId,
+          facilityId: scFacilityId,
+          expenseCategory,
           lines,
-        }, "PUR");
+        } as any, "PUR");
         await db.update(vendorInvoicesTable).set({ status: "posted", threeWayMatchStatus: matchStatus, matchNotes, journalEntryId: entry.id, updatedAt: new Date() }).where(eq(vendorInvoicesTable.id, id));
       } else {
         await db.update(vendorInvoicesTable).set({ status: "posted", threeWayMatchStatus: matchStatus, matchNotes, updatedAt: new Date() }).where(eq(vendorInvoicesTable.id, id));
