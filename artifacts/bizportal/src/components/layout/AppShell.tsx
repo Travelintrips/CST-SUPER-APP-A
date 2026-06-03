@@ -68,6 +68,7 @@ import {
   Link2,
   Brain,
   Trophy,
+  KeyRound,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -433,6 +434,7 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "Konfigurasi Menu", href: "/settings/nav-company-config", icon: LayoutGrid },
         { titleKey: "Product Templates", href: "/settings/product-templates", icon: Layers },
         { titleKey: "Service Templates", href: "/settings/service-templates", icon: Layers },
+        { titleKey: "Secrets & Env Vars", href: "/settings/secrets", icon: KeyRound, roles: ["admin", "owner"] },
       ],
     },
   ];

@@ -975,4 +975,137 @@ router.post("/documents/:documentType/preview", async (req: Request, res: Respon
   return res.send(html);
 });
 
+// GET /api/settings/secrets — daftar env vars dan status konfigurasi (admin only)
+router.get("/secrets", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+
+  function masked(val: string | undefined): string | undefined {
+    if (!val) return undefined;
+    if (val.length <= 6) return "••••••";
+    return val.slice(0, 3) + "••••••" + val.slice(-2);
+  }
+
+  const entries = [
+    {
+      key: "FONNTE_TOKEN",
+      label: "Fonnte Token",
+      description: "API token untuk pengiriman pesan WhatsApp via Fonnte",
+      category: "whatsapp",
+      required: true,
+      configured: !!process.env.FONNTE_TOKEN,
+      masked: masked(process.env.FONNTE_TOKEN),
+    },
+    {
+      key: "FONNTE_ADMIN_WA",
+      label: "WhatsApp Admin Group",
+      description: "ID grup WhatsApp admin sebagai fallback notifikasi (bisa di-override dari DB)",
+      category: "whatsapp",
+      required: false,
+      configured: !!process.env.FONNTE_ADMIN_WA,
+      masked: masked(process.env.FONNTE_ADMIN_WA),
+    },
+    {
+      key: "ADMIN_EMAIL",
+      label: "Admin Email",
+      description: "Alamat email admin untuk notifikasi sistem",
+      category: "email",
+      required: false,
+      configured: !!process.env.ADMIN_EMAIL,
+      masked: masked(process.env.ADMIN_EMAIL),
+    },
+    {
+      key: "SMTP_HOST",
+      label: "SMTP Host",
+      description: "Host server SMTP untuk pengiriman email",
+      category: "email",
+      required: false,
+      configured: !!process.env.SMTP_HOST,
+      masked: masked(process.env.SMTP_HOST),
+    },
+    {
+      key: "SMTP_USER",
+      label: "SMTP Username",
+      description: "Username/email untuk autentikasi SMTP",
+      category: "email",
+      required: false,
+      configured: !!process.env.SMTP_USER,
+      masked: masked(process.env.SMTP_USER),
+    },
+    {
+      key: "SMTP_PASS",
+      label: "SMTP Password",
+      description: "Password untuk autentikasi SMTP",
+      category: "email",
+      required: false,
+      configured: !!process.env.SMTP_PASS,
+      masked: masked(process.env.SMTP_PASS),
+    },
+    {
+      key: "PORTAL_ADMIN_KEY",
+      label: "Portal Admin Key",
+      description: "Kunci untuk klaim role admin di Customer Portal",
+      category: "portal",
+      required: false,
+      configured: !!process.env.PORTAL_ADMIN_KEY,
+      masked: masked(process.env.PORTAL_ADMIN_KEY),
+    },
+    {
+      key: "SESSION_SECRET",
+      label: "Session Secret",
+      description: "Secret untuk enkripsi session cookie BizPortal",
+      category: "auth",
+      required: true,
+      configured: !!process.env.SESSION_SECRET,
+      masked: masked(process.env.SESSION_SECRET),
+    },
+    {
+      key: "DRIVER_JWT_SECRET",
+      label: "Driver JWT Secret",
+      description: "Secret untuk JWT token autentikasi aplikasi driver (fallback ke SESSION_SECRET)",
+      category: "auth",
+      required: false,
+      configured: !!process.env.DRIVER_JWT_SECRET,
+      masked: masked(process.env.DRIVER_JWT_SECRET),
+    },
+    {
+      key: "DATABASE_URL",
+      label: "Database URL",
+      description: "Connection string PostgreSQL",
+      category: "other",
+      required: true,
+      configured: !!process.env.DATABASE_URL,
+      masked: masked(process.env.DATABASE_URL),
+    },
+    {
+      key: "OPENAI_API_KEY",
+      label: "OpenAI API Key",
+      description: "API key OpenAI untuk fitur AI (OCR, chat). Bisa via Replit AI Integration.",
+      category: "other",
+      required: false,
+      configured: !!process.env.OPENAI_API_KEY,
+      masked: masked(process.env.OPENAI_API_KEY),
+    },
+    {
+      key: "GOOGLE_CLIENT_ID",
+      label: "Google OAuth Client ID",
+      description: "Client ID untuk login via Google OAuth (opsional)",
+      category: "auth",
+      required: false,
+      configured: !!process.env.GOOGLE_CLIENT_ID,
+      masked: masked(process.env.GOOGLE_CLIENT_ID),
+    },
+    {
+      key: "GOOGLE_CLIENT_SECRET",
+      label: "Google OAuth Client Secret",
+      description: "Client secret untuk login via Google OAuth (opsional)",
+      category: "auth",
+      required: false,
+      configured: !!process.env.GOOGLE_CLIENT_SECRET,
+      masked: masked(process.env.GOOGLE_CLIENT_SECRET),
+    },
+  ];
+
+  return res.json(entries);
+});
+
 export default router;
