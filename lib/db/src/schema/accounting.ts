@@ -152,6 +152,8 @@ export const accountingEntriesTable = pgTable("accounting_entries", {
   createdById: text("created_by_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   costCenterId: integer("cost_center_id").references(() => costCentersTable.id, { onDelete: "set null" }),
+  facilityId: integer("facility_id"),
+  expenseCategory: text("expense_category"),
 }, (t) => ({
   uniqAutoSource: uniqueIndex("accounting_entries_source_uniq")
     .on(t.source, t.sourceId)

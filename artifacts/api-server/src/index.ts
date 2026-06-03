@@ -64,6 +64,7 @@ import { expireStaleApprovals } from "./lib/aiGovernance.js";
 import { startDbBackupScheduler } from "./lib/dbBackup.js";
 import { initAlertsBroadcast } from "./lib/alertsBroadcast.js";
 import { runSportCenterMigration } from "./modules/sport-center/migration.js";
+import { startRecurringExpenseWorker } from "./modules/sport-center/recurringExpenseWorker.js";
 import { runCostCenterMigration } from "./lib/costCenterMigration.js";
 import { runDriverPodMigration, runDriverAssignmentMigration } from "./routes/driver.js";
 import { db } from "@workspace/db";
@@ -270,6 +271,7 @@ async function startServer() {
   startFulfillmentExpiryNotifier();
   startWorkflowWorker();
   startDriverJobWorker();
+  startRecurringExpenseWorker();
   startDbBackupScheduler();
   startWaRetryWorker();
 

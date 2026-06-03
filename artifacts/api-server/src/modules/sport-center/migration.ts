@@ -422,6 +422,33 @@ export async function runSportCenterMigration(): Promise<void> {
       END $$;
     `);
 
+    // ── FASE 6C: facility_id + expense_category di accounting_entries ──────────
+    await db.execute(sql`
+      ALTER TABLE accounting_entries ADD COLUMN IF NOT EXISTS facility_id INTEGER;
+      ALTER TABLE accounting_entries ADD COLUMN IF NOT EXISTS expense_category TEXT;
+    `);
+
+    // ── FASE 6C: recurring_expenses table ────────────────────────────────────
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS recurring_expenses (
+        id          SERIAL PRIMARY KEY,
+        company_id  INTEGER,
+        facility_id INTEGER,
+        name        TEXT NOT NULL,
+        description TEXT,
+        amount      NUMERIC(14,2) NOT NULL DEFAULT 0,
+        frequency   TEXT NOT NULL DEFAULT 'monthly',
+        next_run    DATE,
+        is_active   BOOLEAN NOT NULL DEFAULT TRUE,
+        category    TEXT,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_recurring_expenses_company  ON recurring_expenses(company_id);
+      CREATE INDEX IF NOT EXISTS idx_recurring_expenses_facility ON recurring_expenses(facility_id);
+      CREATE INDEX IF NOT EXISTS idx_recurring_expenses_next_run ON recurring_expenses(next_run) WHERE is_active = TRUE;
+    `);
+
     logger.info("Sport Center migration: selesai");
   } catch (err) {
     logger.error({ err }, "Sport Center migration: gagal");
