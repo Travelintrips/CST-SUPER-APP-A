@@ -8,11 +8,20 @@ import { ensureAccountingSettings } from "./accountingSeed.js";
 import { loadDocTemplate } from "./docTemplateLoader.js";
 import { postSalesInvoice } from "./accounting.js";
 import { logger } from "./logger.js";
+import { writeAuditLog } from "./auditLog.js";
 import type { LogisticOrderData } from "./orderNotification.js";
 
 export type { LogisticOrderData };
 
 const _pubObjStore = new ObjectStorageService();
+
+// ── One-time column migration ────────────────────────────────────────────────
+db.execute(sql`
+  ALTER TABLE sales_documents
+  ADD COLUMN IF NOT EXISTS invoice_pdf_url text
+`).catch(() => {
+  // silently ignore if already exists or no permission (non-fatal)
+});
 
 function idrFmt(n: number): string {
   return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
@@ -41,6 +50,7 @@ export async function autoCreateLogisticInvoice(order: LogisticOrderData, compan
 
     let docId: number;
     let docNumber: string;
+    let isNew = false;
 
     const [existingRow] = await db
       .select({ id: salesDocumentsTable.id, docNumber: salesDocumentsTable.docNumber })
@@ -53,6 +63,7 @@ export async function autoCreateLogisticInvoice(order: LogisticOrderData, compan
       docNumber = existingRow.docNumber;
       logger.info({ orderId: order.id, docId, docNumber }, "autoCreateLogisticInvoice: SO sudah ada, skip insert");
     } else {
+      isNew = true;
       const noteLines = [
         "Dibuat otomatis saat POD diterima.",
         `Order Ref: ${order.orderNumber}`,
@@ -110,6 +121,21 @@ export async function autoCreateLogisticInvoice(order: LogisticOrderData, compan
         subtotal: String(subtotal),
       });
 
+      // Audit: SO created
+      writeAuditLog({
+        companyId,
+        action: "invoice_created",
+        module: "logistic_invoice",
+        referenceId: String(order.id),
+        newData: {
+          docId, docNumber,
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          customerName: order.customerName,
+          grandTotal,
+        },
+      });
+
       void postSalesInvoice({
         salesDocId: docId,
         docNumber,
@@ -163,6 +189,21 @@ export async function autoCreateLogisticInvoice(order: LogisticOrderData, compan
     try {
       await _pubObjStore.uploadPublicRaw(subPath, pdfBuffer, "application/pdf");
       pdfPublicUrl = _pubObjStore.toSupabasePublicUrl(subPath);
+
+      // Store PDF URL on sales_documents for retrieval in tracking API
+      await db.execute(sql`
+        UPDATE sales_documents
+        SET invoice_pdf_url = ${pdfPublicUrl}
+        WHERE id = ${docId}
+      `);
+
+      writeAuditLog({
+        companyId,
+        action: "pdf_uploaded",
+        module: "logistic_invoice",
+        referenceId: String(order.id),
+        newData: { docId, docNumber, pdfUrl: pdfPublicUrl },
+      });
     } catch (e) {
       logger.warn({ e, subPath }, "autoCreateLogisticInvoice: upload PDF gagal — kirim WA tanpa attachment");
     }
@@ -183,19 +224,29 @@ export async function autoCreateLogisticInvoice(order: LogisticOrderData, compan
         `🕐 ${nowWIB()}`,
       ].filter((l) => l !== null).join("\n");
 
-      if (pdfPublicUrl) {
-        sendMediaViaService(adminWa, adminMsg, pdfPublicUrl, {
-          context: "pod_invoice_admin",
-          refType: "logistic_order",
-          refId: String(order.id),
-        }).catch((e) => logger.warn({ e }, "WA admin media gagal"));
-      } else {
-        sendWhatsApp(adminWa, adminMsg, {
-          context: "pod_invoice_admin",
-          refType: "logistic_order",
-          refId: String(order.id),
-        }).catch((e) => logger.warn({ e }, "WA admin teks gagal"));
-      }
+      const waAdminSent = pdfPublicUrl
+        ? sendMediaViaService(adminWa, adminMsg, pdfPublicUrl, {
+            context: "pod_invoice_admin",
+            refType: "logistic_order",
+            refId: String(order.id),
+          }).then(() => true).catch((e) => { logger.warn({ e }, "WA admin media gagal"); return false; })
+        : sendWhatsApp(adminWa, adminMsg, {
+            context: "pod_invoice_admin",
+            refType: "logistic_order",
+            refId: String(order.id),
+          }).then(() => true).catch((e) => { logger.warn({ e }, "WA admin teks gagal"); return false; });
+
+      void waAdminSent.then((ok) => {
+        if (ok) {
+          writeAuditLog({
+            companyId,
+            action: "wa_sent_admin",
+            module: "logistic_invoice",
+            referenceId: String(order.id),
+            newData: { docNumber, adminWa, hasPdf: !!pdfPublicUrl },
+          });
+        }
+      });
     }
 
     if (order.phone) {
@@ -210,26 +261,39 @@ export async function autoCreateLogisticInvoice(order: LogisticOrderData, compan
         order.commodity ? `Komoditas   : ${order.commodity}` : null,
         grandTotal > 0 ? `Total       : *${idrFmt(grandTotal)}*` : null,
         ``,
-        pdfPublicUrl ? `📄 File invoice terlampir. Mohon simpan sebagai bukti pembayaran.` : `Mohon konfirmasi penerimaan barang kepada kami.`,
+        pdfPublicUrl
+          ? `📄 File invoice terlampir. Mohon simpan sebagai bukti pembayaran.`
+          : `Mohon konfirmasi penerimaan barang kepada kami.`,
         ``,
         `Hubungi kami jika ada pertanyaan. Terima kasih 🙏`,
       ].filter((l) => l !== null).join("\n");
 
-      if (pdfPublicUrl) {
-        sendMediaViaService(order.phone, custMsg, pdfPublicUrl, {
-          context: "pod_invoice_customer",
-          refType: "logistic_order",
-          refId: String(order.id),
-        }).catch((e) => logger.warn({ e, phone: order.phone }, "WA customer media gagal"));
-      } else {
-        sendWhatsApp(order.phone, custMsg, {
-          context: "pod_invoice_customer",
-          refType: "logistic_order",
-          refId: String(order.id),
-        }).catch((e) => logger.warn({ e, phone: order.phone }, "WA customer teks gagal"));
-      }
+      const waCustSent = pdfPublicUrl
+        ? sendMediaViaService(order.phone, custMsg, pdfPublicUrl, {
+            context: "pod_invoice_customer",
+            refType: "logistic_order",
+            refId: String(order.id),
+          }).then(() => true).catch((e) => { logger.warn({ e, phone: order.phone }, "WA customer media gagal"); return false; })
+        : sendWhatsApp(order.phone, custMsg, {
+            context: "pod_invoice_customer",
+            refType: "logistic_order",
+            refId: String(order.id),
+          }).then(() => true).catch((e) => { logger.warn({ e, phone: order.phone }, "WA customer teks gagal"); return false; });
+
+      void waCustSent.then((ok) => {
+        if (ok) {
+          writeAuditLog({
+            companyId,
+            action: "wa_sent_customer",
+            module: "logistic_invoice",
+            referenceId: String(order.id),
+            newData: { docNumber, phone: order.phone, hasPdf: !!pdfPublicUrl },
+          });
+        }
+      });
     }
 
+    void isNew; // suppress unused variable warning
     logger.info({ orderId: order.id, docId, docNumber, hasPdf: !!pdfPublicUrl }, "autoCreateLogisticInvoice: selesai");
   } catch (err) {
     logger.warn({ err, orderId: order.id }, "autoCreateLogisticInvoice: non-fatal error");

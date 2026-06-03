@@ -607,7 +607,7 @@ logisticOrdersRouter.get(
     if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
 
     // Run all independent queries in parallel — eliminates N+1 sequential awaits
-    const [items, [driverJob], [latestRfq], orderUpdates, progressEvents, podSubmissionsRaw, invoiceLinksRaw] = await Promise.all([
+    const [items, [driverJob], [latestRfq], orderUpdates, progressEvents, podSubmissionsRaw, invoiceLinksRaw, autoInvoiceRaw] = await Promise.all([
       db.select().from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, order.id)),
       db.select().from(driverJobsTable)
         .where(eq(driverJobsTable.logisticOrderId, order.id))
@@ -636,6 +636,12 @@ logisticOrdersRouter.get(
         .where(eq(customerInvoiceLinksTable.orderId, order.id))
         .orderBy(desc(customerInvoiceLinksTable.createdAt))
         .limit(3),
+      db.execute(sql`
+        SELECT id, doc_number, invoice_status, grand_total, invoice_pdf_url, confirmed_at
+        FROM sales_documents
+        WHERE logistic_order_id = ${order.id}
+        LIMIT 1
+      `),
     ]);
 
     let driverJobData = null;
@@ -762,6 +768,15 @@ logisticOrdersRouter.get(
       createdAt: r.createdAt.toISOString(),
     }));
 
+    const autoInvoiceRow = (autoInvoiceRaw.rows as any[])[0] ?? null;
+    const autoInvoice = autoInvoiceRow ? {
+      docNumber: autoInvoiceRow.doc_number as string,
+      invoiceStatus: autoInvoiceRow.invoice_status as string,
+      grandTotal: autoInvoiceRow.grand_total ? parseFloat(autoInvoiceRow.grand_total as string) : null,
+      pdfUrl: (autoInvoiceRow.invoice_pdf_url as string | null) ?? null,
+      confirmedAt: autoInvoiceRow.confirmed_at ? new Date(autoInvoiceRow.confirmed_at as string).toISOString() : null,
+    } : null;
+
     return res.json({
       ...toPublicOrder(order),
       customerName: order.customerName,
@@ -775,6 +790,7 @@ logisticOrdersRouter.get(
       progressEvents: progressEventsMapped,
       podSubmissions,
       invoiceLinks,
+      autoInvoice,
     });
   }
 );

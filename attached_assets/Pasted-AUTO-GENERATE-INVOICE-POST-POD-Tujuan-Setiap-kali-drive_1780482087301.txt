@@ -1,0 +1,114 @@
+AUTO-GENERATE INVOICE POST-POD
+
+Tujuan:
+Setiap kali driver/vendor upload POD, sistem otomatis membuat invoice, memposting jurnal akuntansi, generate PDF, upload ke storage, dan mengirim WA ke admin + customer.
+
+---
+
+A. BACKEND IMPLEMENTASI
+
+1. **Trigger**
+
+   * Fungsi `autoCreateLogisticInvoice(logisticOrderId, jobId)` dipanggil setelah POD berhasil upload
+
+2. **Buat SO (Sales Order)**
+
+   * Table: `sales_documents`
+   * Fields:
+
+     * `so_number` → auto-generate, format SO/YYYY/XXXXX
+     * `kind` = "order"
+     * `status` = "confirmed"
+     * `invoiceStatus` = "to_invoice"
+     * `deliveryStatus` = "delivered"
+     * `linked_logistic_order_id` = logisticOrderId
+   * **Idempotensi:** jika SO untuk logisticOrderId sudah ada → jangan duplikat
+
+3. **Line Item**
+
+   * Insert 1 line: "Jasa Pengiriman [type]" (ambil dari job / fulfillment type)
+   * Harga / qty diambil dari order / tarif pengiriman
+
+4. **Jurnal Akuntansi**
+
+   * Debit → Accounts Receivable (AR)
+   * Credit → Revenue (Jasa Pengiriman)
+   * Gunakan companyId / multi-company mapping jika perlu
+
+5. **Generate PDF Invoice**
+
+   * Pakai template terbaru dari Settings
+   * Sertakan logo perusahaan
+   * Simpan PDF sementara
+
+6. **Upload PDF ke Public Storage**
+
+   * Simpan URL / path → untuk WA attachment
+   * Pastikan link bisa diakses admin / customer
+
+7. **WA Admin**
+
+   * Kirim ke admin group
+   * Pesan: `"Invoice Auto-Generated | SO/2026/XXXXX | Total Rp X"`
+   * Lampirkan PDF
+   * Fire-and-forget → `.catch()` log error jika gagal
+
+8. **WA Customer**
+
+   * Kirim ke customer
+   * Pesan: `"Invoice Anda terlampir, mohon simpan sebagai bukti"`
+   * Lampirkan PDF
+   * Fire-and-forget → log debug, jangan block response
+
+9. **Update BizPortal**
+
+   * SO muncul di Sales → Documents
+   * Status: siap ditagih / invoice issued
+   * Line item dan total sesuai order
+   * Customer dapat akses PDF via `/customer-invoice/:token`
+
+10. **Audit Logging**
+
+    * Catat event `invoice_created`, PDF upload, WA notif ke admin & customer
+    * Gunakan `writeAuditLog` untuk traceability
+
+---
+
+B. FRONTEND / CUSTOMER
+
+1. **Customer Portal**
+
+   * Link PDF invoice muncul di order tracking
+   * Tombol download / preview
+   * Status invoice: to_invoice / issued
+
+2. **Admin Panel**
+
+   * Badge / link SO muncul di CustomerInvoicePanel
+   * Bisa buka PDF dan cek total
+   * Timeline update → job POD Completed → invoice generated
+
+---
+
+C. TESTING / QA
+
+1. Driver upload POD → SO otomatis dibuat
+2. Line item default ada → "Jasa Pengiriman [type]"
+3. Jurnal akuntansi tercatat (AR / Revenue)
+4. PDF invoice generate → upload ke public storage
+5. WA admin & customer notif → PDF terlampir
+6. BizPortal → SO muncul di Sales → Documents
+7. Partial test OK untuk Internal / External / Legacy job
+8. Audit log tercatat
+
+---
+
+Instruksi:
+
+* Implementasikan fungsi `autoCreateLogisticInvoice()` pasca POD upload
+* Pastikan idempotensi: tidak membuat SO duplikat
+* Generate PDF pakai template Settings terbaru
+* Upload ke public storage, kirim WA admin + customer
+* Update BizPortal Sales → Documents
+* Catat audit log untuk semua step
+* Test partial → driver upload POD → SO + PDF + WA muncul

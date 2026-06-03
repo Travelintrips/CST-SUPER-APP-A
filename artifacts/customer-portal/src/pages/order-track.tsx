@@ -52,6 +52,14 @@ type GpsPoint = {
   updatedAt: string;
 };
 
+type AutoInvoice = {
+  docNumber: string;
+  invoiceStatus: string;
+  grandTotal: number | null;
+  pdfUrl: string | null;
+  confirmedAt: string | null;
+};
+
 type TrackData = {
   order: {
     orderNumber: string;
@@ -78,6 +86,7 @@ type TrackData = {
   } | null;
   podFiles?: PodFile[];
   driverPhotos?: DriverPhoto[];
+  autoInvoice?: AutoInvoice | null;
   liveLocation?: GpsPoint | null;
   gpsTrail?: GpsPoint[];
 };
@@ -568,6 +577,61 @@ export default function OrderTrackPage() {
                 </a>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* Auto-Invoice Card */}
+        {data.autoInvoice && (
+          <div className={`rounded-2xl shadow-sm border p-5 ${
+            data.autoInvoice.invoiceStatus === "invoiced"
+              ? "bg-green-50 border-green-200"
+              : "bg-blue-50 border-blue-200"
+          }`}>
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center flex-shrink-0">
+                <span className="text-lg">🧾</span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-sm font-bold text-slate-800">Invoice Pengiriman</h2>
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                    data.autoInvoice.invoiceStatus === "invoiced"
+                      ? "bg-green-100 text-green-700"
+                      : data.autoInvoice.invoiceStatus === "to_invoice"
+                      ? "bg-amber-100 text-amber-700"
+                      : "bg-slate-100 text-slate-600"
+                  }`}>
+                    {data.autoInvoice.invoiceStatus === "invoiced"
+                      ? "✅ Sudah Ditagih"
+                      : data.autoInvoice.invoiceStatus === "to_invoice"
+                      ? "⏳ Menunggu Pembayaran"
+                      : data.autoInvoice.invoiceStatus}
+                  </span>
+                </div>
+                <p className="text-xs font-mono text-blue-700 mt-0.5 font-semibold">{data.autoInvoice.docNumber}</p>
+                {data.autoInvoice.grandTotal != null && (
+                  <p className="text-sm font-bold text-slate-800 mt-1">
+                    Total: {idr(data.autoInvoice.grandTotal)}
+                  </p>
+                )}
+              </div>
+            </div>
+            {data.autoInvoice.pdfUrl && (
+              <a
+                href={data.autoInvoice.pdfUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-4 flex items-center justify-center gap-2 w-full rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-semibold py-3 text-sm transition-all"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Download Invoice PDF
+              </a>
+            )}
+            <p className="mt-2 text-xs text-slate-500 text-center">
+              Invoice digenerate otomatis saat POD diterima
+            </p>
           </div>
         )}
 
