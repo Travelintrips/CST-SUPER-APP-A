@@ -13,6 +13,7 @@ import {
   Bell, BellOff, Navigation, ExternalLink, Image as ImageIcon, X,
 } from "lucide-react";
 import { usePushNotification } from "@/hooks/usePushNotification";
+import { usePortalSSEOrderTracker } from "@/hooks/usePortalSSE";
 import { formatDate } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 
@@ -1149,8 +1150,6 @@ export default function TrackPage() {
   const [input, setInput] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
-  const [sseConnected, setSseConnected] = useState(false);
-  const sseReconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const qc = useQueryClient();
 
   const prevStatusRef = useRef<string | null>(null);
@@ -1169,47 +1168,11 @@ export default function TrackPage() {
     if (o) { setInput(o); setSearchTerm(o.toUpperCase().trim()); }
   }, [pathOrderNumber]);
 
-  // Real-time: SSE dengan auto-reconnect + connection state tracking
-  useEffect(() => {
-    let mounted = true;
-
-    function connect() {
-      const es = new EventSource("/api/ecommerce/events");
-
-      es.onopen = () => { if (mounted) setSseConnected(true); };
-      es.onerror = () => {
-        if (!mounted) return;
-        setSseConnected(false);
-        es.close();
-        // Auto-reconnect setelah 5 detik
-        sseReconnectRef.current = setTimeout(() => {
-          if (mounted) connect();
-        }, 5000);
-      };
-
-      const invalidateIfMatch = (e: MessageEvent) => {
-        try {
-          const data = JSON.parse(e.data);
-          if (searchTerm && data.orderNumber === searchTerm) {
-            qc.invalidateQueries({ queryKey: ["tracking", searchTerm] });
-          }
-        } catch { }
-      };
-      es.addEventListener("logistic_order_status_changed", invalidateIfMatch);
-      es.addEventListener("vendor_quote_received", invalidateIfMatch);
-
-      return es;
-    }
-
-    const es = connect();
-
-    return () => {
-      mounted = false;
-      setSseConnected(false);
-      if (sseReconnectRef.current) clearTimeout(sseReconnectRef.current);
-      es.close();
-    };
-  }, [searchTerm, qc]);
+  // Real-time: SSE dengan auto-reconnect via usePortalSSEOrderTracker
+  const { connected: sseConnected } = usePortalSSEOrderTracker(
+    searchTerm || null,
+    () => qc.invalidateQueries({ queryKey: ["tracking", searchTerm] }),
+  );
 
   const isTerminal = !!(lastRefreshed && prevStatusRef.current && isTerminalStatus(prevStatusRef.current));
 
