@@ -10,6 +10,7 @@ import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getPreferredDomain } from "../lib/domain.js";
 import { getAdminWa, getAdminGroupWa } from "../lib/adminWa.js";
 import { sendVendorPodUploadedNotification } from "../lib/orderNotification.js";
+import { autoCreateLogisticInvoice } from "../lib/podInvoiceAutoCreate.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { logger } from "../lib/logger.js";
 
@@ -386,6 +387,39 @@ driverProgressPublicRouter.post("/:token", async (req: Request, res: Response) =
       } catch {
         // non-fatal
       }
+
+      // Auto-create invoice (fire-and-forget, non-blocking)
+      db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId)).limit(1)
+        .then(([row]) => {
+          if (!row) return;
+          autoCreateLogisticInvoice({
+            id: row.id,
+            orderNumber: row.orderNumber,
+            customerName: row.customerName,
+            companyName: row.companyName ?? "",
+            email: row.email,
+            phone: row.phone,
+            orderType: row.orderType ?? undefined,
+            shipmentType: row.shipmentType,
+            origin: row.origin,
+            destination: row.destination,
+            commodity: row.commodity ?? null,
+            cargoDescription: row.cargoDescription ?? null,
+            grossWeight: row.grossWeight ? Number(row.grossWeight) : null,
+            volumeCbm: row.volumeCbm ? Number(row.volumeCbm) : null,
+            jumlahKoli: row.jumlahKoli ?? null,
+            grandTotal: row.grandTotal ? Number(row.grandTotal) : 0,
+            tax: row.tax ? Number(row.tax) : 0,
+            subtotal: row.grandTotal && row.tax ? Number(row.grandTotal) - Number(row.tax) : null,
+            serviceList: row.shipmentType,
+            requiredDate: row.requiredDate ?? null,
+            notes: row.notes ?? null,
+            jamOrder: row.jamOrder ?? null,
+            vehicleType: row.truckType ?? null,
+            createdAt: row.createdAt ?? null,
+            publicRfqToken: row.publicRfqToken ?? null,
+          }).catch(() => {});
+        }).catch(() => {});
     }
 
     return res.json({ ok: true, stepKey, label: STEP_LABEL[String(stepKey)], mapUrl, streetViewUrl });
