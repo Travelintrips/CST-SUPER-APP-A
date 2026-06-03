@@ -1,15 +1,18 @@
 import { Router, type Request, type Response } from "express";
 import multer from "multer";
+import { randomBytes } from "crypto";
 import { eq, sql } from "drizzle-orm";
 import { db, salesDocumentsTable } from "@workspace/db";
 import { uploadToSupabase } from "../lib/supabaseStorage.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
-import { getAdminGroupWa } from "../lib/adminWa.js";
+import { getAdminGroupWa, getAdminWa } from "../lib/adminWa.js";
 import { writeAuditLog } from "../lib/auditLog.js";
 import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
 import { generateOrGetProofToken } from "../lib/paymentProofService.js";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { logger } from "../lib/logger.js";
+import { ObjectStorageService } from "../lib/objectStorage.js";
+import { createAlertAndBroadcast } from "../lib/alertHelpers.js";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
@@ -272,6 +275,18 @@ paymentProofPublicRouter.post(
       }).catch((e: unknown) => logger.warn({ e }, "[paymentProof] status transition warn"));
     }
 
+    void createAlertAndBroadcast({
+      companyId: doc.companyId ?? null,
+      alertType: "payment_proof_uploaded",
+      entityType: "sales_document",
+      entityId: doc.id,
+      entityRef: invoiceLabel,
+      severity: "info",
+      title: "Bukti Pembayaran Diterima",
+      message: `${doc.customerName} mengunggah bukti pembayaran untuk invoice ${invoiceLabel}`,
+      contextJson: { proofUrl: publicUrl, remarks: remarks || null },
+    });
+
     writeAuditLog({
       companyId: doc.companyId ?? null,
       userId: null,
@@ -390,14 +405,6 @@ paymentProofAdminRouter.post("/:id/resend-proof-wa", async (req: Request, res: R
     res.status(500).json({ message: err?.message ?? "Gagal mengirim WA" });
   }
 });
-import { randomBytes } from "crypto";
-import { db } from "@workspace/db";
-import { sql } from "drizzle-orm";
-import { logger } from "../lib/logger.js";
-import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
-import { getAdminWa } from "../lib/adminWa.js";
-import { ObjectStorageService } from "../lib/objectStorage.js";
-
 const router = Router();
 
 // ─── Boot migration ───────────────────────────────────────────────────────────
