@@ -75,6 +75,7 @@ const PurchaseRequestFormPage   = lazy(() => import("@/pages/purchase-request-fo
 const VendorInvoiceFormPage     = lazy(() => import("@/pages/vendor-invoice-form"));
 const GoodsReceiptFormPage      = lazy(() => import("@/pages/goods-receipt-form"));
 const DriverProgressPage        = lazy(() => import("@/pages/driver-progress"));
+const PaymentProofPage          = lazy(() => import("@/pages/payment-proof"));
 const NotFound                  = lazy(() => import("@/pages/not-found"));
 
 const queryClient = new QueryClient();
@@ -97,6 +98,7 @@ const NO_SHELL_PREFIXES = [
   "/vendor-po-accept",
   "/customer-feedback", "/purchase-request", "/vendor-invoice", "/goods-receipt",
   "/driver-progress",
+  "/payment-proof",
   "/q/",
 ];
 
@@ -112,6 +114,7 @@ const NO_AUTH_CHECK_PREFIXES = [
   "/vendor-po-accept",
   "/customer-feedback", "/purchase-request", "/vendor-invoice", "/goods-receipt",
   "/driver-progress",
+  "/payment-proof",
 ];
 
 const BASE_PREFIX = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -253,6 +256,7 @@ function AppShell() {
         <Route path="/purchase-request/:token" component={PurchaseRequestFormPage} />
         <Route path="/vendor-invoice/:token" component={VendorInvoiceFormPage} />
         <Route path="/goods-receipt/:token" component={GoodsReceiptFormPage} />
+        <Route path="/payment-proof/:token" component={PaymentProofPage} />
         <Route component={NotFound} />
       </Switch>
     </Suspense>

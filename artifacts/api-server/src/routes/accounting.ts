@@ -1,4 +1,5 @@
 import { Router, type Request } from "express";
+import { randomBytes } from "crypto";
 import {
   db,
   chartOfAccountsTable,
@@ -960,6 +961,42 @@ router.post("/payments", async (req, res) => {
                   tanggal: String(dateStr),
                   isVendor: false,
                 });
+              }
+
+              // ── WA link upload bukti pembayaran (lunas saja) ──────────────────
+              if (newStatus === "paid") {
+                const proofToken = randomBytes(24).toString("hex");
+                await db.execute(sql`
+                  UPDATE sales_documents
+                  SET proof_upload_token = ${proofToken}
+                  WHERE id = ${parsedSourceDocId} AND proof_upload_token IS NULL
+                `);
+                const updRows = await db.execute(sql`
+                  SELECT proof_upload_token FROM sales_documents
+                  WHERE id = ${parsedSourceDocId} LIMIT 1
+                `);
+                const updRow = (updRows as unknown as Record<string, unknown>[])[0];
+                const finalToken =
+                  (updRow?.["proof_upload_token"] as string | null) ?? proofToken;
+                const publicBase = (
+                  process.env["PUBLIC_URL"] ?? "https://cstlogistic.co.id"
+                ).replace(/\/$/, "");
+                const uploadLink = `${publicBase}/payment-proof/${finalToken}`;
+                const waLinkMsg = [
+                  `💳 *Unggah Bukti Pembayaran*`,
+                  ``,
+                  `Terima kasih atas pelunasan invoice ${doc.docNumber ?? String(parsedSourceDocId)}.`,
+                  ``,
+                  `Silakan unggah bukti pembayaran melalui link:`,
+                  uploadLink,
+                ].join("\n");
+                if (customerPhone) {
+                  await sendWhatsApp(customerPhone, waLinkMsg, {
+                    context: "payment_proof_link",
+                    refType: "invoice",
+                    refId: doc.docNumber ?? String(parsedSourceDocId),
+                  });
+                }
               }
             } catch (e: unknown) {
               logger.error({ e }, "WA customer payment_received failed — non-fatal");
