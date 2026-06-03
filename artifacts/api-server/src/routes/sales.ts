@@ -37,6 +37,7 @@ import { StockShortageError, postStockOut, postStockIn } from "../lib/inventoryS
 import { resolveCompanyId } from "../lib/resolveCompany.js";
 import { convertQty } from "../lib/uomEngine.js";
 import { markSalesInvoiced } from "../lib/services/index.js";
+import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
 
 async function computeTax(subtotal: number, taxRateId: number | null | undefined): Promise<{ taxAmount: number; grandTotal: number }> {
   if (!taxRateId) return { taxAmount: 0, grandTotal: subtotal };
@@ -628,6 +629,26 @@ router.post("/documents/:id/action", async (req, res) => {
 
   if (action === "confirm") {
     await markSalesReadyToInvoice(id, "system");
+  }
+
+  // ── Sync status ke Logistic Order terkait (jika ada) ─────────────────────
+  if (doc.logisticOrderId != null) {
+    const logisticSyncMap: Record<string, string> = {
+      confirm:        "In Progress",
+      mark_delivered: "Delivered",
+      mark_invoiced:  "Invoice Issued",
+      cancel:         "Cancelled",
+    };
+    const targetLogisticStatus = logisticSyncMap[action];
+    if (targetLogisticStatus) {
+      void transitionLogisticOrderStatus(doc.logisticOrderId, targetLogisticStatus, {
+        actorType: "system",
+        source:    "sales.action",
+        notes:     `Auto-sync dari Sales Document #${doc.docNumber} — action: ${action}`,
+      }).catch((e: unknown) =>
+        console.error(`[sales] gagal sync logistic order #${doc.logisticOrderId} → ${targetLogisticStatus}:`, e),
+      );
+    }
   }
 
   // Auto-reverse journal entry when a confirmed/invoiced SO is cancelled

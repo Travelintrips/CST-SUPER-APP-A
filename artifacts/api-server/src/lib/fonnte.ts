@@ -1,6 +1,7 @@
 import { logger } from "./logger.js";
 import { logNotification, wasRecentlyNotified } from "./notificationLog.js";
 import { getAppConfig } from "./appConfig.js";
+import { getFonnteToken } from "./appSecrets.js";
 
 const FONNTE_URL = "https://api.fonnte.com/send";
 
@@ -20,7 +21,6 @@ function normalizePhoneID(raw: string): string {
 
 /** Ambil wa_message_id dari respons Fonnte jika ada */
 function extractMessageId(body: Record<string, unknown>): string | undefined {
-  // Fonnte bisa mengembalikan id sebagai string atau array
   const raw = body.id ?? body.message_id ?? body.messageId;
   if (!raw) return undefined;
   if (Array.isArray(raw)) return raw[0] ? String(raw[0]) : undefined;
@@ -37,6 +37,7 @@ export async function sendWhatsAppMedia(
     return sendWhatsApp(target, message, opts);
   }
   const FONNTE_TOKEN = await getAppConfig("FONNTE_TOKEN");
+  const FONNTE_TOKEN = await getFonnteToken();
   if (!FONNTE_TOKEN) {
     logger.warn("FONNTE_TOKEN not set — skipping WhatsApp media notification");
     await logNotification({
@@ -137,6 +138,7 @@ export async function sendWhatsApp(
   opts?: { context?: string; refType?: string; refId?: string },
 ): Promise<void> {
   const FONNTE_TOKEN = await getAppConfig("FONNTE_TOKEN");
+  const FONNTE_TOKEN = await getFonnteToken();
   if (!FONNTE_TOKEN) {
     logger.warn("FONNTE_TOKEN not set — skipping WhatsApp notification");
     await logNotification({

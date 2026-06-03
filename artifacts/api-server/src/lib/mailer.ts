@@ -5,6 +5,7 @@ import { getAppConfig, getCachedOrEnvConfig } from "./appConfig.js";
 // Pre-warm cache so sync isSmtpConfigured() check is accurate immediately
 getAppConfig("SMTP_PASS").catch(() => {});
 getAppConfig("SMTP_FROM").catch(() => {});
+import { getSmtpPass, getSmtpFrom } from "./appSecrets.js";
 
 export interface SendMailOptions {
   to: string;
@@ -27,6 +28,27 @@ async function getResend(): Promise<{ client: Resend; from: string }> {
 
   if (!apiKey) {
     throw new Error("Resend API key missing. Set SMTP_PASS environment variable or add SMTP_PASS to App Config (DB).");
+let _hasSmtpKey: boolean = !!(process.env.SMTP_PASS?.trim());
+
+export function isSmtpConfigured(): boolean {
+  return _hasSmtpKey;
+}
+
+export async function warmupMailer(): Promise<void> {
+  try {
+    const apiKey = await getSmtpPass();
+    _hasSmtpKey = !!apiKey;
+  } catch { }
+}
+
+async function getResend(): Promise<{ client: Resend; from: string }> {
+  const apiKey = await getSmtpPass();
+  const from = await getSmtpFrom();
+
+  _hasSmtpKey = !!apiKey;
+
+  if (!apiKey) {
+    throw new Error("Resend API key missing. Set SMTP_PASS di env atau Settings → Secrets.");
   }
 
   return { client: new Resend(apiKey), from };

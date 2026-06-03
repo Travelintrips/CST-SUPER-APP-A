@@ -9,6 +9,7 @@ import { eq, desc, ilike, or, sql, and, isNull } from "drizzle-orm";
 import { resolveCompanyId } from "../lib/resolveCompany.js";
 import { getAiIntakeSettings, saveAiIntakeSettings, type VendorFilterMode } from "../lib/aiOrderIntake.js";
 import { LOGISTICS_SUBCATEGORIES } from "@workspace/logistics-constants";
+import { SECRETS_CATALOG, getSetting, setSetting, maskSecret, invalidateSettingCache } from "../lib/appSecrets.js";
 
 const router = Router();
 
@@ -1165,6 +1166,123 @@ router.get("/secrets", async (req: Request, res: Response) => {
   ];
 
   return res.json(entries);
+// ── App Secrets (admin) ────────────────────────────────────────────────────
+
+// GET /api/settings/secrets — list all secrets with masked values
+router.get("/secrets", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  try {
+    const results = await Promise.all(
+      SECRETS_CATALOG.map(async (def) => {
+        const envValue = process.env[def.envFallback]?.trim() ?? "";
+        const dbValue = await (async () => {
+          try {
+            const [row] = await db
+              .select()
+              .from(portalContentTable)
+              .where(eq(portalContentTable.key, def.key));
+            return row?.value?.trim() ?? "";
+          } catch {
+            return "";
+          }
+        })();
+        const effectiveValue = dbValue || envValue;
+        return {
+          key: def.key,
+          label: def.label,
+          description: def.description,
+          group: def.group,
+          sensitive: def.sensitive,
+          hasDbValue: !!dbValue,
+          hasEnvValue: !!envValue,
+          maskedValue: def.sensitive ? maskSecret(effectiveValue) : effectiveValue,
+        };
+      })
+    );
+    return res.json(results);
+  } catch (err) {
+    req.log?.error({ err }, "secrets list error");
+    return res.status(500).json({ message: "Gagal memuat secrets" });
+  }
+});
+
+// PUT /api/settings/secrets/:key — update a secret value
+router.put("/secrets/:key", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const { key } = req.params as { key: string };
+  const { value } = req.body as { value?: string };
+  if (typeof value !== "string") {
+    return res.status(400).json({ message: "value harus berupa string" });
+  }
+  const def = SECRETS_CATALOG.find((d) => d.key === key);
+  if (!def) {
+    return res.status(400).json({ message: `Key '${key}' tidak dikenal` });
+  }
+  await setSetting(key, value);
+  invalidateSettingCache(key);
+  return res.json({ ok: true, key });
+});
+
+// DELETE /api/settings/secrets/:key — remove DB override (fall back to env)
+router.delete("/secrets/:key", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const { key } = req.params as { key: string };
+  const def = SECRETS_CATALOG.find((d) => d.key === key);
+  if (!def) {
+    return res.status(400).json({ message: `Key '${key}' tidak dikenal` });
+  }
+  try {
+    await db.delete(portalContentTable).where(eq(portalContentTable.key, key));
+    invalidateSettingCache(key);
+  } catch { /* ignore */ }
+  return res.json({ ok: true, key });
+});
+
+// POST /api/settings/secrets/test-whatsapp — send test WA message
+router.post("/secrets/test-whatsapp", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const { target } = req.body as { target?: string };
+  if (!target?.trim()) {
+    return res.status(400).json({ message: "target (nomor WA) diperlukan" });
+  }
+  try {
+    const token = await getSetting("fonnte_token", process.env.FONNTE_TOKEN ?? "");
+    if (!token) return res.status(400).json({ message: "FONNTE_TOKEN belum dikonfigurasi" });
+    const res2 = await fetch("https://api.fonnte.com/send", {
+      method: "POST",
+      headers: { Authorization: token, "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ target: target.trim(), message: "✅ Test pesan dari BizPortal — konfigurasi WhatsApp berhasil!" }).toString(),
+    });
+    const body = await res2.json() as Record<string, unknown>;
+    if (!res2.ok || body.status === false) {
+      return res.status(400).json({ message: `Fonnte error: ${JSON.stringify(body)}` });
+    }
+    return res.json({ ok: true });
+  } catch (err) {
+    return res.status(500).json({ message: String(err) });
+  }
+});
+
+// POST /api/settings/secrets/test-email — send test email
+router.post("/secrets/test-email", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const { to } = req.body as { to?: string };
+  if (!to?.trim()) {
+    return res.status(400).json({ message: "to (email tujuan) diperlukan" });
+  }
+  try {
+    const { sendMail } = await import("../lib/mailer.js");
+    await sendMail({
+      to: to.trim(),
+      subject: "✅ Test Email dari BizPortal",
+      html: "<p>Konfigurasi email berhasil! Pesan ini dikirim dari BizPortal.</p>",
+      text: "Konfigurasi email berhasil! Pesan ini dikirim dari BizPortal.",
+      context: "test-email",
+    });
+    return res.json({ ok: true });
+  } catch (err) {
+    return res.status(500).json({ message: String(err) });
+  }
 });
 
 export default router;

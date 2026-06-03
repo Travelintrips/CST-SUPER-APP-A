@@ -117,6 +117,7 @@ import AuditComparePage from "@/pages/audit/compare";
 import WaNotificationLogsPage from "@/pages/settings/wa-notification-logs";
 import DocumentTemplatesPage from "@/pages/settings/document-templates";
 import SecretsPage from "@/pages/settings/secrets";
+import AppSecretsPage from "@/pages/settings/app-secrets";
 
 // Products
 import ProductItemsPage from "@/pages/products/items";
@@ -356,6 +357,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/settings/wa-notification-logs" component={PR(WaNotificationLogsPage)} />
       <Route path="/settings/document-templates" component={PR(DocumentTemplatesPage)} />
       <Route path="/settings/secrets" component={PR(SecretsPage)} />
+      <Route path="/settings/secrets" component={PR(AppSecretsPage)} />
 
       {/* ── Notifications & Analytics ──────────────────────────────────── */}
       <Route path="/notifications" component={PR(NotificationsPage)} />
