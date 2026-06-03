@@ -1,0 +1,141 @@
+FASE 6B — PURCHASE & EXPENSE INTEGRATION KE COST CENTER SPORT CENTER
+
+TUJUAN:
+Menghubungkan semua biaya Sport Center (maintenance, vendor bill, purchase) ke:
+- accounting_entries
+- cost_center = SPORT_CENTER
+- facility_id (jika ada)
+tanpa merusak revenue flow yang sudah ada.
+
+=====================================================
+A. AUDIT TERLEBIH DAHULU (WAJIB)
+=====================================================
+
+Cek dan laporkan:
+
+1. flow:
+   purchase_request → purchase_order → vendor_bill → accounting_entries
+
+2. fungsi:
+   postPurchaseBill()
+   postManualExpensePosting()
+   ensureAccountingSettings()
+
+3. apakah sudah ada field:
+   - facility_id di purchase/vend bill
+   - cost_center_id di posting engine
+
+4. apakah sudah ada double posting ke accounting
+
+JANGAN ubah kode dulu.
+
+=====================================================
+B. STANDARD EXPENSE POSTING RULE
+=====================================================
+
+Semua expense Sport Center WAJIB:
+
+- cost_center = "SPORT_CENTER"
+- company_id = PT Cahaya Sejati Teknologi
+- source = "sport_center_operational_expense"
+
+Jika facility_id ada → wajib disimpan
+
+=====================================================
+C. INTEGRASI VENDOR BILL → ACCOUNTING
+=====================================================
+
+Update postPurchaseBill():
+
+Tambahkan logic:
+
+IF source == "sport_center_operational_expense":
+
+  cost_center_id = resolveCostCenter("SPORT_CENTER")
+  facility_id = payload.facility_id
+
+  CREATE accounting_entries:
+    debit = expense_account
+    credit = cash/ap
+
+PASTIKAN:
+- tidak ada duplicate entry
+- 1 vendor bill = 1 journal entry group
+
+=====================================================
+D. AUTO CATEGORY EXPENSE (MINIMAL VERSION)
+=====================================================
+
+Tambahkan helper sederhana:
+
+function getExpenseCategory(item_name)
+
+Mapping:
+- lampu → maintenance
+- rumput → maintenance
+- bola → consumable
+- shuttlecock → consumable
+- cleaning → service
+- listrik → utility
+- air → utility
+- internet → utility
+
+Simpan category ke:
+accounting_entry_lines OR metadata
+
+=====================================================
+E. FACILITY COST TRACKING
+=====================================================
+
+Jika facility_id ada:
+
+group expense per facility:
+
+- facility_id
+- cost_center
+- month
+
+Untuk dipakai di Profitability Dashboard
+
+=====================================================
+F. VALIDASI WAJIB
+=====================================================
+
+Reject jika:
+
+1. expense tanpa cost_center
+2. sport center expense tanpa facility_id (jika type = maintenance)
+3. duplicate journal posting dari 1 bill
+
+=====================================================
+G. TEST CASE WAJIB
+=====================================================
+
+1. Buat maintenance request
+2. Generate purchase order
+3. Create vendor bill
+4. Post ke accounting
+
+HARUS TERJADI:
+
+✔ accounting_entries created
+✔ cost_center = SPORT_CENTER
+✔ facility_id tersimpan
+✔ journal balance benar
+✔ tidak ada duplicate entry
+
+=====================================================
+H. OUTPUT REPORT
+=====================================================
+
+Laporkan:
+
+1. file yang diubah
+2. perubahan di postPurchaseBill()
+3. mapping expense category
+4. contoh 1 vendor bill → journal result
+5. apakah sudah aman untuk Profit & Loss
+6. risiko double posting (jika ada)
+
+STOP setelah selesai.
+JANGAN bikin dashboard baru atau KPI.
