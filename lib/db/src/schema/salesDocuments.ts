@@ -74,6 +74,10 @@ export const salesDocumentsTable = pgTable("sales_documents", {
   templateId: text("template_id"),
   templateVersion: text("template_version"),
   templateSnapshot: jsonb("template_snapshot").$type<Record<string, unknown> | null>(),
+  paymentProofToken: text("payment_proof_token").unique(),
+  proofUrl: text("proof_url"),
+  proofUploadedAt: timestamp("proof_uploaded_at"),
+  proofRemarks: text("proof_remarks"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (t) => [

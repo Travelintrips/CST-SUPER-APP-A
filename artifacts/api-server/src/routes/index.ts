@@ -80,6 +80,7 @@ import logisticsUnitsRouter from "./logisticsUnits.js";
 import { enterpriseWorkflowRouter } from "./enterpriseWorkflow.js";
 import { customerFeedbackPublicRouter, customerFeedbackAdminRouter } from "./customerFeedback.js";
 import { purchaseMiniPublicRouter, purchaseMiniAdminRouter } from "./purchaseMiniFormRoute.js";
+import { paymentProofPublicRouter, paymentProofAdminRouter } from "./paymentProof.js";
 
 import { orderAuditTrailRouter } from "./orderAuditTrail.js";
 import { serviceTemplatesRouter } from "./serviceTemplates.js";
@@ -206,6 +207,9 @@ router.use("/customer-feedback", customerFeedbackAdminRouter);
 router.use("/customer-feedback", customerFeedbackPublicRouter);
 router.use("/purchase-mini", purchaseMiniAdminRouter);
 router.use("/purchase-mini", purchaseMiniPublicRouter);
+
+router.use("/customer-invoice", paymentProofPublicRouter);
+router.use("/customer-invoice", paymentProofAdminRouter);
 
 router.use("/service-templates", serviceTemplatesRouter);
 

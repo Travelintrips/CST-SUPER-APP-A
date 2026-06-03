@@ -10,6 +10,7 @@ import { requireAdmin } from "../lib/requireAdmin.js";
 import { postPaymentReceived, postSalesInvoice } from "../lib/accounting.js";
 import { markSalesInvoiced } from "../lib/services/index.js";
 import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
+import { sendPaymentProofWaLink } from "../lib/paymentProofService.js";
 
 const router = Router();
 
@@ -256,6 +257,12 @@ router.post("/paylabs/webhook", async (req, res) => {
           notes: `Pembayaran lunas via Paylabs (merchantTradeNo: ${merchantTradeNo})`,
         }).catch((e: unknown) => console.warn("auto Payment Received transition failed (Paylabs webhook)", e));
       }
+      // ── SEND WA PROOF LINK TO CUSTOMER ────────────────────────────────────
+      if (salesDoc) {
+        void sendPaymentProofWaLink(salesDoc.id).catch(
+          (e: unknown) => console.warn("[payments] sendPaymentProofWaLink failed (paylabs webhook)", e)
+        );
+      }
     }
     void postPaymentReceived({
       paymentId: payment.id,
@@ -298,6 +305,12 @@ router.post("/:id/simulate-paid", async (req, res) => {
         actorType: "admin",
         notes: `Simulasi pembayaran lunas via Paylabs (payment #${payment.id})`,
       }).catch((e: unknown) => console.warn("auto Payment Received transition failed (simulate-paid)", e));
+    }
+    // ── SEND WA PROOF LINK TO CUSTOMER ────────────────────────────────────
+    if (salesDoc2) {
+      void sendPaymentProofWaLink(salesDoc2.id).catch(
+        (e: unknown) => console.warn("[payments] sendPaymentProofWaLink failed (simulate-paid)", e)
+      );
     }
   }
   if (payment.status !== "paid") {
