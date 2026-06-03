@@ -975,14 +975,70 @@ router.post("/documents/:documentType/preview", async (req: Request, res: Respon
   return res.send(html);
 });
 
+// --- app_config table bootstrap (inline migration) ---
+db.execute(sql`
+  CREATE TABLE IF NOT EXISTS app_config (
+    key        TEXT PRIMARY KEY,
+    value      TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    is_secret  BOOLEAN NOT NULL DEFAULT false,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )
+`).catch(() => {});
+
+// GET /api/settings/app-config — daftar konfigurasi DB (admin only)
+router.get("/app-config", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const rows = await db.execute(sql`SELECT * FROM app_config ORDER BY key ASC`);
+  return res.json(rows.rows);
+});
+
+// POST /api/settings/app-config — tambah entry baru
+router.post("/app-config", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const { key, value, description, is_secret } = req.body ?? {};
+  if (!key || typeof key !== "string") return res.status(400).json({ message: "key wajib diisi" });
+  if (typeof value !== "string") return res.status(400).json({ message: "value wajib diisi" });
+  try {
+    await db.execute(sql`
+      INSERT INTO app_config (key, value, description, is_secret, updated_at)
+      VALUES (${key.trim()}, ${value}, ${description ?? ""}, ${!!is_secret}, NOW())
+    `);
+    return res.json({ ok: true });
+  } catch (err: any) {
+    if (err?.code === "23505") return res.status(409).json({ message: "Key sudah ada" });
+    throw err;
+  }
+});
+
+// PUT /api/settings/app-config/:key — update entry
+router.put("/app-config/:key", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const { key } = req.params;
+  const { value, description, is_secret } = req.body ?? {};
+  if (typeof value !== "string") return res.status(400).json({ message: "value wajib diisi" });
+  await db.execute(sql`
+    UPDATE app_config SET value=${value}, description=${description ?? ""}, is_secret=${!!is_secret}, updated_at=NOW()
+    WHERE key=${key}
+  `);
+  return res.json({ ok: true });
+});
+
+// DELETE /api/settings/app-config/:key — hapus entry
+router.delete("/app-config/:key", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  await db.execute(sql`DELETE FROM app_config WHERE key=${req.params.key}`);
+  return res.json({ ok: true });
+});
+
 // GET /api/settings/secrets — daftar env vars dan status konfigurasi (admin only)
 router.get("/secrets", async (req: Request, res: Response) => {
   if (!(await requireAdmin(req, res))) return;
 
   function masked(val: string | undefined): string | undefined {
     if (!val) return undefined;
-    if (val.length <= 6) return "••••••";
-    return val.slice(0, 3) + "••••••" + val.slice(-2);
+    if (val.length <= 6) return "••••";
+    return val.slice(0, 4) + "••••••••" + val.slice(-3);
   }
 
   const entries = [
