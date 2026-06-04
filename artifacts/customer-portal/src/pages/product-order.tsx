@@ -160,6 +160,30 @@ export default function ProductOrderPage() {
   const [truckingForm, setTruckingForm] = useState<TruckingForm>(EMPTY_TRUCKING);
   const [estimating, setEstimating] = useState(false);
   const [truckingEstimate, setTruckingEstimate] = useState<number | null>(null);
+  const [companyOrigin, setCompanyOrigin] = useState<{ name: string; address: string; originCity: string; originAirport: string; originPort: string } | null>(null);
+
+  useEffect(() => {
+    fetch(`${BASE}/api/settings/company-pickup-address`)
+      .then(r => r.ok ? r.json() : null)
+      .then((d: { companyName: string; companyAddress: string; originCity?: string; originAirport?: string; originPort?: string } | null) => {
+        setCompanyOrigin(d?.companyAddress ? {
+          name: d.companyName, address: d.companyAddress,
+          originCity: d.originCity ?? "Jakarta",
+          originAirport: d.originAirport ?? "CGK",
+          originPort: d.originPort ?? "Tanjung Priok, Jakarta",
+        } : { name: "CST Logistics", address: "Jl. Logistik No. 1, Jakarta", originCity: "Jakarta", originAirport: "CGK", originPort: "Tanjung Priok, Jakarta" });
+      })
+      .catch(() => setCompanyOrigin({ name: "CST Logistics", address: "Jl. Logistik No. 1, Jakarta", originCity: "Jakarta", originAirport: "CGK", originPort: "Tanjung Priok, Jakarta" }));
+  }, []);
+
+  useEffect(() => {
+    if (!companyOrigin) return;
+    setTruckingForm(f => ({
+      ...f,
+      pickupAddress: f.pickupAddress || companyOrigin.address,
+      origin: f.origin || companyOrigin.originCity,
+    }));
+  }, [companyOrigin]);
 
   useEffect(() => {
     fetch(`${BASE}/api/portal-product/templates`)
@@ -467,8 +491,15 @@ export default function ProductOrderPage() {
                   <Input type="time" value={truckingForm.pickupTime} onChange={e => setTruckingForm(f => ({ ...f, pickupTime: e.target.value }))} />
                 </div>
                 <div className="space-y-1.5 sm:col-span-2">
-                  <Label className="text-xs">Alamat Pickup <span className="text-destructive">*</span></Label>
-                  <Textarea rows={2} placeholder="Jl. ..., Kota, Provinsi" value={truckingForm.pickupAddress} onChange={e => setTruckingForm(f => ({ ...f, pickupAddress: e.target.value }))} />
+                  <Label className="text-xs flex items-center gap-1.5">
+                    <MapPin className="w-3 h-3 text-orange-500" /> Alamat Pickup
+                    <span className="ml-auto text-[10px] font-semibold text-orange-600 bg-orange-100 border border-orange-200 rounded px-1.5 py-0.5">Otomatis</span>
+                  </Label>
+                  <div className="bg-orange-50 border border-orange-200 rounded-lg p-2.5">
+                    <p className="text-xs font-semibold text-slate-800">{companyOrigin?.name ?? "CST Logistics"}</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">{companyOrigin?.address ?? "Jl. Logistik No. 1, Jakarta"}</p>
+                    <p className="text-[10px] text-orange-600 mt-1">Tim kami yang akan menjemput barang dari lokasi ini.</p>
+                  </div>
                 </div>
                 <div className="space-y-1.5 sm:col-span-2">
                   <Label className="text-xs">Alamat Pengiriman <span className="text-destructive">*</span></Label>
@@ -487,7 +518,7 @@ export default function ProductOrderPage() {
                 💡 Estimasi biaya akan dikonfirmasi oleh tim setelah pesanan masuk.
               </div>
               <Button className="w-full bg-orange-600 hover:bg-orange-700" onClick={handleConfirmTrucking}
-                disabled={!truckingForm.pickupAddress.trim() || !truckingForm.deliveryAddress.trim()}>
+                disabled={!truckingForm.deliveryAddress.trim()}>
                 Tambahkan ke Pesanan <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
             </div>
@@ -499,8 +530,13 @@ export default function ProductOrderPage() {
               <h2 className="font-semibold text-sm flex items-center gap-2"><Calculator className="w-4 h-4 text-orange-500" /> Kalkulator Estimasi Biaya</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <Label className="text-xs flex items-center gap-1"><MapPin className="w-3 h-3" /> Kota Asal <span className="text-destructive">*</span></Label>
-                  <Input placeholder="Jakarta" value={truckingForm.origin} onChange={e => setTruckingForm(f => ({ ...f, origin: e.target.value }))} />
+                  <Label className="text-xs flex items-center gap-1">
+                    <MapPin className="w-3 h-3 text-orange-500" /> Kota Asal
+                    <span className="ml-auto text-[10px] font-semibold text-orange-600 bg-orange-100 border border-orange-200 rounded px-1.5 py-0.5">Otomatis</span>
+                  </Label>
+                  <div className="bg-orange-50 border border-orange-200 rounded-md px-3 py-2">
+                    <p className="text-xs font-semibold text-slate-800">{companyOrigin?.originCity ?? "Jakarta"}</p>
+                  </div>
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs flex items-center gap-1"><MapPin className="w-3 h-3" /> Kota Tujuan <span className="text-destructive">*</span></Label>

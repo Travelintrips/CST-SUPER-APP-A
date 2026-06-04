@@ -30,11 +30,12 @@ import {
   type ExpenseCategory,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, Trash2, Tags, RefreshCw } from "lucide-react";
+import { ArrowLeft, Pencil, Plus, Trash2, Tags, RefreshCw } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Link } from "wouter";
 
 const EMPTY_FORM = {
   name: "",
@@ -139,6 +140,8 @@ export default function ExpenseCategoriesPage() {
           <div className="flex items-center gap-3">
             <Tags size={22} className="text-primary" />
             <div>
+              <Link href="/expense"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
+
               <h1 className="text-xl font-bold">Kategori Biaya</h1>
               <p className="text-sm text-muted-foreground">Kelola kategori pengelompokan biaya operasional</p>
             </div>

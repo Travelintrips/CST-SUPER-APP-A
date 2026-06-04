@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
 import {
+  ArrowLeft,
   Bot,
   CheckCircle2,
   XCircle,
@@ -29,6 +30,7 @@ import {
   Cpu,
   Sparkles,
 } from "lucide-react";
+import { Link } from "wouter";
 import { formatDistanceToNow, format } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
 
@@ -444,7 +446,9 @@ export default function AiApprovalsPage() {
       <div className="p-6 space-y-6 max-w-5xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <div>
+          <div className="flex items-center gap-3">
+            <Link href="/approvals"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
+            <div>
             <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
               <ShieldCheck className="h-6 w-6 text-indigo-500" />
               AI Approval Queue
@@ -452,6 +456,7 @@ export default function AiApprovalsPage() {
             <p className="text-muted-foreground text-sm mt-1">
               Tinjau dan setujui tindakan AI yang membutuhkan keputusan manusia.
             </p>
+          </div>
           </div>
           <Button variant="outline" size="sm" onClick={() => { refetch(); refetchStats(); }}>
             <RefreshCw className="h-4 w-4 mr-2" /> Refresh

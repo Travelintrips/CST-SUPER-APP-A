@@ -22,6 +22,7 @@ import {
   Building2, GitBranch, Eye, PenLine, PlusCircle, Trash, Lock,
   RotateCcw, Shield, CheckSquare,
 } from "lucide-react";
+import { Link } from "wouter";
 
 // ─── Custom Roles constants ────────────────────────────────────────────────────
 
@@ -700,6 +701,8 @@ export default function SettingsRolesPage() {
         <div className="flex items-center gap-3">
           <Shield className="h-7 w-7 text-primary" />
           <div>
+            <Link href="/settings"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
+
             <h1 className="text-2xl font-bold">Manajemen Role & Perizinan</h1>
             <p className="text-sm text-muted-foreground">
               Atur matrix perizinan sistem dan kelola role kustom per pengguna

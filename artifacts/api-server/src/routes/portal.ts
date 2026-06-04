@@ -690,6 +690,21 @@ router.post("/auth/dev-login", async (req, res) => {
       .returning();
   }
 
+  // Pastikan profil onboarding sudah "approved" agar dev user tidak redirect ke /onboarding
+  await db
+    .insert(userProfilesTable)
+    .values({
+      customerId: customer.id,
+      fullName: customer.name,
+      accountType: safeRole === "vendor" ? "vendor" : "customer",
+      status: "approved",
+      completedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: userProfilesTable.customerId,
+      set: { status: "approved", fullName: customer.name, updatedAt: new Date() },
+    });
+
   const token = signDevToken({
     id: customer.id,
     email: customer.email,

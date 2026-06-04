@@ -277,6 +277,36 @@ export async function syncFacilityDelete(id: number, name: string, companyId?: n
   }
 }
 
+// Cache facility name → id di Supabase agar tidak perlu fetch tiap booking
+let _facilityIdCache: Map<string, number> | null = null;
+let _facilityIdCacheExpiry = 0;
+
+async function getFacilityIdMap(client: import("@supabase/supabase-js").SupabaseClient | null): Promise<Map<string, number>> {
+  const now = Date.now();
+  if (_facilityIdCache && now < _facilityIdCacheExpiry) return _facilityIdCache;
+  const map = new Map<string, number>();
+  try {
+    if (client) {
+      const { data } = await (client as any)
+        .from("sport_center_facilities")
+        .select("id, name")
+        .limit(200);
+      for (const r of (data ?? [])) {
+        map.set((r.name as string).trim().toLowerCase(), r.id as number);
+      }
+    } else {
+      // fallback: lookup dari local DB
+      const res = await db.execute(sql`SELECT id, name FROM sport_facilities ORDER BY id`);
+      for (const r of res.rows as { id: number; name: string }[]) {
+        map.set(r.name.trim().toLowerCase(), r.id);
+      }
+    }
+  } catch { /* biarkan map kosong jika gagal */ }
+  _facilityIdCache = map;
+  _facilityIdCacheExpiry = now + 5 * 60 * 1000; // cache 5 menit
+  return map;
+}
+
 export async function syncBookingUpsert(row: BookingRow): Promise<void> {
   let client: import("@supabase/supabase-js").SupabaseClient | null = null;
   try {
@@ -284,7 +314,10 @@ export async function syncBookingUpsert(row: BookingRow): Promise<void> {
     client = supabaseAdmin as unknown as import("@supabase/supabase-js").SupabaseClient;
   } catch { }
 
-  const payload = {
+  const facilityMap = await getFacilityIdMap(client);
+  const facilityId = facilityMap.get((row.facility_name ?? "").trim().toLowerCase()) ?? null;
+
+  const payload: Record<string, unknown> = {
     booking_code: row.booking_number,
     customer_name: row.customer_name,
     customer_phone: row.customer_phone ?? null,
@@ -299,6 +332,7 @@ export async function syncBookingUpsert(row: BookingRow): Promise<void> {
     notes: row.notes ?? null,
     updated_at: new Date().toISOString(),
   };
+  if (facilityId !== null) payload.facility_id = facilityId;
 
   try {
     await retry(async () => {
@@ -400,14 +434,18 @@ export async function syncAllBookings(): Promise<{ synced: number; errors: numbe
   let errors = 0;
   const failedEntries: import("./sportSyncNotifier.js").SyncErrorEntry[] = [];
 
-  for (const row of rows) {
-    let client: import("@supabase/supabase-js").SupabaseClient | null = null;
-    try {
-      const { supabaseAdmin } = await import("../../lib/supabaseAdmin.js");
-      client = supabaseAdmin as unknown as import("@supabase/supabase-js").SupabaseClient;
-    } catch { }
+  // ambil client dan facility map sekali di luar loop
+  let client: import("@supabase/supabase-js").SupabaseClient | null = null;
+  try {
+    const { supabaseAdmin } = await import("../../lib/supabaseAdmin.js");
+    client = supabaseAdmin as unknown as import("@supabase/supabase-js").SupabaseClient;
+  } catch { }
+  const facilityMap = await getFacilityIdMap(client);
 
-    const payload = {
+  for (const row of rows) {
+    const facilityId = facilityMap.get((row.facility_name ?? "").trim().toLowerCase()) ?? null;
+
+    const payload: Record<string, unknown> = {
       booking_code: row.booking_number,
       customer_name: row.customer_name,
       customer_phone: row.customer_phone ?? null,
@@ -422,6 +460,7 @@ export async function syncAllBookings(): Promise<{ synced: number; errors: numbe
       notes: row.notes ?? null,
       updated_at: new Date().toISOString(),
     };
+    if (facilityId !== null) payload.facility_id = facilityId;
 
     try {
       await retry(async () => {

@@ -18,6 +18,8 @@ import {
   RefreshCw, Shield, AlertCircle,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft } from "lucide-react";
+import { Link } from "wouter";
 
 // ── types ─────────────────────────────────────────────────────────────────────
 
@@ -552,6 +554,8 @@ export default function OrgManagementPage() {
             <Network className="h-6 w-6 text-indigo-400" />
           </div>
           <div>
+            <Link href="/settings"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
+
             <h1 className="text-2xl font-bold tracking-tight">Manajemen Organisasi</h1>
             <p className="text-muted-foreground text-sm mt-0.5">
               Kelola struktur perusahaan: Perusahaan → Cabang → Divisi → Departemen → Seksi/Tim

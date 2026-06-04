@@ -7,8 +7,9 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useGetTrialBalance, getGetTrialBalanceQueryKey } from "@workspace/api-client-react";
 import { useCompany } from "@/contexts/CompanyContext";
-import { FileSpreadsheet, Printer, Download } from "lucide-react";
+import { ArrowLeft, FileSpreadsheet, Printer, Download } from "lucide-react";
 import { exportXlsx, printWindow } from "@/lib/export";
+import { Link } from "wouter";
 
 const idr = (n: number) => new Intl.NumberFormat("id-ID", { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(n);
 
@@ -32,6 +33,8 @@ export default function TrialBalancePage() {
       <div className="space-y-6 p-6">
         <div className="flex items-center justify-between">
           <div>
+            <Link href="/accounting"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
+
             <h1 className="text-2xl font-bold flex items-center gap-2"><FileSpreadsheet className="h-6 w-6" />Neraca Saldo (Trial Balance)</h1>
             <p className="text-sm text-muted-foreground">Saldo seluruh akun pada periode terpilih</p>
           </div>

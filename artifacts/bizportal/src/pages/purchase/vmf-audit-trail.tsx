@@ -19,6 +19,7 @@ import {
   Link2, Send, FileCheck, Wrench, CheckCircle, XCircle,
   Clock, AlertCircle, AlertTriangle, BellRing, Loader2, Settings2,
 } from "lucide-react";
+import { Link } from "wouter";
 
 const BASE = "/api";
 
@@ -824,6 +825,8 @@ export default function VmfAuditTrailPage() {
       {/* Header */}
       <div className="flex items-center gap-2">
         <ClipboardList className="text-blue-600" size={22} />
+        <Link href="/purchase/vendor-forms"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
+
         <h1 className="text-xl font-bold">Audit Trail VMF</h1>
         <span className="text-sm text-gray-500 ml-2">Rekam jejak alur Vendor Mini Form</span>
       </div>

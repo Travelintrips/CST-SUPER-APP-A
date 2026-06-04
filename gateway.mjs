@@ -35,11 +35,12 @@ const BASE_DELAY    = Number(process.env.GW_BASE_DELAY    ?? 200);
 const RETRYABLE_CODES = new Set(["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENOTFOUND"]);
 
 const API_PORT           = Number(process.env.API_PORT           ?? 8080);
-// BizPortal Vite runs at 4200
-const BIZPORTAL_PORT     = Number(process.env.BIZPORTAL_PORT ?? 4200);
-// Customer portal Vite runs at 5173
-const CUSTOMER_PORT      = Number(process.env.CUSTOMER_PORT ?? 5173);
-const LOGISTIC_ORDER_PORT = Number(process.env.LOGISTIC_ORDER_PORT ?? 3001);
+// BizPortal Vite runs at 18442 (Replit artifact workflow)
+const BIZPORTAL_PORT     = Number(process.env.BIZPORTAL_PORT     ?? 18442);
+// Customer portal Vite runs at 5174 (internal; Replit artifact proxies at 23434)
+const CUSTOMER_PORT      = Number(process.env.CUSTOMER_PORT      ?? 5174);
+// Logistic Order Vite runs at 19368 (Replit artifact workflow)
+const LOGISTIC_ORDER_PORT = Number(process.env.LOGISTIC_ORDER_PORT ?? 19368);
 
 const ROUTES = [
   { prefix: "/api",             upstream: { host: "localhost", port: API_PORT } },
@@ -93,6 +94,10 @@ const ROUTES = [
   { prefix: "/audit",               upstream: null, redirectMapTo: "/bizportal/audit",                redirectDefaultSuffix: "/" },
   { prefix: "/intelligence-alerts", upstream: null, redirectMapTo: "/bizportal/intelligence-alerts",  redirectDefaultSuffix: "/" },
   { prefix: "/ai-approvals",        upstream: null, redirectMapTo: "/bizportal/ai-approvals",         redirectDefaultSuffix: "/" },
+
+  // POS / Kasir — /pos is a legacy alias that redirects to /kasir
+  { prefix: "/kasir",           upstream: null, redirectMapTo: "/bizportal/kasir",            redirectDefaultSuffix: "/" },
+  { prefix: "/pos",             upstream: null, redirectMapTo: "/kasir",                      redirectDefaultSuffix: "/" },
 
   // Canvas artifact iframe hits /customer-portal/* — redirect to strip the prefix
   { prefix: "/customer-portal", upstream: null, redirectStrip: "/customer-portal" },
@@ -337,6 +342,7 @@ async function startGateway() {
 
 startGateway();
 
+
 // Also listen on EXTRA_PORT (default 23434) to resolve port-mapping conflicts
 // where both port 5000 and 23434 are mapped to external port 80 in .replit.
 const EXTRA_PORT = Number(process.env.EXTRA_PORT ?? 23434);
@@ -354,3 +360,9 @@ if (EXTRA_PORT !== PORT) {
     console.log(`Gateway also listening on port ${EXTRA_PORT} (mirror)`);
   });
 }
+
+// NOTE: EXTRA_PORT (23434) mirror listener is disabled.
+// The customer-portal start-dev.sh runs kill-port on 23434 at startup, which would
+// kill the gateway process if it owned that port. Port 23434 is used by the
+// customer-portal's internal HTTP proxy (Vite on 5174 → proxy on 23434).
+

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,12 +7,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useQuery } from "@tanstack/react-query";
 import { useCompany } from "@/contexts/CompanyContext";
-import { BarChart2, TrendingUp, DollarSign } from "lucide-react";
+import { BarChart2, TrendingUp, DollarSign, ArrowLeft } from "lucide-react";
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
 
 export default function SportCenterReports() {
+  const [, navigate] = useLocation();
   const { activeCompanyId } = useCompany();
   const today = new Date().toISOString().split("T")[0];
   const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString().split("T")[0];
@@ -39,6 +41,9 @@ export default function SportCenterReports() {
     <AppShell>
       <div className="p-6 space-y-5">
         <div className="flex items-center gap-3">
+          <Button variant="ghost" size="icon" onClick={() => navigate("/sport-center/dashboard")} className="h-8 w-8 shrink-0">
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
           <BarChart2 className="h-6 w-6 text-cyan-400" />
           <div>
             <h1 className="text-2xl font-bold text-foreground">Laporan Revenue</h1>

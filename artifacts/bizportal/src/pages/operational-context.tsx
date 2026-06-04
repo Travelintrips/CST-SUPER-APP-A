@@ -14,6 +14,8 @@ import {
 } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
+import { ArrowLeft } from "lucide-react";
+import { Link } from "wouter";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -550,6 +552,8 @@ export default function OperationalContextPage() {
       <div className="p-6 space-y-6 max-w-4xl mx-auto">
         {/* Header */}
         <div>
+          <Link href="/settings"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
+
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <Layers className="h-6 w-6 text-indigo-500" />
             Operational Context

@@ -5,7 +5,7 @@ import { getAdminWa, setAdminWa, getAdminGroupWa, setAdminGroupWa, getAdminPhone
 import { db, portalContentTable } from "@workspace/db";
 import { broadcastToPortal } from "../lib/sseManager.js";
 import { shortLinksTable, waTemplateConfigsTable, notificationLogsTable } from "@workspace/db/schema";
-import { eq, desc, ilike, or, sql, and, isNull } from "drizzle-orm";
+import { eq, desc, ilike, or, sql, and, isNull, inArray } from "drizzle-orm";
 import { resolveCompanyId } from "../lib/resolveCompany.js";
 import { getAiIntakeSettings, saveAiIntakeSettings, type VendorFilterMode } from "../lib/aiOrderIntake.js";
 import { LOGISTICS_SUBCATEGORIES } from "@workspace/logistics-constants";
@@ -768,9 +768,7 @@ router.get("/documents", async (req: Request, res: Response) => {
     const rows = await db
       .select()
       .from(portalContentTable)
-      .where(
-        sql`key = ANY(${keys})`
-      );
+      .where(inArray(portalContentTable.key, [...keys]));
     const stored = new Map(rows.map((r) => [r.key, JSON.parse(r.value)]));
     const templates = DOCUMENT_TYPES.map((t) => ({
       ...DEFAULT_DOC_TEMPLATE(t),
@@ -847,11 +845,33 @@ router.post("/documents/:documentType/preview", async (req: Request, res: Respon
   if (!DOCUMENT_TYPES.includes(documentType as DocumentType)) {
     return res.status(400).json({ error: "document_type tidak valid" });
   }
+  const body = req.body ?? {};
   const tpl: DocumentTemplateConfig = {
     ...DEFAULT_DOC_TEMPLATE(documentType),
-    ...(req.body ?? {}),
+    ...body,
     documentType,
   };
+
+  // Canvas settings from request body
+  const paperSize: string = body.paperSize ?? "A4";
+  const orientation: string = body.orientation ?? "portrait";
+  const margin: { top: number; right: number; bottom: number; left: number } =
+    body.margin ?? { top: 15, right: 15, bottom: 15, left: 15 };
+  const customVariables: { name: string; value: string; desc: string }[] =
+    body.customVariables ?? [];
+
+  // Paper dimensions in px (96dpi equivalent)
+  const paperWidths: Record<string, number> = { A4: 794, Letter: 816, A5: 559 };
+  const paperHeights: Record<string, number> = { A4: 1123, Letter: 1056, A5: 794 };
+  const baseW = paperWidths[paperSize] ?? 794;
+  const baseH = paperHeights[paperSize] ?? 1123;
+  const docW = orientation === "landscape" ? baseH : baseW;
+
+  // Build custom variable substitution map
+  const customVarMap: Record<string, string> = {};
+  for (const cv of customVariables) {
+    if (cv.name) customVarMap[`{${cv.name}}`] = cv.value || `{${cv.name}}`;
+  }
 
   const docLabel = DOCUMENT_TYPE_LABELS[documentType] ?? documentType.toUpperCase();
   const dummyRows = [
@@ -874,6 +894,12 @@ router.post("/documents/:documentType/preview", async (req: Request, res: Respon
       <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;text-align:right;">${fmt(r.subtotal)}</td>
     </tr>`).join("");
 
+  const mmToPx = (mm: number) => Math.round(mm * 3.7795);
+  const padTop    = mmToPx(margin.top);
+  const padRight  = mmToPx(margin.right);
+  const padBottom = mmToPx(margin.bottom);
+  const padLeft   = mmToPx(margin.left);
+
   const html = `<!DOCTYPE html>
 <html lang="id">
 <head>
@@ -881,8 +907,8 @@ router.post("/documents/:documentType/preview", async (req: Request, res: Respon
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Preview ${docLabel}</title>
 <style>
-  body{font-family:Arial,sans-serif;font-size:${tpl.fontSize}pt;color:#1f2937;margin:0;padding:24px;background:#f3f4f6;}
-  .doc{background:#fff;max-width:820px;margin:0 auto;padding:40px 48px;box-shadow:0 1px 8px rgba(0,0,0,.1);}
+  body{font-family:Arial,sans-serif;font-size:${tpl.fontSize}pt;color:#1f2937;margin:0;padding:16px;background:#f3f4f6;}
+  .doc{background:#fff;width:${docW}px;margin:0 auto;padding:${padTop}px ${padRight}px ${padBottom}px ${padLeft}px;box-shadow:0 1px 8px rgba(0,0,0,.1);box-sizing:border-box;}
   .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid ${tpl.primaryColor};padding-bottom:20px;margin-bottom:24px;}
   .logo{max-height:64px;max-width:160px;}
   .doc-title{text-align:right;}
@@ -1284,6 +1310,29 @@ router.post("/secrets/test-email", async (req: Request, res: Response) => {
     return res.json({ ok: true });
   } catch (err) {
     return res.status(500).json({ message: String(err) });
+  }
+});
+
+// GET /api/settings/company-pickup-address — public (dipakai customer portal untuk auto-fill alamat pickup)
+router.get("/company-pickup-address", async (_req: Request, res: Response) => {
+  try {
+    const key = DOC_TEMPLATE_KEY("quotation");
+    const [row] = await db.select().from(portalContentTable).where(eq(portalContentTable.key, key));
+    const tpl = row ? { ...DEFAULT_DOC_TEMPLATE("quotation"), ...(JSON.parse(row.value) as Partial<DocumentTemplateConfig>) } : DEFAULT_DOC_TEMPLATE("quotation");
+    return res.json({
+      companyName:    tpl.companyName,
+      companyAddress: tpl.companyAddress,
+      companyPhone:   tpl.companyPhone,
+      originCity:     "Jakarta",
+      originAirport:  "CGK",
+      originPort:     "Tanjung Priok, Jakarta",
+    });
+  } catch {
+    const d = DEFAULT_DOC_TEMPLATE("quotation");
+    return res.json({
+      companyName: d.companyName, companyAddress: d.companyAddress, companyPhone: d.companyPhone,
+      originCity: "Jakarta", originAirport: "CGK", originPort: "Tanjung Priok, Jakarta",
+    });
   }
 });
 

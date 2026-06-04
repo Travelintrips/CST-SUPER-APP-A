@@ -16,6 +16,8 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 import { useToast } from "@/hooks/use-toast";
+import { ArrowLeft } from "lucide-react";
+import { Link } from "wouter";
 
 interface VendorRaw {
   vendor: {
@@ -382,6 +384,8 @@ export default function VendorLeaderboardPage() {
       {/* Header */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
+          <Link href="/logistics-vendors"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
+
           <h1 className="text-2xl font-bold tracking-tight">Vendor Leaderboard</h1>
           <p className="text-muted-foreground text-sm mt-0.5">
             Ranking vendor berdasarkan AI Score — blend performa global & rute spesifik

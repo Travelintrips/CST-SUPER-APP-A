@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useLocation } from "wouter";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCompany } from "@/contexts/CompanyContext";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Search, QrCode, CheckCircle2, XCircle, RefreshCw, Activity, DollarSign } from "lucide-react";
+import { Plus, Search, QrCode, CheckCircle2, XCircle, RefreshCw, Activity, DollarSign, ArrowLeft } from "lucide-react";
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
@@ -36,6 +37,7 @@ type Booking = Record<string, unknown>;
 type Facility = { id: number; name: string; price_per_hour: number };
 
 export default function SportCenterBookings() {
+  const [, navigate] = useLocation();
   const qc = useQueryClient();
   const { activeCompanyId } = useCompany();
   const { toast } = useToast();
@@ -177,9 +179,14 @@ export default function SportCenterBookings() {
     <AppShell>
       <div className="p-6 space-y-4">
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Bookings</h1>
-            <p className="text-sm text-muted-foreground">Kelola semua booking fasilitas</p>
+          <div className="flex items-center gap-3">
+            <Button variant="ghost" size="icon" onClick={() => navigate("/sport-center/dashboard")} className="h-8 w-8 shrink-0">
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">Bookings</h1>
+              <p className="text-sm text-muted-foreground">Kelola semua booking fasilitas</p>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             {realtimeCount > 0 && (

@@ -157,6 +157,70 @@ router.get("/summary", async (req, res) => {
   return res.json({ quotationsCount, ordersCount, toInvoiceCount, totalRevenue, topCustomer });
 });
 
+// GET /api/sales/dashboard-widget
+router.get("/dashboard-widget", async (req, res) => {
+  const companyId = resolveCompanyId(req);
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  const docs = await db
+    .select()
+    .from(salesDocumentsTable)
+    .where(eq(salesDocumentsTable.companyId, companyId));
+
+  // SO aktif: kind=order, belum selesai/batal
+  const activeSoCount = docs.filter(
+    (d) => d.kind === "order" && d.status !== "done" && d.status !== "cancelled",
+  ).length;
+
+  // Invoice outstanding: sudah diinvoice tapi belum lunas
+  const outstandingDocs = docs.filter(
+    (d) =>
+      d.kind === "order" &&
+      d.invoiceStatus === "invoiced" &&
+      (d.paymentStatus === "unpaid" || d.paymentStatus === "partial" || d.paymentStatus === "overdue"),
+  );
+  const outstandingInvoicesCount = outstandingDocs.length;
+  const outstandingAmount = outstandingDocs.reduce(
+    (sum, d) => sum + Math.max(0, Number(d.grandTotal) - Number(d.amountPaid ?? 0)),
+    0,
+  );
+
+  // Revenue pipeline bulan ini: SO confirmed/done yang dibuat bulan ini
+  const pipelineDocs = docs.filter(
+    (d) =>
+      d.kind === "order" &&
+      (d.status === "confirmed" || d.status === "done") &&
+      new Date(d.createdAt) >= monthStart,
+  );
+  const revenuePipelineThisMonth = pipelineDocs.reduce((sum, d) => sum + Number(d.grandTotal), 0);
+  const revenuePipelineSoCount = pipelineDocs.length;
+
+  // Top 3 pelanggan bulan ini berdasarkan revenue pipeline
+  const customerMap = new Map<string, { revenue: number; orderCount: number }>();
+  for (const d of pipelineDocs) {
+    const name = d.customerName || "Tanpa Nama";
+    const cur = customerMap.get(name) ?? { revenue: 0, orderCount: 0 };
+    customerMap.set(name, {
+      revenue: cur.revenue + Number(d.grandTotal),
+      orderCount: cur.orderCount + 1,
+    });
+  }
+  const top3Customers = [...customerMap.entries()]
+    .sort((a, b) => b[1].revenue - a[1].revenue)
+    .slice(0, 3)
+    .map(([name, stats]) => ({ name, ...stats }));
+
+  return res.json({
+    activeSoCount,
+    outstandingInvoicesCount,
+    outstandingAmount,
+    revenuePipelineThisMonth,
+    revenuePipelineSoCount,
+    top3Customers,
+  });
+});
+
 // CUSTOMERS
 router.get("/customers", async (req, res) => {
   const companyId = resolveCompanyId(req);

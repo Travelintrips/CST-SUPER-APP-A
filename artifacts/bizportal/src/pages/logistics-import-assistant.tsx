@@ -12,6 +12,8 @@ import {
   Download, ExternalLink,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { ArrowLeft } from "lucide-react";
+import { Link } from "wouter";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -461,6 +463,8 @@ export default function LogisticsImportAssistantPage() {
               <Bot className="h-5 w-5 text-white" />
             </div>
             <div>
+              <Link href="/logistics"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
+
               <h1 className="font-bold text-base leading-tight">AI Import Advisor</h1>
               <p className="text-xs text-muted-foreground">Asisten impor otomatis — dari kebutuhan hingga RFQ siap kirim</p>
             </div>
