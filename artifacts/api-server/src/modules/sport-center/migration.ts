@@ -430,7 +430,9 @@ export async function runSportCenterMigration(): Promise<void> {
           SELECT 1 FROM pg_constraint
           WHERE conname = 'sport_center_bookings_booking_code_key'
         ) THEN
-          ALTER TABLE sport_center_bookings ADD CONSTRAINT sport_center_bookings_booking_code_key UNIQUE (booking_code);
+          IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='sport_center_bookings') THEN
+            ALTER TABLE sport_center_bookings ADD CONSTRAINT sport_center_bookings_booking_code_key UNIQUE (booking_code);
+          END IF;
         END IF;
       END $$;
     `);
