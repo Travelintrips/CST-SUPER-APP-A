@@ -845,11 +845,33 @@ router.post("/documents/:documentType/preview", async (req: Request, res: Respon
   if (!DOCUMENT_TYPES.includes(documentType as DocumentType)) {
     return res.status(400).json({ error: "document_type tidak valid" });
   }
+  const body = req.body ?? {};
   const tpl: DocumentTemplateConfig = {
     ...DEFAULT_DOC_TEMPLATE(documentType),
-    ...(req.body ?? {}),
+    ...body,
     documentType,
   };
+
+  // Canvas settings from request body
+  const paperSize: string = body.paperSize ?? "A4";
+  const orientation: string = body.orientation ?? "portrait";
+  const margin: { top: number; right: number; bottom: number; left: number } =
+    body.margin ?? { top: 15, right: 15, bottom: 15, left: 15 };
+  const customVariables: { name: string; value: string; desc: string }[] =
+    body.customVariables ?? [];
+
+  // Paper dimensions in px (96dpi equivalent)
+  const paperWidths: Record<string, number> = { A4: 794, Letter: 816, A5: 559 };
+  const paperHeights: Record<string, number> = { A4: 1123, Letter: 1056, A5: 794 };
+  const baseW = paperWidths[paperSize] ?? 794;
+  const baseH = paperHeights[paperSize] ?? 1123;
+  const docW = orientation === "landscape" ? baseH : baseW;
+
+  // Build custom variable substitution map
+  const customVarMap: Record<string, string> = {};
+  for (const cv of customVariables) {
+    if (cv.name) customVarMap[`{${cv.name}}`] = cv.value || `{${cv.name}}`;
+  }
 
   const docLabel = DOCUMENT_TYPE_LABELS[documentType] ?? documentType.toUpperCase();
   const dummyRows = [
@@ -872,6 +894,12 @@ router.post("/documents/:documentType/preview", async (req: Request, res: Respon
       <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;text-align:right;">${fmt(r.subtotal)}</td>
     </tr>`).join("");
 
+  const mmToPx = (mm: number) => Math.round(mm * 3.7795);
+  const padTop    = mmToPx(margin.top);
+  const padRight  = mmToPx(margin.right);
+  const padBottom = mmToPx(margin.bottom);
+  const padLeft   = mmToPx(margin.left);
+
   const html = `<!DOCTYPE html>
 <html lang="id">
 <head>
@@ -879,8 +907,8 @@ router.post("/documents/:documentType/preview", async (req: Request, res: Respon
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Preview ${docLabel}</title>
 <style>
-  body{font-family:Arial,sans-serif;font-size:${tpl.fontSize}pt;color:#1f2937;margin:0;padding:24px;background:#f3f4f6;}
-  .doc{background:#fff;max-width:820px;margin:0 auto;padding:40px 48px;box-shadow:0 1px 8px rgba(0,0,0,.1);}
+  body{font-family:Arial,sans-serif;font-size:${tpl.fontSize}pt;color:#1f2937;margin:0;padding:16px;background:#f3f4f6;}
+  .doc{background:#fff;width:${docW}px;margin:0 auto;padding:${padTop}px ${padRight}px ${padBottom}px ${padLeft}px;box-shadow:0 1px 8px rgba(0,0,0,.1);box-sizing:border-box;}
   .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid ${tpl.primaryColor};padding-bottom:20px;margin-bottom:24px;}
   .logo{max-height:64px;max-width:160px;}
   .doc-title{text-align:right;}

@@ -83,6 +83,12 @@ const DEFAULT_BLOCKS: CanvasBlock[] = [
   { id: "b-footer",    type: "footer",    label: "Footer",                  visible: true, locked: false },
 ];
 
+interface CustomVariable {
+  name: string;
+  value: string;
+  desc: string;
+}
+
 interface TemplateConfig {
   documentType: string;
   businessLine: string;
@@ -103,6 +109,7 @@ interface TemplateConfig {
   showSignature: boolean;
   showStamp: boolean;
   templateFormat: "pdf" | "html";
+  customVariables?: CustomVariable[];
   updatedAt?: string;
 }
 
@@ -125,6 +132,7 @@ const DEFAULT_CONFIG: Omit<TemplateConfig, "documentType"> = {
   showSignature: true,
   showStamp: false,
   templateFormat: "pdf",
+  customVariables: [],
 };
 
 function genId() {
@@ -432,7 +440,7 @@ export default function DocumentTemplatesPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify(config),
+        body: JSON.stringify({ ...config, paperSize, margin, orientation }),
       });
       if (!res.ok) throw new Error();
       const html = await res.text();
@@ -798,40 +806,124 @@ export default function DocumentTemplatesPage() {
             )}
 
             {/* Variabel Tab */}
-            {activeStep === "2" && (
-              <div className="flex-1 overflow-auto p-6">
-                <div className="max-w-2xl mx-auto">
-                  <h2 className="text-white font-semibold mb-1 text-sm">Variabel Tersedia</h2>
-                  <p className="text-gray-500 text-xs mb-4">Gunakan variabel ini di dalam template dengan format <code className="bg-white/10 px-1 rounded text-blue-300">{`{{nama_variabel}}`}</code></p>
-                  <div className="grid grid-cols-2 gap-3">
-                    {[
-                      { var: `{nomor_${activeType}}`,     desc: "Nomor dokumen otomatis" },
-                      { var: "{tanggal}",                  desc: "Tanggal dokumen" },
-                      { var: "{jatuh_tempo}",              desc: "Tanggal jatuh tempo" },
-                      { var: "{nama_perusahaan}",          desc: "Nama perusahaan pengirim" },
-                      { var: "{alamat_perusahaan}",        desc: "Alamat perusahaan" },
-                      { var: "{telepon_perusahaan}",       desc: "Telepon perusahaan" },
-                      { var: "{email_perusahaan}",         desc: "Email perusahaan" },
-                      { var: "{nama_pelanggan}",           desc: "Nama pelanggan / vendor" },
-                      { var: "{alamat_pelanggan}",         desc: "Alamat pelanggan" },
-                      { var: "{telepon_pelanggan}",        desc: "Telepon pelanggan" },
-                      { var: "{email_pelanggan}",          desc: "Email pelanggan" },
-                      { var: "{subtotal}",                 desc: "Subtotal sebelum pajak" },
-                      { var: "{diskon}",                   desc: "Jumlah diskon" },
-                      { var: "{pajak}",                    desc: "Nama pajak (mis: PPN 11%)" },
-                      { var: "{total}",                    desc: "Total akhir" },
-                      { var: "{catatan}",                  desc: "Catatan dokumen" },
-                      { var: "{page_number}",              desc: "Nomor halaman" },
-                    ].map((v) => (
-                      <div key={v.var} className="flex items-start gap-2 p-2.5 rounded-lg bg-white/5 border border-white/10">
-                        <code className="text-blue-400 text-[11px] font-mono shrink-0">{v.var}</code>
-                        <span className="text-[11px] text-gray-500">{v.desc}</span>
+            {activeStep === "2" && (() => {
+              const customVars: CustomVariable[] = config.customVariables ?? [];
+              const sysVars = [
+                { var: `{nomor_${activeType}}`, desc: "Nomor dokumen otomatis" },
+                { var: "{tanggal}",              desc: "Tanggal dokumen" },
+                { var: "{jatuh_tempo}",          desc: "Tanggal jatuh tempo" },
+                { var: "{nama_perusahaan}",      desc: "Nama perusahaan pengirim" },
+                { var: "{alamat_perusahaan}",    desc: "Alamat perusahaan" },
+                { var: "{telepon_perusahaan}",   desc: "Telepon perusahaan" },
+                { var: "{email_perusahaan}",     desc: "Email perusahaan" },
+                { var: "{nama_pelanggan}",       desc: "Nama pelanggan / vendor" },
+                { var: "{alamat_pelanggan}",     desc: "Alamat pelanggan" },
+                { var: "{telepon_pelanggan}",    desc: "Telepon pelanggan" },
+                { var: "{email_pelanggan}",      desc: "Email pelanggan" },
+                { var: "{subtotal}",             desc: "Subtotal sebelum pajak" },
+                { var: "{diskon}",               desc: "Jumlah diskon" },
+                { var: "{pajak}",               desc: "Nama pajak (mis: PPN 11%)" },
+                { var: "{total}",                desc: "Total akhir" },
+                { var: "{catatan}",              desc: "Catatan dokumen" },
+                { var: "{page_number}",          desc: "Nomor halaman" },
+              ];
+
+              function addCustomVar() {
+                const updated = [...customVars, { name: "", value: "", desc: "" }];
+                patchConfig("customVariables", updated);
+              }
+              function updateCustomVar(idx: number, field: keyof CustomVariable, val: string) {
+                const updated = customVars.map((v, i) => i === idx ? { ...v, [field]: val } : v);
+                patchConfig("customVariables", updated);
+              }
+              function deleteCustomVar(idx: number) {
+                patchConfig("customVariables", customVars.filter((_, i) => i !== idx));
+              }
+
+              return (
+                <div className="flex-1 overflow-auto p-6">
+                  <div className="max-w-2xl mx-auto space-y-6">
+
+                    {/* System Variables — read-only with copy button */}
+                    <div>
+                      <h2 className="text-white font-semibold mb-1 text-sm">Variabel Sistem</h2>
+                      <p className="text-gray-500 text-xs mb-3">Variabel bawaan yang diisi otomatis saat dokumen dibuat. Klik untuk menyalin.</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        {sysVars.map((v) => (
+                          <button
+                            key={v.var}
+                            onClick={() => { navigator.clipboard.writeText(v.var); toast({ title: "Disalin!", description: v.var, duration: 1500 }); }}
+                            className="flex items-start gap-2 p-2.5 rounded-lg bg-white/5 border border-white/10 hover:bg-blue-500/10 hover:border-blue-500/30 text-left transition-colors group"
+                          >
+                            <code className="text-blue-400 text-[11px] font-mono shrink-0 group-hover:text-blue-300">{v.var}</code>
+                            <span className="text-[11px] text-gray-500">{v.desc}</span>
+                          </button>
+                        ))}
                       </div>
-                    ))}
+                    </div>
+
+                    {/* Custom Variables — editable */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <div>
+                          <h2 className="text-white font-semibold text-sm">Variabel Kustom</h2>
+                          <p className="text-gray-500 text-xs">Buat variabel sendiri untuk digunakan di template.</p>
+                        </div>
+                        <Button size="sm" onClick={addCustomVar} className="h-7 text-xs bg-blue-600 hover:bg-blue-700 text-white">
+                          + Tambah Variabel
+                        </Button>
+                      </div>
+
+                      {customVars.length === 0 ? (
+                        <div className="text-center py-8 text-gray-600 text-xs border border-dashed border-white/10 rounded-lg">
+                          Belum ada variabel kustom. Klik "Tambah Variabel" untuk mulai.
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {/* Header row */}
+                          <div className="grid grid-cols-[1fr_1.2fr_1.5fr_32px] gap-2 px-1">
+                            <span className="text-[10px] text-gray-600 font-semibold uppercase">Nama Variabel</span>
+                            <span className="text-[10px] text-gray-600 font-semibold uppercase">Nilai Default</span>
+                            <span className="text-[10px] text-gray-600 font-semibold uppercase">Keterangan</span>
+                            <span />
+                          </div>
+                          {customVars.map((cv, idx) => (
+                            <div key={idx} className="grid grid-cols-[1fr_1.2fr_1.5fr_32px] gap-2 items-center p-2 bg-white/5 border border-white/10 rounded-lg">
+                              <div className="flex items-center gap-1">
+                                <span className="text-blue-400 text-[11px] font-mono shrink-0">{`{`}</span>
+                                <Input
+                                  placeholder="nama_var"
+                                  value={cv.name}
+                                  onChange={(e) => updateCustomVar(idx, "name", e.target.value.replace(/[^a-z0-9_]/gi, "_").toLowerCase())}
+                                  className="h-6 text-[11px] font-mono bg-transparent border-0 border-b border-white/20 rounded-none text-blue-300 px-0 focus-visible:ring-0 focus-visible:border-blue-400 placeholder:text-gray-600"
+                                />
+                                <span className="text-blue-400 text-[11px] font-mono shrink-0">{`}`}</span>
+                              </div>
+                              <Input
+                                placeholder="nilai default..."
+                                value={cv.value}
+                                onChange={(e) => updateCustomVar(idx, "value", e.target.value)}
+                                className="h-6 text-xs bg-white/5 border-white/10 text-white"
+                              />
+                              <Input
+                                placeholder="deskripsi..."
+                                value={cv.desc}
+                                onChange={(e) => updateCustomVar(idx, "desc", e.target.value)}
+                                className="h-6 text-xs bg-white/5 border-white/10 text-gray-300"
+                              />
+                              <button onClick={() => deleteCustomVar(idx)} className="h-6 w-6 flex items-center justify-center text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded">
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
                   </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* Pengaturan Tab */}
             {activeStep === "3" && (
