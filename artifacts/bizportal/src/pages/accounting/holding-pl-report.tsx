@@ -23,6 +23,7 @@ import {
   Printer,
   FileBarChart2,
   Layers,
+  ArrowLeft,
 } from "lucide-react";
 import { Link } from "wouter";
 

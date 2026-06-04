@@ -80,6 +80,18 @@ const SERVICES: ServiceItem[] = [
 const INCOTERMS = ["EXW", "FCA", "FOB", "CIF", "DAP", "DDP", "CPT", "CIP"];
 const GOODS_TYPES = ["General Cargo", "Kopi / Hasil Bumi", "Elektronik", "Perishable", "Kimia / B3", "Furniture", "Mesin & Spare-part", "Lainnya"];
 
+const VEHICLE_CAPACITIES_PO = [
+  { type: "CDE",     label: "CDE — Engkel Kecil",   desc: "s/d 1.500 kg",  maxKg: 1_500    },
+  { type: "CDD",     label: "CDD — Engkel Besar",   desc: "s/d 3.000 kg",  maxKg: 3_000    },
+  { type: "Fuso",    label: "Fuso — Truk Medium",   desc: "s/d 8.000 kg",  maxKg: 8_000    },
+  { type: "Wingbox", label: "Wingbox — Truk Besar", desc: "s/d 20.000 kg", maxKg: 20_000   },
+  { type: "Trailer", label: "Trailer",               desc: "> 20.000 kg",   maxKg: Infinity },
+];
+function suggestVehiclePO(weightKg: number): { type: string; label: string; desc: string } {
+  for (const v of VEHICLE_CAPACITIES_PO) { if (weightKg <= v.maxKg) return v; }
+  return VEHICLE_CAPACITIES_PO[VEHICLE_CAPACITIES_PO.length - 1];
+}
+
 const EMPTY_TRUCKING: TruckingForm = {
   mode: "detail",
   pickupDate: "", pickupTime: "", pickupAddress: "", deliveryAddress: "",
@@ -591,33 +603,51 @@ export default function ProductOrderPage() {
                 <p className="text-[11px] font-semibold text-emerald-700 flex items-center gap-1.5">
                   <Package className="w-3.5 h-3.5" /> Spesifikasi dihitung otomatis dari pesanan Anda
                 </p>
-                <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Total Berat</span>
-                    <span className="font-semibold text-slate-800">
-                      {truckingForm.weight} kg
-                      {!cartHasWeight && (
-                        <span className="ml-1 text-[10px] text-amber-600 font-normal">(estimasi)</span>
+                {(() => {
+                  const wKg = parseFloat(truckingForm.weight) || 0;
+                  const sugVehicle = wKg > 0 ? suggestVehiclePO(wKg) : null;
+                  return (
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Total Berat</span>
+                        <span className="font-semibold text-slate-800">
+                          {truckingForm.weight} kg
+                          {!cartHasWeight && (
+                            <span className="ml-1 text-[10px] text-amber-600 font-normal">(estimasi)</span>
+                          )}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Jenis Barang</span>
+                        <span className="font-semibold text-slate-800">{truckingForm.goodsType || "General Cargo"}</span>
+                      </div>
+                      {cartHasDims && (
+                        <div className="flex justify-between col-span-2">
+                          <span className="text-slate-500">Dimensi</span>
+                          <span className="font-semibold text-slate-800">
+                            {truckingForm.length} × {truckingForm.width} × {truckingForm.height} cm
+                          </span>
+                        </div>
                       )}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Jenis Barang</span>
-                    <span className="font-semibold text-slate-800">{truckingForm.goodsType || "General Cargo"}</span>
-                  </div>
-                  {cartHasDims && (
-                    <div className="flex justify-between col-span-2">
-                      <span className="text-slate-500">Dimensi</span>
-                      <span className="font-semibold text-slate-800">
-                        {truckingForm.length} × {truckingForm.width} × {truckingForm.height} cm
-                      </span>
+                      <div className="flex justify-between col-span-2">
+                        <span className="text-slate-500">Kota Asal</span>
+                        <span className="font-semibold text-slate-800">{truckingForm.origin || companyOrigin?.originCity || "Jakarta"}</span>
+                      </div>
+                      {sugVehicle && (
+                        <div className="flex justify-between col-span-2 pt-1 border-t border-emerald-100">
+                          <span className="text-slate-500 flex items-center gap-1">
+                            <Truck className="w-3 h-3 text-orange-500" /> Kendaraan Disarankan
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <span className="text-orange-500 font-bold text-[10px]">★</span>
+                            <span className="font-semibold text-orange-700">{sugVehicle.type}</span>
+                            <span className="text-slate-400 text-[10px]">({sugVehicle.desc})</span>
+                          </span>
+                        </div>
+                      )}
                     </div>
-                  )}
-                  <div className="flex justify-between col-span-2">
-                    <span className="text-slate-500">Kota Asal</span>
-                    <span className="font-semibold text-slate-800">{truckingForm.origin || companyOrigin?.originCity || "Jakarta"}</span>
-                  </div>
-                </div>
+                  );
+                })()}
               </div>
 
               {/* Satu-satunya input: Kota Tujuan */}

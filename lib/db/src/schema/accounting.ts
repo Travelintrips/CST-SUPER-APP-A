@@ -33,7 +33,9 @@ export const journalTypeEnum = pgEnum("journal_type", [
   "general",
 ]);
 
-export const taxKindEnum = pgEnum("tax_kind", ["sale", "purchase"]);
+export const taxKindEnum = pgEnum("tax_kind", ["sale", "purchase", "withholding"]);
+
+export const cutTypeEnum = pgEnum("cut_type", ["self_borne", "withholding"]);
 
 export const accountingEntryStatusEnum = pgEnum("accounting_entry_status", [
   "draft",
@@ -115,6 +117,7 @@ export const accountingTaxesTable = pgTable("accounting_taxes", {
   name: text("name").notNull(),
   rate: numeric("rate", { precision: 6, scale: 3 }).notNull(),
   kind: taxKindEnum("kind").notNull(),
+  cutType: cutTypeEnum("cut_type").notNull().default("self_borne"),
   accountId: integer("account_id")
     .notNull()
     .references(() => chartOfAccountsTable.id, { onDelete: "restrict" }),

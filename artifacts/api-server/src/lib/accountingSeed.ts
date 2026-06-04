@@ -218,9 +218,11 @@ export async function ensureDefaultCompany(): Promise<number> {
 export async function seedAccountingDefaults(companyId?: number): Promise<void> {
   const cid = companyId ?? (await ensureDefaultCompany());
 
-  // ── Fast-path: skip heavy seed if COA already fully populated ────────────
+  // ── Fast-path: skip heavy seed if COA, journals, AND settings already fully populated ──
   // Count leaf accounts that have a company_id (per-company accounts).
   // Expected: COA_LEAF_TEMPLATES.length (38) × ALL_COMPANY_IDS.length (4) = 152
+  // Also check journals (6 templates × 4 companies = 24) and that settings rows have
+  // cash_journal_id populated — if any are missing, fall through to full seed.
   try {
     const [{ leafCount }] = await db
       .select({ leafCount: sql<number>`count(*)::int` })
@@ -228,6 +230,23 @@ export async function seedAccountingDefaults(companyId?: number): Promise<void> 
       .where(sql`company_id IS NOT NULL`);
     const expectedLeaves = COA_LEAF_TEMPLATES.length * ALL_COMPANY_IDS.length;
     if (Number(leafCount) >= expectedLeaves) {
+      // Also verify journals and settings are not empty
+      const [{ jCount }] = await db
+        .select({ jCount: sql<number>`count(*)::int` })
+        .from(accountingJournalsTable)
+        .where(sql`company_id IS NOT NULL`);
+      const expectedJournals = 6 * ALL_COMPANY_IDS.length; // 6 journal types × 4 companies
+      const [{ nullSettingsCnt }] = await db
+        .select({ nullSettingsCnt: sql<number>`count(*)::int` })
+        .from(accountingSettingsTable)
+        .where(sql`cash_journal_id IS NULL AND company_id IS NOT NULL`);
+      if (Number(jCount) < expectedJournals || Number(nullSettingsCnt) > 0) {
+        logger.info(
+          { jCount: Number(jCount), expectedJournals, nullSettingsCnt: Number(nullSettingsCnt) },
+          "Accounting seed: COA seeded but journals/settings missing — running full seed to repair."
+        );
+        // Fall through to full seed below
+      } else {
       logger.info("Accounting seed: COA already fully seeded — skipping (fast path).");
       // Still patch grirAccountId in settings if it's NULL but 2-1045 account exists
       try {
@@ -251,7 +270,8 @@ export async function seedAccountingDefaults(companyId?: number): Promise<void> 
         `);
       } catch (e) { /* non-fatal */ }
       return;
-    }
+      } // end else (journals+settings already seeded)
+    } // end if (leafCount >= expectedLeaves)
   } catch {
     // column may not exist yet — fall through to full seed
   }
@@ -469,6 +489,27 @@ export async function seedAccountingDefaults(companyId?: number): Promise<void> 
     ALTER TABLE accounting_taxes ADD COLUMN IF NOT EXISTS company_id integer
   `);
 
+  // ── Taxes: add withholding value to tax_kind enum if not exists ───────────
+  try {
+    await db.execute(sql.raw(`ALTER TYPE tax_kind ADD VALUE IF NOT EXISTS 'withholding'`));
+  } catch { /* already exists */ }
+
+  // ── Taxes: create cut_type enum and add cut_type column ──────────────────
+  try {
+    await db.execute(sql.raw(`
+      DO $$ BEGIN
+        CREATE TYPE cut_type AS ENUM ('self_borne', 'withholding');
+      EXCEPTION WHEN duplicate_object THEN NULL;
+      END $$
+    `));
+  } catch { /* already exists */ }
+  try {
+    await db.execute(sql.raw(`
+      ALTER TABLE accounting_taxes
+        ADD COLUMN IF NOT EXISTS cut_type cut_type NOT NULL DEFAULT 'self_borne'
+    `));
+  } catch { /* already exists */ }
+
   // Dedup taxes: keep min(id) per (kind, company_id)
   await db.execute(sql`
     DELETE FROM accounting_taxes
@@ -482,43 +523,54 @@ export async function seedAccountingDefaults(companyId?: number): Promise<void> 
     UPDATE accounting_taxes SET company_id = 1 WHERE company_id IS NULL
   `);
 
-  // Seed PPN sale + purchase per company
+  // Define PPh tax templates
+  interface TaxTemplate {
+    name: string;
+    rate: string;
+    kind: "sale" | "purchase" | "withholding";
+    cutType: "self_borne" | "withholding";
+    accountBase: string; // base COA code
+    uniqueKey: string;   // used to detect if already exists
+  }
+  const TAX_TEMPLATES: TaxTemplate[] = [
+    { name: "PPN Keluaran 11%",         rate: "11.000", kind: "sale",        cutType: "self_borne",  accountBase: "2-1020", uniqueKey: "sale" },
+    { name: "PPN Masukan 11%",          rate: "11.000", kind: "purchase",     cutType: "self_borne",  accountBase: "1-1050", uniqueKey: "purchase" },
+    { name: "PPh 21",                   rate: "5.000",  kind: "withholding",  cutType: "withholding", accountBase: "2-1030", uniqueKey: "pph21" },
+    { name: "PPh 23",                   rate: "2.000",  kind: "withholding",  cutType: "withholding", accountBase: "2-1030", uniqueKey: "pph23" },
+    { name: "PPh Final",                rate: "0.500",  kind: "withholding",  cutType: "self_borne",  accountBase: "2-1030", uniqueKey: "pphfinal" },
+    { name: "PPh Freight Paket 1,1%",   rate: "1.100",  kind: "withholding",  cutType: "withholding", accountBase: "2-1030", uniqueKey: "pphfreight" },
+  ];
+
+  // Seed all tax templates per company
   for (const companyId of ALL_COMPANY_IDS) {
-    const ppnOut = needFor("2-1020", companyId);
-    const ppnIn  = needFor("1-1050", companyId);
     const existingForCompany = await db
       .select()
       .from(accountingTaxesTable)
       .where(eq(accountingTaxesTable.companyId, companyId));
-    const hasSale     = existingForCompany.some((t) => t.kind === "sale");
-    const hasPurchase = existingForCompany.some((t) => t.kind === "purchase");
-    if (!hasSale) {
-      await db.insert(accountingTaxesTable).values({
-        name: "PPN Keluaran 11%", rate: "11.000", kind: "sale",
-        accountId: ppnOut.id, companyId,
-      });
-    } else {
-      // Update account to correct company account
-      const [existing] = existingForCompany.filter((t) => t.kind === "sale");
-      if (existing && existing.accountId !== ppnOut.id) {
-        await db.execute(sql`
-          UPDATE accounting_taxes SET account_id = ${ppnOut.id}
+
+    for (const tpl of TAX_TEMPLATES) {
+      const accountRow = needFor(tpl.accountBase, companyId);
+
+      // Detect existing by kind for PPN, by name-prefix for PPh
+      let existing: typeof existingForCompany[0] | undefined;
+      if (tpl.uniqueKey === "sale")       existing = existingForCompany.find((t) => t.kind === "sale");
+      else if (tpl.uniqueKey === "purchase") existing = existingForCompany.find((t) => t.kind === "purchase");
+      else existing = existingForCompany.find((t) => t.name === tpl.name);
+
+      if (!existing) {
+        await db.execute(sql.raw(`
+          INSERT INTO accounting_taxes (name, rate, kind, cut_type, account_id, company_id, is_active)
+          VALUES ('${tpl.name}', '${tpl.rate}', '${tpl.kind}', '${tpl.cutType}', ${accountRow.id}, ${companyId}, true)
+          ON CONFLICT DO NOTHING
+        `));
+      } else {
+        // Patch account_id and cut_type on existing rows
+        await db.execute(sql.raw(`
+          UPDATE accounting_taxes
+          SET account_id = ${accountRow.id},
+              cut_type = '${tpl.cutType}'
           WHERE id = ${existing.id}
-        `);
-      }
-    }
-    if (!hasPurchase) {
-      await db.insert(accountingTaxesTable).values({
-        name: "PPN Masukan 11%", rate: "11.000", kind: "purchase",
-        accountId: ppnIn.id, companyId,
-      });
-    } else {
-      const [existing] = existingForCompany.filter((t) => t.kind === "purchase");
-      if (existing && existing.accountId !== ppnIn.id) {
-        await db.execute(sql`
-          UPDATE accounting_taxes SET account_id = ${ppnIn.id}
-          WHERE id = ${existing.id}
-        `);
+        `));
       }
     }
   }

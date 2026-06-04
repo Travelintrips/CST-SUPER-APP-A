@@ -15,7 +15,7 @@ import {
   Activity, AlertCircle, Building2, Wifi, WifiOff,
   Dumbbell, ShoppingBag, RefreshCw, CloudUpload, CheckCircle2,
   XCircle, Database, BookOpen, Flame, CheckCheck, BarChart2,
-  ArrowDownRight, Zap, Filter, ChevronLeft, ChevronRight,
+  ArrowDownRight, Zap, Filter, ChevronLeft, ChevronRight, ChevronDown,
 } from "lucide-react";
 import { fetchSportCenterData, type SportCenterSupabaseData } from "@/lib/sportCenterSupabase";
 import { supabase } from "@/lib/supabaseClient";
@@ -86,6 +86,13 @@ export default function SportCenterDashboard() {
   const [supabaseConnected, setSupabaseConnected] = useState(false);
   const [cardFilter, setCardFilter] = useState<string | null>(null);
   const { costCenters, selectedId: costCenterId, setSelectedId: setCostCenterId, selectedLabel: costCenterLabel } = useSportCostCenter();
+
+  // ── State: expandable card ────────────────────────────────────────────────
+  const [expandedCard, setExpandedCard] = useState<string | null>(null);
+
+  const handleCardClick = (cardId: string) => {
+    setExpandedCard(prev => (prev === cardId ? null : cardId));
+  };
 
   // ── State: KPI date picker ────────────────────────────────────────────────
   const todayStr = new Date().toISOString().split("T")[0];
@@ -159,6 +166,37 @@ export default function SportCenterDashboard() {
     queryFn: fetchSportCenterData,
     refetchInterval: 60_000,
     retry: 1,
+  });
+
+  // ── Query: Semua booking dari Supabase (lazy — hanya saat expandedCard === 'totalBooking') ──
+  interface AllBookingRow {
+    booking_code: string | null;
+    customer_name: string | null;
+    facility_name: string | null;
+    date: string | null;
+    start_time: string | null;
+    end_time: string | null;
+    status: string | null;
+    payment_status: string | null;
+    total_price: number | null;
+    created_at: string | null;
+  }
+  const {
+    data: allBookingsData,
+    isLoading: allBookingsLoading,
+  } = useQuery<AllBookingRow[]>({
+    queryKey: ["sport-center-supabase-all-bookings"],
+    queryFn: async () => {
+      if (!supabase) return [];
+      const { data, error } = await supabase
+        .from("sport_center_bookings")
+        .select("booking_code, customer_name, facility_name, date, start_time, end_time, status, payment_status, total_price, created_at")
+        .order("created_at", { ascending: false });
+      if (error) throw new Error(error.message);
+      return (data ?? []) as AllBookingRow[];
+    },
+    enabled: expandedCard === "totalBooking",
+    staleTime: 30_000,
   });
 
   // ── Realtime: SSE dari API server ─────────────────────────────────────────
@@ -381,7 +419,7 @@ export default function SportCenterDashboard() {
   const stats: {
     title: string; value: string | number;
     icon: React.ElementType; color: string; bg: string; sub: string;
-    filter?: string; href?: string;
+    filter?: string; href?: string; expand?: string;
   }[] = [
     {
       title: "Total Booking",
@@ -390,7 +428,7 @@ export default function SportCenterDashboard() {
       color: "text-blue-400",
       bg: "bg-blue-900/20",
       sub: `Dari Supabase${hasSupaBookings ? " ✓" : " (lokal)"}`,
-      href: "/sport-center/bookings",
+      expand: "totalBooking",
     },
     {
       title: "Pelanggan Unik",
@@ -690,16 +728,21 @@ export default function SportCenterDashboard() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {stats.map((s) => {
               const isActive = s.filter != null && cardFilter === s.filter;
+              const isExpanded = s.expand != null && expandedCard === s.expand;
               return (
                 <Card
                   key={s.title}
                   className={`border-border/60 cursor-pointer transition-all duration-150 group ${
-                    isActive
-                      ? "border-yellow-500/60 bg-yellow-900/10 ring-1 ring-yellow-500/30"
-                      : "hover:border-border hover:bg-accent/30"
+                    isExpanded
+                      ? "border-blue-500/60 bg-blue-900/10 ring-1 ring-blue-500/30"
+                      : isActive
+                        ? "border-yellow-500/60 bg-yellow-900/10 ring-1 ring-yellow-500/30"
+                        : "hover:border-border hover:bg-accent/30"
                   }`}
                   onClick={() => {
-                    if (s.filter != null) {
+                    if (s.expand != null) {
+                      handleCardClick(s.expand);
+                    } else if (s.filter != null) {
                       setCardFilter(cardFilter === s.filter ? null : s.filter);
                     } else if (s.href) {
                       navigate(s.href);
@@ -709,18 +752,137 @@ export default function SportCenterDashboard() {
                   <CardContent className="p-4">
                     <div className="flex items-start justify-between">
                       <div className="min-w-0 flex-1">
-                        <p className="text-xs text-muted-foreground mb-1 truncate group-hover:text-foreground/70 transition-colors">{s.title}</p>
-                        <p className={`text-xl font-bold ${isActive ? "text-yellow-300" : "text-foreground"}`}>{s.value}</p>
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <p className="text-xs text-muted-foreground truncate group-hover:text-foreground/70 transition-colors">{s.title}</p>
+                          {s.filter != null && (
+                            <span className={`text-[9px] font-semibold px-1 py-0.5 rounded border leading-none shrink-0 ${
+                              isActive
+                                ? "bg-yellow-900/60 text-yellow-300 border-yellow-600"
+                                : "bg-muted/60 text-muted-foreground border-border/60"
+                            }`}>FILTER</span>
+                          )}
+                          {s.expand != null && (
+                            <span className={`text-[9px] font-semibold px-1 py-0.5 rounded border leading-none shrink-0 ${
+                              isExpanded
+                                ? "bg-blue-900/60 text-blue-300 border-blue-600"
+                                : "bg-muted/60 text-muted-foreground border-border/60"
+                            }`}>DETAIL</span>
+                          )}
+                        </div>
+                        <p className={`text-xl font-bold ${isExpanded ? "text-blue-300" : isActive ? "text-yellow-300" : "text-foreground"}`}>{s.value}</p>
                         <p className="text-xs text-muted-foreground mt-1 truncate">{s.sub}</p>
                       </div>
-                      <div className={`p-2 rounded-lg ml-2 shrink-0 ${isActive ? "bg-yellow-900/40" : s.bg} group-hover:scale-110 transition-transform`}>
-                        <s.icon className={`h-4 w-4 ${isActive ? "text-yellow-400" : s.color}`} />
+                      <div className={`p-2 rounded-lg ml-2 shrink-0 ${isExpanded ? "bg-blue-900/40" : isActive ? "bg-yellow-900/40" : s.bg} group-hover:scale-110 transition-transform`}>
+                        {s.expand != null ? (
+                          <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${isExpanded ? "rotate-180 text-blue-400" : s.color}`} />
+                        ) : (
+                          <s.icon className={`h-4 w-4 ${isExpanded ? "text-blue-400" : isActive ? "text-yellow-400" : s.color}`} />
+                        )}
                       </div>
                     </div>
                   </CardContent>
                 </Card>
               );
             })}
+          </div>
+
+        )}
+
+        {/* ── Expandable Detail: Total Booking ─────────────────────────────── */}
+        {!isLoading && expandedCard === "totalBooking" && (
+          <div className="border border-blue-700/40 rounded-xl bg-blue-950/10">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-blue-700/30">
+              <div className="flex items-center gap-2">
+                <CalendarDays className="h-4 w-4 text-blue-400" />
+                <span className="text-sm font-semibold text-blue-300">Detail Semua Booking</span>
+                {!allBookingsLoading && allBookingsData && (
+                  <Badge className="bg-blue-900/40 text-blue-300 border-blue-600 text-xs">
+                    {allBookingsData.length} booking
+                  </Badge>
+                )}
+              </div>
+              <button
+                onClick={() => setExpandedCard(null)}
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded hover:bg-muted/40"
+              >
+                Tutup ✕
+              </button>
+            </div>
+
+            {allBookingsLoading ? (
+              <div className="p-4 space-y-2">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="h-10 rounded-lg bg-muted/20 animate-pulse" />
+                ))}
+              </div>
+            ) : !allBookingsData || allBookingsData.length === 0 ? (
+              <div className="py-10 text-center text-muted-foreground text-sm">
+                Belum ada data booking di Supabase.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-blue-700/20 bg-blue-950/20">
+                      {["Kode", "Pelanggan", "Fasilitas", "Tanggal", "Jam", "Status", "Pembayaran", "Total"].map(h => (
+                        <th key={h} className="text-left py-2.5 px-3 text-blue-300/70 font-medium whitespace-nowrap">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {allBookingsData.map((b, i) => {
+                      const statusKey = (b.status ?? "").toLowerCase();
+                      const statusCls = STATUS_COLOR[statusKey] ?? "bg-gray-800/40 text-gray-300 border-gray-600";
+                      const statusLbl = STATUS_LABEL[statusKey] ?? (b.status ?? "-");
+                      const payKey = (b.payment_status ?? "").toLowerCase();
+                      const payCls = payKey === "paid" || payKey === "completed"
+                        ? "bg-emerald-900/40 text-emerald-300 border-emerald-600"
+                        : payKey === "pending" || payKey === "unpaid"
+                          ? "bg-yellow-900/40 text-yellow-300 border-yellow-600"
+                          : "bg-gray-800/40 text-gray-300 border-gray-600";
+                      const timeRange = (b.start_time || b.end_time)
+                        ? `${b.start_time ?? "?"} – ${b.end_time ?? "?"}`
+                        : "-";
+                      return (
+                        <tr
+                          key={b.booking_code ?? i}
+                          className="border-b border-blue-700/10 hover:bg-blue-950/20 transition-colors"
+                        >
+                          <td className="py-2 px-3 font-mono text-blue-300/80 whitespace-nowrap">{b.booking_code ?? "-"}</td>
+                          <td className="py-2 px-3 text-foreground max-w-[140px] truncate">{b.customer_name ?? "-"}</td>
+                          <td className="py-2 px-3 text-muted-foreground max-w-[120px] truncate">{b.facility_name ?? "-"}</td>
+                          <td className="py-2 px-3 text-muted-foreground whitespace-nowrap">{b.date ? fmtDate(b.date) : "-"}</td>
+                          <td className="py-2 px-3 text-muted-foreground whitespace-nowrap">{timeRange}</td>
+                          <td className="py-2 px-3">
+                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-medium ${statusCls}`}>
+                              {statusLbl}
+                            </span>
+                          </td>
+                          <td className="py-2 px-3">
+                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-medium ${payCls}`}>
+                              {b.payment_status ?? "-"}
+                            </span>
+                          </td>
+                          <td className="py-2 px-3 text-right font-semibold text-foreground whitespace-nowrap">
+                            {idr(Number(b.total_price ?? 0))}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t border-blue-700/30 bg-blue-950/20">
+                      <td colSpan={7} className="py-2 px-3 text-xs text-blue-300/70 font-medium">
+                        Total ({allBookingsData.length} booking)
+                      </td>
+                      <td className="py-2 px-3 text-right font-bold text-blue-300 whitespace-nowrap">
+                        {idr(allBookingsData.reduce((s, b) => s + Number(b.total_price ?? 0), 0))}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
           </div>
         )}
 
