@@ -93,6 +93,11 @@ function serializeProduct(
     subcategory: p.subcategory ?? null,
     isActive: p.isActive,
     imageUrl: p.imageUrl ?? null,
+    weightKg: p.weightKg != null ? Number(p.weightKg) : null,
+    lengthCm: p.lengthCm != null ? Number(p.lengthCm) : null,
+    widthCm:  p.widthCm  != null ? Number(p.widthCm)  : null,
+    heightCm: p.heightCm != null ? Number(p.heightCm) : null,
+    goodsType: p.goodsType ?? null,
   };
 }
 
