@@ -185,9 +185,19 @@ export default function SportCenterDashboard() {
     if (!supabase) return;
     const channel = supabase
       .channel("sport-center-dashboard-rt")
-      .on("postgres_changes", { event: "*", schema: "public", table: "sport_center_bookings" }, () => {
+      .on("postgres_changes", { event: "*", schema: "public", table: "sport_center_bookings" }, (payload) => {
         qc.invalidateQueries({ queryKey: ["sport-center-supabase"] });
+        qc.invalidateQueries({ queryKey: ["sport-center-supabase-bookings-raw"] });
         setRealtimeCount((c) => c + 1);
+        // Auto-push perubahan individual ke local DB tanpa perlu manual sync
+        const row = (payload as { new?: Record<string, unknown> }).new;
+        if (row && row.booking_code) {
+          void fetch("/api/sport-center/sync/push-bookings", {
+            method: "POST", credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ bookings: [row], companyId: activeCompanyId }),
+          });
+        }
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "sport_center_services" }, () => {
         qc.invalidateQueries({ queryKey: ["sport-center-supabase"] });
@@ -201,7 +211,7 @@ export default function SportCenterDashboard() {
         setSupabaseConnected(status === "SUBSCRIBED");
       });
     return () => { void supabase.removeChannel(channel); };
-  }, [qc]);
+  }, [qc, activeCompanyId]);
 
   // ── Merge: Supabase jadi sumber utama, lokal sebagai fallback ─────────────
   const hasSupaBookings = (supaData?.totalBookings ?? 0) > 0 || (supaData?.recentBookings?.length ?? 0) > 0;

@@ -160,6 +160,35 @@ export default function SportCenterBookings() {
     void pushMutation.mutateAsync(supaBookings);
   }, [isLoading, supaLoading, showingSupabase, supaBookings]);
 
+  // ── Supabase Realtime: auto-push INSERT/UPDATE ke local tanpa refresh ────────
+  useEffect(() => {
+    if (!supabase) return;
+    const channel = supabase
+      .channel("sport-center-bookings-rt")
+      .on("postgres_changes", { event: "*", schema: "public", table: "sport_center_bookings" }, (payload) => {
+        // Refresh tampilan Supabase fallback
+        qc.invalidateQueries({ queryKey: ["sport-center-supabase-bookings-raw"] });
+        setRealtimeCount((c) => c + 1);
+        // Push individual row ke local DB secara diam-diam
+        const row = (payload as { new?: Record<string, unknown> }).new;
+        if (row && row.booking_code) {
+          void fetch("/api/sport-center/sync/push-bookings", {
+            method: "POST", credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ bookings: [row], companyId: activeCompanyId }),
+          }).then((r) => {
+            if (r.ok) {
+              // Setelah push sukses, refresh tabel local
+              qc.invalidateQueries({ queryKey: ["sport-center-bookings"] });
+              pushDoneRef.current = true; // sudah ada data lokal
+            }
+          }).catch(() => {});
+        }
+      })
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [activeCompanyId, qc]);
+
   useEffect(() => {
     const qs = activeCompanyId ? `?companyId=${activeCompanyId}` : "";
     const es = new EventSource(`/api/sport-center/events${qs}`);
