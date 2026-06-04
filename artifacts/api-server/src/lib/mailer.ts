@@ -6,7 +6,7 @@ import { getSmtpPass, getSmtpFrom } from "./appSecrets.js";
 let _hasSmtpKey: boolean = !!(process.env.SMTP_PASS?.trim());
 
 export function isSmtpConfigured(): boolean {
-  return _hasSmtpKey;
+  return _hasSmtpKey || !!getCachedOrEnvConfig("SMTP_PASS");
 }
 
 export async function warmupMailer(): Promise<void> {
