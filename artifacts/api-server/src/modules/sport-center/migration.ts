@@ -413,6 +413,10 @@ export async function runSportCenterMigration(): Promise<void> {
     `);
 
     await db.execute(sql`
+      ALTER TABLE sport_center_bookings ALTER COLUMN customer_email DROP NOT NULL;
+    `).catch(() => { /* kolom mungkin sudah nullable atau tidak ada */ });
+
+    await db.execute(sql`
       DO $$ BEGIN
         IF NOT EXISTS (
           SELECT 1 FROM pg_constraint
