@@ -11,7 +11,7 @@ while true; do
   echo "[watchdog] Starting Gateway on port ${PORT:-5000}…"
   START_TIME=$(date +%s)
 
-  PORT=${PORT:-5000} node gateway.mjs
+  PORT=${PORT:-5000} BIZPORTAL_PORT=18442 CUSTOMER_PORT=5174 node gateway.mjs
   EXIT_CODE=$?
 
   END_TIME=$(date +%s)
