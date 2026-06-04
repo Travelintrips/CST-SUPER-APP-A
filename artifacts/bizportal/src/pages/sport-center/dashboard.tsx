@@ -630,12 +630,17 @@ export default function SportCenterDashboard() {
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                 <Activity className="h-4 w-4" /> Booking per Status
+                <span className="text-xs font-normal opacity-50 ml-1">— klik untuk filter</span>
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
                 {byStatus.map((s) => (
-                  <div key={s.status} className="flex items-center justify-between">
+                  <div
+                    key={s.status}
+                    className="flex items-center justify-between cursor-pointer hover:bg-accent/30 -mx-2 px-2 py-1 rounded-md transition-colors"
+                    onClick={() => navigate(`/sport-center/bookings?status=${s.status}`)}
+                  >
                     <Badge className={`text-xs border ${STATUS_COLOR[s.status] ?? "bg-muted text-muted-foreground border-border"}`}>
                       {STATUS_LABEL[s.status] ?? s.status}
                     </Badge>
