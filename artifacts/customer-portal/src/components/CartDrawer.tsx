@@ -172,10 +172,38 @@ export function CartDrawer() {
   const [truckEstimating, setTruckEstimating] = useState(false);
   const [deliveryAddressError, setDeliveryAddressError] = useState(false);
   const [companyPickup, setCompanyPickup] = useState<{ name: string; address: string; originCity: string } | null>(null);
+  const [cartAutoFilled, setCartAutoFilled] = useState(false);
   const [, setLocation]        = useLocation();
   const { toast }              = useToast();
 
   const { items, addItem, removeItem, clearCart, subtotal, tax, grandTotal, taxRate } = useCart();
+
+  function computeCartAutoFill(): Partial<Record<string, string>> & { hasData: boolean } {
+    const productItems = items.filter(i => i.calculatorType === "product");
+    const itemsWithWeight = productItems.filter(i => i.inputData.weightKg != null && Number(i.inputData.weightKg) > 0);
+    if (itemsWithWeight.length === 0) return { hasData: false };
+
+    const totalWeight = itemsWithWeight.reduce(
+      (sum, i) => sum + Number(i.inputData.weightKg) * Number(i.inputData.qty ?? 1), 0
+    );
+
+    const dimItem = productItems.reduce((best: CartItem | null, item) => {
+      const vol = Number(item.inputData.lengthCm ?? 0) * Number(item.inputData.widthCm ?? 0) * Number(item.inputData.heightCm ?? 0) * Number(item.inputData.qty ?? 1);
+      const bestVol = best ? Number(best.inputData.lengthCm ?? 0) * Number(best.inputData.widthCm ?? 0) * Number(best.inputData.heightCm ?? 0) * Number(best.inputData.qty ?? 1) : 0;
+      return vol > bestVol ? item : best;
+    }, null);
+
+    const goodsItem = productItems.find(i => i.inputData.goodsType);
+
+    return {
+      hasData: true,
+      weight: totalWeight > 0 ? String(Math.round(totalWeight * 100) / 100) : "",
+      length: dimItem?.inputData.lengthCm ? String(dimItem.inputData.lengthCm) : "",
+      width:  dimItem?.inputData.widthCm  ? String(dimItem.inputData.widthCm)  : "",
+      height: dimItem?.inputData.heightCm ? String(dimItem.inputData.heightCm) : "",
+      goodsType: goodsItem?.inputData.goodsType ? String(goodsItem.inputData.goodsType) : "",
+    };
+  }
 
   useEffect(() => {
     const handleOpen = () => { setOpen(true); setView("cart"); };
@@ -391,10 +419,24 @@ export function CartDrawer() {
                     key={svc.id}
                     onClick={() => {
                       if (svc.isTrucking) {
-                        setView("trucking");
-                        setTruckMode("detail");
-                        setTruckData({});
+                        const af = computeCartAutoFill();
                         setTruckEstimate(null);
+                        if (af.hasData) {
+                          setTruckData({
+                            weight:    af.weight    || "",
+                            length:    af.length    || "",
+                            width:     af.width     || "",
+                            height:    af.height    || "",
+                            goodsType: af.goodsType || "",
+                          });
+                          setTruckMode("calculator");
+                          setCartAutoFilled(true);
+                        } else {
+                          setTruckData({});
+                          setTruckMode("detail");
+                          setCartAutoFilled(false);
+                        }
+                        setView("trucking");
                       } else {
                         handleNonTruckingService(svc.id);
                       }
@@ -427,7 +469,28 @@ export function CartDrawer() {
                 {(["detail", "calculator"] as const).map(mode => (
                   <button
                     key={mode}
-                    onClick={() => { setTruckMode(mode); setTruckEstimate(null); }}
+                    onClick={() => {
+                      setTruckEstimate(null);
+                      if (mode === "calculator") {
+                        const af = computeCartAutoFill();
+                        if (af.hasData) {
+                          setTruckData(prev => ({
+                            ...prev,
+                            weight:    af.weight    || prev.weight    || "",
+                            length:    af.length    || prev.length    || "",
+                            width:     af.width     || prev.width     || "",
+                            height:    af.height    || prev.height    || "",
+                            goodsType: af.goodsType || prev.goodsType || "",
+                          }));
+                          setCartAutoFilled(true);
+                        } else {
+                          setCartAutoFilled(false);
+                        }
+                      } else {
+                        setCartAutoFilled(false);
+                      }
+                      setTruckMode(mode);
+                    }}
                     className={`flex-1 py-2 px-2 rounded-md text-xs font-medium transition-colors flex items-center justify-center gap-1 ${truckMode === mode ? "bg-white shadow text-slate-800" : "text-slate-400 hover:text-slate-600"}`}
                   >
                     {mode === "detail" ? <><MapPin className="w-3 h-3" /> Pickup &amp; Delivery</> : <><Calculator className="w-3 h-3" /> Kalkulator Estimasi</>}
@@ -491,6 +554,15 @@ export function CartDrawer() {
               {/* Calculator Form */}
               {truckMode === "calculator" && (
                 <div className="space-y-3">
+                  {cartAutoFilled && (
+                    <div className="bg-sky-50 border border-sky-200 rounded-lg px-3 py-2 flex items-start gap-2">
+                      <span className="text-sky-500 mt-0.5 shrink-0">✦</span>
+                      <div>
+                        <p className="text-[11px] font-semibold text-sky-700">Diisi otomatis dari produk pesanan</p>
+                        <p className="text-[10px] text-sky-500 mt-0.5">Berat &amp; dimensi dihitung dari item di keranjang. Masukkan kota tujuan lalu klik Hitung Estimasi.</p>
+                      </div>
+                    </div>
+                  )}
                   <div className="grid grid-cols-2 gap-2.5">
                     <div>
                       <Label className="text-[11px] mb-1 flex items-center gap-1">
