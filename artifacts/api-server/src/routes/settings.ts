@@ -1323,10 +1323,16 @@ router.get("/company-pickup-address", async (_req: Request, res: Response) => {
       companyName:    tpl.companyName,
       companyAddress: tpl.companyAddress,
       companyPhone:   tpl.companyPhone,
+      originCity:     "Jakarta",
+      originAirport:  "CGK",
+      originPort:     "Tanjung Priok, Jakarta",
     });
   } catch {
     const d = DEFAULT_DOC_TEMPLATE("quotation");
-    return res.json({ companyName: d.companyName, companyAddress: d.companyAddress, companyPhone: d.companyPhone });
+    return res.json({
+      companyName: d.companyName, companyAddress: d.companyAddress, companyPhone: d.companyPhone,
+      originCity: "Jakarta", originAirport: "CGK", originPort: "Tanjung Priok, Jakarta",
+    });
   }
 });
 

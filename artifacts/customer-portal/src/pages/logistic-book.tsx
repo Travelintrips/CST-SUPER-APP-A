@@ -189,7 +189,9 @@ function calcResult(calcType: string, state: CalcState): Record<string, unknown>
   }
 }
 
-function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin, destination }: {
+interface CompanyOrigin { name: string; address: string; originCity: string; originAirport: string; originPort: string; }
+
+function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin, destination, companyOrigin }: {
   item: ServiceItem;
   onAdd: (data: Omit<CartItem, "cartId">) => void;
   onBack: () => void;
@@ -197,10 +199,22 @@ function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin,
   truckType?: string;
   origin?: string;
   destination?: string;
+  companyOrigin?: CompanyOrigin;
 }) {
   const [state, setState] = useState<CalcState>({});
   const [autoRateFetching, setAutoRateFetching] = useState(false);
   const { toast } = useToast();
+
+  // Auto-fill origin airport/port from company defaults
+  useEffect(() => {
+    if (!companyOrigin) return;
+    if (item.calculatorType === "air_freight") {
+      setState(prev => ({ ...prev, originAirport: prev.originAirport || companyOrigin.originAirport }));
+    } else if (item.calculatorType === "sea_fcl") {
+      setState(prev => ({ ...prev, originPort: prev.originPort || companyOrigin.originPort }));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [companyOrigin, item.calculatorType]);
 
   function set(key: string, val: string) {
     setState((prev) => ({ ...prev, [key]: val }));
@@ -274,7 +288,16 @@ function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin,
 
         {ct === "air_freight" && <>
           <div className="grid grid-cols-2 gap-3">
-            <div><Label className="text-xs">Origin Airport</Label><Input placeholder="CGK" value={state.originAirport||""} onChange={e => set("originAirport", e.target.value)} /></div>
+            <div>
+              <Label className="text-xs flex items-center gap-1">
+                Origin Airport
+                <span className="ml-auto text-[10px] font-semibold text-orange-600 bg-orange-100 border border-orange-200 rounded px-1.5 py-0.5">Otomatis</span>
+              </Label>
+              <div className="flex items-center gap-2 bg-orange-50 border border-orange-200 rounded-md px-3 py-2 mt-1">
+                <MapPin className="w-3.5 h-3.5 text-orange-500 shrink-0" />
+                <span className="text-xs font-semibold text-slate-800">{state.originAirport || companyOrigin?.originAirport || "CGK"}</span>
+              </div>
+            </div>
             <div><Label className="text-xs">Destination Airport</Label><Input placeholder="SIN" value={state.destinationAirport||""} onChange={e => set("destinationAirport", e.target.value)} /></div>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -297,7 +320,16 @@ function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin,
 
         {ct === "sea_fcl" && <>
           <div className="grid grid-cols-2 gap-3">
-            <div><Label className="text-xs">Origin Port</Label><Input placeholder="IDJKT" value={state.originPort||""} onChange={e => set("originPort", e.target.value)} /></div>
+            <div>
+              <Label className="text-xs flex items-center gap-1">
+                Origin Port
+                <span className="ml-auto text-[10px] font-semibold text-orange-600 bg-orange-100 border border-orange-200 rounded px-1.5 py-0.5">Otomatis</span>
+              </Label>
+              <div className="flex items-center gap-2 bg-orange-50 border border-orange-200 rounded-md px-3 py-2 mt-1">
+                <MapPin className="w-3.5 h-3.5 text-orange-500 shrink-0" />
+                <span className="text-xs font-semibold text-slate-800">{state.originPort || companyOrigin?.originPort || "Tanjung Priok, Jakarta"}</span>
+              </div>
+            </div>
             <div><Label className="text-xs">Destination Port</Label><Input placeholder="SGSIN" value={state.destinationPort||""} onChange={e => set("destinationPort", e.target.value)} /></div>
           </div>
           <div><Label className="text-xs">Container Type</Label>
@@ -461,6 +493,22 @@ export default function BookPage() {
   });
 
   const [fromProduct, setFromProduct] = useState<{ name: string; qty: number; price: number; unit?: string } | null>(null);
+  const [companyOrigin, setCompanyOrigin] = useState<CompanyOrigin | null>(null);
+
+  // Fetch company origin defaults (origin airport, port, city)
+  useEffect(() => {
+    fetch("/api/settings/company-pickup-address")
+      .then(r => r.ok ? r.json() : null)
+      .then((d: { companyName: string; companyAddress: string; originCity?: string; originAirport?: string; originPort?: string } | null) => {
+        setCompanyOrigin(d?.companyAddress ? {
+          name: d.companyName, address: d.companyAddress,
+          originCity: d.originCity ?? "Jakarta",
+          originAirport: d.originAirport ?? "CGK",
+          originPort: d.originPort ?? "Tanjung Priok, Jakarta",
+        } : { name: "CST Logistics", address: "Jl. Logistik No. 1, Jakarta", originCity: "Jakarta", originAirport: "CGK", originPort: "Tanjung Priok, Jakarta" });
+      })
+      .catch(() => setCompanyOrigin({ name: "CST Logistics", address: "Jl. Logistik No. 1, Jakarta", originCity: "Jakarta", originAirport: "CGK", originPort: "Tanjung Priok, Jakarta" }));
+  }, []);
 
   const [customerForm, setCustomerForm] = useState({
     companyName: "", customerName: "", email: "", phone: "",
@@ -1202,6 +1250,7 @@ export default function BookPage() {
               truckType={customerForm.truckType}
               origin={customerForm.origin}
               destination={customerForm.destination}
+              companyOrigin={companyOrigin ?? undefined}
             />
           )}
         </div>
@@ -1439,8 +1488,18 @@ export default function BookPage() {
               {/* ── Air/Sea-specific fields ─── */}
               {hasLogisticService && (f.transportMode === "AIR_FREIGHT" || f.transportMode === "SEA_FREIGHT") && (<>
                 <div className="col-span-2 sm:col-span-1">
-                  <Label className="text-xs">{f.transportMode === "AIR_FREIGHT" ? "Bandara" : "Pelabuhan"} Asal</Label>
-                  <Input placeholder={f.transportMode === "AIR_FREIGHT" ? "CGK / Soekarno-Hatta" : "Tanjung Priok"} value={f.originPort} onChange={e => set("originPort", e.target.value)} />
+                  <Label className="text-xs flex items-center gap-1">
+                    {f.transportMode === "AIR_FREIGHT" ? "Bandara" : "Pelabuhan"} Asal
+                    <span className="ml-auto text-[10px] font-semibold text-orange-600 bg-orange-100 border border-orange-200 rounded px-1.5 py-0.5">Otomatis</span>
+                  </Label>
+                  <div className="flex items-center gap-2 bg-orange-50 border border-orange-200 rounded-md px-3 py-2 mt-1">
+                    <MapPin className="w-3.5 h-3.5 text-orange-500 shrink-0" />
+                    <span className="text-sm text-slate-800 font-medium">
+                      {f.transportMode === "AIR_FREIGHT"
+                        ? (f.originPort || companyOrigin?.originAirport || "CGK")
+                        : (f.originPort || companyOrigin?.originPort || "Tanjung Priok, Jakarta")}
+                    </span>
+                  </div>
                 </div>
                 <div className="col-span-2 sm:col-span-1">
                   <Label className="text-xs">{f.transportMode === "AIR_FREIGHT" ? "Bandara" : "Pelabuhan"} Tujuan</Label>
