@@ -483,6 +483,7 @@ export async function runSportCenterMigration(): Promise<void> {
       logger.info({ backfilled }, "Sport Center migration: customer_email backfill selesai");
     } else {
       logger.info("Sport Center migration: customer_email backfill — tidak ada baris yang perlu diisi");
+    }
     // Backfill: sync existing sport_payments ke accounting_payments (idempoten)
     try {
       await db.execute(sql`
