@@ -7,7 +7,7 @@
  *   /pos-images/*      → API Server      :8080
  *   /q/*               → API Server      :8080  (short-link redirects)
  *   /s/*               → API Server      :8080
- *   /bizportal/*       → BizPortal       :18442
+ *   /bizportal/*       → BizPortal       :4200
 
  *   /sport-center/*    → 302 redirect to /bizportal/sport-center/* (served by BizPortal React Router)
 
@@ -35,12 +35,12 @@ const BASE_DELAY    = Number(process.env.GW_BASE_DELAY    ?? 200);
 const RETRYABLE_CODES = new Set(["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENOTFOUND"]);
 
 const API_PORT           = 8080;
-// BizPortal Vite runs at 18442 (artifact-managed)
-const BIZPORTAL_PORT     = 18442;
-// Customer portal Vite runs at 5174 (internal; proxied via 23434)
-const CUSTOMER_PORT      = 5174;
-// Logistic Order Vite runs at 19368 (artifact-managed)
-const LOGISTIC_ORDER_PORT = 19368;
+// BizPortal Vite runs at 4200
+const BIZPORTAL_PORT     = 4200;
+// Customer portal Vite runs at 5173
+const CUSTOMER_PORT      = 5173;
+// Logistic Order Vite runs at 3001
+const LOGISTIC_ORDER_PORT = 3001;
 
 const ROUTES = [
   { prefix: "/api",             upstream: { host: "localhost", port: API_PORT } },
@@ -341,9 +341,3 @@ async function startGateway() {
 }
 
 startGateway();
-
-
-// NOTE: EXTRA_PORT (23434) mirror listener is intentionally disabled.
-// Port 23434 is reserved for the customer-portal's internal HTTP proxy
-// (Vite on 5174 → proxy on 23434). Gateway must NOT own this port.
-
