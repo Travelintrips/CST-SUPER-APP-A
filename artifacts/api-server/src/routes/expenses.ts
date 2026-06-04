@@ -141,17 +141,27 @@ router.post("/seed-categories", async (_req, res) => {
     { name: "Biaya Operasional", code: "OPERATIONAL" },
     { name: "Reimbursement Karyawan", code: "REIMBURSEMENT", requiresAttachment: true },
     { name: "Biaya Vendor/Subcon", code: "VENDOR" },
+    // ── Preset Rutin ────────────────────────────────────────────────
+    { name: "Entertainment", code: "ENTERTAINMENT", coaCode: "5-2060" },
+    { name: "Makan & Minum", code: "MAKAN_MINUM", coaCode: "5-2040" },
+    { name: "Sewa Kantor", code: "SEWA_KANTOR", coaCode: "5-2020" },
+    { name: "Utilitas", code: "UTILITAS", coaCode: "5-2030" },
+    { name: "Peralatan & ATK", code: "PERALATAN", coaCode: "5-2090" },
+    { name: "Biaya Lain-lain", code: "LAIN_LAIN", coaCode: "5-3000" },
   ];
 
   for (const cat of CATEGORIES) {
+    const expAcc = (cat as { coaCode?: string }).coaCode
+      ? byCode.get((cat as { coaCode?: string }).coaCode!)
+      : opex;
     await db
       .insert(expenseCategoriesTable)
       .values({
         name: cat.name,
         code: cat.code,
-        expenseAccountId: opex?.id ?? null,
+        expenseAccountId: expAcc?.id ?? opex?.id ?? null,
         payableAccountId: ap?.id ?? settings.apAccountId ?? null,
-        requiresAttachment: cat.requiresAttachment ?? false,
+        requiresAttachment: (cat as { requiresAttachment?: boolean }).requiresAttachment ?? false,
         isActive: true,
       })
       .onConflictDoNothing({ target: expenseCategoriesTable.code });
@@ -159,6 +169,98 @@ router.post("/seed-categories", async (_req, res) => {
 
   const rows = await db.select().from(expenseCategoriesTable).orderBy(expenseCategoriesTable.name);
   return res.json({ seeded: rows.length, categories: rows.map(serializeCategory) });
+});
+
+// ===================== Quick Expense (Expense Rutin) =====================
+// Direct cash/bank payment: DR Biaya, CR Kas/Bank (no AP step)
+
+router.post("/quick", async (req: Request, res) => {
+  const { date, categoryId, amount, vendorEmployee, notes, taxRateId, paymentMethod } = req.body ?? {};
+
+  if (!date) return res.status(400).json({ message: "Tanggal wajib diisi." });
+  if (!categoryId) return res.status(400).json({ message: "Kategori wajib dipilih." });
+  const amountN = Number(amount ?? 0);
+  if (!amountN || amountN <= 0) return res.status(400).json({ message: "Nominal harus lebih dari 0." });
+
+  const companyId = resolveCompanyId(req as Request);
+  const settings = await ensureAccountingSettings(companyId);
+
+  const [cat] = await db.select().from(expenseCategoriesTable).where(eq(expenseCategoriesTable.id, Number(categoryId)));
+  if (!cat) return res.status(404).json({ message: "Kategori tidak ditemukan." });
+
+  const expenseAccountId = cat.expenseAccountId;
+  if (!expenseAccountId) {
+    return res.status(400).json({ message: `Kategori "${cat.name}" belum punya akun biaya. Konfigurasi di halaman Kategori Expense.` });
+  }
+
+  const isCash = paymentMethod === "cash" || paymentMethod === "tunai";
+  const cashBankAccountId = isCash
+    ? (settings.defaultCashAccountId ?? settings.defaultBankAccountId)
+    : (settings.defaultBankAccountId ?? settings.defaultCashAccountId);
+  if (!cashBankAccountId) {
+    return res.status(400).json({ message: "Akun Kas/Bank default belum dikonfigurasi di Pengaturan Akuntansi." });
+  }
+
+  let taxAmountN = 0;
+  if (taxRateId) {
+    const [tax] = await db.select().from(accountingTaxesTable).where(eq(accountingTaxesTable.id, Number(taxRateId)));
+    if (tax) taxAmountN = Math.round(amountN * Number(tax.rate) / 100 * 100) / 100;
+  }
+  const totalN = Math.round((amountN + taxAmountN) * 100) / 100;
+
+  const expenseNumber = await nextExpenseNumber();
+  const [expense] = await db.insert(expensesTable).values({
+    companyId,
+    expenseNumber,
+    date: String(date),
+    vendorEmployee: vendorEmployee ? String(vendorEmployee) : null,
+    expenseType: "routine",
+    categoryId: Number(categoryId),
+    description: notes ? String(notes) : cat.name,
+    qty: "1",
+    unitPrice: String(amountN),
+    subtotal: String(amountN),
+    taxRateId: taxRateId ? Number(taxRateId) : null,
+    taxAmount: String(taxAmountN),
+    total: String(totalN),
+    currency: "IDR",
+    status: "posted",
+    notes: notes ? String(notes) : null,
+    expenseAccountId,
+    createdById: (req as unknown as { userId?: string }).userId ?? null,
+  }).returning();
+
+  // Journal: DR Expense Account, [DR PPN Input], CR Kas/Bank
+  const journalType = isCash ? "cash" : "bank";
+  const journals = await db.select().from(accountingJournalsTable)
+    .where(eq(accountingJournalsTable.type, journalType)).limit(1);
+  const fallback = !journals[0]
+    ? (await db.select().from(accountingJournalsTable).where(eq(accountingJournalsTable.type, "bank")).limit(1))[0]
+    : null;
+  const journal = journals[0] ?? fallback;
+  if (!journal) return res.status(400).json({ message: "Jurnal kas/bank tidak ditemukan." });
+
+  const lines = [
+    { accountId: expenseAccountId, debit: amountN, credit: 0, description: cat.name },
+    ...(taxAmountN > 0 && settings.ppnInputAccountId
+      ? [{ accountId: settings.ppnInputAccountId, debit: taxAmountN, credit: 0, description: "PPN Masukan" }]
+      : []),
+    { accountId: cashBankAccountId, debit: 0, credit: totalN, description: isCash ? "Kas" : "Bank" },
+  ];
+
+  const entry = await postEntry({
+    journalId: journal.id,
+    date: new Date(expense!.date),
+    ref: expense!.expenseNumber,
+    description: `${expense!.expenseNumber} — ${cat.name}${vendorEmployee ? ` / ${vendorEmployee}` : ""}`,
+    source: "manual",
+    companyId,
+    lines,
+  }, journal.code);
+
+  await db.update(expensesTable).set({ entryId: entry.id }).where(eq(expensesTable.id, expense!.id));
+
+  return res.status(201).json(serializeExpense({ ...expense!, entryId: entry.id }));
 });
 
 // ===================== Expense Summary / Reports =====================

@@ -92,6 +92,7 @@ import ExpenseListPage from "@/pages/expense/index";
 import ExpenseEditorPage from "@/pages/expense/editor";
 import ExpenseCategoriesPage from "@/pages/expense/categories";
 import ExpenseReportsPage from "@/pages/expense/reports";
+import ExpenseRoutinePage from "@/pages/expense/routine";
 // Correspondence
 import CorrespondencesPage from "@/pages/correspondences";
 import EmailInboxPage from "@/pages/email-inbox";
@@ -312,6 +313,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/expense/new" component={PR(ExpenseEditorPage)} />
       <Route path="/expense/categories" component={PR(ExpenseCategoriesPage)} />
       <Route path="/expense/reports" component={PR(ExpenseReportsPage)} />
+      <Route path="/expense/routine" component={PR(ExpenseRoutinePage)} />
       <Route path="/expense/:id/edit" component={PR(ExpenseEditorPage)} />
       <Route path="/expense/:id" component={PR(ExpenseEditorPage)} />
       <Route path="/expense" component={PR(ExpenseListPage)} />
