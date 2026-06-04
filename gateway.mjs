@@ -95,6 +95,10 @@ const ROUTES = [
   { prefix: "/intelligence-alerts", upstream: null, redirectMapTo: "/bizportal/intelligence-alerts",  redirectDefaultSuffix: "/" },
   { prefix: "/ai-approvals",        upstream: null, redirectMapTo: "/bizportal/ai-approvals",         redirectDefaultSuffix: "/" },
 
+  // POS / Kasir — /pos is a legacy alias that redirects to /kasir
+  { prefix: "/kasir",           upstream: null, redirectMapTo: "/bizportal/kasir",            redirectDefaultSuffix: "/" },
+  { prefix: "/pos",             upstream: null, redirectMapTo: "/kasir",                      redirectDefaultSuffix: "/" },
+
   // Canvas artifact iframe hits /customer-portal/* — redirect to strip the prefix
   { prefix: "/customer-portal", upstream: null, redirectStrip: "/customer-portal" },
 ];
@@ -338,7 +342,27 @@ async function startGateway() {
 
 startGateway();
 
+
+// Also listen on EXTRA_PORT (default 23434) to resolve port-mapping conflicts
+// where both port 5000 and 23434 are mapped to external port 80 in .replit.
+const EXTRA_PORT = Number(process.env.EXTRA_PORT ?? 23434);
+if (EXTRA_PORT !== PORT) {
+  const extra = http.createServer(handleRequest);
+  extra.on("upgrade", handleUpgrade);
+  extra.on("error", (err) => {
+    if (err.code === "EADDRINUSE") {
+      console.warn(`[gw] EXTRA_PORT ${EXTRA_PORT} already in use — skipping mirror listener`);
+    } else {
+      console.error(`[gw] Extra server error: ${err.message}`);
+    }
+  });
+  extra.listen(EXTRA_PORT, () => {
+    console.log(`Gateway also listening on port ${EXTRA_PORT} (mirror)`);
+  });
+}
+
 // NOTE: EXTRA_PORT (23434) mirror listener is disabled.
 // The customer-portal start-dev.sh runs kill-port on 23434 at startup, which would
 // kill the gateway process if it owned that port. Port 23434 is used by the
 // customer-portal's internal HTTP proxy (Vite on 5174 → proxy on 23434).
+

@@ -1313,4 +1313,27 @@ router.post("/secrets/test-email", async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/settings/company-pickup-address — public (dipakai customer portal untuk auto-fill alamat pickup)
+router.get("/company-pickup-address", async (_req: Request, res: Response) => {
+  try {
+    const key = DOC_TEMPLATE_KEY("quotation");
+    const [row] = await db.select().from(portalContentTable).where(eq(portalContentTable.key, key));
+    const tpl = row ? { ...DEFAULT_DOC_TEMPLATE("quotation"), ...(JSON.parse(row.value) as Partial<DocumentTemplateConfig>) } : DEFAULT_DOC_TEMPLATE("quotation");
+    return res.json({
+      companyName:    tpl.companyName,
+      companyAddress: tpl.companyAddress,
+      companyPhone:   tpl.companyPhone,
+      originCity:     "Jakarta",
+      originAirport:  "CGK",
+      originPort:     "Tanjung Priok, Jakarta",
+    });
+  } catch {
+    const d = DEFAULT_DOC_TEMPLATE("quotation");
+    return res.json({
+      companyName: d.companyName, companyAddress: d.companyAddress, companyPhone: d.companyPhone,
+      originCity: "Jakarta", originAirport: "CGK", originPort: "Tanjung Priok, Jakarta",
+    });
+  }
+});
+
 export default router;
