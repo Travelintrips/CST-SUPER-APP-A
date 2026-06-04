@@ -482,14 +482,6 @@ export default function ProductOrderPage() {
             <div className="border rounded-xl p-5 bg-card space-y-4">
               <h2 className="font-semibold text-sm flex items-center gap-2"><MapPin className="w-4 h-4 text-orange-500" /> Detail Pickup & Delivery</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <Label className="text-xs flex items-center gap-1"><Calendar className="w-3 h-3" /> Tanggal Pickup</Label>
-                  <Input type="date" value={truckingForm.pickupDate} onChange={e => setTruckingForm(f => ({ ...f, pickupDate: e.target.value }))} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs flex items-center gap-1"><Clock className="w-3 h-3" /> Jam Pickup</Label>
-                  <Input type="time" value={truckingForm.pickupTime} onChange={e => setTruckingForm(f => ({ ...f, pickupTime: e.target.value }))} />
-                </div>
                 <div className="space-y-1.5 sm:col-span-2">
                   <Label className="text-xs flex items-center gap-1.5">
                     <MapPin className="w-3 h-3 text-orange-500" /> Alamat Pickup
