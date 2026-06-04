@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useLocation } from "wouter";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -77,6 +78,7 @@ interface HeatmapRow { hour: string; booking_count: number; }
 
 export default function SportCenterDashboard() {
   const qc = useQueryClient();
+  const [, navigate] = useLocation();
   const { activeCompanyId } = useCompany();
   const esRef = useRef<EventSource | null>(null);
   const [realtimeCount, setRealtimeCount] = useState(0);
@@ -280,6 +282,7 @@ export default function SportCenterDashboard() {
       color: "text-blue-400",
       bg: "bg-blue-900/20",
       sub: `Dari Supabase${hasSupaBookings ? " ✓" : " (lokal)"}`,
+      href: "/sport-center/bookings",
     },
     {
       title: "Booking Hari Ini",
@@ -288,6 +291,7 @@ export default function SportCenterDashboard() {
       color: "text-purple-400",
       bg: "bg-purple-900/20",
       sub: "Dari PostgreSQL lokal",
+      href: "/sport-center/bookings",
     },
     {
       title: "Belum Bayar",
@@ -296,6 +300,7 @@ export default function SportCenterDashboard() {
       color: "text-yellow-400",
       bg: "bg-yellow-900/20",
       sub: "pending / pending_payment",
+      href: "/sport-center/bookings",
     },
     {
       title: "Pelanggan Unik",
@@ -304,6 +309,7 @@ export default function SportCenterDashboard() {
       color: "text-emerald-400",
       bg: "bg-emerald-900/20",
       sub: "DISTINCT customer_phone",
+      href: "/sport-center/customers",
     },
     {
       title: "Layanan Aktif",
@@ -312,6 +318,7 @@ export default function SportCenterDashboard() {
       color: "text-pink-400",
       bg: "bg-pink-900/20",
       sub: "sport_center_services",
+      href: "/sport-center/facilities",
     },
     {
       title: "Revenue Bulan Ini",
@@ -320,6 +327,7 @@ export default function SportCenterDashboard() {
       color: "text-green-400",
       bg: "bg-green-900/20",
       sub: "Bulan berjalan",
+      href: "/sport-center/payments",
     },
     {
       title: "Total Revenue",
@@ -328,6 +336,7 @@ export default function SportCenterDashboard() {
       color: "text-cyan-400",
       bg: "bg-cyan-900/20",
       sub: "SUM(total_price)",
+      href: "/sport-center/reports",
     },
     {
       title: "Booking per Status",
@@ -336,6 +345,7 @@ export default function SportCenterDashboard() {
       color: "text-orange-400",
       bg: "bg-orange-900/20",
       sub: `${byStatus.length} status berbeda`,
+      href: "/sport-center/bookings",
     },
   ];
 
@@ -412,7 +422,10 @@ export default function SportCenterDashboard() {
               ))
             ) : (
               <>
-                <Card className="border-border/60 bg-blue-950/20">
+                <Card
+                  className="border-border/60 bg-blue-950/20 cursor-pointer hover:bg-blue-950/40 hover:border-blue-800/60 transition-all duration-150 group"
+                  onClick={() => navigate("/sport-center/payments")}
+                >
                   <CardContent className="p-4">
                     <div className="flex items-center gap-2 mb-1">
                       <DollarSign className="h-3.5 w-3.5 text-blue-400 shrink-0" />
@@ -422,7 +435,10 @@ export default function SportCenterDashboard() {
                     <p className="text-xs text-muted-foreground mt-0.5">dari accounting</p>
                   </CardContent>
                 </Card>
-                <Card className="border-border/60 bg-purple-950/20">
+                <Card
+                  className="border-border/60 bg-purple-950/20 cursor-pointer hover:bg-purple-950/40 hover:border-purple-800/60 transition-all duration-150 group"
+                  onClick={() => navigate("/sport-center/bookings")}
+                >
                   <CardContent className="p-4">
                     <div className="flex items-center gap-2 mb-1">
                       <CalendarDays className="h-3.5 w-3.5 text-purple-400 shrink-0" />
@@ -432,7 +448,10 @@ export default function SportCenterDashboard() {
                     <p className="text-xs text-muted-foreground mt-0.5">{kpiLive?.active_bookings_now ?? 0} aktif sekarang</p>
                   </CardContent>
                 </Card>
-                <Card className="border-border/60 bg-emerald-950/20">
+                <Card
+                  className="border-border/60 bg-emerald-950/20 cursor-pointer hover:bg-emerald-950/40 hover:border-emerald-800/60 transition-all duration-150 group"
+                  onClick={() => navigate("/sport-center/bookings")}
+                >
                   <CardContent className="p-4">
                     <div className="flex items-center gap-2 mb-1">
                       <CheckCheck className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
@@ -442,7 +461,10 @@ export default function SportCenterDashboard() {
                     <p className="text-xs text-muted-foreground mt-0.5">sudah check-in</p>
                   </CardContent>
                 </Card>
-                <Card className="border-border/60 bg-orange-950/20">
+                <Card
+                  className="border-border/60 bg-orange-950/20 cursor-pointer hover:bg-orange-950/40 hover:border-orange-800/60 transition-all duration-150 group"
+                  onClick={() => navigate("/sport-center/reports")}
+                >
                   <CardContent className="p-4">
                     <div className="flex items-center gap-2 mb-1">
                       <Flame className="h-3.5 w-3.5 text-orange-400 shrink-0" />
@@ -452,7 +474,10 @@ export default function SportCenterDashboard() {
                     <p className="text-xs text-muted-foreground mt-0.5">{kpiLive?.occupied_hours_today ?? 0}h / {kpiLive?.available_hours_today ?? 0}h</p>
                   </CardContent>
                 </Card>
-                <Card className={`border-border/60 ${(kpiLive?.net_profit_today ?? 0) >= 0 ? "bg-teal-950/20" : "bg-red-950/20"}`}>
+                <Card
+                  className={`border-border/60 cursor-pointer transition-all duration-150 group ${(kpiLive?.net_profit_today ?? 0) >= 0 ? "bg-teal-950/20 hover:bg-teal-950/40 hover:border-teal-800/60" : "bg-red-950/20 hover:bg-red-950/40 hover:border-red-800/60"}`}
+                  onClick={() => navigate("/sport-center/profitability")}
+                >
                   <CardContent className="p-4">
                     <div className="flex items-center gap-2 mb-1">
                       <TrendingUp className={`h-3.5 w-3.5 shrink-0 ${(kpiLive?.net_profit_today ?? 0) >= 0 ? "text-teal-400" : "text-red-400"}`} />
@@ -464,7 +489,10 @@ export default function SportCenterDashboard() {
                     <p className="text-xs text-muted-foreground mt-0.5">net (revenue − refund)</p>
                   </CardContent>
                 </Card>
-                <Card className="border-border/60 bg-red-950/20">
+                <Card
+                  className="border-border/60 bg-red-950/20 cursor-pointer hover:bg-red-950/40 hover:border-red-800/60 transition-all duration-150 group"
+                  onClick={() => navigate("/sport-center/payments")}
+                >
                   <CardContent className="p-4">
                     <div className="flex items-center gap-2 mb-1">
                       <ArrowDownRight className="h-3.5 w-3.5 text-red-400 shrink-0" />
@@ -521,15 +549,19 @@ export default function SportCenterDashboard() {
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {stats.map((s) => (
-              <Card key={s.title} className="border-border/60">
+              <Card
+                key={s.title}
+                className="border-border/60 cursor-pointer hover:border-border hover:bg-accent/30 transition-all duration-150 group"
+                onClick={() => navigate(s.href)}
+              >
                 <CardContent className="p-4">
                   <div className="flex items-start justify-between">
                     <div className="min-w-0 flex-1">
-                      <p className="text-xs text-muted-foreground mb-1 truncate">{s.title}</p>
+                      <p className="text-xs text-muted-foreground mb-1 truncate group-hover:text-foreground/70 transition-colors">{s.title}</p>
                       <p className="text-xl font-bold text-foreground">{s.value}</p>
                       <p className="text-xs text-muted-foreground mt-1 truncate">{s.sub}</p>
                     </div>
-                    <div className={`p-2 rounded-lg ml-2 shrink-0 ${s.bg}`}>
+                    <div className={`p-2 rounded-lg ml-2 shrink-0 ${s.bg} group-hover:scale-110 transition-transform`}>
                       <s.icon className={`h-4 w-4 ${s.color}`} />
                     </div>
                   </div>
