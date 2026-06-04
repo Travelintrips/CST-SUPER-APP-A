@@ -1166,6 +1166,8 @@ router.get("/secrets", async (req: Request, res: Response) => {
   ];
 
   return res.json(entries);
+});
+
 // ── App Secrets (admin) ────────────────────────────────────────────────────
 
 // GET /api/settings/secrets — list all secrets with masked values
