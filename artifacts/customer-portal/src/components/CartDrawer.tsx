@@ -53,6 +53,21 @@ const DRAWER_SERVICES = [
 const GOODS_TYPES = ["General Cargo","Kopi / Hasil Bumi","Elektronik","Perishable","Kimia / B3","Furniture","Mesin & Spare-part","Lainnya"];
 const INCOTERMS   = ["EXW","FCA","FOB","CIF","DAP","DDP","CPT","CIP"];
 
+const VEHICLE_CAPACITIES = [
+  { type: "CDE",     label: "CDE — Engkel Kecil",  desc: "s/d 1.500 kg",  maxKg: 1_500       },
+  { type: "CDD",     label: "CDD — Engkel Besar",  desc: "s/d 3.000 kg",  maxKg: 3_000       },
+  { type: "Fuso",    label: "Fuso — Truk Medium",  desc: "s/d 8.000 kg",  maxKg: 8_000       },
+  { type: "Wingbox", label: "Wingbox — Truk Besar",desc: "s/d 20.000 kg", maxKg: 20_000      },
+  { type: "Trailer", label: "Trailer",              desc: "> 20.000 kg",   maxKg: Infinity    },
+];
+
+function suggestVehicleType(weightKg: number): string {
+  for (const v of VEHICLE_CAPACITIES) {
+    if (weightKg <= v.maxKg) return v.type;
+  }
+  return "Trailer";
+}
+
 // ── Cart item detail lines ────────────────────────────────────────────────────
 
 function getItemDetails(item: CartItem): string[] {
@@ -178,14 +193,16 @@ export function CartDrawer() {
 
   const { items, addItem, removeItem, clearCart, subtotal, tax, grandTotal, taxRate } = useCart();
 
-  function computeCartAutoFill(): Partial<Record<string, string>> & { hasData: boolean } {
+  function computeCartAutoFill(): { hasData: boolean; weight?: string; vehicleType?: string; length?: string; width?: string; height?: string; goodsType?: string } {
     const productItems = items.filter(i => i.calculatorType === "product");
+    // Hitung berat: jika ada produk dengan weightKg, pakai itu; fallback: qty per item
     const itemsWithWeight = productItems.filter(i => i.inputData.weightKg != null && Number(i.inputData.weightKg) > 0);
-    if (itemsWithWeight.length === 0) return { hasData: false };
+    const hasWeightData = itemsWithWeight.length > 0;
+    const totalWeight = hasWeightData
+      ? itemsWithWeight.reduce((sum, i) => sum + Number(i.inputData.weightKg) * Number(i.inputData.qty ?? 1), 0)
+      : productItems.reduce((sum, i) => sum + Number(i.inputData.qty ?? 1), 0); // fallback 1 kg/unit
 
-    const totalWeight = itemsWithWeight.reduce(
-      (sum, i) => sum + Number(i.inputData.weightKg) * Number(i.inputData.qty ?? 1), 0
-    );
+    if (productItems.length === 0) return { hasData: false };
 
     const dimItem = productItems.reduce((best: CartItem | null, item) => {
       const vol = Number(item.inputData.lengthCm ?? 0) * Number(item.inputData.widthCm ?? 0) * Number(item.inputData.heightCm ?? 0) * Number(item.inputData.qty ?? 1);
@@ -194,14 +211,16 @@ export function CartDrawer() {
     }, null);
 
     const goodsItem = productItems.find(i => i.inputData.goodsType);
+    const roundedWeight = Math.round(totalWeight * 100) / 100;
 
     return {
       hasData: true,
-      weight: totalWeight > 0 ? String(Math.round(totalWeight * 100) / 100) : "",
-      length: dimItem?.inputData.lengthCm ? String(dimItem.inputData.lengthCm) : "",
-      width:  dimItem?.inputData.widthCm  ? String(dimItem.inputData.widthCm)  : "",
-      height: dimItem?.inputData.heightCm ? String(dimItem.inputData.heightCm) : "",
-      goodsType: goodsItem?.inputData.goodsType ? String(goodsItem.inputData.goodsType) : "",
+      weight:     roundedWeight > 0 ? String(roundedWeight) : "",
+      vehicleType: roundedWeight > 0 ? suggestVehicleType(roundedWeight) : "",
+      length:     dimItem?.inputData.lengthCm ? String(dimItem.inputData.lengthCm) : "",
+      width:      dimItem?.inputData.widthCm  ? String(dimItem.inputData.widthCm)  : "",
+      height:     dimItem?.inputData.heightCm ? String(dimItem.inputData.heightCm) : "",
+      goodsType:  goodsItem?.inputData.goodsType ? String(goodsItem.inputData.goodsType) : "",
     };
   }
 
@@ -423,17 +442,18 @@ export function CartDrawer() {
                         setTruckEstimate(null);
                         if (af.hasData) {
                           setTruckData({
-                            weight:    af.weight    || "",
-                            length:    af.length    || "",
-                            width:     af.width     || "",
-                            height:    af.height    || "",
-                            goodsType: af.goodsType || "",
+                            weight:      af.weight      || "",
+                            vehicleType: af.vehicleType || "",
+                            length:      af.length      || "",
+                            width:       af.width       || "",
+                            height:      af.height      || "",
+                            goodsType:   af.goodsType   || "",
                           });
                           setTruckMode("calculator");
                           setCartAutoFilled(true);
                         } else {
                           setTruckData({});
-                          setTruckMode("detail");
+                          setTruckMode("calculator");
                           setCartAutoFilled(false);
                         }
                         setView("trucking");
@@ -474,14 +494,22 @@ export function CartDrawer() {
                       if (mode === "calculator") {
                         const af = computeCartAutoFill();
                         if (af.hasData) {
-                          setTruckData(prev => ({
-                            ...prev,
-                            weight:    af.weight    || prev.weight    || "",
-                            length:    af.length    || prev.length    || "",
-                            width:     af.width     || prev.width     || "",
-                            height:    af.height    || prev.height    || "",
-                            goodsType: af.goodsType || prev.goodsType || "",
-                          }));
+                          setTruckData(prev => {
+                            const merged: Record<string, string> = {
+                              ...prev,
+                              weight:      af.weight      || prev.weight      || "",
+                              vehicleType: prev.vehicleType || "",
+                              length:      af.length      || prev.length      || "",
+                              width:       af.width       || prev.width       || "",
+                              height:      af.height      || prev.height      || "",
+                              goodsType:   af.goodsType   || prev.goodsType   || "",
+                            };
+                            const effectiveWeight = parseFloat(merged.weight) || 0;
+                            if (!merged.vehicleType && effectiveWeight > 0) {
+                              merged.vehicleType = suggestVehicleType(effectiveWeight);
+                            }
+                            return merged;
+                          });
                           setCartAutoFilled(true);
                         } else {
                           setCartAutoFilled(false);
@@ -578,15 +606,57 @@ export function CartDrawer() {
                       <Input className="h-8 text-xs" placeholder="Surabaya" value={truckData.destCity||""} onChange={e => setTruckData(p => ({ ...p, destCity: e.target.value }))} />
                     </div>
                     <div>
-                      <Label className="text-[11px] mb-1 block">Berat (kg) *</Label>
-                      <Input type="number" min={0} className="h-8 text-xs" placeholder="100" value={truckData.weight||""} onChange={e => setTruckData(p => ({ ...p, weight: e.target.value }))} />
+                      <Label className="text-[11px] mb-1 flex items-center gap-1">
+                        Berat (kg) *
+                        {cartAutoFilled && <span className="ml-auto text-[10px] font-semibold bg-sky-100 text-sky-600 px-1.5 py-0.5 rounded-full">Otomatis</span>}
+                      </Label>
+                      <Input
+                        type="number" min={0} className="h-8 text-xs" placeholder="100"
+                        value={truckData.weight||""}
+                        onChange={e => {
+                          const w = e.target.value;
+                          setTruckData(p => {
+                            const kg = parseFloat(w) || 0;
+                            const updates: Record<string, string> = { ...p, weight: w };
+                            if (kg > 0 && !p.vehicleType) {
+                              updates.vehicleType = suggestVehicleType(kg);
+                            }
+                            return updates;
+                          });
+                        }}
+                      />
                     </div>
                     <div>
-                      <Label className="text-[11px] mb-1 block">Jenis Kendaraan</Label>
-                      <Select value={truckData.vehicleType||undefined} onValueChange={v => setTruckData(p => ({ ...p, vehicleType: v }))}>
-                        <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Pilih" /></SelectTrigger>
-                        <SelectContent>{["CDE","CDD","Fuso","Wingbox","Trailer"].map(v => <SelectItem key={v} value={v} className="text-xs">{v}</SelectItem>)}</SelectContent>
-                      </Select>
+                      {(() => {
+                        const kg = parseFloat(truckData.weight || "0") || 0;
+                        const suggested = kg > 0 ? suggestVehicleType(kg) : null;
+                        return (
+                          <>
+                            <Label className="text-[11px] mb-1 flex items-center gap-1">
+                              Jenis Kendaraan
+                              {suggested && (
+                                <span className="ml-auto text-[10px] font-semibold bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-full">
+                                  Saran: {suggested}
+                                </span>
+                              )}
+                            </Label>
+                            <Select value={truckData.vehicleType||undefined} onValueChange={v => setTruckData(p => ({ ...p, vehicleType: v }))}>
+                              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Pilih kendaraan" /></SelectTrigger>
+                              <SelectContent>
+                                {VEHICLE_CAPACITIES.map(v => (
+                                  <SelectItem key={v.type} value={v.type} className="text-xs">
+                                    <span className="flex items-center gap-1.5">
+                                      {v.type === suggested && <span className="text-orange-500 font-bold">★</span>}
+                                      <span>{v.label}</span>
+                                      <span className="text-slate-400 text-[10px]">{v.desc}</span>
+                                    </span>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
                   <div>
