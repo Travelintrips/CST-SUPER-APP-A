@@ -489,6 +489,99 @@ router.post("/sync/pull-legacy", async (req, res) => {
   }
 });
 
+// Push booking dari frontend (Supabase anon) ke local PostgreSQL
+router.post("/sync/push-bookings", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const { bookings, companyId } = req.body as {
+      bookings: Array<{
+        booking_code?: string | null;
+        customer_name?: string | null;
+        customer_phone?: string | null;
+        customer_email?: string | null;
+        facility_name?: string | null;
+        date?: string | null;
+        start_time?: string | null;
+        end_time?: string | null;
+        total_hours?: number | null;
+        total_price?: number | null;
+        status?: string | null;
+        payment_status?: string | null;
+        notes?: string | null;
+        created_at?: string | null;
+      }>;
+      companyId?: number;
+    };
+    if (!Array.isArray(bookings) || bookings.length === 0) {
+      return res.json({ success: true, pushed: 0, errors: 0, total: 0 });
+    }
+    const cId = companyId ?? 1;
+    let pushed = 0;
+    let errors = 0;
+    for (const row of bookings) {
+      try {
+        const bookingNumber = row.booking_code ?? `LEGACY-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+        const facilityName = row.facility_name ?? "Unknown";
+        const bookingDate = row.date;
+        if (!bookingDate) { errors++; continue; }
+        const startTime = (row.start_time ?? "").slice(0, 5) || "00:00";
+        const endTime   = (row.end_time   ?? "").slice(0, 5) || "01:00";
+        const durationHours = Number(row.total_hours ?? 1);
+        const totalAmount   = Number(row.total_price ?? 0);
+        const rawStatus     = row.status ?? "pending";
+        const mappedStatus  = rawStatus === "confirmed" ? "confirmed"
+          : rawStatus === "cancelled" ? "cancelled"
+          : rawStatus === "completed" ? "completed"
+          : "pending";
+        const paymentStatus = row.payment_status ?? "unpaid";
+        const existing = await db.execute(sql`SELECT id FROM sport_bookings WHERE booking_number = ${bookingNumber} LIMIT 1`);
+        if (existing.rows.length > 0) {
+          await db.execute(sql`
+            UPDATE sport_bookings SET
+              customer_name   = ${row.customer_name ?? ""},
+              customer_phone  = ${row.customer_phone ?? null},
+              facility_name   = ${facilityName},
+              booking_date    = ${bookingDate}::DATE,
+              start_time      = ${startTime}::TIME,
+              end_time        = ${endTime}::TIME,
+              duration_hours  = ${durationHours},
+              base_amount     = ${totalAmount},
+              total_amount    = ${totalAmount},
+              status          = ${mappedStatus},
+              payment_status  = ${paymentStatus},
+              notes           = ${row.notes ?? null},
+              updated_at      = NOW()
+            WHERE booking_number = ${bookingNumber}
+          `);
+        } else {
+          await db.execute(sql`
+            INSERT INTO sport_bookings
+              (company_id, booking_number, customer_name, customer_phone,
+               facility_name, booking_date, start_time, end_time,
+               duration_hours, base_amount, total_amount,
+               status, payment_status, notes, created_at, updated_at)
+            VALUES
+              (${cId}, ${bookingNumber}, ${row.customer_name ?? ""}, ${row.customer_phone ?? null},
+               ${facilityName}, ${bookingDate}::DATE, ${startTime}::TIME, ${endTime}::TIME,
+               ${durationHours}, ${totalAmount}, ${totalAmount},
+               ${mappedStatus}, ${paymentStatus}, ${row.notes ?? null},
+               ${row.created_at ?? new Date().toISOString()}::TIMESTAMPTZ, NOW())
+          `);
+        }
+        pushed++;
+      } catch (err) {
+        console.error("[sport-center] push-bookings row error:", err);
+        errors++;
+      }
+    }
+    // Invalidate dashboard after push
+    broadcastSportCenterEvent({ module: "sport-center", entity: "booking", action: "synced", data: { pushed, errors }, timestamp: new Date().toISOString() });
+    res.json({ success: true, pushed, errors, total: bookings.length });
+  } catch (err: any) {
+    res.status(500).json({ error: "Push bookings gagal", detail: err?.message });
+  }
+});
+
 router.get("/sync/status", async (req, res) => {
   if (!await requireAdmin(req, res)) return;
   try {

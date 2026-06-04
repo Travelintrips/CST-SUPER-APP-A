@@ -5,13 +5,15 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCompany } from "@/contexts/CompanyContext";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Search, QrCode, CheckCircle2, XCircle, RefreshCw, Activity, DollarSign, ArrowLeft } from "lucide-react";
+import { Plus, Search, QrCode, CheckCircle2, XCircle, RefreshCw, Activity, DollarSign, ArrowLeft, CloudUpload, Database } from "lucide-react";
+import { supabase } from "@/lib/supabaseClient";
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
@@ -51,6 +53,7 @@ export default function SportCenterBookings() {
   const [realtimeCount, setRealtimeCount] = useState(0);
   const [payBooking, setPayBooking] = useState<Booking | null>(null);
   const [payForm, setPayForm] = useState({ method: "cash", notes: "" });
+  const pushDoneRef = useRef(false);
 
   const [form, setForm] = useState({
     customer_name: "", customer_phone: "", facility_id: "",
@@ -80,6 +83,82 @@ export default function SportCenterBookings() {
       return r.json();
     },
   });
+
+  // ── Supabase fallback (saat local kosong) ────────────────────────────────
+  const { data: supaBookings, isLoading: supaLoading } = useQuery<Booking[]>({
+    queryKey: ["sport-center-supabase-bookings-raw"],
+    queryFn: async () => {
+      if (!supabase) return [];
+      const { data, error } = await supabase
+        .from("sport_center_bookings")
+        .select("booking_code, customer_name, customer_phone, facility_name, date, start_time, end_time, total_hours, total_price, status, payment_status, notes, created_at")
+        .order("created_at", { ascending: false });
+      if (error || !data) return [];
+      return data.map((b: any) => ({
+        id: b.booking_code ?? "-",
+        booking_number: b.booking_code ?? "-",
+        customer_name: b.customer_name ?? "-",
+        customer_phone: b.customer_phone ?? "-",
+        facility_name: b.facility_name ?? "-",
+        booking_date: b.date ?? "-",
+        start_time: (b.start_time ?? "").slice(0, 5),
+        end_time: (b.end_time ?? "").slice(0, 5),
+        duration_hours: b.total_hours ?? 1,
+        total_amount: Number(b.total_price ?? 0),
+        status: b.status ?? "pending",
+        payment_status: b.payment_status ?? "unpaid",
+        notes: b.notes,
+        _from_supabase: true,
+      }));
+    },
+    enabled: !!supabase,
+  });
+
+  const localEmpty = !isLoading && (data?.data ?? []).length === 0;
+  const showingSupabase = localEmpty && (supaBookings ?? []).length > 0;
+
+  // ── Auto-push Supabase → local saat local kosong ──────────────────────────
+  const pushMutation = useMutation({
+    mutationFn: async (rows: Booking[]) => {
+      const rawRows = rows.map((b) => ({
+        booking_code: b.booking_number,
+        customer_name: b.customer_name,
+        customer_phone: b.customer_phone,
+        facility_name: b.facility_name,
+        date: b.booking_date,
+        start_time: b.start_time,
+        end_time: b.end_time,
+        total_hours: b.duration_hours,
+        total_price: b.total_amount,
+        status: b.status,
+        payment_status: b.payment_status,
+        notes: b.notes,
+        created_at: null,
+      }));
+      const r = await fetch("/api/sport-center/sync/push-bookings", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookings: rawRows, companyId: activeCompanyId }),
+      });
+      if (!r.ok) throw new Error("Push gagal");
+      return r.json();
+    },
+    onSuccess: (res) => {
+      if (res.pushed > 0) {
+        toast({ title: `${res.pushed} booking Supabase berhasil disinkron ke lokal` });
+        qc.invalidateQueries({ queryKey: ["sport-center-bookings"] });
+      }
+    },
+  });
+
+  useEffect(() => {
+    if (pushDoneRef.current) return;
+    if (isLoading || supaLoading) return;
+    if (!showingSupabase) return;
+    if (!supaBookings || supaBookings.length === 0) return;
+    pushDoneRef.current = true;
+    void pushMutation.mutateAsync(supaBookings);
+  }, [isLoading, supaLoading, showingSupabase, supaBookings]);
 
   useEffect(() => {
     const qs = activeCompanyId ? `?companyId=${activeCompanyId}` : "";
@@ -169,11 +248,17 @@ export default function SportCenterBookings() {
     setForm((p) => ({ ...p, facility_id: facilityId, base_amount: String(price), total_amount: String(price) }));
   };
 
-  const filtered = (data?.data ?? []).filter((b: any) =>
-    !search ||
-    String(b.customer_name).toLowerCase().includes(search.toLowerCase()) ||
-    String(b.booking_number).toLowerCase().includes(search.toLowerCase()),
-  );
+  const displayRows: Booking[] = showingSupabase
+    ? (supaBookings ?? []).filter((b) =>
+        (!search || String(b.customer_name).toLowerCase().includes(search.toLowerCase()) || String(b.booking_number).toLowerCase().includes(search.toLowerCase())) &&
+        (statusFilter === "all" || b.status === statusFilter) &&
+        (!dateFilter || b.booking_date === dateFilter),
+      )
+    : (data?.data ?? []).filter((b: any) =>
+        !search ||
+        String(b.customer_name).toLowerCase().includes(search.toLowerCase()) ||
+        String(b.booking_number).toLowerCase().includes(search.toLowerCase()),
+      );
 
   return (
     <AppShell>
@@ -194,11 +279,33 @@ export default function SportCenterBookings() {
                 <Activity className="h-3 w-3" /> Live
               </Badge>
             )}
+            {showingSupabase && (
+              <Badge className="bg-blue-900/40 text-blue-300 border-blue-600 text-xs gap-1">
+                <Database className="h-3 w-3" /> Supabase
+              </Badge>
+            )}
             <Button onClick={() => setShowCreateDialog(true)} size="sm" className="gap-1">
               <Plus className="h-4 w-4" /> Buat Booking
             </Button>
           </div>
         </div>
+
+        {showingSupabase && (
+          <Alert className="border-blue-700/50 bg-blue-900/20">
+            <Database className="h-4 w-4 text-blue-400" />
+            <AlertDescription className="text-blue-300 text-sm">
+              Data dari Supabase (lokal belum tersinkron).{" "}
+              {pushMutation.isPending && <span className="text-yellow-300"><RefreshCw className="inline h-3 w-3 animate-spin mr-1" />Sedang sinkron ke lokal…</span>}
+              {pushMutation.isSuccess && <span className="text-emerald-300">✓ Berhasil disinkron ke lokal</span>}
+              {!pushMutation.isPending && !pushMutation.isSuccess && (
+                <Button variant="link" size="sm" className="text-blue-400 p-0 h-auto text-xs"
+                  onClick={() => { pushDoneRef.current = false; void pushMutation.mutateAsync(supaBookings ?? []); }}>
+                  <CloudUpload className="h-3 w-3 mr-1" /> Sinkron ke lokal
+                </Button>
+              )}
+            </AlertDescription>
+          </Alert>
+        )}
 
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative flex-1 min-w-[200px]">
@@ -236,11 +343,11 @@ export default function SportCenterBookings() {
                   </tr>
                 </thead>
                 <tbody>
-                  {isLoading ? (
+                  {(isLoading && supaLoading) ? (
                     <tr><td colSpan={9} className="py-10 text-center text-muted-foreground">Memuat…</td></tr>
-                  ) : filtered.length === 0 ? (
+                  ) : displayRows.length === 0 ? (
                     <tr><td colSpan={9} className="py-10 text-center text-muted-foreground">Tidak ada booking</td></tr>
-                  ) : filtered.map((b: any) => (
+                  ) : displayRows.map((b: any) => (
                     <tr key={b.id} className="border-b border-border/20 hover:bg-muted/20">
                       <td className="py-2.5 px-3 font-mono text-xs text-muted-foreground">{b.booking_number}</td>
                       <td className="py-2.5 px-3">

@@ -248,6 +248,46 @@ export default function SportCenterDashboard() {
     refetchInterval: 30_000,
   });
 
+  // ── Auto-push: Supabase → local saat local kosong ────────────────────────
+  const pushBookingsDone = useRef(false);
+  const pushBookings = useMutation({
+    mutationFn: async (bookings: unknown[]) => {
+      const r = await fetch("/api/sport-center/sync/push-bookings", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookings, companyId: activeCompanyId }),
+      });
+      if (!r.ok) throw new Error("Push gagal");
+      return r.json();
+    },
+    onSuccess: (res) => {
+      if (res.pushed > 0) {
+        qc.invalidateQueries({ queryKey: ["sport-center-dashboard"] });
+        qc.invalidateQueries({ queryKey: ["sport-center-kpi-live"] });
+        void refetchSync();
+      }
+    },
+  });
+
+  useEffect(() => {
+    if (pushBookingsDone.current) return;
+    if (!supaData) return;
+    const localCount = syncData?.local?.bookings ?? null;
+    if (localCount === null) return;                          // belum load sync status
+    if (localCount > 0) { pushBookingsDone.current = true; return; } // sudah ada data lokal
+    const rawBookings = supaData.recentBookings;             // SupabaseBooking raw via recentBookings
+    if (!rawBookings || rawBookings.length === 0) return;
+    pushBookingsDone.current = true;
+    if (!supabase) return;
+    supabase
+      .from("sport_center_bookings")
+      .select("booking_code, customer_name, customer_phone, customer_email, facility_name, date, start_time, end_time, total_hours, total_price, status, payment_status, notes, created_at")
+      .then(({ data }) => {
+        if (data && data.length > 0) void pushBookings.mutateAsync(data);
+      })
+      .catch(() => {});
+  }, [supaData, syncData, activeCompanyId]);
+
   // ── Mutations: trigger resync manual ─────────────────────────────────────
   const resyncFacilities = useMutation({
     mutationFn: async () => {
