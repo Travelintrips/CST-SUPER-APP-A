@@ -390,7 +390,7 @@ export default function SportCenterDashboard() {
       color: "text-blue-400",
       bg: "bg-blue-900/20",
       sub: `Dari Supabase${hasSupaBookings ? " ✓" : " (lokal)"}`,
-      filter: "all",
+      href: "/sport-center/bookings",
     },
     {
       title: "Booking Hari Ini",
@@ -453,7 +453,7 @@ export default function SportCenterDashboard() {
       color: "text-orange-400",
       bg: "bg-orange-900/20",
       sub: `${byStatus.length} status berbeda`,
-      filter: "all",
+      href: "/sport-center/bookings",
     },
   ];
 
