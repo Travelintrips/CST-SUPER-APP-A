@@ -170,6 +170,7 @@ export function CartDrawer() {
   const [truckData, setTruckData] = useState<Record<string, string>>({});
   const [truckEstimate, setTruckEstimate] = useState<number | null>(null);
   const [truckEstimating, setTruckEstimating] = useState(false);
+  const [deliveryAddressError, setDeliveryAddressError] = useState(false);
   const [companyPickup, setCompanyPickup] = useState<{ name: string; address: string; originCity: string } | null>(null);
   const [, setLocation]        = useLocation();
   const { toast }              = useToast();
@@ -212,6 +213,7 @@ export function CartDrawer() {
 
   function handleAddTruckingItem() {
     if (truckMode === "detail" && !truckData.deliveryAddress?.trim()) {
+      setDeliveryAddressError(true);
       toast({ title: "Alamat Pengiriman wajib diisi", variant: "destructive" });
       return;
     }
@@ -460,7 +462,11 @@ export function CartDrawer() {
                     <Label className="text-[11px] mb-1 block">
                       Alamat Pengiriman <span className="text-destructive">*</span>
                     </Label>
-                    <Textarea rows={2} placeholder="Jl. ..., Kota, Provinsi — alamat tujuan pengiriman" className="text-xs resize-none" value={truckData.deliveryAddress||""} onChange={e => setTruckData(p => ({ ...p, deliveryAddress: e.target.value }))} />
+                    <Textarea rows={2} placeholder="Jl. ..., Kota, Provinsi — alamat tujuan pengiriman"
+                      className={`text-xs resize-none${deliveryAddressError ? " border-destructive focus-visible:ring-destructive" : ""}`}
+                      value={truckData.deliveryAddress||""}
+                      onChange={e => { setDeliveryAddressError(false); setTruckData(p => ({ ...p, deliveryAddress: e.target.value })); }} />
+                    {deliveryAddressError && <p className="text-[11px] text-destructive mt-1">Alamat pengiriman wajib diisi.</p>}
                   </div>
                   <div className="grid grid-cols-2 gap-2.5">
                     <div>
@@ -471,6 +477,10 @@ export function CartDrawer() {
                       <Label className="text-[11px] mb-1 block">No. Telepon</Label>
                       <Input type="tel" className="h-8 text-xs" placeholder="08xxxxxxxxxx" value={truckData.contactPhone||""} onChange={e => setTruckData(p => ({ ...p, contactPhone: e.target.value }))} />
                     </div>
+                  </div>
+                  <div>
+                    <Label className="text-[11px] mb-1 block">Catatan (opsional)</Label>
+                    <Textarea rows={2} placeholder="Instruksi khusus untuk tim pengiriman..." className="text-xs resize-none" value={truckData.notes||""} onChange={e => setTruckData(p => ({ ...p, notes: e.target.value }))} />
                   </div>
                   <div className="bg-orange-50 border border-orange-200 rounded-lg p-2.5 text-[11px] text-orange-700">
                     💡 Estimasi biaya dikonfirmasi tim setelah pesanan masuk.

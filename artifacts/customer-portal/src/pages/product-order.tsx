@@ -44,6 +44,7 @@ interface TruckingForm {
   pickupDate: string; pickupTime: string;
   pickupAddress: string; deliveryAddress: string;
   contactName: string; contactPhone: string;
+  notes: string;
   // calculator mode
   origin: string; destination: string;
   weight: string; length: string; width: string; height: string;
@@ -80,7 +81,7 @@ const GOODS_TYPES = ["General Cargo", "Kopi / Hasil Bumi", "Elektronik", "Perish
 const EMPTY_TRUCKING: TruckingForm = {
   mode: "detail",
   pickupDate: "", pickupTime: "", pickupAddress: "", deliveryAddress: "",
-  contactName: "", contactPhone: "",
+  contactName: "", contactPhone: "", notes: "",
   origin: "", destination: "", weight: "", length: "", width: "", height: "",
   goodsType: "", incoterms: "FOB",
 };
@@ -160,6 +161,8 @@ export default function ProductOrderPage() {
   const [truckingForm, setTruckingForm] = useState<TruckingForm>(EMPTY_TRUCKING);
   const [estimating, setEstimating] = useState(false);
   const [truckingEstimate, setTruckingEstimate] = useState<number | null>(null);
+  const [deliveryAddressError, setDeliveryAddressError] = useState(false);
+  const [checkoutAddressError, setCheckoutAddressError] = useState(false);
   const [companyOrigin, setCompanyOrigin] = useState<{ name: string; address: string; originCity: string; originAirport: string; originPort: string } | null>(null);
 
   useEffect(() => {
@@ -250,10 +253,15 @@ export default function ProductOrderPage() {
   }
 
   function handleConfirmTrucking() {
+    if (truckingForm.mode === "detail" && !truckingForm.deliveryAddress.trim()) {
+      setDeliveryAddressError(true);
+      toast({ title: "Alamat Pengiriman wajib diisi", variant: "destructive" });
+      return;
+    }
     const cost = truckingEstimate;
     const summary = truckingForm.mode === "calculator"
       ? `${truckingForm.origin || "Asal"} → ${truckingForm.destination || "Tujuan"}, ${truckingForm.weight} kg`
-      : `${truckingForm.pickupAddress || "Pickup"} → ${truckingForm.deliveryAddress || "Delivery"}, ${truckingForm.pickupDate}`;
+      : `${truckingForm.pickupAddress || "Pickup"} → ${truckingForm.deliveryAddress || "Delivery"}`;
     setSelectedService({ serviceId: "trucking", serviceName: "Trucking", estimatedCost: cost, summaryLine: summary, detail: truckingForm });
     setStep("checkout");
   }
@@ -263,6 +271,7 @@ export default function ProductOrderPage() {
       toast({ title: "Isi semua kolom data pemesan", variant: "destructive" }); return;
     }
     if (!address.trim()) {
+      setCheckoutAddressError(true);
       toast({ title: "Alamat Pengiriman wajib diisi", variant: "destructive" }); return;
     }
     const formErrors = validateTemplatePayload(template, dynamicValues);
@@ -498,7 +507,10 @@ export default function ProductOrderPage() {
                 </div>
                 <div className="space-y-1.5 sm:col-span-2">
                   <Label className="text-xs">Alamat Pengiriman <span className="text-destructive">*</span></Label>
-                  <Textarea rows={2} placeholder="Jl. ..., Kota, Provinsi" value={truckingForm.deliveryAddress} onChange={e => setTruckingForm(f => ({ ...f, deliveryAddress: e.target.value }))} />
+                  <Textarea rows={2} placeholder="Jl. ..., Kota, Provinsi" value={truckingForm.deliveryAddress}
+                    className={deliveryAddressError ? "border-destructive focus-visible:ring-destructive" : ""}
+                    onChange={e => { setDeliveryAddressError(false); setTruckingForm(f => ({ ...f, deliveryAddress: e.target.value })); }} />
+                  {deliveryAddressError && <p className="text-[11px] text-destructive">Alamat pengiriman wajib diisi.</p>}
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">Nama Kontak</Label>
@@ -507,6 +519,10 @@ export default function ProductOrderPage() {
                 <div className="space-y-1.5">
                   <Label className="text-xs">No. Telepon Kontak</Label>
                   <Input type="tel" placeholder="08xxxxxxxxxx" value={truckingForm.contactPhone} onChange={e => setTruckingForm(f => ({ ...f, contactPhone: e.target.value }))} />
+                </div>
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label className="text-xs">Catatan (opsional)</Label>
+                  <Textarea rows={2} placeholder="Instruksi khusus, info tambahan untuk tim pengiriman..." value={truckingForm.notes} onChange={e => setTruckingForm(f => ({ ...f, notes: e.target.value }))} />
                 </div>
               </div>
               <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-xs text-orange-700">
@@ -730,7 +746,11 @@ export default function ProductOrderPage() {
               </div>
               <div className="space-y-1.5 sm:col-span-2">
                 <Label className="text-xs">Alamat Pengiriman <span className="text-destructive">*</span></Label>
-                <Input value={address} onChange={e => setAddress(e.target.value)} placeholder="Jl. ..., Kota, Provinsi" />
+                <Input value={address}
+                  className={checkoutAddressError ? "border-destructive focus-visible:ring-destructive" : ""}
+                  onChange={e => { setCheckoutAddressError(false); setAddress(e.target.value); }}
+                  placeholder="Jl. ..., Kota, Provinsi" />
+                {checkoutAddressError && <p className="text-[11px] text-destructive">Alamat pengiriman wajib diisi.</p>}
               </div>
               <div className="space-y-1.5 sm:col-span-2">
                 <Label className="text-xs">Catatan Tambahan (opsional)</Label>
