@@ -33,6 +33,11 @@ export const productsTable = pgTable("products", {
   baseUomId: integer("base_uom_id").references(() => uomTable.id, { onDelete: "set null" }),
   subcategory: text("subcategory"),
   isActive: boolean("is_active").notNull().default(true),
+  weightKg: numeric("weight_kg", { precision: 10, scale: 3 }),
+  lengthCm: numeric("length_cm", { precision: 10, scale: 2 }),
+  widthCm: numeric("width_cm", { precision: 10, scale: 2 }),
+  heightCm: numeric("height_cm", { precision: 10, scale: 2 }),
+  goodsType: text("goods_type"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (t) => [
   index("products_company_idx").on(t.companyId),

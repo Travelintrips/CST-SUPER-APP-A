@@ -34,13 +34,13 @@ const BASE_DELAY    = Number(process.env.GW_BASE_DELAY    ?? 200);
 
 const RETRYABLE_CODES = new Set(["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENOTFOUND"]);
 
-const API_PORT           = Number(process.env.API_PORT           ?? 8080);
+const API_PORT           = 8080;
 // BizPortal Vite runs at 18442 (Replit artifact workflow)
-const BIZPORTAL_PORT     = Number(process.env.BIZPORTAL_PORT     ?? 18442);
+const BIZPORTAL_PORT     = 18442;
 // Customer portal Vite runs at 5174 (internal; Replit artifact proxies at 23434)
-const CUSTOMER_PORT      = Number(process.env.CUSTOMER_PORT      ?? 5174);
+const CUSTOMER_PORT      = 5174;
 // Logistic Order Vite runs at 19368 (Replit artifact workflow)
-const LOGISTIC_ORDER_PORT = Number(process.env.LOGISTIC_ORDER_PORT ?? 19368);
+const LOGISTIC_ORDER_PORT = 19368;
 
 const ROUTES = [
   { prefix: "/api",             upstream: { host: "localhost", port: API_PORT } },
@@ -343,26 +343,7 @@ async function startGateway() {
 startGateway();
 
 
-// Also listen on EXTRA_PORT (default 23434) to resolve port-mapping conflicts
-// where both port 5000 and 23434 are mapped to external port 80 in .replit.
-const EXTRA_PORT = Number(process.env.EXTRA_PORT ?? 23434);
-if (EXTRA_PORT !== PORT) {
-  const extra = http.createServer(handleRequest);
-  extra.on("upgrade", handleUpgrade);
-  extra.on("error", (err) => {
-    if (err.code === "EADDRINUSE") {
-      console.warn(`[gw] EXTRA_PORT ${EXTRA_PORT} already in use — skipping mirror listener`);
-    } else {
-      console.error(`[gw] Extra server error: ${err.message}`);
-    }
-  });
-  extra.listen(EXTRA_PORT, () => {
-    console.log(`Gateway also listening on port ${EXTRA_PORT} (mirror)`);
-  });
-}
-
-// NOTE: EXTRA_PORT (23434) mirror listener is disabled.
-// The customer-portal start-dev.sh runs kill-port on 23434 at startup, which would
-// kill the gateway process if it owned that port. Port 23434 is used by the
-// customer-portal's internal HTTP proxy (Vite on 5174 → proxy on 23434).
+// NOTE: EXTRA_PORT (23434) mirror listener is intentionally disabled.
+// Port 23434 is reserved for the customer-portal's internal HTTP proxy
+// (Vite on 5174 → proxy on 23434). Gateway must NOT own this port.
 

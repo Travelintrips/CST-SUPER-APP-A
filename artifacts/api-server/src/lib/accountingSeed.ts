@@ -640,12 +640,103 @@ export async function getAccountingSettings(companyId = 1): Promise<typeof accou
   return row ?? null;
 }
 
+/** Lookup COA dan journal yang tersedia lalu return partial settings untuk auto-populate. */
+async function resolveSettingsFromCoa(companyId: number): Promise<Partial<typeof accountingSettingsTable.$inferInsert>> {
+  const cFilter = companyId;
+
+  const lookupCoa = async (code: string): Promise<number | null> => {
+    let [row] = await db
+      .select({ id: chartOfAccountsTable.id })
+      .from(chartOfAccountsTable)
+      .where(sql`${chartOfAccountsTable.code} = ${code} AND ${chartOfAccountsTable.companyId} = ${cFilter}`)
+      .limit(1);
+    if (!row) {
+      [row] = await db
+        .select({ id: chartOfAccountsTable.id })
+        .from(chartOfAccountsTable)
+        .where(sql`${chartOfAccountsTable.code} = ${code}`)
+        .limit(1);
+    }
+    return row?.id ?? null;
+  };
+
+  const lookupJournal = async (type: string): Promise<number | null> => {
+    let [row] = await db
+      .select({ id: accountingJournalsTable.id })
+      .from(accountingJournalsTable)
+      .where(sql`${accountingJournalsTable.type} = ${type} AND ${accountingJournalsTable.companyId} = ${cFilter}`)
+      .limit(1);
+    if (!row) {
+      [row] = await db
+        .select({ id: accountingJournalsTable.id })
+        .from(accountingJournalsTable)
+        .where(sql`${accountingJournalsTable.type} = ${type}`)
+        .limit(1);
+    }
+    return row?.id ?? null;
+  };
+
+  const [cashAccountId, bankAccountId, salesIncomeId, arAccountId, apAccountId, cashJournalId, bankJournalId, salesJournalId, purchaseJournalId] = await Promise.all([
+    lookupCoa("1-1010"),
+    lookupCoa("1-1020"),
+    lookupCoa("4-1010"),
+    lookupCoa("1-1030"),
+    lookupCoa("2-1010"),
+    lookupJournal("cash"),
+    lookupJournal("bank"),
+    lookupJournal("sales"),
+    lookupJournal("purchase"),
+  ]);
+
+  return {
+    defaultCashAccountId: cashAccountId,
+    defaultBankAccountId: bankAccountId,
+    salesIncomeAccountId: salesIncomeId,
+    arAccountId,
+    apAccountId,
+    cashJournalId,
+    bankJournalId,
+    salesJournalId,
+    purchaseJournalId,
+  };
+}
+
 export async function ensureAccountingSettings(companyId = 1): Promise<typeof accountingSettingsTable.$inferSelect> {
   const existing = await getAccountingSettings(companyId);
-  if (existing) return existing;
+  if (existing) {
+    // Jika field kas/jurnal masih null (belum dikonfigurasi manual), coba auto-populate dari COA
+    const needsPopulate = !existing.defaultCashAccountId && !existing.defaultBankAccountId && !existing.cashJournalId && !existing.bankJournalId;
+    if (needsPopulate) {
+      try {
+        const patch = await resolveSettingsFromCoa(companyId);
+        const hasAny = Object.values(patch).some((v) => v != null);
+        if (hasAny) {
+          const [updated] = await db
+            .update(accountingSettingsTable)
+            .set(patch)
+            .where(eq(accountingSettingsTable.id, existing.id))
+            .returning();
+          logger.info({ companyId, patch }, "ensureAccountingSettings: auto-populated settings dari COA");
+          return updated ?? existing;
+        }
+      } catch (err) {
+        logger.warn({ companyId, err }, "ensureAccountingSettings: gagal auto-populate dari COA");
+      }
+    }
+    return existing;
+  }
+
+  // Create baru dengan auto-populate dari COA
+  let autoFields: Partial<typeof accountingSettingsTable.$inferInsert> = {};
+  try {
+    autoFields = await resolveSettingsFromCoa(companyId);
+  } catch {
+    // ignore, fallback ke kosong
+  }
   const [created] = await db
     .insert(accountingSettingsTable)
-    .values({ companyId })
+    .values({ companyId, ...autoFields })
     .returning();
+  logger.info({ companyId, autoFields }, "ensureAccountingSettings: created new settings");
   return created!;
 }

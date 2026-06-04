@@ -185,9 +185,19 @@ export default function SportCenterDashboard() {
     if (!supabase) return;
     const channel = supabase
       .channel("sport-center-dashboard-rt")
-      .on("postgres_changes", { event: "*", schema: "public", table: "sport_center_bookings" }, () => {
+      .on("postgres_changes", { event: "*", schema: "public", table: "sport_center_bookings" }, (payload) => {
         qc.invalidateQueries({ queryKey: ["sport-center-supabase"] });
+        qc.invalidateQueries({ queryKey: ["sport-center-supabase-bookings-raw"] });
         setRealtimeCount((c) => c + 1);
+        // Auto-push perubahan individual ke local DB tanpa perlu manual sync
+        const row = (payload as { new?: Record<string, unknown> }).new;
+        if (row && row.booking_code) {
+          void fetch("/api/sport-center/sync/push-bookings", {
+            method: "POST", credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ bookings: [row], companyId: activeCompanyId }),
+          });
+        }
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "sport_center_services" }, () => {
         qc.invalidateQueries({ queryKey: ["sport-center-supabase"] });
@@ -201,7 +211,7 @@ export default function SportCenterDashboard() {
         setSupabaseConnected(status === "SUBSCRIBED");
       });
     return () => { void supabase.removeChannel(channel); };
-  }, [qc]);
+  }, [qc, activeCompanyId]);
 
   // ── Merge: Supabase jadi sumber utama, lokal sebagai fallback ─────────────
   const hasSupaBookings = (supaData?.totalBookings ?? 0) > 0 || (supaData?.recentBookings?.length ?? 0) > 0;
@@ -247,6 +257,46 @@ export default function SportCenterDashboard() {
     },
     refetchInterval: 30_000,
   });
+
+  // ── Auto-push: Supabase → local saat local kosong ────────────────────────
+  const pushBookingsDone = useRef(false);
+  const pushBookings = useMutation({
+    mutationFn: async (bookings: unknown[]) => {
+      const r = await fetch("/api/sport-center/sync/push-bookings", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookings, companyId: activeCompanyId }),
+      });
+      if (!r.ok) throw new Error("Push gagal");
+      return r.json();
+    },
+    onSuccess: (res) => {
+      if (res.pushed > 0) {
+        qc.invalidateQueries({ queryKey: ["sport-center-dashboard"] });
+        qc.invalidateQueries({ queryKey: ["sport-center-kpi-live"] });
+        void refetchSync();
+      }
+    },
+  });
+
+  useEffect(() => {
+    if (pushBookingsDone.current) return;
+    if (!supaData) return;
+    const localCount = syncData?.local?.bookings ?? null;
+    if (localCount === null) return;                          // belum load sync status
+    if (localCount > 0) { pushBookingsDone.current = true; return; } // sudah ada data lokal
+    const rawBookings = supaData.recentBookings;             // SupabaseBooking raw via recentBookings
+    if (!rawBookings || rawBookings.length === 0) return;
+    pushBookingsDone.current = true;
+    if (!supabase) return;
+    supabase
+      .from("sport_center_bookings")
+      .select("booking_code, customer_name, customer_phone, customer_email, facility_name, date, start_time, end_time, total_hours, total_price, status, payment_status, notes, created_at")
+      .then(({ data }) => {
+        if (data && data.length > 0) void pushBookings.mutateAsync(data);
+      })
+      .catch(() => {});
+  }, [supaData, syncData, activeCompanyId]);
 
   // ── Mutations: trigger resync manual ─────────────────────────────────────
   const resyncFacilities = useMutation({
@@ -630,12 +680,17 @@ export default function SportCenterDashboard() {
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                 <Activity className="h-4 w-4" /> Booking per Status
+                <span className="text-xs font-normal opacity-50 ml-1">— klik untuk filter</span>
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
                 {byStatus.map((s) => (
-                  <div key={s.status} className="flex items-center justify-between">
+                  <div
+                    key={s.status}
+                    className="flex items-center justify-between cursor-pointer hover:bg-accent/30 -mx-2 px-2 py-1 rounded-md transition-colors"
+                    onClick={() => navigate(`/sport-center/bookings?status=${s.status}`)}
+                  >
                     <Badge className={`text-xs border ${STATUS_COLOR[s.status] ?? "bg-muted text-muted-foreground border-border"}`}>
                       {STATUS_LABEL[s.status] ?? s.status}
                     </Badge>

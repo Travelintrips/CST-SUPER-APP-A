@@ -19,6 +19,16 @@ import { signVendorResponseToken, verifyVendorResponseToken } from "../lib/vendo
 
 export const portalProductOrdersRouter = Router();
 
+// Add shipping spec columns to products table
+db.execute(sql`
+  ALTER TABLE products
+    ADD COLUMN IF NOT EXISTS weight_kg NUMERIC(10, 3),
+    ADD COLUMN IF NOT EXISTS length_cm NUMERIC(10, 2),
+    ADD COLUMN IF NOT EXISTS width_cm NUMERIC(10, 2),
+    ADD COLUMN IF NOT EXISTS height_cm NUMERIC(10, 2),
+    ADD COLUMN IF NOT EXISTS goods_type TEXT
+`).catch(() => {});
+
 db.execute(sql`
   CREATE TABLE IF NOT EXISTS portal_product_vendor_responses (
     id SERIAL PRIMARY KEY,
@@ -214,6 +224,11 @@ portalProductOrdersRouter.get("/products", async (req: Request, res: Response) =
     imageUrl: p.imageUrl ?? null,
     subcategory: p.subcategory ?? null,
     stock: p.stock ?? 0,
+    weightKg: p.weightKg != null ? parseFloat(String(p.weightKg)) : null,
+    lengthCm: p.lengthCm != null ? parseFloat(String(p.lengthCm)) : null,
+    widthCm: p.widthCm != null ? parseFloat(String(p.widthCm)) : null,
+    heightCm: p.heightCm != null ? parseFloat(String(p.heightCm)) : null,
+    goodsType: p.goodsType ?? null,
   })));
 });
 

@@ -93,6 +93,11 @@ function serializeProduct(
     subcategory: p.subcategory ?? null,
     isActive: p.isActive,
     imageUrl: p.imageUrl ?? null,
+    weightKg: p.weightKg != null ? Number(p.weightKg) : null,
+    lengthCm: p.lengthCm != null ? Number(p.lengthCm) : null,
+    widthCm:  p.widthCm  != null ? Number(p.widthCm)  : null,
+    heightCm: p.heightCm != null ? Number(p.heightCm) : null,
+    goodsType: p.goodsType ?? null,
   };
 }
 
@@ -222,6 +227,7 @@ router.post("/products", async (req, res) => {
     name, sku, price, stock, categories, description, imageUrl, mediaItems,
     defaultSalesTaxId, defaultPurchaseTaxId,
     itemType, unit, unitOptions, subcategory, isActive,
+    weightKg, lengthCm, widthCm, heightCm, goodsType,
   } = req.body;
   if (!name || !sku || price == null) return res.status(400).json({ message: "name, sku, price are required" });
   const categoryNames: string[] = Array.isArray(categories) ? categories.map(String) : [];
@@ -251,6 +257,11 @@ router.post("/products", async (req, res) => {
       unitOptions: Array.isArray(unitOptions) ? JSON.stringify(unitOptions) : "[]",
       subcategory: subcategory ?? null,
       isActive: isActive !== undefined ? Boolean(isActive) : true,
+      weightKg: weightKg != null ? String(weightKg) : null,
+      lengthCm: lengthCm != null ? String(lengthCm) : null,
+      widthCm:  widthCm  != null ? String(widthCm)  : null,
+      heightCm: heightCm != null ? String(heightCm) : null,
+      goodsType: goodsType ?? null,
     }).returning();
     if (validCats.length > 0) {
       await tx.insert(productCategoryMapTable).values(
@@ -348,6 +359,59 @@ router.post("/products/bulk-import", async (req, res) => {
   return res.json({ results });
 });
 
+// POST /api/ecommerce/products/bulk-update-dimensions
+router.post("/products/bulk-update-dimensions", requireClerkUser, async (req, res) => {
+  const rows: unknown[] = Array.isArray(req.body.rows) ? req.body.rows : [];
+  if (rows.length === 0) return res.status(400).json({ message: "rows array wajib diisi" });
+  if (rows.length > 500) return res.status(400).json({ message: "Maksimum 500 baris per import" });
+
+  const skus = rows.map((r) => String((r as Record<string, unknown>).sku ?? "").trim()).filter(Boolean);
+  if (skus.length === 0) return res.status(400).json({ message: "Semua baris harus memiliki SKU" });
+
+  const existingProducts = await db.select({ id: productsTable.id, sku: productsTable.sku, name: productsTable.name })
+    .from(productsTable).where(inArray(productsTable.sku, skus));
+  const existingBySku = new Map(existingProducts.map((p) => [p.sku, p]));
+
+  const results: Array<{ row: number; sku?: string; name?: string; status: string; message?: string }> = [];
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i] as Record<string, unknown>;
+    const sku = String(row.sku ?? "").trim();
+    if (!sku) { results.push({ row: i + 1, status: "error", message: "SKU wajib diisi" }); continue; }
+
+    const existing = existingBySku.get(sku);
+    if (!existing) { results.push({ row: i + 1, sku, status: "error", message: "SKU tidak ditemukan" }); continue; }
+
+    const parse = (k: string) => {
+      const v = String(row[k] ?? "").replace(",", ".").trim();
+      const n = parseFloat(v);
+      return isNaN(n) || v === "" ? null : n;
+    };
+
+    const weightKg  = parse("berat_kg")   ?? parse("weightKg")  ?? parse("weight_kg");
+    const lengthCm  = parse("panjang_cm") ?? parse("lengthCm")  ?? parse("length_cm");
+    const widthCm   = parse("lebar_cm")   ?? parse("widthCm")   ?? parse("width_cm");
+    const heightCm  = parse("tinggi_cm")  ?? parse("heightCm")  ?? parse("height_cm");
+    const goodsType = String(row.jenis_barang ?? row.goodsType ?? row.goods_type ?? "").trim() || null;
+
+    try {
+      await db.update(productsTable).set({
+        ...(weightKg  !== null && { weightKg:  String(weightKg) }),
+        ...(lengthCm  !== null && { lengthCm:  String(lengthCm) }),
+        ...(widthCm   !== null && { widthCm:   String(widthCm) }),
+        ...(heightCm  !== null && { heightCm:  String(heightCm) }),
+        ...(goodsType !== null && { goodsType }),
+      }).where(eq(productsTable.id, existing.id));
+      results.push({ row: i + 1, sku, name: existing.name, status: "updated" });
+    } catch (err: unknown) {
+      results.push({ row: i + 1, sku, status: "error", message: err instanceof Error ? err.message : "Unknown error" });
+    }
+  }
+
+  broadcastToPortal("price_sync", { ts: Date.now() });
+  return res.json({ results });
+});
+
 // GET /api/ecommerce/products/:id
 router.get("/products/:id", async (req, res) => {
   const id = Number(req.params.id);
@@ -364,6 +428,7 @@ router.put("/products/:id", async (req, res) => {
     name, sku, price, stock, categories, description, imageUrl, mediaItems,
     defaultSalesTaxId, defaultPurchaseTaxId,
     itemType, unit, unitOptions, subcategory, isActive,
+    weightKg, lengthCm, widthCm, heightCm, goodsType,
   } = req.body;
   const requestedNames: string[] = Array.isArray(categories) ? categories.map(String).filter(Boolean) : [];
 
@@ -404,6 +469,11 @@ router.put("/products/:id", async (req, res) => {
       unit: unit ?? "pcs",
       unitOptions: Array.isArray(unitOptions) ? JSON.stringify(unitOptions) : "[]",
       subcategory: subcategory ?? null,
+      weightKg: weightKg != null ? String(weightKg) : null,
+      lengthCm: lengthCm != null ? String(lengthCm) : null,
+      widthCm:  widthCm  != null ? String(widthCm)  : null,
+      heightCm: heightCm != null ? String(heightCm) : null,
+      goodsType: goodsType ?? null,
       isActive: isActive !== undefined ? Boolean(isActive) : true,
     }).where(eq(productsTable.id, id)).returning();
     if (!p) return null;

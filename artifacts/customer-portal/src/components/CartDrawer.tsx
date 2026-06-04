@@ -170,11 +170,40 @@ export function CartDrawer() {
   const [truckData, setTruckData] = useState<Record<string, string>>({});
   const [truckEstimate, setTruckEstimate] = useState<number | null>(null);
   const [truckEstimating, setTruckEstimating] = useState(false);
+  const [deliveryAddressError, setDeliveryAddressError] = useState(false);
   const [companyPickup, setCompanyPickup] = useState<{ name: string; address: string; originCity: string } | null>(null);
+  const [cartAutoFilled, setCartAutoFilled] = useState(false);
   const [, setLocation]        = useLocation();
   const { toast }              = useToast();
 
   const { items, addItem, removeItem, clearCart, subtotal, tax, grandTotal, taxRate } = useCart();
+
+  function computeCartAutoFill(): Partial<Record<string, string>> & { hasData: boolean } {
+    const productItems = items.filter(i => i.calculatorType === "product");
+    const itemsWithWeight = productItems.filter(i => i.inputData.weightKg != null && Number(i.inputData.weightKg) > 0);
+    if (itemsWithWeight.length === 0) return { hasData: false };
+
+    const totalWeight = itemsWithWeight.reduce(
+      (sum, i) => sum + Number(i.inputData.weightKg) * Number(i.inputData.qty ?? 1), 0
+    );
+
+    const dimItem = productItems.reduce((best: CartItem | null, item) => {
+      const vol = Number(item.inputData.lengthCm ?? 0) * Number(item.inputData.widthCm ?? 0) * Number(item.inputData.heightCm ?? 0) * Number(item.inputData.qty ?? 1);
+      const bestVol = best ? Number(best.inputData.lengthCm ?? 0) * Number(best.inputData.widthCm ?? 0) * Number(best.inputData.heightCm ?? 0) * Number(best.inputData.qty ?? 1) : 0;
+      return vol > bestVol ? item : best;
+    }, null);
+
+    const goodsItem = productItems.find(i => i.inputData.goodsType);
+
+    return {
+      hasData: true,
+      weight: totalWeight > 0 ? String(Math.round(totalWeight * 100) / 100) : "",
+      length: dimItem?.inputData.lengthCm ? String(dimItem.inputData.lengthCm) : "",
+      width:  dimItem?.inputData.widthCm  ? String(dimItem.inputData.widthCm)  : "",
+      height: dimItem?.inputData.heightCm ? String(dimItem.inputData.heightCm) : "",
+      goodsType: goodsItem?.inputData.goodsType ? String(goodsItem.inputData.goodsType) : "",
+    };
+  }
 
   useEffect(() => {
     const handleOpen = () => { setOpen(true); setView("cart"); };
@@ -211,6 +240,11 @@ export function CartDrawer() {
   }
 
   function handleAddTruckingItem() {
+    if (truckMode === "detail" && !truckData.deliveryAddress?.trim()) {
+      setDeliveryAddressError(true);
+      toast({ title: "Alamat Pengiriman wajib diisi", variant: "destructive" });
+      return;
+    }
     const name = truckMode === "detail" ? "Trucking — Pickup & Delivery" : "Trucking — Kargo";
     const pickupAddr = companyPickup?.address ?? DEFAULT_PICKUP;
     addItem({
@@ -385,10 +419,24 @@ export function CartDrawer() {
                     key={svc.id}
                     onClick={() => {
                       if (svc.isTrucking) {
-                        setView("trucking");
-                        setTruckMode("detail");
-                        setTruckData({});
+                        const af = computeCartAutoFill();
                         setTruckEstimate(null);
+                        if (af.hasData) {
+                          setTruckData({
+                            weight:    af.weight    || "",
+                            length:    af.length    || "",
+                            width:     af.width     || "",
+                            height:    af.height    || "",
+                            goodsType: af.goodsType || "",
+                          });
+                          setTruckMode("calculator");
+                          setCartAutoFilled(true);
+                        } else {
+                          setTruckData({});
+                          setTruckMode("detail");
+                          setCartAutoFilled(false);
+                        }
+                        setView("trucking");
                       } else {
                         handleNonTruckingService(svc.id);
                       }
@@ -421,7 +469,28 @@ export function CartDrawer() {
                 {(["detail", "calculator"] as const).map(mode => (
                   <button
                     key={mode}
-                    onClick={() => { setTruckMode(mode); setTruckEstimate(null); }}
+                    onClick={() => {
+                      setTruckEstimate(null);
+                      if (mode === "calculator") {
+                        const af = computeCartAutoFill();
+                        if (af.hasData) {
+                          setTruckData(prev => ({
+                            ...prev,
+                            weight:    af.weight    || prev.weight    || "",
+                            length:    af.length    || prev.length    || "",
+                            width:     af.width     || prev.width     || "",
+                            height:    af.height    || prev.height    || "",
+                            goodsType: af.goodsType || prev.goodsType || "",
+                          }));
+                          setCartAutoFilled(true);
+                        } else {
+                          setCartAutoFilled(false);
+                        }
+                      } else {
+                        setCartAutoFilled(false);
+                      }
+                      setTruckMode(mode);
+                    }}
                     className={`flex-1 py-2 px-2 rounded-md text-xs font-medium transition-colors flex items-center justify-center gap-1 ${truckMode === mode ? "bg-white shadow text-slate-800" : "text-slate-400 hover:text-slate-600"}`}
                   >
                     {mode === "detail" ? <><MapPin className="w-3 h-3" /> Pickup &amp; Delivery</> : <><Calculator className="w-3 h-3" /> Kalkulator Estimasi</>}
@@ -432,17 +501,6 @@ export function CartDrawer() {
               {/* Detail Form */}
               {truckMode === "detail" && (
                 <div className="space-y-3">
-                  <div className="grid grid-cols-2 gap-2.5">
-                    <div>
-                      <Label className="text-[11px] flex items-center gap-1 mb-1"><Calendar className="w-3 h-3" /> Tanggal Pickup</Label>
-                      <Input type="date" className="h-8 text-xs" value={truckData.pickupDate||""} onChange={e => setTruckData(p => ({ ...p, pickupDate: e.target.value }))} />
-                    </div>
-                    <div>
-                      <Label className="text-[11px] flex items-center gap-1 mb-1"><Clock className="w-3 h-3" /> Jam Pickup</Label>
-                      <Input type="time" className="h-8 text-xs" value={truckData.pickupTime||""} onChange={e => setTruckData(p => ({ ...p, pickupTime: e.target.value }))} />
-                    </div>
-                  </div>
-
                   {/* Alamat Pickup — otomatis dari gudang CST Logistics, tidak bisa diubah customer */}
                   <div>
                     <Label className="text-[11px] mb-1 flex items-center gap-1">
@@ -467,7 +525,11 @@ export function CartDrawer() {
                     <Label className="text-[11px] mb-1 block">
                       Alamat Pengiriman <span className="text-destructive">*</span>
                     </Label>
-                    <Textarea rows={2} placeholder="Jl. ..., Kota, Provinsi — alamat tujuan pengiriman" className="text-xs resize-none" value={truckData.deliveryAddress||""} onChange={e => setTruckData(p => ({ ...p, deliveryAddress: e.target.value }))} />
+                    <Textarea rows={2} placeholder="Jl. ..., Kota, Provinsi — alamat tujuan pengiriman"
+                      className={`text-xs resize-none${deliveryAddressError ? " border-destructive focus-visible:ring-destructive" : ""}`}
+                      value={truckData.deliveryAddress||""}
+                      onChange={e => { setDeliveryAddressError(false); setTruckData(p => ({ ...p, deliveryAddress: e.target.value })); }} />
+                    {deliveryAddressError && <p className="text-[11px] text-destructive mt-1">Alamat pengiriman wajib diisi.</p>}
                   </div>
                   <div className="grid grid-cols-2 gap-2.5">
                     <div>
@@ -479,6 +541,10 @@ export function CartDrawer() {
                       <Input type="tel" className="h-8 text-xs" placeholder="08xxxxxxxxxx" value={truckData.contactPhone||""} onChange={e => setTruckData(p => ({ ...p, contactPhone: e.target.value }))} />
                     </div>
                   </div>
+                  <div>
+                    <Label className="text-[11px] mb-1 block">Catatan (opsional)</Label>
+                    <Textarea rows={2} placeholder="Instruksi khusus untuk tim pengiriman..." className="text-xs resize-none" value={truckData.notes||""} onChange={e => setTruckData(p => ({ ...p, notes: e.target.value }))} />
+                  </div>
                   <div className="bg-orange-50 border border-orange-200 rounded-lg p-2.5 text-[11px] text-orange-700">
                     💡 Estimasi biaya dikonfirmasi tim setelah pesanan masuk.
                   </div>
@@ -488,6 +554,15 @@ export function CartDrawer() {
               {/* Calculator Form */}
               {truckMode === "calculator" && (
                 <div className="space-y-3">
+                  {cartAutoFilled && (
+                    <div className="bg-sky-50 border border-sky-200 rounded-lg px-3 py-2 flex items-start gap-2">
+                      <span className="text-sky-500 mt-0.5 shrink-0">✦</span>
+                      <div>
+                        <p className="text-[11px] font-semibold text-sky-700">Diisi otomatis dari produk pesanan</p>
+                        <p className="text-[10px] text-sky-500 mt-0.5">Berat &amp; dimensi dihitung dari item di keranjang. Masukkan kota tujuan lalu klik Hitung Estimasi.</p>
+                      </div>
+                    </div>
+                  )}
                   <div className="grid grid-cols-2 gap-2.5">
                     <div>
                       <Label className="text-[11px] mb-1 flex items-center gap-1">
