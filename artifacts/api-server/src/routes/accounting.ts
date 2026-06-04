@@ -1271,12 +1271,13 @@ router.get("/dashboard-kpi", async (req, res) => {
     : sql``;
 
   const now = new Date();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
-    .toISOString()
-    .slice(0, 10);
-  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0)
-    .toISOString()
-    .slice(0, 10);
+  const reqYear  = req.query.year  ? Number(req.query.year)  : now.getFullYear();
+  const reqMonth = req.query.month ? Number(req.query.month) : now.getMonth() + 1;
+  const periodYear  = Number.isFinite(reqYear)  && reqYear  > 2000 ? reqYear  : now.getFullYear();
+  const periodMonth = Number.isFinite(reqMonth) && reqMonth >= 1 && reqMonth <= 12 ? reqMonth : now.getMonth() + 1;
+
+  const monthStart = new Date(periodYear, periodMonth - 1, 1).toISOString().slice(0, 10);
+  const monthEnd   = new Date(periodYear, periodMonth, 0).toISOString().slice(0, 10);
 
   const [balances, overdueAr, overdueAp, monthPL] = await Promise.all([
     // Cash/bank + total piutang + total utang (all-time posted entries)
@@ -1362,6 +1363,8 @@ router.get("/dashboard-kpi", async (req, res) => {
     monthRevenue:      Number(pl["month_revenue"] ?? 0),
     monthExpense:      Number(pl["month_expense"] ?? 0),
     monthNetPL:        Number(pl["month_revenue"] ?? 0) - Number(pl["month_expense"] ?? 0),
+    periodYear,
+    periodMonth,
   });
 });
 
