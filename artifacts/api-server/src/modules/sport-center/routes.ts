@@ -473,6 +473,7 @@ router.get("/bookings", async (req, res) => {
   try {
     const cId = req.query.companyId ? Number(req.query.companyId) : null;
     const status = (req.query.status as string) ?? null;
+    const paymentStatus = (req.query.payment_status as string) ?? null;
     const date = (req.query.date as string) ?? null;
     const page = Math.max(1, Number(req.query.page ?? 1));
     const limit = 50;
@@ -483,6 +484,7 @@ router.get("/bookings", async (req, res) => {
         SELECT * FROM sport_bookings
         WHERE (${cId}::int IS NULL OR company_id = ${cId})
           AND (${status}::text IS NULL OR status = ${status})
+          AND (${paymentStatus}::text IS NULL OR payment_status = ${paymentStatus})
           AND (${date}::date IS NULL OR booking_date = ${date}::date)
         ORDER BY booking_date DESC, start_time DESC
         LIMIT ${limit} OFFSET ${offset}
@@ -491,6 +493,7 @@ router.get("/bookings", async (req, res) => {
         SELECT COUNT(*) AS cnt FROM sport_bookings
         WHERE (${cId}::int IS NULL OR company_id = ${cId})
           AND (${status}::text IS NULL OR status = ${status})
+          AND (${paymentStatus}::text IS NULL OR payment_status = ${paymentStatus})
           AND (${date}::date IS NULL OR booking_date = ${date}::date)
       `),
     ]);

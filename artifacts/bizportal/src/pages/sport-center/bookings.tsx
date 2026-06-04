@@ -28,9 +28,18 @@ const STATUS_COLOR: Record<string, string> = {
   cancelled: "bg-red-900/40 text-red-300 border-red-600",
 };
 const PAY_COLOR: Record<string, string> = {
-  unpaid: "bg-red-900/30 text-red-300 border-red-700",
-  paid: "bg-emerald-900/30 text-emerald-300 border-emerald-700",
-  partial: "bg-yellow-900/30 text-yellow-300 border-yellow-700",
+  pending:         "bg-orange-900/30 text-orange-300 border-orange-700",
+  pending_payment: "bg-amber-900/30 text-amber-300 border-amber-700",
+  unpaid:          "bg-red-900/30 text-red-300 border-red-700",
+  paid:            "bg-emerald-900/30 text-emerald-300 border-emerald-700",
+  partial:         "bg-yellow-900/30 text-yellow-300 border-yellow-700",
+};
+const PAY_LABEL: Record<string, string> = {
+  pending:         "Belum Bayar",
+  pending_payment: "Menunggu Bayar",
+  unpaid:          "Belum Bayar",
+  paid:            "Lunas",
+  partial:         "Sebagian",
 };
 
 type Booking = Record<string, unknown>;
@@ -44,6 +53,12 @@ export default function SportCenterBookings() {
   const esRef = useRef<EventSource | null>(null);
 
   const [statusFilter, setStatusFilter] = useState("all");
+  const [paymentFilter, setPaymentFilter] = useState(() => {
+    if (typeof window !== "undefined") {
+      return new URLSearchParams(window.location.search).get("payment") ?? "all";
+    }
+    return "all";
+  });
   const [dateFilter, setDateFilter] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -59,11 +74,12 @@ export default function SportCenterBookings() {
   });
 
   const { data, isLoading } = useQuery<{ data: Booking[]; total: number }>({
-    queryKey: ["sport-center-bookings", activeCompanyId, statusFilter, dateFilter, page],
+    queryKey: ["sport-center-bookings", activeCompanyId, statusFilter, paymentFilter, dateFilter, page],
     queryFn: async () => {
       const qs = new URLSearchParams();
       if (activeCompanyId) qs.set("companyId", String(activeCompanyId));
       if (statusFilter !== "all") qs.set("status", statusFilter);
+      if (paymentFilter !== "all") qs.set("payment_status", paymentFilter);
       if (dateFilter) qs.set("date", dateFilter);
       qs.set("page", String(page));
       const r = await fetch(`/api/sport-center/bookings?${qs}`, { credentials: "include" });
@@ -216,6 +232,17 @@ export default function SportCenterBookings() {
               <SelectItem value="cancelled">Dibatalkan</SelectItem>
             </SelectContent>
           </Select>
+          <Select value={paymentFilter} onValueChange={(v) => { setPaymentFilter(v); setPage(1); }}>
+            <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Semua Pembayaran</SelectItem>
+              <SelectItem value="pending">Belum Bayar</SelectItem>
+              <SelectItem value="pending_payment">Menunggu Bayar</SelectItem>
+              <SelectItem value="paid">Lunas</SelectItem>
+              <SelectItem value="partial">Sebagian</SelectItem>
+              <SelectItem value="unpaid">Tidak Bayar</SelectItem>
+            </SelectContent>
+          </Select>
           <Input type="date" value={dateFilter} onChange={(e) => { setDateFilter(e.target.value); setPage(1); }} className="w-40" />
           {dateFilter && (
             <Button variant="ghost" size="sm" onClick={() => setDateFilter("")}>
@@ -256,8 +283,8 @@ export default function SportCenterBookings() {
                         </Badge>
                       </td>
                       <td className="py-2.5 px-3">
-                        <Badge className={`text-xs border ${PAY_COLOR[b.payment_status as string] ?? ""}`}>
-                          {b.payment_status}
+                        <Badge className={`text-xs border ${PAY_COLOR[b.payment_status as string] ?? "bg-muted text-muted-foreground border-border"}`}>
+                          {PAY_LABEL[b.payment_status as string] ?? String(b.payment_status)}
                         </Badge>
                       </td>
                       <td className="py-2.5 px-3 font-medium text-foreground">{idr(Number(b.total_amount))}</td>
