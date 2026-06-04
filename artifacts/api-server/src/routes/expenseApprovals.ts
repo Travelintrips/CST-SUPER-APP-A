@@ -55,6 +55,72 @@ async function ensureTables() {
 let migrated = false;
 async function runMigration() { if (!migrated) { await ensureTables(); migrated = true; } }
 
+// ─── WA Notification helper ──────────────────────────────────────────────────
+async function notifyApproverWa(ar: any, action: "created" | "approved" | "rejected") {
+  try {
+    const { getAdminGroupWa } = await import("../lib/adminWa.js");
+    const { sendWhatsApp } = await import("../lib/fonnte.js");
+    const adminGroup = await getAdminGroupWa();
+    if (!adminGroup) return;
+
+    const idr = (n: number) => `Rp ${new Intl.NumberFormat("id-ID").format(n)}`;
+    const catLabels: Record<string, string> = {
+      kasbon: "Kasbon", talangan: "Dana Talangan", expense: "Expense",
+      bank_loan: "Hutang Bank", vendor_installment: "Cicilan Vendor",
+    };
+    const catLabel = catLabels[ar.ref_type] ?? ar.ref_type;
+
+    let msg = "";
+    if (action === "created") {
+      const approverInfo = ar.l1_approver_name ? `\nApprover L1: *${ar.l1_approver_name}*` : "";
+      msg = `🔔 *Permintaan Approval Baru*\n\nKategori: ${catLabel}\nDeskripsi: ${ar.description}\nNominal: ${idr(Number(ar.amount))}\nPemohon: ${ar.requester_name ?? ar.requester_id ?? "-"}${approverInfo}\n\nBuka BizPortal → Expense → Approval untuk memproses.`;
+    } else if (action === "approved") {
+      msg = `✅ *Permintaan Disetujui*\n\nKategori: ${catLabel}\nDeskripsi: ${ar.description}\nNominal: ${idr(Number(ar.amount))}\nPemohon: ${ar.requester_name ?? "-"}\n\nDana sudah dapat dicairkan.`;
+    } else if (action === "rejected") {
+      msg = `❌ *Permintaan Ditolak*\n\nKategori: ${catLabel}\nDeskripsi: ${ar.description}\nNominal: ${idr(Number(ar.amount))}\nPemohon: ${ar.requester_name ?? "-"}`;
+    }
+    if (msg) {
+      sendWhatsApp(adminGroup, msg, { context: `expense_approval_${action}`, refId: String(ar.id) }).catch(() => {});
+    }
+  } catch { /* non-fatal */ }
+}
+
+// ─── Activate kasbon/talangan after approval ─────────────────────────────────
+async function activateCashAdvance(refId: number) {
+  try {
+    const { postCashAdvanceJournal } = await import("./cashAdvances.js");
+    await postCashAdvanceJournal(refId);
+  } catch (e) {
+    console.error("[expenseApprovals] activateCashAdvance error:", e);
+  }
+}
+
+// ─── Activate expense (quick) after approval ─────────────────────────────────
+async function activateExpense(refId: number) {
+  try {
+    const { postQuickExpenseJournal } = await import("./expenses.js");
+    await postQuickExpenseJournal(refId);
+  } catch (e) {
+    console.error("[expenseApprovals] activateExpense error:", e);
+  }
+}
+
+// ─── Reject kasbon/talangan ───────────────────────────────────────────────────
+async function rejectCashAdvance(refId: number, reason: string | null) {
+  const reasonEsc = reason ? `'${String(reason).replace(/'/g, "''")}'` : "NULL";
+  await db.execute(sql.raw(
+    `UPDATE cash_advances SET status = 'rejected', rejection_reason = ${reasonEsc}, updated_at = NOW() WHERE id = ${refId}`
+  ));
+}
+
+// ─── Reject expense ───────────────────────────────────────────────────────────
+async function rejectExpense(refId: number, reason: string | null) {
+  const reasonEsc = reason ? `'${String(reason).replace(/'/g, "''")}'` : "NULL";
+  await db.execute(sql.raw(
+    `UPDATE expenses SET status = 'rejected', rejection_reason = ${reasonEsc}, updated_at = NOW() WHERE id = ${refId}`
+  ));
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // APPROVAL LIMITS
 // ─────────────────────────────────────────────────────────────────────────────
@@ -129,7 +195,6 @@ router.get("/requests", async (req: Request, res) => {
   await runMigration();
   const companyId = await resolveCompanyId(req);
   const { status } = req.query;
-  const userId = (req as any).userId ?? null;
 
   let where = companyId ? `WHERE r.company_id = ${companyId}` : "WHERE 1=1";
   if (status && status !== "all") where += ` AND r.status = '${status}'`;
@@ -175,7 +240,6 @@ router.post("/requests", async (req: Request, res) => {
     if (limit) { finalL1 = limit.l1_approver_id; finalL2 = limit.l2_approver_id; }
   }
 
-  // Fetch approver names
   let l1Name = null, l2Name = null;
   if (finalL1) {
     const r = await db.execute(sql.raw(`SELECT name FROM users WHERE id = '${finalL1}' LIMIT 1`));
@@ -206,7 +270,9 @@ router.post("/requests", async (req: Request, res) => {
        ${notes ? `'${String(notes).replace(/'/g, "''")}'` : "NULL"})
     RETURNING *
   `));
-  res.status(201).json(result.rows[0]);
+  const ar = result.rows[0] as any;
+  notifyApproverWa(ar, "created").catch(() => {});
+  res.status(201).json(ar);
 });
 
 // ─── POST /api/expense-approvals/requests/:id/action ─────────────────────────
@@ -226,7 +292,9 @@ router.post("/requests/:id/action", async (req: Request, res) => {
   const now = new Date().toISOString();
   const notesEsc = notes ? `'${String(notes).replace(/'/g, "''")}'` : "NULL";
 
-  // Determine which level this user is approving
+  let finalStatus = ar.status;
+
+  // Tentukan level approver
   if (ar.l1_approver_id === userId && ar.l1_status === "pending") {
     if (action === "reject") {
       await db.execute(sql.raw(`
@@ -234,6 +302,7 @@ router.post("/requests/:id/action", async (req: Request, res) => {
         SET l1_status = 'rejected', l1_notes = ${notesEsc}, l1_at = NOW(), status = 'rejected', updated_at = NOW()
         WHERE id = ${id}
       `));
+      finalStatus = "rejected";
     } else {
       const l2Needed = !!ar.l2_approver_id;
       const newStatus = l2Needed ? "l1_approved" : "approved";
@@ -244,6 +313,7 @@ router.post("/requests/:id/action", async (req: Request, res) => {
             l2_status = '${l2Status}', status = '${newStatus}', updated_at = NOW()
         WHERE id = ${id}
       `));
+      finalStatus = newStatus;
     }
   } else if (ar.l2_approver_id === userId && ar.l2_status === "pending") {
     const newStatus = action === "reject" ? "rejected" : "approved";
@@ -253,6 +323,7 @@ router.post("/requests/:id/action", async (req: Request, res) => {
       SET l2_status = '${l2NewStatus}', l2_notes = ${notesEsc}, l2_at = NOW(), status = '${newStatus}', updated_at = NOW()
       WHERE id = ${id}
     `));
+    finalStatus = newStatus;
   } else {
     // Admin force-approve/reject
     const newStatus = action === "reject" ? "rejected" : "approved";
@@ -261,10 +332,43 @@ router.post("/requests/:id/action", async (req: Request, res) => {
       SET status = '${newStatus}', updated_at = NOW()
       WHERE id = ${id}
     `));
+    finalStatus = newStatus;
   }
 
   const updated = await db.execute(sql.raw(`SELECT * FROM expense_approval_requests WHERE id = ${id}`));
-  res.json(updated.rows[0]);
+  const updatedAr = updated.rows[0] as any;
+
+  // ── Side effects saat final approved / rejected ───────────────────────────
+  if (updatedAr.ref_id) {
+    const refId = Number(updatedAr.ref_id);
+    const refType = updatedAr.ref_type;
+
+    if (finalStatus === "approved") {
+      if (refType === "kasbon" || refType === "talangan") {
+        await activateCashAdvance(refId);
+      } else if (refType === "expense") {
+        await activateExpense(refId);
+      }
+      notifyApproverWa(updatedAr, "approved").catch(() => {});
+    } else if (finalStatus === "rejected") {
+      if (refType === "kasbon" || refType === "talangan") {
+        await rejectCashAdvance(refId, notes ?? null);
+      } else if (refType === "expense") {
+        await rejectExpense(refId, notes ?? null);
+      }
+      notifyApproverWa(updatedAr, "rejected").catch(() => {});
+    }
+  }
+
+  res.json(updatedAr);
+});
+
+// ─── GET /api/expense-approvals/users — daftar user untuk dropdown approver ──
+router.get("/users", async (req: Request, res) => {
+  const rows = await db.execute(sql.raw(
+    `SELECT id, name, email FROM users WHERE name IS NOT NULL AND name <> '' ORDER BY name LIMIT 200`
+  ));
+  res.json(rows.rows);
 });
 
 export default router;
