@@ -1377,7 +1377,8 @@ router.post("/payments", async (req, res) => {
       const createdById = (req.user as { id: string } | undefined)?.id ?? null;
       const bTaxAmount = Number(b.tax_amount ?? 0);
       const bTotalAmount = Number(b.total_amount ?? amount);
-      const bCompanyId = b.company_id != null ? Number(b.company_id) : (company_id ?? null);
+      // Gunakan company_id dari booking record; fallback ke request body; fallback ke 1 (default company)
+      const bCompanyId = b.company_id != null ? Number(b.company_id) : (company_id != null ? Number(company_id) : 1);
       if (bTaxAmount > 0) {
         postSportCenterBookingWithTax({
           bookingId: booking_id,
@@ -1402,6 +1403,20 @@ router.post("/payments", async (req, res) => {
           companyId: bCompanyId,
         }).catch((err: unknown) => console.error('[sport-center] postSportCenterBooking failed:', err));
       }
+
+      // Sync ke accounting_payments agar muncul di halaman Accounting → Payments
+      insertAccountingPaymentForSportCenter({
+        companyId: bCompanyId,
+        paymentNumber,
+        amount: Number(amount),
+        method: method ?? "cash",
+        partnerName: String(b.customer_name ?? ""),
+        ref: String(b.booking_number ?? paymentNumber),
+        memo: `Pembayaran booking sport center`,
+        sourceDocId: Number(row.id),
+        date: String(b.booking_date ?? new Date().toISOString().slice(0, 10)),
+        createdById,
+      }).catch((err: unknown) => console.error("[sport-center] insertAccountingPayment failed:", err));
     }
 
     // Audit log pembayaran
@@ -1414,23 +1429,6 @@ router.post("/payments", async (req, res) => {
         ${JSON.stringify({ booking_id, amount, method, payment_number: paymentNumber })}::jsonb
       )
     `).catch((err: unknown) => console.error('[sport-center] audit log failed:', err));
-
-    // Sync ke accounting_payments agar muncul di halaman Accounting → Payments
-    if (company_id != null) {
-      const bookingForPay = bookingRes.rows[0] as Record<string, unknown> | undefined;
-      insertAccountingPaymentForSportCenter({
-        companyId: Number(company_id),
-        paymentNumber,
-        amount: Number(amount),
-        method: method ?? "cash",
-        partnerName: bookingForPay ? String(bookingForPay.customer_name ?? "") : "",
-        ref: bookingForPay ? String(bookingForPay.booking_number ?? paymentNumber) : paymentNumber,
-        memo: `Pembayaran booking sport center`,
-        sourceDocId: Number(row.id),
-        date: bookingForPay ? String(bookingForPay.booking_date ?? new Date().toISOString().slice(0, 10)) : undefined,
-        createdById: (req.user as { id: string } | undefined)?.id ?? null,
-      }).catch((err: unknown) => console.error("[sport-center] insertAccountingPayment failed:", err));
-    }
 
     broadcastSportCenterEvent({ module: "sport-center", entity: "payment", action: "created", data: row, timestamp: new Date().toISOString() }, company_id);
     res.status(201).json(row);
