@@ -60,15 +60,18 @@ export default function SportCenterBookings() {
   const esRef = useRef<EventSource | null>(null);
 
 
+  const [statusFilter, setStatusFilter] = useState(() => {
+    if (typeof window !== "undefined") {
+      return new URLSearchParams(window.location.search).get("status") ?? "all";
+    }
+    return "all";
+  });
   const [paymentFilter, setPaymentFilter] = useState(() => {
     if (typeof window !== "undefined") {
       return new URLSearchParams(window.location.search).get("payment") ?? "all";
     }
     return "all";
   });
-
-  const initialStatus = new URLSearchParams(window.location.search).get("status") ?? "all";
-  useEffect(() => { if (initialStatus !== "all") setStatusFilter(initialStatus); }, []);
 
   const [dateFilter, setDateFilter] = useState("");
   const [searchText, setSearchText] = useState("");
