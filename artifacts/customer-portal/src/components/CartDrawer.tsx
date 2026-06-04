@@ -660,11 +660,35 @@ export function CartDrawer() {
                     </div>
                   </div>
                   <div>
-                    <Label className="text-[11px] mb-1 block">Dimensi (cm) — P × L × T</Label>
+                    <Label className="text-[11px] mb-1 flex items-center gap-1">
+                      Dimensi (cm) — P × L × T
+                      {cartAutoFilled && (truckData.length || truckData.width || truckData.height) && (
+                        <span className="ml-auto text-[10px] font-semibold bg-sky-100 text-sky-600 px-1.5 py-0.5 rounded-full">Otomatis</span>
+                      )}
+                    </Label>
                     <div className="grid grid-cols-3 gap-1.5">
-                      <Input type="number" min={0} className="h-8 text-xs" placeholder="Panjang" value={truckData.length||""} onChange={e => setTruckData(p => ({ ...p, length: e.target.value }))} />
-                      <Input type="number" min={0} className="h-8 text-xs" placeholder="Lebar"   value={truckData.width||""}  onChange={e => setTruckData(p => ({ ...p, width:  e.target.value }))} />
-                      <Input type="number" min={0} className="h-8 text-xs" placeholder="Tinggi"  value={truckData.height||""} onChange={e => setTruckData(p => ({ ...p, height: e.target.value }))} />
+                      {cartAutoFilled && (truckData.length || truckData.width || truckData.height) ? (
+                        <>
+                          <div className="h-8 rounded-md border border-sky-200 bg-sky-50 px-3 flex items-center justify-between">
+                            <span className="text-xs font-medium text-sky-700">{truckData.length || "—"}</span>
+                            <span className="text-[9px] text-sky-400">P</span>
+                          </div>
+                          <div className="h-8 rounded-md border border-sky-200 bg-sky-50 px-3 flex items-center justify-between">
+                            <span className="text-xs font-medium text-sky-700">{truckData.width || "—"}</span>
+                            <span className="text-[9px] text-sky-400">L</span>
+                          </div>
+                          <div className="h-8 rounded-md border border-sky-200 bg-sky-50 px-3 flex items-center justify-between">
+                            <span className="text-xs font-medium text-sky-700">{truckData.height || "—"}</span>
+                            <span className="text-[9px] text-sky-400">T</span>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <Input type="number" min={0} className="h-8 text-xs" placeholder="Panjang" value={truckData.length||""} onChange={e => setTruckData(p => ({ ...p, length: e.target.value }))} />
+                          <Input type="number" min={0} className="h-8 text-xs" placeholder="Lebar"   value={truckData.width||""}  onChange={e => setTruckData(p => ({ ...p, width:  e.target.value }))} />
+                          <Input type="number" min={0} className="h-8 text-xs" placeholder="Tinggi"  value={truckData.height||""} onChange={e => setTruckData(p => ({ ...p, height: e.target.value }))} />
+                        </>
+                      )}
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2.5">
