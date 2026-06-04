@@ -573,6 +573,22 @@ export default function JasaDetail() {
 
   function handleNextStep() {
     if (truckingStep === 1) {
+      // Jadwal
+      if (!orderNow) {
+        if (!state.pickupDate) {
+          toast({ title: "Pilih tanggal pickup", variant: "destructive" });
+          return;
+        }
+        const today = new Date().toISOString().split("T")[0];
+        if (state.pickupDate < today) {
+          toast({ title: "Tanggal pickup tidak boleh sebelum hari ini", variant: "destructive" });
+          return;
+        }
+        if (!state.pickupTime) {
+          toast({ title: "Pilih jam pickup", variant: "destructive" });
+          return;
+        }
+      }
       // Pengirim
       if (!senderName.trim()) {
         toast({ title: "Isi nama pengirim", variant: "destructive" });
@@ -1350,6 +1366,46 @@ export default function JasaDetail() {
                       {truckingStep === 1 && (
                         <div className="px-3 pb-5 space-y-3">
 
+                          {/* ─ Jadwal ─ */}
+                          <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+                            <div className="px-4 pt-3 pb-1">
+                              <p className="text-xs font-bold text-[#0B5CAD] uppercase tracking-wide">Jadwal Pickup</p>
+                            </div>
+                            <div className="px-4 pb-4 space-y-3">
+                              <div className="flex items-center gap-3 py-2">
+                                <button type="button" role="switch" aria-checked={orderNow}
+                                  onClick={() => { const next = !orderNow; setOrderNow(next); if (next) { const now = new Date(); set("pickupDate", now.toISOString().split("T")[0]); set("pickupTime", now.toTimeString().slice(0, 5)); } else { set("pickupDate", ""); set("pickupTime", ""); } }}
+                                  className={`relative flex-shrink-0 w-11 h-6 rounded-full transition-colors duration-200 focus:outline-none ${orderNow ? "bg-[#0B5CAD]" : "bg-gray-200"}`}
+                                >
+                                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform duration-200 ${orderNow ? "translate-x-5" : "translate-x-0"}`}/>
+                                </button>
+                                <div>
+                                  <p className="text-sm font-semibold text-gray-800">Pesan Sekarang</p>
+                                  <p className="text-[11px] text-gray-400">Pickup dijadwalkan hari ini</p>
+                                </div>
+                                {orderNow && <span className="ml-auto text-[11px] font-medium text-[#0B5CAD] bg-blue-50 px-2 py-0.5 rounded-full">Aktif</span>}
+                              </div>
+                              {!orderNow ? (
+                                <div className="grid grid-cols-2 gap-3">
+                                  <div>
+                                    <label className="text-xs text-gray-500 font-medium block mb-1">Tanggal <span className="text-red-500">*</span></label>
+                                    <Input type="date" min={new Date().toISOString().split("T")[0]} value={state.pickupDate || ""} onChange={e => set("pickupDate", e.target.value)}/>
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-gray-500 font-medium block mb-1">Jam <span className="text-red-500">*</span></label>
+                                    <Input type="time" value={state.pickupTime || ""} onChange={e => set("pickupTime", e.target.value)}/>
+                                  </div>
+                                </div>
+                              ) : (
+                                state.pickupDate && (
+                                  <div className="bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 text-xs text-[#0B5CAD] font-medium">
+                                    Jadwal: {state.pickupDate} pukul {state.pickupTime}
+                                  </div>
+                                )
+                              )}
+                            </div>
+                          </div>
+
                           {/* ─ Pengirim ─ */}
                           <div className="bg-white rounded-xl shadow-sm overflow-hidden">
                             <div className="px-4 pt-3 pb-1">
@@ -1660,6 +1716,10 @@ export default function JasaDetail() {
                           {/* Mini summary */}
                           <div className="bg-white/10 rounded-xl px-4 py-3 space-y-1.5 text-xs text-white/90">
                             <p className="font-bold text-white text-[11px] uppercase tracking-wide mb-2">Ringkasan Pesanan</p>
+                            <div className="flex justify-between gap-2">
+                              <span className="text-white/70">Jadwal</span>
+                              <span className="font-medium">{orderNow ? "Sekarang" : `${state.pickupDate || "—"}${state.pickupTime ? ` · ${state.pickupTime}` : ""}`}</span>
+                            </div>
                             <div className="flex justify-between gap-2">
                               <span className="text-white/70 flex-shrink-0">Rute</span>
                               <span className="font-medium text-right text-[11px] leading-snug">
