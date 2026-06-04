@@ -43,13 +43,12 @@ type Facility = { id: number; name: string; price_per_hour: number };
 
 export default function SportCenterBookings() {
   const [, navigate] = useLocation();
-  const search = useSearch();
   const qc = useQueryClient();
   const { activeCompanyId } = useCompany();
   const { toast } = useToast();
   const esRef = useRef<EventSource | null>(null);
 
-  const initialStatus = new URLSearchParams(search).get("status") ?? "all";
+  const initialStatus = new URLSearchParams(window.location.search).get("status") ?? "all";
   const [statusFilter, setStatusFilter] = useState(initialStatus);
   const [dateFilter, setDateFilter] = useState("");
   const [searchText, setSearchText] = useState("");
