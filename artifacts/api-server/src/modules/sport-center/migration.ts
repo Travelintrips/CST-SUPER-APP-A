@@ -464,3 +464,55 @@ export async function runSportCenterMigration(): Promise<void> {
     throw err;
   }
 }
+
+/**
+ * Koreksi journal entry Sport Center yang salah masuk ke akun 4-1010
+ * (Pendapatan Jasa Freight) — pindahkan ke 4-1017 (Pendapatan Booking Sport Center).
+ * Idempoten: jika sudah tidak ada baris yang salah, skip.
+ */
+export async function runSportCenterAccountCorrection(): Promise<void> {
+  try {
+    const SPORT_CENTER_SOURCES = [
+      "sport_center_booking",
+      "sport_center_booking_reversal",
+      "sport_center_booking_refund",
+      "sport_center_booking_refund_direct",
+      "sport_center_refund",
+    ];
+
+    const result = await db.execute(sql`
+      WITH
+        acct_freight AS (
+          SELECT id, company_id FROM chart_of_accounts WHERE code = '4-1010'
+        ),
+        acct_sc AS (
+          SELECT id, company_id FROM chart_of_accounts WHERE code = '4-1017'
+        ),
+        bad_lines AS (
+          SELECT ael.id AS line_id,
+                 asc2.id AS correct_account_id
+          FROM accounting_entry_lines ael
+          JOIN accounting_entries ae ON ae.id = ael.entry_id
+          JOIN acct_freight af
+            ON af.id = ael.account_id
+               AND (af.company_id = ae.company_id OR af.company_id IS NULL)
+          JOIN acct_sc asc2
+            ON (asc2.company_id = ae.company_id OR asc2.company_id IS NULL)
+          WHERE ae.source::text = ANY(ARRAY[${sql.raw(SPORT_CENTER_SOURCES.map(s => `'${s}'`).join(","))}])
+        )
+      UPDATE accounting_entry_lines ael
+        SET account_id = bad_lines.correct_account_id
+      FROM bad_lines
+      WHERE ael.id = bad_lines.line_id
+    `);
+
+    const affected = (result as { rowCount?: number }).rowCount ?? 0;
+    if (affected > 0) {
+      logger.info({ affected }, "Sport Center account correction: dipindahkan dari 4-1010 → 4-1017");
+    } else {
+      logger.info("Sport Center account correction: tidak ada baris yang perlu dikoreksi");
+    }
+  } catch (err) {
+    logger.warn({ err }, "Sport Center account correction: gagal (non-fatal)");
+  }
+}
