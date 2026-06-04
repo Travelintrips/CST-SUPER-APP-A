@@ -435,6 +435,7 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "Product Templates", href: "/settings/product-templates", icon: Layers },
         { titleKey: "Service Templates", href: "/settings/service-templates", icon: Layers },
         { titleKey: "Secrets & Env Vars", href: "/settings/secrets", icon: KeyRound, roles: ["admin", "owner"] },
+        { titleKey: "Status Sistem", href: "/system-health", icon: Activity, roles: ["admin", "owner"] },
       ],
     },
   ];

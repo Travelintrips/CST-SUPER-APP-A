@@ -118,6 +118,7 @@ import WaNotificationLogsPage from "@/pages/settings/wa-notification-logs";
 import DocumentTemplatesPage from "@/pages/settings/document-templates";
 import SecretsPage from "@/pages/settings/secrets";
 import AppSecretsPage from "@/pages/settings/app-secrets";
+import SystemHealthPage from "@/pages/system-health";
 
 // Products
 import ProductItemsPage from "@/pages/products/items";
@@ -358,6 +359,9 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/settings/document-templates" component={PR(DocumentTemplatesPage)} />
       <Route path="/settings/secrets" component={PR(SecretsPage)} />
       <Route path="/settings/secrets" component={PR(AppSecretsPage)} />
+
+      {/* ── System Health ──────────────────────────────────────────────── */}
+      <Route path="/system-health" component={PR(SystemHealthPage)} />
 
       {/* ── Notifications & Analytics ──────────────────────────────────── */}
       <Route path="/notifications" component={PR(NotificationsPage)} />
