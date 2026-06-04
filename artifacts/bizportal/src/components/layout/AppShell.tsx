@@ -122,6 +122,7 @@ const IS_DEV = import.meta.env.DEV;
 
 interface AppShellProps {
   children: ReactNode;
+  noPadding?: boolean;
 }
 
 interface FlatItem {
@@ -150,7 +151,7 @@ const ALL_ROLES = ["manager", "admin", "owner", "ecommerce", "trading", "logisti
 const getKey = (item: NavItem): string =>
   item.type === "group" ? item.basePath : item.href;
 
-export function AppShell({ children }: AppShellProps) {
+export function AppShell({ children, noPadding }: AppShellProps) {
   const [location] = useLocation();
   const { t } = useLanguage();
   const { activeCompany, isConsolidated } = useCompany();
@@ -858,7 +859,7 @@ export function AppShell({ children }: AppShellProps) {
               </DropdownMenu>
             </div>
           </div>
-          <div className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
+          <div className={noPadding ? "flex-1 overflow-hidden flex flex-col" : "flex-1 overflow-auto p-4 sm:p-6 lg:p-8"}>
             {children}
           </div>
         </main>
