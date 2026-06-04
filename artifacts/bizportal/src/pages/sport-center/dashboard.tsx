@@ -399,6 +399,10 @@ export default function SportCenterDashboard() {
       bg: "bg-yellow-900/20",
       sub: "klik untuk filter tabel",
       filter: "pending",
+      color: "text-orange-400",
+      bg: "bg-orange-900/20",
+      sub: "Menunggu pembayaran",
+      href: "/sport-center/bookings?payment=pending",
     },
     {
       title: "Pelanggan Unik",
