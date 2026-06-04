@@ -1,3 +1,4 @@
+import { useState, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useCompany } from "@/contexts/CompanyContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,8 +9,9 @@ import { Link } from "wouter";
 import {
   Dumbbell, DollarSign, CalendarDays, Flame,
   TrendingUp, ArrowDownRight, ChevronRight, ArrowRight,
-  CheckCheck, Users,
+  CheckCheck, Users, Radio,
 } from "lucide-react";
+import { useSportCenterEvents, type SportCenterEvent } from "@/hooks/useSportCenterEvents";
 
 interface KpiLiveData {
   revenue_today: number;
@@ -33,6 +35,8 @@ const idr = (n: number) =>
 
 export function SportCenterWidget() {
   const { activeCompanyId } = useCompany();
+  const [newCount, setNewCount] = useState(0);
+  const [pulse, setPulse] = useState(false);
 
   const { data: kpi, isLoading } = useQuery<KpiLiveData>({
     queryKey: ["sport-center-kpi-live-main-dash", activeCompanyId],
@@ -47,6 +51,20 @@ export function SportCenterWidget() {
     },
     refetchInterval: 60_000,
     retry: 1,
+  });
+
+  const handleEvent = useCallback((ev: SportCenterEvent) => {
+    if (ev.entity === "booking" && ev.action === "created") {
+      setNewCount((n) => n + 1);
+      setPulse(true);
+      setTimeout(() => setPulse(false), 2_000);
+    }
+  }, []);
+
+  useSportCenterEvents({
+    companyId: activeCompanyId,
+    onEvent: handleEvent,
+    showToast: true,
   });
 
   const metrics = [
@@ -107,7 +125,11 @@ export function SportCenterWidget() {
   ];
 
   return (
-    <Card className="lg:col-span-2 border-border/70">
+    <Card
+      className={`lg:col-span-2 border-border/70 transition-all duration-700 ${
+        pulse ? "ring-2 ring-emerald-400/60 shadow-emerald-400/20 shadow-lg" : ""
+      }`}
+    >
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -118,9 +140,25 @@ export function SportCenterWidget() {
               <CardTitle className="text-base">Sport Center</CardTitle>
               <p className="text-xs text-muted-foreground mt-0.5">KPI Hari Ini — Live</p>
             </div>
-            <Badge className="ml-1 text-xs bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-700">
+
+            {/* Live indicator */}
+            <Badge className="ml-1 text-xs bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-700 gap-1">
+              <Radio className="h-2.5 w-2.5 animate-pulse" />
               Live
             </Badge>
+
+            {/* New booking counter badge */}
+            {newCount > 0 && (
+              <button
+                onClick={() => setNewCount(0)}
+                className="focus:outline-none"
+                title="Klik untuk reset"
+              >
+                <Badge className="text-xs bg-purple-100 text-purple-700 border-purple-300 dark:bg-purple-900/40 dark:text-purple-300 dark:border-purple-700 gap-1 cursor-pointer hover:bg-purple-200 dark:hover:bg-purple-800/50 transition-colors">
+                  +{newCount} booking baru
+                </Badge>
+              </button>
+            )}
           </div>
           <Button variant="ghost" size="sm" asChild>
             <Link href="/sport-center/dashboard">

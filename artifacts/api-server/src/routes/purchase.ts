@@ -218,6 +218,82 @@ router.get("/summary", async (req, res) => {
   return res.json({ rfqCount, ordersCount, toBillCount, totalSpend, topVendor });
 });
 
+// GET /purchase/dashboard-kpi — widget stats for main dashboard
+router.get("/dashboard-kpi", async (req, res) => {
+  const companyId = resolveCompanyId(req);
+  const cid = companyId;
+
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+    .toISOString()
+    .slice(0, 10);
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+    .toISOString()
+    .slice(0, 10);
+
+  const companyFilter = sql`AND company_id = ${cid}`;
+
+  const [counts, monthData, topSuppliers] = await Promise.all([
+    db.execute(sql`
+      SELECT
+        SUM(CASE WHEN kind='rfq' AND status NOT IN ('cancelled','done') THEN 1 ELSE 0 END)::int AS active_rfqs,
+        SUM(CASE WHEN kind='order' AND status NOT IN ('cancelled') THEN 1 ELSE 0 END)::int AS active_pos,
+        SUM(CASE WHEN kind='order' AND bill_status='to_bill' AND status!='cancelled' THEN 1 ELSE 0 END)::int AS to_bill,
+        SUM(CASE WHEN kind='order' AND bill_status='billed'
+          AND payment_status IN ('unpaid','partial') THEN 1 ELSE 0 END)::int AS billed_unpaid,
+        SUM(CASE WHEN kind='order' AND bill_status='billed'
+          AND payment_status IN ('unpaid','partial')
+          AND due_date IS NOT NULL AND due_date < TO_CHAR(CURRENT_DATE,'YYYY-MM-DD')
+          THEN 1 ELSE 0 END)::int AS overdue_count,
+        COALESCE(SUM(CASE WHEN kind='order' AND bill_status='billed'
+          AND payment_status IN ('unpaid','partial')
+          AND due_date IS NOT NULL AND due_date < TO_CHAR(CURRENT_DATE,'YYYY-MM-DD')
+          THEN grand_total::numeric - amount_paid::numeric ELSE 0 END),0)::float AS overdue_amount
+      FROM purchase_documents
+      WHERE 1=1 ${companyFilter}
+    `),
+
+    db.execute(sql`
+      SELECT
+        COALESCE(SUM(CASE WHEN kind='order' AND status NOT IN ('cancelled','draft')
+          AND confirmed_at >= ${monthStart}::date AND confirmed_at <= ${monthEnd}::date
+          THEN grand_total::numeric ELSE 0 END),0)::float AS month_spend,
+        SUM(CASE WHEN kind='order' AND status NOT IN ('cancelled') AND created_at >= CURRENT_DATE
+          THEN 1 ELSE 0 END)::int AS new_today
+      FROM purchase_documents
+      WHERE 1=1 ${companyFilter}
+    `),
+
+    db.execute(sql`
+      SELECT supplier_name,
+        COALESCE(SUM(grand_total::numeric),0)::float AS total
+      FROM purchase_documents
+      WHERE kind='order' AND status NOT IN ('cancelled','draft')
+        AND confirmed_at >= ${monthStart}::date AND confirmed_at <= ${monthEnd}::date
+        ${companyFilter}
+      GROUP BY supplier_name
+      ORDER BY total DESC
+      LIMIT 3
+    `),
+  ]);
+
+  const c = (counts.rows[0] ?? {}) as Record<string, unknown>;
+  const m = (monthData.rows[0] ?? {}) as Record<string, unknown>;
+
+  return res.json({
+    activeRfqs:    Number(c["active_rfqs"]   ?? 0),
+    activePOs:     Number(c["active_pos"]    ?? 0),
+    toBill:        Number(c["to_bill"]       ?? 0),
+    billedUnpaid:  Number(c["billed_unpaid"] ?? 0),
+    overdueCount:  Number(c["overdue_count"] ?? 0),
+    overdueAmount: Number(c["overdue_amount"] ?? 0),
+    monthSpend:    Number(m["month_spend"]   ?? 0),
+    newToday:      Number(m["new_today"]     ?? 0),
+    topSuppliers:  (topSuppliers.rows as { supplier_name: string; total: number }[])
+      .map((r) => ({ name: r.supplier_name, total: Number(r.total) })),
+  });
+});
+
 router.get("/documents", async (req, res) => {
   const companyId = resolveCompanyId(req);
   const kind = req.query["kind"] as PurchaseKind | undefined;

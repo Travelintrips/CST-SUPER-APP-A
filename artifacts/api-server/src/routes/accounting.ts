@@ -1250,6 +1250,121 @@ router.get("/partner-balances", async (_req, res) => {
   return res.json({ ar, ap, totalAr, totalAp });
 });
 
+/**
+ * GET /accounting/dashboard-kpi
+ * Ringkasan akuntansi untuk widget dashboard utama.
+ * Returns: cashBalance, totalAr, totalAp,
+ *          overdueInvoices, overdueBills, overdueArAmount, overdueApAmount,
+ *          monthRevenue, monthExpense
+ */
+router.get("/dashboard-kpi", async (req, res) => {
+  const companyId = resolveCompanyId(req);
+
+  const companyFilter = companyId
+    ? sql`AND ael.company_id = ${companyId}`
+    : sql``;
+  const sdCompanyFilter = companyId
+    ? sql`AND sd.company_id = ${companyId}`
+    : sql``;
+  const pdCompanyFilter = companyId
+    ? sql`AND pd.company_id = ${companyId}`
+    : sql``;
+
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+    .toISOString()
+    .slice(0, 10);
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+    .toISOString()
+    .slice(0, 10);
+
+  const [balances, overdueAr, overdueAp, monthPL] = await Promise.all([
+    // Cash/bank + total piutang + total utang (all-time posted entries)
+    db.execute(sql`
+      SELECT
+        COALESCE(SUM(
+          CASE WHEN coa.type = 'asset'
+            AND (lower(coa.name) LIKE '%kas%' OR lower(coa.name) LIKE '%cash%' OR lower(coa.name) LIKE '%bank%')
+          THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END
+        ), 0) AS cash_balance,
+        COALESCE(SUM(
+          CASE WHEN lower(coa.name) LIKE '%piutang%' AND coa.type = 'asset'
+          THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END
+        ), 0) AS total_ar,
+        COALESCE(SUM(
+          CASE WHEN (lower(coa.name) LIKE '%utang%' OR lower(coa.name) LIKE '%payable%') AND coa.type = 'liability'
+          THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END
+        ), 0) AS total_ap
+      FROM accounting_entry_lines ael
+      JOIN chart_of_accounts coa ON coa.id = ael.account_id
+      JOIN accounting_entries ae ON ae.id = ael.entry_id
+      WHERE ae.status = 'posted'
+        ${companyFilter}
+    `),
+
+    // Overdue invoices (invoiced, unpaid/partial, past due_date)
+    db.execute(sql`
+      SELECT
+        COUNT(*)::int AS count,
+        COALESCE(SUM(sd.grand_total - COALESCE(sd.amount_paid, 0)), 0)::float AS amount
+      FROM sales_documents sd
+      WHERE sd.invoice_status = 'invoiced'
+        AND sd.payment_status IN ('unpaid', 'partial')
+        AND sd.status != 'cancelled'
+        AND sd.due_date IS NOT NULL
+        AND sd.due_date < CURRENT_DATE
+        ${sdCompanyFilter}
+    `),
+
+    // Overdue bills (billed, unpaid/partial, past due_date)
+    db.execute(sql`
+      SELECT
+        COUNT(*)::int AS count,
+        COALESCE(SUM(pd.grand_total - COALESCE(pd.amount_paid, 0)), 0)::float AS amount
+      FROM purchase_documents pd
+      WHERE pd.bill_status = 'billed'
+        AND pd.payment_status IN ('unpaid', 'partial')
+        AND pd.status != 'cancelled'
+        AND pd.due_date IS NOT NULL
+        AND pd.due_date < CURRENT_DATE::text
+        ${pdCompanyFilter}
+    `),
+
+    // Month P&L
+    db.execute(sql`
+      SELECT
+        COALESCE(SUM(CASE WHEN coa.type = 'revenue'
+          THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END), 0) AS month_revenue,
+        COALESCE(SUM(CASE WHEN coa.type = 'expense'
+          THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END), 0) AS month_expense
+      FROM accounting_entry_lines ael
+      JOIN chart_of_accounts coa ON coa.id = ael.account_id
+      JOIN accounting_entries ae ON ae.id = ael.entry_id
+      WHERE ae.status = 'posted'
+        AND ae.entry_date BETWEEN ${monthStart} AND ${monthEnd}
+        ${companyFilter}
+    `),
+  ]);
+
+  const bal = (balances.rows[0] ?? {}) as Record<string, unknown>;
+  const arRow = (overdueAr.rows[0] ?? {}) as Record<string, unknown>;
+  const apRow = (overdueAp.rows[0] ?? {}) as Record<string, unknown>;
+  const pl = (monthPL.rows[0] ?? {}) as Record<string, unknown>;
+
+  res.json({
+    cashBalance:       Number(bal["cash_balance"] ?? 0),
+    totalAr:           Number(bal["total_ar"] ?? 0),
+    totalAp:           Number(bal["total_ap"] ?? 0),
+    overdueInvoices:   Number(arRow["count"] ?? 0),
+    overdueArAmount:   Number(arRow["amount"] ?? 0),
+    overdueBills:      Number(apRow["count"] ?? 0),
+    overdueApAmount:   Number(apRow["amount"] ?? 0),
+    monthRevenue:      Number(pl["month_revenue"] ?? 0),
+    monthExpense:      Number(pl["month_expense"] ?? 0),
+    monthNetPL:        Number(pl["month_revenue"] ?? 0) - Number(pl["month_expense"] ?? 0),
+  });
+});
+
 router.post("/payments/:id/void", async (req, res) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });

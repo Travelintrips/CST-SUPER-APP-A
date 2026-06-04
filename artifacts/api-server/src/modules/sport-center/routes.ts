@@ -8,6 +8,8 @@ import { syncFacilityUpsert, syncFacilityDelete, syncAllFacilities, syncBookingU
 
 const router = Router();
 
+router.use((_req, _res, next) => next());
+
 function pad(n: number, len = 6) {
   return String(n).padStart(len, "0");
 }
