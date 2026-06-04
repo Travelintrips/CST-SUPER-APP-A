@@ -99,6 +99,9 @@ import sportCenterRouter from "../modules/sport-center/routes.js";
 import executiveRouter from "./executive.js";
 import cashAdvancesRouter from "./cashAdvances.js";
 import vendorInstallmentsRouter from "./vendorInstallments.js";
+import bankLoansRouter from "./bankLoans.js";
+import fixedAssetsRouter from "./fixedAssets.js";
+import expenseApprovalsRouter from "./expenseApprovals.js";
 
 import type { Request, Response } from "express";
 
@@ -231,6 +234,9 @@ router.use("/sport-center", sportCenterRouter);
 router.use("/executive", executiveRouter);
 router.use("/cash-advances", cashAdvancesRouter);
 router.use("/vendor-installments", vendorInstallmentsRouter);
+router.use("/bank-loans", bankLoansRouter);
+router.use("/fixed-assets", fixedAssetsRouter);
+router.use("/expense-approvals", expenseApprovalsRouter);
 
 router.get("/alerts/stream", async (req: Request, res: Response) => {
   const ok = await requireAdmin(req, res);

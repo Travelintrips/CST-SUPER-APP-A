@@ -90,3 +90,6 @@ export * from "./customerApprovalHistory";
 export * from "./exceptions";
 export * from "./cashAdvances";
 export * from "./vendorInstallments";
+export * from "./bankLoans";
+export * from "./fixedAssets";
+export * from "./expenseApprovals";

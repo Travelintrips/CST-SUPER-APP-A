@@ -96,6 +96,9 @@ import ExpenseRoutinePage from "@/pages/expense/routine";
 import KasbonPage from "@/pages/expense/kasbon";
 import TalanganPage from "@/pages/expense/talangan";
 import VendorInstallmentsPage from "@/pages/expense/vendor-installments";
+import BankLoansPage from "@/pages/expense/bank-loans";
+import FixedAssetsPage from "@/pages/expense/fixed-assets";
+import ExpenseApprovalsPage from "@/pages/expense/approvals";
 // Correspondence
 import CorrespondencesPage from "@/pages/correspondences";
 import EmailInboxPage from "@/pages/email-inbox";
@@ -320,6 +323,9 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/expense/kasbon" component={PR(KasbonPage)} />
       <Route path="/expense/talangan" component={PR(TalanganPage)} />
       <Route path="/expense/vendor-installments" component={PR(VendorInstallmentsPage)} />
+      <Route path="/expense/bank-loans" component={PR(BankLoansPage)} />
+      <Route path="/expense/fixed-assets" component={PR(FixedAssetsPage)} />
+      <Route path="/expense/approvals" component={PR(ExpenseApprovalsPage)} />
       <Route path="/expense/:id/edit" component={PR(ExpenseEditorPage)} />
       <Route path="/expense/:id" component={PR(ExpenseEditorPage)} />
       <Route path="/expense" component={PR(ExpenseListPage)} />
