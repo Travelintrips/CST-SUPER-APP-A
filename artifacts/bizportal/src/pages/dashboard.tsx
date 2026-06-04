@@ -1041,7 +1041,7 @@ export default function DashboardPage() {
 
           <StatCard
             title={t.pos.txCount}
-            href="/pos"
+            href="/kasir"
             icon={<Activity className="h-4 w-4 text-amber-500" />}
             isLoading={isLoading}
             value={formatNumber(summary?.todayTransactions || 0)}

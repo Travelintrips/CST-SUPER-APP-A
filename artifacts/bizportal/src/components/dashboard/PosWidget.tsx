@@ -149,7 +149,7 @@ export function PosWidget() {
             </div>
           </div>
           <Button variant="ghost" size="sm" asChild>
-            <Link href="/pos">
+            <Link href="/kasir">
               Lihat Detail <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
             </Link>
           </Button>
@@ -169,7 +169,7 @@ export function PosWidget() {
             {kpis.map((m) => (
               <Link
                 key={m.label}
-                href="/pos"
+                href="/kasir"
                 className="block group focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg"
               >
                 <div
