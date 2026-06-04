@@ -226,6 +226,10 @@ export async function runSportCenterMigration(): Promise<void> {
         ADD COLUMN IF NOT EXISTS tax_rate    NUMERIC(5,2)  NOT NULL DEFAULT 0,
         ADD COLUMN IF NOT EXISTS tax_amount  NUMERIC(14,2) NOT NULL DEFAULT 0
     `);
+    await db.execute(sql`
+      ALTER TABLE sport_payments
+        ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'SPORT_CENTER'
+    `);
 
     // Fase 3: tabel maintenance request (integrasi Purchase — Fase 4 upgrade)
     await db.execute(sql`
