@@ -69,6 +69,8 @@ const COA_LEAF_TEMPLATES: SeedAccount[] = [
   { code: "1-1022", name: "Bank BNI",                         type: "asset",   parentCode: "1-1000" },
   { code: "1-1030", name: "Piutang Usaha",                    type: "asset",   parentCode: "1-1000" },
   { code: "1-1031", name: "Piutang Lainnya",                  type: "asset",   parentCode: "1-1000" },
+  { code: "1-1032", name: "Piutang Karyawan (Kasbon)",        type: "asset",   parentCode: "1-1000" },
+  { code: "1-1033", name: "Piutang Dana Talangan",            type: "asset",   parentCode: "1-1000" },
   { code: "1-1040", name: "Persediaan Barang",                type: "asset",   parentCode: "1-1000" },
   { code: "1-1050", name: "PPN Masukan",                      type: "asset",   parentCode: "1-1000" },
   { code: "1-1060", name: "Uang Muka Biaya",                  type: "asset",   parentCode: "1-1000" },

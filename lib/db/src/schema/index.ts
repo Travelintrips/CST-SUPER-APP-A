@@ -88,4 +88,5 @@ export * from "./vendorQuoteHistory";
 export * from "./customerApprovalHistory";
 
 export * from "./exceptions";
-
+export * from "./cashAdvances";
+export * from "./vendorInstallments";

@@ -22,7 +22,7 @@ import { usePrefetchOnHover } from "@/hooks/use-prefetch-on-hover";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useCompany } from "@/contexts/CompanyContext";
-import { ShoppingCart, Ship, Plus, Receipt, Search, Trash2, X, CalendarRange } from "lucide-react";
+import { ShoppingCart, Ship, Plus, Receipt, Search, Trash2, X, CalendarRange, Zap, Wallet, HandCoins, Building2 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -163,6 +163,46 @@ export default function ExpenseListPage() {
               </Button>
             </Link>
           </div>
+        </div>
+
+        {/* ── Modul Cepat ────────────────────────────────────────────── */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <Link href="/expense/routine">
+            <div className="flex items-center gap-3 rounded-lg border bg-card px-4 py-3 hover:bg-muted/50 transition-colors cursor-pointer">
+              <Zap size={18} className="text-yellow-400 shrink-0" />
+              <div>
+                <p className="text-sm font-medium leading-tight">Expense Rutin</p>
+                <p className="text-xs text-muted-foreground">6 preset kategori</p>
+              </div>
+            </div>
+          </Link>
+          <Link href="/expense/kasbon">
+            <div className="flex items-center gap-3 rounded-lg border bg-card px-4 py-3 hover:bg-muted/50 transition-colors cursor-pointer">
+              <Wallet size={18} className="text-amber-400 shrink-0" />
+              <div>
+                <p className="text-sm font-medium leading-tight">Kasbon Karyawan</p>
+                <p className="text-xs text-muted-foreground">Piutang karyawan</p>
+              </div>
+            </div>
+          </Link>
+          <Link href="/expense/talangan">
+            <div className="flex items-center gap-3 rounded-lg border bg-card px-4 py-3 hover:bg-muted/50 transition-colors cursor-pointer">
+              <HandCoins size={18} className="text-indigo-400 shrink-0" />
+              <div>
+                <p className="text-sm font-medium leading-tight">Dana Talangan</p>
+                <p className="text-xs text-muted-foreground">Piutang dana talangan</p>
+              </div>
+            </div>
+          </Link>
+          <Link href="/expense/vendor-installments">
+            <div className="flex items-center gap-3 rounded-lg border bg-card px-4 py-3 hover:bg-muted/50 transition-colors cursor-pointer">
+              <Building2 size={18} className="text-rose-400 shrink-0" />
+              <div>
+                <p className="text-sm font-medium leading-tight">Cicilan Vendor</p>
+                <p className="text-xs text-muted-foreground">Hutang cicilan vendor</p>
+              </div>
+            </div>
+          </Link>
         </div>
 
         {(fromFilter || toFilter) && (
