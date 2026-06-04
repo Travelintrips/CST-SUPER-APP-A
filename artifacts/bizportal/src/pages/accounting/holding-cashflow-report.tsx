@@ -25,6 +25,7 @@ import {
   TrendingDown,
   TrendingUp,
   Wallet,
+  ArrowLeft,
 } from "lucide-react";
 import {
   ComposedChart,
