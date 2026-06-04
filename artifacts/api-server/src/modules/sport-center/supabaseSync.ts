@@ -486,3 +486,105 @@ export async function getLastSyncLogs(limit = 20): Promise<unknown[]> {
     return [];
   }
 }
+
+export async function pullLegacyBookingsFromSupabase(): Promise<{ pulled: number; errors: number; total: number }> {
+  let client: import("@supabase/supabase-js").SupabaseClient | null = null;
+  try {
+    const { supabaseAdmin } = await import("../../lib/supabaseAdmin.js");
+    client = supabaseAdmin as unknown as import("@supabase/supabase-js").SupabaseClient;
+  } catch { }
+
+  if (!client) {
+    console.warn(`${PREFIX} pullLegacyBookings: supabaseAdmin tidak tersedia, skip`);
+    return { pulled: 0, errors: 0, total: 0 };
+  }
+
+  const { data, error } = await (client as any)
+    .from("sport_center_bookings")
+    .select("booking_code, customer_name, customer_phone, customer_email, facility_name, facility_id, date, start_time, end_time, total_hours, total_price, status, payment_status, notes, created_at")
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    console.error(`${PREFIX} pullLegacyBookings: fetch gagal`, error.message);
+    return { pulled: 0, errors: 1, total: 0 };
+  }
+
+  const rows = (data ?? []) as Array<{
+    booking_code: string | null;
+    customer_name: string;
+    customer_phone?: string | null;
+    customer_email?: string | null;
+    facility_name: string;
+    facility_id?: string | null;
+    date: string;
+    start_time: string;
+    end_time: string;
+    total_hours?: number | null;
+    total_price?: number | null;
+    status?: string | null;
+    payment_status?: string | null;
+    notes?: string | null;
+    created_at?: string | null;
+  }>;
+
+  let pulled = 0;
+  let errors = 0;
+
+  for (const row of rows) {
+    const bookingNumber = row.booking_code ?? `LEGACY-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+    const facilityName = row.facility_name ?? "Unknown";
+    const bookingDate = row.date;
+    const startTime = row.start_time?.slice(0, 5) ?? "00:00";
+    const endTime = row.end_time?.slice(0, 5) ?? "01:00";
+    const durationHours = Number(row.total_hours ?? 1);
+    const totalAmount = Number(row.total_price ?? 0);
+    const rawStatus = row.status ?? "pending";
+    const mappedStatus = rawStatus === "confirmed" ? "confirmed" : rawStatus === "cancelled" ? "cancelled" : rawStatus === "completed" ? "completed" : "pending";
+    const paymentStatus = row.payment_status ?? "unpaid";
+
+    try {
+      const existing = await db.execute(sql`SELECT id FROM sport_bookings WHERE booking_number = ${bookingNumber} LIMIT 1`);
+      if (existing.rows.length > 0) {
+        await db.execute(sql`
+          UPDATE sport_bookings SET
+            customer_name   = ${row.customer_name},
+            customer_phone  = ${row.customer_phone ?? null},
+            facility_name   = ${facilityName},
+            booking_date    = ${bookingDate}::DATE,
+            start_time      = ${startTime}::TIME,
+            end_time        = ${endTime}::TIME,
+            duration_hours  = ${durationHours},
+            base_amount     = ${totalAmount},
+            total_amount    = ${totalAmount},
+            status          = ${mappedStatus},
+            payment_status  = ${paymentStatus},
+            notes           = ${row.notes ?? null},
+            updated_at      = NOW()
+          WHERE booking_number = ${bookingNumber}
+        `);
+      } else {
+        await db.execute(sql`
+          INSERT INTO sport_bookings
+            (company_id, booking_number, customer_name, customer_phone,
+             facility_name, booking_date, start_time, end_time,
+             duration_hours, base_amount, total_amount,
+             status, payment_status, notes, created_at, updated_at)
+          VALUES
+            (1, ${bookingNumber}, ${row.customer_name}, ${row.customer_phone ?? null},
+             ${facilityName}, ${bookingDate}::DATE, ${startTime}::TIME, ${endTime}::TIME,
+             ${durationHours}, ${totalAmount}, ${totalAmount},
+             ${mappedStatus}, ${paymentStatus}, ${row.notes ?? null},
+             ${row.created_at ?? new Date().toISOString()}::TIMESTAMPTZ, NOW())
+        `);
+      }
+      console.log(`${PREFIX} pull legacy booking OK → ${bookingNumber} (${row.customer_name} / ${facilityName})`);
+      pulled++;
+    } catch (err) {
+      console.error(`${PREFIX} pull legacy booking gagal → ${bookingNumber}:`, err);
+      errors++;
+    }
+  }
+
+  console.log(`${PREFIX} pullLegacyBookings selesai: ${pulled} pulled, ${errors} errors dari ${rows.length} total`);
+  return { pulled, errors, total: rows.length };
+}

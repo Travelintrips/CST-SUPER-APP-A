@@ -4,7 +4,7 @@ import { sql } from "drizzle-orm";
 import { requireAdmin } from "../../lib/requireAdmin.js";
 import { handleSportCenterSse, broadcastSportCenterEvent } from "./broadcast.js";
 import { postSportCenterBooking, postSportCenterBookingReversal, postSportCenterRefund, postSportCenterMembershipPayment, postSportCenterBookingWithTax, postSportCenterBookingRefundDirect } from "../../lib/accounting.js";
-import { syncFacilityUpsert, syncFacilityDelete, syncAllFacilities, syncBookingUpsert, syncAllBookings, getLastSyncLogs } from "./supabaseSync.js";
+import { syncFacilityUpsert, syncFacilityDelete, syncAllFacilities, syncBookingUpsert, syncAllBookings, getLastSyncLogs, pullLegacyBookingsFromSupabase } from "./supabaseSync.js";
 
 const router = Router();
 
@@ -422,6 +422,16 @@ router.post("/sync/bookings", async (req, res) => {
     res.json({ success: true, ...result, completed_at: new Date().toISOString() });
   } catch (err: any) {
     res.status(500).json({ error: "Booking resync gagal", detail: err?.message });
+  }
+});
+
+router.post("/sync/pull-legacy", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const result = await pullLegacyBookingsFromSupabase();
+    res.json({ success: true, ...result, completed_at: new Date().toISOString() });
+  } catch (err: any) {
+    res.status(500).json({ error: "Pull legacy bookings gagal", detail: err?.message });
   }
 });
 

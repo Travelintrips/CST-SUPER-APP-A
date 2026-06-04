@@ -147,7 +147,7 @@ async function upsertUser(claims: Record<string, unknown>) {
       firstName,
       lastName,
       profileImageUrl,
-      ...(isAdmin ? { role: "admin" as const } : {}),
+      role: isAdmin ? ("admin" as const) : ("ecommerce" as const),
     })
     .onConflictDoUpdate({
       target: usersTable.id,
@@ -158,7 +158,7 @@ async function upsertUser(claims: Record<string, unknown>) {
         lastName,
         profileImageUrl,
         updatedAt: new Date(),
-        // Promote to admin if configured, but never demote
+        // Promote to admin if configured, but never demote existing role
         ...(isAdmin ? { role: "admin" as const } : {}),
       },
     })
