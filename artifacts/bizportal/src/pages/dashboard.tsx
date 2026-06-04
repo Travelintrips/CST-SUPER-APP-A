@@ -27,6 +27,7 @@ import { QuickActionsWidget } from "@/components/dashboard/QuickActionsWidget";
 import { SportCenterWidget } from "@/components/dashboard/SportCenterWidget";
 import { PosWidget } from "@/components/dashboard/PosWidget";
 import { AccountingWidget } from "@/components/dashboard/AccountingWidget";
+import { LogisticsWidget } from "@/components/dashboard/LogisticsWidget";
 
 interface ResponseTimeEntry {
   timestamp: string;
@@ -1118,6 +1119,7 @@ export default function DashboardPage() {
           <SportCenterWidget />
           <PosWidget />
           <AccountingWidget />
+          <LogisticsWidget />
           <TasksWidget />
           <RecentActivitiesWidget />
           <AiInsightsWidget />
