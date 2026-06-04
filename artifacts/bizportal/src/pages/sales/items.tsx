@@ -89,6 +89,11 @@ interface ItemForm {
   description: string;
   imageUrl: string;
   mediaItems: MediaItem[];
+  weightKg: string;
+  lengthCm: string;
+  widthCm: string;
+  heightCm: string;
+  goodsType: string;
 }
 
 interface ImportRow {
@@ -131,6 +136,11 @@ const emptyForm = (): ItemForm => ({
   description: "",
   imageUrl: "",
   mediaItems: [],
+  weightKg: "",
+  lengthCm: "",
+  widthCm: "",
+  heightCm: "",
+  goodsType: "",
 });
 
 function parseMediaItems(raw: MediaItem[] | string | null | undefined): MediaItem[] {
@@ -204,6 +214,11 @@ function formFromProduct(p: Product): ItemForm {
     description: p.description ?? "",
     imageUrl: p.imageUrl ?? "",
     mediaItems: parseMediaItems(p.mediaItems),
+    weightKg: p.weightKg != null ? String(p.weightKg) : "",
+    lengthCm: p.lengthCm != null ? String(p.lengthCm) : "",
+    widthCm:  p.widthCm  != null ? String(p.widthCm)  : "",
+    heightCm: p.heightCm != null ? String(p.heightCm) : "",
+    goodsType: p.goodsType ?? "",
   };
 }
 
@@ -455,6 +470,11 @@ export default function SalesItemsPage() {
       defaultPurchaseTaxId: form.defaultPurchaseTaxId ? Number(form.defaultPurchaseTaxId) : null,
       imageUrl: form.imageUrl.trim() || null,
       mediaItems: form.mediaItems.filter((m) => m.url.trim()),
+      weightKg: form.weightKg !== "" ? Number(form.weightKg) : null,
+      lengthCm: form.lengthCm !== "" ? Number(form.lengthCm) : null,
+      widthCm:  form.widthCm  !== "" ? Number(form.widthCm)  : null,
+      heightCm: form.heightCm !== "" ? Number(form.heightCm) : null,
+      goodsType: form.goodsType.trim() || null,
     };
 
     try {
@@ -866,6 +886,74 @@ export default function SalesItemsPage() {
                     )}
                   </p>
                 )}
+              </div>
+            )}
+
+            {/* Berat & Dimensi (untuk kalkulator ongkir otomatis) */}
+            {form.itemType === "barang" && (
+              <div className="space-y-3 rounded-lg border border-slate-700 bg-slate-800/50 p-3">
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Dimensi & Berat (Otomatis Ongkir)</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-slate-300 text-sm">Berat (kg)</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.001"
+                      value={form.weightKg}
+                      onChange={(e) => setF("weightKg", e.target.value)}
+                      placeholder="cth: 1.5"
+                      className="bg-slate-800 border-slate-600 text-slate-200 placeholder:text-slate-500"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-slate-300 text-sm">Jenis Barang</Label>
+                    <Input
+                      value={form.goodsType}
+                      onChange={(e) => setF("goodsType", e.target.value)}
+                      placeholder="cth: Elektronik, Furnitur…"
+                      className="bg-slate-800 border-slate-600 text-slate-200 placeholder:text-slate-500"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-slate-300 text-sm">Panjang (cm)</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      value={form.lengthCm}
+                      onChange={(e) => setF("lengthCm", e.target.value)}
+                      placeholder="P"
+                      className="bg-slate-800 border-slate-600 text-slate-200 placeholder:text-slate-500"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-slate-300 text-sm">Lebar (cm)</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      value={form.widthCm}
+                      onChange={(e) => setF("widthCm", e.target.value)}
+                      placeholder="L"
+                      className="bg-slate-800 border-slate-600 text-slate-200 placeholder:text-slate-500"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-slate-300 text-sm">Tinggi (cm)</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      value={form.heightCm}
+                      onChange={(e) => setF("heightCm", e.target.value)}
+                      placeholder="T"
+                      className="bg-slate-800 border-slate-600 text-slate-200 placeholder:text-slate-500"
+                    />
+                  </div>
+                </div>
               </div>
             )}
 

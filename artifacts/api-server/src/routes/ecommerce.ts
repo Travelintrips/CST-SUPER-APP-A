@@ -227,6 +227,7 @@ router.post("/products", async (req, res) => {
     name, sku, price, stock, categories, description, imageUrl, mediaItems,
     defaultSalesTaxId, defaultPurchaseTaxId,
     itemType, unit, unitOptions, subcategory, isActive,
+    weightKg, lengthCm, widthCm, heightCm, goodsType,
   } = req.body;
   if (!name || !sku || price == null) return res.status(400).json({ message: "name, sku, price are required" });
   const categoryNames: string[] = Array.isArray(categories) ? categories.map(String) : [];
@@ -256,6 +257,11 @@ router.post("/products", async (req, res) => {
       unitOptions: Array.isArray(unitOptions) ? JSON.stringify(unitOptions) : "[]",
       subcategory: subcategory ?? null,
       isActive: isActive !== undefined ? Boolean(isActive) : true,
+      weightKg: weightKg != null ? String(weightKg) : null,
+      lengthCm: lengthCm != null ? String(lengthCm) : null,
+      widthCm:  widthCm  != null ? String(widthCm)  : null,
+      heightCm: heightCm != null ? String(heightCm) : null,
+      goodsType: goodsType ?? null,
     }).returning();
     if (validCats.length > 0) {
       await tx.insert(productCategoryMapTable).values(
@@ -369,6 +375,7 @@ router.put("/products/:id", async (req, res) => {
     name, sku, price, stock, categories, description, imageUrl, mediaItems,
     defaultSalesTaxId, defaultPurchaseTaxId,
     itemType, unit, unitOptions, subcategory, isActive,
+    weightKg, lengthCm, widthCm, heightCm, goodsType,
   } = req.body;
   const requestedNames: string[] = Array.isArray(categories) ? categories.map(String).filter(Boolean) : [];
 
@@ -409,6 +416,11 @@ router.put("/products/:id", async (req, res) => {
       unit: unit ?? "pcs",
       unitOptions: Array.isArray(unitOptions) ? JSON.stringify(unitOptions) : "[]",
       subcategory: subcategory ?? null,
+      weightKg: weightKg != null ? String(weightKg) : null,
+      lengthCm: lengthCm != null ? String(lengthCm) : null,
+      widthCm:  widthCm  != null ? String(widthCm)  : null,
+      heightCm: heightCm != null ? String(heightCm) : null,
+      goodsType: goodsType ?? null,
       isActive: isActive !== undefined ? Boolean(isActive) : true,
     }).where(eq(productsTable.id, id)).returning();
     if (!p) return null;
