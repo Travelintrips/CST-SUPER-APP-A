@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, Fragment } from "react";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import {
   useListLogisticOrders,
   useUpdateLogisticOrderStatus,
@@ -172,9 +172,12 @@ export default function LogisticsPortalOrdersPage() {
   const { toast } = useToast();
   const { t } = useLanguage();
   const [, navigate] = useLocation();
+  const searchString = useSearch();
+
+  const initialStatus = new URLSearchParams(searchString).get("status") ?? "all";
 
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState(initialStatus);
   const [fulfillmentFilter, setFulfillmentFilter] = useState("all");
   const [koliFilter, setKoliFilter] = useState("all");
   const [shipmentTypeFilter, setShipmentTypeFilter] = useState("all");
