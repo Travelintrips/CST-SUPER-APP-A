@@ -414,7 +414,7 @@ export async function runSportCenterMigration(): Promise<void> {
       ALTER TABLE sport_center_bookings ADD COLUMN IF NOT EXISTS payment_status TEXT NOT NULL DEFAULT 'unpaid';
       ALTER TABLE sport_center_bookings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
       ALTER TABLE sport_center_bookings ADD COLUMN IF NOT EXISTS customer_phone TEXT;
-    `);
+    `).catch(() => { /* tabel lama mungkin sudah tidak ada */ });
 
     await db.execute(sql`
       ALTER TABLE sport_center_bookings ALTER COLUMN customer_email DROP NOT NULL;
