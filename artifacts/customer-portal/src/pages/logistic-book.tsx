@@ -529,6 +529,11 @@ export default function BookPage() {
   const [transferTerm, setTransferTerm] = useState<"full" | "termin" | "dp" | "">("");
   const [paymentTerm, setPaymentTerm] = useState<"net7" | "net14" | "net30" | "net60" | "">("");
   const [dpNext, setDpNext] = useState<"lunas-delivery" | "lunas-net30" | "lunas-net60" | "cicil" | "">("");
+  const [quickTrucking, setQuickTrucking] = useState<"detail" | "calculator" | null>(null);
+  const [quickTruckData, setQuickTruckData] = useState<Record<string, string>>({});
+  const [quickTruckEstimate, setQuickTruckEstimate] = useState<number | null>(null);
+  const [quickEstimating, setQuickEstimating] = useState(false);
+  const [quickDeliveryAddressError, setQuickDeliveryAddressError] = useState(false);
 
   // Persist orderType + shipmentType to localStorage whenever they change
   useEffect(() => {
@@ -1007,7 +1012,10 @@ export default function BookPage() {
                 </div>
                 <div className="sm:col-span-2">
                   <Label className="text-xs">Alamat Pengiriman <span className="text-destructive">*</span></Label>
-                  <Textarea rows={2} placeholder="Jl. ..., Kota, Provinsi" value={quickTruckData.deliveryAddress||""} onChange={e => setQuickTruckData(p => ({ ...p, deliveryAddress: e.target.value }))} />
+                  <Textarea rows={2} placeholder="Jl. ..., Kota, Provinsi" value={quickTruckData.deliveryAddress||""}
+                    className={quickDeliveryAddressError ? "border-destructive focus-visible:ring-destructive" : ""}
+                    onChange={e => { setQuickDeliveryAddressError(false); setQuickTruckData(p => ({ ...p, deliveryAddress: e.target.value })); }} />
+                  {quickDeliveryAddressError && <p className="text-[11px] text-destructive mt-1">Alamat pengiriman wajib diisi.</p>}
                 </div>
                 <div>
                   <Label className="text-xs">Nama Kontak</Label>
@@ -1017,22 +1025,32 @@ export default function BookPage() {
                   <Label className="text-xs">No. Telepon</Label>
                   <Input type="tel" placeholder="08xxxxxxxxxx" value={quickTruckData.contactPhone||""} onChange={e => setQuickTruckData(p => ({ ...p, contactPhone: e.target.value }))} />
                 </div>
+                <div className="sm:col-span-2">
+                  <Label className="text-xs">Catatan (opsional)</Label>
+                  <Textarea rows={2} placeholder="Instruksi khusus untuk tim pengiriman..." value={quickTruckData.notes||""} onChange={e => setQuickTruckData(p => ({ ...p, notes: e.target.value }))} />
+                </div>
               </div>
               <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-xs text-orange-700">
                 💡 Estimasi biaya akan dikonfirmasi oleh tim setelah pesanan masuk.
               </div>
               <Separator />
               <Button className="w-full bg-orange-600 hover:bg-orange-700"
-                disabled={!quickTruckData.pickupAddress?.trim() || !quickTruckData.deliveryAddress?.trim()}
                 onClick={() => {
+                  if (!quickTruckData.deliveryAddress?.trim()) {
+                    setQuickDeliveryAddressError(true);
+                    toast({ title: "Alamat Pengiriman wajib diisi", variant: "destructive" });
+                    return;
+                  }
                   addItem({ category: "Trucking", serviceName: "Trucking — Pickup & Delivery",
                     calculatorType: "trucking",
                     inputData: { pickupCity: quickTruckData.pickupAddress, destCity: quickTruckData.deliveryAddress,
                       vehicleType: "CDD", pickupDate: quickTruckData.pickupDate, pickupTime: quickTruckData.pickupTime,
-                      receiver_name: quickTruckData.contactName, receiver_phone: quickTruckData.contactPhone },
+                      receiver_name: quickTruckData.contactName, receiver_phone: quickTruckData.contactPhone,
+                      notes: quickTruckData.notes },
                     calculationResult: {}, subtotal: 0 });
                   toast({ title: "Trucking ditambahkan ke pesanan" });
                   setQuickTrucking(null); setQuickTruckData({}); setQuickTruckEstimate(null);
+                  setQuickDeliveryAddressError(false);
                   setStep(2);
                 }}>
                 <Plus className="w-4 h-4 mr-2" /> Tambahkan ke Pesanan
