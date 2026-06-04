@@ -45,6 +45,8 @@ import {
 } from "lucide-react";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ArrowLeft } from "lucide-react";
+import { Link } from "wouter";
 
 const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
 const PAGE_SIZE = 50;
@@ -263,6 +265,8 @@ export default function WaNotificationHistoryPage() {
       <div className="p-4 md:p-6 space-y-4 max-w-7xl mx-auto">
         <div className="flex items-center justify-between gap-2">
           <div>
+            <Link href="/settings"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
+
             <h1 className="text-xl font-bold">Riwayat Notifikasi</h1>
             <p className="text-sm text-muted-foreground">Log pengiriman WA & email — terkirim, tersampaikan, dibaca, gagal</p>
           </div>

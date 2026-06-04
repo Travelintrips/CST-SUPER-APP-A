@@ -20,6 +20,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ArrowLeft } from "lucide-react";
+import { Link } from "wouter";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 interface EnvEntry {
@@ -510,6 +512,8 @@ export default function SecretsPage() {
       <div className="flex items-center gap-3">
         <KeyRound className="w-6 h-6 text-primary" />
         <div>
+          <Link href="/settings"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
+
           <h1 className="text-xl font-semibold">Secrets & Konfigurasi</h1>
           <p className="text-sm text-muted-foreground">
             Environment variables sistem dan konfigurasi aplikasi berbasis database

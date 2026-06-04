@@ -13,6 +13,7 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
+import { Link } from "wouter";
 
 interface SecretEntry {
   key: string;
@@ -287,6 +288,8 @@ export default function AppSecretsPage() {
             <KeyRound className="h-5 w-5 text-primary" />
           </div>
           <div>
+            <Link href="/settings"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
+
             <h1 className="text-xl font-bold">Secrets & Konfigurasi</h1>
             <p className="text-sm text-muted-foreground">
               Simpan API keys dan konfigurasi sensitif langsung di Supabase — env variable tetap sebagai fallback.

@@ -7,13 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Pencil, Users, ShieldAlert, ShieldCheck, X, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Pencil, Users, ShieldAlert, ShieldCheck, X, Plus, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { Link } from "wouter";
 
 const ROLES = ["admin", "ecommerce", "trading", "logistics"] as const;
 type Role = typeof ROLES[number];
@@ -230,6 +231,8 @@ export default function UsersPage() {
       <div className="space-y-6">
         <div className="flex items-start justify-between gap-4">
           <div>
+            <Link href="/settings"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
+
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">{t.users.title}</h1>
             <p className="text-sm sm:text-base text-muted-foreground mt-1 sm:mt-2">{t.users.subtitle}</p>
           </div>

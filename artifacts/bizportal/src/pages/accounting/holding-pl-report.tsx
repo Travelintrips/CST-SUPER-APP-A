@@ -24,6 +24,7 @@ import {
   FileBarChart2,
   Layers,
 } from "lucide-react";
+import { Link } from "wouter";
 
 function fmt(n: number) {
   return new Intl.NumberFormat("id-ID", {
@@ -188,6 +189,8 @@ export default function HoldingPLReportPage() {
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
+                <Link href="/accounting"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
+
                 <h1 className="text-2xl font-bold tracking-tight">Laporan Laba Rugi</h1>
                 <Badge className="bg-indigo-600/20 text-indigo-300 border border-indigo-500/40 text-xs font-mono">
                   <Layers className="h-3 w-3 mr-1" /> {holdingName}

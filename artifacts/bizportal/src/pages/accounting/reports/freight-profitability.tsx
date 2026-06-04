@@ -10,7 +10,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { useCompany } from "@/contexts/CompanyContext";
-import { Ship, Printer, Download, TrendingUp, TrendingDown, DollarSign, Percent } from "lucide-react";
+import { ArrowLeft, Ship, Printer, Download, TrendingUp, TrendingDown, DollarSign, Percent } from "lucide-react";
 import { exportXlsx, printWindow } from "@/lib/export";
 import { Link } from "wouter";
 
@@ -89,6 +89,8 @@ export default function FreightProfitabilityPage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
+            <Link href="/accounting"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
+
             <h1 className="text-2xl font-bold flex items-center gap-2">
               <Ship className="h-6 w-6" />
               Profitabilitas Freight

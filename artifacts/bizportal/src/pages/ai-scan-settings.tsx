@@ -8,7 +8,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { ScanLine, Save, Loader2, CheckCircle2, Info, X, Plus, RotateCcw, FileSearch, FlaskConical, ChevronDown, ChevronUp, Scissors, CheckCircle, Upload, FileText } from "lucide-react";
+import { ArrowLeft, ScanLine, Save, Loader2, CheckCircle2, Info, X, Plus, RotateCcw, FileSearch, FlaskConical, ChevronDown, ChevronUp, Scissors, CheckCircle, Upload, FileText } from "lucide-react";
+import { Link } from "wouter";
 
 type DocGroup = "sales" | "freight" | "customs";
 
@@ -254,6 +255,8 @@ export default function AiScanSettingsPage() {
             <ScanLine className="h-5 w-5 text-violet-600" />
           </div>
           <div>
+            <Link href="/settings"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
+
             <h1 className="text-xl font-semibold text-gray-900">Pengaturan Scan Dokumen</h1>
             <p className="text-sm text-gray-500">
               Pilih field mana yang diekstrak AI saat memindai dokumen

@@ -29,6 +29,7 @@ import {
   SquareArrowOutUpRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ArrowLeft } from "lucide-react";
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", {
@@ -582,6 +583,8 @@ export default function POOrdersPage() {
         <div className="w-[380px] flex-shrink-0 border-r border-slate-700 flex flex-col bg-slate-900 overflow-hidden">
           <div className="p-4 border-b border-slate-700/60 flex-shrink-0">
             <div className="flex items-center justify-between mb-3">
+              <Link href="/purchase"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
+
               <h1 className="font-semibold text-white text-base">Purchase Orders</h1>
               <Link href="/purchase/orders/new">
                 <Button size="sm" className="bg-emerald-600 hover:bg-emerald-500 text-white h-7 text-xs px-3">

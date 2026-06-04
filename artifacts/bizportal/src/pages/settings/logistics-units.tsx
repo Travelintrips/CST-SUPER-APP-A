@@ -9,7 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2, Package } from "lucide-react";
+import { ArrowLeft, Plus, Pencil, Trash2, Package } from "lucide-react";
+import { Link } from "wouter";
 
 interface LogisticsUnit {
   id: number;
@@ -93,6 +94,8 @@ export default function LogisticsUnitsPage() {
       <div className="flex flex-col gap-6 max-w-4xl">
         <div className="flex items-center justify-between">
           <div>
+            <Link href="/settings"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
+
             <h1 className="text-2xl font-bold flex items-center gap-2"><Package className="h-6 w-6" /> Satuan Pengiriman (Logistics Units)</h1>
             <p className="text-muted-foreground text-sm mt-1">Kelola daftar satuan pengiriman yang digunakan di modul logistik (kg, CBM, pallet, dll.)</p>
           </div>

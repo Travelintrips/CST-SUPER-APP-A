@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { Bot, Save, Loader2, RotateCcw, Info, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, Bot, Save, Loader2, RotateCcw, Info, CheckCircle2 } from "lucide-react";
+import { Link } from "wouter";
 
 const DEFAULT_PROMPT = `Kamu adalah asisten logistik virtual dari CST Logistics — perusahaan jasa pengiriman dan kepabeanan terkemuka di Indonesia.
 
@@ -93,6 +94,8 @@ export default function AiChatbotSettingsPage() {
             <Bot className="h-5 w-5 text-sky-600" />
           </div>
           <div>
+            <Link href="/settings"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
+
             <h1 className="text-xl font-semibold text-gray-900">Pengaturan AI Chatbot</h1>
             <p className="text-sm text-gray-500">Atur kepribadian, pengetahuan, dan cara kerja chatbot pelanggan</p>
           </div>

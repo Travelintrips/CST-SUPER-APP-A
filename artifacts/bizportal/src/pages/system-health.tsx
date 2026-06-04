@@ -16,6 +16,7 @@ import {
   Activity,
   Wifi,
 } from "lucide-react";
+import { Link } from "wouter";
 
 interface HealthResponse {
   status: "ok" | "degraded" | "error";
@@ -117,6 +118,8 @@ export default function SystemHealthPage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
+            <Link href="/settings"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
+
             <h1 className="text-2xl font-bold">Status Sistem</h1>
             <p className="text-sm text-muted-foreground mt-1">
               Kondisi real-time semua layanan BizPortal

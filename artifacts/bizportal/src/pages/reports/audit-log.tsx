@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ChevronDown, ChevronRight, Shield, Search, Download } from "lucide-react";
+import { ArrowLeft, ChevronDown, ChevronRight, Shield, Search, Download } from "lucide-react";
+import { Link } from "wouter";
 
 const BASE = "/api";
 
@@ -121,6 +122,8 @@ export default function AuditLogPage() {
     <div className="space-y-4 p-4">
       <div className="flex items-center gap-2">
         <Shield className="text-red-600" size={22} />
+        <Link href="/reports"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
+
         <h1 className="text-xl font-bold">Audit Log Keamanan</h1>
         <span className="text-sm text-gray-500 ml-2">Semua aktivitas penting tercatat</span>
       </div>

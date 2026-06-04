@@ -38,7 +38,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { Bot, ExternalLink, SendHorizonal, Trash2, RefreshCw, MessageSquare, Mail, CheckCircle2, MinusCircle, ClipboardList, X, Search } from "lucide-react";
+import { ArrowLeft, Bot, ExternalLink, SendHorizonal, Trash2, RefreshCw, MessageSquare, Mail, CheckCircle2, MinusCircle, ClipboardList, X, Search } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -290,6 +290,8 @@ export default function AiDraftsPage() {
               <Bot size={20} className="text-white" />
             </div>
             <div>
+              <Link href="/sales"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
+
               <h1 className="text-2xl font-bold text-foreground">AI Draft Quotations</h1>
               <p className="text-sm text-muted-foreground">
                 Draft penawaran yang dibuat otomatis dari email & WhatsApp masuk

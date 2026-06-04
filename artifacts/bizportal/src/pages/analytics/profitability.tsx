@@ -14,6 +14,7 @@ import {
   ChevronLeft, ChevronRight, Target, BarChart2, Clock,
 } from "lucide-react";
 import { Link } from "wouter";
+import { ArrowLeft } from "lucide-react";
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
@@ -176,6 +177,8 @@ export default function ProfitabilityAnalyticsPage() {
           <div>
             <div className="flex items-center gap-2">
               <BarChart2 className="h-6 w-6 text-indigo-500" />
+              <Link href="/analytics-dashboard"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
+
               <h1 className="text-2xl font-bold tracking-tight">Profitability Analytics</h1>
             </div>
             <p className="text-sm text-muted-foreground mt-1">Analisis profitabilitas per order, per customer, dan per vendor</p>

@@ -17,8 +17,9 @@ import {
 } from "@workspace/api-client-react";
 import type { UpdateAccountingSettingsBody } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Settings as SettingsIcon, Upload, X } from "lucide-react";
+import { ArrowLeft, Settings as SettingsIcon, Upload, X } from "lucide-react";
 import { useUpload } from "@workspace/object-storage-web";
+import { Link } from "wouter";
 
 type SettingsForm = Required<UpdateAccountingSettingsBody>;
 
@@ -159,6 +160,8 @@ export default function AccountingSettingsPage() {
     <AppShell>
       <div className="space-y-6 p-6">
         <div>
+          <Link href="/settings"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
+
           <h1 className="text-2xl font-bold flex items-center gap-2"><SettingsIcon className="h-6 w-6" />Pengaturan Akunting</h1>
           <p className="text-sm text-muted-foreground">Mapping akun &amp; jurnal default untuk auto-posting semua modul</p>
         </div>
