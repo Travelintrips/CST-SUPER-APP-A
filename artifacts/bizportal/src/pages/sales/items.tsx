@@ -883,28 +883,120 @@ export default function SalesItemsPage() {
                           )}
                         </TableCell>
                         <TableCell className="text-slate-400 text-xs">{taxName(p.defaultSalesTaxId)}</TableCell>
-                        <TableCell className="text-slate-400 text-xs">
+                        {/* Jenis Barang — inline editable */}
+                        <TableCell className="text-slate-300 text-xs min-w-[110px]">
                           {p.itemType === "barang" ? (
-                            p.weightKg != null ? (
-                              <div className="space-y-0.5">
-                                <div className="flex items-center gap-1 text-emerald-400 font-medium">
-                                  <span>{Number(p.weightKg)} kg</span>
-                                </div>
-                                {(p.lengthCm != null || p.widthCm != null || p.heightCm != null) && (
-                                  <div className="text-[11px] text-slate-500">
-                                    {[p.lengthCm, p.widthCm, p.heightCm].map(v => v != null ? Number(v) : "?").join(" × ")} cm
-                                  </div>
-                                )}
-                                {p.goodsType && (
-                                  <div className="text-[11px] text-slate-500 truncate max-w-[100px]">{p.goodsType}</div>
-                                )}
-                              </div>
+                            inlineEdit?.rowId === p.id && inlineEdit.field === "goodsType" ? (
+                              <select
+                                autoFocus
+                                className="w-full rounded border border-blue-500 bg-slate-900 text-slate-100 text-xs px-1 py-0.5"
+                                value={inlineEdit.value}
+                                onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
+                                onBlur={(e) => saveInlineEdit(p, "goodsType", e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") (e.target as HTMLSelectElement).blur();
+                                  if (e.key === "Escape") setInlineEdit(null);
+                                }}
+                              >
+                                <option value="">— pilih —</option>
+                                <option value="kayu">kayu</option>
+                                <option value="kapas">kapas</option>
+                                <option value="general">general</option>
+                                <option value="fragile">fragile</option>
+                                <option value="liquid">liquid</option>
+                                <option value="hazmat">hazmat</option>
+                              </select>
                             ) : (
-                              <span className="text-slate-600 text-[11px]">— belum diisi</span>
+                              <span
+                                className="cursor-pointer hover:text-blue-300 hover:underline"
+                                title="Klik untuk edit"
+                                onClick={() => setInlineEdit({ rowId: p.id, field: "goodsType", value: p.goodsType ?? "" })}
+                              >
+                                {inlineSaving.has(p.id) ? <Loader2 className="h-3 w-3 animate-spin inline" /> : (p.goodsType || <span className="text-slate-600 italic">— klik edit</span>)}
+                              </span>
                             )
-                          ) : (
-                            <span className="text-slate-600">—</span>
-                          )}
+                          ) : <span className="text-slate-600">—</span>}
+                        </TableCell>
+
+                        {/* Berat / CBM — conditional based on goodsType */}
+                        <TableCell className="text-slate-300 text-xs min-w-[90px]">
+                          {p.itemType === "barang" ? (() => {
+                            const isKapas = p.goodsType === "kapas";
+                            const field: InlineEdit["field"] = isKapas ? "volumeCbm" : "weightKg";
+                            const currentVal = isKapas ? (p.volumeCbm ?? null) : (p.weightKg ?? null);
+                            const unit = isKapas ? "m³" : "kg";
+                            const isEditing = inlineEdit?.rowId === p.id && inlineEdit.field === field;
+                            return isEditing ? (
+                              <input
+                                autoFocus
+                                type="number"
+                                step="0.001"
+                                min="0"
+                                className="w-20 rounded border border-blue-500 bg-slate-900 text-slate-100 text-xs px-1 py-0.5"
+                                value={inlineEdit.value}
+                                onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
+                                onBlur={(e) => saveInlineEdit(p, field, e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                                  if (e.key === "Escape") setInlineEdit(null);
+                                }}
+                              />
+                            ) : (
+                              <span
+                                className="cursor-pointer hover:text-emerald-300 hover:underline"
+                                title="Klik untuk edit"
+                                onClick={() => setInlineEdit({ rowId: p.id, field, value: currentVal != null ? String(currentVal) : "" })}
+                              >
+                                {inlineSaving.has(p.id) ? <Loader2 className="h-3 w-3 animate-spin inline" /> : (
+                                  currentVal != null
+                                    ? <span className="text-emerald-400 font-medium">{Number(currentVal)} {unit}</span>
+                                    : <span className="text-slate-600 italic">— klik edit</span>
+                                )}
+                              </span>
+                            );
+                          })() : <span className="text-slate-600">—</span>}
+                        </TableCell>
+
+                        {/* Dimensi L×W×H — always editable for barang */}
+                        <TableCell className="text-slate-300 text-xs min-w-[160px]">
+                          {p.itemType === "barang" ? (
+                            <div className="flex items-center gap-1">
+                              {(["lengthCm", "widthCm", "heightCm"] as const).map((dim, idx) => {
+                                const val = p[dim] as number | null | undefined;
+                                const isEditing = inlineEdit?.rowId === p.id && inlineEdit.field === dim;
+                                return (
+                                  <span key={dim} className="flex items-center gap-0.5">
+                                    {idx > 0 && <span className="text-slate-600">×</span>}
+                                    {isEditing ? (
+                                      <input
+                                        autoFocus
+                                        type="number"
+                                        step="0.1"
+                                        min="0"
+                                        className="w-14 rounded border border-blue-500 bg-slate-900 text-slate-100 text-xs px-1 py-0.5"
+                                        value={inlineEdit.value}
+                                        onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
+                                        onBlur={(e) => saveInlineEdit(p, dim, e.target.value)}
+                                        onKeyDown={(e) => {
+                                          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                                          if (e.key === "Escape") setInlineEdit(null);
+                                        }}
+                                      />
+                                    ) : (
+                                      <span
+                                        className="cursor-pointer hover:text-blue-300 hover:underline"
+                                        title="Klik untuk edit"
+                                        onClick={() => setInlineEdit({ rowId: p.id, field: dim, value: val != null ? String(val) : "" })}
+                                      >
+                                        {val != null ? Number(val) : <span className="text-slate-600">?</span>}
+                                      </span>
+                                    )}
+                                  </span>
+                                );
+                              })}
+                              <span className="text-slate-500 text-[10px] ml-0.5">cm</span>
+                            </div>
+                          ) : <span className="text-slate-600">—</span>}
                         </TableCell>
                         <TableCell>
                           {p.isActive ? (
