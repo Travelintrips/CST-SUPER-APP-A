@@ -115,6 +115,11 @@ router.get("/kpi-live", async (req, res) => {
     const cId = req.query.companyId ? Number(req.query.companyId) : null;
     const costCenterId = req.query.costCenterId ? Number(req.query.costCenterId) : null;
 
+    // Terima parameter date opsional (format YYYY-MM-DD), default ke CURRENT_DATE
+    const rawDate = req.query.date as string | undefined;
+    const isValidDate = rawDate && /^\d{4}-\d{2}-\d{2}$/.test(rawDate);
+    const targetDate = isValidDate ? rawDate : null;
+
     const [
       revenueTodayRes,
       bookingsTodayRes,
@@ -126,37 +131,37 @@ router.get("/kpi-live", async (req, res) => {
       facilityCountRes,
       netProfitTodayRes,
     ] = await Promise.all([
-      // Revenue hari ini dari accounting_entries (booking + membership)
+      // Revenue dari accounting_entries (booking + membership)
       db.execute(sql`
         SELECT COALESCE(SUM(total_debit), 0) AS amount
         FROM accounting_entries
         WHERE source IN ('sport_center_booking','sport_center_membership')
           AND status = 'posted'
-          AND date = CURRENT_DATE
+          AND date = COALESCE(${targetDate}::date, CURRENT_DATE)
           AND (${cId}::int IS NULL OR company_id = ${cId})
           AND (${costCenterId}::int IS NULL OR cost_center_id = ${costCenterId})
       `),
-      // Booking hari ini (bukan cancelled)
+      // Booking (bukan cancelled)
       db.execute(sql`
         SELECT COUNT(*) AS cnt
         FROM sport_bookings
-        WHERE booking_date = CURRENT_DATE
+        WHERE booking_date = COALESCE(${targetDate}::date, CURRENT_DATE)
           AND status != 'cancelled'
           AND (${cId}::int IS NULL OR company_id = ${cId})
       `),
-      // Booking aktif sekarang (confirmed atau checked_in, hari ini)
+      // Booking aktif (confirmed atau checked_in)
       db.execute(sql`
         SELECT COUNT(*) AS cnt
         FROM sport_bookings
-        WHERE booking_date = CURRENT_DATE
+        WHERE booking_date = COALESCE(${targetDate}::date, CURRENT_DATE)
           AND status IN ('confirmed','checked_in')
           AND (${cId}::int IS NULL OR company_id = ${cId})
       `),
-      // Check-in hari ini
+      // Check-in
       db.execute(sql`
         SELECT COUNT(*) AS cnt
         FROM sport_bookings
-        WHERE DATE(checked_in_at) = CURRENT_DATE
+        WHERE DATE(checked_in_at) = COALESCE(${targetDate}::date, CURRENT_DATE)
           AND status = 'checked_in'
           AND (${cId}::int IS NULL OR company_id = ${cId})
       `),
@@ -167,36 +172,36 @@ router.get("/kpi-live", async (req, res) => {
         WHERE status = 'active'
           AND (${cId}::int IS NULL OR company_id = ${cId})
       `),
-      // Refund hari ini (amount)
+      // Refund (amount)
       db.execute(sql`
         SELECT COALESCE(SUM(refund_amount), 0) AS amount
         FROM sport_refunds
-        WHERE DATE(created_at) = CURRENT_DATE
+        WHERE DATE(created_at) = COALESCE(${targetDate}::date, CURRENT_DATE)
           AND status IN ('pending','paid')
           AND (${cId}::int IS NULL OR company_id = ${cId})
       `),
-      // Occupancy hari ini: total jam terpakai dari booking aktual
+      // Occupancy: total jam terpakai dari booking
       db.execute(sql`
         SELECT COALESCE(SUM(duration_hours), 0) AS occupied_hours
         FROM sport_bookings
-        WHERE booking_date = CURRENT_DATE
+        WHERE booking_date = COALESCE(${targetDate}::date, CURRENT_DATE)
           AND status NOT IN ('cancelled')
           AND (${cId}::int IS NULL OR company_id = ${cId})
       `),
-      // Jumlah fasilitas aktif (untuk hitung available_hours)
+      // Jumlah fasilitas aktif
       db.execute(sql`
         SELECT COUNT(*) AS cnt
         FROM sport_facilities
         WHERE is_active = TRUE
           AND (${cId}::int IS NULL OR company_id = ${cId})
       `),
-      // Net profit hari ini: revenue - refund (dari accounting)
+      // Net profit: revenue - refund (dari accounting)
       db.execute(sql`
         SELECT
           COALESCE(SUM(CASE WHEN source IN ('sport_center_booking','sport_center_membership') THEN total_debit ELSE 0 END), 0)
           - COALESCE(SUM(CASE WHEN source IN ('sport_center_refund','sport_center_booking_refund','sport_center_booking_reversal') THEN total_debit ELSE 0 END), 0) AS net
         FROM accounting_entries
-        WHERE date = CURRENT_DATE
+        WHERE date = COALESCE(${targetDate}::date, CURRENT_DATE)
           AND status = 'posted'
           AND source IN ('sport_center_booking','sport_center_membership','sport_center_refund','sport_center_booking_refund','sport_center_booking_reversal')
           AND (${cId}::int IS NULL OR company_id = ${cId})

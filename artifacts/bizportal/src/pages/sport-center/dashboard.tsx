@@ -15,7 +15,7 @@ import {
   Activity, AlertCircle, Building2, Wifi, WifiOff,
   Dumbbell, ShoppingBag, RefreshCw, CloudUpload, CheckCircle2,
   XCircle, Database, BookOpen, Flame, CheckCheck, BarChart2,
-  ArrowDownRight, Zap, Filter,
+  ArrowDownRight, Zap, Filter, ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { fetchSportCenterData, type SportCenterSupabaseData } from "@/lib/sportCenterSupabase";
 import { supabase } from "@/lib/supabaseClient";
@@ -85,18 +85,38 @@ export default function SportCenterDashboard() {
   const [supabaseConnected, setSupabaseConnected] = useState(false);
   const { costCenters, selectedId: costCenterId, setSelectedId: setCostCenterId, selectedLabel: costCenterLabel } = useSportCostCenter();
 
+  // ── State: KPI date picker ────────────────────────────────────────────────
+  const todayStr = new Date().toISOString().split("T")[0];
+  const [kpiDate, setKpiDate] = useState<string>(todayStr);
+
+  const kpiDateLabel = (() => {
+    const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1);
+    const tomorrow  = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+    if (kpiDate === todayStr) return "Hari Ini";
+    if (kpiDate === yesterday.toISOString().split("T")[0]) return "Kemarin";
+    if (kpiDate === tomorrow.toISOString().split("T")[0]) return "Besok";
+    return new Intl.DateTimeFormat("id-ID", { day: "2-digit", month: "short", year: "numeric" }).format(new Date(kpiDate));
+  })();
+
+  const shiftDate = (days: number) => {
+    const d = new Date(kpiDate);
+    d.setDate(d.getDate() + days);
+    setKpiDate(d.toISOString().split("T")[0]);
+  };
+
   // ── Query 0: KPI Live realtime ────────────────────────────────────────────
   const { data: kpiLive, isLoading: kpiLoading } = useQuery<KpiLiveData>({
-    queryKey: ["sport-center-kpi-live", activeCompanyId, costCenterId],
+    queryKey: ["sport-center-kpi-live", activeCompanyId, costCenterId, kpiDate],
     queryFn: async () => {
       const qs = new URLSearchParams();
       if (activeCompanyId) qs.set("companyId", String(activeCompanyId));
       if (costCenterId) qs.set("costCenterId", String(costCenterId));
+      qs.set("date", kpiDate);
       const r = await fetch(`/api/sport-center/kpi-live?${qs}`, { credentials: "include" });
       if (!r.ok) throw new Error("Gagal memuat KPI live");
       return r.json() as Promise<KpiLiveData>;
     },
-    refetchInterval: 30_000,
+    refetchInterval: kpiDate === todayStr ? 30_000 : false,
   });
 
   // ── Query Heatmap: Jam Ramai ──────────────────────────────────────────────
@@ -406,14 +426,46 @@ export default function SportCenterDashboard() {
 
         {/* ── FASE 6D-G: KPI Hari Ini (Live) ──────────────────────────────── */}
         <div>
-          <div className="flex items-center gap-2 mb-3">
-            <Zap className="h-4 w-4 text-yellow-400" />
-            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">KPI Hari Ini — Live</h2>
-            {realtimeCount > 0 && (
-              <Badge className="bg-yellow-900/40 text-yellow-300 border-yellow-600 text-xs">
-                {realtimeCount} update realtime
-              </Badge>
-            )}
+          <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              <Zap className="h-4 w-4 text-yellow-400" />
+              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">KPI — Live</h2>
+              {kpiDate === todayStr && realtimeCount > 0 && (
+                <Badge className="bg-yellow-900/40 text-yellow-300 border-yellow-600 text-xs">
+                  {realtimeCount} update realtime
+                </Badge>
+              )}
+              {kpiDate !== todayStr && (
+                <Badge className="bg-slate-700 text-slate-300 border-slate-600 text-xs">
+                  Histori
+                </Badge>
+              )}
+            </div>
+            {/* Date navigator */}
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => shiftDate(-1)}>
+                <ChevronLeft className="h-3.5 w-3.5" />
+              </Button>
+              <div className="relative">
+                <span className="px-3 py-1 text-xs font-medium bg-accent/40 border border-border/60 rounded-md text-foreground min-w-[90px] text-center block">
+                  {kpiDateLabel}
+                </span>
+                <input
+                  type="date"
+                  value={kpiDate}
+                  onChange={(e) => e.target.value && setKpiDate(e.target.value)}
+                  className="absolute inset-0 opacity-0 cursor-pointer w-full"
+                />
+              </div>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => shiftDate(1)}>
+                <ChevronRight className="h-3.5 w-3.5" />
+              </Button>
+              {kpiDate !== todayStr && (
+                <Button variant="ghost" size="sm" className="h-7 text-xs text-yellow-400 hover:text-yellow-300 px-2" onClick={() => setKpiDate(todayStr)}>
+                  Hari Ini
+                </Button>
+              )}
+            </div>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
             {kpiLoading ? (
