@@ -218,9 +218,11 @@ export async function ensureDefaultCompany(): Promise<number> {
 export async function seedAccountingDefaults(companyId?: number): Promise<void> {
   const cid = companyId ?? (await ensureDefaultCompany());
 
-  // ── Fast-path: skip heavy seed if COA already fully populated ────────────
+  // ── Fast-path: skip heavy seed if COA, journals, AND settings already fully populated ──
   // Count leaf accounts that have a company_id (per-company accounts).
   // Expected: COA_LEAF_TEMPLATES.length (38) × ALL_COMPANY_IDS.length (4) = 152
+  // Also check journals (6 templates × 4 companies = 24) and that settings rows have
+  // cash_journal_id populated — if any are missing, fall through to full seed.
   try {
     const [{ leafCount }] = await db
       .select({ leafCount: sql<number>`count(*)::int` })
@@ -228,6 +230,23 @@ export async function seedAccountingDefaults(companyId?: number): Promise<void> 
       .where(sql`company_id IS NOT NULL`);
     const expectedLeaves = COA_LEAF_TEMPLATES.length * ALL_COMPANY_IDS.length;
     if (Number(leafCount) >= expectedLeaves) {
+      // Also verify journals and settings are not empty
+      const [{ jCount }] = await db
+        .select({ jCount: sql<number>`count(*)::int` })
+        .from(accountingJournalsTable)
+        .where(sql`company_id IS NOT NULL`);
+      const expectedJournals = 6 * ALL_COMPANY_IDS.length; // 6 journal types × 4 companies
+      const [{ nullSettingsCnt }] = await db
+        .select({ nullSettingsCnt: sql<number>`count(*)::int` })
+        .from(accountingSettingsTable)
+        .where(sql`cash_journal_id IS NULL AND company_id IS NOT NULL`);
+      if (Number(jCount) < expectedJournals || Number(nullSettingsCnt) > 0) {
+        logger.info(
+          { jCount: Number(jCount), expectedJournals, nullSettingsCnt: Number(nullSettingsCnt) },
+          "Accounting seed: COA seeded but journals/settings missing — running full seed to repair."
+        );
+        // Fall through to full seed below
+      } else {
       logger.info("Accounting seed: COA already fully seeded — skipping (fast path).");
       // Still patch grirAccountId in settings if it's NULL but 2-1045 account exists
       try {
@@ -251,7 +270,8 @@ export async function seedAccountingDefaults(companyId?: number): Promise<void> 
         `);
       } catch (e) { /* non-fatal */ }
       return;
-    }
+      } // end else (journals+settings already seeded)
+    } // end if (leafCount >= expectedLeaves)
   } catch {
     // column may not exist yet — fall through to full seed
   }

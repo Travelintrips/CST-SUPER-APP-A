@@ -226,6 +226,10 @@ export async function runSportCenterMigration(): Promise<void> {
         ADD COLUMN IF NOT EXISTS tax_rate    NUMERIC(5,2)  NOT NULL DEFAULT 0,
         ADD COLUMN IF NOT EXISTS tax_amount  NUMERIC(14,2) NOT NULL DEFAULT 0
     `);
+    await db.execute(sql`
+      ALTER TABLE sport_payments
+        ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'SPORT_CENTER'
+    `);
 
     // Fase 3: tabel maintenance request (integrasi Purchase — Fase 4 upgrade)
     await db.execute(sql`
@@ -410,7 +414,7 @@ export async function runSportCenterMigration(): Promise<void> {
       ALTER TABLE sport_center_bookings ADD COLUMN IF NOT EXISTS payment_status TEXT NOT NULL DEFAULT 'unpaid';
       ALTER TABLE sport_center_bookings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
       ALTER TABLE sport_center_bookings ADD COLUMN IF NOT EXISTS customer_phone TEXT;
-    `);
+    `).catch(() => { /* tabel lama mungkin sudah tidak ada */ });
 
     await db.execute(sql`
       ALTER TABLE sport_center_bookings ALTER COLUMN customer_email DROP NOT NULL;
@@ -426,7 +430,9 @@ export async function runSportCenterMigration(): Promise<void> {
           SELECT 1 FROM pg_constraint
           WHERE conname = 'sport_center_bookings_booking_code_key'
         ) THEN
-          ALTER TABLE sport_center_bookings ADD CONSTRAINT sport_center_bookings_booking_code_key UNIQUE (booking_code);
+          IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='sport_center_bookings') THEN
+            ALTER TABLE sport_center_bookings ADD CONSTRAINT sport_center_bookings_booking_code_key UNIQUE (booking_code);
+          END IF;
         END IF;
       END $$;
     `);

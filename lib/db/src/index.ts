@@ -5,14 +5,10 @@ import * as schema from "./schema";
 const { Pool } = pg;
 
 function resolveConnectionString(): string {
-  const isDev = process.env.NODE_ENV !== "production";
-
-  // In development, prefer DEV credentials; fall back to shared/prod if not set.
   const candidates = [
-    process.env.SUPABASE_PG_URL,
-    isDev ? process.env.SUPABASE_DATABASE_URL_DEV : undefined,
-    process.env.SUPABASE_DATABASE_URL,
     process.env.DATABASE_URL,
+    process.env.SUPABASE_PG_URL,
+    process.env.SUPABASE_DATABASE_URL,
   ];
 
   for (const url of candidates) {
@@ -22,12 +18,12 @@ function resolveConnectionString(): string {
   }
 
   throw new Error(
-    "No valid PostgreSQL connection string found. Set SUPABASE_PG_URL, SUPABASE_DATABASE_URL, or DATABASE_URL.",
+    "No valid PostgreSQL connection string found. Set DATABASE_URL.",
   );
 }
 
 const connectionString = resolveConnectionString();
-const isLocalConn = /localhost|127\.0\.0\.1/.test(connectionString);
+const isLocalConn = /localhost|127\.0\.0\.1|helium/.test(connectionString);
 
 export const pool = new Pool({
   connectionString,

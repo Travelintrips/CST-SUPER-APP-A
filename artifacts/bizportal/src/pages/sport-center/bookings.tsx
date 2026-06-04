@@ -68,6 +68,19 @@ export default function SportCenterBookings() {
     new URLSearchParams(window.location.search).get("payment") ?? "all"
   );
 
+  const [statusFilter, setStatusFilter] = useState(() => {
+    if (typeof window !== "undefined") {
+      return new URLSearchParams(window.location.search).get("status") ?? "all";
+    }
+    return "all";
+  });
+  const [paymentFilter, setPaymentFilter] = useState(() => {
+    if (typeof window !== "undefined") {
+      return new URLSearchParams(window.location.search).get("payment") ?? "all";
+    }
+    return "all";
+  });
+
   const [dateFilter, setDateFilter] = useState("");
   const [searchText, setSearchText] = useState("");
   const [page, setPage] = useState(1);
