@@ -991,14 +991,6 @@ export default function BookPage() {
           {quickTrucking === "detail" && (
             <div className="bg-muted/30 rounded-xl border border-border p-5 space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-xs flex items-center gap-1"><Calendar className="w-3 h-3" /> Tanggal Pickup</Label>
-                  <Input type="date" value={quickTruckData.pickupDate||""} onChange={e => setQuickTruckData(p => ({ ...p, pickupDate: e.target.value }))} />
-                </div>
-                <div>
-                  <Label className="text-xs flex items-center gap-1"><Clock className="w-3 h-3" /> Jam Pickup</Label>
-                  <Input type="time" value={quickTruckData.pickupTime||""} onChange={e => setQuickTruckData(p => ({ ...p, pickupTime: e.target.value }))} />
-                </div>
                 <div className="sm:col-span-2">
                   <Label className="text-xs">Alamat Pickup <span className="text-destructive">*</span></Label>
                   <Textarea rows={2} placeholder="Jl. ..., Kota, Provinsi" value={quickTruckData.pickupAddress||""} onChange={e => setQuickTruckData(p => ({ ...p, pickupAddress: e.target.value }))} />
@@ -1456,14 +1448,6 @@ export default function BookPage() {
                 <div className="col-span-2 sm:col-span-1">
                   <Label className="text-xs">Kota Tujuan (Kecamatan)</Label>
                   <Input placeholder="Rungkut, Surabaya" value={f.destDistrict} onChange={e => set("destDistrict", e.target.value)} />
-                </div>
-                <div className="col-span-2 sm:col-span-1">
-                  <Label className="text-xs">Tanggal Pickup</Label>
-                  <Input type="date" value={f.pickupDate} onChange={e => set("pickupDate", e.target.value)} />
-                </div>
-                <div className="col-span-2 sm:col-span-1">
-                  <Label className="text-xs">Jam Pickup</Label>
-                  <Input type="time" value={f.pickupTime} onChange={e => set("pickupTime", e.target.value)} />
                 </div>
                 <div className="col-span-2">
                   <Label className="text-xs">Tipe Unit / Armada</Label>

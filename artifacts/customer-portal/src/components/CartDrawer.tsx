@@ -432,17 +432,6 @@ export function CartDrawer() {
               {/* Detail Form */}
               {truckMode === "detail" && (
                 <div className="space-y-3">
-                  <div className="grid grid-cols-2 gap-2.5">
-                    <div>
-                      <Label className="text-[11px] flex items-center gap-1 mb-1"><Calendar className="w-3 h-3" /> Tanggal Pickup</Label>
-                      <Input type="date" className="h-8 text-xs" value={truckData.pickupDate||""} onChange={e => setTruckData(p => ({ ...p, pickupDate: e.target.value }))} />
-                    </div>
-                    <div>
-                      <Label className="text-[11px] flex items-center gap-1 mb-1"><Clock className="w-3 h-3" /> Jam Pickup</Label>
-                      <Input type="time" className="h-8 text-xs" value={truckData.pickupTime||""} onChange={e => setTruckData(p => ({ ...p, pickupTime: e.target.value }))} />
-                    </div>
-                  </div>
-
                   {/* Alamat Pickup — otomatis dari gudang CST Logistics, tidak bisa diubah customer */}
                   <div>
                     <Label className="text-[11px] mb-1 flex items-center gap-1">
