@@ -343,6 +343,13 @@ const EXTRA_PORT = Number(process.env.EXTRA_PORT ?? 23434);
 if (EXTRA_PORT !== PORT) {
   const extra = http.createServer(handleRequest);
   extra.on("upgrade", handleUpgrade);
+  extra.on("error", (err) => {
+    if (err.code === "EADDRINUSE") {
+      console.warn(`[gw] EXTRA_PORT ${EXTRA_PORT} already in use — skipping mirror listener`);
+    } else {
+      console.error(`[gw] Extra server error: ${err.message}`);
+    }
+  });
   extra.listen(EXTRA_PORT, () => {
     console.log(`Gateway also listening on port ${EXTRA_PORT} (mirror)`);
   });
