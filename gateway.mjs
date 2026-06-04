@@ -35,11 +35,11 @@ const BASE_DELAY    = Number(process.env.GW_BASE_DELAY    ?? 200);
 const RETRYABLE_CODES = new Set(["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENOTFOUND"]);
 
 const API_PORT           = Number(process.env.API_PORT           ?? 8080);
-// BizPortal Vite runs at 18442 (Replit-injected PORT for artifacts/bizportal: web)
-const BIZPORTAL_PORT     = 18442;
-// Customer portal Vite runs at 5174 (proxy at 23434 fails EADDRINUSE from stale CST-SUPER-APP process)
-const CUSTOMER_PORT      = 5174;
-const LOGISTIC_ORDER_PORT = Number(process.env.LOGISTIC_ORDER_PORT ?? 19368);
+// BizPortal Vite runs at 4200
+const BIZPORTAL_PORT     = Number(process.env.BIZPORTAL_PORT ?? 4200);
+// Customer portal Vite runs at 5173
+const CUSTOMER_PORT      = Number(process.env.CUSTOMER_PORT ?? 5173);
+const LOGISTIC_ORDER_PORT = Number(process.env.LOGISTIC_ORDER_PORT ?? 3001);
 
 const ROUTES = [
   { prefix: "/api",             upstream: { host: "localhost", port: API_PORT } },
