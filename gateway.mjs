@@ -35,11 +35,12 @@ const BASE_DELAY    = Number(process.env.GW_BASE_DELAY    ?? 200);
 const RETRYABLE_CODES = new Set(["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENOTFOUND"]);
 
 const API_PORT           = Number(process.env.API_PORT           ?? 8080);
-// BizPortal Vite runs at 4200
-const BIZPORTAL_PORT     = Number(process.env.BIZPORTAL_PORT ?? 4200);
-// Customer portal Vite runs at 5173
-const CUSTOMER_PORT      = Number(process.env.CUSTOMER_PORT ?? 5173);
-const LOGISTIC_ORDER_PORT = Number(process.env.LOGISTIC_ORDER_PORT ?? 3001);
+// BizPortal Vite runs at 18442 (Replit artifact workflow)
+const BIZPORTAL_PORT     = Number(process.env.BIZPORTAL_PORT     ?? 18442);
+// Customer portal Vite runs at 5174 (internal; Replit artifact proxies at 23434)
+const CUSTOMER_PORT      = Number(process.env.CUSTOMER_PORT      ?? 5174);
+// Logistic Order Vite runs at 19368 (Replit artifact workflow)
+const LOGISTIC_ORDER_PORT = Number(process.env.LOGISTIC_ORDER_PORT ?? 19368);
 
 const ROUTES = [
   { prefix: "/api",             upstream: { host: "localhost", port: API_PORT } },
@@ -339,10 +340,18 @@ startGateway();
 
 // Also listen on EXTRA_PORT (default 23434) to resolve port-mapping conflicts
 // where both port 5000 and 23434 are mapped to external port 80 in .replit.
+// If the port is already taken (e.g. by customer-portal proxy), skip gracefully.
 const EXTRA_PORT = Number(process.env.EXTRA_PORT ?? 23434);
 if (EXTRA_PORT !== PORT) {
   const extra = http.createServer(handleRequest);
   extra.on("upgrade", handleUpgrade);
+  extra.once("error", (err) => {
+    if (err.code === "EADDRINUSE") {
+      console.warn(`[gw] EXTRA_PORT ${EXTRA_PORT} already in use — skipping mirror listener`);
+    } else {
+      console.error(`[gw] EXTRA_PORT error: ${err.message}`);
+    }
+  });
   extra.listen(EXTRA_PORT, () => {
     console.log(`Gateway also listening on port ${EXTRA_PORT} (mirror)`);
   });
