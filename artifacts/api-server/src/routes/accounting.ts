@@ -384,7 +384,7 @@ router.get("/taxes", async (req, res) => {
 });
 
 router.post("/taxes", async (req, res) => {
-  const { name, rate, kind, accountId, isActive } = req.body ?? {};
+  const { name, rate, kind, cutType, accountId, isActive } = req.body ?? {};
   const companyId = resolveCompanyId(req);
   if (!name || rate === undefined || !kind || !accountId)
     return res
@@ -401,6 +401,7 @@ router.post("/taxes", async (req, res) => {
       name,
       rate: String(rate),
       kind,
+      cutType: cutType ?? "self_borne",
       accountId: Number(accountId),
       isActive: isActive ?? true,
     })
@@ -415,6 +416,7 @@ router.patch("/taxes/:id", async (req, res) => {
   if (req.body?.name !== undefined) patch["name"] = req.body.name;
   if (req.body?.rate !== undefined) patch["rate"] = String(req.body.rate);
   if (req.body?.kind !== undefined) patch["kind"] = req.body.kind;
+  if (req.body?.cutType !== undefined) patch["cutType"] = req.body.cutType;
   if (req.body?.accountId !== undefined)
     patch["accountId"] = Number(req.body.accountId);
   if (req.body?.isActive !== undefined) patch["isActive"] = req.body.isActive;
