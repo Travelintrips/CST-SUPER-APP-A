@@ -36,7 +36,6 @@ export async function sendWhatsAppMedia(
   if (!mediaUrl?.trim()) {
     return sendWhatsApp(target, message, opts);
   }
-  const FONNTE_TOKEN = await getAppConfig("FONNTE_TOKEN");
   const FONNTE_TOKEN = await getFonnteToken();
   if (!FONNTE_TOKEN) {
     logger.warn("FONNTE_TOKEN not set — skipping WhatsApp media notification");
@@ -137,7 +136,6 @@ export async function sendWhatsApp(
   message: string,
   opts?: { context?: string; refType?: string; refId?: string },
 ): Promise<void> {
-  const FONNTE_TOKEN = await getAppConfig("FONNTE_TOKEN");
   const FONNTE_TOKEN = await getFonnteToken();
   if (!FONNTE_TOKEN) {
     logger.warn("FONNTE_TOKEN not set — skipping WhatsApp notification");
