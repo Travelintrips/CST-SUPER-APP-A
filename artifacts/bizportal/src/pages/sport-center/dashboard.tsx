@@ -709,7 +709,16 @@ export default function SportCenterDashboard() {
                   <CardContent className="p-4">
                     <div className="flex items-start justify-between">
                       <div className="min-w-0 flex-1">
-                        <p className="text-xs text-muted-foreground mb-1 truncate group-hover:text-foreground/70 transition-colors">{s.title}</p>
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <p className="text-xs text-muted-foreground truncate group-hover:text-foreground/70 transition-colors">{s.title}</p>
+                          {s.filter != null && (
+                            <span className={`text-[9px] font-semibold px-1 py-0.5 rounded border leading-none shrink-0 ${
+                              isActive
+                                ? "bg-yellow-900/60 text-yellow-300 border-yellow-600"
+                                : "bg-muted/60 text-muted-foreground border-border/60"
+                            }`}>FILTER</span>
+                          )}
+                        </div>
                         <p className={`text-xl font-bold ${isActive ? "text-yellow-300" : "text-foreground"}`}>{s.value}</p>
                         <p className="text-xs text-muted-foreground mt-1 truncate">{s.sub}</p>
                       </div>
