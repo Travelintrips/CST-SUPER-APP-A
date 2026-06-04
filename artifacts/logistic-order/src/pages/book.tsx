@@ -308,19 +308,11 @@ function CalculatorForm({ item, onAdd, onBack }: { item: ServiceItem; onAdd: (da
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label className="text-xs">Pickup City</Label>
-              <CitySearchInput
-                placeholder="Cari kota asal..."
-                value={state.pickupCity || ""}
-                onSelect={(name, lat, lon) => handleCitySelect("pickup", name, lat, lon)}
-              />
+              <CityAutocompleteInput type="city" placeholder="Cari kota asal..." value={state.pickupCity||""} onChange={v => set("pickupCity", v)} />
             </div>
             <div>
               <Label className="text-xs">Destination City</Label>
-              <CitySearchInput
-                placeholder="Cari kota tujuan..."
-                value={state.destCity || ""}
-                onSelect={(name, lat, lon) => handleCitySelect("dest", name, lat, lon)}
-              />
+              <CityAutocompleteInput type="city" placeholder="Cari kota tujuan..." value={state.destCity||""} onChange={v => set("destCity", v)} />
             </div>
           </div>
           <div>
