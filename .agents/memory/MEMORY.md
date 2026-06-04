@@ -26,3 +26,4 @@
 - [Multi-Company Data Isolation](multi-company-isolation.md) — company_id added to product_templates & whatsapp_template_configs; unique indexes use COALESCE(company_id,0); suppliers/templates/WA-templates filtered by resolveCompanyId in routes.
 - [FASE 5 Driver Assignment Analytics](fase5-driver-analytics.md) — driverJobWorker (auto-cancel 24h, reminder 6h), analytics/summary endpoint, analytics dashboard page, force-update dialog + SSE toast in OrderDriverAssignmentPanel.
 - [FASE 6A Cost Center Framework](fase6a-cost-center.md) — cost_centers table + costCenterId on accounting_entries; resolveCostCenterId helper; all report endpoints support ?cost_center_id= filter; CRUD API + BizPortal master page.
+- [Portal Product Order Full Flow](portal-product-order-flow.md) — 5 gaps fixed: stock deduction, auto-SO, tracking page, invoice+payment, driver assignment. mailer.ts had duplicate declarations (was accidentally doubled).

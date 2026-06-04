@@ -1,6 +1,5 @@
 import { Resend } from "resend";
 import { logNotification } from "./notificationLog.js";
-import { getCachedOrEnvConfig } from "./appConfig.js";
 import { getSmtpPass, getSmtpFrom } from "./appSecrets.js";
 
 let _hasSmtpKey: boolean = !!(process.env.SMTP_PASS?.trim());
@@ -29,19 +28,6 @@ export interface SendMailOptions {
     content: Buffer;
     contentType: string;
   }>;
-}
-
-let _hasSmtpKey: boolean = !!(process.env.SMTP_PASS?.trim());
-
-export function isSmtpConfigured(): boolean {
-  return _hasSmtpKey || !!getCachedOrEnvConfig("SMTP_PASS");
-}
-
-export async function warmupMailer(): Promise<void> {
-  try {
-    const apiKey = await getSmtpPass();
-    _hasSmtpKey = !!apiKey;
-  } catch { }
 }
 
 async function getResend(): Promise<{ client: Resend; from: string }> {
