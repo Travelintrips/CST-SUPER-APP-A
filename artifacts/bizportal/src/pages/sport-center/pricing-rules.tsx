@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,7 +20,7 @@ import { Switch } from "@/components/ui/switch";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCompany } from "@/contexts/CompanyContext";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2, Tags, RefreshCw } from "lucide-react";
+import { Plus, Pencil, Trash2, Tags, RefreshCw, ArrowLeft } from "lucide-react";
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
@@ -38,6 +39,7 @@ const DAY_LABEL: Record<string, string> = {
 const EMPTY = { facility_id: "", name: "", day_type: "all", time_start: "", time_end: "", price_per_hour: "0", is_active: true };
 
 export default function SportCenterPricingRules() {
+  const [, navigate] = useLocation();
   const qc = useQueryClient();
   const { activeCompanyId } = useCompany();
   const { toast } = useToast();
@@ -110,6 +112,9 @@ export default function SportCenterPricingRules() {
       <div className="p-6 space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
+            <Button variant="ghost" size="icon" onClick={() => navigate("/sport-center/dashboard")} className="h-8 w-8 shrink-0">
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
             <Tags className="h-6 w-6 text-orange-400" />
             <div>
               <h1 className="text-2xl font-bold text-foreground">Pricing Rules</h1>
