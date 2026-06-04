@@ -18,7 +18,7 @@ import { useCompany } from "@/contexts/CompanyContext";
 import {
   TrendingUp, TrendingDown, DollarSign, Users, CalendarDays,
   RefreshCw, BarChart2, ArrowUpRight, ArrowDownRight, Activity,
-  Trophy, Target, Percent, Zap, Filter,
+  Trophy, Target, Percent, Zap, Filter, ArrowLeft,
 } from "lucide-react";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid,
