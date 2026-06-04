@@ -60,7 +60,6 @@ export default function SportCenterBookings() {
   const esRef = useRef<EventSource | null>(null);
 
 
-  const [statusFilter, setStatusFilter] = useState("all");
   const [paymentFilter, setPaymentFilter] = useState(() => {
     if (typeof window !== "undefined") {
       return new URLSearchParams(window.location.search).get("payment") ?? "all";

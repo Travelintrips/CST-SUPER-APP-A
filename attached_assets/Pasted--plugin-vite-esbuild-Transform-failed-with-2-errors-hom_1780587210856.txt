@@ -1,0 +1,29 @@
+[plugin:vite:esbuild] Transform failed with 2 errors:
+/home/runner/workspace/artifacts/bizportal/src/pages/sport-center/bookings.tsx:72:9: ERROR: The symbol "statusFilter" has already been declared
+/home/runner/workspace/artifacts/bizportal/src/pages/sport-center/bookings.tsx:72:23: ERROR: The symbol "setStatusFilter" has already been declared
+/home/runner/workspace/artifacts/bizportal/src/pages/sport-center/bookings.tsx:72:9
+The symbol "statusFilter" has already been declared
+70 |  
+71 |    const initialStatus = new URLSearchParams(window.location.search).get("status") ?? "all";
+72 |    const [statusFilter, setStatusFilter] = useState(initialStatus);
+   |           ^
+73 |  
+74 |    const [dateFilter, setDateFilter] = useState("");
+
+The symbol "setStatusFilter" has already been declared
+70 |  
+71 |    const initialStatus = new URLSearchParams(window.location.search).get("status") ?? "all";
+72 |    const [statusFilter, setStatusFilter] = useState(initialStatus);
+   |                         ^
+73 |  
+74 |    const [dateFilter, setDateFilter] = useState("");
+    at failureErrorWithLog (/home/runner/workspace/node_modules/.pnpm/esbuild@0.27.3/node_modules/esbuild/lib/main.js:1467:15)
+    at /home/runner/workspace/node_modules/.pnpm/esbuild@0.27.3/node_modules/esbuild/lib/main.js:736:50
+    at responseCallbacks.<computed> (/home/runner/workspace/node_modules/.pnpm/esbuild@0.27.3/node_modules/esbuild/lib/main.js:603:9)
+    at handleIncomingPacket (/home/runner/workspace/node_modules/.pnpm/esbuild@0.27.3/node_modules/esbuild/lib/main.js:658:12)
+    at Socket.readFromStdout (/home/runner/workspace/node_modules/.pnpm/esbuild@0.27.3/node_modules/esbuild/lib/main.js:581:7)
+    at Socket.emit (node:events:524:28)
+    at addChunk (node:internal/streams/readable:561:12)
+    at readableAddChunkPushByteMode (node:internal/streams/readable:512:3)
+    at Readable.push (node:internal/streams/readable:392:5)
+    at Pipe.onStreamRead (node:internal/stream_base_commons:191:23)
