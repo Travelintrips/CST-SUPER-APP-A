@@ -37,7 +37,7 @@ import {
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { CreditCard, MessageSquare, ShoppingCart, Send } from "lucide-react";
+import { ArrowLeft, CreditCard, MessageSquare, ShoppingCart, Send } from "lucide-react";
 import { CorrespondenceTab } from "@/components/CorrespondenceTab";
 import { useLanguage } from "@/contexts/LanguageContext";
 
@@ -190,6 +190,7 @@ export default function SalesInvoicesPage() {
     <AppShell>
       <div className="flex flex-col gap-6">
         <div className="flex items-center justify-between flex-wrap gap-3">
+          <Link href="/sales"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
           <div>
             <h1 className="text-2xl font-bold">Invoices</h1>
             <p className="text-sm text-muted-foreground">Faktur dari sales orders.</p>

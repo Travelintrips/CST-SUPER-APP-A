@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,7 +25,7 @@ import type { SalesDocument } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { usePrefetchOnHover } from "@/hooks/use-prefetch-on-hover";
-import { Plus, Trash2, X, Search, RefreshCw, FileText, ChevronLeft, ChevronRight, Download } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, X, Search, RefreshCw, FileText, ChevronLeft, ChevronRight, Download } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 const idr = (n: number) =>
@@ -278,6 +278,7 @@ export default function SalesDocumentsListPage({ kind = "quote" }: Props) {
 
         {/* Header */}
         <div className="flex items-center justify-between">
+          <Link href="/sales"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
           <div>
             <h1 className="text-2xl font-bold flex items-center gap-2">
               <FileText className="h-6 w-6" /> {title}
