@@ -68,6 +68,7 @@ export default function SportCenterBookings() {
     new URLSearchParams(window.location.search).get("payment") ?? "all"
   );
 
+
   const [dateFilter, setDateFilter] = useState("");
   const [searchText, setSearchText] = useState("");
   const [page, setPage] = useState(1);

@@ -33,11 +33,11 @@ router.get("/summary", requireAdmin, async (req, res) => {
 
     const dateFilter =
       range.from && range.to
-        ? sql`AND ae.date BETWEEN ${range.from.toISOString().slice(0, 10)} AND ${range.to.toISOString().slice(0, 10)}`
+        ? sql`AND ae.entry_date BETWEEN ${range.from.toISOString().slice(0, 10)} AND ${range.to.toISOString().slice(0, 10)}`
         : range.from
-          ? sql`AND ae.date >= ${range.from.toISOString().slice(0, 10)}`
+          ? sql`AND ae.entry_date >= ${range.from.toISOString().slice(0, 10)}`
           : range.to
-            ? sql`AND ae.date <= ${range.to.toISOString().slice(0, 10)}`
+            ? sql`AND ae.entry_date <= ${range.to.toISOString().slice(0, 10)}`
             : sql``;
 
     const [companiesRes, companyPerfRes, costCenterPerfRes, cashRes, costCentersRes] =
