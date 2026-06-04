@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,6 +22,7 @@ import {
   Plus, Trash2, Edit2, Calculator, ShoppingCart, User, CheckCircle2,
   Loader2, Lock,
 } from "lucide-react";
+import { CityAutocompleteInput } from "@/components/ui/city-autocomplete";
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   Ship, Plane, Download, Upload, MapPin, Home,
@@ -125,83 +126,6 @@ function calcResult(calcType: string, state: CalcState): Record<string, unknown>
   }
 }
 
-// ── City search types ──────────────────────────────────────────────────────────
-type NominatimResult = { place_id: number; display_name: string; lat: string; lon: string };
-
-function CitySearchInput({
-  placeholder,
-  value,
-  onSelect,
-}: {
-  placeholder: string;
-  value: string;
-  onSelect: (name: string, lat: string, lon: string) => void;
-}) {
-  const [query, setQuery] = useState(value);
-  const [results, setResults] = useState<NominatimResult[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [open, setOpen] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => { setQuery(value); }, [value]);
-
-  function handleChange(v: string) {
-    setQuery(v);
-    if (timerRef.current) clearTimeout(timerRef.current);
-    if (v.length < 2) { setResults([]); setOpen(false); return; }
-    setLoading(true);
-    timerRef.current = setTimeout(async () => {
-      try {
-        const res = await fetch(
-          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(v)}&countrycodes=id&format=json&limit=6`,
-          { headers: { "Accept-Language": "id" } }
-        );
-        const data = (await res.json()) as NominatimResult[];
-        setResults(data);
-        setOpen(true);
-      } catch { setResults([]); }
-      finally { setLoading(false); }
-    }, 500);
-  }
-
-  function handleSelect(item: NominatimResult) {
-    const name = item.display_name.split(",").slice(0, 2).join(",").trim();
-    setQuery(name);
-    setOpen(false);
-    onSelect(name, item.lat, item.lon);
-  }
-
-  return (
-    <div className="relative">
-      <div className="relative">
-        <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          value={query}
-          onChange={(e) => handleChange(e.target.value)}
-          placeholder={placeholder}
-          className="pl-9"
-          onFocus={() => results.length > 0 && setOpen(true)}
-          onBlur={() => setTimeout(() => setOpen(false), 200)}
-        />
-        {loading && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />}
-      </div>
-      {open && results.length > 0 && (
-        <div className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-52 overflow-auto">
-          {results.map((r) => (
-            <button
-              key={r.place_id}
-              className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 flex items-start gap-2"
-              onMouseDown={() => handleSelect(r)}
-            >
-              <MapPin className="h-3 w-3 text-primary mt-0.5 shrink-0" />
-              <span className="line-clamp-2 leading-snug">{r.display_name}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ── Distance helper ───────────────────────────────────────────────────────────
 async function fetchRoadDistanceKm(lat1: string, lon1: string, lat2: string, lon2: string): Promise<number> {

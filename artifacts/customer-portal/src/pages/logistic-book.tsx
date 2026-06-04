@@ -22,6 +22,7 @@ import {
   Package, Warehouse, Truck, FileCheck, Shield, FileText,
   Plus, Trash2, Edit2, Calculator, ShoppingCart, User, CheckCircle2,
 } from "lucide-react";
+import { CityAutocompleteInput } from "@/components/ui/city-autocomplete";
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   Ship, Plane, Download, Upload, MapPin, Home,
@@ -298,7 +299,10 @@ function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin,
                 <span className="text-xs font-semibold text-slate-800">{state.originAirport || companyOrigin?.originAirport || "CGK"}</span>
               </div>
             </div>
-            <div><Label className="text-xs">Destination Airport</Label><Input placeholder="SIN" value={state.destinationAirport||""} onChange={e => set("destinationAirport", e.target.value)} /></div>
+            <div>
+              <Label className="text-xs">Destination Airport</Label>
+              <CityAutocompleteInput type="airport" placeholder="Cari bandara tujuan..." value={state.destinationAirport||""} onChange={v => set("destinationAirport", v)} />
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div><Label className="text-xs">Gross Weight (kg)</Label><Input type="number" placeholder="0" value={state.grossWeight||""} onChange={e => set("grossWeight", e.target.value)} /></div>
@@ -330,7 +334,10 @@ function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin,
                 <span className="text-xs font-semibold text-slate-800">{state.originPort || companyOrigin?.originPort || "Tanjung Priok, Jakarta"}</span>
               </div>
             </div>
-            <div><Label className="text-xs">Destination Port</Label><Input placeholder="SGSIN" value={state.destinationPort||""} onChange={e => set("destinationPort", e.target.value)} /></div>
+            <div>
+              <Label className="text-xs">Destination Port</Label>
+              <CityAutocompleteInput type="port" placeholder="Cari pelabuhan tujuan..." value={state.destinationPort||""} onChange={v => set("destinationPort", v)} />
+            </div>
           </div>
           <div><Label className="text-xs">Container Type</Label>
             <Select value={state.containerType||undefined} onValueChange={v => set("containerType", v)}>
@@ -377,8 +384,14 @@ function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin,
 
         {ct === "trucking" && <>
           <div className="grid grid-cols-2 gap-3">
-            <div><Label className="text-xs">Pickup City</Label><Input placeholder="Jakarta" value={state.pickupCity||""} onChange={e => set("pickupCity", e.target.value)} /></div>
-            <div><Label className="text-xs">Destination City</Label><Input placeholder="Surabaya" value={state.destCity||""} onChange={e => set("destCity", e.target.value)} /></div>
+            <div>
+              <Label className="text-xs">Pickup City</Label>
+              <CityAutocompleteInput type="city" placeholder="Cari kota asal..." value={state.pickupCity||""} onChange={v => set("pickupCity", v)} />
+            </div>
+            <div>
+              <Label className="text-xs">Destination City</Label>
+              <CityAutocompleteInput type="city" placeholder="Cari kota tujuan..." value={state.destCity||""} onChange={v => set("destCity", v)} />
+            </div>
           </div>
           <div><Label className="text-xs">Vehicle Type</Label>
             <Select value={state.vehicleType||undefined} onValueChange={v => set("vehicleType", v)}>
@@ -1044,11 +1057,11 @@ export default function BookPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <Label className="text-xs flex items-center gap-1"><MapPin className="w-3 h-3" /> Kota Asal <span className="text-destructive">*</span></Label>
-                  <Input placeholder="Jakarta" value={quickTruckData.pickupCity||""} onChange={e => setQuickTruckData(p => ({ ...p, pickupCity: e.target.value }))} />
+                  <CityAutocompleteInput type="city" placeholder="Cari kota asal..." value={quickTruckData.pickupCity||""} onChange={v => setQuickTruckData(p => ({ ...p, pickupCity: v }))} />
                 </div>
                 <div>
                   <Label className="text-xs flex items-center gap-1"><MapPin className="w-3 h-3" /> Kota Tujuan <span className="text-destructive">*</span></Label>
-                  <Input placeholder="Surabaya" value={quickTruckData.destCity||""} onChange={e => setQuickTruckData(p => ({ ...p, destCity: e.target.value }))} />
+                  <CityAutocompleteInput type="city" placeholder="Cari kota tujuan..." value={quickTruckData.destCity||""} onChange={v => setQuickTruckData(p => ({ ...p, destCity: v }))} />
                 </div>
                 <div>
                   <Label className="text-xs">Berat (kg) <span className="text-destructive">*</span></Label>
