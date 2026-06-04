@@ -26,6 +26,7 @@ import { OrderPipelineWidget } from "@/components/dashboard/OrderPipelineWidget"
 import { QuickActionsWidget } from "@/components/dashboard/QuickActionsWidget";
 import { SportCenterWidget } from "@/components/dashboard/SportCenterWidget";
 import { PosWidget } from "@/components/dashboard/PosWidget";
+import { AccountingWidget } from "@/components/dashboard/AccountingWidget";
 
 interface ResponseTimeEntry {
   timestamp: string;
@@ -1116,6 +1117,7 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <SportCenterWidget />
           <PosWidget />
+          <AccountingWidget />
           <TasksWidget />
           <RecentActivitiesWidget />
           <AiInsightsWidget />
