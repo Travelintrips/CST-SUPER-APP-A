@@ -413,6 +413,49 @@ router.post("/products/bulk-update-dimensions", requireClerkUser, async (req, re
   return res.json({ results });
 });
 
+// POST /api/ecommerce/products/bulk-update-fields
+// Body: { ids: number[], fields: { goodsType?, weightKg?, volumeCbm?, lengthCm?, widthCm?, heightCm? } }
+router.post("/products/bulk-update-fields", requireClerkUser, async (req, res) => {
+  const ids: number[] = Array.isArray(req.body.ids)
+    ? req.body.ids.map(Number).filter((n: number) => !isNaN(n) && n > 0)
+    : [];
+  if (ids.length === 0) return res.status(400).json({ message: "ids array wajib diisi" });
+  if (ids.length > 200) return res.status(400).json({ message: "Maksimum 200 item per batch update" });
+
+  const f = (req.body.fields ?? {}) as Record<string, unknown>;
+
+  const toNumericStr = (v: unknown): string | null | undefined => {
+    if (v === undefined) return undefined;
+    if (v === null || v === "") return null;
+    const n = parseFloat(String(v).replace(",", "."));
+    return isNaN(n) || n < 0 ? undefined : String(n);
+  };
+
+  const updateData: Record<string, unknown> = {};
+
+  if ("goodsType" in f) updateData.goodsType = (f.goodsType === "" || f.goodsType === null) ? null : String(f.goodsType);
+
+  const wKg  = toNumericStr(f.weightKg);
+  const vCbm = toNumericStr(f.volumeCbm);
+  const lCm  = toNumericStr(f.lengthCm);
+  const wCm  = toNumericStr(f.widthCm);
+  const hCm  = toNumericStr(f.heightCm);
+
+  if (wKg  !== undefined) updateData.weightKg  = wKg;
+  if (vCbm !== undefined) updateData.volumeCbm = vCbm;
+  if (lCm  !== undefined) updateData.lengthCm  = lCm;
+  if (wCm  !== undefined) updateData.widthCm   = wCm;
+  if (hCm  !== undefined) updateData.heightCm  = hCm;
+
+  if (Object.keys(updateData).length === 0) {
+    return res.status(400).json({ message: "Tidak ada field yang diubah" });
+  }
+
+  await db.update(productsTable).set(updateData).where(inArray(productsTable.id, ids));
+  broadcastToPortal("price_sync", { ts: Date.now() });
+  return res.json({ updated: ids.length });
+});
+
 // GET /api/ecommerce/products/:id
 router.get("/products/:id", async (req, res) => {
   const id = Number(req.params.id);

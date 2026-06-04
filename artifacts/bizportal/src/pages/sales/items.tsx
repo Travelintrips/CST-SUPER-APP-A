@@ -29,7 +29,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2, Search, Package, Wrench, RefreshCw, ImageIcon, X, Video, Loader2, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Download } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Package, Wrench, RefreshCw, ImageIcon, X, Video, Loader2, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Download, CheckSquare2, Square, ListChecks, Save } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { LOGISTICS_SUBCATEGORIES as DEFAULT_SUBCATEGORIES, LOGISTICS_UNITS as UNITS } from "@workspace/logistics-constants";
 
@@ -102,6 +102,32 @@ interface InlineEdit {
   field: "goodsType" | "weightKg" | "volumeCbm" | "lengthCm" | "widthCm" | "heightCm";
   value: string;
 }
+
+interface BulkFields {
+  goodsType: string;
+  weightKg: string;
+  volumeCbm: string;
+  lengthCm: string;
+  widthCm: string;
+  heightCm: string;
+}
+
+const GOODS_TYPES = [
+  { value: "general",  label: "General" },
+  { value: "kayu",     label: "Kayu" },
+  { value: "kapas",    label: "Kapas" },
+  { value: "fragile",  label: "Fragile" },
+  { value: "liquid",   label: "Liquid" },
+  { value: "hazmat",   label: "Hazmat" },
+] as const;
+
+function goodsTypeUsesCbm(gt: string): boolean {
+  return gt === "kapas" || gt === "liquid";
+}
+
+const emptyBulkFields = (): BulkFields => ({
+  goodsType: "", weightKg: "", volumeCbm: "", lengthCm: "", widthCm: "", heightCm: "",
+});
 
 interface ImportRow {
   nama: string;
@@ -296,6 +322,10 @@ export default function SalesItemsPage() {
   const [inlineEdit, setInlineEdit] = useState<InlineEdit | null>(null);
   const [inlineSaving, setInlineSaving] = useState<Set<number>>(new Set());
 
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkFields, setBulkFields] = useState<BulkFields>(emptyBulkFields());
+  const [bulkSavingIds, setBulkSavingIds] = useState<Set<number>>(new Set());
+
   const saveInlineEdit = async (p: Product, field: InlineEdit["field"], rawValue: string) => {
     setInlineEdit(null);
     const numVal = rawValue.trim() !== "" ? Number(rawValue) : null;
@@ -334,6 +364,106 @@ export default function SalesItemsPage() {
       setInlineSaving((s) => { const n = new Set(s); n.delete(p.id); return n; });
     }
   };
+
+  const handleBulkSave = async () => {
+    if (selectedIds.size === 0) return;
+    const fields: Record<string, unknown> = {};
+    if (bulkFields.goodsType !== "") fields.goodsType = bulkFields.goodsType;
+
+    const parsePositive = (v: string, label: string): number | null | "invalid" => {
+      if (v.trim() === "") return null;
+      const n = parseFloat(v);
+      if (isNaN(n) || n < 0) return "invalid";
+      return n;
+    };
+
+    const wKg  = parsePositive(bulkFields.weightKg,  "Berat");
+    const vCbm = parsePositive(bulkFields.volumeCbm, "CBM");
+    const lCm  = parsePositive(bulkFields.lengthCm,  "Panjang");
+    const wCm  = parsePositive(bulkFields.widthCm,   "Lebar");
+    const hCm  = parsePositive(bulkFields.heightCm,  "Tinggi");
+
+    if (wKg  === "invalid") { toast({ title: "Validasi", description: "Berat harus ≥ 0",   variant: "destructive" }); return; }
+    if (vCbm === "invalid") { toast({ title: "Validasi", description: "CBM harus ≥ 0",    variant: "destructive" }); return; }
+    if (lCm  === "invalid") { toast({ title: "Validasi", description: "Panjang harus ≥ 0", variant: "destructive" }); return; }
+    if (wCm  === "invalid") { toast({ title: "Validasi", description: "Lebar harus ≥ 0",   variant: "destructive" }); return; }
+    if (hCm  === "invalid") { toast({ title: "Validasi", description: "Tinggi harus ≥ 0",  variant: "destructive" }); return; }
+
+    if (bulkFields.weightKg.trim()  !== "") fields.weightKg  = wKg;
+    if (bulkFields.volumeCbm.trim() !== "") fields.volumeCbm = vCbm;
+    if (bulkFields.lengthCm.trim()  !== "") fields.lengthCm  = lCm;
+    if (bulkFields.widthCm.trim()   !== "") fields.widthCm   = wCm;
+    if (bulkFields.heightCm.trim()  !== "") fields.heightCm  = hCm;
+
+    if (Object.keys(fields).length === 0) {
+      toast({ title: "Info", description: "Isi minimal satu field untuk diubah", variant: "destructive" });
+      return;
+    }
+
+    const ids = Array.from(selectedIds);
+    setBulkSavingIds(new Set(ids));
+    try {
+      const res = await fetch("/api/ecommerce/products/bulk-update-fields", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids, fields }),
+      });
+      const data = await res.json() as { updated?: number; message?: string };
+      if (!res.ok) throw new Error(data.message ?? "Gagal update batch");
+      await qc.invalidateQueries({ queryKey: getListProductsQueryKey({}) });
+      toast({ title: `${data.updated ?? ids.length} item berhasil diperbarui` });
+      setSelectedIds(new Set());
+      setBulkFields(emptyBulkFields());
+    } catch (e: unknown) {
+      const msg = (e as Error).message ?? String(e);
+      toast({ title: t.common.error, description: msg, variant: "destructive" });
+    } finally {
+      setBulkSavingIds(new Set());
+    }
+  };
+
+  const cancelBulkEdit = () => {
+    setSelectedIds(new Set());
+    setBulkFields(emptyBulkFields());
+  };
+
+  useEffect(() => {
+    if (selectedIds.size === 0) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") cancelBulkEdit();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [selectedIds.size]);
+
+  const toggleRowSelect = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) { next.delete(id); } else { next.add(id); }
+      if (next.size === 0) setBulkFields(emptyBulkFields());
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    const barangIds = filtered.filter((p) => p.itemType === "barang").map((p) => p.id);
+    if (barangIds.every((id) => selectedIds.has(id)) && barangIds.length > 0) {
+      setSelectedIds(new Set());
+      setBulkFields(emptyBulkFields());
+    } else {
+      setSelectedIds(new Set(barangIds));
+    }
+  };
+
+  const setBF = <K extends keyof BulkFields>(k: K, v: BulkFields[K]) =>
+    setBulkFields((f) => ({ ...f, [k]: v }));
+
+  const bulkGoodsTypeForPanel = bulkFields.goodsType;
+  const showCbmInPanel  = bulkGoodsTypeForPanel === "" ? true  : goodsTypeUsesCbm(bulkGoodsTypeForPanel);
+  const showWeightInPanel = bulkGoodsTypeForPanel === "" ? true : !goodsTypeUsesCbm(bulkGoodsTypeForPanel);
+  const barangCount = filtered.filter((p) => p.itemType === "barang").length;
+  const allBarangSelected = barangCount > 0 && filtered.filter((p) => p.itemType === "barang").every((p) => selectedIds.has(p.id));
 
   const downloadImportTemplate = async () => {
     const ExcelJS = (await import("exceljs")).default;
@@ -785,6 +915,128 @@ export default function SalesItemsPage() {
           </CardContent>
         </Card>
 
+        {/* ── Bulk Edit Panel ─────────────────────────────────── */}
+        {selectedIds.size > 0 && (
+          <div className="rounded-lg border border-blue-700/60 bg-blue-950/40 p-4 space-y-3 shadow-lg">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-2 text-blue-300 font-medium text-sm">
+                <ListChecks className="h-4 w-4" />
+                <span>{selectedIds.size} item dipilih</span>
+                <span className="text-blue-500 text-xs">(hanya barang yang bisa dipilih)</span>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-slate-400 hover:text-slate-200 h-7 gap-1"
+                onClick={cancelBulkEdit}
+              >
+                <X className="h-3.5 w-3.5" /> Batal (Esc)
+              </Button>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 items-end">
+              {/* Jenis Barang */}
+              <div className="space-y-1 col-span-1">
+                <p className="text-xs text-slate-400 font-medium">Jenis Barang</p>
+                <select
+                  className="w-full rounded border border-slate-600 bg-slate-900 text-slate-100 text-xs px-2 py-1.5 focus:border-blue-500 outline-none"
+                  value={bulkFields.goodsType}
+                  onChange={(e) => setBF("goodsType", e.target.value)}
+                >
+                  <option value="">— tidak diubah —</option>
+                  {GOODS_TYPES.map((g) => (
+                    <option key={g.value} value={g.value}>{g.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Berat (kg) — tampil jika goodsType bukan CBM type atau goodsType belum dipilih */}
+              {showWeightInPanel && (
+                <div className="space-y-1 col-span-1">
+                  <p className="text-xs text-slate-400 font-medium">
+                    Berat (kg)
+                    {bulkGoodsTypeForPanel === "" && <span className="text-slate-600 ml-1 text-[10px]">opsional</span>}
+                  </p>
+                  <input
+                    type="number"
+                    step="0.001"
+                    min="0"
+                    placeholder="kosong = abaikan"
+                    className="w-full rounded border border-slate-600 bg-slate-900 text-slate-100 text-xs px-2 py-1.5 focus:border-blue-500 outline-none placeholder:text-slate-600"
+                    value={bulkFields.weightKg}
+                    onChange={(e) => setBF("weightKg", e.target.value)}
+                  />
+                </div>
+              )}
+
+              {/* CBM (m³) — tampil jika goodsType adalah CBM type atau goodsType belum dipilih */}
+              {showCbmInPanel && (
+                <div className="space-y-1 col-span-1">
+                  <p className="text-xs text-slate-400 font-medium">
+                    CBM (m³)
+                    {bulkGoodsTypeForPanel === "" && <span className="text-slate-600 ml-1 text-[10px]">opsional</span>}
+                  </p>
+                  <input
+                    type="number"
+                    step="0.0001"
+                    min="0"
+                    placeholder="kosong = abaikan"
+                    className="w-full rounded border border-slate-600 bg-slate-900 text-slate-100 text-xs px-2 py-1.5 focus:border-blue-500 outline-none placeholder:text-slate-600"
+                    value={bulkFields.volumeCbm}
+                    onChange={(e) => setBF("volumeCbm", e.target.value)}
+                  />
+                </div>
+              )}
+
+              {/* Dimensi L × W × H */}
+              <div className="space-y-1 col-span-1">
+                <p className="text-xs text-slate-400 font-medium">Panjang (cm)</p>
+                <input
+                  type="number" step="0.1" min="0" placeholder="kosong = abaikan"
+                  className="w-full rounded border border-slate-600 bg-slate-900 text-slate-100 text-xs px-2 py-1.5 focus:border-blue-500 outline-none placeholder:text-slate-600"
+                  value={bulkFields.lengthCm}
+                  onChange={(e) => setBF("lengthCm", e.target.value)}
+                />
+              </div>
+              <div className="space-y-1 col-span-1">
+                <p className="text-xs text-slate-400 font-medium">Lebar (cm)</p>
+                <input
+                  type="number" step="0.1" min="0" placeholder="kosong = abaikan"
+                  className="w-full rounded border border-slate-600 bg-slate-900 text-slate-100 text-xs px-2 py-1.5 focus:border-blue-500 outline-none placeholder:text-slate-600"
+                  value={bulkFields.widthCm}
+                  onChange={(e) => setBF("widthCm", e.target.value)}
+                />
+              </div>
+              <div className="space-y-1 col-span-1">
+                <p className="text-xs text-slate-400 font-medium">Tinggi (cm)</p>
+                <input
+                  type="number" step="0.1" min="0" placeholder="kosong = abaikan"
+                  className="w-full rounded border border-slate-600 bg-slate-900 text-slate-100 text-xs px-2 py-1.5 focus:border-blue-500 outline-none placeholder:text-slate-600"
+                  value={bulkFields.heightCm}
+                  onChange={(e) => setBF("heightCm", e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-3 pt-1 border-t border-blue-800/40">
+              <p className="text-xs text-slate-500">
+                Field yang kosong tidak akan diubah. Perubahan berlaku ke semua {selectedIds.size} item yang dipilih.
+              </p>
+              <Button
+                size="sm"
+                className="bg-blue-600 hover:bg-blue-700 gap-1.5 shrink-0"
+                onClick={handleBulkSave}
+                disabled={bulkSavingIds.size > 0}
+              >
+                {bulkSavingIds.size > 0
+                  ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Menyimpan…</>
+                  : <><Save className="h-3.5 w-3.5" /> Terapkan ke {selectedIds.size} item</>
+                }
+              </Button>
+            </div>
+          </div>
+        )}
+
         <Card className="bg-slate-800/60 border-slate-700">
           <CardContent className="p-0">
             {isLoading ? (
@@ -805,6 +1057,19 @@ export default function SalesItemsPage() {
                 <Table>
                   <TableHeader>
                     <TableRow className="border-slate-700">
+                      <TableHead className="w-8 text-slate-400">
+                        <button
+                          type="button"
+                          title={allBarangSelected ? "Batalkan pilih semua" : "Pilih semua barang"}
+                          className="flex items-center justify-center text-slate-400 hover:text-blue-300 transition-colors"
+                          onClick={toggleSelectAll}
+                        >
+                          {allBarangSelected
+                            ? <CheckSquare2 className="h-4 w-4 text-blue-400" />
+                            : <Square className="h-4 w-4" />
+                          }
+                        </button>
+                      </TableHead>
                       <TableHead className="text-slate-400">Nama Item</TableHead>
                       <TableHead className="text-slate-400">SKU</TableHead>
                       <TableHead className="text-slate-400">Jenis</TableHead>
@@ -821,8 +1086,34 @@ export default function SalesItemsPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filtered.map((p) => (
-                      <TableRow key={p.id} className="border-slate-700/50">
+                    {filtered.map((p) => {
+                      const isRowSaving = bulkSavingIds.has(p.id) || inlineSaving.has(p.id);
+                      const isSelected = selectedIds.has(p.id);
+                      return (
+                      <TableRow
+                        key={p.id}
+                        className={`border-slate-700/50 transition-colors ${isSelected ? "bg-blue-950/30 hover:bg-blue-950/40" : ""} ${isRowSaving ? "opacity-60" : ""}`}
+                      >
+                        {/* Checkbox */}
+                        <TableCell className="w-8 py-2">
+                          {p.itemType === "barang" ? (
+                            <button
+                              type="button"
+                              className="flex items-center justify-center text-slate-400 hover:text-blue-300 transition-colors"
+                              onClick={() => toggleRowSelect(p.id)}
+                              disabled={isRowSaving}
+                            >
+                              {bulkSavingIds.has(p.id)
+                                ? <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-400" />
+                                : isSelected
+                                  ? <CheckSquare2 className="h-3.5 w-3.5 text-blue-400" />
+                                  : <Square className="h-3.5 w-3.5" />
+                              }
+                            </button>
+                          ) : (
+                            <span className="block w-3.5 h-3.5" />
+                          )}
+                        </TableCell>
                         <TableCell className="text-slate-200 font-medium">
                           <div className="flex items-center gap-2.5">
                             {p.imageUrl ? (
@@ -899,12 +1190,9 @@ export default function SalesItemsPage() {
                                 }}
                               >
                                 <option value="">— pilih —</option>
-                                <option value="kayu">kayu</option>
-                                <option value="kapas">kapas</option>
-                                <option value="general">general</option>
-                                <option value="fragile">fragile</option>
-                                <option value="liquid">liquid</option>
-                                <option value="hazmat">hazmat</option>
+                                {GOODS_TYPES.map((g) => (
+                                  <option key={g.value} value={g.value}>{g.label}</option>
+                                ))}
                               </select>
                             ) : (
                               <span
@@ -1026,7 +1314,8 @@ export default function SalesItemsPage() {
                           </div>
                         </TableCell>
                       </TableRow>
-                    ))}
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </div>
