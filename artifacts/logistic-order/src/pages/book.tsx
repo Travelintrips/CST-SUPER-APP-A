@@ -20,7 +20,7 @@ import {
   Plane, Download, Upload, MapPin, Home,
   Package, Warehouse, Truck, FileCheck, Shield, FileText,
   Plus, Trash2, Edit2, Calculator, ShoppingCart, User, CheckCircle2,
-  Loader2, Lock,
+  Lock,
 } from "lucide-react";
 import { CityAutocompleteInput } from "@/components/ui/city-autocomplete";
 
@@ -127,20 +127,10 @@ function calcResult(calcType: string, state: CalcState): Record<string, unknown>
 }
 
 
-// ── Distance helper ───────────────────────────────────────────────────────────
-async function fetchRoadDistanceKm(lat1: string, lon1: string, lat2: string, lon2: string): Promise<number> {
-  const url = `https://router.project-osrm.org/route/v1/driving/${lon1},${lat1};${lon2},${lat2}?overview=false`;
-  const res = await fetch(url);
-  const data = await res.json();
-  if (data.routes?.[0]) return Math.round(data.routes[0].distance / 1000);
-  return 0;
-}
-
 // ── Calculator form ───────────────────────────────────────────────────────────
 function CalculatorForm({ item, onAdd, onBack }: { item: ServiceItem; onAdd: (data: Omit<CartItem, "cartId">) => void; onBack: () => void }) {
   const [state, setState] = useState<CalcState>({});
   const [truckingRates, setTruckingRates] = useState<Record<string, { ratePerKm: number; loadingFee: number }>>({});
-  const [calcDist, setCalcDist] = useState(false);
   const { toast } = useToast();
   const isAdmin = localStorage.getItem("logistic_admin_auth") === "1";
 
@@ -156,35 +146,6 @@ function CalculatorForm({ item, onAdd, onBack }: { item: ServiceItem; onAdd: (da
   function set(key: string, val: string) {
     setState((prev) => ({ ...prev, [key]: val }));
   }
-
-  function handleCitySelect(which: "pickup" | "dest", name: string, lat: string, lon: string) {
-    if (which === "pickup") {
-      set("pickupCity", name);
-      set("pickupLat", lat);
-      set("pickupLon", lon);
-    } else {
-      set("destCity", name);
-      set("destLat", lat);
-      set("destLon", lon);
-    }
-  }
-
-  useEffect(() => {
-    const lat1 = state.pickupLat;
-    const lon1 = state.pickupLon;
-    const lat2 = state.destLat;
-    const lon2 = state.destLon;
-    if (!lat1 || !lon1 || !lat2 || !lon2) return;
-    setCalcDist(true);
-    fetchRoadDistanceKm(lat1, lon1, lat2, lon2)
-      .then((km) => {
-        set("distance", String(km));
-        toast({ title: `Jarak otomatis: ${km} km` });
-      })
-      .catch(() => toast({ title: "Gagal menghitung jarak", variant: "destructive" }))
-      .finally(() => setCalcDist(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.pickupLat, state.pickupLon, state.destLat, state.destLon]);
 
   useEffect(() => {
     const vt = state.vehicleType;
@@ -235,8 +196,14 @@ function CalculatorForm({ item, onAdd, onBack }: { item: ServiceItem; onAdd: (da
 
         {ct === "air_freight" && <>
           <div className="grid grid-cols-2 gap-3">
-            <div><Label className="text-xs">Origin Airport</Label><Input placeholder="CGK" value={state.originAirport||""} onChange={e => set("originAirport", e.target.value)} /></div>
-            <div><Label className="text-xs">Destination Airport</Label><Input placeholder="SIN" value={state.destinationAirport||""} onChange={e => set("destinationAirport", e.target.value)} /></div>
+            <div>
+              <Label className="text-xs">Origin Airport</Label>
+              <CityAutocompleteInput type="airport" placeholder="Cari bandara asal..." value={state.originAirport||""} onChange={v => set("originAirport", v)} />
+            </div>
+            <div>
+              <Label className="text-xs">Destination Airport</Label>
+              <CityAutocompleteInput type="airport" placeholder="Cari bandara tujuan..." value={state.destinationAirport||""} onChange={v => set("destinationAirport", v)} />
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div><Label className="text-xs">Gross Weight (kg)</Label><Input type="number" placeholder="0" value={state.grossWeight||""} onChange={e => set("grossWeight", e.target.value)} /></div>
@@ -258,8 +225,14 @@ function CalculatorForm({ item, onAdd, onBack }: { item: ServiceItem; onAdd: (da
 
         {ct === "sea_fcl" && <>
           <div className="grid grid-cols-2 gap-3">
-            <div><Label className="text-xs">Origin Port</Label><Input placeholder="IDJKT" value={state.originPort||""} onChange={e => set("originPort", e.target.value)} /></div>
-            <div><Label className="text-xs">Destination Port</Label><Input placeholder="SGSIN" value={state.destinationPort||""} onChange={e => set("destinationPort", e.target.value)} /></div>
+            <div>
+              <Label className="text-xs">Origin Port</Label>
+              <CityAutocompleteInput type="port" placeholder="Cari pelabuhan asal..." value={state.originPort||""} onChange={v => set("originPort", v)} />
+            </div>
+            <div>
+              <Label className="text-xs">Destination Port</Label>
+              <CityAutocompleteInput type="port" placeholder="Cari pelabuhan tujuan..." value={state.destinationPort||""} onChange={v => set("destinationPort", v)} />
+            </div>
           </div>
           <div><Label className="text-xs">Container Type</Label>
             <Select value={state.containerType||undefined} onValueChange={v => set("containerType", v)}>
@@ -326,16 +299,12 @@ function CalculatorForm({ item, onAdd, onBack }: { item: ServiceItem; onAdd: (da
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label className="text-xs flex items-center gap-1">
-                Distance (km)
-                {calcDist && <Loader2 className="h-3 w-3 animate-spin" />}
-              </Label>
+              <Label className="text-xs">Distance (km)</Label>
               <Input
                 type="number"
                 placeholder="0"
                 value={state.distance || ""}
                 onChange={e => set("distance", e.target.value)}
-                readOnly={calcDist}
               />
             </div>
             <div>
