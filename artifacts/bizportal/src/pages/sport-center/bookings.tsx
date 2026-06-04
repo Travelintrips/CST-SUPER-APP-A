@@ -19,11 +19,16 @@ const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
 
 const STATUS_LABEL: Record<string, string> = {
-  pending: "Pending", confirmed: "Konfirmasi", checked_in: "Check-In",
-  completed: "Selesai", cancelled: "Dibatalkan",
+  pending: "Pending",
+  pending_payment: "Menunggu Bayar",
+  confirmed: "Konfirmasi",
+  checked_in: "Check-In",
+  completed: "Selesai",
+  cancelled: "Dibatalkan",
 };
 const STATUS_COLOR: Record<string, string> = {
   pending: "bg-yellow-900/40 text-yellow-300 border-yellow-600",
+  pending_payment: "bg-orange-900/40 text-orange-300 border-orange-600",
   confirmed: "bg-blue-900/40 text-blue-300 border-blue-600",
   checked_in: "bg-purple-900/40 text-purple-300 border-purple-600",
   completed: "bg-emerald-900/40 text-emerald-300 border-emerald-600",
@@ -45,9 +50,10 @@ export default function SportCenterBookings() {
   const { toast } = useToast();
   const esRef = useRef<EventSource | null>(null);
 
-  const [statusFilter, setStatusFilter] = useState("all");
+  const initialStatus = new URLSearchParams(window.location.search).get("status") ?? "all";
+  const [statusFilter, setStatusFilter] = useState(initialStatus);
   const [dateFilter, setDateFilter] = useState("");
-  const [search, setSearch] = useState("");
+  const [searchText, setSearchText] = useState("");
   const [page, setPage] = useState(1);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [realtimeCount, setRealtimeCount] = useState(0);
@@ -288,6 +294,11 @@ export default function SportCenterBookings() {
         String(b.customer_name).toLowerCase().includes(search.toLowerCase()) ||
         String(b.booking_number).toLowerCase().includes(search.toLowerCase()),
       );
+  const filtered = (data?.data ?? []).filter((b: any) =>
+    !searchText ||
+    String(b.customer_name).toLowerCase().includes(searchText.toLowerCase()) ||
+    String(b.booking_number).toLowerCase().includes(searchText.toLowerCase()),
+  );
 
   return (
     <AppShell>
@@ -339,13 +350,14 @@ export default function SportCenterBookings() {
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Cari nama / no. booking…" value={search} onChange={(e) => setSearch(e.target.value)} className="pl-8" />
+            <Input placeholder="Cari nama / no. booking…" value={searchText} onChange={(e) => setSearchText(e.target.value)} className="pl-8" />
           </div>
           <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
-            <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Semua Status</SelectItem>
               <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="pending_payment">Menunggu Bayar</SelectItem>
               <SelectItem value="confirmed">Konfirmasi</SelectItem>
               <SelectItem value="checked_in">Check-In</SelectItem>
               <SelectItem value="completed">Selesai</SelectItem>

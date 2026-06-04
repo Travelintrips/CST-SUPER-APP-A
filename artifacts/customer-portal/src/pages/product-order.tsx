@@ -29,6 +29,8 @@ interface PortalProduct {
   id: number; name: string; sku: string; price: number;
   unit: string | null; description: string | null;
   imageUrl: string | null; subcategory: string | null; stock: number;
+  weightKg: number | null; lengthCm: number | null; widthCm: number | null;
+  heightCm: number | null; goodsType: string | null;
 }
 
 interface CartItem { product: PortalProduct; qty: number; }
@@ -44,6 +46,7 @@ interface TruckingForm {
   pickupDate: string; pickupTime: string;
   pickupAddress: string; deliveryAddress: string;
   contactName: string; contactPhone: string;
+  notes: string;
   // calculator mode
   origin: string; destination: string;
   weight: string; length: string; width: string; height: string;
@@ -80,7 +83,7 @@ const GOODS_TYPES = ["General Cargo", "Kopi / Hasil Bumi", "Elektronik", "Perish
 const EMPTY_TRUCKING: TruckingForm = {
   mode: "detail",
   pickupDate: "", pickupTime: "", pickupAddress: "", deliveryAddress: "",
-  contactName: "", contactPhone: "",
+  contactName: "", contactPhone: "", notes: "",
   origin: "", destination: "", weight: "", length: "", width: "", height: "",
   goodsType: "", incoterms: "FOB",
 };
@@ -160,6 +163,8 @@ export default function ProductOrderPage() {
   const [truckingForm, setTruckingForm] = useState<TruckingForm>(EMPTY_TRUCKING);
   const [estimating, setEstimating] = useState(false);
   const [truckingEstimate, setTruckingEstimate] = useState<number | null>(null);
+  const [deliveryAddressError, setDeliveryAddressError] = useState(false);
+  const [checkoutAddressError, setCheckoutAddressError] = useState(false);
   const [companyOrigin, setCompanyOrigin] = useState<{ name: string; address: string; originCity: string; originAirport: string; originPort: string } | null>(null);
 
   useEffect(() => {
@@ -229,9 +234,50 @@ export default function ProductOrderPage() {
     setCart(prev => prev.filter(i => i.product.id !== productId));
   }
 
+  // ── Auto-compute cart shipping specs ────────────────────────────────────────
+  const cartAutoWeight = cart.reduce((sum, item) => {
+    const w = item.product.weightKg;
+    return w != null ? sum + w * item.qty : sum;
+  }, 0);
+  const cartHasWeight = cart.some(i => i.product.weightKg != null);
+
+  // Find item with largest volume for auto-dimensions
+  const cartDimItem = cart.reduce<CartItem | null>((best, item) => {
+    const vol = (item.product.lengthCm ?? 0) * (item.product.widthCm ?? 0) * (item.product.heightCm ?? 0);
+    const bestVol = best ? (best.product.lengthCm ?? 0) * (best.product.widthCm ?? 0) * (best.product.heightCm ?? 0) : 0;
+    return vol > bestVol ? item : best;
+  }, null);
+  const cartHasDims = cartDimItem != null &&
+    (cartDimItem.product.lengthCm ?? 0) > 0 &&
+    (cartDimItem.product.widthCm ?? 0) > 0 &&
+    (cartDimItem.product.heightCm ?? 0) > 0;
+
+  // Auto goods type: prefer product-level goodsType, then derive from subcategory
+  const cartAutoGoodsType = (() => {
+    const explicit = cart.find(i => i.product.goodsType)?.product.goodsType;
+    if (explicit) return explicit;
+    const sub = cart[0]?.product.subcategory?.toLowerCase() ?? "";
+    if (sub.includes("elektronik")) return "Elektronik";
+    if (sub.includes("kopi") || sub.includes("bumi") || sub.includes("tani")) return "Kopi / Hasil Bumi";
+    if (sub.includes("mesin") || sub.includes("spare")) return "Mesin & Spare-part";
+    if (sub.includes("furniture") || sub.includes("furni")) return "Furniture";
+    if (sub.includes("kimia") || sub.includes("b3")) return "Kimia / B3";
+    return "General Cargo";
+  })();
+
   function handleSelectService(svc: ServiceItem) {
     if (svc.isTrucking) {
-      setTruckingForm(EMPTY_TRUCKING);
+      setTruckingForm({
+        ...EMPTY_TRUCKING,
+        mode: "calculator",
+        origin: companyOrigin?.originCity ?? "Jakarta",
+        pickupAddress: companyOrigin?.address ?? "",
+        weight: cartHasWeight ? String(Math.round(cartAutoWeight * 1000) / 1000) : "",
+        length: cartHasDims ? String(cartDimItem!.product.lengthCm!) : "",
+        width:  cartHasDims ? String(cartDimItem!.product.widthCm!)  : "",
+        height: cartHasDims ? String(cartDimItem!.product.heightCm!) : "",
+        goodsType: cartAutoGoodsType,
+      });
       setTruckingEstimate(null);
       setStep("trucking");
     } else {
@@ -250,17 +296,26 @@ export default function ProductOrderPage() {
   }
 
   function handleConfirmTrucking() {
+    if (truckingForm.mode === "detail" && !truckingForm.deliveryAddress.trim()) {
+      setDeliveryAddressError(true);
+      toast({ title: "Alamat Pengiriman wajib diisi", variant: "destructive" });
+      return;
+    }
     const cost = truckingEstimate;
     const summary = truckingForm.mode === "calculator"
       ? `${truckingForm.origin || "Asal"} → ${truckingForm.destination || "Tujuan"}, ${truckingForm.weight} kg`
-      : `${truckingForm.pickupAddress || "Pickup"} → ${truckingForm.deliveryAddress || "Delivery"}, ${truckingForm.pickupDate}`;
+      : `${truckingForm.pickupAddress || "Pickup"} → ${truckingForm.deliveryAddress || "Delivery"}`;
     setSelectedService({ serviceId: "trucking", serviceName: "Trucking", estimatedCost: cost, summaryLine: summary, detail: truckingForm });
     setStep("checkout");
   }
 
   async function handleSubmit() {
-    if (!customerName.trim() || !email.trim() || !phone.trim() || !address.trim()) {
+    if (!customerName.trim() || !email.trim() || !phone.trim()) {
       toast({ title: "Isi semua kolom data pemesan", variant: "destructive" }); return;
+    }
+    if (!address.trim()) {
+      setCheckoutAddressError(true);
+      toast({ title: "Alamat Pengiriman wajib diisi", variant: "destructive" }); return;
     }
     const formErrors = validateTemplatePayload(template, dynamicValues);
     if (formErrors.length > 0) { toast({ title: formErrors[0], variant: "destructive" }); return; }
@@ -482,14 +537,6 @@ export default function ProductOrderPage() {
             <div className="border rounded-xl p-5 bg-card space-y-4">
               <h2 className="font-semibold text-sm flex items-center gap-2"><MapPin className="w-4 h-4 text-orange-500" /> Detail Pickup & Delivery</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <Label className="text-xs flex items-center gap-1"><Calendar className="w-3 h-3" /> Tanggal Pickup</Label>
-                  <Input type="date" value={truckingForm.pickupDate} onChange={e => setTruckingForm(f => ({ ...f, pickupDate: e.target.value }))} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs flex items-center gap-1"><Clock className="w-3 h-3" /> Jam Pickup</Label>
-                  <Input type="time" value={truckingForm.pickupTime} onChange={e => setTruckingForm(f => ({ ...f, pickupTime: e.target.value }))} />
-                </div>
                 <div className="space-y-1.5 sm:col-span-2">
                   <Label className="text-xs flex items-center gap-1.5">
                     <MapPin className="w-3 h-3 text-orange-500" /> Alamat Pickup
@@ -503,7 +550,10 @@ export default function ProductOrderPage() {
                 </div>
                 <div className="space-y-1.5 sm:col-span-2">
                   <Label className="text-xs">Alamat Pengiriman <span className="text-destructive">*</span></Label>
-                  <Textarea rows={2} placeholder="Jl. ..., Kota, Provinsi" value={truckingForm.deliveryAddress} onChange={e => setTruckingForm(f => ({ ...f, deliveryAddress: e.target.value }))} />
+                  <Textarea rows={2} placeholder="Jl. ..., Kota, Provinsi" value={truckingForm.deliveryAddress}
+                    className={deliveryAddressError ? "border-destructive focus-visible:ring-destructive" : ""}
+                    onChange={e => { setDeliveryAddressError(false); setTruckingForm(f => ({ ...f, deliveryAddress: e.target.value })); }} />
+                  {deliveryAddressError && <p className="text-[11px] text-destructive">Alamat pengiriman wajib diisi.</p>}
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">Nama Kontak</Label>
@@ -512,6 +562,10 @@ export default function ProductOrderPage() {
                 <div className="space-y-1.5">
                   <Label className="text-xs">No. Telepon Kontak</Label>
                   <Input type="tel" placeholder="08xxxxxxxxxx" value={truckingForm.contactPhone} onChange={e => setTruckingForm(f => ({ ...f, contactPhone: e.target.value }))} />
+                </div>
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label className="text-xs">Catatan (opsional)</Label>
+                  <Textarea rows={2} placeholder="Instruksi khusus, info tambahan untuk tim pengiriman..." value={truckingForm.notes} onChange={e => setTruckingForm(f => ({ ...f, notes: e.target.value }))} />
                 </div>
               </div>
               <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-xs text-orange-700">
@@ -528,7 +582,17 @@ export default function ProductOrderPage() {
           {truckingForm.mode === "calculator" && (
             <div className="border rounded-xl p-5 bg-card space-y-4">
               <h2 className="font-semibold text-sm flex items-center gap-2"><Calculator className="w-4 h-4 text-orange-500" /> Kalkulator Estimasi Biaya</h2>
+
+              {/* Info banner when data is auto-filled */}
+              {cartHasWeight && (
+                <div className="flex items-start gap-2 bg-orange-50 border border-orange-200 rounded-lg p-3 text-xs text-orange-700">
+                  <Package className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>Berat dan spesifikasi barang <strong>dihitung otomatis</strong> dari produk yang Anda pesan. Isi kota tujuan untuk melihat estimasi biaya.</span>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Kota Asal — always auto */}
                 <div className="space-y-1.5">
                   <Label className="text-xs flex items-center gap-1">
                     <MapPin className="w-3 h-3 text-orange-500" /> Kota Asal
@@ -538,36 +602,85 @@ export default function ProductOrderPage() {
                     <p className="text-xs font-semibold text-slate-800">{companyOrigin?.originCity ?? "Jakarta"}</p>
                   </div>
                 </div>
+
+                {/* Kota Tujuan — satu-satunya yang wajib diisi customer */}
                 <div className="space-y-1.5">
-                  <Label className="text-xs flex items-center gap-1"><MapPin className="w-3 h-3" /> Kota Tujuan <span className="text-destructive">*</span></Label>
-                  <Input placeholder="Surabaya" value={truckingForm.destination} onChange={e => setTruckingForm(f => ({ ...f, destination: e.target.value }))} />
+                  <Label className="text-xs flex items-center gap-1">
+                    <MapPin className="w-3 h-3" /> Kota Tujuan <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    placeholder="Contoh: Surabaya"
+                    value={truckingForm.destination}
+                    onChange={e => setTruckingForm(f => ({ ...f, destination: e.target.value }))}
+                    className="border-primary/40 focus:border-primary"
+                    autoFocus
+                  />
                 </div>
+
+                {/* Berat — auto dari produk atau manual */}
                 <div className="space-y-1.5">
-                  <Label className="text-xs flex items-center gap-1"><Weight className="w-3 h-3" /> Berat (kg) <span className="text-destructive">*</span></Label>
-                  <Input type="number" min={0} placeholder="100" value={truckingForm.weight} onChange={e => setTruckingForm(f => ({ ...f, weight: e.target.value }))} />
+                  <Label className="text-xs flex items-center gap-1">
+                    <Weight className="w-3 h-3" /> Total Berat (kg)
+                    {cartHasWeight && (
+                      <span className="ml-auto text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">Dari Produk</span>
+                    )}
+                    {!cartHasWeight && <span className="text-destructive ml-1">*</span>}
+                  </Label>
+                  {cartHasWeight ? (
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-md px-3 py-2 flex items-center justify-between">
+                      <p className="text-xs font-semibold text-slate-800">{truckingForm.weight} kg</p>
+                      <button
+                        className="text-[10px] text-slate-400 hover:text-slate-600 underline"
+                        onClick={() => setTruckingForm(f => ({ ...f, weight: "" }))}
+                      >ubah</button>
+                    </div>
+                  ) : (
+                    <Input type="number" min={0} placeholder="Masukkan berat total (kg)"
+                      value={truckingForm.weight} onChange={e => setTruckingForm(f => ({ ...f, weight: e.target.value }))} />
+                  )}
                 </div>
+
+                {/* Jenis Barang — auto dari produk atau manual */}
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Jenis Barang</Label>
+                  <Label className="text-xs flex items-center gap-1">
+                    Jenis Barang
+                    {cartAutoGoodsType && (
+                      <span className="ml-auto text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">Dari Produk</span>
+                    )}
+                  </Label>
                   <Select value={truckingForm.goodsType} onValueChange={v => setTruckingForm(f => ({ ...f, goodsType: v }))}>
                     <SelectTrigger><SelectValue placeholder="Pilih jenis" /></SelectTrigger>
                     <SelectContent>{GOODS_TYPES.map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
-                <div className="sm:col-span-2">
-                  <Label className="text-xs flex items-center gap-1 mb-1.5"><Ruler className="w-3 h-3" /> Dimensi (cm) — P × L × T</Label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {(["length", "width", "height"] as const).map((key, i) => (
-                      <Input key={key} type="number" min={0} placeholder={["Panjang", "Lebar", "Tinggi"][i]}
-                        value={truckingForm[key]} onChange={e => setTruckingForm(f => ({ ...f, [key]: e.target.value }))} />
-                    ))}
-                  </div>
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Incoterms</Label>
-                  <Select value={truckingForm.incoterms} onValueChange={v => setTruckingForm(f => ({ ...f, incoterms: v }))}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>{INCOTERMS.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
-                  </Select>
+
+                {/* Dimensi — auto dari produk atau manual */}
+                <div className="sm:col-span-2 space-y-1.5">
+                  <Label className="text-xs flex items-center gap-1">
+                    <Ruler className="w-3 h-3" /> Dimensi (cm) — P × L × T
+                    {cartHasDims && (
+                      <span className="ml-2 text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">Dari Produk</span>
+                    )}
+                    {!cartHasDims && <span className="ml-1 text-[10px] text-muted-foreground">(opsional)</span>}
+                  </Label>
+                  {cartHasDims ? (
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-md px-3 py-2 flex items-center justify-between">
+                      <p className="text-xs font-semibold text-slate-800">
+                        {truckingForm.length} × {truckingForm.width} × {truckingForm.height} cm
+                      </p>
+                      <button
+                        className="text-[10px] text-slate-400 hover:text-slate-600 underline"
+                        onClick={() => setTruckingForm(f => ({ ...f, length: "", width: "", height: "" }))}
+                      >ubah</button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-3 gap-2">
+                      {(["length", "width", "height"] as const).map((key, i) => (
+                        <Input key={key} type="number" min={0} placeholder={["Panjang", "Lebar", "Tinggi"][i]}
+                          value={truckingForm[key]} onChange={e => setTruckingForm(f => ({ ...f, [key]: e.target.value }))} />
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -735,7 +848,11 @@ export default function ProductOrderPage() {
               </div>
               <div className="space-y-1.5 sm:col-span-2">
                 <Label className="text-xs">Alamat Pengiriman <span className="text-destructive">*</span></Label>
-                <Input value={address} onChange={e => setAddress(e.target.value)} placeholder="Jl. ..., Kota, Provinsi" />
+                <Input value={address}
+                  className={checkoutAddressError ? "border-destructive focus-visible:ring-destructive" : ""}
+                  onChange={e => { setCheckoutAddressError(false); setAddress(e.target.value); }}
+                  placeholder="Jl. ..., Kota, Provinsi" />
+                {checkoutAddressError && <p className="text-[11px] text-destructive">Alamat pengiriman wajib diisi.</p>}
               </div>
               <div className="space-y-1.5 sm:col-span-2">
                 <Label className="text-xs">Catatan Tambahan (opsional)</Label>
