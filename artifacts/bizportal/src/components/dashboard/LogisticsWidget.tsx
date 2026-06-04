@@ -43,7 +43,7 @@ const PHASES = [
     color: "text-amber-600 dark:text-amber-400",
     bg: "bg-amber-50 dark:bg-amber-950/30",
     border: "border-amber-200/60 dark:border-amber-800/40",
-    href: "/logistics/orders?status=Order+Received",
+    href: "/logistics/portal-orders?status=New+Order",
   },
   {
     key: "quotation" as const,
@@ -53,7 +53,7 @@ const PHASES = [
     color: "text-blue-600 dark:text-blue-400",
     bg: "bg-blue-50 dark:bg-blue-950/30",
     border: "border-blue-200/60 dark:border-blue-800/40",
-    href: "/logistics/orders?status=RFQ+Sent",
+    href: "/logistics/portal-orders?status=In+Progress",
   },
   {
     key: "inTransit" as const,
@@ -63,7 +63,7 @@ const PHASES = [
     color: "text-indigo-600 dark:text-indigo-400",
     bg: "bg-indigo-50 dark:bg-indigo-950/30",
     border: "border-indigo-200/60 dark:border-indigo-800/40",
-    href: "/logistics/orders?status=In+Transit",
+    href: "/logistics/portal-orders?status=In+Progress",
   },
   {
     key: "billing" as const,
@@ -73,7 +73,7 @@ const PHASES = [
     color: "text-purple-600 dark:text-purple-400",
     bg: "bg-purple-50 dark:bg-purple-950/30",
     border: "border-purple-200/60 dark:border-purple-800/40",
-    href: "/logistics/orders?status=Invoice+Issued",
+    href: "/logistics/portal-orders?status=In+Progress",
   },
 ];
 
@@ -118,13 +118,13 @@ export function LogisticsWidget() {
           </div>
           <div className="flex items-center gap-1">
             <Button variant="ghost" size="sm" asChild>
-              <Link href="/logistics/orders/new">
+              <Link href="/logistics/portal-orders/new">
                 <PlusCircle className="h-3.5 w-3.5 mr-1" />
                 Order
               </Link>
             </Button>
             <Button variant="ghost" size="sm" asChild>
-              <Link href="/logistics/orders">
+              <Link href="/logistics/portal-orders">
                 Semua <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
               </Link>
             </Button>
@@ -213,7 +213,7 @@ export function LogisticsWidget() {
             <AlertTriangle className="h-3.5 w-3.5 text-destructive shrink-0" />
             <p className="text-xs text-destructive">
               <span className="font-semibold">{data!.stalled} order</span> tidak ada update lebih dari 7 hari.{" "}
-              <Link href="/logistics/orders" className="underline underline-offset-2">
+              <Link href="/logistics/portal-orders?status=In+Progress" className="underline underline-offset-2">
                 Tinjau sekarang
               </Link>
             </p>
