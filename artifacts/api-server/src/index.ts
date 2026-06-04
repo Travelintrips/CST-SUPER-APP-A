@@ -66,6 +66,7 @@ import { initAlertsBroadcast } from "./lib/alertsBroadcast.js";
 import { warmupMailer } from "./lib/mailer.js";
 import { runSportCenterMigration, runSportCenterAccountCorrection } from "./modules/sport-center/migration.js";
 import { startRecurringExpenseWorker } from "./modules/sport-center/recurringExpenseWorker.js";
+import { startExpenseReminderWorker } from "./lib/expenseReminderWorker.js";
 import { runCostCenterMigration } from "./lib/costCenterMigration.js";
 import { runDriverPodMigration, runDriverAssignmentMigration } from "./routes/driver.js";
 import { runProductVolumeCbmMigration } from "./routes/ecommerce.js";
@@ -287,6 +288,7 @@ async function startServer() {
   startWorkflowWorker();
   startDriverJobWorker();
   startRecurringExpenseWorker();
+  startExpenseReminderWorker();
   startDbBackupScheduler();
   startWaRetryWorker();
 

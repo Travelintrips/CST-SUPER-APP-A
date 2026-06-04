@@ -99,6 +99,9 @@ import VendorInstallmentsPage from "@/pages/expense/vendor-installments";
 import BankLoansPage from "@/pages/expense/bank-loans";
 import FixedAssetsPage from "@/pages/expense/fixed-assets";
 import ExpenseApprovalsPage from "@/pages/expense/approvals";
+import ExpenseDashboardPage from "@/pages/expense/dashboard";
+import ExpenseTemplatesPage from "@/pages/expense/templates";
+import ExpenseBudgetPage from "@/pages/expense/budget";
 // Correspondence
 import CorrespondencesPage from "@/pages/correspondences";
 import EmailInboxPage from "@/pages/email-inbox";
@@ -326,6 +329,9 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/expense/bank-loans" component={PR(BankLoansPage)} />
       <Route path="/expense/fixed-assets" component={PR(FixedAssetsPage)} />
       <Route path="/expense/approvals" component={PR(ExpenseApprovalsPage)} />
+      <Route path="/expense/dashboard" component={PR(ExpenseDashboardPage)} />
+      <Route path="/expense/templates" component={PR(ExpenseTemplatesPage)} />
+      <Route path="/expense/budget" component={PR(ExpenseBudgetPage)} />
       <Route path="/expense/:id/edit" component={PR(ExpenseEditorPage)} />
       <Route path="/expense/:id" component={PR(ExpenseEditorPage)} />
       <Route path="/expense" component={PR(ExpenseListPage)} />

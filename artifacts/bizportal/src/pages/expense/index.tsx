@@ -22,7 +22,7 @@ import { usePrefetchOnHover } from "@/hooks/use-prefetch-on-hover";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useCompany } from "@/contexts/CompanyContext";
-import { ShoppingCart, Ship, Plus, Receipt, Search, Trash2, X, CalendarRange, Zap, Wallet, HandCoins, Building2, Landmark, Package, ShieldCheck } from "lucide-react";
+import { ShoppingCart, Ship, Plus, Receipt, Search, Trash2, X, CalendarRange, Zap, Wallet, HandCoins, Building2, Landmark, Package, ShieldCheck, LayoutDashboard, Layers, PieChart } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -227,6 +227,33 @@ export default function ExpenseListPage() {
               <div>
                 <p className="text-sm font-medium leading-tight">Approval</p>
                 <p className="text-xs text-muted-foreground">Multi-level limit</p>
+              </div>
+            </div>
+          </Link>
+          <Link href="/expense/dashboard">
+            <div className="flex items-center gap-3 rounded-lg border bg-card px-4 py-3 hover:bg-muted/50 transition-colors cursor-pointer">
+              <LayoutDashboard size={18} className="text-cyan-400 shrink-0" />
+              <div>
+                <p className="text-sm font-medium leading-tight">Dashboard</p>
+                <p className="text-xs text-muted-foreground">Monitoring & reminder</p>
+              </div>
+            </div>
+          </Link>
+          <Link href="/expense/templates">
+            <div className="flex items-center gap-3 rounded-lg border bg-card px-4 py-3 hover:bg-muted/50 transition-colors cursor-pointer">
+              <Layers size={18} className="text-emerald-400 shrink-0" />
+              <div>
+                <p className="text-sm font-medium leading-tight">Template</p>
+                <p className="text-xs text-muted-foreground">Preset expense</p>
+              </div>
+            </div>
+          </Link>
+          <Link href="/expense/budget">
+            <div className="flex items-center gap-3 rounded-lg border bg-card px-4 py-3 hover:bg-muted/50 transition-colors cursor-pointer">
+              <PieChart size={18} className="text-pink-400 shrink-0" />
+              <div>
+                <p className="text-sm font-medium leading-tight">Anggaran</p>
+                <p className="text-xs text-muted-foreground">Budget & kurs valuta</p>
               </div>
             </div>
           </Link>

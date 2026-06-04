@@ -102,6 +102,9 @@ import vendorInstallmentsRouter from "./vendorInstallments.js";
 import bankLoansRouter from "./bankLoans.js";
 import fixedAssetsRouter from "./fixedAssets.js";
 import expenseApprovalsRouter from "./expenseApprovals.js";
+import expenseDashboardRouter from "./expenseDashboard.js";
+import expenseTemplatesRouter from "./expenseTemplates.js";
+import expenseBudgetsRouter from "./expenseBudgets.js";
 
 import type { Request, Response } from "express";
 
@@ -237,6 +240,9 @@ router.use("/vendor-installments", vendorInstallmentsRouter);
 router.use("/bank-loans", bankLoansRouter);
 router.use("/fixed-assets", fixedAssetsRouter);
 router.use("/expense-approvals", expenseApprovalsRouter);
+router.use("/expense-dashboard", expenseDashboardRouter);
+router.use("/expense-templates", expenseTemplatesRouter);
+router.use("/expense-config", expenseBudgetsRouter);
 
 router.get("/alerts/stream", async (req: Request, res: Response) => {
   const ok = await requireAdmin(req, res);
