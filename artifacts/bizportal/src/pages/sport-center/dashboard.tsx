@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -83,6 +83,7 @@ export default function SportCenterDashboard() {
   const esRef = useRef<EventSource | null>(null);
   const [realtimeCount, setRealtimeCount] = useState(0);
   const [supabaseConnected, setSupabaseConnected] = useState(false);
+  const [cardFilter, setCardFilter] = useState<string | null>(null);
   const { costCenters, selectedId: costCenterId, setSelectedId: setCostCenterId, selectedLabel: costCenterLabel } = useSportCostCenter();
 
   // ── State: KPI date picker ────────────────────────────────────────────────
@@ -230,6 +231,29 @@ export default function SportCenterDashboard() {
   const topFacilities  = hasSupaBookings ? (supaData?.topFacilities  ?? []) : (localData?.topFacilities  ?? []);
   const recentBookings = hasSupaBookings ? (supaData?.recentBookings ?? []) : (localData?.recentBookings ?? []);
 
+  const CARD_FILTER_LABEL: Record<string, string> = {
+    all:     "Semua Booking",
+    today:   "Booking Hari Ini",
+    pending: "Belum Bayar",
+  };
+
+  const displayBookings = useMemo(() => {
+    if (!cardFilter || cardFilter === "all") return recentBookings;
+    if (cardFilter === "today") {
+      return recentBookings.filter((b) =>
+        String(b.booking_date ?? "").startsWith(todayStr),
+      );
+    }
+    if (cardFilter === "pending") {
+      const pendingStatuses = ["pending", "pending_payment"];
+      return recentBookings.filter((b) =>
+        pendingStatuses.includes(String(b.status ?? "")) ||
+        pendingStatuses.includes(String(b.payment_status ?? "")),
+      );
+    }
+    return recentBookings;
+  }, [cardFilter, recentBookings, todayStr]);
+
   const isLoading = localLoading && supaLoading;
 
   // ── Query 3: Sync status dari API ─────────────────────────────────────────
@@ -344,7 +368,11 @@ export default function SportCenterDashboard() {
 
   const syncBusy = resyncFacilities.isPending || resyncAll.isPending || resyncBookings.isPending;
 
-  const stats = [
+  const stats: {
+    title: string; value: string | number;
+    icon: React.ElementType; color: string; bg: string; sub: string;
+    filter?: string; href?: string;
+  }[] = [
     {
       title: "Total Booking",
       value: totalBookings,
@@ -352,7 +380,7 @@ export default function SportCenterDashboard() {
       color: "text-blue-400",
       bg: "bg-blue-900/20",
       sub: `Dari Supabase${hasSupaBookings ? " ✓" : " (lokal)"}`,
-      href: "/sport-center/bookings",
+      filter: "all",
     },
     {
       title: "Booking Hari Ini",
@@ -360,8 +388,8 @@ export default function SportCenterDashboard() {
       icon: Clock,
       color: "text-purple-400",
       bg: "bg-purple-900/20",
-      sub: "Dari PostgreSQL lokal",
-      href: "/sport-center/bookings",
+      sub: "klik untuk filter tabel",
+      filter: "today",
     },
     {
       title: "Belum Bayar",
@@ -369,8 +397,8 @@ export default function SportCenterDashboard() {
       icon: AlertCircle,
       color: "text-yellow-400",
       bg: "bg-yellow-900/20",
-      sub: "pending / pending_payment",
-      href: "/sport-center/bookings",
+      sub: "klik untuk filter tabel",
+      filter: "pending",
     },
     {
       title: "Pelanggan Unik",
@@ -410,12 +438,12 @@ export default function SportCenterDashboard() {
     },
     {
       title: "Booking per Status",
-      value: byStatus.length,
+      value: byStatus.reduce((s, r) => s + Number(r.count), 0),
       icon: ShoppingBag,
       color: "text-orange-400",
       bg: "bg-orange-900/20",
       sub: `${byStatus.length} status berbeda`,
-      href: "/sport-center/bookings",
+      filter: "all",
     },
   ];
 
@@ -650,26 +678,39 @@ export default function SportCenterDashboard() {
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {stats.map((s) => (
-              <Card
-                key={s.title}
-                className="border-border/60 cursor-pointer hover:border-border hover:bg-accent/30 transition-all duration-150 group"
-                onClick={() => navigate(s.href)}
-              >
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs text-muted-foreground mb-1 truncate group-hover:text-foreground/70 transition-colors">{s.title}</p>
-                      <p className="text-xl font-bold text-foreground">{s.value}</p>
-                      <p className="text-xs text-muted-foreground mt-1 truncate">{s.sub}</p>
+            {stats.map((s) => {
+              const isActive = s.filter != null && cardFilter === s.filter;
+              return (
+                <Card
+                  key={s.title}
+                  className={`border-border/60 cursor-pointer transition-all duration-150 group ${
+                    isActive
+                      ? "border-yellow-500/60 bg-yellow-900/10 ring-1 ring-yellow-500/30"
+                      : "hover:border-border hover:bg-accent/30"
+                  }`}
+                  onClick={() => {
+                    if (s.filter != null) {
+                      setCardFilter(cardFilter === s.filter ? null : s.filter);
+                    } else if (s.href) {
+                      navigate(s.href);
+                    }
+                  }}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs text-muted-foreground mb-1 truncate group-hover:text-foreground/70 transition-colors">{s.title}</p>
+                        <p className={`text-xl font-bold ${isActive ? "text-yellow-300" : "text-foreground"}`}>{s.value}</p>
+                        <p className="text-xs text-muted-foreground mt-1 truncate">{s.sub}</p>
+                      </div>
+                      <div className={`p-2 rounded-lg ml-2 shrink-0 ${isActive ? "bg-yellow-900/40" : s.bg} group-hover:scale-110 transition-transform`}>
+                        <s.icon className={`h-4 w-4 ${isActive ? "text-yellow-400" : s.color}`} />
+                      </div>
                     </div>
-                    <div className={`p-2 rounded-lg ml-2 shrink-0 ${s.bg} group-hover:scale-110 transition-transform`}>
-                      <s.icon className={`h-4 w-4 ${s.color}`} />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         )}
 
@@ -734,12 +775,43 @@ export default function SportCenterDashboard() {
         </div>
 
         {/* ── Booking Terbaru ───────────────────────────────────────────────── */}
-        <Card className="border-border/60">
+        <Card className={`border-border/60 transition-all ${cardFilter ? "border-yellow-500/40" : ""}`}>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <CalendarDays className="h-4 w-4" /> Booking Terbaru
-              <span className="text-xs font-normal ml-1 opacity-60">(5 terbaru berdasarkan created_at)</span>
-            </CardTitle>
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <CalendarDays className="h-4 w-4" /> Booking Terbaru
+                {cardFilter ? (
+                  <Badge className="bg-yellow-900/40 text-yellow-300 border-yellow-600 text-xs ml-1">
+                    Filter: {CARD_FILTER_LABEL[cardFilter] ?? cardFilter}
+                  </Badge>
+                ) : (
+                  <span className="text-xs font-normal ml-1 opacity-60">— klik kartu di atas untuk filter</span>
+                )}
+              </CardTitle>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">
+                  {displayBookings.length} dari {recentBookings.length} booking
+                </span>
+                {cardFilter && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-xs text-yellow-400 hover:text-yellow-300 hover:bg-yellow-900/30"
+                    onClick={() => setCardFilter(null)}
+                  >
+                    <XCircle className="h-3 w-3 mr-1" /> Hapus filter
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
+                  onClick={() => navigate("/sport-center/bookings")}
+                >
+                  Lihat semua →
+                </Button>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
@@ -752,7 +824,7 @@ export default function SportCenterDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {recentBookings.map((b, idx) => (
+                  {displayBookings.map((b, idx) => (
                     <tr key={String(b.id ?? idx)} className="border-b border-border/20 hover:bg-muted/30">
                       <td className="py-2 px-3 font-mono text-xs text-muted-foreground">
                         {String(b.booking_number ?? b.id ?? "-")}
@@ -772,10 +844,12 @@ export default function SportCenterDashboard() {
                       </td>
                     </tr>
                   ))}
-                  {recentBookings.length === 0 && (
+                  {displayBookings.length === 0 && (
                     <tr>
                       <td colSpan={6} className="py-8 text-center text-muted-foreground text-sm">
-                        Belum ada booking
+                        {cardFilter
+                          ? `Tidak ada booking dengan filter "${CARD_FILTER_LABEL[cardFilter] ?? cardFilter}"`
+                          : "Belum ada booking"}
                       </td>
                     </tr>
                   )}
