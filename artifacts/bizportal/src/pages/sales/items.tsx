@@ -462,8 +462,6 @@ export default function SalesItemsPage() {
   const bulkGoodsTypeForPanel = bulkFields.goodsType;
   const showCbmInPanel  = bulkGoodsTypeForPanel === "" ? true  : goodsTypeUsesCbm(bulkGoodsTypeForPanel);
   const showWeightInPanel = bulkGoodsTypeForPanel === "" ? true : !goodsTypeUsesCbm(bulkGoodsTypeForPanel);
-  const barangCount = filtered.filter((p) => p.itemType === "barang").length;
-  const allBarangSelected = barangCount > 0 && filtered.filter((p) => p.itemType === "barang").every((p) => selectedIds.has(p.id));
 
   const downloadImportTemplate = async () => {
     const ExcelJS = (await import("exceljs")).default;
@@ -719,6 +717,9 @@ export default function SalesItemsPage() {
       return true;
     });
   }, [products, filterType, filterSubcat, filterActive, search]);
+
+  const barangCount = filtered.filter((p) => p.itemType === "barang").length;
+  const allBarangSelected = barangCount > 0 && filtered.filter((p) => p.itemType === "barang").every((p) => selectedIds.has(p.id));
 
   const openCreate = () => {
     setEditingId(null);
