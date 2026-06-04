@@ -1283,22 +1283,22 @@ router.get("/dashboard-kpi", async (req, res) => {
     db.execute(sql`
       SELECT
         COALESCE(SUM(
-          CASE WHEN coa.type = 'asset'
+          CASE WHEN coa.type::text = 'asset'
             AND (lower(coa.name) LIKE '%kas%' OR lower(coa.name) LIKE '%cash%' OR lower(coa.name) LIKE '%bank%')
           THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END
         ), 0) AS cash_balance,
         COALESCE(SUM(
-          CASE WHEN lower(coa.name) LIKE '%piutang%' AND coa.type = 'asset'
+          CASE WHEN lower(coa.name) LIKE '%piutang%' AND coa.type::text = 'asset'
           THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END
         ), 0) AS total_ar,
         COALESCE(SUM(
-          CASE WHEN (lower(coa.name) LIKE '%utang%' OR lower(coa.name) LIKE '%payable%') AND coa.type = 'liability'
+          CASE WHEN (lower(coa.name) LIKE '%utang%' OR lower(coa.name) LIKE '%payable%') AND coa.type::text = 'liability'
           THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END
         ), 0) AS total_ap
       FROM accounting_entry_lines ael
       JOIN chart_of_accounts coa ON coa.id = ael.account_id
       JOIN accounting_entries ae ON ae.id = ael.entry_id
-      WHERE ae.status = 'posted'
+      WHERE ae.status::text = 'posted'
         ${companyFilter}
     `),
 
@@ -1333,14 +1333,14 @@ router.get("/dashboard-kpi", async (req, res) => {
     // Month P&L
     db.execute(sql`
       SELECT
-        COALESCE(SUM(CASE WHEN coa.type = 'revenue'
+        COALESCE(SUM(CASE WHEN coa.type::text = 'revenue'
           THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END), 0) AS month_revenue,
-        COALESCE(SUM(CASE WHEN coa.type = 'expense'
+        COALESCE(SUM(CASE WHEN coa.type::text = 'expense'
           THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END), 0) AS month_expense
       FROM accounting_entry_lines ael
       JOIN chart_of_accounts coa ON coa.id = ael.account_id
       JOIN accounting_entries ae ON ae.id = ael.entry_id
-      WHERE ae.status = 'posted'
+      WHERE ae.status::text = 'posted'
         AND ae.entry_date BETWEEN ${monthStart} AND ${monthEnd}
         ${companyFilter}
     `),
@@ -2131,25 +2131,25 @@ router.get("/holding/summary", async (req, res) => {
 
   const result = await db.execute(sql`
     SELECT
-      COALESCE(SUM(CASE WHEN coa.type = 'revenue' THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END), 0) AS revenue,
-      COALESCE(SUM(CASE WHEN coa.type = 'expense' THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END), 0) AS expense,
+      COALESCE(SUM(CASE WHEN coa.type::text = 'revenue' THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END), 0) AS revenue,
+      COALESCE(SUM(CASE WHEN coa.type::text = 'expense' THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END), 0) AS expense,
       COALESCE(SUM(
-        CASE WHEN coa.type = 'asset'
+        CASE WHEN coa.type::text = 'asset'
           AND (lower(coa.name) LIKE '%kas%' OR lower(coa.name) LIKE '%cash%' OR lower(coa.name) LIKE '%bank%')
         THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END
       ), 0) AS cash_balance,
       COALESCE(SUM(
-        CASE WHEN lower(coa.name) LIKE '%piutang%' AND coa.type = 'asset'
+        CASE WHEN lower(coa.name) LIKE '%piutang%' AND coa.type::text = 'asset'
         THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END
       ), 0) AS receivable,
       COALESCE(SUM(
-        CASE WHEN (lower(coa.name) LIKE '%utang%' OR lower(coa.name) LIKE '%payable%') AND coa.type = 'liability'
+        CASE WHEN (lower(coa.name) LIKE '%utang%' OR lower(coa.name) LIKE '%payable%') AND coa.type::text = 'liability'
         THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END
       ), 0) AS payable
     FROM accounting_entry_lines ael
     JOIN chart_of_accounts coa ON coa.id = ael.account_id
     JOIN accounting_entries ae ON ae.id = ael.entry_id
-    WHERE ae.status = 'posted'
+    WHERE ae.status::text = 'posted'
       AND ael.company_id = ANY(${companyIdsArr})
       ${dateFilter}
   `);
@@ -2212,25 +2212,25 @@ router.get("/holding/breakdown", async (req, res) => {
   const result = await db.execute(sql`
     SELECT
       ael.company_id,
-      COALESCE(SUM(CASE WHEN coa.type = 'revenue' THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END), 0) AS revenue,
-      COALESCE(SUM(CASE WHEN coa.type = 'expense' THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END), 0) AS expense,
+      COALESCE(SUM(CASE WHEN coa.type::text = 'revenue' THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END), 0) AS revenue,
+      COALESCE(SUM(CASE WHEN coa.type::text = 'expense' THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END), 0) AS expense,
       COALESCE(SUM(
-        CASE WHEN coa.type = 'asset'
+        CASE WHEN coa.type::text = 'asset'
           AND (lower(coa.name) LIKE '%kas%' OR lower(coa.name) LIKE '%cash%' OR lower(coa.name) LIKE '%bank%')
         THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END
       ), 0) AS cash_balance,
       COALESCE(SUM(
-        CASE WHEN lower(coa.name) LIKE '%piutang%' AND coa.type = 'asset'
+        CASE WHEN lower(coa.name) LIKE '%piutang%' AND coa.type::text = 'asset'
         THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END
       ), 0) AS receivable,
       COALESCE(SUM(
-        CASE WHEN (lower(coa.name) LIKE '%utang%' OR lower(coa.name) LIKE '%payable%') AND coa.type = 'liability'
+        CASE WHEN (lower(coa.name) LIKE '%utang%' OR lower(coa.name) LIKE '%payable%') AND coa.type::text = 'liability'
         THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END
       ), 0) AS payable
     FROM accounting_entry_lines ael
     JOIN chart_of_accounts coa ON coa.id = ael.account_id
     JOIN accounting_entries ae ON ae.id = ael.entry_id
-    WHERE ae.status = 'posted'
+    WHERE ae.status::text = 'posted'
       AND ael.company_id = ANY(${companyIdsArr})
       ${dateFilter}
     GROUP BY ael.company_id
@@ -2367,12 +2367,12 @@ router.get("/holding/pl-monthly", async (req, res) => {
     SELECT
       TO_CHAR(ae.entry_date, 'YYYY-MM') AS month,
       ael.company_id,
-      COALESCE(SUM(CASE WHEN coa.type = 'revenue' THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END), 0) AS revenue,
-      COALESCE(SUM(CASE WHEN coa.type = 'expense' THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END), 0) AS expense
+      COALESCE(SUM(CASE WHEN coa.type::text = 'revenue' THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END), 0) AS revenue,
+      COALESCE(SUM(CASE WHEN coa.type::text = 'expense' THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END), 0) AS expense
     FROM accounting_entry_lines ael
     JOIN chart_of_accounts coa ON coa.id = ael.account_id
     JOIN accounting_entries ae ON ae.id = ael.entry_id
-    WHERE ae.status = 'posted'
+    WHERE ae.status::text = 'posted'
       AND ael.company_id = ANY(${companyIdsArr})
       ${dateFilter}
     GROUP BY month, ael.company_id
@@ -2439,14 +2439,14 @@ router.get("/holding/cashflow-monthly", async (req, res) => {
       TO_CHAR(ae.entry_date, 'YYYY-MM') AS month,
       ael.company_id,
       -- Arus Operasi: penerimaan dari pendapatan
-      COALESCE(SUM(CASE WHEN coa.type = 'revenue'
+      COALESCE(SUM(CASE WHEN coa.type::text = 'revenue'
         THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END), 0) AS op_inflow,
       -- Arus Operasi: pembayaran untuk beban
-      COALESCE(SUM(CASE WHEN coa.type = 'expense'
+      COALESCE(SUM(CASE WHEN coa.type::text = 'expense'
         THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END), 0) AS op_outflow,
       -- Arus Investasi: perubahan aset tetap & investasi
       COALESCE(SUM(CASE
-        WHEN coa.type = 'asset' AND (
+        WHEN coa.type::text = 'asset' AND (
           lower(coa.name) LIKE '%aset tetap%' OR lower(coa.name) LIKE '%fixed asset%'
           OR lower(coa.name) LIKE '%peralatan%' OR lower(coa.name) LIKE '%kendaraan%'
           OR lower(coa.name) LIKE '%bangunan%' OR lower(coa.name) LIKE '%tanah%'
@@ -2456,8 +2456,8 @@ router.get("/holding/cashflow-monthly", async (req, res) => {
         THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END), 0) AS inv_net,
       -- Arus Pendanaan: perubahan modal & pinjaman jangka panjang
       COALESCE(SUM(CASE
-        WHEN (coa.type = 'equity')
-          OR (coa.type = 'liability' AND (
+        WHEN (coa.type::text = 'equity')
+          OR (coa.type::text = 'liability' AND (
             lower(coa.name) LIKE '%pinjaman%' OR lower(coa.name) LIKE '%hutang bank%'
             OR lower(coa.name) LIKE '%utang bank%' OR lower(coa.name) LIKE '%kredit bank%'
             OR lower(coa.name) LIKE '%modal%' OR lower(coa.name) LIKE '%saham%'
@@ -2465,14 +2465,14 @@ router.get("/holding/cashflow-monthly", async (req, res) => {
         THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END), 0) AS fin_net,
       -- Perubahan kas & bank bersih
       COALESCE(SUM(CASE
-        WHEN coa.type = 'asset' AND (
+        WHEN coa.type::text = 'asset' AND (
           lower(coa.name) LIKE '%kas%' OR lower(coa.name) LIKE '%cash%' OR lower(coa.name) LIKE '%bank%'
         )
         THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END), 0) AS cash_change
     FROM accounting_entry_lines ael
     JOIN chart_of_accounts coa ON coa.id = ael.account_id
     JOIN accounting_entries ae ON ae.id = ael.entry_id
-    WHERE ae.status = 'posted'
+    WHERE ae.status::text = 'posted'
       AND ael.company_id = ANY(${companyIdsArr})
       ${dateFilter}
     GROUP BY month, ael.company_id
@@ -2772,24 +2772,24 @@ router.get("/holding/groups/:id/cashflow", async (req, res) => {
   const rows = await db.execute(sql`
     SELECT
       ae.company_id,
-      COALESCE(SUM(CASE WHEN coa.type = 'revenue'
+      COALESCE(SUM(CASE WHEN coa.type::text = 'revenue'
         THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END), 0) AS op_inflow,
-      COALESCE(SUM(CASE WHEN coa.type = 'expense'
+      COALESCE(SUM(CASE WHEN coa.type::text = 'expense'
         THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END), 0) AS op_outflow,
-      COALESCE(SUM(CASE WHEN coa.type = 'asset'
+      COALESCE(SUM(CASE WHEN coa.type::text = 'asset'
         AND (lower(coa.name) SIMILAR TO '%(aset tetap|peralatan|kendaraan|bangunan|tanah|mesin|investasi|penyertaan)%')
         THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END), 0) AS inv_net,
-      COALESCE(SUM(CASE WHEN (coa.type = 'equity')
-        OR (coa.type = 'liability' AND (lower(coa.name) LIKE '%pinjaman%' OR lower(coa.name) LIKE '%hutang bank%'
+      COALESCE(SUM(CASE WHEN (coa.type::text = 'equity')
+        OR (coa.type::text = 'liability' AND (lower(coa.name) LIKE '%pinjaman%' OR lower(coa.name) LIKE '%hutang bank%'
           OR lower(coa.name) LIKE '%modal%' OR lower(coa.name) LIKE '%saham%'))
         THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END), 0) AS fin_net,
-      COALESCE(SUM(CASE WHEN coa.type = 'asset'
+      COALESCE(SUM(CASE WHEN coa.type::text = 'asset'
         AND (lower(coa.name) LIKE '%kas%' OR lower(coa.name) LIKE '%cash%' OR lower(coa.name) LIKE '%bank%')
         THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END), 0) AS cash_change
     FROM accounting_entry_lines ael
     JOIN accounting_entries ae ON ae.id = ael.entry_id
     JOIN chart_of_accounts coa ON coa.id = ael.account_id
-    WHERE ae.status = 'posted'
+    WHERE ae.status::text = 'posted'
       AND ae.company_id = ANY(${companyIdsArr})
       ${dateFilter}
     GROUP BY ae.company_id
@@ -2959,7 +2959,7 @@ router.post("/gsheet/push", async (req, res) => {
       COALESCE(SUM(ael.debit), 0) - COALESCE(SUM(ael.credit), 0) as balance
     FROM chart_of_accounts coa
     LEFT JOIN accounting_entry_lines ael ON ael.account_id = coa.id
-    LEFT JOIN accounting_entries ae ON ae.id = ael.entry_id AND ae.status = 'posted'
+    LEFT JOIN accounting_entries ae ON ae.id = ael.entry_id AND ae.status::text = 'posted'
     WHERE coa.company_id ${companyId ? sql`= ${companyId}` : sql`IS NULL`}
     GROUP BY coa.code, coa.name, coa.type
     ORDER BY coa.code
@@ -2988,7 +2988,7 @@ router.post("/gsheet/push", async (req, res) => {
     FROM accounting_entry_lines ael
     JOIN accounting_entries ae ON ae.id = ael.entry_id
     JOIN chart_of_accounts coa ON coa.id = ael.account_id
-    WHERE ae.status = 'posted'
+    WHERE ae.status::text = 'posted'
       AND coa.company_id ${companyId ? sql`= ${companyId}` : sql`IS NULL`}
     ORDER BY coa.code, ae.date, ae.entry_number, ael.id
   `);
