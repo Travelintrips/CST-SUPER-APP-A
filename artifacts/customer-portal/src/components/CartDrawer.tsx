@@ -170,7 +170,7 @@ export function CartDrawer() {
   const [truckData, setTruckData] = useState<Record<string, string>>({});
   const [truckEstimate, setTruckEstimate] = useState<number | null>(null);
   const [truckEstimating, setTruckEstimating] = useState(false);
-  const [companyPickup, setCompanyPickup] = useState<{ name: string; address: string } | null>(null);
+  const [companyPickup, setCompanyPickup] = useState<{ name: string; address: string; originCity: string } | null>(null);
   const [, setLocation]        = useLocation();
   const { toast }              = useToast();
 
@@ -186,14 +186,14 @@ export function CartDrawer() {
     if (view !== "trucking" || companyPickup) return;
     fetch("/api/settings/company-pickup-address")
       .then(r => r.ok ? r.json() : null)
-      .then((d: { companyName: string; companyAddress: string } | null) => {
+      .then((d: { companyName: string; companyAddress: string; originCity?: string } | null) => {
         if (d?.companyAddress) {
-          setCompanyPickup({ name: d.companyName, address: d.companyAddress });
+          setCompanyPickup({ name: d.companyName, address: d.companyAddress, originCity: d.originCity ?? "Jakarta" });
         } else {
-          setCompanyPickup({ name: "CST Logistics", address: DEFAULT_PICKUP });
+          setCompanyPickup({ name: "CST Logistics", address: DEFAULT_PICKUP, originCity: "Jakarta" });
         }
       })
-      .catch(() => setCompanyPickup({ name: "CST Logistics", address: DEFAULT_PICKUP }));
+      .catch(() => setCompanyPickup({ name: "CST Logistics", address: DEFAULT_PICKUP, originCity: "Jakarta" }));
   }, [view, companyPickup]);
 
   function close() { setOpen(false); }
@@ -221,7 +221,7 @@ export function CartDrawer() {
         ? { pickupCity: pickupAddr, destCity: truckData.deliveryAddress,
             vehicleType: "CDD", pickupDate: truckData.pickupDate, pickupTime: truckData.pickupTime,
             receiver_name: truckData.contactName, receiver_phone: truckData.contactPhone }
-        : { ...truckData },
+        : { ...truckData, pickupCity: companyPickup?.originCity ?? "Jakarta" },
       calculationResult: truckEstimate ? { estimated_price: truckEstimate } : {},
       subtotal: 0,
     });
@@ -245,7 +245,8 @@ export function CartDrawer() {
     setTruckEstimating(true);
     const params = new URLSearchParams({ transport_mode: "TRUCKING" });
     if (truckData.vehicleType) params.set("truck_type", truckData.vehicleType);
-    if (truckData.pickupCity)  params.set("origin", truckData.pickupCity);
+    const effectiveOrigin = companyPickup?.originCity ?? "Jakarta";
+    params.set("origin", effectiveOrigin);
     if (truckData.destCity)    params.set("dest", truckData.destCity);
     fetch(`/api/logistic/orders/estimate-price?${params}`)
       .then(r => r.ok ? r.json() : Promise.reject())
@@ -489,8 +490,13 @@ export function CartDrawer() {
                 <div className="space-y-3">
                   <div className="grid grid-cols-2 gap-2.5">
                     <div>
-                      <Label className="text-[11px] mb-1 block flex items-center gap-1"><MapPin className="w-3 h-3" /> Kota Asal *</Label>
-                      <Input className="h-8 text-xs" placeholder="Jakarta" value={truckData.pickupCity||""} onChange={e => setTruckData(p => ({ ...p, pickupCity: e.target.value }))} />
+                      <Label className="text-[11px] mb-1 flex items-center gap-1">
+                        <MapPin className="w-3 h-3 text-orange-500" /> Kota Asal
+                        <span className="ml-auto text-[10px] font-semibold bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-full">Otomatis</span>
+                      </Label>
+                      <div className="h-8 rounded-md border border-orange-200 bg-orange-50 px-3 flex items-center">
+                        <span className="text-xs font-medium text-orange-700">{companyPickup?.originCity ?? "Jakarta"}</span>
+                      </div>
                     </div>
                     <div>
                       <Label className="text-[11px] mb-1 block flex items-center gap-1"><MapPin className="w-3 h-3" /> Kota Tujuan *</Label>
@@ -536,7 +542,7 @@ export function CartDrawer() {
                   <Button
                     variant="outline" size="sm"
                     className="w-full border-orange-400 text-orange-600 hover:bg-orange-50 gap-2"
-                    disabled={!truckData.pickupCity || !truckData.destCity || !truckData.weight || truckEstimating}
+                    disabled={!truckData.destCity || !truckData.weight || truckEstimating}
                     onClick={handleEstimate}
                   >
                     {truckEstimating
@@ -548,7 +554,7 @@ export function CartDrawer() {
                     <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 space-y-0.5">
                       <p className="text-[11px] text-emerald-600 font-medium">Estimasi Biaya Trucking</p>
                       <p className="text-xl font-bold text-emerald-700">{formatCurrency(truckEstimate)}</p>
-                      <p className="text-[11px] text-emerald-500">{truckData.pickupCity} → {truckData.destCity} · {truckData.weight} kg</p>
+                      <p className="text-[11px] text-emerald-500">{companyPickup?.originCity ?? "Jakarta"} → {truckData.destCity} · {truckData.weight} kg</p>
                       <p className="text-[10px] text-slate-400 mt-1">*Estimasi indikatif. Biaya final dikonfirmasi tim logistik.</p>
                     </div>
                   )}
@@ -607,7 +613,7 @@ export function CartDrawer() {
               disabled={
                 truckMode === "detail"
                   ? !truckData.pickupAddress?.trim() || !truckData.deliveryAddress?.trim()
-                  : !truckData.pickupCity || !truckData.destCity || !truckData.weight
+                  : !truckData.destCity || !truckData.weight
               }
               onClick={handleAddTruckingItem}
             >
