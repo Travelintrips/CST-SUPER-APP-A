@@ -50,6 +50,11 @@ export interface Product {
   subcategory?: string | null;
   isActive: boolean;
   createdAt: string;
+  weightKg?: number | null;
+  lengthCm?: number | null;
+  widthCm?: number | null;
+  heightCm?: number | null;
+  goodsType?: string | null;
 }
 
 export interface PaginatedProducts {

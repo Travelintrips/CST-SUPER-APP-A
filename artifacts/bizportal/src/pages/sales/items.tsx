@@ -717,8 +717,8 @@ export default function SalesItemsPage() {
                                     {[p.lengthCm, p.widthCm, p.heightCm].map(v => v != null ? Number(v) : "?").join(" × ")} cm
                                   </div>
                                 )}
-                                {(p as unknown as { goodsType?: string }).goodsType && (
-                                  <div className="text-[11px] text-slate-500 truncate max-w-[100px]">{(p as unknown as { goodsType?: string }).goodsType}</div>
+                                {p.goodsType && (
+                                  <div className="text-[11px] text-slate-500 truncate max-w-[100px]">{p.goodsType}</div>
                                 )}
                               </div>
                             ) : (
