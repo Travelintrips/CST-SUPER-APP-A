@@ -285,20 +285,15 @@ export default function SportCenterBookings() {
 
   const displayRows: Booking[] = showingSupabase
     ? (supaBookings ?? []).filter((b) =>
-        (!search || String(b.customer_name).toLowerCase().includes(search.toLowerCase()) || String(b.booking_number).toLowerCase().includes(search.toLowerCase())) &&
+        (!searchText || String(b.customer_name).toLowerCase().includes(searchText.toLowerCase()) || String(b.booking_number).toLowerCase().includes(searchText.toLowerCase())) &&
         (statusFilter === "all" || b.status === statusFilter) &&
         (!dateFilter || b.booking_date === dateFilter),
       )
     : (data?.data ?? []).filter((b: any) =>
-        !search ||
-        String(b.customer_name).toLowerCase().includes(search.toLowerCase()) ||
-        String(b.booking_number).toLowerCase().includes(search.toLowerCase()),
+        !searchText ||
+        String(b.customer_name).toLowerCase().includes(searchText.toLowerCase()) ||
+        String(b.booking_number).toLowerCase().includes(searchText.toLowerCase()),
       );
-  const filtered = (data?.data ?? []).filter((b: any) =>
-    !searchText ||
-    String(b.customer_name).toLowerCase().includes(searchText.toLowerCase()) ||
-    String(b.booking_number).toLowerCase().includes(searchText.toLowerCase()),
-  );
 
   return (
     <AppShell>
