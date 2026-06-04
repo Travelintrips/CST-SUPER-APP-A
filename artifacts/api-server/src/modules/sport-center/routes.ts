@@ -513,6 +513,13 @@ router.post("/bookings", async (req, res) => {
       return res.status(400).json({ error: "Field wajib tidak lengkap" });
     }
 
+    // Ambil customer_email dari request atau lookup dari sport_customers
+    let customerEmail: string | null = req.body.customer_email ?? null;
+    if (!customerEmail && customer_id) {
+      const custRes = await db.execute(sql`SELECT email FROM sport_customers WHERE id = ${customer_id} LIMIT 1`);
+      customerEmail = (custRes.rows[0] as Record<string, unknown>)?.email as string ?? null;
+    }
+
     // Validasi dan hitung promo
     let resolvedPromoId: number | null = null;
     let resolvedPromoCode: string | null = req.body.promo_code ?? null;
@@ -561,12 +568,12 @@ router.post("/bookings", async (req, res) => {
     const bookingNumber = await nextBookingNumber(company_id);
     const r = await db.execute(sql`
       INSERT INTO sport_bookings
-        (company_id, booking_number, customer_id, customer_name, customer_phone, facility_id, facility_name,
+        (company_id, booking_number, customer_id, customer_name, customer_email, customer_phone, facility_id, facility_name,
          booking_date, start_time, end_time, duration_hours, base_amount, discount_amount, total_amount,
          tax_rate, tax_amount,
          promo_id, promo_code, notes, status, payment_status)
       VALUES
-        (${company_id ?? null}, ${bookingNumber}, ${customer_id ?? null}, ${customer_name}, ${customer_phone ?? null},
+        (${company_id ?? null}, ${bookingNumber}, ${customer_id ?? null}, ${customer_name}, ${customerEmail ?? null}, ${customer_phone ?? null},
          ${facility_id ?? null}, ${facility_name}, ${booking_date}, ${start_time}, ${end_time},
          ${duration_hours}, ${base_amount}, ${resolvedDiscount}, ${resolvedTotal},
          ${taxRate}, ${taxAmount},
