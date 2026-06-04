@@ -466,6 +466,78 @@ export async function runSportCenterMigration(): Promise<void> {
       logger.warn({ err: pullErr }, "Sport Center migration: pull legacy bookings gagal (non-fatal)");
     }
 
+    // ── Backfill customer_email dari sport_customers → sport_bookings lama ────
+    // Idempoten: hanya update baris yang customer_email masih NULL tapi customer_id sudah ada.
+    const backfillResult = await db.execute(sql`
+      UPDATE sport_bookings sb
+      SET    customer_email = sc.email,
+             updated_at     = NOW()
+      FROM   sport_customers sc
+      WHERE  sb.customer_id  = sc.id
+        AND  sc.email        IS NOT NULL
+        AND  sc.email        <> ''
+        AND  (sb.customer_email IS NULL OR sb.customer_email = '')
+    `);
+    const backfilled = (backfillResult as { rowCount?: number }).rowCount ?? 0;
+    if (backfilled > 0) {
+      logger.info({ backfilled }, "Sport Center migration: customer_email backfill selesai");
+    } else {
+      logger.info("Sport Center migration: customer_email backfill — tidak ada baris yang perlu diisi");
+    // Backfill: sync existing sport_payments ke accounting_payments (idempoten)
+    try {
+      await db.execute(sql`
+        INSERT INTO accounting_payments (
+          company_id, payment_number, payment_type, status, amount,
+          journal_id, partner_name, date, ref, memo, source_type, source_doc_id, created_at
+        )
+        SELECT
+          sp.company_id,
+          'PAY/' || EXTRACT(YEAR FROM sp.paid_at)::text || '/' || LPAD(ROW_NUMBER() OVER (ORDER BY sp.paid_at, sp.id)::text, 4, '0'),
+          'inbound',
+          'posted',
+          sp.amount,
+          COALESCE(
+            (SELECT id FROM accounting_journals
+             WHERE (sp.company_id IS NULL OR company_id = sp.company_id)
+               AND type = 'cash' LIMIT 1),
+            (SELECT id FROM accounting_journals
+             WHERE (sp.company_id IS NULL OR company_id = sp.company_id)
+               AND type = 'bank' LIMIT 1),
+            (SELECT id FROM accounting_journals LIMIT 1)
+          ),
+          COALESCE(
+            (SELECT customer_name FROM sport_bookings WHERE id = sp.booking_id LIMIT 1),
+            (SELECT name FROM sport_members WHERE id = sp.member_id LIMIT 1),
+            'Sport Center'
+          ),
+          COALESCE(sp.paid_at::date, NOW()::date),
+          sp.payment_number,
+          CASE sp.payment_type
+            WHEN 'membership' THEN 'Pembayaran membership sport center'
+            ELSE 'Pembayaran booking sport center'
+          END,
+          'sport_center',
+          sp.id,
+          sp.created_at
+        FROM sport_payments sp
+        WHERE sp.status = 'paid'
+          AND NOT EXISTS (
+            SELECT 1 FROM accounting_payments ap
+            WHERE ap.source_type = 'sport_center'
+              AND ap.source_doc_id = sp.id
+          )
+          AND COALESCE(
+            (SELECT id FROM accounting_journals
+             WHERE (sp.company_id IS NULL OR company_id = sp.company_id)
+               AND type IN ('cash','bank') LIMIT 1),
+            NULL
+          ) IS NOT NULL
+      `);
+      logger.info("Sport Center migration: backfill accounting_payments selesai");
+    } catch (backfillErr) {
+      logger.warn({ err: backfillErr }, "Sport Center migration: backfill accounting_payments gagal (non-fatal)");
+    }
+
     logger.info("Sport Center migration: selesai");
   } catch (err) {
     logger.error({ err }, "Sport Center migration: gagal");
