@@ -637,6 +637,7 @@ export default function SalesItemsPage() {
                       <TableHead className="text-slate-400 text-right">Stok</TableHead>
                       <TableHead className="text-slate-400 text-right">Harga Jual</TableHead>
                       <TableHead className="text-slate-400">Pajak Jual</TableHead>
+                      <TableHead className="text-slate-400">Berat / Dimensi</TableHead>
                       <TableHead className="text-slate-400">Status</TableHead>
                       <TableHead></TableHead>
                     </TableRow>
@@ -704,6 +705,29 @@ export default function SalesItemsPage() {
                           )}
                         </TableCell>
                         <TableCell className="text-slate-400 text-xs">{taxName(p.defaultSalesTaxId)}</TableCell>
+                        <TableCell className="text-slate-400 text-xs">
+                          {p.itemType === "barang" ? (
+                            p.weightKg != null ? (
+                              <div className="space-y-0.5">
+                                <div className="flex items-center gap-1 text-emerald-400 font-medium">
+                                  <span>{Number(p.weightKg)} kg</span>
+                                </div>
+                                {(p.lengthCm != null || p.widthCm != null || p.heightCm != null) && (
+                                  <div className="text-[11px] text-slate-500">
+                                    {[p.lengthCm, p.widthCm, p.heightCm].map(v => v != null ? Number(v) : "?").join(" × ")} cm
+                                  </div>
+                                )}
+                                {(p as unknown as { goodsType?: string }).goodsType && (
+                                  <div className="text-[11px] text-slate-500 truncate max-w-[100px]">{(p as unknown as { goodsType?: string }).goodsType}</div>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-slate-600 text-[11px]">— belum diisi</span>
+                            )
+                          ) : (
+                            <span className="text-slate-600">—</span>
+                          )}
+                        </TableCell>
                         <TableCell>
                           {p.isActive ? (
                             <Badge className="bg-green-900/40 text-green-300 border-green-700 text-xs">Aktif</Badge>
