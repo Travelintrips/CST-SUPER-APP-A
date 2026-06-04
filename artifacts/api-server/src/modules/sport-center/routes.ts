@@ -1,10 +1,57 @@
 import { Router } from "express";
-import { db } from "@workspace/db";
+import { db, accountingPaymentsTable } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { requireAdmin } from "../../lib/requireAdmin.js";
 import { handleSportCenterSse, broadcastSportCenterEvent } from "./broadcast.js";
 import { postSportCenterBooking, postSportCenterBookingReversal, postSportCenterRefund, postSportCenterMembershipPayment, postSportCenterBookingWithTax, postSportCenterBookingRefundDirect } from "../../lib/accounting.js";
+import { ensureAccountingSettings } from "../../lib/accountingSeed.js";
 import { syncFacilityUpsert, syncFacilityDelete, syncAllFacilities, syncBookingUpsert, syncAllBookings, getLastSyncLogs, pullLegacyBookingsFromSupabase } from "./supabaseSync.js";
+
+async function insertAccountingPaymentForSportCenter(args: {
+  companyId: number;
+  paymentNumber: string;
+  amount: number;
+  method: string;
+  partnerName: string;
+  ref: string;
+  memo: string;
+  sourceDocId: number;
+  date?: string;
+  createdById?: string | null;
+}): Promise<void> {
+  try {
+    const settings = await ensureAccountingSettings(args.companyId);
+    const isCash = ["cash", "tunai"].includes(args.method?.toLowerCase() ?? "");
+    const journalId = isCash
+      ? (settings.cashJournalId ?? settings.bankJournalId)
+      : (settings.bankJournalId ?? settings.cashJournalId);
+    if (!journalId) return;
+    const payDate = args.date ?? new Date().toISOString().split("T")[0]!;
+    const year = payDate.slice(0, 4);
+    const cntRes = await db.execute(sql`SELECT CAST(COUNT(*) AS int) AS seq FROM accounting_payments`);
+    const seq = Number((cntRes.rows[0] as any)?.seq ?? 0);
+    const paySeq = (seq + 1).toString().padStart(4, "0");
+    const acctPayNumber = `PAY/${year}/${paySeq}`;
+    await db.insert(accountingPaymentsTable).values({
+      companyId: args.companyId,
+      paymentNumber: acctPayNumber,
+      paymentType: "inbound",
+      status: "posted",
+      amount: String(Math.round(args.amount * 100) / 100),
+      journalId,
+      partnerName: args.partnerName || null,
+      date: payDate,
+      ref: args.ref || null,
+      memo: args.memo || null,
+      entryId: null,
+      sourceType: "sport_center",
+      sourceDocId: args.sourceDocId,
+      createdById: args.createdById ?? null,
+    });
+  } catch (err) {
+    console.error("[sport-center] insertAccountingPaymentForSportCenter failed:", err);
+  }
+}
 
 const router = Router();
 
@@ -513,6 +560,13 @@ router.post("/bookings", async (req, res) => {
       return res.status(400).json({ error: "Field wajib tidak lengkap" });
     }
 
+    // Ambil customer_email dari request atau lookup dari sport_customers
+    let customerEmail: string | null = req.body.customer_email ?? null;
+    if (!customerEmail && customer_id) {
+      const custRes = await db.execute(sql`SELECT email FROM sport_customers WHERE id = ${customer_id} LIMIT 1`);
+      customerEmail = (custRes.rows[0] as Record<string, unknown>)?.email as string ?? null;
+    }
+
     // Validasi dan hitung promo
     let resolvedPromoId: number | null = null;
     let resolvedPromoCode: string | null = req.body.promo_code ?? null;
@@ -561,12 +615,12 @@ router.post("/bookings", async (req, res) => {
     const bookingNumber = await nextBookingNumber(company_id);
     const r = await db.execute(sql`
       INSERT INTO sport_bookings
-        (company_id, booking_number, customer_id, customer_name, customer_phone, facility_id, facility_name,
+        (company_id, booking_number, customer_id, customer_name, customer_email, customer_phone, facility_id, facility_name,
          booking_date, start_time, end_time, duration_hours, base_amount, discount_amount, total_amount,
          tax_rate, tax_amount,
          promo_id, promo_code, notes, status, payment_status)
       VALUES
-        (${company_id ?? null}, ${bookingNumber}, ${customer_id ?? null}, ${customer_name}, ${customer_phone ?? null},
+        (${company_id ?? null}, ${bookingNumber}, ${customer_id ?? null}, ${customer_name}, ${customerEmail ?? null}, ${customer_phone ?? null},
          ${facility_id ?? null}, ${facility_name}, ${booking_date}, ${start_time}, ${end_time},
          ${duration_hours}, ${base_amount}, ${resolvedDiscount}, ${resolvedTotal},
          ${taxRate}, ${taxAmount},
@@ -983,6 +1037,19 @@ router.post("/members/:id/payment", async (req, res) => {
       )
     `);
 
+    // Sync ke accounting_payments agar muncul di halaman Accounting → Payments
+    insertAccountingPaymentForSportCenter({
+      companyId,
+      paymentNumber,
+      amount: amt,
+      method: payment_method,
+      partnerName: String(member.name ?? ""),
+      ref: String(member.member_number ?? paymentNumber),
+      memo: `Pembayaran membership sport center`,
+      sourceDocId: Number(payment.id),
+      createdById: actorId,
+    }).catch((err: unknown) => console.error("[sport-center] insertAccountingPayment (membership) failed:", err));
+
     broadcastSportCenterEvent(
       { module: "sport-center", entity: "payment", action: "created", data: payment, timestamp: new Date().toISOString() },
       companyId,
@@ -1254,6 +1321,23 @@ router.post("/payments", async (req, res) => {
         ${JSON.stringify({ booking_id, amount, method, payment_number: paymentNumber })}::jsonb
       )
     `).catch((err: unknown) => console.error('[sport-center] audit log failed:', err));
+
+    // Sync ke accounting_payments agar muncul di halaman Accounting → Payments
+    if (company_id != null) {
+      const bookingForPay = bookingRes.rows[0] as Record<string, unknown> | undefined;
+      insertAccountingPaymentForSportCenter({
+        companyId: Number(company_id),
+        paymentNumber,
+        amount: Number(amount),
+        method: method ?? "cash",
+        partnerName: bookingForPay ? String(bookingForPay.customer_name ?? "") : "",
+        ref: bookingForPay ? String(bookingForPay.booking_number ?? paymentNumber) : paymentNumber,
+        memo: `Pembayaran booking sport center`,
+        sourceDocId: Number(row.id),
+        date: bookingForPay ? String(bookingForPay.booking_date ?? new Date().toISOString().slice(0, 10)) : undefined,
+        createdById: (req.user as { id: string } | undefined)?.id ?? null,
+      }).catch((err: unknown) => console.error("[sport-center] insertAccountingPayment failed:", err));
+    }
 
     broadcastSportCenterEvent({ module: "sport-center", entity: "payment", action: "created", data: row, timestamp: new Date().toISOString() }, company_id);
     res.status(201).json(row);
