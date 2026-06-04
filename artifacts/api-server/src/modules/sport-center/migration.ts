@@ -466,6 +466,25 @@ export async function runSportCenterMigration(): Promise<void> {
       logger.warn({ err: pullErr }, "Sport Center migration: pull legacy bookings gagal (non-fatal)");
     }
 
+    // ── Backfill customer_email dari sport_customers → sport_bookings lama ────
+    // Idempoten: hanya update baris yang customer_email masih NULL tapi customer_id sudah ada.
+    const backfillResult = await db.execute(sql`
+      UPDATE sport_bookings sb
+      SET    customer_email = sc.email,
+             updated_at     = NOW()
+      FROM   sport_customers sc
+      WHERE  sb.customer_id  = sc.id
+        AND  sc.email        IS NOT NULL
+        AND  sc.email        <> ''
+        AND  (sb.customer_email IS NULL OR sb.customer_email = '')
+    `);
+    const backfilled = (backfillResult as { rowCount?: number }).rowCount ?? 0;
+    if (backfilled > 0) {
+      logger.info({ backfilled }, "Sport Center migration: customer_email backfill selesai");
+    } else {
+      logger.info("Sport Center migration: customer_email backfill — tidak ada baris yang perlu diisi");
+    }
+
     logger.info("Sport Center migration: selesai");
   } catch (err) {
     logger.error({ err }, "Sport Center migration: gagal");
