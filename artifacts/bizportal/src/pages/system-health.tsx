@@ -14,7 +14,7 @@ import {
   Mail,
   Server,
   Activity,
-  Wifi,
+  Wifi, ArrowLeft,
 } from "lucide-react";
 import { Link } from "wouter";
 

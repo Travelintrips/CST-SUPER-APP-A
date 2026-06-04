@@ -25,7 +25,7 @@ import {
   Clock, SendHorizonal, Pencil, CheckCircle, Package, Star, Building2, FileText,
   BarChart2, TrendingDown, TrendingUp, Minus, Award,
   Layers, ChevronDown, ChevronRight, AlertCircle, ClipboardList, PackageCheck, Info,
-  Search, DollarSign, CreditCard, BadgeCheck, ChevronsUpDown, Check,
+  Search, DollarSign, CreditCard, BadgeCheck, ChevronsUpDown, Check, ArrowLeft,
 } from "lucide-react";
 import {
   Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,

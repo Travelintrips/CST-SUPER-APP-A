@@ -20,7 +20,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Package, ShoppingBag, Boxes, Plus, Pencil, Trash2, RefreshCw,
-  Warehouse, AlertTriangle, ChefHat, TrendingUp, Sparkles,
+  Warehouse, AlertTriangle, ChefHat, TrendingUp, Sparkles, ArrowLeft,
 } from "lucide-react";
 
 const idr = (n: number) =>
