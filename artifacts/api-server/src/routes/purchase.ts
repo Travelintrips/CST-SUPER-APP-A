@@ -665,6 +665,17 @@ router.post("/documents/:id/action", async (req, res) => {
           taxAccountId: null,
           companyId: doc.companyId ?? null,
         });
+        if (taxAmount > 0) {
+          const { recordTransactionTax } = await import("../lib/taxAutoService.js");
+          void recordTransactionTax({
+            companyId: doc.companyId ?? 1,
+            transactionType: "purchase_order",
+            transactionId: doc.id,
+            transactionRef: doc.docNumber,
+            baseAmount: Number(doc.totalAmount ?? 0),
+            taxAmount,
+          });
+        }
         // Notifikasi WA admin setelah bill diposting
         const grandTotal = Number(doc.grandTotal ?? doc.totalAmount ?? 0);
         const billYear = new Date().getFullYear();

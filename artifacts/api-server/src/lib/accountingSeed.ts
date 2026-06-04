@@ -149,6 +149,30 @@ async function applyRuntimeMigrations(): Promise<void> {
     `ALTER TABLE accounting_settings ADD COLUMN IF NOT EXISTS company_id INTEGER`,
     `ALTER TABLE accounting_settings ADD COLUMN IF NOT EXISTS grir_account_id INTEGER REFERENCES chart_of_accounts(id) ON DELETE SET NULL`,
     `ALTER TABLE accounting_settings ADD COLUMN IF NOT EXISTS gsheet_spreadsheet_id TEXT`,
+    `CREATE TABLE IF NOT EXISTS transaction_taxes (
+      id SERIAL PRIMARY KEY,
+      company_id INTEGER NOT NULL,
+      transaction_type TEXT NOT NULL,
+      transaction_id INTEGER NOT NULL,
+      transaction_ref TEXT,
+      tax_id INTEGER NOT NULL REFERENCES accounting_taxes(id),
+      tax_name TEXT NOT NULL,
+      tax_rate NUMERIC(6,3) NOT NULL,
+      cut_type TEXT NOT NULL DEFAULT 'self_borne',
+      base_amount NUMERIC(14,2) NOT NULL,
+      tax_amount NUMERIC(14,2) NOT NULL,
+      account_id INTEGER REFERENCES chart_of_accounts(id),
+      period TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      paid_at TIMESTAMP,
+      reported_at TIMESTAMP,
+      notes TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS tx_taxes_tx_uniq ON transaction_taxes(transaction_type, transaction_id, tax_id)`,
+    `CREATE INDEX IF NOT EXISTS tx_taxes_company_period_idx ON transaction_taxes(company_id, period)`,
+    `CREATE INDEX IF NOT EXISTS tx_taxes_status_idx ON transaction_taxes(status)`,
   ];
   for (const q of [...companyColMigrations, ...accountingColMigrations]) {
     try { await db.execute(sql.raw(q)); } catch { /* column/index already exists or duplicate */ }

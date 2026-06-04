@@ -545,6 +545,17 @@ router.post("/:id/action", async (req, res) => {
     await db.update(expensesTable)
       .set({ status: "posted", entryId: entry.id, updatedAt: new Date() })
       .where(eq(expensesTable.id, id));
+    const expSubType = (expense.expenseType as string | null) ?? null;
+    const { recordTransactionTax } = await import("../lib/taxAutoService.js");
+    void recordTransactionTax({
+      companyId: expenseCompanyId,
+      transactionType: "expense",
+      transactionId: expense.id,
+      transactionRef: expense.expenseNumber,
+      baseAmount: subtotalN,
+      taxAmount: taxAmountN > 0 ? taxAmountN : undefined,
+      subType: expSubType,
+    });
   } else if (action === "pay") {
     const expenseCompanyId = expense.companyId ?? 1;
     const settings = await ensureAccountingSettings(expenseCompanyId);

@@ -970,6 +970,17 @@ router.post("/documents/:id/action", async (req, res) => {
       taxAccountId: null,
       companyId: doc.companyId ?? null,
     });
+    if (taxAmount > 0) {
+      const { recordTransactionTax } = await import("../lib/taxAutoService.js");
+      void recordTransactionTax({
+        companyId: doc.companyId ?? 1,
+        transactionType: "sales_order",
+        transactionId: doc.id,
+        transactionRef: doc.docNumber,
+        baseAmount: net,
+        taxAmount,
+      });
+    }
   }
 
   const detail = await loadDocWithLines(id);
