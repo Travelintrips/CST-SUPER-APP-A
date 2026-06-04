@@ -117,6 +117,17 @@ interface ImportResult {
   message?: string;
 }
 
+interface DimRow {
+  sku: string;
+  berat_kg: string;
+  panjang_cm: string;
+  lebar_cm: string;
+  tinggi_cm: string;
+  jenis_barang: string;
+}
+const DIM_COLS: (keyof DimRow)[] = ["sku", "berat_kg", "panjang_cm", "lebar_cm", "tinggi_cm", "jenis_barang"];
+const DIM_HEADERS = ["SKU*", "Berat (kg)", "Panjang (cm)", "Lebar (cm)", "Tinggi (cm)", "Jenis Barang"];
+
 const IMPORT_COLS: (keyof ImportRow)[] = ["nama", "sku", "tipe", "kategori", "satuan", "harga", "stok", "subkategori", "deskripsi", "aktif"];
 const IMPORT_HEADERS = ["Nama Produk*", "SKU*", "Jenis (barang/jasa)*", "Kategori* (pisah ;)", "Satuan*", "Harga*", "Stok", "Sub-kategori", "Deskripsi", "Aktif (ya/tidak)"];
 
@@ -266,6 +277,13 @@ export default function SalesItemsPage() {
   const [importError, setImportError] = useState<string | null>(null);
   const importFileRef = useRef<HTMLInputElement>(null);
 
+  const [dimOpen, setDimOpen] = useState(false);
+  const [dimRows, setDimRows] = useState<DimRow[]>([]);
+  const [dimResults, setDimResults] = useState<ImportResult[] | null>(null);
+  const [dimLoading, setDimLoading] = useState(false);
+  const [dimError, setDimError] = useState<string | null>(null);
+  const dimFileRef = useRef<HTMLInputElement>(null);
+
   const downloadImportTemplate = async () => {
     const ExcelJS = (await import("exceljs")).default;
     const wb = new ExcelJS.Workbook();
@@ -284,6 +302,104 @@ export default function SalesItemsPage() {
     a.download = "template-import-produk.xlsx";
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const downloadDimTemplate = async () => {
+    const ExcelJS = (await import("exceljs")).default;
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("Template Dimensi");
+    ws.addRow(DIM_HEADERS);
+    ws.getRow(1).font = { bold: true };
+    ws.addRow(["GBA-1KG-001", "1", "30", "20", "15", "general"]);
+    ws.addRow(["GBA-5KG-001", "5", "40", "30", "25", "general"]);
+    ws.addRow(["BOX-STD-001", "0.5", "25", "15", "10", "general"]);
+    ws.columns = DIM_HEADERS.map((h, i) => ({ header: h, width: Math.max(h.length + 2, [18, 12, 14, 12, 12, 16][i] ?? 14) }));
+    const buf = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "template-dimensi-produk.xlsx";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const parseDimFile = async (file: File): Promise<DimRow[]> => {
+    const isXlsx = file.name.endsWith(".xlsx") || file.name.endsWith(".xls");
+    if (isXlsx) {
+      const ExcelJS = (await import("exceljs")).default;
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(await file.arrayBuffer());
+      const ws = wb.worksheets[0];
+      if (!ws) throw new Error("Worksheet tidak ditemukan");
+      const headerRow = (ws.getRow(1).values as (string | undefined)[]).slice(1);
+      const hdrs = headerRow.map((h) => String(h ?? "").trim().toLowerCase()
+        .replace("sku*", "sku").replace("berat (kg)", "berat_kg").replace("panjang (cm)", "panjang_cm")
+        .replace("lebar (cm)", "lebar_cm").replace("tinggi (cm)", "tinggi_cm").replace("jenis barang", "jenis_barang")
+      );
+      const rows: DimRow[] = [];
+      ws.eachRow((row, rowNum) => {
+        if (rowNum === 1) return;
+        const vals = (row.values as unknown[]).slice(1);
+        const obj: Record<string, string> = {};
+        hdrs.forEach((h, i) => { obj[h] = String(vals[i] ?? "").trim(); });
+        if (!obj.sku) return;
+        rows.push({ sku: obj.sku, berat_kg: obj.berat_kg ?? "", panjang_cm: obj.panjang_cm ?? "", lebar_cm: obj.lebar_cm ?? "", tinggi_cm: obj.tinggi_cm ?? "", jenis_barang: obj.jenis_barang ?? "" });
+      });
+      return rows;
+    } else {
+      const text = await file.text();
+      const lines = text.split(/\r?\n/).filter((l) => l.trim());
+      if (lines.length < 2) throw new Error("File kosong atau hanya berisi header");
+      const sep = lines[0].includes("\t") ? "\t" : ",";
+      const parse = (line: string) => line.split(sep).map((c) => c.trim().replace(/^"|"$/g, ""));
+      const hdrs = parse(lines[0]).map((h) => h.toLowerCase()
+        .replace("sku*", "sku").replace("berat (kg)", "berat_kg").replace("panjang (cm)", "panjang_cm")
+        .replace("lebar (cm)", "lebar_cm").replace("tinggi (cm)", "tinggi_cm").replace("jenis barang", "jenis_barang")
+      );
+      return lines.slice(1).map((line) => {
+        const vals = parse(line);
+        const obj: Record<string, string> = {};
+        hdrs.forEach((h, i) => { obj[h] = vals[i] ?? ""; });
+        return { sku: obj.sku ?? "", berat_kg: obj.berat_kg ?? "", panjang_cm: obj.panjang_cm ?? "", lebar_cm: obj.lebar_cm ?? "", tinggi_cm: obj.tinggi_cm ?? "", jenis_barang: obj.jenis_barang ?? "" };
+      }).filter((r) => r.sku);
+    }
+  };
+
+  const handleDimFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setDimError(null);
+    setDimResults(null);
+    try {
+      const rows = await parseDimFile(file);
+      if (rows.length === 0) { setDimError("Tidak ada baris data yang ditemukan"); return; }
+      if (rows.length > 500) { setDimError("Maksimum 500 baris per import"); return; }
+      setDimRows(rows);
+    } catch (e) { setDimError(String(e)); }
+    e.target.value = "";
+  };
+
+  const handleDoDimImport = async () => {
+    if (dimRows.length === 0) return;
+    setDimLoading(true);
+    setDimResults(null);
+    try {
+      const res = await fetch("/api/ecommerce/products/bulk-update-dimensions", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rows: dimRows }),
+      });
+      const data = await res.json() as { results?: ImportResult[]; message?: string };
+      if (!res.ok) { setDimError(data.message ?? "Terjadi kesalahan pada server"); return; }
+      setDimResults(data.results ?? []);
+      const success = (data.results ?? []).filter((r) => r.status !== "error").length;
+      const errors  = (data.results ?? []).filter((r) => r.status === "error").length;
+      qc.invalidateQueries({ queryKey: getListProductsQueryKey({}) });
+      toast({ title: `Import dimensi selesai: ${success} berhasil, ${errors} gagal` });
+    } catch (e) { setDimError(String(e)); }
+    finally { setDimLoading(false); }
   };
 
   const parseImportFile = async (file: File): Promise<ImportRow[]> => {
@@ -555,6 +671,14 @@ export default function SalesItemsPage() {
               onClick={() => { setImportOpen(true); setImportRows([]); setImportResults(null); setImportError(null); }}
             >
               <Upload className="h-4 w-4 mr-1.5" /> Import Excel/CSV
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-orange-700 text-orange-400 hover:bg-orange-900/40"
+              onClick={() => { setDimOpen(true); setDimRows([]); setDimResults(null); setDimError(null); }}
+            >
+              <FileSpreadsheet className="h-4 w-4 mr-1.5" /> Import Dimensi
             </Button>
             <Button size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={openCreate}>
               <Plus className="h-4 w-4 mr-1.5" /> Tambah Item
@@ -1361,6 +1485,139 @@ export default function SalesItemsPage() {
             )}
             {importResults && (
               <Button variant="outline" onClick={() => { setImportRows([]); setImportResults(null); setImportError(null); }} className="border-slate-600 text-slate-300">
+                Import Lagi
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={dimOpen} onOpenChange={(o) => { if (!dimLoading) setDimOpen(o); }}>
+        <DialogContent className="bg-slate-900 border-slate-700 text-slate-100 max-w-3xl max-h-[90vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileSpreadsheet className="h-5 w-5 text-orange-400" />
+              Import Berat &amp; Dimensi Produk
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <p className="text-sm text-slate-400">
+                Update berat &amp; dimensi produk berdasarkan <span className="text-slate-200 font-medium">SKU</span>.
+                Kolom yang kosong tidak akan diubah.
+              </p>
+              <Button variant="outline" size="sm" className="border-slate-600 text-slate-300 shrink-0" onClick={downloadDimTemplate}>
+                <Download className="h-3.5 w-3.5 mr-1.5" /> Unduh Template
+              </Button>
+            </div>
+
+            <div className="bg-slate-800/50 rounded-lg p-3 text-xs text-slate-400 space-y-1">
+              <p className="font-medium text-slate-300">Kolom CSV/Excel:</p>
+              <p><span className="text-orange-300 font-mono">sku*</span> — SKU produk (wajib, harus sudah terdaftar)</p>
+              <p><span className="text-orange-300 font-mono">berat_kg</span> — Berat per unit (kg), mis: <span className="font-mono">1.5</span></p>
+              <p><span className="text-orange-300 font-mono">panjang_cm / lebar_cm / tinggi_cm</span> — Dimensi kemasan (cm)</p>
+              <p><span className="text-orange-300 font-mono">jenis_barang</span> — Jenis kargo, mis: <span className="font-mono">general</span>, <span className="font-mono">fragile</span>, <span className="font-mono">frozen</span></p>
+            </div>
+
+            <div
+              className="border-2 border-dashed border-slate-600 rounded-lg p-6 text-center cursor-pointer hover:border-orange-600 transition-colors"
+              onClick={() => dimFileRef.current?.click()}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) { const dt = new DataTransfer(); dt.items.add(f); if (dimFileRef.current) { dimFileRef.current.files = dt.files; handleDimFileChange({ target: dimFileRef.current } as React.ChangeEvent<HTMLInputElement>); } } }}
+            >
+              <Upload className="h-8 w-8 text-slate-500 mx-auto mb-2" />
+              <p className="text-sm text-slate-400">Klik atau seret file ke sini</p>
+              <p className="text-xs text-slate-500 mt-1">Format: .xlsx, .xls, .csv — Maks. 500 baris</p>
+              <input ref={dimFileRef} type="file" accept=".xlsx,.xls,.csv" className="sr-only" onChange={handleDimFileChange} />
+            </div>
+
+            {dimError && (
+              <div className="flex items-start gap-2 p-3 rounded bg-red-900/30 border border-red-700 text-red-300 text-sm">
+                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                {dimError}
+              </div>
+            )}
+
+            {dimRows.length > 0 && !dimResults && (
+              <div className="space-y-2">
+                <p className="text-sm text-slate-300 font-medium">{dimRows.length} baris siap diimport — pratinjau:</p>
+                <div className="overflow-x-auto rounded border border-slate-700">
+                  <table className="w-full text-xs">
+                    <thead className="bg-slate-800">
+                      <tr>
+                        <th className="px-2 py-1.5 text-left text-slate-400">#</th>
+                        {DIM_COLS.map((c) => (
+                          <th key={c} className="px-2 py-1.5 text-left text-slate-400 font-medium whitespace-nowrap">{c}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dimRows.slice(0, 10).map((row, i) => (
+                        <tr key={i} className="border-t border-slate-700/60 even:bg-slate-800/30">
+                          <td className="px-2 py-1 text-slate-500">{i + 1}</td>
+                          {DIM_COLS.map((c) => (
+                            <td key={c} className="px-2 py-1 text-slate-300 max-w-[100px] truncate" title={row[c]}>{row[c] || <span className="text-slate-600">—</span>}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {dimRows.length > 10 && (
+                    <p className="text-xs text-slate-500 px-2 py-1.5 border-t border-slate-700">... dan {dimRows.length - 10} baris lainnya</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {dimResults && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-slate-300">Hasil Import Dimensi:</p>
+                <div className="flex gap-3 text-xs mb-2">
+                  <span className="text-blue-400">{dimResults.filter((r) => r.status === "updated").length} diperbarui</span>
+                  <span className="text-red-400">{dimResults.filter((r) => r.status === "error").length} gagal</span>
+                </div>
+                <div className="overflow-x-auto rounded border border-slate-700 max-h-64 overflow-y-auto">
+                  <table className="w-full text-xs">
+                    <thead className="bg-slate-800 sticky top-0">
+                      <tr>
+                        <th className="px-2 py-1.5 text-left text-slate-400">Baris</th>
+                        <th className="px-2 py-1.5 text-left text-slate-400">SKU</th>
+                        <th className="px-2 py-1.5 text-left text-slate-400">Nama</th>
+                        <th className="px-2 py-1.5 text-left text-slate-400">Status</th>
+                        <th className="px-2 py-1.5 text-left text-slate-400">Keterangan</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dimResults.map((r, i) => (
+                        <tr key={i} className="border-t border-slate-700/60 even:bg-slate-800/30">
+                          <td className="px-2 py-1 text-slate-400">{r.row}</td>
+                          <td className="px-2 py-1 text-slate-300 font-mono">{r.sku ?? "—"}</td>
+                          <td className="px-2 py-1 text-slate-300">{r.name ?? "—"}</td>
+                          <td className="px-2 py-1">
+                            {r.status === "updated" && <span className="flex items-center gap-1 text-blue-400"><CheckCircle2 className="h-3 w-3" /> Diperbarui</span>}
+                            {r.status === "error" && <span className="flex items-center gap-1 text-red-400"><AlertCircle className="h-3 w-3" /> Gagal</span>}
+                          </td>
+                          <td className="px-2 py-1 text-slate-400">{r.message ?? ""}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="pt-3 border-t border-slate-700 mt-2">
+            <Button variant="outline" onClick={() => setDimOpen(false)} disabled={dimLoading} className="border-slate-600 text-slate-300">
+              {dimResults ? "Tutup" : "Batal"}
+            </Button>
+            {dimRows.length > 0 && !dimResults && (
+              <Button onClick={handleDoDimImport} disabled={dimLoading} className="bg-orange-700 hover:bg-orange-600">
+                {dimLoading ? <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> Mengimport...</> : <><Upload className="h-4 w-4 mr-1.5" /> Update {dimRows.length} Produk</>}
+              </Button>
+            )}
+            {dimResults && (
+              <Button variant="outline" onClick={() => { setDimRows([]); setDimResults(null); setDimError(null); }} className="border-slate-600 text-slate-300">
                 Import Lagi
               </Button>
             )}
