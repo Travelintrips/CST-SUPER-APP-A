@@ -259,8 +259,11 @@ export default function ProductOrderPage() {
   }
 
   async function handleSubmit() {
-    if (!customerName.trim() || !email.trim() || !phone.trim() || !address.trim()) {
+    if (!customerName.trim() || !email.trim() || !phone.trim()) {
       toast({ title: "Isi semua kolom data pemesan", variant: "destructive" }); return;
+    }
+    if (!address.trim()) {
+      toast({ title: "Alamat Pengiriman wajib diisi", variant: "destructive" }); return;
     }
     const formErrors = validateTemplatePayload(template, dynamicValues);
     if (formErrors.length > 0) { toast({ title: formErrors[0], variant: "destructive" }); return; }

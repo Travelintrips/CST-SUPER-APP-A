@@ -762,6 +762,16 @@ export default function BookPage() {
       return;
     }
     const truckingItem = cartItems.find(c => c.calculatorType === "trucking");
+    const truckingItemData = (truckingItem?.inputData ?? {}) as Record<string, unknown>;
+    if (truckingItem && !String(truckingItemData.destCity ?? "").trim()) {
+      toast({ title: "Alamat Pengiriman wajib diisi pada item Trucking", variant: "destructive" });
+      return;
+    }
+    const hasProductOnly = cartItems.every(c => c.calculatorType === "product");
+    if (hasProductOnly && !customerForm.shippingAddress?.trim() && !customerForm.destination?.trim()) {
+      toast({ title: "Alamat Pengiriman wajib diisi", variant: "destructive" });
+      return;
+    }
     const truckingInputData = (truckingItem?.inputData ?? {}) as Record<string, unknown>;
     const str = (v: unknown) => (v ? String(v) : "");
     const derivedOrderType: "product" | "service" | "shipment" | null = orderType ?? (

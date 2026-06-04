@@ -211,6 +211,10 @@ export function CartDrawer() {
   }
 
   function handleAddTruckingItem() {
+    if (truckMode === "detail" && !truckData.deliveryAddress?.trim()) {
+      toast({ title: "Alamat Pengiriman wajib diisi", variant: "destructive" });
+      return;
+    }
     const name = truckMode === "detail" ? "Trucking — Pickup & Delivery" : "Trucking — Kargo";
     const pickupAddr = companyPickup?.address ?? DEFAULT_PICKUP;
     addItem({
