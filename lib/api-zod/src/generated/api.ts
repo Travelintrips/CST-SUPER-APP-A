@@ -160,6 +160,12 @@ export const ListProductsResponse = zod.object({
       subcategory: zod.string().nullish(),
       isActive: zod.boolean(),
       createdAt: zod.string(),
+      weightKg: zod.number().nullish(),
+      volumeCbm: zod.number().nullish(),
+      lengthCm: zod.number().nullish(),
+      widthCm: zod.number().nullish(),
+      heightCm: zod.number().nullish(),
+      goodsType: zod.string().nullish(),
     }),
   ),
   pagination: zod.object({
@@ -196,6 +202,12 @@ export const CreateProductBody = zod.object({
   unitOptions: zod.array(zod.string()).optional(),
   subcategory: zod.string().nullish(),
   isActive: zod.boolean().optional(),
+  weightKg: zod.number().nullish(),
+  volumeCbm: zod.number().nullish(),
+  lengthCm: zod.number().nullish(),
+  widthCm: zod.number().nullish(),
+  heightCm: zod.number().nullish(),
+  goodsType: zod.string().nullish(),
 });
 
 /**
@@ -230,6 +242,12 @@ export const GetProductResponse = zod.object({
   subcategory: zod.string().nullish(),
   isActive: zod.boolean(),
   createdAt: zod.string(),
+  weightKg: zod.number().nullish(),
+  volumeCbm: zod.number().nullish(),
+  lengthCm: zod.number().nullish(),
+  widthCm: zod.number().nullish(),
+  heightCm: zod.number().nullish(),
+  goodsType: zod.string().nullish(),
 });
 
 /**
@@ -262,6 +280,12 @@ export const UpdateProductBody = zod.object({
   unitOptions: zod.array(zod.string()).optional(),
   subcategory: zod.string().nullish(),
   isActive: zod.boolean().optional(),
+  weightKg: zod.number().nullish(),
+  volumeCbm: zod.number().nullish(),
+  lengthCm: zod.number().nullish(),
+  widthCm: zod.number().nullish(),
+  heightCm: zod.number().nullish(),
+  goodsType: zod.string().nullish(),
 });
 
 export const UpdateProductResponse = zod.object({
@@ -289,6 +313,12 @@ export const UpdateProductResponse = zod.object({
   subcategory: zod.string().nullish(),
   isActive: zod.boolean(),
   createdAt: zod.string(),
+  weightKg: zod.number().nullish(),
+  volumeCbm: zod.number().nullish(),
+  lengthCm: zod.number().nullish(),
+  widthCm: zod.number().nullish(),
+  heightCm: zod.number().nullish(),
+  goodsType: zod.string().nullish(),
 });
 
 /**
@@ -4748,10 +4778,6 @@ export const CreateLogisticOrderBody = zod.object({
   subtotal: zod.number(),
   tax: zod.number(),
   grandTotal: zod.number(),
-  // Step 2: Product Template Engine integration
-  categoryKey: zod.string().nullish(),
-  templateId: zod.number().nullish(),
-  templateVersion: zod.string().nullish(),
   items: zod.array(
     zod.object({
       category: zod.string(),

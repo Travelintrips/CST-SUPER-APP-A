@@ -34,6 +34,7 @@ export const productsTable = pgTable("products", {
   subcategory: text("subcategory"),
   isActive: boolean("is_active").notNull().default(true),
   weightKg: numeric("weight_kg", { precision: 10, scale: 3 }),
+  volumeCbm: numeric("volume_cbm", { precision: 12, scale: 4 }),
   lengthCm: numeric("length_cm", { precision: 10, scale: 2 }),
   widthCm: numeric("width_cm", { precision: 10, scale: 2 }),
   heightCm: numeric("height_cm", { precision: 10, scale: 2 }),

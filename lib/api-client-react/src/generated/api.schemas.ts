@@ -51,6 +51,7 @@ export interface Product {
   isActive: boolean;
   createdAt: string;
   weightKg?: number | null;
+  volumeCbm?: number | null;
   lengthCm?: number | null;
   widthCm?: number | null;
   heightCm?: number | null;
@@ -287,6 +288,12 @@ export interface CreateProductBody {
   unitOptions?: string[];
   subcategory?: string | null;
   isActive?: boolean;
+  weightKg?: number | null;
+  volumeCbm?: number | null;
+  lengthCm?: number | null;
+  widthCm?: number | null;
+  heightCm?: number | null;
+  goodsType?: string | null;
 }
 
 export interface LineItem {

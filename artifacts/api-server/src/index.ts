@@ -68,6 +68,7 @@ import { runSportCenterMigration, runSportCenterAccountCorrection } from "./modu
 import { startRecurringExpenseWorker } from "./modules/sport-center/recurringExpenseWorker.js";
 import { runCostCenterMigration } from "./lib/costCenterMigration.js";
 import { runDriverPodMigration, runDriverAssignmentMigration } from "./routes/driver.js";
+import { runProductVolumeCbmMigration } from "./routes/ecommerce.js";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 
@@ -226,6 +227,18 @@ async function runCriticalPreStartMigrations() {
         ) THEN
           ALTER TABLE purchase_documents ADD COLUMN vendor_accept_notes TEXT;
         END IF;
+      END IF;
+    END $$;
+  `);
+
+  // Add volume_cbm to products (CBM langsung untuk item kapas)
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'products' AND column_name = 'volume_cbm'
+      ) THEN
+        ALTER TABLE products ADD COLUMN volume_cbm NUMERIC(12,4);
       END IF;
     END $$;
   `);

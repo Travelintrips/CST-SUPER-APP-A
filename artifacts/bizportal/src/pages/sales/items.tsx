@@ -90,10 +90,17 @@ interface ItemForm {
   imageUrl: string;
   mediaItems: MediaItem[];
   weightKg: string;
+  volumeCbm: string;
   lengthCm: string;
   widthCm: string;
   heightCm: string;
   goodsType: string;
+}
+
+interface InlineEdit {
+  rowId: number;
+  field: "goodsType" | "weightKg" | "volumeCbm" | "lengthCm" | "widthCm" | "heightCm";
+  value: string;
 }
 
 interface ImportRow {
@@ -148,6 +155,7 @@ const emptyForm = (): ItemForm => ({
   imageUrl: "",
   mediaItems: [],
   weightKg: "",
+  volumeCbm: "",
   lengthCm: "",
   widthCm: "",
   heightCm: "",
@@ -225,10 +233,11 @@ function formFromProduct(p: Product): ItemForm {
     description: p.description ?? "",
     imageUrl: p.imageUrl ?? "",
     mediaItems: parseMediaItems(p.mediaItems),
-    weightKg: p.weightKg != null ? String(p.weightKg) : "",
-    lengthCm: p.lengthCm != null ? String(p.lengthCm) : "",
-    widthCm:  p.widthCm  != null ? String(p.widthCm)  : "",
-    heightCm: p.heightCm != null ? String(p.heightCm) : "",
+    weightKg:  p.weightKg  != null ? String(p.weightKg)  : "",
+    volumeCbm: p.volumeCbm != null ? String(p.volumeCbm) : "",
+    lengthCm:  p.lengthCm  != null ? String(p.lengthCm)  : "",
+    widthCm:   p.widthCm   != null ? String(p.widthCm)   : "",
+    heightCm:  p.heightCm  != null ? String(p.heightCm)  : "",
     goodsType: p.goodsType ?? "",
   };
 }
@@ -283,6 +292,48 @@ export default function SalesItemsPage() {
   const [dimLoading, setDimLoading] = useState(false);
   const [dimError, setDimError] = useState<string | null>(null);
   const dimFileRef = useRef<HTMLInputElement>(null);
+
+  const [inlineEdit, setInlineEdit] = useState<InlineEdit | null>(null);
+  const [inlineSaving, setInlineSaving] = useState<Set<number>>(new Set());
+
+  const saveInlineEdit = async (p: Product, field: InlineEdit["field"], rawValue: string) => {
+    setInlineEdit(null);
+    const numVal = rawValue.trim() !== "" ? Number(rawValue) : null;
+    const strVal = rawValue.trim() || null;
+    const payload = {
+      name: p.name,
+      sku: p.sku,
+      price: p.price,
+      stock: p.stock ?? 0,
+      categories: p.categories ?? [],
+      description: p.description ?? null,
+      itemType: p.itemType,
+      unit: p.unit,
+      unitOptions: Array.isArray(p.unitOptions) ? (p.unitOptions as string[]) : [],
+      subcategory: p.subcategory ?? null,
+      isActive: p.isActive,
+      defaultSalesTaxId: p.defaultSalesTaxId ?? null,
+      defaultPurchaseTaxId: p.defaultPurchaseTaxId ?? null,
+      imageUrl: p.imageUrl ?? null,
+      mediaItems: Array.isArray(p.mediaItems) ? p.mediaItems : [],
+      weightKg:  field === "weightKg"  ? numVal : (p.weightKg  ?? null),
+      volumeCbm: field === "volumeCbm" ? numVal : (p.volumeCbm ?? null),
+      lengthCm:  field === "lengthCm"  ? numVal : (p.lengthCm  ?? null),
+      widthCm:   field === "widthCm"   ? numVal : (p.widthCm   ?? null),
+      heightCm:  field === "heightCm"  ? numVal : (p.heightCm  ?? null),
+      goodsType: field === "goodsType" ? strVal : (p.goodsType ?? null),
+    };
+    setInlineSaving((s) => new Set(s).add(p.id));
+    try {
+      await updateMut.mutateAsync({ id: p.id, data: payload });
+      qc.invalidateQueries({ queryKey: getListProductsQueryKey({}) });
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? String(e);
+      toast({ title: t.common.error, description: msg, variant: "destructive" });
+    } finally {
+      setInlineSaving((s) => { const n = new Set(s); n.delete(p.id); return n; });
+    }
+  };
 
   const downloadImportTemplate = async () => {
     const ExcelJS = (await import("exceljs")).default;
@@ -586,10 +637,11 @@ export default function SalesItemsPage() {
       defaultPurchaseTaxId: form.defaultPurchaseTaxId ? Number(form.defaultPurchaseTaxId) : null,
       imageUrl: form.imageUrl.trim() || null,
       mediaItems: form.mediaItems.filter((m) => m.url.trim()),
-      weightKg: form.weightKg !== "" ? Number(form.weightKg) : null,
-      lengthCm: form.lengthCm !== "" ? Number(form.lengthCm) : null,
-      widthCm:  form.widthCm  !== "" ? Number(form.widthCm)  : null,
-      heightCm: form.heightCm !== "" ? Number(form.heightCm) : null,
+      weightKg:  form.weightKg  !== "" ? Number(form.weightKg)  : null,
+      volumeCbm: form.volumeCbm !== "" ? Number(form.volumeCbm) : null,
+      lengthCm:  form.lengthCm  !== "" ? Number(form.lengthCm)  : null,
+      widthCm:   form.widthCm   !== "" ? Number(form.widthCm)   : null,
+      heightCm:  form.heightCm  !== "" ? Number(form.heightCm)  : null,
       goodsType: form.goodsType.trim() || null,
     };
 
@@ -761,7 +813,9 @@ export default function SalesItemsPage() {
                       <TableHead className="text-slate-400 text-right">Stok</TableHead>
                       <TableHead className="text-slate-400 text-right">Harga Jual</TableHead>
                       <TableHead className="text-slate-400">Pajak Jual</TableHead>
-                      <TableHead className="text-slate-400">Berat / Dimensi</TableHead>
+                      <TableHead className="text-slate-400">Jenis Barang</TableHead>
+                      <TableHead className="text-slate-400">Berat / CBM</TableHead>
+                      <TableHead className="text-slate-400">Dimensi L×W×H (cm)</TableHead>
                       <TableHead className="text-slate-400">Status</TableHead>
                       <TableHead></TableHead>
                     </TableRow>

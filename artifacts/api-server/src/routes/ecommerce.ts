@@ -93,10 +93,11 @@ function serializeProduct(
     subcategory: p.subcategory ?? null,
     isActive: p.isActive,
     imageUrl: p.imageUrl ?? null,
-    weightKg: p.weightKg != null ? Number(p.weightKg) : null,
-    lengthCm: p.lengthCm != null ? Number(p.lengthCm) : null,
-    widthCm:  p.widthCm  != null ? Number(p.widthCm)  : null,
-    heightCm: p.heightCm != null ? Number(p.heightCm) : null,
+    weightKg:  p.weightKg  != null ? Number(p.weightKg)  : null,
+    volumeCbm: p.volumeCbm != null ? Number(p.volumeCbm) : null,
+    lengthCm:  p.lengthCm  != null ? Number(p.lengthCm)  : null,
+    widthCm:   p.widthCm   != null ? Number(p.widthCm)   : null,
+    heightCm:  p.heightCm  != null ? Number(p.heightCm)  : null,
     goodsType: p.goodsType ?? null,
   };
 }
@@ -428,7 +429,7 @@ router.put("/products/:id", async (req, res) => {
     name, sku, price, stock, categories, description, imageUrl, mediaItems,
     defaultSalesTaxId, defaultPurchaseTaxId,
     itemType, unit, unitOptions, subcategory, isActive,
-    weightKg, lengthCm, widthCm, heightCm, goodsType,
+    weightKg, volumeCbm, lengthCm, widthCm, heightCm, goodsType,
   } = req.body;
   const requestedNames: string[] = Array.isArray(categories) ? categories.map(String).filter(Boolean) : [];
 
@@ -469,10 +470,11 @@ router.put("/products/:id", async (req, res) => {
       unit: unit ?? "pcs",
       unitOptions: Array.isArray(unitOptions) ? JSON.stringify(unitOptions) : "[]",
       subcategory: subcategory ?? null,
-      weightKg: weightKg != null ? String(weightKg) : null,
-      lengthCm: lengthCm != null ? String(lengthCm) : null,
-      widthCm:  widthCm  != null ? String(widthCm)  : null,
-      heightCm: heightCm != null ? String(heightCm) : null,
+      weightKg:  weightKg  != null ? String(weightKg)  : null,
+      volumeCbm: volumeCbm != null ? String(volumeCbm) : null,
+      lengthCm:  lengthCm  != null ? String(lengthCm)  : null,
+      widthCm:   widthCm   != null ? String(widthCm)   : null,
+      heightCm:  heightCm  != null ? String(heightCm)  : null,
       goodsType: goodsType ?? null,
       isActive: isActive !== undefined ? Boolean(isActive) : true,
     }).where(eq(productsTable.id, id)).returning();
@@ -804,5 +806,20 @@ router.get("/usd-idr-rate", async (_req, res) => {
   const rate = _usdIdrCache?.rate ?? _USD_IDR_FALLBACK;
   return res.json({ rate, source: "fallback" });
 });
+
+export async function runProductVolumeCbmMigration() {
+  const { db } = await import("@workspace/db");
+  const { sql } = await import("drizzle-orm");
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'products' AND column_name = 'volume_cbm'
+      ) THEN
+        ALTER TABLE products ADD COLUMN volume_cbm NUMERIC(12,4);
+      END IF;
+    END $$;
+  `);
+}
 
 export default router;
