@@ -81,6 +81,7 @@ export default function SportCenterDashboard() {
   const [, navigate] = useLocation();
   const { activeCompanyId } = useCompany();
   const esRef = useRef<EventSource | null>(null);
+  const bookingTableRef = useRef<HTMLDivElement | null>(null);
   const [realtimeCount, setRealtimeCount] = useState(0);
   const [supabaseConnected, setSupabaseConnected] = useState(false);
   const [cardFilter, setCardFilter] = useState<string | null>(null);
@@ -231,6 +232,14 @@ export default function SportCenterDashboard() {
   const topFacilities  = hasSupaBookings ? (supaData?.topFacilities  ?? []) : (localData?.topFacilities  ?? []);
   const recentBookings = hasSupaBookings ? (supaData?.recentBookings ?? []) : (localData?.recentBookings ?? []);
 
+  useEffect(() => {
+    if (cardFilter && cardFilter !== "all" && bookingTableRef.current) {
+      setTimeout(() => {
+        bookingTableRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 80);
+    }
+  }, [cardFilter]);
+
   const CARD_FILTER_LABEL: Record<string, string> = {
     all:     "Semua Booking",
     today:   "Booking Hari Ini",
@@ -245,10 +254,11 @@ export default function SportCenterDashboard() {
       );
     }
     if (cardFilter === "pending") {
-      const pendingStatuses = ["pending", "pending_payment"];
+      const pendingStatus     = ["pending", "pending_payment"];
+      const pendingPayStatus  = ["pending", "pending_payment", "unpaid"];
       return recentBookings.filter((b) =>
-        pendingStatuses.includes(String(b.status ?? "")) ||
-        pendingStatuses.includes(String(b.payment_status ?? "")),
+        pendingStatus.includes(String(b.status ?? "")) ||
+        pendingPayStatus.includes(String(b.payment_status ?? "")),
       );
     }
     return recentBookings;
@@ -399,10 +409,6 @@ export default function SportCenterDashboard() {
       bg: "bg-yellow-900/20",
       sub: "klik untuk filter tabel",
       filter: "pending",
-      color: "text-orange-400",
-      bg: "bg-orange-900/20",
-      sub: "Menunggu pembayaran",
-      href: "/sport-center/bookings?payment=pending",
     },
     {
       title: "Pelanggan Unik",
@@ -779,6 +785,7 @@ export default function SportCenterDashboard() {
         </div>
 
         {/* ── Booking Terbaru ───────────────────────────────────────────────── */}
+        <div ref={bookingTableRef} className="scroll-mt-6">
         <Card className={`border-border/60 transition-all ${cardFilter ? "border-yellow-500/40" : ""}`}>
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between flex-wrap gap-2">
@@ -862,6 +869,7 @@ export default function SportCenterDashboard() {
             </div>
           </CardContent>
         </Card>
+        </div>
         {/* ── FASE 6D-F: Heatmap Jam Ramai ────────────────────────────────── */}
         {(heatmapData?.length ?? 0) > 0 && (
           <Card className="border-border/60">

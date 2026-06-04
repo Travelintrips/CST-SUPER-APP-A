@@ -68,7 +68,7 @@ export default function SportCenterBookings() {
   });
 
   const initialStatus = new URLSearchParams(window.location.search).get("status") ?? "all";
-  const [statusFilter, setStatusFilter] = useState(initialStatus);
+  useEffect(() => { if (initialStatus !== "all") setStatusFilter(initialStatus); }, []);
 
   const [dateFilter, setDateFilter] = useState("");
   const [searchText, setSearchText] = useState("");
