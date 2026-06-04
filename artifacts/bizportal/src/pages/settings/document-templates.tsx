@@ -969,8 +969,152 @@ export default function DocumentTemplatesPage() {
             )}
           </div>
 
-          {/* ── Right Panel: Preview + Canvas Settings ── */}
+          {/* ── Right Panel: Block Properties / Preview + Canvas Settings ── */}
           <div className="w-56 shrink-0 border-l border-white/10 bg-[#161b27] overflow-y-auto flex flex-col">
+
+            {/* Block Properties Panel — shown when a block is selected in Desain tab */}
+            {activeStep === "1" && selectedBlockId && (() => {
+              const blk = blocks.find((b) => b.id === selectedBlockId);
+              if (!blk) return null;
+              return (
+                <div className="p-3 border-b border-white/10 flex-1 overflow-y-auto">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xs font-semibold text-white">Properti Blok</span>
+                    <button onClick={() => setSelectedBlockId(null)} className="text-gray-500 hover:text-white text-[10px]">✕</button>
+                  </div>
+                  <div className="space-y-3">
+                    {/* Block label */}
+                    <div className="space-y-1">
+                      <Label className="text-[10px] text-gray-500">Nama Blok</Label>
+                      <Input
+                        value={blk.label}
+                        onChange={(e) => setBlocks((prev) => prev.map((b) => b.id === blk.id ? { ...b, label: e.target.value } : b))}
+                        className="h-6 text-xs bg-white/5 border-white/10 text-white"
+                      />
+                    </div>
+
+                    {/* Type-specific fields */}
+                    {(blk.type === "header") && (
+                      <>
+                        <div className="space-y-1">
+                          <Label className="text-[10px] text-gray-500">URL Logo</Label>
+                          <Input
+                            placeholder="https://..."
+                            value={config.logoUrl}
+                            onChange={(e) => patchConfig("logoUrl", e.target.value)}
+                            className="h-6 text-xs bg-white/5 border-white/10 text-white"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-[10px] text-gray-500">Warna Utama</Label>
+                          <div className="flex gap-1.5">
+                            <input type="color" value={config.primaryColor} onChange={(e) => patchConfig("primaryColor", e.target.value)} className="w-7 h-7 rounded cursor-pointer border border-white/10 bg-transparent shrink-0" />
+                            <Input value={config.primaryColor} onChange={(e) => patchConfig("primaryColor", e.target.value)} className="h-7 text-xs bg-white/5 border-white/10 text-white font-mono" />
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-[10px] text-gray-500">Warna Aksen</Label>
+                          <div className="flex gap-1.5">
+                            <input type="color" value={config.accentColor} onChange={(e) => patchConfig("accentColor", e.target.value)} className="w-7 h-7 rounded cursor-pointer border border-white/10 bg-transparent shrink-0" />
+                            <Input value={config.accentColor} onChange={(e) => patchConfig("accentColor", e.target.value)} className="h-7 text-xs bg-white/5 border-white/10 text-white font-mono" />
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-[10px] text-gray-500">Nama Perusahaan</Label>
+                          <Input value={config.companyName} onChange={(e) => patchConfig("companyName", e.target.value)} className="h-6 text-xs bg-white/5 border-white/10 text-white" />
+                        </div>
+                      </>
+                    )}
+
+                    {(blk.type === "company") && (
+                      <>
+                        <div className="space-y-1">
+                          <Label className="text-[10px] text-gray-500">Nama Perusahaan</Label>
+                          <Input value={config.companyName} onChange={(e) => patchConfig("companyName", e.target.value)} className="h-6 text-xs bg-white/5 border-white/10 text-white" />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-[10px] text-gray-500">Alamat</Label>
+                          <Textarea rows={2} value={config.companyAddress} onChange={(e) => patchConfig("companyAddress", e.target.value)} className="text-xs bg-white/5 border-white/10 text-white resize-none" />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-[10px] text-gray-500">Telepon</Label>
+                          <Input value={config.companyPhone} onChange={(e) => patchConfig("companyPhone", e.target.value)} className="h-6 text-xs bg-white/5 border-white/10 text-white" />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-[10px] text-gray-500">Email</Label>
+                          <Input value={config.companyEmail} onChange={(e) => patchConfig("companyEmail", e.target.value)} className="h-6 text-xs bg-white/5 border-white/10 text-white" />
+                        </div>
+                      </>
+                    )}
+
+                    {(blk.type === "items") && (
+                      <>
+                        <div className="space-y-1">
+                          <Label className="text-[10px] text-gray-500">Ukuran Font (pt)</Label>
+                          <Input type="number" min={8} max={16} value={config.fontSize} onChange={(e) => patchConfig("fontSize", parseInt(e.target.value) || 11)} className="h-6 text-xs bg-white/5 border-white/10 text-white w-20" />
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] text-gray-400">Tampilkan PPN</span>
+                          <Switch checked={config.showTax} onCheckedChange={(v) => patchConfig("showTax", v)} className="scale-75" />
+                        </div>
+                      </>
+                    )}
+
+                    {(blk.type === "notes") && (
+                      <>
+                        <div className="space-y-1">
+                          <Label className="text-[10px] text-gray-500">Syarat & Ketentuan</Label>
+                          <Textarea rows={3} value={config.defaultTerms} onChange={(e) => patchConfig("defaultTerms", e.target.value)} className="text-xs bg-white/5 border-white/10 text-white resize-none" />
+                        </div>
+                      </>
+                    )}
+
+                    {(blk.type === "footer") && (
+                      <>
+                        <div className="space-y-1">
+                          <Label className="text-[10px] text-gray-500">Teks Footer</Label>
+                          <Input value={config.footerText} onChange={(e) => patchConfig("footerText", e.target.value)} className="h-6 text-xs bg-white/5 border-white/10 text-white" />
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] text-gray-400">Tanda Tangan</span>
+                          <Switch checked={config.showSignature} onCheckedChange={(v) => patchConfig("showSignature", v)} className="scale-75" />
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] text-gray-400">Stempel</span>
+                          <Switch checked={config.showStamp} onCheckedChange={(v) => patchConfig("showStamp", v)} className="scale-75" />
+                        </div>
+                      </>
+                    )}
+
+                    {(blk.type === "docinfo" || blk.type === "address") && (
+                      <p className="text-[10px] text-gray-500 bg-white/5 rounded p-2 leading-relaxed">
+                        Blok ini menggunakan data dinamis dari dokumen. Nilai akan diisi otomatis saat cetak.
+                      </p>
+                    )}
+
+                    {/* Visibility & Lock toggles */}
+                    <div className="pt-1 border-t border-white/10 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-gray-400">Tampilkan</span>
+                        <Switch checked={blk.visible} onCheckedChange={() => toggleBlockVisibility(blk.id)} className="scale-75" />
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-gray-400">Kunci</span>
+                        <Switch checked={blk.locked} onCheckedChange={() => toggleBlockLock(blk.id)} className="scale-75" />
+                      </div>
+                    </div>
+
+                    {/* Move up/down + delete */}
+                    <div className="flex items-center gap-1 pt-1">
+                      <Button variant="ghost" size="sm" className="flex-1 h-6 text-[10px] text-gray-400 hover:text-white hover:bg-white/10 px-1" onClick={() => moveBlock(blk.id, -1)}>↑ Atas</Button>
+                      <Button variant="ghost" size="sm" className="flex-1 h-6 text-[10px] text-gray-400 hover:text-white hover:bg-white/10 px-1" onClick={() => moveBlock(blk.id, 1)}>↓ Bawah</Button>
+                      <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-red-400 hover:text-red-300 hover:bg-red-500/10" onClick={() => deleteBlock(blk.id)}><Trash2 className="h-3 w-3" /></Button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* Preview Live */}
             <div className="p-3 border-b border-white/10">
               <div className="flex items-center justify-between mb-2">

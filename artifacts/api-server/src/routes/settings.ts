@@ -5,7 +5,7 @@ import { getAdminWa, setAdminWa, getAdminGroupWa, setAdminGroupWa, getAdminPhone
 import { db, portalContentTable } from "@workspace/db";
 import { broadcastToPortal } from "../lib/sseManager.js";
 import { shortLinksTable, waTemplateConfigsTable, notificationLogsTable } from "@workspace/db/schema";
-import { eq, desc, ilike, or, sql, and, isNull } from "drizzle-orm";
+import { eq, desc, ilike, or, sql, and, isNull, inArray } from "drizzle-orm";
 import { resolveCompanyId } from "../lib/resolveCompany.js";
 import { getAiIntakeSettings, saveAiIntakeSettings, type VendorFilterMode } from "../lib/aiOrderIntake.js";
 import { LOGISTICS_SUBCATEGORIES } from "@workspace/logistics-constants";
@@ -768,9 +768,7 @@ router.get("/documents", async (req: Request, res: Response) => {
     const rows = await db
       .select()
       .from(portalContentTable)
-      .where(
-        sql`key = ANY(${keys})`
-      );
+      .where(inArray(portalContentTable.key, [...keys]));
     const stored = new Map(rows.map((r) => [r.key, JSON.parse(r.value)]));
     const templates = DOCUMENT_TYPES.map((t) => ({
       ...DEFAULT_DOC_TEMPLATE(t),
