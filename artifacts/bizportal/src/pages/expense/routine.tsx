@@ -160,7 +160,8 @@ export default function ExpenseRoutinePage() {
     if (!selectedCat) return;
 
     const defaultTaxId = (selectedCat as any).defaultTaxId as number | null | undefined;
-    if (defaultTaxId) {
+    const taxExists = defaultTaxId ? taxes.some((t) => t.id === defaultTaxId) : false;
+    if (defaultTaxId && taxExists) {
       setTaxRateId(String(defaultTaxId));
       setTaxAutoFilled(true);
     } else {
@@ -190,7 +191,7 @@ export default function ExpenseRoutinePage() {
     } else {
       if (sourceAutoFilled) { setSourceAccountId("none"); setSourceAutoFilled(false); }
     }
-  }, [selectedCat?.id]);
+  }, [selectedCat?.id, taxes.length]);
 
   const amount = parseIDR(amountRaw);
   const selectedTax = taxes.find((t) => t.id.toString() === taxRateId);
