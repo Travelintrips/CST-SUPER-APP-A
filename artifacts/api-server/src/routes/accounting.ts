@@ -1513,6 +1513,75 @@ router.post("/payments/:id/void", async (req, res) => {
 
 // ============ Penerimaan & Pengeluaran Lain (Other Transactions) ==================
 
+router.get("/other-transactions/monthly-summary", async (req, res) => {
+  const companyId = resolveCompanyId(req);
+  const year = Number(req.query.year ?? new Date().getFullYear());
+
+  const companyCond = companyId
+    ? sql`AND ae.company_id = ${companyId}`
+    : sql``;
+
+  const monthly = await db.execute(sql`
+    SELECT
+      to_char(ae.date::date, 'YYYY-MM') AS month,
+      CASE WHEN ae.description ILIKE '[OTH] Penerimaan%' THEN 'income' ELSE 'expense' END AS tx_type,
+      COALESCE(SUM(ae.total_debit), 0)::numeric AS amount
+    FROM accounting_entries ae
+    WHERE ae.description ILIKE '[OTH]%'
+      AND ae.status = 'posted'
+      AND extract(year FROM ae.date::date) = ${year}
+      ${companyCond}
+    GROUP BY month, tx_type
+    ORDER BY month
+  `);
+
+  const byAccount = await db.execute(sql`
+    SELECT
+      coa.id AS account_id,
+      coa.code AS account_code,
+      coa.name AS account_name,
+      coa.type AS account_type,
+      CASE WHEN ae.description ILIKE '[OTH] Penerimaan%' THEN 'income' ELSE 'expense' END AS tx_type,
+      COALESCE(SUM(ael.credit), 0)::numeric AS credit_total,
+      COALESCE(SUM(ael.debit), 0)::numeric AS debit_total,
+      COUNT(DISTINCT ae.id)::integer AS tx_count
+    FROM accounting_entry_lines ael
+    JOIN accounting_entries ae ON ael.entry_id = ae.id
+    JOIN chart_of_accounts coa ON ael.account_id = coa.id
+    WHERE ae.description ILIKE '[OTH]%'
+      AND ae.status = 'posted'
+      AND extract(year FROM ae.date::date) = ${year}
+      ${companyCond}
+    GROUP BY coa.id, coa.code, coa.name, coa.type, tx_type
+    ORDER BY debit_total + credit_total DESC
+  `);
+
+  const MONTHS = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agt","Sep","Okt","Nov","Des"];
+  const trend = Array.from({ length: 12 }, (_, i) => {
+    const key = `${year}-${String(i + 1).padStart(2, "0")}`;
+    const inc = (monthly.rows as any[]).find((r) => r.month === key && r.tx_type === "income");
+    const exp = (monthly.rows as any[]).find((r) => r.month === key && r.tx_type === "expense");
+    const income = Number(inc?.amount ?? 0);
+    const expense = Number(exp?.amount ?? 0);
+    return { month: MONTHS[i], income, expense, net: income - expense };
+  });
+
+  return res.json({
+    year,
+    trend,
+    byAccount: (byAccount.rows as any[]).map((r) => ({
+      accountId: r.account_id,
+      accountCode: r.account_code,
+      accountName: r.account_name,
+      accountType: r.account_type,
+      txType: r.tx_type,
+      creditTotal: Number(r.credit_total),
+      debitTotal: Number(r.debit_total),
+      txCount: Number(r.tx_count),
+    })),
+  });
+});
+
 router.get("/other-transactions", async (req, res) => {
   const companyId = resolveCompanyId(req);
   const limit = Math.min(Number(req.query.limit ?? 100), 500);
