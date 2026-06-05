@@ -26,11 +26,18 @@ async function ensureReminderTable() {
       message TEXT NOT NULL,
       sent_wa BOOLEAN NOT NULL DEFAULT FALSE,
       dismissed BOOLEAN NOT NULL DEFAULT FALSE,
-      created_at TIMESTAMPTZ DEFAULT NOW(),
-      UNIQUE(ref_type, ref_id, DATE_TRUNC('day', created_at))
-    );
-    CREATE INDEX IF NOT EXISTS expense_reminders_company_idx ON expense_reminders(company_id);
-    CREATE INDEX IF NOT EXISTS expense_reminders_dismissed_idx ON expense_reminders(dismissed);
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `));
+  await db.execute(sql.raw(`
+    CREATE UNIQUE INDEX IF NOT EXISTS expense_reminders_daily_uniq
+      ON expense_reminders(ref_type, ref_id, DATE_TRUNC('day', created_at))
+  `));
+  await db.execute(sql.raw(`
+    CREATE INDEX IF NOT EXISTS expense_reminders_company_idx ON expense_reminders(company_id)
+  `));
+  await db.execute(sql.raw(`
+    CREATE INDEX IF NOT EXISTS expense_reminders_dismissed_idx ON expense_reminders(dismissed)
   `));
 }
 let tableMigrated = false;
