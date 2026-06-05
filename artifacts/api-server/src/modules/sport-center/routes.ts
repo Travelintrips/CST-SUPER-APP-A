@@ -1524,6 +1524,52 @@ router.post("/payments", async (req, res) => {
   }
 });
 
+// ── REVENUE TRANSACTIONS (untuk expandable card di dashboard) ────────────────
+router.get("/revenue-transactions", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const cId = req.query.companyId ? Number(req.query.companyId) : null;
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const date = (req.query.date as string | undefined) ?? todayStr;
+    const from = (req.query.from as string | undefined) ?? date;
+    const to   = (req.query.to   as string | undefined) ?? date;
+
+    const rows = await db.execute(sql`
+      SELECT
+        ae.id           AS entry_id,
+        ae.date         AS payment_date,
+        ae.total_debit  AS amount,
+        ae.ref,
+        ae.source,
+        ae.source_id    AS booking_id,
+        b.booking_number,
+        b.customer_name,
+        b.facility_name,
+        b.booking_date,
+        b.start_time,
+        b.end_time,
+        b.status,
+        b.payment_status,
+        b.total_amount
+      FROM accounting_entries ae
+      LEFT JOIN sport_bookings b ON b.id = ae.source_id
+      WHERE ae.source = 'sport_center_booking'
+        AND ae.status  = 'posted'
+        AND ae.date   >= ${from}::date
+        AND ae.date   <= ${to}::date
+        AND (${cId}::int IS NULL OR ae.company_id = ${cId})
+      ORDER BY ae.date DESC, ae.id DESC
+      LIMIT 500
+    `);
+
+    const total = rows.rows.reduce((s, r) => s + Number((r as any).amount ?? 0), 0);
+    res.json({ data: rows.rows, total, date, from, to });
+  } catch (err) {
+    console.error("[sport-center] GET /revenue-transactions error:", err);
+    res.status(500).json({ error: "Gagal memuat transaksi revenue" });
+  }
+});
+
 router.get("/reports", async (req, res) => {
   if (!await requireAdmin(req, res)) return;
   try {
