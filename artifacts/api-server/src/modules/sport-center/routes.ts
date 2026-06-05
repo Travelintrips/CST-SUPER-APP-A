@@ -20,12 +20,23 @@ async function insertAccountingPaymentForSportCenter(args: {
   createdById?: string | null;
 }): Promise<void> {
   try {
+    // Idempoten: skip jika accounting_payment untuk sport_payment ini sudah ada
+    const dupCheck = await db.execute(sql`
+      SELECT 1 FROM accounting_payments
+      WHERE source_type = 'sport_center' AND source_doc_id = ${args.sourceDocId}
+      LIMIT 1
+    `);
+    if (dupCheck.rows.length > 0) return;
+
     const settings = await ensureAccountingSettings(args.companyId);
     const isCash = ["cash", "tunai"].includes(args.method?.toLowerCase() ?? "");
     const journalId = isCash
       ? (settings.cashJournalId ?? settings.bankJournalId)
       : (settings.bankJournalId ?? settings.cashJournalId);
-    if (!journalId) return;
+    if (!journalId) {
+      console.error(`[sport-center] insertAccountingPaymentForSportCenter: tidak ada jurnal kas/bank untuk companyId=${args.companyId}, sourceDocId=${args.sourceDocId}`);
+      return;
+    }
     const payDate = args.date ?? new Date().toISOString().split("T")[0]!;
     const year = payDate.slice(0, 4);
     const cntRes = await db.execute(sql`SELECT CAST(COUNT(*) AS int) AS seq FROM accounting_payments`);
@@ -1397,6 +1408,9 @@ router.post("/payments", async (req, res) => {
     // Validasi payment_date
     const isValidDate = payment_date && /^\d{4}-\d{2}-\d{2}$/.test(payment_date);
     const paidAt = isValidDate ? `${payment_date}T00:00:00Z` : null; // null → NOW() di SQL
+    // Tanggal untuk accounting: payment_date jika valid, atau hari ini — BUKAN booking_date
+    // Ini penting agar KPI revenue_today dan Finance → Payments menampilkan data yang benar
+    const paymentAccountingDate: string = isValidDate ? (payment_date as string) : new Date().toISOString().slice(0, 10);
 
     // 2. Generate payment number dengan company_id yang benar
     const paymentNumber = await nextPaymentNumber(bCompanyId);
@@ -1443,13 +1457,14 @@ router.post("/payments", async (req, res) => {
     });
 
     // 6. Post jurnal accounting (Debit Kas ← Credit Pendapatan) — fire-and-forget
+    // Pakai paymentAccountingDate (bukan bBookingDate) agar revenue_today KPI akurat
     if (bTaxAmount > 0) {
       postSportCenterBookingWithTax({
         bookingId: Number(booking_id),
         bookingCode: bCode,
         customerName: bCustomer,
         facilityName: bFacility,
-        date: bBookingDate,
+        date: paymentAccountingDate,
         baseAmount: bTotalAmount,
         taxAmount: bTaxAmount,
         createdById,
@@ -1461,14 +1476,14 @@ router.post("/payments", async (req, res) => {
         bookingCode: bCode,
         customerName: bCustomer,
         facilityName: bFacility,
-        date: bBookingDate,
+        date: paymentAccountingDate,
         totalPrice: bTotalAmount,
         createdById,
         companyId: bCompanyId,
       }).catch((err: unknown) => console.error('[sport-center] postSportCenterBooking failed:', err));
     }
 
-    // 7. Accounting Payments — agar muncul di Accounting → Payments
+    // 7. Accounting Payments — agar muncul di Finance BizPortal → Payments
     insertAccountingPaymentForSportCenter({
       companyId: bCompanyId,
       paymentNumber,
@@ -1478,7 +1493,7 @@ router.post("/payments", async (req, res) => {
       ref: bCode,
       memo: `Pembayaran booking sport center ${bCode}`,
       sourceDocId: Number(payRow.id),
-      date: bBookingDate,
+      date: paymentAccountingDate,
       createdById,
     }).catch((err: unknown) => console.error("[sport-center] insertAccountingPayment failed:", err));
 
