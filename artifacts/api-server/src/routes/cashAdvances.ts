@@ -187,10 +187,12 @@ router.get("/", async (req: Request, res) => {
     SELECT ca.*,
       coa.code AS cash_bank_account_code,
       coa.name AS cash_bank_account_name,
-      sup.name AS vendor_name
+      sup.name AS vendor_name,
+      u.name   AS user_name
     FROM cash_advances ca
     LEFT JOIN chart_of_accounts coa ON ca.cash_bank_account_id = coa.id
     LEFT JOIN suppliers sup ON ca.vendor_id = sup.id
+    LEFT JOIN users u ON ca.user_id = u.id
     WHERE ${whereParts.join(" AND ")}
     ORDER BY ca.date DESC, ca.id DESC
     LIMIT 500
@@ -202,6 +204,7 @@ router.get("/", async (req: Request, res) => {
       ? { id: r.cash_bank_account_id, code: r.cash_bank_account_code, name: r.cash_bank_account_name }
       : null,
     vendor: r.vendor_id ? { id: r.vendor_id, name: r.vendor_name } : null,
+    user: r.user_id ? { id: r.user_id, name: r.user_name } : null,
   })));
 });
 
