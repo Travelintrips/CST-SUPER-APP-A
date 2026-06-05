@@ -37,8 +37,8 @@ const RETRYABLE_CODES = new Set(["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENO
 const API_PORT           = 8080;
 // BizPortal Vite runs at 4200
 const BIZPORTAL_PORT     = 4200;
-// Customer portal Vite runs at 5173
-const CUSTOMER_PORT      = 5173;
+// Customer portal Vite runs at 5174 (proxy wrapper at 23434 → internal 5174)
+const CUSTOMER_PORT      = 5174;
 // Logistic Order Vite runs at 3001
 const LOGISTIC_ORDER_PORT = 3001;
 
@@ -83,7 +83,7 @@ const ROUTES = [
   { prefix: "/org",                 upstream: null, redirectMapTo: "/bizportal/org",                  redirectDefaultSuffix: "/" },
   { prefix: "/media",               upstream: null, redirectMapTo: "/bizportal/media",                redirectDefaultSuffix: "/" },
   // Products & catalog
-  { prefix: "/products",            upstream: null, redirectMapTo: "/bizportal/products",             redirectDefaultSuffix: "/items" },
+  
   { prefix: "/product-templates",   upstream: null, redirectMapTo: "/bizportal/product-templates",    redirectDefaultSuffix: "/" },
   { prefix: "/katalog-terpadu",     upstream: null, redirectMapTo: "/bizportal/katalog-terpadu",      redirectDefaultSuffix: "/" },
   { prefix: "/vendors",             upstream: null, redirectMapTo: "/bizportal/vendors",              redirectDefaultSuffix: "/" },
