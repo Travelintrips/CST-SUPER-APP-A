@@ -173,6 +173,7 @@ export default function SportCenterBookings() {
         qc.invalidateQueries({ queryKey: ["sport-center-bookings"] });
       }
     },
+    onError: () => { /* silent — auto-push gagal tidak perlu overlay */ },
   });
 
   useEffect(() => {
@@ -181,7 +182,7 @@ export default function SportCenterBookings() {
     if (!showingSupabase) return;
     if (!supaBookings || supaBookings.length === 0) return;
     pushDoneRef.current = true;
-    void pushMutation.mutateAsync(supaBookings);
+    void pushMutation.mutateAsync(supaBookings).catch(() => {});
   }, [isLoading, supaLoading, showingSupabase, supaBookings]);
 
   // ── Supabase Realtime: auto-push INSERT/UPDATE ke local tanpa refresh ────────
