@@ -689,11 +689,13 @@ router.get("/", async (req: Request, res) => {
       ec.code  AS category_code,
       sa.code  AS source_account_code,
       sa.name  AS source_account_name,
-      sup.name AS vendor_name
+      sup.name AS vendor_name,
+      u.name   AS user_name
     FROM expenses e
     LEFT JOIN expense_categories ec ON e.category_id = ec.id
     LEFT JOIN chart_of_accounts  sa ON e.source_account_id = sa.id
     LEFT JOIN suppliers          sup ON e.vendor_id = sup.id
+    LEFT JOIN users              u   ON e.user_id = u.id
     WHERE ${whereParts.join(" AND ")}
     ORDER BY e.date DESC, e.id DESC
     LIMIT 500
@@ -708,6 +710,9 @@ router.get("/", async (req: Request, res) => {
       : null,
     vendor: r.vendor_id
       ? { id: r.vendor_id, name: r.vendor_name }
+      : null,
+    user: r.user_id
+      ? { id: r.user_id, name: r.user_name }
       : null,
   })));
 });

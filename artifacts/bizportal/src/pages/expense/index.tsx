@@ -412,7 +412,7 @@ export default function ExpenseListPage() {
                       <TableCell>
                         <Badge variant="outline" className="text-xs">{TYPE_LABELS[exp.expenseType] ?? exp.expenseType}</Badge>
                       </TableCell>
-                      <TableCell className="text-sm">{expAny.vendor?.name ?? exp.vendorEmployee ?? "—"}</TableCell>
+                      <TableCell className="text-sm">{expAny.vendor?.name ?? expAny.user?.name ?? exp.vendorEmployee ?? "—"}</TableCell>
                       <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">{exp.description ?? "—"}</TableCell>
                       <TableCell>
                         {expAny.categoryName

@@ -391,6 +391,11 @@ export default function ExpenseEditorPage() {
     queryFn: () => apiFetch("/api/expenses/payment-accounts"),
   });
 
+  const { data: userList = [] } = useQuery({
+    queryKey: ["users-list"],
+    queryFn: () => apiFetch("/api/users"),
+  });
+
   const createMut = useCreateExpense();
   const updateMut = useUpdateExpense();
   const actionMut = useExpenseAction();
@@ -400,6 +405,7 @@ export default function ExpenseEditorPage() {
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [sourceAccountId, setSourceAccountId] = useState<number | null>(null);
   const [vendorId, setVendorId] = useState<number | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
   const [autoFilled, setAutoFilled] = useState<Set<string>>(new Set());
@@ -477,6 +483,7 @@ export default function ExpenseEditorPage() {
       });
       setSourceAccountId(expAny.sourceAccountId ?? null);
       setVendorId(expAny.vendorId ?? null);
+      setUserId(expAny.userId ?? null);
     }
   }, [expense]);
 
@@ -531,6 +538,7 @@ export default function ExpenseEditorPage() {
       shipmentId: form.shipmentId || undefined,
       sourceAccountId: sourceAccountId ?? undefined,
       vendorId: vendorId ?? undefined,
+      userId: userId ?? undefined,
     };
     try {
       if (isNew) {
@@ -755,6 +763,27 @@ export default function ExpenseEditorPage() {
                     <SelectItem value="__none__">— Tidak dipilih —</SelectItem>
                     {(suppliers as any[]).map((s: any) => (
                       <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Karyawan (User Master)</Label>
+                <Select
+                  value={userId ?? "__none__"}
+                  onValueChange={(v) => {
+                    if (v === "__none__") { setUserId(null); return; }
+                    setUserId(v);
+                    const u = (userList as any[]).find((u: any) => u.id === v);
+                    if (u && !form.vendorEmployee.trim()) setForm((f) => ({ ...f, vendorEmployee: u.name ?? "" }));
+                  }}
+                  disabled={locked}
+                >
+                  <SelectTrigger><SelectValue placeholder="Pilih karyawan..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">— Tidak dipilih —</SelectItem>
+                    {(userList as any[]).map((u: any) => (
+                      <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
