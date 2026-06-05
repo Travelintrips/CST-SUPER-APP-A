@@ -29,6 +29,10 @@ db.execute(sql`
   ALTER TABLE expense_categories
   ADD COLUMN IF NOT EXISTS default_amount NUMERIC(14,2)
 `).catch(() => {});
+db.execute(sql`
+  ALTER TABLE expense_categories
+  ADD COLUMN IF NOT EXISTS default_coa_id integer REFERENCES chart_of_accounts(id) ON DELETE SET NULL
+`).catch(() => {});
 
 const router = Router();
 router.use(async (req, res, next) => {
@@ -91,7 +95,7 @@ router.get("/categories", async (_req, res) => {
 });
 
 router.post("/categories", async (req, res) => {
-  const { name, code, expenseAccountId, payableAccountId, defaultTaxId, defaultAmount, requiresAttachment, isActive } = req.body ?? {};
+  const { name, code, expenseAccountId, payableAccountId, defaultTaxId, defaultAmount, defaultCoaId, requiresAttachment, isActive } = req.body ?? {};
   if (!name || !code) return res.status(400).json({ message: "name and code are required" });
   const [created] = await db
     .insert(expenseCategoriesTable)
@@ -102,6 +106,7 @@ router.post("/categories", async (req, res) => {
       payableAccountId: payableAccountId ? Number(payableAccountId) : null,
       defaultTaxId: defaultTaxId ? Number(defaultTaxId) : null,
       defaultAmount: defaultAmount ? String(Number(defaultAmount)) : null,
+      defaultCoaId: defaultCoaId ? Number(defaultCoaId) : null,
       requiresAttachment: Boolean(requiresAttachment),
       isActive: isActive !== false,
     })
@@ -112,7 +117,7 @@ router.post("/categories", async (req, res) => {
 router.patch("/categories/:id", async (req, res) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
-  const { name, code, expenseAccountId, payableAccountId, defaultTaxId, defaultAmount, requiresAttachment, isActive } = req.body ?? {};
+  const { name, code, expenseAccountId, payableAccountId, defaultTaxId, defaultAmount, defaultCoaId, requiresAttachment, isActive } = req.body ?? {};
   const update: Record<string, unknown> = {};
   if (name !== undefined) update.name = String(name);
   if (code !== undefined) update.code = String(code).toUpperCase();
@@ -120,6 +125,7 @@ router.patch("/categories/:id", async (req, res) => {
   if (payableAccountId !== undefined) update.payableAccountId = payableAccountId ? Number(payableAccountId) : null;
   if (defaultTaxId !== undefined) update.defaultTaxId = defaultTaxId ? Number(defaultTaxId) : null;
   if (defaultAmount !== undefined) update.defaultAmount = defaultAmount ? String(Number(defaultAmount)) : null;
+  if (defaultCoaId !== undefined) update.defaultCoaId = defaultCoaId ? Number(defaultCoaId) : null;
   if (requiresAttachment !== undefined) update.requiresAttachment = Boolean(requiresAttachment);
   if (isActive !== undefined) update.isActive = Boolean(isActive);
   const [updated] = await db
@@ -288,7 +294,7 @@ async function checkExpenseApprovalLimit(companyId: number | null, amount: numbe
 }
 
 router.post("/quick", async (req: Request, res) => {
-  const { date, categoryId, amount, vendorEmployee, notes, taxRateId, paymentMethod } = req.body ?? {};
+  const { date, categoryId, amount, vendorEmployee, notes, taxRateId, paymentMethod, sourceAccountId, debitAccountId } = req.body ?? {};
 
   if (!date) return res.status(400).json({ message: "Tanggal wajib diisi." });
   if (!categoryId) return res.status(400).json({ message: "Kategori wajib dipilih." });
@@ -301,15 +307,21 @@ router.post("/quick", async (req: Request, res) => {
   const [cat] = await db.select().from(expenseCategoriesTable).where(eq(expenseCategoriesTable.id, Number(categoryId)));
   if (!cat) return res.status(404).json({ message: "Kategori tidak ditemukan." });
 
-  const expenseAccountId = cat.expenseAccountId;
+  // debitAccountId override → from form dropdown, fallback to category default
+  const expenseAccountId = debitAccountId ? Number(debitAccountId) : cat.expenseAccountId;
   if (!expenseAccountId) {
     return res.status(400).json({ message: `Kategori "${cat.name}" belum punya akun biaya. Konfigurasi di halaman Kategori Expense.` });
   }
 
+  // sourceAccountId override → specific COA for cash/bank payment
+  let cashBankAccountId: number | null = sourceAccountId ? Number(sourceAccountId) : null;
+  if (!cashBankAccountId) {
+    const isCash = paymentMethod === "cash" || paymentMethod === "tunai";
+    cashBankAccountId = isCash
+      ? (settings.defaultCashAccountId ?? settings.defaultBankAccountId)
+      : (settings.defaultBankAccountId ?? settings.defaultCashAccountId);
+  }
   const isCash = paymentMethod === "cash" || paymentMethod === "tunai";
-  const cashBankAccountId = isCash
-    ? (settings.defaultCashAccountId ?? settings.defaultBankAccountId)
-    : (settings.defaultBankAccountId ?? settings.defaultCashAccountId);
   if (!cashBankAccountId) {
     return res.status(400).json({ message: "Akun Kas/Bank default belum dikonfigurasi di Pengaturan Akuntansi." });
   }
