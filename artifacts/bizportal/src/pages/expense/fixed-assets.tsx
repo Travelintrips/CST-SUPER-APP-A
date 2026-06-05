@@ -172,6 +172,54 @@ export default function FixedAssetsPage() {
           </div>
         </div>
 
+        {/* Filter bar */}
+        {!showForm && (
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative flex-1 min-w-[180px]">
+              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Cari nama/no. aset..."
+                value={filterSearch}
+                onChange={(e) => setFilterSearch(e.target.value)}
+                className="pl-8 h-8 text-sm"
+              />
+            </div>
+            <Select value={filterType} onValueChange={setFilterType}>
+              <SelectTrigger className="h-8 text-sm w-[140px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua Jenis</SelectItem>
+                {Object.entries(ASSET_TYPES).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={filterMethod} onValueChange={setFilterMethod}>
+              <SelectTrigger className="h-8 text-sm w-[150px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua Metode</SelectItem>
+                <SelectItem value="straight_line">Garis Lurus</SelectItem>
+                <SelectItem value="declining_balance">Saldo Menurun</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={filterStatus} onValueChange={setFilterStatus}>
+              <SelectTrigger className="h-8 text-sm w-[120px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua Status</SelectItem>
+                <SelectItem value="active">Aktif</SelectItem>
+                <SelectItem value="inactive">Nonaktif</SelectItem>
+              </SelectContent>
+            </Select>
+            {hasFilter && (
+              <Button variant="ghost" size="sm" className="h-8 text-xs gap-1 text-muted-foreground" onClick={resetFilters}>
+                <X size={12} /> Reset
+              </Button>
+            )}
+            {!isLoading && (
+              <span className="text-xs text-muted-foreground ml-auto">
+                {filtered.length} dari {list.length} aset
+              </span>
+            )}
+          </div>
+        )}
+
         {showForm && (
           <Card>
             <CardHeader className="pb-3">
@@ -293,7 +341,10 @@ export default function FixedAssetsPage() {
               <TableBody>
                 {isLoading && <TableRow><TableCell colSpan={9} className="text-center py-10 text-muted-foreground">Memuat...</TableCell></TableRow>}
                 {!isLoading && list.length === 0 && <TableRow><TableCell colSpan={9} className="text-center py-10 text-muted-foreground">Belum ada aset tetap.</TableCell></TableRow>}
-                {(list as any[]).map((row) => {
+                {!isLoading && list.length > 0 && filtered.length === 0 && (
+                  <TableRow><TableCell colSpan={9} className="text-center py-10 text-muted-foreground">Tidak ada aset yang cocok dengan filter.</TableCell></TableRow>
+                )}
+                {filtered.map((row) => {
                   const deprPct = parseFloat(row.purchase_price) > 0
                     ? (parseFloat(row.accumulated_depreciation) / parseFloat(row.purchase_price)) * 100 : 0;
                   return (
