@@ -32,7 +32,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, ShoppingBag, Pencil, Trash2, Printer, Search, ChevronDown, X, RefreshCw, Clock } from "lucide-react";
+import { Plus, ShoppingBag, Pencil, Trash2, Printer, Search, ChevronDown, X, RefreshCw, Clock, ExternalLink } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -1025,6 +1025,23 @@ export default function EcommercePage() {
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-1">
+                              <Button
+                                size="icon" variant="ghost"
+                                aria-label="Buku ke Portal"
+                                title="Buku ke Portal"
+                                onClick={() => {
+                                  const params = new URLSearchParams({
+                                    commodity: product.name,
+                                    productId: String(product.id),
+                                    qty: "1",
+                                    productPrice: String(product.price ?? 0),
+                                    unit: product.unit ?? "pcs",
+                                  });
+                                  window.open(`/book?${params}`, "_blank");
+                                }}
+                              >
+                                <ExternalLink className="h-4 w-4 text-blue-500" />
+                              </Button>
                               <Button size="icon" variant="ghost" onClick={() => setEditingProduct(product)} data-testid={`button-edit-product-${product.id}`} aria-label="Edit produk">
                                 <Pencil className="h-4 w-4" />
                               </Button>
