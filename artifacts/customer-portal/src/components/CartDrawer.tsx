@@ -196,6 +196,8 @@ export function CartDrawer() {
   const [truckEstimating, setTruckEstimating] = useState(false);
   const [vehicleComparison, setVehicleComparison] = useState<Array<{ type: string; label: string; desc: string; estimate: number; suitable: boolean }> | null>(null);
   const [deliveryAddressError, setDeliveryAddressError] = useState(false);
+  const [freightDestError, setFreightDestError] = useState(false);
+  const [companyFetchFailed, setCompanyFetchFailed] = useState(false);
   const [companyPickup, setCompanyPickup] = useState<{ name: string; address: string; originCity: string } | null>(null);
   const [cartAutoFilled, setCartAutoFilled] = useState(false);
   const [apiRates, setApiRates] = useState<Array<{ type: string; label: string; description: string; max_kg: string | null; rate_per_kg: string; min_price: string }> | null>(null);
@@ -276,7 +278,10 @@ export function CartDrawer() {
           setCompanyPickup({ name: "CST Logistics", address: DEFAULT_PICKUP, originCity: "Jakarta" });
         }
       })
-      .catch(() => setCompanyPickup({ name: "CST Logistics", address: DEFAULT_PICKUP, originCity: "Jakarta" }));
+      .catch(() => {
+        setCompanyPickup({ name: "CST Logistics", address: DEFAULT_PICKUP, originCity: "Jakarta" });
+        setCompanyFetchFailed(true);
+      });
   }, [view, companyPickup]);
 
   function close() { setOpen(false); }
@@ -343,10 +348,23 @@ export function CartDrawer() {
       setFreightData({ originCountry: "Indonesia" });
       setFreightAutoFilled(false);
     }
+    setFreightDestError(false);
     setView("freight");
   }
 
   function computeFreightEstimate() {
+    // Validasi destination sebelum hitung estimasi
+    if (freightSvc === "sea" && !freightData.destCountry?.trim()) {
+      setFreightDestError(true);
+      toast({ title: "Isi Negara Tujuan terlebih dahulu", variant: "destructive" });
+      return;
+    }
+    if (freightSvc === "air" && !freightData.destAirport?.trim()) {
+      setFreightDestError(true);
+      toast({ title: "Isi Bandara Tujuan terlebih dahulu", variant: "destructive" });
+      return;
+    }
+    setFreightDestError(false);
     setFreightEstimating(true);
     const fd = freightData;
     setTimeout(() => {
@@ -381,6 +399,17 @@ export function CartDrawer() {
   }
 
   function handleAddFreightItem() {
+    // Validasi destination wajib untuk sea/air
+    if (freightSvc === "sea" && !freightData.destCountry?.trim()) {
+      setFreightDestError(true);
+      toast({ title: "Negara Tujuan wajib diisi", variant: "destructive" });
+      return;
+    }
+    if (freightSvc === "air" && !freightData.destAirport?.trim()) {
+      setFreightDestError(true);
+      toast({ title: "Bandara Tujuan wajib diisi", variant: "destructive" });
+      return;
+    }
     const meta = FREIGHT_SVC_META[freightSvc];
     let name = meta.name;
     if (freightSvc === "sea")       name = `Kargo Laut — ${freightData.shipType || "LCL"}`;
@@ -770,13 +799,18 @@ export function CartDrawer() {
                       </div>
                     </div>
                     <div>
-                      <Label className="text-[11px] mb-1 block flex items-center gap-1"><MapPin className="w-3 h-3" /> Kota Tujuan *</Label>
-                      <Input className="h-8 text-xs" placeholder="Surabaya" value={truckData.destCity||""} onChange={e => {
-                        const dc = e.target.value;
-                        setTruckData(p => ({ ...p, destCity: dc }));
-                        setVehicleComparison(null);
-                        try { localStorage.setItem("truck_pref", JSON.stringify({ destCity: dc, vehicleType: truckData.vehicleType ?? "" })); } catch { /**/ }
-                      }} />
+                      <Label className="text-[11px] mb-1 flex items-center gap-1"><MapPin className="w-3 h-3 text-blue-500" /> Kota Tujuan <span className="text-destructive">*</span></Label>
+                      <Input
+                        className={`h-8 text-xs ${!truckData.destCity && vehicleComparison !== null ? "border-destructive" : ""}`}
+                        placeholder="Surabaya, Medan, Makassar..."
+                        value={truckData.destCity||""}
+                        onChange={e => {
+                          const dc = e.target.value;
+                          setTruckData(p => ({ ...p, destCity: dc }));
+                          setVehicleComparison(null);
+                          try { localStorage.setItem("truck_pref", JSON.stringify({ destCity: dc, vehicleType: truckData.vehicleType ?? "" })); } catch { /**/ }
+                        }}
+                      />
                     </div>
                     <div>
                       <Label className="text-[11px] mb-1 flex items-center gap-1">
@@ -967,6 +1001,16 @@ export function CartDrawer() {
                 </div>
               )}
 
+              {/* Warning: company fetch failed */}
+              {companyFetchFailed && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex items-start gap-2">
+                  <span className="text-amber-500 mt-0.5 shrink-0 text-xs">⚠</span>
+                  <p className="text-[10px] text-amber-700 leading-snug">
+                    Data perusahaan tidak dapat dimuat. Asal menggunakan nilai default. Anda dapat mengedit manual jika diperlukan.
+                  </p>
+                </div>
+              )}
+
               {/* SEA FREIGHT */}
               {freightSvc === "sea" && (
                 <div className="space-y-3">
@@ -983,8 +1027,22 @@ export function CartDrawer() {
                       </div>
                     </div>
                     <div>
-                      <Label className="text-[11px] mb-1 font-semibold block">Negara Tujuan <span className="text-destructive">*</span></Label>
-                      <Input className="h-8 text-xs border-primary/40 focus:border-primary" placeholder="Singapore, Malaysia..." value={freightData.destCountry||""} onChange={e => setFreightData(p => ({...p, destCountry: e.target.value}))} autoFocus />
+                      <Label className="text-[11px] mb-1 font-semibold flex items-center gap-1">
+                        <MapPin className="w-3 h-3 text-blue-500" />
+                        Negara Tujuan <span className="text-destructive">*</span>
+                      </Label>
+                      <Input
+                        className={`h-8 text-xs ${freightDestError && !freightData.destCountry ? "border-destructive focus-visible:ring-destructive" : "border-primary/40 focus:border-primary"}`}
+                        placeholder="Singapore, Malaysia, China..."
+                        value={freightData.destCountry||""}
+                        onChange={e => { setFreightData(p => ({...p, destCountry: e.target.value})); if (e.target.value) setFreightDestError(false); }}
+                        autoFocus
+                      />
+                      {freightDestError && !freightData.destCountry && (
+                        <p className="text-[11px] text-destructive mt-1 flex items-center gap-1">
+                          <MapPin className="w-3 h-3" /> Negara tujuan wajib diisi.
+                        </p>
+                      )}
                     </div>
                   </div>
                   {/* Berat — read-only jika dari keranjang */}
@@ -1113,8 +1171,22 @@ export function CartDrawer() {
                   </div>
                   {/* Wajib diisi customer: Bandara Tujuan */}
                   <div>
-                    <Label className="text-[11px] mb-1 font-semibold block">Bandara Tujuan *</Label>
-                    <Input className="h-8 text-xs border-primary/40 focus:border-primary" placeholder="Contoh: SIN — Singapore, KUL — Malaysia..." value={freightData.destAirport||""} onChange={e => setFreightData(p => ({...p, destAirport: e.target.value}))} autoFocus />
+                    <Label className="text-[11px] mb-1 font-semibold flex items-center gap-1">
+                      <MapPin className="w-3 h-3 text-sky-500" />
+                      Bandara Tujuan <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      className={`h-8 text-xs ${freightDestError && !freightData.destAirport ? "border-destructive focus-visible:ring-destructive" : "border-primary/40 focus:border-primary"}`}
+                      placeholder="Contoh: SIN — Singapore, KUL — Malaysia..."
+                      value={freightData.destAirport||""}
+                      onChange={e => { setFreightData(p => ({...p, destAirport: e.target.value})); if (e.target.value) setFreightDestError(false); }}
+                      autoFocus
+                    />
+                    {freightDestError && !freightData.destAirport && (
+                      <p className="text-[11px] text-destructive mt-1 flex items-center gap-1">
+                        <MapPin className="w-3 h-3" /> Bandara tujuan wajib diisi.
+                      </p>
+                    )}
                   </div>
                   <div>
                     <Label className="text-[11px] mb-1 block">Incoterms</Label>
@@ -1242,12 +1314,7 @@ export function CartDrawer() {
                     freightSvc === "storage" ? "border-emerald-400 text-emerald-600 hover:bg-emerald-50" :
                                                "border-slate-400 text-slate-600 hover:bg-slate-50"
                   }`}
-                  disabled={freightEstimating || (
-                    freightSvc === "sea"     ? !freightData.destCountry :
-                    freightSvc === "air"     ? !freightData.destAirport :
-                    freightSvc === "storage" ? !freightData.volume :
-                    false
-                  )}
+                  disabled={freightEstimating || (freightSvc === "storage" ? !freightData.volume : false)}
                   onClick={computeFreightEstimate}
                 >
                   {freightEstimating
@@ -1351,11 +1418,10 @@ export function CartDrawer() {
                                              "bg-purple-600 hover:bg-purple-700"
               }`}
               disabled={
-                freightSvc === "sea"       ? !freightData.originCountry || !freightData.destCountry :
-                freightSvc === "air"       ? !freightData.originAirport || !freightData.destAirport :
                 freightSvc === "storage"   ? !freightData.volume :
                 freightSvc === "customs"   ? false :
-                !freightData.addlType
+                freightSvc === "additional" ? !freightData.addlType :
+                false
               }
               onClick={handleAddFreightItem}
             >

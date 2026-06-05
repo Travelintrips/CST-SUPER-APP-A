@@ -108,6 +108,8 @@ export default function CalculatorPage() {
   const [result, setResult] = useState<CalcResult | null>(null);
   const [error, setError] = useState("");
   const [calculated, setCalculated] = useState(false);
+  const [destError, setDestError] = useState(false);
+  const [originFetchFailed, setOriginFetchFailed] = useState(false);
 
   // Auto-fill: asal dari perusahaan, berat/dimensi/jenis dari keranjang
   const [companyOrigin, setCompanyOrigin] = useState<string | null>(null);
@@ -125,6 +127,7 @@ export default function CalculatorPage() {
         setOrigin(prev => prev || city);
       })
       .catch(() => {
+        setOriginFetchFailed(true);
         setCompanyOrigin("Jakarta, Indonesia");
         setOrigin(prev => prev || "Jakarta, Indonesia");
       });
@@ -232,10 +235,15 @@ export default function CalculatorPage() {
   function handleCalculate(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    setDestError(false);
     if (!service) { setError(t("calculator.validation.selectService")); return; }
     if (!weight && service !== "warehousing") { setError(t("calculator.validation.enterWeight")); return; }
     if (!origin) { setError(t("calculator.validation.enterOrigin")); return; }
-    if (!destination) { setError(t("calculator.validation.enterDestination")); return; }
+    if (!destination) {
+      setDestError(true);
+      document.getElementById("calc-destination")?.focus();
+      return;
+    }
 
     const wKg = parseFloat(weight) || 0;
     const lCm = parseFloat(length) || 0;
@@ -539,8 +547,21 @@ export default function CalculatorPage() {
 
               <form onSubmit={handleCalculate} className="space-y-5">
 
+                {/* Warning banner: auto-fill fetch gagal */}
+                {originFetchFailed && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-2.5">
+                    <span className="text-amber-500 mt-0.5 shrink-0 text-sm">⚠</span>
+                    <div>
+                      <p className="text-[12px] font-semibold text-amber-700">Data asal tidak dapat dimuat</p>
+                      <p className="text-[11px] text-amber-600 mt-0.5 leading-relaxed">
+                        Gagal mengambil data perusahaan dari server. Menggunakan fallback. Silakan isi kota asal secara manual jika perlu.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 {/* Auto-fill banner */}
-                {(companyOrigin || cartAutoFill.hasData) && (
+                {!originFetchFailed && (companyOrigin || cartAutoFill.hasData) && (
                   <div className="bg-sky-50 border border-sky-200 rounded-xl px-4 py-3 flex items-start gap-2.5">
                     <span className="text-sky-500 mt-0.5 shrink-0 text-sm">✦</span>
                     <div>
@@ -617,18 +638,25 @@ export default function CalculatorPage() {
                       )}
                     </div>
                     <div>
-                      <label className="calc-label font-bold">
+                      <label className="calc-label font-bold flex items-center gap-1.5">
+                        <MapPin className="h-3 w-3 text-blue-500" />
                         {t("calculator.destination")} <span className="text-red-500">*</span>
                       </label>
                       <input
+                        id="calc-destination"
                         type="text"
                         value={destination}
-                        onChange={(e) => setDestination(e.target.value)}
+                        onChange={(e) => { setDestination(e.target.value); if (e.target.value) setDestError(false); }}
                         placeholder={t("calculator.destinationPlaceholder")}
-                        className="calc-input"
-                        style={{ borderColor: "#93C5FD" }}
+                        className={`calc-input${destError && !destination ? " border-red-400 focus:ring-red-300 bg-red-50" : ""}`}
+                        style={!destError ? { borderColor: "#93C5FD" } : {}}
                         autoFocus={!!companyOrigin}
                       />
+                      {destError && !destination && (
+                        <p className="text-[11px] text-red-500 mt-1 flex items-center gap-1">
+                          <MapPin className="h-3 w-3" /> Tujuan pengiriman wajib diisi.
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
