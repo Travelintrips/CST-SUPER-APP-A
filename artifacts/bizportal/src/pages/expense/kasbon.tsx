@@ -70,6 +70,11 @@ export default function KasbonPage() {
     queryFn: () => apiFetch(`/api/cash-advances?type=kasbon${activeCompanyId ? `&company=${activeCompanyId}` : ""}`),
   });
 
+  const { data: paymentAccounts = [] } = useQuery({
+    queryKey: ["expense-payment-accounts"],
+    queryFn: () => apiFetch("/api/expenses/payment-accounts"),
+  });
+
   const [selected, setSelected] = useState<any | null>(null);
   const [detail, setDetail] = useState<any | null>(null);
 
@@ -89,6 +94,7 @@ export default function KasbonPage() {
   const [partyName, setPartyName] = useState("");
   const [amountRaw, setAmountRaw] = useState("");
   const [pm, setPm] = useState("bank");
+  const [sourceAccountId, setSourceAccountId] = useState("");
   const [date, setDate] = useState(today);
   const [notes, setNotes] = useState("");
 
@@ -98,15 +104,12 @@ export default function KasbonPage() {
     }),
     onSuccess: (d) => {
       if (d.needsApproval) {
-        toast({
-          title: `⏳ ${d.advanceNumber} — menunggu approval`,
-          description: d.message,
-        });
+        toast({ title: `⏳ ${d.advanceNumber} — menunggu approval`, description: d.message });
       } else {
         toast({ title: `✓ ${d.advanceNumber} — ${idr(d.amount)} berhasil dibuat.` });
       }
       qc.invalidateQueries({ queryKey: ["cash-advances", "kasbon"] });
-      setShowForm(false); setPartyName(""); setAmountRaw(""); setNotes(""); setDate(today);
+      setShowForm(false); setPartyName(""); setAmountRaw(""); setNotes(""); setDate(today); setSourceAccountId("");
     },
     onError: (e: Error) => toast({ title: e.message, variant: "destructive" }),
   });
@@ -115,7 +118,10 @@ export default function KasbonPage() {
     const amount = parseIDR(amountRaw);
     if (!partyName.trim()) return toast({ title: "Nama karyawan wajib diisi.", variant: "destructive" });
     if (amount <= 0) return toast({ title: "Nominal harus lebih dari 0.", variant: "destructive" });
-    createMut.mutate({ type: "kasbon", partyName, amount, paymentMethod: pm, date, notes });
+    createMut.mutate({
+      type: "kasbon", partyName, amount, paymentMethod: pm, date, notes,
+      sourceAccountId: sourceAccountId ? Number(sourceAccountId) : undefined,
+    });
   };
 
   // ── Repay form ────────────────────────────────────────────────────────
@@ -211,12 +217,20 @@ export default function KasbonPage() {
                   <Input placeholder="0" className="font-mono" value={amountRaw} onChange={(e) => setAmountRaw(fmtIDR(e.target.value))} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Sumber Dana</Label>
-                  <Select value={pm} onValueChange={setPm}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                  <Label>Sumber Dana (Akun)</Label>
+                  <Select
+                    value={sourceAccountId}
+                    onValueChange={(v) => {
+                      setSourceAccountId(v);
+                      const acc = (paymentAccounts as any[]).find((a: any) => String(a.id) === v);
+                      if (acc) setPm((acc.name ?? "").toLowerCase().includes("kas") ? "cash" : "bank");
+                    }}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Pilih akun kas/bank..." /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="bank">🏦 Bank</SelectItem>
-                      <SelectItem value="cash">💵 Kas</SelectItem>
+                      {(paymentAccounts as any[]).map((a: any) => (
+                        <SelectItem key={a.id} value={String(a.id)}>{a.code} – {a.name}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -227,7 +241,11 @@ export default function KasbonPage() {
               </div>
               {parseIDR(amountRaw) > 0 && (
                 <div className="rounded-md bg-muted/40 border px-4 py-2 text-xs text-muted-foreground">
-                  Jurnal: <strong>DR Piutang Karyawan</strong> {idr(parseIDR(amountRaw))} · <strong>CR {pm === "cash" ? "Kas" : "Bank"}</strong> {idr(parseIDR(amountRaw))}
+                  Jurnal: <strong>DR Piutang Karyawan</strong> {idr(parseIDR(amountRaw))} · <strong>CR {
+                    sourceAccountId
+                      ? ((paymentAccounts as any[]).find((a: any) => String(a.id) === sourceAccountId)?.name ?? (pm === "cash" ? "Kas" : "Bank"))
+                      : (pm === "cash" ? "Kas" : "Bank")
+                  }</strong> {idr(parseIDR(amountRaw))}
                   <div className="mt-1 text-violet-400">⚡ Jika nominal melebihi limit, akan masuk antrian approval terlebih dahulu.</div>
                 </div>
               )}
@@ -250,6 +268,7 @@ export default function KasbonPage() {
                   <TableHead>No. Kasbon</TableHead>
                   <TableHead>Tanggal</TableHead>
                   <TableHead>Karyawan</TableHead>
+                  <TableHead>Sumber Dana</TableHead>
                   <TableHead className="text-right">Nominal</TableHead>
                   <TableHead className="text-right">Terbayar</TableHead>
                   <TableHead className="text-right">Sisa</TableHead>
@@ -259,16 +278,19 @@ export default function KasbonPage() {
               </TableHeader>
               <TableBody>
                 {isLoading && (
-                  <TableRow><TableCell colSpan={8} className="text-center py-10 text-muted-foreground">Memuat...</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={9} className="text-center py-10 text-muted-foreground">Memuat...</TableCell></TableRow>
                 )}
                 {!isLoading && list.length === 0 && (
-                  <TableRow><TableCell colSpan={8} className="text-center py-10 text-muted-foreground">Belum ada kasbon.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={9} className="text-center py-10 text-muted-foreground">Belum ada kasbon.</TableCell></TableRow>
                 )}
                 {list.map((row: any) => (
                   <TableRow key={row.id} className="cursor-pointer hover:bg-muted/50" onClick={() => openDetail(row)}>
                     <TableCell className="font-mono text-xs text-primary">{row.advanceNumber}</TableCell>
                     <TableCell className="text-sm">{row.date}</TableCell>
                     <TableCell className="text-sm font-medium">{row.partyName}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {row.cashBankAccount?.name ?? (row.paymentMethod === "cash" ? "Kas" : "Bank")}
+                    </TableCell>
                     <TableCell className="text-right font-mono text-sm">{idr(row.amount)}</TableCell>
                     <TableCell className="text-right font-mono text-sm text-emerald-400">
                       {row.status === "pending_approval" ? <span className="text-muted-foreground">—</span> : idr(row.paidAmount)}

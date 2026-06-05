@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useLocation, useParams } from "wouter";
+import { useQuery } from "@tanstack/react-query";
+import { apiFetch } from "@/lib/api";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -384,6 +386,10 @@ export default function ExpenseEditorPage() {
   const { data: taxes = [] } = useListTaxes();
   const { data: suppliers = [] } = useVendors();
   const { data: customers = [] } = useListCustomers();
+  const { data: paymentAccounts = [] } = useQuery({
+    queryKey: ["expense-payment-accounts"],
+    queryFn: () => apiFetch("/api/expenses/payment-accounts"),
+  });
 
   const createMut = useCreateExpense();
   const updateMut = useUpdateExpense();
@@ -392,6 +398,8 @@ export default function ExpenseEditorPage() {
   const deleteAttachmentMut = useDeleteExpenseAttachment();
 
   const [form, setForm] = useState({ ...EMPTY_FORM });
+  const [sourceAccountId, setSourceAccountId] = useState<number | null>(null);
+  const [vendorId, setVendorId] = useState<number | null>(null);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
   const [autoFilled, setAutoFilled] = useState<Set<string>>(new Set());
@@ -449,6 +457,7 @@ export default function ExpenseEditorPage() {
 
   useEffect(() => {
     if (expense && !isNew) {
+      const expAny = expense as any;
       setForm({
         date: expense.date,
         vendorEmployee: expense.vendorEmployee ?? "",
@@ -466,6 +475,8 @@ export default function ExpenseEditorPage() {
         salesDocId: expense.salesDocId ?? null,
         shipmentId: expense.shipmentId ?? null,
       });
+      setSourceAccountId(expAny.sourceAccountId ?? null);
+      setVendorId(expAny.vendorId ?? null);
     }
   }, [expense]);
 
@@ -502,7 +513,7 @@ export default function ExpenseEditorPage() {
 
   const save = async () => {
     if (!form.date) { toast({ title: t.common.error, variant: "destructive" }); return; }
-    const body = {
+    const body: any = {
       date: form.date,
       vendorEmployee: form.vendorEmployee || undefined,
       expenseType: form.expenseType,
@@ -518,6 +529,8 @@ export default function ExpenseEditorPage() {
       payableAccountId: form.payableAccountId || undefined,
       salesDocId: form.salesDocId || undefined,
       shipmentId: form.shipmentId || undefined,
+      sourceAccountId: sourceAccountId ?? undefined,
+      vendorId: vendorId ?? undefined,
     };
     try {
       if (isNew) {
@@ -723,6 +736,44 @@ export default function ExpenseEditorPage() {
                   customers={customers}
                   disabled={locked}
                 />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Vendor (Master)</Label>
+                <Select
+                  value={vendorId ? String(vendorId) : "__none__"}
+                  onValueChange={(v) => {
+                    if (v === "__none__") { setVendorId(null); return; }
+                    const id = Number(v);
+                    setVendorId(id);
+                    const s = (suppliers as any[]).find((s: any) => s.id === id);
+                    if (s && !form.vendorEmployee.trim()) setForm((f) => ({ ...f, vendorEmployee: s.name ?? "" }));
+                  }}
+                  disabled={locked}
+                >
+                  <SelectTrigger><SelectValue placeholder="Pilih vendor master..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">— Tidak dipilih —</SelectItem>
+                    {(suppliers as any[]).map((s: any) => (
+                      <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Sumber Dana (Akun)</Label>
+                <Select
+                  value={sourceAccountId ? String(sourceAccountId) : "__none__"}
+                  onValueChange={(v) => setSourceAccountId(v === "__none__" ? null : Number(v))}
+                  disabled={locked}
+                >
+                  <SelectTrigger><SelectValue placeholder="Pilih akun kas/bank..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">— Tidak dipilih —</SelectItem>
+                    {(paymentAccounts as any[]).map((a: any) => (
+                      <SelectItem key={a.id} value={String(a.id)}>{a.code} – {a.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-1.5">
                 <Label>Kategori</Label>
