@@ -20,49 +20,108 @@ import { auditFromReq } from "../lib/auditLog.js";
 const _expenseObjectStorage = new ObjectStorageService();
 const router = Router();
 
+// ── Boot migration ──
+let _columnsEnsured = false;
+async function ensureExpenseColumns() {
+  if (_columnsEnsured) return;
+  _columnsEnsured = true;
+  try {
+    await db.execute(sql.raw(`
+      ALTER TABLE expense_categories ADD COLUMN IF NOT EXISTS category_type TEXT NOT NULL DEFAULT 'both';
+      ALTER TABLE expenses ADD COLUMN IF NOT EXISTS transaction_type TEXT NOT NULL DEFAULT 'expense';
+    `));
+  } catch {}
+}
+
 // ── Middleware Authentication ──
 router.use(async (req, res, next) => {
   if (!(await requireClerkUser(req, res))) return;
+  await ensureExpenseColumns();
   next();
 });
 
 // ── Helpers ──
-function serializeCategory(c: typeof expenseCategoriesTable.$inferSelect) {
-  return { ...c };
+function serializeCategory(c: any) {
+  return {
+    id: c.id,
+    name: c.name,
+    code: c.code,
+    expenseAccountId: c.expense_account_id ?? c.expenseAccountId ?? null,
+    payableAccountId: c.payable_account_id ?? c.payableAccountId ?? null,
+    defaultTaxId: c.default_tax_id ?? c.defaultTaxId ?? null,
+    defaultAmount: c.default_amount ?? c.defaultAmount ?? null,
+    defaultCoaId: c.default_coa_id ?? c.defaultCoaId ?? null,
+    requiresAttachment: c.requires_attachment ?? c.requiresAttachment ?? false,
+    isActive: c.is_active ?? c.isActive ?? true,
+    categoryType: c.category_type ?? c.categoryType ?? "both",
+    createdAt: c.created_at ?? c.createdAt ?? null,
+  };
 }
 
-function serializeExpense(e: typeof expensesTable.$inferSelect) {
+function serializeExpense(e: any) {
   return {
-    ...e,
-    qty: Number(e.qty),
-    unitPrice: Number(e.unitPrice),
-    subtotal: Number(e.subtotal),
-    taxAmount: Number(e.taxAmount),
-    total: Number(e.total),
-    createdAt: e.createdAt.toISOString(),
-    updatedAt: e.updatedAt.toISOString(),
+    id: Number(e.id),
+    companyId: e.company_id ?? e.companyId ?? null,
+    expenseNumber: e.expense_number ?? e.expenseNumber,
+    date: e.date,
+    vendorEmployee: e.vendor_employee ?? e.vendorEmployee ?? null,
+    expenseType: e.expense_type ?? e.expenseType ?? "vendor_bill",
+    transactionType: e.transaction_type ?? e.transactionType ?? "expense",
+    salesDocId: e.sales_doc_id ?? e.salesDocId ?? null,
+    shipmentId: e.shipment_id ?? e.shipmentId ?? null,
+    categoryId: e.category_id ?? e.categoryId ?? null,
+    description: e.description ?? null,
+    qty: Number(e.qty ?? 1),
+    unit: e.unit ?? null,
+    unitPrice: Number(e.unit_price ?? e.unitPrice ?? 0),
+    subtotal: Number(e.subtotal ?? 0),
+    taxRateId: e.tax_rate_id ?? e.taxRateId ?? null,
+    taxAmount: Number(e.tax_amount ?? e.taxAmount ?? 0),
+    total: Number(e.total ?? 0),
+    currency: e.currency ?? "IDR",
+    status: e.status ?? "draft",
+    notes: e.notes ?? null,
+    entryId: e.entry_id ?? e.entryId ?? null,
+    expenseAccountId: e.expense_account_id ?? e.expenseAccountId ?? null,
+    payableAccountId: e.payable_account_id ?? e.payableAccountId ?? null,
+    sourceAccountId: e.source_account_id ?? e.sourceAccountId ?? null,
+    vendorId: e.vendor_id ?? e.vendorId ?? null,
+    userId: e.user_id ?? e.userId ?? null,
+    rejectionReason: e.rejection_reason ?? e.rejectionReason ?? null,
+    createdById: e.created_by_id ?? e.createdById ?? null,
+    createdAt: e.created_at ?? e.createdAt,
+    updatedAt: e.updated_at ?? e.updatedAt,
   };
 }
 
 async function nextExpenseNumber(): Promise<string> {
   const year = new Date().getFullYear();
-  const [{ count }] = await db
+  const [{ count: cnt }] = await db
     .select({ count: sql<number>`cast(count(*) as int)` })
     .from(expensesTable)
     .where(like(expensesTable.expenseNumber, `EXP/${year}/%`));
-  const seq = (Number(count) + 1).toString().padStart(5, "0");
+  const seq = (Number(cnt) + 1).toString().padStart(5, "0");
   return `EXP/${year}/${seq}`;
 }
 
 // ── Expense Categories CRUD ──
-router.get("/categories", async (_req, res) => {
-  const rows = await db.select().from(expenseCategoriesTable).orderBy(expenseCategoriesTable.name);
-  return res.json(rows.map(serializeCategory));
+router.get("/categories", async (req, res) => {
+  const { type } = req.query as Record<string, string>;
+  const rows = await db.execute(sql.raw(
+    `SELECT * FROM expense_categories ORDER BY name`
+  ));
+  let cats = rows.rows.map(serializeCategory);
+  if (type === "income") {
+    cats = cats.filter((c) => c.categoryType === "income" || c.categoryType === "both");
+  } else if (type === "expense") {
+    cats = cats.filter((c) => c.categoryType === "expense" || c.categoryType === "both");
+  }
+  return res.json(cats);
 });
 
 router.post("/categories", async (req, res) => {
   if (!(await requireAdmin(req, res))) return;
-  const { name, code, expenseAccountId, payableAccountId, defaultTaxId, defaultAmount, defaultCoaId, requiresAttachment, isActive } = req.body ?? {};
+  const { name, code, expenseAccountId, payableAccountId, defaultTaxId, defaultAmount, defaultCoaId, requiresAttachment, isActive, categoryType } = req.body ?? {};
   if (!name || !code) return res.status(400).json({ message: "name and code are required" });
 
   const [created] = await db
@@ -77,10 +136,15 @@ router.post("/categories", async (req, res) => {
       defaultCoaId: defaultCoaId ? Number(defaultCoaId) : null,
       requiresAttachment: Boolean(requiresAttachment),
       isActive: isActive !== false,
-    })
+    } as any)
     .returning();
 
-  return res.status(201).json(serializeCategory(created!));
+  if (categoryType && ["expense", "income", "both"].includes(categoryType)) {
+    await db.execute(sql.raw(`UPDATE expense_categories SET category_type = '${categoryType}' WHERE id = ${(created as any).id}`));
+  }
+
+  const row = (await db.execute(sql.raw(`SELECT * FROM expense_categories WHERE id = ${(created as any).id}`))).rows[0];
+  return res.status(201).json(serializeCategory(row));
 });
 
 router.patch("/categories/:id", async (req, res) => {
@@ -88,7 +152,7 @@ router.patch("/categories/:id", async (req, res) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
 
-  const { name, code, expenseAccountId, payableAccountId, defaultTaxId, defaultAmount, defaultCoaId, requiresAttachment, isActive } = req.body ?? {};
+  const { name, code, expenseAccountId, payableAccountId, defaultTaxId, defaultAmount, defaultCoaId, requiresAttachment, isActive, categoryType } = req.body ?? {};
   const update: Record<string, unknown> = {};
   if (name !== undefined) update.name = String(name);
   if (code !== undefined) update.code = String(code).toUpperCase();
@@ -100,9 +164,18 @@ router.patch("/categories/:id", async (req, res) => {
   if (requiresAttachment !== undefined) update.requiresAttachment = Boolean(requiresAttachment);
   if (isActive !== undefined) update.isActive = Boolean(isActive);
 
-  const [updated] = await db.update(expenseCategoriesTable).set(update).where(eq(expenseCategoriesTable.id, id)).returning();
-  if (!updated) return res.status(404).json({ message: "Not found" });
-  return res.json(serializeCategory(updated));
+  if (Object.keys(update).length > 0) {
+    const [updated] = await db.update(expenseCategoriesTable).set(update as any).where(eq(expenseCategoriesTable.id, id)).returning();
+    if (!updated) return res.status(404).json({ message: "Not found" });
+  }
+
+  if (categoryType && ["expense", "income", "both"].includes(categoryType)) {
+    await db.execute(sql.raw(`UPDATE expense_categories SET category_type = '${categoryType}' WHERE id = ${id}`));
+  }
+
+  const row = (await db.execute(sql.raw(`SELECT * FROM expense_categories WHERE id = ${id}`))).rows[0];
+  if (!row) return res.status(404).json({ message: "Not found" });
+  return res.json(serializeCategory(row));
 });
 
 router.delete("/categories/:id", async (req, res) => {
@@ -116,12 +189,13 @@ router.delete("/categories/:id", async (req, res) => {
 // ── Expenses CRUD ──
 router.get("/", async (req: Request, res) => {
   const companyId = resolveCompanyId(req);
-  const { status, categoryId, expenseType, salesDocId, shipmentId, search, from, to } = req.query as Record<string, string>;
+  const { status, categoryId, expenseType, transactionType, salesDocId, shipmentId, search, from, to } = req.query as Record<string, string>;
 
   const whereParts: string[] = [`e.company_id = ${companyId}`];
   if (status) whereParts.push(`e.status = '${status.replace(/'/g, "''")}'`);
   if (categoryId) whereParts.push(`e.category_id = ${Number(categoryId)}`);
   if (expenseType) whereParts.push(`e.expense_type = '${expenseType.replace(/'/g, "''")}'`);
+  if (transactionType) whereParts.push(`e.transaction_type = '${transactionType.replace(/'/g, "''")}'`);
   if (salesDocId) whereParts.push(`e.sales_doc_id = ${Number(salesDocId)}`);
   if (shipmentId) whereParts.push(`e.shipment_id = ${Number(shipmentId)}`);
   if (from) whereParts.push(`e.date >= '${from}'`);
@@ -160,47 +234,18 @@ router.get("/", async (req: Request, res) => {
   }
 
   return res.json(rows.map((r) => ({
-    id: Number(r.id),
-    companyId: r.company_id,
-    expenseNumber: r.expense_number,
-    date: r.date,
-    vendorEmployee: r.vendor_employee,
-    expenseType: r.expense_type,
-    salesDocId: r.sales_doc_id,
-    shipmentId: r.shipment_id,
-    categoryId: r.category_id,
+    ...serializeExpense(r),
     categoryName: r.category_name ?? null,
-    description: r.description,
-    qty: Number(r.qty),
-    unit: r.unit,
-    unitPrice: Number(r.unit_price),
-    subtotal: Number(r.subtotal),
-    taxRateId: r.tax_rate_id,
-    taxAmount: Number(r.tax_amount),
-    total: Number(r.total),
-    currency: r.currency,
-    status: r.status,
-    notes: r.notes,
-    entryId: r.entry_id,
-    expenseAccountId: r.expense_account_id,
-    payableAccountId: r.payable_account_id,
-    sourceAccountId: r.source_account_id,
     sourceAccountName: r.source_account_name ?? null,
-    vendorId: r.vendor_id,
-    userId: r.user_id,
-    rejectionReason: r.rejection_reason,
-    createdById: r.created_by_id,
-    createdAt: r.created_at,
-    updatedAt: r.updated_at,
-    vendor: r.vendor_id ? { id: r.vendor_id, name: r.vendor_name } : null,
+    vendor: r.vendor_id ? { id: Number(r.vendor_id), name: r.vendor_name } : null,
     user: r.user_id ? { id: r.user_id, name: r.user_name, email: r.user_email } : null,
-    sourceAccount: r.source_account_id ? { id: r.source_account_id, name: r.source_account_name, code: r.source_account_code } : null,
-    category: r.category_id ? { id: r.category_id, name: r.category_name } : null,
+    sourceAccount: r.source_account_id ? { id: Number(r.source_account_id), name: r.source_account_name, code: r.source_account_code } : null,
+    category: r.category_id ? { id: Number(r.category_id), name: r.category_name } : null,
   })));
 });
 
 router.post("/", async (req, res) => {
-  const { date, categoryId, description, qty, unitPrice, taxRateId, expenseAccountId, sourceAccountId, vendorId, userId } = req.body ?? {};
+  const { date, categoryId, description, qty, unitPrice, taxRateId, expenseAccountId, sourceAccountId, vendorId, userId, expenseType, transactionType, unit, currency, notes, payableAccountId, salesDocId, shipmentId, vendorEmployee } = req.body ?? {};
   if (!date) return res.status(400).json({ message: "date required" });
   if (!categoryId) return res.status(400).json({ message: "Kategori wajib dipilih." });
 
@@ -217,6 +262,7 @@ router.post("/", async (req, res) => {
 
   const companyIdForInsert = resolveCompanyId(req as Request);
   const expenseNumber = await nextExpenseNumber();
+  const txType = (transactionType === "income" ? "income" : "expense");
 
   const [created] = await db
     .insert(expensesTable)
@@ -227,28 +273,111 @@ router.post("/", async (req, res) => {
       categoryId: Number(categoryId),
       description: description ? String(description) : null,
       qty: String(qtyN),
+      unit: unit ? String(unit) : null,
       unitPrice: String(upN),
       subtotal: String(subtotal),
       taxRateId: taxRateId ? Number(taxRateId) : null,
       taxAmount: String(taxAmountN),
       total: String(total),
+      currency: currency ? String(currency) : "IDR",
+      notes: notes ? String(notes) : null,
       expenseAccountId: expenseAccountId ? Number(expenseAccountId) : null,
+      payableAccountId: payableAccountId ? Number(payableAccountId) : null,
       sourceAccountId: sourceAccountId ? Number(sourceAccountId) : null,
       vendorId: vendorId ? Number(vendorId) : null,
       userId: userId ? String(userId) : null,
+      vendorEmployee: vendorEmployee ? String(vendorEmployee) : null,
+      expenseType: expenseType ? String(expenseType) : "vendor_bill",
+      salesDocId: salesDocId ? Number(salesDocId) : null,
+      shipmentId: shipmentId ? Number(shipmentId) : null,
       status: "draft",
       createdById: (req as { userId?: string }).userId ?? null,
-    })
+    } as any)
     .returning();
+
+  if (txType !== "expense") {
+    await db.execute(sql.raw(`UPDATE expenses SET transaction_type = '${txType}' WHERE id = ${(created as any).id}`));
+  }
 
   auditFromReq(req as Request, {
     action: "create",
     module: "expense",
-    referenceId: String(created!.id),
-    newData: { expenseNumber: created!.expenseNumber, total: String(total), status: "draft" },
+    referenceId: String((created as any).id),
+    newData: { expenseNumber: (created as any).expenseNumber, total: String(total), status: "draft", transactionType: txType },
   });
 
-  return res.status(201).json(serializeExpense(created!));
+  return res.status(201).json(serializeExpense({ ...(created as any), transaction_type: txType }));
+});
+
+router.patch("/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+
+  const [existing] = await db.execute(sql.raw(`SELECT * FROM expenses WHERE id = ${id}`)).then((r) => r.rows);
+  if (!existing) return res.status(404).json({ message: "Not found" });
+  const exp = existing as any;
+  if (exp.status !== "draft" && exp.status !== "rejected") {
+    return res.status(400).json({ message: "Hanya expense berstatus draft atau rejected yang bisa diedit." });
+  }
+
+  const {
+    date, categoryId, description, qty, unitPrice, taxRateId,
+    expenseAccountId, payableAccountId, sourceAccountId,
+    vendorId, userId, vendorEmployee, expenseType, transactionType,
+    unit, currency, notes, salesDocId, shipmentId,
+  } = req.body ?? {};
+
+  const qtyN = qty !== undefined ? Number(qty) : Number(exp.qty ?? 1);
+  const upN = unitPrice !== undefined ? Number(unitPrice) : Number(exp.unit_price ?? 0);
+  const subtotal = Math.round(qtyN * upN * 100) / 100;
+
+  const taxId = taxRateId !== undefined ? (taxRateId ? Number(taxRateId) : null) : (exp.tax_rate_id ? Number(exp.tax_rate_id) : null);
+  let taxAmountN = 0;
+  if (taxId) {
+    const [tax] = await db.select().from(accountingTaxesTable).where(eq(accountingTaxesTable.id, taxId));
+    if (tax) taxAmountN = Math.round(subtotal * Number(tax.rate) / 100 * 100) / 100;
+  }
+  const total = subtotal + taxAmountN;
+
+  const sets: string[] = [
+    `date = '${(date ?? exp.date).toString().replace(/'/g, "''")}'`,
+    `qty = ${qtyN}`,
+    `unit_price = ${upN}`,
+    `subtotal = ${subtotal}`,
+    `tax_amount = ${taxAmountN}`,
+    `total = ${total}`,
+    `updated_at = NOW()`,
+  ];
+  if (categoryId !== undefined) sets.push(`category_id = ${categoryId ? Number(categoryId) : "NULL"}`);
+  if (description !== undefined) sets.push(`description = ${description ? `'${String(description).replace(/'/g, "''")}'` : "NULL"}`);
+  if (taxId !== null) sets.push(`tax_rate_id = ${taxId}`);
+  else if (taxRateId !== undefined) sets.push(`tax_rate_id = NULL`);
+  if (expenseAccountId !== undefined) sets.push(`expense_account_id = ${expenseAccountId ? Number(expenseAccountId) : "NULL"}`);
+  if (payableAccountId !== undefined) sets.push(`payable_account_id = ${payableAccountId ? Number(payableAccountId) : "NULL"}`);
+  if (sourceAccountId !== undefined) sets.push(`source_account_id = ${sourceAccountId ? Number(sourceAccountId) : "NULL"}`);
+  if (vendorId !== undefined) sets.push(`vendor_id = ${vendorId ? Number(vendorId) : "NULL"}`);
+  if (userId !== undefined) sets.push(`user_id = ${userId ? `'${String(userId).replace(/'/g, "''")}'` : "NULL"}`);
+  if (vendorEmployee !== undefined) sets.push(`vendor_employee = ${vendorEmployee ? `'${String(vendorEmployee).replace(/'/g, "''")}'` : "NULL"}`);
+  if (expenseType !== undefined) sets.push(`expense_type = '${String(expenseType).replace(/'/g, "''")}'`);
+  if (transactionType !== undefined && ["expense", "income"].includes(transactionType)) sets.push(`transaction_type = '${transactionType}'`);
+  if (unit !== undefined) sets.push(`unit = ${unit ? `'${String(unit).replace(/'/g, "''")}'` : "NULL"}`);
+  if (currency !== undefined) sets.push(`currency = '${String(currency).replace(/'/g, "''")}'`);
+  if (notes !== undefined) sets.push(`notes = ${notes ? `'${String(notes).replace(/'/g, "''")}'` : "NULL"}`);
+  if (salesDocId !== undefined) sets.push(`sales_doc_id = ${salesDocId ? Number(salesDocId) : "NULL"}`);
+  if (shipmentId !== undefined) sets.push(`shipment_id = ${shipmentId ? Number(shipmentId) : "NULL"}`);
+
+  await db.execute(sql.raw(`UPDATE expenses SET ${sets.join(", ")} WHERE id = ${id}`));
+
+  const row = (await db.execute(sql.raw(`SELECT * FROM expenses WHERE id = ${id}`))).rows[0];
+
+  auditFromReq(req as Request, {
+    action: "update",
+    module: "expense",
+    referenceId: String(id),
+    newData: { total: String(total), status: (row as any)?.status },
+  });
+
+  return res.json(serializeExpense(row));
 });
 
 // ── Export router ──

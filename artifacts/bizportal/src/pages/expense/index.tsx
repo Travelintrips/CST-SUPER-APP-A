@@ -22,7 +22,7 @@ import { usePrefetchOnHover } from "@/hooks/use-prefetch-on-hover";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useCompany } from "@/contexts/CompanyContext";
-import { ShoppingCart, Ship, Plus, Receipt, Search, Trash2, X, CalendarRange, Zap, Wallet, HandCoins, Building2, Landmark, Package, ShieldCheck, LayoutDashboard, Layers, PieChart, Banknote, TrendingDown } from "lucide-react";
+import { ShoppingCart, Ship, Plus, Receipt, Search, Trash2, X, CalendarRange, Zap, Wallet, HandCoins, Building2, Landmark, Package, ShieldCheck, LayoutDashboard, Layers, PieChart, Banknote, TrendingDown, TrendingUp } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -63,6 +63,7 @@ const TYPE_LABELS: Record<string, string> = {
 
 const LS_STATUS_FILTER    = "expense_list_statusFilter";
 const LS_TYPE_FILTER      = "expense_list_typeFilter";
+const LS_TX_TYPE_FILTER   = "expense_list_txTypeFilter";
 const LS_CAT_FILTER       = "expense_list_catFilter";
 const LS_SALES_DOC_FILTER = "expense_list_salesDocFilter";
 const LS_SHIPMENT_FILTER  = "expense_list_shipmentFilter";
@@ -117,10 +118,17 @@ export default function ExpenseListPage() {
       return v && (v === "all" || /^\d+$/.test(v)) ? v : "all";
     } catch { return "all"; }
   });
+  const [txTypeFilter, setTxTypeFilter] = useState(() => {
+    try {
+      const v = localStorage.getItem(LS_TX_TYPE_FILTER);
+      return v && ["all", "expense", "income"].includes(v) ? v : "all";
+    } catch { return "all"; }
+  });
 
   const { data: expenses = [], isLoading } = useListExpenses({
     status: statusFilter !== "all" ? statusFilter : undefined,
     expenseType: typeFilter !== "all" ? typeFilter : undefined,
+    transactionType: txTypeFilter !== "all" ? txTypeFilter : undefined,
     categoryId: catFilter !== "all" ? Number(catFilter) : undefined,
     salesDocId: salesDocFilter !== "all" ? Number(salesDocFilter) : undefined,
     shipmentId: shipmentFilter !== "all" ? Number(shipmentFilter) : undefined,
@@ -334,6 +342,20 @@ export default function ExpenseListPage() {
               ))}
             </SelectContent>
           </Select>
+          <Select value={txTypeFilter} onValueChange={(v) => { setTxTypeFilter(v); try { localStorage.setItem(LS_TX_TYPE_FILTER, v); } catch {} }}>
+            <SelectTrigger className="w-[170px]">
+              <SelectValue placeholder="Semua Jenis" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Pengeluaran & Penerimaan</SelectItem>
+              <SelectItem value="expense">
+                <span className="flex items-center gap-1.5"><TrendingDown size={12} className="text-red-400" />Pengeluaran</span>
+              </SelectItem>
+              <SelectItem value="income">
+                <span className="flex items-center gap-1.5"><TrendingUp size={12} className="text-emerald-400" />Penerimaan</span>
+              </SelectItem>
+            </SelectContent>
+          </Select>
           <Select value={catFilter} onValueChange={(v) => { setCatFilter(v); try { localStorage.setItem(LS_CAT_FILTER, v); } catch {} }}>
             <SelectTrigger className="w-[180px]">
               <SelectValue placeholder="Semua kategori" />
@@ -416,7 +438,18 @@ export default function ExpenseListPage() {
                       </TableCell>
                       <TableCell className="text-sm">{exp.date}</TableCell>
                       <TableCell>
-                        <Badge variant="outline" className="text-xs">{TYPE_LABELS[exp.expenseType] ?? exp.expenseType}</Badge>
+                        <div className="flex flex-col gap-0.5">
+                          <Badge variant="outline" className="text-xs">{TYPE_LABELS[exp.expenseType] ?? exp.expenseType}</Badge>
+                          {(expAny.transactionType === "income") ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-400">
+                              <TrendingUp size={10} />Penerimaan
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-red-400">
+                              <TrendingDown size={10} />Pengeluaran
+                            </span>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell className="text-sm">{expAny.vendor?.name ?? expAny.user?.name ?? exp.vendorEmployee ?? "—"}</TableCell>
                       <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">{exp.description ?? "—"}</TableCell>

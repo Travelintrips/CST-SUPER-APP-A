@@ -32,7 +32,7 @@ import { useVendors } from "@/hooks/useVendors";
 import {
   ArrowLeft, Save, Send, CheckCircle, XCircle, FileText, Banknote,
   RotateCcw, Info, Paperclip, Upload, Trash2, Loader2, AlertTriangle, X,
-  ChevronsUpDown, Check, ExternalLink, MessageSquare,
+  ChevronsUpDown, Check, ExternalLink, MessageSquare, TrendingDown, TrendingUp,
 } from "lucide-react";
 import { CorrespondenceTab } from "@/components/CorrespondenceTab";
 import {
@@ -363,6 +363,7 @@ const EMPTY_FORM = {
   vendorEmployee: "",
   vendorId: null as number | null,
   expenseType: "vendor_bill" as "vendor_bill" | "reimbursement" | "internal",
+  transactionType: "expense" as "expense" | "income",
   categoryId: null as number | null,
   description: "",
   qty: 1,
@@ -481,6 +482,7 @@ export default function ExpenseEditorPage() {
         vendorEmployee: expense.vendorEmployee ?? "",
         vendorId: expense.vendorId ?? null,
         expenseType: expense.expenseType as any,
+        transactionType: (expAny.transactionType ?? "expense") as "expense" | "income",
         categoryId: expense.categoryId ?? null,
         description: expense.description ?? "",
         qty: expense.qty,
@@ -539,6 +541,7 @@ export default function ExpenseEditorPage() {
       date: form.date,
       vendorEmployee: form.vendorEmployee || undefined,
       expenseType: form.expenseType,
+      transactionType: form.transactionType,
       categoryId: form.categoryId || undefined,
       description: form.description || undefined,
       qty: form.qty,
@@ -726,6 +729,34 @@ export default function ExpenseEditorPage() {
           </div>
         )}
 
+        {/* Transaction Type Toggle */}
+        <div className="flex items-center gap-2 rounded-lg border bg-card p-1">
+          <button
+            type="button"
+            onClick={() => !locked && setForm((f) => ({ ...f, transactionType: "expense", categoryId: null }))}
+            disabled={locked}
+            className={`flex flex-1 items-center justify-center gap-2 rounded-md py-2 px-4 text-sm font-medium transition-colors
+              ${form.transactionType === "expense"
+                ? "bg-red-900/60 text-red-200 border border-red-700 shadow-sm"
+                : "text-muted-foreground hover:bg-muted/60"}`}
+          >
+            <TrendingDown size={15} />
+            Pengeluaran
+          </button>
+          <button
+            type="button"
+            onClick={() => !locked && setForm((f) => ({ ...f, transactionType: "income", categoryId: null }))}
+            disabled={locked}
+            className={`flex flex-1 items-center justify-center gap-2 rounded-md py-2 px-4 text-sm font-medium transition-colors
+              ${form.transactionType === "income"
+                ? "bg-emerald-900/60 text-emerald-200 border border-emerald-700 shadow-sm"
+                : "text-muted-foreground hover:bg-muted/60"}`}
+          >
+            <TrendingUp size={15} />
+            Penerimaan
+          </button>
+        </div>
+
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
           {/* Left column */}
           <Card>
@@ -856,7 +887,7 @@ export default function ExpenseEditorPage() {
                   <SelectTrigger><SelectValue placeholder="Pilih kategori..." /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">— Tidak dipilih —</SelectItem>
-                    {cats.filter((c) => c.isActive).map((c) => (
+                    {cats.filter((c) => c.isActive && ((c as any).categoryType === form.transactionType || (c as any).categoryType === "both" || !(c as any).categoryType)).map((c) => (
                       <SelectItem key={c.id} value={c.id.toString()}>{c.name}</SelectItem>
                     ))}
                   </SelectContent>
